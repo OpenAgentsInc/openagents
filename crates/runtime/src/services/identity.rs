@@ -1,6 +1,8 @@
 //! Identity filesystem service.
 
-use crate::fs::{BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat};
+use crate::fs::{
+    BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat,
+};
 use crate::identity::{PublicKey, Signature, SigningService};
 use crate::types::AgentId;
 use std::sync::Arc;
@@ -29,10 +31,19 @@ impl FileService for IdentityFs {
                     .map_err(|err| FsError::Other(err.to_string()))?;
                 Ok(Box::new(BytesHandle::new(pubkey.to_hex().into_bytes())))
             }
-            "sign" => Ok(Box::new(SignHandle::new(self.signer.clone(), self.agent_id.clone()))),
+            "sign" => Ok(Box::new(SignHandle::new(
+                self.signer.clone(),
+                self.agent_id.clone(),
+            ))),
             "verify" => Ok(Box::new(VerifyHandle::new(self.signer.clone()))),
-            "encrypt" => Ok(Box::new(EncryptHandle::new(self.signer.clone(), self.agent_id.clone()))),
-            "decrypt" => Ok(Box::new(DecryptHandle::new(self.signer.clone(), self.agent_id.clone()))),
+            "encrypt" => Ok(Box::new(EncryptHandle::new(
+                self.signer.clone(),
+                self.agent_id.clone(),
+            ))),
+            "decrypt" => Ok(Box::new(DecryptHandle::new(
+                self.signer.clone(),
+                self.agent_id.clone(),
+            ))),
             _ => Err(FsError::NotFound),
         }
     }
@@ -177,10 +188,10 @@ impl FileHandle for VerifyHandle {
                 .and_then(|value| value.as_str())
                 .ok_or_else(|| FsError::Other("missing message".into()))?;
 
-            let pubkey_bytes = hex::decode(pubkey_hex)
-                .map_err(|err| FsError::Other(err.to_string()))?;
-            let sig_bytes = hex::decode(signature_hex)
-                .map_err(|err| FsError::Other(err.to_string()))?;
+            let pubkey_bytes =
+                hex::decode(pubkey_hex).map_err(|err| FsError::Other(err.to_string()))?;
+            let sig_bytes =
+                hex::decode(signature_hex).map_err(|err| FsError::Other(err.to_string()))?;
             let pubkey = PublicKey::new(pubkey_bytes);
             let signature = Signature::new(sig_bytes);
 
@@ -255,8 +266,8 @@ impl FileHandle for EncryptHandle {
                 .and_then(|value| value.as_str())
                 .ok_or_else(|| FsError::Other("missing message".into()))?;
 
-            let recipient_bytes = hex::decode(recipient_hex)
-                .map_err(|err| FsError::Other(err.to_string()))?;
+            let recipient_bytes =
+                hex::decode(recipient_hex).map_err(|err| FsError::Other(err.to_string()))?;
             let recipient = PublicKey::new(recipient_bytes);
 
             let encrypted = self
@@ -332,11 +343,11 @@ impl FileHandle for DecryptHandle {
                 .and_then(|value| value.as_str())
                 .ok_or_else(|| FsError::Other("missing ciphertext".into()))?;
 
-            let sender_bytes = hex::decode(sender_hex)
-                .map_err(|err| FsError::Other(err.to_string()))?;
+            let sender_bytes =
+                hex::decode(sender_hex).map_err(|err| FsError::Other(err.to_string()))?;
             let sender = PublicKey::new(sender_bytes);
-            let ciphertext = hex::decode(ciphertext_hex)
-                .map_err(|err| FsError::Other(err.to_string()))?;
+            let ciphertext =
+                hex::decode(ciphertext_hex).map_err(|err| FsError::Other(err.to_string()))?;
 
             let decrypted = self
                 .signer

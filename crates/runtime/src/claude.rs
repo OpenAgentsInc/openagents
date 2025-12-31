@@ -7,9 +7,9 @@ use crate::fs::{
 };
 use crate::idempotency::{IdempotencyJournal, JournalError};
 use crate::identity::{PublicKey, Signature, SigningService};
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine;
 use crate::types::{AgentId, Timestamp};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
@@ -210,7 +210,10 @@ pub enum ClaudeSessionStatus {
     /// Session failed.
     Failed { error: String },
     /// Waiting for tool approval.
-    PendingApproval { tool: String, params: serde_json::Value },
+    PendingApproval {
+        tool: String,
+        params: serde_json::Value,
+    },
 }
 
 /// Session state for tracking.
@@ -221,7 +224,10 @@ pub enum SessionState {
     /// Ready for prompts.
     Ready { created_at: Timestamp },
     /// Actively working.
-    Working { started_at: Timestamp, current_tool: Option<String> },
+    Working {
+        started_at: Timestamp,
+        current_tool: Option<String>,
+    },
     /// Waiting for next prompt.
     Idle {
         last_response_at: Timestamp,
@@ -249,7 +255,9 @@ impl SessionState {
             SessionState::Working { .. } => ClaudeSessionStatus::Working,
             SessionState::Idle { .. } => ClaudeSessionStatus::Idle,
             SessionState::Complete(response) => response.status.clone(),
-            SessionState::Failed { error, .. } => ClaudeSessionStatus::Failed { error: error.clone() },
+            SessionState::Failed { error, .. } => ClaudeSessionStatus::Failed {
+                error: error.clone(),
+            },
             SessionState::PendingApproval { tool, params, .. } => {
                 ClaudeSessionStatus::PendingApproval {
                     tool: tool.clone(),
@@ -405,7 +413,10 @@ pub enum RepoFilterMode {
     /// Strict denylist + allowlist.
     Strict,
     /// Custom filter rules.
-    Custom { denylist: Vec<String>, allowlist: Vec<String> },
+    Custom {
+        denylist: Vec<String>,
+        allowlist: Vec<String>,
+    },
 }
 
 /// Usage state for Claude budgets.
@@ -601,7 +612,9 @@ pub struct ClaudeRouter {
 
 impl ClaudeRouter {
     pub fn new() -> Self {
-        Self { providers: Vec::new() }
+        Self {
+            providers: Vec::new(),
+        }
     }
 
     pub fn register(&mut self, provider: Arc<dyn ClaudeProvider>) {
@@ -613,10 +626,7 @@ impl ClaudeRouter {
     }
 
     pub fn provider_by_id(&self, id: &str) -> Option<Arc<dyn ClaudeProvider>> {
-        self.providers
-            .iter()
-            .find(|p| p.id() == id)
-            .cloned()
+        self.providers.iter().find(|p| p.id() == id).cloned()
     }
 
     pub fn select(
@@ -816,7 +826,9 @@ impl ClaudeFs {
 
         let (usage, cost_usd) = match state {
             SessionState::Complete(response) => (response.usage, response.cost_usd),
-            SessionState::Idle { usage, cost_usd, .. } => (usage, cost_usd),
+            SessionState::Idle {
+                usage, cost_usd, ..
+            } => (usage, cost_usd),
             _ => (None, 0),
         };
         let json = serde_json::json!({
@@ -852,10 +864,14 @@ impl ClaudeFs {
                     "model": response.model,
                     "tunnel_endpoint": response.tunnel_endpoint,
                 });
-                serde_json::to_vec_pretty(&json)
-                    .map_err(|err| FsError::Other(err.to_string()))
+                serde_json::to_vec_pretty(&json).map_err(|err| FsError::Other(err.to_string()))
             }
-            SessionState::Idle { response, usage, cost_usd, .. } => {
+            SessionState::Idle {
+                response,
+                usage,
+                cost_usd,
+                ..
+            } => {
                 let json = serde_json::json!({
                     "session_id": session_id,
                     "status": ClaudeSessionStatus::Idle,
@@ -864,8 +880,7 @@ impl ClaudeFs {
                     "cost_usd": cost_usd,
                     "reserved_usd": reserved_usd,
                 });
-                serde_json::to_vec_pretty(&json)
-                    .map_err(|err| FsError::Other(err.to_string()))
+                serde_json::to_vec_pretty(&json).map_err(|err| FsError::Other(err.to_string()))
             }
             SessionState::Failed { error, .. } => Err(FsError::Other(error)),
             _ => Err(FsError::Other("not ready".to_string())),
@@ -1086,12 +1101,12 @@ impl FileService for ClaudeFs {
                     .map_err(|err| FsError::Other(err.to_string()))?;
                 Ok(Box::new(BytesHandle::new(json)))
             }
-            ["providers", id, "health"] => Ok(Box::new(BytesHandle::new(
-                self.provider_health_json(id)?,
-            ))),
-            ["providers", "tunnel", "endpoints"] => Ok(Box::new(BytesHandle::new(
-                self.tunnel_endpoints_json()?,
-            ))),
+            ["providers", id, "health"] => {
+                Ok(Box::new(BytesHandle::new(self.provider_health_json(id)?)))
+            }
+            ["providers", "tunnel", "endpoints"] => {
+                Ok(Box::new(BytesHandle::new(self.tunnel_endpoints_json()?)))
+            }
             ["auth", "tunnels"] => {
                 if flags.write {
                     Ok(Box::new(AuthTunnelsWriteHandle::new(
@@ -1133,18 +1148,15 @@ impl FileService for ClaudeFs {
             ["sessions", session_id, "usage"] => Ok(Box::new(BytesHandle::new(
                 self.session_usage_json(session_id)?,
             ))),
-            ["sessions", session_id, "tools", "log"] => Ok(Box::new(BytesHandle::new(
-                self.tool_log_json(session_id)?,
-            ))),
+            ["sessions", session_id, "tools", "log"] => {
+                Ok(Box::new(BytesHandle::new(self.tool_log_json(session_id)?)))
+            }
             ["sessions", session_id, "tools", "pending"] => Ok(Box::new(BytesHandle::new(
                 self.pending_tool_json(session_id)?,
             ))),
-            ["sessions", session_id, "tools", "approve"] if flags.write => {
-                Ok(Box::new(ToolApprovalHandle::new(
-                    self.router.clone(),
-                    session_id.to_string(),
-                )))
-            }
+            ["sessions", session_id, "tools", "approve"] if flags.write => Ok(Box::new(
+                ToolApprovalHandle::new(self.router.clone(), session_id.to_string()),
+            )),
             ["sessions", session_id, "fork"] if flags.write => Ok(Box::new(ForkHandle::new(
                 self.router.clone(),
                 session_id.to_string(),
@@ -1325,7 +1337,9 @@ impl FileService for ClaudeFs {
                     Err(FsError::NotFound)
                 }
             }
-            ["providers", id, "info"] | ["providers", id, "models"] | ["providers", id, "health"] => {
+            ["providers", id, "info"]
+            | ["providers", id, "models"]
+            | ["providers", id, "health"] => {
                 let router = self.router.read().unwrap_or_else(|e| e.into_inner());
                 if router.list_providers().iter().any(|p| p.id == *id) {
                     Ok(Stat::file(0))
@@ -1517,10 +1531,9 @@ impl ClaudeNewHandle {
                 .iter()
                 .any(|pat| matches_pattern(pat, &request.model))
         {
-            return Err(FsError::Other(ClaudeError::InvalidRequest(
-                "model not allowed".to_string(),
-            )
-            .to_string()));
+            return Err(FsError::Other(
+                ClaudeError::InvalidRequest("model not allowed".to_string()).to_string(),
+            ));
         }
 
         if policy
@@ -1528,20 +1541,18 @@ impl ClaudeNewHandle {
             .iter()
             .any(|pat| matches_pattern(pat, &request.model))
         {
-            return Err(FsError::Other(ClaudeError::InvalidRequest(
-                "model blocked".to_string(),
-            )
-            .to_string()));
+            return Err(FsError::Other(
+                ClaudeError::InvalidRequest("model blocked".to_string()).to_string(),
+            ));
         }
 
         if let Some(tunnel) = request.tunnel_endpoint.as_ref() {
             if !policy.allowed_tunnels.is_empty()
                 && !policy.allowed_tunnels.iter().any(|t| t == tunnel)
             {
-                return Err(FsError::Other(ClaudeError::InvalidRequest(
-                    "tunnel not allowed".to_string(),
-                )
-                .to_string()));
+                return Err(FsError::Other(
+                    ClaudeError::InvalidRequest("tunnel not allowed".to_string()).to_string(),
+                ));
             }
         }
 
@@ -1567,29 +1578,28 @@ impl ClaudeNewHandle {
                 .count()
         };
         if active_sessions as u32 >= policy.max_concurrent {
-            return Err(FsError::Other(ClaudeError::InvalidRequest(
-                "max concurrent sessions exceeded".to_string(),
-            )
-            .to_string()));
+            return Err(FsError::Other(
+                ClaudeError::InvalidRequest("max concurrent sessions exceeded".to_string())
+                    .to_string(),
+            ));
         }
 
         if !policy.allowed_tools.is_empty() {
             for tool in &request.tools {
                 if !policy.allowed_tools.iter().any(|t| t == &tool.name) {
-                    return Err(FsError::Other(ClaudeError::InvalidRequest(
-                        format!("tool not allowed: {}", tool.name),
-                    )
-                    .to_string()));
+                    return Err(FsError::Other(
+                        ClaudeError::InvalidRequest(format!("tool not allowed: {}", tool.name))
+                            .to_string(),
+                    ));
                 }
             }
         }
 
         for tool in &request.tools {
             if policy.blocked_tools.iter().any(|t| t == &tool.name) {
-                return Err(FsError::Other(ClaudeError::InvalidRequest(
-                    format!("tool blocked: {}", tool.name),
-                )
-                .to_string()));
+                return Err(FsError::Other(
+                    ClaudeError::InvalidRequest(format!("tool blocked: {}", tool.name)).to_string(),
+                ));
             }
         }
 
@@ -1634,8 +1644,8 @@ impl ClaudeNewHandle {
         if matches!(policy.isolation_mode, IsolationMode::Container)
             && matches!(provider_id.as_str(), "local" | "cloud")
         {
-            let config = resolve_container_config(&policy)
-                .map_err(|err| FsError::Other(err.to_string()))?;
+            let config =
+                resolve_container_config(&policy).map_err(|err| FsError::Other(err.to_string()))?;
             request.internal.container = Some(config);
         }
         #[cfg(target_arch = "wasm32")]
@@ -1647,9 +1657,10 @@ impl ClaudeNewHandle {
             ));
         }
 
-        let scoped_key = request.idempotency_key.as_ref().map(|key| {
-            format!("{}:{}:{}", self.agent_id.as_str(), provider_id, key)
-        });
+        let scoped_key = request
+            .idempotency_key
+            .as_ref()
+            .map(|key| format!("{}:{}:{}", self.agent_id.as_str(), provider_id, key));
 
         if let Some(key) = scoped_key.as_ref() {
             if let Some(cached) = self
@@ -1677,7 +1688,9 @@ impl ClaudeNewHandle {
 
         let reservation = {
             let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
-            let reservation = tracker.reserve(max_cost_usd).map_err(|_| FsError::BudgetExceeded)?;
+            let reservation = tracker
+                .reserve(max_cost_usd)
+                .map_err(|_| FsError::BudgetExceeded)?;
             let state = tracker.state().clone();
             if let Some(limit) = policy.max_cost_usd_per_tick {
                 if state.reserved_tick_usd + state.spent_tick_usd > limit {
@@ -1723,8 +1736,8 @@ impl ClaudeNewHandle {
             "response_path": format!("/claude/sessions/{}/response", session_id),
             "prompt_path": format!("/claude/sessions/{}/prompt", session_id),
         });
-        let response_bytes = serde_json::to_vec(&response_json)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let response_bytes =
+            serde_json::to_vec(&response_json).map_err(|err| FsError::Other(err.to_string()))?;
 
         if let Some(key) = scoped_key.as_ref() {
             self.journal
@@ -1872,8 +1885,8 @@ impl ToolApprovalHandle {
         if self.buffer.is_empty() {
             return Ok(());
         }
-        let value: serde_json::Value = serde_json::from_slice(&self.buffer)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let value: serde_json::Value =
+            serde_json::from_slice(&self.buffer).map_err(|err| FsError::Other(err.to_string()))?;
         let approved = value
             .get("approved")
             .and_then(|v| v.as_bool())
@@ -1951,8 +1964,8 @@ impl ForkHandle {
             .fork_session(&self.session_id)
             .map_err(|err| FsError::Other(err.to_string()))?;
         let response_json = serde_json::json!({ "session_id": new_id });
-        let response_bytes = serde_json::to_vec(&response_json)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let response_bytes =
+            serde_json::to_vec(&response_json).map_err(|err| FsError::Other(err.to_string()))?;
         self.response = Some(response_bytes);
         Ok(())
     }
@@ -2120,8 +2133,8 @@ impl FileHandle for ClaudePolicyWriteHandle {
         if self.buffer.is_empty() {
             return Ok(());
         }
-        let policy: ClaudePolicy = serde_json::from_slice(&self.buffer)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let policy: ClaudePolicy =
+            serde_json::from_slice(&self.buffer).map_err(|err| FsError::Other(err.to_string()))?;
         let mut guard = self.policy.write().unwrap_or_else(|e| e.into_inner());
         *guard = policy;
         self.buffer.clear();
@@ -2239,12 +2252,14 @@ impl FileHandle for AuthTunnelsWriteHandle {
         if self.buffer.is_empty() {
             return Ok(());
         }
-        let endpoints: Vec<TunnelEndpoint> = serde_json::from_slice(&self.buffer)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let endpoints: Vec<TunnelEndpoint> =
+            serde_json::from_slice(&self.buffer).map_err(|err| FsError::Other(err.to_string()))?;
         let mut guard = self.tunnels.write().unwrap_or_else(|e| e.into_inner());
         *guard = endpoints;
         let mut auth_state = self.auth_state.write().unwrap_or_else(|e| e.into_inner());
-        auth_state.responses.retain(|id, _| guard.iter().any(|t| &t.id == id));
+        auth_state
+            .responses
+            .retain(|id, _| guard.iter().any(|t| &t.id == id));
         self.buffer.clear();
         Ok(())
     }
@@ -2441,8 +2456,8 @@ impl FileHandle for AuthChallengeWriteHandle {
         if self.buffer.is_empty() {
             return Ok(());
         }
-        let response: TunnelAuthResponse = serde_json::from_slice(&self.buffer)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let response: TunnelAuthResponse =
+            serde_json::from_slice(&self.buffer).map_err(|err| FsError::Other(err.to_string()))?;
         self.verify_response(&response)?;
         self.buffer.clear();
         Ok(())
@@ -2489,8 +2504,8 @@ impl FileHandle for PoolConfigWriteHandle {
         if self.buffer.is_empty() {
             return Ok(());
         }
-        let config: PoolConfig = serde_json::from_slice(&self.buffer)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let config: PoolConfig =
+            serde_json::from_slice(&self.buffer).map_err(|err| FsError::Other(err.to_string()))?;
         let mut state = self.pool.write().unwrap_or_else(|e| e.into_inner());
         state.config = config;
         self.buffer.clear();
@@ -2538,8 +2553,8 @@ impl FileHandle for ProxyAllowlistWriteHandle {
         if self.buffer.is_empty() {
             return Ok(());
         }
-        let allowlist: Vec<String> = serde_json::from_slice(&self.buffer)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let allowlist: Vec<String> =
+            serde_json::from_slice(&self.buffer).map_err(|err| FsError::Other(err.to_string()))?;
         let mut proxy = self.proxy.write().unwrap_or_else(|e| e.into_inner());
         proxy.allowlist = allowlist;
         self.buffer.clear();
@@ -2863,7 +2878,10 @@ struct WorkerMetrics {
 
 impl Default for WorkerMetrics {
     fn default() -> Self {
-        Self { requests: 0, errors: 0 }
+        Self {
+            requests: 0,
+            errors: 0,
+        }
     }
 }
 
@@ -2904,7 +2922,10 @@ struct ProxyMetrics {
 
 impl Default for ProxyMetrics {
     fn default() -> Self {
-        Self { requests: 0, blocked: 0 }
+        Self {
+            requests: 0,
+            blocked: 0,
+        }
     }
 }
 
@@ -2958,8 +2979,7 @@ fn parse_pubkey(input: &str) -> FsResult<PublicKey> {
     if input.starts_with("npub") {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let entity = nostr::decode(input)
-                .map_err(|err| FsError::Other(err.to_string()))?;
+            let entity = nostr::decode(input).map_err(|err| FsError::Other(err.to_string()))?;
             if let nostr::Nip19Entity::Pubkey(bytes) = entity {
                 return Ok(PublicKey::new(bytes.to_vec()));
             }
@@ -3031,7 +3051,9 @@ fn extract_delta_from_event(event: &serde_json::Value) -> Option<String> {
 mod providers {
     use super::*;
     use claude_agent_sdk::permissions::{CallbackPermissionHandler, PermissionRequest};
-    use claude_agent_sdk::protocol::{PermissionResult, SdkMessage, SdkResultMessage, SdkSystemMessage};
+    use claude_agent_sdk::protocol::{
+        PermissionResult, SdkMessage, SdkResultMessage, SdkSystemMessage,
+    };
     use claude_agent_sdk::{ExecutableConfig, Query, QueryOptions, ToolsConfig};
     use futures::{SinkExt, StreamExt};
     use std::path::PathBuf;
@@ -3139,7 +3161,11 @@ mod providers {
     }
 
     impl ProcessProvider {
-        fn new(id: impl Into<String>, name: impl Into<String>, base_env: HashMap<String, String>) -> Result<Self, ClaudeError> {
+        fn new(
+            id: impl Into<String>,
+            name: impl Into<String>,
+            base_env: HashMap<String, String>,
+        ) -> Result<Self, ClaudeError> {
             Ok(Self {
                 id: id.into(),
                 name: name.into(),
@@ -3157,7 +3183,10 @@ mod providers {
 
         fn session(&self, session_id: &str) -> Result<ProcessSession, ClaudeError> {
             let guard = self.sessions.read().unwrap_or_else(|e| e.into_inner());
-            guard.get(session_id).cloned().ok_or(ClaudeError::SessionNotFound)
+            guard
+                .get(session_id)
+                .cloned()
+                .ok_or(ClaudeError::SessionNotFound)
         }
 
         fn update_state(state: &Arc<RwLock<SessionState>>, next: SessionState) {
@@ -3193,11 +3222,17 @@ mod providers {
             }
         }
 
-        fn spawn_session(&self, session_id: String, request: ClaudeRequest) -> Result<(), ClaudeError> {
+        fn spawn_session(
+            &self,
+            session_id: String,
+            request: ClaudeRequest,
+        ) -> Result<(), ClaudeError> {
             let (prompt_tx, prompt_rx) = mpsc::channel(128);
             let (control_tx, mut control_rx) = mpsc::channel(32);
             let (output_tx, output_rx) = mpsc::channel(256);
-            let state = Arc::new(RwLock::new(SessionState::Creating { started_at: Timestamp::now() }));
+            let state = Arc::new(RwLock::new(SessionState::Creating {
+                started_at: Timestamp::now(),
+            }));
             let tool_log = Arc::new(Mutex::new(Vec::new()));
             let pending = Arc::new(Mutex::new(None));
             let pending_tx = Arc::new(Mutex::new(None));
@@ -3415,44 +3450,54 @@ mod providers {
                 let params = request.input.clone();
 
                 if !policy.allowed.is_empty() && !policy.allowed.iter().any(|t| t == &tool_name) {
-                    tool_log.lock().unwrap_or_else(|e| e.into_inner()).push(ToolLogEntry {
-                        tool_use_id: request.tool_use_id.clone(),
-                        tool: tool_name.clone(),
-                        params,
-                        approved: Some(false),
-                        error: Some("tool not allowed".to_string()),
-                        timestamp: Timestamp::now(),
-                    });
+                    tool_log
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push(ToolLogEntry {
+                            tool_use_id: request.tool_use_id.clone(),
+                            tool: tool_name.clone(),
+                            params,
+                            approved: Some(false),
+                            error: Some("tool not allowed".to_string()),
+                            timestamp: Timestamp::now(),
+                        });
                     return Ok(PermissionResult::deny("tool not allowed"));
                 }
 
                 if policy.blocked.iter().any(|t| t == &tool_name) {
-                    tool_log.lock().unwrap_or_else(|e| e.into_inner()).push(ToolLogEntry {
-                        tool_use_id: request.tool_use_id.clone(),
-                        tool: tool_name.clone(),
-                        params,
-                        approved: Some(false),
-                        error: Some("tool blocked".to_string()),
-                        timestamp: Timestamp::now(),
-                    });
+                    tool_log
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push(ToolLogEntry {
+                            tool_use_id: request.tool_use_id.clone(),
+                            tool: tool_name.clone(),
+                            params,
+                            approved: Some(false),
+                            error: Some("tool blocked".to_string()),
+                            timestamp: Timestamp::now(),
+                        });
                     return Ok(PermissionResult::deny("tool blocked"));
                 }
 
                 if policy.autonomy == ClaudeSessionAutonomy::ReadOnly {
-                    tool_log.lock().unwrap_or_else(|e| e.into_inner()).push(ToolLogEntry {
-                        tool_use_id: request.tool_use_id.clone(),
-                        tool: tool_name.clone(),
-                        params,
-                        approved: Some(false),
-                        error: Some("read-only".to_string()),
-                        timestamp: Timestamp::now(),
-                    });
+                    tool_log
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push(ToolLogEntry {
+                            tool_use_id: request.tool_use_id.clone(),
+                            tool: tool_name.clone(),
+                            params,
+                            approved: Some(false),
+                            error: Some("read-only".to_string()),
+                            timestamp: Timestamp::now(),
+                        });
                     return Ok(PermissionResult::deny("read-only"));
                 }
 
-                let requires_approval = matches!(policy.autonomy, ClaudeSessionAutonomy::Restricted)
-                    || (policy.autonomy == ClaudeSessionAutonomy::Supervised
-                        && policy.approval_required.iter().any(|t| t == &tool_name));
+                let requires_approval =
+                    matches!(policy.autonomy, ClaudeSessionAutonomy::Restricted)
+                        || (policy.autonomy == ClaudeSessionAutonomy::Supervised
+                            && policy.approval_required.iter().any(|t| t == &tool_name));
 
                 if requires_approval {
                     let (tx, rx) = oneshot::channel();
@@ -3477,24 +3522,34 @@ mod providers {
                             since: Timestamp::now(),
                         };
                     }
-                    tool_log.lock().unwrap_or_else(|e| e.into_inner()).push(ToolLogEntry {
-                        tool_use_id: request.tool_use_id.clone(),
-                        tool: tool_name.clone(),
-                        params: params.clone(),
-                        approved: None,
-                        error: None,
-                        timestamp: Timestamp::now(),
-                    });
+                    tool_log
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push(ToolLogEntry {
+                            tool_use_id: request.tool_use_id.clone(),
+                            tool: tool_name.clone(),
+                            params: params.clone(),
+                            approved: None,
+                            error: None,
+                            timestamp: Timestamp::now(),
+                        });
 
                     let approved = rx.await.unwrap_or(false);
-                    tool_log.lock().unwrap_or_else(|e| e.into_inner()).push(ToolLogEntry {
-                        tool_use_id: request.tool_use_id.clone(),
-                        tool: tool_name.clone(),
-                        params,
-                        approved: Some(approved),
-                        error: if approved { None } else { Some("denied".to_string()) },
-                        timestamp: Timestamp::now(),
-                    });
+                    tool_log
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push(ToolLogEntry {
+                            tool_use_id: request.tool_use_id.clone(),
+                            tool: tool_name.clone(),
+                            params,
+                            approved: Some(approved),
+                            error: if approved {
+                                None
+                            } else {
+                                Some("denied".to_string())
+                            },
+                            timestamp: Timestamp::now(),
+                        });
                     {
                         let mut guard = pending.lock().unwrap_or_else(|e| e.into_inner());
                         *guard = None;
@@ -3513,14 +3568,17 @@ mod providers {
                         Ok(PermissionResult::deny_and_interrupt("tool denied"))
                     }
                 } else {
-                    tool_log.lock().unwrap_or_else(|e| e.into_inner()).push(ToolLogEntry {
-                        tool_use_id: request.tool_use_id.clone(),
-                        tool: tool_name.clone(),
-                        params,
-                        approved: Some(true),
-                        error: None,
-                        timestamp: Timestamp::now(),
-                    });
+                    tool_log
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push(ToolLogEntry {
+                            tool_use_id: request.tool_use_id.clone(),
+                            tool: tool_name.clone(),
+                            params,
+                            approved: Some(true),
+                            error: None,
+                            timestamp: Timestamp::now(),
+                        });
                     Ok(PermissionResult::allow(request.input.clone()))
                 }
             }
@@ -3577,7 +3635,8 @@ mod providers {
 
         fn create_session(&self, mut request: ClaudeRequest) -> Result<String, ClaudeError> {
             if let Some(container) = request.internal.container.clone() {
-                request.internal.executable = Some(container_executable(&container, &self.inner.base_env));
+                request.internal.executable =
+                    Some(container_executable(&container, &self.inner.base_env));
             }
             let session_id = uuid::Uuid::new_v4().to_string();
             if let Some(resume_id) = request.resume_session_id.as_ref() {
@@ -3587,7 +3646,9 @@ mod providers {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .clone()
-                    .ok_or_else(|| ClaudeError::ProviderError("resume session not ready".to_string()))?;
+                    .ok_or_else(|| {
+                        ClaudeError::ProviderError("resume session not ready".to_string())
+                    })?;
                 request.internal.resume_backend_id = Some(backend);
             }
             self.inner.spawn_session(session_id.clone(), request)?;
@@ -3596,7 +3657,13 @@ mod providers {
 
         fn get_session(&self, session_id: &str) -> Option<SessionState> {
             let session = self.inner.session(session_id).ok()?;
-            Some(session.state.read().unwrap_or_else(|e| e.into_inner()).clone())
+            Some(
+                session
+                    .state
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone(),
+            )
         }
 
         fn send_prompt(&self, session_id: &str, prompt: &str) -> Result<(), ClaudeError> {
@@ -3620,7 +3687,11 @@ mod providers {
 
         fn approve_tool(&self, session_id: &str, approved: bool) -> Result<(), ClaudeError> {
             let session = self.inner.session(session_id)?;
-            let tx = session.pending_tx.lock().unwrap_or_else(|e| e.into_inner()).take();
+            let tx = session
+                .pending_tx
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
             if let Some(tx) = tx {
                 let _ = tx.send(approved);
                 Ok(())
@@ -3655,12 +3726,22 @@ mod providers {
 
         fn tool_log(&self, session_id: &str) -> Option<Vec<ToolLogEntry>> {
             let session = self.inner.session(session_id).ok()?;
-            Some(session.tool_log.lock().unwrap_or_else(|e| e.into_inner()).clone())
+            Some(
+                session
+                    .tool_log
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone(),
+            )
         }
 
         fn pending_tool(&self, session_id: &str) -> Option<PendingToolInfo> {
             let session = self.inner.session(session_id).ok()?;
-            session.pending.lock().unwrap_or_else(|e| e.into_inner()).clone()
+            session
+                .pending
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
         }
     }
 
@@ -3724,11 +3805,14 @@ mod providers {
 
         fn create_session(&self, request: ClaudeRequest) -> Result<String, ClaudeError> {
             if self.api_key.is_none() {
-                return Err(ClaudeError::ProviderError("missing ANTHROPIC_API_KEY".to_string()));
+                return Err(ClaudeError::ProviderError(
+                    "missing ANTHROPIC_API_KEY".to_string(),
+                ));
             }
             let mut request = request;
             if let Some(container) = request.internal.container.clone() {
-                request.internal.executable = Some(container_executable(&container, &self.inner.base_env));
+                request.internal.executable =
+                    Some(container_executable(&container, &self.inner.base_env));
             }
             if let Some(resume_id) = request.resume_session_id.as_ref() {
                 let session = self.inner.session(resume_id)?;
@@ -3737,7 +3821,9 @@ mod providers {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .clone()
-                    .ok_or_else(|| ClaudeError::ProviderError("resume session not ready".to_string()))?;
+                    .ok_or_else(|| {
+                        ClaudeError::ProviderError("resume session not ready".to_string())
+                    })?;
                 request.internal.resume_backend_id = Some(backend);
             }
             let session_id = uuid::Uuid::new_v4().to_string();
@@ -3747,7 +3833,13 @@ mod providers {
 
         fn get_session(&self, session_id: &str) -> Option<SessionState> {
             let session = self.inner.session(session_id).ok()?;
-            Some(session.state.read().unwrap_or_else(|e| e.into_inner()).clone())
+            Some(
+                session
+                    .state
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone(),
+            )
         }
 
         fn send_prompt(&self, session_id: &str, prompt: &str) -> Result<(), ClaudeError> {
@@ -3771,7 +3863,11 @@ mod providers {
 
         fn approve_tool(&self, session_id: &str, approved: bool) -> Result<(), ClaudeError> {
             let session = self.inner.session(session_id)?;
-            let tx = session.pending_tx.lock().unwrap_or_else(|e| e.into_inner()).take();
+            let tx = session
+                .pending_tx
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
             if let Some(tx) = tx {
                 let _ = tx.send(approved);
                 Ok(())
@@ -3806,29 +3902,65 @@ mod providers {
 
         fn tool_log(&self, session_id: &str) -> Option<Vec<ToolLogEntry>> {
             let session = self.inner.session(session_id).ok()?;
-            Some(session.tool_log.lock().unwrap_or_else(|e| e.into_inner()).clone())
+            Some(
+                session
+                    .tool_log
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone(),
+            )
         }
 
         fn pending_tool(&self, session_id: &str) -> Option<PendingToolInfo> {
             let session = self.inner.session(session_id).ok()?;
-            session.pending.lock().unwrap_or_else(|e| e.into_inner()).clone()
+            session
+                .pending
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
         }
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     enum TunnelMessage {
-        Auth { response: TunnelAuthResponse },
-        CreateSession { request: ClaudeRequest, session_id: String },
-        SessionCreated { session_id: String },
-        Prompt { session_id: String, content: String },
+        Auth {
+            response: TunnelAuthResponse,
+        },
+        CreateSession {
+            request: ClaudeRequest,
+            session_id: String,
+        },
+        SessionCreated {
+            session_id: String,
+        },
+        Prompt {
+            session_id: String,
+            content: String,
+        },
         Chunk(ClaudeChunk),
-        ToolApproval { session_id: String, tool: String, params: serde_json::Value },
-        ToolApprovalResponse { session_id: String, approved: bool },
-        Stop { session_id: String },
-        Pause { session_id: String },
-        Resume { session_id: String },
-        Error { session_id: String, error: String },
+        ToolApproval {
+            session_id: String,
+            tool: String,
+            params: serde_json::Value,
+        },
+        ToolApprovalResponse {
+            session_id: String,
+            approved: bool,
+        },
+        Stop {
+            session_id: String,
+        },
+        Pause {
+            session_id: String,
+        },
+        Resume {
+            session_id: String,
+        },
+        Error {
+            session_id: String,
+            error: String,
+        },
     }
 
     #[derive(Clone)]
@@ -3865,7 +3997,10 @@ mod providers {
 
         fn session(&self, session_id: &str) -> Result<TunnelSession, ClaudeError> {
             let guard = self.sessions.read().unwrap_or_else(|e| e.into_inner());
-            guard.get(session_id).cloned().ok_or(ClaudeError::SessionNotFound)
+            guard
+                .get(session_id)
+                .cloned()
+                .ok_or(ClaudeError::SessionNotFound)
         }
 
         fn endpoint_for(&self, id: &str) -> Result<TunnelEndpoint, ClaudeError> {
@@ -3893,10 +4028,17 @@ mod providers {
             Some(response.clone())
         }
 
-        fn spawn_connection(&self, endpoint: TunnelEndpoint, session_id: String, request: ClaudeRequest) -> Result<TunnelSession, ClaudeError> {
+        fn spawn_connection(
+            &self,
+            endpoint: TunnelEndpoint,
+            session_id: String,
+            request: ClaudeRequest,
+        ) -> Result<TunnelSession, ClaudeError> {
             let (sender_tx, mut sender_rx) = mpsc::channel(128);
             let (output_tx, output_rx) = mpsc::channel(256);
-            let state = Arc::new(RwLock::new(SessionState::Creating { started_at: Timestamp::now() }));
+            let state = Arc::new(RwLock::new(SessionState::Creating {
+                started_at: Timestamp::now(),
+            }));
             let tool_log = Arc::new(Mutex::new(Vec::new()));
             let pending = Arc::new(Mutex::new(None));
             let current_tool_id = Arc::new(Mutex::new(None));
@@ -3918,7 +4060,10 @@ mod providers {
                     Ok(result) => result,
                     Err(err) => {
                         let mut guard = state_clone.write().unwrap_or_else(|e| e.into_inner());
-                        *guard = SessionState::Failed { error: err.to_string(), at: Timestamp::now() };
+                        *guard = SessionState::Failed {
+                            error: err.to_string(),
+                            at: Timestamp::now(),
+                        };
                         return;
                     }
                 };
@@ -3926,11 +4071,22 @@ mod providers {
 
                 if let Some(response) = auth.clone() {
                     let auth_msg = TunnelMessage::Auth { response };
-                    let _ = write.send(WsMessage::Text(serde_json::to_string(&auth_msg).unwrap_or_default())).await;
+                    let _ = write
+                        .send(WsMessage::Text(
+                            serde_json::to_string(&auth_msg).unwrap_or_default(),
+                        ))
+                        .await;
                 }
 
-                let create_msg = TunnelMessage::CreateSession { request: request_clone.clone(), session_id: session_id_clone.clone() };
-                let _ = write.send(WsMessage::Text(serde_json::to_string(&create_msg).unwrap_or_default())).await;
+                let create_msg = TunnelMessage::CreateSession {
+                    request: request_clone.clone(),
+                    session_id: session_id_clone.clone(),
+                };
+                let _ = write
+                    .send(WsMessage::Text(
+                        serde_json::to_string(&create_msg).unwrap_or_default(),
+                    ))
+                    .await;
 
                 let write_task = tokio::spawn(async move {
                     while let Some(msg) = sender_rx.recv().await {
@@ -3943,15 +4099,23 @@ mod providers {
 
                 while let Some(msg) = read.next().await {
                     let msg = match msg {
-                        Ok(WsMessage::Text(text)) => serde_json::from_str::<TunnelMessage>(&text).ok(),
-                        Ok(WsMessage::Binary(bin)) => serde_json::from_slice::<TunnelMessage>(&bin).ok(),
+                        Ok(WsMessage::Text(text)) => {
+                            serde_json::from_str::<TunnelMessage>(&text).ok()
+                        }
+                        Ok(WsMessage::Binary(bin)) => {
+                            serde_json::from_slice::<TunnelMessage>(&bin).ok()
+                        }
                         _ => None,
                     };
-                    let Some(msg) = msg else { continue; };
+                    let Some(msg) = msg else {
+                        continue;
+                    };
                     match msg {
                         TunnelMessage::SessionCreated { .. } => {
                             let mut guard = state_clone.write().unwrap_or_else(|e| e.into_inner());
-                            *guard = SessionState::Ready { created_at: Timestamp::now() };
+                            *guard = SessionState::Ready {
+                                created_at: Timestamp::now(),
+                            };
                         }
                         TunnelMessage::Chunk(chunk) => {
                             let chunk_type = chunk.chunk_type.clone();
@@ -3961,17 +4125,20 @@ mod providers {
 
                             if let Some(delta) = delta.as_ref() {
                                 if matches!(chunk_type, ChunkType::Text | ChunkType::Done) {
-                                    let mut guard = response_clone.lock().unwrap_or_else(|e| e.into_inner());
+                                    let mut guard =
+                                        response_clone.lock().unwrap_or_else(|e| e.into_inner());
                                     guard.push_str(delta);
                                 }
                             }
                             if let Some(usage) = usage_value.clone() {
-                                *usage_clone.lock().unwrap_or_else(|e| e.into_inner()) = Some(usage);
+                                *usage_clone.lock().unwrap_or_else(|e| e.into_inner()) =
+                                    Some(usage);
                             }
 
                             match chunk_type {
                                 ChunkType::Text => {
-                                    let mut guard = state_clone.write().unwrap_or_else(|e| e.into_inner());
+                                    let mut guard =
+                                        state_clone.write().unwrap_or_else(|e| e.into_inner());
                                     *guard = SessionState::Working {
                                         started_at: Timestamp::now(),
                                         current_tool: None,
@@ -3991,17 +4158,22 @@ mod providers {
                                                 id
                                             }
                                         };
-                                        tool_log_clone.lock().unwrap_or_else(|e| e.into_inner()).push(
-                                            ToolLogEntry {
+                                        tool_log_clone
+                                            .lock()
+                                            .unwrap_or_else(|e| e.into_inner())
+                                            .push(ToolLogEntry {
                                                 tool_use_id,
                                                 tool: tool.name.clone(),
-                                                params: tool.params.clone().unwrap_or(serde_json::Value::Null),
+                                                params: tool
+                                                    .params
+                                                    .clone()
+                                                    .unwrap_or(serde_json::Value::Null),
                                                 approved: None,
                                                 error: None,
                                                 timestamp: Timestamp::now(),
-                                            },
-                                        );
-                                        let mut guard = state_clone.write().unwrap_or_else(|e| e.into_inner());
+                                            });
+                                        let mut guard =
+                                            state_clone.write().unwrap_or_else(|e| e.into_inner());
                                         *guard = SessionState::Working {
                                             started_at: Timestamp::now(),
                                             current_tool: Some(tool.name),
@@ -4014,19 +4186,26 @@ mod providers {
                                             let mut guard = current_tool_id_clone
                                                 .lock()
                                                 .unwrap_or_else(|e| e.into_inner());
-                                            guard.take().unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+                                            guard
+                                                .take()
+                                                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
                                         };
-                                        tool_log_clone.lock().unwrap_or_else(|e| e.into_inner()).push(
-                                            ToolLogEntry {
+                                        tool_log_clone
+                                            .lock()
+                                            .unwrap_or_else(|e| e.into_inner())
+                                            .push(ToolLogEntry {
                                                 tool_use_id,
                                                 tool: tool.name.clone(),
-                                                params: tool.params.clone().unwrap_or(serde_json::Value::Null),
+                                                params: tool
+                                                    .params
+                                                    .clone()
+                                                    .unwrap_or(serde_json::Value::Null),
                                                 approved: Some(tool.error.is_none()),
                                                 error: tool.error.clone(),
                                                 timestamp: Timestamp::now(),
-                                            },
-                                        );
-                                        let mut guard = state_clone.write().unwrap_or_else(|e| e.into_inner());
+                                            });
+                                        let mut guard =
+                                            state_clone.write().unwrap_or_else(|e| e.into_inner());
                                         *guard = SessionState::Working {
                                             started_at: Timestamp::now(),
                                             current_tool: None,
@@ -4035,14 +4214,19 @@ mod providers {
                                 }
                                 ChunkType::Done => {
                                     let response_text = {
-                                        let guard = response_clone.lock().unwrap_or_else(|e| e.into_inner());
+                                        let guard = response_clone
+                                            .lock()
+                                            .unwrap_or_else(|e| e.into_inner());
                                         if guard.is_empty() {
                                             None
                                         } else {
                                             Some(guard.clone())
                                         }
                                     };
-                                    let usage_value = usage_clone.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                                    let usage_value = usage_clone
+                                        .lock()
+                                        .unwrap_or_else(|e| e.into_inner())
+                                        .clone();
                                     let cost_usd = request_clone.max_cost_usd.unwrap_or(0);
                                     let response = ClaudeResponse {
                                         session_id: session_id_clone.clone(),
@@ -4055,20 +4239,26 @@ mod providers {
                                         model: request_clone.model.clone(),
                                         tunnel_endpoint: request_clone.tunnel_endpoint.clone(),
                                     };
-                                    let mut guard = state_clone.write().unwrap_or_else(|e| e.into_inner());
+                                    let mut guard =
+                                        state_clone.write().unwrap_or_else(|e| e.into_inner());
                                     *guard = SessionState::Complete(response);
                                     *pending_clone.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                                    *current_tool_id_clone.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                                    *current_tool_id_clone
+                                        .lock()
+                                        .unwrap_or_else(|e| e.into_inner()) = None;
                                 }
                                 ChunkType::Error => {
                                     let error = delta.unwrap_or_else(|| "error".to_string());
-                                    let mut guard = state_clone.write().unwrap_or_else(|e| e.into_inner());
+                                    let mut guard =
+                                        state_clone.write().unwrap_or_else(|e| e.into_inner());
                                     *guard = SessionState::Failed {
                                         error,
                                         at: Timestamp::now(),
                                     };
                                     *pending_clone.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                                    *current_tool_id_clone.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                                    *current_tool_id_clone
+                                        .lock()
+                                        .unwrap_or_else(|e| e.into_inner()) = None;
                                 }
                                 _ => {}
                             }
@@ -4083,21 +4273,32 @@ mod providers {
                                 params: params.clone(),
                                 requested_at: Timestamp::now(),
                             };
-                            *pending_clone.lock().unwrap_or_else(|e| e.into_inner()) = Some(info.clone());
+                            *pending_clone.lock().unwrap_or_else(|e| e.into_inner()) =
+                                Some(info.clone());
                             let mut guard = state_clone.write().unwrap_or_else(|e| e.into_inner());
-                            *guard = SessionState::PendingApproval { tool, params, since: Timestamp::now() };
-                            tool_log_clone.lock().unwrap_or_else(|e| e.into_inner()).push(ToolLogEntry {
-                                tool_use_id,
-                                tool: info.tool.clone(),
-                                params: info.params.clone(),
-                                approved: None,
-                                error: None,
-                                timestamp: Timestamp::now(),
-                            });
+                            *guard = SessionState::PendingApproval {
+                                tool,
+                                params,
+                                since: Timestamp::now(),
+                            };
+                            tool_log_clone
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .push(ToolLogEntry {
+                                    tool_use_id,
+                                    tool: info.tool.clone(),
+                                    params: info.params.clone(),
+                                    approved: None,
+                                    error: None,
+                                    timestamp: Timestamp::now(),
+                                });
                         }
                         TunnelMessage::Error { error, .. } => {
                             let mut guard = state_clone.write().unwrap_or_else(|e| e.into_inner());
-                            *guard = SessionState::Failed { error, at: Timestamp::now() };
+                            *guard = SessionState::Failed {
+                                error,
+                                at: Timestamp::now(),
+                            };
                         }
                         _ => {}
                     }
@@ -4140,7 +4341,11 @@ mod providers {
         }
 
         fn is_available(&self) -> bool {
-            !self.endpoints.read().unwrap_or_else(|e| e.into_inner()).is_empty()
+            !self
+                .endpoints
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty()
         }
 
         fn supports_model(&self, _model: &str) -> bool {
@@ -4153,7 +4358,9 @@ mod providers {
                 .as_ref()
                 .ok_or(ClaudeError::TunnelRequired)?;
             let endpoint = self.endpoint_for(endpoint_id)?;
-            if matches!(endpoint.auth, TunnelAuth::Nostr { .. }) && self.auth_for(&endpoint.id).is_none() {
+            if matches!(endpoint.auth, TunnelAuth::Nostr { .. })
+                && self.auth_for(&endpoint.id).is_none()
+            {
                 return Err(ClaudeError::TunnelAuthRequired);
             }
             let session_id = uuid::Uuid::new_v4().to_string();
@@ -4167,17 +4374,21 @@ mod providers {
 
         fn get_session(&self, session_id: &str) -> Option<SessionState> {
             let session = self.session(session_id).ok()?;
-            Some(session.state.read().unwrap_or_else(|e| e.into_inner()).clone())
+            Some(
+                session
+                    .state
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone(),
+            )
         }
 
         fn send_prompt(&self, session_id: &str, prompt: &str) -> Result<(), ClaudeError> {
             let session = self.session(session_id)?;
-            let _ = session
-                .sender
-                .try_send(TunnelMessage::Prompt {
-                    session_id: session_id.to_string(),
-                    content: prompt.to_string(),
-                });
+            let _ = session.sender.try_send(TunnelMessage::Prompt {
+                session_id: session_id.to_string(),
+                content: prompt.to_string(),
+            });
             let mut guard = session.state.write().unwrap_or_else(|e| e.into_inner());
             *guard = SessionState::Working {
                 started_at: Timestamp::now(),
@@ -4194,10 +4405,12 @@ mod providers {
 
         fn approve_tool(&self, session_id: &str, approved: bool) -> Result<(), ClaudeError> {
             let session = self.session(session_id)?;
-            let _ = session.sender.try_send(TunnelMessage::ToolApprovalResponse {
-                session_id: session_id.to_string(),
-                approved,
-            });
+            let _ = session
+                .sender
+                .try_send(TunnelMessage::ToolApprovalResponse {
+                    session_id: session_id.to_string(),
+                    approved,
+                });
             if let Some(info) = session
                 .pending
                 .lock()
@@ -4213,7 +4426,11 @@ mod providers {
                         tool: info.tool.clone(),
                         params: info.params.clone(),
                         approved: Some(approved),
-                        error: if approved { None } else { Some("denied".to_string()) },
+                        error: if approved {
+                            None
+                        } else {
+                            Some("denied".to_string())
+                        },
                         timestamp: Timestamp::now(),
                     });
                 if approved {
@@ -4271,15 +4488,24 @@ mod providers {
 
         fn tool_log(&self, session_id: &str) -> Option<Vec<ToolLogEntry>> {
             let session = self.session(session_id).ok()?;
-            Some(session.tool_log.lock().unwrap_or_else(|e| e.into_inner()).clone())
+            Some(
+                session
+                    .tool_log
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone(),
+            )
         }
 
         fn pending_tool(&self, session_id: &str) -> Option<PendingToolInfo> {
             let session = self.session(session_id).ok()?;
-            session.pending.lock().unwrap_or_else(|e| e.into_inner()).clone()
+            session
+                .pending
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
         }
     }
-
 }
 
 #[cfg(not(target_arch = "wasm32"))]

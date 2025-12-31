@@ -1,12 +1,12 @@
 //! HUD filesystem service.
 
+use super::LogsFs;
 use crate::fs::{
     BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat,
     StreamHandle, WatchEvent, WatchHandle,
 };
 use crate::storage::AgentStorage;
 use crate::types::AgentId;
-use super::LogsFs;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -69,7 +69,10 @@ impl HudFs {
     }
 
     fn settings_json(&self) -> FsResult<Vec<u8>> {
-        let guard = self.settings.read().map_err(|_| FsError::Other("hud settings lock poisoned".to_string()))?;
+        let guard = self
+            .settings
+            .read()
+            .map_err(|_| FsError::Other("hud settings lock poisoned".to_string()))?;
         serde_json::to_vec_pretty(&*guard).map_err(|err| FsError::Other(err.to_string()))
     }
 
@@ -206,8 +209,8 @@ impl FileHandle for SettingsWriteHandle {
         if self.buffer.is_empty() {
             return Ok(());
         }
-        let settings: HudSettings = serde_json::from_slice(&self.buffer)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let settings: HudSettings =
+            serde_json::from_slice(&self.buffer).map_err(|err| FsError::Other(err.to_string()))?;
         {
             let mut guard = self
                 .settings

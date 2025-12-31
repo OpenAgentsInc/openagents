@@ -1,7 +1,9 @@
 //! Deadletter filesystem service.
 
 use crate::envelope::Envelope;
-use crate::fs::{BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat};
+use crate::fs::{
+    BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat,
+};
 use std::sync::{Arc, Mutex};
 
 /// Deadletter queue view.

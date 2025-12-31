@@ -1,16 +1,15 @@
 use crate::agent::{Agent, AgentContext, AgentState};
-use async_trait::async_trait;
 use crate::budget::BudgetPolicy;
+use crate::claude::{
+    ClaudeCapabilities, ClaudeChunk, ClaudeError, ClaudeFs, ClaudeModelInfo, ClaudePolicy,
+    ClaudePricing, ClaudeProvider, ClaudeProviderInfo, ClaudeProviderStatus, ClaudeRequest,
+    ClaudeResponse, ClaudeRouter, ClaudeSessionAutonomy, ClaudeSessionStatus, ClaudeUsage,
+    SessionState as ClaudeSessionState, ToolDefinition, ToolLogEntry,
+};
 use crate::compute::{
     ComputeChunk, ComputeError, ComputeFs, ComputeKind, ComputePolicy, ComputeProvider,
     ComputeRequest, ComputeResponse, ComputeRouter, DvmProvider, JobState, ModelInfo, ProviderInfo,
     ProviderLatency, ProviderStatus,
-};
-use crate::claude::{
-    ClaudeChunk, ClaudeError, ClaudeFs, ClaudePolicy, ClaudeProvider, ClaudeProviderInfo,
-    ClaudeProviderStatus, ClaudeRequest, ClaudeResponse, ClaudeRouter, ClaudeSessionAutonomy,
-    ClaudeSessionStatus, ClaudeUsage, ClaudeCapabilities, ClaudeModelInfo, ClaudePricing,
-    SessionState as ClaudeSessionState, ToolDefinition, ToolLogEntry,
 };
 use crate::containers::{
     ApiAuthState, AuthMethod, ContainerCapabilities, ContainerError, ContainerFs, ContainerKind,
@@ -19,29 +18,30 @@ use crate::containers::{
     OpenAgentsAuth, OutputChunk, OutputStream, RepoConfig, SessionState,
 };
 use crate::dvm::DvmTransport;
-use crate::engine::{manual_trigger, TickEngine};
-use crate::fx::{FxRateSnapshot, FxSource};
+use crate::engine::{TickEngine, manual_trigger};
 use crate::fs::{AccessLevel, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat};
+use crate::fx::{FxRateSnapshot, FxSource};
 use crate::idempotency::{IdempotencyJournal, MemoryJournal};
-use crate::wallet::{WalletError, WalletPayment, WalletService};
-use compute::domain::sandbox_run::{CommandResult as SandboxCommandResult, SandboxRunResult};
+use crate::identity::SigningService;
 use crate::storage::{AgentStorage, InMemoryStorage, StoredState};
 use crate::types::{AgentId, EnvelopeId, Timestamp};
+use crate::wallet::{WalletError, WalletPayment, WalletService};
 use crate::{
     AgentEnv, ControlPlane, Envelope, HudFs, HudSettings, LocalRuntime, LogsFs, MetricsFs,
     NostrSigner, Result, RoutedEnvelope, TickResult, TraceEvent, WatchEvent,
 };
-use crate::identity::SigningService;
+use async_trait::async_trait;
+use compute::domain::sandbox_run::{CommandResult as SandboxCommandResult, SandboxRunResult};
+use nostr::nip90::KIND_JOB_SANDBOX_RUN;
 use nostr::{
-    Event, JobResult, ENCRYPTED_DM_KIND, KIND_JOB_FEEDBACK, KIND_JOB_TEXT_GENERATION,
+    ENCRYPTED_DM_KIND, Event, JobResult, KIND_JOB_FEEDBACK, KIND_JOB_TEXT_GENERATION,
     KIND_SHORT_TEXT_NOTE,
 };
-use nostr::nip90::KIND_JOB_SANDBOX_RUN;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -315,7 +315,9 @@ fn test_budget_enforcement() {
     env.mount("/budget", service, AccessLevel::Budgeted(policy));
 
     env.write("/budget", b"first").expect("first write");
-    let err = env.write("/budget", b"second").expect_err("budget exceeded");
+    let err = env
+        .write("/budget", b"second")
+        .expect_err("budget exceeded");
     assert!(matches!(err, FsError::BudgetExceeded));
 }
 
@@ -324,13 +326,8 @@ fn test_idempotent_effects() {
     let journal = MemoryJournal::new();
     let ttl = Duration::from_millis(50);
     assert!(journal.get("key").expect("get").is_none());
-    journal
-        .put_with_ttl("key", b"payload", ttl)
-        .expect("put");
-    assert_eq!(
-        journal.get("key").expect("get"),
-        Some(b"payload".to_vec())
-    );
+    journal.put_with_ttl("key", b"payload", ttl).expect("put");
+    assert_eq!(journal.get("key").expect("get"), Some(b"payload".to_vec()));
     std::thread::sleep(Duration::from_millis(60));
     assert!(journal.get("key").expect("expired").is_none());
 }
@@ -372,23 +369,23 @@ fn test_compute_new_usage_and_idempotency() {
     let response = submit_compute(&compute, &request);
     let job_id = response["job_id"].as_str().expect("job_id").to_string();
 
-    let result_bytes =
-        read_handle(compute.open(&format!("jobs/{}/result", job_id), OpenFlags::read()).unwrap());
+    let result_bytes = read_handle(
+        compute
+            .open(&format!("jobs/{}/result", job_id), OpenFlags::read())
+            .unwrap(),
+    );
     let result: ComputeResponse = serde_json::from_slice(&result_bytes).expect("result");
     assert_eq!(result.provider_id, "test");
     assert_eq!(result.cost_usd, 2);
-    assert_eq!(result.output.get("text").and_then(|v| v.as_str()), Some("ok"));
+    assert_eq!(
+        result.output.get("text").and_then(|v| v.as_str()),
+        Some("ok")
+    );
 
     let usage_bytes = read_handle(compute.open("usage", OpenFlags::read()).unwrap());
     let usage: serde_json::Value = serde_json::from_slice(&usage_bytes).expect("usage");
-    assert_eq!(
-        usage["tick"]["spent_usd"].as_u64(),
-        Some(2)
-    );
-    assert_eq!(
-        usage["tick"]["reserved_usd"].as_u64(),
-        Some(0)
-    );
+    assert_eq!(usage["tick"]["spent_usd"].as_u64(), Some(2));
+    assert_eq!(usage["tick"]["reserved_usd"].as_u64(), Some(0));
 
     let response_again = submit_compute(&compute, &request);
     let job_id_again = response_again["job_id"].as_str().expect("job_id");
@@ -443,22 +440,33 @@ fn test_compute_stream_watch() {
         _ => panic!("no data"),
     };
     let first_chunk: ComputeChunk = serde_json::from_slice(&first_data).expect("chunk");
-    assert_eq!(first_chunk.delta.get("text").and_then(|v| v.as_str()), Some("hello"));
+    assert_eq!(
+        first_chunk.delta.get("text").and_then(|v| v.as_str()),
+        Some("hello")
+    );
 
-    let second = watch.next(Some(Duration::from_millis(100))).expect("second");
+    let second = watch
+        .next(Some(Duration::from_millis(100)))
+        .expect("second");
     let second_data = match second {
         Some(WatchEvent::Data(data)) => data,
         _ => panic!("no data"),
     };
     let second_chunk: ComputeChunk = serde_json::from_slice(&second_data).expect("chunk");
-    assert_eq!(second_chunk.delta.get("text").and_then(|v| v.as_str()), Some(" world"));
+    assert_eq!(
+        second_chunk.delta.get("text").and_then(|v| v.as_str()),
+        Some(" world")
+    );
     assert_eq!(second_chunk.finish_reason.as_deref(), Some("stop"));
 
     let done = watch.next(Some(Duration::from_millis(50))).expect("done");
     assert!(done.is_none());
 
-    let result_bytes =
-        read_handle(compute.open(&format!("jobs/{}/result", job_id), OpenFlags::read()).unwrap());
+    let result_bytes = read_handle(
+        compute
+            .open(&format!("jobs/{}/result", job_id), OpenFlags::read())
+            .unwrap(),
+    );
     let result: ComputeResponse = serde_json::from_slice(&result_bytes).expect("result");
     assert_eq!(
         result.output.get("text").and_then(|v| v.as_str()),
@@ -510,7 +518,10 @@ fn test_compute_stream_fallback_for_non_streaming_provider() {
         _ => panic!("no data"),
     };
     let first_chunk: ComputeChunk = serde_json::from_slice(&first_data).expect("chunk");
-    assert_eq!(first_chunk.delta.get("text").and_then(|v| v.as_str()), Some("ok"));
+    assert_eq!(
+        first_chunk.delta.get("text").and_then(|v| v.as_str()),
+        Some("ok")
+    );
     assert_eq!(first_chunk.finish_reason.as_deref(), Some("complete"));
 
     let done = watch.next(Some(Duration::from_millis(50))).expect("done");
@@ -548,21 +559,30 @@ fn test_claude_new_usage_and_idempotency() {
     request.idempotency_key = Some("claude-1".to_string());
 
     let response = submit_claude(&claude, &request);
-    let session_id = response["session_id"].as_str().expect("session_id").to_string();
+    let session_id = response["session_id"]
+        .as_str()
+        .expect("session_id")
+        .to_string();
 
     let usage_bytes = read_handle(claude.open("usage", OpenFlags::read()).unwrap());
     let usage: serde_json::Value = serde_json::from_slice(&usage_bytes).expect("usage");
     assert_eq!(usage["tick"]["reserved_usd"].as_u64(), Some(5));
 
     let mut prompt = claude
-        .open(&format!("sessions/{}/prompt", session_id), OpenFlags::write())
+        .open(
+            &format!("sessions/{}/prompt", session_id),
+            OpenFlags::write(),
+        )
         .unwrap();
     prompt.write(b"hello").unwrap();
     prompt.flush().unwrap();
 
     let _ = read_handle(
         claude
-            .open(&format!("sessions/{}/response", session_id), OpenFlags::read())
+            .open(
+                &format!("sessions/{}/response", session_id),
+                OpenFlags::read(),
+            )
             .unwrap(),
     );
 
@@ -600,10 +620,16 @@ fn test_claude_output_watch() {
 
     let request = ClaudeRequest::new("claude-test");
     let response = submit_claude(&claude, &request);
-    let session_id = response["session_id"].as_str().expect("session_id").to_string();
+    let session_id = response["session_id"]
+        .as_str()
+        .expect("session_id")
+        .to_string();
 
     let mut prompt = claude
-        .open(&format!("sessions/{}/prompt", session_id), OpenFlags::write())
+        .open(
+            &format!("sessions/{}/prompt", session_id),
+            OpenFlags::write(),
+        )
         .unwrap();
     prompt.write(b"hello").unwrap();
     prompt.flush().unwrap();
@@ -663,11 +689,17 @@ fn test_container_new_usage_and_idempotency() {
     };
 
     let response = submit_container(&containers, &request);
-    let session_id = response["session_id"].as_str().expect("session_id").to_string();
+    let session_id = response["session_id"]
+        .as_str()
+        .expect("session_id")
+        .to_string();
 
     let result_bytes = read_handle(
         containers
-            .open(&format!("sessions/{}/result", session_id), OpenFlags::read())
+            .open(
+                &format!("sessions/{}/result", session_id),
+                OpenFlags::read(),
+            )
             .unwrap(),
     );
     let result: ContainerResponse = serde_json::from_slice(&result_bytes).expect("result");
@@ -722,7 +754,10 @@ fn test_container_output_watch() {
     };
 
     let response = submit_container(&containers, &request);
-    let session_id = response["session_id"].as_str().expect("session_id").to_string();
+    let session_id = response["session_id"]
+        .as_str()
+        .expect("session_id")
+        .to_string();
     let mut watch = containers
         .watch(&format!("sessions/{}/output", session_id))
         .expect("watch")
@@ -737,7 +772,9 @@ fn test_container_output_watch() {
     assert_eq!(first_chunk.stream, OutputStream::Stdout);
     assert_eq!(first_chunk.data, "hello");
 
-    let second = watch.next(Some(Duration::from_millis(100))).expect("second");
+    let second = watch
+        .next(Some(Duration::from_millis(100)))
+        .expect("second");
     let second_data = match second {
         Some(WatchEvent::Data(data)) => data,
         _ => panic!("no data"),
@@ -788,22 +825,33 @@ fn test_container_exec_and_files() {
     };
 
     let response = submit_container(&containers, &request);
-    let session_id = response["session_id"].as_str().expect("session_id").to_string();
+    let session_id = response["session_id"]
+        .as_str()
+        .expect("session_id")
+        .to_string();
 
     let mut exec_handle = containers
-        .open(&format!("sessions/{}/exec/new", session_id), OpenFlags::write())
+        .open(
+            &format!("sessions/{}/exec/new", session_id),
+            OpenFlags::write(),
+        )
         .expect("exec new");
     exec_handle.write(b"ls -la").expect("write exec");
     exec_handle.flush().expect("flush exec");
-    let exec_response: serde_json::Value = serde_json::from_slice(&read_handle(exec_handle))
-        .expect("exec response");
-    let exec_id = exec_response["exec_id"].as_str().expect("exec_id").to_string();
+    let exec_response: serde_json::Value =
+        serde_json::from_slice(&read_handle(exec_handle)).expect("exec response");
+    let exec_id = exec_response["exec_id"]
+        .as_str()
+        .expect("exec_id")
+        .to_string();
 
     let mut exec_watch = containers
         .watch(&format!("sessions/{}/exec/{}/output", session_id, exec_id))
         .expect("watch")
         .expect("handle");
-    let first = exec_watch.next(Some(Duration::from_millis(100))).expect("first");
+    let first = exec_watch
+        .next(Some(Duration::from_millis(100)))
+        .expect("first");
     let first_data = match first {
         Some(WatchEvent::Data(data)) => data,
         _ => panic!("no data"),
@@ -825,7 +873,10 @@ fn test_container_exec_and_files() {
 
     let file_path = "src%2Fmain.rs";
     let mut file_handle = containers
-        .open(&format!("sessions/{}/files/{}", session_id, file_path), OpenFlags::write())
+        .open(
+            &format!("sessions/{}/files/{}", session_id, file_path),
+            OpenFlags::write(),
+        )
         .expect("file write");
     file_handle.write(b"hello").expect("write");
     file_handle.flush().expect("flush");
@@ -833,10 +884,7 @@ fn test_container_exec_and_files() {
     let chunk_bytes = read_handle(
         containers
             .open(
-                &format!(
-                    "sessions/{}/files/{}/chunks/0",
-                    session_id, file_path
-                ),
+                &format!("sessions/{}/files/{}/chunks/0", session_id, file_path),
                 OpenFlags::read(),
             )
             .unwrap(),
@@ -905,7 +953,10 @@ fn test_container_auth_token_credits_reconcile() {
 
     let _result_bytes = read_handle(
         containers
-            .open(&format!("sessions/{}/result", session_id), OpenFlags::read())
+            .open(
+                &format!("sessions/{}/result", session_id),
+                OpenFlags::read(),
+            )
             .unwrap(),
     );
 
@@ -964,7 +1015,10 @@ fn test_container_policy_selects_allowed_provider() {
     let session_id = response["session_id"].as_str().expect("session_id");
     let result_bytes = read_handle(
         containers
-            .open(&format!("sessions/{}/result", session_id), OpenFlags::read())
+            .open(
+                &format!("sessions/{}/result", session_id),
+                OpenFlags::read(),
+            )
             .unwrap(),
     );
     let result: ContainerResponse = serde_json::from_slice(&result_bytes).expect("result");
@@ -1137,9 +1191,12 @@ async fn test_driver_sink_routes_envelope() {
         timestamp: Timestamp::now(),
         payload: json!({ "message": "hello" }),
     };
-    sink.send(RoutedEnvelope { agent_id: agent_id.clone(), envelope })
-        .await
-        .expect("send");
+    sink.send(RoutedEnvelope {
+        agent_id: agent_id.clone(),
+        envelope,
+    })
+    .await
+    .expect("send");
 
     let control_plane = ControlPlane::new(runtime);
     let app = control_plane.router();
@@ -1263,13 +1320,8 @@ fn test_idempotent_effects_sqlite() {
     let journal = crate::idempotency::SqliteJournal::new(&path).expect("journal");
     let ttl = Duration::from_millis(50);
     assert!(journal.get("key").expect("get").is_none());
-    journal
-        .put_with_ttl("key", b"payload", ttl)
-        .expect("put");
-    assert_eq!(
-        journal.get("key").expect("get"),
-        Some(b"payload".to_vec())
-    );
+    journal.put_with_ttl("key", b"payload", ttl).expect("put");
+    assert_eq!(journal.get("key").expect("get"), Some(b"payload".to_vec()));
     std::thread::sleep(Duration::from_millis(60));
     assert!(journal.get("key").expect("expired").is_none());
 }
@@ -1476,10 +1528,7 @@ impl ComputeProvider for NoStreamProvider {
     }
 
     fn submit(&self, request: ComputeRequest) -> std::result::Result<String, ComputeError> {
-        let job_id = format!(
-            "job-{}",
-            JOB_COUNTER.fetch_add(1, Ordering::SeqCst)
-        );
+        let job_id = format!("job-{}", JOB_COUNTER.fetch_add(1, Ordering::SeqCst));
         let response = ComputeResponse {
             job_id: job_id.clone(),
             output: json!({ "text": "ok" }),
@@ -1504,10 +1553,7 @@ impl ComputeProvider for NoStreamProvider {
             .cloned()
     }
 
-    fn poll_stream(
-        &self,
-        job_id: &str,
-    ) -> std::result::Result<Option<ComputeChunk>, ComputeError> {
+    fn poll_stream(&self, job_id: &str) -> std::result::Result<Option<ComputeChunk>, ComputeError> {
         if self
             .jobs
             .read()
@@ -1567,10 +1613,7 @@ impl ComputeProvider for TestProvider {
     }
 
     fn submit(&self, request: ComputeRequest) -> std::result::Result<String, ComputeError> {
-        let job_id = format!(
-            "job-{}",
-            JOB_COUNTER.fetch_add(1, Ordering::SeqCst)
-        );
+        let job_id = format!("job-{}", JOB_COUNTER.fetch_add(1, Ordering::SeqCst));
         if request.stream {
             let chunks = VecDeque::from(vec![
                 ComputeChunk {
@@ -1603,16 +1646,13 @@ impl ComputeProvider for TestProvider {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .insert(job_id.clone(), chunks);
-            self.jobs
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .insert(
-                    job_id.clone(),
-                    JobState::Streaming {
-                        started_at: Timestamp::now(),
-                        chunks_emitted: 0,
-                    },
-                );
+            self.jobs.write().unwrap_or_else(|e| e.into_inner()).insert(
+                job_id.clone(),
+                JobState::Streaming {
+                    started_at: Timestamp::now(),
+                    chunks_emitted: 0,
+                },
+            );
         } else {
             let response = ComputeResponse {
                 job_id: job_id.clone(),
@@ -1639,10 +1679,7 @@ impl ComputeProvider for TestProvider {
             .cloned()
     }
 
-    fn poll_stream(
-        &self,
-        job_id: &str,
-    ) -> std::result::Result<Option<ComputeChunk>, ComputeError> {
+    fn poll_stream(&self, job_id: &str) -> std::result::Result<Option<ComputeChunk>, ComputeError> {
         let has_job = self
             .jobs
             .read()
@@ -1822,7 +1859,10 @@ impl ClaudeProvider for TestClaudeProvider {
         self.sessions
             .write()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(session_id.to_string(), ClaudeSessionState::Complete(response));
+            .insert(
+                session_id.to_string(),
+                ClaudeSessionState::Complete(response),
+            );
         self.chunks
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -1843,11 +1883,17 @@ impl ClaudeProvider for TestClaudeProvider {
         session_id: &str,
     ) -> std::result::Result<Option<ClaudeChunk>, ClaudeError> {
         let mut chunks = self.chunks.lock().unwrap_or_else(|e| e.into_inner());
-        let queue = chunks.get_mut(session_id).ok_or(ClaudeError::SessionNotFound)?;
+        let queue = chunks
+            .get_mut(session_id)
+            .ok_or(ClaudeError::SessionNotFound)?;
         Ok(queue.pop_front())
     }
 
-    fn approve_tool(&self, _session_id: &str, _approved: bool) -> std::result::Result<(), ClaudeError> {
+    fn approve_tool(
+        &self,
+        _session_id: &str,
+        _approved: bool,
+    ) -> std::result::Result<(), ClaudeError> {
         Ok(())
     }
 
@@ -1937,7 +1983,10 @@ impl TestOpenAgentsApi {
 }
 
 impl OpenAgentsApiClient for TestOpenAgentsApi {
-    fn authenticate_token(&self, _token: &str) -> ContainerResult<crate::containers::ApiAuthResponse> {
+    fn authenticate_token(
+        &self,
+        _token: &str,
+    ) -> ContainerResult<crate::containers::ApiAuthResponse> {
         Ok(crate::containers::ApiAuthResponse {
             state: self.auth_state(AuthMethod::ApiKey),
             access_token: None,
@@ -2101,10 +2150,7 @@ impl ContainerProvider for TestContainerProvider {
     }
 
     fn submit(&self, request: ContainerRequest) -> std::result::Result<String, ContainerError> {
-        let session_id = format!(
-            "session-{}",
-            SESSION_COUNTER.fetch_add(1, Ordering::SeqCst)
-        );
+        let session_id = format!("session-{}", SESSION_COUNTER.fetch_add(1, Ordering::SeqCst));
         let response = ContainerResponse {
             session_id: session_id.clone(),
             exit_code: Some(0),
@@ -2283,7 +2329,9 @@ impl ContainerProvider for TestContainerProvider {
             .unwrap_or_else(|e| e.into_inner())
             .insert(
                 session_id.to_string(),
-                SessionState::Expired { at: Timestamp::now() },
+                SessionState::Expired {
+                    at: Timestamp::now(),
+                },
             );
         Ok(())
     }
@@ -2318,7 +2366,10 @@ impl TestDvmTransport {
     }
 
     fn published_events(&self) -> Vec<Event> {
-        self.published.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.published
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     fn emit(&self, event: Event) {
@@ -2393,7 +2444,10 @@ impl TestWallet {
     }
 
     fn payments(&self) -> Vec<WalletPayment> {
-        self.payments.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.payments
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 }
 

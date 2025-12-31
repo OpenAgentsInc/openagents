@@ -116,7 +116,9 @@ impl FxRateCache {
         if self.cache_secs > 0 {
             if let Ok(guard) = self.cached.lock() {
                 if let Some(snapshot) = guard.as_ref() {
-                    let age_ms = now.as_millis().saturating_sub(snapshot.updated_at.as_millis());
+                    let age_ms = now
+                        .as_millis()
+                        .saturating_sub(snapshot.updated_at.as_millis());
                     if age_ms <= self.cache_secs.saturating_mul(1000) {
                         return Ok(snapshot.clone());
                     }
@@ -154,18 +156,16 @@ impl FxRateCache {
     fn fetch_oracle(&self, url: &str) -> Result<FxRateSnapshot, FxError> {
         let client = self.client.clone();
         let url = url.to_string();
-        let value = self
-            .runtime
-            .block_on(async move {
-                client
-                    .get(url)
-                    .send()
-                    .await
-                    .map_err(|err| FxError::Oracle(err.to_string()))?
-                    .json::<Value>()
-                    .await
-                    .map_err(|err| FxError::Oracle(err.to_string()))
-            })?;
+        let value = self.runtime.block_on(async move {
+            client
+                .get(url)
+                .send()
+                .await
+                .map_err(|err| FxError::Oracle(err.to_string()))?
+                .json::<Value>()
+                .await
+                .map_err(|err| FxError::Oracle(err.to_string()))
+        })?;
 
         let sats_per_usd = parse_sats_per_usd(&value)?;
         if sats_per_usd == 0 {
@@ -181,9 +181,7 @@ impl FxRateCache {
 #[cfg(not(target_arch = "wasm32"))]
 fn parse_sats_per_usd(value: &Value) -> Result<u64, FxError> {
     match value.get("sats_per_usd") {
-        Some(Value::Number(num)) => num
-            .as_u64()
-            .ok_or(FxError::InvalidResponse),
+        Some(Value::Number(num)) => num.as_u64().ok_or(FxError::InvalidResponse),
         Some(Value::String(s)) => s.parse::<u64>().map_err(|_| FxError::InvalidResponse),
         _ => Err(FxError::InvalidResponse),
     }

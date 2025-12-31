@@ -176,7 +176,11 @@ impl BudgetTracker {
 
     fn rollover_day(&mut self) {
         let now = Timestamp::now();
-        if now.as_millis().saturating_sub(self.state.day_start.as_millis()) >= DAY_MILLIS {
+        if now
+            .as_millis()
+            .saturating_sub(self.state.day_start.as_millis())
+            >= DAY_MILLIS
+        {
             self.state.day_start = now;
             self.state.reserved_day_usd = 0;
             self.state.spent_day_usd = 0;

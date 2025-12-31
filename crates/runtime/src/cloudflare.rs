@@ -12,11 +12,11 @@ use crate::storage::CloudflareStorage;
 use crate::tick::TickResult;
 use crate::trigger::{AlarmTrigger, Trigger, TriggerMeta};
 use crate::types::{AgentId, EnvelopeId, Timestamp};
-use crate::{manual_trigger, StatusSnapshot, TickEngine};
+use crate::{StatusSnapshot, TickEngine, manual_trigger};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex, OnceLock};
-use worker::{durable_object, DurableObject, Env, Method, Request, Response, State};
+use worker::{DurableObject, Env, Method, Request, Response, State, durable_object};
 
 const DEFAULT_AI_BINDING: &str = "AI";
 const ALARM_STORAGE_KEY: &str = "__runtime_alarm";
@@ -170,7 +170,9 @@ impl AgentRuntime {
 
     fn send_envelope(&self, envelope: Envelope) -> Result<()> {
         let data = serde_json::to_vec(&envelope)?;
-        self.env.write("/inbox", &data).map_err(|err| err.to_string())?;
+        self.env
+            .write("/inbox", &data)
+            .map_err(|err| err.to_string())?;
         self.refresh_status();
         Ok(())
     }
@@ -247,7 +249,10 @@ impl DurableObject for CloudflareAgent {
         });
 
         let runtime = self.runtime().map_err(map_agent_error)?;
-        let result = runtime.tick(trigger, "alarm").await.map_err(map_agent_error)?;
+        let result = runtime
+            .tick(trigger, "alarm")
+            .await
+            .map_err(map_agent_error)?;
         self.apply_alarm_result(&result).await?;
         Response::from_json(&result)
     }
@@ -266,7 +271,11 @@ impl CloudflareAgent {
         let mut env = AgentEnv::new(agent_id.clone(), storage);
 
         if let Some(compute_fs) = self.compute_fs(&agent_id)? {
-            env.mount("/compute", Arc::new(compute_fs), crate::fs::AccessLevel::ReadWrite);
+            env.mount(
+                "/compute",
+                Arc::new(compute_fs),
+                crate::fs::AccessLevel::ReadWrite,
+            );
         }
 
         let factory = AGENT_FACTORY
@@ -274,7 +283,12 @@ impl CloudflareAgent {
             .ok_or_else(|| AgentError::Tick("cloudflare agent factory not set".to_string()))?;
         let agent = factory(agent_id.clone());
 
-        let runtime = Arc::new(AgentRuntime::new(agent_id, Arc::new(env), agent, tick_engine));
+        let runtime = Arc::new(AgentRuntime::new(
+            agent_id,
+            Arc::new(env),
+            agent,
+            tick_engine,
+        ));
         *guard = Some(runtime.clone());
         Ok(runtime)
     }
@@ -324,7 +338,10 @@ impl CloudflareAgent {
         let runtime = self.runtime().map_err(map_agent_error)?;
         let envelope_id = EnvelopeId::new(uuid::Uuid::new_v4().to_string());
         let trigger = manual_trigger(envelope_id, "control-plane");
-        let result = runtime.tick(trigger, "manual").await.map_err(map_agent_error)?;
+        let result = runtime
+            .tick(trigger, "manual")
+            .await
+            .map_err(map_agent_error)?;
         self.apply_alarm_result(&result).await?;
         Response::from_json(&result)
     }
@@ -469,9 +486,8 @@ fn normalize_path(path: &str) -> (String, bool) {
 }
 
 fn query_watch(url: &worker::Url) -> bool {
-    url.query_pairs().any(|(key, value)| {
-        key == "watch" && matches!(value.as_ref(), "1" | "true" | "yes")
-    })
+    url.query_pairs()
+        .any(|(key, value)| key == "watch" && matches!(value.as_ref(), "1" | "true" | "yes"))
 }
 
 fn parse_envelope(body: &[u8]) -> Envelope {

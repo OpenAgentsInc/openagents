@@ -289,9 +289,8 @@ impl IdempotencyJournal for SqliteJournal {
         let now_ms = Timestamp::now().as_millis();
         self.purge_expired(now_ms)?;
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
-        let mut stmt = conn.prepare(
-            "SELECT value FROM idempotency_journal WHERE key = ?1 AND expires_at > ?2",
-        )?;
+        let mut stmt = conn
+            .prepare("SELECT value FROM idempotency_journal WHERE key = ?1 AND expires_at > ?2")?;
         let mut rows = stmt.query(rusqlite::params![key, now_ms as i64])?;
         if let Some(row) = rows.next()? {
             let value: Vec<u8> = row.get(0)?;

@@ -3,9 +3,9 @@
 use crate::error::Result;
 use crate::types::AgentId;
 #[cfg(not(target_arch = "wasm32"))]
-use base64::engine::general_purpose::STANDARD;
-#[cfg(not(target_arch = "wasm32"))]
 use base64::Engine;
+#[cfg(not(target_arch = "wasm32"))]
+use base64::engine::general_purpose::STANDARD;
 #[cfg(not(target_arch = "wasm32"))]
 use bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey, XOnlyPublicKey, schnorr};
 #[cfg(not(target_arch = "wasm32"))]
@@ -69,10 +69,16 @@ pub trait SigningService: Send + Sync {
     fn verify(&self, pubkey: &PublicKey, data: &[u8], sig: &Signature) -> bool;
 
     /// Encrypt to recipient.
-    fn encrypt(&self, agent_id: &AgentId, recipient: &PublicKey, plaintext: &[u8]) -> Result<Vec<u8>>;
+    fn encrypt(
+        &self,
+        agent_id: &AgentId,
+        recipient: &PublicKey,
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>>;
 
     /// Decrypt from sender.
-    fn decrypt(&self, agent_id: &AgentId, sender: &PublicKey, ciphertext: &[u8]) -> Result<Vec<u8>>;
+    fn decrypt(&self, agent_id: &AgentId, sender: &PublicKey, ciphertext: &[u8])
+    -> Result<Vec<u8>>;
 }
 
 /// In-memory stub signer using deterministic hashes.
@@ -131,13 +137,23 @@ impl SigningService for InMemorySigner {
         sig.as_bytes() == hasher.finalize().as_slice()
     }
 
-    fn encrypt(&self, agent_id: &AgentId, recipient: &PublicKey, plaintext: &[u8]) -> Result<Vec<u8>> {
+    fn encrypt(
+        &self,
+        agent_id: &AgentId,
+        recipient: &PublicKey,
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>> {
         let sender_pubkey = Self::derive_pubkey(agent_id);
         let key = Self::shared_key(&sender_pubkey, recipient);
         Ok(Self::xor(plaintext, &key))
     }
 
-    fn decrypt(&self, agent_id: &AgentId, sender: &PublicKey, ciphertext: &[u8]) -> Result<Vec<u8>> {
+    fn decrypt(
+        &self,
+        agent_id: &AgentId,
+        sender: &PublicKey,
+        ciphertext: &[u8],
+    ) -> Result<Vec<u8>> {
         let receiver_pubkey = Self::derive_pubkey(agent_id);
         let key = Self::shared_key(&receiver_pubkey, sender);
         Ok(Self::xor(ciphertext, &key))
@@ -227,7 +243,12 @@ impl SigningService for NostrSigner {
         secp.verify_schnorr(&signature, &message, &xonly).is_ok()
     }
 
-    fn encrypt(&self, agent_id: &AgentId, recipient: &PublicKey, plaintext: &[u8]) -> Result<Vec<u8>> {
+    fn encrypt(
+        &self,
+        agent_id: &AgentId,
+        recipient: &PublicKey,
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>> {
         let secret = self.secret_for(agent_id)?;
         let recipient = Self::compressed_pubkey(recipient)?;
         let encoded = STANDARD.encode(plaintext);
@@ -235,7 +256,12 @@ impl SigningService for NostrSigner {
         Ok(encrypted.into_bytes())
     }
 
-    fn decrypt(&self, agent_id: &AgentId, sender: &PublicKey, ciphertext: &[u8]) -> Result<Vec<u8>> {
+    fn decrypt(
+        &self,
+        agent_id: &AgentId,
+        sender: &PublicKey,
+        ciphertext: &[u8],
+    ) -> Result<Vec<u8>> {
         let secret = self.secret_for(agent_id)?;
         let sender = Self::compressed_pubkey(sender)?;
         let cipher_str = std::str::from_utf8(ciphertext).map_err(|err| err.to_string())?;

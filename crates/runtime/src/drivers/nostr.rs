@@ -6,13 +6,13 @@ use crate::error::Result;
 use crate::identity::{PublicKey, SigningService};
 use crate::types::{AgentId, EnvelopeId, Timestamp};
 use async_trait::async_trait;
-use nostr::{Event, UnsignedEvent, ENCRYPTED_DM_KIND, KIND_SHORT_TEXT_NOTE, get_event_hash};
+use nostr::{ENCRYPTED_DM_KIND, Event, KIND_SHORT_TEXT_NOTE, UnsignedEvent, get_event_hash};
 use nostr_client::{PoolConfig, RelayPool};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::{RwLock, oneshot};
 use uuid::Uuid;
 
 /// Configuration for the Nostr driver.
@@ -154,9 +154,7 @@ impl Driver for NostrDriver {
 
         let pool = Arc::new(RelayPool::new(self.config.pool.clone()));
         for relay in &self.config.relays {
-            pool.add_relay(relay)
-                .await
-                .map_err(|err| err.to_string())?;
+            pool.add_relay(relay).await.map_err(|err| err.to_string())?;
         }
         pool.connect_all().await.map_err(|err| err.to_string())?;
 

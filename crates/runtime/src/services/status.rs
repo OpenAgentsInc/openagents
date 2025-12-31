@@ -1,6 +1,8 @@
 //! Status filesystem service.
 
-use crate::fs::{BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat};
+use crate::fs::{
+    BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat,
+};
 use crate::types::AgentId;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
@@ -48,7 +50,8 @@ impl StatusFs {
             .snapshot
             .read()
             .map_err(|_| FsError::Other("status lock poisoned".into()))?;
-        let json = serde_json::to_vec_pretty(&*guard).map_err(|err| FsError::Other(err.to_string()))?;
+        let json =
+            serde_json::to_vec_pretty(&*guard).map_err(|err| FsError::Other(err.to_string()))?;
         Ok(json)
     }
 }
@@ -63,7 +66,10 @@ impl FileService for StatusFs {
 
     fn readdir(&self, path: &str) -> FsResult<Vec<DirEntry>> {
         match path {
-            "" => Ok(vec![DirEntry::file("status", self.snapshot_json()?.len() as u64)]),
+            "" => Ok(vec![DirEntry::file(
+                "status",
+                self.snapshot_json()?.len() as u64,
+            )]),
             _ => Err(FsError::NotFound),
         }
     }

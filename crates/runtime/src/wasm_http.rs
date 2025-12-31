@@ -76,13 +76,12 @@ pub async fn request_json<T: DeserializeOwned>(
     body: Option<serde_json::Value>,
 ) -> Result<(u16, T), String> {
     let body = match body {
-        Some(value) => Some(
-            serde_json::to_string(&value).map_err(|err| format!("json error: {err}"))?,
-        ),
+        Some(value) => {
+            Some(serde_json::to_string(&value).map_err(|err| format!("json error: {err}"))?)
+        }
         None => None,
     };
     let (status, bytes) = request_bytes(method, url, token, body).await?;
-    let parsed =
-        serde_json::from_slice(&bytes).map_err(|err| format!("json error: {err}"))?;
+    let parsed = serde_json::from_slice(&bytes).map_err(|err| format!("json error: {err}"))?;
     Ok((status, parsed))
 }

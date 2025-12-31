@@ -1,6 +1,8 @@
 //! Metrics filesystem service.
 
-use crate::fs::{BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat};
+use crate::fs::{
+    BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 
@@ -66,7 +68,10 @@ impl MetricsFs {
     }
 
     fn apm_json(&self) -> FsResult<Vec<u8>> {
-        let guard = self.snapshot.read().map_err(|_| FsError::Other("metrics lock poisoned".into()))?;
+        let guard = self
+            .snapshot
+            .read()
+            .map_err(|_| FsError::Other("metrics lock poisoned".into()))?;
         let payload = guard.apm.clone().unwrap_or(ApmMetric {
             value: 0.0,
             window_secs: 60,
@@ -75,7 +80,10 @@ impl MetricsFs {
     }
 
     fn queue_json(&self) -> FsResult<Vec<u8>> {
-        let guard = self.snapshot.read().map_err(|_| FsError::Other("metrics lock poisoned".into()))?;
+        let guard = self
+            .snapshot
+            .read()
+            .map_err(|_| FsError::Other("metrics lock poisoned".into()))?;
         let payload = guard.queue.clone().unwrap_or(QueueMetric {
             depth: 0,
             oldest_issue: None,
@@ -84,7 +92,10 @@ impl MetricsFs {
     }
 
     fn last_pr_json(&self) -> FsResult<Vec<u8>> {
-        let guard = self.snapshot.read().map_err(|_| FsError::Other("metrics lock poisoned".into()))?;
+        let guard = self
+            .snapshot
+            .read()
+            .map_err(|_| FsError::Other("metrics lock poisoned".into()))?;
         let payload = guard.last_pr.clone().unwrap_or(LastPrMetric {
             url: None,
             title: None,

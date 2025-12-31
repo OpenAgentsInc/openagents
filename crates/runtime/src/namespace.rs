@@ -27,8 +27,7 @@ impl Namespace {
             service,
             access,
         });
-        self.mounts
-            .sort_by(|a, b| b.path.len().cmp(&a.path.len()));
+        self.mounts.sort_by(|a, b| b.path.len().cmp(&a.path.len()));
     }
 
     /// Unmount a path.

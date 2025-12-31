@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use nostr::{Event, JobStatus, KIND_JOB_FEEDBACK};
 use nostr_client::{PoolConfig, RelayPool};
 use serde_json::Value;
-use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
