@@ -6,7 +6,10 @@ use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use wgpui::{Bounds, Component, PaintContext, Point, Quad, Scene, TextSystem, theme};
+use wgpui::{
+    Bounds, Button, ButtonVariant, Component, EventContext, EventResult, InputEvent,
+    PaintContext, Point, Quad, Scene, TextInput, TextSystem, theme,
+};
 use wgpui::components::Text;
 use wgpui::components::hud::{StatusBar, StatusItem, StatusItemAlignment};
 use wgpui::components::organisms::{ThreadEntry, ThreadEntryType};
@@ -15,7 +18,7 @@ use wgpui::components::sections::{
     TerminalPane, TerminalStream, ThreadView, UsageSummary,
 };
 
-use crate::state::AppState;
+use crate::state::{AppState, AppView};
 use crate::utils::js_optional_string;
 
 /// Context from /repo/:owner/:repo route
@@ -95,16 +98,24 @@ pub(crate) struct HudSettingsData {
     pub(crate) embed_allowed: bool,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Copy, Default)]
 pub(crate) struct HudLayout {
     pub(crate) thread_bounds: Bounds,
     pub(crate) code_bounds: Bounds,
     pub(crate) terminal_bounds: Bounds,
     pub(crate) metrics_bounds: Bounds,
     pub(crate) wallet_bounds: Bounds,
+    pub(crate) start_form_bounds: Bounds,
+    pub(crate) start_prompt_bounds: Bounds,
+    pub(crate) start_button_bounds: Bounds,
     pub(crate) status_bounds: Bounds,
     pub(crate) settings_public_bounds: Bounds,
     pub(crate) settings_embed_bounds: Bounds,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum HudAction {
+    StartAutopilot,
 }
 
 pub(crate) struct HudUi {
@@ -118,10 +129,24 @@ pub(crate) struct HudUi {
     pub(crate) tool_entries: HashMap<String, usize>,
     pub(crate) status_text: String,
     pub(crate) settings: HudSettingsData,
+    pub(crate) start_prompt_input: TextInput,
+    pub(crate) start_button: Button,
+    pub(crate) event_ctx: EventContext,
+    start_actions: Rc<RefCell<Vec<HudAction>>>,
 }
 
 impl HudUi {
     pub(crate) fn new() -> Self {
+        let start_actions = Rc::new(RefCell::new(Vec::new()));
+        let start_actions_handle = start_actions.clone();
+        let start_button = Button::new("Start Autopilot")
+            .variant(ButtonVariant::Primary)
+            .padding(12.0, 5.0)
+            .on_click(move || {
+                start_actions_handle
+                    .borrow_mut()
+                    .push(HudAction::StartAutopilot);
+            });
         let mut status_bar = StatusBar::new();
         status_bar.set_items(vec![
             StatusItem::text("status", "idle").left(),
@@ -141,7 +166,48 @@ impl HudUi {
                 public: true,
                 embed_allowed: true,
             },
+            start_prompt_input: TextInput::new()
+                .value(DEFAULT_AUTOPILOT_PROMPT)
+                .placeholder("Autopilot prompt")
+                .font_size(11.0)
+                .padding(8.0, 5.0),
+            start_button,
+            event_ctx: EventContext::new(),
+            start_actions,
         }
+    }
+
+    pub(crate) fn handle_event(
+        &mut self,
+        event: &InputEvent,
+        layout: &HudLayout,
+        show_start: bool,
+    ) -> EventResult {
+        if !show_start {
+            self.start_prompt_input.blur();
+            return EventResult::Ignored;
+        }
+
+        let mut handled = EventResult::Ignored;
+        handled = merge_event_result(
+            handled,
+            self.start_prompt_input.event(
+                event,
+                layout.start_prompt_bounds,
+                &mut self.event_ctx,
+            ),
+        );
+        handled = merge_event_result(
+            handled,
+            self.start_button
+                .event(event, layout.start_button_bounds, &mut self.event_ctx),
+        );
+        handled
+    }
+
+    pub(crate) fn take_actions(&self) -> Vec<HudAction> {
+        let mut actions = self.start_actions.borrow_mut();
+        std::mem::take(&mut *actions)
     }
 }
 
@@ -631,6 +697,29 @@ pub(crate) fn init_hud_runtime(state: Rc<RefCell<AppState>>) {
     }
 }
 
+fn apply_hud_session(state: &mut AppState, repo: &str, session: HudSessionResponse) -> bool {
+    let matches_repo = state
+        .hud_context
+        .as_ref()
+        .map(|ctx| format!("{}/{}", ctx.username, ctx.repo) == repo)
+        .unwrap_or(false);
+    if !matches_repo {
+        return false;
+    }
+
+    if let Some(ctx) = state.hud_context.as_mut() {
+        ctx.session_id = session.session_id.clone();
+        ctx.ws_url = session.ws_url.clone();
+        ctx.status = session.status.clone();
+    }
+    state.hud_ui.status_text = session.status;
+    state.hud_settings_loaded = false;
+    if let Some(handle) = state.hud_stream.take() {
+        handle.close();
+    }
+    true
+}
+
 pub(crate) async fn ensure_hud_session(state: Rc<RefCell<AppState>>, repo: String) {
     let existing = fetch_hud_session(&repo).await;
     let session = match existing {
@@ -648,30 +737,13 @@ pub(crate) async fn ensure_hud_session(state: Rc<RefCell<AppState>>, repo: Strin
         return;
     };
 
-    let matches_repo = state
-        .borrow()
-        .hud_context
-        .as_ref()
-        .map(|ctx| format!("{}/{}", ctx.username, ctx.repo) == repo)
-        .unwrap_or(false);
+    let matches_repo = {
+        let mut guard = state.borrow_mut();
+        apply_hud_session(&mut guard, &repo, session)
+    };
     if !matches_repo {
         return;
     }
-
-    {
-        let mut guard = state.borrow_mut();
-        if let Some(ctx) = guard.hud_context.as_mut() {
-            ctx.session_id = session.session_id.clone();
-            ctx.ws_url = session.ws_url.clone();
-            ctx.status = session.status.clone();
-        }
-        guard.hud_ui.status_text = session.status.clone();
-        guard.hud_settings_loaded = false;
-        if let Some(handle) = guard.hud_stream.take() {
-            handle.close();
-        }
-    }
-
     init_hud_runtime(state);
 }
 
@@ -750,6 +822,91 @@ pub(crate) fn stop_metrics_poll(state: &mut AppState) {
         }
     }
     state.hud_metrics_polling = false;
+}
+
+pub(crate) fn dispatch_hud_event(state: &Rc<RefCell<AppState>>, event: InputEvent) -> EventResult {
+    let show_start_form = {
+        let guard = state.borrow();
+        guard.view == AppView::RepoView
+            && guard
+                .hud_context
+                .as_ref()
+                .map(|ctx| ctx.is_owner && ctx.status == "idle")
+                .unwrap_or(false)
+    };
+
+    let (handled, actions) = {
+        let mut guard = state.borrow_mut();
+        let layout = guard.hud_layout;
+        let handled = guard
+            .hud_ui
+            .handle_event(&event, &layout, show_start_form);
+        let actions = guard.hud_ui.take_actions();
+        (handled, actions)
+    };
+
+    if !actions.is_empty() {
+        queue_hud_actions(state.clone(), actions);
+    }
+
+    handled
+}
+
+fn queue_hud_actions(state: Rc<RefCell<AppState>>, actions: Vec<HudAction>) {
+    for action in actions {
+        match action {
+            HudAction::StartAutopilot => {
+                let (repo, prompt) = {
+                    let mut guard = state.borrow_mut();
+                    let repo = guard
+                        .hud_context
+                        .as_ref()
+                        .map(|ctx| format!("{}/{}", ctx.username, ctx.repo));
+                    let prompt = guard
+                        .hud_ui
+                        .start_prompt_input
+                        .get_value()
+                        .trim()
+                        .to_string();
+                    guard.hud_ui.start_prompt_input.blur();
+                    if let Some(ctx) = guard.hud_context.as_mut() {
+                        ctx.status = "starting".to_string();
+                    }
+                    guard.hud_ui.status_text = "starting".to_string();
+                    if let Some(handle) = guard.hud_stream.take() {
+                        handle.close();
+                    }
+                    (repo, prompt)
+                };
+
+                let Some(repo) = repo else { continue };
+                let prompt = if prompt.is_empty() {
+                    DEFAULT_AUTOPILOT_PROMPT.to_string()
+                } else {
+                    prompt
+                };
+
+                let state_clone = state.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    match start_hud_session(&repo, &prompt).await {
+                        Ok(session) => {
+                            let matches_repo = {
+                                let mut guard = state_clone.borrow_mut();
+                                apply_hud_session(&mut guard, &repo, session)
+                            };
+                            if matches_repo {
+                                init_hud_runtime(state_clone);
+                            }
+                        }
+                        Err(_) => {
+                            let mut guard = state_clone.borrow_mut();
+                            guard.hud_ui.status_text = "start failed".to_string();
+                        }
+                    }
+                });
+            }
+        }
+    }
 }
 
 async fn fetch_metrics(agent_id: &str) -> Option<MetricsPayload> {
@@ -1043,6 +1200,11 @@ pub(crate) fn draw_hud_view(
     let terminal_bounds;
     let metrics_bounds;
     let wallet_bounds;
+    let show_start_form = state
+        .hud_context
+        .as_ref()
+        .map(|ctx| ctx.is_owner && ctx.status == "idle")
+        .unwrap_or(false);
 
     if width < 900.0 {
         let pane_h = ((content_h - gutter * 4.0) / 5.0).max(0.0);
@@ -1085,6 +1247,9 @@ pub(crate) fn draw_hud_view(
 
     layout.settings_public_bounds = Bounds::ZERO;
     layout.settings_embed_bounds = Bounds::ZERO;
+    layout.start_form_bounds = Bounds::ZERO;
+    layout.start_prompt_bounds = Bounds::ZERO;
+    layout.start_button_bounds = Bounds::ZERO;
     if let Some(ctx) = state.hud_context.as_ref() {
         if ctx.is_owner {
             let settings_height = 58.0;
@@ -1107,6 +1272,23 @@ pub(crate) fn draw_hud_view(
         }
     }
 
+    let show_start_form = show_start_form && thread_bounds.size.height > 72.0;
+    if show_start_form {
+        let start_height = 72.0;
+        let start_bounds = Bounds::new(
+            thread_bounds.origin.x,
+            thread_bounds.origin.y,
+            thread_bounds.size.width,
+            start_height,
+        );
+        let (prompt_bounds, button_bounds) = start_form_layout(&state.hud_ui, start_bounds);
+        layout.start_form_bounds = start_bounds;
+        layout.start_prompt_bounds = prompt_bounds;
+        layout.start_button_bounds = button_bounds;
+        thread_bounds.origin.y += start_height + gutter;
+        thread_bounds.size.height -= start_height + gutter;
+    }
+
     layout.thread_bounds = thread_bounds;
     layout.code_bounds = code_bounds;
     layout.terminal_bounds = terminal_bounds;
@@ -1116,6 +1298,17 @@ pub(crate) fn draw_hud_view(
     state.hud_layout = layout;
 
     let mut cx = PaintContext::new(scene, text_system, scale_factor);
+    if show_start_form {
+        draw_start_form(
+            &mut cx,
+            &mut state.hud_ui,
+            state.hud_layout.start_form_bounds,
+            state.hud_layout.start_prompt_bounds,
+            state.hud_layout.start_button_bounds,
+        );
+    } else {
+        state.hud_ui.start_prompt_input.blur();
+    }
     state.hud_ui.thread.paint(thread_bounds, &mut cx);
     state.hud_ui.code.paint(code_bounds, &mut cx);
     state.hud_ui.terminal.paint(terminal_bounds, &mut cx);
@@ -1159,6 +1352,58 @@ pub(crate) fn draw_hud_view(
         .hud_ui
         .status_bar
         .paint(state.hud_layout.status_bounds, &mut cx);
+}
+
+fn start_form_layout(hud_ui: &HudUi, bounds: Bounds) -> (Bounds, Bounds) {
+    let padding = 8.0;
+    let header_h = 20.0;
+    let gap = 8.0;
+    let available_h = (bounds.size.height - header_h - padding).max(0.0);
+    let (button_w, button_h) = hud_ui.start_button.size_hint();
+    let (_, input_h) = hud_ui.start_prompt_input.size_hint();
+    let button_w = button_w.unwrap_or(120.0);
+    let button_h = button_h.unwrap_or(available_h);
+    let input_h = input_h.unwrap_or(24.0);
+    let row_h = available_h.min(input_h.max(button_h));
+    let row_y = bounds.origin.y + header_h;
+    let button_bounds = Bounds::new(
+        bounds.origin.x + bounds.size.width - padding - button_w,
+        row_y,
+        button_w,
+        row_h,
+    );
+    let prompt_bounds = Bounds::new(
+        bounds.origin.x + padding,
+        row_y,
+        (bounds.size.width - padding * 2.0 - button_w - gap).max(0.0),
+        row_h,
+    );
+    (prompt_bounds, button_bounds)
+}
+
+fn draw_start_form(
+    cx: &mut PaintContext,
+    hud_ui: &mut HudUi,
+    bounds: Bounds,
+    prompt_bounds: Bounds,
+    button_bounds: Bounds,
+) {
+    cx.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+
+    let label = cx.text.layout(
+        "Start Autopilot",
+        Point::new(bounds.origin.x + 8.0, bounds.origin.y + 6.0),
+        10.0,
+        theme::text::PRIMARY,
+    );
+    cx.scene.draw_text(label);
+
+    hud_ui.start_prompt_input.paint(prompt_bounds, cx);
+    hud_ui.start_button.paint(button_bounds, cx);
 }
 
 fn draw_hud_settings(
@@ -1246,4 +1491,12 @@ fn draw_hud_settings(
     scene.draw_text(embed_text);
 
     (public_bounds, embed_bounds)
+}
+
+fn merge_event_result(lhs: EventResult, rhs: EventResult) -> EventResult {
+    if matches!(lhs, EventResult::Handled) || matches!(rhs, EventResult::Handled) {
+        EventResult::Handled
+    } else {
+        EventResult::Ignored
+    }
 }
