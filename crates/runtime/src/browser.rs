@@ -14,7 +14,7 @@ use crate::error::Result;
 use crate::fs::AccessLevel;
 use crate::idempotency::MemoryJournal;
 use crate::identity::{InMemorySigner, SigningService};
-use crate::storage::{AgentStorage, InMemoryStorage};
+use crate::storage::{AgentStorage, IndexedDbStorage};
 use crate::tick::TickResult;
 use crate::trigger::Trigger;
 use crate::types::{AgentId, EnvelopeId, Timestamp};
@@ -53,7 +53,7 @@ pub struct BrowserRuntimeConfig {
     pub compute_budget: BudgetPolicy,
     /// Budget policy for `/containers`.
     pub container_budget: BudgetPolicy,
-    /// Agent storage backend (default: in-memory).
+    /// Agent storage backend (default: IndexedDB).
     pub storage: Arc<dyn AgentStorage>,
     /// Signing service for identity + OpenAgents auth.
     pub signer: Arc<dyn SigningService>,
@@ -73,7 +73,7 @@ impl BrowserRuntimeConfig {
             container_policy,
             compute_budget: budget.clone(),
             container_budget: budget,
-            storage: Arc::new(InMemoryStorage::new()),
+            storage: Arc::new(IndexedDbStorage::new("openagents-runtime")),
             signer: Arc::new(InMemorySigner::new()),
         }
     }

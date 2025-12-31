@@ -414,6 +414,32 @@ Demo: browser agent with `/compute` + `/containers` via cloud.
 
 ---
 
+## Milestone 13 — Browser Persistence (IndexedDB)
+
+**Goal:** Browser runtime survives reloads with persisted agent state + KV.
+
+### Tasks
+
+- Implement IndexedDB-backed `AgentStorage` for state + KV.
+- Use IndexedDB by default in `BrowserRuntimeConfig` with a stable DB name.
+- Ensure transactional commit semantics for combined state + KV ops.
+
+### Exit Criteria
+
+Reloading the tab preserves agent state and storage entries via IndexedDB.
+
+### Implementation Notes (completed)
+
+- Added `IndexedDbStorage` in `crates/runtime/src/storage.rs` with IndexedDB state/KV stores and transactional ops for state + KV.
+- Wired `BrowserRuntimeConfig::new` to default to `IndexedDbStorage` (`openagents-runtime` DB name) in `crates/runtime/src/browser.rs`.
+- Added the required IndexedDB `web-sys` feature flags in `crates/runtime/Cargo.toml`.
+
+### References
+
+- [BACKENDS.md](BACKENDS.md) — Browser backend storage mapping
+
+---
+
 ## Summary
 
 | Milestone | Goal | Key Deliverable |
@@ -431,6 +457,7 @@ Demo: browser agent with `/compute` + `/containers` via cloud.
 | M10 | Cloud containers | Remote sandboxes |
 | M11 | DVM | Decentralized compute/containers |
 | M12 | Browser | WASM runtime |
+| M13 | Browser persistence | IndexedDB-backed storage |
 
 ---
 

@@ -198,6 +198,8 @@ pub use services::{
     WalletFs,
 };
 pub use storage::{AgentStorage, InMemoryStorage, StorageOp};
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+pub use storage::IndexedDbStorage;
 #[cfg(feature = "cloudflare")]
 pub use storage::CloudflareStorage;
 pub use tick::{ResourceUsage, TickResult};
