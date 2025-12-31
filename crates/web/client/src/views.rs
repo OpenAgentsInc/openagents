@@ -868,10 +868,28 @@ pub(crate) fn build_repo_selector(
     state: &mut AppState,
     width: f32,
     height: f32,
+    scale_factor: f32,
 ) {
     scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
     let padding = 24.0;
+    let gutter = 16.0;
+    let available = (width - padding * 2.0).max(0.0);
+    let min_content = 360.0;
+    let min_sidebar = 260.0;
+    let sidebar_width = if available >= min_content + min_sidebar + gutter {
+        (available * 0.35).clamp(min_sidebar, 420.0)
+    } else {
+        0.0
+    };
+    let show_sidebar = sidebar_width > 0.0;
+    let content_width = if show_sidebar {
+        (available - sidebar_width - gutter).max(0.0)
+    } else {
+        available
+    };
+    let content_x = padding;
+    let sidebar_x = content_x + content_width + gutter;
     let mut y = padding;
 
     let header = format!(
@@ -880,7 +898,7 @@ pub(crate) fn build_repo_selector(
     );
     let header_run = text_system.layout(
         &header,
-        Point::new(padding, y),
+        Point::new(content_x, y),
         24.0,
         theme::text::PRIMARY,
     );
@@ -918,7 +936,7 @@ pub(crate) fn build_repo_selector(
         let npub_text = format!("npub: {}", npub);
         let npub_run = text_system.layout(
             &npub_text,
-            Point::new(padding, y),
+            Point::new(content_x, y),
             11.0,
             theme::text::MUTED,
         );
@@ -931,20 +949,21 @@ pub(crate) fn build_repo_selector(
     let subtitle = "Select a repository:";
     let subtitle_run = text_system.layout(
         subtitle,
-        Point::new(padding, y),
+        Point::new(content_x, y),
         14.0,
         theme::text::MUTED,
     );
     scene.draw_text(subtitle_run);
 
     y += 32.0;
+    let sidebar_top = y - 32.0;
 
     state.repo_bounds.clear();
 
     if state.repos_loading {
         let loading_run = text_system.layout(
             "Loading repositories...",
-            Point::new(padding, y),
+            Point::new(content_x, y),
             14.0,
             theme::text::MUTED,
         );
@@ -952,7 +971,7 @@ pub(crate) fn build_repo_selector(
     } else if state.repos.is_empty() {
         let empty_run = text_system.layout(
             "No repositories found",
-            Point::new(padding, y),
+            Point::new(content_x, y),
             14.0,
             theme::text::MUTED,
         );
@@ -967,7 +986,7 @@ pub(crate) fn build_repo_selector(
                 continue;
             }
 
-            let row_bounds = Bounds::new(padding, row_y, width - padding * 2.0, row_height - 4.0);
+            let row_bounds = Bounds::new(content_x, row_y, content_width, row_height - 4.0);
             state.repo_bounds.push(row_bounds);
 
             let is_hovered = state.hovered_repo_idx == Some(i);
@@ -989,7 +1008,7 @@ pub(crate) fn build_repo_selector(
 
             let name_run = text_system.layout(
                 &repo.full_name,
-                Point::new(padding + 12.0, row_y + 10.0),
+                Point::new(content_x + 12.0, row_y + 10.0),
                 14.0,
                 theme::text::PRIMARY,
             );
@@ -997,7 +1016,7 @@ pub(crate) fn build_repo_selector(
 
             if repo.private {
                 let badge_text = "Private";
-                let badge_x = padding + 12.0 + repo.full_name.len() as f32 * 14.0 * 0.6 + 8.0;
+                let badge_x = content_x + 12.0 + repo.full_name.len() as f32 * 14.0 * 0.6 + 8.0;
                 let badge_bounds = Bounds::new(badge_x, row_y + 10.0, 50.0, 16.0);
                 scene.draw_quad(
                     Quad::new(badge_bounds)
@@ -1021,7 +1040,7 @@ pub(crate) fn build_repo_selector(
                 };
                 let desc_run = text_system.layout(
                     &desc_truncated,
-                    Point::new(padding + 12.0, row_y + 32.0),
+                    Point::new(content_x + 12.0, row_y + 32.0),
                     11.0,
                     theme::text::MUTED,
                 );
@@ -1037,18 +1056,95 @@ pub(crate) fn build_repo_selector(
             let scroll_thumb_y = y + 10.0 + (state.scroll_offset / total_height) * scroll_track_height;
 
             scene.draw_quad(
-                Quad::new(Bounds::new(width - 8.0, y, 4.0, scroll_track_height))
+                Quad::new(Bounds::new(content_x + content_width - 8.0, y, 4.0, scroll_track_height))
                     .with_background(theme::bg::SURFACE),
             );
 
             scene.draw_quad(
-                Quad::new(Bounds::new(width - 8.0, scroll_thumb_y, 4.0, scroll_thumb_height))
+                Quad::new(Bounds::new(
+                    content_x + content_width - 8.0,
+                    scroll_thumb_y,
+                    4.0,
+                    scroll_thumb_height,
+                ))
                     .with_background(theme::text::MUTED),
             );
 
             let max_scroll = total_height - visible_height;
             state.scroll_offset = state.scroll_offset.min(max_scroll).max(0.0);
         }
+    }
+
+    if show_sidebar {
+        let sidebar_height = (height - sidebar_top - padding).max(0.0);
+        let sidebar_bounds = Bounds::new(sidebar_x, sidebar_top, sidebar_width, sidebar_height);
+        scene.draw_quad(
+            Quad::new(sidebar_bounds)
+                .with_background(theme::bg::SURFACE)
+                .with_border(theme::border::DEFAULT, 1.0),
+        );
+
+        let divider_x = sidebar_x - (gutter * 0.5);
+        scene.draw_quad(
+            Quad::new(Bounds::new(divider_x, sidebar_top, 1.0, sidebar_height))
+                .with_background(theme::border::SUBTLE),
+        );
+
+        let title_run = text_system.layout(
+            "Code Blocks",
+            Point::new(sidebar_x + 12.0, sidebar_top + 10.0),
+            13.0,
+            theme::text::PRIMARY,
+        );
+        scene.draw_text(title_run);
+
+        let subtitle_run = text_system.layout(
+            "WGPUI MarkdownView",
+            Point::new(sidebar_x + 12.0, sidebar_top + 26.0),
+            10.0,
+            theme::text::MUTED,
+        );
+        scene.draw_text(subtitle_run);
+
+        scene.draw_quad(
+            Quad::new(Bounds::new(
+                sidebar_x + 12.0,
+                sidebar_top + 40.0,
+                sidebar_width - 24.0,
+                1.0,
+            ))
+            .with_background(theme::border::SUBTLE),
+        );
+
+        let content_y = sidebar_top + 48.0;
+        let content_height = (sidebar_height - (content_y - sidebar_top) - 12.0).max(0.0);
+        let content_bounds =
+            Bounds::new(sidebar_x + 10.0, content_y, sidebar_width - 20.0, content_height);
+        scene.draw_quad(
+            Quad::new(content_bounds)
+                .with_background(theme::bg::APP)
+                .with_border(theme::border::SUBTLE, 1.0),
+        );
+
+        if content_height > 0.0 {
+            let md_bounds = Bounds::new(
+                content_bounds.origin.x + 8.0,
+                content_bounds.origin.y + 8.0,
+                (content_bounds.size.width - 16.0).max(0.0),
+                (content_bounds.size.height - 16.0).max(0.0),
+            );
+            state.markdown_demo.bounds = md_bounds;
+            let document = state.markdown_demo.streaming.document().clone();
+            state.markdown_demo.view.set_document(document);
+            let mut cx = PaintContext::new(scene, text_system, scale_factor);
+            state.markdown_demo.view.paint(md_bounds, &mut cx);
+        } else {
+            state.markdown_demo.bounds = Bounds::ZERO;
+            state.markdown_demo.clear_hover();
+        }
+    } else {
+        state.markdown_demo.bounds = Bounds::ZERO;
+        state.markdown_demo.clear_hover();
     }
 }
 

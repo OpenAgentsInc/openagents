@@ -41,3 +41,13 @@ pub(crate) fn track_funnel_event(event: &'static str, repo: Option<String>) {
         .await;
     });
 }
+
+pub(crate) fn copy_to_clipboard(text: String) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let promise = window.navigator().clipboard().write_text(&text);
+    wasm_bindgen_futures::spawn_local(async move {
+        let _ = JsFuture::from(promise).await;
+    });
+}
