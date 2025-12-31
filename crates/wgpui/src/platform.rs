@@ -80,36 +80,31 @@ pub mod web {
             canvas.set_width(physical_width);
             canvas.set_height(physical_height);
 
-            let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-                backends: wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL,
-                ..Default::default()
-            });
-
-            let surface = instance
-                .create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
-                .map_err(|e| format!("Failed to create surface: {:?}", e))?;
-
-            let adapter = instance
-                .request_adapter(&wgpu::RequestAdapterOptions {
-                    power_preference: wgpu::PowerPreference::HighPerformance,
-                    compatible_surface: Some(&surface),
-                    force_fallback_adapter: false,
-                })
-                .await
-                .ok_or("No adapter found")?;
-
-            let (device, queue) = adapter
-                .request_device(&wgpu::DeviceDescriptor::default(), None)
-                .await
-                .map_err(|e| format!("Failed to create device: {:?}", e))?;
+            // Try WebGPU first, fall back to WebGL2 if it fails
+            let (device, queue, surface, adapter) =
+                Self::try_init_gpu(&canvas, physical_width, physical_height).await?;
 
             let surface_caps = surface.get_capabilities(&adapter);
+
+            // Log available formats for debugging
+            let formats_str = surface_caps.formats.iter()
+                .map(|f| format!("{:?}", f))
+                .collect::<Vec<_>>()
+                .join(", ");
+            web_sys::console::log_1(&format!("Available formats: {}", formats_str).into());
+
+            // Prefer sRGB format for correct color rendering
             let surface_format = surface_caps
                 .formats
                 .iter()
                 .find(|f| f.is_srgb())
                 .copied()
-                .unwrap_or(surface_caps.formats[0]);
+                .unwrap_or_else(|| {
+                    web_sys::console::log_1(&"No sRGB format available, colors may appear washed out".into());
+                    surface_caps.formats[0]
+                });
+
+            web_sys::console::log_1(&format!("Using surface format: {:?}", surface_format).into());
 
             let surface_config =
                 super::default_surface_config(physical_width, physical_height, surface_format);
@@ -136,6 +131,86 @@ pub mod web {
                 scale_factor,
                 logical_size,
             })
+        }
+
+        fn is_webgpu_reliable() -> bool {
+            // Check if we're on a platform where WebGPU is known to work
+            // Linux WebGPU is experimental and often broken in Chromium
+            let window = match web_sys::window() {
+                Some(w) => w,
+                None => return false,
+            };
+            let navigator = window.navigator();
+            let user_agent = navigator.user_agent().unwrap_or_default();
+
+            // Skip WebGPU on Linux - it's experimental and often broken
+            if user_agent.contains("Linux") && !user_agent.contains("Android") {
+                web_sys::console::log_1(&"Skipping WebGPU on Linux (experimental)".into());
+                return false;
+            }
+
+            true
+        }
+
+        async fn try_init_gpu(
+            canvas: &HtmlCanvasElement,
+            _physical_width: u32,
+            _physical_height: u32,
+        ) -> Result<(wgpu::Device, wgpu::Queue, wgpu::Surface<'static>, wgpu::Adapter), String> {
+            // Try WebGPU first (only on reliable platforms)
+            if Self::is_webgpu_reliable() {
+                if let Ok(result) = Self::try_backend(canvas, wgpu::Backends::BROWSER_WEBGPU).await {
+                    web_sys::console::log_1(&"Using WebGPU backend".into());
+                    return Ok(result);
+                }
+            }
+
+            // Fall back to WebGL2
+            web_sys::console::log_1(&"Using WebGL2 backend".into());
+            if let Ok(result) = Self::try_backend(canvas, wgpu::Backends::GL).await {
+                return Ok(result);
+            }
+
+            Err("Failed to initialize GPU".to_string())
+        }
+
+        async fn try_backend(
+            canvas: &HtmlCanvasElement,
+            backends: wgpu::Backends,
+        ) -> Result<(wgpu::Device, wgpu::Queue, wgpu::Surface<'static>, wgpu::Adapter), String> {
+            let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+                backends,
+                ..Default::default()
+            });
+
+            let surface = instance
+                .create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
+                .map_err(|e| format!("Failed to create surface: {:?}", e))?;
+
+            let adapter = instance
+                .request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::HighPerformance,
+                    compatible_surface: Some(&surface),
+                    force_fallback_adapter: false,
+                })
+                .await
+                .ok_or("No adapter found")?;
+
+            // Use the adapter's actual limits to ensure compatibility
+            let (device, queue) = adapter
+                .request_device(
+                    &wgpu::DeviceDescriptor {
+                        label: Some("wgpui-device"),
+                        required_features: wgpu::Features::empty(),
+                        required_limits: adapter.limits(),
+                        memory_hints: wgpu::MemoryHints::default(),
+                    },
+                    None,
+                )
+                .await
+                .map_err(|e| format!("Failed to create device: {:?}", e))?;
+
+            Ok((device, queue, surface, adapter))
         }
 
         pub fn device(&self) -> &wgpu::Device {

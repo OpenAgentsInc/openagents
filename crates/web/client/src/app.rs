@@ -111,6 +111,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 state.mouse_pos = Point::new(x, y);
                 state.button_hovered = state.button_bounds.contains(state.mouse_pos);
 
+                // Bazaar landing page CTA hover detection
+                state.left_cta_hovered = state.left_cta_bounds.contains(state.mouse_pos);
+                state.right_cta_hovered = state.right_cta_bounds.contains(state.mouse_pos);
+
                 state.hovered_repo_idx = None;
                 for (i, bounds) in state.repo_bounds.iter().enumerate() {
                     if bounds.contains(state.mouse_pos) {
@@ -242,6 +246,19 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             }
 
+            // Handle right CTA click (Start Earning) on Landing page
+            if state.view == AppView::Landing && state.right_cta_bounds.contains(click_pos) {
+                if let Some(window) = web_sys::window() {
+                    track_funnel_event("start_earning_click", None);
+                    // Open provider guide in new tab
+                    let _ = window.open_with_url_and_target(
+                        "https://github.com/openagents/openagents/blob/main/docs/bazaar/PROVIDER-GUIDE.md",
+                        "_blank"
+                    );
+                }
+                return;
+            }
+
             if state.button_bounds.contains(click_pos) {
                 if let Some(window) = web_sys::window() {
                     match state.view {
@@ -366,12 +383,15 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     || state.hud_layout.start_button_bounds.contains(state.mouse_pos));
             let landing_hover =
                 state.view == AppView::Landing && state.landing_issue_bounds.contains(state.mouse_pos);
+            let bazaar_cta_hover =
+                state.view == AppView::Landing && (state.left_cta_hovered || state.right_cta_hovered);
             let cursor = if state.button_hovered
                 || state.hovered_repo_idx.is_some()
                 || hud_hover
                 || share_hover
                 || start_hover
                 || landing_hover
+                || bazaar_cta_hover
             {
                 "pointer"
             } else {

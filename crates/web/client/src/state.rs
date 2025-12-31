@@ -3,6 +3,49 @@ use wgpui::{Bounds, Point};
 use crate::hud::{HudContext, HudLayout, HudStreamHandle, HudUi, LandingLive};
 use crate::wallet::WalletUi;
 
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum JobStatus {
+    Working,
+    Verifying,
+    Paid,
+}
+
+#[derive(Clone)]
+pub(crate) struct MarketJob {
+    pub(crate) provider: &'static str,
+    pub(crate) repo: &'static str,
+    pub(crate) amount_sats: u32,
+    pub(crate) status: JobStatus,
+}
+
+#[derive(Clone)]
+pub(crate) struct MarketStats {
+    pub(crate) jobs_today: u32,
+    pub(crate) cleared_sats: u32,
+    pub(crate) providers: u32,
+}
+
+impl Default for MarketStats {
+    fn default() -> Self {
+        Self {
+            jobs_today: 1247,
+            cleared_sats: 342000,
+            providers: 89,
+        }
+    }
+}
+
+pub(crate) fn dummy_market_jobs() -> Vec<MarketJob> {
+    vec![
+        MarketJob { provider: "PatchGen", repo: "openagents/runtime#142", amount_sats: 4200, status: JobStatus::Paid },
+        MarketJob { provider: "CodeReview", repo: "vercel/next.js#58921", amount_sats: 2800, status: JobStatus::Verifying },
+        MarketJob { provider: "PatchGen", repo: "rust-lang/rust#12847", amount_sats: 6100, status: JobStatus::Paid },
+        MarketJob { provider: "RepoIndex", repo: "facebook/react", amount_sats: 1400, status: JobStatus::Working },
+        MarketJob { provider: "SandboxRun", repo: "tailwindlabs/ui#892", amount_sats: 450, status: JobStatus::Paid },
+        MarketJob { provider: "PatchGen", repo: "tokio-rs/tokio#6234", amount_sats: 3800, status: JobStatus::Verifying },
+    ]
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct UserInfo {
     pub(crate) github_username: Option<String>,
@@ -49,6 +92,15 @@ pub(crate) struct AppState {
     pub(crate) open_share_after_start: bool,
     pub(crate) funnel_landing_tracked: bool,
     pub(crate) wallet: WalletUi,
+    // Bazaar market feed state
+    pub(crate) market_jobs: Vec<MarketJob>,
+    pub(crate) market_stats: MarketStats,
+    pub(crate) left_cta_bounds: Bounds,
+    pub(crate) right_cta_bounds: Bounds,
+    pub(crate) left_cta_hovered: bool,
+    pub(crate) right_cta_hovered: bool,
+    pub(crate) hovered_job_idx: Option<usize>,
+    pub(crate) job_bounds: Vec<Bounds>,
 }
 
 impl Default for AppState {
@@ -79,6 +131,14 @@ impl Default for AppState {
             open_share_after_start: false,
             funnel_landing_tracked: false,
             wallet: WalletUi::new(),
+            market_jobs: dummy_market_jobs(),
+            market_stats: MarketStats::default(),
+            left_cta_bounds: Bounds::ZERO,
+            right_cta_bounds: Bounds::ZERO,
+            left_cta_hovered: false,
+            right_cta_hovered: false,
+            hovered_job_idx: None,
+            job_bounds: Vec::new(),
         }
     }
 }
