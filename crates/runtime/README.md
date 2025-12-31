@@ -58,6 +58,12 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 │   ├── providers/      # local, cloudflare, daytona, dvm
 │   ├── sessions/       # per-session status, output, files
 │   └── auth/           # OpenAgents API authentication
+├── claude/
+│   ├── new             # create Claude session, read session_id
+│   ├── providers/      # tunnel, cloud, local
+│   ├── sessions/       # per-session prompt, output, tools
+│   ├── workers/        # Claude worker pool status
+│   └── proxy/          # host proxy for credential injection
 ├── hud/
 │   ├── stream          # redacted event stream (public viewers)
 │   └── settings        # public/private, embed_allowed
@@ -118,6 +124,7 @@ This is not a generic actor framework. It's purpose-built for AI agents:
 | [FILESYSTEM.md](docs/FILESYSTEM.md) | FileService trait and implementations |
 | [COMPUTE.md](docs/COMPUTE.md) | AI compute abstraction (providers, budgets, streaming) |
 | [CONTAINERS.md](docs/CONTAINERS.md) | Container spawning (Local, Cloudflare, Daytona, DVMs) |
+| [CLAUDE.md](docs/CLAUDE.md) | Claude Agent SDK integration (tunnels, workers, security) |
 | [HUD.md](docs/HUD.md) | HUD integration (events, redaction, public access) |
 | [ROADMAP.md](docs/ROADMAP.md) | Implementation roadmap (build order, milestones) |
 | [PRIOR-ART.md](docs/PRIOR-ART.md) | Related work (Plan 9, WANIX, OANIX) |
@@ -192,7 +199,7 @@ See [PRIOR-ART.md](docs/PRIOR-ART.md) for details.
 
 **Implementation in progress.** Milestones 0-6 complete (core tick engine, filesystem, control plane, budgets, /compute, /containers). See [ROADMAP.md](docs/ROADMAP.md) for details.
 
-Current focus: M7 (HUD).
+Current focus: M7 (HUD), M8 (/claude integration).
 
 ## License
 
