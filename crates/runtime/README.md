@@ -224,9 +224,7 @@ See [PRIOR-ART.md](docs/PRIOR-ART.md) for details.
 
 ## Status
 
-**Implementation in progress.** Milestones 0-6 complete (core tick engine, filesystem, control plane, budgets, /compute, /containers). See [ROADMAP.md](docs/ROADMAP.md) for details.
-
-Current focus: HUD integration, `/claude` mount.
+**Implementation in progress.** Milestones 0-14 complete (core tick engine, filesystem, control plane, budgets, /compute, /containers, HUD, `/claude`). See [ROADMAP.md](docs/ROADMAP.md) for details.
 
 ## License
 

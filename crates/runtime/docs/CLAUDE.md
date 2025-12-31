@@ -264,7 +264,7 @@ This makes prompt injection attacks significantly harder—even if Claude is tri
 │   ├── tunnel/         # User's tunnel endpoints
 │   │   ├── info        # Read: provider info JSON
 │   │   ├── endpoints   # Read: configured tunnel endpoints
-│   │   └── health      # Read: health status per endpoint
+│   │   └── health      # Read: provider health status
 │   ├── cloud/          # Direct Anthropic API (requires API key)
 │   │   ├── info
 │   │   ├── models      # Read: available models
@@ -365,8 +365,9 @@ pub struct ClaudeRequest {
     pub timeout_ms: Option<u64>,
 
     /// Autonomy level for this session (tool-approval mode, distinct from runtime autonomy)
-    #[serde(default)]
-    pub autonomy: ClaudeSessionAutonomy,
+    /// If omitted, the runtime uses policy.default_autonomy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub autonomy: Option<ClaudeSessionAutonomy>,
 }
 
 /// Tool definition for Claude Agent SDK
@@ -889,8 +890,13 @@ pub struct TunnelAuthResponse {
     pub signature: String,
     /// Agent's pubkey
     pub pubkey: String,
+    /// Tunnel endpoint ID
+    pub tunnel_id: String,
 }
 ```
+
+`/claude/auth/status` provides a per-tunnel auth summary (authorized flag, pubkey for Nostr auth,
+challenge expiry). Tunnels with `auth: none` are treated as authorized by default.
 
 ---
 

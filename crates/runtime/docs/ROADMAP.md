@@ -563,6 +563,14 @@ The `/claude` mount enables agents to command one or more Claude instances. Key 
     └── ctl              # stop, pause, resume
 ```
 
+### Implementation Notes (completed)
+
+- Added `crates/runtime/src/claude.rs` with core types, policy/state machine, budget tracking, and idempotency-aware `/claude` FileService endpoints (sessions, tools, usage, auth, providers, workers/pool/proxy).
+- Implemented provider routing + `ClaudeProvider` trait plus concrete providers: Local/Cloud (claude-agent-sdk process runner) and Tunnel (WebSocket tunnel with Nostr auth, streaming, and tool approval).
+- Wired tool-approval workflow and append-only tool logs for both SDK-backed and tunnel sessions; output watch reconciles budget on completion/failure.
+- Added tunnel auth surfaces (`/claude/auth/{tunnels,challenge,status}`), provider health/endpoints surfaces, and admin-only policy/pool/proxy writes via `AgentEnv`.
+- Added runtime tests for `/claude/new` usage/idempotency and output watch; exported `/claude` APIs in `crates/runtime/src/lib.rs` and added required deps.
+
 ### Exit Criteria
 
 - Agent can create Claude session via tunnel to user's local proxy

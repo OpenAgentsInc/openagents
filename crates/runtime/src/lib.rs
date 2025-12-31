@@ -107,6 +107,7 @@
 
 pub mod agent;
 pub mod budget;
+pub mod claude;
 pub mod compute;
 pub mod containers;
 #[cfg(not(target_arch = "wasm32"))]
@@ -139,6 +140,16 @@ pub(crate) mod wasm_http;
 
 pub use agent::{Agent, AgentConfig, AgentContext, AgentState};
 pub use budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetState, BudgetTracker};
+pub use claude::{
+    ClaudeCapabilities, ClaudeChunk, ClaudeError, ClaudeFs, ClaudeModelInfo, ClaudePolicy,
+    ClaudePricing, ClaudeProvider, ClaudeProviderInfo, ClaudeProviderStatus, ClaudeRequest,
+    ClaudeResponse, ClaudeRouter, ClaudeSessionAutonomy, ClaudeSessionStatus, ClaudeUsage,
+    ClaudeUsageState, IsolationMode, NetworkMode, RateLimit, RepoFilterMode, SessionState as ClaudeSessionState,
+    ToolDefinition, ToolLogEntry, TunnelAuth, TunnelAuthChallenge, TunnelAuthResponse,
+    TunnelAuthState, TunnelEndpoint,
+};
+#[cfg(not(target_arch = "wasm32"))]
+pub use claude::{CloudProvider as ClaudeCloudProvider, LocalProvider as ClaudeLocalProvider, TunnelProvider as ClaudeTunnelProvider};
 pub use compute::{
     ComputeChunk, ComputeError, ComputeFs, ComputeKind, ComputePolicy, ComputeProvider,
     ComputeRequest, ComputeResponse, ComputeRouter, JobState, ModelInfo, Prefer, ProviderInfo,

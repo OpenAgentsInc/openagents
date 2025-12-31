@@ -6,6 +6,12 @@ use crate::compute::{
     ComputeRequest, ComputeResponse, ComputeRouter, DvmProvider, JobState, ModelInfo, ProviderInfo,
     ProviderLatency, ProviderStatus,
 };
+use crate::claude::{
+    ClaudeChunk, ClaudeError, ClaudeFs, ClaudePolicy, ClaudeProvider, ClaudeProviderInfo,
+    ClaudeProviderStatus, ClaudeRequest, ClaudeResponse, ClaudeRouter, ClaudeSessionAutonomy,
+    ClaudeSessionStatus, ClaudeUsage, ClaudeCapabilities, ClaudeModelInfo, ClaudePricing,
+    SessionState as ClaudeSessionState, ToolDefinition, ToolLogEntry,
+};
 use crate::containers::{
     ApiAuthState, AuthMethod, ContainerCapabilities, ContainerError, ContainerFs, ContainerKind,
     ContainerPolicy, ContainerProvider, ContainerProviderInfo, ContainerRequest, ContainerResponse,
@@ -509,6 +515,110 @@ fn test_compute_stream_fallback_for_non_streaming_provider() {
 
     let done = watch.next(Some(Duration::from_millis(50))).expect("done");
     assert!(done.is_none());
+}
+
+#[test]
+fn test_claude_new_usage_and_idempotency() {
+    let mut router = ClaudeRouter::new();
+    router.register(Arc::new(TestClaudeProvider::new()));
+    let policy = ClaudePolicy {
+        require_idempotency: true,
+        require_max_cost: true,
+        ..ClaudePolicy::default()
+    };
+    let budget = BudgetPolicy {
+        per_tick_usd: 10,
+        per_day_usd: 10,
+        approval_threshold_usd: 0,
+        approvers: Vec::new(),
+    };
+    let journal = Arc::new(MemoryJournal::new());
+    let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
+    let claude = ClaudeFs::new(
+        AgentId::from("agent-claude"),
+        router,
+        policy,
+        budget,
+        journal,
+        signer,
+    );
+
+    let mut request = ClaudeRequest::new("claude-test");
+    request.max_cost_usd = Some(5);
+    request.idempotency_key = Some("claude-1".to_string());
+
+    let response = submit_claude(&claude, &request);
+    let session_id = response["session_id"].as_str().expect("session_id").to_string();
+
+    let usage_bytes = read_handle(claude.open("usage", OpenFlags::read()).unwrap());
+    let usage: serde_json::Value = serde_json::from_slice(&usage_bytes).expect("usage");
+    assert_eq!(usage["tick"]["reserved_usd"].as_u64(), Some(5));
+
+    let mut prompt = claude
+        .open(&format!("sessions/{}/prompt", session_id), OpenFlags::write())
+        .unwrap();
+    prompt.write(b"hello").unwrap();
+    prompt.flush().unwrap();
+
+    let _ = read_handle(
+        claude
+            .open(&format!("sessions/{}/response", session_id), OpenFlags::read())
+            .unwrap(),
+    );
+
+    let usage_bytes = read_handle(claude.open("usage", OpenFlags::read()).unwrap());
+    let usage: serde_json::Value = serde_json::from_slice(&usage_bytes).expect("usage");
+    assert_eq!(usage["tick"]["spent_usd"].as_u64(), Some(1));
+    assert_eq!(usage["tick"]["reserved_usd"].as_u64(), Some(0));
+
+    let response_again = submit_claude(&claude, &request);
+    let session_id_again = response_again["session_id"].as_str().expect("session_id");
+    assert_eq!(session_id_again, session_id);
+}
+
+#[test]
+fn test_claude_output_watch() {
+    let mut router = ClaudeRouter::new();
+    router.register(Arc::new(TestClaudeProvider::new()));
+    let policy = ClaudePolicy::default();
+    let budget = BudgetPolicy {
+        per_tick_usd: 10,
+        per_day_usd: 10,
+        approval_threshold_usd: 0,
+        approvers: Vec::new(),
+    };
+    let journal = Arc::new(MemoryJournal::new());
+    let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
+    let claude = ClaudeFs::new(
+        AgentId::from("agent-claude-stream"),
+        router,
+        policy,
+        budget,
+        journal,
+        signer,
+    );
+
+    let request = ClaudeRequest::new("claude-test");
+    let response = submit_claude(&claude, &request);
+    let session_id = response["session_id"].as_str().expect("session_id").to_string();
+
+    let mut prompt = claude
+        .open(&format!("sessions/{}/prompt", session_id), OpenFlags::write())
+        .unwrap();
+    prompt.write(b"hello").unwrap();
+    prompt.flush().unwrap();
+
+    let mut watch = claude
+        .watch(&format!("sessions/{}/output", session_id))
+        .expect("watch")
+        .expect("handle");
+    let first = watch.next(Some(Duration::from_millis(100))).expect("first");
+    let first_data = match first {
+        Some(WatchEvent::Data(data)) => data,
+        _ => panic!("no data"),
+    };
+    let chunk: ClaudeChunk = serde_json::from_slice(&first_data).expect("chunk");
+    assert!(matches!(chunk.chunk_type, crate::claude::ChunkType::Done));
 }
 
 #[test]
@@ -1285,9 +1395,19 @@ fn submit_container(fs: &ContainerFs, request: &ContainerRequest) -> serde_json:
     serde_json::from_slice(&response).expect("response json")
 }
 
+fn submit_claude(fs: &ClaudeFs, request: &ClaudeRequest) -> serde_json::Value {
+    let mut handle = fs.open("new", OpenFlags::write()).expect("open");
+    let bytes = serde_json::to_vec(request).expect("serialize");
+    handle.write(&bytes).expect("write");
+    handle.flush().expect("flush");
+    let response = read_handle(handle);
+    serde_json::from_slice(&response).expect("response json")
+}
+
 static JOB_COUNTER: AtomicUsize = AtomicUsize::new(1);
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(1);
 static EXEC_COUNTER: AtomicUsize = AtomicUsize::new(1);
+static CLAUDE_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 #[derive(Clone)]
 struct TestProvider {
@@ -1587,6 +1707,184 @@ impl ComputeProvider for TestProvider {
             at: Timestamp::now(),
         });
         Ok(())
+    }
+}
+
+#[derive(Clone)]
+struct TestClaudeProvider {
+    sessions: Arc<RwLock<HashMap<String, ClaudeSessionState>>>,
+    chunks: Arc<std::sync::Mutex<HashMap<String, VecDeque<ClaudeChunk>>>>,
+}
+
+impl TestClaudeProvider {
+    fn new() -> Self {
+        Self {
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            chunks: Arc::new(std::sync::Mutex::new(HashMap::new())),
+        }
+    }
+
+    fn next_id() -> String {
+        format!(
+            "claude-{}",
+            CLAUDE_SESSION_COUNTER.fetch_add(1, Ordering::SeqCst)
+        )
+    }
+}
+
+impl ClaudeProvider for TestClaudeProvider {
+    fn id(&self) -> &str {
+        "test-claude"
+    }
+
+    fn info(&self) -> ClaudeProviderInfo {
+        ClaudeProviderInfo {
+            id: "test-claude".to_string(),
+            name: "Test Claude".to_string(),
+            models: vec![ClaudeModelInfo {
+                id: "claude-test".to_string(),
+                name: "Claude Test".to_string(),
+                context_length: 1024,
+                output_limit: 512,
+                pricing: None,
+            }],
+            capabilities: ClaudeCapabilities {
+                streaming: true,
+                resume: true,
+                fork: true,
+                tools: true,
+                vision: false,
+            },
+            pricing: None,
+            status: ClaudeProviderStatus::Available,
+        }
+    }
+
+    fn is_available(&self) -> bool {
+        true
+    }
+
+    fn supports_model(&self, model: &str) -> bool {
+        model == "claude-test"
+    }
+
+    fn create_session(&self, request: ClaudeRequest) -> std::result::Result<String, ClaudeError> {
+        let session_id = Self::next_id();
+        let state = ClaudeSessionState::Ready {
+            created_at: Timestamp::now(),
+        };
+        self.sessions
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(session_id.clone(), state);
+        if request.initial_prompt.is_some() {
+            let mut chunks = self.chunks.lock().unwrap_or_else(|e| e.into_inner());
+            chunks.insert(
+                session_id.clone(),
+                VecDeque::from(vec![ClaudeChunk {
+                    session_id: session_id.clone(),
+                    chunk_type: crate::claude::ChunkType::Text,
+                    delta: Some("ok".to_string()),
+                    tool: None,
+                    usage: None,
+                }]),
+            );
+        }
+        Ok(session_id)
+    }
+
+    fn get_session(&self, session_id: &str) -> Option<ClaudeSessionState> {
+        self.sessions
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(session_id)
+            .cloned()
+    }
+
+    fn send_prompt(&self, session_id: &str, _prompt: &str) -> std::result::Result<(), ClaudeError> {
+        let response = ClaudeResponse {
+            session_id: session_id.to_string(),
+            status: ClaudeSessionStatus::Complete,
+            response: Some("ok".to_string()),
+            usage: Some(ClaudeUsage {
+                input_tokens: 1,
+                output_tokens: 1,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                total_tokens: 2,
+            }),
+            cost_usd: 1,
+            reserved_usd: 0,
+            provider_id: "test-claude".to_string(),
+            model: "claude-test".to_string(),
+            tunnel_endpoint: None,
+        };
+        self.sessions
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(session_id.to_string(), ClaudeSessionState::Complete(response));
+        self.chunks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(session_id.to_string())
+            .or_insert_with(VecDeque::new)
+            .push_back(ClaudeChunk {
+                session_id: session_id.to_string(),
+                chunk_type: crate::claude::ChunkType::Done,
+                delta: None,
+                tool: None,
+                usage: None,
+            });
+        Ok(())
+    }
+
+    fn poll_output(
+        &self,
+        session_id: &str,
+    ) -> std::result::Result<Option<ClaudeChunk>, ClaudeError> {
+        let mut chunks = self.chunks.lock().unwrap_or_else(|e| e.into_inner());
+        let queue = chunks.get_mut(session_id).ok_or(ClaudeError::SessionNotFound)?;
+        Ok(queue.pop_front())
+    }
+
+    fn approve_tool(&self, _session_id: &str, _approved: bool) -> std::result::Result<(), ClaudeError> {
+        Ok(())
+    }
+
+    fn fork_session(&self, _session_id: &str) -> std::result::Result<String, ClaudeError> {
+        let mut request = ClaudeRequest::new("claude-test");
+        request.autonomy = Some(ClaudeSessionAutonomy::Supervised);
+        self.create_session(request)
+    }
+
+    fn stop(&self, session_id: &str) -> std::result::Result<(), ClaudeError> {
+        self.sessions
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                session_id.to_string(),
+                ClaudeSessionState::Failed {
+                    error: "stopped".to_string(),
+                    at: Timestamp::now(),
+                },
+            );
+        Ok(())
+    }
+
+    fn pause(&self, _session_id: &str) -> std::result::Result<(), ClaudeError> {
+        Ok(())
+    }
+
+    fn resume(&self, _session_id: &str) -> std::result::Result<(), ClaudeError> {
+        Ok(())
+    }
+
+    fn tool_log(&self, _session_id: &str) -> Option<Vec<ToolLogEntry>> {
+        Some(Vec::new())
+    }
+
+    fn pending_tool(&self, _session_id: &str) -> Option<crate::claude::PendingToolInfo> {
+        None
     }
 }
 
