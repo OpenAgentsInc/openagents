@@ -105,9 +105,9 @@ mounts:
     type: lightning
     endpoint: wallet://user-wallet
     budget:
-      per_tick: 1000      # max sats per tick
-      per_day: 50000      # max sats per day
-      require_approval: 10000  # approval needed above this
+      per_tick_usd: 100_000    # max micro-USD per tick ($0.10)
+      per_day_usd: 5_000_000   # max micro-USD per day ($5.00)
+      require_approval: 1_000_000  # approval needed above this ($1.00)
 
   /compute:
     type: container
@@ -422,7 +422,7 @@ tail -f /agents/my-agent/outbox
 
 # Check budget
 cat /agents/my-agent/wallet/balance
-# {"sats": 50000, "daily_spent": 1200, "daily_limit": 50000}
+# {"balance_usd": 5000000, "daily_spent_usd": 120000, "daily_limit_usd": 5000000}
 
 # Sign something
 echo "hello world" > /agents/my-agent/identity/sign

@@ -542,35 +542,37 @@ Canonical budget definitions used across the runtime.
 
 ```rust
 /// Static budget policy (configured at mount/agent level).
+/// All amounts in micro-USD (1 micro-USD = $0.000001).
 pub struct BudgetPolicy {
-    /// Maximum spend per tick (sats).
-    pub per_tick_sats: u64,
+    /// Maximum spend per tick (micro-USD).
+    pub per_tick_usd: u64,
 
-    /// Maximum spend per day (sats).
-    pub per_day_sats: u64,
+    /// Maximum spend per day (micro-USD).
+    pub per_day_usd: u64,
 
-    /// Spend above this requires approval.
-    pub approval_threshold_sats: u64,
+    /// Spend above this requires approval (micro-USD).
+    pub approval_threshold_usd: u64,
 
     /// Who can approve large spends.
     pub approvers: Vec<PublicKey>,
 }
 
 /// Dynamic budget state (tracked by runtime, shown in /status).
+/// All amounts in micro-USD (1 micro-USD = $0.000001).
 pub struct BudgetState {
-    /// Amount spent this tick.
-    pub spent_tick_sats: u64,
+    /// Amount spent this tick (micro-USD).
+    pub spent_tick_usd: u64,
 
-    /// Amount spent today.
-    pub spent_day_sats: u64,
+    /// Amount spent today (micro-USD).
+    pub spent_day_usd: u64,
 
     /// Day boundary (resets spent_day).
     pub day_start: Timestamp,
 
-    /// Remaining budget this tick.
+    /// Remaining budget this tick (micro-USD).
     pub remaining_tick(&self) -> u64;
 
-    /// Remaining budget today.
+    /// Remaining budget today (micro-USD).
     pub remaining_day(&self) -> u64;
 }
 
