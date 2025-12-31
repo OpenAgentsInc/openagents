@@ -1,4 +1,5 @@
 use wgpui::{Bounds, Point};
+use wgpui::components::hud::{DotsGrid, FrameAnimator};
 
 use crate::hud::{HudContext, HudLayout, HudStreamHandle, HudUi, LandingLive};
 use crate::nostr::{BazaarState, DvmDirectoryState, GlobalFeedState, Nip90State, NostrRelayHandle};
@@ -118,6 +119,12 @@ pub(crate) struct AppState {
     pub(crate) bazaar: BazaarState,
     pub(crate) bazaar_job_bounds: Vec<Bounds>,
     pub(crate) bazaar_scroll_bounds: Bounds,
+    // CTA card frame animators
+    pub(crate) left_cta_animator: FrameAnimator,
+    pub(crate) right_cta_animator: FrameAnimator,
+    pub(crate) cta_frames_started: bool,
+    // Background dots grid
+    pub(crate) dots_grid: DotsGrid,
 }
 
 impl Default for AppState {
@@ -168,6 +175,10 @@ impl Default for AppState {
             bazaar: BazaarState::new(),
             bazaar_job_bounds: Vec::new(),
             bazaar_scroll_bounds: Bounds::ZERO,
+            left_cta_animator: FrameAnimator::new(),
+            right_cta_animator: FrameAnimator::new(),
+            cta_frames_started: false,
+            dots_grid: DotsGrid::new(),
         }
     }
 }
