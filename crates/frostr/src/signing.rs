@@ -2,10 +2,8 @@
 //!
 //! This module implements the FROST threshold signing protocol for Schnorr signatures.
 
-use crate::{keygen::FrostShare, Error, Result};
-use frost_secp256k1::{
-    aggregate, round1, round2, Identifier, SigningPackage, VerifyingKey,
-};
+use crate::{Error, Result, keygen::FrostShare};
+use frost_secp256k1::{Identifier, SigningPackage, VerifyingKey, aggregate, round1, round2};
 use std::collections::BTreeMap;
 
 /// Round 1: Nonce commitment generation
@@ -147,7 +145,8 @@ mod tests {
         signature_shares.insert(*shares[0].key_package.identifier(), sig_share1);
         signature_shares.insert(*shares[1].key_package.identifier(), sig_share2);
 
-        let signature = aggregate_signatures(&signing_package, &signature_shares, &shares[0]).unwrap();
+        let signature =
+            aggregate_signatures(&signing_package, &signature_shares, &shares[0]).unwrap();
 
         // Verify signature
         let group_pubkey = shares[0].public_key_package.verifying_key();
@@ -184,7 +183,8 @@ mod tests {
         signature_shares.insert(*shares[1].key_package.identifier(), sig_share1);
         signature_shares.insert(*shares[2].key_package.identifier(), sig_share2);
 
-        let signature = aggregate_signatures(&signing_package, &signature_shares, &shares[0]).unwrap();
+        let signature =
+            aggregate_signatures(&signing_package, &signature_shares, &shares[0]).unwrap();
 
         // Verify
         let group_pubkey = shares[0].public_key_package.verifying_key();
@@ -215,7 +215,8 @@ mod tests {
         signature_shares1.insert(*shares[0].key_package.identifier(), sig_share0);
         signature_shares1.insert(*shares[1].key_package.identifier(), sig_share1);
 
-        let signature1 = aggregate_signatures(&signing_package1, &signature_shares1, &shares[0]).unwrap();
+        let signature1 =
+            aggregate_signatures(&signing_package1, &signature_shares1, &shares[0]).unwrap();
 
         // Second signature: signers 1 and 2 (different combination)
         let (nonces1_2, commitments1_2) = round1_commit(&shares[1]);
@@ -234,7 +235,8 @@ mod tests {
         signature_shares2.insert(*shares[1].key_package.identifier(), sig_share1_2);
         signature_shares2.insert(*shares[2].key_package.identifier(), sig_share2);
 
-        let signature2 = aggregate_signatures(&signing_package2, &signature_shares2, &shares[1]).unwrap();
+        let signature2 =
+            aggregate_signatures(&signing_package2, &signature_shares2, &shares[1]).unwrap();
 
         // Both signatures should verify with the same group public key
         let group_pubkey = shares[0].public_key_package.verifying_key();
@@ -265,7 +267,8 @@ mod tests {
         signature_shares.insert(*shares[0].key_package.identifier(), sig_share0);
         signature_shares.insert(*shares[1].key_package.identifier(), sig_share1);
 
-        let signature = aggregate_signatures(&signing_package, &signature_shares, &shares[0]).unwrap();
+        let signature =
+            aggregate_signatures(&signing_package, &signature_shares, &shares[0]).unwrap();
 
         // Verify with correct message succeeds
         let group_pubkey = shares[0].public_key_package.verifying_key();

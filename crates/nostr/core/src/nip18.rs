@@ -297,11 +297,7 @@ pub fn is_repost_kind(kind: u16) -> bool {
 mod tests {
     use super::*;
 
-    fn create_test_repost_event(
-        reposted_id: &str,
-        author: Option<&str>,
-        content: &str,
-    ) -> Event {
+    fn create_test_repost_event(reposted_id: &str, author: Option<&str>, content: &str) -> Event {
         let mut tags = vec![vec!["e".to_string(), reposted_id.to_string()]];
 
         if let Some(author_pubkey) = author {
@@ -433,12 +429,8 @@ mod tests {
 
     #[test]
     fn test_generic_repost_from_event() {
-        let event = create_test_generic_repost_event(
-            Some("event123"),
-            Some("author456"),
-            Some(3),
-            "",
-        );
+        let event =
+            create_test_generic_repost_event(Some("event123"), Some("author456"), Some(3), "");
         let repost = GenericRepost::from_event(event).unwrap();
 
         assert_eq!(repost.reposted_event_id, Some("event123".to_string()));
@@ -490,12 +482,8 @@ mod tests {
 
     #[test]
     fn test_generic_repost_validate() {
-        let event = create_test_generic_repost_event(
-            Some("event123"),
-            Some("author456"),
-            Some(3),
-            "",
-        );
+        let event =
+            create_test_generic_repost_event(Some("event123"), Some("author456"), Some(3), "");
         let repost = GenericRepost::from_event(event).unwrap();
         assert!(repost.validate().is_ok());
     }

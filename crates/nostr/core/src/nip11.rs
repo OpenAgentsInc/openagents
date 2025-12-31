@@ -373,7 +373,10 @@ mod tests {
     #[test]
     fn test_retention_policy() {
         let retention = RetentionPolicy {
-            kinds: Some(vec![KindOrRange::Single(1), KindOrRange::Range(vec![10000, 20000])]),
+            kinds: Some(vec![
+                KindOrRange::Single(1),
+                KindOrRange::Range(vec![10000, 20000]),
+            ]),
             time: Some(2592000), // 30 days
             count: Some(1000),
         };

@@ -260,7 +260,10 @@ mod tests {
 
         match decoded {
             Nip19Entity::Profile(p) => {
-                assert_eq!(hex::encode(p.pubkey), "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d");
+                assert_eq!(
+                    hex::encode(p.pubkey),
+                    "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+                );
                 assert_eq!(p.relays.len(), 2);
                 assert_eq!(p.relays[0], "wss://r.x.com");
                 assert_eq!(p.relays[1], "wss://djbas.sadkb.com");

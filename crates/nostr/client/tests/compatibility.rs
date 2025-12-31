@@ -5,10 +5,10 @@
 //!
 //! Run with: cargo test --features full -- --ignored
 
-use nostr::{finalize_event, generate_secret_key, EventTemplate};
+use nostr::{EventTemplate, finalize_event, generate_secret_key};
 use nostr_client::{RelayConnection, RelayMessage};
 use serde_json::json;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 /// Well-known public Nostr relays for testing
 const PUBLIC_RELAYS: &[&str] = &[
@@ -48,7 +48,10 @@ async fn test_connect_to_nostr_band() {
     let result = timeout(Duration::from_secs(10), relay.connect()).await;
 
     assert!(result.is_ok(), "Connection should complete");
-    assert!(result.unwrap().is_ok(), "Should connect to relay.nostr.band");
+    assert!(
+        result.unwrap().is_ok(),
+        "Should connect to relay.nostr.band"
+    );
 
     relay.disconnect().await.ok();
 }
@@ -219,9 +222,10 @@ async fn test_filter_compatibility() {
             loop {
                 if let Ok(Some(msg)) = relay.recv().await
                     && let RelayMessage::Eose(id) = msg
-                        && id == sub_id {
-                            break;
-                        }
+                    && id == sub_id
+                {
+                    break;
+                }
             }
         })
         .await

@@ -248,7 +248,9 @@ impl SearchQuery {
 /// Validate that a query string is reasonable
 pub fn validate_query(query: &str) -> Result<(), Nip50Error> {
     if query.is_empty() {
-        return Err(Nip50Error::InvalidQuery("query cannot be empty".to_string()));
+        return Err(Nip50Error::InvalidQuery(
+            "query cannot be empty".to_string(),
+        ));
     }
 
     if query.len() > 1000 {

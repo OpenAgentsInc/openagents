@@ -140,9 +140,15 @@ pub enum LabelTarget {
     /// Event by ID
     Event { id: String, relay: Option<String> },
     /// Public key
-    Pubkey { pubkey: String, relay: Option<String> },
+    Pubkey {
+        pubkey: String,
+        relay: Option<String>,
+    },
     /// Addressable event
-    Address { address: String, relay: Option<String> },
+    Address {
+        address: String,
+        relay: Option<String>,
+    },
     /// Relay URL
     Relay(String),
     /// Topic/hashtag
@@ -586,30 +592,36 @@ mod tests {
         let tags = event.to_tags();
 
         // Should have L tags for namespaces
-        assert!(tags
-            .iter()
-            .any(|tag| tag.len() == 2 && tag[0] == "L" && tag[1] == "license"));
-        assert!(tags
-            .iter()
-            .any(|tag| tag.len() == 2 && tag[0] == "L" && tag[1] == "nip28.moderation"));
+        assert!(
+            tags.iter()
+                .any(|tag| tag.len() == 2 && tag[0] == "L" && tag[1] == "license")
+        );
+        assert!(
+            tags.iter()
+                .any(|tag| tag.len() == 2 && tag[0] == "L" && tag[1] == "nip28.moderation")
+        );
 
         // Should have l tags for labels
         assert!(tags.iter().any(|tag| tag.len() == 3
             && tag[0] == "l"
             && tag[1] == "approve"
             && tag[2] == "nip28.moderation"));
-        assert!(tags.iter().any(
-            |tag| tag.len() == 3 && tag[0] == "l" && tag[1] == "MIT" && tag[2] == "license"
-        ));
+        assert!(
+            tags.iter().any(|tag| tag.len() == 3
+                && tag[0] == "l"
+                && tag[1] == "MIT"
+                && tag[2] == "license")
+        );
 
         // Should have target tags
         assert!(tags.iter().any(|tag| tag.len() == 3
             && tag[0] == "e"
             && tag[1] == "event-id"
             && tag[2] == "wss://relay.example.com"));
-        assert!(tags
-            .iter()
-            .any(|tag| tag.len() == 2 && tag[0] == "p" && tag[1] == "pubkey-hex"));
+        assert!(
+            tags.iter()
+                .any(|tag| tag.len() == 2 && tag[0] == "p" && tag[1] == "pubkey-hex")
+        );
     }
 
     #[test]
@@ -623,12 +635,16 @@ mod tests {
 
         let tags = event.to_tags();
 
-        assert!(tags
-            .iter()
-            .any(|tag| tag.len() == 2 && tag[0] == "L" && tag[1] == "#t"));
-        assert!(tags
-            .iter()
-            .any(|tag| tag.len() == 3 && tag[0] == "l" && tag[1] == "permies" && tag[2] == "#t"));
+        assert!(
+            tags.iter()
+                .any(|tag| tag.len() == 2 && tag[0] == "L" && tag[1] == "#t")
+        );
+        assert!(
+            tags.iter().any(|tag| tag.len() == 3
+                && tag[0] == "l"
+                && tag[1] == "permies"
+                && tag[2] == "#t")
+        );
     }
 
     #[test]
@@ -656,21 +672,26 @@ mod tests {
         let tags = self_label.to_tags();
 
         // Should have L tags
-        assert!(tags
-            .iter()
-            .any(|tag| tag.len() == 2 && tag[0] == "L" && tag[1] == "ISO-3166-2"));
-        assert!(tags
-            .iter()
-            .any(|tag| tag.len() == 2 && tag[0] == "L" && tag[1] == "ISO-639-1"));
+        assert!(
+            tags.iter()
+                .any(|tag| tag.len() == 2 && tag[0] == "L" && tag[1] == "ISO-3166-2")
+        );
+        assert!(
+            tags.iter()
+                .any(|tag| tag.len() == 2 && tag[0] == "L" && tag[1] == "ISO-639-1")
+        );
 
         // Should have l tags
         assert!(tags.iter().any(|tag| tag.len() == 3
             && tag[0] == "l"
             && tag[1] == "IT-MI"
             && tag[2] == "ISO-3166-2"));
-        assert!(tags.iter().any(
-            |tag| tag.len() == 3 && tag[0] == "l" && tag[1] == "en" && tag[2] == "ISO-639-1"
-        ));
+        assert!(
+            tags.iter().any(|tag| tag.len() == 3
+                && tag[0] == "l"
+                && tag[1] == "en"
+                && tag[2] == "ISO-639-1")
+        );
     }
 
     #[test]
@@ -684,11 +705,13 @@ mod tests {
         assert!(!tags.iter().any(|tag| tag[0] == "L"));
 
         // Should have l tags without namespace
-        assert!(tags
-            .iter()
-            .any(|tag| tag.len() == 2 && tag[0] == "l" && tag[1] == "bitcoin"));
-        assert!(tags
-            .iter()
-            .any(|tag| tag.len() == 2 && tag[0] == "l" && tag[1] == "news"));
+        assert!(
+            tags.iter()
+                .any(|tag| tag.len() == 2 && tag[0] == "l" && tag[1] == "bitcoin")
+        );
+        assert!(
+            tags.iter()
+                .any(|tag| tag.len() == 2 && tag[0] == "l" && tag[1] == "news")
+        );
     }
 }

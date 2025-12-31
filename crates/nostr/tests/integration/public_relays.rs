@@ -3,7 +3,7 @@
 use super::*;
 use nostr_client::{PoolConfig, RelayConnection, RelayMessage, RelayPool};
 use serde_json::json;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 const PUBLIC_RELAYS: [&str; 2] = ["wss://relay.damus.io", "wss://nos.lol"];
 
@@ -31,7 +31,10 @@ async fn test_public_relays_eose() {
         relay.connect().await.expect("connect");
 
         let filters = vec![json!({"kinds": [1], "limit": 1})];
-        relay.subscribe("public-eose", &filters).await.expect("subscribe");
+        relay
+            .subscribe("public-eose", &filters)
+            .await
+            .expect("subscribe");
 
         let eose = wait_for_eose(&relay, 6).await;
         assert!(eose.is_some(), "{} should send EOSE", url);

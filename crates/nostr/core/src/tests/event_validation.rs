@@ -6,8 +6,8 @@
 
 #[cfg(feature = "full")]
 use crate::nip01::{
-    finalize_event, generate_secret_key, get_event_hash, get_public_key_hex, serialize_event,
-    validate_event, verify_event, Event, EventTemplate, UnsignedEvent, KIND_SHORT_TEXT_NOTE,
+    Event, EventTemplate, KIND_SHORT_TEXT_NOTE, UnsignedEvent, finalize_event, generate_secret_key,
+    get_event_hash, get_public_key_hex, serialize_event, validate_event, verify_event,
 };
 
 // =============================================================================
@@ -461,10 +461,7 @@ mod id_verification {
 
         let event = finalize_event(&template, &secret_key).unwrap();
 
-        assert_eq!(
-            event.id, computed_id,
-            "Event ID should match computed hash"
-        );
+        assert_eq!(event.id, computed_id, "Event ID should match computed hash");
         assert!(verify_event(&event).unwrap());
     }
 

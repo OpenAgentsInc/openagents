@@ -345,35 +345,39 @@ pub fn validate_filter(filter: &Filter) -> std::result::Result<(), ValidationErr
     // Validate kinds are valid (implicitly validated by u16 type)
     // Just check they're not empty if present
     if let Some(ref kinds) = filter.kinds
-        && kinds.is_empty() {
-            return Err(ValidationError::InvalidFilter(
-                "kinds array cannot be empty".to_string(),
-            ));
-        }
+        && kinds.is_empty()
+    {
+        return Err(ValidationError::InvalidFilter(
+            "kinds array cannot be empty".to_string(),
+        ));
+    }
 
     // Validate since/until are reasonable timestamps
     let now = current_timestamp();
     if let Some(since) = filter.since
-        && since > now + MAX_FUTURE_SECONDS {
-            return Err(ValidationError::InvalidFilter(
-                "since timestamp too far in future".to_string(),
-            ));
-        }
+        && since > now + MAX_FUTURE_SECONDS
+    {
+        return Err(ValidationError::InvalidFilter(
+            "since timestamp too far in future".to_string(),
+        ));
+    }
 
     if let Some(until) = filter.until
-        && until > now + MAX_FUTURE_SECONDS {
-            return Err(ValidationError::InvalidFilter(
-                "until timestamp too far in future".to_string(),
-            ));
-        }
+        && until > now + MAX_FUTURE_SECONDS
+    {
+        return Err(ValidationError::InvalidFilter(
+            "until timestamp too far in future".to_string(),
+        ));
+    }
 
     // Validate since < until if both present
     if let (Some(since), Some(until)) = (filter.since, filter.until)
-        && since > until {
-            return Err(ValidationError::InvalidFilter(
-                "since must be <= until".to_string(),
-            ));
-        }
+        && since > until
+    {
+        return Err(ValidationError::InvalidFilter(
+            "since must be <= until".to_string(),
+        ));
+    }
 
     // Validate limit is reasonable
     if let Some(limit) = filter.limit {
@@ -476,7 +480,10 @@ pub fn validate_subscription_id(sub_id: &str) -> std::result::Result<(), Validat
     }
 
     // Subscription IDs should be printable ASCII
-    if !sub_id.chars().all(|c| c.is_ascii() && !c.is_ascii_control()) {
+    if !sub_id
+        .chars()
+        .all(|c| c.is_ascii() && !c.is_ascii_control())
+    {
         return Err(ValidationError::InvalidSubscriptionId(
             "must be printable ASCII".to_string(),
         ));
@@ -503,9 +510,8 @@ pub fn validate_event_message(msg: &Value) -> std::result::Result<Event, Validat
         ));
     }
 
-    let event: Event = serde_json::from_value(arr[1].clone()).map_err(|e| {
-        ValidationError::InvalidMessage(format!("failed to parse event: {}", e))
-    })?;
+    let event: Event = serde_json::from_value(arr[1].clone())
+        .map_err(|e| ValidationError::InvalidMessage(format!("failed to parse event: {}", e)))?;
 
     Ok(event)
 }
@@ -514,9 +520,9 @@ pub fn validate_event_message(msg: &Value) -> std::result::Result<Event, Validat
 pub fn validate_req_message(
     msg: &Value,
 ) -> std::result::Result<(String, Vec<Filter>), ValidationError> {
-    let arr = msg.as_array().ok_or_else(|| {
-        ValidationError::InvalidMessage("REQ message must be array".to_string())
-    })?;
+    let arr = msg
+        .as_array()
+        .ok_or_else(|| ValidationError::InvalidMessage("REQ message must be array".to_string()))?;
 
     if arr.len() < 3 {
         return Err(ValidationError::InvalidMessage(
@@ -578,7 +584,7 @@ pub fn validate_close_message(msg: &Value) -> std::result::Result<String, Valida
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nostr::{finalize_event, generate_secret_key, EventTemplate};
+    use nostr::{EventTemplate, finalize_event, generate_secret_key};
     use proptest::prelude::*;
 
     fn create_valid_event() -> Event {
@@ -608,7 +614,9 @@ mod tests {
 
     #[test]
     fn test_validate_hex128() {
-        assert!(validate_hex128("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+        assert!(validate_hex128(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        ));
         assert!(!validate_hex128("short"));
     }
 

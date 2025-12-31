@@ -167,9 +167,7 @@ pub fn encode_varint(mut value: u64) -> Result<Vec<u8>> {
 /// Returns (value, bytes_consumed)
 pub fn decode_varint(data: &[u8]) -> Result<(u64, usize)> {
     if data.is_empty() {
-        return Err(Nip77Error::VarintDecode(
-            "empty data".to_string(),
-        ));
+        return Err(Nip77Error::VarintDecode("empty data".to_string()));
     }
 
     let mut value: u64 = 0;
@@ -180,9 +178,7 @@ pub fn decode_varint(data: &[u8]) -> Result<(u64, usize)> {
 
         // Check for overflow before shifting
         if value > (u64::MAX >> 7) {
-            return Err(Nip77Error::VarintDecode(
-                "varint overflow".to_string(),
-            ));
+            return Err(Nip77Error::VarintDecode("varint overflow".to_string()));
         }
 
         value = (value << 7) | ((byte & 0x7F) as u64);
@@ -199,9 +195,7 @@ pub fn decode_varint(data: &[u8]) -> Result<(u64, usize)> {
         }
     }
 
-    Err(Nip77Error::VarintDecode(
-        "incomplete varint".to_string(),
-    ))
+    Err(Nip77Error::VarintDecode("incomplete varint".to_string()))
 }
 
 /// A 256-bit event ID
@@ -303,7 +297,13 @@ impl Bound {
         let id_prefix = data[offset..offset + prefix_len].to_vec();
         offset += prefix_len;
 
-        Ok((Self { timestamp, id_prefix }, offset))
+        Ok((
+            Self {
+                timestamp,
+                id_prefix,
+            },
+            offset,
+        ))
     }
 }
 
@@ -463,7 +463,14 @@ impl Range {
             }
         };
 
-        Ok((Self { upper_bound, payload }, offset, new_timestamp))
+        Ok((
+            Self {
+                upper_bound,
+                payload,
+            },
+            offset,
+            new_timestamp,
+        ))
     }
 }
 
@@ -537,8 +544,7 @@ impl NegentropyMessage {
 
     /// Decode message from hex string
     pub fn decode_hex(hex_str: &str) -> Result<Self> {
-        let bytes = hex::decode(hex_str)
-            .map_err(|e| Nip77Error::InvalidHex(e.to_string()))?;
+        let bytes = hex::decode(hex_str).map_err(|e| Nip77Error::InvalidHex(e.to_string()))?;
         Self::decode(&bytes)
     }
 }
@@ -556,7 +562,11 @@ pub struct NegOpen {
 
 impl NegOpen {
     /// Create a new NEG-OPEN message
-    pub fn new(subscription_id: String, filter: serde_json::Value, message: &NegentropyMessage) -> Result<Self> {
+    pub fn new(
+        subscription_id: String,
+        filter: serde_json::Value,
+        message: &NegentropyMessage,
+    ) -> Result<Self> {
         Ok(Self {
             subscription_id,
             filter,
@@ -576,7 +586,8 @@ impl NegOpen {
 
     /// Parse from JSON array
     pub fn from_json(value: &serde_json::Value) -> Result<Self> {
-        let arr = value.as_array()
+        let arr = value
+            .as_array()
             .ok_or_else(|| Nip77Error::InvalidHex("not an array".to_string()))?;
 
         if arr.len() != 4 {
@@ -586,7 +597,8 @@ impl NegOpen {
             )));
         }
 
-        let msg_type = arr[0].as_str()
+        let msg_type = arr[0]
+            .as_str()
             .ok_or_else(|| Nip77Error::InvalidHex("message type not a string".to_string()))?;
 
         if msg_type != "NEG-OPEN" {
@@ -597,11 +609,13 @@ impl NegOpen {
         }
 
         Ok(Self {
-            subscription_id: arr[1].as_str()
+            subscription_id: arr[1]
+                .as_str()
                 .ok_or_else(|| Nip77Error::InvalidHex("subscription ID not a string".to_string()))?
                 .to_string(),
             filter: arr[2].clone(),
-            initial_message: arr[3].as_str()
+            initial_message: arr[3]
+                .as_str()
                 .ok_or_else(|| Nip77Error::InvalidHex("initial message not a string".to_string()))?
                 .to_string(),
         })
@@ -628,16 +642,13 @@ impl NegMsg {
 
     /// Convert to JSON array format
     pub fn to_json(&self) -> serde_json::Value {
-        serde_json::json!([
-            "NEG-MSG",
-            self.subscription_id,
-            self.message
-        ])
+        serde_json::json!(["NEG-MSG", self.subscription_id, self.message])
     }
 
     /// Parse from JSON array
     pub fn from_json(value: &serde_json::Value) -> Result<Self> {
-        let arr = value.as_array()
+        let arr = value
+            .as_array()
             .ok_or_else(|| Nip77Error::InvalidHex("not an array".to_string()))?;
 
         if arr.len() != 3 {
@@ -647,7 +658,8 @@ impl NegMsg {
             )));
         }
 
-        let msg_type = arr[0].as_str()
+        let msg_type = arr[0]
+            .as_str()
             .ok_or_else(|| Nip77Error::InvalidHex("message type not a string".to_string()))?;
 
         if msg_type != "NEG-MSG" {
@@ -658,10 +670,12 @@ impl NegMsg {
         }
 
         Ok(Self {
-            subscription_id: arr[1].as_str()
+            subscription_id: arr[1]
+                .as_str()
                 .ok_or_else(|| Nip77Error::InvalidHex("subscription ID not a string".to_string()))?
                 .to_string(),
-            message: arr[2].as_str()
+            message: arr[2]
+                .as_str()
                 .ok_or_else(|| Nip77Error::InvalidHex("message not a string".to_string()))?
                 .to_string(),
         })
@@ -704,16 +718,13 @@ impl NegErr {
 
     /// Convert to JSON array format
     pub fn to_json(&self) -> serde_json::Value {
-        serde_json::json!([
-            "NEG-ERR",
-            self.subscription_id,
-            self.reason
-        ])
+        serde_json::json!(["NEG-ERR", self.subscription_id, self.reason])
     }
 
     /// Parse from JSON array
     pub fn from_json(value: &serde_json::Value) -> Result<Self> {
-        let arr = value.as_array()
+        let arr = value
+            .as_array()
             .ok_or_else(|| Nip77Error::InvalidHex("not an array".to_string()))?;
 
         if arr.len() != 3 {
@@ -723,7 +734,8 @@ impl NegErr {
             )));
         }
 
-        let msg_type = arr[0].as_str()
+        let msg_type = arr[0]
+            .as_str()
             .ok_or_else(|| Nip77Error::InvalidHex("message type not a string".to_string()))?;
 
         if msg_type != "NEG-ERR" {
@@ -734,10 +746,12 @@ impl NegErr {
         }
 
         Ok(Self {
-            subscription_id: arr[1].as_str()
+            subscription_id: arr[1]
+                .as_str()
                 .ok_or_else(|| Nip77Error::InvalidHex("subscription ID not a string".to_string()))?
                 .to_string(),
-            reason: arr[2].as_str()
+            reason: arr[2]
+                .as_str()
                 .ok_or_else(|| Nip77Error::InvalidHex("reason not a string".to_string()))?
                 .to_string(),
         })
@@ -764,7 +778,8 @@ impl NegClose {
 
     /// Parse from JSON array
     pub fn from_json(value: &serde_json::Value) -> Result<Self> {
-        let arr = value.as_array()
+        let arr = value
+            .as_array()
             .ok_or_else(|| Nip77Error::InvalidHex("not an array".to_string()))?;
 
         if arr.len() != 2 {
@@ -774,7 +789,8 @@ impl NegClose {
             )));
         }
 
-        let msg_type = arr[0].as_str()
+        let msg_type = arr[0]
+            .as_str()
             .ok_or_else(|| Nip77Error::InvalidHex("message type not a string".to_string()))?;
 
         if msg_type != "NEG-CLOSE" {
@@ -785,7 +801,8 @@ impl NegClose {
         }
 
         Ok(Self {
-            subscription_id: arr[1].as_str()
+            subscription_id: arr[1]
+                .as_str()
                 .ok_or_else(|| Nip77Error::InvalidHex("subscription ID not a string".to_string()))?
                 .to_string(),
         })
@@ -894,11 +911,9 @@ impl Record {
 /// assert!(records[0].id < records[1].id);
 /// ```
 pub fn sort_records(records: &mut [Record]) {
-    records.sort_by(|a, b| {
-        match a.timestamp.cmp(&b.timestamp) {
-            std::cmp::Ordering::Equal => a.id.cmp(&b.id),
-            other => other,
-        }
+    records.sort_by(|a, b| match a.timestamp.cmp(&b.timestamp) {
+        std::cmp::Ordering::Equal => a.id.cmp(&b.id),
+        other => other,
     });
 }
 
@@ -1081,7 +1096,8 @@ impl ReconciliationState {
                 RangePayload::IdList(remote_ids) => {
                     // Get our IDs in this range
                     let indices = self.find_records_in_range(&prev_bound, upper);
-                    let local_ids: Vec<EventId> = indices.iter().map(|&i| self.records[i].id).collect();
+                    let local_ids: Vec<EventId> =
+                        indices.iter().map(|&i| self.records[i].id).collect();
 
                     // Find IDs we have that they don't
                     for local_id in &local_ids {
@@ -1125,9 +1141,10 @@ impl ReconciliationState {
     #[allow(dead_code)] // Will be used in relay/client integration
     pub fn is_complete(&self, last_message: &NegentropyMessage) -> bool {
         // If all ranges are Skip or IdList (no Fingerprint), we're done
-        last_message.ranges.iter().all(|r| {
-            matches!(r.payload, RangePayload::Skip | RangePayload::IdList(_))
-        })
+        last_message
+            .ranges
+            .iter()
+            .all(|r| matches!(r.payload, RangePayload::Skip | RangePayload::IdList(_)))
     }
 }
 
@@ -1219,11 +1236,8 @@ mod tests {
     #[test]
     fn test_neg_open_json() {
         let msg = NegentropyMessage::new(vec![]);
-        let neg_open = NegOpen::new(
-            "sub1".to_string(),
-            serde_json::json!({"kinds": [1]}),
-            &msg,
-        ).unwrap();
+        let neg_open =
+            NegOpen::new("sub1".to_string(), serde_json::json!({"kinds": [1]}), &msg).unwrap();
 
         let json = neg_open.to_json();
         let parsed = NegOpen::from_json(&json).unwrap();
@@ -1417,7 +1431,9 @@ mod tests {
     fn test_varint_decode_overflow() {
         // Create a varint that would overflow u64
         // 11 bytes with max values would exceed u64
-        let overflow_bytes = vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F];
+        let overflow_bytes = vec![
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F,
+        ];
         let result = decode_varint(&overflow_bytes);
         assert!(result.is_err());
     }
@@ -1447,17 +1463,17 @@ mod tests {
         let test_values = vec![
             0,
             1,
-            127,              // 1 byte boundary
-            128,              // 2 byte start
+            127, // 1 byte boundary
+            128, // 2 byte start
             255,
             256,
-            16383,            // 2 byte boundary
-            16384,            // 3 byte start
-            65535,            // Common 16-bit boundary
+            16383, // 2 byte boundary
+            16384, // 3 byte start
+            65535, // Common 16-bit boundary
             65536,
-            2097151,          // 3 byte boundary
-            2097152,          // 4 byte start
-            u32::MAX as u64,  // 32-bit max
+            2097151,         // 3 byte boundary
+            2097152,         // 4 byte start
+            u32::MAX as u64, // 32-bit max
             u32::MAX as u64 + 1,
             u64::MAX / 2,
             u64::MAX - 1,
@@ -1467,11 +1483,7 @@ mod tests {
         for value in test_values {
             let encoded = encode_varint(value).unwrap();
             let (decoded, len) = decode_varint(&encoded).unwrap();
-            assert_eq!(
-                decoded, value,
-                "Roundtrip failed for value {}",
-                value
-            );
+            assert_eq!(decoded, value, "Roundtrip failed for value {}", value);
             assert_eq!(len, encoded.len());
 
             // Verify first byte has high bit set if multi-byte
@@ -1674,10 +1686,7 @@ mod tests {
 
     #[test]
     fn test_split_range_empty() {
-        let records = vec![
-            Record::new(100, [0x01; 32]),
-            Record::new(300, [0x03; 32]),
-        ];
+        let records = vec![Record::new(100, [0x01; 32]), Record::new(300, [0x03; 32])];
 
         let state = ReconciliationState::new(records);
 
@@ -1694,10 +1703,7 @@ mod tests {
 
     #[test]
     fn test_split_range_single_record() {
-        let records = vec![
-            Record::new(100, [0x01; 32]),
-            Record::new(200, [0x02; 32]),
-        ];
+        let records = vec![Record::new(100, [0x01; 32]), Record::new(200, [0x02; 32])];
 
         let state = ReconciliationState::new(records);
 
@@ -1742,10 +1748,7 @@ mod tests {
 
     #[test]
     fn test_split_range_two_records() {
-        let records = vec![
-            Record::new(100, [0x01; 32]),
-            Record::new(200, [0x02; 32]),
-        ];
+        let records = vec![Record::new(100, [0x01; 32]), Record::new(200, [0x02; 32])];
 
         let state = ReconciliationState::new(records);
 
@@ -1815,19 +1818,14 @@ mod tests {
     #[test]
     fn test_process_message_identical_sets() {
         // Both sides have same events
-        let records = vec![
-            Record::new(100, [0x01; 32]),
-            Record::new(200, [0x02; 32]),
-        ];
+        let records = vec![Record::new(100, [0x01; 32]), Record::new(200, [0x02; 32])];
 
         let mut state = ReconciliationState::new(records.clone());
 
         // Create message with matching fingerprint
         let ids: Vec<EventId> = records.iter().map(|r| r.id).collect();
         let fp = calculate_fingerprint(&ids);
-        let incoming = NegentropyMessage::new(vec![
-            Range::fingerprint(Bound::infinity(), fp)
-        ]);
+        let incoming = NegentropyMessage::new(vec![Range::fingerprint(Bound::infinity(), fp)]);
 
         let response = state.process_message(&incoming).unwrap();
 
@@ -1844,9 +1842,7 @@ mod tests {
         let mut state = ReconciliationState::new(vec![]);
 
         // Remote has no events
-        let incoming = NegentropyMessage::new(vec![
-            Range::skip(Bound::infinity())
-        ]);
+        let incoming = NegentropyMessage::new(vec![Range::skip(Bound::infinity())]);
 
         let response = state.process_message(&incoming).unwrap();
 
@@ -1858,18 +1854,14 @@ mod tests {
     #[test]
     fn test_process_message_disjoint_sets() {
         // We have events [0x01, 0x02]
-        let our_records = vec![
-            Record::new(100, [0x01; 32]),
-            Record::new(200, [0x02; 32]),
-        ];
+        let our_records = vec![Record::new(100, [0x01; 32]), Record::new(200, [0x02; 32])];
 
         let mut state = ReconciliationState::new(our_records);
 
         // They have completely different events [0x03, 0x04]
         let their_ids = vec![[0x03; 32], [0x04; 32]];
-        let incoming = NegentropyMessage::new(vec![
-            Range::id_list(Bound::infinity(), their_ids.clone())
-        ]);
+        let incoming =
+            NegentropyMessage::new(vec![Range::id_list(Bound::infinity(), their_ids.clone())]);
 
         let response = state.process_message(&incoming).unwrap();
 
@@ -1907,9 +1899,7 @@ mod tests {
 
         // They have [0x02, 0x03, 0x04] (overlap on 0x02 and 0x03)
         let their_ids = vec![[0x02; 32], [0x03; 32], [0x04; 32]];
-        let incoming = NegentropyMessage::new(vec![
-            Range::id_list(Bound::infinity(), their_ids)
-        ]);
+        let incoming = NegentropyMessage::new(vec![Range::id_list(Bound::infinity(), their_ids)]);
 
         let response = state.process_message(&incoming).unwrap();
 
@@ -1932,17 +1922,13 @@ mod tests {
 
     #[test]
     fn test_process_message_fingerprint_mismatch() {
-        let records = vec![
-            Record::new(100, [0x01; 32]),
-            Record::new(200, [0x02; 32]),
-        ];
+        let records = vec![Record::new(100, [0x01; 32]), Record::new(200, [0x02; 32])];
 
         let mut state = ReconciliationState::new(records);
 
         // Send mismatched fingerprint (all zeros)
-        let incoming = NegentropyMessage::new(vec![
-            Range::fingerprint(Bound::infinity(), [0x00; 16])
-        ]);
+        let incoming =
+            NegentropyMessage::new(vec![Range::fingerprint(Bound::infinity(), [0x00; 16])]);
 
         let response = state.process_message(&incoming).unwrap();
 
@@ -1952,7 +1938,10 @@ mod tests {
 
         // At least one range should be a Fingerprint or IdList
         let has_fingerprint_or_id = response.ranges.iter().any(|r| {
-            matches!(r.payload, RangePayload::Fingerprint(_) | RangePayload::IdList(_))
+            matches!(
+                r.payload,
+                RangePayload::Fingerprint(_) | RangePayload::IdList(_)
+            )
         });
         assert!(has_fingerprint_or_id);
     }
@@ -1960,17 +1949,12 @@ mod tests {
     #[test]
     fn test_process_message_skip_range() {
         // We have events
-        let records = vec![
-            Record::new(100, [0x01; 32]),
-            Record::new(200, [0x02; 32]),
-        ];
+        let records = vec![Record::new(100, [0x01; 32]), Record::new(200, [0x02; 32])];
 
         let mut state = ReconciliationState::new(records);
 
         // Remote has no events (skip)
-        let incoming = NegentropyMessage::new(vec![
-            Range::skip(Bound::infinity())
-        ]);
+        let incoming = NegentropyMessage::new(vec![Range::skip(Bound::infinity())]);
 
         let response = state.process_message(&incoming).unwrap();
 
@@ -1978,9 +1962,10 @@ mod tests {
         assert!(response.ranges.len() >= 1);
 
         // Should have at least one non-skip range
-        let has_content = response.ranges.iter().any(|r| {
-            !matches!(r.payload, RangePayload::Skip)
-        });
+        let has_content = response
+            .ranges
+            .iter()
+            .any(|r| !matches!(r.payload, RangePayload::Skip));
         assert!(has_content);
     }
 
@@ -1988,9 +1973,8 @@ mod tests {
     fn test_is_complete_with_fingerprints() {
         let state = ReconciliationState::new(vec![]);
 
-        let message = NegentropyMessage::new(vec![
-            Range::fingerprint(Bound::infinity(), [0x00; 16])
-        ]);
+        let message =
+            NegentropyMessage::new(vec![Range::fingerprint(Bound::infinity(), [0x00; 16])]);
 
         // Not complete - still has fingerprints to resolve
         assert!(!state.is_complete(&message));
@@ -2013,9 +1997,7 @@ mod tests {
     fn test_is_complete_with_skip_only() {
         let state = ReconciliationState::new(vec![]);
 
-        let message = NegentropyMessage::new(vec![
-            Range::skip(Bound::infinity())
-        ]);
+        let message = NegentropyMessage::new(vec![Range::skip(Bound::infinity())]);
 
         // Complete - all ranges are Skip
         assert!(state.is_complete(&message));
@@ -2024,10 +2006,7 @@ mod tests {
     #[test]
     fn test_process_message_multiple_ranges() {
         // We have events at different timestamps
-        let records = vec![
-            Record::new(100, [0x01; 32]),
-            Record::new(500, [0x05; 32]),
-        ];
+        let records = vec![Record::new(100, [0x01; 32]), Record::new(500, [0x05; 32])];
 
         let mut state = ReconciliationState::new(records);
 

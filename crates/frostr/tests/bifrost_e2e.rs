@@ -10,15 +10,15 @@
 //! Unlike integration_signing.rs which uses mock transport, these tests use
 //! actual in-process Nostr relays to ensure realistic interoperability.
 
+use frost_secp256k1::Signature as FrostSignature;
 use frostr::bifrost::{BifrostConfig, BifrostNode, TimeoutConfig};
 use frostr::ecdh::threshold_ecdh;
 use frostr::keygen::generate_key_shares;
 use frostr::signing::verify_signature;
-use frost_secp256k1::Signature as FrostSignature;
 use nostr::{decrypt_v2, encrypt_v2, generate_secret_key, get_public_key};
 use nostr_relay::{Database, DatabaseConfig, RelayConfig, RelayServer};
 use std::sync::Arc;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 /// Helper macro to run responder inline alongside coordinator operation.
 /// This avoids ownership issues with spawning tasks.
@@ -36,9 +36,9 @@ macro_rules! with_responder {
 
 /// Run a responder loop for a node (keeps running until an error or no more messages)
 async fn run_responder_loop(node: &BifrostNode) -> frostr::Result<()> {
-    let transport = node.transport().ok_or_else(|| {
-        frostr::Error::Protocol("Transport not initialized".into())
-    })?;
+    let transport = node
+        .transport()
+        .ok_or_else(|| frostr::Error::Protocol("Transport not initialized".into()))?;
 
     // Keep handling messages until timeout (no more messages)
     loop {
@@ -124,10 +124,8 @@ async fn test_bifrost_signing_2_of_3_over_relay() {
     };
 
     // Derive actual public keys from secret keys using nostr NIP-01
-    let peer_pubkey_1 = nostr::get_public_key(&secret_key_1)
-        .expect("failed to derive pubkey 1");
-    let peer_pubkey_2 = nostr::get_public_key(&secret_key_2)
-        .expect("failed to derive pubkey 2");
+    let peer_pubkey_1 = nostr::get_public_key(&secret_key_1).expect("failed to derive pubkey 1");
+    let peer_pubkey_2 = nostr::get_public_key(&secret_key_2).expect("failed to derive pubkey 2");
 
     let config_1 = BifrostConfig {
         default_relays: vec![relay_url.clone()],
@@ -170,10 +168,7 @@ async fn test_bifrost_signing_2_of_3_over_relay() {
     let event_hash = [0x42; 32];
 
     // Use select to run responder and coordinator concurrently
-    let result = with_responder!(
-        run_responder_loop(&node_2),
-        node_1.sign(&event_hash)
-    );
+    let result = with_responder!(run_responder_loop(&node_2), node_1.sign(&event_hash));
 
     // Signing should succeed
     let signature = result.expect("signing should succeed");
@@ -225,10 +220,8 @@ async fn test_bifrost_peer_ping_over_relay() {
         k
     };
 
-    let peer_pubkey_1 = get_public_key(&secret_key_1)
-        .expect("failed to derive pubkey 1");
-    let peer_pubkey_2 = get_public_key(&secret_key_2)
-        .expect("failed to derive pubkey 2");
+    let peer_pubkey_1 = get_public_key(&secret_key_1).expect("failed to derive pubkey 1");
+    let peer_pubkey_2 = get_public_key(&secret_key_2).expect("failed to derive pubkey 2");
 
     let config_1 = BifrostConfig {
         default_relays: vec![relay_url.clone()],
@@ -295,8 +288,8 @@ async fn test_bifrost_ecdh_2_of_3_over_relay() {
     // 3. Generate an external peer public key for ECDH
     // In a real scenario, this would be another agent's public key
     let peer_secret_key = generate_secret_key();
-    let peer_pubkey_bytes = nostr::get_public_key(&peer_secret_key)
-        .expect("should derive public key from secret key");
+    let peer_pubkey_bytes =
+        nostr::get_public_key(&peer_secret_key).expect("should derive public key from secret key");
 
     // 4. Create BifrostNode instances with properly derived pubkeys
     let secret_key_1: [u8; 32] = {
@@ -310,10 +303,8 @@ async fn test_bifrost_ecdh_2_of_3_over_relay() {
         k
     };
 
-    let peer_pubkey_1 = nostr::get_public_key(&secret_key_1)
-        .expect("failed to derive pubkey 1");
-    let peer_pubkey_2 = nostr::get_public_key(&secret_key_2)
-        .expect("failed to derive pubkey 2");
+    let peer_pubkey_1 = nostr::get_public_key(&secret_key_1).expect("failed to derive pubkey 1");
+    let peer_pubkey_2 = nostr::get_public_key(&secret_key_2).expect("failed to derive pubkey 2");
 
     let config_1 = BifrostConfig {
         default_relays: vec![relay_url.clone()],
@@ -350,10 +341,7 @@ async fn test_bifrost_ecdh_2_of_3_over_relay() {
     sleep(Duration::from_millis(500)).await;
 
     // 5. Test BifrostNode.ecdh() method with responder loop
-    let result = with_responder!(
-        run_responder_loop(&node_2),
-        node_1.ecdh(&peer_pubkey_bytes)
-    );
+    let result = with_responder!(run_responder_loop(&node_2), node_1.ecdh(&peer_pubkey_bytes));
 
     // ECDH should succeed over relay
     let shared_secret = result.expect("ECDH should succeed over relay");
@@ -404,10 +392,7 @@ async fn test_bifrost_3_of_5_signing() {
 
     let mut nodes = Vec::new();
     for i in 0..3 {
-        let peer_pubkeys: Vec<[u8; 32]> = (0..3)
-            .filter(|&j| j != i)
-            .map(|j| pubkeys[j])
-            .collect();
+        let peer_pubkeys: Vec<[u8; 32]> = (0..3).filter(|&j| j != i).map(|j| pubkeys[j]).collect();
 
         let config = BifrostConfig {
             default_relays: vec![relay_url.clone()],
@@ -451,7 +436,8 @@ async fn test_bifrost_3_of_5_signing() {
                 Err::<[u8; 64], _>(frostr::Error::Timeout)
             } => r,
         }
-    }.await;
+    }
+    .await;
 
     // Signing should succeed over relay
     let signature = result.expect("3-of-5 signing should succeed over relay");
@@ -470,16 +456,12 @@ async fn test_bifrost_any_quorum_produces_same_signature() {
     let group_pk = shares[0].public_key_package.verifying_key();
     let event_hash = [0xAB; 32];
 
-    use frostr::signing::{round1_commit, round2_sign, aggregate_signatures, verify_signature};
     use frost_secp256k1::SigningPackage;
+    use frostr::signing::{aggregate_signatures, round1_commit, round2_sign, verify_signature};
     use std::collections::BTreeMap;
 
     // Test all possible 2-of-3 quorums: (0,1), (0,2), (1,2)
-    let quorums: Vec<Vec<usize>> = vec![
-        vec![0, 1],
-        vec![0, 2],
-        vec![1, 2],
-    ];
+    let quorums: Vec<Vec<usize>> = vec![vec![0, 1], vec![0, 2], vec![1, 2]];
 
     for quorum in &quorums {
         // Round 1: Generate nonces for this quorum
@@ -507,8 +489,10 @@ async fn test_bifrost_any_quorum_produces_same_signature() {
             .expect("aggregation should succeed");
 
         // Verify signature - all quorums should produce valid signatures against same group key
-        verify_signature(&event_hash, &signature, &group_pk)
-            .expect(&format!("signature from quorum {:?} should be valid against group public key", quorum));
+        verify_signature(&event_hash, &signature, &group_pk).expect(&format!(
+            "signature from quorum {:?} should be valid against group public key",
+            quorum
+        ));
     }
 }
 
@@ -534,8 +518,8 @@ async fn test_bifrost_timeout_handling() {
         k[31] = 0x02;
         k
     };
-    let fake_peer_pubkey = nostr::get_public_key(&fake_peer_secret)
-        .expect("failed to derive fake peer pubkey");
+    let fake_peer_pubkey =
+        nostr::get_public_key(&fake_peer_secret).expect("failed to derive fake peer pubkey");
 
     let config = BifrostConfig {
         default_relays: vec![relay_url],
@@ -563,9 +547,9 @@ async fn test_bifrost_timeout_handling() {
     let err_msg = result.unwrap_err().to_string();
     assert!(
         err_msg.to_lowercase().contains("timeout")
-        || err_msg.contains("relay")
-        || err_msg.contains("connect")
-        || err_msg.contains("Transport"),
+            || err_msg.contains("relay")
+            || err_msg.contains("connect")
+            || err_msg.contains("Transport"),
         "expected timeout or transport error, got: {}",
         err_msg
     );
@@ -581,10 +565,9 @@ async fn test_bifrost_local_ecdh_quorum_determinism() {
 
     // Generate a peer public key (use generator point x-coordinate)
     let peer_pubkey: [u8; 32] = [
-        0x79, 0xBE, 0x66, 0x7E, 0xF9, 0xDC, 0xBB, 0xAC,
-        0x55, 0xA0, 0x62, 0x95, 0xCE, 0x87, 0x0B, 0x07,
-        0x02, 0x9B, 0xFC, 0xDB, 0x2D, 0xCE, 0x28, 0xD9,
-        0x59, 0xF2, 0x81, 0x5B, 0x16, 0xF8, 0x17, 0x98,
+        0x79, 0xBE, 0x66, 0x7E, 0xF9, 0xDC, 0xBB, 0xAC, 0x55, 0xA0, 0x62, 0x95, 0xCE, 0x87, 0x0B,
+        0x07, 0x02, 0x9B, 0xFC, 0xDB, 0x2D, 0xCE, 0x28, 0xD9, 0x59, 0xF2, 0x81, 0x5B, 0x16, 0xF8,
+        0x17, 0x98,
     ];
 
     // Test all possible 2-of-3 quorums
@@ -631,24 +614,34 @@ async fn test_nip44_encryption_round_trip() {
     let pubkey_b = get_public_key(&secret_key_b).expect("failed to derive pubkey B");
 
     // Message to encrypt
-    let plaintext = r#"{"session_id":"test-session","msg_type":"commit_req","message":"hello bifrost"}"#;
+    let plaintext =
+        r#"{"session_id":"test-session","msg_type":"commit_req","message":"hello bifrost"}"#;
 
     // Node A encrypts for Node B
     let compressed_b = to_compressed_pubkey(&pubkey_b);
-    let ciphertext = encrypt_v2(&secret_key_a, &compressed_b, plaintext)
-        .expect("encryption should succeed");
+    let ciphertext =
+        encrypt_v2(&secret_key_a, &compressed_b, plaintext).expect("encryption should succeed");
 
     // Verify ciphertext is different from plaintext (actually encrypted)
-    assert_ne!(ciphertext, plaintext, "ciphertext should differ from plaintext");
-    assert!(ciphertext.len() > plaintext.len(), "ciphertext should be longer than plaintext");
+    assert_ne!(
+        ciphertext, plaintext,
+        "ciphertext should differ from plaintext"
+    );
+    assert!(
+        ciphertext.len() > plaintext.len(),
+        "ciphertext should be longer than plaintext"
+    );
 
     // Node B decrypts message from Node A
     let compressed_a = to_compressed_pubkey(&pubkey_a);
-    let decrypted = decrypt_v2(&secret_key_b, &compressed_a, &ciphertext)
-        .expect("decryption should succeed");
+    let decrypted =
+        decrypt_v2(&secret_key_b, &compressed_a, &ciphertext).expect("decryption should succeed");
 
     // Verify round-trip integrity
-    assert_eq!(decrypted, plaintext, "decrypted message should match original");
+    assert_eq!(
+        decrypted, plaintext,
+        "decrypted message should match original"
+    );
 }
 
 #[tokio::test]
@@ -668,8 +661,8 @@ async fn test_nip44_wrong_key_decryption_fails() {
     // Node A encrypts for Node B
     let plaintext = "secret bifrost message for node B only";
     let compressed_b = to_compressed_pubkey(&pubkey_b);
-    let ciphertext = encrypt_v2(&secret_key_a, &compressed_b, plaintext)
-        .expect("encryption should succeed");
+    let ciphertext =
+        encrypt_v2(&secret_key_a, &compressed_b, plaintext).expect("encryption should succeed");
 
     // Node C (unauthorized) attempts to decrypt - should fail
     // Node C uses its own secret key to try decrypting message from A
@@ -692,8 +685,8 @@ async fn test_nip44_corrupted_ciphertext_rejected() {
     // Node A encrypts for Node B
     let plaintext = "important signing data";
     let compressed_b = to_compressed_pubkey(&pubkey_b);
-    let ciphertext = encrypt_v2(&secret_key_a, &compressed_b, plaintext)
-        .expect("encryption should succeed");
+    let ciphertext =
+        encrypt_v2(&secret_key_a, &compressed_b, plaintext).expect("encryption should succeed");
 
     // Corrupt the ciphertext by flipping bits
     let mut corrupted_bytes = ciphertext.clone().into_bytes();
@@ -709,7 +702,10 @@ async fn test_nip44_corrupted_ciphertext_rejected() {
     let result = decrypt_v2(&secret_key_b, &compressed_a, &corrupted);
 
     // Decryption should fail (corrupted MAC or padding)
-    assert!(result.is_err(), "corrupted ciphertext should fail decryption");
+    assert!(
+        result.is_err(),
+        "corrupted ciphertext should fail decryption"
+    );
 }
 
 #[tokio::test]
@@ -725,7 +721,10 @@ async fn test_nip44_empty_message_rejected() {
     let compressed_b = to_compressed_pubkey(&pubkey_b);
     let result = encrypt_v2(&secret_key_a, &compressed_b, plaintext);
 
-    assert!(result.is_err(), "empty message should be rejected per NIP-44 spec");
+    assert!(
+        result.is_err(),
+        "empty message should be rejected per NIP-44 spec"
+    );
 }
 
 #[tokio::test]
@@ -749,7 +748,10 @@ async fn test_nip44_large_message() {
     let decrypted = decrypt_v2(&secret_key_b, &compressed_a, &ciphertext)
         .expect("decryption of max length message should succeed");
 
-    assert_eq!(decrypted, plaintext, "max length message should round-trip correctly");
+    assert_eq!(
+        decrypted, plaintext,
+        "max length message should round-trip correctly"
+    );
 }
 
 #[tokio::test]
@@ -766,7 +768,10 @@ async fn test_nip44_oversized_message_rejected() {
     let compressed_b = to_compressed_pubkey(&pubkey_b);
     let result = encrypt_v2(&secret_key_a, &compressed_b, &plaintext);
 
-    assert!(result.is_err(), "message > 65535 bytes should be rejected per NIP-44 spec");
+    assert!(
+        result.is_err(),
+        "message > 65535 bytes should be rejected per NIP-44 spec"
+    );
 }
 
 #[tokio::test]
@@ -861,10 +866,7 @@ async fn test_nip44_peer_isolation_over_relay() {
     let event_hash = [0xAB; 32];
 
     // Run signing between A and B
-    let result = with_responder!(
-        run_responder_loop(&node_b),
-        node_a.sign(&event_hash)
-    );
+    let result = with_responder!(run_responder_loop(&node_b), node_a.sign(&event_hash));
 
     // Signing should succeed between A and B
     let signature = result.expect("signing between A and B should succeed");
@@ -878,13 +880,16 @@ async fn test_nip44_peer_isolation_over_relay() {
     // This simulates an eavesdropper scenario
     let test_message = "secret signing data";
     let compressed_b = to_compressed_pubkey(&pubkey_b);
-    let ciphertext = encrypt_v2(&secret_key_a, &compressed_b, test_message)
-        .expect("encryption should succeed");
+    let ciphertext =
+        encrypt_v2(&secret_key_a, &compressed_b, test_message).expect("encryption should succeed");
 
     // C tries to decrypt (pretending the message was for them)
     let compressed_a = to_compressed_pubkey(&pubkey_a);
     let eavesdrop_result = decrypt_v2(&secret_key_c, &compressed_a, &ciphertext);
-    assert!(eavesdrop_result.is_err(), "node C should not be able to decrypt message meant for B");
+    assert!(
+        eavesdrop_result.is_err(),
+        "node C should not be able to decrypt message meant for B"
+    );
 
     // B can decrypt
     let b_decrypt = decrypt_v2(&secret_key_b, &compressed_a, &ciphertext)
@@ -914,8 +919,8 @@ async fn test_nip44_symmetric_encryption() {
 
     // A encrypts for B
     let compressed_b = to_compressed_pubkey(&pubkey_b);
-    let ciphertext_a_to_b = encrypt_v2(&secret_key_a, &compressed_b, message_from_a)
-        .expect("A should encrypt for B");
+    let ciphertext_a_to_b =
+        encrypt_v2(&secret_key_a, &compressed_b, message_from_a).expect("A should encrypt for B");
 
     // B decrypts from A
     let compressed_a = to_compressed_pubkey(&pubkey_a);
@@ -924,8 +929,8 @@ async fn test_nip44_symmetric_encryption() {
     assert_eq!(decrypted_by_b, message_from_a);
 
     // B encrypts for A (reverse direction)
-    let ciphertext_b_to_a = encrypt_v2(&secret_key_b, &compressed_a, message_from_b)
-        .expect("B should encrypt for A");
+    let ciphertext_b_to_a =
+        encrypt_v2(&secret_key_b, &compressed_a, message_from_b).expect("B should encrypt for A");
 
     // A decrypts from B
     let decrypted_by_a = decrypt_v2(&secret_key_a, &compressed_b, &ciphertext_b_to_a)

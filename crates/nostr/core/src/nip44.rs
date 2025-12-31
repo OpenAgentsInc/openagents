@@ -40,10 +40,10 @@
 //! # }
 //! ```
 
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
-use bitcoin::secp256k1::{ecdh, PublicKey, SecretKey};
-use chacha20::cipher::{KeyIvInit, StreamCipher};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use bitcoin::secp256k1::{PublicKey, SecretKey, ecdh};
 use chacha20::ChaCha20;
+use chacha20::cipher::{KeyIvInit, StreamCipher};
 use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -130,8 +130,7 @@ type HmacSha256 = Hmac<Sha256>;
 fn get_conversation_key(secret_key: &[u8; 32], public_key: &[u8]) -> Result<[u8; 32], Nip44Error> {
     // Parse keys
     let sk = SecretKey::from_slice(secret_key)?;
-    let pk = PublicKey::from_slice(public_key)
-        .map_err(|_| Nip44Error::InvalidPublicKey)?;
+    let pk = PublicKey::from_slice(public_key).map_err(|_| Nip44Error::InvalidPublicKey)?;
 
     // Perform ECDH - get shared secret
     let shared_secret = ecdh::shared_secret_point(&pk, &sk);
@@ -263,8 +262,7 @@ fn unpad(padded: &[u8]) -> Result<String, Nip44Error> {
 
     // Extract plaintext
     let plaintext_bytes = &padded[2..2 + plaintext_len];
-    String::from_utf8(plaintext_bytes.to_vec())
-        .map_err(|_| Nip44Error::InvalidPadding)
+    String::from_utf8(plaintext_bytes.to_vec()).map_err(|_| Nip44Error::InvalidPadding)
 }
 
 /// Encrypt plaintext using NIP-44 version 2.
@@ -316,8 +314,7 @@ pub fn encrypt(
     cipher.apply_keystream(&mut ciphertext);
 
     // Calculate MAC over nonce || ciphertext
-    let mut mac = HmacSha256::new_from_slice(&hmac_key)
-        .map_err(|_| Nip44Error::InvalidPayload)?;
+    let mut mac = HmacSha256::new_from_slice(&hmac_key).map_err(|_| Nip44Error::InvalidPayload)?;
     mac.update(&nonce);
     mac.update(&ciphertext);
     let mac_bytes = mac.finalize().into_bytes();
@@ -387,11 +384,11 @@ pub fn decrypt(
 
     // Derive message keys
     let nonce_array: [u8; 32] = nonce.try_into().unwrap();
-    let (chacha_key, chacha_nonce, hmac_key) = derive_message_keys(&conversation_key, &nonce_array)?;
+    let (chacha_key, chacha_nonce, hmac_key) =
+        derive_message_keys(&conversation_key, &nonce_array)?;
 
     // Verify MAC
-    let mut mac = HmacSha256::new_from_slice(&hmac_key)
-        .map_err(|_| Nip44Error::InvalidPayload)?;
+    let mut mac = HmacSha256::new_from_slice(&hmac_key).map_err(|_| Nip44Error::InvalidPayload)?;
     mac.update(nonce);
     mac.update(ciphertext);
 

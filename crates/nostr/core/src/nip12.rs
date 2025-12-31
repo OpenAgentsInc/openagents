@@ -160,7 +160,12 @@ pub fn get_tag_values_with_params(event: &Event, tag_name: &str) -> Vec<(String,
 /// add_generic_tag(&mut tags, "t", "bitcoin", &[]);
 /// add_generic_tag(&mut tags, "r", "https://example.com", &["web"]);
 /// ```
-pub fn add_generic_tag(tags: &mut Vec<Vec<String>>, tag_name: &str, value: &str, additional: &[&str]) {
+pub fn add_generic_tag(
+    tags: &mut Vec<Vec<String>>,
+    tag_name: &str,
+    value: &str,
+    additional: &[&str],
+) {
     let mut tag = vec![tag_name.to_string(), value.to_string()];
     tag.extend(additional.iter().map(|s| s.to_string()));
     tags.push(tag);
@@ -237,17 +242,13 @@ mod tests {
 
     #[test]
     fn test_has_tag_true() {
-        let event = create_test_event(vec![
-            vec!["t".to_string(), "bitcoin".to_string()],
-        ]);
+        let event = create_test_event(vec![vec!["t".to_string(), "bitcoin".to_string()]]);
         assert!(has_tag(&event, "t"));
     }
 
     #[test]
     fn test_has_tag_false() {
-        let event = create_test_event(vec![
-            vec!["p".to_string(), "pubkey".to_string()],
-        ]);
+        let event = create_test_event(vec![vec!["p".to_string(), "pubkey".to_string()]]);
         assert!(!has_tag(&event, "t"));
     }
 
@@ -275,7 +276,12 @@ mod tests {
     #[test]
     fn test_get_tag_values_with_params() {
         let event = create_test_event(vec![
-            vec!["e".to_string(), "event-id".to_string(), "wss://relay.com".to_string(), "reply".to_string()],
+            vec![
+                "e".to_string(),
+                "event-id".to_string(),
+                "wss://relay.com".to_string(),
+                "reply".to_string(),
+            ],
             vec!["p".to_string(), "pubkey".to_string()],
         ]);
 
@@ -330,9 +336,7 @@ mod tests {
 
     #[test]
     fn test_matches_tag_filter_false() {
-        let event = create_test_event(vec![
-            vec!["t".to_string(), "bitcoin".to_string()],
-        ]);
+        let event = create_test_event(vec![vec!["t".to_string(), "bitcoin".to_string()]]);
 
         assert!(!matches_tag_filter(&event, "t", &["lightning", "ethereum"]));
     }

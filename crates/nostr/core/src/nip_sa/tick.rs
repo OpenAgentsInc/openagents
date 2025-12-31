@@ -180,12 +180,7 @@ pub struct TickResultContent {
 
 impl TickResultContent {
     /// Create new tick result content
-    pub fn new(
-        tokens_in: u64,
-        tokens_out: u64,
-        cost_usd: f64,
-        goals_updated: u32,
-    ) -> Self {
+    pub fn new(tokens_in: u64, tokens_out: u64, cost_usd: f64, goals_updated: u32) -> Self {
         Self {
             tokens_in,
             tokens_out,
@@ -235,11 +230,7 @@ impl TickAction {
     }
 
     /// Add metadata field
-    pub fn with_metadata(
-        mut self,
-        key: impl Into<String>,
-        value: serde_json::Value,
-    ) -> Self {
+    pub fn with_metadata(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
         self.metadata.insert(key.into(), value);
         self
     }
@@ -375,8 +366,8 @@ pub fn build_tick_history(events: &[crate::Event]) -> Vec<TickHistoryEntry> {
                 let runner = get_tag_value(&event.tags, "runner")
                     .unwrap_or(&event.pubkey)
                     .to_string();
-                let trigger = get_tag_value(&event.tags, "trigger")
-                    .and_then(TickTrigger::from_tag_value);
+                let trigger =
+                    get_tag_value(&event.tags, "trigger").and_then(TickTrigger::from_tag_value);
                 let entry = entries
                     .entry(event.id.clone())
                     .or_insert_with(|| TickHistoryEntry::new(&event.id, &runner));
@@ -393,8 +384,8 @@ pub fn build_tick_history(events: &[crate::Event]) -> Vec<TickHistoryEntry> {
                 let runner = get_tag_value(&event.tags, "runner")
                     .unwrap_or(&event.pubkey)
                     .to_string();
-                let status = get_tag_value(&event.tags, "status")
-                    .and_then(TickStatus::from_tag_value);
+                let status =
+                    get_tag_value(&event.tags, "status").and_then(TickStatus::from_tag_value);
                 let duration_ms = get_tag_value(&event.tags, "duration_ms")
                     .and_then(|value| value.parse::<u64>().ok());
                 let action_count = get_tag_value(&event.tags, "actions")
@@ -484,8 +475,10 @@ mod tests {
     #[test]
     fn test_tick_result_content_with_actions() {
         let action1 = TickAction::new("post").with_id("event-1");
-        let action2 = TickAction::new("dm")
-            .with_metadata("recipient", serde_json::Value::String("npub...".to_string()));
+        let action2 = TickAction::new("dm").with_metadata(
+            "recipient",
+            serde_json::Value::String("npub...".to_string()),
+        );
 
         let content = TickResultContent::new(1000, 500, 0.05, 2)
             .add_action(action1)

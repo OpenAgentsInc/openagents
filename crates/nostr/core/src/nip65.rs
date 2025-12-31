@@ -214,11 +214,7 @@ pub fn create_relay_tag(url: String, marker: Option<RelayMarker>) -> Vec<String>
 
 /// Add a relay tag to an event's tags
 #[allow(dead_code)]
-pub fn add_relay_tag(
-    tags: &mut Vec<Vec<String>>,
-    url: String,
-    marker: Option<RelayMarker>,
-) {
+pub fn add_relay_tag(tags: &mut Vec<Vec<String>>, url: String, marker: Option<RelayMarker>) {
     tags.push(create_relay_tag(url, marker));
 }
 
@@ -276,10 +272,7 @@ mod tests {
 
     #[test]
     fn test_relay_entry_new() {
-        let entry = RelayEntry::new(
-            "wss://relay.example.com".to_string(),
-            RelayMarker::Read,
-        );
+        let entry = RelayEntry::new("wss://relay.example.com".to_string(), RelayMarker::Read);
         assert_eq!(entry.url, "wss://relay.example.com");
         assert_eq!(entry.marker, RelayMarker::Read);
     }
@@ -419,10 +412,7 @@ mod tests {
 
     #[test]
     fn test_create_relay_tag_with_marker() {
-        let tag = create_relay_tag(
-            "wss://relay.com".to_string(),
-            Some(RelayMarker::Write),
-        );
+        let tag = create_relay_tag("wss://relay.com".to_string(), Some(RelayMarker::Write));
         assert_eq!(
             tag,
             vec![
@@ -435,10 +425,7 @@ mod tests {
 
     #[test]
     fn test_create_relay_tag_read_write_explicit() {
-        let tag = create_relay_tag(
-            "wss://relay.com".to_string(),
-            Some(RelayMarker::ReadWrite),
-        );
+        let tag = create_relay_tag("wss://relay.com".to_string(), Some(RelayMarker::ReadWrite));
         // ReadWrite marker is omitted
         assert_eq!(tag, vec!["r".to_string(), "wss://relay.com".to_string()]);
     }

@@ -132,13 +132,15 @@ impl KindPolicy {
     pub fn parse(s: &str) -> Result<Self, Nip66Error> {
         if let Some(stripped) = s.strip_prefix('!') {
             Ok(KindPolicy {
-                kind: stripped.parse()
+                kind: stripped
+                    .parse()
                     .map_err(|_| Nip66Error::InvalidKindValue(s.to_string()))?,
                 accepted: false,
             })
         } else {
             Ok(KindPolicy {
-                kind: s.parse()
+                kind: s
+                    .parse()
                     .map_err(|_| Nip66Error::InvalidKindValue(s.to_string()))?,
                 accepted: true,
             })
@@ -240,16 +242,25 @@ impl RelayDiscovery {
             if tag.len() >= 2 {
                 match tag[0].as_str() {
                     RTT_OPEN_TAG => {
-                        rtt.open_ms = Some(tag[1].parse()
-                            .map_err(|_| Nip66Error::InvalidRttValue(tag[1].clone()))?);
+                        rtt.open_ms = Some(
+                            tag[1]
+                                .parse()
+                                .map_err(|_| Nip66Error::InvalidRttValue(tag[1].clone()))?,
+                        );
                     }
                     RTT_READ_TAG => {
-                        rtt.read_ms = Some(tag[1].parse()
-                            .map_err(|_| Nip66Error::InvalidRttValue(tag[1].clone()))?);
+                        rtt.read_ms = Some(
+                            tag[1]
+                                .parse()
+                                .map_err(|_| Nip66Error::InvalidRttValue(tag[1].clone()))?,
+                        );
                     }
                     RTT_WRITE_TAG => {
-                        rtt.write_ms = Some(tag[1].parse()
-                            .map_err(|_| Nip66Error::InvalidRttValue(tag[1].clone()))?);
+                        rtt.write_ms = Some(
+                            tag[1]
+                                .parse()
+                                .map_err(|_| Nip66Error::InvalidRttValue(tag[1].clone()))?,
+                        );
                     }
                     _ => {}
                 }
@@ -275,8 +286,11 @@ impl RelayDiscovery {
             .tags
             .iter()
             .filter(|tag| tag.len() >= 2 && tag[0] == NIP_SUPPORT_TAG)
-            .map(|tag| tag[1].parse()
-                .map_err(|_| Nip66Error::InvalidNipNumber(tag[1].clone())))
+            .map(|tag| {
+                tag[1]
+                    .parse()
+                    .map_err(|_| Nip66Error::InvalidNipNumber(tag[1].clone()))
+            })
             .collect();
         let nips = nips?;
 
@@ -374,8 +388,11 @@ impl RelayMonitorAnnouncement {
             .tags
             .iter()
             .find(|tag| tag.len() >= 2 && tag[0] == FREQUENCY_TAG)
-            .map(|tag| tag[1].parse()
-                .map_err(|_| Nip66Error::InvalidFrequencyValue(tag[1].clone())))
+            .map(|tag| {
+                tag[1]
+                    .parse()
+                    .map_err(|_| Nip66Error::InvalidFrequencyValue(tag[1].clone()))
+            })
             .transpose()?;
 
         // Extract timeouts
@@ -388,14 +405,16 @@ impl RelayMonitorAnnouncement {
                     // timeout with check type: ["timeout", "open", "5000"]
                     Ok(CheckTimeout {
                         check_type: Some(tag[1].clone()),
-                        timeout_ms: tag[2].parse()
+                        timeout_ms: tag[2]
+                            .parse()
                             .map_err(|_| Nip66Error::InvalidTimeoutValue(tag[2].clone()))?,
                     })
                 } else {
                     // global timeout: ["timeout", "5000"]
                     Ok(CheckTimeout {
                         check_type: None,
-                        timeout_ms: tag[1].parse()
+                        timeout_ms: tag[1]
+                            .parse()
                             .map_err(|_| Nip66Error::InvalidTimeoutValue(tag[1].clone()))?,
                     })
                 }
@@ -432,14 +451,17 @@ impl RelayMonitorAnnouncement {
     /// Falls back to the global timeout if no specific timeout is defined.
     pub fn get_timeout(&self, check_type: &str) -> Option<u32> {
         // Look for specific timeout first
-        if let Some(timeout) = self.timeouts.iter()
+        if let Some(timeout) = self
+            .timeouts
+            .iter()
             .find(|t| t.check_type.as_deref() == Some(check_type))
         {
             return Some(timeout.timeout_ms);
         }
 
         // Fall back to global timeout
-        self.timeouts.iter()
+        self.timeouts
+            .iter()
             .find(|t| t.check_type.is_none())
             .map(|t| t.timeout_ms)
     }
@@ -577,12 +599,7 @@ mod tests {
 
     #[test]
     fn test_relay_discovery_missing_d_tag() {
-        let event = mock_event(
-            RELAY_DISCOVERY_KIND,
-            "monitor123",
-            vec![],
-            "",
-        );
+        let event = mock_event(RELAY_DISCOVERY_KIND, "monitor123", vec![], "");
 
         let result = RelayDiscovery::from_event(event);
         assert!(matches!(result, Err(Nip66Error::MissingDTag)));
@@ -594,8 +611,16 @@ mod tests {
             RELAY_MONITOR_ANNOUNCEMENT_KIND,
             "monitor456",
             vec![
-                vec![TIMEOUT_TAG.to_string(), "open".to_string(), "5000".to_string()],
-                vec![TIMEOUT_TAG.to_string(), "read".to_string(), "3000".to_string()],
+                vec![
+                    TIMEOUT_TAG.to_string(),
+                    "open".to_string(),
+                    "5000".to_string(),
+                ],
+                vec![
+                    TIMEOUT_TAG.to_string(),
+                    "read".to_string(),
+                    "3000".to_string(),
+                ],
                 vec![FREQUENCY_TAG.to_string(), "3600".to_string()],
                 vec![CHECK_TYPE_TAG.to_string(), "ws".to_string()],
                 vec![CHECK_TYPE_TAG.to_string(), "nip11".to_string()],
@@ -651,24 +676,14 @@ mod tests {
 
     #[test]
     fn test_is_relay_discovery() {
-        let event = mock_event(
-            RELAY_DISCOVERY_KIND,
-            "monitor123",
-            vec![],
-            "",
-        );
+        let event = mock_event(RELAY_DISCOVERY_KIND, "monitor123", vec![], "");
 
         assert!(is_relay_discovery(&event));
     }
 
     #[test]
     fn test_is_relay_monitor_announcement() {
-        let event = mock_event(
-            RELAY_MONITOR_ANNOUNCEMENT_KIND,
-            "monitor123",
-            vec![],
-            "",
-        );
+        let event = mock_event(RELAY_MONITOR_ANNOUNCEMENT_KIND, "monitor123", vec![], "");
 
         assert!(is_relay_monitor_announcement(&event));
     }

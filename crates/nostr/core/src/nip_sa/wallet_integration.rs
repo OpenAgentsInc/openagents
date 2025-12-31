@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::sync::OnceCell;
 
 #[cfg(feature = "spark-integration")]
-use spark::{SparkWallet, SparkSigner, WalletConfig, Network};
+use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
 
 /// Global wallet instance (initialized once at startup)
 #[cfg(feature = "spark-integration")]
@@ -64,8 +64,9 @@ impl WalletBalance {
 /// ```
 #[cfg(feature = "spark-integration")]
 pub async fn init_wallet(mnemonic: &str, network: Network) -> Result<(), WalletIntegrationError> {
-    let signer = SparkSigner::from_mnemonic(mnemonic, "")
-        .map_err(|e| WalletIntegrationError::WalletError(format!("Failed to create signer: {}", e)))?;
+    let signer = SparkSigner::from_mnemonic(mnemonic, "").map_err(|e| {
+        WalletIntegrationError::WalletError(format!("Failed to create signer: {}", e))
+    })?;
 
     let config = WalletConfig {
         network,
@@ -73,13 +74,13 @@ pub async fn init_wallet(mnemonic: &str, network: Network) -> Result<(), WalletI
         ..Default::default()
     };
 
-    let wallet = SparkWallet::new(signer, config)
-        .await
-        .map_err(|e| WalletIntegrationError::WalletError(format!("Failed to connect wallet: {}", e)))?;
+    let wallet = SparkWallet::new(signer, config).await.map_err(|e| {
+        WalletIntegrationError::WalletError(format!("Failed to connect wallet: {}", e))
+    })?;
 
-    WALLET_INSTANCE
-        .set(Arc::new(wallet))
-        .map_err(|_| WalletIntegrationError::WalletError("Wallet already initialized".to_string()))?;
+    WALLET_INSTANCE.set(Arc::new(wallet)).map_err(|_| {
+        WalletIntegrationError::WalletError("Wallet already initialized".to_string())
+    })?;
 
     Ok(())
 }
@@ -155,10 +156,11 @@ pub async fn query_wallet_balance() -> Result<WalletBalance, WalletIntegrationEr
 /// by calling `init_wallet()` before this function is used.
 #[cfg(feature = "spark-integration")]
 fn get_wallet_instance() -> Result<Arc<SparkWallet>, WalletIntegrationError> {
-    WALLET_INSTANCE
-        .get()
-        .cloned()
-        .ok_or_else(|| WalletIntegrationError::WalletError("Wallet not initialized - call init_wallet() first".to_string()))
+    WALLET_INSTANCE.get().cloned().ok_or_else(|| {
+        WalletIntegrationError::WalletError(
+            "Wallet not initialized - call init_wallet() first".to_string(),
+        )
+    })
 }
 
 /// Update wallet balance with manual balance value

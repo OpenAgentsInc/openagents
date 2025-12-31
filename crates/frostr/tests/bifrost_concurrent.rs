@@ -8,15 +8,14 @@
 //! - ECDH and signing operations can run concurrently
 
 use frostr::bifrost::{
-    BifrostConfig, BifrostNode, TimeoutConfig,
-    CommitmentResponse, PartialSignature,
-    BifrostMessage, SigningPackageMessage, ParticipantCommitment,
+    BifrostConfig, BifrostMessage, BifrostNode, CommitmentResponse, PartialSignature,
+    ParticipantCommitment, SigningPackageMessage, TimeoutConfig,
 };
 use frostr::keygen::generate_key_shares;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{RwLock, Barrier};
-use tokio::time::{sleep, Duration};
+use tokio::sync::{Barrier, RwLock};
+use tokio::time::{Duration, sleep};
 
 // ============================================================================
 // SESSION ID ISOLATION TESTS
@@ -138,10 +137,7 @@ async fn test_multiple_nodes_independent_operation() {
     for (i, node) in nodes.iter().enumerate() {
         assert!(node.has_frost_share());
         assert_eq!(node.threshold(), Some(2));
-        assert_eq!(
-            node.frost_share().unwrap().participant_id,
-            (i + 1) as u8
-        );
+        assert_eq!(node.frost_share().unwrap().participant_id, (i + 1) as u8);
     }
 }
 
@@ -156,7 +152,7 @@ async fn test_concurrent_message_handling() {
     };
 
     let node = Arc::new(RwLock::new(
-        BifrostNode::with_config(config).expect("failed to create node")
+        BifrostNode::with_config(config).expect("failed to create node"),
     ));
 
     {
@@ -192,7 +188,10 @@ async fn test_concurrent_message_handling() {
 
     // Wait for all to complete without panic
     for handle in handles {
-        handle.await.expect("task panicked").expect("handler failed");
+        handle
+            .await
+            .expect("task panicked")
+            .expect("handler failed");
     }
 }
 
@@ -609,11 +608,12 @@ async fn test_no_race_in_commitment_collection() {
             };
 
             // Small random delay to create race conditions
-            tokio::time::sleep(Duration::from_micros(
-                (rand::random::<u64>() % 100) as u64
-            )).await;
+            tokio::time::sleep(Duration::from_micros((rand::random::<u64>() % 100) as u64)).await;
 
-            commitments_clone.write().await.insert(participant_id, commitment);
+            commitments_clone
+                .write()
+                .await
+                .insert(participant_id, commitment);
         });
 
         handles.push(handle);

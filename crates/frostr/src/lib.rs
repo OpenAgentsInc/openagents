@@ -39,7 +39,7 @@ pub mod signing;
 
 // Re-export commonly used types
 pub use credential::{GroupCredential, ShareCredential};
-pub use keygen::{generate_key_shares, reshare_frost_shares, FrostShare, Share};
+pub use keygen::{FrostShare, Share, generate_key_shares, reshare_frost_shares};
 
 // Re-export frost-secp256k1 types for consumers that need direct access
 pub use frost_secp256k1 as frost;

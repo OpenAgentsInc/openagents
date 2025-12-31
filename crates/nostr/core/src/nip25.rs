@@ -214,11 +214,7 @@ pub fn is_reaction_kind(kind: u16) -> bool {
 mod tests {
     use super::*;
 
-    fn create_test_reaction_event(
-        content: &str,
-        event_id: &str,
-        author: Option<&str>,
-    ) -> Event {
+    fn create_test_reaction_event(content: &str, event_id: &str, author: Option<&str>) -> Event {
         let mut tags = vec![vec!["e".to_string(), event_id.to_string()]];
 
         if let Some(author_pubkey) = author {
@@ -255,10 +251,7 @@ mod tests {
     fn test_reaction_type_to_content() {
         assert_eq!(ReactionType::Like.to_content(), "+");
         assert_eq!(ReactionType::Dislike.to_content(), "-");
-        assert_eq!(
-            ReactionType::Custom("❤️".to_string()).to_content(),
-            "❤️"
-        );
+        assert_eq!(ReactionType::Custom("❤️".to_string()).to_content(), "❤️");
     }
 
     #[test]

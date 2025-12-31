@@ -154,7 +154,10 @@ pub fn validate_group_id(id: &str) -> Result<(), Nip29Error> {
     if id.is_empty() {
         return Err(Nip29Error::EmptyGroupId);
     }
-    if !id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_') {
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+    {
         return Err(Nip29Error::InvalidGroupId(id.to_string()));
     }
     Ok(())
@@ -171,7 +174,7 @@ pub fn parse_group_identifier(identifier: &str) -> Result<(String, String), Nip2
 
 /// Format a group identifier from host and group_id
 pub fn format_group_identifier(host: &str, group_id: &str) -> String {
-    format!("{}'{}",host, group_id)
+    format!("{}'{}", host, group_id)
 }
 
 /// Group metadata (kind 39000)
@@ -928,7 +931,10 @@ mod tests {
         assert_eq!(roles.id, "pizza-lovers");
         assert_eq!(roles.roles.len(), 2);
         assert_eq!(roles.roles[0].name, "admin");
-        assert_eq!(roles.roles[1].description, Some("Can delete messages".to_string()));
+        assert_eq!(
+            roles.roles[1].description,
+            Some("Can delete messages".to_string())
+        );
 
         let tags = roles.to_tags();
         assert_eq!(tags[1][0], "role");
@@ -978,8 +984,7 @@ mod tests {
 
     #[test]
     fn test_moderation_remove_user() {
-        let action =
-            ModerationAction::remove_user("pizza-lovers", "pubkey123").with_reason("Spam");
+        let action = ModerationAction::remove_user("pizza-lovers", "pubkey123").with_reason("Spam");
 
         assert_eq!(action.kind(), KIND_MOD_REMOVE_USER);
         assert_eq!(action.content(), "Spam");

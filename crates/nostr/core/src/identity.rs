@@ -69,7 +69,8 @@ impl NostrIdentity {
     /// Validate a public key format
     fn is_valid_pubkey(pubkey: &str) -> bool {
         // Check for npub format or 64 hex characters
-        pubkey.starts_with("npub1") || (pubkey.len() == 64 && pubkey.chars().all(|c| c.is_ascii_hexdigit()))
+        pubkey.starts_with("npub1")
+            || (pubkey.len() == 64 && pubkey.chars().all(|c| c.is_ascii_hexdigit()))
     }
 
     /// Get the public key as a string
@@ -127,7 +128,10 @@ impl CreatorProfile {
     }
 
     /// Set the Lightning address for payouts
-    pub fn with_lightning_address(mut self, address: impl Into<String>) -> Result<Self, IdentityError> {
+    pub fn with_lightning_address(
+        mut self,
+        address: impl Into<String>,
+    ) -> Result<Self, IdentityError> {
         let address = address.into();
 
         // Basic Lightning address validation (should be email-like format)

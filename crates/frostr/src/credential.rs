@@ -28,8 +28,8 @@ impl GroupCredential {
         data.extend_from_slice(&self.total.to_be_bytes());
         data.extend_from_slice(&self.group_pk);
 
-        let hrp = Hrp::parse("bfgroup")
-            .map_err(|e| Error::Encoding(format!("invalid HRP: {}", e)))?;
+        let hrp =
+            Hrp::parse("bfgroup").map_err(|e| Error::Encoding(format!("invalid HRP: {}", e)))?;
 
         bech32::encode::<Bech32>(hrp, &data)
             .map_err(|e| Error::Encoding(format!("bech32 encoding failed: {}", e)))
@@ -41,11 +41,17 @@ impl GroupCredential {
             .map_err(|e| Error::Encoding(format!("bech32 decoding failed: {}", e)))?;
 
         if hrp.to_string() != "bfgroup" {
-            return Err(Error::Encoding(format!("invalid HRP: expected 'bfgroup', got '{}'", hrp)));
+            return Err(Error::Encoding(format!(
+                "invalid HRP: expected 'bfgroup', got '{}'",
+                hrp
+            )));
         }
 
         if data.len() != 40 {
-            return Err(Error::Encoding(format!("invalid data length: expected 40 bytes, got {}", data.len())));
+            return Err(Error::Encoding(format!(
+                "invalid data length: expected 40 bytes, got {}",
+                data.len()
+            )));
         }
 
         let threshold = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
@@ -88,8 +94,8 @@ impl ShareCredential {
         data.extend_from_slice(&self.secret);
         data.extend_from_slice(&self.group_pk);
 
-        let hrp = Hrp::parse("bfshare")
-            .map_err(|e| Error::Encoding(format!("invalid HRP: {}", e)))?;
+        let hrp =
+            Hrp::parse("bfshare").map_err(|e| Error::Encoding(format!("invalid HRP: {}", e)))?;
 
         bech32::encode::<Bech32>(hrp, &data)
             .map_err(|e| Error::Encoding(format!("bech32 encoding failed: {}", e)))
@@ -101,11 +107,17 @@ impl ShareCredential {
             .map_err(|e| Error::Encoding(format!("bech32 decoding failed: {}", e)))?;
 
         if hrp.to_string() != "bfshare" {
-            return Err(Error::Encoding(format!("invalid HRP: expected 'bfshare', got '{}'", hrp)));
+            return Err(Error::Encoding(format!(
+                "invalid HRP: expected 'bfshare', got '{}'",
+                hrp
+            )));
         }
 
         if data.len() != 68 {
-            return Err(Error::Encoding(format!("invalid data length: expected 68 bytes, got {}", data.len())));
+            return Err(Error::Encoding(format!(
+                "invalid data length: expected 68 bytes, got {}",
+                data.len()
+            )));
         }
 
         let index = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
@@ -173,11 +185,15 @@ mod tests {
     #[test]
     fn test_invalid_bech32_strings() {
         // Invalid HRP for group
-        let result = GroupCredential::from_bech32("bfshare1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqy9ggjn");
+        let result = GroupCredential::from_bech32(
+            "bfshare1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqy9ggjn",
+        );
         assert!(result.is_err());
 
         // Invalid HRP for share
-        let result = ShareCredential::from_bech32("bfgroup1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqy9ggjn");
+        let result = ShareCredential::from_bech32(
+            "bfgroup1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqy9ggjn",
+        );
         assert!(result.is_err());
 
         // Completely invalid bech32

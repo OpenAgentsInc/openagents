@@ -544,10 +544,7 @@ mod tests {
     fn test_trajectory_event_content_with_data() {
         let content = TrajectoryEventContent::new(StepType::ToolUse)
             .with_data("tool", serde_json::Value::String("Read".to_string()))
-            .with_data(
-                "input",
-                serde_json::json!({"file_path": "/path/to/file"}),
-            );
+            .with_data("input", serde_json::json!({"file_path": "/path/to/file"}));
 
         assert_eq!(content.data.len(), 2);
         assert_eq!(

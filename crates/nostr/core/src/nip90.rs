@@ -1688,9 +1688,24 @@ mod tests {
         let event = create_job_result_event(&result);
 
         assert_eq!(event.kind, KIND_JOB_TEXT_GENERATION + 1000);
-        assert!(event.tags.iter().any(|t| t[0] == "e" && t[1] == "request123"));
-        assert!(event.tags.iter().any(|t| t[0] == "p" && t[1] == "customer456"));
-        assert!(event.tags.iter().any(|t| t[0] == "amount" && t[1] == "1000"));
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "e" && t[1] == "request123")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "p" && t[1] == "customer456")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "amount" && t[1] == "1000")
+        );
         assert_eq!(event.content, "Nostr flows free");
     }
 
@@ -1702,9 +1717,24 @@ mod tests {
         let event = create_job_feedback_event(&feedback);
 
         assert_eq!(event.kind, KIND_JOB_FEEDBACK);
-        assert!(event.tags.iter().any(|t| t[0] == "status" && t[1] == "processing"));
-        assert!(event.tags.iter().any(|t| t[0] == "e" && t[1] == "request123"));
-        assert!(event.tags.iter().any(|t| t[0] == "p" && t[1] == "customer456"));
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "status" && t[1] == "processing")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "e" && t[1] == "request123")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "p" && t[1] == "customer456")
+        );
         assert_eq!(event.content, "");
     }
 }

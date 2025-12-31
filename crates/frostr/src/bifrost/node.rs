@@ -1,18 +1,20 @@
 //! Bifrost node implementation
 
+use crate::Result;
 use crate::bifrost::aggregator::EcdhAggregator;
 use crate::bifrost::peer::{PeerManager, PeerStatus};
-use crate::bifrost::serialization::{serialize_commitments, deserialize_commitments, serialize_sig_share};
+use crate::bifrost::serialization::{
+    deserialize_commitments, serialize_commitments, serialize_sig_share,
+};
 use crate::bifrost::transport::{NostrTransport, TransportConfig};
 use crate::bifrost::{
-    BifrostMessage, EcdhRequest, Ping,
-    CommitmentRequest, CommitmentResponse, SigningPackageMessage, ParticipantCommitment, PartialSignature,
+    BifrostMessage, CommitmentRequest, CommitmentResponse, EcdhRequest, PartialSignature,
+    ParticipantCommitment, Ping, SigningPackageMessage,
 };
 use crate::ecdh::create_ecdh_share;
 use crate::keygen::FrostShare;
 use crate::signing::{round1_commit, round2_sign};
-use crate::Result;
-use frost_secp256k1::{round1::SigningNonces, Identifier, SigningPackage};
+use frost_secp256k1::{Identifier, SigningPackage, round1::SigningNonces};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,8 +34,8 @@ pub struct TimeoutConfig {
 impl Default for TimeoutConfig {
     fn default() -> Self {
         Self {
-            sign_timeout_ms: 30000, // 30 seconds
-            ecdh_timeout_ms: 10000, // 10 seconds
+            sign_timeout_ms: 30000,    // 30 seconds
+            ecdh_timeout_ms: 10000,    // 10 seconds
             default_timeout_ms: 30000, // 30 seconds
         }
     }
@@ -280,14 +282,13 @@ impl BifrostNode {
     /// - Relay connection fails
     pub async fn start(&mut self) -> Result<()> {
         if self.is_running() {
-            return Err(crate::Error::Protocol(
-                "Node is already running".into()
-            ));
+            return Err(crate::Error::Protocol("Node is already running".into()));
         }
 
         let transport = self.transport.as_mut().ok_or_else(|| {
             crate::Error::Protocol(
-                "Cannot start node without transport. Configure secret_key in BifrostConfig.".into()
+                "Cannot start node without transport. Configure secret_key in BifrostConfig."
+                    .into(),
             )
         })?;
 
@@ -337,7 +338,7 @@ impl BifrostNode {
     pub async fn reconnect(&mut self) -> Result<()> {
         if !self.has_transport() {
             return Err(crate::Error::Protocol(
-                "Cannot reconnect without transport configured".into()
+                "Cannot reconnect without transport configured".into(),
             ));
         }
 
@@ -358,7 +359,7 @@ impl BifrostNode {
         // Check if transport is initialized
         let transport = self.transport.as_ref().ok_or_else(|| {
             crate::Error::Protocol(
-                "NostrTransport not initialized. Provide secret_key in BifrostConfig.".into()
+                "NostrTransport not initialized. Provide secret_key in BifrostConfig.".into(),
             )
         })?;
 
@@ -380,9 +381,7 @@ impl BifrostNode {
         let message = BifrostMessage::Ping(ping);
 
         // Send ping and wait for pong (expecting 1 response)
-        let responses = transport
-            .publish_and_wait(&message, 1)
-            .await?;
+        let responses = transport.publish_and_wait(&message, 1).await?;
 
         // Check if we got a pong response and calculate latency
         let recv_time = std::time::SystemTime::now()
@@ -392,14 +391,16 @@ impl BifrostNode {
 
         for response in responses {
             if let BifrostMessage::Pong(pong) = response
-                && pong.session_id == session_id {
-                    // Calculate round-trip latency
-                    let latency_ms = recv_time.saturating_sub(timestamp);
+                && pong.session_id == session_id
+            {
+                // Calculate round-trip latency
+                let latency_ms = recv_time.saturating_sub(timestamp);
 
-                    // Mark peer as responsive with latency
-                    self.peer_manager.mark_peer_responsive(pubkey, Some(latency_ms));
-                    return Ok(true);
-                }
+                // Mark peer as responsive with latency
+                self.peer_manager
+                    .mark_peer_responsive(pubkey, Some(latency_ms));
+                return Ok(true);
+            }
         }
 
         // No valid pong received
@@ -485,17 +486,18 @@ impl BifrostNode {
         // Check preconditions
         let transport = self.transport.as_ref().ok_or_else(|| {
             crate::Error::Protocol(
-                "NostrTransport not initialized. Provide secret_key in BifrostConfig.".into()
+                "NostrTransport not initialized. Provide secret_key in BifrostConfig.".into(),
             )
         })?;
 
         let frost_share = self.frost_share.as_ref().ok_or_else(|| {
             crate::Error::Protocol(
-                "FrostShare not set. Call set_frost_share() before signing.".into()
+                "FrostShare not set. Call set_frost_share() before signing.".into(),
             )
         })?;
 
-        self.sign_two_phase(event_hash, transport, frost_share).await
+        self.sign_two_phase(event_hash, transport, frost_share)
+            .await
     }
 
     /// Internal implementation of two-round FROST signing protocol
@@ -552,11 +554,11 @@ impl BifrostNode {
             for response in raw_responses {
                 if let BifrostMessage::CommitmentResponse(cr) = response
                     && cr.participant_id != initiator_id
-                        && participant_set.contains(&cr.participant_id)
-                        && seen.insert(cr.participant_id)
-                    {
-                        filtered.push(cr);
-                    }
+                    && participant_set.contains(&cr.participant_id)
+                    && seen.insert(cr.participant_id)
+                {
+                    filtered.push(cr);
+                }
             }
 
             if filtered.len() < required_responses {
@@ -569,12 +571,10 @@ impl BifrostNode {
         };
 
         // Collect all commitments (ours + peers)
-        let mut all_commitments: Vec<ParticipantCommitment> = vec![
-            ParticipantCommitment {
-                participant_id: initiator_id,
-                commitment: our_commitment_bytes,
-            }
-        ];
+        let mut all_commitments: Vec<ParticipantCommitment> = vec![ParticipantCommitment {
+            participant_id: initiator_id,
+            commitment: our_commitment_bytes,
+        }];
 
         for response in &commitment_responses {
             all_commitments.push(ParticipantCommitment {
@@ -613,11 +613,11 @@ impl BifrostNode {
             for response in raw_responses {
                 if let BifrostMessage::PartialSignature(ps) = response
                     && ps.participant_id != initiator_id
-                        && participant_set.contains(&ps.participant_id)
-                        && seen.insert(ps.participant_id)
-                    {
-                        filtered.push(ps);
-                    }
+                    && participant_set.contains(&ps.participant_id)
+                    && seen.insert(ps.participant_id)
+                {
+                    filtered.push(ps);
+                }
             }
 
             if filtered.len() < required_responses {
@@ -653,15 +653,13 @@ impl BifrostNode {
         }
 
         // Aggregate signatures using frost-secp256k1
-        let final_signature = crate::signing::aggregate_signatures(
-            &signing_package,
-            &signature_shares,
-            frost_share,
-        )?;
+        let final_signature =
+            crate::signing::aggregate_signatures(&signing_package, &signature_shares, frost_share)?;
 
         // Convert to 64-byte BIP-340 format
-        let sig_bytes = final_signature.serialize()
-            .map_err(|e| crate::Error::Encoding(format!("Failed to serialize signature: {:?}", e)))?;
+        let sig_bytes = final_signature.serialize().map_err(|e| {
+            crate::Error::Encoding(format!("Failed to serialize signature: {:?}", e))
+        })?;
 
         if sig_bytes.len() != 65 {
             return Err(crate::Error::Encoding(format!(
@@ -671,7 +669,7 @@ impl BifrostNode {
         }
 
         let mut result = [0u8; 64];
-        result[..32].copy_from_slice(&sig_bytes[1..33]);  // R.x (skip compression prefix)
+        result[..32].copy_from_slice(&sig_bytes[1..33]); // R.x (skip compression prefix)
         result[32..].copy_from_slice(&sig_bytes[33..65]); // s scalar
 
         Ok(result)
@@ -695,7 +693,7 @@ impl BifrostNode {
     ) -> Result<Vec<u8>> {
         if threshold == 0 {
             return Err(crate::Error::Protocol(
-                "Threshold must be at least 1".into()
+                "Threshold must be at least 1".into(),
             ));
         }
 
@@ -762,7 +760,6 @@ impl BifrostNode {
         Ok(selected)
     }
 
-
     /// Handle Round 1 of two-phase signing: CommitmentRequest
     ///
     /// This is called when a coordinator requests commitments from participants.
@@ -774,7 +771,8 @@ impl BifrostNode {
     ) -> Result<CommitmentResponse> {
         let frost_share = self.frost_share.as_ref().ok_or_else(|| {
             crate::Error::Protocol(
-                "FrostShare not set. Call set_frost_share() before handling commitment requests.".into()
+                "FrostShare not set. Call set_frost_share() before handling commitment requests."
+                    .into(),
             )
         })?;
 
@@ -807,7 +805,8 @@ impl BifrostNode {
     ) -> Result<PartialSignature> {
         let frost_share = self.frost_share.as_ref().ok_or_else(|| {
             crate::Error::Protocol(
-                "FrostShare not set. Call set_frost_share() before handling signing packages.".into()
+                "FrostShare not set. Call set_frost_share() before handling signing packages."
+                    .into(),
             )
         })?;
 
@@ -854,10 +853,7 @@ impl BifrostNode {
     /// - Ping: Automatically handled by transport with Pong
     ///
     /// Returns an optional response message to send back.
-    pub fn handle_message(
-        &self,
-        message: &BifrostMessage,
-    ) -> Result<Option<BifrostMessage>> {
+    pub fn handle_message(&self, message: &BifrostMessage) -> Result<Option<BifrostMessage>> {
         match message {
             // Two-phase FROST signing protocol (RFC 9591)
             BifrostMessage::CommitmentRequest(request) => {
@@ -903,14 +899,12 @@ impl BifrostNode {
         // Check preconditions
         let transport = self.transport.as_ref().ok_or_else(|| {
             crate::Error::Protocol(
-                "NostrTransport not initialized. Provide secret_key in BifrostConfig.".into()
+                "NostrTransport not initialized. Provide secret_key in BifrostConfig.".into(),
             )
         })?;
 
         let frost_share = self.frost_share.as_ref().ok_or_else(|| {
-            crate::Error::Protocol(
-                "FrostShare not set. Call set_frost_share() before ECDH.".into()
-            )
+            crate::Error::Protocol("FrostShare not set. Call set_frost_share() before ECDH.".into())
         })?;
 
         // Get threshold requirement
@@ -976,11 +970,11 @@ impl BifrostNode {
             for response in responses {
                 if let BifrostMessage::EcdhResponse(ecdh_response) = response
                     && ecdh_response.participant_id != initiator_id
-                        && participant_set.contains(&ecdh_response.participant_id)
-                        && seen.insert(ecdh_response.participant_id)
-                    {
-                        filtered.push(ecdh_response);
-                    }
+                    && participant_set.contains(&ecdh_response.participant_id)
+                    && seen.insert(ecdh_response.participant_id)
+                {
+                    filtered.push(ecdh_response);
+                }
             }
 
             if filtered.len() < required_responses {
@@ -1017,16 +1011,16 @@ impl BifrostNode {
     /// });
     /// ```
     pub async fn run_responder(&self) -> Result<()> {
-        let transport = self.transport.as_ref().ok_or_else(|| {
-            crate::Error::Protocol("Transport not initialized".into())
-        })?;
+        let transport = self
+            .transport
+            .as_ref()
+            .ok_or_else(|| crate::Error::Protocol("Transport not initialized".into()))?;
 
         while self.is_running() {
             // Receive incoming message with timeout
-            match tokio::time::timeout(
-                tokio::time::Duration::from_secs(1),
-                transport.receive()
-            ).await {
+            match tokio::time::timeout(tokio::time::Duration::from_secs(1), transport.receive())
+                .await
+            {
                 Ok(Ok(message)) => {
                     // Handle the message and get optional response
                     if let Ok(Some(response)) = self.handle_message(&message) {
@@ -1064,7 +1058,7 @@ impl BifrostNode {
         // Need our frost share to compute ECDH
         let frost_share = self.frost_share.as_ref().ok_or_else(|| {
             crate::Error::Protocol(
-                "FrostShare not set. Call set_frost_share() before handling ECDH requests.".into()
+                "FrostShare not set. Call set_frost_share() before handling ECDH requests.".into(),
             )
         })?;
 
@@ -1338,10 +1332,12 @@ mod tests {
         // Should fail because no transport
         let result = node.sign(&event_hash).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("NostrTransport not initialized"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("NostrTransport not initialized")
+        );
     }
 
     #[tokio::test]
@@ -1355,10 +1351,12 @@ mod tests {
         // Should fail because FrostShare not set
         let result = node.sign(&event_hash).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("FrostShare not set"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("FrostShare not set")
+        );
     }
 
     #[tokio::test]
@@ -1369,10 +1367,12 @@ mod tests {
         // Should fail because no transport
         let result = node.ecdh(&peer_pubkey).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("NostrTransport not initialized"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("NostrTransport not initialized")
+        );
     }
 
     #[tokio::test]
@@ -1386,10 +1386,12 @@ mod tests {
         // Should fail because FrostShare not set
         let result = node.ecdh(&peer_pubkey).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("FrostShare not set"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("FrostShare not set")
+        );
     }
 
     #[test]
@@ -1445,10 +1447,12 @@ mod tests {
         // Should fail because no frost_share
         let result = node.sign(&event_hash).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("FrostShare not set"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("FrostShare not set")
+        );
     }
 
     #[tokio::test]
@@ -1519,7 +1523,7 @@ mod tests {
 
         // Use the serialization module directly
         let bytes = serialize_commitments(&commitments);
-        assert_eq!(bytes.len(), 66);  // 66 bytes: hiding (33) + binding (33)
+        assert_eq!(bytes.len(), 66); // 66 bytes: hiding (33) + binding (33)
     }
 
     #[test]
@@ -1549,10 +1553,12 @@ mod tests {
         // Should fail because no transport
         let result = node.start().await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("without transport"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("without transport")
+        );
     }
 
     #[tokio::test]
@@ -1582,10 +1588,7 @@ mod tests {
         // Second start should fail
         let result = node.start().await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("already running"));
+        assert!(result.unwrap_err().to_string().contains("already running"));
     }
 
     #[tokio::test]
@@ -1620,10 +1623,12 @@ mod tests {
         // Should fail without transport
         let result = node.reconnect().await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("without transport"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("without transport")
+        );
     }
 
     #[tokio::test]
@@ -1686,7 +1691,12 @@ mod tests {
         // Should fail because no frost share
         let result = node.handle_commitment_request(&request);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("FrostShare not set"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("FrostShare not set")
+        );
     }
 
     #[test]
@@ -1695,13 +1705,13 @@ mod tests {
 
         // Set up frost share
         let shares = crate::keygen::generate_key_shares(2, 3).unwrap();
-        node.set_frost_share(shares[1].clone());  // Use share 2 as responder
+        node.set_frost_share(shares[1].clone()); // Use share 2 as responder
 
         let commitment_request = CommitmentRequest {
             event_hash: [0x42; 32],
             session_id: "test-session".to_string(),
             participants: vec![1, 2],
-            initiator_id: 1,  // Initiated by participant 1
+            initiator_id: 1, // Initiated by participant 1
         };
 
         let message = BifrostMessage::CommitmentRequest(commitment_request);
@@ -1734,7 +1744,12 @@ mod tests {
         // Should fail because no frost share
         let result = node.handle_ecdh_request(&request);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("FrostShare not set"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("FrostShare not set")
+        );
     }
 
     #[test]
@@ -1743,14 +1758,13 @@ mod tests {
 
         // Set up frost share
         let shares = crate::keygen::generate_key_shares(2, 3).unwrap();
-        node.set_frost_share(shares[1].clone());  // Use share 2 as responder
+        node.set_frost_share(shares[1].clone()); // Use share 2 as responder
 
         // Create a valid peer pubkey (generator point x-coordinate works)
         let peer_pubkey = [
-            0x79, 0xBE, 0x66, 0x7E, 0xF9, 0xDC, 0xBB, 0xAC,
-            0x55, 0xA0, 0x62, 0x95, 0xCE, 0x87, 0x0B, 0x07,
-            0x02, 0x9B, 0xFC, 0xDB, 0x2D, 0xCE, 0x28, 0xD9,
-            0x59, 0xF2, 0x81, 0x5B, 0x16, 0xF8, 0x17, 0x98,
+            0x79, 0xBE, 0x66, 0x7E, 0xF9, 0xDC, 0xBB, 0xAC, 0x55, 0xA0, 0x62, 0x95, 0xCE, 0x87,
+            0x0B, 0x07, 0x02, 0x9B, 0xFC, 0xDB, 0x2D, 0xCE, 0x28, 0xD9, 0x59, 0xF2, 0x81, 0x5B,
+            0x16, 0xF8, 0x17, 0x98,
         ];
 
         let request = crate::bifrost::EcdhRequest {
@@ -1766,7 +1780,7 @@ mod tests {
         let response = result.unwrap();
         assert_eq!(response.session_id, "ecdh-session-123");
         assert_eq!(response.participant_id, shares[1].participant_id);
-        assert_eq!(response.partial_ecdh.len(), 33);  // Compressed point
+        assert_eq!(response.partial_ecdh.len(), 33); // Compressed point
         // First byte should be 0x02 or 0x03 (compressed point prefix)
         assert!(response.partial_ecdh[0] == 0x02 || response.partial_ecdh[0] == 0x03);
     }
@@ -1777,14 +1791,13 @@ mod tests {
 
         // Set up frost share
         let shares = crate::keygen::generate_key_shares(2, 3).unwrap();
-        node.set_frost_share(shares[1].clone());  // Use share 2 as responder
+        node.set_frost_share(shares[1].clone()); // Use share 2 as responder
 
         // Create a valid peer pubkey
         let peer_pubkey = [
-            0x79, 0xBE, 0x66, 0x7E, 0xF9, 0xDC, 0xBB, 0xAC,
-            0x55, 0xA0, 0x62, 0x95, 0xCE, 0x87, 0x0B, 0x07,
-            0x02, 0x9B, 0xFC, 0xDB, 0x2D, 0xCE, 0x28, 0xD9,
-            0x59, 0xF2, 0x81, 0x5B, 0x16, 0xF8, 0x17, 0x98,
+            0x79, 0xBE, 0x66, 0x7E, 0xF9, 0xDC, 0xBB, 0xAC, 0x55, 0xA0, 0x62, 0x95, 0xCE, 0x87,
+            0x0B, 0x07, 0x02, 0x9B, 0xFC, 0xDB, 0x2D, 0xCE, 0x28, 0xD9, 0x59, 0xF2, 0x81, 0x5B,
+            0x16, 0xF8, 0x17, 0x98,
         ];
 
         let ecdh_request = crate::bifrost::EcdhRequest {

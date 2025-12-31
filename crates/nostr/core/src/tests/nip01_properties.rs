@@ -3,12 +3,12 @@
 //! These tests use quickcheck to verify that event validation, hashing,
 //! and signing operations satisfy fundamental properties for all possible inputs.
 
+use crate::nip01::validate_unsigned_event;
 #[cfg(feature = "full")]
 use crate::nip01::{
-    finalize_event, generate_secret_key, get_event_hash, get_public_key_hex, validate_event,
-    verify_event, EventTemplate, UnsignedEvent,
+    EventTemplate, UnsignedEvent, finalize_event, generate_secret_key, get_event_hash,
+    get_public_key_hex, validate_event, verify_event,
 };
-use crate::nip01::validate_unsigned_event;
 use quickcheck::{Arbitrary, Gen};
 
 /// Wrapper for valid hex strings (64 chars lowercase)
@@ -85,7 +85,10 @@ impl Arbitrary for ArbitraryEventTemplate {
 }
 
 /// Property: validate_unsigned_event accepts well-formed events
-fn prop_validate_unsigned_event_wellformed(hex: HexString64, template: ArbitraryEventTemplate) -> bool {
+fn prop_validate_unsigned_event_wellformed(
+    hex: HexString64,
+    template: ArbitraryEventTemplate,
+) -> bool {
     let event = UnsignedEvent {
         pubkey: hex.0,
         created_at: template.0.created_at,
@@ -161,7 +164,9 @@ fn prop_event_hash_format(hex: HexString64, template: ArbitraryEventTemplate) ->
 
     match get_event_hash(&event) {
         Ok(hash) => {
-            hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) && hash == hash.to_lowercase()
+            hash.len() == 64
+                && hash.chars().all(|c| c.is_ascii_hexdigit())
+                && hash == hash.to_lowercase()
         }
         Err(_) => false,
     }
@@ -201,7 +206,7 @@ fn prop_tampered_event_fails_verification(template: ArbitraryEventTemplate) -> b
 
             match verify_event(&event) {
                 Ok(valid) => !valid, // Should be invalid
-                Err(_) => true, // Error is also acceptable
+                Err(_) => true,      // Error is also acceptable
             }
         }
         Err(_) => true, // Can't test if signing fails
@@ -252,7 +257,10 @@ fn prop_event_id_matches_hash(template: ArbitraryEventTemplate) -> bool {
 fn prop_pubkey_matches_secret(template: ArbitraryEventTemplate) -> bool {
     let secret_key = generate_secret_key();
 
-    match (finalize_event(&template.0, &secret_key), get_public_key_hex(&secret_key)) {
+    match (
+        finalize_event(&template.0, &secret_key),
+        get_public_key_hex(&secret_key),
+    ) {
         (Ok(event), Ok(pubkey)) => event.pubkey == pubkey,
         _ => false,
     }
@@ -284,9 +292,9 @@ mod tests {
     #[cfg(feature = "full")]
     #[test]
     fn test_event_hash_deterministic() {
-        QuickCheck::new()
-            .tests(50)
-            .quickcheck(prop_event_hash_deterministic as fn(HexString64, ArbitraryEventTemplate) -> bool);
+        QuickCheck::new().tests(50).quickcheck(
+            prop_event_hash_deterministic as fn(HexString64, ArbitraryEventTemplate) -> bool,
+        );
     }
 
     #[cfg(feature = "full")]
@@ -316,17 +324,17 @@ mod tests {
     #[cfg(feature = "full")]
     #[test]
     fn test_tampered_event_fails_verification() {
-        QuickCheck::new()
-            .tests(50)
-            .quickcheck(prop_tampered_event_fails_verification as fn(ArbitraryEventTemplate) -> bool);
+        QuickCheck::new().tests(50).quickcheck(
+            prop_tampered_event_fails_verification as fn(ArbitraryEventTemplate) -> bool,
+        );
     }
 
     #[cfg(feature = "full")]
     #[test]
     fn test_signed_event_signature_format() {
-        QuickCheck::new().tests(50).quickcheck(
-            prop_signed_event_signature_format as fn(ArbitraryEventTemplate) -> bool,
-        );
+        QuickCheck::new()
+            .tests(50)
+            .quickcheck(prop_signed_event_signature_format as fn(ArbitraryEventTemplate) -> bool);
     }
 
     #[cfg(feature = "full")]

@@ -121,49 +121,51 @@ pub fn create_admin_routes(
         .and(warp::get())
         .and(with_metrics(metrics.clone()))
         .and(with_rate_limiter(rate_limiter.clone()))
-        .map(|metrics: Arc<RelayMetrics>, _rate_limiter: Arc<RateLimiter>| {
-            let snapshot = metrics.snapshot();
-            let response = StatsResponse {
-                health: HealthResponse {
-                    status: "ok".to_string(),
-                    uptime_secs: snapshot.uptime_secs,
-                    timestamp: snapshot.timestamp,
-                },
-                connections: ConnectionStats {
-                    active: snapshot.active_connections,
-                    blocked_banned: snapshot.connections_blocked_banned,
-                    blocked_rate_limit: snapshot.connections_blocked_rate_limit,
-                },
-                events: EventStats {
-                    received: snapshot.events_received,
-                    stored: snapshot.events_stored,
-                    rejected_validation: snapshot.events_rejected_validation,
-                    rejected_rate_limit: snapshot.events_rejected_rate_limit,
-                    rejected_signature: snapshot.events_rejected_signature,
-                    storage_success_rate: snapshot.storage_success_rate(),
-                    events_per_second: snapshot.events_per_second(),
-                },
-                subscriptions: SubscriptionStats {
-                    active: snapshot.active_subscriptions,
-                    total_requests: snapshot.subscription_requests,
-                    total_closes: snapshot.subscription_closes,
-                    avg_per_connection: snapshot.avg_subscriptions_per_connection(),
-                },
-                bandwidth: BandwidthStats {
-                    bytes_received: snapshot.bytes_received,
-                    bytes_sent: snapshot.bytes_sent,
-                },
-                database: DatabaseStats {
-                    queries: snapshot.db_queries,
-                    errors: snapshot.db_errors,
-                    error_rate: snapshot.db_error_rate(),
-                },
-                rate_limiting: RateLimitStats {
-                    banned_ips: snapshot.banned_ips,
-                },
-            };
-            warp::reply::json(&response)
-        });
+        .map(
+            |metrics: Arc<RelayMetrics>, _rate_limiter: Arc<RateLimiter>| {
+                let snapshot = metrics.snapshot();
+                let response = StatsResponse {
+                    health: HealthResponse {
+                        status: "ok".to_string(),
+                        uptime_secs: snapshot.uptime_secs,
+                        timestamp: snapshot.timestamp,
+                    },
+                    connections: ConnectionStats {
+                        active: snapshot.active_connections,
+                        blocked_banned: snapshot.connections_blocked_banned,
+                        blocked_rate_limit: snapshot.connections_blocked_rate_limit,
+                    },
+                    events: EventStats {
+                        received: snapshot.events_received,
+                        stored: snapshot.events_stored,
+                        rejected_validation: snapshot.events_rejected_validation,
+                        rejected_rate_limit: snapshot.events_rejected_rate_limit,
+                        rejected_signature: snapshot.events_rejected_signature,
+                        storage_success_rate: snapshot.storage_success_rate(),
+                        events_per_second: snapshot.events_per_second(),
+                    },
+                    subscriptions: SubscriptionStats {
+                        active: snapshot.active_subscriptions,
+                        total_requests: snapshot.subscription_requests,
+                        total_closes: snapshot.subscription_closes,
+                        avg_per_connection: snapshot.avg_subscriptions_per_connection(),
+                    },
+                    bandwidth: BandwidthStats {
+                        bytes_received: snapshot.bytes_received,
+                        bytes_sent: snapshot.bytes_sent,
+                    },
+                    database: DatabaseStats {
+                        queries: snapshot.db_queries,
+                        errors: snapshot.db_errors,
+                        error_rate: snapshot.db_error_rate(),
+                    },
+                    rate_limiting: RateLimitStats {
+                        banned_ips: snapshot.banned_ips,
+                    },
+                };
+                warp::reply::json(&response)
+            },
+        );
 
     let metrics_endpoint = warp::path!("admin" / "metrics")
         .and(warp::get())
@@ -173,18 +175,14 @@ pub fn create_admin_routes(
             warp::reply::with_header(prometheus, "Content-Type", "text/plain; version=0.0.4")
         });
 
-    let dashboard = warp::path!("admin" / "dashboard")
-        .and(warp::get())
-        .map(|| {
-            let html = include_str!("dashboard.html");
-            warp::reply::html(html)
-        });
+    let dashboard = warp::path!("admin" / "dashboard").and(warp::get()).map(|| {
+        let html = include_str!("dashboard.html");
+        warp::reply::html(html)
+    });
 
     let admin_root = warp::path!("admin")
         .and(warp::get())
-        .map(|| {
-            warp::redirect::redirect(warp::http::Uri::from_static("/admin/dashboard"))
-        });
+        .map(|| warp::redirect::redirect(warp::http::Uri::from_static("/admin/dashboard")));
 
     admin_root
         .or(dashboard)
@@ -333,9 +331,7 @@ mod tests {
                 errors: 50,
                 error_rate: 1.0,
             },
-            rate_limiting: RateLimitStats {
-                banned_ips: 5,
-            },
+            rate_limiting: RateLimitStats { banned_ips: 5 },
         };
 
         let json = serde_json::to_string(&response).unwrap();

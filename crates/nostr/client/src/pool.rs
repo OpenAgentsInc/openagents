@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, info, warn};
 
 /// Configuration for relay pool
@@ -293,7 +293,8 @@ impl RelayPool {
                 .collect()
         };
 
-        self.publish_to_relay_connections(event, target_relays).await
+        self.publish_to_relay_connections(event, target_relays)
+            .await
     }
 
     /// Publish an event to a specific relay URL list
@@ -316,7 +317,8 @@ impl RelayPool {
             selected
         };
 
-        self.publish_to_relay_connections(event, target_relays).await
+        self.publish_to_relay_connections(event, target_relays)
+            .await
     }
 
     async fn publish_to_relay_connections(
@@ -345,9 +347,7 @@ impl RelayPool {
 
             let handle = tokio::spawn(async move {
                 let start = Instant::now();
-                let result = relay
-                    .publish_event(&event, Duration::from_secs(5))
-                    .await;
+                let result = relay.publish_event(&event, Duration::from_secs(5)).await;
 
                 // Update stats
                 let latency = start.elapsed().as_millis() as u64;
@@ -443,10 +443,7 @@ impl RelayPool {
             let stats = Arc::clone(&self.stats);
 
             // Subscribe to this relay
-            match relay
-                .subscribe_with_channel(&sub_id, &filters)
-                .await
-            {
+            match relay.subscribe_with_channel(&sub_id, &filters).await {
                 Ok(mut relay_rx) => {
                     subscription_relays.insert(url.clone());
 
@@ -490,8 +487,7 @@ impl RelayPool {
 
         info!(
             "Subscribed to {} relays with ID {}",
-            sub_count,
-            subscription_id
+            sub_count, subscription_id
         );
 
         Ok(rx)

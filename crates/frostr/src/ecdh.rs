@@ -26,7 +26,7 @@
 //! Based on the algorithm in @cmdcode/frost and @frostr/bifrost.
 //! See: <https://github.com/cmdruid/frost/blob/master/src/lib/ecdh.ts>
 
-use crate::{keygen::FrostShare, Error, Result};
+use crate::{Error, Result, keygen::FrostShare};
 use k256::elliptic_curve::group::ff::PrimeField;
 use k256::elliptic_curve::sec1::ToEncodedPoint;
 use k256::{ProjectivePoint, PublicKey, Scalar};
@@ -163,10 +163,7 @@ pub fn create_ecdh_share(
 }
 
 /// Create ECDH shares with precomputed Lagrange coefficients.
-pub fn create_ecdh_shares(
-    shares: &[FrostShare],
-    peer_pubkey: &[u8; 32],
-) -> Result<Vec<EcdhShare>> {
+pub fn create_ecdh_shares(shares: &[FrostShare], peer_pubkey: &[u8; 32]) -> Result<Vec<EcdhShare>> {
     if shares.is_empty() {
         return Err(Error::InvalidShareCount { need: 1, got: 0 });
     }
@@ -219,7 +216,9 @@ pub fn combine_ecdh_shares(shares: &[EcdhShare]) -> Result<[u8; 32]> {
     // Extract x-coordinate (shared secret for NIP-44)
     let affine = combined.to_affine();
     let encoded = affine.to_encoded_point(false); // uncompressed to get x easily
-    let x_bytes = encoded.x().ok_or_else(|| Error::Crypto("Point at infinity".into()))?;
+    let x_bytes = encoded
+        .x()
+        .ok_or_else(|| Error::Crypto("Point at infinity".into()))?;
 
     let mut result = [0u8; 32];
     result.copy_from_slice(x_bytes);
@@ -278,12 +277,10 @@ mod tests {
         let peer_pubkey_bytes = pubkey_from_scalar(&peer_secret);
 
         // Test with shares 0 and 1
-        let result1 =
-            threshold_ecdh(&shares[0..2], &peer_pubkey_bytes).expect("ECDH should work");
+        let result1 = threshold_ecdh(&shares[0..2], &peer_pubkey_bytes).expect("ECDH should work");
 
         // Test with shares 1 and 2
-        let result2 =
-            threshold_ecdh(&shares[1..3], &peer_pubkey_bytes).expect("ECDH should work");
+        let result2 = threshold_ecdh(&shares[1..3], &peer_pubkey_bytes).expect("ECDH should work");
 
         // Test with shares 0 and 2
         let result3 = threshold_ecdh(&[shares[0].clone(), shares[2].clone()], &peer_pubkey_bytes)
@@ -311,10 +308,8 @@ mod tests {
         let peer_pubkey_bytes = pubkey_from_scalar(&peer_secret);
 
         // Test with different combinations
-        let result1 =
-            threshold_ecdh(&shares[0..3], &peer_pubkey_bytes).expect("ECDH should work");
-        let result2 =
-            threshold_ecdh(&shares[2..5], &peer_pubkey_bytes).expect("ECDH should work");
+        let result1 = threshold_ecdh(&shares[0..3], &peer_pubkey_bytes).expect("ECDH should work");
+        let result2 = threshold_ecdh(&shares[2..5], &peer_pubkey_bytes).expect("ECDH should work");
         let result3 = threshold_ecdh(
             &[shares[0].clone(), shares[2].clone(), shares[4].clone()],
             &peer_pubkey_bytes,
@@ -388,8 +383,8 @@ mod tests {
         let mut expected = [0u8; 32];
         expected.copy_from_slice(x_bytes);
 
-        let threshold = threshold_ecdh(&shares[0..2], &peer_pubkey_bytes)
-            .expect("threshold ECDH should work");
+        let threshold =
+            threshold_ecdh(&shares[0..2], &peer_pubkey_bytes).expect("threshold ECDH should work");
         assert_eq!(threshold, expected);
     }
 }

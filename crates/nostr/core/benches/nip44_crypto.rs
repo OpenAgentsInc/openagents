@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo bench -p nostr --bench nip44_crypto
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use nostr::{decrypt_v2 as decrypt, encrypt_v2 as encrypt};
 use nostr::{generate_secret_key, get_public_key};
 
@@ -101,9 +101,7 @@ fn bench_encrypt_decrypt_roundtrip(c: &mut Criterion) {
 
 fn bench_key_generation(c: &mut Criterion) {
     c.bench_function("generate_secret_key", |b| {
-        b.iter(|| {
-            generate_secret_key()
-        });
+        b.iter(|| generate_secret_key());
     });
 }
 
@@ -111,9 +109,7 @@ fn bench_public_key_derivation(c: &mut Criterion) {
     let secret_key = generate_secret_key();
 
     c.bench_function("get_public_key", |b| {
-        b.iter(|| {
-            get_public_key(black_box(&secret_key))
-        });
+        b.iter(|| get_public_key(black_box(&secret_key)));
     });
 }
 

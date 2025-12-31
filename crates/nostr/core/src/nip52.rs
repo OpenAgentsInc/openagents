@@ -142,11 +142,7 @@ pub struct DateBasedCalendarEvent {
 
 impl DateBasedCalendarEvent {
     /// Create a new date-based calendar event
-    pub fn new(
-        d: impl Into<String>,
-        title: impl Into<String>,
-        start: impl Into<String>,
-    ) -> Self {
+    pub fn new(d: impl Into<String>, title: impl Into<String>, start: impl Into<String>) -> Self {
         Self {
             d: d.into(),
             title: title.into(),
@@ -734,8 +730,7 @@ mod tests {
             end: Some("2024-07-15".to_string()),
             summary: Some("A test event".to_string()),
             locations: vec!["Beach".to_string()],
-            participants: vec![Participant::new("pubkey123")
-                .with_role("organizer")],
+            participants: vec![Participant::new("pubkey123").with_role("organizer")],
             hashtags: vec!["vacation".to_string()],
             ..Default::default()
         };
@@ -788,7 +783,10 @@ mod tests {
         assert!(tags.contains(&vec!["title".to_string(), "Test Meeting".to_string()]));
         assert!(tags.contains(&vec!["start".to_string(), "1686840000".to_string()]));
         assert!(tags.contains(&vec!["end".to_string(), "1686843600".to_string()]));
-        assert!(tags.contains(&vec!["start_tzid".to_string(), "America/New_York".to_string()]));
+        assert!(tags.contains(&vec![
+            "start_tzid".to_string(),
+            "America/New_York".to_string()
+        ]));
     }
 
     #[test]
@@ -803,11 +801,16 @@ mod tests {
     fn test_calendar_add_event() {
         let mut calendar = Calendar::new("work", "Work Calendar");
         calendar.add_event(CalendarEventRef::new("31923:pubkey:meeting1"));
-        calendar.add_event(CalendarEventRef::new("31922:pubkey:holiday1").with_relay("wss://relay.example.com"));
+        calendar.add_event(
+            CalendarEventRef::new("31922:pubkey:holiday1").with_relay("wss://relay.example.com"),
+        );
 
         assert_eq!(calendar.event_refs.len(), 2);
         assert_eq!(calendar.event_refs[0].coordinates, "31923:pubkey:meeting1");
-        assert_eq!(calendar.event_refs[1].relay, Some("wss://relay.example.com".to_string()));
+        assert_eq!(
+            calendar.event_refs[1].relay,
+            Some("wss://relay.example.com".to_string())
+        );
     }
 
     #[test]
@@ -827,9 +830,18 @@ mod tests {
         assert_eq!(RsvpStatus::Declined.as_str(), "declined");
         assert_eq!(RsvpStatus::Tentative.as_str(), "tentative");
 
-        assert_eq!(RsvpStatus::from_str("accepted").unwrap(), RsvpStatus::Accepted);
-        assert_eq!(RsvpStatus::from_str("declined").unwrap(), RsvpStatus::Declined);
-        assert_eq!(RsvpStatus::from_str("tentative").unwrap(), RsvpStatus::Tentative);
+        assert_eq!(
+            RsvpStatus::from_str("accepted").unwrap(),
+            RsvpStatus::Accepted
+        );
+        assert_eq!(
+            RsvpStatus::from_str("declined").unwrap(),
+            RsvpStatus::Declined
+        );
+        assert_eq!(
+            RsvpStatus::from_str("tentative").unwrap(),
+            RsvpStatus::Tentative
+        );
         assert!(RsvpStatus::from_str("invalid").is_err());
     }
 
@@ -838,8 +850,14 @@ mod tests {
         assert_eq!(FreeBusyStatus::Free.as_str(), "free");
         assert_eq!(FreeBusyStatus::Busy.as_str(), "busy");
 
-        assert_eq!(FreeBusyStatus::from_str("free").unwrap(), FreeBusyStatus::Free);
-        assert_eq!(FreeBusyStatus::from_str("busy").unwrap(), FreeBusyStatus::Busy);
+        assert_eq!(
+            FreeBusyStatus::from_str("free").unwrap(),
+            FreeBusyStatus::Free
+        );
+        assert_eq!(
+            FreeBusyStatus::from_str("busy").unwrap(),
+            FreeBusyStatus::Busy
+        );
         assert!(FreeBusyStatus::from_str("invalid").is_err());
     }
 
@@ -857,8 +875,9 @@ mod tests {
         assert!(rsvp.validate().is_ok());
 
         // Invalid: free_busy set when status is declined
-        let invalid_rsvp = CalendarEventRsvp::new("rsvp2", "31923:pubkey:event1", RsvpStatus::Declined)
-            .with_free_busy(FreeBusyStatus::Busy);
+        let invalid_rsvp =
+            CalendarEventRsvp::new("rsvp2", "31923:pubkey:event1", RsvpStatus::Declined)
+                .with_free_busy(FreeBusyStatus::Busy);
         assert!(invalid_rsvp.validate().is_err());
     }
 
@@ -903,7 +922,10 @@ mod tests {
             .with_role("organizer");
 
         assert_eq!(participant.pubkey, "pubkey123");
-        assert_eq!(participant.relay, Some("wss://relay.example.com".to_string()));
+        assert_eq!(
+            participant.relay,
+            Some("wss://relay.example.com".to_string())
+        );
         assert_eq!(participant.role, Some("organizer".to_string()));
     }
 }

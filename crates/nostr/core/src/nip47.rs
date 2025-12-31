@@ -184,9 +184,8 @@ impl NostrWalletConnectUrl {
             }
         }
 
-        let secret = secret.ok_or_else(|| {
-            Nip47Error::Parse("Missing required secret parameter".to_string())
-        })?;
+        let secret = secret
+            .ok_or_else(|| Nip47Error::Parse("Missing required secret parameter".to_string()))?;
 
         if relays.is_empty() {
             return Err(Nip47Error::Parse(
@@ -572,11 +571,7 @@ mod tests {
 
     #[test]
     fn test_method_serialization() {
-        let methods = vec![
-            Method::PayInvoice,
-            Method::GetBalance,
-            Method::GetInfo,
-        ];
+        let methods = vec![Method::PayInvoice, Method::GetBalance, Method::GetInfo];
         for method in methods {
             let json = serde_json::to_string(&method).unwrap();
             assert_eq!(json, format!("\"{}\"", method.as_str()));
@@ -688,8 +683,7 @@ mod tests {
 
     #[test]
     fn test_nwc_url_requires_relay_and_secret() {
-        let missing_secret =
-            "nostr+walletconnect://pubkey?relay=wss%3A%2F%2Frelay.example.com";
+        let missing_secret = "nostr+walletconnect://pubkey?relay=wss%3A%2F%2Frelay.example.com";
         assert!(NostrWalletConnectUrl::parse(missing_secret).is_err());
 
         let missing_relay = "nostr+walletconnect://pubkey?secret=abc123";

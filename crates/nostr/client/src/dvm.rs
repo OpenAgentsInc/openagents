@@ -57,14 +57,15 @@
 use crate::error::{ClientError, Result};
 use crate::pool::{PoolConfig, RelayPool};
 use nostr::{
+    Event, JobFeedback, JobRequest, JobResult, JobStatus, KIND_JOB_FEEDBACK,
     create_job_request_event, finalize_event, get_result_kind, is_job_feedback_kind,
-    is_job_result_kind, Event, JobFeedback, JobRequest, JobResult, JobStatus, KIND_JOB_FEEDBACK,
+    is_job_result_kind,
 };
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, info, warn};
 
 /// Represents a submitted job with its metadata
@@ -244,11 +245,7 @@ impl DvmClient {
             ));
         }
 
-        info!(
-            "Job {} published to {} relays",
-            event_id,
-            accepted_count
-        );
+        info!("Job {} published to {} relays", event_id, accepted_count);
 
         self.subscribe_to_job_events(&event_id, request.kind)
             .await?;
@@ -412,11 +409,7 @@ impl DvmClient {
         self.active_jobs.read().await.len()
     }
 
-    async fn subscribe_to_job_events(
-        &self,
-        job_id: &str,
-        request_kind: u16,
-    ) -> Result<()> {
+    async fn subscribe_to_job_events(&self, job_id: &str, request_kind: u16) -> Result<()> {
         let result_kind = get_result_kind(request_kind).ok_or_else(|| {
             ClientError::InvalidRequest(format!("Invalid request kind: {}", request_kind))
         })?;
@@ -464,7 +457,10 @@ impl DvmClient {
                 } else if is_job_feedback_kind(event.kind) {
                     match parse_job_feedback(&event) {
                         Some(feedback_event) => {
-                            debug!("Received job feedback for {}: {:?}", job_id, feedback_event.feedback.status);
+                            debug!(
+                                "Received job feedback for {}: {:?}",
+                                job_id, feedback_event.feedback.status
+                            );
                             let pending = pending_feedback.lock().await;
                             if let Some(tx) = pending.get(&job_id) {
                                 let _ = tx.send(feedback_event).await;
@@ -511,14 +507,21 @@ fn parse_handler_info(event: &Event, job_kind: u16) -> Option<DvmProvider> {
         return None;
     }
 
-    let (name, about) = if let Ok(content) = serde_json::from_str::<serde_json::Value>(&event.content) {
-        (
-            content.get("name").and_then(|v| v.as_str()).map(String::from),
-            content.get("about").and_then(|v| v.as_str()).map(String::from),
-        )
-    } else {
-        (None, None)
-    };
+    let (name, about) =
+        if let Ok(content) = serde_json::from_str::<serde_json::Value>(&event.content) {
+            (
+                content
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                content
+                    .get("about")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+            )
+        } else {
+            (None, None)
+        };
 
     Some(DvmProvider {
         pubkey: event.pubkey.clone(),
@@ -685,7 +688,11 @@ mod tests {
         assert_eq!(provider.about, Some("A test provider".to_string()));
         assert!(provider.supported_kinds.contains(&5050));
         assert!(provider.supported_kinds.contains(&5051));
-        assert!(provider.relays.contains(&"wss://relay.example.com".to_string()));
+        assert!(
+            provider
+                .relays
+                .contains(&"wss://relay.example.com".to_string())
+        );
     }
 
     #[test]

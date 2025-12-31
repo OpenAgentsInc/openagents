@@ -259,7 +259,10 @@ impl AgentProfile {
                 self.threshold.threshold.to_string(),
                 self.threshold.total_shares.to_string(),
             ],
-            vec!["signer".to_string(), self.threshold.marketplace_signer.clone()],
+            vec![
+                "signer".to_string(),
+                self.threshold.marketplace_signer.clone(),
+            ],
             vec!["operator".to_string(), self.operator.clone()],
         ];
 
@@ -316,18 +319,17 @@ mod tests {
 
     #[test]
     fn test_profile_content_creation() {
-        let content = AgentProfileContent::new(
-            "TestBot",
-            "A test bot",
-            AutonomyLevel::Supervised,
-            "1.0.0",
-        )
-        .with_picture("https://example.com/avatar.png")
-        .with_capabilities(vec!["test".to_string(), "demo".to_string()]);
+        let content =
+            AgentProfileContent::new("TestBot", "A test bot", AutonomyLevel::Supervised, "1.0.0")
+                .with_picture("https://example.com/avatar.png")
+                .with_capabilities(vec!["test".to_string(), "demo".to_string()]);
 
         assert_eq!(content.name, "TestBot");
         assert_eq!(content.about, "A test bot");
-        assert_eq!(content.picture, Some("https://example.com/avatar.png".to_string()));
+        assert_eq!(
+            content.picture,
+            Some("https://example.com/avatar.png".to_string())
+        );
         assert_eq!(content.capabilities.len(), 2);
         assert_eq!(content.autonomy_level, AutonomyLevel::Supervised);
         assert_eq!(content.version, "1.0.0");
@@ -358,47 +360,27 @@ mod tests {
 
     #[test]
     fn test_profile_content_validation() {
-        let valid = AgentProfileContent::new(
-            "TestBot",
-            "A test bot",
-            AutonomyLevel::Supervised,
-            "1.0.0",
-        );
+        let valid =
+            AgentProfileContent::new("TestBot", "A test bot", AutonomyLevel::Supervised, "1.0.0");
         assert!(valid.validate().is_ok());
 
-        let invalid_name = AgentProfileContent::new(
-            "",
-            "A test bot",
-            AutonomyLevel::Supervised,
-            "1.0.0",
-        );
+        let invalid_name =
+            AgentProfileContent::new("", "A test bot", AutonomyLevel::Supervised, "1.0.0");
         assert!(invalid_name.validate().is_err());
 
-        let invalid_about = AgentProfileContent::new(
-            "TestBot",
-            "",
-            AutonomyLevel::Supervised,
-            "1.0.0",
-        );
+        let invalid_about =
+            AgentProfileContent::new("TestBot", "", AutonomyLevel::Supervised, "1.0.0");
         assert!(invalid_about.validate().is_err());
 
-        let invalid_version = AgentProfileContent::new(
-            "TestBot",
-            "A test bot",
-            AutonomyLevel::Supervised,
-            "",
-        );
+        let invalid_version =
+            AgentProfileContent::new("TestBot", "A test bot", AutonomyLevel::Supervised, "");
         assert!(invalid_version.validate().is_err());
     }
 
     #[test]
     fn test_agent_profile_tags() {
-        let content = AgentProfileContent::new(
-            "TestBot",
-            "A test bot",
-            AutonomyLevel::Supervised,
-            "1.0.0",
-        );
+        let content =
+            AgentProfileContent::new("TestBot", "A test bot", AutonomyLevel::Supervised, "1.0.0");
         let threshold = ThresholdConfig::new(2, 3, "marketplace_pubkey")
             .unwrap()
             .with_guardian("guardian_pubkey");
@@ -428,23 +410,15 @@ mod tests {
 
     #[test]
     fn test_agent_profile_validation() {
-        let content = AgentProfileContent::new(
-            "TestBot",
-            "A test bot",
-            AutonomyLevel::Supervised,
-            "1.0.0",
-        );
+        let content =
+            AgentProfileContent::new("TestBot", "A test bot", AutonomyLevel::Supervised, "1.0.0");
         let threshold = ThresholdConfig::new(2, 3, "marketplace_pubkey").unwrap();
         let profile = AgentProfile::new(content, threshold, "operator_pubkey");
 
         assert!(profile.validate().is_ok());
 
-        let content_invalid = AgentProfileContent::new(
-            "",
-            "A test bot",
-            AutonomyLevel::Supervised,
-            "1.0.0",
-        );
+        let content_invalid =
+            AgentProfileContent::new("", "A test bot", AutonomyLevel::Supervised, "1.0.0");
         let profile_invalid = AgentProfile::new(
             content_invalid,
             ThresholdConfig::new(2, 3, "marketplace_pubkey").unwrap(),

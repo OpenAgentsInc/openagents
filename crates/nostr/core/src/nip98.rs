@@ -422,7 +422,10 @@ mod tests {
     #[test]
     fn test_http_auth_from_tags() {
         let tags = vec![
-            vec!["u".to_string(), "https://api.example.com/endpoint".to_string()],
+            vec![
+                "u".to_string(),
+                "https://api.example.com/endpoint".to_string(),
+            ],
             vec!["method".to_string(), "GET".to_string()],
         ];
 
@@ -435,7 +438,10 @@ mod tests {
     #[test]
     fn test_http_auth_from_tags_with_payload() {
         let tags = vec![
-            vec!["u".to_string(), "https://api.example.com/endpoint".to_string()],
+            vec![
+                "u".to_string(),
+                "https://api.example.com/endpoint".to_string(),
+            ],
             vec!["method".to_string(), "POST".to_string()],
             vec!["payload".to_string(), "abc123".to_string()],
         ];
@@ -568,7 +574,10 @@ mod tests {
 
         let result = validate_http_auth_event(KIND_HTTP_AUTH, 950, &tags, &params);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Nip98Error::UrlMismatch { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            Nip98Error::UrlMismatch { .. }
+        ));
     }
 
     #[test]

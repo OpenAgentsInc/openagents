@@ -215,7 +215,10 @@ pub fn get_deletion_reason(event: &Event) -> Option<&str> {
 /// }
 /// # }
 /// ```
-pub fn should_delete_event(deletion_request: &Event, target_event: &Event) -> Result<bool, Nip09Error> {
+pub fn should_delete_event(
+    deletion_request: &Event,
+    target_event: &Event,
+) -> Result<bool, Nip09Error> {
     // Verify it's a deletion request
     if !is_deletion_request(deletion_request) {
         return Ok(false);
@@ -277,7 +280,10 @@ pub fn create_deletion_tags(event_ids: &[&str], kind: Option<u16>) -> Vec<Vec<St
 ///     Some(30023)
 /// );
 /// ```
-pub fn create_deletion_tags_for_addresses(addresses: &[&str], kind: Option<u16>) -> Vec<Vec<String>> {
+pub fn create_deletion_tags_for_addresses(
+    addresses: &[&str],
+    kind: Option<u16>,
+) -> Vec<Vec<String>> {
     let mut tags: Vec<Vec<String>> = addresses
         .iter()
         .map(|addr| vec!["a".to_string(), addr.to_string()])

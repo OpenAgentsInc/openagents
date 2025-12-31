@@ -3,8 +3,8 @@
 //! Provides client-side Negentropy implementation to efficiently sync events with relays.
 
 use crate::error::Result;
-use nostr::nip77::{Bound, NegentropyMessage, Range, Record, ReconciliationState};
 use nostr::Event;
+use nostr::nip77::{Bound, NegentropyMessage, Range, ReconciliationState, Record};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -95,15 +95,15 @@ impl SyncSessionManager {
 
     /// Remove all sessions for a relay
     pub fn remove_relay(&mut self, relay_url: &str) {
-        self.sessions
-            .retain(|id, _| id.relay_url != relay_url);
+        self.sessions.retain(|id, _| id.relay_url != relay_url);
     }
 
     /// Remove expired sessions
     pub fn cleanup_expired(&mut self) -> usize {
         let timeout = self.timeout;
         let before_count = self.sessions.len();
-        self.sessions.retain(|_, session| !session.is_expired(timeout));
+        self.sessions
+            .retain(|_, session| !session.is_expired(timeout));
         before_count - self.sessions.len()
     }
 

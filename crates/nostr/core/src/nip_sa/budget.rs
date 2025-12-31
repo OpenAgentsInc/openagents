@@ -41,9 +41,9 @@ pub struct BudgetLimits {
 impl Default for BudgetLimits {
     fn default() -> Self {
         Self {
-            daily_limit_sats: 10_000,       // 10k sats per day (~$10 at $100k/BTC)
-            per_tick_limit_sats: 1_000,     // 1k sats per tick
-            reserved_sats: 5_000,           // 5k sats reserved
+            daily_limit_sats: 10_000,   // 10k sats per day (~$10 at $100k/BTC)
+            per_tick_limit_sats: 1_000, // 1k sats per tick
+            reserved_sats: 5_000,       // 5k sats reserved
         }
     }
 }
@@ -189,12 +189,16 @@ impl BudgetTracker {
 
     /// Get remaining budget for today
     pub fn remaining_daily_budget(&self) -> u64 {
-        self.limits.daily_limit_sats.saturating_sub(self.daily_spent_sats)
+        self.limits
+            .daily_limit_sats
+            .saturating_sub(self.daily_spent_sats)
     }
 
     /// Get remaining budget for current tick
     pub fn remaining_tick_budget(&self) -> u64 {
-        self.limits.per_tick_limit_sats.saturating_sub(self.tick_spent_sats)
+        self.limits
+            .per_tick_limit_sats
+            .saturating_sub(self.tick_spent_sats)
     }
 
     /// Get available spendable balance
@@ -244,7 +248,10 @@ mod tests {
         let tracker = BudgetTracker::new();
         let result = tracker.check_spend(1000, 500);
 
-        assert!(matches!(result, Err(BudgetError::InsufficientBalance { .. })));
+        assert!(matches!(
+            result,
+            Err(BudgetError::InsufficientBalance { .. })
+        ));
     }
 
     #[test]
@@ -256,7 +263,10 @@ mod tests {
         // Available = 10000 - 5000 = 5000, so 6000 should fail
         let result = tracker.check_spend(6000, 10000);
 
-        assert!(matches!(result, Err(BudgetError::ReservedBalanceViolated { .. })));
+        assert!(matches!(
+            result,
+            Err(BudgetError::ReservedBalanceViolated { .. })
+        ));
     }
 
     #[test]
@@ -268,7 +278,10 @@ mod tests {
         // Try to spend 600 sats (would exceed daily limit)
         let result = tracker.check_spend(600, 50000);
 
-        assert!(matches!(result, Err(BudgetError::DailyLimitExceeded { .. })));
+        assert!(matches!(
+            result,
+            Err(BudgetError::DailyLimitExceeded { .. })
+        ));
     }
 
     #[test]
@@ -280,7 +293,10 @@ mod tests {
         // Try to spend 300 sats (would exceed tick limit)
         let result = tracker.check_spend(300, 50000);
 
-        assert!(matches!(result, Err(BudgetError::PerTickLimitExceeded { .. })));
+        assert!(matches!(
+            result,
+            Err(BudgetError::PerTickLimitExceeded { .. })
+        ));
     }
 
     #[test]
@@ -350,8 +366,8 @@ mod tests {
         tracker.limits.per_tick_limit_sats = 1000;
         tracker.limits.reserved_sats = 5000;
 
-        tracker.daily_spent_sats = 8000;  // 2000 daily budget left
-        tracker.tick_spent_sats = 200;    // 800 tick budget left
+        tracker.daily_spent_sats = 8000; // 2000 daily budget left
+        tracker.tick_spent_sats = 200; // 800 tick budget left
 
         // Balance: 50000
         // Available from balance: 50000 - 5000 = 45000

@@ -123,7 +123,10 @@ impl Report {
     /// Create new user report
     pub fn user(pubkey: String, report_type: ReportType) -> Self {
         Self {
-            target: ReportTarget::User { pubkey, report_type },
+            target: ReportTarget::User {
+                pubkey,
+                report_type,
+            },
             content: String::new(),
             labels: Vec::new(),
         }
@@ -186,15 +189,26 @@ impl Report {
         let mut tags = Vec::new();
 
         match &self.target {
-            ReportTarget::User { pubkey, report_type } => {
-                tags.push(vec!["p".to_string(), pubkey.clone(), report_type.to_string().to_string()]);
+            ReportTarget::User {
+                pubkey,
+                report_type,
+            } => {
+                tags.push(vec![
+                    "p".to_string(),
+                    pubkey.clone(),
+                    report_type.to_string().to_string(),
+                ]);
             }
             ReportTarget::Event {
                 event_id,
                 pubkey,
                 report_type,
             } => {
-                tags.push(vec!["e".to_string(), event_id.clone(), report_type.to_string().to_string()]);
+                tags.push(vec![
+                    "e".to_string(),
+                    event_id.clone(),
+                    report_type.to_string().to_string(),
+                ]);
                 tags.push(vec!["p".to_string(), pubkey.clone()]);
             }
             ReportTarget::Blob {
@@ -204,8 +218,16 @@ impl Report {
                 report_type,
                 server,
             } => {
-                tags.push(vec!["x".to_string(), hash.clone(), report_type.to_string().to_string()]);
-                tags.push(vec!["e".to_string(), event_id.clone(), report_type.to_string().to_string()]);
+                tags.push(vec![
+                    "x".to_string(),
+                    hash.clone(),
+                    report_type.to_string().to_string(),
+                ]);
+                tags.push(vec![
+                    "e".to_string(),
+                    event_id.clone(),
+                    report_type.to_string().to_string(),
+                ]);
                 tags.push(vec!["p".to_string(), pubkey.clone()]);
                 if let Some(srv) = server {
                     tags.push(vec!["server".to_string(), srv.clone()]);
@@ -288,13 +310,17 @@ impl Report {
         }
 
         // Validate required fields
-        let pubkey = pubkey.ok_or_else(|| Nip56Error::MissingRequired("pubkey (p tag)".to_string()))?;
-        let report_type = report_type.ok_or_else(|| Nip56Error::MissingRequired("report type".to_string()))?;
+        let pubkey =
+            pubkey.ok_or_else(|| Nip56Error::MissingRequired("pubkey (p tag)".to_string()))?;
+        let report_type =
+            report_type.ok_or_else(|| Nip56Error::MissingRequired("report type".to_string()))?;
 
         // Determine target type
         let target = if let Some(hash) = blob_hash {
             let event_id = event_id.ok_or_else(|| {
-                Nip56Error::MissingRequired("event_id (e tag) required for blob reports".to_string())
+                Nip56Error::MissingRequired(
+                    "event_id (e tag) required for blob reports".to_string(),
+                )
             })?;
             ReportTarget::Blob {
                 hash,
@@ -310,7 +336,10 @@ impl Report {
                 report_type,
             }
         } else {
-            ReportTarget::User { pubkey, report_type }
+            ReportTarget::User {
+                pubkey,
+                report_type,
+            }
         };
 
         Ok(Self {
@@ -386,10 +415,7 @@ mod tests {
         .with_server("https://example.com/file.bin".to_string());
 
         if let ReportTarget::Blob { server, .. } = &report.target {
-            assert_eq!(
-                server,
-                &Some("https://example.com/file.bin".to_string())
-            );
+            assert_eq!(server, &Some("https://example.com/file.bin".to_string()));
         } else {
             panic!("Expected blob target");
         }
@@ -418,7 +444,11 @@ mod tests {
         let report = Report::user("pubkey123".to_string(), ReportType::Spam);
         let tags = report.to_tags();
 
-        assert!(tags.contains(&vec!["p".to_string(), "pubkey123".to_string(), "spam".to_string()]));
+        assert!(tags.contains(&vec![
+            "p".to_string(),
+            "pubkey123".to_string(),
+            "spam".to_string()
+        ]));
     }
 
     #[test]
@@ -471,7 +501,11 @@ mod tests {
 
     #[test]
     fn test_report_from_tags_user() {
-        let tags = vec![vec!["p".to_string(), "pubkey123".to_string(), "spam".to_string()]];
+        let tags = vec![vec![
+            "p".to_string(),
+            "pubkey123".to_string(),
+            "spam".to_string(),
+        ]];
 
         let report = Report::from_tags(&tags, "").unwrap();
 
@@ -487,7 +521,11 @@ mod tests {
     #[test]
     fn test_report_from_tags_event() {
         let tags = vec![
-            vec!["e".to_string(), "event123".to_string(), "illegal".to_string()],
+            vec![
+                "e".to_string(),
+                "event123".to_string(),
+                "illegal".to_string(),
+            ],
             vec!["p".to_string(), "pubkey456".to_string()],
         ];
 
@@ -506,7 +544,11 @@ mod tests {
 
     #[test]
     fn test_report_from_tags_missing_pubkey() {
-        let tags = vec![vec!["e".to_string(), "event123".to_string(), "spam".to_string()]];
+        let tags = vec![vec![
+            "e".to_string(),
+            "event123".to_string(),
+            "spam".to_string(),
+        ]];
 
         let result = Report::from_tags(&tags, "");
         assert!(result.is_err());

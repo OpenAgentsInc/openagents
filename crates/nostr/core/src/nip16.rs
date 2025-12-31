@@ -291,8 +291,8 @@ mod tests {
         assert!(is_regular(9999));
 
         // Not regular
-        assert!(!is_regular(0));     // Replaceable
-        assert!(!is_regular(3));     // Replaceable
+        assert!(!is_regular(0)); // Replaceable
+        assert!(!is_regular(3)); // Replaceable
         assert!(!is_regular(10000)); // Replaceable
         assert!(!is_regular(20000)); // Ephemeral
         assert!(!is_regular(30000)); // Addressable
@@ -364,11 +364,11 @@ mod tests {
     fn test_common_kinds() {
         // Test some common event kinds
         assert_eq!(EventCategory::from_kind(0), EventCategory::Replaceable); // Metadata
-        assert_eq!(EventCategory::from_kind(1), EventCategory::Regular);     // Text note
+        assert_eq!(EventCategory::from_kind(1), EventCategory::Regular); // Text note
         assert_eq!(EventCategory::from_kind(3), EventCategory::Replaceable); // Contacts
-        assert_eq!(EventCategory::from_kind(4), EventCategory::Regular);     // Encrypted DM
-        assert_eq!(EventCategory::from_kind(5), EventCategory::Regular);     // Deletion
-        assert_eq!(EventCategory::from_kind(7), EventCategory::Regular);     // Reaction
+        assert_eq!(EventCategory::from_kind(4), EventCategory::Regular); // Encrypted DM
+        assert_eq!(EventCategory::from_kind(5), EventCategory::Regular); // Deletion
+        assert_eq!(EventCategory::from_kind(7), EventCategory::Regular); // Reaction
 
         // Common replaceable kinds
         assert_eq!(EventCategory::from_kind(10002), EventCategory::Replaceable); // Relay list

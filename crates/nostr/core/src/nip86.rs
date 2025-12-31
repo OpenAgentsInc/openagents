@@ -340,7 +340,10 @@ mod tests {
 
     #[test]
     fn test_request_new() {
-        let req = Request::new(Method::BanPubkey, vec![Value::String("pubkey123".to_string())]);
+        let req = Request::new(
+            Method::BanPubkey,
+            vec![Value::String("pubkey123".to_string())],
+        );
         assert_eq!(req.method, "banpubkey");
         assert_eq!(req.params.len(), 1);
     }

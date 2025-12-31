@@ -338,7 +338,10 @@ pub fn get_public_items(event: &Event) -> Vec<Vec<String>> {
         .iter()
         .filter(|tag| {
             let tag_name = tag.get(0).map(|s| s.as_str());
-            !matches!(tag_name, Some("title") | Some("description") | Some("image") | Some("d"))
+            !matches!(
+                tag_name,
+                Some("title") | Some("description") | Some("image") | Some("d")
+            )
         })
         .cloned()
         .collect()
@@ -516,7 +519,10 @@ mod tests {
     fn test_get_description() {
         let event = create_test_event(
             KIND_BOOKMARKS,
-            vec![vec!["description".to_string(), "Saved articles".to_string()]],
+            vec![vec![
+                "description".to_string(),
+                "Saved articles".to_string(),
+            ]],
         );
         assert_eq!(get_description(&event), Some("Saved articles".to_string()));
     }
@@ -525,9 +531,15 @@ mod tests {
     fn test_get_image() {
         let event = create_test_event(
             KIND_BOOKMARKS,
-            vec![vec!["image".to_string(), "https://example.com/img.png".to_string()]],
+            vec![vec![
+                "image".to_string(),
+                "https://example.com/img.png".to_string(),
+            ]],
         );
-        assert_eq!(get_image(&event), Some("https://example.com/img.png".to_string()));
+        assert_eq!(
+            get_image(&event),
+            Some("https://example.com/img.png".to_string())
+        );
     }
 
     #[test]
@@ -556,7 +568,10 @@ mod tests {
         assert_eq!(tags.len(), 3);
         assert!(tags.contains(&vec!["title".to_string(), "My List".to_string()]));
         assert!(tags.contains(&vec!["description".to_string(), "A cool list".to_string()]));
-        assert!(tags.contains(&vec!["image".to_string(), "https://example.com/img.png".to_string()]));
+        assert!(tags.contains(&vec![
+            "image".to_string(),
+            "https://example.com/img.png".to_string()
+        ]));
     }
 
     #[test]

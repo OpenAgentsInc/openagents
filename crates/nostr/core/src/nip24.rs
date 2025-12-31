@@ -199,7 +199,10 @@ impl ExtraMetadata {
     /// Adds extra fields to a base metadata object.
     pub fn merge_into(&self, metadata: &mut Map<String, Value>) -> Result<(), Nip24Error> {
         if let Some(display_name) = &self.display_name {
-            metadata.insert("display_name".to_string(), Value::String(display_name.clone()));
+            metadata.insert(
+                "display_name".to_string(),
+                Value::String(display_name.clone()),
+            );
         }
 
         if let Some(website) = &self.website {
@@ -363,10 +366,7 @@ mod tests {
         extra.merge_into(&mut base).unwrap();
 
         assert_eq!(base.get("name").unwrap().as_str(), Some("alice"));
-        assert_eq!(
-            base.get("display_name").unwrap().as_str(),
-            Some("Alice 🎨")
-        );
+        assert_eq!(base.get("display_name").unwrap().as_str(), Some("Alice 🎨"));
         assert_eq!(
             base.get("website").unwrap().as_str(),
             Some("https://alice.example.com")
@@ -394,10 +394,7 @@ mod tests {
         let extra = ExtraMetadata::from_metadata(&map);
 
         assert_eq!(extra.display_name, Some("Alice 🎨".to_string()));
-        assert_eq!(
-            extra.website,
-            Some("https://alice.example.com".to_string())
-        );
+        assert_eq!(extra.website, Some("https://alice.example.com".to_string()));
         assert_eq!(extra.bot, Some(false));
         assert!(extra.birthday.is_some());
 
@@ -451,8 +448,7 @@ mod tests {
 
         assert!(metadata.validate().is_ok());
 
-        let metadata = ExtraMetadata::new()
-            .with_birthday(Birthday::new(1990, Some(13), Some(15)));
+        let metadata = ExtraMetadata::new().with_birthday(Birthday::new(1990, Some(13), Some(15)));
 
         assert!(metadata.validate().is_err());
     }

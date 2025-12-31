@@ -2,8 +2,8 @@
 //!
 //! Run with: cargo bench -p nostr-client --bench relay_performance
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use nostr::{finalize_event, generate_secret_key, EventTemplate};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use nostr::{EventTemplate, finalize_event, generate_secret_key};
 use std::hint::black_box;
 
 /// Generate a test event
@@ -93,7 +93,10 @@ fn bench_bulk_event_serialization(c: &mut Criterion) {
 
     for count in [10, 100, 1000].iter() {
         let events = create_test_events(*count);
-        let bytes = events.iter().map(|e| serde_json::to_string(e).unwrap().len()).sum::<usize>();
+        let bytes = events
+            .iter()
+            .map(|e| serde_json::to_string(e).unwrap().len())
+            .sum::<usize>();
         group.throughput(Throughput::Bytes(bytes as u64));
 
         group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, _| {
@@ -115,7 +118,10 @@ fn bench_bulk_event_deserialization(c: &mut Criterion) {
 
     for count in [10, 100, 1000].iter() {
         let events = create_test_events(*count);
-        let json_events: Vec<String> = events.iter().map(|e| serde_json::to_string(e).unwrap()).collect();
+        let json_events: Vec<String> = events
+            .iter()
+            .map(|e| serde_json::to_string(e).unwrap())
+            .collect();
         let bytes = json_events.iter().map(|s| s.len()).sum::<usize>();
         group.throughput(Throughput::Bytes(bytes as u64));
 
@@ -181,8 +187,17 @@ fn bench_event_with_tags_serialization(c: &mut Criterion) {
         kind: 1, // Text note
         content: "Test event with tags".to_string(),
         tags: vec![
-            vec!["e".to_string(), "event-id-1".to_string(), "wss://relay1.example.com".to_string()],
-            vec!["e".to_string(), "event-id-2".to_string(), "wss://relay2.example.com".to_string(), "reply".to_string()],
+            vec![
+                "e".to_string(),
+                "event-id-1".to_string(),
+                "wss://relay1.example.com".to_string(),
+            ],
+            vec![
+                "e".to_string(),
+                "event-id-2".to_string(),
+                "wss://relay2.example.com".to_string(),
+                "reply".to_string(),
+            ],
             vec!["p".to_string(), "pubkey-1".to_string()],
             vec!["p".to_string(), "pubkey-2".to_string()],
             vec!["t".to_string(), "bitcoin".to_string()],
@@ -207,8 +222,17 @@ fn bench_event_with_tags_deserialization(c: &mut Criterion) {
         kind: 1, // Text note
         content: "Test event with tags".to_string(),
         tags: vec![
-            vec!["e".to_string(), "event-id-1".to_string(), "wss://relay1.example.com".to_string()],
-            vec!["e".to_string(), "event-id-2".to_string(), "wss://relay2.example.com".to_string(), "reply".to_string()],
+            vec![
+                "e".to_string(),
+                "event-id-1".to_string(),
+                "wss://relay1.example.com".to_string(),
+            ],
+            vec![
+                "e".to_string(),
+                "event-id-2".to_string(),
+                "wss://relay2.example.com".to_string(),
+                "reply".to_string(),
+            ],
             vec!["p".to_string(), "pubkey-1".to_string()],
             vec!["p".to_string(), "pubkey-2".to_string()],
             vec!["t".to_string(), "bitcoin".to_string()],
@@ -244,16 +268,12 @@ fn bench_message_sizes(c: &mut Criterion) {
         let json = serde_json::to_string(&event).unwrap();
 
         group.throughput(Throughput::Bytes(json.len() as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(size),
-            size,
-            |b, _| {
-                b.iter(|| {
-                    let serialized = serde_json::to_string(black_box(&event)).unwrap();
-                    black_box(serialized)
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, _| {
+            b.iter(|| {
+                let serialized = serde_json::to_string(black_box(&event)).unwrap();
+                black_box(serialized)
+            });
+        });
     }
 
     group.finish();

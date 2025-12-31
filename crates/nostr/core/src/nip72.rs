@@ -454,8 +454,7 @@ mod tests {
 
     #[test]
     fn test_community_moderator() {
-        let mod1 = CommunityModerator::new("pubkey123")
-            .with_relay("wss://relay.example.com");
+        let mod1 = CommunityModerator::new("pubkey123").with_relay("wss://relay.example.com");
 
         assert_eq!(mod1.pubkey, "pubkey123");
         assert_eq!(mod1.relay, Some("wss://relay.example.com".to_string()));
@@ -463,8 +462,7 @@ mod tests {
 
     #[test]
     fn test_community_relay() {
-        let relay = CommunityRelay::new("wss://relay.example.com")
-            .with_marker("requests");
+        let relay = CommunityRelay::new("wss://relay.example.com").with_marker("requests");
 
         assert_eq!(relay.url, "wss://relay.example.com");
         assert_eq!(relay.marker, Some("requests".to_string()));
@@ -490,14 +488,20 @@ mod tests {
     fn test_community_to_tags() {
         let mut community = Community::new("rust", "Rust Community");
         community.description = Some("A place for Rustaceans".to_string());
-        community.image = Some(("https://example.com/rust.png".to_string(), Some("512x512".to_string())));
+        community.image = Some((
+            "https://example.com/rust.png".to_string(),
+            Some("512x512".to_string()),
+        ));
         community.add_moderator(CommunityModerator::new("mod1"));
         community.add_relay(CommunityRelay::new("wss://relay.example.com").with_marker("requests"));
 
         let tags = community.to_tags();
         assert!(tags.contains(&vec!["d".to_string(), "rust".to_string()]));
         assert!(tags.contains(&vec!["name".to_string(), "Rust Community".to_string()]));
-        assert!(tags.contains(&vec!["description".to_string(), "A place for Rustaceans".to_string()]));
+        assert!(tags.contains(&vec![
+            "description".to_string(),
+            "A place for Rustaceans".to_string()
+        ]));
     }
 
     #[test]
@@ -513,7 +517,10 @@ mod tests {
         assert_eq!(tags[2][1], "34550");
 
         // Lowercase tags should match community for top-level
-        assert!(tags.iter().any(|t| t[0] == "a" && t[1] == "34550:author-pubkey:rust-programming"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "a" && t[1] == "34550:author-pubkey:rust-programming")
+        );
         assert!(tags.iter().any(|t| t[0] == "k" && t[1] == "34550"));
     }
 
@@ -523,7 +530,7 @@ mod tests {
             "34550:author-pubkey:rust-programming",
             "parent-event-id",
             "parent-author",
-            "1111"
+            "1111",
         );
 
         let tags = post.to_tags();
@@ -536,7 +543,10 @@ mod tests {
         assert_eq!(tags[2][1], "34550");
 
         // Lowercase tags for parent
-        assert!(tags.iter().any(|t| t[0] == "e" && t[1] == "parent-event-id"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "e" && t[1] == "parent-event-id")
+        );
         assert!(tags.iter().any(|t| t[0] == "p" && t[1] == "parent-author"));
         assert!(tags.iter().any(|t| t[0] == "k" && t[1] == "1111"));
     }
@@ -547,7 +557,7 @@ mod tests {
             "34550:community-author:rust",
             "post-event-id",
             "post-author",
-            "1111"
+            "1111",
         );
 
         assert_eq!(approval.community_ref, "34550:community-author:rust");
@@ -563,7 +573,7 @@ mod tests {
             "34550:community-author:rust",
             "30023:author:article-id",
             "author",
-            "30023"
+            "30023",
         );
 
         assert_eq!(approval.post_ref_type, "a");
@@ -572,12 +582,8 @@ mod tests {
 
     #[test]
     fn test_community_approval_validate() {
-        let approval = CommunityApproval::new(
-            "34550:community-author:rust",
-            "post-id",
-            "author",
-            "1111"
-        );
+        let approval =
+            CommunityApproval::new("34550:community-author:rust", "post-id", "author", "1111");
         assert!(approval.validate().is_ok());
 
         let invalid = CommunityApproval::new("", "post-id", "author", "1111");
@@ -590,11 +596,14 @@ mod tests {
             "34550:community-author:rust",
             "post-event-id",
             "post-author",
-            "1111"
+            "1111",
         );
 
         let tags = approval.to_tags();
-        assert!(tags.contains(&vec!["a".to_string(), "34550:community-author:rust".to_string()]));
+        assert!(tags.contains(&vec![
+            "a".to_string(),
+            "34550:community-author:rust".to_string()
+        ]));
         assert!(tags.contains(&vec!["e".to_string(), "post-event-id".to_string()]));
         assert!(tags.contains(&vec!["p".to_string(), "post-author".to_string()]));
         assert!(tags.contains(&vec!["k".to_string(), "1111".to_string()]));

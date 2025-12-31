@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::{mpsc, RwLock};
-use tokio::time::{sleep, Duration};
+use tokio::sync::{RwLock, mpsc};
+use tokio::time::{Duration, sleep};
 
 // NIP-44 encryption support
-use bitcoin::secp256k1::{PublicKey, SecretKey, SECP256K1};
-use nostr::{decrypt_v2, encrypt_v2, Event};
+use bitcoin::secp256k1::{PublicKey, SECP256K1, SecretKey};
+use nostr::{Event, decrypt_v2, encrypt_v2};
 
 /// Event kind for Bifrost messages (ephemeral, not stored by relays)
 pub const BIFROST_EVENT_KIND: u16 = 28000;
@@ -164,7 +164,9 @@ impl NostrTransport {
             .map_err(|e| Error::Encoding(format!("Invalid author pubkey: {}", e)))?;
 
         if author_pubkey_bytes.len() != 32 {
-            return Err(Error::Encoding("Author pubkey must be 32 bytes".to_string()));
+            return Err(Error::Encoding(
+                "Author pubkey must be 32 bytes".to_string(),
+            ));
         }
 
         let mut author_pubkey = [0u8; 32];
@@ -269,21 +271,22 @@ impl NostrTransport {
             | BifrostMessage::Pong(_)
         );
 
-        if is_response
-            && let Some(session_id) = session_id {
-                // Try to route to pending request
-                let pending_guard = pending.write().await;
-                if let Some(pending_req) = pending_guard.get(&session_id) {
-                    // Send to the pending request's channel
-                    if pending_req.tx.send(message.clone()).await.is_ok() {
-                        // Successfully routed to pending request
-                        return Ok(());
-                    }
+        if is_response && let Some(session_id) = session_id {
+            // Try to route to pending request
+            let pending_guard = pending.write().await;
+            if let Some(pending_req) = pending_guard.get(&session_id) {
+                // Send to the pending request's channel
+                if pending_req.tx.send(message.clone()).await.is_ok() {
+                    // Successfully routed to pending request
+                    return Ok(());
                 }
             }
+        }
 
         // Forward to incoming channel for responder processing
-        incoming_tx.send(message).await
+        incoming_tx
+            .send(message)
+            .await
             .map_err(|e| Error::Transport(format!("Failed to forward message: {}", e)))?;
 
         Ok(())
@@ -301,12 +304,14 @@ impl NostrTransport {
 
         // Add all configured relays
         for relay_url in &self.config.relays {
-            pool.add_relay(relay_url).await
-                .map_err(|e| Error::Transport(format!("Failed to add relay {}: {}", relay_url, e)))?;
+            pool.add_relay(relay_url).await.map_err(|e| {
+                Error::Transport(format!("Failed to add relay {}: {}", relay_url, e))
+            })?;
         }
 
         // Connect to all relays
-        pool.connect_all().await
+        pool.connect_all()
+            .await
             .map_err(|e| Error::Transport(format!("Failed to connect to relays: {}", e)))?;
 
         self.relay_pool = Some(pool.clone());
@@ -326,7 +331,9 @@ impl NostrTransport {
 
         // Subscribe to relays
         let subscription_id = format!("bifrost-{}", hex::encode(&our_pubkey[..8]));
-        let mut event_rx = pool.subscribe(&subscription_id, &[filter]).await
+        let mut event_rx = pool
+            .subscribe(&subscription_id, &[filter])
+            .await
             .map_err(|e| Error::Transport(format!("Failed to subscribe to relays: {}", e)))?;
 
         // Spawn background task to process incoming events
@@ -350,7 +357,9 @@ impl NostrTransport {
                     Some(relay_pool_clone.clone()),
                     &relays,
                     event_kind,
-                ).await {
+                )
+                .await
+                {
                     // Log error but continue processing
                     eprintln!("Failed to process incoming Bifrost event: {}", e);
                 }
@@ -367,7 +376,9 @@ impl NostrTransport {
             return Err(Error::Transport("Not connected to relays".to_string()));
         }
 
-        let pool = self.relay_pool.as_ref()
+        let pool = self
+            .relay_pool
+            .as_ref()
             .ok_or_else(|| Error::Transport("Relay pool not initialized".to_string()))?;
 
         // Serialize message
@@ -375,8 +386,8 @@ impl NostrTransport {
             .map_err(|e| Error::Encoding(format!("failed to serialize message: {}", e)))?;
 
         // Extract session_id from message or generate new one
-        let session_id = Self::extract_session_id(message)
-            .unwrap_or_else(|| self.generate_session_id());
+        let session_id =
+            Self::extract_session_id(message).unwrap_or_else(|| self.generate_session_id());
 
         // Create envelope
         let envelope = MessageEnvelope {
@@ -420,7 +431,8 @@ impl NostrTransport {
                 .map_err(|e| Error::Signing(format!("Failed to sign event: {}", e)))?;
 
             // Publish to relay pool
-            pool.publish(&event).await
+            pool.publish(&event)
+                .await
                 .map_err(|e| Error::Transport(format!("Failed to publish to relays: {}", e)))?;
         }
 
@@ -609,9 +621,7 @@ impl NostrTransport {
             .as_secs();
 
         let mut pending = self.pending.write().await;
-        pending.retain(|_, request| {
-            now - request.started_at < self.config.message_timeout
-        });
+        pending.retain(|_, request| now - request.started_at < self.config.message_timeout);
     }
 
     /// Generate a unique session ID

@@ -14,12 +14,12 @@ pub const PICTURE_KIND: u16 = 20;
 
 /// Allowed image media types for picture events
 pub const ALLOWED_MEDIA_TYPES: &[&str] = &[
-    "image/apng",  // Animated Portable Network Graphics
-    "image/avif",  // AV1 Image File Format
-    "image/gif",   // Graphics Interchange Format
-    "image/jpeg",  // Joint Photographic Expert Group
-    "image/png",   // Portable Network Graphics
-    "image/webp",  // Web Picture format
+    "image/apng", // Animated Portable Network Graphics
+    "image/avif", // AV1 Image File Format
+    "image/gif",  // Graphics Interchange Format
+    "image/jpeg", // Joint Photographic Expert Group
+    "image/png",  // Portable Network Graphics
+    "image/webp", // Web Picture format
 ];
 
 /// Errors that can occur during NIP-68 operations
@@ -51,7 +51,11 @@ pub struct UserAnnotation {
 
 impl UserAnnotation {
     pub fn new(pubkey: String, pos_x: f64, pos_y: f64) -> Self {
-        Self { pubkey, pos_x, pos_y }
+        Self {
+            pubkey,
+            pos_x,
+            pos_y,
+        }
     }
 
     /// Parse from annotate-user tag value: `<pubkey>:<posX>:<posY>`
@@ -72,7 +76,11 @@ impl UserAnnotation {
             .parse::<f64>()
             .map_err(|_| Nip68Error::InvalidAnnotation(format!("invalid posY: {}", parts[2])))?;
 
-        Ok(Self { pubkey, pos_x, pos_y })
+        Ok(Self {
+            pubkey,
+            pos_x,
+            pos_y,
+        })
     }
 
     /// Convert to annotate-user tag value
@@ -167,16 +175,13 @@ impl PictureEvent {
 
     /// Get content warning if present
     pub fn get_content_warning(&self) -> Option<&str> {
-        self.event
-            .tags
-            .iter()
-            .find_map(|tag| {
-                if tag.len() >= 2 && tag[0] == "content-warning" {
-                    Some(tag[1].as_str())
-                } else {
-                    None
-                }
-            })
+        self.event.tags.iter().find_map(|tag| {
+            if tag.len() >= 2 && tag[0] == "content-warning" {
+                Some(tag[1].as_str())
+            } else {
+                None
+            }
+        })
     }
 
     /// Get hashtags
@@ -196,30 +201,24 @@ impl PictureEvent {
 
     /// Get location
     pub fn get_location(&self) -> Option<&str> {
-        self.event
-            .tags
-            .iter()
-            .find_map(|tag| {
-                if tag.len() >= 2 && tag[0] == "location" {
-                    Some(tag[1].as_str())
-                } else {
-                    None
-                }
-            })
+        self.event.tags.iter().find_map(|tag| {
+            if tag.len() >= 2 && tag[0] == "location" {
+                Some(tag[1].as_str())
+            } else {
+                None
+            }
+        })
     }
 
     /// Get geohash
     pub fn get_geohash(&self) -> Option<&str> {
-        self.event
-            .tags
-            .iter()
-            .find_map(|tag| {
-                if tag.len() >= 2 && tag[0] == "g" {
-                    Some(tag[1].as_str())
-                } else {
-                    None
-                }
-            })
+        self.event.tags.iter().find_map(|tag| {
+            if tag.len() >= 2 && tag[0] == "g" {
+                Some(tag[1].as_str())
+            } else {
+                None
+            }
+        })
     }
 
     /// Get tagged users (p tags)
@@ -254,16 +253,13 @@ impl PictureEvent {
 
     /// Get language (ISO-639-1)
     pub fn get_language(&self) -> Option<&str> {
-        self.event
-            .tags
-            .iter()
-            .find_map(|tag| {
-                if tag.len() >= 3 && tag[0] == "l" && tag[2] == "ISO-639-1" {
-                    Some(tag[1].as_str())
-                } else {
-                    None
-                }
-            })
+        self.event.tags.iter().find_map(|tag| {
+            if tag.len() >= 3 && tag[0] == "l" && tag[2] == "ISO-639-1" {
+                Some(tag[1].as_str())
+            } else {
+                None
+            }
+        })
     }
 
     /// Validate media types are allowed
@@ -456,7 +452,11 @@ mod tests {
     fn test_picture_event_tagged_users() {
         let tags = vec![
             vec!["p".to_string(), "pubkey1".to_string()],
-            vec!["p".to_string(), "pubkey2".to_string(), "wss://relay.com".to_string()],
+            vec![
+                "p".to_string(),
+                "pubkey2".to_string(),
+                "wss://relay.com".to_string(),
+            ],
         ];
 
         let event = create_test_event(PICTURE_KIND, "Content", tags);

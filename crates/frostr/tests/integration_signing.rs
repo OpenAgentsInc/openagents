@@ -9,16 +9,16 @@
 //!
 //! Tests use a mock transport layer to avoid real relay dependencies.
 
-use frostr::bifrost::{
-    BifrostConfig, BifrostMessage, BifrostNode, TimeoutConfig,
-    CommitmentRequest, CommitmentResponse,
-};
-use frostr::keygen::{generate_key_shares, FrostShare};
 use frostr::Result;
+use frostr::bifrost::{
+    BifrostConfig, BifrostMessage, BifrostNode, CommitmentRequest, CommitmentResponse,
+    TimeoutConfig,
+};
+use frostr::keygen::{FrostShare, generate_key_shares};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
-use tokio::time::{sleep, Duration};
+use tokio::sync::{RwLock, mpsc};
+use tokio::time::{Duration, sleep};
 
 /// Mock transport for deterministic testing without real Nostr relays
 #[derive(Clone)]
@@ -38,7 +38,7 @@ impl MockTransport {
         Self {
             message_bus: Arc::new(RwLock::new(HashMap::new())),
             peer_id,
-            network_delay_ms: 10, // 10ms simulated latency
+            network_delay_ms: 10,  // 10ms simulated latency
             drop_probability: 0.0, // No drops by default
         }
     }
@@ -109,7 +109,11 @@ struct MockSigningPeer {
 }
 
 impl MockSigningPeer {
-    fn new(peer_id: u8, frost_share: FrostShare, transport: MockTransport) -> (Self, mpsc::Sender<BifrostMessage>) {
+    fn new(
+        peer_id: u8,
+        frost_share: FrostShare,
+        transport: MockTransport,
+    ) -> (Self, mpsc::Sender<BifrostMessage>) {
         let (tx, rx) = mpsc::channel(100);
         (
             Self {

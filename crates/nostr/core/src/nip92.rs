@@ -268,10 +268,7 @@ mod tests {
         let attachment = MediaAttachment::new("https://example.com/image.jpg".to_string())
             .with_blurhash("eVF$^OI:${M{o#*0-nNF".to_string());
 
-        assert_eq!(
-            attachment.get_blurhash(),
-            Some("eVF$^OI:${M{o#*0-nNF")
-        );
+        assert_eq!(attachment.get_blurhash(), Some("eVF$^OI:${M{o#*0-nNF"));
     }
 
     #[test]
@@ -308,9 +305,9 @@ mod tests {
         assert_eq!(tag[1], "url https://nostr.build/i/my-image.jpg");
         assert!(tag.contains(&"m image/jpeg".to_string()));
         assert!(tag.contains(&"dim 3024x4032".to_string()));
-        assert!(tag.contains(
-            &"alt A scenic photo overlooking the coast of Costa Rica".to_string()
-        ));
+        assert!(
+            tag.contains(&"alt A scenic photo overlooking the coast of Costa Rica".to_string())
+        );
     }
 
     #[test]

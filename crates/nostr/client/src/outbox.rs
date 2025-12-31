@@ -11,7 +11,7 @@
 //!   - READ relays of each tagged user
 
 use crate::error::{ClientError, Result};
-use nostr::{Event, RelayListMetadata, RELAY_LIST_METADATA_KIND};
+use nostr::{Event, RELAY_LIST_METADATA_KIND, RelayListMetadata};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
@@ -93,7 +93,9 @@ impl OutboxModel {
             cached_at: SystemTime::now(),
         };
 
-        let mut cache = self.cache.write()
+        let mut cache = self
+            .cache
+            .write()
             .map_err(|_| ClientError::Internal("Cache lock poisoned".to_string()))?;
         cache.insert(pubkey.to_string(), entry);
 
@@ -267,8 +269,16 @@ mod tests {
             pubkey,
             RELAY_LIST_METADATA_KIND,
             vec![
-                vec!["r".to_string(), "wss://write1.com".to_string(), "write".to_string()],
-                vec!["r".to_string(), "wss://read1.com".to_string(), "read".to_string()],
+                vec![
+                    "r".to_string(),
+                    "wss://write1.com".to_string(),
+                    "write".to_string(),
+                ],
+                vec![
+                    "r".to_string(),
+                    "wss://read1.com".to_string(),
+                    "read".to_string(),
+                ],
                 vec!["r".to_string(), "wss://both.com".to_string()],
             ],
         )
@@ -331,8 +341,8 @@ mod tests {
 
         // Should contain author's write relays and tagged user's read relays
         assert!(publish_relays.contains(&"wss://write1.com".to_string())); // author write
-        assert!(publish_relays.contains(&"wss://both.com".to_string()));    // both
-        assert!(publish_relays.contains(&"wss://read1.com".to_string()));   // tagged read
+        assert!(publish_relays.contains(&"wss://both.com".to_string())); // both
+        assert!(publish_relays.contains(&"wss://read1.com".to_string())); // tagged read
     }
 
     #[test]
@@ -414,17 +424,13 @@ mod tests {
         let author_event = create_test_event(
             "author",
             RELAY_LIST_METADATA_KIND,
-            vec![
-                vec!["r".to_string(), "wss://shared.com".to_string()],
-            ],
+            vec![vec!["r".to_string(), "wss://shared.com".to_string()]],
         );
 
         let tagged_event = create_test_event(
             "tagged",
             RELAY_LIST_METADATA_KIND,
-            vec![
-                vec!["r".to_string(), "wss://shared.com".to_string()],
-            ],
+            vec![vec!["r".to_string(), "wss://shared.com".to_string()]],
         );
 
         outbox.update_relay_list("author", &author_event).unwrap();
@@ -440,7 +446,10 @@ mod tests {
 
         // Should deduplicate the shared relay
         assert_eq!(
-            publish_relays.iter().filter(|r| *r == "wss://shared.com").count(),
+            publish_relays
+                .iter()
+                .filter(|r| *r == "wss://shared.com")
+                .count(),
             1
         );
     }

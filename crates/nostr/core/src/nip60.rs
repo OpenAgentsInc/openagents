@@ -112,7 +112,12 @@ pub struct CashuProof {
 
 impl CashuProof {
     pub fn new(id: String, amount: u64, secret: String, c: String) -> Self {
-        Self { id, amount, secret, c }
+        Self {
+            id,
+            amount,
+            secret,
+            c,
+        }
     }
 }
 
@@ -213,9 +218,7 @@ impl WalletEvent {
 
     /// Parse wallet configuration tags from decrypted content
     /// Expected format: [["privkey", "hex"], ["mint", "url1"], ["mint", "url2"]]
-    pub fn parse_content(
-        decrypted_json: &str,
-    ) -> Result<HashMap<String, Vec<String>>, Nip60Error> {
+    pub fn parse_content(decrypted_json: &str) -> Result<HashMap<String, Vec<String>>, Nip60Error> {
         let tags: Vec<Vec<String>> = serde_json::from_str(decrypted_json)?;
         let mut config = HashMap::new();
 
@@ -255,9 +258,7 @@ impl SpendingHistoryEvent {
 
     /// Parse spending history from decrypted content
     /// Format: [["direction", "in"], ["amount", "100"], ["unit", "sat"], ["e", "id", "", "created"]]
-    pub fn parse_content(
-        decrypted_json: &str,
-    ) -> Result<HashMap<String, Vec<String>>, Nip60Error> {
+    pub fn parse_content(decrypted_json: &str) -> Result<HashMap<String, Vec<String>>, Nip60Error> {
         let tags: Vec<Vec<String>> = serde_json::from_str(decrypted_json)?;
         let mut history = HashMap::new();
 
@@ -312,30 +313,24 @@ impl QuoteEvent {
 
     /// Get the mint URL from tags
     pub fn get_mint(&self) -> Option<&str> {
-        self.event
-            .tags
-            .iter()
-            .find_map(|tag| {
-                if tag.len() >= 2 && tag[0] == "mint" {
-                    Some(tag[1].as_str())
-                } else {
-                    None
-                }
-            })
+        self.event.tags.iter().find_map(|tag| {
+            if tag.len() >= 2 && tag[0] == "mint" {
+                Some(tag[1].as_str())
+            } else {
+                None
+            }
+        })
     }
 
     /// Get the expiration timestamp from tags
     pub fn get_expiration(&self) -> Option<u64> {
-        self.event
-            .tags
-            .iter()
-            .find_map(|tag| {
-                if tag.len() >= 2 && tag[0] == "expiration" {
-                    tag[1].parse().ok()
-                } else {
-                    None
-                }
-            })
+        self.event.tags.iter().find_map(|tag| {
+            if tag.len() >= 2 && tag[0] == "expiration" {
+                tag[1].parse().ok()
+            } else {
+                None
+            }
+        })
     }
 }
 
@@ -437,7 +432,10 @@ mod tests {
         let content = TokenContent::new("https://mint.example.com".to_string(), proofs)
             .with_deleted(vec!["event-id-1".to_string(), "event-id-2".to_string()]);
 
-        assert_eq!(content.del, Some(vec!["event-id-1".to_string(), "event-id-2".to_string()]));
+        assert_eq!(
+            content.del,
+            Some(vec!["event-id-1".to_string(), "event-id-2".to_string()])
+        );
     }
 
     #[test]
@@ -506,9 +504,16 @@ mod tests {
 
     #[test]
     fn test_spending_history_event() {
-        let event = create_test_event(SPENDING_HISTORY_KIND, "encrypted_content", vec![
-            vec!["e".to_string(), "event123".to_string(), "".to_string(), "redeemed".to_string()],
-        ]);
+        let event = create_test_event(
+            SPENDING_HISTORY_KIND,
+            "encrypted_content",
+            vec![vec![
+                "e".to_string(),
+                "event123".to_string(),
+                "".to_string(),
+                "redeemed".to_string(),
+            ]],
+        );
 
         let history = SpendingHistoryEvent::from_event(event).unwrap();
         let redeemed = history.get_redeemed_events();
@@ -533,10 +538,14 @@ mod tests {
 
     #[test]
     fn test_quote_event() {
-        let event = create_test_event(QUOTE_KIND, "encrypted_quote_id", vec![
-            vec!["mint".to_string(), "https://mint.example.com".to_string()],
-            vec!["expiration".to_string(), "1234567890".to_string()],
-        ]);
+        let event = create_test_event(
+            QUOTE_KIND,
+            "encrypted_quote_id",
+            vec![
+                vec!["mint".to_string(), "https://mint.example.com".to_string()],
+                vec!["expiration".to_string(), "1234567890".to_string()],
+            ],
+        );
 
         let quote = QuoteEvent::from_event(event).unwrap();
         assert_eq!(quote.get_mint(), Some("https://mint.example.com"));

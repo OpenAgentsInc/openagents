@@ -397,12 +397,7 @@ mod tests {
 
     #[test]
     fn test_skill_delivery_content_creation() {
-        let content = SkillDeliveryContent::new(
-            "skill-123",
-            "fn main() {}",
-            "rust",
-            "abc123",
-        );
+        let content = SkillDeliveryContent::new("skill-123", "fn main() {}", "rust", "abc123");
 
         assert_eq!(content.skill_id, "skill-123");
         assert_eq!(content.content, "fn main() {}");
@@ -412,12 +407,7 @@ mod tests {
 
     #[test]
     fn test_skill_delivery_content_verify_hash() {
-        let content = SkillDeliveryContent::new(
-            "skill-123",
-            "fn main() {}",
-            "rust",
-            "abc123",
-        );
+        let content = SkillDeliveryContent::new("skill-123", "fn main() {}", "rust", "abc123");
 
         assert!(content.verify_hash("abc123").is_ok());
         assert!(content.verify_hash("def456").is_err());
@@ -425,12 +415,7 @@ mod tests {
 
     #[test]
     fn test_skill_delivery_content_serialization() {
-        let content = SkillDeliveryContent::new(
-            "skill-123",
-            "fn main() {}",
-            "rust",
-            "abc123",
-        );
+        let content = SkillDeliveryContent::new("skill-123", "fn main() {}", "rust", "abc123");
 
         let json = content.to_json().unwrap();
         let parsed = SkillDeliveryContent::from_json(&json).unwrap();
@@ -493,12 +478,7 @@ mod tests {
 
     #[test]
     fn test_skill_delivery_creation() {
-        let content = SkillDeliveryContent::new(
-            "skill-123",
-            "fn main() {}",
-            "rust",
-            "abc123",
-        );
+        let content = SkillDeliveryContent::new("skill-123", "fn main() {}", "rust", "abc123");
         let delivery = SkillDelivery::new(content, "license-event-id");
 
         assert_eq!(delivery.license_id, "license-event-id");
@@ -506,12 +486,7 @@ mod tests {
 
     #[test]
     fn test_skill_delivery_tags() {
-        let content = SkillDeliveryContent::new(
-            "skill-123",
-            "fn main() {}",
-            "rust",
-            "abc123",
-        );
+        let content = SkillDeliveryContent::new("skill-123", "fn main() {}", "rust", "abc123");
         let delivery = SkillDelivery::new(content, "license-event-id");
 
         let tags = delivery.build_tags();

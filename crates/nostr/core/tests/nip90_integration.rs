@@ -139,8 +139,8 @@ fn test_job_input_to_tag_with_marker_no_relay() {
 
 #[test]
 fn test_job_input_to_tag_with_relay_and_marker() {
-    let input = JobInput::event("xyz789", Some("wss://relay.io".to_string()))
-        .with_marker("reference");
+    let input =
+        JobInput::event("xyz789", Some("wss://relay.io".to_string())).with_marker("reference");
     let tag = input.to_tag();
     assert_eq!(
         tag,
@@ -199,8 +199,8 @@ fn test_job_input_from_tag_invalid() {
 
 #[test]
 fn test_job_input_roundtrip() {
-    let original = JobInput::event("event123", Some("wss://relay.com".to_string()))
-        .with_marker("source");
+    let original =
+        JobInput::event("event123", Some("wss://relay.com".to_string())).with_marker("source");
     let tag = original.to_tag();
     let recovered = JobInput::from_tag(&tag).unwrap();
 
@@ -353,39 +353,43 @@ fn test_job_request_to_tags_comprehensive() {
     let tags = request.to_tags();
 
     // Check for input tags
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "i" && t[1] == "Test input" && t[2] == "text"));
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "i" && t[1] == "https://example.com" && t[2] == "url"));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "i" && t[1] == "Test input" && t[2] == "text")
+    );
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "i" && t[1] == "https://example.com" && t[2] == "url")
+    );
 
     // Check for param tags
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "param" && t[1] == "model" && t[2] == "gpt-4"));
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "param" && t[1] == "temperature" && t[2] == "0.8"));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "param" && t[1] == "model" && t[2] == "gpt-4")
+    );
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "param" && t[1] == "temperature" && t[2] == "0.8")
+    );
 
     // Check for output tag
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "output" && t[1] == "application/json"));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "output" && t[1] == "application/json")
+    );
 
     // Check for bid tag
     assert!(tags.iter().any(|t| t[0] == "bid" && t[1] == "2500"));
 
     // Check for relays tag
     assert!(tags.iter().any(|t| {
-        t[0] == "relays" && t.contains(&"wss://relay1.com".to_string())
+        t[0] == "relays"
+            && t.contains(&"wss://relay1.com".to_string())
             && t.contains(&"wss://relay2.com".to_string())
     }));
 
     // Check for service provider tag
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "p" && t[1] == "provider123"));
+    assert!(tags.iter().any(|t| t[0] == "p" && t[1] == "provider123"));
 }
 
 #[test]
@@ -453,22 +457,25 @@ fn test_job_result_to_tags() {
     assert!(tags.iter().any(|t| t[0] == "request"));
 
     // Check for event reference
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "e" && t[1] == "req123" && t[2] == "wss://relay.com"));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "e" && t[1] == "req123" && t[2] == "wss://relay.com")
+    );
 
     // Check for input tag
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "i" && t[1] == "input" && t[2] == "text"));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "i" && t[1] == "input" && t[2] == "text")
+    );
 
     // Check for customer pubkey
     assert!(tags.iter().any(|t| t[0] == "p" && t[1] == "cust456"));
 
     // Check for amount tag
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "amount" && t[1] == "1000" && t[2] == "lnbc..."));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "amount" && t[1] == "1000" && t[2] == "lnbc...")
+    );
 }
 
 #[test]
@@ -546,22 +553,25 @@ fn test_job_feedback_to_tags() {
     let tags = feedback.to_tags();
 
     // Check for status tag
-    assert!(tags.iter().any(
-        |t| t[0] == "status" && t[1] == "payment-required" && t[2] == "Payment needed"
-    ));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "status" && t[1] == "payment-required" && t[2] == "Payment needed")
+    );
 
     // Check for event reference
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "e" && t[1] == "req123" && t[2] == "wss://relay.com"));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "e" && t[1] == "req123" && t[2] == "wss://relay.com")
+    );
 
     // Check for customer pubkey
     assert!(tags.iter().any(|t| t[0] == "p" && t[1] == "cust456"));
 
     // Check for amount tag
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "amount" && t[1] == "2000" && t[2] == "lnbc..."));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "amount" && t[1] == "2000" && t[2] == "lnbc...")
+    );
 }
 
 // =========================================================================
@@ -644,10 +654,7 @@ fn test_multi_input_translation_job() {
 
     assert_eq!(request.kind, 5002);
     assert_eq!(request.inputs.len(), 2);
-    assert_eq!(
-        request.inputs[0].marker,
-        Some("source".to_string())
-    );
+    assert_eq!(request.inputs[0].marker, Some("source".to_string()));
     assert_eq!(
         request.inputs[1].marker,
         Some("target_language".to_string())
@@ -674,9 +681,7 @@ fn test_payment_required_feedback_workflow() {
     let tags = feedback.to_tags();
 
     // Verify payment invoice is in tags
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "amount" && t[1] == "10000"));
+    assert!(tags.iter().any(|t| t[0] == "amount" && t[1] == "10000"));
 }
 
 #[test]
@@ -686,7 +691,5 @@ fn test_error_feedback_workflow() {
 
     let tags = feedback.to_tags();
 
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "status" && t[1] == "error"));
+    assert!(tags.iter().any(|t| t[0] == "status" && t[1] == "error"));
 }

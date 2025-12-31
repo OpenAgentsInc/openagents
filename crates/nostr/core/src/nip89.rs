@@ -195,7 +195,10 @@ impl HandlerInfo {
         let mut tags = Vec::new();
 
         // Add handler type
-        tags.push(vec!["handler".to_string(), self.handler_type.as_str().to_string()]);
+        tags.push(vec![
+            "handler".to_string(),
+            self.handler_type.as_str().to_string(),
+        ]);
 
         // Add capabilities
         for capability in &self.capabilities {
@@ -252,7 +255,11 @@ impl HandlerInfo {
             .find(|t| t.len() >= 2 && t[0] == "price")
             .and_then(|t| t[1].parse::<u64>().ok())
             .map(|amount| {
-                let tag = event.tags.iter().find(|t| t.len() >= 2 && t[0] == "price").unwrap();
+                let tag = event
+                    .tags
+                    .iter()
+                    .find(|t| t.len() >= 2 && t[0] == "price")
+                    .unwrap();
                 let mut pricing = PricingInfo::new(amount);
                 if tag.len() >= 3 {
                     pricing = pricing.with_model(tag[2].clone());
@@ -268,7 +275,16 @@ impl HandlerInfo {
             .map_err(|e| Nip89Error::Serialization(e.to_string()))?;
 
         // Parse custom tags (everything except known tag types)
-        let known_tags = ["handler", "capability", "price", "p", "e", "a", "d", "rating"];
+        let known_tags = [
+            "handler",
+            "capability",
+            "price",
+            "p",
+            "e",
+            "a",
+            "d",
+            "rating",
+        ];
         let custom_tags: Vec<(String, String)> = event
             .tags
             .iter()
@@ -501,13 +517,17 @@ mod tests {
 
     #[test]
     fn test_handler_metadata() {
-        let metadata = HandlerMetadata::new("Code Generator", "Generates code from natural language")
-            .with_icon("https://example.com/icon.png")
-            .with_website("https://example.com");
+        let metadata =
+            HandlerMetadata::new("Code Generator", "Generates code from natural language")
+                .with_icon("https://example.com/icon.png")
+                .with_website("https://example.com");
 
         assert_eq!(metadata.name, "Code Generator");
         assert_eq!(metadata.description, "Generates code from natural language");
-        assert_eq!(metadata.icon_url, Some("https://example.com/icon.png".to_string()));
+        assert_eq!(
+            metadata.icon_url,
+            Some("https://example.com/icon.png".to_string())
+        );
         assert_eq!(metadata.website, Some("https://example.com".to_string()));
     }
 
@@ -555,8 +575,14 @@ mod tests {
         let tags = info.to_tags();
 
         assert!(tags.iter().any(|t| t[0] == "handler" && t[1] == "skill"));
-        assert!(tags.iter().any(|t| t[0] == "capability" && t[1] == "skill1"));
-        assert!(tags.iter().any(|t| t[0] == "capability" && t[1] == "skill2"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "capability" && t[1] == "skill1")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "capability" && t[1] == "skill2")
+        );
         assert!(tags.iter().any(|t| t[0] == "price" && t[1] == "1000"));
     }
 

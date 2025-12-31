@@ -434,7 +434,10 @@ mod tests {
                 "https://myblog.example.com/post/2012-03-27/hello-world".to_string()
             ]
         );
-        assert_eq!(content.to_k_tag_array(), vec!["k".to_string(), "web".to_string()]);
+        assert_eq!(
+            content.to_k_tag_array(),
+            vec!["k".to_string(), "web".to_string()]
+        );
     }
 
     #[test]
@@ -696,7 +699,10 @@ mod tests {
             content.to_i_tag_array(),
             vec!["i".to_string(), "#bitcoin".to_string()]
         );
-        assert_eq!(content.to_k_tag_array(), vec!["k".to_string(), "#".to_string()]);
+        assert_eq!(
+            content.to_k_tag_array(),
+            vec!["k".to_string(), "#".to_string()]
+        );
     }
 
     #[test]

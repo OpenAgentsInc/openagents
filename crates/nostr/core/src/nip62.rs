@@ -362,12 +362,7 @@ mod tests {
 
     #[test]
     fn test_is_not_request_to_vanish() {
-        let event = mock_event(
-            1,
-            "user123",
-            vec![],
-            "Regular note",
-        );
+        let event = mock_event(1, "user123", vec![], "Regular note");
 
         assert!(!is_request_to_vanish(&event));
     }

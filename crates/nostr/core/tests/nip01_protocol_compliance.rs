@@ -4,9 +4,9 @@
 //! covering event structure, serialization, validation, and edge cases.
 
 use nostr::{
-    classify_kind, finalize_event, generate_secret_key, get_event_hash, get_public_key_hex,
-    serialize_event, validate_event, validate_unsigned_event, verify_event, Event, EventTemplate,
-    KindClassification, UnsignedEvent, KIND_SHORT_TEXT_NOTE,
+    Event, EventTemplate, KIND_SHORT_TEXT_NOTE, KindClassification, UnsignedEvent, classify_kind,
+    finalize_event, generate_secret_key, get_event_hash, get_public_key_hex, serialize_event,
+    validate_event, validate_unsigned_event, verify_event,
 };
 
 // =============================================================================
@@ -32,7 +32,10 @@ fn test_event_id_must_be_64_hex_chars() {
     // Uppercase (accepted by validate_event, but should be lowercase per NIP-01)
     // Relay-level validation enforces lowercase
     event.id = "A".repeat(64);
-    assert!(validate_event(&event), "Uppercase hex ID passes basic validation");
+    assert!(
+        validate_event(&event),
+        "Uppercase hex ID passes basic validation"
+    );
 
     // Valid lowercase
     event.id = "a".repeat(64);
@@ -61,7 +64,10 @@ fn test_event_pubkey_must_be_64_lowercase_hex() {
 
     // Valid
     event.pubkey = "b".repeat(64);
-    assert!(validate_event(&event), "Valid lowercase hex pubkey should pass");
+    assert!(
+        validate_event(&event),
+        "Valid lowercase hex pubkey should pass"
+    );
 }
 
 #[test]
@@ -246,7 +252,10 @@ fn test_event_hash_changes_with_content() {
     let hash1 = get_event_hash(&unsigned1).unwrap();
     let hash2 = get_event_hash(&unsigned2).unwrap();
 
-    assert_ne!(hash1, hash2, "Different content should produce different hash");
+    assert_ne!(
+        hash1, hash2,
+        "Different content should produce different hash"
+    );
 }
 
 #[test]
@@ -263,11 +272,7 @@ fn test_event_hash_lowercase_hex() {
     let hash = get_event_hash(&unsigned).unwrap();
 
     assert_eq!(hash.len(), 64, "Hash should be 64 characters");
-    assert_eq!(
-        hash,
-        hash.to_lowercase(),
-        "Hash should be lowercase hex"
-    );
+    assert_eq!(hash, hash.to_lowercase(), "Hash should be lowercase hex");
     assert!(
         hash.chars().all(|c| c.is_ascii_hexdigit()),
         "Hash should be valid hex"
@@ -378,10 +383,7 @@ fn test_verify_checks_id_matches_hash() {
     event.id = "a".repeat(64);
 
     // Verification should fail
-    assert!(
-        !verify_event(&event).unwrap(),
-        "Wrong ID should not verify"
-    );
+    assert!(!verify_event(&event).unwrap(), "Wrong ID should not verify");
 }
 
 // =============================================================================

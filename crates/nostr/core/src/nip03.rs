@@ -45,7 +45,7 @@
 //! # let event = finalize_event(&template, &sk).unwrap();
 //! ```
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use thiserror::Error;
 
 /// Event kind for OpenTimestamps attestations

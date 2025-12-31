@@ -291,12 +291,7 @@ mod tests {
 
     #[test]
     fn test_draft_wrap_from_event_minimal() {
-        let event = create_test_draft_wrap_event(
-            "my-draft-1",
-            1,
-            "encrypted_content_here",
-            None,
-        );
+        let event = create_test_draft_wrap_event("my-draft-1", 1, "encrypted_content_here", None);
         let draft = DraftWrap::from_event(event).unwrap();
 
         assert_eq!(draft.get_identifier(), "my-draft-1");

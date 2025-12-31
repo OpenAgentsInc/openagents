@@ -1,21 +1,31 @@
 //! Integration test verifying that all NIP-SA types are publicly accessible
 
 use nostr::{
+    // State (kind:39201)
+    AgentStateContent,
+    Goal,
+    GoalStatus,
     // Profile (kind:39200)
     KIND_AGENT_PROFILE,
-    // State (kind:39201)
-    AgentStateContent, Goal, GoalStatus, MemoryEntry, KIND_AGENT_STATE,
     // Schedule (kind:39202)
     KIND_AGENT_SCHEDULE,
+    KIND_AGENT_STATE,
     // Goals (kind:39203)
     KIND_PUBLIC_GOALS,
+    KIND_SKILL_DELIVERY,
+    KIND_SKILL_LICENSE,
     // Tick (kinds:39210, 39211)
-    KIND_TICK_REQUEST, KIND_TICK_RESULT,
-    // Trajectory (kinds:39230, 39231)
-    StepType, TrajectoryEventContent, TrajectorySessionContent, KIND_TRAJECTORY_EVENT,
+    KIND_TICK_REQUEST,
+    KIND_TICK_RESULT,
+    KIND_TRAJECTORY_EVENT,
     KIND_TRAJECTORY_SESSION,
+    MemoryEntry,
     // Skill (kinds:39220, 39221)
-    SkillLicenseContent, KIND_SKILL_DELIVERY, KIND_SKILL_LICENSE,
+    SkillLicenseContent,
+    // Trajectory (kinds:39230, 39231)
+    StepType,
+    TrajectoryEventContent,
+    TrajectorySessionContent,
 };
 
 #[test]

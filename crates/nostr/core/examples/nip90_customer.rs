@@ -6,8 +6,8 @@
 //! 3. Listen for job results
 //! 4. Handle payment
 
-use nostr::{finalize_event, generate_secret_key, EventTemplate};
 use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
+use nostr::{EventTemplate, finalize_event, generate_secret_key};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== NIP-90 Customer Example ===\n");
@@ -18,7 +18,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2. Create a text generation job request
     let request = JobRequest::new(KIND_JOB_TEXT_GENERATION)?
-        .add_input(JobInput::text("Write a haiku about decentralized protocols"))
+        .add_input(JobInput::text(
+            "Write a haiku about decentralized protocols",
+        ))
         .add_param("model", "llama3.2")
         .add_param("temperature", "0.7")
         .add_param("max_tokens", "100")
@@ -84,7 +86,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nNext steps:");
     println!("  1. Connect to Nostr relays");
     println!("  2. Publish the job request event");
-    println!("  3. Subscribe to result events (kind {})", request.result_kind());
+    println!(
+        "  3. Subscribe to result events (kind {})",
+        request.result_kind()
+    );
     println!("  4. Wait for service provider responses");
     println!("  5. Pay bolt11 invoice when result arrives");
 

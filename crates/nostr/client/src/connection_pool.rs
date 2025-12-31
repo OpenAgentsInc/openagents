@@ -102,11 +102,7 @@ impl RelayConnectionPool {
             connections: Vec::new(),
             semaphore: Arc::new(Semaphore::new(config.max_connections_per_relay)),
             config,
-            circuit_breaker: Arc::new(CircuitBreaker::new(
-                5,
-                2,
-                Duration::from_secs(30),
-            )),
+            circuit_breaker: Arc::new(CircuitBreaker::new(5, 2, Duration::from_secs(30))),
             backoff: Arc::new(Mutex::new(ExponentialBackoff::new(
                 Duration::from_millis(100),
                 Duration::from_secs(30),
@@ -193,9 +189,10 @@ impl RelayConnectionPool {
         // Remove in reverse order to maintain indices
         for idx in to_remove.into_iter().rev() {
             if let Some(pooled) = self.connections.get(idx)
-                && let Err(e) = pooled.connection.disconnect().await {
-                    warn!("Error disconnecting idle connection: {}", e);
-                }
+                && let Err(e) = pooled.connection.disconnect().await
+            {
+                warn!("Error disconnecting idle connection: {}", e);
+            }
             self.connections.remove(idx);
             debug!("Removed idle connection {} from {}", idx, self.url);
         }
@@ -407,7 +404,10 @@ mod tests {
         assert!(manager.stats("wss://relay.example.com").await.is_some());
 
         // Remove pool
-        manager.remove_pool("wss://relay.example.com").await.unwrap();
+        manager
+            .remove_pool("wss://relay.example.com")
+            .await
+            .unwrap();
         assert!(manager.stats("wss://relay.example.com").await.is_none());
     }
 }

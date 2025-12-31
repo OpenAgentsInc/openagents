@@ -389,7 +389,10 @@ mod tests {
         );
 
         highlight.add_attribution(Attribution::author("pubkey1", None));
-        highlight.add_attribution(Attribution::editor("pubkey2", Some("wss://relay.com".to_string())));
+        highlight.add_attribution(Attribution::editor(
+            "pubkey2",
+            Some("wss://relay.com".to_string()),
+        ));
 
         assert_eq!(highlight.attributions.len(), 2);
         assert_eq!(highlight.attributions[0].role, "author");
@@ -496,9 +499,10 @@ mod tests {
             && tag[2] == "source"));
 
         // Should have comment tag
-        assert!(tags
-            .iter()
-            .any(|tag| tag.len() == 2 && tag[0] == "comment" && tag[1] == "Great point!"));
+        assert!(
+            tags.iter()
+                .any(|tag| tag.len() == 2 && tag[0] == "comment" && tag[1] == "Great point!")
+        );
     }
 
     #[test]

@@ -55,7 +55,9 @@ mod relay;
 mod subscription;
 
 pub use cache::{CacheConfig, EventCache};
-pub use connection_pool::{ConnectionPoolConfig, ConnectionPoolManager, PoolStats as ConnectionPoolStats};
+pub use connection_pool::{
+    ConnectionPoolConfig, ConnectionPoolManager, PoolStats as ConnectionPoolStats,
+};
 pub use contacts::{ContactManager, MergeStrategy};
 pub use error::{ClientError, Result};
 pub use negentropy::{SyncSession, SyncSessionId, SyncSessionManager, build_initial_message};
@@ -63,7 +65,5 @@ pub use outbox::{OutboxConfig, OutboxModel};
 pub use pool::{PoolConfig, PoolStats, RelayPool, RelayStats};
 pub use queue::{MessageQueue, MessageStatus, QueueConfig, QueuedMessage};
 pub use recovery::{CircuitBreaker, CircuitState, ExponentialBackoff, HealthMetrics};
-pub use relay::{
-    ConnectionState, PublishConfirmation, RelayConfig, RelayConnection, RelayMessage,
-};
+pub use relay::{ConnectionState, PublishConfirmation, RelayConfig, RelayConnection, RelayMessage};
 pub use subscription::{EventCallback, Subscription};

@@ -9,8 +9,8 @@
 //! - Subscription management
 //! - Broadcast operations
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use nostr::{finalize_event, generate_secret_key, EventTemplate};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use nostr::{EventTemplate, finalize_event, generate_secret_key};
 use nostr_relay::{Database, DatabaseConfig, Filter};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
@@ -131,7 +131,8 @@ fn bench_concurrent_inserts(c: &mut Criterion) {
                 let db_clone = db.clone();
                 let handle = std::thread::spawn(move || {
                     for i in 0..10 {
-                        let event = create_test_event(1, &format!("Thread {} event {}", thread_id, i));
+                        let event =
+                            create_test_event(1, &format!("Thread {} event {}", thread_id, i));
                         let _: () = db_clone.store_event(&event).unwrap();
                         black_box(());
                     }
@@ -333,21 +334,17 @@ fn bench_query_scaling(c: &mut Criterion) {
     let mut group = c.benchmark_group("query_scaling");
 
     for db_size in [100, 1000, 10000].iter() {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(db_size),
-            db_size,
-            |b, &size| {
-                let (db, _temp_dir) = setup_db();
-                populate_db(&db, size);
+        group.bench_with_input(BenchmarkId::from_parameter(db_size), db_size, |b, &size| {
+            let (db, _temp_dir) = setup_db();
+            populate_db(&db, size);
 
-                b.iter(|| {
-                    let mut filter = Filter::new();
-                    filter.kinds = Some(vec![1]);
-                    filter.limit = Some(10);
-                    black_box(db.query_events(&filter).unwrap());
-                });
-            },
-        );
+            b.iter(|| {
+                let mut filter = Filter::new();
+                filter.kinds = Some(vec![1]);
+                filter.limit = Some(10);
+                black_box(db.query_events(&filter).unwrap());
+            });
+        });
     }
 
     group.finish();
@@ -357,25 +354,21 @@ fn bench_insert_scaling(c: &mut Criterion) {
     let mut group = c.benchmark_group("insert_scaling");
 
     for db_size in [100, 1000, 10000].iter() {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(db_size),
-            db_size,
-            |b, &size| {
-                b.iter_batched(
-                    || {
-                        let (db, temp_dir) = setup_db();
-                        populate_db(&db, size);
-                        (db, temp_dir)
-                    },
-                    |(db, _temp_dir)| {
-                        let event = create_test_event(1, "New event");
-                        let _: () = db.store_event(&event).unwrap();
-                        black_box(());
-                    },
-                    criterion::BatchSize::SmallInput,
-                );
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(db_size), db_size, |b, &size| {
+            b.iter_batched(
+                || {
+                    let (db, temp_dir) = setup_db();
+                    populate_db(&db, size);
+                    (db, temp_dir)
+                },
+                |(db, _temp_dir)| {
+                    let event = create_test_event(1, "New event");
+                    let _: () = db.store_event(&event).unwrap();
+                    black_box(());
+                },
+                criterion::BatchSize::SmallInput,
+            );
+        });
     }
 
     group.finish();
@@ -467,11 +460,7 @@ criterion_group!(
     bench_multiple_filter_matching,
 );
 
-criterion_group!(
-    scaling_benches,
-    bench_query_scaling,
-    bench_insert_scaling,
-);
+criterion_group!(scaling_benches, bench_query_scaling, bench_insert_scaling,);
 
 criterion_group!(
     special_benches,

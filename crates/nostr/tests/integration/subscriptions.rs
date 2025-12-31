@@ -2,11 +2,11 @@
 
 use super::*;
 use nostr::{
-    create_job_request_event, finalize_event, generate_secret_key, EventTemplate, JobInput,
-    JobRequest, KIND_JOB_TEXT_GENERATION,
+    EventTemplate, JobInput, JobRequest, KIND_JOB_TEXT_GENERATION, create_job_request_event,
+    finalize_event, generate_secret_key,
 };
 use nostr_client::{RelayConnection, RelayMessage};
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 #[tokio::test]
 async fn test_subscription_replacement() {
@@ -50,7 +50,10 @@ async fn test_subscription_replacement() {
         created_at: now,
     };
     let event1 = finalize_event(&template1, &secret_key).unwrap();
-    relay.publish_event(&event1, Duration::from_secs(5)).await.unwrap();
+    relay
+        .publish_event(&event1, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     // Publish kind 2 event - should be received
     let template2 = EventTemplate {
@@ -61,15 +64,19 @@ async fn test_subscription_replacement() {
     };
     let event2 = finalize_event(&template2, &secret_key).unwrap();
     let _event2_id = event2.id.clone();
-    relay.publish_event(&event2, Duration::from_secs(5)).await.unwrap();
+    relay
+        .publish_event(&event2, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     // Should only receive kind 2 event
     let result = timeout(Duration::from_secs(2), async {
         loop {
             if let Ok(Some(msg)) = relay.recv().await
-                && let RelayMessage::Event(_, evt) = msg {
-                    return evt.kind;
-                }
+                && let RelayMessage::Event(_, evt) = msg
+            {
+                return evt.kind;
+            }
         }
     })
     .await;
@@ -130,16 +137,20 @@ async fn test_multiple_concurrent_subscriptions() {
     };
     let event = finalize_event(&template, &secret_key).unwrap();
     let event_id = event.id.clone();
-    relay.publish_event(&event, Duration::from_secs(5)).await.unwrap();
+    relay
+        .publish_event(&event, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     // Should receive event on sub-kind-1
     let result = timeout(Duration::from_secs(2), async {
         loop {
             if let Ok(Some(msg)) = relay.recv().await
                 && let RelayMessage::Event(sub_id, evt) = msg
-                    && evt.id == event_id {
-                        return Some(sub_id);
-                    }
+                && evt.id == event_id
+            {
+                return Some(sub_id);
+            }
         }
     })
     .await;
@@ -191,8 +202,14 @@ async fn test_subscription_with_multiple_filters() {
     };
     let event2 = finalize_event(&template2, &secret_key).unwrap();
 
-    relay.publish_event(&event1, Duration::from_secs(5)).await.unwrap();
-    relay.publish_event(&event2, Duration::from_secs(5)).await.unwrap();
+    relay
+        .publish_event(&event1, Duration::from_secs(5))
+        .await
+        .unwrap();
+    relay
+        .publish_event(&event2, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     // Should receive both events
     let mut received_kinds = Vec::new();
@@ -200,9 +217,10 @@ async fn test_subscription_with_multiple_filters() {
         while received_kinds.len() < 2 {
             if let Ok(Some(msg)) = relay.recv().await
                 && let RelayMessage::Event(_, evt) = msg
-                    && (evt.id == event1.id || evt.id == event2.id) {
-                        received_kinds.push(evt.kind);
-                    }
+                && (evt.id == event1.id || evt.id == event2.id)
+            {
+                received_kinds.push(evt.kind);
+            }
         }
     })
     .await
@@ -260,16 +278,20 @@ async fn test_realtime_event_delivery() {
 
     // Record time before publish
     let before = std::time::Instant::now();
-    relay2.publish_event(&event, Duration::from_secs(5)).await.unwrap();
+    relay2
+        .publish_event(&event, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     // Wait for event on relay1
     let result = timeout(Duration::from_secs(2), async {
         loop {
             if let Ok(Some(msg)) = relay1.recv().await
                 && let RelayMessage::Event(_, evt) = msg
-                    && evt.id == event_id {
-                        return std::time::Instant::now();
-                    }
+                && evt.id == event_id
+            {
+                return std::time::Instant::now();
+            }
         }
     })
     .await;

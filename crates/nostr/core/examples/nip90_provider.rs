@@ -6,10 +6,8 @@
 //! 3. Process jobs and publish results
 //! 4. Request payment via bolt11 invoices
 
-use nostr::{finalize_event, generate_secret_key, EventTemplate};
-use nostr::nip90::{
-    JobFeedback, JobResult, JobStatus, KIND_JOB_TEXT_GENERATION,
-};
+use nostr::nip90::{JobFeedback, JobResult, JobStatus, KIND_JOB_TEXT_GENERATION};
+use nostr::{EventTemplate, finalize_event, generate_secret_key};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== NIP-90 Service Provider Example ===\n");
@@ -38,7 +36,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // relay_client.subscribe(filter).await?;
     // ```
 
-    println!("\nListening for job requests (kind {})...", KIND_JOB_TEXT_GENERATION);
+    println!(
+        "\nListening for job requests (kind {})...",
+        KIND_JOB_TEXT_GENERATION
+    );
 
     // 4. Process incoming job requests
     //

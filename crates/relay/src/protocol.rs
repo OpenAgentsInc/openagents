@@ -19,11 +19,17 @@ pub enum RelayMessage {
     },
 
     /// Tunnel client has disconnected
-    TunnelDisconnected { reason: Option<String> },
+    TunnelDisconnected {
+        reason: Option<String>,
+    },
 
     /// Ping/pong for keepalive
-    Ping { timestamp: u64 },
-    Pong { timestamp: u64 },
+    Ping {
+        timestamp: u64,
+    },
+    Pong {
+        timestamp: u64,
+    },
 
     // === Browser → Tunnel ===
     /// Start a new autopilot task
@@ -36,14 +42,22 @@ pub enum RelayMessage {
     },
 
     /// Cancel a running task
-    CancelTask { task_id: String },
+    CancelTask {
+        task_id: String,
+    },
 
     /// Send user input during task execution
-    SendInput { task_id: String, text: String },
+    SendInput {
+        task_id: String,
+        text: String,
+    },
 
     // === Tunnel → Browser (Autopilot Streaming) ===
     /// Text chunk from Claude
-    AutopilotChunk { task_id: String, chunk: String },
+    AutopilotChunk {
+        task_id: String,
+        chunk: String,
+    },
 
     /// Tool use started
     ToolStart {
@@ -94,7 +108,10 @@ pub enum RelayMessage {
 
     // === Error Handling ===
     /// Generic error message
-    Error { code: String, message: String },
+    Error {
+        code: String,
+        message: String,
+    },
 }
 
 impl RelayMessage {

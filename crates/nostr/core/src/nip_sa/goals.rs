@@ -91,14 +91,12 @@ impl PublicGoalsContent {
 
     /// Serialize to JSON string
     pub fn to_json(&self) -> Result<String, PublicGoalsError> {
-        serde_json::to_string(self)
-            .map_err(|e| PublicGoalsError::Serialization(e.to_string()))
+        serde_json::to_string(self).map_err(|e| PublicGoalsError::Serialization(e.to_string()))
     }
 
     /// Parse from JSON string
     pub fn from_json(json: &str) -> Result<Self, PublicGoalsError> {
-        serde_json::from_str(json)
-            .map_err(|e| PublicGoalsError::Deserialization(e.to_string()))
+        serde_json::from_str(json).map_err(|e| PublicGoalsError::Deserialization(e.to_string()))
     }
 }
 
@@ -194,8 +192,7 @@ mod tests {
 
     #[test]
     fn test_public_goals_content_serialization() {
-        let content = PublicGoalsContent::new()
-            .add_goal(Goal::new("goal-1", "Test goal", 1));
+        let content = PublicGoalsContent::new().add_goal(Goal::new("goal-1", "Test goal", 1));
 
         let json = content.to_json().unwrap();
         let parsed = PublicGoalsContent::from_json(&json).unwrap();

@@ -51,10 +51,7 @@ impl Subscription {
     ///
     /// Uses a bounded channel with a buffer of 1000 events to provide backpressure.
     /// If the consumer is too slow and the buffer fills, the oldest events will be dropped.
-    pub fn with_channel(
-        id: String,
-        filters: Vec<Value>,
-    ) -> (Self, mpsc::Receiver<Event>) {
+    pub fn with_channel(id: String, filters: Vec<Value>) -> (Self, mpsc::Receiver<Event>) {
         // Use bounded channel to prevent unbounded memory growth
         // Buffer size of 1000 events is a reasonable default for most use cases
         let (tx, rx) = mpsc::channel(1000);

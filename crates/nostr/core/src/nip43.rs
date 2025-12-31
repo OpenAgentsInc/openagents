@@ -62,7 +62,6 @@ pub const MEMBER_TAG: &str = "member";
 /// Tag name for invite claim codes
 pub const CLAIM_TAG: &str = "claim";
 
-
 /// Errors that can occur during NIP-43 operations.
 #[derive(Debug, Error)]
 pub enum Nip43Error {
@@ -422,7 +421,10 @@ impl LeaveRequestEvent {
 
 /// Check if an event has the NIP-70 protected tag.
 fn has_protected_tag(event: &Event) -> bool {
-    event.tags.iter().any(|tag| tag.len() == 1 && tag[0] == NIP70_PROTECTED_TAG)
+    event
+        .tags
+        .iter()
+        .any(|tag| tag.len() == 1 && tag[0] == NIP70_PROTECTED_TAG)
 }
 
 /// Validate a membership list event.
@@ -463,10 +465,7 @@ pub fn validate_membership_list(
 /// Validate an add user event.
 ///
 /// Returns the added member's pubkey if valid.
-pub fn validate_add_user(
-    event: &Event,
-    expected_relay_pubkey: &str,
-) -> Result<String, Nip43Error> {
+pub fn validate_add_user(event: &Event, expected_relay_pubkey: &str) -> Result<String, Nip43Error> {
     if event.kind != ADD_USER_KIND {
         return Err(Nip43Error::InvalidKind {
             expected: ADD_USER_KIND,
@@ -530,10 +529,7 @@ pub fn validate_remove_user(
 ///
 /// Returns the claim code if valid.
 /// Optionally checks timestamp freshness (within MAX_TIME_DIFF seconds).
-pub fn validate_join_request(
-    event: &Event,
-    check_timestamp: bool,
-) -> Result<String, Nip43Error> {
+pub fn validate_join_request(event: &Event, check_timestamp: bool) -> Result<String, Nip43Error> {
     if event.kind != JOIN_REQUEST_KIND {
         return Err(Nip43Error::InvalidKind {
             expected: JOIN_REQUEST_KIND,
@@ -568,10 +564,7 @@ pub fn validate_join_request(
 /// Validate a leave request event.
 ///
 /// Optionally checks timestamp freshness (within MAX_TIME_DIFF seconds).
-pub fn validate_leave_request(
-    event: &Event,
-    check_timestamp: bool,
-) -> Result<(), Nip43Error> {
+pub fn validate_leave_request(event: &Event, check_timestamp: bool) -> Result<(), Nip43Error> {
     if event.kind != LEAVE_REQUEST_KIND {
         return Err(Nip43Error::InvalidKind {
             expected: LEAVE_REQUEST_KIND,
@@ -665,11 +658,7 @@ mod tests {
 
     #[test]
     fn test_membership_list_missing_protected_tag() {
-        let event = mock_event(
-            MEMBERSHIP_LIST_KIND,
-            "relay123",
-            vec![],
-        );
+        let event = mock_event(MEMBERSHIP_LIST_KIND, "relay123", vec![]);
 
         let result = validate_membership_list(&event, "relay123");
         assert!(matches!(result, Err(Nip43Error::MissingProtectedTag)));

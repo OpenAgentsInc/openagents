@@ -1,10 +1,10 @@
 //! Benchmarks for NIP-01 validation functions
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use nostr::{finalize_event, generate_secret_key, EventTemplate};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use nostr::{EventTemplate, finalize_event, generate_secret_key};
 use nostr_relay::{
-    validate_close_message, validate_event_message, validate_event_structure, validate_filter,
-    validate_req_message, validate_subscription_id, Filter,
+    Filter, validate_close_message, validate_event_message, validate_event_structure,
+    validate_filter, validate_req_message, validate_subscription_id,
 };
 use std::hint::black_box;
 use std::time::{SystemTime, UNIX_EPOCH};

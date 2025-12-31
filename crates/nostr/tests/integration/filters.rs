@@ -1,9 +1,9 @@
 //! Filter matching tests
 
 use super::*;
-use nostr::{finalize_event, generate_secret_key, EventTemplate};
+use nostr::{EventTemplate, finalize_event, generate_secret_key};
 use nostr_client::{RelayConnection, RelayMessage};
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 #[tokio::test]
 async fn test_filter_by_kinds() {
@@ -37,7 +37,10 @@ async fn test_filter_by_kinds() {
             created_at: now + kind as u64,
         };
         let event = finalize_event(&template, &secret_key).unwrap();
-        relay.publish_event(&event, Duration::from_secs(5)).await.unwrap();
+        relay
+            .publish_event(&event, Duration::from_secs(5))
+            .await
+            .unwrap();
     }
 
     // Should only receive kinds 1 and 3
@@ -45,9 +48,10 @@ async fn test_filter_by_kinds() {
     timeout(Duration::from_secs(2), async {
         while received_kinds.len() < 2 {
             if let Ok(Some(msg)) = relay.recv().await
-                && let RelayMessage::Event(_, evt) = msg {
-                    received_kinds.push(evt.kind);
-                }
+                && let RelayMessage::Event(_, evt) = msg
+            {
+                received_kinds.push(evt.kind);
+            }
         }
     })
     .await
@@ -110,16 +114,23 @@ async fn test_filter_by_authors() {
     };
     let event2 = finalize_event(&template2, &secret_key2).unwrap();
 
-    relay.publish_event(&event1, Duration::from_secs(5)).await.unwrap();
-    relay.publish_event(&event2, Duration::from_secs(5)).await.unwrap();
+    relay
+        .publish_event(&event1, Duration::from_secs(5))
+        .await
+        .unwrap();
+    relay
+        .publish_event(&event2, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     // Should only receive event from key 1
     let result = timeout(Duration::from_secs(2), async {
         loop {
             if let Ok(Some(msg)) = relay.recv().await
-                && let RelayMessage::Event(_, evt) = msg {
-                    return evt.id;
-                }
+                && let RelayMessage::Event(_, evt) = msg
+            {
+                return evt.id;
+            }
         }
     })
     .await;
@@ -156,7 +167,10 @@ async fn test_filter_by_event_ids() {
         };
         let event = finalize_event(&template, &secret_key).unwrap();
         event_ids.push(event.id.clone());
-        relay.publish_event(&event, Duration::from_secs(5)).await.unwrap();
+        relay
+            .publish_event(&event, Duration::from_secs(5))
+            .await
+            .unwrap();
     }
 
     sleep(Duration::from_millis(100)).await;
@@ -229,7 +243,10 @@ async fn test_filter_by_tags() {
     let event = finalize_event(&template, &secret_key).unwrap();
     let event_id = event.id.clone();
 
-    relay.publish_event(&event, Duration::from_secs(5)).await.unwrap();
+    relay
+        .publish_event(&event, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     sleep(Duration::from_millis(100)).await;
 
@@ -248,9 +265,10 @@ async fn test_filter_by_tags() {
     let result = timeout(Duration::from_secs(2), async {
         loop {
             if let Ok(Some(msg)) = relay.recv().await
-                && let RelayMessage::Event(_, evt) = msg {
-                    return evt.id;
-                }
+                && let RelayMessage::Event(_, evt) = msg
+            {
+                return evt.id;
+            }
         }
     })
     .await;
@@ -286,7 +304,10 @@ async fn test_filter_by_since_until() {
         };
         let event = finalize_event(&template, &secret_key).unwrap();
         event_ids.push(event.id.clone());
-        relay.publish_event(&event, Duration::from_secs(5)).await.unwrap();
+        relay
+            .publish_event(&event, Duration::from_secs(5))
+            .await
+            .unwrap();
     }
 
     sleep(Duration::from_millis(100)).await;
@@ -352,14 +373,20 @@ async fn test_filter_limit() {
             created_at: now + i,
         };
         let event = finalize_event(&template, &secret_key).unwrap();
-        relay.publish_event(&event, Duration::from_secs(5)).await.unwrap();
+        relay
+            .publish_event(&event, Duration::from_secs(5))
+            .await
+            .unwrap();
     }
 
     sleep(Duration::from_millis(100)).await;
 
     // Subscribe with limit 3
     relay
-        .subscribe("limit-filter", &[serde_json::json!({"kinds": [1], "limit": 3})])
+        .subscribe(
+            "limit-filter",
+            &[serde_json::json!({"kinds": [1], "limit": 3})],
+        )
         .await
         .unwrap();
 

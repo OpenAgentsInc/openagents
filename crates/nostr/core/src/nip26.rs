@@ -252,7 +252,12 @@ pub fn check_delegation_conditions(
 
     let time_conditions: Vec<_> = parsed_conditions
         .iter()
-        .filter(|c| matches!(c, Condition::CreatedAtAfter(_) | Condition::CreatedAtBefore(_)))
+        .filter(|c| {
+            matches!(
+                c,
+                Condition::CreatedAtAfter(_) | Condition::CreatedAtBefore(_)
+            )
+        })
         .collect();
 
     // Check kind conditions (OR - at least one must match if any exist)
@@ -300,7 +305,12 @@ pub fn validate_delegation(
     event_created_at: u64,
 ) -> Result<(), Nip26Error> {
     // Verify the delegation token
-    verify_delegation_token(delegator_pubkey, delegatee_pubkey, conditions, delegation_token)?;
+    verify_delegation_token(
+        delegator_pubkey,
+        delegatee_pubkey,
+        conditions,
+        delegation_token,
+    )?;
 
     // Check if event satisfies conditions
     check_delegation_conditions(conditions, event_kind, event_created_at)?;
@@ -404,16 +414,12 @@ mod tests {
         let conditions = "kind=1&created_at>1674834236&created_at<1677426236";
 
         // Create delegation token
-        let token = create_delegation_token(
-            &delegator_sk.secret_bytes(),
-            &delegatee_pubkey,
-            conditions,
-        )
-        .unwrap();
+        let token =
+            create_delegation_token(&delegator_sk.secret_bytes(), &delegatee_pubkey, conditions)
+                .unwrap();
 
         // Verify delegation token
-        verify_delegation_token(&delegator_pubkey, &delegatee_pubkey, conditions, &token)
-            .unwrap();
+        verify_delegation_token(&delegator_pubkey, &delegatee_pubkey, conditions, &token).unwrap();
     }
 
     #[test]
@@ -468,12 +474,9 @@ mod tests {
         let delegatee_pubkey = hex::encode(delegatee_pk.serialize());
         let conditions = "kind=1&created_at>1674834236&created_at<1677426236";
 
-        let token = create_delegation_token(
-            &delegator_sk.secret_bytes(),
-            &delegatee_pubkey,
-            conditions,
-        )
-        .unwrap();
+        let token =
+            create_delegation_token(&delegator_sk.secret_bytes(), &delegatee_pubkey, conditions)
+                .unwrap();
 
         // Valid event
         let result = validate_delegation(

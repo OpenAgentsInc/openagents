@@ -48,7 +48,9 @@ pub struct RateLimiter {
     /// Tracks banned IPs and when the ban expires
     banned_ips: Arc<RwLock<HashMap<IpAddr, Instant>>>,
     /// Per-connection event rate limiter (quota-based)
-    event_limiter: Arc<GovernorRateLimiter<state::direct::NotKeyed, state::InMemoryState, clock::DefaultClock>>,
+    event_limiter: Arc<
+        GovernorRateLimiter<state::direct::NotKeyed, state::InMemoryState, clock::DefaultClock>,
+    >,
 }
 
 impl RateLimiter {
@@ -56,8 +58,7 @@ impl RateLimiter {
     pub fn new(config: RateLimitConfig) -> Self {
         // Create quota for events per second
         let quota = Quota::per_second(
-            NonZeroU32::new(config.max_events_per_second)
-                .unwrap_or(nonzero!(10u32))
+            NonZeroU32::new(config.max_events_per_second).unwrap_or(nonzero!(10u32)),
         );
 
         Self {
@@ -89,7 +90,10 @@ impl RateLimiter {
     pub async fn ban_ip(&self, ip: IpAddr) {
         let ban_until = Instant::now() + Duration::from_secs(self.config.ban_duration_secs);
         self.banned_ips.write().await.insert(ip, ban_until);
-        warn!("Banned IP {} for {} seconds", ip, self.config.ban_duration_secs);
+        warn!(
+            "Banned IP {} for {} seconds",
+            ip, self.config.ban_duration_secs
+        );
     }
 
     /// Check if a new connection from this IP is allowed

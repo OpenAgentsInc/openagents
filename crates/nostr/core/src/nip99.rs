@@ -636,35 +636,41 @@ mod tests {
 
         // Check for required tags
         assert!(tags.iter().any(|tag| tag[0] == "d" && tag[1] == "test-id"));
-        assert!(tags
-            .iter()
-            .any(|tag| tag[0] == "title" && tag[1] == "Test Title"));
-        assert!(tags
-            .iter()
-            .any(|tag| tag[0] == "summary" && tag[1] == "Test summary"));
-        assert!(tags
-            .iter()
-            .any(|tag| tag[0] == "published_at" && tag[1] == "1675642635"));
-        assert!(tags
-            .iter()
-            .any(|tag| tag[0] == "location" && tag[1] == "NYC"));
-        assert!(tags
-            .iter()
-            .any(|tag| tag[0] == "g" && tag[1] == "dr5regw"));
-        assert!(tags.iter().any(|tag| tag.len() == 3
-            && tag[0] == "price"
-            && tag[1] == "100"
-            && tag[2] == "USD"));
-        assert!(tags
-            .iter()
-            .any(|tag| tag[0] == "status" && tag[1] == "active"));
+        assert!(
+            tags.iter()
+                .any(|tag| tag[0] == "title" && tag[1] == "Test Title")
+        );
+        assert!(
+            tags.iter()
+                .any(|tag| tag[0] == "summary" && tag[1] == "Test summary")
+        );
+        assert!(
+            tags.iter()
+                .any(|tag| tag[0] == "published_at" && tag[1] == "1675642635")
+        );
+        assert!(
+            tags.iter()
+                .any(|tag| tag[0] == "location" && tag[1] == "NYC")
+        );
+        assert!(tags.iter().any(|tag| tag[0] == "g" && tag[1] == "dr5regw"));
+        assert!(
+            tags.iter().any(|tag| tag.len() == 3
+                && tag[0] == "price"
+                && tag[1] == "100"
+                && tag[2] == "USD")
+        );
+        assert!(
+            tags.iter()
+                .any(|tag| tag[0] == "status" && tag[1] == "active")
+        );
         assert!(tags.iter().any(|tag| tag.len() == 3
             && tag[0] == "image"
             && tag[1] == "https://example.com/img.jpg"
             && tag[2] == "256x256"));
-        assert!(tags
-            .iter()
-            .any(|tag| tag[0] == "t" && tag[1] == "electronics"));
+        assert!(
+            tags.iter()
+                .any(|tag| tag[0] == "t" && tag[1] == "electronics")
+        );
     }
 
     #[test]

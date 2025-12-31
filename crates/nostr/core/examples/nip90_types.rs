@@ -26,8 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 3. Event Input - Reference a Nostr event
     println!("\n3. Event Input:");
     let event_input = JobInput::event(
-        "abcd1234...",  // Event ID
-        Some("wss://relay.damus.io".to_string()),  // Relay hint
+        "abcd1234...",                            // Event ID
+        Some("wss://relay.damus.io".to_string()), // Relay hint
     );
     println!("   Type: {:?}", event_input.input_type);
     println!("   Data: {}", event_input.data);
@@ -35,43 +35,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 4. Job Input - Chain from another job's output
     println!("\n4. Job Input (chaining):");
-    let job_input = JobInput::job(
-        "previous_job_event_id",
-        Some("wss://relay.com".to_string()),
-    );
+    let job_input = JobInput::job("previous_job_event_id", Some("wss://relay.com".to_string()));
     println!("   Type: {:?}", job_input.input_type);
     println!("   Data: {}", job_input.data);
 
     // 5. Using Markers for Multi-Input Jobs
     println!("\n5. Multi-Input Job with Markers:");
 
-    let request = JobRequest::new(5002)?  // Translation
-        .add_input(
-            JobInput::text("Hello, world!").with_marker("source")
-        )
-        .add_input(
-            JobInput::text("French").with_marker("target_language")
-        )
+    let request = JobRequest::new(5002)? // Translation
+        .add_input(JobInput::text("Hello, world!").with_marker("source"))
+        .add_input(JobInput::text("French").with_marker("target_language"))
         .add_param("formality", "formal");
 
     println!("   Inputs:");
     for (i, input) in request.inputs.iter().enumerate() {
-        println!("     [{}] {:?} (marker: {:?})", i, input.input_type, input.marker);
+        println!(
+            "     [{}] {:?} (marker: {:?})",
+            i, input.input_type, input.marker
+        );
     }
 
     // 6. Complex Job Chaining Example
     println!("\n6. Job Chaining Example:");
     println!("   Job 1: Extract text from PDF");
-    let _job1 = JobRequest::new(5000)?  // Text extraction
+    let _job1 = JobRequest::new(5000)? // Text extraction
         .add_input(JobInput::url("https://example.com/paper.pdf"));
 
     println!("   Job 2: Summarize extracted text (chains from Job 1)");
-    let _job2 = JobRequest::new(5001)?  // Summarization
+    let _job2 = JobRequest::new(5001)? // Summarization
         .add_input(JobInput::job("job1_result_event_id", None))
         .add_param("max_length", "500");
 
     println!("   Job 3: Translate summary (chains from Job 2)");
-    let _job3 = JobRequest::new(5002)?  // Translation
+    let _job3 = JobRequest::new(5002)? // Translation
         .add_input(JobInput::job("job2_result_event_id", None))
         .add_param("target_language", "Spanish");
 
@@ -117,25 +113,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n8. Real-World Example: Multi-Source Document Analysis");
 
     let analysis_request = JobRequest::new(KIND_JOB_TEXT_GENERATION)?
-        .add_input(
-            JobInput::url("https://example.com/report1.pdf").with_marker("report_a")
-        )
-        .add_input(
-            JobInput::url("https://example.com/report2.pdf").with_marker("report_b")
-        )
-        .add_input(
-            JobInput::event("event_with_context", None).with_marker("context")
-        )
+        .add_input(JobInput::url("https://example.com/report1.pdf").with_marker("report_a"))
+        .add_input(JobInput::url("https://example.com/report2.pdf").with_marker("report_b"))
+        .add_input(JobInput::event("event_with_context", None).with_marker("context"))
         .add_input(
             JobInput::text("Compare the reports and summarize key differences")
-                .with_marker("instruction")
+                .with_marker("instruction"),
         )
         .add_param("output_format", "markdown")
         .add_param("max_length", "1000")
         .with_bid(5000);
 
     println!("   Created request with:");
-    println!("     - {} inputs (with markers)", analysis_request.inputs.len());
+    println!(
+        "     - {} inputs (with markers)",
+        analysis_request.inputs.len()
+    );
     println!("     - {} parameters", analysis_request.params.len());
     println!("     - Bid: {} millisats", analysis_request.bid.unwrap());
 

@@ -149,17 +149,25 @@ pub mod transport;
 
 pub use aggregator::EcdhAggregator;
 pub use messages::{
-    BifrostMessage, EcdhRequest, EcdhResponse, Ping, Pong, SignError, SignResult,
+    BifrostMessage,
     // FROST two-phase signing protocol (RFC 9591)
-    CommitmentRequest, CommitmentResponse, SigningPackageMessage, ParticipantCommitment, PartialSignature,
+    CommitmentRequest,
+    CommitmentResponse,
+    EcdhRequest,
+    EcdhResponse,
+    PartialSignature,
+    ParticipantCommitment,
+    Ping,
+    Pong,
+    SignError,
+    SignResult,
+    SigningPackageMessage,
 };
 pub use node::{BifrostConfig, BifrostNode, RetryConfig as NodeRetryConfig, TimeoutConfig};
 pub use peer::{PeerInfo, PeerManager, PeerStatus, RetryConfig as PeerRetryConfig};
 pub use serialization::{
-    serialize_commitments, deserialize_commitments,
-    serialize_sig_share, deserialize_sig_share,
-    serialize_identifier, deserialize_identifier,
-    CommitmentBundle, SignatureBundle,
-    COMMITMENT_SIZE, SIG_SHARE_SIZE, IDENTIFIER_SIZE,
+    COMMITMENT_SIZE, CommitmentBundle, IDENTIFIER_SIZE, SIG_SHARE_SIZE, SignatureBundle,
+    deserialize_commitments, deserialize_identifier, deserialize_sig_share, serialize_commitments,
+    serialize_identifier, serialize_sig_share,
 };
-pub use transport::{NostrTransport, TransportConfig, BIFROST_EVENT_KIND};
+pub use transport::{BIFROST_EVENT_KIND, NostrTransport, TransportConfig};

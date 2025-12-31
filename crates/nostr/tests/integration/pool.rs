@@ -1,7 +1,7 @@
 //! Relay pool integration tests
 
 use super::*;
-use nostr::{finalize_event, generate_secret_key, EventTemplate, KIND_SHORT_TEXT_NOTE};
+use nostr::{EventTemplate, KIND_SHORT_TEXT_NOTE, finalize_event, generate_secret_key};
 use nostr_client::{PoolConfig, RelayPool};
 
 #[tokio::test]

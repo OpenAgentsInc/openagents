@@ -69,13 +69,13 @@ impl ImageDimensions {
             )));
         }
 
-        let width: u32 = parts[0].parse().map_err(|_| {
-            Nip58Error::InvalidDimensions(format!("invalid width: {}", parts[0]))
-        })?;
+        let width: u32 = parts[0]
+            .parse()
+            .map_err(|_| Nip58Error::InvalidDimensions(format!("invalid width: {}", parts[0])))?;
 
-        let height: u32 = parts[1].parse().map_err(|_| {
-            Nip58Error::InvalidDimensions(format!("invalid height: {}", parts[1]))
-        })?;
+        let height: u32 = parts[1]
+            .parse()
+            .map_err(|_| Nip58Error::InvalidDimensions(format!("invalid height: {}", parts[1])))?;
 
         Ok(Self { width, height })
     }
@@ -275,8 +275,8 @@ impl BadgeDefinition {
             }
         }
 
-        let identifier = identifier
-            .ok_or_else(|| Nip58Error::MissingTag("d tag required".to_string()))?;
+        let identifier =
+            identifier.ok_or_else(|| Nip58Error::MissingTag("d tag required".to_string()))?;
 
         Ok(Self {
             identifier,
@@ -372,8 +372,8 @@ impl BadgeAward {
             }
         }
 
-        let badge_definition = badge_definition
-            .ok_or_else(|| Nip58Error::MissingTag("a tag required".to_string()))?;
+        let badge_definition =
+            badge_definition.ok_or_else(|| Nip58Error::MissingTag("a tag required".to_string()))?;
 
         if awarded_pubkeys.is_empty() {
             return Err(Nip58Error::MissingTag(
@@ -428,9 +428,7 @@ pub struct ProfileBadges {
 impl ProfileBadges {
     /// Create new profile badges
     pub fn new() -> Self {
-        Self {
-            badges: Vec::new(),
-        }
+        Self { badges: Vec::new() }
     }
 
     /// Add badge pair
@@ -592,7 +590,10 @@ mod tests {
         let tags = def.to_tags();
 
         assert!(tags.iter().any(|t| t[0] == "d" && t[1] == "bravery"));
-        assert!(tags.iter().any(|t| t[0] == "name" && t[1] == "Medal of Bravery"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "name" && t[1] == "Medal of Bravery")
+        );
         assert!(tags.iter().any(|t| t[0] == "description"));
         assert!(tags.iter().any(|t| t[0] == "image" && t.len() == 3));
         assert!(tags.iter().any(|t| t[0] == "thumb" && t.len() == 3));
@@ -624,7 +625,10 @@ mod tests {
         assert_eq!(def.identifier, "bravery");
         assert_eq!(def.name, Some("Medal of Bravery".to_string()));
         assert!(def.description.is_some());
-        assert_eq!(def.image, Some("https://example.com/bravery.png".to_string()));
+        assert_eq!(
+            def.image,
+            Some("https://example.com/bravery.png".to_string())
+        );
         assert_eq!(def.image_dimensions.unwrap().width, 1024);
         assert_eq!(def.thumbnails.len(), 1);
     }
@@ -653,8 +657,16 @@ mod tests {
     fn test_badge_award_from_tags() {
         let tags = vec![
             vec!["a".to_string(), "30009:alice:bravery".to_string()],
-            vec!["p".to_string(), "bob".to_string(), "wss://relay1".to_string()],
-            vec!["p".to_string(), "charlie".to_string(), "wss://relay2".to_string()],
+            vec![
+                "p".to_string(),
+                "bob".to_string(),
+                "wss://relay1".to_string(),
+            ],
+            vec![
+                "p".to_string(),
+                "charlie".to_string(),
+                "wss://relay2".to_string(),
+            ],
         ];
 
         let award = BadgeAward::from_tags(&tags).unwrap();
@@ -681,11 +693,8 @@ mod tests {
 
     #[test]
     fn test_profile_badge_pair() {
-        let pair = ProfileBadgePair::new(
-            "30009:alice:bravery".to_string(),
-            "event123".to_string(),
-        )
-        .with_relay("wss://relay".to_string());
+        let pair = ProfileBadgePair::new("30009:alice:bravery".to_string(), "event123".to_string())
+            .with_relay("wss://relay".to_string());
 
         assert_eq!(pair.badge_definition, "30009:alice:bravery");
         assert_eq!(pair.award_event_id, "event123");
@@ -696,11 +705,8 @@ mod tests {
     fn test_profile_badges_to_tags() {
         let badges = ProfileBadges::new()
             .add_badge(
-                ProfileBadgePair::new(
-                    "30009:alice:bravery".to_string(),
-                    "event1".to_string(),
-                )
-                .with_relay("wss://relay1".to_string()),
+                ProfileBadgePair::new("30009:alice:bravery".to_string(), "event1".to_string())
+                    .with_relay("wss://relay1".to_string()),
             )
             .add_badge(ProfileBadgePair::new(
                 "30009:alice:honor".to_string(),
@@ -721,7 +727,11 @@ mod tests {
         let tags = vec![
             vec!["d".to_string(), "profile_badges".to_string()],
             vec!["a".to_string(), "30009:alice:bravery".to_string()],
-            vec!["e".to_string(), "event1".to_string(), "wss://relay1".to_string()],
+            vec![
+                "e".to_string(),
+                "event1".to_string(),
+                "wss://relay1".to_string(),
+            ],
             vec!["a".to_string(), "30009:alice:honor".to_string()],
             vec!["e".to_string(), "event2".to_string()],
         ];

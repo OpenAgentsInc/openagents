@@ -1,10 +1,10 @@
 //! Error handling and edge case tests
 
 use super::*;
-use nostr::{finalize_event, generate_secret_key, EventTemplate};
+use nostr::{EventTemplate, finalize_event, generate_secret_key};
 use nostr_client::RelayConnection;
 use serde_json::json;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 #[tokio::test]
 async fn test_invalid_event_rejection() {

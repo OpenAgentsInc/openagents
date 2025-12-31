@@ -388,10 +388,7 @@ mod tests {
         assert_eq!(torrent.get_description(), "A great movie!");
         assert_eq!(torrent.get_files().len(), 2);
         assert_eq!(torrent.get_trackers().len(), 1);
-        assert_eq!(
-            torrent.get_trackers()[0],
-            "udp://tracker.example.com:1337"
-        );
+        assert_eq!(torrent.get_trackers()[0], "udp://tracker.example.com:1337");
     }
 
     #[test]
@@ -435,13 +432,8 @@ mod tests {
 
     #[test]
     fn test_torrent_invalid_kind() {
-        let mut event = create_test_torrent_event(
-            Some("Movie"),
-            "abc123",
-            vec![],
-            vec![],
-            "Description",
-        );
+        let mut event =
+            create_test_torrent_event(Some("Movie"), "abc123", vec![], vec![], "Description");
         event.kind = 1;
 
         let result = Torrent::from_event(event);
@@ -457,13 +449,8 @@ mod tests {
 
     #[test]
     fn test_torrent_validate() {
-        let event = create_test_torrent_event(
-            Some("Movie"),
-            "abc123",
-            vec![],
-            vec![],
-            "Description",
-        );
+        let event =
+            create_test_torrent_event(Some("Movie"), "abc123", vec![], vec![], "Description");
 
         let torrent = Torrent::from_event(event).unwrap();
         assert!(torrent.validate().is_ok());

@@ -1,9 +1,8 @@
 //! Unit tests for provider selection algorithms
 
 use nostr::{
-    ComputeJobRequest, InferenceParams, JobRequirements, SelectionMode, select_provider,
-    NostrIdentity, ComputeCapabilities, ComputePricing, ComputeProvider,
-    ProviderReputation, Region,
+    ComputeCapabilities, ComputeJobRequest, ComputePricing, ComputeProvider, InferenceParams,
+    JobRequirements, NostrIdentity, ProviderReputation, Region, SelectionMode, select_provider,
 };
 
 // Helper function to create test provider with specific characteristics
@@ -506,13 +505,8 @@ fn test_filters_unsupported_model() {
     );
 
     // Provider only supports llama-70b and mistral-7b
-    let request = ComputeJobRequest::new(
-        "job_13",
-        "gpt-4",
-        "Test",
-        InferenceParams::default(),
-        10000,
-    );
+    let request =
+        ComputeJobRequest::new("job_13", "gpt-4", "Test", InferenceParams::default(), 10000);
 
     let providers = vec![provider];
     let selected = select_provider(&request, &providers, SelectionMode::BestValue);
