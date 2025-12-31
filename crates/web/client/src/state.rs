@@ -46,6 +46,7 @@ pub(crate) struct AppState {
     pub(crate) hud_settings_loaded: bool,
     pub(crate) hud_metrics_polling: bool,
     pub(crate) hud_metrics_timer: Option<i32>,
+    pub(crate) open_share_after_start: bool,
     pub(crate) wallet: WalletUi,
 }
 
@@ -74,6 +75,7 @@ impl Default for AppState {
             hud_settings_loaded: false,
             hud_metrics_polling: false,
             hud_metrics_timer: None,
+            open_share_after_start: false,
             wallet: WalletUi::new(),
         }
     }
