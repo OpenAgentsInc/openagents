@@ -266,8 +266,8 @@ Account settings include `nostr_npub` when available.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/hud/:username/:repo` | View personal HUD |
-| GET | `/embed/:username/:repo` | Embeddable iframe HUD |
+| GET | `/repo/:username/:repo` | View personal HUD |
+| GET | `/repo/:username/:repo/embed` | Embeddable iframe HUD |
 | POST | `/api/hud/settings` | Update HUD visibility |
 
 ### Tunnel (Free Tier - Local Compute)
