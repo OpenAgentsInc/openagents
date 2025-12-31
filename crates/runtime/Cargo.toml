@@ -44,7 +44,17 @@ worker = { version = "0.7", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 web-sys = { version = "0.3", optional = true, features = [
+    "DomException",
+    "DomStringList",
+    "Event",
     "Headers",
+    "IdbDatabase",
+    "IdbFactory",
+    "IdbObjectStore",
+    "IdbOpenDbRequest",
+    "IdbRequest",
+    "IdbTransaction",
+    "IdbTransactionMode",
     "Request",
     "RequestInit",
     "RequestMode",

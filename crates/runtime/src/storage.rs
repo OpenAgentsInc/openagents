@@ -554,3 +554,428 @@ impl From<worker::Error> for StorageError {
         StorageError::Other(err.to_string())
     }
 }
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+use futures::channel::oneshot;
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+use js_sys::{Array, Promise, Uint8Array};
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+use wasm_bindgen::{closure::Closure, JsCast, JsValue};
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+use wasm_bindgen_futures::{spawn_local, JsFuture};
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+use web_sys::{
+    DomException, IdbDatabase, IdbFactory, IdbObjectStore, IdbRequest, IdbTransaction,
+    IdbTransactionMode, WorkerGlobalScope,
+};
+
+/// IndexedDB-backed storage for browser runtime.
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+#[derive(Clone)]
+pub struct IndexedDbStorage {
+    db_name: String,
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+impl IndexedDbStorage {
+    /// Create a new IndexedDB storage with the provided database name.
+    pub fn new(db_name: impl Into<String>) -> Self {
+        Self {
+            db_name: db_name.into(),
+        }
+    }
+
+    fn kv_key(agent_id: &AgentId, key: &str) -> String {
+        format!("{}::{}", agent_id.as_str(), key)
+    }
+
+    fn kv_prefix(agent_id: &AgentId) -> String {
+        format!("{}::", agent_id.as_str())
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+#[async_trait]
+impl AgentStorage for IndexedDbStorage {
+    async fn load_state(&self, agent_id: &AgentId) -> StorageResult<Option<Vec<u8>>> {
+        let db_name = self.db_name.clone();
+        let agent_id = agent_id.clone();
+        run_indexeddb_task(async move {
+            let db = open_db(&db_name).await?;
+            let tx = open_transaction(&db, IdbTransactionMode::Readonly)?;
+            let store = tx
+                .object_store(STATE_STORE)
+                .map_err(js_error)?;
+            let result = store_get(&store, agent_id.as_str()).await?;
+            await_transaction(tx).await?;
+            Ok(result)
+        })
+        .await
+    }
+
+    async fn save_state(&self, agent_id: &AgentId, state: &[u8]) -> StorageResult<()> {
+        let db_name = self.db_name.clone();
+        let agent_id = agent_id.clone();
+        let state = state.to_vec();
+        run_indexeddb_task(async move {
+            let db = open_db(&db_name).await?;
+            let tx = open_transaction(&db, IdbTransactionMode::Readwrite)?;
+            let store = tx
+                .object_store(STATE_STORE)
+                .map_err(js_error)?;
+            store_put(&store, agent_id.as_str(), &state).await?;
+            await_transaction(tx).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn delete_state(&self, agent_id: &AgentId) -> StorageResult<()> {
+        let db_name = self.db_name.clone();
+        let agent_id = agent_id.clone();
+        run_indexeddb_task(async move {
+            let db = open_db(&db_name).await?;
+            let tx = open_transaction(&db, IdbTransactionMode::Readwrite)?;
+            let store = tx
+                .object_store(STATE_STORE)
+                .map_err(js_error)?;
+            store_delete(&store, agent_id.as_str()).await?;
+            await_transaction(tx).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn get(&self, agent_id: &AgentId, key: &str) -> StorageResult<Option<Vec<u8>>> {
+        let db_name = self.db_name.clone();
+        let agent_id = agent_id.clone();
+        let key = key.to_string();
+        run_indexeddb_task(async move {
+            let db = open_db(&db_name).await?;
+            let tx = open_transaction(&db, IdbTransactionMode::Readonly)?;
+            let store = tx
+                .object_store(KV_STORE)
+                .map_err(js_error)?;
+            let storage_key = IndexedDbStorage::kv_key(&agent_id, &key);
+            let result = store_get(&store, &storage_key).await?;
+            await_transaction(tx).await?;
+            Ok(result)
+        })
+        .await
+    }
+
+    async fn set(&self, agent_id: &AgentId, key: &str, value: &[u8]) -> StorageResult<()> {
+        let db_name = self.db_name.clone();
+        let agent_id = agent_id.clone();
+        let key = key.to_string();
+        let value = value.to_vec();
+        run_indexeddb_task(async move {
+            let db = open_db(&db_name).await?;
+            let tx = open_transaction(&db, IdbTransactionMode::Readwrite)?;
+            let store = tx
+                .object_store(KV_STORE)
+                .map_err(js_error)?;
+            let storage_key = IndexedDbStorage::kv_key(&agent_id, &key);
+            store_put(&store, &storage_key, &value).await?;
+            await_transaction(tx).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn delete(&self, agent_id: &AgentId, key: &str) -> StorageResult<()> {
+        let db_name = self.db_name.clone();
+        let agent_id = agent_id.clone();
+        let key = key.to_string();
+        run_indexeddb_task(async move {
+            let db = open_db(&db_name).await?;
+            let tx = open_transaction(&db, IdbTransactionMode::Readwrite)?;
+            let store = tx
+                .object_store(KV_STORE)
+                .map_err(js_error)?;
+            let storage_key = IndexedDbStorage::kv_key(&agent_id, &key);
+            store_delete(&store, &storage_key).await?;
+            await_transaction(tx).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn list(&self, agent_id: &AgentId, prefix: &str) -> StorageResult<Vec<String>> {
+        let db_name = self.db_name.clone();
+        let agent_id = agent_id.clone();
+        let prefix = prefix.to_string();
+        run_indexeddb_task(async move {
+            let db = open_db(&db_name).await?;
+            let tx = open_transaction(&db, IdbTransactionMode::Readonly)?;
+            let store = tx
+                .object_store(KV_STORE)
+                .map_err(js_error)?;
+            let keys = store_list_keys(&store).await?;
+            await_transaction(tx).await?;
+            let prefix_root = IndexedDbStorage::kv_prefix(&agent_id);
+            let prefix_match = format!("{}{}", prefix_root, prefix);
+            let mut results = Vec::new();
+            for key in keys {
+                if key.starts_with(&prefix_match) {
+                    let trimmed = key.trim_start_matches(&prefix_root);
+                    results.push(trimmed.to_string());
+                }
+            }
+            Ok(results)
+        })
+        .await
+    }
+
+    async fn transaction(&self, agent_id: &AgentId, ops: Vec<StorageOp>) -> StorageResult<()> {
+        let db_name = self.db_name.clone();
+        let agent_id = agent_id.clone();
+        run_indexeddb_task(async move {
+            let db = open_db(&db_name).await?;
+            let tx = open_transaction(&db, IdbTransactionMode::Readwrite)?;
+            let state_store = tx
+                .object_store(STATE_STORE)
+                .map_err(js_error)?;
+            let kv_store = tx
+                .object_store(KV_STORE)
+                .map_err(js_error)?;
+
+            for op in ops {
+                match op {
+                    StorageOp::Set { key, value } => {
+                        let storage_key = IndexedDbStorage::kv_key(&agent_id, &key);
+                        store_put(&kv_store, &storage_key, &value).await?;
+                    }
+                    StorageOp::Delete { key } => {
+                        let storage_key = IndexedDbStorage::kv_key(&agent_id, &key);
+                        store_delete(&kv_store, &storage_key).await?;
+                    }
+                    StorageOp::SetState { state } => {
+                        store_put(&state_store, agent_id.as_str(), &state).await?;
+                    }
+                    StorageOp::DeleteState => {
+                        store_delete(&state_store, agent_id.as_str()).await?;
+                    }
+                }
+            }
+
+            await_transaction(tx).await?;
+            Ok(())
+        })
+        .await
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+const DB_VERSION: u32 = 1;
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+const STATE_STORE: &str = "state";
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+const KV_STORE: &str = "kv";
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+fn run_indexeddb_task<T>(
+    task: impl std::future::Future<Output = StorageResult<T>> + 'static,
+) -> impl std::future::Future<Output = StorageResult<T>> + Send
+where
+    T: Send + 'static,
+{
+    let (tx, rx) = oneshot::channel();
+    spawn_local(async move {
+        let _ = tx.send(task.await);
+    });
+    async move {
+        rx.await
+            .map_err(|_| StorageError::Other("indexeddb task canceled".to_string()))?
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+async fn open_db(db_name: &str) -> StorageResult<IdbDatabase> {
+    let factory = idb_factory()?;
+    let open_request = factory
+        .open_with_u32(db_name, DB_VERSION)
+        .map_err(js_error)?;
+    let upgrade_request = open_request.clone();
+    let on_upgrade = Closure::wrap(Box::new(move |_event: web_sys::Event| {
+        let db = upgrade_request
+            .result()
+            .expect("upgrade result")
+            .dyn_into::<IdbDatabase>()
+            .expect("db cast");
+        let names = db.object_store_names();
+        if !names.contains(STATE_STORE) {
+            let _ = db.create_object_store(STATE_STORE);
+        }
+        if !names.contains(KV_STORE) {
+            let _ = db.create_object_store(KV_STORE);
+        }
+    }) as Box<dyn FnMut(_)>);
+    open_request.set_onupgradeneeded(Some(on_upgrade.as_ref().unchecked_ref()));
+    on_upgrade.forget();
+
+    let request: IdbRequest = open_request
+        .dyn_into()
+        .map_err(|err| js_error(err.into()))?;
+    let value = request_result(request).await?;
+    value
+        .dyn_into::<IdbDatabase>()
+        .map_err(|err| StorageError::Other(js_error_message(err)))
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+fn open_transaction(db: &IdbDatabase, mode: IdbTransactionMode) -> StorageResult<IdbTransaction> {
+    let stores = Array::new();
+    stores.push(&JsValue::from_str(STATE_STORE));
+    stores.push(&JsValue::from_str(KV_STORE));
+    db.transaction_with_str_sequence_and_mode(&stores, mode)
+        .map_err(js_error)
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+async fn store_get(store: &IdbObjectStore, key: &str) -> StorageResult<Option<Vec<u8>>> {
+    let request = store.get(&JsValue::from_str(key)).map_err(js_error)?;
+    let value = request_result(request).await?;
+    if value.is_undefined() || value.is_null() {
+        return Ok(None);
+    }
+    let array = Uint8Array::new(&value);
+    let mut bytes = vec![0u8; array.length() as usize];
+    array.copy_to(&mut bytes);
+    Ok(Some(bytes))
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+async fn store_put(store: &IdbObjectStore, key: &str, value: &[u8]) -> StorageResult<()> {
+    let data = Uint8Array::from(value);
+    let request = store
+        .put_with_key(&JsValue::from(data), &JsValue::from_str(key))
+        .map_err(js_error)?;
+    let _ = request_result(request).await?;
+    Ok(())
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+async fn store_delete(store: &IdbObjectStore, key: &str) -> StorageResult<()> {
+    let request = store
+        .delete(&JsValue::from_str(key))
+        .map_err(js_error)?;
+    let _ = request_result(request).await?;
+    Ok(())
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+async fn store_list_keys(store: &IdbObjectStore) -> StorageResult<Vec<String>> {
+    let request = store.get_all_keys().map_err(js_error)?;
+    let value = request_result(request).await?;
+    let array = Array::from(&value);
+    let mut keys = Vec::new();
+    for entry in array.iter() {
+        if let Some(key) = entry.as_string() {
+            keys.push(key);
+        }
+    }
+    Ok(keys)
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+async fn await_transaction(tx: IdbTransaction) -> StorageResult<()> {
+    let promise = transaction_promise(&tx);
+    JsFuture::from(promise)
+        .await
+        .map_err(|err| StorageError::Other(js_error_message(err)))?;
+    Ok(())
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+fn request_result(request: IdbRequest) -> impl std::future::Future<Output = StorageResult<JsValue>> {
+    async move {
+        let promise = request_promise(&request);
+        JsFuture::from(promise)
+            .await
+            .map_err(|err| StorageError::Other(js_error_message(err)))
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+fn request_promise(request: &IdbRequest) -> Promise {
+    let request = request.clone();
+    Promise::new(&mut |resolve, reject| {
+        let success_request = request.clone();
+        let success = Closure::once(move |_event: web_sys::Event| {
+            let result = success_request.result().unwrap_or(JsValue::UNDEFINED);
+            let _ = resolve.call1(&JsValue::NULL, &result);
+        });
+        let error_request = request.clone();
+        let error = Closure::once(move |_event: web_sys::Event| {
+            let message = match error_request.error() {
+                Ok(Some(err)) => err.message(),
+                Ok(None) => "indexeddb request error".to_string(),
+                Err(err) => js_error_message(err),
+            };
+            let _ = reject.call1(&JsValue::NULL, &JsValue::from_str(&message));
+        });
+        request.set_onsuccess(Some(success.as_ref().unchecked_ref()));
+        request.set_onerror(Some(error.as_ref().unchecked_ref()));
+        success.forget();
+        error.forget();
+    })
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+fn transaction_promise(tx: &IdbTransaction) -> Promise {
+    let tx = tx.clone();
+    Promise::new(&mut |resolve, reject| {
+        let on_complete = Closure::once(move |_event: web_sys::Event| {
+            let _ = resolve.call0(&JsValue::NULL);
+        });
+        let reject_error = reject.clone();
+        let on_error = Closure::once(move |_event: web_sys::Event| {
+            let _ = reject_error.call1(&JsValue::NULL, &JsValue::from_str("indexeddb tx error"));
+        });
+        let reject_abort = reject.clone();
+        let on_abort = Closure::once(move |_event: web_sys::Event| {
+            let _ = reject_abort.call1(&JsValue::NULL, &JsValue::from_str("indexeddb tx aborted"));
+        });
+        tx.set_oncomplete(Some(on_complete.as_ref().unchecked_ref()));
+        tx.set_onerror(Some(on_error.as_ref().unchecked_ref()));
+        tx.set_onabort(Some(on_abort.as_ref().unchecked_ref()));
+        on_complete.forget();
+        on_error.forget();
+        on_abort.forget();
+    })
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+fn idb_factory() -> StorageResult<IdbFactory> {
+    if let Some(window) = web_sys::window() {
+        return window
+            .indexed_db()
+            .map_err(js_error)?
+            .ok_or_else(|| StorageError::Other("indexeddb unavailable".to_string()));
+    }
+    let global = js_sys::global();
+    let scope: WorkerGlobalScope = global
+        .dyn_into()
+        .map_err(|err| StorageError::Other(js_error_message(err.into())))?;
+    scope
+        .indexed_db()
+        .map_err(js_error)?
+        .ok_or_else(|| StorageError::Other("indexeddb unavailable".to_string()))
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+fn js_error(err: JsValue) -> StorageError {
+    StorageError::Other(js_error_message(err))
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser"))]
+fn js_error_message(err: JsValue) -> String {
+    if let Ok(dom) = err.clone().dyn_into::<DomException>() {
+        return dom.message();
+    }
+    if let Some(message) = err.as_string() {
+        return message;
+    }
+    format!("{err:?}")
+}
