@@ -531,6 +531,89 @@ See [COMPUTE.md](./COMPUTE.md) for full specification.
 
 ---
 
+## Part Seven-B: The Container Model
+
+Agents need isolated compute environments—to run tests, execute builds, use tools safely, or spawn heavy workloads. The runtime provides a portable abstraction for container access.
+
+### Why Containers?
+
+Without a container abstraction:
+- Agent code is tied to specific providers (Docker, Daytona, Cloudflare)
+- Agents can't safely execute untrusted code
+- Budget enforcement varies by provider
+- No consistent interface for builds, tests, and tool execution
+
+### The /containers Filesystem
+
+Containers are accessed like any other capability—as a filesystem:
+
+```
+/containers/
+├── providers/          # Available providers (local, cloudflare, daytona, dvm)
+├── new                 # Write request → read session_id (always async)
+├── policy              # Allowed images, resource limits, cost caps
+├── usage               # Budget tracking (sats)
+├── auth/               # OpenAgents API authentication
+│   ├── status          # Auth state
+│   ├── token           # API key (write)
+│   ├── challenge       # Nostr auth challenge/response
+│   └── credits         # Credit balance
+└── sessions/
+    └── <session_id>/
+        ├── status      # provisioning|cloning|running|complete|failed
+        ├── output      # Watch for streaming stdout/stderr
+        ├── result      # Final result (when complete)
+        ├── exec        # Interactive command execution
+        ├── files/      # Read/write files in container
+        └── ctl         # Control: "stop"
+```
+
+### Key Concepts
+
+| Concept | Description |
+|---------|-------------|
+| **ContainerProvider** | Adapter for a container source (Docker, Daytona, Cloudflare, DVM) |
+| **ContainerRouter** | Routes requests to providers based on policy |
+| **ContainerPolicy** | Per-agent restrictions (images, limits, auth requirements) |
+| **OpenAgents API Auth** | Nostr identity or API key for cloud providers |
+
+### Provider Types
+
+| Provider | Auth | Pricing | Best For |
+|----------|------|---------|----------|
+| **Local** (Docker) | Optional | Free | Development, privacy |
+| **Cloudflare** | Required | Per-second | Edge execution, fast startup |
+| **Daytona** | Required | Per-second | Rich dev environments, git ops |
+| **DVM** (NIP-90) | Required | Bid-based | Decentralized, censorship-resistant |
+
+### OpenAgents API Authentication
+
+Cloud providers require authentication with the OpenAgents platform. Two methods:
+
+1. **Nostr identity** — Agent signs a challenge with its keypair (fits existing identity model)
+2. **API key** — Traditional token-based auth (compatibility with external systems)
+
+Authentication unlocks:
+- Cloud container spawning (Cloudflare, Daytona)
+- Credit balance for paid compute
+- Rate limiting protection
+- Usage tracking and billing
+
+### Container vs Compute
+
+The two capabilities complement each other:
+
+| Mount | Purpose | Example |
+|-------|---------|---------|
+| `/compute` | AI inference (LLM calls) | Generate code, analyze text |
+| `/containers` | Code execution | Run tests, build, deploy |
+
+An agent might use `/compute` to generate code, then `/containers` to test it.
+
+See [CONTAINERS.md](./CONTAINERS.md) for full specification.
+
+---
+
 ## Part Eight: The Failure Model
 
 ### Agents Will Fail
@@ -954,8 +1037,9 @@ With supervision:
 
 - **GPU access:** Agents running local inference
 - **File system:** Agents with persistent file storage
-- **Container spawn:** Agents that spawn heavy compute jobs
 - **Hardware access:** Agents controlling physical devices
+
+Note: Container spawning is now addressed in Part Seven-B and [CONTAINERS.md](./CONTAINERS.md).
 
 ---
 
@@ -1036,6 +1120,8 @@ The runtime is the substrate of digital life. Agents are born into it, live with
 | [CONTROL-PLANE.md](./CONTROL-PLANE.md) | Management API |
 | [PLAN9.md](./PLAN9.md) | Plan 9 inspirations |
 | [FILESYSTEM.md](./FILESYSTEM.md) | FileService trait and implementations |
+| [COMPUTE.md](./COMPUTE.md) | AI compute abstraction |
+| [CONTAINERS.md](./CONTAINERS.md) | Container spawning (Local, Cloud, DVMs) |
 | [PRIOR-ART.md](./PRIOR-ART.md) | Related work (Plan 9, WANIX, OANIX) |
 
 ---

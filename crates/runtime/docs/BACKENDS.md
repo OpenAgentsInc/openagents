@@ -518,8 +518,10 @@ spec:
 | **Cost model** | Free | Pay-per-use | Fixed | Fixed |
 | **Offline** | Yes | No | Yes | Yes |
 | **Privacy** | Maximum | Cloud | Full | Self-host |
+| **Container spawn** | Cloud only** | DO Container API | Docker daemon | Docker/K8s |
 
 *Server cold start depends on deployment mode (bare metal vs Docker vs K8s)
+**Browser agents can spawn containers via OpenAgents API (Cloudflare, Daytona, DVM) but not locally
 
 ### Server Deployment Modes
 
@@ -607,6 +609,99 @@ fn main() {
     backend.run();
 }
 ```
+
+---
+
+## Container Support by Backend
+
+Agents can spawn isolated containers via the `/containers` mount. How this works varies by backend:
+
+### Browser
+
+Browser agents cannot spawn local containers (no Docker access). They access containers through cloud providers:
+
+- **Cloudflare Containers** — Via OpenAgents API (requires auth + credits)
+- **Daytona** — Via OpenAgents API (requires auth + credits)
+- **NIP-90 DVMs** — Via Nostr protocol (requires Lightning payment)
+
+```javascript
+// Browser agent spawning cloud container
+env.write("/containers/auth/token", apiKey);
+env.write("/containers/new", JSON.stringify({
+    kind: "ephemeral",
+    image: "node:20",
+    commands: ["npm test"],
+    max_cost_sats: 1000
+}));
+```
+
+### Cloudflare Workers
+
+Cloudflare DO agents can spawn containers via the [Container API](https://developers.cloudflare.com/containers/):
+
+```rust
+// DO agent spawning Cloudflare container
+let container = self.env.container("my-container");
+if !container.running() {
+    container.start(Some(ContainerStartupOptions::new()))?;
+}
+// Forward work to container HTTP API
+let fetcher = container.get_tcp_port(8080)?;
+```
+
+They can also access Daytona and DVMs through the standard `/containers` mount.
+
+### Local Device
+
+Local agents have direct Docker access:
+
+```rust
+// Local agent spawning Docker container
+env.write("/containers/new", serde_json::to_vec(&ContainerRequest {
+    kind: ContainerKind::Ephemeral,
+    image: Some("rust:1.75".to_string()),
+    commands: vec!["cargo test".to_string()],
+    limits: ResourceLimits::basic(),
+    ..Default::default()
+})?)?;
+```
+
+Local Docker is free (no auth required), but agents can also use cloud providers if authenticated.
+
+### Server (Docker/K8s)
+
+Server agents have the richest container support:
+
+- **Docker daemon** — Direct access to host Docker (compose deployments)
+- **Kubernetes API** — Spawn Jobs/Pods (K8s deployments)
+- **Cloud providers** — Cloudflare, Daytona, DVMs via API
+
+For K8s deployments, the agent's ServiceAccount needs appropriate RBAC to create Jobs:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-container-spawner
+rules:
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create", "get", "list", "delete"]
+```
+
+### Container Provider Summary
+
+| Provider | Browser | Cloudflare | Local | Server |
+|----------|---------|------------|-------|--------|
+| **Local Docker** | — | — | ✅ Free | ✅ Free |
+| **Cloudflare Containers** | ✅ Credits | ✅ Native | ✅ Credits | ✅ Credits |
+| **Daytona** | ✅ Credits | ✅ Credits | ✅ Credits | ✅ Credits |
+| **NIP-90 DVMs** | ✅ Lightning | ✅ Lightning | ✅ Lightning | ✅ Lightning |
+| **K8s Jobs** | — | — | — | ✅ Free* |
+
+*K8s Jobs are "free" in that they use cluster resources, not external credits
+
+See [CONTAINERS.md](./CONTAINERS.md) for full specification.
 
 ---
 
