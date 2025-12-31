@@ -92,8 +92,7 @@ impl ProcessTransport {
                     continue;
                 }
 
-                let event = serde_json::from_str::<ThreadEvent>(&line)
-                    .map_err(|e| Error::Json(e));
+                let event = serde_json::from_str::<ThreadEvent>(&line).map_err(|e| Error::Json(e));
 
                 if tx.send(event).await.is_err() {
                     break;

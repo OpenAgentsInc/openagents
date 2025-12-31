@@ -375,7 +375,8 @@ impl Query {
                             HookOutput::Sync(sync_output) => {
                                 // Merge outputs - last non-None value wins
                                 if sync_output.continue_execution.is_some() {
-                                    final_output.continue_execution = sync_output.continue_execution;
+                                    final_output.continue_execution =
+                                        sync_output.continue_execution;
                                 }
                                 if sync_output.suppress_output.is_some() {
                                     final_output.suppress_output = sync_output.suppress_output;
@@ -393,7 +394,8 @@ impl Query {
                                     final_output.reason = sync_output.reason;
                                 }
                                 if sync_output.hook_specific_output.is_some() {
-                                    final_output.hook_specific_output = sync_output.hook_specific_output;
+                                    final_output.hook_specific_output =
+                                        sync_output.hook_specific_output;
                                 }
 
                                 // If continue is false, stop processing

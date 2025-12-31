@@ -32,8 +32,8 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/codegen.rs"));
 }
 
-pub use generated::types as gen_types;
 pub use generated::Client as GeneratedClient;
+pub use generated::types as gen_types;
 
 pub use client::{OpencodeClient, OpencodeClientConfig};
 pub use error::{Error, Result};
@@ -59,22 +59,19 @@ mod tests {
 
         #[test]
         fn config_builder_sets_base_url() {
-            let config = OpencodeClientConfig::new()
-                .base_url("http://custom:8080");
+            let config = OpencodeClientConfig::new().base_url("http://custom:8080");
             assert_eq!(config.base_url, "http://custom:8080");
         }
 
         #[test]
         fn config_builder_sets_directory() {
-            let config = OpencodeClientConfig::new()
-                .directory("/path/to/project");
+            let config = OpencodeClientConfig::new().directory("/path/to/project");
             assert_eq!(config.directory, Some(PathBuf::from("/path/to/project")));
         }
 
         #[test]
         fn config_builder_sets_timeout() {
-            let config = OpencodeClientConfig::new()
-                .timeout(60);
+            let config = OpencodeClientConfig::new().timeout(60);
             assert_eq!(config.timeout_seconds, 60);
         }
 
@@ -84,7 +81,7 @@ mod tests {
                 .base_url("http://localhost:3000")
                 .directory("/code")
                 .timeout(120);
-            
+
             assert_eq!(config.base_url, "http://localhost:3000");
             assert_eq!(config.directory, Some(PathBuf::from("/code")));
             assert_eq!(config.timeout_seconds, 120);
@@ -96,16 +93,14 @@ mod tests {
 
         #[test]
         fn client_creation_succeeds_with_valid_url() {
-            let config = OpencodeClientConfig::new()
-                .base_url("http://127.0.0.1:4096");
+            let config = OpencodeClientConfig::new().base_url("http://127.0.0.1:4096");
             let result = OpencodeClient::new(config);
             assert!(result.is_ok());
         }
 
         #[test]
         fn client_creation_fails_with_invalid_url() {
-            let config = OpencodeClientConfig::new()
-                .base_url("not-a-valid-url");
+            let config = OpencodeClientConfig::new().base_url("not-a-valid-url");
             let result = OpencodeClient::new(config);
             assert!(result.is_err());
         }
@@ -116,7 +111,9 @@ mod tests {
 
         #[test]
         fn part_text_serializes_correctly() {
-            let part = Part::Text { text: "hello".to_string() };
+            let part = Part::Text {
+                text: "hello".to_string(),
+            };
             let json = serde_json::to_string(&part).unwrap();
             assert!(json.contains(r#""type":"text""#));
             assert!(json.contains(r#""text":"hello""#));
@@ -124,7 +121,9 @@ mod tests {
 
         #[test]
         fn part_image_serializes_correctly() {
-            let part = Part::Image { url: "https://example.com/img.png".to_string() };
+            let part = Part::Image {
+                url: "https://example.com/img.png".to_string(),
+            };
             let json = serde_json::to_string(&part).unwrap();
             assert!(json.contains(r#""type":"image""#));
             assert!(json.contains(r#""url":"https://example.com/img.png""#));
@@ -132,7 +131,9 @@ mod tests {
 
         #[test]
         fn part_file_serializes_correctly() {
-            let part = Part::File { path: "/path/to/file.rs".to_string() };
+            let part = Part::File {
+                path: "/path/to/file.rs".to_string(),
+            };
             let json = serde_json::to_string(&part).unwrap();
             assert!(json.contains(r#""type":"file""#));
             assert!(json.contains(r#""path":"/path/to/file.rs""#));
@@ -141,9 +142,9 @@ mod tests {
         #[test]
         fn prompt_request_with_text_parts() {
             let request = PromptRequest {
-                parts: vec![
-                    Part::Text { text: "Fix the bug".to_string() },
-                ],
+                parts: vec![Part::Text {
+                    text: "Fix the bug".to_string(),
+                }],
                 agent: None,
                 model: None,
             };
@@ -290,14 +291,18 @@ mod tests {
 
         #[test]
         fn server_unavailable_error_displays_url() {
-            let err = Error::ServerUnavailable { url: "http://localhost:4096".to_string() };
+            let err = Error::ServerUnavailable {
+                url: "http://localhost:4096".to_string(),
+            };
             let msg = format!("{}", err);
             assert!(msg.contains("localhost:4096"));
         }
 
         #[test]
         fn session_not_found_error_displays_id() {
-            let err = Error::SessionNotFound { id: "abc123".to_string() };
+            let err = Error::SessionNotFound {
+                id: "abc123".to_string(),
+            };
             let msg = format!("{}", err);
             assert!(msg.contains("abc123"));
         }
@@ -336,7 +341,7 @@ mod tests {
                 .hostname("0.0.0.0")
                 .timeout_ms(60000)
                 .directory(PathBuf::from("/project"));
-            
+
             assert_eq!(opts.port, 8080);
             assert_eq!(opts.hostname, "0.0.0.0");
             assert_eq!(opts.timeout_ms, 60000);

@@ -122,10 +122,9 @@ impl EventStream {
             match self.source.next().await? {
                 Ok(SseEvent::Open) => continue,
                 Ok(SseEvent::Message(msg)) => {
-                    let event = serde_json::from_str(&msg.data)
-                        .map_err(|e| Error::EventStream {
-                            message: format!("Failed to parse event: {}", e),
-                        });
+                    let event = serde_json::from_str(&msg.data).map_err(|e| Error::EventStream {
+                        message: format!("Failed to parse event: {}", e),
+                    });
                     return Some(event);
                 }
                 Err(e) => {

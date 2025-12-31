@@ -1,5 +1,5 @@
-use gpt_oss_agent::tools::ui_pane::{PaneManager, UiPaneTool};
 use gpt_oss_agent::tools::Tool;
+use gpt_oss_agent::tools::ui_pane::{PaneManager, UiPaneTool};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -15,7 +15,13 @@ fn log_result(result: &gpt_oss_agent::tools::ToolResult) {
     if result.success {
         println!("SUCCESS: {}", result.output);
     } else {
-        println!("FAILED: {}", result.error.as_ref().unwrap_or(&"Unknown error".to_string()));
+        println!(
+            "FAILED: {}",
+            result
+                .error
+                .as_ref()
+                .unwrap_or(&"Unknown error".to_string())
+        );
     }
     println!("{}", "=".repeat(70));
 }

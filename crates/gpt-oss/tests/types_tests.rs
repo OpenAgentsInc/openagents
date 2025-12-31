@@ -242,10 +242,7 @@ fn test_responses_response_helpers() {
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].name, "browser");
     assert_eq!(
-        calls[0]
-            .arguments
-            .get("query")
-            .and_then(|v| v.as_str()),
+        calls[0].arguments.get("query").and_then(|v| v.as_str()),
         Some("openagents")
     );
 }

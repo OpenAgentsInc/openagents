@@ -39,8 +39,7 @@ pub enum PaneState {
 }
 
 /// Frame style for the pane border
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 pub enum FrameStyle {
     #[default]
     Corners,
@@ -51,10 +50,8 @@ pub enum FrameStyle {
     Kranox,
 }
 
-
 /// Priority level for pane attention
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Priority {
     Background = 0,
     #[default]
@@ -63,7 +60,6 @@ pub enum Priority {
     Urgent = 3,
     Critical = 4,
 }
-
 
 /// Animation type
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -102,7 +98,10 @@ impl Pane {
             id: id.to_string(),
             title: title.to_string(),
             position: Position { x: 100.0, y: 100.0 },
-            size: Size { width: 400.0, height: 300.0 },
+            size: Size {
+                width: 400.0,
+                height: 300.0,
+            },
             state: PaneState::Open,
             priority: Priority::Normal,
             z_index: 0,
@@ -195,50 +194,28 @@ pub enum UiPaneAction {
     },
 
     /// Set pane priority (affects visual prominence)
-    SetPriority {
-        id: String,
-        priority: Priority,
-    },
+    SetPriority { id: String, priority: Priority },
 
     /// Bring pane to front (focus)
-    Focus {
-        id: String,
-    },
+    Focus { id: String },
 
     /// Change pane state (open, close, minimize)
-    SetState {
-        id: String,
-        state: PaneState,
-    },
+    SetState { id: String, state: PaneState },
 
     /// Set frame style
-    SetFrameStyle {
-        id: String,
-        style: FrameStyle,
-    },
+    SetFrameStyle { id: String, style: FrameStyle },
 
     /// Trigger animation on a pane
-    Animate {
-        id: String,
-        animation: Animation,
-    },
+    Animate { id: String, animation: Animation },
 
     /// Set glow color for attention
-    SetGlow {
-        id: String,
-        color: Option<String>,
-    },
+    SetGlow { id: String, color: Option<String> },
 
     /// Close and remove a pane
-    ClosePane {
-        id: String,
-    },
+    ClosePane { id: String },
 
     /// Get attention - flash/animate the most important pane
-    RequestAttention {
-        id: String,
-        message: Option<String>,
-    },
+    RequestAttention { id: String, message: Option<String> },
 }
 
 /// UI Pane Tool
@@ -256,18 +233,22 @@ impl UiPaneTool {
 
         match action {
             UiPaneAction::ListPanes => {
-                let panes: Vec<_> = manager.list_panes().iter().map(|p| {
-                    serde_json::json!({
-                        "id": p.id,
-                        "title": p.title,
-                        "position": p.position,
-                        "size": p.size,
-                        "state": p.state,
-                        "priority": p.priority,
-                        "z_index": p.z_index,
+                let panes: Vec<_> = manager
+                    .list_panes()
+                    .iter()
+                    .map(|p| {
+                        serde_json::json!({
+                            "id": p.id,
+                            "title": p.title,
+                            "position": p.position,
+                            "size": p.size,
+                            "state": p.state,
+                            "priority": p.priority,
+                            "z_index": p.z_index,
+                        })
                     })
-                }).collect();
-                
+                    .collect();
+
                 Ok(ToolResult {
                     success: true,
                     output: serde_json::to_string_pretty(&panes).unwrap(),
@@ -275,7 +256,13 @@ impl UiPaneTool {
                 })
             }
 
-            UiPaneAction::CreatePane { id, title, position, size, content_type } => {
+            UiPaneAction::CreatePane {
+                id,
+                title,
+                position,
+                size,
+                content_type,
+            } => {
                 let mut pane = Pane::new(&id, &title);
                 if let Some(pos) = position {
                     pane.position = pos;
@@ -288,28 +275,38 @@ impl UiPaneTool {
                 }
                 pane.state = PaneState::SlideIn;
                 manager.add_pane(pane.clone());
-                
+
                 Ok(ToolResult {
                     success: true,
-                    output: format!("Created pane '{}' ({}) at ({}, {})", 
-                        id, title, pane.position.x, pane.position.y),
+                    output: format!(
+                        "Created pane '{}' ({}) at ({}, {})",
+                        id, title, pane.position.x, pane.position.y
+                    ),
                     error: None,
                 })
             }
 
-            UiPaneAction::MovePane { id, position, animate } => {
+            UiPaneAction::MovePane {
+                id,
+                position,
+                animate,
+            } => {
                 if let Some(pane) = manager.get_pane_mut(&id) {
                     let old_pos = pane.position;
                     pane.position = position;
                     if animate {
                         pane.animation_progress = 0.0;
                     }
-                    
+
                     Ok(ToolResult {
                         success: true,
                         output: format!(
                             "Moved pane '{}' from ({}, {}) to ({}, {}){}",
-                            id, old_pos.x, old_pos.y, position.x, position.y,
+                            id,
+                            old_pos.x,
+                            old_pos.y,
+                            position.x,
+                            position.y,
                             if animate { " (animated)" } else { "" }
                         ),
                         error: None,
@@ -330,13 +327,16 @@ impl UiPaneTool {
                     if animate {
                         pane.animation_progress = 0.0;
                     }
-                    
+
                     Ok(ToolResult {
                         success: true,
                         output: format!(
                             "Resized pane '{}' from {}x{} to {}x{}{}",
-                            id, old_size.width, old_size.height, 
-                            size.width, size.height,
+                            id,
+                            old_size.width,
+                            old_size.height,
+                            size.width,
+                            size.height,
                             if animate { " (animated)" } else { "" }
                         ),
                         error: None,
@@ -354,13 +354,13 @@ impl UiPaneTool {
                 if let Some(pane) = manager.get_pane_mut(&id) {
                     let old_priority = pane.priority;
                     pane.priority = priority;
-                    
+
                     if priority >= Priority::Urgent {
                         pane.glow_color = Some("#ff6600".to_string());
                     } else if priority == Priority::Elevated {
                         pane.glow_color = Some("#00a8ff".to_string());
                     }
-                    
+
                     Ok(ToolResult {
                         success: true,
                         output: format!(
@@ -399,7 +399,7 @@ impl UiPaneTool {
                 if let Some(pane) = manager.get_pane_mut(&id) {
                     let old_state = pane.state;
                     pane.state = state;
-                    
+
                     Ok(ToolResult {
                         success: true,
                         output: format!(
@@ -420,7 +420,7 @@ impl UiPaneTool {
             UiPaneAction::SetFrameStyle { id, style } => {
                 if let Some(pane) = manager.get_pane_mut(&id) {
                     pane.frame_style = style;
-                    
+
                     Ok(ToolResult {
                         success: true,
                         output: format!("Set frame style of '{}' to {:?}", id, style),
@@ -438,7 +438,7 @@ impl UiPaneTool {
             UiPaneAction::Animate { id, animation } => {
                 if let Some(pane) = manager.get_pane_mut(&id) {
                     pane.animation_progress = 0.0;
-                    
+
                     Ok(ToolResult {
                         success: true,
                         output: format!("Triggered {:?} animation on '{}'", animation, id),
@@ -456,12 +456,13 @@ impl UiPaneTool {
             UiPaneAction::SetGlow { id, color } => {
                 if let Some(pane) = manager.get_pane_mut(&id) {
                     pane.glow_color = color.clone();
-                    
+
                     Ok(ToolResult {
                         success: true,
                         output: format!(
                             "Set glow on '{}' to {:?}",
-                            id, color.unwrap_or_else(|| "none".to_string())
+                            id,
+                            color.unwrap_or_else(|| "none".to_string())
                         ),
                         error: None,
                     })
@@ -477,7 +478,7 @@ impl UiPaneTool {
             UiPaneAction::ClosePane { id } => {
                 if let Some(pane) = manager.get_pane_mut(&id) {
                     pane.state = PaneState::SlideOut;
-                    
+
                     Ok(ToolResult {
                         success: true,
                         output: format!("Closing pane '{}' (slide out)", id),
@@ -497,12 +498,13 @@ impl UiPaneTool {
                     pane.priority = Priority::Urgent;
                     pane.glow_color = Some("#ff0000".to_string());
                     manager.bring_to_front(&id);
-                    
+
                     Ok(ToolResult {
                         success: true,
                         output: format!(
                             "Attention requested on '{}': {}",
-                            id, message.unwrap_or_else(|| "Look here!".to_string())
+                            id,
+                            message.unwrap_or_else(|| "Look here!".to_string())
                         ),
                         error: None,
                     })
@@ -521,9 +523,10 @@ impl UiPaneTool {
 #[async_trait::async_trait]
 impl Tool for UiPaneTool {
     async fn execute(&self, params: serde_json::Value) -> crate::Result<ToolResult> {
-        let action: UiPaneAction = serde_json::from_value(params)
-            .map_err(|e| crate::GptOssAgentError::ToolError(format!("Invalid parameters: {}", e)))?;
-        
+        let action: UiPaneAction = serde_json::from_value(params).map_err(|e| {
+            crate::GptOssAgentError::ToolError(format!("Invalid parameters: {}", e))
+        })?;
+
         self.execute_action(action)
     }
 
@@ -605,10 +608,10 @@ mod tests {
         let mut manager = PaneManager::new();
         manager.add_pane(Pane::new("pane1", "First"));
         manager.add_pane(Pane::new("pane2", "Second"));
-        
+
         assert_eq!(manager.list_panes().len(), 2);
         assert_eq!(manager.get_focused_pane(), Some("pane2"));
-        
+
         manager.bring_to_front("pane1");
         assert_eq!(manager.get_focused_pane(), Some("pane1"));
     }
@@ -625,16 +628,19 @@ mod tests {
     async fn test_ui_pane_tool_create() {
         let manager = Arc::new(RwLock::new(PaneManager::new()));
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "CreatePane",
-            "id": "editor",
-            "title": "Code Editor"
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "CreatePane",
+                "id": "editor",
+                "title": "Code Editor"
+            }))
+            .await
+            .unwrap();
+
         assert!(result.success);
         assert!(result.output.contains("Created pane 'editor'"));
-        
+
         let mgr = manager.read().unwrap();
         assert!(mgr.get_pane("editor").is_some());
     }
@@ -646,19 +652,22 @@ mod tests {
             let mut mgr = manager.write().unwrap();
             mgr.add_pane(Pane::new("test", "Test"));
         }
-        
+
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "MovePane",
-            "id": "test",
-            "position": { "x": 200.0, "y": 300.0 },
-            "animate": true
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "MovePane",
+                "id": "test",
+                "position": { "x": 200.0, "y": 300.0 },
+                "animate": true
+            }))
+            .await
+            .unwrap();
+
         assert!(result.success);
         assert!(result.output.contains("animated"));
-        
+
         let mgr = manager.read().unwrap();
         let pane = mgr.get_pane("test").unwrap();
         assert_eq!(pane.position.x, 200.0);
@@ -672,21 +681,27 @@ mod tests {
             let mut mgr = manager.write().unwrap();
             mgr.add_pane(Pane::new("alert", "Alert"));
         }
-        
+
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "SetPriority",
-            "id": "alert",
-            "priority": "Urgent"
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "SetPriority",
+                "id": "alert",
+                "priority": "Urgent"
+            }))
+            .await
+            .unwrap();
+
         assert!(result.success);
-        
+
         let mgr = manager.read().unwrap();
         let pane = mgr.get_pane("alert").unwrap();
         assert_eq!(pane.priority, Priority::Urgent);
-        assert!(pane.glow_color.is_some(), "Urgent priority should auto-enable glow");
+        assert!(
+            pane.glow_color.is_some(),
+            "Urgent priority should auto-enable glow"
+        );
     }
 
     #[tokio::test]
@@ -696,17 +711,20 @@ mod tests {
             let mut mgr = manager.write().unwrap();
             mgr.add_pane(Pane::new("test", "Test"));
         }
-        
+
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "ResizePane",
-            "id": "test",
-            "size": { "width": 600.0, "height": 400.0 }
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "ResizePane",
+                "id": "test",
+                "size": { "width": 600.0, "height": 400.0 }
+            }))
+            .await
+            .unwrap();
+
         assert!(result.success);
-        
+
         let mgr = manager.read().unwrap();
         let pane = mgr.get_pane("test").unwrap();
         assert_eq!(pane.size.width, 600.0);
@@ -720,17 +738,20 @@ mod tests {
             let mut mgr = manager.write().unwrap();
             mgr.add_pane(Pane::new("test", "Test"));
         }
-        
+
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "SetState",
-            "id": "test",
-            "state": "Minimized"
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "SetState",
+                "id": "test",
+                "state": "Minimized"
+            }))
+            .await
+            .unwrap();
+
         assert!(result.success);
-        
+
         let mgr = manager.read().unwrap();
         let pane = mgr.get_pane("test").unwrap();
         assert_eq!(pane.state, PaneState::Minimized);
@@ -743,17 +764,20 @@ mod tests {
             let mut mgr = manager.write().unwrap();
             mgr.add_pane(Pane::new("test", "Test"));
         }
-        
+
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "SetFrameStyle",
-            "id": "test",
-            "style": "Kranox"
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "SetFrameStyle",
+                "id": "test",
+                "style": "Kranox"
+            }))
+            .await
+            .unwrap();
+
         assert!(result.success);
-        
+
         let mgr = manager.read().unwrap();
         let pane = mgr.get_pane("test").unwrap();
         assert_eq!(pane.frame_style, FrameStyle::Kranox);
@@ -766,17 +790,20 @@ mod tests {
             let mut mgr = manager.write().unwrap();
             mgr.add_pane(Pane::new("test", "Test"));
         }
-        
+
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "SetGlow",
-            "id": "test",
-            "color": "#00ff00"
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "SetGlow",
+                "id": "test",
+                "color": "#00ff00"
+            }))
+            .await
+            .unwrap();
+
         assert!(result.success);
-        
+
         let mgr = manager.read().unwrap();
         let pane = mgr.get_pane("test").unwrap();
         assert_eq!(pane.glow_color, Some("#00ff00".to_string()));
@@ -790,13 +817,16 @@ mod tests {
             mgr.add_pane(Pane::new("pane1", "First"));
             mgr.add_pane(Pane::new("pane2", "Second"));
         }
-        
+
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "ListPanes"
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "ListPanes"
+            }))
+            .await
+            .unwrap();
+
         assert!(result.success);
         assert!(result.output.contains("pane1"));
         assert!(result.output.contains("pane2"));
@@ -809,16 +839,19 @@ mod tests {
             let mut mgr = manager.write().unwrap();
             mgr.add_pane(Pane::new("test", "Test"));
         }
-        
+
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "ClosePane",
-            "id": "test"
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "ClosePane",
+                "id": "test"
+            }))
+            .await
+            .unwrap();
+
         assert!(result.success);
-        
+
         let mgr = manager.read().unwrap();
         let pane = mgr.get_pane("test").unwrap();
         assert_eq!(pane.state, PaneState::SlideOut);
@@ -832,16 +865,19 @@ mod tests {
             mgr.add_pane(Pane::new("pane1", "First"));
             mgr.add_pane(Pane::new("pane2", "Second"));
         }
-        
+
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "Focus",
-            "id": "pane1"
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "Focus",
+                "id": "pane1"
+            }))
+            .await
+            .unwrap();
+
         assert!(result.success);
-        
+
         let mgr = manager.read().unwrap();
         assert_eq!(mgr.get_focused_pane(), Some("pane1"));
     }
@@ -853,18 +889,21 @@ mod tests {
             let mut mgr = manager.write().unwrap();
             mgr.add_pane(Pane::new("alert", "Alert"));
         }
-        
+
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "RequestAttention",
-            "id": "alert",
-            "message": "Error detected!"
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "RequestAttention",
+                "id": "alert",
+                "message": "Error detected!"
+            }))
+            .await
+            .unwrap();
+
         assert!(result.success);
         assert!(result.output.contains("Error detected!"));
-        
+
         let mgr = manager.read().unwrap();
         let pane = mgr.get_pane("alert").unwrap();
         assert_eq!(pane.priority, Priority::Urgent);
@@ -875,13 +914,16 @@ mod tests {
     async fn test_ui_pane_tool_not_found() {
         let manager = Arc::new(RwLock::new(PaneManager::new()));
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "MovePane",
-            "id": "nonexistent",
-            "position": { "x": 0.0, "y": 0.0 }
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "MovePane",
+                "id": "nonexistent",
+                "position": { "x": 0.0, "y": 0.0 }
+            }))
+            .await
+            .unwrap();
+
         assert!(!result.success);
         assert!(result.error.unwrap().contains("not found"));
     }
@@ -893,15 +935,18 @@ mod tests {
             let mut mgr = manager.write().unwrap();
             mgr.add_pane(Pane::new("test", "Test"));
         }
-        
+
         let tool = UiPaneTool::new(manager.clone());
-        
-        let result = tool.execute(serde_json::json!({
-            "action": "Animate",
-            "id": "test",
-            "animation": { "Pulse": { "count": 3, "duration_ms": 500 } }
-        })).await.unwrap();
-        
+
+        let result = tool
+            .execute(serde_json::json!({
+                "action": "Animate",
+                "id": "test",
+                "animation": { "Pulse": { "count": 3, "duration_ms": 500 } }
+            }))
+            .await
+            .unwrap();
+
         assert!(result.success);
         assert!(result.output.contains("animation"));
     }

@@ -91,7 +91,14 @@ impl OpencodeClient {
     pub async fn session_create(&self, request: SessionCreateRequest) -> Result<Session> {
         let mut url = self.url("/session")?;
         self.add_directory_param(&mut url);
-        let resp = self.http.post(url).json(&request).send().await?.json().await?;
+        let resp = self
+            .http
+            .post(url)
+            .json(&request)
+            .send()
+            .await?
+            .json()
+            .await?;
         Ok(resp)
     }
 
@@ -119,7 +126,11 @@ impl OpencodeClient {
         self.session_prompt_with_request(id, request).await
     }
 
-    pub async fn session_prompt_with_request(&self, id: &str, request: PromptRequest) -> Result<()> {
+    pub async fn session_prompt_with_request(
+        &self,
+        id: &str,
+        request: PromptRequest,
+    ) -> Result<()> {
         let mut url = self.url(&format!("/session/{}/prompt", id))?;
         self.add_directory_param(&mut url);
         self.http.post(url).json(&request).send().await?;
@@ -164,7 +175,14 @@ impl OpencodeClient {
     pub async fn config_update(&self, config: &Config) -> Result<Config> {
         let mut url = self.url("/config")?;
         self.add_directory_param(&mut url);
-        let resp = self.http.patch(url).json(config).send().await?.json().await?;
+        let resp = self
+            .http
+            .patch(url)
+            .json(config)
+            .send()
+            .await?
+            .json()
+            .await?;
         Ok(resp)
     }
 

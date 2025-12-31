@@ -2,7 +2,7 @@ use opencode_sdk::{Event, OpencodeClient, OpencodeClientConfig, OpencodeServer, 
 use serde_json::json;
 use std::net::TcpListener;
 use std::path::PathBuf;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -47,19 +47,15 @@ async fn test_health_connects_to_server() {
 
     Mock::given(method("GET"))
         .and(path("/global/health"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(json!({
-                "healthy": true,
-                "version": "1.0.0"
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "healthy": true,
+            "version": "1.0.0"
+        })))
         .mount(&server)
         .await;
 
-    let client = OpencodeClient::new(
-        OpencodeClientConfig::new().base_url(server.uri()),
-    )
-    .expect("client build");
+    let client = OpencodeClient::new(OpencodeClientConfig::new().base_url(server.uri()))
+        .expect("client build");
 
     let health = client.health().await.expect("health response");
     assert!(health.healthy);
@@ -92,16 +88,13 @@ async fn test_session_prompt_and_messages() {
     Mock::given(method("GET"))
         .and(path(format!("/session/{}/message", session_id)))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(json!([user_message_json(session_id)])),
+            ResponseTemplate::new(200).set_body_json(json!([user_message_json(session_id)])),
         )
         .mount(&server)
         .await;
 
-    let client = OpencodeClient::new(
-        OpencodeClientConfig::new().base_url(server.uri()),
-    )
-    .expect("client build");
+    let client = OpencodeClient::new(OpencodeClientConfig::new().base_url(server.uri()))
+        .expect("client build");
 
     let session = client
         .session_create(Default::default())
@@ -114,10 +107,7 @@ async fn test_session_prompt_and_messages() {
         .await
         .expect("prompt send");
 
-    let messages = client
-        .session_messages(session_id)
-        .await
-        .expect("messages");
+    let messages = client.session_messages(session_id).await.expect("messages");
     assert_eq!(messages.len(), 1);
 
     let message_value = serde_json::to_value(&messages[0]).expect("serialize message");
@@ -144,10 +134,8 @@ async fn test_event_stream_receives_sse() {
         .mount(&server)
         .await;
 
-    let client = OpencodeClient::new(
-        OpencodeClientConfig::new().base_url(server.uri()),
-    )
-    .expect("client build");
+    let client = OpencodeClient::new(OpencodeClientConfig::new().base_url(server.uri()))
+        .expect("client build");
 
     let mut stream = client.events().await.expect("event stream");
     let next = timeout(Duration::from_secs(1), stream.next_event())
@@ -170,38 +158,36 @@ async fn test_provider_list() {
 
     Mock::given(method("GET"))
         .and(path("/provider"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(json!([
-                {
-                    "id": "anthropic",
-                    "name": "Anthropic",
-                    "models": [
-                        {
-                            "id": "claude-sonnet-4",
-                            "name": "Claude Sonnet 4"
-                        }
-                    ]
-                }
-            ])),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {
+                "id": "anthropic",
+                "name": "Anthropic",
+                "models": [
+                    {
+                        "id": "claude-sonnet-4",
+                        "name": "Claude Sonnet 4"
+                    }
+                ]
+            }
+        ])))
         .mount(&server)
         .await;
 
-    let client = OpencodeClient::new(
-        OpencodeClientConfig::new().base_url(server.uri()),
-    )
-    .expect("client build");
+    let client = OpencodeClient::new(OpencodeClientConfig::new().base_url(server.uri()))
+        .expect("client build");
 
     let providers = client.provider_list().await.expect("providers");
     assert_eq!(providers.len(), 1);
     assert_eq!(providers[0].id, "anthropic");
     assert_eq!(providers[0].name, "Anthropic");
-    assert!(providers[0]
-        .models
-        .as_ref()
-        .unwrap()
-        .iter()
-        .any(|model| model.id == "claude-sonnet-4"));
+    assert!(
+        providers[0]
+            .models
+            .as_ref()
+            .unwrap()
+            .iter()
+            .any(|model| model.id == "claude-sonnet-4")
+    );
 }
 
 fn stub_executable() -> PathBuf {
@@ -217,9 +203,7 @@ async fn test_server_spawn_and_health() {
         .timeout_ms(2000)
         .executable(stub_executable());
 
-    let mut server = OpencodeServer::spawn(options)
-        .await
-        .expect("server spawn");
+    let mut server = OpencodeServer::spawn(options).await.expect("server spawn");
 
     assert!(server.is_running());
     assert_eq!(server.port(), port);
@@ -237,9 +221,7 @@ async fn test_server_close_stops_health() {
         .timeout_ms(2000)
         .executable(stub_executable());
 
-    let server = OpencodeServer::spawn(options)
-        .await
-        .expect("server spawn");
+    let server = OpencodeServer::spawn(options).await.expect("server spawn");
 
     let health_url = format!("http://127.0.0.1:{}/global/health", port);
 

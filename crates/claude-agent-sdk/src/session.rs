@@ -127,9 +127,10 @@ impl<'a> Stream for SessionReceiver<'a> {
             Poll::Ready(Some(result)) => {
                 // Extract session ID from init message
                 if let Ok(ref msg) = result
-                    && let SdkMessage::System(SdkSystemMessage::Init(init)) = msg {
-                        self.session.session_id = Some(init.session_id.clone());
-                    }
+                    && let SdkMessage::System(SdkSystemMessage::Init(init)) = msg
+                {
+                    self.session.session_id = Some(init.session_id.clone());
+                }
                 Poll::Ready(Some(result))
             }
             Poll::Ready(None) => Poll::Ready(None),

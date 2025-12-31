@@ -77,23 +77,29 @@ impl ApplyPatchTool {
         let full_path = self.workspace_root.join(file_path);
 
         // Ensure the path is within the workspace
-        let canonical_workspace = self.workspace_root.canonicalize()
+        let canonical_workspace = self
+            .workspace_root
+            .canonicalize()
             .map_err(|e| crate::GptOssAgentError::ToolError(format!("Invalid workspace: {}", e)))?;
 
         // For path validation, we need to handle the case where the file doesn't exist yet.
         // We do this by canonicalizing the parent directory (which must exist) and checking
         // that the final path would be within the workspace.
         let canonical_path = if full_path.exists() {
-            full_path.canonicalize()
+            full_path
+                .canonicalize()
                 .map_err(|e| crate::GptOssAgentError::ToolError(format!("Invalid path: {}", e)))?
         } else {
             // File doesn't exist - canonicalize the parent and append the filename
             let parent = full_path.parent().ok_or_else(|| {
-                crate::GptOssAgentError::ToolError("Invalid file path: no parent directory".to_string())
+                crate::GptOssAgentError::ToolError(
+                    "Invalid file path: no parent directory".to_string(),
+                )
             })?;
 
-            let canonical_parent = parent.canonicalize()
-                .map_err(|e| crate::GptOssAgentError::ToolError(format!("Invalid parent directory: {}", e)))?;
+            let canonical_parent = parent.canonicalize().map_err(|e| {
+                crate::GptOssAgentError::ToolError(format!("Invalid parent directory: {}", e))
+            })?;
 
             let file_name = full_path.file_name().ok_or_else(|| {
                 crate::GptOssAgentError::ToolError("Invalid file path: no file name".to_string())
@@ -110,18 +116,22 @@ impl ApplyPatchTool {
 
         // For now, write the patch to a temp file and use `patch` command
         use std::io::Write;
-        let mut patch_file = tempfile::NamedTempFile::new()
-            .map_err(|e| crate::GptOssAgentError::ToolError(format!("Failed to create temp file: {}", e)))?;
+        let mut patch_file = tempfile::NamedTempFile::new().map_err(|e| {
+            crate::GptOssAgentError::ToolError(format!("Failed to create temp file: {}", e))
+        })?;
 
-        patch_file.write_all(patch.as_bytes())
-            .map_err(|e| crate::GptOssAgentError::ToolError(format!("Failed to write patch: {}", e)))?;
+        patch_file.write_all(patch.as_bytes()).map_err(|e| {
+            crate::GptOssAgentError::ToolError(format!("Failed to write patch: {}", e))
+        })?;
 
         let output = tokio::process::Command::new("patch")
             .arg(&full_path)
             .arg(patch_file.path())
             .output()
             .await
-            .map_err(|e| crate::GptOssAgentError::ToolError(format!("Failed to execute patch: {}", e)))?;
+            .map_err(|e| {
+                crate::GptOssAgentError::ToolError(format!("Failed to execute patch: {}", e))
+            })?;
 
         if output.status.success() {
             Ok(format!("Successfully applied patch to {}", file_path))

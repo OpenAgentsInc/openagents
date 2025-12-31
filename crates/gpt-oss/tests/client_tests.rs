@@ -17,7 +17,10 @@ fn test_client_builder() {
 #[test]
 fn test_client_with_base_url() {
     let client = GptOssClient::with_base_url("http://localhost:9000");
-    assert!(client.is_ok(), "Client creation with base URL should succeed");
+    assert!(
+        client.is_ok(),
+        "Client creation with base URL should succeed"
+    );
 }
 
 #[test]
@@ -71,7 +74,10 @@ async fn test_complete_simple_with_invalid_server() {
         .unwrap();
 
     let result = client.complete_simple("gpt-oss-20b", "Test prompt").await;
-    assert!(result.is_err(), "Simple complete should fail with invalid server");
+    assert!(
+        result.is_err(),
+        "Simple complete should fail with invalid server"
+    );
 }
 
 #[tokio::test]
@@ -84,7 +90,10 @@ async fn test_responses_with_invalid_server() {
     let request = GptOssResponsesRequest::new("gpt-oss-20b", "Test");
 
     let result = client.responses(request).await;
-    assert!(result.is_err(), "Responses API should fail with invalid server");
+    assert!(
+        result.is_err(),
+        "Responses API should fail with invalid server"
+    );
 }
 
 #[test]

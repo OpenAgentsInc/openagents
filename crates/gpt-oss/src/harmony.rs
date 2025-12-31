@@ -2,7 +2,7 @@ use openai_harmony::chat::{
     Content, Conversation, DeveloperContent, Message, ReasoningEffort, Role, SystemContent,
     TextContent, ToolDescription,
 };
-use openai_harmony::{load_harmony_encoding, HarmonyEncoding, HarmonyEncodingName};
+use openai_harmony::{HarmonyEncoding, HarmonyEncodingName, load_harmony_encoding};
 
 use crate::error::{GptOssError, Result};
 use crate::types::GptOssReasoningEffort;
@@ -98,7 +98,11 @@ impl HarmonyRenderer {
         Ok(Self { encoding })
     }
 
-    pub fn render_prompt(&self, turns: &[HarmonyTurn], tools: &[HarmonyToolSpec]) -> Result<String> {
+    pub fn render_prompt(
+        &self,
+        turns: &[HarmonyTurn],
+        tools: &[HarmonyToolSpec],
+    ) -> Result<String> {
         self.render_prompt_with_config(turns, tools, None)
     }
 
@@ -112,9 +116,10 @@ impl HarmonyRenderer {
 
         let mut system = SystemContent::new();
         if let Some(cfg) = config
-            && let Some(effort) = cfg.reasoning_effort.clone() {
-                system = system.with_reasoning_effort(map_reasoning_effort(effort));
-            }
+            && let Some(effort) = cfg.reasoning_effort.clone()
+        {
+            system = system.with_reasoning_effort(map_reasoning_effort(effort));
+        }
 
         messages.push(Message::from_role_and_content(Role::System, system));
 
@@ -207,8 +212,8 @@ impl HarmonyRenderer {
 }
 
 pub use openai_harmony::chat::{
-    Author as HarmonyAuthor, Content as HarmonyContent, Message as HarmonyMessage, Role as HarmonyRole,
-    TextContent as HarmonyTextContent,
+    Author as HarmonyAuthor, Content as HarmonyContent, Message as HarmonyMessage,
+    Role as HarmonyRole, TextContent as HarmonyTextContent,
 };
 
 fn map_reasoning_effort(effort: GptOssReasoningEffort) -> ReasoningEffort {

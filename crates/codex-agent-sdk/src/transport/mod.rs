@@ -2,4 +2,4 @@
 
 mod process;
 
-pub use process::{find_codex_executable, ProcessTransport};
+pub use process::{ProcessTransport, find_codex_executable};
