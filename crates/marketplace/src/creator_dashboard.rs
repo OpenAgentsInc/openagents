@@ -199,7 +199,8 @@ impl EarningsSummary {
 
     /// Get available balance (total earned - pending payout)
     pub fn available_balance(&self) -> u64 {
-        self.total_earned_sats.saturating_sub(self.pending_payout_sats)
+        self.total_earned_sats
+            .saturating_sub(self.pending_payout_sats)
     }
 
     /// Add earnings from a skill

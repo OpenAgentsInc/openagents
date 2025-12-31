@@ -86,7 +86,10 @@ async fn test_proof_count_empty_wallet() {
         .await
         .expect("Failed to create wallet");
 
-    let count = wallet.proof_count().await.expect("Failed to get proof count");
+    let count = wallet
+        .proof_count()
+        .await
+        .expect("Failed to get proof count");
     assert_eq!(count, 0, "New wallet should have no proofs");
 }
 

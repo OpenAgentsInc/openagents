@@ -7,7 +7,7 @@
 //! Run ignored tests: `cargo test -p testing --test full_flow_e2e -- --ignored`
 
 use std::time::Duration;
-use testing::{E2EEnvironment, extract_issue_id, CliHarness};
+use testing::{CliHarness, E2EEnvironment, extract_issue_id};
 
 /// Skip test if binary not found
 macro_rules! skip_if_no_binary {
@@ -74,15 +74,26 @@ async fn test_autopilot_issue_management_flow() {
 
     // Step 1: List issues (may be empty)
     let list_result = env.cli.run(&["autopilot", "issue", "list"]).await;
-    println!("Issue list: {:?}", list_result.as_ref().map(|o| o.combined()));
+    println!(
+        "Issue list: {:?}",
+        list_result.as_ref().map(|o| o.combined())
+    );
 
     // Step 2: Create an issue
-    let create_result = env.cli.run(&[
-        "autopilot", "issue", "create",
-        "--title", "Full Flow Test Issue",
-        "--body", "Created during full flow E2E test",
-        "--directive", "d-e2e-test"
-    ]).await;
+    let create_result = env
+        .cli
+        .run(&[
+            "autopilot",
+            "issue",
+            "create",
+            "--title",
+            "Full Flow Test Issue",
+            "--body",
+            "Created during full flow E2E test",
+            "--directive",
+            "d-e2e-test",
+        ])
+        .await;
 
     if let Ok(ref out) = create_result {
         if out.success() {
@@ -123,13 +134,21 @@ async fn test_multi_subsystem_status() {
     ];
 
     for args in commands {
-        let result = env.cli.run(&args.iter().map(|s| *s).collect::<Vec<_>>()).await;
+        let result = env
+            .cli
+            .run(&args.iter().map(|s| *s).collect::<Vec<_>>())
+            .await;
         match result {
             Ok(out) => {
-                println!("{}: exit={:?}, output={}",
+                println!(
+                    "{}: exit={:?}, output={}",
                     args.join(" "),
                     out.exit_code,
-                    out.combined().lines().take(3).collect::<Vec<_>>().join(" | ")
+                    out.combined()
+                        .lines()
+                        .take(3)
+                        .collect::<Vec<_>>()
+                        .join(" | ")
                 );
             }
             Err(e) => {
@@ -160,11 +179,19 @@ async fn test_all_help_commands() {
     ];
 
     for args in help_commands {
-        let result = env.cli.run(&args.iter().map(|s| *s).collect::<Vec<_>>()).await;
+        let result = env
+            .cli
+            .run(&args.iter().map(|s| *s).collect::<Vec<_>>())
+            .await;
         match result {
             Ok(out) => {
                 let success = out.success() || out.exit_code == Some(2); // 2 = help usage
-                assert!(success, "{} should show help: {:?}", args.join(" "), out.exit_code);
+                assert!(
+                    success,
+                    "{} should show help: {:?}",
+                    args.join(" "),
+                    out.exit_code
+                );
                 println!("{}: OK", args.join(" "));
             }
             Err(e) => {
@@ -191,12 +218,20 @@ async fn test_complete_autonomous_journey() {
     let _ = env.cli.run(&["wallet", "init"]).await;
 
     // Step 2: Create an issue to work on
-    let create_result = env.cli.run(&[
-        "autopilot", "issue", "create",
-        "--title", "E2E Test: Add simple function",
-        "--body", "Create a function that adds two numbers",
-        "--directive", "d-e2e-test"
-    ]).await;
+    let create_result = env
+        .cli
+        .run(&[
+            "autopilot",
+            "issue",
+            "create",
+            "--title",
+            "E2E Test: Add simple function",
+            "--body",
+            "Create a function that adds two numbers",
+            "--directive",
+            "d-e2e-test",
+        ])
+        .await;
 
     let issue_id = match create_result {
         Ok(out) if out.success() => {
@@ -211,11 +246,16 @@ async fn test_complete_autonomous_journey() {
     println!("Created issue: {}", issue_id);
 
     // Step 3: Run autopilot on the issue (would use API key)
-    let run_result = env.cli.run(&[
-        "autopilot", "run",
-        "--model", "haiku",
-        &format!("Work on issue #{}", issue_id)
-    ]).await;
+    let run_result = env
+        .cli
+        .run(&[
+            "autopilot",
+            "run",
+            "--model",
+            "haiku",
+            &format!("Work on issue #{}", issue_id),
+        ])
+        .await;
 
     match run_result {
         Ok(out) => {
@@ -256,7 +296,10 @@ async fn test_error_handling() {
     ];
 
     for args in invalid_commands {
-        let result = env.cli.run(&args.iter().map(|s| *s).collect::<Vec<_>>()).await;
+        let result = env
+            .cli
+            .run(&args.iter().map(|s| *s).collect::<Vec<_>>())
+            .await;
         match result {
             Ok(out) => {
                 // Should fail but not crash
@@ -284,7 +327,10 @@ mod smoke_tests {
                 println!("Binary works: {:?}", output.map(|o| o.stdout));
             }
             Err(e) => {
-                println!("Binary not found: {}. Run `cargo build --bin openagents` first.", e);
+                println!(
+                    "Binary not found: {}. Run `cargo build --bin openagents` first.",
+                    e
+                );
             }
         }
     }

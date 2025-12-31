@@ -196,20 +196,30 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
 fn migrate_v2(conn: &Connection) -> Result<()> {
     info!("Running migration v2");
     // Clean up any NULL ids (from manual inserts) and delete those rows
-    let deleted_issues = conn.execute("DELETE FROM issues WHERE id IS NULL OR id = ''", []).map_err(|e| {
-        error!("Failed to clean up NULL issue ids: {}", e);
-        e
-    })?;
+    let deleted_issues = conn
+        .execute("DELETE FROM issues WHERE id IS NULL OR id = ''", [])
+        .map_err(|e| {
+            error!("Failed to clean up NULL issue ids: {}", e);
+            e
+        })?;
     if deleted_issues > 0 {
-        info!("Deleted {} issue(s) with NULL or empty IDs during migration v2", deleted_issues);
+        info!(
+            "Deleted {} issue(s) with NULL or empty IDs during migration v2",
+            deleted_issues
+        );
     }
 
-    let deleted_events = conn.execute("DELETE FROM issue_events WHERE id IS NULL OR id = ''", []).map_err(|e| {
-        error!("Failed to clean up NULL event ids: {}", e);
-        e
-    })?;
+    let deleted_events = conn
+        .execute("DELETE FROM issue_events WHERE id IS NULL OR id = ''", [])
+        .map_err(|e| {
+            error!("Failed to clean up NULL event ids: {}", e);
+            e
+        })?;
     if deleted_events > 0 {
-        info!("Deleted {} issue_event(s) with NULL or empty IDs during migration v2", deleted_events);
+        info!(
+            "Deleted {} issue_event(s) with NULL or empty IDs during migration v2",
+            deleted_events
+        );
     }
 
     // Recreate issues table with explicit NOT NULL constraint on id
@@ -454,7 +464,10 @@ fn migrate_v11(conn: &Connection) -> Result<()> {
 
     set_schema_version(conn, 11)?;
     info!("Migration v11 completed successfully");
-    info!("Database initialized successfully at schema version {}", SCHEMA_VERSION);
+    info!(
+        "Database initialized successfully at schema version {}",
+        SCHEMA_VERSION
+    );
     Ok(())
 }
 
@@ -514,14 +527,15 @@ mod tests {
         conn.execute(
             "INSERT INTO issues (id, number, title, description, status, created_at, updated_at)
              VALUES ('test-1', 1, 'First', 'Test', 'open', datetime('now'), datetime('now'))",
-            []
-        ).unwrap();
+            [],
+        )
+        .unwrap();
 
         // Try to create second issue with same number - should fail
         let result = conn.execute(
             "INSERT INTO issues (id, number, title, description, status, created_at, updated_at)
              VALUES ('test-2', 1, 'Second', 'Test', 'open', datetime('now'), datetime('now'))",
-            []
+            [],
         );
 
         assert!(result.is_err());
@@ -535,7 +549,7 @@ mod tests {
         let result = conn.execute(
             "INSERT INTO issues (id, number, title, description, status, created_at, updated_at)
              VALUES (NULL, 1, 'Test', 'Test', 'open', datetime('now'), datetime('now'))",
-            []
+            [],
         );
 
         assert!(result.is_err());
@@ -544,7 +558,7 @@ mod tests {
         let result = conn.execute(
             "INSERT INTO issues (id, number, title, description, status, created_at, updated_at)
              VALUES ('', 2, 'Test', 'Test', 'open', datetime('now'), datetime('now'))",
-            []
+            [],
         );
 
         assert!(result.is_err());

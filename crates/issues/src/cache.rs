@@ -33,9 +33,9 @@ pub struct CacheConfig {
 impl Default for CacheConfig {
     fn default() -> Self {
         Self {
-            ttl: Duration::from_secs(60),      // 1 minute TTL
-            git_aware: true,                   // Enable git-aware invalidation
-            max_size: 1000,                    // Cache up to 1000 issues
+            ttl: Duration::from_secs(60), // 1 minute TTL
+            git_aware: true,              // Enable git-aware invalidation
+            max_size: 1000,               // Cache up to 1000 issues
         }
     }
 }

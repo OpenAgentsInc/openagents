@@ -26,11 +26,12 @@
 //! cargo test -p openagents-spark --test integration -- --ignored test_real_testnet_payment_flow
 //! ```
 
-use openagents_spark::{SparkSigner, SparkWallet, WalletConfig, Network, Balance};
+use openagents_spark::{Balance, Network, SparkSigner, SparkWallet, WalletConfig};
 use std::env;
 
 /// Standard test mnemonic (DO NOT USE FOR REAL FUNDS)
-const TEST_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const TEST_MNEMONIC: &str =
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
 /// Alternative test mnemonic for two-wallet scenarios
 const TEST_MNEMONIC_2: &str = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
@@ -62,19 +63,25 @@ mod signer_tests {
         // Verify deterministic key derivation
         let pubkey = signer.public_key_hex();
         assert!(!pubkey.is_empty(), "should have public key");
-        assert_eq!(pubkey.len(), 66, "compressed public key should be 33 bytes (66 hex chars)");
+        assert_eq!(
+            pubkey.len(),
+            66,
+            "compressed public key should be 33 bytes (66 hex chars)"
+        );
 
         // Same mnemonic should produce same key
-        let signer2 = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
-            .expect("should create signer");
-        assert_eq!(signer.public_key_hex(), signer2.public_key_hex(),
-            "deterministic derivation should produce same keys");
+        let signer2 = SparkSigner::from_mnemonic(TEST_MNEMONIC, "").expect("should create signer");
+        assert_eq!(
+            signer.public_key_hex(),
+            signer2.public_key_hex(),
+            "deterministic derivation should produce same keys"
+        );
     }
 
     #[test]
     fn test_signer_with_passphrase() {
-        let signer_no_pass = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
-            .expect("should create signer");
+        let signer_no_pass =
+            SparkSigner::from_mnemonic(TEST_MNEMONIC, "").expect("should create signer");
         let signer_with_pass = SparkSigner::from_mnemonic(TEST_MNEMONIC, "secret")
             .expect("should create signer with passphrase");
 
@@ -88,10 +95,9 @@ mod signer_tests {
 
     #[test]
     fn test_different_mnemonics_different_keys() {
-        let signer1 = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
-            .expect("should create signer");
-        let signer2 = SparkSigner::from_mnemonic(TEST_MNEMONIC_2, "")
-            .expect("should create signer");
+        let signer1 = SparkSigner::from_mnemonic(TEST_MNEMONIC, "").expect("should create signer");
+        let signer2 =
+            SparkSigner::from_mnemonic(TEST_MNEMONIC_2, "").expect("should create signer");
 
         assert_ne!(
             signer1.public_key_hex(),
@@ -108,16 +114,18 @@ mod signer_tests {
 
     #[test]
     fn test_mnemonic_roundtrip() {
-        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
-            .expect("should create signer");
+        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "").expect("should create signer");
 
         // Get mnemonic back and create new signer
         let mnemonic = signer.mnemonic();
         let signer2 = SparkSigner::from_mnemonic(mnemonic, "")
             .expect("should create signer from retrieved mnemonic");
 
-        assert_eq!(signer.public_key_hex(), signer2.public_key_hex(),
-            "mnemonic roundtrip should preserve keys");
+        assert_eq!(
+            signer.public_key_hex(),
+            signer2.public_key_hex(),
+            "mnemonic roundtrip should preserve keys"
+        );
     }
 }
 
@@ -177,12 +185,24 @@ mod config_tests {
         use breez_sdk_spark::Network as SdkNetwork;
 
         // Mainnet should map to Mainnet
-        assert!(matches!(Network::Mainnet.to_sdk_network(), SdkNetwork::Mainnet));
+        assert!(matches!(
+            Network::Mainnet.to_sdk_network(),
+            SdkNetwork::Mainnet
+        ));
 
         // All test networks should map to Regtest
-        assert!(matches!(Network::Testnet.to_sdk_network(), SdkNetwork::Regtest));
-        assert!(matches!(Network::Signet.to_sdk_network(), SdkNetwork::Regtest));
-        assert!(matches!(Network::Regtest.to_sdk_network(), SdkNetwork::Regtest));
+        assert!(matches!(
+            Network::Testnet.to_sdk_network(),
+            SdkNetwork::Regtest
+        ));
+        assert!(matches!(
+            Network::Signet.to_sdk_network(),
+            SdkNetwork::Regtest
+        ));
+        assert!(matches!(
+            Network::Regtest.to_sdk_network(),
+            SdkNetwork::Regtest
+        ));
     }
 }
 
@@ -192,7 +212,7 @@ mod wallet_tests {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
     use testing::RegtestFaucet;
-    use tokio::time::{sleep, Duration, Instant};
+    use tokio::time::{Duration, Instant, sleep};
 
     async fn wait_for_payment_by_id(
         wallet: &SparkWallet,
@@ -208,10 +228,7 @@ mod wallet_tests {
                     return Ok(payment);
                 }
                 if payment.status == PaymentStatus::Failed {
-                    return Err(SparkError::Wallet(format!(
-                        "payment {} failed",
-                        payment_id
-                    )));
+                    return Err(SparkError::Wallet(format!("payment {} failed", payment_id)));
                 }
             }
 
@@ -293,19 +310,13 @@ mod wallet_tests {
         let request_amount = needed.clamp(10_000, 50_000);
         let deposit_address = wallet.get_bitcoin_address().await?;
 
-        let faucet = RegtestFaucet::new()
-            .map_err(|e| SparkError::Wallet(e.to_string()))?;
+        let faucet = RegtestFaucet::new().map_err(|e| SparkError::Wallet(e.to_string()))?;
         faucet
             .fund_address(&deposit_address, request_amount)
             .await
             .map_err(|e| SparkError::Wallet(e.to_string()))?;
 
-        wait_for_min_balance(
-            wallet,
-            balance.total_sats().saturating_add(1),
-            timeout,
-        )
-        .await?;
+        wait_for_min_balance(wallet, balance.total_sats().saturating_add(1), timeout).await?;
 
         Ok(())
     }
@@ -365,7 +376,9 @@ mod wallet_tests {
             return None;
         }
 
-        let api_key = env::var("SPARK_E2E_API_KEY").ok().or_else(|| env::var("BREEZ_API_KEY").ok());
+        let api_key = env::var("SPARK_E2E_API_KEY")
+            .ok()
+            .or_else(|| env::var("BREEZ_API_KEY").ok());
 
         Some(RealE2eConfig {
             sender_mnemonic,
@@ -383,8 +396,12 @@ mod wallet_tests {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let dir = std::env::temp_dir()
-            .join(format!("openagents-spark-e2e-{}-{}-{}", label, std::process::id(), now));
+        let dir = std::env::temp_dir().join(format!(
+            "openagents-spark-e2e-{}-{}-{}",
+            label,
+            std::process::id(),
+            now
+        ));
         fs::create_dir_all(&dir).expect("should create spark e2e storage dir");
         dir
     }
@@ -392,8 +409,7 @@ mod wallet_tests {
     #[tokio::test]
     #[ignore = "Requires Breez SDK network connection"]
     async fn test_wallet_creation_regtest() {
-        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
-            .expect("should create signer");
+        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "").expect("should create signer");
 
         let config = WalletConfig {
             network: Network::Regtest,
@@ -409,8 +425,10 @@ mod wallet_tests {
 
                 // Query balance
                 let balance = w.get_balance().await.expect("should get balance");
-                println!("Balance: {} spark, {} lightning, {} onchain",
-                    balance.spark_sats, balance.lightning_sats, balance.onchain_sats);
+                println!(
+                    "Balance: {} spark, {} lightning, {} onchain",
+                    balance.spark_sats, balance.lightning_sats, balance.onchain_sats
+                );
             }
             Err(e) => {
                 // Network errors are expected if Breez infrastructure isn't available
@@ -427,8 +445,7 @@ mod wallet_tests {
             return;
         }
 
-        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
-            .expect("should create signer");
+        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "").expect("should create signer");
 
         let config = WalletConfig {
             network: test_network(),
@@ -436,10 +453,13 @@ mod wallet_tests {
             ..Default::default()
         };
 
-        let wallet = SparkWallet::new(signer, config).await
+        let wallet = SparkWallet::new(signer, config)
+            .await
             .expect("should create wallet");
 
-        let address = wallet.get_spark_address().await
+        let address = wallet
+            .get_spark_address()
+            .await
             .expect("should get spark address");
 
         println!("Spark address: {}", address);
@@ -454,8 +474,7 @@ mod wallet_tests {
             return;
         }
 
-        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
-            .expect("should create signer");
+        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "").expect("should create signer");
 
         let config = WalletConfig {
             network: test_network(),
@@ -463,19 +482,25 @@ mod wallet_tests {
             ..Default::default()
         };
 
-        let wallet = SparkWallet::new(signer, config).await
+        let wallet = SparkWallet::new(signer, config)
+            .await
             .expect("should create wallet");
 
         // Create a 1000 sat invoice
-        let response = wallet.create_invoice(
-            1000,
-            Some("Test invoice".to_string()),
-            Some(3600) // 1 hour expiry
-        ).await.expect("should create invoice");
+        let response = wallet
+            .create_invoice(
+                1000,
+                Some("Test invoice".to_string()),
+                Some(3600), // 1 hour expiry
+            )
+            .await
+            .expect("should create invoice");
 
         println!("Invoice created: {}", response.payment_request);
-        assert!(response.payment_request.starts_with("ln"),
-            "invoice should start with 'ln'");
+        assert!(
+            response.payment_request.starts_with("ln"),
+            "invoice should start with 'ln'"
+        );
     }
 
     #[tokio::test]
@@ -487,10 +512,10 @@ mod wallet_tests {
         }
 
         // Create two wallets
-        let signer1 = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
-            .expect("should create signer 1");
-        let signer2 = SparkSigner::from_mnemonic(TEST_MNEMONIC_2, "")
-            .expect("should create signer 2");
+        let signer1 =
+            SparkSigner::from_mnemonic(TEST_MNEMONIC, "").expect("should create signer 1");
+        let signer2 =
+            SparkSigner::from_mnemonic(TEST_MNEMONIC_2, "").expect("should create signer 2");
 
         let config = WalletConfig {
             network: test_network(),
@@ -498,17 +523,25 @@ mod wallet_tests {
             ..Default::default()
         };
 
-        let wallet1 = SparkWallet::new(signer1, config.clone()).await
+        let wallet1 = SparkWallet::new(signer1, config.clone())
+            .await
             .expect("should create wallet 1");
-        let wallet2 = SparkWallet::new(signer2, config).await
+        let wallet2 = SparkWallet::new(signer2, config)
+            .await
             .expect("should create wallet 2");
 
         // Check initial balances
         let balance1_before = wallet1.get_balance().await.expect("should get balance 1");
         let balance2_before = wallet2.get_balance().await.expect("should get balance 2");
 
-        println!("Wallet 1 balance before: {} sats", balance1_before.total_sats());
-        println!("Wallet 2 balance before: {} sats", balance2_before.total_sats());
+        println!(
+            "Wallet 1 balance before: {} sats",
+            balance1_before.total_sats()
+        );
+        println!(
+            "Wallet 2 balance before: {} sats",
+            balance2_before.total_sats()
+        );
 
         if balance1_before.total_sats() < 1000 {
             println!("Wallet 1 needs funding - skipping payment test");
@@ -516,48 +549,51 @@ mod wallet_tests {
         }
 
         // Create invoice on wallet 2
-        let invoice = wallet2.create_invoice(
-            100,
-            Some("Test payment".to_string()),
-            None
-        ).await.expect("should create invoice");
+        let invoice = wallet2
+            .create_invoice(100, Some("Test payment".to_string()), None)
+            .await
+            .expect("should create invoice");
 
         println!("Created invoice: {}", invoice.payment_request);
 
         // Pay invoice from wallet 1
-        let payment = wallet1.send_payment_simple(&invoice.payment_request, None).await
+        let payment = wallet1
+            .send_payment_simple(&invoice.payment_request, None)
+            .await
             .expect("should send payment");
 
         println!("Payment sent: {:?}", payment.payment.status);
 
         let payment_id = payment.payment.id.clone();
-        let _sent_payment = wait_for_payment_by_id(
-            &wallet1,
-            &payment_id,
-            Duration::from_secs(60),
-        )
-        .await
-        .expect("payment should complete");
+        let _sent_payment = wait_for_payment_by_id(&wallet1, &payment_id, Duration::from_secs(60))
+            .await
+            .expect("payment should complete");
 
-        let _received_payment = wait_for_receive_amount(
-            &wallet2,
-            100,
-            Duration::from_secs(60),
-        )
-        .await
-        .expect("receiver should see completed payment");
+        let _received_payment = wait_for_receive_amount(&wallet2, 100, Duration::from_secs(60))
+            .await
+            .expect("receiver should see completed payment");
 
         // Verify balances changed
         let balance1_after = wallet1.get_balance().await.expect("should get balance 1");
         let balance2_after = wallet2.get_balance().await.expect("should get balance 2");
 
-        println!("Wallet 1 balance after: {} sats", balance1_after.total_sats());
-        println!("Wallet 2 balance after: {} sats", balance2_after.total_sats());
+        println!(
+            "Wallet 1 balance after: {} sats",
+            balance1_after.total_sats()
+        );
+        println!(
+            "Wallet 2 balance after: {} sats",
+            balance2_after.total_sats()
+        );
 
-        assert!(balance1_after.total_sats() < balance1_before.total_sats(),
-            "sender balance should decrease");
-        assert!(balance2_after.total_sats() > balance2_before.total_sats(),
-            "receiver balance should increase");
+        assert!(
+            balance1_after.total_sats() < balance1_before.total_sats(),
+            "sender balance should decrease"
+        );
+        assert!(
+            balance2_after.total_sats() > balance2_before.total_sats(),
+            "receiver balance should increase"
+        );
     }
 
     #[tokio::test]
@@ -603,12 +639,20 @@ mod wallet_tests {
         .expect("should create receiver wallet");
 
         if config.use_faucet {
-            if let Err(error) = ensure_funded(&sender_wallet, config.amount_sats, config.timeout).await {
-                println!("Skipping real Spark E2E test - faucet funding failed: {}", error);
+            if let Err(error) =
+                ensure_funded(&sender_wallet, config.amount_sats, config.timeout).await
+            {
+                println!(
+                    "Skipping real Spark E2E test - faucet funding failed: {}",
+                    error
+                );
                 return;
             }
         } else {
-            let sender_balance_before = sender_wallet.get_balance().await.expect("should get sender balance");
+            let sender_balance_before = sender_wallet
+                .get_balance()
+                .await
+                .expect("should get sender balance");
             if sender_balance_before.total_sats() < config.amount_sats {
                 println!("Sender wallet requires funding before running this test");
                 return;
@@ -689,8 +733,12 @@ mod simulated_tests {
         ];
 
         for (i, config) in configs.iter().enumerate() {
-            println!("Config {}: network={:?}, has_api_key={}",
-                i, config.network, config.api_key.is_some());
+            println!(
+                "Config {}: network={:?}, has_api_key={}",
+                i,
+                config.network,
+                config.api_key.is_some()
+            );
         }
     }
 }

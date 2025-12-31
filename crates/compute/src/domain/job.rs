@@ -73,22 +73,13 @@ pub enum JobStatus {
     /// Job received, waiting to be processed
     Pending,
     /// Waiting for payment before processing
-    PaymentRequired {
-        bolt11: String,
-        amount_msats: u64,
-    },
+    PaymentRequired { bolt11: String, amount_msats: u64 },
     /// Job is currently being processed
-    Processing {
-        progress: Option<f32>,
-    },
+    Processing { progress: Option<f32> },
     /// Job completed successfully
-    Completed {
-        result: String,
-    },
+    Completed { result: String },
     /// Job failed with an error
-    Failed {
-        error: String,
-    },
+    Failed { error: String },
 }
 
 impl Job {

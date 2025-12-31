@@ -641,14 +641,16 @@ pub fn validate(session: &ParsedSession) -> ValidationResult {
             LineType::ToolProgress => {
                 // Validate that progress has matching start
                 if let Some(ref id) = line.call_id
-                    && !tool_start_ids.contains(id) && !call_ids.contains(id) {
-                        result.issues.push(ValidationIssue {
-                            line: Some(line.line_number),
-                            severity: Severity::Warning,
-                            code: "W001",
-                            message: format!("Tool progress references unknown call id: {}", id),
-                        });
-                    }
+                    && !tool_start_ids.contains(id)
+                    && !call_ids.contains(id)
+                {
+                    result.issues.push(ValidationIssue {
+                        line: Some(line.line_number),
+                        severity: Severity::Warning,
+                        code: "W001",
+                        message: format!("Tool progress references unknown call id: {}", id),
+                    });
+                }
             }
             LineType::Observation => {
                 result.stats.observations += 1;
@@ -719,14 +721,15 @@ pub fn validate(session: &ParsedSession) -> ValidationResult {
         // Validate step ordering
         if let Some(step) = line.step {
             if let Some(last) = last_step
-                && step < last {
-                    result.issues.push(ValidationIssue {
-                        line: Some(line.line_number),
-                        severity: Severity::Warning,
-                        code: "W004",
-                        message: format!("Step {} is less than previous step {}", step, last),
-                    });
-                }
+                && step < last
+            {
+                result.issues.push(ValidationIssue {
+                    line: Some(line.line_number),
+                    severity: Severity::Warning,
+                    code: "W004",
+                    message: format!("Step {} is less than previous step {}", step, last),
+                });
+            }
             last_step = Some(step);
             result.stats.max_step = Some(step);
         }
@@ -749,14 +752,15 @@ pub fn validate(session: &ParsedSession) -> ValidationResult {
 
         // Validate timestamp format
         if let Some(ref ts) = line.timestamp
-            && !RE_ISO_TIMESTAMP.is_match(ts) {
-                result.issues.push(ValidationIssue {
-                    line: Some(line.line_number),
-                    severity: Severity::Warning,
-                    code: "W005",
-                    message: format!("Invalid timestamp format: {}", ts),
-                });
-            }
+            && !RE_ISO_TIMESTAMP.is_match(ts)
+        {
+            result.issues.push(ValidationIssue {
+                line: Some(line.line_number),
+                severity: Severity::Warning,
+                code: "W005",
+                message: format!("Invalid timestamp format: {}", ts),
+            });
+        }
 
         // Count blobs
         result.stats.blob_references += RE_BLOB.find_iter(&line.raw).count();
@@ -933,7 +937,10 @@ a: Hi there
             ("# This is a comment", LineType::Comment),
             ("@start id=sess_1", LineType::Lifecycle),
             ("th: Analyzing the request...", LineType::Thinking),
-            ("td: [pending] Fix bug [completed] Add test", LineType::Todos),
+            (
+                "td: [pending] Fix bug [completed] Add test",
+                LineType::Todos,
+            ),
             ("", LineType::Empty),
             ("  continuation line", LineType::Continuation),
         ];
@@ -1078,10 +1085,14 @@ a: Response
         let result = validate(&session);
 
         // Should have warning about non-hex characters
-        let has_non_hex_warning = result.issues.iter().any(|issue| {
-            issue.code == "W009" && issue.message.contains("non-hex characters")
-        });
-        assert!(has_non_hex_warning, "Expected warning about non-hex repo_sha");
+        let has_non_hex_warning = result
+            .issues
+            .iter()
+            .any(|issue| issue.code == "W009" && issue.message.contains("non-hex characters"));
+        assert!(
+            has_non_hex_warning,
+            "Expected warning about non-hex repo_sha"
+        );
     }
 
     #[test]
@@ -1099,10 +1110,14 @@ a: Response
         let result = validate(&session);
 
         // Should not have warning about non-hex characters
-        let has_non_hex_warning = result.issues.iter().any(|issue| {
-            issue.code == "W009" && issue.message.contains("non-hex characters")
-        });
-        assert!(!has_non_hex_warning, "Should not warn about valid hex repo_sha");
+        let has_non_hex_warning = result
+            .issues
+            .iter()
+            .any(|issue| issue.code == "W009" && issue.message.contains("non-hex characters"));
+        assert!(
+            !has_non_hex_warning,
+            "Should not warn about valid hex repo_sha"
+        );
     }
 
     #[test]
@@ -1120,9 +1135,10 @@ a: Response
         let result = validate(&session);
 
         // Should have warning about length
-        let has_length_warning = result.issues.iter().any(|issue| {
-            issue.code == "W009" && issue.message.contains("unusual length")
-        });
+        let has_length_warning = result
+            .issues
+            .iter()
+            .any(|issue| issue.code == "W009" && issue.message.contains("unusual length"));
         assert!(has_length_warning, "Expected warning about repo_sha length");
     }
 }

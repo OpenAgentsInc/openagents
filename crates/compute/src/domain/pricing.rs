@@ -60,11 +60,11 @@ pub struct SandboxRunPricing {
 impl Default for SandboxRunPricing {
     fn default() -> Self {
         Self {
-            base_fee: 200,           // 200 sats base
-            per_cpu_sec: 0.5,        // 0.5 sats per CPU-second
-            per_gb_min: 0.05,        // 0.05 sats per GB-minute
-            max_charge: 20_000,      // 20k sats max
-            min_charge: 100,         // 100 sats min
+            base_fee: 200,      // 200 sats base
+            per_cpu_sec: 0.5,   // 0.5 sats per CPU-second
+            per_gb_min: 0.05,   // 0.05 sats per GB-minute
+            max_charge: 20_000, // 20k sats max
+            min_charge: 100,    // 100 sats min
         }
     }
 }
@@ -269,7 +269,10 @@ pub fn quote_sandbox_run(
     Quote::new(total, "sandbox_run")
         .add_breakdown("Base fee", pricing.base_fee)
         .add_breakdown(format!("CPU ({:.0} secs)", estimated_cpu_secs), cpu_cost)
-        .add_breakdown(format!("Memory ({:.1} GB-mins)", estimated_memory_gb_mins), memory_cost)
+        .add_breakdown(
+            format!("Memory ({:.1} GB-mins)", estimated_memory_gb_mins),
+            memory_cost,
+        )
         .with_estimated_time(max_time_secs)
 }
 
@@ -285,7 +288,10 @@ pub fn quote_repo_index(
     let total = pricing.calculate(estimated_tokens, estimated_files, include_embeddings);
 
     let mut quote = Quote::new(total, "repo_index")
-        .add_breakdown(format!("Tokens ({} K)", estimated_tokens / 1000), token_cost)
+        .add_breakdown(
+            format!("Tokens ({} K)", estimated_tokens / 1000),
+            token_cost,
+        )
         .add_breakdown(format!("Files ({})", estimated_files), file_cost);
 
     if include_embeddings {

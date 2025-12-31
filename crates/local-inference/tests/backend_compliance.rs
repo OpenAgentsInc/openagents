@@ -5,7 +5,7 @@ use local_inference::{
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
 /// Mock backend for testing LocalModelBackend trait compliance.
 ///
@@ -164,29 +164,47 @@ mod tests {
     async fn test_initialize() {
         let mut backend = MockBackend::new();
 
-        assert!(!backend.is_ready().await, "Backend should not be ready before initialization");
+        assert!(
+            !backend.is_ready().await,
+            "Backend should not be ready before initialization"
+        );
 
-        backend.initialize().await.expect("Initialize should succeed");
+        backend
+            .initialize()
+            .await
+            .expect("Initialize should succeed");
 
-        assert!(backend.is_ready().await, "Backend should be ready after initialization");
+        assert!(
+            backend.is_ready().await,
+            "Backend should be ready after initialization"
+        );
     }
 
     #[tokio::test]
     async fn test_initialize_failure() {
         let mut backend = MockBackend::new();
         backend
-            .set_failure("initialize", LocalModelError::InitializationError("Test error".to_string()))
+            .set_failure(
+                "initialize",
+                LocalModelError::InitializationError("Test error".to_string()),
+            )
             .await;
 
         let result = backend.initialize().await;
         assert!(result.is_err(), "Initialize should fail when configured");
-        assert!(!backend.is_ready().await, "Backend should not be ready after failed initialization");
+        assert!(
+            !backend.is_ready().await,
+            "Backend should not be ready after failed initialization"
+        );
     }
 
     #[tokio::test]
     async fn test_list_models() {
         let backend = MockBackend::new();
-        let models = backend.list_models().await.expect("list_models should succeed");
+        let models = backend
+            .list_models()
+            .await
+            .expect("list_models should succeed");
 
         assert_eq!(models.len(), 2, "Should return 2 models");
         assert_eq!(models[0].id, "mock-model-1");
@@ -221,10 +239,16 @@ mod tests {
     #[tokio::test]
     async fn test_complete_success() {
         let mut backend = MockBackend::new();
-        backend.initialize().await.expect("Initialize should succeed");
+        backend
+            .initialize()
+            .await
+            .expect("Initialize should succeed");
 
         let request = CompletionRequest::new("mock-model-1", "Test prompt");
-        let response = backend.complete(request).await.expect("complete should succeed");
+        let response = backend
+            .complete(request)
+            .await
+            .expect("complete should succeed");
 
         assert_eq!(response.model, "mock-model-1");
         assert!(response.text.contains("Test prompt"));
@@ -249,7 +273,10 @@ mod tests {
     #[tokio::test]
     async fn test_complete_stream_success() {
         let mut backend = MockBackend::new();
-        backend.initialize().await.expect("Initialize should succeed");
+        backend
+            .initialize()
+            .await
+            .expect("Initialize should succeed");
 
         let request = CompletionRequest::new("mock-model-1", "Test prompt");
         let mut rx = backend
@@ -271,7 +298,10 @@ mod tests {
 
         // Earlier chunks should have deltas
         for chunk in chunks.iter().take(chunks.len() - 1) {
-            assert!(!chunk.delta.is_empty(), "Non-final chunks should have delta");
+            assert!(
+                !chunk.delta.is_empty(),
+                "Non-final chunks should have delta"
+            );
         }
     }
 
@@ -287,23 +317,35 @@ mod tests {
     #[tokio::test]
     async fn test_shutdown() {
         let mut backend = MockBackend::new();
-        backend.initialize().await.expect("Initialize should succeed");
+        backend
+            .initialize()
+            .await
+            .expect("Initialize should succeed");
 
         assert!(backend.is_ready().await);
 
         backend.shutdown().await.expect("Shutdown should succeed");
 
-        assert!(!backend.is_ready().await, "Backend should not be ready after shutdown");
+        assert!(
+            !backend.is_ready().await,
+            "Backend should not be ready after shutdown"
+        );
     }
 
     #[tokio::test]
     async fn test_backend_error_handling() {
         let mut backend = MockBackend::new();
         backend
-            .set_failure("complete", LocalModelError::InferenceError("Model overloaded".to_string()))
+            .set_failure(
+                "complete",
+                LocalModelError::InferenceError("Model overloaded".to_string()),
+            )
             .await;
 
-        backend.initialize().await.expect("Initialize should succeed");
+        backend
+            .initialize()
+            .await
+            .expect("Initialize should succeed");
 
         let request = CompletionRequest::new("mock-model-1", "Test");
         let result = backend.complete(request).await;
@@ -319,7 +361,10 @@ mod tests {
     async fn test_stream_error_handling() {
         let backend = MockBackend::new();
         backend
-            .set_failure("complete_stream", LocalModelError::StreamError("Connection lost".to_string()))
+            .set_failure(
+                "complete_stream",
+                LocalModelError::StreamError("Connection lost".to_string()),
+            )
             .await;
 
         let request = CompletionRequest::new("mock-model-1", "Test");

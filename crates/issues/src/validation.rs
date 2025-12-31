@@ -332,10 +332,7 @@ mod tests {
     #[test]
     fn test_invalid_agent_empty() {
         let result = validate_agent("");
-        assert_eq!(
-            result,
-            Err(ValidationError::InvalidAgent("".to_string()))
-        );
+        assert_eq!(result, Err(ValidationError::InvalidAgent("".to_string())));
     }
 
     #[test]

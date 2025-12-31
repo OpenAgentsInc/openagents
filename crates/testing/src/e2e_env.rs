@@ -48,7 +48,10 @@ impl E2EEnvironment {
 
         // Set path to autopilot binary (for `openagents autopilot run`)
         if let Some(autopilot_bin) = Self::find_autopilot_bin() {
-            cli.set_env("OPENAGENTS_AUTOPILOT_BIN", autopilot_bin.to_string_lossy().to_string());
+            cli.set_env(
+                "OPENAGENTS_AUTOPILOT_BIN",
+                autopilot_bin.to_string_lossy().to_string(),
+            );
         }
 
         Ok(Self {
@@ -128,7 +131,10 @@ impl E2EEnvironment {
         let relay_url = relay.url().to_string();
 
         cli.set_env("NOSTR_RELAY_URL", relay_url);
-        cli.set_env("MARKETPLACE_DATA_DIR", temp_path.to_string_lossy().to_string());
+        cli.set_env(
+            "MARKETPLACE_DATA_DIR",
+            temp_path.to_string_lossy().to_string(),
+        );
 
         Ok(Self {
             cli,
@@ -297,9 +303,9 @@ pub fn extract_issue_id(output: &str) -> Option<String> {
 pub fn extract_address(output: &str) -> Option<String> {
     // Look for Bitcoin addresses (tb1..., bc1..., 1..., 3...)
     let patterns = [
-        r"(tb1[a-z0-9]{39,})",  // Testnet bech32
-        r"(bc1[a-z0-9]{39,})",  // Mainnet bech32
-        r"([123][a-km-zA-HJ-NP-Z1-9]{25,34})",  // Legacy
+        r"(tb1[a-z0-9]{39,})",                 // Testnet bech32
+        r"(bc1[a-z0-9]{39,})",                 // Mainnet bech32
+        r"([123][a-km-zA-HJ-NP-Z1-9]{25,34})", // Legacy
     ];
 
     for pattern in &patterns {
@@ -349,8 +355,14 @@ mod tests {
 
     #[test]
     fn test_extract_issue_id() {
-        assert_eq!(extract_issue_id("Created Issue #123"), Some("123".to_string()));
-        assert_eq!(extract_issue_id("issue_456 created"), Some("456".to_string()));
+        assert_eq!(
+            extract_issue_id("Created Issue #123"),
+            Some("123".to_string())
+        );
+        assert_eq!(
+            extract_issue_id("issue_456 created"),
+            Some("456".to_string())
+        );
         assert_eq!(extract_issue_id("ID: 789"), Some("789".to_string()));
         assert_eq!(extract_issue_id("no id here"), None);
     }

@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-use super::keychain::SecureKeychain;
 pub use super::keychain::DEFAULT_IDENTITY_NAME;
+use super::keychain::SecureKeychain;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentityRegistry {
@@ -20,10 +20,9 @@ impl IdentityRegistry {
     pub fn load() -> Result<Self> {
         let path = Self::config_path()?;
         if path.exists() {
-            let contents = fs::read_to_string(&path)
-                .context("Failed to read identity registry")?;
-            let registry: IdentityRegistry = serde_json::from_str(&contents)
-                .context("Failed to parse identity registry")?;
+            let contents = fs::read_to_string(&path).context("Failed to read identity registry")?;
+            let registry: IdentityRegistry =
+                serde_json::from_str(&contents).context("Failed to parse identity registry")?;
             return Ok(registry);
         }
 
@@ -45,8 +44,8 @@ impl IdentityRegistry {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).context("Failed to create identity registry directory")?;
         }
-        let contents = serde_json::to_string_pretty(self)
-            .context("Failed to serialize identity registry")?;
+        let contents =
+            serde_json::to_string_pretty(self).context("Failed to serialize identity registry")?;
         fs::write(&path, contents).context("Failed to write identity registry")?;
         Ok(())
     }
@@ -95,8 +94,8 @@ impl IdentityRegistry {
     }
 
     fn config_path() -> Result<PathBuf> {
-        let home = dirs::home_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+        let home =
+            dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
         Ok(home.join(".openagents").join("identities.json"))
     }
 }

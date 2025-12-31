@@ -40,7 +40,10 @@ pub fn verify_nip05(identifier: &str, pubkey: &str) -> Result<bool> {
     let domain = parts[1];
 
     // Validate local part (must be a-z0-9-_.)
-    if !local_part.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
+    if !local_part
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
         anyhow::bail!("Invalid characters in local part. Only a-z0-9-_. allowed");
     }
 
@@ -131,8 +134,8 @@ impl Nip05Cache {
 
     /// Get cache file path
     fn cache_path() -> Result<std::path::PathBuf> {
-        let home = dirs::home_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+        let home =
+            dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
         Ok(home.join(".openagents").join("nip05_cache.json"))
     }
 

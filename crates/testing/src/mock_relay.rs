@@ -58,12 +58,11 @@ impl MockRelay {
         let state_filter = warp::any().map(move || state_clone.clone());
 
         // WebSocket route
-        let ws_route = warp::path::end()
-            .and(warp::ws())
-            .and(state_filter)
-            .map(|ws: warp::ws::Ws, state: Arc<RelayState>| {
+        let ws_route = warp::path::end().and(warp::ws()).and(state_filter).map(
+            |ws: warp::ws::Ws, state: Arc<RelayState>| {
                 ws.on_upgrade(move |socket| handle_connection(socket, state))
-            });
+            },
+        );
 
         // For port 0, we need a unique test port
         let actual_port = if port == 0 {
@@ -150,7 +149,11 @@ impl MockRelay {
     /// This bypasses WebSocket publishing and stores the event directly.
     /// Useful for test setup.
     pub async fn store_event(&self, event: Event) {
-        self.state.events.write().await.insert(event.id.clone(), event);
+        self.state
+            .events
+            .write()
+            .await
+            .insert(event.id.clone(), event);
     }
 
     /// Shutdown the relay gracefully
@@ -177,9 +180,10 @@ async fn handle_connection(ws: warp::ws::WebSocket, state: Arc<RelayState>) {
             Ok(msg) => {
                 if let Ok(text) = msg.to_str()
                     && let Ok(response) = handle_message(text, &state).await
-                        && let Some(resp_msg) = response {
-                            let _ = tx.send(warp::ws::Message::text(resp_msg)).await;
-                        }
+                    && let Some(resp_msg) = response
+                {
+                    let _ = tx.send(warp::ws::Message::text(resp_msg)).await;
+                }
             }
             Err(_) => break,
         }
@@ -199,11 +203,23 @@ async fn handle_message(text: &str, state: &Arc<RelayState>) -> Result<Option<St
 
                 // Verify event signature
                 if let Ok(false) | Err(_) = nostr::verify_event(&event) {
-                    return Ok(Some(json!(["OK", event.id, false, "invalid: signature verification failed"]).to_string()));
+                    return Ok(Some(
+                        json!([
+                            "OK",
+                            event.id,
+                            false,
+                            "invalid: signature verification failed"
+                        ])
+                        .to_string(),
+                    ));
                 }
 
                 // Store event
-                state.events.write().await.insert(event.id.clone(), event.clone());
+                state
+                    .events
+                    .write()
+                    .await
+                    .insert(event.id.clone(), event.clone());
 
                 // Send OK response
                 return Ok(Some(json!(["OK", event.id, true, ""]).to_string()));
@@ -216,10 +232,11 @@ async fn handle_message(text: &str, state: &Arc<RelayState>) -> Result<Option<St
                 let filters = msg.as_array().map(|arr| &arr[2..]).unwrap_or(&[]);
 
                 // Store subscription
-                state.subscriptions.write().await.insert(
-                    sub_id.to_string(),
-                    json!(filters),
-                );
+                state
+                    .subscriptions
+                    .write()
+                    .await
+                    .insert(sub_id.to_string(), json!(filters));
 
                 // Send EOSE (in real impl, would send matching events first)
                 return Ok(Some(json!(["EOSE", sub_id]).to_string()));
@@ -247,7 +264,7 @@ fn event_matches_kind(event: &Event, kind: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nostr::{finalize_event, generate_secret_key, EventTemplate, KIND_SHORT_TEXT_NOTE};
+    use nostr::{EventTemplate, KIND_SHORT_TEXT_NOTE, finalize_event, generate_secret_key};
 
     #[tokio::test]
     async fn test_relay_starts_and_stops() {
@@ -310,9 +327,24 @@ mod tests {
         let event2 = finalize_event(&template2, &sk).unwrap();
         let event3 = finalize_event(&template3, &sk).unwrap();
 
-        relay.state.events.write().await.insert(event1.id.clone(), event1.clone());
-        relay.state.events.write().await.insert(event2.id.clone(), event2.clone());
-        relay.state.events.write().await.insert(event3.id.clone(), event3.clone());
+        relay
+            .state
+            .events
+            .write()
+            .await
+            .insert(event1.id.clone(), event1.clone());
+        relay
+            .state
+            .events
+            .write()
+            .await
+            .insert(event2.id.clone(), event2.clone());
+        relay
+            .state
+            .events
+            .write()
+            .await
+            .insert(event3.id.clone(), event3.clone());
 
         let kind1_events = relay.get_events_by_kind(1).await;
         assert_eq!(kind1_events.len(), 2);

@@ -117,7 +117,8 @@ impl RedactionEngine {
 
         // Apply built-in patterns
         for pattern in self.get_patterns() {
-            let (new_content, count) = self.apply_pattern(&redacted, &pattern.regex, pattern.replacement);
+            let (new_content, count) =
+                self.apply_pattern(&redacted, &pattern.regex, pattern.replacement);
             if count > 0 {
                 redacted = new_content;
                 secrets_redacted += count;
@@ -313,7 +314,8 @@ fn strict_patterns() -> Vec<RedactionPattern> {
         },
         RedactionPattern {
             name: "uuid".to_string(),
-            regex: Regex::new(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b").unwrap(),
+            regex: Regex::new(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b")
+                .unwrap(),
             replacement: "[REDACTED-UUID]",
         },
     ]
@@ -510,7 +512,10 @@ mod tests {
 
         // SSH keys are caught by both ssh_key and private-key patterns
         // Either redaction is acceptable
-        assert!(result.content.contains("[REDACTED-SSH-KEY]") || result.content.contains("[REDACTED-PRIVATE-KEY]"));
+        assert!(
+            result.content.contains("[REDACTED-SSH-KEY]")
+                || result.content.contains("[REDACTED-PRIVATE-KEY]")
+        );
         assert!(!result.content.contains("b3BlbnNzaC"));
     }
 
@@ -521,7 +526,11 @@ mod tests {
         let result = engine.redact(content).unwrap();
 
         assert!(result.content.contains("[REDACTED-JWT]"));
-        assert!(!result.content.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"));
+        assert!(
+            !result
+                .content
+                .contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9")
+        );
     }
 
     #[test]

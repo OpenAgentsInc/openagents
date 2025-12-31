@@ -123,7 +123,9 @@ mod tests {
             .query_row("PRAGMA database_list", [], |row| row.get(2))
             .expect("database_list");
         assert!(
-            file.as_deref().is_none() || file.as_deref() == Some("") || file.as_deref() == Some(":memory:")
+            file.as_deref().is_none()
+                || file.as_deref() == Some("")
+                || file.as_deref() == Some(":memory:")
         );
     }
 

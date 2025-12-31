@@ -10,7 +10,7 @@ use clap::Args;
 use serde_json::json;
 use std::time::Duration;
 
-use crate::daemon::{is_daemon_running, socket_path, ControlClient, DaemonResponse};
+use crate::daemon::{ControlClient, DaemonResponse, is_daemon_running, socket_path};
 
 #[derive(Args)]
 pub struct ComputeArgs {
@@ -54,7 +54,11 @@ pub async fn run(args: ComputeArgs) -> anyhow::Result<()> {
             println!("  Status: Running");
             if let Some(status) = pylon_status {
                 if status.uptime_secs > 3600 {
-                    println!("  Uptime: {}h {}m", status.uptime_secs / 3600, (status.uptime_secs % 3600) / 60);
+                    println!(
+                        "  Uptime: {}h {}m",
+                        status.uptime_secs / 3600,
+                        (status.uptime_secs % 3600) / 60
+                    );
                 } else {
                     println!("  Uptime: {}m", status.uptime_secs / 60);
                 }
@@ -194,9 +198,9 @@ async fn check_backend(name: &str, base_url: &str, health_path: &str) -> Backend
     let models = if available {
         match name {
             "ollama" => get_ollama_models(base_url).await.unwrap_or_default(),
-            "llamacpp" | "apple_fm" | "fm-bridge" => {
-                get_openai_compatible_models(base_url).await.unwrap_or_default()
-            }
+            "llamacpp" | "apple_fm" | "fm-bridge" => get_openai_compatible_models(base_url)
+                .await
+                .unwrap_or_default(),
             _ => Vec::new(),
         }
     } else {

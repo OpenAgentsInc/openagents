@@ -58,10 +58,7 @@ impl CoalitionStatus {
 
     /// Check if coalition is in a terminal state
     pub fn is_terminal(&self) -> bool {
-        matches!(
-            self,
-            CoalitionStatus::Settled | CoalitionStatus::Dissolved
-        )
+        matches!(self, CoalitionStatus::Settled | CoalitionStatus::Dissolved)
     }
 
     /// Get status as a string
@@ -185,7 +182,8 @@ impl PaymentPool {
 
         // Calculate each agent's share
         for contribution in &self.contributions {
-            let share = ((self.total_sats as f64 * contribution.weight as f64) / total_weight as f64) as u64;
+            let share = ((self.total_sats as f64 * contribution.weight as f64)
+                / total_weight as f64) as u64;
             distributed += share;
 
             splits.push(PaymentSplit {
@@ -263,7 +261,10 @@ impl Coalition {
     /// Add a member
     pub fn add_member(&mut self, member: CoalitionMember) -> Result<(), String> {
         if !self.status.can_accept_members() {
-            return Err(format!("Coalition is {} and cannot accept new members", self.status.as_str()));
+            return Err(format!(
+                "Coalition is {} and cannot accept new members",
+                self.status.as_str()
+            ));
         }
 
         // Check if member already exists
@@ -294,7 +295,10 @@ impl Coalition {
     /// Activate coalition
     pub fn activate(&mut self) -> Result<(), String> {
         if self.status != CoalitionStatus::Forming {
-            return Err(format!("Cannot activate coalition from {} state", self.status.as_str()));
+            return Err(format!(
+                "Cannot activate coalition from {} state",
+                self.status.as_str()
+            ));
         }
 
         if self.members.is_empty() {
@@ -308,7 +312,10 @@ impl Coalition {
     /// Complete the coalition task
     pub fn complete(&mut self) -> Result<(), String> {
         if self.status != CoalitionStatus::Active {
-            return Err(format!("Cannot complete coalition from {} state", self.status.as_str()));
+            return Err(format!(
+                "Cannot complete coalition from {} state",
+                self.status.as_str()
+            ));
         }
 
         self.status = CoalitionStatus::Completed;
@@ -318,7 +325,10 @@ impl Coalition {
     /// Settle payments
     pub fn settle(&mut self) -> Result<Vec<PaymentSplit>, String> {
         if self.status != CoalitionStatus::Completed {
-            return Err(format!("Cannot settle coalition from {} state", self.status.as_str()));
+            return Err(format!(
+                "Cannot settle coalition from {} state",
+                self.status.as_str()
+            ));
         }
 
         let splits = self.payment_pool.settle();
@@ -484,8 +494,8 @@ mod tests {
     #[test]
     fn test_coalition_with_task() {
         let pool = PaymentPool::new(50_000);
-        let coalition = Coalition::new("coalition1", CoalitionType::AdHoc, pool)
-            .with_task("Build feature X");
+        let coalition =
+            Coalition::new("coalition1", CoalitionType::AdHoc, pool).with_task("Build feature X");
 
         assert_eq!(coalition.task, Some("Build feature X".to_string()));
     }
@@ -509,8 +519,12 @@ mod tests {
         let pool = PaymentPool::new(50_000);
         let mut coalition = Coalition::new("coalition1", CoalitionType::AdHoc, pool);
 
-        coalition.add_member(CoalitionMember::new("agent1", "developer")).unwrap();
-        coalition.add_member(CoalitionMember::new("agent2", "tester")).unwrap();
+        coalition
+            .add_member(CoalitionMember::new("agent1", "developer"))
+            .unwrap();
+        coalition
+            .add_member(CoalitionMember::new("agent2", "tester"))
+            .unwrap();
 
         assert!(coalition.remove_member("agent1").is_ok());
         assert_eq!(coalition.members.len(), 1);
@@ -531,7 +545,9 @@ mod tests {
         assert!(coalition.activate().is_err());
 
         // Add members and activate
-        coalition.add_member(CoalitionMember::new("agent1", "dev")).unwrap();
+        coalition
+            .add_member(CoalitionMember::new("agent1", "dev"))
+            .unwrap();
         assert!(coalition.activate().is_ok());
         assert_eq!(coalition.status, CoalitionStatus::Active);
 
@@ -551,8 +567,12 @@ mod tests {
         pool.add_contribution(Contribution::new("agent2", "testing", 0.3));
 
         let mut coalition = Coalition::new("coalition1", CoalitionType::AdHoc, pool);
-        coalition.add_member(CoalitionMember::new("agent1", "dev")).unwrap();
-        coalition.add_member(CoalitionMember::new("agent2", "tester")).unwrap();
+        coalition
+            .add_member(CoalitionMember::new("agent1", "dev"))
+            .unwrap();
+        coalition
+            .add_member(CoalitionMember::new("agent2", "tester"))
+            .unwrap();
         coalition.activate().unwrap();
         coalition.complete().unwrap();
 
@@ -569,7 +589,9 @@ mod tests {
     fn test_coalition_dissolve() {
         let pool = PaymentPool::new(50_000);
         let mut coalition = Coalition::new("coalition1", CoalitionType::AdHoc, pool);
-        coalition.add_member(CoalitionMember::new("agent1", "dev")).unwrap();
+        coalition
+            .add_member(CoalitionMember::new("agent1", "dev"))
+            .unwrap();
         coalition.activate().unwrap();
 
         assert!(coalition.dissolve().is_ok());
@@ -582,8 +604,8 @@ mod tests {
     #[test]
     fn test_coalition_serde() {
         let pool = PaymentPool::new(50_000);
-        let coalition = Coalition::new("coalition1", CoalitionType::Standing, pool)
-            .with_task("Build feature");
+        let coalition =
+            Coalition::new("coalition1", CoalitionType::Standing, pool).with_task("Build feature");
 
         let json = serde_json::to_string(&coalition).unwrap();
         let deserialized: Coalition = serde_json::from_str(&json).unwrap();

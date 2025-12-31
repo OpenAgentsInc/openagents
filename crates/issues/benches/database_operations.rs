@@ -2,8 +2,8 @@
 //!
 //! Run with: cargo bench -p issues --bench database_operations
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use issues::{db, issue, IssueType, Priority};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use issues::{IssueType, Priority, db, issue};
 use rusqlite::Connection;
 use tempfile::TempDir;
 
@@ -123,8 +123,7 @@ fn bench_get_issue_by_number(c: &mut Criterion) {
 fn bench_claim_issue(c: &mut Criterion) {
     let (_dir, conn) = setup_db_with_issues(1000);
 
-    let issues = issue::list_issues(&conn, Some(issues::Status::Open))
-        .expect("Failed to list");
+    let issues = issue::list_issues(&conn, Some(issues::Status::Open)).expect("Failed to list");
     let mut issue_idx = 0;
 
     c.bench_function("claim_issue", |b| {
@@ -135,12 +134,8 @@ fn bench_claim_issue(c: &mut Criterion) {
             let id = &issues[issue_idx].id;
             issue_idx += 1;
 
-            issue::claim_issue(
-                black_box(&conn),
-                black_box(id),
-                black_box("bench-run"),
-            )
-            .expect("Failed to claim issue")
+            issue::claim_issue(black_box(&conn), black_box(id), black_box("bench-run"))
+                .expect("Failed to claim issue")
         });
     });
 }
@@ -149,11 +144,9 @@ fn bench_complete_issue(c: &mut Criterion) {
     let (_dir, conn) = setup_db_with_issues(1000);
 
     // Claim all issues first
-    let issues = issue::list_issues(&conn, Some(issues::Status::Open))
-        .expect("Failed to list");
+    let issues = issue::list_issues(&conn, Some(issues::Status::Open)).expect("Failed to list");
     for iss in &issues {
-        issue::claim_issue(&conn, &iss.id, "bench-run")
-            .expect("Failed to claim");
+        issue::claim_issue(&conn, &iss.id, "bench-run").expect("Failed to claim");
     }
 
     let mut issue_idx = 0;
@@ -175,8 +168,7 @@ fn bench_complete_issue(c: &mut Criterion) {
 fn bench_block_issue(c: &mut Criterion) {
     let (_dir, conn) = setup_db_with_issues(1000);
 
-    let issues = issue::list_issues(&conn, Some(issues::Status::Open))
-        .expect("Failed to list");
+    let issues = issue::list_issues(&conn, Some(issues::Status::Open)).expect("Failed to list");
     let mut issue_idx = 0;
 
     c.bench_function("block_issue", |b| {

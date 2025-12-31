@@ -16,7 +16,11 @@ pub fn discover_local_skills(dirs: &[PathBuf]) -> Vec<SkillMetadata> {
                 }
             }
             Err(e) => {
-                eprintln!("Warning: Failed to discover skills in {}: {}", dir.display(), e);
+                eprintln!(
+                    "Warning: Failed to discover skills in {}: {}",
+                    dir.display(),
+                    e
+                );
             }
         }
     }
@@ -90,7 +94,8 @@ name: skill-one
 description: First skill
 ---
 # Skill One"#,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Skill in dir 2
         let skill2_dir = temp_dir2.join("skill-two");
@@ -102,7 +107,8 @@ name: skill-two
 description: Second skill
 ---
 # Skill Two"#,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Discover from both directories
         let metadata = discover_local_skills(&[temp_dir1.clone(), temp_dir2.clone()]);

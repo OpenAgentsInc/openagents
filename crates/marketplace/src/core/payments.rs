@@ -22,10 +22,10 @@
 //! 3. Receive decryption key for NIP-44 encrypted data
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
-use std::sync::Arc;
 use openagents_spark::{PaymentDetails, SparkHtlcStatus, SparkWallet};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::sync::Arc;
 
 /// Payment status for tracking
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -222,9 +222,8 @@ impl PaymentManager {
         })?;
 
         // Extract amount from invoice if not provided
-        let amount = amount_msats.unwrap_or_else(|| {
-            Self::parse_invoice_amount(invoice).unwrap_or(0)
-        });
+        let amount =
+            amount_msats.unwrap_or_else(|| Self::parse_invoice_amount(invoice).unwrap_or(0));
         let send_amount = amount_msats.map(msats_to_sats).transpose()?;
 
         let mut payment = PaymentRecord::new(
@@ -245,8 +244,8 @@ impl PaymentManager {
         // Check payment status
         // Note: In production, this should poll until completion or timeout
         if response.payment.status == openagents_spark::PaymentStatus::Completed {
-            let preimage = payment_preimage(&response.payment)
-                .unwrap_or_else(|| response.payment.id.clone());
+            let preimage =
+                payment_preimage(&response.payment).unwrap_or_else(|| response.payment.id.clone());
             payment.mark_completed(preimage);
         } else {
             payment.mark_failed();
@@ -270,9 +269,10 @@ impl PaymentManager {
         invoice: &str,
         amount_msats: u64,
     ) -> Result<PaymentRecord> {
-        let wallet = self.wallet.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
-        })?;
+        let wallet = self
+            .wallet
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Spark wallet not configured. See d-001 directive."))?;
 
         let mut payment = PaymentRecord::new(
             PaymentType::Skill,
@@ -290,8 +290,8 @@ impl PaymentManager {
         payment.mark_in_flight(response.payment.id.clone());
 
         if response.payment.status == openagents_spark::PaymentStatus::Completed {
-            let preimage = payment_preimage(&response.payment)
-                .unwrap_or_else(|| response.payment.id.clone());
+            let preimage =
+                payment_preimage(&response.payment).unwrap_or_else(|| response.payment.id.clone());
             payment.mark_completed(preimage);
         } else {
             payment.mark_failed();
@@ -315,9 +315,10 @@ impl PaymentManager {
         invoice: &str,
         amount_msats: u64,
     ) -> Result<PaymentRecord> {
-        let wallet = self.wallet.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
-        })?;
+        let wallet = self
+            .wallet
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Spark wallet not configured. See d-001 directive."))?;
 
         let mut payment = PaymentRecord::new(
             PaymentType::Data,
@@ -335,8 +336,8 @@ impl PaymentManager {
         payment.mark_in_flight(response.payment.id.clone());
 
         if response.payment.status == openagents_spark::PaymentStatus::Completed {
-            let preimage = payment_preimage(&response.payment)
-                .unwrap_or_else(|| response.payment.id.clone());
+            let preimage =
+                payment_preimage(&response.payment).unwrap_or_else(|| response.payment.id.clone());
             payment.mark_completed(preimage);
         } else {
             payment.mark_failed();
@@ -356,14 +357,11 @@ impl PaymentManager {
     ///
     /// # Errors
     /// Returns error if Spark SDK is not available or invoice creation fails
-    pub async fn create_invoice(
-        &self,
-        amount_msats: u64,
-        description: &str,
-    ) -> Result<String> {
-        let wallet = self.wallet.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
-        })?;
+    pub async fn create_invoice(&self, amount_msats: u64, description: &str) -> Result<String> {
+        let wallet = self
+            .wallet
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Spark wallet not configured. See d-001 directive."))?;
 
         let amount_sats = msats_to_sats(amount_msats)?;
         let response = wallet
@@ -385,9 +383,10 @@ impl PaymentManager {
         split.verify()?;
         validate_split_invoices(&split, &invoices)?;
 
-        let wallet = self.wallet.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
-        })?;
+        let wallet = self
+            .wallet
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Spark wallet not configured. See d-001 directive."))?;
 
         let mut payments = Vec::new();
 
@@ -524,11 +523,11 @@ impl PaymentManager {
         // Last character indicates the multiplier
         let (num_str, multiplier) = if let Some(last_char) = amount_str.chars().last() {
             match last_char {
-                'p' => (&amount_str[..amount_str.len()-1], 0.0001), // pico-bitcoin (0.1 nanosat)
-                'n' => (&amount_str[..amount_str.len()-1], 0.1),    // nano-bitcoin (100 picosat)
-                'u' => (&amount_str[..amount_str.len()-1], 100.0),  // micro-bitcoin
-                'm' => (&amount_str[..amount_str.len()-1], 100_000.0), // milli-bitcoin
-                _ => (amount_str, 100_000_000.0), // No suffix = bitcoin
+                'p' => (&amount_str[..amount_str.len() - 1], 0.0001), // pico-bitcoin (0.1 nanosat)
+                'n' => (&amount_str[..amount_str.len() - 1], 0.1),    // nano-bitcoin (100 picosat)
+                'u' => (&amount_str[..amount_str.len() - 1], 100.0),  // micro-bitcoin
+                'm' => (&amount_str[..amount_str.len() - 1], 100_000.0), // milli-bitcoin
+                _ => (amount_str, 100_000_000.0),                     // No suffix = bitcoin
             }
         } else {
             return None;
@@ -551,9 +550,10 @@ impl PaymentManager {
     /// # Returns
     /// Current payment status
     pub async fn get_payment_status(&self, payment_id: &str) -> Result<PaymentStatus> {
-        let _wallet = self.wallet.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
-        })?;
+        let _wallet = self
+            .wallet
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Spark wallet not configured. See d-001 directive."))?;
 
         // Payment lookup requires SDK list_payments() call
         // For marketplace MVP, track status in database instead
@@ -579,9 +579,10 @@ impl PaymentManager {
         description: &str,
         payment_hash: &str,
     ) -> Result<String> {
-        let wallet = self.wallet.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
-        })?;
+        let wallet = self
+            .wallet
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Spark wallet not configured. See d-001 directive."))?;
 
         validate_payment_hash(payment_hash)?;
         let _ = msats_to_sats(amount_msats)?;
@@ -606,9 +607,10 @@ impl PaymentManager {
         payment_hash: &str,
         expiry_duration_secs: u64,
     ) -> Result<PaymentRecord> {
-        let wallet = self.wallet.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
-        })?;
+        let wallet = self
+            .wallet
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Spark wallet not configured. See d-001 directive."))?;
 
         validate_payment_hash(payment_hash)?;
         let amount_sats = msats_to_sats(amount_msats)?;
@@ -653,14 +655,11 @@ impl PaymentManager {
     ///
     /// # Returns
     /// true if preimage is valid for the hash
-    pub async fn settle_hold_invoice(
-        &self,
-        payment_hash: &str,
-        preimage: &str,
-    ) -> Result<bool> {
-        let wallet = self.wallet.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
-        })?;
+    pub async fn settle_hold_invoice(&self, payment_hash: &str, preimage: &str) -> Result<bool> {
+        let wallet = self
+            .wallet
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Spark wallet not configured. See d-001 directive."))?;
 
         validate_payment_hash(payment_hash)?;
 
@@ -696,9 +695,10 @@ impl PaymentManager {
     /// # Returns
     /// true (HTLC auto-expires, no explicit cancel needed)
     pub async fn cancel_hold_invoice(&self, payment_hash: &str) -> Result<bool> {
-        let wallet = self.wallet.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
-        })?;
+        let wallet = self
+            .wallet
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Spark wallet not configured. See d-001 directive."))?;
 
         validate_payment_hash(payment_hash)?;
 
@@ -741,7 +741,9 @@ fn validate_payment_hash(payment_hash: &str) -> Result<()> {
     Ok(())
 }
 
-fn htlc_details(payment: &openagents_spark::Payment) -> Option<&openagents_spark::SparkHtlcDetails> {
+fn htlc_details(
+    payment: &openagents_spark::Payment,
+) -> Option<&openagents_spark::SparkHtlcDetails> {
     match &payment.details {
         Some(PaymentDetails::Spark {
             htlc_details: Some(details),
@@ -784,13 +786,11 @@ fn validate_split_invoices(
         return Err(anyhow::anyhow!("Compute invoice required for split payout"));
     }
     if split.referrer_sats > 0 {
-        let referrer_invoice = invoices
-            .referrer_invoice
-            .as_deref()
-            .unwrap_or("")
-            .trim();
+        let referrer_invoice = invoices.referrer_invoice.as_deref().unwrap_or("").trim();
         if referrer_invoice.is_empty() {
-            return Err(anyhow::anyhow!("Referrer invoice required for split payout"));
+            return Err(anyhow::anyhow!(
+                "Referrer invoice required for split payout"
+            ));
         }
     }
     if let Some(platform_invoice) = invoices.platform_invoice.as_deref() {
@@ -839,8 +839,8 @@ async fn send_split_payment(
     payment.mark_in_flight(response.payment.id.clone());
 
     if response.payment.status == openagents_spark::PaymentStatus::Completed {
-        let preimage = payment_preimage(&response.payment)
-            .unwrap_or_else(|| response.payment.id.clone());
+        let preimage =
+            payment_preimage(&response.payment).unwrap_or_else(|| response.payment.id.clone());
         payment.mark_completed(preimage);
     } else {
         payment.mark_failed();
@@ -856,7 +856,7 @@ fn sats_to_msats(amount_sats: u64) -> Result<u64> {
 }
 
 /// Mock payment service for testing without Breez/Spark SDK
-/// 
+///
 /// Simulates Lightning payment flows for E2E tests:
 /// - Invoice creation with mock BOLT11 format
 /// - Payment tracking with configurable success/failure
@@ -884,21 +884,17 @@ impl MockPaymentService {
     pub fn create_invoice(&mut self, amount_msats: u64, description: &str) -> MockInvoice {
         let id = uuid::Uuid::new_v4();
         let payment_hash = id.to_string().replace('-', "") + &id.to_string().replace('-', "");
-        let invoice = format!(
-            "lnbc{}m1mock{}",
-            amount_msats / 1000,
-            &payment_hash[..16]
-        );
-        
+        let invoice = format!("lnbc{}m1mock{}", amount_msats / 1000, &payment_hash[..16]);
+
         self.pending_payments.insert(invoice.clone(), amount_msats);
-        
+
         let mock_invoice = MockInvoice {
             invoice: invoice.clone(),
             amount_msats,
             description: description.to_string(),
             payment_hash,
         };
-        
+
         self.created_invoices.push(mock_invoice.clone());
         mock_invoice
     }
@@ -930,8 +926,6 @@ impl MockPaymentService {
         self.pending_payments.get(invoice).copied()
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -999,24 +993,38 @@ mod tests {
             .pay_compute_job("job-1", "lnbc...", Some(1000))
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Spark wallet not configured"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Spark wallet not configured")
+        );
 
         let result = manager.create_invoice(1000, "test").await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Spark wallet not configured"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Spark wallet not configured")
+        );
     }
 
     #[tokio::test]
     async fn test_payment_manager_without_wallet_htlc() {
         let manager = PaymentManager::new(None);
-        let payment_hash =
-            "0000000000000000000000000000000000000000000000000000000000000000";
+        let payment_hash = "0000000000000000000000000000000000000000000000000000000000000000";
 
         let result = manager
             .create_hold_invoice(1000, "escrow", payment_hash)
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Spark wallet not configured"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Spark wallet not configured")
+        );
 
         let result = manager
             .send_htlc_payment(
@@ -1029,17 +1037,30 @@ mod tests {
             )
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Spark wallet not configured"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Spark wallet not configured")
+        );
 
-        let result = manager
-            .settle_hold_invoice(payment_hash, "deadbeef")
-            .await;
+        let result = manager.settle_hold_invoice(payment_hash, "deadbeef").await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Spark wallet not configured"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Spark wallet not configured")
+        );
 
         let result = manager.cancel_hold_invoice(payment_hash).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Spark wallet not configured"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Spark wallet not configured")
+        );
     }
 
     #[test]
@@ -1121,8 +1142,7 @@ mod tests {
 
     #[test]
     fn test_validate_payment_hash_length() {
-        let valid =
-            "0000000000000000000000000000000000000000000000000000000000000000";
+        let valid = "0000000000000000000000000000000000000000000000000000000000000000";
         assert!(validate_payment_hash(valid).is_ok());
         assert!(validate_payment_hash("1234").is_err());
     }
@@ -1172,10 +1192,12 @@ mod tests {
             .distribute_revenue(PaymentType::Skill, "skill-1", split, invoices)
             .await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Spark wallet not configured"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Spark wallet not configured")
+        );
     }
 
     #[test]

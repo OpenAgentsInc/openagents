@@ -98,9 +98,8 @@ pub fn validate_bitcoin_address(address: &str) -> Result<ValidatedDestination, W
         ));
     }
 
-    let is_segwit = trimmed.starts_with("bc1")
-        || trimmed.starts_with("tb1")
-        || trimmed.starts_with("bcrt1");
+    let is_segwit =
+        trimmed.starts_with("bc1") || trimmed.starts_with("tb1") || trimmed.starts_with("bcrt1");
 
     let is_legacy = trimmed.starts_with('1')
         || trimmed.starts_with('3')
@@ -292,12 +291,16 @@ mod tests {
         let invoice = "lnbc1500n1pj9qjz4pp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpu";
         let result = validate_lightning_invoice(invoice);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().destination_type, PaymentDestinationType::LightningInvoice);
+        assert_eq!(
+            result.unwrap().destination_type,
+            PaymentDestinationType::LightningInvoice
+        );
     }
 
     #[test]
     fn test_validate_lightning_invoice_regtest() {
-        let invoice = "lnbcrt1500n1pj9qjz4pp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxx";
+        let invoice =
+            "lnbcrt1500n1pj9qjz4pp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxx";
         let result = validate_lightning_invoice(invoice);
         assert!(result.is_ok());
     }
@@ -305,20 +308,29 @@ mod tests {
     #[test]
     fn test_validate_lightning_invoice_empty() {
         let result = validate_lightning_invoice("");
-        assert!(matches!(result, Err(WalletError::InvalidLightningInvoice(_))));
+        assert!(matches!(
+            result,
+            Err(WalletError::InvalidLightningInvoice(_))
+        ));
     }
 
     #[test]
     fn test_validate_lightning_invoice_wrong_prefix() {
         let result = validate_lightning_invoice("bitcoin:bc1qtest");
-        assert!(matches!(result, Err(WalletError::InvalidLightningInvoice(_))));
+        assert!(matches!(
+            result,
+            Err(WalletError::InvalidLightningInvoice(_))
+        ));
     }
 
     #[test]
     fn test_validate_spark_address() {
         let result = validate_spark_address("sp1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().destination_type, PaymentDestinationType::SparkAddress);
+        assert_eq!(
+            result.unwrap().destination_type,
+            PaymentDestinationType::SparkAddress
+        );
     }
 
     #[test]
@@ -337,7 +349,10 @@ mod tests {
     fn test_validate_bitcoin_address_segwit_mainnet() {
         let result = validate_bitcoin_address("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().destination_type, PaymentDestinationType::BitcoinAddress);
+        assert_eq!(
+            result.unwrap().destination_type,
+            PaymentDestinationType::BitcoinAddress
+        );
     }
 
     #[test]
@@ -348,7 +363,9 @@ mod tests {
 
     #[test]
     fn test_validate_bitcoin_address_segwit_regtest() {
-        let result = validate_bitcoin_address("bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3xueyj");
+        let result = validate_bitcoin_address(
+            "bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3xueyj",
+        );
         assert!(result.is_ok());
     }
 
@@ -362,7 +379,10 @@ mod tests {
     fn test_validate_lnurl() {
         let result = validate_lnurl("lnurl1dp68gurn8ghj7um9wfmxjcm99e3k7mf0v9cxj");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().destination_type, PaymentDestinationType::Lnurl);
+        assert_eq!(
+            result.unwrap().destination_type,
+            PaymentDestinationType::Lnurl
+        );
     }
 
     #[test]
@@ -375,7 +395,10 @@ mod tests {
     fn test_validate_lightning_address() {
         let result = validate_lightning_address("user@example.com");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().destination_type, PaymentDestinationType::LightningAddress);
+        assert_eq!(
+            result.unwrap().destination_type,
+            PaymentDestinationType::LightningAddress
+        );
     }
 
     #[test]
@@ -406,35 +429,52 @@ mod tests {
     fn test_validate_amount_with_limit() {
         assert!(validate_amount_with_limit(500, Some(1000)).is_ok());
         let result = validate_amount_with_limit(2000, Some(1000));
-        assert!(matches!(result, Err(WalletError::AmountExceedsLimit { .. })));
+        assert!(matches!(
+            result,
+            Err(WalletError::AmountExceedsLimit { .. })
+        ));
     }
 
     #[test]
     fn test_detect_destination_lightning() {
-        let result = detect_and_validate_destination("lnbc1500n1pj9qjz4pp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5x");
+        let result = detect_and_validate_destination(
+            "lnbc1500n1pj9qjz4pp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5x",
+        );
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().destination_type, PaymentDestinationType::LightningInvoice);
+        assert_eq!(
+            result.unwrap().destination_type,
+            PaymentDestinationType::LightningInvoice
+        );
     }
 
     #[test]
     fn test_detect_destination_spark() {
         let result = detect_and_validate_destination("sp1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().destination_type, PaymentDestinationType::SparkAddress);
+        assert_eq!(
+            result.unwrap().destination_type,
+            PaymentDestinationType::SparkAddress
+        );
     }
 
     #[test]
     fn test_detect_destination_bitcoin() {
         let result = detect_and_validate_destination("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().destination_type, PaymentDestinationType::BitcoinAddress);
+        assert_eq!(
+            result.unwrap().destination_type,
+            PaymentDestinationType::BitcoinAddress
+        );
     }
 
     #[test]
     fn test_detect_destination_lightning_address() {
         let result = detect_and_validate_destination("alice@pay.example.com");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().destination_type, PaymentDestinationType::LightningAddress);
+        assert_eq!(
+            result.unwrap().destination_type,
+            PaymentDestinationType::LightningAddress
+        );
     }
 
     #[test]

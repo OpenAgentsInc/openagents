@@ -57,7 +57,10 @@ pub struct KnownMints;
 impl KnownMints {
     /// Get all default mints
     pub fn defaults() -> Vec<MintConfig> {
-        vec![MintConfig::default_btc_mint(), MintConfig::default_usd_mint()]
+        vec![
+            MintConfig::default_btc_mint(),
+            MintConfig::default_usd_mint(),
+        ]
     }
 
     /// Get all BTC mints

@@ -1,9 +1,9 @@
 //! Reputation CLI commands
 
+use crate::core::nip32_reputation::{ReputationAggregator, TrustTier};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use colored::Colorize;
-use crate::core::nip32_reputation::{TrustTier, ReputationAggregator};
 
 /// Reputation commands
 #[derive(Debug, Args)]
@@ -57,18 +57,14 @@ impl ReputationCommands {
     /// Execute the reputation command
     pub async fn execute(self) -> Result<()> {
         match self.command {
-            ReputationSubcommand::View { pubkey, json } => {
-                execute_view(&pubkey, json).await
-            }
+            ReputationSubcommand::View { pubkey, json } => execute_view(&pubkey, json).await,
             ReputationSubcommand::ListByTier { tier, json } => {
                 execute_list_by_tier(&tier, json).await
             }
             ReputationSubcommand::TopProviders { limit, json } => {
                 execute_top_providers(limit, json).await
             }
-            ReputationSubcommand::Stats { json } => {
-                execute_stats(json).await
-            }
+            ReputationSubcommand::Stats { json } => execute_stats(json).await,
         }
     }
 }
@@ -108,9 +104,18 @@ async fn execute_view(pubkey: &str, json: bool) -> Result<()> {
 
     println!("{}", "Job History".bright_cyan().bold());
     println!("  Total jobs:      {}", metrics.jobs_completed);
-    println!("  Successful:      {}", metrics.jobs_succeeded.to_string().green());
-    println!("  Failed:          {}", metrics.jobs_failed.to_string().red());
-    println!("  Success rate:    {:.1}%", (metrics.success_rate * 100.0).to_string().bright_white());
+    println!(
+        "  Successful:      {}",
+        metrics.jobs_succeeded.to_string().green()
+    );
+    println!(
+        "  Failed:          {}",
+        metrics.jobs_failed.to_string().red()
+    );
+    println!(
+        "  Success rate:    {:.1}%",
+        (metrics.success_rate * 100.0).to_string().bright_white()
+    );
     println!();
 
     if metrics.review_count > 0 {
@@ -137,8 +142,12 @@ async fn execute_view(pubkey: &str, json: bool) -> Result<()> {
 
 /// Execute list by tier command
 async fn execute_list_by_tier(tier_str: &str, json: bool) -> Result<()> {
-    let tier = TrustTier::from_str(tier_str)
-        .ok_or_else(|| anyhow::anyhow!("Invalid tier: {}. Use: new, established, trusted, expert", tier_str))?;
+    let tier = TrustTier::from_str(tier_str).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Invalid tier: {}. Use: new, established, trusted, expert",
+            tier_str
+        )
+    })?;
 
     let aggregator = load_reputation_data()?;
     let providers = aggregator.get_by_tier(tier);
@@ -158,7 +167,8 @@ async fn execute_list_by_tier(tier_str: &str, json: bool) -> Result<()> {
         return Ok(());
     }
 
-    println!("{:<66} {:>12} {:>10}",
+    println!(
+        "{:<66} {:>12} {:>10}",
         "PUBKEY".bright_white().bold(),
         "SUCCESS RATE".bright_white().bold(),
         "JOBS".bright_white().bold()
@@ -182,7 +192,10 @@ async fn execute_list_by_tier(tier_str: &str, json: bool) -> Result<()> {
     }
 
     println!();
-    println!("{}", format!("Found {} providers", providers_count).bright_black());
+    println!(
+        "{}",
+        format!("Found {} providers", providers_count).bright_black()
+    );
     println!();
 
     Ok(())
@@ -209,7 +222,8 @@ async fn execute_top_providers(limit: usize, json: bool) -> Result<()> {
         return Ok(());
     }
 
-    println!("{:<4} {:<66} {:<14} {:>12} {:>10}",
+    println!(
+        "{:<4} {:<66} {:<14} {:>12} {:>10}",
         "RANK".bright_white().bold(),
         "PUBKEY".bright_white().bold(),
         "TIER".bright_white().bold(),
@@ -244,7 +258,10 @@ async fn execute_top_providers(limit: usize, json: bool) -> Result<()> {
     }
 
     println!();
-    println!("{}", format!("Showing top {} providers", all_ranked.len()).bright_black());
+    println!(
+        "{}",
+        format!("Showing top {} providers", all_ranked.len()).bright_black()
+    );
     println!();
 
     Ok(())
@@ -282,9 +299,17 @@ async fn execute_stats(json: bool) -> Result<()> {
 
     println!("{}", "By Trust Tier".bright_cyan().bold());
     println!("  {:<15} {}", "New:", new_count.to_string().yellow());
-    println!("  {:<15} {}", "Established:", established_count.to_string().blue());
+    println!(
+        "  {:<15} {}",
+        "Established:",
+        established_count.to_string().blue()
+    );
     println!("  {:<15} {}", "Trusted:", trusted_count.to_string().green());
-    println!("  {:<15} {}", "Expert:", expert_count.to_string().bright_green());
+    println!(
+        "  {:<15} {}",
+        "Expert:",
+        expert_count.to_string().bright_green()
+    );
     println!();
 
     Ok(())

@@ -1,7 +1,7 @@
 //! Pylon binary entrypoint
 
 use clap::Parser;
-use pylon::cli::{execute, PylonCli};
+use pylon::cli::{PylonCli, execute};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]

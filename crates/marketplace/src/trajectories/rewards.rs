@@ -43,11 +43,11 @@ pub struct RewardCalculator {
 impl Default for RewardCalculator {
     fn default() -> Self {
         Self {
-            base_reward: 100,              // 100 sats base
-            quality_bonus_per_point: 50,   // Up to 50 sats for quality above minimum
-            ci_signal_bonus: 200,          // 200 sats if CI/CD result present
-            token_bonus_rate: 10,          // 10 sats per 1000 tokens
-            tool_call_bonus: 5,            // 5 sats per tool call
+            base_reward: 100,            // 100 sats base
+            quality_bonus_per_point: 50, // Up to 50 sats for quality above minimum
+            ci_signal_bonus: 200,        // 200 sats if CI/CD result present
+            token_bonus_rate: 10,        // 10 sats per 1000 tokens
+            tool_call_bonus: 5,          // 5 sats per tool call
         }
     }
 }
@@ -71,7 +71,12 @@ impl RewardCalculator {
     }
 
     /// Calculate reward for a trajectory
-    pub fn calculate_reward(&self, session: &TrajectorySession, quality: QualityScore, min_quality: f64) -> RewardInfo {
+    pub fn calculate_reward(
+        &self,
+        session: &TrajectorySession,
+        quality: QualityScore,
+        min_quality: f64,
+    ) -> RewardInfo {
         // Base reward
         let base_sats = self.base_reward;
 

@@ -3,12 +3,12 @@
 //! The seed phrase is encrypted with a key derived from a password using Argon2.
 
 use aes_gcm::{
-    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
 };
 use argon2::{
-    password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHasher,
+    password_hash::{SaltString, rand_core::OsRng},
 };
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -304,7 +304,8 @@ fn derive_key_with_params(
     salt: &str,
     argon2: &Argon2,
 ) -> Result<[u8; 32], SecureStoreError> {
-    let salt = SaltString::from_b64(salt).map_err(|e| SecureStoreError::KeyDerivation(e.to_string()))?;
+    let salt =
+        SaltString::from_b64(salt).map_err(|e| SecureStoreError::KeyDerivation(e.to_string()))?;
 
     let hash = argon2
         .hash_password(password.as_bytes(), &salt)
@@ -491,7 +492,10 @@ mod tests {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
         store.store(mnemonic, "old_password").await.unwrap();
-        store.change_password("old_password", "new_password").await.unwrap();
+        store
+            .change_password("old_password", "new_password")
+            .await
+            .unwrap();
 
         // Old password should fail
         let result = store.load("old_password").await;

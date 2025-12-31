@@ -13,13 +13,16 @@
 //! cargo test -p marketplace --test real_payments_e2e -- --ignored
 
 use marketplace::core::payments::{PaymentManager, PaymentStatus};
-use openagents_spark::{Network, Payment as SparkPayment, PaymentStatus as SparkStatus, PaymentType as SparkType, SparkSigner, SparkWallet, WalletConfig};
+use openagents_spark::{
+    Network, Payment as SparkPayment, PaymentStatus as SparkStatus, PaymentType as SparkType,
+    SparkSigner, SparkWallet, WalletConfig,
+};
 use std::env;
 use std::fs;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use testing::RegtestFaucet;
-use tokio::time::{sleep, Instant};
+use tokio::time::{Instant, sleep};
 
 const FAUCET_SENDER_MNEMONIC: &str =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -51,8 +54,14 @@ fn parse_network(value: &str) -> Option<Network> {
 
 fn real_e2e_config() -> Option<RealE2eConfig> {
     let use_faucet = env_value("MARKETPLACE_E2E_USE_FAUCET", "SPARK_E2E_USE_FAUCET").is_some();
-    let sender_env = env_value("MARKETPLACE_E2E_SENDER_MNEMONIC", "SPARK_E2E_SENDER_MNEMONIC");
-    let receiver_env = env_value("MARKETPLACE_E2E_RECEIVER_MNEMONIC", "SPARK_E2E_RECEIVER_MNEMONIC");
+    let sender_env = env_value(
+        "MARKETPLACE_E2E_SENDER_MNEMONIC",
+        "SPARK_E2E_SENDER_MNEMONIC",
+    );
+    let receiver_env = env_value(
+        "MARKETPLACE_E2E_RECEIVER_MNEMONIC",
+        "SPARK_E2E_RECEIVER_MNEMONIC",
+    );
     let (sender_mnemonic, receiver_mnemonic) = match (sender_env, receiver_env) {
         (Some(sender), Some(receiver)) => (sender, receiver),
         _ if use_faucet => (
@@ -76,11 +85,15 @@ fn real_e2e_config() -> Option<RealE2eConfig> {
         .unwrap_or(Network::Testnet);
 
     if network == Network::Mainnet && env::var("MARKETPLACE_E2E_ALLOW_MAINNET").is_err() {
-        println!("Skipping mainnet marketplace E2E test - set MARKETPLACE_E2E_ALLOW_MAINNET=1 to enable");
+        println!(
+            "Skipping mainnet marketplace E2E test - set MARKETPLACE_E2E_ALLOW_MAINNET=1 to enable"
+        );
         return None;
     }
     if network == Network::Mainnet && use_faucet {
-        println!("Skipping mainnet marketplace E2E test - faucet funding only supported on regtest");
+        println!(
+            "Skipping mainnet marketplace E2E test - faucet funding only supported on regtest"
+        );
         return None;
     }
 
@@ -103,8 +116,12 @@ fn unique_storage_dir(label: &str) -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let dir = std::env::temp_dir()
-        .join(format!("openagents-marketplace-e2e-{}-{}-{}", label, std::process::id(), now));
+    let dir = std::env::temp_dir().join(format!(
+        "openagents-marketplace-e2e-{}-{}-{}",
+        label,
+        std::process::id(),
+        now
+    ));
     fs::create_dir_all(&dir).expect("should create marketplace e2e storage dir");
     dir
 }
@@ -128,7 +145,10 @@ async fn wait_for_payment_by_id(
         }
 
         if Instant::now() >= deadline {
-            return Err(anyhow::anyhow!("timed out waiting for payment {}", payment_id));
+            return Err(anyhow::anyhow!(
+                "timed out waiting for payment {}",
+                payment_id
+            ));
         }
 
         sleep(Duration::from_secs(2)).await;
@@ -203,7 +223,9 @@ async fn ensure_funded(
     let deposit_address = wallet.get_bitcoin_address().await?;
 
     let faucet = RegtestFaucet::new()?;
-    faucet.fund_address(&deposit_address, request_amount).await?;
+    faucet
+        .fund_address(&deposit_address, request_amount)
+        .await?;
     wait_for_min_balance(wallet, balance.total_sats().saturating_add(1), timeout).await?;
 
     Ok(())
@@ -213,7 +235,9 @@ async fn ensure_funded(
 #[ignore = "Requires funded Spark testnet wallets"]
 async fn test_marketplace_payment_flow_real_sats() {
     let Some(config) = real_e2e_config() else {
-        println!("Skipping marketplace E2E test - set MARKETPLACE_E2E_SENDER_MNEMONIC/MARKETPLACE_E2E_RECEIVER_MNEMONIC or MARKETPLACE_E2E_USE_FAUCET=1");
+        println!(
+            "Skipping marketplace E2E test - set MARKETPLACE_E2E_SENDER_MNEMONIC/MARKETPLACE_E2E_RECEIVER_MNEMONIC or MARKETPLACE_E2E_USE_FAUCET=1"
+        );
         return;
     };
 
@@ -232,31 +256,39 @@ async fn test_marketplace_payment_flow_real_sats() {
     let receiver_signer = SparkSigner::from_mnemonic(&config.receiver_mnemonic, "")
         .expect("should create receiver signer");
 
-    let sender_wallet = Arc::new(SparkWallet::new(
-        sender_signer,
-        WalletConfig {
-            network: config.network,
-            api_key: config.api_key.clone(),
-            storage_dir: unique_storage_dir("sender"),
-        },
-    )
-    .await
-    .expect("should create sender wallet"));
+    let sender_wallet = Arc::new(
+        SparkWallet::new(
+            sender_signer,
+            WalletConfig {
+                network: config.network,
+                api_key: config.api_key.clone(),
+                storage_dir: unique_storage_dir("sender"),
+            },
+        )
+        .await
+        .expect("should create sender wallet"),
+    );
 
-    let receiver_wallet = Arc::new(SparkWallet::new(
-        receiver_signer,
-        WalletConfig {
-            network: config.network,
-            api_key: config.api_key.clone(),
-            storage_dir: unique_storage_dir("receiver"),
-        },
-    )
-    .await
-    .expect("should create receiver wallet"));
+    let receiver_wallet = Arc::new(
+        SparkWallet::new(
+            receiver_signer,
+            WalletConfig {
+                network: config.network,
+                api_key: config.api_key.clone(),
+                storage_dir: unique_storage_dir("receiver"),
+            },
+        )
+        .await
+        .expect("should create receiver wallet"),
+    );
 
     if config.use_faucet {
-        if let Err(error) = ensure_funded(&sender_wallet, config.amount_sats, config.timeout).await {
-            println!("Skipping marketplace E2E test - faucet funding failed: {}", error);
+        if let Err(error) = ensure_funded(&sender_wallet, config.amount_sats, config.timeout).await
+        {
+            println!(
+                "Skipping marketplace E2E test - faucet funding failed: {}",
+                error
+            );
             return;
         }
     } else {
@@ -301,7 +333,10 @@ async fn test_marketplace_payment_flow_real_sats() {
             .as_ref()
             .and_then(|details| match details {
                 openagents_spark::PaymentDetails::Lightning { preimage, .. } => preimage.clone(),
-                openagents_spark::PaymentDetails::Spark { htlc_details: Some(htlc), .. } => htlc.preimage.clone(),
+                openagents_spark::PaymentDetails::Spark {
+                    htlc_details: Some(htlc),
+                    ..
+                } => htlc.preimage.clone(),
                 _ => None,
             })
             .unwrap_or_else(|| payment_id.clone());

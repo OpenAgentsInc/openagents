@@ -695,10 +695,7 @@ impl ExchangeClient {
             vec!["e".to_string(), trade.trade_id.clone()],
             vec!["amount".to_string(), trade.order.amount_sats.to_string()],
             vec!["settlement_ms".to_string(), settlement_ms.to_string()],
-            vec![
-                "pair".to_string(),
-                format!("BTC/{}", trade.order.currency),
-            ],
+            vec!["pair".to_string(), format!("BTC/{}", trade.order.currency)],
         ]
     }
 }
@@ -753,7 +750,11 @@ mod tests {
         {
             let orders = maker.orders.read().unwrap();
             let order = orders.get(&order_id).unwrap().clone();
-            taker.orders.write().unwrap().insert(order_id.clone(), order);
+            taker
+                .orders
+                .write()
+                .unwrap()
+                .insert(order_id.clone(), order);
         }
 
         // Taker accepts
@@ -852,7 +853,10 @@ mod tests {
         assert!(tags.iter().any(|t| t[0] == "s" && t[1] == "pending"));
         assert!(tags.iter().any(|t| t[0] == "amt" && t[1] == "10000"));
         assert!(tags.iter().any(|t| t[0] == "fa" && t[1] == "100"));
-        assert!(tags.iter().any(|t| t[0] == "pm" && t.contains(&"cashu".to_string())));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "pm" && t.contains(&"cashu".to_string()))
+        );
         assert!(tags.iter().any(|t| t[0] == "y" && t[1] == "openagents"));
         assert!(tags.iter().any(|t| t[0] == "z" && t[1] == "order"));
     }
@@ -884,13 +888,17 @@ mod tests {
         let tags = exchange.build_attestation_tags(&trade, TradeOutcome::Success, 150);
 
         assert!(tags.iter().any(|t| t[0] == "L" && t[1] == "exchange/trade"));
-        assert!(tags
-            .iter()
-            .any(|t| t[0] == "l" && t[1] == "success" && t[2] == "exchange/trade"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "l" && t[1] == "success" && t[2] == "exchange/trade")
+        );
         assert!(tags.iter().any(|t| t[0] == "p" && t[1] == "taker_pubkey"));
         assert!(tags.iter().any(|t| t[0] == "e" && t[1] == "test-trade-123"));
         assert!(tags.iter().any(|t| t[0] == "amount" && t[1] == "10000"));
-        assert!(tags.iter().any(|t| t[0] == "settlement_ms" && t[1] == "150"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "settlement_ms" && t[1] == "150")
+        );
         assert!(tags.iter().any(|t| t[0] == "pair" && t[1] == "BTC/USD"));
     }
 
@@ -900,12 +908,7 @@ mod tests {
         let relay = Arc::new(ExchangeRelay::new_mock());
         let settlement = SettlementEngine::new_mock();
 
-        let exchange = ExchangeClient::new_with_relay(
-            "test_pubkey",
-            secret_key,
-            settlement,
-            relay,
-        );
+        let exchange = ExchangeClient::new_with_relay("test_pubkey", secret_key, settlement, relay);
 
         assert!(exchange.has_relay());
         assert!(exchange.relay().is_some());

@@ -55,7 +55,6 @@ pub enum FilesystemAccess {
     },
 }
 
-
 impl FilesystemAccess {
     /// Create read-only access to specific paths
     pub fn read_only(paths: Vec<PathBuf>) -> Self {
@@ -463,12 +462,7 @@ mod tests {
         assert!(valid.validate().is_ok());
 
         // Invalid: empty script path
-        let invalid_empty = ScriptExecution::new(
-            "my-skill",
-            "",
-            SandboxConfig::default(),
-            5000,
-        );
+        let invalid_empty = ScriptExecution::new("my-skill", "", SandboxConfig::default(), 5000);
         assert!(invalid_empty.validate().is_err());
 
         // Invalid: path traversal
@@ -481,21 +475,13 @@ mod tests {
         assert!(invalid_traversal.validate().is_err());
 
         // Invalid: not in scripts/ directory
-        let invalid_dir = ScriptExecution::new(
-            "my-skill",
-            "main.py",
-            SandboxConfig::default(),
-            5000,
-        );
+        let invalid_dir =
+            ScriptExecution::new("my-skill", "main.py", SandboxConfig::default(), 5000);
         assert!(invalid_dir.validate().is_err());
 
         // Invalid: zero timeout
-        let invalid_timeout = ScriptExecution::new(
-            "my-skill",
-            "scripts/main.py",
-            SandboxConfig::default(),
-            0,
-        );
+        let invalid_timeout =
+            ScriptExecution::new("my-skill", "scripts/main.py", SandboxConfig::default(), 0);
         assert!(invalid_timeout.validate().is_err());
     }
 
@@ -531,13 +517,7 @@ mod tests {
 
     #[test]
     fn test_execution_result_success() {
-        let result = ExecutionResult::new(
-            true,
-            "Hello, world!",
-            "",
-            0,
-            1234,
-        );
+        let result = ExecutionResult::new(true, "Hello, world!", "", 0, 1234);
 
         assert!(result.success);
         assert_eq!(result.stdout, "Hello, world!");
@@ -548,13 +528,7 @@ mod tests {
 
     #[test]
     fn test_execution_result_failure() {
-        let result = ExecutionResult::new(
-            false,
-            "",
-            "Error: file not found",
-            1,
-            567,
-        );
+        let result = ExecutionResult::new(false, "", "Error: file not found", 1, 567);
 
         assert!(!result.success);
         assert_eq!(result.stderr, "Error: file not found");
@@ -590,8 +564,7 @@ mod tests {
     #[test]
     fn test_execution_result_with_resource_usage() {
         let usage = ResourceUsage::new(128, 5.5);
-        let result = ExecutionResult::new(true, "output", "", 0, 5500)
-            .with_resource_usage(usage);
+        let result = ExecutionResult::new(true, "output", "", 0, 5500).with_resource_usage(usage);
 
         assert!(result.resource_usage.is_some());
         assert_eq!(result.resource_usage.as_ref().unwrap().peak_memory_mb, 128);

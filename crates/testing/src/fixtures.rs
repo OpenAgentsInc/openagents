@@ -20,8 +20,7 @@ pub fn test_keypair() -> ([u8; 32], [u8; 32]) {
 /// Returns a valid NIP-19 npub using the test keypair's public key.
 pub fn test_npub() -> String {
     let (_, public_key) = test_keypair();
-    nostr::public_key_to_npub(&public_key)
-        .expect("Failed to encode test public key as npub")
+    nostr::public_key_to_npub(&public_key).expect("Failed to encode test public key as npub")
 }
 
 /// Generate a test event ID
@@ -51,8 +50,7 @@ pub fn test_bitcoin_address() -> String {
     let compressed_pk = CompressedPublicKey(public_key);
 
     // Generate P2WPKH address for testnet
-    Address::p2wpkh(&compressed_pk, Network::Testnet)
-        .to_string()
+    Address::p2wpkh(&compressed_pk, Network::Testnet).to_string()
 }
 
 /// Generate a test Lightning invoice

@@ -28,9 +28,7 @@ pub enum DomainEvent {
         relays: Vec<String>,
     },
     /// Provider went offline
-    WentOffline {
-        timestamp: DateTime<Utc>,
-    },
+    WentOffline { timestamp: DateTime<Utc> },
 
     // Job events
     /// A new job request was received
@@ -164,16 +162,36 @@ impl DomainEvent {
             }
             DomainEvent::WentOffline { .. } => "Went offline".to_string(),
             DomainEvent::JobReceived { job_id, kind, .. } => {
-                format!("Job received: {} (kind {})", &job_id[..8.min(job_id.len())], kind)
+                format!(
+                    "Job received: {} (kind {})",
+                    &job_id[..8.min(job_id.len())],
+                    kind
+                )
             }
             DomainEvent::JobStarted { job_id, model, .. } => {
-                format!("Job started: {} ({})", &job_id[..8.min(job_id.len())], model)
+                format!(
+                    "Job started: {} ({})",
+                    &job_id[..8.min(job_id.len())],
+                    model
+                )
             }
-            DomainEvent::JobProgress { job_id, progress, .. } => {
-                format!("Job progress: {} ({:.0}%)", &job_id[..8.min(job_id.len())], progress * 100.0)
+            DomainEvent::JobProgress {
+                job_id, progress, ..
+            } => {
+                format!(
+                    "Job progress: {} ({:.0}%)",
+                    &job_id[..8.min(job_id.len())],
+                    progress * 100.0
+                )
             }
-            DomainEvent::JobCompleted { job_id, amount_msats, .. } => {
-                let amt = amount_msats.map(|a| format!(" ({} sats)", a / 1000)).unwrap_or_default();
+            DomainEvent::JobCompleted {
+                job_id,
+                amount_msats,
+                ..
+            } => {
+                let amt = amount_msats
+                    .map(|a| format!(" ({} sats)", a / 1000))
+                    .unwrap_or_default();
                 format!("Job completed: {}{}", &job_id[..8.min(job_id.len())], amt)
             }
             DomainEvent::JobFailed { job_id, error, .. } => {
@@ -233,7 +251,10 @@ mod tests {
     fn test_event_description() {
         let event = DomainEvent::WentOnline {
             timestamp: Utc::now(),
-            relays: vec!["wss://relay1.com".to_string(), "wss://relay2.com".to_string()],
+            relays: vec![
+                "wss://relay1.com".to_string(),
+                "wss://relay2.com".to_string(),
+            ],
         };
         assert_eq!(event.description(), "Went online (2 relays)");
     }

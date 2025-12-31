@@ -190,7 +190,10 @@ impl ContributionMetadata {
     }
 
     /// Validate the metadata
-    pub fn validate(&self, contribution_type: DataContributionType) -> Result<(), ContributionError> {
+    pub fn validate(
+        &self,
+        contribution_type: DataContributionType,
+    ) -> Result<(), ContributionError> {
         // Check anonymization requirement
         if contribution_type.requires_anonymization() && !self.anonymized {
             return Err(ContributionError::NotAnonymized);
@@ -454,19 +457,21 @@ mod tests {
     #[test]
     fn test_metadata_validation() {
         let valid = ContributionMetadata::new("claude-code", true);
-        assert!(valid
-            .validate(DataContributionType::SessionTrace)
-            .is_ok());
+        assert!(valid.validate(DataContributionType::SessionTrace).is_ok());
 
         let not_anonymized = ContributionMetadata::new("cursor", false);
-        assert!(not_anonymized
-            .validate(DataContributionType::SessionTrace)
-            .is_err());
+        assert!(
+            not_anonymized
+                .validate(DataContributionType::SessionTrace)
+                .is_err()
+        );
 
         // Preference doesn't require anonymization
-        assert!(not_anonymized
-            .validate(DataContributionType::Preference)
-            .is_ok());
+        assert!(
+            not_anonymized
+                .validate(DataContributionType::Preference)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -530,17 +535,11 @@ mod tests {
 
         // Start redaction
         contribution.mark_redacting();
-        assert!(matches!(
-            contribution.status,
-            ContributionStatus::Redacting
-        ));
+        assert!(matches!(contribution.status, ContributionStatus::Redacting));
 
         // Verify
         contribution.mark_verified();
-        assert!(matches!(
-            contribution.status,
-            ContributionStatus::Verified
-        ));
+        assert!(matches!(contribution.status, ContributionStatus::Verified));
 
         // Accept
         contribution.accept(10000);
@@ -587,10 +586,8 @@ mod tests {
         assert_eq!(success.quality_score, 0.85);
         assert_eq!(success.suggested_price_sats, Some(5000));
 
-        let failure = VerificationResult::failure(vec![
-            "Contains PII".to_string(),
-            "Too short".to_string(),
-        ]);
+        let failure =
+            VerificationResult::failure(vec!["Contains PII".to_string(), "Too short".to_string()]);
         assert!(!failure.valid);
         assert_eq!(failure.issues.len(), 2);
         assert!(failure.suggested_price_sats.is_none());

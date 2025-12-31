@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use nostr::nip90::{JobInput, JobRequest, JobResult, Nip90Error, KIND_JOB_SANDBOX_RUN};
+use nostr::nip90::{JobInput, JobRequest, JobResult, KIND_JOB_SANDBOX_RUN, Nip90Error};
 
 /// Resource limits for sandbox execution
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -26,22 +26,22 @@ impl ResourceLimits {
     /// Default limits for basic sandbox runs
     pub fn default_basic() -> Self {
         Self {
-            max_time_secs: 300,     // 5 minutes
-            max_memory_mb: 1024,    // 1 GB
-            max_disk_mb: 512,       // 512 MB
-            max_cpu_cores: 1.0,     // 1 core
-            allow_network: false,   // No network by default
+            max_time_secs: 300,   // 5 minutes
+            max_memory_mb: 1024,  // 1 GB
+            max_disk_mb: 512,     // 512 MB
+            max_cpu_cores: 1.0,   // 1 core
+            allow_network: false, // No network by default
         }
     }
 
     /// Limits for build/test operations
     pub fn for_build() -> Self {
         Self {
-            max_time_secs: 600,     // 10 minutes
-            max_memory_mb: 4096,    // 4 GB
-            max_disk_mb: 2048,      // 2 GB
-            max_cpu_cores: 2.0,     // 2 cores
-            allow_network: true,    // Need network for package managers
+            max_time_secs: 600,  // 10 minutes
+            max_memory_mb: 4096, // 4 GB
+            max_disk_mb: 2048,   // 2 GB
+            max_cpu_cores: 2.0,  // 2 cores
+            allow_network: true, // Need network for package managers
         }
     }
 }
@@ -305,15 +305,11 @@ impl SandboxRunResult {
         customer_pubkey: &str,
         amount: Option<u64>,
     ) -> Result<JobResult, Nip90Error> {
-        let content = serde_json::to_string(self)
-            .map_err(|e| Nip90Error::Serialization(e.to_string()))?;
+        let content =
+            serde_json::to_string(self).map_err(|e| Nip90Error::Serialization(e.to_string()))?;
 
-        let mut result = JobResult::new(
-            KIND_JOB_SANDBOX_RUN,
-            request_id,
-            customer_pubkey,
-            content,
-        )?;
+        let mut result =
+            JobResult::new(KIND_JOB_SANDBOX_RUN, request_id, customer_pubkey, content)?;
 
         if let Some(amt) = amount {
             result = result.with_amount(amt, None);
@@ -324,8 +320,7 @@ impl SandboxRunResult {
 
     /// Parse from NIP-90 JobResult content
     pub fn from_job_result(result: &JobResult) -> Result<Self, Nip90Error> {
-        serde_json::from_str(&result.content)
-            .map_err(|e| Nip90Error::Serialization(e.to_string()))
+        serde_json::from_str(&result.content).map_err(|e| Nip90Error::Serialization(e.to_string()))
     }
 }
 
@@ -398,14 +393,13 @@ mod tests {
 
     #[test]
     fn test_sandbox_run_result_serialization() {
-        let result = SandboxRunResult::new(0)
-            .add_command_result(CommandResult {
-                command: "echo hello".to_string(),
-                exit_code: 0,
-                stdout: "hello\n".to_string(),
-                stderr: String::new(),
-                duration_ms: 10,
-            });
+        let result = SandboxRunResult::new(0).add_command_result(CommandResult {
+            command: "echo hello".to_string(),
+            exit_code: 0,
+            stdout: "hello\n".to_string(),
+            stderr: String::new(),
+            duration_ms: 10,
+        });
 
         let json = serde_json::to_string(&result).unwrap();
         let parsed: SandboxRunResult = serde_json::from_str(&json).unwrap();

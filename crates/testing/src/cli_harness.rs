@@ -266,10 +266,7 @@ impl CliHarness {
     /// Run a command in the background
     ///
     /// Returns a handle that can be used to wait for completion or kill the process
-    pub async fn run_background(
-        &self,
-        args: &[&str],
-    ) -> anyhow::Result<tokio::process::Child> {
+    pub async fn run_background(&self, args: &[&str]) -> anyhow::Result<tokio::process::Child> {
         let mut cmd = Command::new(&self.binary_path);
         cmd.args(args)
             .current_dir(&self.workdir_path)

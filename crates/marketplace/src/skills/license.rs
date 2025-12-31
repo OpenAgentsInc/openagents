@@ -3,9 +3,7 @@
 //! This module provides marketplace-specific wrappers around NIP-SA skill
 //! license events (kinds 39220, 39221).
 
-use nostr::{
-    SkillLicense, SkillLicenseContent, SkillDelivery, SkillDeliveryContent,
-};
+use nostr::{SkillDelivery, SkillDeliveryContent, SkillLicense, SkillLicenseContent};
 use thiserror::Error;
 
 /// Parameters for issuing a skill license
@@ -80,7 +78,10 @@ impl LicenseManager {
     }
 
     /// Issue a license with expiration
-    pub fn issue_expiring_license(&self, params: IssueExpiringLicenseParams) -> Result<SkillLicense, LicenseError> {
+    pub fn issue_expiring_license(
+        &self,
+        params: IssueExpiringLicenseParams,
+    ) -> Result<SkillLicense, LicenseError> {
         let content = SkillLicenseContent::new(
             params.skill_id,
             params.skill_name,
@@ -118,12 +119,8 @@ impl LicenseManager {
         content_hash: impl Into<String>,
         license_id: impl Into<String>,
     ) -> Result<SkillDelivery, LicenseError> {
-        let delivery_content = SkillDeliveryContent::new(
-            skill_id,
-            content,
-            content_type,
-            content_hash,
-        );
+        let delivery_content =
+            SkillDeliveryContent::new(skill_id, content, content_type, content_hash);
 
         let delivery = SkillDelivery::new(delivery_content, license_id);
 

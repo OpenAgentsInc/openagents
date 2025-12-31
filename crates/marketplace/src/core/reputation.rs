@@ -8,7 +8,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::provider_reputation::{ ProviderReputation, ReputationTier};
+use crate::provider_reputation::{ProviderReputation, ReputationTier};
 
 /// Reputation scorer with configurable weights
 pub trait ReputationScorer: Send + Sync {
@@ -82,7 +82,8 @@ impl ReputationScorer for DefaultReputationScorer {
         let decay_factor = (1.0 - self.weekly_decay_rate).powf(weeks);
 
         reputation.overall_score = (reputation.overall_score * decay_factor).clamp(0.0, 1.0);
-        reputation.track_record.uptime_pct = (reputation.track_record.uptime_pct * decay_factor).clamp(0.0, 1.0);
+        reputation.track_record.uptime_pct =
+            (reputation.track_record.uptime_pct * decay_factor).clamp(0.0, 1.0);
 
         reputation.last_updated = Utc::now();
     }
@@ -129,7 +130,8 @@ impl AntiGamingDetector {
         unique_consumers: u32,
     ) -> bool {
         // Check for too many low-value jobs
-        let low_value_count = jobs.iter()
+        let low_value_count = jobs
+            .iter()
             .filter(|(_, value)| *value < self.min_job_value_sats)
             .count();
 
@@ -139,9 +141,7 @@ impl AntiGamingDetector {
 
         // Check for rate limiting violation
         let one_hour_ago = Utc::now() - Duration::hours(1);
-        let recent_jobs = jobs.iter()
-            .filter(|(ts, _)| *ts > one_hour_ago)
-            .count();
+        let recent_jobs = jobs.iter().filter(|(ts, _)| *ts > one_hour_ago).count();
 
         if recent_jobs > self.max_jobs_per_hour as usize {
             return true; // Too many jobs in short time
@@ -271,15 +271,20 @@ impl ReputationManager {
             reputation.track_record.jobs_completed += 1;
 
             let total_jobs = reputation.track_record.jobs_completed;
-            let prev_successes = (reputation.track_record.success_rate * (total_jobs - 1) as f32) as u64;
-            let new_successes = if success { prev_successes + 1 } else { prev_successes };
+            let prev_successes =
+                (reputation.track_record.success_rate * (total_jobs - 1) as f32) as u64;
+            let new_successes = if success {
+                prev_successes + 1
+            } else {
+                prev_successes
+            };
             reputation.track_record.success_rate = new_successes as f32 / total_jobs as f32;
 
             // Update average latency (weighted moving average)
             let alpha = 0.1; // Weight for new observation
             reputation.track_record.avg_latency_ms =
                 ((1.0 - alpha) * reputation.track_record.avg_latency_ms as f32
-                + alpha * latency_ms as f32) as u32;
+                    + alpha * latency_ms as f32) as u32;
 
             // Update economic score
             reputation.economic.total_earnings_sats += value_sats;
@@ -358,7 +363,8 @@ impl ReputationManager {
             let total_rating = reputation.social.avg_rating * total_reviews as f32;
 
             reputation.social.review_count += 1;
-            reputation.social.avg_rating = (total_rating + rating) / reputation.social.review_count as f32;
+            reputation.social.avg_rating =
+                (total_rating + rating) / reputation.social.review_count as f32;
 
             score
         };
@@ -455,7 +461,9 @@ impl Default for ReputationManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider_reputation::{TrackRecordScore, SocialScore, EconomicScore, VerificationScore};
+    use crate::provider_reputation::{
+        EconomicScore, SocialScore, TrackRecordScore, VerificationScore,
+    };
 
     #[test]
     fn test_default_scorer_calculation() {
@@ -510,9 +518,7 @@ mod tests {
         let detector = AntiGamingDetector::default();
 
         // Too many jobs in short time
-        let rapid_jobs: Vec<_> = (0..150)
-            .map(|_| (Utc::now(), 1000u64))
-            .collect();
+        let rapid_jobs: Vec<_> = (0..150).map(|_| (Utc::now(), 1000u64)).collect();
 
         assert!(detector.detect_job_farming(&rapid_jobs, 10));
     }
@@ -521,9 +527,7 @@ mod tests {
     fn test_anti_gaming_consumer_diversity() {
         let detector = AntiGamingDetector::default();
 
-        let jobs: Vec<_> = (0..50)
-            .map(|_| (Utc::now(), 1000u64))
-            .collect();
+        let jobs: Vec<_> = (0..50).map(|_| (Utc::now(), 1000u64)).collect();
 
         // Too few unique consumers
         assert!(detector.detect_job_farming(&jobs, 2));
@@ -600,8 +604,17 @@ mod tests {
         let events = manager.get_events("provider1", 10);
 
         assert_eq!(events.len(), 3);
-        assert!(matches!(events[0].event_type, ReputationEventType::ReviewReceived));
-        assert!(matches!(events[1].event_type, ReputationEventType::EndorsementReceived));
-        assert!(matches!(events[2].event_type, ReputationEventType::JobCompleted));
+        assert!(matches!(
+            events[0].event_type,
+            ReputationEventType::ReviewReceived
+        ));
+        assert!(matches!(
+            events[1].event_type,
+            ReputationEventType::EndorsementReceived
+        ));
+        assert!(matches!(
+            events[2].event_type,
+            ReputationEventType::JobCompleted
+        ));
     }
 }

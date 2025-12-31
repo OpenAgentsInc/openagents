@@ -79,10 +79,8 @@ impl PylonDb {
         self.conn.execute_batch(sql)?;
 
         // Mark as applied
-        self.conn.execute(
-            "INSERT INTO migrations (name) VALUES (?)",
-            [name],
-        )?;
+        self.conn
+            .execute("INSERT INTO migrations (name) VALUES (?)", [name])?;
 
         tracing::info!("Applied migration: {}", name);
         Ok(())

@@ -12,7 +12,8 @@ use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
 use std::path::PathBuf;
 
 /// Test mnemonic (BIP39 standard test vector)
-const TEST_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const TEST_MNEMONIC: &str =
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
 #[tokio::test]
 #[ignore] // Requires testnet connection
@@ -61,7 +62,10 @@ async fn test_balance_retrieval() -> Result<()> {
         .create_invoice(1000, Some("Test balance check".to_string()), None)
         .await?;
 
-    assert!(!invoice.payment_request.is_empty(), "Invoice should be generated");
+    assert!(
+        !invoice.payment_request.is_empty(),
+        "Invoice should be generated"
+    );
     println!("✓ Invoice generation works (balance retrieval functional)");
 
     Ok(())

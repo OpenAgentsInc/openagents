@@ -36,22 +36,22 @@
 //! - `validate`: Quality scoring and completeness checks
 //! - `rewards`: Payment calculation for contributions
 
-pub mod collect;
-pub mod redact;
 pub mod anonymize;
+pub mod collect;
 pub mod contribute;
-pub mod validate;
+pub mod redact;
 pub mod rewards;
+pub mod validate;
 
-pub use collect::{TrajectoryCollector, TrajectorySource, ScanResult};
-pub use redact::{RedactionEngine, RedactionLevel, RedactionResult};
-pub use anonymize::{Anonymizer, AnonymizationResult};
+pub use anonymize::{AnonymizationResult, Anonymizer};
+pub use collect::{ScanResult, TrajectoryCollector, TrajectorySource};
 pub use contribute::{
-    ContributionClient, ContributionConfig, ContributionRequest, ContributionStatus,
-    ContributionRecord, ContributionEarning,
+    ContributionClient, ContributionConfig, ContributionEarning, ContributionRecord,
+    ContributionRequest, ContributionStatus,
 };
-pub use validate::{QualityScore, ValidationResult};
+pub use redact::{RedactionEngine, RedactionLevel, RedactionResult};
 pub use rewards::{RewardCalculator, RewardInfo};
+pub use validate::{QualityScore, ValidationResult};
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

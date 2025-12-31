@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use std::io::IsTerminal;
 
-use crate::storage::identities::{current_identity, DEFAULT_IDENTITY_NAME};
+use crate::storage::identities::{DEFAULT_IDENTITY_NAME, current_identity};
 use crate::storage::keychain::{SecureKeychain, WALLET_PASSWORD_ENV};
 
 pub fn set(new_password: Option<String>, current_password: Option<String>) -> Result<()> {
@@ -56,8 +56,7 @@ fn read_password(prompt: &str) -> Result<String> {
         );
     }
 
-    let password = rpassword::prompt_password(prompt)
-        .context("Failed to read password")?;
+    let password = rpassword::prompt_password(prompt).context("Failed to read password")?;
     if password.trim().is_empty() {
         anyhow::bail!("Password cannot be empty");
     }

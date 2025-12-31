@@ -1,6 +1,6 @@
 //! Job persistence for provider mode
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use super::PylonDb;
@@ -113,7 +113,10 @@ impl PylonDb {
             .unwrap()
             .as_secs() as i64;
 
-        let completed_at = if matches!(status, JobStatus::Completed | JobStatus::Failed | JobStatus::Cancelled) {
+        let completed_at = if matches!(
+            status,
+            JobStatus::Completed | JobStatus::Failed | JobStatus::Cancelled
+        ) {
             Some(now)
         } else {
             None
@@ -190,7 +193,9 @@ impl PylonDb {
     }
 
     /// Get total job count by status
-    pub fn count_jobs_by_status(&self) -> anyhow::Result<std::collections::HashMap<JobStatus, u64>> {
+    pub fn count_jobs_by_status(
+        &self,
+    ) -> anyhow::Result<std::collections::HashMap<JobStatus, u64>> {
         use std::collections::HashMap;
 
         let mut counts = HashMap::new();
@@ -217,7 +222,12 @@ impl PylonDb {
     // Invoice methods
 
     /// Record a new invoice for a job
-    pub fn record_invoice(&self, job_id: &str, bolt11: &str, amount_msats: u64) -> anyhow::Result<()> {
+    pub fn record_invoice(
+        &self,
+        job_id: &str,
+        bolt11: &str,
+        amount_msats: u64,
+    ) -> anyhow::Result<()> {
         let id = format!("inv_{}", &job_id[..16.min(job_id.len())]);
 
         self.conn().execute(
@@ -246,13 +256,11 @@ impl PylonDb {
 
     /// Get pending invoice count
     pub fn count_pending_invoices(&self) -> anyhow::Result<u64> {
-        let count: i64 = self
-            .conn()
-            .query_row(
-                "SELECT COUNT(*) FROM invoices WHERE status = 'pending'",
-                [],
-                |row| row.get(0),
-            )?;
+        let count: i64 = self.conn().query_row(
+            "SELECT COUNT(*) FROM invoices WHERE status = 'pending'",
+            [],
+            |row| row.get(0),
+        )?;
 
         Ok(count as u64)
     }
@@ -262,7 +270,8 @@ impl PylonDb {
         let cutoff = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_secs() as i64 - max_age_secs as i64;
+            .as_secs() as i64
+            - max_age_secs as i64;
 
         let count = self.conn().execute(
             "UPDATE invoices SET status = 'expired' WHERE status = 'pending' AND created_at < ?1",

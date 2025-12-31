@@ -3,12 +3,12 @@
 /// These tests verify that GptOssClient correctly implements the LocalModelBackend trait
 /// using a mock HTTP server to simulate the GPT-OSS Responses API.
 use gpt_oss::GptOssClient;
-use local_inference::{LocalModelBackend, LocalModelBackendExt, CompletionRequest};
-use wiremock::{
-    matchers::{method, path},
-    Mock, MockServer, ResponseTemplate,
-};
+use local_inference::{CompletionRequest, LocalModelBackend, LocalModelBackendExt};
 use serde_json::json;
+use wiremock::{
+    Mock, MockServer, ResponseTemplate,
+    matchers::{method, path},
+};
 
 #[tokio::test]
 async fn test_gpt_oss_initialize() {
@@ -28,11 +28,20 @@ async fn test_gpt_oss_initialize() {
         .build()
         .expect("Failed to build client");
 
-    assert!(!client.is_ready().await, "Should not be ready before initialization");
+    assert!(
+        !client.is_ready().await,
+        "Should not be ready before initialization"
+    );
 
-    client.initialize().await.expect("Initialization should succeed");
+    client
+        .initialize()
+        .await
+        .expect("Initialization should succeed");
 
-    assert!(client.is_ready().await, "Should be ready after initialization");
+    assert!(
+        client.is_ready().await,
+        "Should be ready after initialization"
+    );
 }
 
 #[tokio::test]
@@ -54,7 +63,10 @@ async fn test_gpt_oss_initialize_failure() {
         .expect("Failed to build client");
 
     let result = client.initialize().await;
-    assert!(result.is_err(), "Initialization should fail when service is down");
+    assert!(
+        result.is_err(),
+        "Initialization should fail when service is down"
+    );
 }
 
 #[tokio::test]
@@ -187,7 +199,10 @@ async fn test_gpt_oss_complete() {
         .build()
         .expect("Failed to build client");
 
-    client.initialize().await.expect("Initialization should succeed");
+    client
+        .initialize()
+        .await
+        .expect("Initialization should succeed");
 
     let request = CompletionRequest::new("gpt-oss-20b", "What is Rust?");
     let response = LocalModelBackend::complete(&client, request)
@@ -240,7 +255,10 @@ async fn test_gpt_oss_complete_120b() {
         .build()
         .expect("Failed to build client");
 
-    client.initialize().await.expect("Initialization should succeed");
+    client
+        .initialize()
+        .await
+        .expect("Initialization should succeed");
 
     let request = CompletionRequest::new("gpt-oss-120b", "Explain FROST signatures.");
     let response = LocalModelBackend::complete(&client, request)
@@ -293,7 +311,10 @@ async fn test_gpt_oss_complete_simple() {
         .build()
         .expect("Failed to build client");
 
-    client.initialize().await.expect("Initialization should succeed");
+    client
+        .initialize()
+        .await
+        .expect("Initialization should succeed");
 
     // Test the convenience method from LocalModelBackendExt
     let text = client
@@ -338,7 +359,10 @@ async fn test_gpt_oss_complete_stream() {
         .build()
         .expect("Failed to build client");
 
-    client.initialize().await.expect("Initialization should succeed");
+    client
+        .initialize()
+        .await
+        .expect("Initialization should succeed");
 
     let request = CompletionRequest::new("gpt-oss-20b", "What is Rust?");
     let mut rx = client
@@ -395,12 +419,18 @@ async fn test_gpt_oss_has_model() {
 
     // Test the convenience method from LocalModelBackendExt
     assert!(
-        client.has_model("gpt-oss-20b").await.expect("has_model should succeed"),
+        client
+            .has_model("gpt-oss-20b")
+            .await
+            .expect("has_model should succeed"),
         "Should have gpt-oss-20b"
     );
 
     assert!(
-        !client.has_model("nonexistent").await.expect("has_model should succeed"),
+        !client
+            .has_model("nonexistent")
+            .await
+            .expect("has_model should succeed"),
         "Should not have nonexistent model"
     );
 }
@@ -423,7 +453,10 @@ async fn test_gpt_oss_shutdown() {
         .build()
         .expect("Failed to build client");
 
-    client.initialize().await.expect("Initialization should succeed");
+    client
+        .initialize()
+        .await
+        .expect("Initialization should succeed");
     assert!(client.is_ready().await);
 
     client.shutdown().await.expect("Shutdown should succeed");

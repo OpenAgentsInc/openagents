@@ -319,7 +319,17 @@ impl ComputeCommands {
     }
 
     fn submit(&self, params: SubmitParams) -> anyhow::Result<()> {
-        let SubmitParams { job_type, prompt, file, model, budget, stream, json, target_language, local_first } = params;
+        let SubmitParams {
+            job_type,
+            prompt,
+            file,
+            model,
+            budget,
+            stream,
+            json,
+            target_language,
+            local_first,
+        } = params;
         // Validate input
         if prompt.is_none() && file.is_none() {
             anyhow::bail!("Either --prompt or --file must be provided");
@@ -360,7 +370,7 @@ impl ComputeCommands {
 
         if local_first {
             // Try local inference first with fallback to swarm
-            use crate::compute::fallback::{FallbackManager, FallbackConfig, FallbackResult};
+            use crate::compute::fallback::{FallbackConfig, FallbackManager, FallbackResult};
 
             let fallback_config = FallbackConfig {
                 enabled: true,
@@ -374,35 +384,48 @@ impl ComputeCommands {
 
             // Execute with fallback using tokio runtime
             let rt = tokio::runtime::Runtime::new()?;
-            let result = rt.block_on(async {
-                manager.execute_with_fallback(model_name, &input).await
-            })?;
+            let result =
+                rt.block_on(async { manager.execute_with_fallback(model_name, &input).await })?;
 
             match result {
-                FallbackResult::Local { response, duration_ms } => {
+                FallbackResult::Local {
+                    response,
+                    duration_ms,
+                } => {
                     if json {
-                        println!("{}", serde_json::json!({
-                            "status": "completed",
-                            "source": "local",
-                            "response": response,
-                            "duration_ms": duration_ms,
-                        }));
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "status": "completed",
+                                "source": "local",
+                                "response": response,
+                                "duration_ms": duration_ms,
+                            })
+                        );
                     } else {
                         println!("✓ Completed locally in {}ms\n", duration_ms);
                         println!("{}", response);
                     }
                     return Ok(());
                 }
-                FallbackResult::Swarm { job_id, provider, cost_msats, duration_ms } => {
+                FallbackResult::Swarm {
+                    job_id,
+                    provider,
+                    cost_msats,
+                    duration_ms,
+                } => {
                     if json {
-                        println!("{}", serde_json::json!({
-                            "status": "submitted_to_swarm",
-                            "source": "swarm",
-                            "job_id": job_id,
-                            "provider": provider,
-                            "cost_msats": cost_msats,
-                            "duration_ms": duration_ms,
-                        }));
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "status": "submitted_to_swarm",
+                                "source": "swarm",
+                                "job_id": job_id,
+                                "provider": provider,
+                                "cost_msats": cost_msats,
+                                "duration_ms": duration_ms,
+                            })
+                        );
                     } else {
                         println!("✓ Submitted to swarm (local unavailable)");
                         println!("Job ID: {}", job_id);
@@ -412,13 +435,19 @@ impl ComputeCommands {
                     }
                     return Ok(());
                 }
-                FallbackResult::Failed { local_error, swarm_error } => {
+                FallbackResult::Failed {
+                    local_error,
+                    swarm_error,
+                } => {
                     if json {
-                        println!("{}", serde_json::json!({
-                            "status": "failed",
-                            "local_error": local_error,
-                            "swarm_error": swarm_error,
-                        }));
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "status": "failed",
+                                "local_error": local_error,
+                                "swarm_error": swarm_error,
+                            })
+                        );
                     } else {
                         println!("✗ Job failed");
                         println!("Local error: {}", local_error);
@@ -446,7 +475,10 @@ impl ComputeCommands {
             // Streaming mode - wait for updates
             if json {
                 // JSON streaming output
-                println!("{{\"job_id\": \"{}\", \"status\": \"pending\"}}", handle.job_id);
+                println!(
+                    "{{\"job_id\": \"{}\", \"status\": \"pending\"}}",
+                    handle.job_id
+                );
             } else {
                 println!("Submitting {} job...", job_type);
                 println!("Job ID: {}", handle.job_id);
@@ -730,10 +762,12 @@ mod tests {
 
         let result = cmd.execute();
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Either --prompt or --file must be provided"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Either --prompt or --file must be provided")
+        );
     }
 
     #[test]

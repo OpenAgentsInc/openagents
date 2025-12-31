@@ -5,7 +5,7 @@
 use nostr_client::{PoolConfig, RelayPool};
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, info, warn};
 
 /// Default Nostr relays for the compute provider
@@ -161,7 +161,10 @@ impl RelayService {
             "limit": 100
         })];
 
-        debug!("Subscribing to NIP-90 job requests for pubkey: {}...", &pubkey[..8]);
+        debug!(
+            "Subscribing to NIP-90 job requests for pubkey: {}...",
+            &pubkey[..8]
+        );
 
         let rx = pool.subscribe(&sub_id, &filters).await?;
 
@@ -239,9 +242,11 @@ mod tests {
     fn test_default_relays() {
         let service = RelayService::new();
         assert_eq!(service.relay_urls().len(), 3);
-        assert!(service
-            .relay_urls()
-            .contains(&"wss://relay.damus.io".to_string()));
+        assert!(
+            service
+                .relay_urls()
+                .contains(&"wss://relay.damus.io".to_string())
+        );
     }
 
     #[test]

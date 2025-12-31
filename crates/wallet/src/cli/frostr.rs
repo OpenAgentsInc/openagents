@@ -4,10 +4,10 @@
 //! and performing threshold signature operations.
 
 use anyhow::{Context, Result};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use colored::Colorize;
 use frostr::credential::{GroupCredential, ShareCredential};
-use frostr::keygen::{generate_key_shares, FrostShare};
+use frostr::keygen::{FrostShare, generate_key_shares};
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
@@ -53,7 +53,9 @@ impl StoredPeers {
         let bytes = postcard::to_stdvec(self).context("Failed to serialize peers")?;
         let encoded = BASE64.encode(&bytes);
         let entry = Entry::new(KEYRING_SERVICE, FROSTR_PEERS_KEY)?;
-        entry.set_password(&encoded).context("Failed to save peers to keychain")?;
+        entry
+            .set_password(&encoded)
+            .context("Failed to save peers to keychain")?;
         Ok(())
     }
 
@@ -101,8 +103,8 @@ impl StoredFrostShare {
     /// Create from a FrostShare
     pub fn from_frost_share(share: &FrostShare) -> Result<Self> {
         // Serialize KeyPackage
-        let key_package_data = postcard::to_stdvec(&share.key_package)
-            .context("Failed to serialize KeyPackage")?;
+        let key_package_data =
+            postcard::to_stdvec(&share.key_package).context("Failed to serialize KeyPackage")?;
 
         // Serialize PublicKeyPackage
         let public_key_package_data = postcard::to_stdvec(&share.public_key_package)
@@ -133,9 +135,7 @@ impl StoredFrostShare {
 
     /// Deserialize from base64
     pub fn from_base64(encoded: &str) -> Result<Self> {
-        let bytes = BASE64
-            .decode(encoded)
-            .context("Failed to decode base64")?;
+        let bytes = BASE64.decode(encoded).context("Failed to decode base64")?;
         postcard::from_bytes(&bytes).context("Failed to deserialize StoredFrostShare")
     }
 
@@ -245,7 +245,10 @@ pub async fn keygen(threshold: u16, total: u16) -> Result<()> {
         // Show bech32 group credential for sharing
         let group_cred = stored_share.to_group_credential()?;
         let group_bech32 = group_cred.to_bech32()?;
-        println!("\n{} Group credential (share with others):", "EXPORT".bright_cyan());
+        println!(
+            "\n{} Group credential (share with others):",
+            "EXPORT".bright_cyan()
+        );
         println!("  {}", group_bech32);
     } else {
         println!("{} Skipped keychain storage", "SKIP".bright_yellow());
@@ -274,12 +277,12 @@ pub async fn import_share(credential: String) -> Result<()> {
     let share_cred = ShareCredential::from_bech32(&credential)
         .context("Invalid share credential format. Expected bfshare1...")?;
 
-    println!(
-        "{} Parsed share credential:",
-        "[OK]".bright_green()
-    );
+    println!("{} Parsed share credential:", "[OK]".bright_green());
     println!("  Index: {}", share_cred.index);
-    println!("  Group PK: {}...", &hex::encode(&share_cred.group_pk)[..16]);
+    println!(
+        "  Group PK: {}...",
+        &hex::encode(&share_cred.group_pk)[..16]
+    );
 
     // Note: ShareCredential contains simplified data (index, secret, group_pk)
     // It does NOT contain the full KeyPackage needed for FROST signing.
@@ -303,10 +306,7 @@ pub async fn import_share(credential: String) -> Result<()> {
             .set_password(&credential)
             .context("Failed to save share to keychain")?;
 
-        println!(
-            "{} Full share imported successfully",
-            "[OK]".bright_green()
-        );
+        println!("{} Full share imported successfully", "[OK]".bright_green());
         println!("  Threshold: {}/{}", stored.threshold, stored.total);
         println!("  Participant: {}", stored.participant_id);
         println!("  Group PK: {}...", &stored.group_pubkey[..16]);
@@ -338,7 +338,10 @@ pub async fn export_share() -> Result<()> {
             // Show group credential (safe to share)
             let group_cred = stored.to_group_credential()?;
             let group_bech32 = group_cred.to_bech32()?;
-            println!("\n{} Group credential (safe to share):", "PUBLIC".bright_cyan());
+            println!(
+                "\n{} Group credential (safe to share):",
+                "PUBLIC".bright_cyan()
+            );
             println!("  {}", group_bech32);
 
             // Show full backup (SENSITIVE!)
@@ -361,7 +364,10 @@ pub async fn export_share() -> Result<()> {
                     "INFO".bright_blue()
                 );
             } else {
-                println!("{} Unknown credential format in keychain", "ERR".bright_red());
+                println!(
+                    "{} Unknown credential format in keychain",
+                    "ERR".bright_red()
+                );
             }
         }
     }
@@ -374,8 +380,8 @@ pub async fn sign(event_hash_hex: String) -> Result<()> {
     println!("{} Initiating threshold signing...", "SIGN".bright_blue());
 
     // Decode event hash
-    let event_hash_bytes = hex::decode(&event_hash_hex)
-        .context("Invalid event hash (must be 64-character hex)")?;
+    let event_hash_bytes =
+        hex::decode(&event_hash_hex).context("Invalid event hash (must be 64-character hex)")?;
 
     if event_hash_bytes.len() != 32 {
         anyhow::bail!("Event hash must be exactly 32 bytes (64 hex characters)");
@@ -475,10 +481,17 @@ pub async fn status() -> Result<()> {
     // Show peer status
     let peers = StoredPeers::load()?;
     if peers.peers.is_empty() {
-        println!("\n{} Threshold Peers: none configured", "PEERS".bright_yellow());
+        println!(
+            "\n{} Threshold Peers: none configured",
+            "PEERS".bright_yellow()
+        );
         println!("  Run 'openagents wallet frostr peers add <npub>' to add peers");
     } else {
-        println!("\n{} Threshold Peers: {} configured", "PEERS".bright_cyan(), peers.peers.len());
+        println!(
+            "\n{} Threshold Peers: {} configured",
+            "PEERS".bright_cyan(),
+            peers.peers.len()
+        );
         for peer in &peers.peers {
             let name = peer.name.as_deref().unwrap_or("(unnamed)");
             let relay_count = if peer.relays.is_empty() {
@@ -490,7 +503,10 @@ pub async fn status() -> Result<()> {
         }
     }
 
-    println!("\n{} Relay Connections: (not configured)", "TODO".bright_yellow());
+    println!(
+        "\n{} Relay Connections: (not configured)",
+        "TODO".bright_yellow()
+    );
 
     Ok(())
 }
@@ -506,7 +522,8 @@ mod tests {
         let shares = generate_key_shares(2, 3).expect("keygen failed");
 
         // Convert to StoredFrostShare
-        let stored = StoredFrostShare::from_frost_share(&shares[0]).expect("from_frost_share failed");
+        let stored =
+            StoredFrostShare::from_frost_share(&shares[0]).expect("from_frost_share failed");
 
         assert_eq!(stored.threshold, 2);
         assert_eq!(stored.total, 3);
@@ -527,15 +544,21 @@ mod tests {
         assert_eq!(decoded.participant_id, stored.participant_id);
         assert_eq!(decoded.group_pubkey, stored.group_pubkey);
         assert_eq!(decoded.key_package_data, stored.key_package_data);
-        assert_eq!(decoded.public_key_package_data, stored.public_key_package_data);
+        assert_eq!(
+            decoded.public_key_package_data,
+            stored.public_key_package_data
+        );
     }
 
     #[test]
     fn test_stored_frost_share_to_group_credential() {
         let shares = generate_key_shares(2, 3).expect("keygen failed");
-        let stored = StoredFrostShare::from_frost_share(&shares[0]).expect("from_frost_share failed");
+        let stored =
+            StoredFrostShare::from_frost_share(&shares[0]).expect("from_frost_share failed");
 
-        let group_cred = stored.to_group_credential().expect("to_group_credential failed");
+        let group_cred = stored
+            .to_group_credential()
+            .expect("to_group_credential failed");
 
         assert_eq!(group_cred.threshold, 2);
         assert_eq!(group_cred.total, 3);
@@ -548,11 +571,13 @@ mod tests {
     #[test]
     fn test_key_package_deserialization() {
         let shares = generate_key_shares(2, 3).expect("keygen failed");
-        let stored = StoredFrostShare::from_frost_share(&shares[0]).expect("from_frost_share failed");
+        let stored =
+            StoredFrostShare::from_frost_share(&shares[0]).expect("from_frost_share failed");
 
         // Verify KeyPackage can be deserialized
         let key_package: frostr::frost::keys::KeyPackage =
-            postcard::from_bytes(&stored.key_package_data).expect("KeyPackage deserialization failed");
+            postcard::from_bytes(&stored.key_package_data)
+                .expect("KeyPackage deserialization failed");
 
         // Verify PublicKeyPackage can be deserialized
         let public_key_package: frostr::frost::keys::PublicKeyPackage =
@@ -587,7 +612,10 @@ mod tests {
 
         assert_eq!(peers.peers.len(), 1);
         assert!(peers.find(&"a".repeat(64)).is_some());
-        assert_eq!(peers.find(&"a".repeat(64)).unwrap().name, Some("Alice".to_string()));
+        assert_eq!(
+            peers.find(&"a".repeat(64)).unwrap().name,
+            Some("Alice".to_string())
+        );
 
         // Add another peer
         let peer2 = StoredPeer {
@@ -653,7 +681,10 @@ mod tests {
         let mut peers = StoredPeers::default();
         peers.add(StoredPeer {
             pubkey: "a".repeat(64),
-            relays: vec!["wss://relay1.com".to_string(), "wss://relay2.com".to_string()],
+            relays: vec![
+                "wss://relay1.com".to_string(),
+                "wss://relay2.com".to_string(),
+            ],
             name: Some("Test Peer".to_string()),
             added_at: 1234567890,
         });
@@ -691,7 +722,10 @@ mod tests {
         // Valid npub (from NIP-19 test vectors)
         let npub = "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
         let result = parse_nostr_pubkey(npub).expect("should parse npub");
-        assert_eq!(result, "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d");
+        assert_eq!(
+            result,
+            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+        );
     }
 }
 
@@ -718,7 +752,10 @@ pub async fn list_groups() -> Result<()> {
                 if encoded.starts_with("frostr-share:") {
                     let parts: Vec<&str> = encoded.split(':').collect();
                     if parts.len() == 3 {
-                        println!("{} Legacy metadata (no group key stored):", "WARN".bright_yellow());
+                        println!(
+                            "{} Legacy metadata (no group key stored):",
+                            "WARN".bright_yellow()
+                        );
                         println!("  Threshold: {}-of-{}", parts[1], parts[2]);
                         println!(
                             "\n{} Re-run 'wallet frostr keygen' to get full credentials",
@@ -762,7 +799,11 @@ pub async fn peers_add(npub: String, relays: Vec<String>, name: Option<String>) 
 
     // Parse the public key
     let pubkey = parse_nostr_pubkey(&npub)?;
-    println!("{} Parsed pubkey: {}...", "[OK]".bright_green(), &pubkey[..16]);
+    println!(
+        "{} Parsed pubkey: {}...",
+        "[OK]".bright_green(),
+        &pubkey[..16]
+    );
 
     // Load existing peers
     let mut peers = StoredPeers::load()?;
@@ -889,7 +930,11 @@ pub async fn peers_remove(npub: String) -> Result<()> {
             );
         }
     } else {
-        println!("{} Peer not found: {}...", "WARN".bright_yellow(), &pubkey[..16]);
+        println!(
+            "{} Peer not found: {}...",
+            "WARN".bright_yellow(),
+            &pubkey[..16]
+        );
     }
 
     Ok(())

@@ -162,21 +162,23 @@ pub mod db {
 
         // Capabilities
         if let serde_json::Value::Array(ref skills) = session.skills
-            && !skills.is_empty() {
-                let skill_strs: Vec<String> = skills
-                    .iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect();
-                header.push_str(&format!("skills: [{}]\n", skill_strs.join(", ")));
-            }
+            && !skills.is_empty()
+        {
+            let skill_strs: Vec<String> = skills
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect();
+            header.push_str(&format!("skills: [{}]\n", skill_strs.join(", ")));
+        }
         if let serde_json::Value::Array(ref mcp) = session.mcp_servers
-            && !mcp.is_empty() {
-                let mcp_strs: Vec<String> = mcp
-                    .iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect();
-                header.push_str(&format!("mcp: [{}]\n", mcp_strs.join(", ")));
-            }
+            && !mcp.is_empty()
+        {
+            let mcp_strs: Vec<String> = mcp
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect();
+            header.push_str(&format!("mcp: [{}]\n", mcp_strs.join(", ")));
+        }
 
         // Limits
         if let Some(ref budget) = session.budget {

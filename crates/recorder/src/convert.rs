@@ -355,19 +355,23 @@ pub fn convert_content(
                     if let Some(blocks) = &msg.content {
                         for block in blocks {
                             match block {
-                                ContentBlock::Thinking { thinking, signature } => {
+                                ContentBlock::Thinking {
+                                    thinking,
+                                    signature,
+                                } => {
                                     if options.include_thinking {
                                         let mut line = format_thinking_line(thinking);
 
                                         if options.include_signature
-                                            && let Some(sig) = signature {
-                                                let short_sig = if sig.len() > 20 {
-                                                    format!("{}...", &sig[..20])
-                                                } else {
-                                                    sig.clone()
-                                                };
-                                                line.push_str(&format!(" sig={}", short_sig));
-                                            }
+                                            && let Some(sig) = signature
+                                        {
+                                            let short_sig = if sig.len() > 20 {
+                                                format!("{}...", &sig[..20])
+                                            } else {
+                                                sig.clone()
+                                            };
+                                            line.push_str(&format!(" sig={}", short_sig));
+                                        }
 
                                         append_assistant_meta(&mut line, &assistant_event, msg);
 
@@ -421,9 +425,10 @@ pub fn convert_content(
                     if result.interrupted {
                         // Mark the last tool as interrupted if present
                         if let Some(last) = lines_output.last_mut()
-                            && (last.starts_with("t!:") || last.starts_with("t:")) {
-                                last.push_str(" interrupted");
-                            }
+                            && (last.starts_with("t!:") || last.starts_with("t:"))
+                        {
+                            last.push_str(" interrupted");
+                        }
                     }
 
                     let mut meta_line = String::from("# tool-use-result");
@@ -485,7 +490,10 @@ pub fn convert_content(
                         truncate_uuid(msg_id),
                         file_count
                     );
-                    if let Some(ts) = snapshot.snapshot.as_ref().and_then(|s| s.timestamp.as_ref())
+                    if let Some(ts) = snapshot
+                        .snapshot
+                        .as_ref()
+                        .and_then(|s| s.timestamp.as_ref())
                     {
                         line.push_str(&format!(" ts={}", ts));
                     }
@@ -563,7 +571,11 @@ pub fn convert_content(
 
     // Add @start lifecycle event
     if let Some(ts) = &meta.first_timestamp {
-        output.push(format!("@start id={} ts={}", truncate_uuid(&session_id), ts));
+        output.push(format!(
+            "@start id={} ts={}",
+            truncate_uuid(&session_id),
+            ts
+        ));
     }
 
     // Add body lines
@@ -722,11 +734,7 @@ fn extract_tool_result_text(content: &ToolResultContent) -> String {
 }
 
 fn truncate_uuid(uuid: &str) -> &str {
-    if uuid.len() > 8 {
-        &uuid[..8]
-    } else {
-        uuid
-    }
+    if uuid.len() > 8 { &uuid[..8] } else { uuid }
 }
 
 fn truncate_content(s: &str, max_len: usize) -> String {

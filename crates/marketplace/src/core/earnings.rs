@@ -18,11 +18,11 @@
 //! - Revenue source type (compute/skill/data/trajectory)
 //! - Associated item ID for drill-down analysis
 
+use super::revenue::{RevenueSplit, RevenueSplitConfig};
 use anyhow::Result;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-use super::revenue::{RevenueSplit, RevenueSplitConfig};
 
 /// Revenue bucket for minute-level earnings tracking
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,7 +167,11 @@ impl EarningsTracker {
             creator_sats: split.creator_sats,
             compute_sats: split.compute_sats,
             platform_sats: split.platform_sats,
-            referrer_sats: if has_referrer { Some(split.referrer_sats) } else { None },
+            referrer_sats: if has_referrer {
+                Some(split.referrer_sats)
+            } else {
+                None
+            },
             split_version: 1, // Version 1 uses default RevenueSplitConfig
             created_at: now,
         };
@@ -410,7 +414,7 @@ impl EarningsTracker {
         let buckets = self.export_earnings(conn, from_timestamp, to_timestamp)?;
 
         let mut csv = String::from(
-            "bucket_time,revenue_type,item_id,gross_sats,creator_sats,compute_sats,platform_sats,referrer_sats\n"
+            "bucket_time,revenue_type,item_id,gross_sats,creator_sats,compute_sats,platform_sats,referrer_sats\n",
         );
 
         for bucket in buckets {
@@ -573,10 +577,7 @@ mod tests {
         assert_eq!(RevenueType::Data.as_str(), "data");
         assert_eq!(RevenueType::Trajectory.as_str(), "trajectory");
 
-        assert_eq!(
-            RevenueType::from_str("compute"),
-            Some(RevenueType::Compute)
-        );
+        assert_eq!(RevenueType::from_str("compute"), Some(RevenueType::Compute));
         assert_eq!(RevenueType::from_str("skill"), Some(RevenueType::Skill));
         assert_eq!(RevenueType::from_str("data"), Some(RevenueType::Data));
         assert_eq!(

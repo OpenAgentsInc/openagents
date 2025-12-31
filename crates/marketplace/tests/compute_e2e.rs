@@ -10,7 +10,7 @@
 //!
 //! Part of d-015: Comprehensive Marketplace and Agent Commerce E2E Tests
 
-use nostr::{finalize_event, generate_secret_key, get_public_key, EventTemplate};
+use nostr::{EventTemplate, finalize_event, generate_secret_key, get_public_key};
 use nostr::{HandlerInfo, HandlerMetadata, HandlerType, KIND_HANDLER_INFO};
 use nostr::{
     JobFeedback, JobInput, JobRequest, JobResult, JobStatus, KIND_JOB_FEEDBACK,
@@ -357,7 +357,8 @@ async fn test_nip90_job_feedback_flow() {
         created_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_secs() + 1, // Slightly later timestamp
+            .as_secs()
+            + 1, // Slightly later timestamp
     };
 
     let success_event =
@@ -410,8 +411,7 @@ async fn test_nip89_provider_discovery() {
     .add_capability("nip-90");
 
     // 5. Create handler info event (kind 31990)
-    let content =
-        serde_json::to_string(&handler_info.metadata).expect("should serialize metadata");
+    let content = serde_json::to_string(&handler_info.metadata).expect("should serialize metadata");
 
     let announcement_template = EventTemplate {
         kind: KIND_HANDLER_INFO,
@@ -484,7 +484,10 @@ async fn test_nip89_provider_discovery() {
         .tags
         .iter()
         .any(|t| t[0] == "handler" && t[1] == "compute_provider");
-    assert!(has_handler_type, "Should have compute_provider handler type");
+    assert!(
+        has_handler_type,
+        "Should have compute_provider handler type"
+    );
 
     relay.disconnect().await.ok();
 }
@@ -668,8 +671,7 @@ async fn test_dvm_service_with_relay() {
             .as_secs(),
     };
 
-    let result_event =
-        finalize_event(&result_template, &provider_secret_key).expect("sign result");
+    let result_event = finalize_event(&result_template, &provider_secret_key).expect("sign result");
 
     provider_relay
         .publish_event(&result_event, Duration::from_secs(5))

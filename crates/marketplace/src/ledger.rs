@@ -411,9 +411,10 @@ impl Balance {
     /// Apply a release operation
     pub fn release(&mut self, amount_sats: u64) -> Result<(), LedgerError> {
         if self.held_sats < amount_sats {
-            return Err(LedgerError::InvalidOperation(
-                format!("Cannot release {} sats, only {} held", amount_sats, self.held_sats),
-            ));
+            return Err(LedgerError::InvalidOperation(format!(
+                "Cannot release {} sats, only {} held",
+                amount_sats, self.held_sats
+            )));
         }
         self.held_sats -= amount_sats;
         self.available_sats += amount_sats;

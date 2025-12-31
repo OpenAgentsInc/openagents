@@ -11,12 +11,15 @@
 
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
-use compute::backends::{BackendRegistry, CompletionRequest, CompletionResponse, InferenceBackend, ModelInfo, Result as BackendResult, StreamChunk};
+use async_trait::async_trait;
+use compute::backends::{
+    BackendRegistry, CompletionRequest, CompletionResponse, InferenceBackend, ModelInfo,
+    Result as BackendResult, StreamChunk,
+};
 use compute::domain::UnifiedIdentity;
 use compute::services::{DvmConfig, DvmService, RelayService};
-use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 /// Mock backend for testing - returns predictable responses
@@ -66,13 +69,15 @@ impl InferenceBackend for MockInferenceBackend {
         let model = request.model.clone();
 
         tokio::spawn(async move {
-            let _ = tx.send(Ok(StreamChunk {
-                id: "chunk-1".to_string(),
-                model,
-                delta: response,
-                finish_reason: Some("stop".to_string()),
-                extra: Default::default(),
-            })).await;
+            let _ = tx
+                .send(Ok(StreamChunk {
+                    id: "chunk-1".to_string(),
+                    model,
+                    delta: response,
+                    finish_reason: Some("stop".to_string()),
+                    extra: Default::default(),
+                }))
+                .await;
         });
 
         Ok(rx)
@@ -86,13 +91,13 @@ impl InferenceBackend for MockInferenceBackend {
 #[tokio::test]
 #[ignore] // Requires network connectivity
 async fn test_regtest_wallet_connect() {
-    use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
+    use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
 
     // Generate a test mnemonic (don't use this for real funds!)
     let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
-    let signer = SparkSigner::from_mnemonic(mnemonic, "")
-        .expect("should create signer from mnemonic");
+    let signer =
+        SparkSigner::from_mnemonic(mnemonic, "").expect("should create signer from mnemonic");
 
     let config = WalletConfig {
         network: Network::Regtest,
@@ -111,7 +116,9 @@ async fn test_regtest_wallet_connect() {
                 Ok(address) => {
                     println!("Bitcoin deposit address: {}", address);
                     println!("\nTo fund this wallet, send regtest sats to this address.");
-                    println!("Use the Lightspark faucet: https://app.lightspark.com/regtest-faucet");
+                    println!(
+                        "Use the Lightspark faucet: https://app.lightspark.com/regtest-faucet"
+                    );
                 }
                 Err(e) => {
                     println!("Failed to get deposit address: {}", e);
@@ -152,15 +159,15 @@ async fn test_regtest_wallet_connect() {
 #[tokio::test]
 #[ignore] // Requires network connectivity AND funded wallet
 async fn test_spark_payment_between_wallets() {
-    use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
+    use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
 
     // Two different mnemonics for provider and customer
     let provider_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
     let customer_mnemonic = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
 
     // Create provider wallet
-    let provider_signer = SparkSigner::from_mnemonic(provider_mnemonic, "")
-        .expect("should create provider signer");
+    let provider_signer =
+        SparkSigner::from_mnemonic(provider_mnemonic, "").expect("should create provider signer");
     let provider_config = WalletConfig {
         network: Network::Regtest,
         api_key: None,
@@ -168,8 +175,8 @@ async fn test_spark_payment_between_wallets() {
     };
 
     // Create customer wallet
-    let customer_signer = SparkSigner::from_mnemonic(customer_mnemonic, "")
-        .expect("should create customer signer");
+    let customer_signer =
+        SparkSigner::from_mnemonic(customer_mnemonic, "").expect("should create customer signer");
     let customer_config = WalletConfig {
         network: Network::Regtest,
         api_key: None,
@@ -187,18 +194,29 @@ async fn test_spark_payment_between_wallets() {
         .expect("should connect customer wallet");
 
     // Get addresses
-    let provider_spark_address = provider_wallet.get_spark_address().await
+    let provider_spark_address = provider_wallet
+        .get_spark_address()
+        .await
         .expect("should get provider spark address");
-    let customer_btc_address = customer_wallet.get_bitcoin_address().await
+    let customer_btc_address = customer_wallet
+        .get_bitcoin_address()
+        .await
         .expect("should get customer btc address");
 
     println!("Provider Spark address: {}", provider_spark_address);
-    println!("Customer BTC address (for faucet): {}", customer_btc_address);
+    println!(
+        "Customer BTC address (for faucet): {}",
+        customer_btc_address
+    );
 
     // Check balances
-    let provider_balance = provider_wallet.get_balance().await
+    let provider_balance = provider_wallet
+        .get_balance()
+        .await
         .expect("should get provider balance");
-    let customer_balance = customer_wallet.get_balance().await
+    let customer_balance = customer_wallet
+        .get_balance()
+        .await
         .expect("should get customer balance");
 
     println!("\nProvider balance: {} sats", provider_balance.total_sats());
@@ -217,7 +235,11 @@ async fn test_spark_payment_between_wallets() {
     println!("\nCreating invoice for {} sats...", amount_sats);
 
     let invoice_response = provider_wallet
-        .create_invoice(amount_sats, Some("Test job payment".to_string()), Some(3600))
+        .create_invoice(
+            amount_sats,
+            Some("Test job payment".to_string()),
+            Some(3600),
+        )
         .await
         .expect("should create invoice");
 
@@ -236,16 +258,26 @@ async fn test_spark_payment_between_wallets() {
             // Verify balances changed
             tokio::time::sleep(Duration::from_secs(2)).await;
 
-            let new_provider_balance = provider_wallet.get_balance().await
+            let new_provider_balance = provider_wallet
+                .get_balance()
+                .await
                 .expect("should get new provider balance");
-            let new_customer_balance = customer_wallet.get_balance().await
+            let new_customer_balance = customer_wallet
+                .get_balance()
+                .await
                 .expect("should get new customer balance");
 
             println!("\nAfter payment:");
-            println!("Provider balance: {} sats (was {})",
-                new_provider_balance.total_sats(), provider_balance.total_sats());
-            println!("Customer balance: {} sats (was {})",
-                new_customer_balance.total_sats(), customer_balance.total_sats());
+            println!(
+                "Provider balance: {} sats (was {})",
+                new_provider_balance.total_sats(),
+                provider_balance.total_sats()
+            );
+            println!(
+                "Customer balance: {} sats (was {})",
+                new_customer_balance.total_sats(),
+                customer_balance.total_sats()
+            );
 
             assert!(
                 new_provider_balance.total_sats() > provider_balance.total_sats(),
@@ -265,9 +297,9 @@ async fn test_spark_payment_between_wallets() {
 #[tokio::test]
 #[ignore] // Requires network connectivity AND funded wallet
 async fn test_full_paid_job_e2e() {
-    use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
     use compute::domain::DomainEvent;
     use nostr::JobInput;
+    use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
     use std::collections::HashMap;
 
     println!("=== Full Paid Job E2E Test ===\n");
@@ -283,8 +315,8 @@ async fn test_full_paid_job_e2e() {
     let provider_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
     let customer_mnemonic = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
 
-    let provider_signer = SparkSigner::from_mnemonic(provider_mnemonic, "")
-        .expect("should create provider signer");
+    let provider_signer =
+        SparkSigner::from_mnemonic(provider_mnemonic, "").expect("should create provider signer");
     let provider_wallet = SparkWallet::new(
         provider_signer,
         WalletConfig {
@@ -292,10 +324,12 @@ async fn test_full_paid_job_e2e() {
             api_key: None,
             storage_dir: std::env::temp_dir().join("spark_e2e_provider"),
         },
-    ).await.expect("should connect provider wallet");
+    )
+    .await
+    .expect("should connect provider wallet");
 
-    let customer_signer = SparkSigner::from_mnemonic(customer_mnemonic, "")
-        .expect("should create customer signer");
+    let customer_signer =
+        SparkSigner::from_mnemonic(customer_mnemonic, "").expect("should create customer signer");
     let customer_wallet = SparkWallet::new(
         customer_signer,
         WalletConfig {
@@ -303,14 +337,20 @@ async fn test_full_paid_job_e2e() {
             api_key: None,
             storage_dir: std::env::temp_dir().join("spark_e2e_customer"),
         },
-    ).await.expect("should connect customer wallet");
+    )
+    .await
+    .expect("should connect customer wallet");
 
     // Check if customer has funds
-    let customer_balance = customer_wallet.get_balance().await
+    let customer_balance = customer_wallet
+        .get_balance()
+        .await
         .expect("should get customer balance");
 
     if customer_balance.total_sats() < 100 {
-        let btc_address = customer_wallet.get_bitcoin_address().await
+        let btc_address = customer_wallet
+            .get_bitcoin_address()
+            .await
             .expect("should get address");
         println!("\n!!! Customer needs funds !!!");
         println!("Send regtest sats to: {}", btc_address);
@@ -318,13 +358,17 @@ async fn test_full_paid_job_e2e() {
         return;
     }
 
-    println!("\nCustomer has {} sats available", customer_balance.total_sats());
+    println!(
+        "\nCustomer has {} sats available",
+        customer_balance.total_sats()
+    );
 
     // Create DVM service with payment requirement
     let mut registry = BackendRegistry::new();
-    registry.register_with_id("mock", Arc::new(RwLock::new(
-        MockInferenceBackend::new("42 is the answer")
-    )));
+    registry.register_with_id(
+        "mock",
+        Arc::new(RwLock::new(MockInferenceBackend::new("42 is the answer"))),
+    );
 
     let relay_service = Arc::new(RelayService::new());
     let backend_registry = Arc::new(RwLock::new(registry));
@@ -361,7 +405,9 @@ async fn test_full_paid_job_e2e() {
         &customer_identity.public_key_hex(),
         job_inputs,
         params,
-    ).await.expect("should handle job request");
+    )
+    .await
+    .expect("should handle job request");
 
     // Check for InvoiceCreated event
     let mut invoice_bolt11 = String::new();
@@ -369,7 +415,12 @@ async fn test_full_paid_job_e2e() {
 
     while let Ok(event) = event_rx.try_recv() {
         println!("Event: {}", event.description());
-        if let DomainEvent::InvoiceCreated { bolt11, amount_msats, .. } = &event {
+        if let DomainEvent::InvoiceCreated {
+            bolt11,
+            amount_msats,
+            ..
+        } = &event
+        {
             invoice_bolt11 = bolt11.clone();
             println!("Invoice created for {} msats", amount_msats);
             found_invoice = true;
@@ -383,9 +434,16 @@ async fn test_full_paid_job_e2e() {
     let job = dvm.get_job(&job_id).await.expect("should have job");
 
     match &job.status {
-        compute::domain::job::JobStatus::PaymentRequired { bolt11, amount_msats } => {
+        compute::domain::job::JobStatus::PaymentRequired {
+            bolt11,
+            amount_msats,
+        } => {
             println!("\nJob status: PaymentRequired");
-            println!("Amount: {} msats ({} sats)", amount_msats, amount_msats / 1000);
+            println!(
+                "Amount: {} msats ({} sats)",
+                amount_msats,
+                amount_msats / 1000
+            );
             println!("Invoice: {}...", &bolt11[..50.min(bolt11.len())]);
         }
         other => panic!("Expected PaymentRequired, got {:?}", other),
@@ -407,7 +465,9 @@ async fn test_full_paid_job_e2e() {
     // Confirm payment and process job
     println!("\n--- Step 3: Confirm payment and process ---");
 
-    dvm.confirm_payment(&job_id).await.expect("should confirm payment");
+    dvm.confirm_payment(&job_id)
+        .await
+        .expect("should confirm payment");
 
     // Collect remaining events
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -422,7 +482,10 @@ async fn test_full_paid_job_e2e() {
         compute::domain::job::JobStatus::Completed { result } => {
             println!("\n--- Job Completed! ---");
             println!("Result: {}", result);
-            println!("Payment amount: {} msats", final_job.amount_msats.unwrap_or(0));
+            println!(
+                "Payment amount: {} msats",
+                final_job.amount_msats.unwrap_or(0)
+            );
             assert!(result.contains("42"), "Should contain mock response");
         }
         other => panic!("Expected Completed, got {:?}", other),
@@ -436,12 +499,19 @@ async fn test_full_paid_job_e2e() {
             api_key: None,
             storage_dir: std::env::temp_dir().join("spark_e2e_provider"),
         },
-    ).await.expect("should reconnect provider wallet");
+    )
+    .await
+    .expect("should reconnect provider wallet");
 
-    let final_balance = provider_wallet.get_balance().await
+    let final_balance = provider_wallet
+        .get_balance()
+        .await
         .expect("should get final balance");
 
-    println!("\nProvider final balance: {} sats", final_balance.total_sats());
+    println!(
+        "\nProvider final balance: {} sats",
+        final_balance.total_sats()
+    );
     println!("\n=== E2E Test Complete! ===");
 }
 
@@ -449,7 +519,7 @@ async fn test_full_paid_job_e2e() {
 #[tokio::test]
 #[ignore]
 async fn test_quick_connectivity() {
-    use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
+    use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
 
     let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
     let signer = SparkSigner::from_mnemonic(mnemonic, "").unwrap();

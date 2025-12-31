@@ -2,7 +2,7 @@
 
 use crate::types::ItemStatus;
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, OptionalExtension, Result};
+use rusqlite::{Connection, OptionalExtension, Result, params};
 use serde::{Deserialize, Serialize};
 
 /// Skill data model
@@ -296,7 +296,7 @@ impl Repository for SkillRepository<'_> {
             "recent" => "created_at DESC",
             "alphabetical" => "name ASC",
             "popular" => "installed_at DESC NULLS LAST", // Skills with installs first
-            _ => "created_at DESC", // Default to recent
+            _ => "created_at DESC",                      // Default to recent
         };
 
         let query = format!(

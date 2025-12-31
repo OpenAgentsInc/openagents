@@ -43,9 +43,11 @@ pub mod validation;
 // Re-export commonly used types
 pub use cache::{CacheConfig, CacheStats, IssueCache};
 pub use db::{init_db, init_memory_db};
-pub use directive::{Directive, DirectiveError, DirectivePriority, DirectiveProgress, DirectiveStatus};
+pub use directive::{
+    Directive, DirectiveError, DirectivePriority, DirectiveProgress, DirectiveStatus,
+};
 pub use issue::{Issue, IssueType, Priority, Status};
 pub use project::Project;
 pub use retry::with_retry;
 pub use session::{Session, SessionStatus};
-pub use validation::{validate_agent, validate_description, validate_title, ValidationError};
+pub use validation::{ValidationError, validate_agent, validate_description, validate_title};

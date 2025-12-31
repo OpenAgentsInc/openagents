@@ -71,8 +71,9 @@ impl Region {
             // Asia internal
             (Region::AsiaEast, Region::AsiaPacific) | (Region::AsiaPacific, Region::AsiaEast) => 60,
             (Region::AsiaEast, Region::AsiaSouth) | (Region::AsiaSouth, Region::AsiaEast) => 80,
-            (Region::AsiaPacific, Region::AsiaSouth)
-            | (Region::AsiaSouth, Region::AsiaPacific) => 100,
+            (Region::AsiaPacific, Region::AsiaSouth) | (Region::AsiaSouth, Region::AsiaPacific) => {
+                100
+            }
 
             // US to EU
             (Region::UsEast, Region::EuWest) | (Region::EuWest, Region::UsEast) => 80,
@@ -267,7 +268,11 @@ impl GeoRoutingPolicy {
 
         if let Some(ref required) = self.required_regions {
             if !required.contains(region) {
-                return if self.allow_global_fallback { -100 } else { -1000 };
+                return if self.allow_global_fallback {
+                    -100
+                } else {
+                    -1000
+                };
             }
         }
 

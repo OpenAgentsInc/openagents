@@ -1,7 +1,7 @@
 //! Skills CLI commands
 
-use clap::Subcommand;
 use crate::skills::{SearchFilters, SkillBrowser, SkillCategory, SortBy};
+use clap::Subcommand;
 
 #[derive(Subcommand)]
 pub enum SkillsCommands {

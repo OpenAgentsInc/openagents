@@ -1,4 +1,7 @@
-use issues::{issue::{get_next_ready_issue, claim_issue}, db::init_db};
+use issues::{
+    db::init_db,
+    issue::{claim_issue, get_next_ready_issue},
+};
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

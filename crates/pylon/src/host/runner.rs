@@ -3,10 +3,10 @@
 //! Spawns and manages agent-runner subprocesses.
 //! Each agent runs in its own process for isolation and fault tolerance.
 
-use crate::db::agents::{Agent, LifecycleState};
 use crate::db::PylonDb;
+use crate::db::agents::{Agent, LifecycleState};
 use agent::AgentRegistry;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use compute::domain::UnifiedIdentity;
 use std::collections::HashMap;
 use std::process::{Child, Command, Stdio};
@@ -171,11 +171,7 @@ impl AgentRunner {
             .spawn()
             .map_err(|e| anyhow!("Failed to spawn agent-runner: {}", e))?;
 
-        tracing::info!(
-            "Spawned agent {} (PID: {})",
-            name,
-            child.id()
-        );
+        tracing::info!("Spawned agent {} (PID: {})", name, child.id());
 
         // Store handle
         {

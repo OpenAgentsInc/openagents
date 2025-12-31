@@ -344,10 +344,7 @@ pub fn check_budget(
                 AlertAction::Notify => continue,
                 AlertAction::RequireApproval => {
                     return BudgetCheckResult::RequiresApproval {
-                        reason: format!(
-                            "Reached {}% of budget threshold",
-                            threshold.percentage
-                        ),
+                        reason: format!("Reached {}% of budget threshold", threshold.percentage),
                     };
                 }
                 AlertAction::Pause => {

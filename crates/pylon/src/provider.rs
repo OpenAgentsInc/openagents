@@ -8,10 +8,10 @@ use compute::backends::{
 use compute::domain::{DomainEvent, UnifiedIdentity};
 use compute::services::{DvmService, RelayService};
 use neobank::Currency;
-use spark::{SparkWallet, WalletConfig, Network as SparkNetwork};
+use spark::{Network as SparkNetwork, SparkWallet, WalletConfig};
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
 /// Errors from the Pylon provider
 #[derive(Debug, Error)]
@@ -175,17 +175,17 @@ impl PylonProvider {
     }
 
     /// Initialize the provider with an existing identity
-    pub async fn init_with_identity(&mut self, identity: UnifiedIdentity) -> Result<(), ProviderError> {
+    pub async fn init_with_identity(
+        &mut self,
+        identity: UnifiedIdentity,
+    ) -> Result<(), ProviderError> {
         self.set_identity(identity);
         self.init_services().await
     }
 
     /// Initialize services
     async fn init_services(&mut self) -> Result<(), ProviderError> {
-        let identity = self
-            .identity
-            .clone()
-            .ok_or(ProviderError::NotInitialized)?;
+        let identity = self.identity.clone().ok_or(ProviderError::NotInitialized)?;
 
         // Create DVM service with both inference and agent registries
         let mut dvm_service = DvmService::with_agent_registry(
@@ -211,7 +211,10 @@ impl PylonProvider {
                     tracing::info!("Spark wallet initialized for payments");
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to initialize wallet: {}. Continuing in free mode.", e);
+                    tracing::warn!(
+                        "Failed to initialize wallet: {}. Continuing in free mode.",
+                        e
+                    );
                     // Continue without wallet - free mode
                 }
             }
@@ -235,7 +238,9 @@ impl PylonProvider {
         };
 
         // Get data directory for wallet storage
-        let storage_dir = self.config.data_path()
+        let storage_dir = self
+            .config
+            .data_path()
             .map_err(|e| ProviderError::ConfigError(e.to_string()))?
             .join("wallet");
 
@@ -250,9 +255,9 @@ impl PylonProvider {
         let signer = identity.spark_signer().clone();
 
         // Create the wallet
-        SparkWallet::new(signer, wallet_config)
-            .await
-            .map_err(|e| ProviderError::ServiceError(format!("Wallet initialization failed: {}", e)))
+        SparkWallet::new(signer, wallet_config).await.map_err(|e| {
+            ProviderError::ServiceError(format!("Wallet initialization failed: {}", e))
+        })
     }
 
     /// Start the provider
@@ -369,7 +374,10 @@ impl PylonProvider {
         drop(registry);
 
         if backends.iter().all(|(_, ok)| !*ok) {
-            warnings.push("No inference backends available. Install Ollama or start llama.cpp server.".to_string());
+            warnings.push(
+                "No inference backends available. Install Ollama or start llama.cpp server."
+                    .to_string(),
+            );
         }
 
         // Check relays (just config for now, not actual connectivity)
@@ -412,11 +420,11 @@ impl PylonProvider {
     ///
     /// Creates Cashu wallets for BTC and optionally USD,
     /// enabling multi-currency treasury for agents.
-    pub async fn init_neobank(&mut self, neobank_config: NeobankConfig) -> Result<(), ProviderError> {
-        let identity = self
-            .identity
-            .clone()
-            .ok_or(ProviderError::NotInitialized)?;
+    pub async fn init_neobank(
+        &mut self,
+        neobank_config: NeobankConfig,
+    ) -> Result<(), ProviderError> {
+        let identity = self.identity.clone().ok_or(ProviderError::NotInitialized)?;
 
         let mut service = NeobankService::new(neobank_config);
         service
@@ -442,10 +450,9 @@ impl PylonProvider {
 
     /// Check neobank balance for a currency
     pub async fn neobank_balance(&self, currency: Currency) -> Result<u64, ProviderError> {
-        let neobank = self
-            .neobank
-            .as_ref()
-            .ok_or(ProviderError::NeobankError("Neobank not initialized".to_string()))?;
+        let neobank = self.neobank.as_ref().ok_or(ProviderError::NeobankError(
+            "Neobank not initialized".to_string(),
+        ))?;
 
         neobank
             .get_balance(currency)
@@ -455,10 +462,9 @@ impl PylonProvider {
 
     /// Get neobank treasury status
     pub async fn neobank_status(&self) -> Result<TreasuryStatus, ProviderError> {
-        let neobank = self
-            .neobank
-            .as_ref()
-            .ok_or(ProviderError::NeobankError("Neobank not initialized".to_string()))?;
+        let neobank = self.neobank.as_ref().ok_or(ProviderError::NeobankError(
+            "Neobank not initialized".to_string(),
+        ))?;
 
         neobank
             .get_treasury_status()
@@ -468,10 +474,9 @@ impl PylonProvider {
 
     /// Pay a Lightning invoice via neobank
     pub async fn neobank_pay(&self, bolt11: &str) -> Result<String, ProviderError> {
-        let neobank = self
-            .neobank
-            .as_ref()
-            .ok_or(ProviderError::NeobankError("Neobank not initialized".to_string()))?;
+        let neobank = self.neobank.as_ref().ok_or(ProviderError::NeobankError(
+            "Neobank not initialized".to_string(),
+        ))?;
 
         neobank
             .pay_invoice(bolt11)
@@ -485,10 +490,9 @@ impl PylonProvider {
         amount_sats: u64,
         currency: Currency,
     ) -> Result<String, ProviderError> {
-        let neobank = self
-            .neobank
-            .as_ref()
-            .ok_or(ProviderError::NeobankError("Neobank not initialized".to_string()))?;
+        let neobank = self.neobank.as_ref().ok_or(ProviderError::NeobankError(
+            "Neobank not initialized".to_string(),
+        ))?;
 
         neobank
             .send_tokens(amount_sats, currency)
@@ -498,10 +502,9 @@ impl PylonProvider {
 
     /// Receive Cashu tokens via neobank
     pub async fn neobank_receive(&self, token: &str) -> Result<u64, ProviderError> {
-        let neobank = self
-            .neobank
-            .as_ref()
-            .ok_or(ProviderError::NeobankError("Neobank not initialized".to_string()))?;
+        let neobank = self.neobank.as_ref().ok_or(ProviderError::NeobankError(
+            "Neobank not initialized".to_string(),
+        ))?;
 
         neobank
             .receive_tokens(token)

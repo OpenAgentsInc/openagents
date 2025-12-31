@@ -120,10 +120,7 @@ async fn test_agent_exchange_demo() {
     // ----- Step 4: Settlement executes -----
     println!("\n[4] Settlement executing...");
 
-    let receipt = regular
-        .settle(&trade)
-        .await
-        .expect("Settlement failed");
+    let receipt = regular.settle(&trade).await.expect("Settlement failed");
 
     println!("    Settlement complete!");
     println!("    Method: {:?}", receipt.method);
@@ -158,7 +155,9 @@ async fn test_agent_exchange_demo() {
         .get_trade(&order_id)
         .expect("Failed to get trade")
         .expect("Trade not found");
-    treasury.inject_trade(trade_copy).expect("Failed to inject trade");
+    treasury
+        .inject_trade(trade_copy)
+        .expect("Failed to inject trade");
 
     let regular_attest_id = regular
         .attest_trade(&trade, TradeOutcome::Success, settlement_ms)
@@ -226,15 +225,17 @@ async fn test_reputation_accumulation() {
         let receipt = trader.settle(&trade).await.unwrap();
 
         trader
-            .attest_trade(&trade, TradeOutcome::Success, receipt.duration.as_millis() as u64)
+            .attest_trade(
+                &trade,
+                TradeOutcome::Success,
+                receipt.duration.as_millis() as u64,
+            )
             .await
             .unwrap();
     }
 
     // Check reputation - 5 successful trades
-    let mm_rep = trader
-        .calculate_reputation("market_maker_pubkey")
-        .unwrap();
+    let mm_rep = trader.calculate_reputation("market_maker_pubkey").unwrap();
     assert_eq!(mm_rep, 1.0); // 100% success
 
     // Add one default
@@ -261,9 +262,7 @@ async fn test_reputation_accumulation() {
         .unwrap();
 
     // Now reputation is 5/6 = 83.3%
-    let mm_rep = trader
-        .calculate_reputation("market_maker_pubkey")
-        .unwrap();
+    let mm_rep = trader.calculate_reputation("market_maker_pubkey").unwrap();
     assert!((mm_rep - 0.833).abs() < 0.01);
 }
 

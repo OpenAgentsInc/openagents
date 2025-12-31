@@ -128,9 +128,9 @@ impl PylonDb {
 
         // Get breakdown by source
         let mut by_source = HashMap::new();
-        let mut stmt = self.conn().prepare(
-            "SELECT source, SUM(amount_msats) FROM earnings GROUP BY source",
-        )?;
+        let mut stmt = self
+            .conn()
+            .prepare("SELECT source, SUM(amount_msats) FROM earnings GROUP BY source")?;
 
         let rows = stmt.query_map([], |row| {
             let source: String = row.get(0)?;

@@ -86,7 +86,9 @@ async fn test_wallet_whoami() {
             // If successful, should show npub or pubkey
             if out.success() {
                 assert!(
-                    combined.contains("npub") || combined.contains("pubkey") || combined.contains("Public"),
+                    combined.contains("npub")
+                        || combined.contains("pubkey")
+                        || combined.contains("Public"),
                     "Should show identity information: {}",
                     combined
                 );
@@ -154,7 +156,10 @@ async fn test_wallet_receive() {
                     println!("Extracted address: {}", addr);
                     // Should be a valid Bitcoin address format
                     assert!(
-                        addr.starts_with("tb1") || addr.starts_with("bc1") || addr.starts_with("1") || addr.starts_with("3"),
+                        addr.starts_with("tb1")
+                            || addr.starts_with("bc1")
+                            || addr.starts_with("1")
+                            || addr.starts_with("3"),
                         "Should be valid Bitcoin address: {}",
                         addr
                     );
@@ -178,22 +183,21 @@ async fn test_wallet_send_invalid() {
     let _ = env.cli.run(&["wallet", "init"]).await;
 
     // Try to send to invalid address (should fail)
-    let output = env.cli.run(&[
-        "wallet", "send",
-        "not-a-valid-address",
-        "100"
-    ]).await;
+    let output = env
+        .cli
+        .run(&["wallet", "send", "not-a-valid-address", "100"])
+        .await;
 
     match output {
         Ok(out) => {
             // Should fail
-            assert!(
-                !out.success(),
-                "Should fail for invalid address"
-            );
+            assert!(!out.success(), "Should fail for invalid address");
             let combined = out.combined();
             assert!(
-                combined.contains("error") || combined.contains("Error") || combined.contains("invalid") || combined.contains("Invalid"),
+                combined.contains("error")
+                    || combined.contains("Error")
+                    || combined.contains("invalid")
+                    || combined.contains("Invalid"),
                 "Should have error message: {}",
                 combined
             );
@@ -213,7 +217,10 @@ async fn test_wallet_lifecycle() {
 
     // Step 1: Initialize wallet
     let init_result = env.cli.run(&["wallet", "init"]).await;
-    println!("Init result: {:?}", init_result.as_ref().map(|o| o.combined()));
+    println!(
+        "Init result: {:?}",
+        init_result.as_ref().map(|o| o.combined())
+    );
 
     // Step 2: Check identity
     let whoami_result = env.cli.run(&["wallet", "whoami"]).await;
@@ -255,15 +262,13 @@ async fn test_wallet_payment_flow() {
     // Get receive address
     let receive_result = env.cli.run(&["wallet", "receive"]).await;
     let address = match receive_result {
-        Ok(out) if out.success() => {
-            match extract_address(&out.stdout) {
-                Some(addr) => addr,
-                None => {
-                    println!("Could not extract address from output, skipping");
-                    return;
-                }
+        Ok(out) if out.success() => match extract_address(&out.stdout) {
+            Some(addr) => addr,
+            None => {
+                println!("Could not extract address from output, skipping");
+                return;
             }
-        }
+        },
         _ => {
             println!("Receive command failed (wallet not initialized properly), skipping");
             return;

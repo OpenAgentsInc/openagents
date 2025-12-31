@@ -2,17 +2,17 @@
 
 #![allow(dead_code)]
 
-use anyhow::{Context, Result};
-use colored::Colorize;
-use crate::cli::load_mnemonic;
 use crate::cli::error::{WalletError, format_error_with_hint};
+use crate::cli::load_mnemonic;
 use crate::core::identity::UnifiedIdentity;
-use spark::{Network, SparkSigner, SparkWallet, WalletConfig as SparkWalletConfig};
 use crate::storage::identities::{
-    current_identity, register_identity, remove_identity as unregister_identity,
-    set_current_identity, IdentityRegistry, DEFAULT_IDENTITY_NAME,
+    DEFAULT_IDENTITY_NAME, IdentityRegistry, current_identity, register_identity,
+    remove_identity as unregister_identity, set_current_identity,
 };
 use crate::storage::keychain::SecureKeychain;
+use anyhow::{Context, Result};
+use colored::Colorize;
+use spark::{Network, SparkSigner, SparkWallet, WalletConfig as SparkWalletConfig};
 use std::io::IsTerminal;
 use std::path::PathBuf;
 
@@ -67,8 +67,7 @@ pub fn init(show_mnemonic: bool) -> Result<()> {
         return Err(error.into());
     }
 
-    let identity = UnifiedIdentity::generate()
-        .context("Failed to generate identity")?;
+    let identity = UnifiedIdentity::generate().context("Failed to generate identity")?;
 
     let mnemonic_phrase = identity.mnemonic().to_string();
 
@@ -81,17 +80,34 @@ pub fn init(show_mnemonic: bool) -> Result<()> {
     println!();
 
     if show_mnemonic {
-        println!("{}", "WARNING: Anyone with this phrase can access your wallet!".red().bold());
+        println!(
+            "{}",
+            "WARNING: Anyone with this phrase can access your wallet!"
+                .red()
+                .bold()
+        );
         println!();
         println!("{}", "Your recovery phrase:".bold());
         println!("{}", mnemonic_phrase.yellow());
         println!();
     }
 
-    println!("{}", "IMPORTANT: Write down your recovery phrase and store it safely!".yellow().bold());
-    println!("{}", "Use 'openagents wallet export' to view it again.".cyan());
+    println!(
+        "{}",
+        "IMPORTANT: Write down your recovery phrase and store it safely!"
+            .yellow()
+            .bold()
+    );
+    println!(
+        "{}",
+        "Use 'openagents wallet export' to view it again.".cyan()
+    );
     println!();
-    println!("{}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
+    println!(
+        "{}: {}",
+        "Nostr Public Key".bold(),
+        identity.nostr_public_key()
+    );
 
     Ok(())
 }
@@ -123,7 +139,12 @@ pub fn import(mnemonic: Option<String>) -> Result<()> {
         .context("Failed to derive identity from mnemonic")?;
 
     if SecureKeychain::has_mnemonic_for(DEFAULT_IDENTITY_NAME) {
-        println!("{}", "WARNING: This will replace your existing wallet!".red().bold());
+        println!(
+            "{}",
+            "WARNING: This will replace your existing wallet!"
+                .red()
+                .bold()
+        );
         print!("Type 'yes' to confirm: ");
         io::stdout().flush()?;
         let mut confirm = String::new();
@@ -142,7 +163,11 @@ pub fn import(mnemonic: Option<String>) -> Result<()> {
 
     println!("{} Wallet imported", "✓".green());
     println!();
-    println!("{}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
+    println!(
+        "{}: {}",
+        "Nostr Public Key".bold(),
+        identity.nostr_public_key()
+    );
 
     Ok(())
 }
@@ -190,8 +215,7 @@ pub fn identity_create(name: String, show_mnemonic: bool) -> Result<()> {
 
     println!("{}", format!("Creating identity '{}'...", name).cyan());
 
-    let identity = UnifiedIdentity::generate()
-        .context("Failed to generate identity")?;
+    let identity = UnifiedIdentity::generate().context("Failed to generate identity")?;
     let mnemonic_phrase = identity.mnemonic().to_string();
 
     SecureKeychain::store_mnemonic_for(&name, &mnemonic_phrase)
@@ -203,11 +227,20 @@ pub fn identity_create(name: String, show_mnemonic: bool) -> Result<()> {
     println!("{} Identity created", "✓".green());
     println!("{}", format!("Active identity: {}", name).cyan());
     println!();
-    println!("{}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
+    println!(
+        "{}: {}",
+        "Nostr Public Key".bold(),
+        identity.nostr_public_key()
+    );
 
     if show_mnemonic {
         println!();
-        println!("{}", "WARNING: Anyone with this phrase can access your wallet!".red().bold());
+        println!(
+            "{}",
+            "WARNING: Anyone with this phrase can access your wallet!"
+                .red()
+                .bold()
+        );
         println!("{}", "Your recovery phrase:".bold());
         println!("{}", mnemonic_phrase.yellow());
     }
@@ -261,7 +294,11 @@ pub fn identity_import(name: String, mnemonic: Option<String>) -> Result<()> {
 
     println!("{} Identity imported", "✓".green());
     println!("{}", format!("Active identity: {}", name).cyan());
-    println!("{}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
+    println!(
+        "{}: {}",
+        "Nostr Public Key".bold(),
+        identity.nostr_public_key()
+    );
 
     Ok(())
 }
@@ -325,7 +362,12 @@ pub fn export() -> Result<()> {
     println!();
 
     // Require confirmation
-    println!("{}", "WARNING: This will display your recovery phrase on screen!".yellow().bold());
+    println!(
+        "{}",
+        "WARNING: This will display your recovery phrase on screen!"
+            .yellow()
+            .bold()
+    );
     println!("{}", "Anyone who sees this can steal your funds!".yellow());
     print!("\nType 'yes' to confirm: ");
     io::stdout().flush()?;
@@ -347,17 +389,22 @@ pub fn export() -> Result<()> {
     println!();
     println!("{}", mnemonic_phrase.yellow());
     println!();
-    println!("{}", "IMPORTANT: Write this down and store it safely!".red().bold());
+    println!(
+        "{}",
+        "IMPORTANT: Write this down and store it safely!"
+            .red()
+            .bold()
+    );
     println!("{}", "Never share it with anyone!".red().bold());
 
     Ok(())
 }
 
 pub fn whoami() -> Result<()> {
-    use bip39::Mnemonic;
-    use crate::core::nostr::Profile;
     use crate::core::nip05::verify_nip05_cached;
+    use crate::core::nostr::Profile;
     use crate::storage::config::WalletConfig;
+    use bip39::Mnemonic;
 
     println!("{}", "Wallet Information".cyan().bold());
     println!();
@@ -366,12 +413,10 @@ pub fn whoami() -> Result<()> {
     let mnemonic_phrase = load_mnemonic()?;
 
     // Parse mnemonic
-    let mnemonic = Mnemonic::parse(&mnemonic_phrase)
-        .context("Invalid mnemonic in keychain")?;
+    let mnemonic = Mnemonic::parse(&mnemonic_phrase).context("Invalid mnemonic in keychain")?;
 
     // Derive identity
-    let identity = UnifiedIdentity::from_mnemonic(mnemonic)
-        .context("Failed to derive identity")?;
+    let identity = UnifiedIdentity::from_mnemonic(mnemonic).context("Failed to derive identity")?;
 
     let npub = identity.npub().context("Failed to encode npub")?;
 
@@ -391,10 +436,18 @@ pub fn whoami() -> Result<()> {
     let identity_name = current_identity().unwrap_or_else(|_| DEFAULT_IDENTITY_NAME.to_string());
     println!("  {}: {}", "Active Identity".bold(), identity_name);
     println!("  {}: {}", "Nostr npub".bold(), npub);
-    println!("  {}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
-    let spark_address = spark_address_from_mnemonic(&mnemonic_phrase)
-        .unwrap_or_else(|| "unavailable".to_string());
-    println!("  {}: {}", "Spark Address (Lightning)".bold(), spark_address);
+    println!(
+        "  {}: {}",
+        "Nostr Public Key".bold(),
+        identity.nostr_public_key()
+    );
+    let spark_address =
+        spark_address_from_mnemonic(&mnemonic_phrase).unwrap_or_else(|| "unavailable".to_string());
+    println!(
+        "  {}: {}",
+        "Spark Address (Lightning)".bold(),
+        spark_address
+    );
     println!();
     println!("{}", "Balance".bold());
     println!("  {}: {} sats", "Total".bold(), 0);
@@ -411,8 +464,7 @@ pub fn whoami() -> Result<()> {
         }
         if let Some(nip05) = &profile.nip05 {
             // Verify NIP-05
-            let verified = verify_nip05_cached(nip05, identity.nostr_public_key())
-                .unwrap_or(false);
+            let verified = verify_nip05_cached(nip05, identity.nostr_public_key()).unwrap_or(false);
 
             if verified {
                 println!("  {}: {} {}", "NIP-05".bold(), nip05, "✓".green());
@@ -426,10 +478,10 @@ pub fn whoami() -> Result<()> {
 }
 
 pub fn profile_show() -> Result<()> {
-    use bip39::Mnemonic;
-    use crate::core::nostr::Profile;
     use crate::core::nip05::verify_nip05_cached;
+    use crate::core::nostr::Profile;
     use crate::storage::config::WalletConfig;
+    use bip39::Mnemonic;
 
     println!("{}", "Profile Information".cyan().bold());
     println!();
@@ -465,8 +517,7 @@ pub fn profile_show() -> Result<()> {
         }
         if let Some(nip05) = &profile.nip05 {
             // Verify NIP-05
-            let verified = verify_nip05_cached(nip05, identity.nostr_public_key())
-                .unwrap_or(false);
+            let verified = verify_nip05_cached(nip05, identity.nostr_public_key()).unwrap_or(false);
 
             if verified {
                 println!("  {}: {} {}", "NIP-05".bold(), nip05, "✓".green());
@@ -485,9 +536,9 @@ pub fn profile_set(
     picture: Option<String>,
     nip05: Option<String>,
 ) -> Result<()> {
-    use bip39::Mnemonic;
     use crate::core::nostr::{Profile, ProfileUpdate, create_profile_event};
     use crate::storage::config::WalletConfig;
+    use bip39::Mnemonic;
 
     println!("{}", "Updating profile...".cyan());
 
@@ -561,7 +612,9 @@ pub fn profile_set(
                 println!("  {} {}", "✓".green(), result.relay_url);
                 success_count += 1;
             } else {
-                let error = result.error_message().unwrap_or_else(|| "Unknown error".to_string());
+                let error = result
+                    .error_message()
+                    .unwrap_or_else(|| "Unknown error".to_string());
                 println!("  {} {} - {}", "✗".red(), result.relay_url, error);
                 fail_count += 1;
             }
@@ -569,14 +622,22 @@ pub fn profile_set(
 
         println!();
         if success_count > 0 {
-            println!("{} Published to {}/{} relay(s)", "✓".green(), success_count, success_count + fail_count);
+            println!(
+                "{} Published to {}/{} relay(s)",
+                "✓".green(),
+                success_count,
+                success_count + fail_count
+            );
         }
         if fail_count > 0 {
             println!("{} {} relay(s) failed", "⚠".yellow(), fail_count);
         }
     } else {
         println!();
-        println!("{}", "Note: No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        println!(
+            "{}",
+            "Note: No relays configured. Use 'wallet relays add <url>' to add relays.".yellow()
+        );
     }
 
     println!();
@@ -588,7 +649,10 @@ pub fn profile_set(
 fn contacts_path() -> Result<PathBuf> {
     let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
     let identity = current_identity().unwrap_or_else(|_| DEFAULT_IDENTITY_NAME.to_string());
-    Ok(home.join(".openagents").join("contacts").join(format!("{}.json", identity)))
+    Ok(home
+        .join(".openagents")
+        .join("contacts")
+        .join(format!("{}.json", identity)))
 }
 
 fn load_contacts() -> Result<Vec<nostr::Contact>> {
@@ -637,7 +701,8 @@ fn create_contact_list_event(
         content: "".to_string(),
     };
 
-    identity.sign_event(template)
+    identity
+        .sign_event(template)
         .context("Failed to sign contact list event")
 }
 
@@ -656,12 +721,7 @@ pub fn contacts_list() -> Result<()> {
 
     for (index, contact) in contacts.iter().enumerate() {
         if let Some(name) = &contact.petname {
-            println!(
-                "{}. {} ({})",
-                index + 1,
-                name,
-                contact.pubkey
-            );
+            println!("{}. {} ({})", index + 1, name, contact.pubkey);
         } else {
             println!("{}. {}", index + 1, contact.pubkey);
         }
@@ -671,16 +731,19 @@ pub fn contacts_list() -> Result<()> {
 }
 
 pub fn contacts_add(npub: String, name: Option<String>) -> Result<()> {
-    use bip39::Mnemonic;
     use crate::core::client::NostrClient;
     use crate::storage::config::WalletConfig;
+    use bip39::Mnemonic;
 
     println!("{}", "Adding contact...".cyan());
 
     let pubkey_hex = parse_contact_pubkey(&npub)?;
     let mut contacts = load_contacts()?;
 
-    if let Some(existing) = contacts.iter_mut().find(|contact| contact.pubkey == pubkey_hex) {
+    if let Some(existing) = contacts
+        .iter_mut()
+        .find(|contact| contact.pubkey == pubkey_hex)
+    {
         existing.petname = name.clone();
     } else {
         contacts.push(nostr::Contact {
@@ -703,7 +766,10 @@ pub fn contacts_add(npub: String, name: Option<String>) -> Result<()> {
 
     if config.nostr.relays.is_empty() {
         println!();
-        println!("{}", "Note: No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        println!(
+            "{}",
+            "Note: No relays configured. Use 'wallet relays add <url>' to add relays.".yellow()
+        );
         println!("{}: {}", "Event ID".bold(), event.id);
         return Ok(());
     }
@@ -723,7 +789,9 @@ pub fn contacts_add(npub: String, name: Option<String>) -> Result<()> {
             println!("  {} {}", "✓".green(), result.relay_url);
             success_count += 1;
         } else {
-            let error = result.error_message().unwrap_or_else(|| "Unknown error".to_string());
+            let error = result
+                .error_message()
+                .unwrap_or_else(|| "Unknown error".to_string());
             println!("  {} {} - {}", "✗".red(), result.relay_url, error);
             fail_count += 1;
         }
@@ -731,7 +799,12 @@ pub fn contacts_add(npub: String, name: Option<String>) -> Result<()> {
 
     println!();
     if success_count > 0 {
-        println!("{} Published to {}/{} relay(s)", "✓".green(), success_count, success_count + fail_count);
+        println!(
+            "{} Published to {}/{} relay(s)",
+            "✓".green(),
+            success_count,
+            success_count + fail_count
+        );
     }
     if fail_count > 0 {
         println!("{} {} relay(s) failed", "⚠".yellow(), fail_count);
@@ -741,9 +814,9 @@ pub fn contacts_add(npub: String, name: Option<String>) -> Result<()> {
 }
 
 pub fn contacts_remove(npub: String) -> Result<()> {
-    use bip39::Mnemonic;
     use crate::core::client::NostrClient;
     use crate::storage::config::WalletConfig;
+    use bip39::Mnemonic;
 
     println!("{}", "Removing contact...".cyan());
 
@@ -771,7 +844,10 @@ pub fn contacts_remove(npub: String) -> Result<()> {
 
     if config.nostr.relays.is_empty() {
         println!();
-        println!("{}", "Note: No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        println!(
+            "{}",
+            "Note: No relays configured. Use 'wallet relays add <url>' to add relays.".yellow()
+        );
         println!("{}: {}", "Event ID".bold(), event.id);
         return Ok(());
     }
@@ -791,7 +867,9 @@ pub fn contacts_remove(npub: String) -> Result<()> {
             println!("  {} {}", "✓".green(), result.relay_url);
             success_count += 1;
         } else {
-            let error = result.error_message().unwrap_or_else(|| "Unknown error".to_string());
+            let error = result
+                .error_message()
+                .unwrap_or_else(|| "Unknown error".to_string());
             println!("  {} {} - {}", "✗".red(), result.relay_url, error);
             fail_count += 1;
         }
@@ -799,7 +877,12 @@ pub fn contacts_remove(npub: String) -> Result<()> {
 
     println!();
     if success_count > 0 {
-        println!("{} Published to {}/{} relay(s)", "✓".green(), success_count, success_count + fail_count);
+        println!(
+            "{} Published to {}/{} relay(s)",
+            "✓".green(),
+            success_count,
+            success_count + fail_count
+        );
     }
     if fail_count > 0 {
         println!("{} {} relay(s) failed", "⚠".yellow(), fail_count);
@@ -809,10 +892,10 @@ pub fn contacts_remove(npub: String) -> Result<()> {
 }
 
 pub fn post(content: String) -> Result<()> {
-    use bip39::Mnemonic;
-    use crate::core::nostr::create_note_event;
     use crate::core::client::NostrClient;
+    use crate::core::nostr::create_note_event;
     use crate::storage::config::WalletConfig;
+    use bip39::Mnemonic;
 
     println!("{}", "Publishing note...".cyan());
 
@@ -831,7 +914,10 @@ pub fn post(content: String) -> Result<()> {
     let config = WalletConfig::load()?;
 
     if config.nostr.relays.is_empty() {
-        println!("{}", "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        println!(
+            "{}",
+            "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow()
+        );
         println!("{}: {}", "Event ID".bold(), event.id);
         return Ok(());
     }
@@ -850,7 +936,9 @@ pub fn post(content: String) -> Result<()> {
             println!("  {} {}", "✓".green(), result.relay_url);
             success_count += 1;
         } else {
-            let error = result.error_message().unwrap_or_else(|| "Unknown error".to_string());
+            let error = result
+                .error_message()
+                .unwrap_or_else(|| "Unknown error".to_string());
             println!("  {} {} - {}", "✗".red(), result.relay_url, error);
             fail_count += 1;
         }
@@ -858,7 +946,12 @@ pub fn post(content: String) -> Result<()> {
 
     println!();
     if success_count > 0 {
-        println!("{} Published to {}/{} relay(s)", "✓".green(), success_count, success_count + fail_count);
+        println!(
+            "{} Published to {}/{} relay(s)",
+            "✓".green(),
+            success_count,
+            success_count + fail_count
+        );
     }
     if fail_count > 0 {
         println!("{} {} relay(s) failed", "⚠".yellow(), fail_count);
@@ -871,9 +964,9 @@ pub fn post(content: String) -> Result<()> {
 }
 
 pub fn dm_send(recipient: String, message: String) -> Result<()> {
-    use bip39::Mnemonic;
     use crate::core::client::NostrClient;
     use crate::storage::config::WalletConfig;
+    use bip39::Mnemonic;
 
     println!("{}", "Sending encrypted DM (NIP-04)...".cyan());
 
@@ -892,7 +985,8 @@ pub fn dm_send(recipient: String, message: String) -> Result<()> {
     // Get sender's private key bytes (nostr_secret_key returns hex string)
     let sender_privkey_hex = identity.nostr_secret_key();
     let sender_privkey_vec = hex::decode(sender_privkey_hex)?;
-    let sender_privkey: [u8; 32] = sender_privkey_vec.try_into()
+    let sender_privkey: [u8; 32] = sender_privkey_vec
+        .try_into()
         .map_err(|_| anyhow::anyhow!("Invalid private key length"))?;
 
     // Convert recipient pubkey to compressed format (33 bytes with 0x02 or 0x03 prefix)
@@ -911,13 +1005,12 @@ pub fn dm_send(recipient: String, message: String) -> Result<()> {
             .duration_since(std::time::UNIX_EPOCH)?
             .as_secs(),
         kind: nostr::ENCRYPTED_DM_KIND,
-        tags: vec![
-            vec!["p".to_string(), hex::encode(recipient_pubkey)],
-        ],
+        tags: vec![vec!["p".to_string(), hex::encode(recipient_pubkey)]],
         content: encrypted_content,
     };
 
-    let event = identity.sign_event(template)
+    let event = identity
+        .sign_event(template)
         .context("Failed to sign DM event")?;
 
     println!("  {} → {}", "To".bold(), &recipient[..20]);
@@ -928,7 +1021,10 @@ pub fn dm_send(recipient: String, message: String) -> Result<()> {
     let config = WalletConfig::load()?;
 
     if config.nostr.relays.is_empty() {
-        println!("{}", "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        println!(
+            "{}",
+            "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow()
+        );
         println!("{}: {}", "Event ID".bold(), event.id);
         return Ok(());
     }
@@ -952,7 +1048,12 @@ pub fn dm_send(recipient: String, message: String) -> Result<()> {
 
     println!();
     if success_count > 0 {
-        println!("{} Sent to {}/{} relay(s)", "✓".green(), success_count, success_count + fail_count);
+        println!(
+            "{} Sent to {}/{} relay(s)",
+            "✓".green(),
+            success_count,
+            success_count + fail_count
+        );
     }
     if fail_count > 0 {
         println!("{} {} relay(s) failed", "⚠".yellow(), fail_count);
@@ -965,9 +1066,9 @@ pub fn dm_send(recipient: String, message: String) -> Result<()> {
 }
 
 pub fn dm_list(limit: usize) -> Result<()> {
-    use bip39::Mnemonic;
     use crate::core::client::NostrClient;
     use crate::storage::config::WalletConfig;
+    use bip39::Mnemonic;
     use chrono::{DateTime, Utc};
 
     println!("{}", "Direct Messages".cyan().bold());
@@ -984,7 +1085,10 @@ pub fn dm_list(limit: usize) -> Result<()> {
     let config = WalletConfig::load()?;
 
     if config.nostr.relays.is_empty() {
-        println!("{}", "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        println!(
+            "{}",
+            "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow()
+        );
         return Ok(());
     }
 
@@ -1012,7 +1116,8 @@ pub fn dm_list(limit: usize) -> Result<()> {
     // Get sender's private key for decryption
     let sender_privkey_hex = identity.nostr_secret_key();
     let sender_privkey_vec = hex::decode(sender_privkey_hex)?;
-    let sender_privkey: [u8; 32] = sender_privkey_vec.try_into()
+    let sender_privkey: [u8; 32] = sender_privkey_vec
+        .try_into()
         .map_err(|_| anyhow::anyhow!("Invalid private key length"))?;
 
     // Display DMs
@@ -1045,7 +1150,11 @@ pub fn dm_list(limit: usize) -> Result<()> {
             "[Invalid sender pubkey]".to_string()
         };
 
-        println!("{} {}", format!("{}.", i + 1).bold(), time_str.to_string().dimmed());
+        println!(
+            "{} {}",
+            format!("{}.", i + 1).bold(),
+            time_str.to_string().dimmed()
+        );
         println!("  {} {}", "From:".bold(), sender_short.dimmed());
         println!("  {} {}", "ID:".bold(), event.id.dimmed());
         println!("  {}", decrypted);
@@ -1058,9 +1167,9 @@ pub fn dm_list(limit: usize) -> Result<()> {
 }
 
 pub fn dm_read(event_id: String) -> Result<()> {
-    use bip39::Mnemonic;
     use crate::core::client::NostrClient;
     use crate::storage::config::WalletConfig;
+    use bip39::Mnemonic;
     use chrono::{DateTime, Utc};
 
     println!("{}", "Reading Direct Message".cyan().bold());
@@ -1075,7 +1184,10 @@ pub fn dm_read(event_id: String) -> Result<()> {
     let config = WalletConfig::load()?;
 
     if config.nostr.relays.is_empty() {
-        println!("{}", "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        println!(
+            "{}",
+            "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow()
+        );
         return Ok(());
     }
 
@@ -1100,7 +1212,8 @@ pub fn dm_read(event_id: String) -> Result<()> {
     // Get sender's private key for decryption
     let sender_privkey_hex = identity.nostr_secret_key();
     let sender_privkey_vec = hex::decode(sender_privkey_hex)?;
-    let sender_privkey: [u8; 32] = sender_privkey_vec.try_into()
+    let sender_privkey: [u8; 32] = sender_privkey_vec
+        .try_into()
         .map_err(|_| anyhow::anyhow!("Invalid private key length"))?;
 
     // Decrypt message
@@ -1120,8 +1233,8 @@ pub fn dm_read(event_id: String) -> Result<()> {
     };
 
     // Format timestamp
-    let dt = DateTime::<Utc>::from_timestamp(event.created_at as i64, 0)
-        .unwrap_or(DateTime::UNIX_EPOCH);
+    let dt =
+        DateTime::<Utc>::from_timestamp(event.created_at as i64, 0).unwrap_or(DateTime::UNIX_EPOCH);
     let time_str = dt.format("%Y-%m-%d %H:%M:%S UTC");
 
     println!("{} {}", "From:".bold(), event.pubkey);
@@ -1145,11 +1258,17 @@ pub fn feed(limit: usize) -> Result<()> {
     let config = WalletConfig::load()?;
 
     if config.nostr.relays.is_empty() {
-        println!("{}", "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        println!(
+            "{}",
+            "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow()
+        );
         return Ok(());
     }
 
-    println!("Fetching {} events from {}...", limit, config.nostr.relays[0]);
+    println!(
+        "Fetching {} events from {}...",
+        limit, config.nostr.relays[0]
+    );
     println!();
 
     // Fetch feed
@@ -1176,7 +1295,11 @@ pub fn feed(limit: usize) -> Result<()> {
             event.pubkey.clone()
         };
 
-        println!("{} {}", format!("{}.", i + 1).bold(), time_str.to_string().dimmed());
+        println!(
+            "{} {}",
+            format!("{}.", i + 1).bold(),
+            time_str.to_string().dimmed()
+        );
         println!("  {} {}", "From:".bold(), pubkey_short.dimmed());
         println!("  {}", event.content);
         println!();

@@ -72,7 +72,6 @@ impl SkillCategory {
             SkillCategory::Other(s) => s.as_str(),
         }
     }
-
 }
 
 impl FromStr for SkillCategory {
@@ -284,10 +283,13 @@ impl SkillBrowser {
         });
 
         // Subscribe to handler events
-        let sub_id = format!("browse-skills-{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs());
+        let sub_id = format!(
+            "browse-skills-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        );
 
         let mut rx = self
             .pool
@@ -390,16 +392,18 @@ impl SkillBrowser {
         let _ = self.pool.disconnect_all().await;
 
         match result {
-            Ok(Some(event)) => {
-                match HandlerInfo::from_event(&event) {
-                    Ok(handler) => Ok(SkillListing::from_handler_info(handler)),
-                    Err(e) => Err(BrowseError::Parse(format!("Failed to parse handler: {}", e))),
-                }
-            }
+            Ok(Some(event)) => match HandlerInfo::from_event(&event) {
+                Ok(handler) => Ok(SkillListing::from_handler_info(handler)),
+                Err(e) => Err(BrowseError::Parse(format!(
+                    "Failed to parse handler: {}",
+                    e
+                ))),
+            },
             Ok(None) => Err(BrowseError::NoSkillsFound),
-            Err(_) => Err(BrowseError::Network(
-                format!("Timeout fetching skill {}", skill_id)
-            )),
+            Err(_) => Err(BrowseError::Network(format!(
+                "Timeout fetching skill {}",
+                skill_id
+            ))),
         }
     }
 
@@ -443,7 +447,10 @@ mod tests {
     #[test]
     fn test_skill_category_conversions() {
         assert_eq!(SkillCategory::DevTools.as_str(), "dev-tools");
-        assert_eq!(SkillCategory::from_str("dev-tools"), Ok(SkillCategory::DevTools));
+        assert_eq!(
+            SkillCategory::from_str("dev-tools"),
+            Ok(SkillCategory::DevTools)
+        );
 
         let custom = SkillCategory::Other("custom".to_string());
         assert_eq!(custom.as_str(), "custom");

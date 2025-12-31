@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::storage::identities::{current_identity, DEFAULT_IDENTITY_NAME};
+use crate::storage::identities::{DEFAULT_IDENTITY_NAME, current_identity};
 use crate::storage::keychain::{SecureKeychain, WALLET_PASSWORD_ENV};
 
 use super::types::{WalletCommand, WalletUpdate};
@@ -15,7 +15,12 @@ pub struct WalletBackendHandle {
 }
 
 impl WalletBackendHandle {
-    pub fn split(self) -> (UnboundedSender<WalletCommand>, UnboundedReceiver<WalletUpdate>) {
+    pub fn split(
+        self,
+    ) -> (
+        UnboundedSender<WalletCommand>,
+        UnboundedReceiver<WalletUpdate>,
+    ) {
         (self.sender, self.receiver)
     }
 }
@@ -76,18 +81,16 @@ async fn run_backend(
         };
 
         match cmd {
-            WalletCommand::RefreshBalance => {
-                match wallet_ref.get_balance().await {
-                    Ok(balance) => {
-                        let _ = update_tx.send(WalletUpdate::Balance(balance));
-                    }
-                    Err(err) => {
-                        let _ = update_tx.send(WalletUpdate::Error {
-                            message: err.to_string(),
-                        });
-                    }
+            WalletCommand::RefreshBalance => match wallet_ref.get_balance().await {
+                Ok(balance) => {
+                    let _ = update_tx.send(WalletUpdate::Balance(balance));
                 }
-            }
+                Err(err) => {
+                    let _ = update_tx.send(WalletUpdate::Error {
+                        message: err.to_string(),
+                    });
+                }
+            },
             WalletCommand::RequestReceive { amount } => {
                 if let Some(sats) = amount {
                     match wallet_ref.create_invoice(sats, None, None).await {
@@ -119,23 +122,24 @@ async fn run_backend(
                     }
                 }
             }
-            WalletCommand::SendPayment { destination, amount } => {
-                match wallet_ref.send_payment_simple(&destination, amount).await {
-                    Ok(response) => {
-                        let _ = update_tx.send(WalletUpdate::SendSuccess {
-                            payment_id: response.payment.id,
-                        });
-                        if let Ok(balance) = wallet_ref.get_balance().await {
-                            let _ = update_tx.send(WalletUpdate::Balance(balance));
-                        }
-                    }
-                    Err(err) => {
-                        let _ = update_tx.send(WalletUpdate::Error {
-                            message: err.to_string(),
-                        });
+            WalletCommand::SendPayment {
+                destination,
+                amount,
+            } => match wallet_ref.send_payment_simple(&destination, amount).await {
+                Ok(response) => {
+                    let _ = update_tx.send(WalletUpdate::SendSuccess {
+                        payment_id: response.payment.id,
+                    });
+                    if let Ok(balance) = wallet_ref.get_balance().await {
+                        let _ = update_tx.send(WalletUpdate::Balance(balance));
                     }
                 }
-            }
+                Err(err) => {
+                    let _ = update_tx.send(WalletUpdate::Error {
+                        message: err.to_string(),
+                    });
+                }
+            },
             WalletCommand::LoadPayments { offset, limit } => {
                 match wallet_ref.list_payments(Some(limit), Some(offset)).await {
                     Ok(payments) => {

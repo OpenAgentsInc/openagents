@@ -2,28 +2,31 @@
 
 #![allow(dead_code)]
 
+use super::error::{WalletError, format_error_with_hint};
+use super::validation::{detect_and_validate_destination, validate_amount};
+use crate::cli::load_mnemonic;
+use crate::core::client::NostrClient;
+use crate::core::identity::UnifiedIdentity;
+use crate::core::nwc::{NwcService, build_connection, publish_info_event};
+use crate::storage::address_book::AddressBook;
+use crate::storage::config::WalletConfig as LocalWalletConfig;
+use crate::storage::nwc::NwcConnectionStore;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bech32::{Bech32, Hrp};
 use bip39::Mnemonic;
 use chrono;
 use colored::Colorize;
-use nostr::{decode as decode_nip19, Event, EventTemplate, Nip19Entity, ZapReceipt, ZAP_RECEIPT_KIND, ZAP_REQUEST_KIND};
+use nostr::{
+    Event, EventTemplate, Nip19Entity, ZAP_RECEIPT_KIND, ZAP_REQUEST_KIND, ZapReceipt,
+    decode as decode_nip19,
+};
 use reqwest::{Client, Url};
 use serde::Deserialize;
 use spark::{EventListener, Network, SdkEvent, SparkSigner, SparkWallet, WalletConfig};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use crate::cli::load_mnemonic;
-use crate::core::client::NostrClient;
-use crate::core::identity::UnifiedIdentity;
-use crate::core::nwc::{build_connection, publish_info_event, NwcService};
-use crate::storage::address_book::AddressBook;
-use crate::storage::config::WalletConfig as LocalWalletConfig;
-use crate::storage::nwc::NwcConnectionStore;
-use super::error::{WalletError, format_error_with_hint};
-use super::validation::{detect_and_validate_destination, validate_amount};
 
 const CLIPBOARD_FILE_ENV: &str = "OPENAGENTS_CLIPBOARD_FILE";
 const NOTIFICATION_FILE_ENV: &str = "OPENAGENTS_NOTIFICATION_FILE";
@@ -78,11 +81,7 @@ pub fn balance() -> Result<()> {
         let usd_rate = match fetch_btc_usd_rate().await {
             Ok(rate) => rate,
             Err(err) => {
-                eprintln!(
-                    "{} USD pricing unavailable: {}",
-                    "Warning:".yellow(),
-                    err
-                );
+                eprintln!("{} USD pricing unavailable: {}", "Warning:".yellow(), err);
                 None
             }
         };
@@ -143,9 +142,12 @@ pub fn receive(amount: Option<u64>, show_qr: bool, copy: bool, expiry: Option<u6
 
         match amount {
             Some(sats) => {
-                let response = wallet.create_invoice(sats, None, expiry).await
+                let response = wallet
+                    .create_invoice(sats, None, expiry)
+                    .await
                     .map_err(|e| {
-                        let error = WalletError::NetworkError(format!("Failed to create invoice: {}", e));
+                        let error =
+                            WalletError::NetworkError(format!("Failed to create invoice: {}", e));
                         eprintln!("{}", format_error_with_hint(&error));
                         anyhow::anyhow!("{}", e)
                     })?;
@@ -158,12 +160,12 @@ pub fn receive(amount: Option<u64>, show_qr: bool, copy: bool, expiry: Option<u6
                 print!("{}", output);
             }
             None => {
-                let address = wallet.get_spark_address().await
-                    .map_err(|e| {
-                        let error = WalletError::NetworkError(format!("Failed to get Spark address: {}", e));
-                        eprintln!("{}", format_error_with_hint(&error));
-                        anyhow::anyhow!("{}", e)
-                    })?;
+                let address = wallet.get_spark_address().await.map_err(|e| {
+                    let error =
+                        WalletError::NetworkError(format!("Failed to get Spark address: {}", e));
+                    eprintln!("{}", format_error_with_hint(&error));
+                    anyhow::anyhow!("{}", e)
+                })?;
 
                 let mut output = format_receive_address(&address, show_qr)?;
                 if copy {
@@ -286,10 +288,7 @@ fn payment_notification_message(payment: &spark::Payment) -> Option<String> {
     }
 
     let method = format_payment_method(payment.method);
-    Some(format!(
-        "Received {} sats via {}",
-        payment.amount, method
-    ))
+    Some(format!("Received {} sats via {}", payment.amount, method))
 }
 
 fn format_payment_method(method: spark::PaymentMethod) -> &'static str {
@@ -304,19 +303,19 @@ fn format_payment_method(method: spark::PaymentMethod) -> &'static str {
 }
 
 fn generate_qr_ascii(payload: &str) -> Result<String> {
-    let code = qrcode::QrCode::new(payload.as_bytes())
-        .context("Failed to generate QR code")?;
+    let code = qrcode::QrCode::new(payload.as_bytes()).context("Failed to generate QR code")?;
     let width = code.width();
     let border = 2usize;
     let mut output = String::new();
 
     for y in 0..(width + border * 2) {
         for x in 0..(width + border * 2) {
-            let module_is_dark = if x < border || y < border || x >= width + border || y >= width + border {
-                false
-            } else {
-                code[(x - border, y - border)] == qrcode::types::Color::Dark
-            };
+            let module_is_dark =
+                if x < border || y < border || x >= width + border || y >= width + border {
+                    false
+                } else {
+                    code[(x - border, y - border)] == qrcode::types::Color::Dark
+                };
             if module_is_dark {
                 output.push_str("##");
             } else {
@@ -396,15 +395,15 @@ fn copy_with_command(command: &str, args: &[&str], contents: &str) -> Result<()>
 }
 
 #[cfg(target_os = "linux")]
-fn copy_with_command_if_exists(
-    command: &str,
-    args: &[&str],
-    contents: &str,
-) -> Result<bool> {
+fn copy_with_command_if_exists(command: &str, args: &[&str], contents: &str) -> Result<bool> {
     use std::io::{ErrorKind, Write};
     use std::process::{Command, Stdio};
 
-    let mut child = match Command::new(command).args(args).stdin(Stdio::piped()).spawn() {
+    let mut child = match Command::new(command)
+        .args(args)
+        .stdin(Stdio::piped())
+        .spawn()
+    {
         Ok(child) => child,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
         Err(err) => return Err(err.into()),
@@ -518,7 +517,9 @@ pub fn send(
         println!("Preparing Payment...");
         println!();
 
-        let prepare_response = wallet.prepare_send_payment(&destination, Some(amount)).await
+        let prepare_response = wallet
+            .prepare_send_payment(&destination, Some(amount))
+            .await
             .map_err(|e| {
                 let msg = e.to_string();
                 if msg.to_lowercase().contains("insufficient") {
@@ -687,7 +688,10 @@ struct RetryContext {
     request: RetryRequest,
 }
 
-fn build_send_preview(destination: &str, prepare: &spark::wallet::PrepareSendPaymentResponse) -> SendPreview {
+fn build_send_preview(
+    destination: &str,
+    prepare: &spark::wallet::PrepareSendPaymentResponse,
+) -> SendPreview {
     let (payment_kind, fee_lines) = match &prepare.payment_method {
         spark::wallet::SendPaymentMethod::Bolt11Invoice {
             spark_transfer_fee_sats,
@@ -775,7 +779,9 @@ async fn find_retry_context_by_id(wallet: &SparkWallet, payment_id: &str) -> Res
 async fn find_last_retryable_payment(wallet: &SparkWallet) -> Result<RetryContext> {
     let mut offset = 0u32;
     for _ in 0..RETRY_MAX_PAGES {
-        let payments = wallet.list_payments(Some(RETRY_PAGE_SIZE), Some(offset)).await?;
+        let payments = wallet
+            .list_payments(Some(RETRY_PAGE_SIZE), Some(offset))
+            .await?;
         if payments.is_empty() {
             break;
         }
@@ -807,7 +813,9 @@ async fn find_last_retryable_payment(wallet: &SparkWallet) -> Result<RetryContex
 async fn find_payment_by_id(wallet: &SparkWallet, payment_id: &str) -> Result<spark::Payment> {
     let mut offset = 0u32;
     for _ in 0..RETRY_MAX_PAGES {
-        let payments = wallet.list_payments(Some(RETRY_PAGE_SIZE), Some(offset)).await?;
+        let payments = wallet
+            .list_payments(Some(RETRY_PAGE_SIZE), Some(offset))
+            .await?;
         if payments.is_empty() {
             break;
         }
@@ -866,8 +874,8 @@ fn payment_amount_sats(payment: &spark::Payment) -> Result<Option<u64>> {
         return Ok(None);
     }
 
-    let amount = u64::try_from(payment.amount)
-        .context("Payment amount exceeds supported range.")?;
+    let amount =
+        u64::try_from(payment.amount).context("Payment amount exceeds supported range.")?;
     Ok(Some(amount))
 }
 
@@ -878,7 +886,12 @@ fn confirm_send(skip_confirm: bool) -> Result<bool> {
     let is_terminal = io::stdin().is_terminal();
     let mut stdin = io::stdin();
     let mut reader = io::BufReader::new(&mut stdin);
-    confirm_send_with_reader(skip_confirm, is_terminal, &mut reader, "Confirm payment? [y/N]: ")
+    confirm_send_with_reader(
+        skip_confirm,
+        is_terminal,
+        &mut reader,
+        "Confirm payment? [y/N]: ",
+    )
 }
 
 fn confirm_send_with_reader<R: std::io::BufRead>(
@@ -922,10 +935,7 @@ fn confirm_send_for_amount(
 fn confirmation_prompt(amount: u64, config: &LocalWalletConfig) -> String {
     if let Some(threshold) = config.security.confirm_large_sats {
         if amount >= threshold {
-            return format!(
-                "Confirm large payment of {} sats? [y/N]: ",
-                amount
-            );
+            return format!("Confirm large payment of {} sats? [y/N]: ", amount);
         }
     }
     "Confirm payment? [y/N]: ".to_string()
@@ -977,16 +987,14 @@ fn resolve_send_destination(
 }
 
 fn decode_qr_from_path(path: &Path) -> Result<String> {
-    let image = image::open(path)
-        .with_context(|| format!("Failed to open QR image {}", path.display()))?;
+    let image =
+        image::open(path).with_context(|| format!("Failed to open QR image {}", path.display()))?;
     let gray = image.to_luma8();
     let mut prepared = rqrr::PreparedImage::prepare(gray);
     let grids = prepared.detect_grids();
 
     for grid in grids {
-        let (_meta, content) = grid
-            .decode()
-            .context("Failed to decode QR code")?;
+        let (_meta, content) = grid.decode().context("Failed to decode QR code")?;
         return Ok(content);
     }
 
@@ -1045,7 +1053,9 @@ pub fn history(limit: usize, format: HistoryFormat, output: Option<PathBuf>) -> 
     rt.block_on(async {
         let wallet = get_wallet().await?;
 
-        let payments = wallet.list_payments(Some(limit as u32), None).await
+        let payments = wallet
+            .list_payments(Some(limit as u32), None)
+            .await
             .map_err(|e| {
                 let error = WalletError::NetworkError(format!("Failed to fetch history: {}", e));
                 eprintln!("{}", format_error_with_hint(&error));
@@ -1055,7 +1065,10 @@ pub fn history(limit: usize, format: HistoryFormat, output: Option<PathBuf>) -> 
         match format {
             HistoryFormat::Table => {
                 if output.is_some() {
-                    eprintln!("{}: --output is only supported with --format csv.", "Error".red());
+                    eprintln!(
+                        "{}: --output is only supported with --format csv.",
+                        "Error".red()
+                    );
                     eprintln!();
                     eprintln!(
                         "{}: Use 'openagents wallet history --format csv --output payments.csv'",
@@ -1069,16 +1082,15 @@ pub fn history(limit: usize, format: HistoryFormat, output: Option<PathBuf>) -> 
             HistoryFormat::Csv => {
                 let csv = format_history_csv(&payments);
                 if let Some(path) = output {
-                    std::fs::write(&path, &csv)
-                        .map_err(|e| {
-                            let error = WalletError::FileError(format!(
-                                "Failed to write CSV history to {}: {}",
-                                path.display(),
-                                e
-                            ));
-                            eprintln!("{}", format_error_with_hint(&error));
-                            anyhow::anyhow!("{}", e)
-                        })?;
+                    std::fs::write(&path, &csv).map_err(|e| {
+                        let error = WalletError::FileError(format!(
+                            "Failed to write CSV history to {}: {}",
+                            path.display(),
+                            e
+                        ));
+                        eprintln!("{}", format_error_with_hint(&error));
+                        anyhow::anyhow!("{}", e)
+                    })?;
                     println!("{} Saved CSV history to {}", "✓".green(), path.display());
                 } else {
                     print!("{}", csv);
@@ -1199,7 +1211,10 @@ async fn fetch_btc_usd_rate() -> Result<Option<f64>> {
         .context("Failed to fetch BTC/USD price")?;
 
     if !response.status().is_success() {
-        anyhow::bail!("BTC/USD price request failed with status {}", response.status());
+        anyhow::bail!(
+            "BTC/USD price request failed with status {}",
+            response.status()
+        );
     }
 
     let payload: serde_json::Value = response
@@ -1246,12 +1261,11 @@ fn sats_to_usd(sats: u64, usd_rate: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::address_book::{AddressBook, ADDRESS_BOOK_ENV};
+    use crate::storage::address_book::{ADDRESS_BOOK_ENV, AddressBook};
     use spark::wallet::{
-        Bolt11Invoice, Bolt11InvoiceDetails, BitcoinAddressDetails, BitcoinNetwork,
-        PaymentDetails, PaymentMethod, PaymentRequestSource, PrepareSendPaymentResponse,
-        SendOnchainFeeQuote, SendOnchainSpeedFeeQuote, SendPaymentMethod,
-        SparkInvoicePaymentDetails,
+        BitcoinAddressDetails, BitcoinNetwork, Bolt11Invoice, Bolt11InvoiceDetails, PaymentDetails,
+        PaymentMethod, PaymentRequestSource, PrepareSendPaymentResponse, SendOnchainFeeQuote,
+        SendOnchainSpeedFeeQuote, SendPaymentMethod, SparkInvoicePaymentDetails,
     };
     use std::sync::Mutex;
 
@@ -1415,13 +1429,8 @@ mod tests {
     #[test]
     fn test_confirm_send_declines_on_no() {
         let mut input = std::io::Cursor::new("n\n");
-        let confirmed = confirm_send_with_reader(
-            false,
-            true,
-            &mut input,
-            "Confirm payment? [y/N]: ",
-        )
-        .unwrap();
+        let confirmed =
+            confirm_send_with_reader(false, true, &mut input, "Confirm payment? [y/N]: ").unwrap();
         assert!(!confirmed);
     }
 
@@ -1548,10 +1557,8 @@ mod tests {
 
     #[test]
     fn test_retry_request_from_lightning_details() {
-        let payment = sample_failed_payment(
-            PaymentMethod::Lightning,
-            lightning_details("lnbc1retry"),
-        );
+        let payment =
+            sample_failed_payment(PaymentMethod::Lightning, lightning_details("lnbc1retry"));
         let retry = retry_request_from_payment(&payment).unwrap();
         assert_eq!(retry.payment_request, "lnbc1retry");
         assert_eq!(retry.amount_sats, Some(42));
@@ -1559,10 +1566,8 @@ mod tests {
 
     #[test]
     fn test_retry_request_from_spark_invoice_details() {
-        let payment = sample_failed_payment(
-            PaymentMethod::Spark,
-            spark_invoice_details("spark1retry"),
-        );
+        let payment =
+            sample_failed_payment(PaymentMethod::Spark, spark_invoice_details("spark1retry"));
         let retry = retry_request_from_payment(&payment).unwrap();
         assert_eq!(retry.payment_request, "spark1retry");
         assert_eq!(retry.amount_sats, Some(42));
@@ -1570,10 +1575,8 @@ mod tests {
 
     #[test]
     fn test_retry_request_rejects_non_failed_or_missing_invoice() {
-        let mut completed = sample_failed_payment(
-            PaymentMethod::Lightning,
-            lightning_details("lnbc1retry"),
-        );
+        let mut completed =
+            sample_failed_payment(PaymentMethod::Lightning, lightning_details("lnbc1retry"));
         completed.status = spark::PaymentStatus::Completed;
         let err = retry_request_from_payment(&completed).unwrap_err();
         assert!(err.to_string().contains("Only failed payments"));
@@ -1645,12 +1648,13 @@ mod tests {
 
         for y in 0..(width + border * 2) {
             for x in 0..(width + border * 2) {
-                let is_dark = if x < border || y < border || x >= width + border || y >= width + border {
-                    false
-                } else {
-                    code[(x as usize - border as usize, y as usize - border as usize)]
-                        == qrcode::types::Color::Dark
-                };
+                let is_dark =
+                    if x < border || y < border || x >= width + border || y >= width + border {
+                        false
+                    } else {
+                        code[(x as usize - border as usize, y as usize - border as usize)]
+                            == qrcode::types::Color::Dark
+                    };
                 let pixel = if is_dark { 0 } else { 255 };
                 let start_x = x * scale;
                 let start_y = y * scale;
@@ -1680,15 +1684,12 @@ mod tests {
         }
 
         let mut book = AddressBook::default();
-        book.add("alice".to_string(), "lnbc1alice".to_string()).unwrap();
+        book.add("alice".to_string(), "lnbc1alice".to_string())
+            .unwrap();
         book.save().unwrap();
 
-        let destination = resolve_send_destination(
-            "-".to_string(),
-            None,
-            Some("alice".to_string()),
-        )
-        .unwrap();
+        let destination =
+            resolve_send_destination("-".to_string(), None, Some("alice".to_string())).unwrap();
         assert_eq!(destination, "lnbc1alice");
 
         if let Some(value) = original {
@@ -1756,7 +1757,10 @@ mod tests {
             targets[0].pubkey,
             "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
         );
-        assert_eq!(targets[0].relay_hint, Some("wss://relay.example.com".to_string()));
+        assert_eq!(
+            targets[0].relay_hint,
+            Some("wss://relay.example.com".to_string())
+        );
         assert_eq!(targets[0].weight, Some(2));
     }
 
@@ -1893,7 +1897,10 @@ fn parse_note_reference(note_id: &str) -> Result<NoteReference> {
     } else {
         let cleaned = note_id.trim();
         if cleaned.len() != 64 || hex::decode(cleaned).is_err() {
-            anyhow::bail!("Invalid note id '{}'. Expect 64-char hex or note/nevent.", note_id);
+            anyhow::bail!(
+                "Invalid note id '{}'. Expect 64-char hex or note/nevent.",
+                note_id
+            );
         }
         Ok(NoteReference {
             event_id: cleaned.to_lowercase(),
@@ -1938,9 +1945,7 @@ fn extract_zap_targets(event: &Event) -> Vec<ZapTarget> {
         }
 
         let relay_hint = tag.get(2).cloned().filter(|value| !value.is_empty());
-        let weight = tag
-            .get(3)
-            .and_then(|value| value.parse::<u64>().ok());
+        let weight = tag.get(3).and_then(|value| value.parse::<u64>().ok());
 
         targets.push(ZapTarget {
             pubkey,
@@ -2017,14 +2022,13 @@ fn compute_zap_splits(targets: &[ZapTarget], total_msats: u64) -> Result<Vec<Zap
 
 fn encode_lnurl(url: &str) -> Result<String> {
     let hrp = Hrp::parse("lnurl").context("Failed to build LNURL hrp")?;
-    let encoded = bech32::encode::<Bech32>(hrp, url.as_bytes())
-        .context("Failed to encode LNURL")?;
+    let encoded =
+        bech32::encode::<Bech32>(hrp, url.as_bytes()).context("Failed to encode LNURL")?;
     Ok(encoded)
 }
 
 fn decode_lnurl(lnurl: &str) -> Result<String> {
-    let (hrp, data) = bech32::decode(&lnurl.to_lowercase())
-        .context("Failed to decode LNURL")?;
+    let (hrp, data) = bech32::decode(&lnurl.to_lowercase()).context("Failed to decode LNURL")?;
     if hrp.to_string() != "lnurl" {
         anyhow::bail!("Invalid LNURL prefix: {}", hrp);
     }
@@ -2055,8 +2059,8 @@ fn lnurl_from_lud06(lnurl: &str) -> Result<LnurlSource> {
 }
 
 fn lnurl_from_profile(profile: &Event) -> Result<LnurlSource> {
-    let payload: serde_json::Value = serde_json::from_str(&profile.content)
-        .context("Failed to parse profile metadata")?;
+    let payload: serde_json::Value =
+        serde_json::from_str(&profile.content).context("Failed to parse profile metadata")?;
 
     if let Some(lud16) = payload.get("lud16").and_then(|value| value.as_str()) {
         return lnurl_from_lud16(lud16);
@@ -2078,10 +2082,7 @@ async fn fetch_lnurl_pay_info(http: &Client, source: &LnurlSource) -> Result<Lnu
         .with_context(|| format!("Failed to fetch LNURL pay info from {}", source.url))?;
 
     if !response.status().is_success() {
-        anyhow::bail!(
-            "LNURL pay request failed with status {}",
-            response.status()
-        );
+        anyhow::bail!("LNURL pay request failed with status {}", response.status());
     }
 
     let payload: serde_json::Value = response
@@ -2132,8 +2133,8 @@ async fn request_zap_invoice(
     zap_request: &Event,
     lnurl: &str,
 ) -> Result<String> {
-    let mut url = Url::parse(callback)
-        .with_context(|| format!("Invalid LNURL callback '{}'", callback))?;
+    let mut url =
+        Url::parse(callback).with_context(|| format!("Invalid LNURL callback '{}'", callback))?;
     let zap_json = serde_json::to_string(zap_request).context("Failed to encode zap request")?;
 
     url.query_pairs_mut()
@@ -2149,7 +2150,10 @@ async fn request_zap_invoice(
         .context("Failed to fetch zap invoice")?;
 
     if !response.status().is_success() {
-        anyhow::bail!("Zap invoice request failed with status {}", response.status());
+        anyhow::bail!(
+            "Zap invoice request failed with status {}",
+            response.status()
+        );
     }
 
     let payload: serde_json::Value = response
@@ -2282,7 +2286,11 @@ pub fn zap(note_id: String, amount: u64) -> Result<()> {
 
         let wallet = get_wallet().await?;
 
-        println!("Preparing zap for {} sats to {} recipient(s).", amount, splits.len());
+        println!(
+            "Preparing zap for {} sats to {} recipient(s).",
+            amount,
+            splits.len()
+        );
         for split in &splits {
             println!(
                 "  {} sats -> {}",

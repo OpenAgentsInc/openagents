@@ -1,6 +1,6 @@
-use cdk::nuts::{CurrencyUnit, MintQuoteState, MeltQuoteState};
-use cdk::wallet::Wallet;
 use cdk::Amount as CdkAmount;
+use cdk::nuts::{CurrencyUnit, MeltQuoteState, MintQuoteState};
+use cdk::wallet::Wallet;
 use cdk_redb::WalletRedbDatabase;
 use std::path::Path;
 use std::str::FromStr;
@@ -37,8 +37,7 @@ impl CashuWallet {
         };
 
         // Create ReDB database
-        let db = WalletRedbDatabase::new(db_path)
-            .map_err(|e| Error::Database(e.to_string()))?;
+        let db = WalletRedbDatabase::new(db_path).map_err(|e| Error::Database(e.to_string()))?;
         let db = Arc::new(db);
 
         // Create CDK wallet
@@ -110,9 +109,9 @@ impl CashuWallet {
         Ok(MeltResult {
             paid: result.state == MeltQuoteState::Paid,
             preimage: result.preimage,
-            change: result.change.map(|proofs| {
-                proofs.iter().map(|p| u64::from(p.amount)).sum()
-            }),
+            change: result
+                .change
+                .map(|proofs| proofs.iter().map(|p| u64::from(p.amount)).sum()),
         })
     }
 
@@ -224,9 +223,9 @@ impl CashuWallet {
         let spent_states = self.inner.check_proofs_spent(proofs).await?;
 
         // All proofs must be unspent for the token to be valid
-        Ok(spent_states.iter().all(|state| {
-            matches!(state.state, cdk::nuts::State::Unspent)
-        }))
+        Ok(spent_states
+            .iter()
+            .all(|state| matches!(state.state, cdk::nuts::State::Unspent)))
     }
 
     /// Get the total amount in a token without redeeming

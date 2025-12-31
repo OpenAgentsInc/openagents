@@ -7,12 +7,15 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, RwLock, Semaphore};
+use tokio::sync::{RwLock, Semaphore, broadcast};
 
-use compute::backends::{BackendRegistry, CompletionRequest, CompletionResponse, InferenceBackend, ModelInfo, Result as BackendResult, StreamChunk};
+use async_trait::async_trait;
+use compute::backends::{
+    BackendRegistry, CompletionRequest, CompletionResponse, InferenceBackend, ModelInfo,
+    Result as BackendResult, StreamChunk,
+};
 use compute::domain::UnifiedIdentity;
 use compute::services::{DvmConfig, DvmService, RelayService};
-use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 /// Ultra-fast mock backend for stress testing
@@ -66,13 +69,15 @@ impl InferenceBackend for FastMockBackend {
             if delay > 0 {
                 tokio::time::sleep(Duration::from_micros(delay)).await;
             }
-            let _ = tx.send(Ok(StreamChunk {
-                id: "chunk-1".to_string(),
-                model,
-                delta: "done".to_string(),
-                finish_reason: Some("stop".to_string()),
-                extra: Default::default(),
-            })).await;
+            let _ = tx
+                .send(Ok(StreamChunk {
+                    id: "chunk-1".to_string(),
+                    model,
+                    delta: "done".to_string(),
+                    finish_reason: Some("stop".to_string()),
+                    extra: Default::default(),
+                }))
+                .await;
         });
 
         Ok(rx)
@@ -98,7 +103,11 @@ async fn stress_test_job_throughput_no_payment() {
     let backend_registry = Arc::new(RwLock::new(registry));
     let (event_tx, _event_rx) = broadcast::channel(10000);
 
-    let dvm = Arc::new(RwLock::new(DvmService::new(relay_service, backend_registry, event_tx)));
+    let dvm = Arc::new(RwLock::new(DvmService::new(
+        relay_service,
+        backend_registry,
+        event_tx,
+    )));
 
     // Configure for no payment required
     {
@@ -157,7 +166,8 @@ async fn stress_test_job_throughput_no_payment() {
                                 &customer_pubkey,
                                 job_inputs,
                                 params,
-                            ).await
+                            )
+                            .await
                         };
 
                         match result {
@@ -186,7 +196,11 @@ async fn stress_test_job_throughput_no_payment() {
 
             println!(
                 "  Concurrency {:4}: {:6} jobs in {:5.2}s = {:8.1} jobs/sec (errors: {})",
-                concurrency, total_completed, elapsed.as_secs_f64(), throughput, total_errors
+                concurrency,
+                total_completed,
+                elapsed.as_secs_f64(),
+                throughput,
+                total_errors
             );
         }
         println!();
@@ -197,7 +211,7 @@ async fn stress_test_job_throughput_no_payment() {
 #[tokio::test]
 #[ignore]
 async fn stress_test_payment_throughput() {
-    use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
+    use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
 
     println!("\n=== Payment Throughput Stress Test ===\n");
 
@@ -207,8 +221,8 @@ async fn stress_test_payment_throughput() {
 
     println!("Connecting wallets...");
 
-    let provider_signer = SparkSigner::from_mnemonic(provider_mnemonic, "")
-        .expect("create provider signer");
+    let provider_signer =
+        SparkSigner::from_mnemonic(provider_mnemonic, "").expect("create provider signer");
     let provider_wallet = match SparkWallet::new(
         provider_signer,
         WalletConfig {
@@ -216,7 +230,9 @@ async fn stress_test_payment_throughput() {
             api_key: None,
             storage_dir: std::env::temp_dir().join("spark_stress_provider"),
         },
-    ).await {
+    )
+    .await
+    {
         Ok(w) => w,
         Err(e) => {
             println!("Failed to connect provider wallet: {}", e);
@@ -225,8 +241,8 @@ async fn stress_test_payment_throughput() {
         }
     };
 
-    let customer_signer = SparkSigner::from_mnemonic(customer_mnemonic, "")
-        .expect("create customer signer");
+    let customer_signer =
+        SparkSigner::from_mnemonic(customer_mnemonic, "").expect("create customer signer");
     let customer_wallet = match SparkWallet::new(
         customer_signer,
         WalletConfig {
@@ -234,7 +250,9 @@ async fn stress_test_payment_throughput() {
             api_key: None,
             storage_dir: std::env::temp_dir().join("spark_stress_customer"),
         },
-    ).await {
+    )
+    .await
+    {
         Ok(w) => w,
         Err(e) => {
             println!("Failed to connect customer wallet: {}", e);
@@ -243,16 +261,22 @@ async fn stress_test_payment_throughput() {
     };
 
     // Check balances
-    let provider_balance = provider_wallet.get_balance().await
+    let provider_balance = provider_wallet
+        .get_balance()
+        .await
         .expect("get provider balance");
-    let customer_balance = customer_wallet.get_balance().await
+    let customer_balance = customer_wallet
+        .get_balance()
+        .await
         .expect("get customer balance");
 
     println!("Provider balance: {} sats", provider_balance.total_sats());
     println!("Customer balance: {} sats", customer_balance.total_sats());
 
     if customer_balance.total_sats() < 1000 {
-        let btc_address = customer_wallet.get_bitcoin_address().await
+        let btc_address = customer_wallet
+            .get_bitcoin_address()
+            .await
             .expect("get address");
         println!("\n!!! Customer needs more funds for stress test !!!");
         println!("Send regtest sats to: {}", btc_address);
@@ -282,7 +306,9 @@ async fn stress_test_payment_throughput() {
         let rate = batch_size as f64 / elapsed.as_secs_f64();
         println!(
             "  {} invoices in {:6.3}s = {:6.1} invoices/sec",
-            batch_size, elapsed.as_secs_f64(), rate
+            batch_size,
+            elapsed.as_secs_f64(),
+            rate
         );
     }
 
@@ -296,7 +322,11 @@ async fn stress_test_payment_throughput() {
     let mut invoices = vec![];
     for i in 0..num_payments {
         let invoice = provider_wallet
-            .create_invoice(amount_per_payment, Some(format!("payment {}", i)), Some(300))
+            .create_invoice(
+                amount_per_payment,
+                Some(format!("payment {}", i)),
+                Some(300),
+            )
             .await
             .expect("create invoice");
         invoices.push(invoice.payment_request);
@@ -322,26 +352,43 @@ async fn stress_test_payment_throughput() {
     let rate = successful as f64 / elapsed.as_secs_f64();
     println!(
         "  {} payments in {:6.3}s = {:6.2} payments/sec (failed: {})",
-        successful, elapsed.as_secs_f64(), rate, failed
+        successful,
+        elapsed.as_secs_f64(),
+        rate,
+        failed
     );
 
     // Final balance check
-    let final_provider = provider_wallet.get_balance().await.expect("final provider balance");
-    let final_customer = customer_wallet.get_balance().await.expect("final customer balance");
+    let final_provider = provider_wallet
+        .get_balance()
+        .await
+        .expect("final provider balance");
+    let final_customer = customer_wallet
+        .get_balance()
+        .await
+        .expect("final customer balance");
 
     println!("\n--- Final Balances ---");
-    println!("Provider: {} sats (was {})", final_provider.total_sats(), provider_balance.total_sats());
-    println!("Customer: {} sats (was {})", final_customer.total_sats(), customer_balance.total_sats());
+    println!(
+        "Provider: {} sats (was {})",
+        final_provider.total_sats(),
+        provider_balance.total_sats()
+    );
+    println!(
+        "Customer: {} sats (was {})",
+        final_customer.total_sats(),
+        customer_balance.total_sats()
+    );
 }
 
 /// Stress test: full E2E job + payment throughput
 #[tokio::test]
 #[ignore]
 async fn stress_test_full_e2e_throughput() {
-    use nostr::JobInput;
-    use std::collections::HashMap;
-    use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
     use compute::domain::DomainEvent;
+    use nostr::JobInput;
+    use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
+    use std::collections::HashMap;
 
     println!("\n=== Full E2E Throughput Stress Test ===\n");
 
@@ -349,8 +396,8 @@ async fn stress_test_full_e2e_throughput() {
     let provider_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
     let customer_mnemonic = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
 
-    let provider_signer = SparkSigner::from_mnemonic(provider_mnemonic, "")
-        .expect("create provider signer");
+    let provider_signer =
+        SparkSigner::from_mnemonic(provider_mnemonic, "").expect("create provider signer");
     let provider_wallet = match SparkWallet::new(
         provider_signer,
         WalletConfig {
@@ -358,7 +405,9 @@ async fn stress_test_full_e2e_throughput() {
             api_key: None,
             storage_dir: std::env::temp_dir().join("spark_e2e_stress_provider"),
         },
-    ).await {
+    )
+    .await
+    {
         Ok(w) => Arc::new(w),
         Err(e) => {
             println!("Failed to connect provider wallet: {}", e);
@@ -367,8 +416,8 @@ async fn stress_test_full_e2e_throughput() {
         }
     };
 
-    let customer_signer = SparkSigner::from_mnemonic(customer_mnemonic, "")
-        .expect("create customer signer");
+    let customer_signer =
+        SparkSigner::from_mnemonic(customer_mnemonic, "").expect("create customer signer");
     let customer_wallet = match SparkWallet::new(
         customer_signer,
         WalletConfig {
@@ -376,7 +425,9 @@ async fn stress_test_full_e2e_throughput() {
             api_key: None,
             storage_dir: std::env::temp_dir().join("spark_e2e_stress_customer"),
         },
-    ).await {
+    )
+    .await
+    {
         Ok(w) => Arc::new(w),
         Err(e) => {
             println!("Failed to connect customer wallet: {}", e);
@@ -384,12 +435,16 @@ async fn stress_test_full_e2e_throughput() {
         }
     };
 
-    let customer_balance = customer_wallet.get_balance().await
+    let customer_balance = customer_wallet
+        .get_balance()
+        .await
         .expect("get customer balance");
     println!("Customer balance: {} sats", customer_balance.total_sats());
 
     if customer_balance.total_sats() < 100 {
-        let btc_address = customer_wallet.get_bitcoin_address().await
+        let btc_address = customer_wallet
+            .get_bitcoin_address()
+            .await
             .expect("get address");
         println!("\n!!! Customer needs funds !!!");
         println!("Send regtest sats to: {}", btc_address);
@@ -400,7 +455,10 @@ async fn stress_test_full_e2e_throughput() {
     let provider_identity = UnifiedIdentity::generate().expect("generate identity");
 
     let mut registry = BackendRegistry::new();
-    registry.register_with_id("fast-mock", Arc::new(RwLock::new(FastMockBackend::new(100))));
+    registry.register_with_id(
+        "fast-mock",
+        Arc::new(RwLock::new(FastMockBackend::new(100))),
+    );
 
     let relay_service = Arc::new(RelayService::new());
     let backend_registry = Arc::new(RwLock::new(registry));
@@ -457,7 +515,8 @@ async fn stress_test_full_e2e_throughput() {
             // Check job status for invoice
             let dvm = dvm.read().await;
             if let Some(job) = dvm.get_job(&job_id).await {
-                if let compute::domain::job::JobStatus::PaymentRequired { bolt11, .. } = &job.status {
+                if let compute::domain::job::JobStatus::PaymentRequired { bolt11, .. } = &job.status
+                {
                     invoice_bolt11 = bolt11.clone();
                 }
             }
@@ -469,7 +528,10 @@ async fn stress_test_full_e2e_throughput() {
         }
 
         // 3. Pay invoice
-        match customer_wallet.send_payment_simple(&invoice_bolt11, None).await {
+        match customer_wallet
+            .send_payment_simple(&invoice_bolt11, None)
+            .await
+        {
             Ok(_) => {}
             Err(e) => {
                 println!("  Job {}: Payment failed: {}", i, e);
@@ -493,9 +555,16 @@ async fn stress_test_full_e2e_throughput() {
     let rate = completed as f64 / elapsed.as_secs_f64();
 
     println!("\n--- Results ---");
-    println!("{} E2E jobs completed in {:.2}s", completed, elapsed.as_secs_f64());
+    println!(
+        "{} E2E jobs completed in {:.2}s",
+        completed,
+        elapsed.as_secs_f64()
+    );
     println!("Throughput: {:.2} jobs/sec", rate);
-    println!("Average latency: {:.0}ms/job", elapsed.as_millis() as f64 / completed as f64);
+    println!(
+        "Average latency: {:.0}ms/job",
+        elapsed.as_millis() as f64 / completed as f64
+    );
 }
 
 /// Quick throughput benchmark
@@ -535,7 +604,9 @@ async fn quick_throughput_benchmark() {
         params.insert("backend".to_string(), "fast-mock".to_string());
         let event_id = format!("warmup_{:016x}", rand::random::<u64>());
 
-        let _ = dvm.handle_job_request(&event_id, 5050, &customer_pubkey, job_inputs, params).await;
+        let _ = dvm
+            .handle_job_request(&event_id, 5050, &customer_pubkey, job_inputs, params)
+            .await;
     }
 
     // Benchmark

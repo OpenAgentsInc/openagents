@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use issues::{issue, db, Priority, Status};
+use issues::{Priority, Status, db, issue};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -145,19 +145,28 @@ fn main() -> Result<()> {
                 None, // project_id
             )?;
 
-            println!("{} Created issue #{}: {}", "✓".green(), new_issue.number, new_issue.title);
+            println!(
+                "{} Created issue #{}: {}",
+                "✓".green(),
+                new_issue.number,
+                new_issue.title
+            );
             Ok(())
         }
         Commands::List { status, db } => {
             let db_path = resolve_db_path(db)?;
             let conn = db::init_db(&db_path)?;
 
-            let filter_status = status.map(|s| match s.to_lowercase().as_str() {
-                "open" => Ok(Status::Open),
-                "in_progress" | "inprogress" => Ok(Status::InProgress),
-                "done" => Ok(Status::Done),
-                _ => Err(anyhow::anyhow!("Invalid status. Use: open, in_progress, done")),
-            }).transpose()?;
+            let filter_status = status
+                .map(|s| match s.to_lowercase().as_str() {
+                    "open" => Ok(Status::Open),
+                    "in_progress" | "inprogress" => Ok(Status::InProgress),
+                    "done" => Ok(Status::Done),
+                    _ => Err(anyhow::anyhow!(
+                        "Invalid status. Use: open, in_progress, done"
+                    )),
+                })
+                .transpose()?;
 
             let issues = issue::list_issues(&conn, filter_status)?;
 
@@ -211,12 +220,10 @@ fn main() -> Result<()> {
             let db_path = resolve_db_path(db)?;
             let conn = db::init_db(&db_path)?;
 
-            let run_id = run_id.unwrap_or_else(|| {
-                format!("manual-{}", chrono::Utc::now().format("%Y%m%d%H%M%S"))
-            });
+            let run_id = run_id
+                .unwrap_or_else(|| format!("manual-{}", chrono::Utc::now().format("%Y%m%d%H%M%S")));
 
-            let iss = issue::get_issue_by_number(&conn, number)?
-                .context("Issue not found")?;
+            let iss = issue::get_issue_by_number(&conn, number)?.context("Issue not found")?;
 
             issue::claim_issue(&conn, &iss.id, &run_id)?;
 
@@ -227,8 +234,7 @@ fn main() -> Result<()> {
             let db_path = resolve_db_path(db)?;
             let conn = db::init_db(&db_path)?;
 
-            let iss = issue::get_issue_by_number(&conn, number)?
-                .context("Issue not found")?;
+            let iss = issue::get_issue_by_number(&conn, number)?.context("Issue not found")?;
 
             issue::complete_issue(&conn, &iss.id)?;
 
@@ -239,13 +245,17 @@ fn main() -> Result<()> {
             let db_path = resolve_db_path(db)?;
             let conn = db::init_db(&db_path)?;
 
-            let iss = issue::get_issue_by_number(&conn, number)?
-                .context("Issue not found")?;
+            let iss = issue::get_issue_by_number(&conn, number)?.context("Issue not found")?;
 
             issue::block_issue(&conn, &iss.id, &reason)?;
 
-            println!("{} Blocked issue #{}: {} (Reason: {})",
-                "⚠".yellow(), number, iss.title, reason);
+            println!(
+                "{} Blocked issue #{}: {} (Reason: {})",
+                "⚠".yellow(),
+                number,
+                iss.title,
+                reason
+            );
             Ok(())
         }
     }

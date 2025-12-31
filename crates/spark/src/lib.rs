@@ -82,13 +82,12 @@ pub mod wallet;
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
 mod wasm_storage;
 
+pub use breez_sdk_spark::{EventListener, SdkEvent};
 pub use error::SparkError;
 pub use signer::SparkSigner;
 pub use wallet::{
-    parse_input,
-    Balance, Config, ExternalInputParser, InputType, KeySetType, Network,
-    NetworkStatus, NetworkStatusReport, Payment, PaymentDetails, PaymentMethod,
-    PaymentStatus, PaymentType, SendPaymentOptions, SparkHtlcDetails, SparkHtlcOptions,
-    SparkHtlcStatus, SparkWallet, SparkWalletBuilder, WalletConfig, WalletInfo,
+    Balance, Config, ExternalInputParser, InputType, KeySetType, Network, NetworkStatus,
+    NetworkStatusReport, Payment, PaymentDetails, PaymentMethod, PaymentStatus, PaymentType,
+    SendPaymentOptions, SparkHtlcDetails, SparkHtlcOptions, SparkHtlcStatus, SparkWallet,
+    SparkWalletBuilder, WalletConfig, WalletInfo, parse_input,
 };
-pub use breez_sdk_spark::{EventListener, SdkEvent};

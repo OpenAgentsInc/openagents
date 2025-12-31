@@ -3,7 +3,7 @@
 //! These tests verify the complete parsing, validation, and analysis
 //! pipeline for .rlog session files.
 
-use recorder::{parse_content, parse_file, LineType};
+use recorder::{LineType, parse_content, parse_file};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -74,7 +74,11 @@ fn test_parse_minimal_header() {
         eprintln!("Parse error: {:?}", e);
     }
 
-    assert!(result.is_ok(), "Should parse minimal valid header: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Should parse minimal valid header: {:?}",
+        result.err()
+    );
 
     let session = result.unwrap();
     assert_eq!(session.header.format, "rlog/1");
@@ -107,7 +111,10 @@ id: test_001
 ---
 "#;
     let result = parse_content(content);
-    assert!(result.is_err(), "Should fail without required repo_sha field");
+    assert!(
+        result.is_err(),
+        "Should fail without required repo_sha field"
+    );
 }
 
 #[test]
@@ -166,18 +173,54 @@ fn test_parse_all_line_types() {
 
     assert_eq!(session.lines.len(), 12);
 
-    assert!(matches!(session.lines[0].line_type, LineType::User), "Line 0 should be User");
-    assert!(matches!(session.lines[1].line_type, LineType::Agent), "Line 1 should be Agent");
-    assert!(matches!(session.lines[2].line_type, LineType::Tool), "Line 2 should be Tool");
-    assert!(matches!(session.lines[3].line_type, LineType::Observation), "Line 3 should be Observation");
-    assert!(matches!(session.lines[4].line_type, LineType::Subagent), "Line 4 should be Subagent");
-    assert!(matches!(session.lines[5].line_type, LineType::Mcp), "Line 5 should be Mcp");
-    assert!(matches!(session.lines[6].line_type, LineType::Question), "Line 6 should be Question");
-    assert!(matches!(session.lines[7].line_type, LineType::Phase), "Line 7 should be Phase");
-    assert!(matches!(session.lines[8].line_type, LineType::Lifecycle), "Line 8 should be Lifecycle");
-    assert!(matches!(session.lines[9].line_type, LineType::Comment), "Line 9 should be Comment");
-    assert!(matches!(session.lines[10].line_type, LineType::Thinking), "Line 10 should be Thinking");
-    assert!(matches!(session.lines[11].line_type, LineType::Todos), "Line 11 should be Todos");
+    assert!(
+        matches!(session.lines[0].line_type, LineType::User),
+        "Line 0 should be User"
+    );
+    assert!(
+        matches!(session.lines[1].line_type, LineType::Agent),
+        "Line 1 should be Agent"
+    );
+    assert!(
+        matches!(session.lines[2].line_type, LineType::Tool),
+        "Line 2 should be Tool"
+    );
+    assert!(
+        matches!(session.lines[3].line_type, LineType::Observation),
+        "Line 3 should be Observation"
+    );
+    assert!(
+        matches!(session.lines[4].line_type, LineType::Subagent),
+        "Line 4 should be Subagent"
+    );
+    assert!(
+        matches!(session.lines[5].line_type, LineType::Mcp),
+        "Line 5 should be Mcp"
+    );
+    assert!(
+        matches!(session.lines[6].line_type, LineType::Question),
+        "Line 6 should be Question"
+    );
+    assert!(
+        matches!(session.lines[7].line_type, LineType::Phase),
+        "Line 7 should be Phase"
+    );
+    assert!(
+        matches!(session.lines[8].line_type, LineType::Lifecycle),
+        "Line 8 should be Lifecycle"
+    );
+    assert!(
+        matches!(session.lines[9].line_type, LineType::Comment),
+        "Line 9 should be Comment"
+    );
+    assert!(
+        matches!(session.lines[10].line_type, LineType::Thinking),
+        "Line 10 should be Thinking"
+    );
+    assert!(
+        matches!(session.lines[11].line_type, LineType::Todos),
+        "Line 11 should be Todos"
+    );
 }
 
 #[test]
@@ -241,7 +284,12 @@ fn test_parse_multiline_content() {
 
     let session = result.unwrap();
     assert_eq!(session.lines.len(), 3);
-    assert!(session.lines.iter().all(|l| matches!(l.line_type, LineType::Agent)));
+    assert!(
+        session
+            .lines
+            .iter()
+            .all(|l| matches!(l.line_type, LineType::Agent))
+    );
 }
 
 // ============================================================================
@@ -341,7 +389,10 @@ fn test_validation_detects_orphaned_observations() {
     content.push_str("o:call_2: [orphaned - no matching tool call]\n");
 
     let result = parse_content(&content);
-    assert!(result.is_ok(), "Should parse but may have validation warnings");
+    assert!(
+        result.is_ok(),
+        "Should parse but may have validation warnings"
+    );
 }
 
 // ============================================================================
@@ -400,9 +451,9 @@ fn test_roundtrip_simple_session() {
 
 #[test]
 fn test_roundtrip_with_metadata() {
-    let original = minimal_header() +
-        "t:Glob id=call_1 step=5 pattern=*.rs\n" +
-        "o: id=call_1 latency_ms=123 → Found 10 files\n";
+    let original = minimal_header()
+        + "t:Glob id=call_1 step=5 pattern=*.rs\n"
+        + "o: id=call_1 latency_ms=123 → Found 10 files\n";
 
     let session = parse_content(&original).expect("Should parse");
 
@@ -490,7 +541,9 @@ fn test_complete_agent_session() {
     content.push_str("t:Read id=call_1 step=4 ts=2025-01-01T00:00:03Z file=src/auth.rs\n");
 
     // Tool result
-    content.push_str("o: id=call_1 step=5 ts=2025-01-01T00:00:05Z latency_ms=2000 → [file contents]\n");
+    content.push_str(
+        "o: id=call_1 step=5 ts=2025-01-01T00:00:05Z latency_ms=2000 → [file contents]\n",
+    );
 
     // Agent analysis
     content.push_str("a: step=6 ts=2025-01-01T00:00:06Z tokens_in=2500 tokens_out=120 Found the issue on line 42.\n");
@@ -499,7 +552,9 @@ fn test_complete_agent_session() {
     content.push_str("t:Edit id=call_2 step=7 ts=2025-01-01T00:00:07Z file=src/auth.rs old='token.clone()' new='token'\n");
 
     // Tool result
-    content.push_str("o: id=call_2 step=8 ts=2025-01-01T00:00:08Z latency_ms=50 result=success → File updated\n");
+    content.push_str(
+        "o: id=call_2 step=8 ts=2025-01-01T00:00:08Z latency_ms=50 result=success → File updated\n",
+    );
 
     // Final response
     content.push_str("a: step=9 ts=2025-01-01T00:00:09Z tokens_in=1800 tokens_out=85 Fixed the redundant clone.\n");
@@ -519,7 +574,9 @@ fn test_complete_agent_session() {
     assert!(session.lines.iter().all(|l| l.timestamp.is_some()));
 
     // Verify tool call/result pairs match
-    let call_1_lines: Vec<_> = session.lines.iter()
+    let call_1_lines: Vec<_> = session
+        .lines
+        .iter()
         .filter(|l| l.call_id == Some("call_1".to_string()))
         .collect();
     assert_eq!(call_1_lines.len(), 2); // tool + observation
@@ -542,7 +599,9 @@ fn test_session_with_subagents() {
     let session = result.unwrap();
     assert_eq!(session.lines.len(), 6);
 
-    let subagent_lines: Vec<_> = session.lines.iter()
+    let subagent_lines: Vec<_> = session
+        .lines
+        .iter()
         .filter(|l| matches!(l.line_type, LineType::Subagent))
         .collect();
     assert_eq!(subagent_lines.len(), 2);

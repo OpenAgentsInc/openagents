@@ -30,8 +30,8 @@ use crate::error::{Error, Result};
 use crate::exchange::OrderSide;
 use crate::relay::ExchangeRelay;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
@@ -80,7 +80,7 @@ impl RfqRequest {
             side,
             amount_sats,
             currency: currency.into(),
-            max_premium_pct: 5.0, // Default 5% max premium
+            max_premium_pct: 5.0,  // Default 5% max premium
             min_premium_pct: -5.0, // Default -5% min (5% discount)
             expires_at: now + 300, // 5 minutes default
             payment_methods: vec!["cashu".to_string()],
@@ -163,7 +163,8 @@ impl RfqQuote {
 
         // Calculate fiat amount based on rate and premium
         let adjusted_rate = rate * (1.0 + premium_pct / 100.0);
-        let fiat_amount = ((request.amount_sats as f64 / 100_000_000.0) * adjusted_rate * 100.0) as u64;
+        let fiat_amount =
+            ((request.amount_sats as f64 / 100_000_000.0) * adjusted_rate * 100.0) as u64;
 
         Self {
             id: format!("quote-{}-{}", now, counter),
@@ -295,10 +296,7 @@ impl RfqMarket {
     pub async fn collect_quotes(&self, request_id: &str) -> Result<Vec<RfqQuote>> {
         let quotes = self.quotes.read().await;
 
-        let request_quotes = quotes
-            .get(request_id)
-            .cloned()
-            .unwrap_or_default();
+        let request_quotes = quotes.get(request_id).cloned().unwrap_or_default();
 
         // Filter out expired quotes
         let active_quotes: Vec<RfqQuote> = request_quotes
@@ -400,10 +398,7 @@ impl RfqMarket {
         // Add quote
         {
             let mut quotes = self.quotes.write().await;
-            quotes
-                .entry(request_id)
-                .or_default()
-                .push(quote);
+            quotes.entry(request_id).or_default().push(quote);
         }
 
         // TODO: Publish to relay if configured
@@ -414,7 +409,10 @@ impl RfqMarket {
     /// Inject an RFQ request (for testing/mock relay sync)
     pub async fn inject_request(&self, request: RfqRequest) {
         let request_id = request.id.clone();
-        self.requests.write().await.insert(request_id.clone(), request);
+        self.requests
+            .write()
+            .await
+            .insert(request_id.clone(), request);
         self.quotes.write().await.insert(request_id, Vec::new());
     }
 
@@ -426,10 +424,26 @@ impl RfqMarket {
     pub fn build_rfq_request_tags(&self, req: &RfqRequest) -> Vec<Vec<String>> {
         let mut tags = vec![
             vec!["i".to_string(), req.id.clone(), "text".to_string()],
-            vec!["param".to_string(), "side".to_string(), req.side.as_str().to_string()],
-            vec!["param".to_string(), "amount_sats".to_string(), req.amount_sats.to_string()],
-            vec!["param".to_string(), "currency".to_string(), req.currency.clone()],
-            vec!["param".to_string(), "max_premium".to_string(), req.max_premium_pct.to_string()],
+            vec![
+                "param".to_string(),
+                "side".to_string(),
+                req.side.as_str().to_string(),
+            ],
+            vec![
+                "param".to_string(),
+                "amount_sats".to_string(),
+                req.amount_sats.to_string(),
+            ],
+            vec![
+                "param".to_string(),
+                "currency".to_string(),
+                req.currency.clone(),
+            ],
+            vec![
+                "param".to_string(),
+                "max_premium".to_string(),
+                req.max_premium_pct.to_string(),
+            ],
             vec!["expiration".to_string(), req.expires_at.to_string()],
         ];
 
@@ -453,7 +467,10 @@ impl RfqMarket {
             vec!["premium".to_string(), quote.premium_pct.to_string()],
             vec!["fiat_amount".to_string(), quote.fiat_amount.to_string()],
             vec!["expiration".to_string(), quote.expires_at.to_string()],
-            vec!["min_reputation".to_string(), quote.min_reputation.to_string()],
+            vec![
+                "min_reputation".to_string(),
+                quote.min_reputation.to_string(),
+            ],
         ]
     }
 
@@ -579,8 +596,7 @@ mod tests {
     async fn test_rfq_market_broadcast() {
         let market = RfqMarket::new();
 
-        let req = RfqRequest::new(OrderSide::Buy, 100_000, "USD")
-            .with_pubkey("buyer");
+        let req = RfqRequest::new(OrderSide::Buy, 100_000, "USD").with_pubkey("buyer");
 
         let request_id = market.broadcast_rfq(req).await.unwrap();
         assert!(request_id.starts_with("rfq-"));
@@ -599,8 +615,7 @@ mod tests {
         let request_id = market.broadcast_rfq(req.clone()).await.unwrap();
 
         // Submit quote
-        let quote = RfqQuote::new(&req, 50000.0, 0.5)
-            .with_provider("provider_1");
+        let quote = RfqQuote::new(&req, 50000.0, 0.5).with_provider("provider_1");
         market.submit_quote(quote).await.unwrap();
 
         // Collect quotes
@@ -644,24 +659,15 @@ mod tests {
 
         // Inject some requests
         market
-            .inject_request(
-                RfqRequest::new(OrderSide::Buy, 100_000, "USD")
-                    .with_expiry_secs(300),
-            )
+            .inject_request(RfqRequest::new(OrderSide::Buy, 100_000, "USD").with_expiry_secs(300))
             .await;
 
         market
-            .inject_request(
-                RfqRequest::new(OrderSide::Sell, 200_000, "USD")
-                    .with_expiry_secs(300),
-            )
+            .inject_request(RfqRequest::new(OrderSide::Sell, 200_000, "USD").with_expiry_secs(300))
             .await;
 
         market
-            .inject_request(
-                RfqRequest::new(OrderSide::Buy, 50_000, "EUR")
-                    .with_expiry_secs(300),
-            )
+            .inject_request(RfqRequest::new(OrderSide::Buy, 50_000, "EUR").with_expiry_secs(300))
             .await;
 
         // Filter by side
@@ -708,9 +714,18 @@ mod tests {
         let tags = market.build_rfq_request_tags(&req);
 
         assert!(tags.iter().any(|t| t[0] == "i"));
-        assert!(tags.iter().any(|t| t[0] == "param" && t[1] == "side" && t[2] == "buy"));
-        assert!(tags.iter().any(|t| t[0] == "param" && t[1] == "amount_sats" && t[2] == "100000"));
-        assert!(tags.iter().any(|t| t[0] == "param" && t[1] == "currency" && t[2] == "USD"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "param" && t[1] == "side" && t[2] == "buy")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "param" && t[1] == "amount_sats" && t[2] == "100000")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "param" && t[1] == "currency" && t[2] == "USD")
+        );
         assert!(tags.iter().any(|t| t[0] == "expiration"));
     }
 
@@ -725,10 +740,16 @@ mod tests {
         let tags = market.build_rfq_quote_tags(&quote);
 
         assert!(tags.iter().any(|t| t[0] == "e"));
-        assert!(tags.iter().any(|t| t[0] == "p" && t[1] == "provider_pubkey"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "p" && t[1] == "provider_pubkey")
+        );
         assert!(tags.iter().any(|t| t[0] == "rate" && t[1] == "50000"));
         assert!(tags.iter().any(|t| t[0] == "premium" && t[1] == "1"));
-        assert!(tags.iter().any(|t| t[0] == "min_reputation" && t[1] == "0.5"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "min_reputation" && t[1] == "0.5")
+        );
     }
 
     #[tokio::test]

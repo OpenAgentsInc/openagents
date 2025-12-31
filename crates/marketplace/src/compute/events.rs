@@ -4,16 +4,16 @@
 //! for use in the marketplace compute layer.
 
 use nostr::{
-    JobFeedback, JobInput, JobRequest, JobResult, JobStatus,
-    KIND_JOB_IMAGE_GENERATION, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
-    KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION,
+    JobFeedback, JobInput, JobRequest, JobResult, JobStatus, KIND_JOB_IMAGE_GENERATION,
+    KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION, KIND_JOB_TEXT_EXTRACTION,
+    KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION,
 };
 use serde::{Deserialize, Serialize};
 
 /// Re-export core NIP-90 types from nostr crate
 pub use nostr::{
-    is_dvm_kind, is_job_feedback_kind, is_job_request_kind, is_job_result_kind, InputType,
-    JobParam, Nip90Error,
+    InputType, JobParam, Nip90Error, is_dvm_kind, is_job_feedback_kind, is_job_request_kind,
+    is_job_result_kind,
 };
 
 /// Compute job request builder for marketplace
@@ -38,7 +38,10 @@ impl ComputeJobRequest {
     }
 
     /// Create a new translation job
-    pub fn translation(text: impl Into<String>, target_lang: impl Into<String>) -> Result<Self, Nip90Error> {
+    pub fn translation(
+        text: impl Into<String>,
+        target_lang: impl Into<String>,
+    ) -> Result<Self, Nip90Error> {
         let mut req = JobRequest::new(KIND_JOB_TRANSLATION)?;
         req = req
             .add_input(JobInput::text(text))
@@ -254,20 +257,13 @@ impl ComputeJobFeedback {
         bolt11: Option<String>,
     ) -> Self {
         Self {
-            inner: JobFeedback::new(
-                JobStatus::PaymentRequired,
-                request_id,
-                customer_pubkey,
-            )
-            .with_amount(amount_msats, bolt11),
+            inner: JobFeedback::new(JobStatus::PaymentRequired, request_id, customer_pubkey)
+                .with_amount(amount_msats, bolt11),
         }
     }
 
     /// Create processing feedback
-    pub fn processing(
-        request_id: impl Into<String>,
-        customer_pubkey: impl Into<String>,
-    ) -> Self {
+    pub fn processing(request_id: impl Into<String>, customer_pubkey: impl Into<String>) -> Self {
         Self {
             inner: JobFeedback::new(JobStatus::Processing, request_id, customer_pubkey),
         }
@@ -286,10 +282,7 @@ impl ComputeJobFeedback {
     }
 
     /// Create success feedback
-    pub fn success(
-        request_id: impl Into<String>,
-        customer_pubkey: impl Into<String>,
-    ) -> Self {
+    pub fn success(request_id: impl Into<String>, customer_pubkey: impl Into<String>) -> Self {
         Self {
             inner: JobFeedback::new(JobStatus::Success, request_id, customer_pubkey),
         }
@@ -402,10 +395,12 @@ mod tests {
 
         assert_eq!(req.kind(), KIND_JOB_TRANSLATION);
         let inner = req.inner();
-        assert!(inner
-            .params
-            .iter()
-            .any(|p| p.key == "target_lang" && p.value == "es"));
+        assert!(
+            inner
+                .params
+                .iter()
+                .any(|p| p.key == "target_lang" && p.value == "es")
+        );
     }
 
     #[test]
@@ -421,10 +416,9 @@ mod tests {
 
     #[test]
     fn test_speech_to_text_request() {
-        let req =
-            ComputeJobRequest::speech_to_text("https://example.com/audio.mp3")
-                .unwrap()
-                .with_param("language", "en");
+        let req = ComputeJobRequest::speech_to_text("https://example.com/audio.mp3")
+            .unwrap()
+            .with_param("language", "en");
 
         assert_eq!(req.kind(), KIND_JOB_SPEECH_TO_TEXT);
     }
@@ -437,10 +431,7 @@ mod tests {
 
         let inner = req.inner();
         assert_eq!(inner.inputs.len(), 2); // Original dummy + job input
-        assert!(inner
-            .inputs
-            .iter()
-            .any(|i| i.input_type == InputType::Job));
+        assert!(inner.inputs.iter().any(|i| i.input_type == InputType::Job));
     }
 
     #[test]
@@ -477,9 +468,8 @@ mod tests {
 
     #[test]
     fn test_processing_feedback() {
-        let feedback =
-            ComputeJobFeedback::processing("request_id", "customer_pubkey")
-                .with_extra("Processing started");
+        let feedback = ComputeJobFeedback::processing("request_id", "customer_pubkey")
+            .with_extra("Processing started");
 
         let inner = feedback.inner();
         assert_eq!(inner.status, JobStatus::Processing);
@@ -488,8 +478,7 @@ mod tests {
 
     #[test]
     fn test_error_feedback() {
-        let feedback =
-            ComputeJobFeedback::error("request_id", "customer_pubkey", "Out of credits");
+        let feedback = ComputeJobFeedback::error("request_id", "customer_pubkey", "Out of credits");
 
         let inner = feedback.inner();
         assert_eq!(inner.status, JobStatus::Error);
@@ -498,11 +487,8 @@ mod tests {
 
     #[test]
     fn test_partial_feedback() {
-        let feedback = ComputeJobFeedback::partial(
-            "request_id",
-            "customer_pubkey",
-            "Here's a preview: ...",
-        );
+        let feedback =
+            ComputeJobFeedback::partial("request_id", "customer_pubkey", "Here's a preview: ...");
 
         let inner = feedback.inner();
         assert_eq!(inner.status, JobStatus::Partial);

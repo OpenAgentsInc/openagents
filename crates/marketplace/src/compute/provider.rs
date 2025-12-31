@@ -4,7 +4,9 @@
 //! allowing nodes to advertise their compute capabilities via NIP-89.
 
 use crate::relay::{MarketplaceRelay, RelayError};
-use nostr::{Event, EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, PricingInfo, KIND_HANDLER_INFO};
+use nostr::{
+    Event, EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, KIND_HANDLER_INFO, PricingInfo,
+};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -406,10 +408,11 @@ mod tests {
         assert_eq!(info.metadata.name, "Test Provider");
         assert!(info.capabilities.contains(&"llama3".to_string()));
         assert!(info.pricing.is_some());
-        assert!(info
-            .custom_tags
-            .iter()
-            .any(|(key, value)| key == "schedule" && value == "always"));
+        assert!(
+            info.custom_tags
+                .iter()
+                .any(|(key, value)| key == "schedule" && value == "always")
+        );
     }
 
     #[test]
@@ -513,7 +516,10 @@ mod tests {
 
     #[test]
     fn test_provider_config_with_relays() {
-        let relays = vec!["wss://relay1.com".to_string(), "wss://relay2.com".to_string()];
+        let relays = vec![
+            "wss://relay1.com".to_string(),
+            "wss://relay2.com".to_string(),
+        ];
         let config = ProviderConfig::new("Test", "Test").with_relays(relays.clone());
 
         assert_eq!(config.relays, relays);

@@ -93,7 +93,8 @@ impl Anonymizer {
 
     /// Anonymize email addresses
     fn anonymize_emails(&self, content: &str) -> (String, usize) {
-        let email_regex = Regex::new(r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b").unwrap();
+        let email_regex =
+            Regex::new(r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b").unwrap();
         let mut count = 0;
         let result = email_regex.replace_all(content, |_: &regex::Captures| {
             count += 1;
@@ -109,10 +110,7 @@ impl Anonymizer {
 
         // Detect common home directory patterns
         if let Ok(home) = std::env::var("HOME") {
-            let home_patterns = vec![
-                home.clone(),
-                format!("~"),
-            ];
+            let home_patterns = vec![home.clone(), format!("~")];
 
             for pattern in home_patterns {
                 if result.contains(&pattern) && pattern.len() > 1 {
@@ -126,14 +124,16 @@ impl Anonymizer {
         // Replace absolute paths with relative where possible
         // Match patterns like /home/username/... or /Users/username/...
         let abs_path_regex = Regex::new(r"(/home/[^/\s]+|/Users/[^/\s]+)(/[^\s]*)").unwrap();
-        result = abs_path_regex.replace_all(&result, |caps: &regex::Captures| {
-            count += 1;
-            if let Some(relative) = caps.get(2) {
-                format!(".{}", relative.as_str())
-            } else {
-                "./...".to_string()
-            }
-        }).to_string();
+        result = abs_path_regex
+            .replace_all(&result, |caps: &regex::Captures| {
+                count += 1;
+                if let Some(relative) = caps.get(2) {
+                    format!(".{}", relative.as_str())
+                } else {
+                    "./...".to_string()
+                }
+            })
+            .to_string();
 
         (result, count)
     }
@@ -177,7 +177,11 @@ impl Anonymizer {
             if let std::path::Component::Normal(name) = component {
                 let name_str = name.to_str()?;
                 // Common parent directories for repos
-                if name_str == "code" || name_str == "projects" || name_str == "src" || name_str == "workspace" {
+                if name_str == "code"
+                    || name_str == "projects"
+                    || name_str == "src"
+                    || name_str == "workspace"
+                {
                     // Next component might be the repo name
                     if let Some(std::path::Component::Normal(repo)) = components.get(i + 1) {
                         return repo.to_str().map(|s| s.to_string());

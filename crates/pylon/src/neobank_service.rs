@@ -158,10 +158,9 @@ impl NeobankService {
         // Create USD wallet if configured
         if let Some(ref usd_url) = self.config.usd_mint_url {
             let usd_db_path = wallet_dir.join("usd_wallet.redb");
-            let usd_wallet =
-                CashuWallet::new(usd_url.clone(), Currency::Usd, &seed, &usd_db_path)
-                    .await
-                    .map_err(|e| NeobankError::Wallet(e.to_string()))?;
+            let usd_wallet = CashuWallet::new(usd_url.clone(), Currency::Usd, &seed, &usd_db_path)
+                .await
+                .map_err(|e| NeobankError::Wallet(e.to_string()))?;
 
             self.usd_wallet = Some(Arc::new(usd_wallet));
         }
@@ -222,10 +221,9 @@ impl NeobankService {
                 Ok(balance.value)
             }
             Currency::Usd => {
-                let wallet = self
-                    .usd_wallet
-                    .as_ref()
-                    .ok_or(NeobankError::Wallet("USD wallet not configured".to_string()))?;
+                let wallet = self.usd_wallet.as_ref().ok_or(NeobankError::Wallet(
+                    "USD wallet not configured".to_string(),
+                ))?;
                 let balance = wallet
                     .balance()
                     .await

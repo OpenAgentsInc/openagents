@@ -6,12 +6,12 @@
 //! The same mnemonic can be used for both Nostr (NIP-06) and Spark, providing
 //! a unified identity system.
 
+use crate::error::SparkError;
 use bip39::Mnemonic;
 use bitcoin::Network;
 use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv};
 use bitcoin::key::Secp256k1;
 use bitcoin::secp256k1::{PublicKey, SecretKey};
-use crate::error::SparkError;
 
 /// Bitcoin coin type as defined in BIP44
 const BITCOIN_COIN_TYPE: u32 = 0;
@@ -49,8 +49,8 @@ impl SparkSigner {
     /// ```
     pub fn from_mnemonic(mnemonic: &str, passphrase: &str) -> Result<Self, SparkError> {
         // Parse and validate the mnemonic
-        let parsed_mnemonic = Mnemonic::parse(mnemonic)
-            .map_err(|e| SparkError::InvalidMnemonic(e.to_string()))?;
+        let parsed_mnemonic =
+            Mnemonic::parse(mnemonic).map_err(|e| SparkError::InvalidMnemonic(e.to_string()))?;
 
         // Derive the 64-byte seed from the mnemonic
         let seed = parsed_mnemonic.to_seed(passphrase);
@@ -225,8 +225,10 @@ mod tests {
     fn test_passphrase_changes_keys() {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
-        let signer_no_pass = SparkSigner::from_mnemonic(mnemonic, "").expect("should create signer");
-        let signer_with_pass = SparkSigner::from_mnemonic(mnemonic, "test123").expect("should create signer");
+        let signer_no_pass =
+            SparkSigner::from_mnemonic(mnemonic, "").expect("should create signer");
+        let signer_with_pass =
+            SparkSigner::from_mnemonic(mnemonic, "test123").expect("should create signer");
 
         // Different passphrases should produce different keys
         assert_ne!(signer_no_pass.private_key(), signer_with_pass.private_key());

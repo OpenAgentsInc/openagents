@@ -46,12 +46,19 @@ impl SkillPricing {
         match self {
             SkillPricing::Free => 0,
             SkillPricing::PerCall { credits } => *credits,
-            SkillPricing::PerToken { per_1k_input, per_1k_output } => {
+            SkillPricing::PerToken {
+                per_1k_input,
+                per_1k_output,
+            } => {
                 let input_cost = (input_tokens * per_1k_input).div_ceil(1000); // Round up
                 let output_cost = (output_tokens * per_1k_output).div_ceil(1000); // Round up
                 input_cost + output_cost
             }
-            SkillPricing::Hybrid { per_call, per_1k_input, per_1k_output } => {
+            SkillPricing::Hybrid {
+                per_call,
+                per_1k_input,
+                per_1k_output,
+            } => {
                 let input_cost = (input_tokens * per_1k_input).div_ceil(1000); // Round up
                 let output_cost = (output_tokens * per_1k_output).div_ceil(1000); // Round up
                 per_call + input_cost + output_cost
@@ -257,7 +264,7 @@ mod tests {
 
         // Should round up (div_ceil)
         // (1 * 10).div_ceil(1000) = 1, (1 * 20).div_ceil(1000) = 1
-        assert_eq!(pricing.calculate_cost(1, 1), 2);       // Min cost: 1 + 1
+        assert_eq!(pricing.calculate_cost(1, 1), 2); // Min cost: 1 + 1
         assert_eq!(pricing.calculate_cost(500, 500), 15); // 5 + 10 (rounds up)
         assert_eq!(pricing.calculate_cost(1001, 1001), 32); // 11 + 21 (rounds up)
         assert_eq!(pricing.calculate_cost(1500, 2500), 65); // 15 + 50
@@ -298,7 +305,7 @@ mod tests {
         };
 
         // Rounds up like PerToken
-        assert_eq!(pricing.calculate_cost(1, 1), 102);     // 100 + 1 + 1
+        assert_eq!(pricing.calculate_cost(1, 1), 102); // 100 + 1 + 1
         assert_eq!(pricing.calculate_cost(500, 500), 115); // 100 + 5 + 10
         assert_eq!(pricing.calculate_cost(1500, 2500), 165); // 100 + 15 + 50
     }
@@ -316,41 +323,56 @@ mod tests {
     #[test]
     fn test_revenue_split_validation() {
         // Valid splits
-        assert!(RevenueSplit {
-            creator_pct: 50,
-            compute_pct: 30,
-            platform_pct: 15,
-            referrer_pct: 5,
-        }.is_valid());
+        assert!(
+            RevenueSplit {
+                creator_pct: 50,
+                compute_pct: 30,
+                platform_pct: 15,
+                referrer_pct: 5,
+            }
+            .is_valid()
+        );
 
-        assert!(RevenueSplit {
-            creator_pct: 70,
-            compute_pct: 20,
-            platform_pct: 5,
-            referrer_pct: 5,
-        }.is_valid());
+        assert!(
+            RevenueSplit {
+                creator_pct: 70,
+                compute_pct: 20,
+                platform_pct: 5,
+                referrer_pct: 5,
+            }
+            .is_valid()
+        );
 
         // Invalid splits (don't sum to 100)
-        assert!(!RevenueSplit {
-            creator_pct: 60,
-            compute_pct: 25,
-            platform_pct: 10,
-            referrer_pct: 10, // Total is 105
-        }.is_valid());
+        assert!(
+            !RevenueSplit {
+                creator_pct: 60,
+                compute_pct: 25,
+                platform_pct: 10,
+                referrer_pct: 10, // Total is 105
+            }
+            .is_valid()
+        );
 
-        assert!(!RevenueSplit {
-            creator_pct: 50,
-            compute_pct: 25,
-            platform_pct: 10,
-            referrer_pct: 5, // Total is 90
-        }.is_valid());
+        assert!(
+            !RevenueSplit {
+                creator_pct: 50,
+                compute_pct: 25,
+                platform_pct: 10,
+                referrer_pct: 5, // Total is 90
+            }
+            .is_valid()
+        );
 
-        assert!(!RevenueSplit {
-            creator_pct: 0,
-            compute_pct: 0,
-            platform_pct: 0,
-            referrer_pct: 0, // Total is 0
-        }.is_valid());
+        assert!(
+            !RevenueSplit {
+                creator_pct: 0,
+                compute_pct: 0,
+                platform_pct: 0,
+                referrer_pct: 0, // Total is 0
+            }
+            .is_valid()
+        );
     }
 
     #[test]
@@ -375,9 +397,9 @@ mod tests {
         let (creator, compute, platform, referrer) = split.split(1003);
 
         // Integer division rounds down, remainder goes to referrer
-        assert_eq!(creator, 601);   // 1003 * 60 / 100 = 601
-        assert_eq!(compute, 250);   // 1003 * 25 / 100 = 250
-        assert_eq!(platform, 100);  // 1003 * 10 / 100 = 100
+        assert_eq!(creator, 601); // 1003 * 60 / 100 = 601
+        assert_eq!(compute, 250); // 1003 * 25 / 100 = 250
+        assert_eq!(platform, 100); // 1003 * 10 / 100 = 100
 
         // Referrer gets remainder
         assert_eq!(creator + compute + platform + referrer, 1003);
@@ -400,10 +422,10 @@ mod tests {
 
         // Amount smaller than percentages
         let (creator, compute, platform, referrer) = split.split(10);
-        assert_eq!(creator, 6);   // 60%
-        assert_eq!(compute, 2);   // 25%
-        assert_eq!(platform, 1);  // 10%
-        assert_eq!(referrer, 1);  // Remainder
+        assert_eq!(creator, 6); // 60%
+        assert_eq!(compute, 2); // 25%
+        assert_eq!(platform, 1); // 10%
+        assert_eq!(referrer, 1); // Remainder
 
         assert_eq!(creator + compute + platform + referrer, 10);
     }
@@ -428,9 +450,15 @@ mod tests {
     #[test]
     fn test_submission_status_as_str() {
         assert_eq!(SkillSubmissionStatus::Draft.as_str(), "draft");
-        assert_eq!(SkillSubmissionStatus::PendingReview.as_str(), "pending_review");
+        assert_eq!(
+            SkillSubmissionStatus::PendingReview.as_str(),
+            "pending_review"
+        );
         assert_eq!(SkillSubmissionStatus::InReview.as_str(), "in_review");
-        assert_eq!(SkillSubmissionStatus::ChangesRequested.as_str(), "changes_requested");
+        assert_eq!(
+            SkillSubmissionStatus::ChangesRequested.as_str(),
+            "changes_requested"
+        );
         assert_eq!(SkillSubmissionStatus::Approved.as_str(), "approved");
         assert_eq!(SkillSubmissionStatus::Published.as_str(), "published");
         assert_eq!(SkillSubmissionStatus::Deprecated.as_str(), "deprecated");

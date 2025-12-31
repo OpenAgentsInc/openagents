@@ -81,9 +81,7 @@ pub fn validate_trajectory(session: &TrajectorySession, min_quality: f64) -> Val
 
     // Overall quality score (weighted average)
     let quality = QualityScore::new(
-        completeness_score * 0.4 +
-        complexity_score * 0.3 +
-        reward_signal_score * 0.3
+        completeness_score * 0.4 + complexity_score * 0.3 + reward_signal_score * 0.3,
     );
 
     let passed = quality.meets_threshold(min_quality) && failure_reasons.is_empty();

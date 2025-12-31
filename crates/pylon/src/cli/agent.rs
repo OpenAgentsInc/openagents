@@ -5,8 +5,8 @@
 use agent::{AgentRegistry, AgentSpawner, AutonomyLevel, NetworkConfig, SpawnRequest};
 use clap::{Args, Subcommand};
 
-use crate::db::PylonDb;
 use crate::daemon::db_path;
+use crate::db::PylonDb;
 
 /// Arguments for the agent command
 #[derive(Args)]
@@ -203,7 +203,8 @@ async fn run_spawn(args: SpawnArgs) -> anyhow::Result<()> {
     };
 
     // Create spawn request
-    let relays = args.relay
+    let relays = args
+        .relay
         .map(|r| vec![r])
         .unwrap_or_else(|| vec!["wss://relay.damus.io".to_string()]);
 

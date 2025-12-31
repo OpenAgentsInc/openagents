@@ -12,7 +12,7 @@ use neobank::{
     escrow::{EscrowService, TradeSide},
     exchange::{ExchangeClient, OrderParams, OrderSide, TradeOutcome, TradeStatus},
     relay::{ExchangeRelay, OrderFilter},
-    reputation::{ReputationService, ReputationScore},
+    reputation::{ReputationScore, ReputationService},
     rfq::{RfqMarket, RfqRequest},
     settlement::{SettlementEngine, SettlementMode},
     treasury_agent::{TradingPair, TreasuryAgent, TreasuryAgentConfig},
@@ -64,8 +64,7 @@ async fn test_settlement_with_mock_engine() {
     // Use mock settlement mode since reputation mode requires wallets
     let settlement = SettlementEngine::new_mock();
 
-    let exchange =
-        ExchangeClient::new_with_settlement("alice_pubkey", settlement);
+    let exchange = ExchangeClient::new_with_settlement("alice_pubkey", settlement);
 
     let order_id = exchange
         .post_order(OrderParams {
@@ -282,8 +281,7 @@ async fn test_treasury_agent_rfq_handling() {
     agent.set_rate(TradingPair::BtcUsd, 50_000.0).await;
 
     // Handle RFQ
-    let request = RfqRequest::new(OrderSide::Buy, 100_000, "USD")
-        .with_max_premium(5.0);
+    let request = RfqRequest::new(OrderSide::Buy, 100_000, "USD").with_max_premium(5.0);
 
     let quote = agent.handle_rfq(&request).await.unwrap();
 
@@ -572,8 +570,7 @@ async fn test_max_amount_limits() {
     assert!(result.is_err());
 
     // Just right
-    let good_request = RfqRequest::new(OrderSide::Buy, 50_000, "USD")
-        .with_max_premium(5.0);
+    let good_request = RfqRequest::new(OrderSide::Buy, 50_000, "USD").with_max_premium(5.0);
     let result = agent.handle_rfq(&good_request).await;
     assert!(result.is_ok());
 }

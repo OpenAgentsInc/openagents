@@ -714,10 +714,7 @@ mod tests {
             name: "coalition1".to_string(),
             members: vec!["agent1".to_string(), "agent2".to_string()],
             goal: "Collaborate".to_string(),
-            revenue_split: vec![
-                ("agent1".to_string(), 50),
-                ("agent2".to_string(), 50),
-            ],
+            revenue_split: vec![("agent1".to_string(), 50), ("agent2".to_string(), 50)],
         };
 
         assert_eq!(request.members.len(), 2);
@@ -760,7 +757,10 @@ mod tests {
         };
 
         assert_eq!(response.total_sats, 11000);
-        assert_eq!(response.available_sats + response.pending_sats, response.total_sats);
+        assert_eq!(
+            response.available_sats + response.pending_sats,
+            response.total_sats
+        );
     }
 
     #[test]

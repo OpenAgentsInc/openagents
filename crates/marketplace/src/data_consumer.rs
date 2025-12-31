@@ -62,9 +62,9 @@ impl DataListingType {
     /// Get typical price range in satoshis
     pub fn typical_price_range(&self) -> (u64, u64) {
         match self {
-            Self::Premium => (10000, 100000),    // 10k-100k sats
-            Self::Standard => (50000, 500000),   // 50k-500k sats
-            Self::Aggregated => (5000, 50000),   // 5k-50k sats
+            Self::Premium => (10000, 100000),  // 10k-100k sats
+            Self::Standard => (50000, 500000), // 50k-500k sats
+            Self::Aggregated => (5000, 50000), // 5k-50k sats
         }
     }
 }
@@ -535,7 +535,11 @@ pub struct DataSample {
 
 impl DataSample {
     /// Create a new data sample
-    pub fn new(listing_id: impl Into<String>, records: Vec<serde_json::Value>, total_records: u64) -> Self {
+    pub fn new(
+        listing_id: impl Into<String>,
+        records: Vec<serde_json::Value>,
+        total_records: u64,
+    ) -> Self {
         let sample_size = records.len() as u32;
         Self {
             listing_id: listing_id.into(),
@@ -642,13 +646,8 @@ mod tests {
 
     #[test]
     fn test_data_purchase() {
-        let mut purchase = DataPurchase::new(
-            "purchase1",
-            "buyer123",
-            "listing1",
-            100000,
-            "token_abc",
-        );
+        let mut purchase =
+            DataPurchase::new("purchase1", "buyer123", "listing1", 100000, "token_abc");
 
         assert!(!purchase.downloaded);
         assert!(purchase.can_download());
@@ -661,14 +660,8 @@ mod tests {
     #[test]
     fn test_purchase_expiration() {
         let past = Utc::now() - chrono::Duration::hours(1);
-        let purchase = DataPurchase::new(
-            "purchase2",
-            "buyer456",
-            "listing2",
-            50000,
-            "token_def",
-        )
-        .with_expiration(past);
+        let purchase = DataPurchase::new("purchase2", "buyer456", "listing2", 50000, "token_def")
+            .with_expiration(past);
 
         assert!(purchase.is_expired());
         assert!(!purchase.can_download());
@@ -713,23 +706,15 @@ mod tests {
 
     #[test]
     fn test_data_access_token() {
-        let mut token = DataAccessToken::new(
-            "abc123",
-            "purchase1",
-            DataPermissions::default(),
-        )
-        .with_rate_limit(RateLimit::new(10, 60));
+        let mut token = DataAccessToken::new("abc123", "purchase1", DataPermissions::default())
+            .with_rate_limit(RateLimit::new(10, 60));
 
         assert!(!token.is_expired());
         assert!(token.allow_request());
 
         let past = Utc::now() - chrono::Duration::hours(1);
-        let expired = DataAccessToken::new(
-            "def456",
-            "purchase2",
-            DataPermissions::default(),
-        )
-        .with_expiration(past);
+        let expired = DataAccessToken::new("def456", "purchase2", DataPermissions::default())
+            .with_expiration(past);
 
         assert!(expired.is_expired());
         assert!(!expired.clone().allow_request());

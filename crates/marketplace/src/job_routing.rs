@@ -96,9 +96,10 @@ impl SelectionCriteria {
             + self.reputation_weight;
 
         if (total - 1.0).abs() > 0.01 {
-            return Err(RoutingError::InvalidCriteria(
-                format!("Weights must sum to 1.0, got {}", total),
-            ));
+            return Err(RoutingError::InvalidCriteria(format!(
+                "Weights must sum to 1.0, got {}",
+                total
+            )));
         }
 
         Ok(())
@@ -370,26 +371,17 @@ pub enum JobErrorType {
 impl JobErrorType {
     /// Check if this error is retryable
     pub fn is_retryable(&self) -> bool {
-        matches!(
-            self,
-            Self::NetworkError | Self::Timeout | Self::Unknown
-        )
+        matches!(self, Self::NetworkError | Self::Timeout | Self::Unknown)
     }
 
     /// Check if this error should trigger failover
     pub fn should_failover(&self) -> bool {
-        matches!(
-            self,
-            Self::CapacityExceeded | Self::ProviderOffline
-        )
+        matches!(self, Self::CapacityExceeded | Self::ProviderOffline)
     }
 
     /// Check if this error should abort the job
     pub fn should_abort(&self) -> bool {
-        matches!(
-            self,
-            Self::InvalidRequest | Self::PaymentFailed
-        )
+        matches!(self, Self::InvalidRequest | Self::PaymentFailed)
     }
 }
 
@@ -501,8 +493,14 @@ mod tests {
         assert_eq!(all[0], "primary");
         assert_eq!(all[3], "platform");
 
-        assert_eq!(chain.next_provider("primary"), Some("fallback1".to_string()));
-        assert_eq!(chain.next_provider("fallback2"), Some("platform".to_string()));
+        assert_eq!(
+            chain.next_provider("primary"),
+            Some("fallback1".to_string())
+        );
+        assert_eq!(
+            chain.next_provider("fallback2"),
+            Some("platform".to_string())
+        );
         assert_eq!(chain.next_provider("platform"), None);
     }
 
@@ -579,7 +577,13 @@ mod tests {
         let policy = FailoverPolicy::default();
         let chain = FailoverChain::new("primary").with_fallback("fallback1");
 
-        let decision = should_retry(JobErrorType::CapacityExceeded, 1, &policy, &chain, "primary");
+        let decision = should_retry(
+            JobErrorType::CapacityExceeded,
+            1,
+            &policy,
+            &chain,
+            "primary",
+        );
         assert!(decision.is_failover());
 
         let decision = should_retry(JobErrorType::ProviderOffline, 1, &policy, &chain, "primary");

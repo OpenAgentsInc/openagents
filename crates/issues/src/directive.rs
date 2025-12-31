@@ -369,9 +369,7 @@ pub fn list_issues_by_directive(
                 description: row.get("description")?,
                 status: Status::from_str(&row.get::<_, String>("status")?),
                 priority: Priority::from_str(&row.get::<_, String>("priority")?),
-                issue_type: crate::issue::IssueType::from_str(
-                    &row.get::<_, String>("issue_type")?,
-                ),
+                issue_type: crate::issue::IssueType::from_str(&row.get::<_, String>("issue_type")?),
                 agent: row
                     .get::<_, Option<String>>("agent")?
                     .unwrap_or_else(|| "claude".to_string()),
@@ -432,8 +430,7 @@ This is the goal.
 - [ ] Item 2
 "#;
 
-        let directive =
-            Directive::parse(content, PathBuf::from("test.md")).unwrap();
+        let directive = Directive::parse(content, PathBuf::from("test.md")).unwrap();
 
         assert_eq!(directive.id, "d-001");
         assert_eq!(directive.title, "Test Directive");

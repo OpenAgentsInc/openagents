@@ -139,7 +139,9 @@ impl Issue {
             status: Status::from_str(&row.get::<_, String>("status")?),
             priority: Priority::from_str(&row.get::<_, String>("priority")?),
             issue_type: IssueType::from_str(&row.get::<_, String>("issue_type")?),
-            agent: row.get::<_, Option<String>>("agent")?.unwrap_or_else(|| "claude".to_string()),
+            agent: row
+                .get::<_, Option<String>>("agent")?
+                .unwrap_or_else(|| "claude".to_string()),
             directive_id: row.get("directive_id")?,
             project_id: row.get("project_id")?,
             is_blocked: row.get::<_, i32>("is_blocked")? != 0,
@@ -148,18 +150,24 @@ impl Issue {
             claimed_at: row
                 .get::<_, Option<String>>("claimed_at")?
                 .and_then(|s| Self::parse_datetime(&s).ok()),
-            created_at: Self::parse_datetime(&row.get::<_, String>("created_at")?)
-                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
-                    0,
-                    rusqlite::types::Type::Text,
-                    Box::new(e),
-                ))?,
-            updated_at: Self::parse_datetime(&row.get::<_, String>("updated_at")?)
-                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
-                    0,
-                    rusqlite::types::Type::Text,
-                    Box::new(e),
-                ))?,
+            created_at: Self::parse_datetime(&row.get::<_, String>("created_at")?).map_err(
+                |e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                },
+            )?,
+            updated_at: Self::parse_datetime(&row.get::<_, String>("updated_at")?).map_err(
+                |e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                },
+            )?,
             completed_at: row
                 .get::<_, Option<String>>("completed_at")?
                 .and_then(|s| Self::parse_datetime(&s).ok()),
@@ -179,7 +187,17 @@ pub fn create_issue(
     directive_id: Option<&str>,
     project_id: Option<&str>,
 ) -> Result<Issue> {
-    create_issue_with_auto(conn, title, description, priority, issue_type, agent, directive_id, project_id, false)
+    create_issue_with_auto(
+        conn,
+        title,
+        description,
+        priority,
+        issue_type,
+        agent,
+        directive_id,
+        project_id,
+        false,
+    )
 }
 
 /// Create a new issue with auto_created flag
@@ -269,14 +287,17 @@ pub fn list_auto_created_issues(conn: &Connection, status: Option<Status>) -> Re
 
     match status {
         Some(s) => {
-            let mut stmt = conn.prepare("SELECT * FROM issues WHERE auto_created = 1 AND status = ? ORDER BY number DESC")?;
+            let mut stmt = conn.prepare(
+                "SELECT * FROM issues WHERE auto_created = 1 AND status = ? ORDER BY number DESC",
+            )?;
             let rows = stmt.query_map([s.as_str()], Issue::from_row)?;
             for row in rows {
                 issues.push(row?);
             }
         }
         None => {
-            let mut stmt = conn.prepare("SELECT * FROM issues WHERE auto_created = 1 ORDER BY number DESC")?;
+            let mut stmt =
+                conn.prepare("SELECT * FROM issues WHERE auto_created = 1 ORDER BY number DESC")?;
             let rows = stmt.query_map([], Issue::from_row)?;
             for row in rows {
                 issues.push(row?);
@@ -291,8 +312,8 @@ pub fn list_auto_created_issues(conn: &Connection, status: Option<Status>) -> Re
 /// Optionally filter by agent (e.g., "claude" or "codex")
 pub fn get_next_ready_issue(conn: &Connection, agent: Option<&str>) -> Result<Option<Issue>> {
     match agent {
-        Some(agent_filter) => {
-            conn.query_row(
+        Some(agent_filter) => conn
+            .query_row(
                 r#"
                 SELECT * FROM issues
                 WHERE status = 'open'
@@ -314,10 +335,9 @@ pub fn get_next_ready_issue(conn: &Connection, agent: Option<&str>) -> Result<Op
                 [agent_filter],
                 Issue::from_row,
             )
-            .optional()
-        }
-        None => {
-            conn.query_row(
+            .optional(),
+        None => conn
+            .query_row(
                 r#"
                 SELECT * FROM issues
                 WHERE status = 'open'
@@ -338,8 +358,7 @@ pub fn get_next_ready_issue(conn: &Connection, agent: Option<&str>) -> Result<Op
                 [],
                 Issue::from_row,
             )
-            .optional()
-        }
+            .optional(),
     }
 }
 
@@ -537,7 +556,17 @@ mod tests {
     #[test]
     fn test_create_and_get_issue() {
         let conn = init_memory_db().unwrap();
-        let issue = create_issue(&conn, "Test issue", Some("Description"), Priority::High, IssueType::Bug, None, None, None).unwrap();
+        let issue = create_issue(
+            &conn,
+            "Test issue",
+            Some("Description"),
+            Priority::High,
+            IssueType::Bug,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(issue.number, 1);
         assert_eq!(issue.title, "Test issue");
@@ -554,7 +583,17 @@ mod tests {
     #[test]
     fn test_create_issue_with_agent() {
         let conn = init_memory_db().unwrap();
-        let issue = create_issue(&conn, "Codex task", None, Priority::Medium, IssueType::Task, Some("codex"), None, None).unwrap();
+        let issue = create_issue(
+            &conn,
+            "Codex task",
+            None,
+            Priority::Medium,
+            IssueType::Task,
+            Some("codex"),
+            None,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(issue.agent, "codex");
     }
@@ -562,7 +601,17 @@ mod tests {
     #[test]
     fn test_claim_and_complete() {
         let conn = init_memory_db().unwrap();
-        let issue = create_issue(&conn, "Task", None, Priority::Medium, IssueType::Task, None, None, None).unwrap();
+        let issue = create_issue(
+            &conn,
+            "Task",
+            None,
+            Priority::Medium,
+            IssueType::Task,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         // Claim it
         assert!(claim_issue(&conn, &issue.id, "run-123").unwrap());
@@ -583,14 +632,27 @@ mod tests {
     #[test]
     fn test_block_unblock() {
         let conn = init_memory_db().unwrap();
-        let issue = create_issue(&conn, "Blocked task", None, Priority::Medium, IssueType::Task, None, None, None).unwrap();
+        let issue = create_issue(
+            &conn,
+            "Blocked task",
+            None,
+            Priority::Medium,
+            IssueType::Task,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         // Block it
         assert!(block_issue(&conn, &issue.id, "Waiting on dependency").unwrap());
 
         let blocked = get_issue_by_id(&conn, &issue.id).unwrap().unwrap();
         assert!(blocked.is_blocked);
-        assert_eq!(blocked.blocked_reason, Some("Waiting on dependency".to_string()));
+        assert_eq!(
+            blocked.blocked_reason,
+            Some("Waiting on dependency".to_string())
+        );
 
         // Should not appear in ready queue
         assert!(get_next_ready_issue(&conn, None).unwrap().is_none());
@@ -612,15 +674,37 @@ mod tests {
         let conn = init_memory_db().unwrap();
 
         // Create claude and codex issues
-        create_issue(&conn, "Claude task", None, Priority::High, IssueType::Task, Some("claude"), None, None).unwrap();
-        create_issue(&conn, "Codex task", None, Priority::Urgent, IssueType::Task, Some("codex"), None, None).unwrap();
+        create_issue(
+            &conn,
+            "Claude task",
+            None,
+            Priority::High,
+            IssueType::Task,
+            Some("claude"),
+            None,
+            None,
+        )
+        .unwrap();
+        create_issue(
+            &conn,
+            "Codex task",
+            None,
+            Priority::Urgent,
+            IssueType::Task,
+            Some("codex"),
+            None,
+            None,
+        )
+        .unwrap();
 
         // Without filter, should return highest priority (codex)
         let next = get_next_ready_issue(&conn, None).unwrap().unwrap();
         assert_eq!(next.title, "Codex task");
 
         // With claude filter, should return claude task
-        let claude_next = get_next_ready_issue(&conn, Some("claude")).unwrap().unwrap();
+        let claude_next = get_next_ready_issue(&conn, Some("claude"))
+            .unwrap()
+            .unwrap();
         assert_eq!(claude_next.title, "Claude task");
 
         // With codex filter, should return codex task
@@ -633,10 +717,50 @@ mod tests {
         let conn = init_memory_db().unwrap();
 
         // Create issues in reverse priority order
-        create_issue(&conn, "Low", None, Priority::Low, IssueType::Task, None, None, None).unwrap();
-        create_issue(&conn, "High", None, Priority::High, IssueType::Task, None, None, None).unwrap();
-        create_issue(&conn, "Urgent", None, Priority::Urgent, IssueType::Task, None, None, None).unwrap();
-        create_issue(&conn, "Medium", None, Priority::Medium, IssueType::Task, None, None, None).unwrap();
+        create_issue(
+            &conn,
+            "Low",
+            None,
+            Priority::Low,
+            IssueType::Task,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        create_issue(
+            &conn,
+            "High",
+            None,
+            Priority::High,
+            IssueType::Task,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        create_issue(
+            &conn,
+            "Urgent",
+            None,
+            Priority::Urgent,
+            IssueType::Task,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        create_issue(
+            &conn,
+            "Medium",
+            None,
+            Priority::Medium,
+            IssueType::Task,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         // Next ready should be urgent
         let next = get_next_ready_issue(&conn, None).unwrap().unwrap();
@@ -648,7 +772,17 @@ mod tests {
         let conn = init_memory_db().unwrap();
 
         // Create an issue
-        let issue = create_issue(&conn, "Test delete", None, Priority::Medium, IssueType::Task, None, None, None).unwrap();
+        let issue = create_issue(
+            &conn,
+            "Test delete",
+            None,
+            Priority::Medium,
+            IssueType::Task,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         // Verify it exists
         assert!(get_issue_by_id(&conn, &issue.id).unwrap().is_some());
@@ -675,7 +809,17 @@ mod tests {
         let conn = init_memory_db().unwrap();
 
         // Create an issue
-        let issue = create_issue(&conn, "Issue with events", None, Priority::High, IssueType::Bug, None, None, None).unwrap();
+        let issue = create_issue(
+            &conn,
+            "Issue with events",
+            None,
+            Priority::High,
+            IssueType::Bug,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         // Add an event manually (simulating the event log)
         conn.execute(
@@ -689,11 +833,13 @@ mod tests {
         // Verify issue and events are gone
         assert!(get_issue_by_id(&conn, &issue.id).unwrap().is_none());
 
-        let event_count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM issue_events WHERE issue_id = ?",
-            [&issue.id],
-            |row| row.get(0)
-        ).unwrap();
+        let event_count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM issue_events WHERE issue_id = ?",
+                [&issue.id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(event_count, 0);
     }
 }

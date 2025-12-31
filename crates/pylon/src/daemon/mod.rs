@@ -17,7 +17,8 @@ use std::path::PathBuf;
 
 /// Get the pylon runtime directory (~/.pylon)
 pub fn runtime_dir() -> anyhow::Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    let home =
+        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
     let dir = home.join(".pylon");
     std::fs::create_dir_all(&dir)?;
     Ok(dir)

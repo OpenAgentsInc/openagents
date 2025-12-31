@@ -9,11 +9,11 @@
 //!
 //! Part of d-015: Comprehensive Marketplace and Agent Commerce E2E Tests
 
-use nostr::{finalize_event, generate_secret_key, get_public_key, EventTemplate};
+use nostr::{EventTemplate, finalize_event, generate_secret_key, get_public_key};
 use nostr::{HandlerInfo, HandlerMetadata, HandlerType, KIND_HANDLER_INFO};
 use nostr::{
-    SkillDelivery, SkillDeliveryContent, SkillLicense, SkillLicenseContent, KIND_SKILL_DELIVERY,
-    KIND_SKILL_LICENSE,
+    KIND_SKILL_DELIVERY, KIND_SKILL_LICENSE, SkillDelivery, SkillDeliveryContent, SkillLicense,
+    SkillLicenseContent,
 };
 use nostr_client::RelayConnection;
 use nostr_relay::{Database, DatabaseConfig, RelayConfig, RelayServer};
@@ -102,8 +102,7 @@ async fn test_skill_browse_over_relay() {
     .add_capability("best-practices");
 
     // 5. Create handler info event (kind:31990)
-    let content =
-        serde_json::to_string(&handler_info.metadata).expect("should serialize metadata");
+    let content = serde_json::to_string(&handler_info.metadata).expect("should serialize metadata");
 
     let skill_template = EventTemplate {
         kind: KIND_HANDLER_INFO,
@@ -155,9 +154,11 @@ async fn test_skill_browse_over_relay() {
         serde_json::from_str(&received.content).expect("should deserialize");
 
     assert_eq!(parsed_metadata.name, "code-reviewer");
-    assert!(parsed_metadata
-        .description
-        .contains("AI code review assistant"));
+    assert!(
+        parsed_metadata
+            .description
+            .contains("AI code review assistant")
+    );
     assert_eq!(
         parsed_metadata.icon_url,
         Some("https://openagents.com/skills/code-reviewer.png".to_string())
@@ -465,13 +466,9 @@ async fn test_skill_versioning() {
     )
     .with_website("https://openagents.com/skills/data-analyzer");
 
-    let v1_handler = HandlerInfo::new(
-        hex::encode(creator_pubkey),
-        HandlerType::Skill,
-        v1_metadata,
-    )
-    .add_capability("csv-parsing")
-    .add_capability("basic-stats");
+    let v1_handler = HandlerInfo::new(hex::encode(creator_pubkey), HandlerType::Skill, v1_metadata)
+        .add_capability("csv-parsing")
+        .add_capability("basic-stats");
 
     let mut v1_tags = v1_handler.to_tags();
     v1_tags.push(vec!["version".to_string(), "1.0.0".to_string()]);
@@ -496,14 +493,10 @@ async fn test_skill_versioning() {
     )
     .with_website("https://openagents.com/skills/data-analyzer");
 
-    let v2_handler = HandlerInfo::new(
-        hex::encode(creator_pubkey),
-        HandlerType::Skill,
-        v2_metadata,
-    )
-    .add_capability("csv-parsing")
-    .add_capability("basic-stats")
-    .add_capability("ml-predictions"); // New capability in v1.1.0
+    let v2_handler = HandlerInfo::new(hex::encode(creator_pubkey), HandlerType::Skill, v2_metadata)
+        .add_capability("csv-parsing")
+        .add_capability("basic-stats")
+        .add_capability("ml-predictions"); // New capability in v1.1.0
 
     let mut v2_tags = v2_handler.to_tags();
     v2_tags.push(vec!["version".to_string(), "1.1.0".to_string()]);
@@ -568,17 +561,19 @@ async fn test_skill_versioning() {
         })
         .collect();
 
-    assert!(versions.contains(&"1.0.0".to_string()), "Should have v1.0.0");
-    assert!(versions.contains(&"1.1.0".to_string()), "Should have v1.1.0");
+    assert!(
+        versions.contains(&"1.0.0".to_string()),
+        "Should have v1.0.0"
+    );
+    assert!(
+        versions.contains(&"1.1.0".to_string()),
+        "Should have v1.1.0"
+    );
 
     // 10. Verify v1.1.0 has the new capability
     let v2_received = received_events
         .iter()
-        .find(|e| {
-            e.tags
-                .iter()
-                .any(|t| t[0] == "version" && t[1] == "1.1.0")
-        })
+        .find(|e| e.tags.iter().any(|t| t[0] == "version" && t[1] == "1.1.0"))
         .expect("should find v1.1.0");
 
     let has_ml_capability = v2_received

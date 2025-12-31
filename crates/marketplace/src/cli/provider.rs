@@ -251,7 +251,10 @@ impl ProviderCommands {
             for relay in &config.relays {
                 println!("  - {}", relay);
             }
-            println!("\nRe-advertisement interval: {}s", config.readvertise_interval_secs);
+            println!(
+                "\nRe-advertisement interval: {}s",
+                config.readvertise_interval_secs
+            );
         }
 
         Ok(())
@@ -297,7 +300,10 @@ impl ProviderCommands {
 
     fn earnings(&self, json: bool, period: &str) -> anyhow::Result<()> {
         if json {
-            println!("{{\"earnings\": 0, \"jobs_completed\": 0, \"period\": \"{}\"}}",  period);
+            println!(
+                "{{\"earnings\": 0, \"jobs_completed\": 0, \"period\": \"{}\"}}",
+                period
+            );
         } else {
             println!("Provider Earnings");
             println!("=================\n");
@@ -401,7 +407,9 @@ mod tests {
 
     fn test_lock() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(())).lock().expect("lock test env")
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("lock test env")
     }
 
     fn with_temp_config_dir<F>(f: F)

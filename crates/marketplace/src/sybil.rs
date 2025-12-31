@@ -133,10 +133,7 @@ impl StakeRequirement {
                 ReleaseCondition::MinSuccessRate(95),
                 ReleaseCondition::NoActiveDisputes,
             ],
-            slash_conditions: vec![
-                SlashCondition::FraudDetected,
-                SlashCondition::DisputeLoss,
-            ],
+            slash_conditions: vec![SlashCondition::FraudDetected, SlashCondition::DisputeLoss],
         }
     }
 
@@ -275,7 +272,10 @@ impl Stake {
 
     /// Check if stake can be released
     pub fn can_release(&self, success_rate: f32, has_disputes: bool, age_days: u32) -> bool {
-        if !matches!(self.status, StakeStatus::Active | StakeStatus::PendingRelease) {
+        if !matches!(
+            self.status,
+            StakeStatus::Active | StakeStatus::PendingRelease
+        ) {
             return false;
         }
 
@@ -319,7 +319,9 @@ impl Stake {
                 self.status = StakeStatus::Released;
                 Ok(amount)
             }
-            StakeStatus::Active => Err(SybilError::CannotRelease("Must request release first".into())),
+            StakeStatus::Active => Err(SybilError::CannotRelease(
+                "Must request release first".into(),
+            )),
             StakeStatus::Released => Err(SybilError::CannotRelease("Already released".into())),
             StakeStatus::Slashed(_) => Err(SybilError::AlreadySlashed),
         }
@@ -552,7 +554,11 @@ pub struct RateLimitTracker {
 
 impl RateLimitTracker {
     /// Create a new tracker
-    pub fn new(entity_id: impl Into<String>, action: RateLimitedAction, window_seconds: u32) -> Self {
+    pub fn new(
+        entity_id: impl Into<String>,
+        action: RateLimitedAction,
+        window_seconds: u32,
+    ) -> Self {
         Self {
             entity_id: entity_id.into(),
             action,
@@ -644,7 +650,10 @@ mod tests {
     fn test_slash_condition_descriptions() {
         assert_eq!(SlashCondition::FraudDetected.default_slash_percent(), 100);
         assert_eq!(SlashCondition::DisputeLoss.default_slash_percent(), 50);
-        assert_eq!(SlashCondition::RepeatedFailures(5).default_slash_percent(), 25);
+        assert_eq!(
+            SlashCondition::RepeatedFailures(5).default_slash_percent(),
+            25
+        );
     }
 
     #[test]
@@ -723,10 +732,14 @@ mod tests {
         assert!(check_rate_limit("entity1", RateLimitedAction::CreateIdentity, 2, &limits).is_ok());
 
         // At limit
-        assert!(check_rate_limit("entity1", RateLimitedAction::CreateIdentity, 3, &limits).is_err());
+        assert!(
+            check_rate_limit("entity1", RateLimitedAction::CreateIdentity, 3, &limits).is_err()
+        );
 
         // Over limit
-        assert!(check_rate_limit("entity1", RateLimitedAction::CreateIdentity, 5, &limits).is_err());
+        assert!(
+            check_rate_limit("entity1", RateLimitedAction::CreateIdentity, 5, &limits).is_err()
+        );
     }
 
     #[test]
@@ -760,13 +773,16 @@ mod tests {
         assert!(StakeStatus::PendingRelease.is_locked());
         assert!(!StakeStatus::PendingRelease.is_active());
         assert!(!StakeStatus::Released.is_locked());
-        assert!(!StakeStatus::Slashed(SlashRecord::new(1000, SlashCondition::FraudDetected)).is_active());
+        assert!(
+            !StakeStatus::Slashed(SlashRecord::new(1000, SlashCondition::FraudDetected))
+                .is_active()
+        );
     }
 
     #[test]
     fn test_slash_record() {
-        let record = SlashRecord::new(50_000, SlashCondition::DisputeLoss)
-            .with_reference("dispute-123");
+        let record =
+            SlashRecord::new(50_000, SlashCondition::DisputeLoss).with_reference("dispute-123");
 
         assert_eq!(record.amount_sats, 50_000);
         assert_eq!(record.reference_id, Some("dispute-123".to_string()));

@@ -2,8 +2,8 @@
 //!
 //! Provides high-level Nostr operations for the wallet
 
-use anyhow::{Context, Result};
 use crate::core::identity::UnifiedIdentity;
+use anyhow::{Context, Result};
 use serde_json::json;
 
 /// User profile (kind:0 metadata)
@@ -22,9 +22,18 @@ impl Profile {
 
         Ok(Self {
             name: value.get("name").and_then(|v| v.as_str()).map(String::from),
-            about: value.get("about").and_then(|v| v.as_str()).map(String::from),
-            picture: value.get("picture").and_then(|v| v.as_str()).map(String::from),
-            nip05: value.get("nip05").and_then(|v| v.as_str()).map(String::from),
+            about: value
+                .get("about")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            picture: value
+                .get("picture")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            nip05: value
+                .get("nip05")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         })
     }
 
@@ -66,7 +75,10 @@ impl Profile {
 
     /// Check if profile is empty
     pub fn is_empty(&self) -> bool {
-        self.name.is_none() && self.about.is_none() && self.picture.is_none() && self.nip05.is_none()
+        self.name.is_none()
+            && self.about.is_none()
+            && self.picture.is_none()
+            && self.nip05.is_none()
     }
 }
 
@@ -101,7 +113,8 @@ pub fn create_profile_event(identity: &UnifiedIdentity, profile: &Profile) -> Re
         content,
     };
 
-    identity.sign_event(template)
+    identity
+        .sign_event(template)
         .context("Failed to sign profile event")
 }
 
@@ -117,7 +130,8 @@ pub fn create_note_event(identity: &UnifiedIdentity, content: &str) -> Result<no
         content: content.to_string(),
     };
 
-    identity.sign_event(template)
+    identity
+        .sign_event(template)
         .context("Failed to sign note event")
 }
 
@@ -168,6 +182,9 @@ mod tests {
 
         assert_eq!(profile.name, Some("Alice".to_string())); // Unchanged
         assert_eq!(profile.about, Some("Updated".to_string())); // Updated
-        assert_eq!(profile.picture, Some("https://example.com/pic.jpg".to_string())); // New
+        assert_eq!(
+            profile.picture,
+            Some("https://example.com/pic.jpg".to_string())
+        ); // New
     }
 }

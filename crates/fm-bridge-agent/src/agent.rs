@@ -9,9 +9,11 @@ use tokio::sync::RwLock;
 
 use fm_bridge::{CompletionOptions, FMClient};
 use gpt_oss_agent::tools::{
-    apply_patch::ApplyPatchTool, browser::BrowserTool, python::PythonTool,
-    ui_pane::{PaneManager, UiPaneTool},
     Tool, ToolRequest, ToolResult,
+    apply_patch::ApplyPatchTool,
+    browser::BrowserTool,
+    python::PythonTool,
+    ui_pane::{PaneManager, UiPaneTool},
 };
 
 use crate::error::{FmBridgeAgentError, Result};
@@ -32,8 +34,8 @@ pub struct FmBridgeAgentConfig {
 
 impl Default for FmBridgeAgentConfig {
     fn default() -> Self {
-        let base_url = std::env::var("FM_BRIDGE_URL")
-            .unwrap_or_else(|_| "http://localhost:3030".to_string());
+        let base_url =
+            std::env::var("FM_BRIDGE_URL").unwrap_or_else(|_| "http://localhost:3030".to_string());
         Self {
             base_url,
             model: "gpt-4o-mini-2024-07-18".to_string(),
@@ -98,10 +100,9 @@ impl FmBridgeAgent {
         let tool = tools
             .iter()
             .find(|t| t.name() == request.tool)
-            .ok_or_else(|| FmBridgeAgentError::ToolError(format!(
-                "Tool not found: {}",
-                request.tool
-            )))?;
+            .ok_or_else(|| {
+                FmBridgeAgentError::ToolError(format!("Tool not found: {}", request.tool))
+            })?;
 
         let result = tool.execute(request.parameters).await?;
         Ok(result)

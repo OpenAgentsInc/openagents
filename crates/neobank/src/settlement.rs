@@ -279,8 +279,8 @@ impl SettlementEngine {
 
         // Determine what each party sends
         let (maker_sends_btc, taker_sends_btc) = match trade.order.side {
-            OrderSide::Sell => (true, false),  // Maker sells BTC, taker buys BTC
-            OrderSide::Buy => (false, true),   // Maker buys BTC, taker sells BTC
+            OrderSide::Sell => (true, false), // Maker sells BTC, taker buys BTC
+            OrderSide::Buy => (false, true),  // Maker buys BTC, taker sells BTC
         };
 
         let btc_amount = trade.order.amount_sats;
@@ -534,11 +534,7 @@ impl SettlementEngine {
     /// Unlock a P2PK-locked proof
     ///
     /// Uses private key to unlock proofs locked to our pubkey.
-    pub async fn unlock_proof(
-        &self,
-        wallet: &CashuWallet,
-        proof: &LockedProof,
-    ) -> Result<Amount> {
+    pub async fn unlock_proof(&self, wallet: &CashuWallet, proof: &LockedProof) -> Result<Amount> {
         // In real implementation, would sign with private key to unlock
         Ok(Amount::new(proof.amount, wallet.currency()))
     }

@@ -162,7 +162,10 @@ mod tests {
 
         assert_eq!(project.name, "test-project");
         assert_eq!(project.path, "/path/to/project");
-        assert_eq!(project.description, Some("Test project description".to_string()));
+        assert_eq!(
+            project.description,
+            Some("Test project description".to_string())
+        );
         assert_eq!(project.default_model, Some("sonnet".to_string()));
         assert_eq!(project.default_budget, Some(5.0));
 

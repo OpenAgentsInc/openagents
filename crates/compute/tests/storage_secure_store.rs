@@ -3,7 +3,8 @@
 use compute::storage::SecureStore;
 use tempfile::TempDir;
 
-const TEST_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const TEST_MNEMONIC: &str =
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 const TEST_PASSWORD: &str = "strong_password_123";
 
 #[tokio::test]
@@ -79,7 +80,10 @@ async fn test_change_password() {
 
     // Change password
     let new_password = "new_password_456";
-    store.change_password(TEST_PASSWORD, new_password).await.unwrap();
+    store
+        .change_password(TEST_PASSWORD, new_password)
+        .await
+        .unwrap();
 
     // Old password should not work
     assert!(store.load(TEST_PASSWORD).await.is_err());
@@ -235,7 +239,10 @@ async fn test_whitespace_preserved() {
     let store = SecureStore::new(path);
 
     let mnemonic_with_spaces = "  abandon  abandon  abandon  ";
-    store.store(mnemonic_with_spaces, TEST_PASSWORD).await.unwrap();
+    store
+        .store(mnemonic_with_spaces, TEST_PASSWORD)
+        .await
+        .unwrap();
     let loaded = store.load(TEST_PASSWORD).await.unwrap();
     assert_eq!(loaded, mnemonic_with_spaces);
 }
@@ -302,9 +309,7 @@ async fn test_concurrent_operations() {
         .map(|_| {
             let store_clone = SecureStore::new(path.clone());
             let password = TEST_PASSWORD.to_string();
-            tokio::spawn(async move {
-                store_clone.load(&password).await.unwrap()
-            })
+            tokio::spawn(async move { store_clone.load(&password).await.unwrap() })
         })
         .collect();
 
@@ -408,7 +413,10 @@ async fn test_password_with_newlines() {
     let store = SecureStore::new(path);
 
     let password_with_newline = "pass\nword\n123";
-    store.store(TEST_MNEMONIC, password_with_newline).await.unwrap();
+    store
+        .store(TEST_MNEMONIC, password_with_newline)
+        .await
+        .unwrap();
     let loaded = store.load(password_with_newline).await.unwrap();
     assert_eq!(loaded, TEST_MNEMONIC);
 }
@@ -420,7 +428,10 @@ async fn test_mnemonic_with_newlines() {
     let store = SecureStore::new(path);
 
     let mnemonic_with_newline = "abandon\nabandon\nabandon";
-    store.store(mnemonic_with_newline, TEST_PASSWORD).await.unwrap();
+    store
+        .store(mnemonic_with_newline, TEST_PASSWORD)
+        .await
+        .unwrap();
     let loaded = store.load(TEST_PASSWORD).await.unwrap();
     assert_eq!(loaded, mnemonic_with_newline);
 }
@@ -444,9 +455,18 @@ async fn test_sequential_password_changes() {
     let store = SecureStore::new(path);
 
     store.store(TEST_MNEMONIC, "password1").await.unwrap();
-    store.change_password("password1", "password2").await.unwrap();
-    store.change_password("password2", "password3").await.unwrap();
-    store.change_password("password3", "password4").await.unwrap();
+    store
+        .change_password("password1", "password2")
+        .await
+        .unwrap();
+    store
+        .change_password("password2", "password3")
+        .await
+        .unwrap();
+    store
+        .change_password("password3", "password4")
+        .await
+        .unwrap();
 
     // Only the final password should work
     assert!(store.load("password1").await.is_err());
@@ -464,7 +484,10 @@ async fn test_plaintext_with_whitespace() {
     let store = SecureStore::new(path);
 
     let mnemonic_with_whitespace = "  abandon abandon abandon  \n";
-    store.store_plaintext(mnemonic_with_whitespace).await.unwrap();
+    store
+        .store_plaintext(mnemonic_with_whitespace)
+        .await
+        .unwrap();
 
     // Should trim on load
     let loaded = store.load_plaintext().await.unwrap();
@@ -578,9 +601,7 @@ async fn test_concurrent_writes() {
         .map(|i| {
             let store = SecureStore::new(path.clone());
             let mnemonic = format!("mnemonic_{}", i);
-            tokio::spawn(async move {
-                store.store(&mnemonic, TEST_PASSWORD).await
-            })
+            tokio::spawn(async move { store.store(&mnemonic, TEST_PASSWORD).await })
         })
         .collect();
 
@@ -603,7 +624,10 @@ async fn test_password_with_null_bytes() {
     let store = SecureStore::new(path);
 
     let password_with_null = "pass\0word";
-    store.store(TEST_MNEMONIC, password_with_null).await.unwrap();
+    store
+        .store(TEST_MNEMONIC, password_with_null)
+        .await
+        .unwrap();
     let loaded = store.load(password_with_null).await.unwrap();
     assert_eq!(loaded, TEST_MNEMONIC);
 }

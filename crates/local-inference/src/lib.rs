@@ -1,9 +1,9 @@
+mod backend;
 mod error;
 mod types;
-mod backend;
 
-pub use error::LocalModelError;
-pub use types::{CompletionRequest, CompletionResponse, StreamChunk, ModelInfo, UsageInfo};
 pub use backend::{LocalModelBackend, LocalModelBackendExt};
+pub use error::LocalModelError;
+pub use types::{CompletionRequest, CompletionResponse, ModelInfo, StreamChunk, UsageInfo};
 
 pub type Result<T> = std::result::Result<T, LocalModelError>;

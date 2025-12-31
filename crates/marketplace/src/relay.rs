@@ -3,11 +3,11 @@
 //! This module provides relay pool management for discovering and fetching
 //! marketplace content (skills, data, compute) from Nostr relays.
 
-use nostr_client::{PoolConfig, RelayPool};
 use nostr::{Event, KIND_HANDLER_INFO};
+use nostr_client::{PoolConfig, RelayPool};
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
-use std::sync::Arc;
 
 /// Default relays for marketplace discovery
 const DEFAULT_MARKETPLACE_RELAYS: &[&str] = &[
@@ -156,7 +156,8 @@ impl MarketplaceRelay {
         &self,
         subscription_id: &str,
     ) -> Result<tokio::sync::mpsc::Receiver<Event>, RelayError> {
-        self.subscribe_handlers(subscription_id, Some("skill")).await
+        self.subscribe_handlers(subscription_id, Some("skill"))
+            .await
     }
 
     /// Subscribe to compute provider events
@@ -164,7 +165,8 @@ impl MarketplaceRelay {
         &self,
         subscription_id: &str,
     ) -> Result<tokio::sync::mpsc::Receiver<Event>, RelayError> {
-        self.subscribe_handlers(subscription_id, Some("compute_provider")).await
+        self.subscribe_handlers(subscription_id, Some("compute_provider"))
+            .await
     }
 
     /// Subscribe to file metadata events (NIP-94 kind 1063)
@@ -301,7 +303,10 @@ mod tests {
     #[serial]
     fn test_get_marketplace_relays_env_with_spaces() {
         unsafe {
-            std::env::set_var("MARKETPLACE_RELAYS", " wss://relay1.com , wss://relay2.com ");
+            std::env::set_var(
+                "MARKETPLACE_RELAYS",
+                " wss://relay1.com , wss://relay2.com ",
+            );
         }
         let relays = get_marketplace_relays();
         assert_eq!(relays.len(), 2);

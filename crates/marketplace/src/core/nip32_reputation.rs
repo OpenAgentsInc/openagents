@@ -168,16 +168,15 @@ pub struct ReputationLabel;
 
 impl ReputationLabel {
     /// Create a job completion label
-    pub fn job_completion(
-        provider_pubkey: &str,
-        job_id: &str,
-        status: JobStatus,
-    ) -> LabelEvent {
+    pub fn job_completion(provider_pubkey: &str, job_id: &str, status: JobStatus) -> LabelEvent {
         let label = Label::new(status.as_str(), NS_JOB);
         let target = LabelTarget::pubkey(provider_pubkey, None::<String>);
 
-        LabelEvent::new(vec![label], vec![target])
-            .with_content(format!("Job {} {}", job_id, status.as_str()))
+        LabelEvent::new(vec![label], vec![target]).with_content(format!(
+            "Job {} {}",
+            job_id,
+            status.as_str()
+        ))
     }
 
     /// Create a trust tier label
@@ -327,7 +326,8 @@ impl ReputationAggregator {
     pub fn process_job_label(&mut self, label: &LabelEvent) {
         for target in &label.targets {
             if let LabelTarget::Pubkey { pubkey, .. } = target {
-                let metrics = self.metrics
+                let metrics = self
+                    .metrics
                     .entry(pubkey.clone())
                     .or_insert_with(|| ReputationMetrics::new(pubkey));
 
@@ -345,7 +345,8 @@ impl ReputationAggregator {
     pub fn process_review_label(&mut self, label: &LabelEvent) {
         for target in &label.targets {
             if let LabelTarget::Pubkey { pubkey, .. } = target {
-                let metrics = self.metrics
+                let metrics = self
+                    .metrics
                     .entry(pubkey.clone())
                     .or_insert_with(|| ReputationMetrics::new(pubkey));
 
@@ -374,7 +375,8 @@ impl ReputationAggregator {
         }
 
         if let (Some(skill), Some(pubkey)) = (skill_id, provider_pubkey) {
-            let metrics = self.metrics
+            let metrics = self
+                .metrics
                 .entry(pubkey.clone())
                 .or_insert_with(|| ReputationMetrics::new(&pubkey));
 
@@ -498,7 +500,8 @@ mod tests {
 
     #[test]
     fn test_review_label() {
-        let label = ReputationLabel::review("pubkey123", "job-1", 4.5, Some("Great work!".to_string()));
+        let label =
+            ReputationLabel::review("pubkey123", "job-1", 4.5, Some("Great work!".to_string()));
 
         assert_eq!(label.labels.len(), 1);
         assert_eq!(label.labels[0].value, "4.5");
@@ -606,7 +609,8 @@ mod tests {
 
         // Create established provider
         for _ in 0..15 {
-            let label = ReputationLabel::job_completion("established_provider", "job", JobStatus::Success);
+            let label =
+                ReputationLabel::job_completion("established_provider", "job", JobStatus::Success);
             aggregator.process_job_label(&label);
         }
 
