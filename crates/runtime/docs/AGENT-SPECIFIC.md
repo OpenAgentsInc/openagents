@@ -242,7 +242,7 @@ pub enum ActionCategory {
     WriteFile,
     ExecuteCode,
     SendMessage,
-    SpendMoney { above_sats: u64 },
+    SpendMoney { above_usd: u64 },  // micro-USD
     ExternalApi,
     CreateAgent,
     ModifyGoals,
@@ -478,10 +478,10 @@ pub enum AccessLevel {
     ReadOnly,
     ReadWrite,
     SignOnly,           // Can sign, not extract keys
-    Budgeted {          // Has spending limits
-        per_tick: u64,
-        per_day: u64,
-        approval_threshold: u64,
+    Budgeted {          // Has spending limits (micro-USD)
+        per_tick_usd: u64,
+        per_day_usd: u64,
+        approval_threshold_usd: u64,
     },
     Disabled,           // Mount exists but access denied
 }
@@ -522,8 +522,12 @@ pub enum AccessLevel {
 Agent wants to: pay $1.00 (1,000,000 micro-USD)
 
 1. Agent calls: ctx.write("/wallet/pay", invoice)
-2. Namespace resolves: /wallet → WalletFs with Budgeted(100_000, 5_000_000, 500_000)
-3. WalletFs checks: 1_000_000 > approval_threshold (500_000 micro-USD)
+2. Namespace resolves: /wallet → WalletFs with Budgeted {
+     per_tick_usd: 100_000,      // $0.10/tick
+     per_day_usd: 5_000_000,     // $5/day
+     approval_threshold_usd: 500_000  // $0.50
+   }
+3. WalletFs checks: 1_000_000 > approval_threshold_usd (500_000)
 4. WalletFs returns: Error::ApprovalRequired
 5. Agent receives error, can request approval or abort
 6. If approved by human, mount temporarily elevated
