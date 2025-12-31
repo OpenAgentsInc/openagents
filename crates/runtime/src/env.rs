@@ -1,6 +1,6 @@
 //! Agent environment with mounted filesystem services.
 
-use crate::fs::{AccessLevel, FileHandle, FsError, FsResult, OpenFlags, WatchHandle};
+use crate::fs::{AccessLevel, DirEntry, FileHandle, FsError, FsResult, OpenFlags, Stat, WatchHandle};
 use crate::identity::{InMemorySigner, SigningService};
 use crate::namespace::Namespace;
 use crate::services::{DeadletterFs, GoalsFs, IdentityFs, InboxFs, LogsFs, StatusFs, StatusSnapshot};
@@ -78,21 +78,9 @@ impl AgentEnv {
             return Err(FsError::InvalidPath);
         }
 
-        let (service, relative, access) = self
-            .namespace
-            .resolve(path)
-            .ok_or(FsError::NotFound)?;
+        let (service, relative, access) = self.namespace.resolve(path).ok_or(FsError::NotFound)?;
 
-        match access {
-            AccessLevel::Disabled => return Err(FsError::PermissionDenied),
-            AccessLevel::ReadOnly if flags.write => return Err(FsError::PermissionDenied),
-            AccessLevel::SignOnly => {
-                if !is_sign_only_path(relative) {
-                    return Err(FsError::PermissionDenied);
-                }
-            }
-            _ => {}
-        }
+        ensure_access(&access, relative, flags.write)?;
 
         service.open(relative, flags)
     }
@@ -125,14 +113,47 @@ impl AgentEnv {
         if !path.starts_with('/') {
             return Err(FsError::InvalidPath);
         }
-        let (service, relative, _access) = self
-            .namespace
-            .resolve(path)
-            .ok_or(FsError::NotFound)?;
+        let (service, relative, access) = self.namespace.resolve(path).ok_or(FsError::NotFound)?;
+        ensure_access(&access, relative, false)?;
         service.watch(relative)
+    }
+
+    /// List directory contents.
+    pub fn list(&self, path: &str) -> FsResult<Vec<DirEntry>> {
+        if !path.starts_with('/') {
+            return Err(FsError::InvalidPath);
+        }
+        let (service, relative, access) = self.namespace.resolve(path).ok_or(FsError::NotFound)?;
+        ensure_access(&access, relative, false)?;
+        service.readdir(relative)
+    }
+
+    /// Stat a path.
+    pub fn stat(&self, path: &str) -> FsResult<Stat> {
+        if !path.starts_with('/') {
+            return Err(FsError::InvalidPath);
+        }
+        let (service, relative, access) = self.namespace.resolve(path).ok_or(FsError::NotFound)?;
+        ensure_access(&access, relative, false)?;
+        service.stat(relative)
     }
 }
 
 fn is_sign_only_path(relative: &str) -> bool {
     matches!(relative, "pubkey" | "sign" | "verify" | "encrypt" | "decrypt")
+}
+
+fn ensure_access(access: &AccessLevel, relative: &str, write: bool) -> FsResult<()> {
+    match access {
+        AccessLevel::Disabled => Err(FsError::PermissionDenied),
+        AccessLevel::ReadOnly if write => Err(FsError::PermissionDenied),
+        AccessLevel::SignOnly => {
+            if relative.is_empty() || is_sign_only_path(relative) {
+                Ok(())
+            } else {
+                Err(FsError::PermissionDenied)
+            }
+        }
+        _ => Ok(()),
+    }
 }
