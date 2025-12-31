@@ -773,6 +773,411 @@ impl DvmDirectoryState {
     }
 }
 
+// ============================================================================
+// Bazaar Job Types (NIP-90 kinds 5930-5933)
+// ============================================================================
+
+/// Verification status for Bazaar jobs
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) enum VerificationStatus {
+    #[default]
+    Working,      // Job in progress
+    Verifying,    // Result received, buyer checking
+    Verified,     // All checks pass
+    Paid,         // Lightning payment confirmed
+    Disputed,     // Verification failed
+    Failed,       // Job failed (timeout, error)
+}
+
+impl VerificationStatus {
+    /// Get display label for the status
+    pub(crate) fn label(&self) -> &'static str {
+        match self {
+            VerificationStatus::Working => "WORKING",
+            VerificationStatus::Verifying => "VERIFYING",
+            VerificationStatus::Verified => "VERIFIED",
+            VerificationStatus::Paid => "PAID",
+            VerificationStatus::Disputed => "DISPUTED",
+            VerificationStatus::Failed => "FAILED",
+        }
+    }
+}
+
+/// Bazaar job type (5930-5933 range)
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum BazaarJobType {
+    SandboxRun,   // 5930/6930
+    RepoIndex,    // 5931/6931
+    PatchGen,     // 5932/6932
+    CodeReview,   // 5933/6933
+}
+
+impl BazaarJobType {
+    /// Create from NIP-90 kind
+    pub(crate) fn from_kind(kind: u16) -> Option<Self> {
+        match kind {
+            5930 | 6930 => Some(BazaarJobType::SandboxRun),
+            5931 | 6931 => Some(BazaarJobType::RepoIndex),
+            5932 | 6932 => Some(BazaarJobType::PatchGen),
+            5933 | 6933 => Some(BazaarJobType::CodeReview),
+            _ => None,
+        }
+    }
+
+    /// Get badge text for compact display
+    pub(crate) fn badge(&self) -> &'static str {
+        match self {
+            BazaarJobType::SandboxRun => "RUN",
+            BazaarJobType::RepoIndex => "INDEX",
+            BazaarJobType::PatchGen => "PATCH",
+            BazaarJobType::CodeReview => "REVIEW",
+        }
+    }
+
+    /// Get human-readable label
+    pub(crate) fn label(&self) -> &'static str {
+        match self {
+            BazaarJobType::SandboxRun => "Sandbox Run",
+            BazaarJobType::RepoIndex => "Repo Index",
+            BazaarJobType::PatchGen => "PatchGen",
+            BazaarJobType::CodeReview => "Code Review",
+        }
+    }
+}
+
+/// A Bazaar marketplace job
+#[derive(Clone, Debug)]
+pub(crate) struct BazaarJob {
+    pub(crate) id: String,
+    pub(crate) job_type: BazaarJobType,
+    pub(crate) created_at: u64,
+
+    // Request info
+    pub(crate) requester_pubkey: String,
+    pub(crate) repo_url: Option<String>,
+    pub(crate) issue_ref: Option<String>,       // "owner/repo#123"
+    pub(crate) max_cost_sats: Option<u32>,
+
+    // Result info (when available)
+    pub(crate) provider_pubkey: Option<String>,
+    pub(crate) status: VerificationStatus,
+    pub(crate) actual_sats: Option<u32>,
+    pub(crate) test_exit_code: Option<i32>,
+    pub(crate) applies_cleanly: Option<bool>,
+    pub(crate) trajectory_id: Option<String>,
+    pub(crate) bolt11_invoice: Option<String>,
+}
+
+impl BazaarJob {
+    /// Get truncated pubkey for display (provider if available, else requester)
+    pub(crate) fn display_pubkey(&self) -> String {
+        let pk = self.provider_pubkey.as_ref().unwrap_or(&self.requester_pubkey);
+        if pk.len() > 8 {
+            format!("{}...", &pk[..8])
+        } else {
+            pk.clone()
+        }
+    }
+
+    /// Get display amount (actual if paid, else max_cost)
+    pub(crate) fn display_sats(&self) -> u32 {
+        self.actual_sats.unwrap_or_else(|| self.max_cost_sats.unwrap_or(0))
+    }
+
+    /// Get relative time string
+    pub(crate) fn relative_time(&self, now_secs: u64) -> String {
+        if self.created_at > now_secs {
+            return "now".to_string();
+        }
+        let diff = now_secs - self.created_at;
+        if diff < 60 {
+            format!("{}s", diff)
+        } else if diff < 3600 {
+            format!("{}m", diff / 60)
+        } else if diff < 86400 {
+            format!("{}h", diff / 3600)
+        } else {
+            format!("{}d", diff / 86400)
+        }
+    }
+}
+
+/// State for Bazaar job feed
+#[derive(Clone, Default)]
+pub(crate) struct BazaarState {
+    pub(crate) jobs: Vec<BazaarJob>,
+    pub(crate) scroll_offset: f32,
+}
+
+impl BazaarState {
+    pub(crate) fn new() -> Self {
+        Self {
+            jobs: Vec::new(),
+            scroll_offset: 0.0,
+        }
+    }
+
+    /// Add a job, keeping sorted by timestamp (newest first), capped at max_jobs
+    pub(crate) fn add_job(&mut self, job: BazaarJob, max_jobs: usize) {
+        // Check if this is a result for an existing request
+        if job.provider_pubkey.is_some() {
+            // This is a result event - try to find and update the request
+            // (Result events reference request via e-tag, but we'd need that correlation)
+            // For now, just add as separate entry
+        }
+
+        // Avoid duplicates by ID
+        if self.jobs.iter().any(|j| j.id == job.id) {
+            return;
+        }
+
+        // Find insertion point to keep sorted by created_at (descending)
+        let insert_idx = self.jobs
+            .iter()
+            .position(|j| j.created_at < job.created_at)
+            .unwrap_or(self.jobs.len());
+
+        self.jobs.insert(insert_idx, job);
+        self.jobs.truncate(max_jobs);
+    }
+}
+
+/// Parse a Bazaar job request (kinds 5930-5933)
+pub(crate) fn parse_bazaar_request(json: &str) -> Option<BazaarJob> {
+    let parsed: serde_json::Value = serde_json::from_str(json).ok()?;
+    let arr = parsed.as_array()?;
+
+    if arr.len() < 3 {
+        return None;
+    }
+
+    let msg_type = arr[0].as_str()?;
+    if msg_type != "EVENT" {
+        return None;
+    }
+
+    let event = &arr[2];
+    let kind = event["kind"].as_u64()? as u16;
+
+    // Check if this is a Bazaar request kind (5930-5933)
+    let job_type = BazaarJobType::from_kind(kind)?;
+    if kind >= 6000 {
+        return None; // Results handled separately
+    }
+
+    let id = event["id"].as_str()?.to_string();
+    let pubkey = event["pubkey"].as_str()?.to_string();
+    let created_at = event["created_at"].as_u64()?;
+    let tags = event["tags"].as_array();
+
+    let mut repo_url = None;
+    let mut issue_ref = None;
+    let mut max_cost_sats = None;
+
+    if let Some(tags) = tags {
+        for tag in tags {
+            if let Some(arr) = tag.as_array() {
+                let tag_name = arr.get(0).and_then(|v| v.as_str());
+                let tag_value = arr.get(1).and_then(|v| v.as_str());
+
+                match tag_name {
+                    Some("i") => {
+                        // Input tag - check for URL
+                        if let Some(v) = tag_value {
+                            if v.starts_with("http") && v.contains("github") {
+                                repo_url = Some(v.to_string());
+                                // Try to extract owner/repo#issue format
+                                if let Some(ref_str) = extract_issue_ref(v) {
+                                    issue_ref = Some(ref_str);
+                                }
+                            }
+                        }
+                    }
+                    Some("param") => {
+                        // Parameter tag
+                        if tag_value == Some("max_cost_sats") {
+                            if let Some(val) = arr.get(2).and_then(|v| v.as_str()) {
+                                max_cost_sats = val.parse().ok();
+                            }
+                        }
+                    }
+                    Some("bid") => {
+                        // Bid tag (alternate way to specify max cost)
+                        if let Some(val) = tag_value {
+                            if max_cost_sats.is_none() {
+                                max_cost_sats = val.parse().ok();
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Some(BazaarJob {
+        id,
+        job_type,
+        created_at,
+        requester_pubkey: pubkey,
+        repo_url,
+        issue_ref,
+        max_cost_sats,
+        provider_pubkey: None,
+        status: VerificationStatus::Working,
+        actual_sats: None,
+        test_exit_code: None,
+        applies_cleanly: None,
+        trajectory_id: None,
+        bolt11_invoice: None,
+    })
+}
+
+/// Parse a Bazaar job result (kinds 6930-6933)
+pub(crate) fn parse_bazaar_result(json: &str) -> Option<BazaarJob> {
+    let parsed: serde_json::Value = serde_json::from_str(json).ok()?;
+    let arr = parsed.as_array()?;
+
+    if arr.len() < 3 {
+        return None;
+    }
+
+    let msg_type = arr[0].as_str()?;
+    if msg_type != "EVENT" {
+        return None;
+    }
+
+    let event = &arr[2];
+    let kind = event["kind"].as_u64()? as u16;
+
+    // Check if this is a Bazaar result kind (6930-6933)
+    if kind < 6930 || kind > 6933 {
+        return None;
+    }
+    let job_type = BazaarJobType::from_kind(kind)?;
+
+    let id = event["id"].as_str()?.to_string();
+    let pubkey = event["pubkey"].as_str()?.to_string();
+    let created_at = event["created_at"].as_u64()?;
+    let tags = event["tags"].as_array();
+
+    let mut status = VerificationStatus::Verified;
+    let mut actual_sats = None;
+    let mut test_exit_code = None;
+    let mut applies_cleanly = None;
+    let mut trajectory_id = None;
+    let mut bolt11_invoice = None;
+    let mut request_id = None;
+
+    if let Some(tags) = tags {
+        for tag in tags {
+            if let Some(arr) = tag.as_array() {
+                let tag_name = arr.get(0).and_then(|v| v.as_str());
+                let tag_value = arr.get(1).and_then(|v| v.as_str());
+
+                match tag_name {
+                    Some("e") => {
+                        // Reference to request event
+                        request_id = tag_value.map(|s| s.to_string());
+                    }
+                    Some("status") => {
+                        if let Some(v) = tag_value {
+                            status = match v {
+                                "success" => VerificationStatus::Verified,
+                                "partial_success" => VerificationStatus::Verified,
+                                "failed" => VerificationStatus::Failed,
+                                "timeout" => VerificationStatus::Failed,
+                                _ => VerificationStatus::Verifying,
+                            };
+                        }
+                    }
+                    Some("result") => {
+                        if let Some(key) = tag_value {
+                            let val = arr.get(2).and_then(|v| v.as_str());
+                            match key {
+                                "test_exit_code" => {
+                                    test_exit_code = val.and_then(|v| v.parse().ok());
+                                }
+                                "applies_cleanly" => {
+                                    applies_cleanly = val.map(|v| v == "true");
+                                }
+                                "trajectory_id" => {
+                                    trajectory_id = val.map(|s| s.to_string());
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    Some("amount") => {
+                        // Amount and invoice: ["amount", "4500", "bolt11", "lnbc..."]
+                        if let Some(sats) = tag_value.and_then(|v| v.parse().ok()) {
+                            actual_sats = Some(sats);
+                        }
+                        // Check for bolt11
+                        if arr.get(2).and_then(|v| v.as_str()) == Some("bolt11") {
+                            bolt11_invoice = arr.get(3).and_then(|v| v.as_str()).map(|s| s.to_string());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Some(BazaarJob {
+        id: request_id.unwrap_or(id), // Use request ID if available for correlation
+        job_type,
+        created_at,
+        requester_pubkey: String::new(), // Unknown from result
+        repo_url: None,
+        issue_ref: None,
+        max_cost_sats: None,
+        provider_pubkey: Some(pubkey),
+        status,
+        actual_sats,
+        test_exit_code,
+        applies_cleanly,
+        trajectory_id,
+        bolt11_invoice,
+    })
+}
+
+/// Extract issue reference from GitHub URL (e.g., "owner/repo#123")
+fn extract_issue_ref(url: &str) -> Option<String> {
+    // Match patterns like:
+    // https://github.com/owner/repo/issues/123
+    // https://github.com/owner/repo
+    if let Some(github_idx) = url.find("github.com/") {
+        let path = &url[github_idx + 11..]; // After "github.com/"
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() >= 2 {
+            let owner = parts[0];
+            let repo = parts[1];
+            // Check for issue number
+            if parts.len() >= 4 && parts[2] == "issues" {
+                if let Ok(num) = parts[3].parse::<u32>() {
+                    return Some(format!("{}/{}#{}", owner, repo, num));
+                }
+            }
+            // Just owner/repo
+            return Some(format!("{}/{}", owner, repo));
+        }
+    }
+    None
+}
+
+/// Build subscription for Bazaar jobs (kinds 5930-5933 and their results)
+pub(crate) fn build_bazaar_subscription() -> String {
+    serde_json::json!([
+        "REQ",
+        "bazaar",
+        {
+            "kinds": [5930, 5931, 5932, 5933, 6930, 6931, 6932, 6933],
+            "limit": 50
+        }
+    ]).to_string()
+}
+
 /// Parse a NIP-89 DVM announcement (kind 31990)
 fn parse_nip89_announcement(json: &str) -> Option<Dvm> {
     let parsed: serde_json::Value = serde_json::from_str(json).ok()?;
@@ -839,20 +1244,21 @@ fn parse_nip89_announcement(json: &str) -> Option<Dvm> {
     })
 }
 
-/// Connect to a Nostr relay and subscribe to NIP-90 events, NIP-89 DVMs, and NIP-01 global feed
+/// Connect to a Nostr relay and subscribe to NIP-90 events, NIP-89 DVMs, NIP-01 global feed, and Bazaar jobs
 pub(crate) fn connect_to_relay(
     url: &str,
     on_nip90_event: impl Fn(Nip90Event) + 'static,
     on_dvm: impl Fn(Dvm) + 'static,
     on_text_note: impl Fn(TextNote) + 'static,
     on_author_meta: impl Fn(AuthorMeta) + 'static,
+    on_bazaar_job: impl Fn(BazaarJob) + 'static,
     on_status: impl Fn(RelayStatus) + 'static,
 ) -> Option<NostrRelayHandle> {
     on_status(RelayStatus::Connecting);
 
     let ws = web_sys::WebSocket::new(url).ok()?;
 
-    // On open, subscribe to NIP-90, NIP-89, and global feed
+    // On open, subscribe to NIP-90, NIP-89, global feed, and Bazaar jobs
     let ws_clone = ws.clone();
     let onopen = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::Event| {
         web_sys::console::log_1(&"Nostr relay connected".into());
@@ -865,6 +1271,9 @@ pub(crate) fn connect_to_relay(
         // Subscribe to NIP-01 global feed (kind:1 text notes)
         let global_sub_msg = build_global_feed_subscription();
         let _ = ws_clone.send_with_str(&global_sub_msg);
+        // Subscribe to Bazaar jobs (kinds 5930-5933)
+        let bazaar_sub_msg = build_bazaar_subscription();
+        let _ = ws_clone.send_with_str(&bazaar_sub_msg);
     });
     ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
     onopen.forget();
@@ -897,6 +1306,24 @@ pub(crate) fn connect_to_relay(
                     cb(RelayStatus::Connected);
                 }
                 on_author_meta(author);
+                return;
+            }
+
+            // Try parsing as Bazaar job request (kinds 5930-5933)
+            if let Some(bazaar_job) = parse_bazaar_request(&data) {
+                if let Some(ref cb) = *on_status_for_msg.borrow() {
+                    cb(RelayStatus::Connected);
+                }
+                on_bazaar_job(bazaar_job);
+                return;
+            }
+
+            // Try parsing as Bazaar job result (kinds 6930-6933)
+            if let Some(bazaar_result) = parse_bazaar_result(&data) {
+                if let Some(ref cb) = *on_status_for_msg.borrow() {
+                    cb(RelayStatus::Connected);
+                }
+                on_bazaar_job(bazaar_result);
                 return;
             }
 

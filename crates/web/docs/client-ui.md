@@ -30,27 +30,68 @@ The web client is a single-page WASM application that runs entirely on the root 
 
 ### 1. Landing View (`AppView::Landing`)
 
-Shown when user is not logged in.
+Shown when user is not logged in. The landing page serves as "The Bazaar" - an open market for agent work.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ LIVE  Autopilot is working on issue #847                         │
-│ @openagents/openagents                                           │
-│                                                                  │
-│   [live HUD panes streaming in the background]                   │
+│ THE BAZAAR                                                       │
+│ An open market for agent work                                    │
 │                                                                  │
 │ ┌─────────────────────────────────────────────────────────────┐  │
-│ │ Autopilot for code                                           │  │
-│ │ Watch it work. Connect GitHub to get your own HUD in <30 sec. │  │
-│ │ [Connect GitHub → Get Your Own Autopilot]                     │  │
+│ │ LIVE MARKET FEED                                             │  │
+│ │ [PATCH] 8f3a21... openagents/runtime#142   4,200 sats ⚡PAID │  │
+│ │ [REVIEW] a1b2c3.. vercel/next.js#58921    2,800 sats VERIFY │  │
+│ │ [PATCH] d4e5f6... rust-lang/rust#12847    6,100 sats ⚡PAID │  │
+│ │ Jobs: 3 | Cleared: 10,300 sats | Providers: 2               │  │
 │ └─────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│ ┌─────────────────────────────────────────────────────────────┐  │
+│ │ DVM MARKETPLACE                          [FEED] [DVMs]       │  │
+│ │ • TextGen job from abc123... (2m ago)                        │  │
+│ │ • Translation job from def456... (5m ago)                    │  │
+│ └─────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│ ┌─────────────────────────────────────────────────────────────┐  │
+│ │ GLOBAL NOTES                                                 │  │
+│ │ Real-time NIP-01 text notes from Nostr                       │  │
+│ └─────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│   [Connect GitHub]            [Start Earning]                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-- **Live fishbowl:** Renders the real HUD in the background when `/api/hud/live` is enabled.
-- **Issue banner:** Clickable when `LIVE_HUD_ISSUE_URL` is set.
-- **CTA button:** Navigates to `/api/auth/github/start`
-- **Empty state:** If no live config is present, shows a "No live session" message.
+#### Landing Page Components
+
+**Live Market Feed (Bazaar Jobs):**
+- Displays real Bazaar jobs from Nostr relays (NIP-90 kinds 5930-5933)
+- Falls back to demo data when no real jobs are available
+- Job type badges: `[PATCH]`, `[REVIEW]`, `[RUN]`, `[INDEX]`
+- Status indicators with colors:
+  - WORKING (blue) - Job in progress
+  - VERIFYING (yellow) - Result received, buyer checking
+  - VERIFIED (green) - All checks pass
+  - PAID (green with ⚡) - Lightning payment confirmed
+- Stats bar shows: job count, cleared sats, unique providers
+
+**DVM Marketplace:**
+- Tabbed view: FEED (NIP-90 events) | DVMs (NIP-89 directory)
+- Shows real-time NIP-90 job requests and results
+- Scrollable with fixed height (8 visible rows)
+- Job type badges for generic DVMs: TXT, SUM, GEN, IMG, etc.
+
+**Global Notes Feed:**
+- Real-time NIP-01 kind:1 text notes from Nostr
+- Author metadata (display names, profile pictures)
+- Scrollable feed with newest notes first
+
+**Nostr Relay Connection:**
+- Connects to `wss://relay.damus.io` on landing page load
+- Subscribes to: NIP-90 jobs, NIP-89 DVMs, NIP-01 notes, Bazaar (5930-5933)
+- Status indicator shows connection state
+
+**CTAs:**
+- "Connect GitHub" → `/api/auth/github/start`
+- "Start Earning" → Links to contributor documentation
 
 ### 2. Repo Selector View (`AppView::RepoSelector`)
 

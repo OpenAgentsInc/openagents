@@ -12,11 +12,11 @@ Full-stack Rust web application on Cloudflare's edge: GPU-accelerated WGPUI fron
 │                                                                             │
 │  ┌─────────────┐      ┌─────────────────┐      ┌─────────────────────────┐ │
 │  │   Landing   │─────▶│  Repo Selector  │─────▶│       App Shell         │ │
-│  │             │      │                 │      │                         │ │
-│  │ "OpenAgents"│      │ "Select repo:"  │      │ ┌─────┬───────┬───────┐ │ │
-│  │             │      │                 │      │ │Left │Center │Right  │ │ │
-│  │ [Login with │      │ ┌─────────────┐ │      │ │Dock │ Pane  │Dock   │ │ │
-│  │   GitHub]   │      │ │owner/repo   │ │      │ ├─────┴───────┴───────┤ │ │
+│  │  (Bazaar)   │      │                 │      │                         │ │
+│  │             │      │ "Select repo:"  │      │ ┌─────┬───────┬───────┐ │ │
+│  │ Market Feed │      │                 │      │ │Left │Center │Right  │ │ │
+│  │ DVM Market  │      │ ┌─────────────┐ │      │ │Dock │ Pane  │Dock   │ │ │
+│  │ Global Feed │      │ │owner/repo   │ │      │ ├─────┴───────┴───────┤ │ │
 │  │             │      │ └─────────────┘ │      │ │    Status Bar       │ │ │
 │  └─────────────┘      └─────────────────┘      │ └─────────────────────┘ │ │
 │        │                      │                └─────────────────────────┘ │
@@ -27,7 +27,10 @@ Full-stack Rust web application on Cloudflare's edge: GPU-accelerated WGPUI fron
 │                                                                             │
 └────────────────────────────────────────────────────────────────────────────┘
 
-Landing can render a live HUD fishbowl (from `/api/hud/live`) behind the CTA when configured.
+Landing page ("The Bazaar") displays real-time Nostr data:
+- Live Market Feed: Bazaar jobs (NIP-90 kinds 5930-5933) with verification status
+- DVM Marketplace: Generic NIP-90 job events and NIP-89 DVM announcements
+- Global Notes: NIP-01 kind:1 text notes from the Nostr network
 
 Keyboard shortcuts (in App Shell):
   cmd-[     Toggle left dock

@@ -1,7 +1,7 @@
 use wgpui::{Bounds, Point, Quad, Scene, TextSystem, theme};
 
 use crate::hud::draw_hud_view;
-use crate::nostr::{DvmJob, DvmView, JobType, Nip90EventType, RelayStatus};
+use crate::nostr::{BazaarJobType, DvmJob, DvmView, JobType, Nip90EventType, RelayStatus, VerificationStatus};
 use crate::state::{AppState, JobStatus};
 
 // Re-export for timestamp access
@@ -45,7 +45,10 @@ pub(crate) fn build_landing_page(
     let feed_y = pad + 80.0;
     let feed_w = width - pad * 2.0;
     let row_h = 28.0;
-    let num_jobs = state.market_jobs.len();
+
+    // Use real Bazaar jobs if available, otherwise fall back to dummy data
+    let has_bazaar_jobs = !state.bazaar.jobs.is_empty();
+    let num_jobs = if has_bazaar_jobs { state.bazaar.jobs.len() } else { state.market_jobs.len() };
     let feed_h = (num_jobs as f32 * row_h) + 36.0;
 
     // Feed container
@@ -55,75 +58,176 @@ pub(crate) fn build_landing_page(
             .with_border(theme::border::DEFAULT, 1.0),
     );
 
-    // Job rows
+    // Job rows - use bazaar_job_bounds for real jobs
+    state.bazaar_job_bounds.clear();
     state.job_bounds.clear();
     let mut row_y = feed_y + 4.0;
-    for job in &state.market_jobs {
-        let status_color = match job.status {
-            JobStatus::Paid => theme::status::SUCCESS,
-            JobStatus::Verifying => theme::status::WARNING,
-            JobStatus::Working => theme::accent::PRIMARY,
-        };
 
-        // Status dot
-        scene.draw_quad(
-            Quad::new(Bounds::new(pad + 12.0, row_y + 10.0, 8.0, 8.0))
-                .with_background(status_color)
-                .with_corner_radius(4.0),
-        );
+    if has_bazaar_jobs {
+        // Render real Bazaar jobs
+        for job in &state.bazaar.jobs {
+            let status_color = match job.status {
+                VerificationStatus::Paid => theme::status::SUCCESS,
+                VerificationStatus::Verified => theme::status::SUCCESS,
+                VerificationStatus::Verifying => theme::status::WARNING,
+                VerificationStatus::Working => theme::accent::PRIMARY,
+                VerificationStatus::Disputed | VerificationStatus::Failed => theme::status::ERROR,
+            };
 
-        // Provider name
-        let provider_run = text_system.layout(
-            job.provider,
-            Point::new(pad + 28.0, row_y + 6.0),
-            12.0,
-            theme::text::PRIMARY,
-        );
-        scene.draw_text(provider_run);
+            // Job type badge color
+            let badge_color = match job.job_type {
+                BazaarJobType::PatchGen => theme::accent::PRIMARY,
+                BazaarJobType::CodeReview => theme::accent::SECONDARY,
+                BazaarJobType::SandboxRun => theme::status::WARNING,
+                BazaarJobType::RepoIndex => theme::text::MUTED,
+            };
 
-        // Repo
-        let repo_run = text_system.layout(
-            job.repo,
-            Point::new(pad + 118.0, row_y + 6.0),
-            12.0,
-            theme::text::MUTED,
-        );
-        scene.draw_text(repo_run);
+            // Badge background
+            let badge_text = format!("[{}]", job.job_type.badge());
+            scene.draw_quad(
+                Quad::new(Bounds::new(pad + 8.0, row_y + 4.0, 52.0, 18.0))
+                    .with_background(badge_color.with_alpha(0.15)),
+            );
+            let badge_run = text_system.layout(
+                &badge_text,
+                Point::new(pad + 12.0, row_y + 6.0),
+                10.0,
+                badge_color,
+            );
+            scene.draw_text(badge_run);
 
-        // Amount
-        let amount_text = format!("{} sats", job.amount_sats);
-        let amount_run = text_system.layout(
-            &amount_text,
-            Point::new(pad + feed_w - 160.0, row_y + 6.0),
-            12.0,
-            theme::text::PRIMARY,
-        );
-        scene.draw_text(amount_run);
+            // Pubkey (truncated)
+            let pubkey_text = job.display_pubkey();
+            let pubkey_run = text_system.layout(
+                &pubkey_text,
+                Point::new(pad + 68.0, row_y + 6.0),
+                11.0,
+                theme::text::MUTED,
+            );
+            scene.draw_text(pubkey_run);
 
-        // Status text
-        let status_text = match job.status {
-            JobStatus::Paid => "PAID",
-            JobStatus::Verifying => "VERIFYING",
-            JobStatus::Working => "WORKING",
-        };
-        let status_run = text_system.layout(
-            status_text,
-            Point::new(pad + feed_w - 70.0, row_y + 6.0),
-            10.0,
-            status_color,
-        );
-        scene.draw_text(status_run);
+            // Issue reference or repo URL
+            let ref_text = job.issue_ref.as_ref()
+                .or(job.repo_url.as_ref())
+                .map(|s| if s.len() > 25 { format!("{}...", &s[..22]) } else { s.clone() })
+                .unwrap_or_else(|| "—".to_string());
+            let ref_run = text_system.layout(
+                &ref_text,
+                Point::new(pad + 150.0, row_y + 6.0),
+                11.0,
+                theme::text::PRIMARY,
+            );
+            scene.draw_text(ref_run);
 
-        state.job_bounds.push(Bounds::new(pad, row_y, feed_w, row_h));
-        row_y += row_h;
+            // Amount
+            let sats = job.display_sats();
+            let amount_text = if sats > 0 { format!("{} sats", sats) } else { "—".to_string() };
+            let amount_run = text_system.layout(
+                &amount_text,
+                Point::new(pad + feed_w - 170.0, row_y + 6.0),
+                11.0,
+                theme::text::PRIMARY,
+            );
+            scene.draw_text(amount_run);
+
+            // Status with icon
+            let status_text = match job.status {
+                VerificationStatus::Paid => "⚡ PAID",
+                _ => job.status.label(),
+            };
+            let status_run = text_system.layout(
+                status_text,
+                Point::new(pad + feed_w - 80.0, row_y + 6.0),
+                10.0,
+                status_color,
+            );
+            scene.draw_text(status_run);
+
+            state.bazaar_job_bounds.push(Bounds::new(pad, row_y, feed_w, row_h));
+            row_y += row_h;
+        }
+    } else {
+        // Fallback: render dummy market jobs
+        for job in &state.market_jobs {
+            let status_color = match job.status {
+                JobStatus::Paid => theme::status::SUCCESS,
+                JobStatus::Verifying => theme::status::WARNING,
+                JobStatus::Working => theme::accent::PRIMARY,
+            };
+
+            // Status dot
+            scene.draw_quad(
+                Quad::new(Bounds::new(pad + 12.0, row_y + 10.0, 8.0, 8.0))
+                    .with_background(status_color)
+                    .with_corner_radius(4.0),
+            );
+
+            // Provider name
+            let provider_run = text_system.layout(
+                job.provider,
+                Point::new(pad + 28.0, row_y + 6.0),
+                12.0,
+                theme::text::PRIMARY,
+            );
+            scene.draw_text(provider_run);
+
+            // Repo
+            let repo_run = text_system.layout(
+                job.repo,
+                Point::new(pad + 118.0, row_y + 6.0),
+                12.0,
+                theme::text::MUTED,
+            );
+            scene.draw_text(repo_run);
+
+            // Amount
+            let amount_text = format!("{} sats", job.amount_sats);
+            let amount_run = text_system.layout(
+                &amount_text,
+                Point::new(pad + feed_w - 160.0, row_y + 6.0),
+                12.0,
+                theme::text::PRIMARY,
+            );
+            scene.draw_text(amount_run);
+
+            // Status text
+            let status_text = match job.status {
+                JobStatus::Paid => "PAID",
+                JobStatus::Verifying => "VERIFYING",
+                JobStatus::Working => "WORKING",
+            };
+            let status_run = text_system.layout(
+                status_text,
+                Point::new(pad + feed_w - 70.0, row_y + 6.0),
+                10.0,
+                status_color,
+            );
+            scene.draw_text(status_run);
+
+            state.job_bounds.push(Bounds::new(pad, row_y, feed_w, row_h));
+            row_y += row_h;
+        }
     }
 
-    // Stats bar
+    // Stats bar - calculate from real data if available
+    let (jobs_count, cleared_sats, providers_count) = if has_bazaar_jobs {
+        let jobs = state.bazaar.jobs.len() as u32;
+        let cleared: u32 = state.bazaar.jobs.iter()
+            .filter(|j| j.status == VerificationStatus::Paid)
+            .map(|j| j.display_sats())
+            .sum();
+        let providers: u32 = state.bazaar.jobs.iter()
+            .filter_map(|j| j.provider_pubkey.as_ref())
+            .collect::<std::collections::HashSet<_>>()
+            .len() as u32;
+        (jobs, cleared, providers)
+    } else {
+        (state.market_stats.jobs_today, state.market_stats.cleared_sats, state.market_stats.providers)
+    };
+
     let stats_text = format!(
         "Jobs: {} | Cleared: {} sats | Providers: {}",
-        state.market_stats.jobs_today,
-        state.market_stats.cleared_sats,
-        state.market_stats.providers
+        jobs_count, cleared_sats, providers_count
     );
     let stats_run = text_system.layout(
         &stats_text,
