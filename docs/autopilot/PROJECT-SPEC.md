@@ -106,6 +106,8 @@ The HUD is not a nice-to-have dashboard—it's the product's signature moment. W
 - [ ] **Agent status indicators** - Thinking, executing, waiting, blocked
 - [ ] **Multi-agent grid** (future) - Watch multiple agents work simultaneously
 
+**Runtime Integration:** The HUD is a pure viewer over the agent filesystem. See [crates/runtime/docs/HUD.md](/crates/runtime/docs/HUD.md) for the authoritative spec on event contracts, redaction, and public access.
+
 #### 1.2 Full-Auto Mode
 - [x] Claim issue → implement → test → commit → PR workflow
 - [x] Budget/turn limits for safety
