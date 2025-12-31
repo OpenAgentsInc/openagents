@@ -1,3 +1,4 @@
+#![cfg(target_arch = "wasm32")]
 //! OpenAgents Web - WGPUI Text System Demo
 //!
 //! A lightweight web demo showcasing GPU-accelerated text rendering.
@@ -5,10 +6,12 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
+use wasm_bindgen_futures::{JsFuture, spawn_local};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use wgpui::{
-    Boundary, Bounds, LineFragment, LineWrapper, MarkdownRenderer, Platform, Point, Quad, Scene,
+    Boundary, Bounds, Cursor, EventContext, EventResult, InputEvent, LineFragment, LineWrapper,
+    MarkdownDocument, MarkdownView, MouseButton, PaintContext, Platform, Point, Quad, Scene,
     StreamingMarkdown, TextSystem, TruncateFrom, WebPlatform, run_animation_loop,
     setup_resize_observer, theme,
 };
@@ -19,6 +22,34 @@ pub fn main() {
     web_sys::console::log_1(&"WGPUI Web Demo initialized".into());
 }
 
+fn demo_markdown_source() -> String {
+    let source = include_str!("../docs/README.md");
+    source
+        .lines()
+        .take(140)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn tokenize_markdown(source: &str) -> VecDeque<String> {
+    source
+        .chars()
+        .collect::<Vec<_>>()
+        .chunks(3)
+        .map(|chunk| chunk.iter().collect())
+        .collect()
+}
+
+fn copy_to_clipboard_web(text: String) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let promise = window.navigator().clipboard().write_text(&text);
+    spawn_local(async move {
+        let _ = JsFuture::from(promise).await;
+    });
+}
+
 struct DemoState {
     frame_count: u64,
     mouse_pos: Point,
@@ -26,49 +57,22 @@ struct DemoState {
     wrap_width: f32,
     // Streaming markdown
     streaming_markdown: StreamingMarkdown,
-    markdown_renderer: MarkdownRenderer,
+    markdown_view: MarkdownView,
     markdown_tokens: VecDeque<String>,
     markdown_started: bool,
     last_token_frame: u64,
+    markdown_source: String,
+    markdown_bounds: Bounds,
+    markdown_events: EventContext,
 }
 
 impl Default for DemoState {
     fn default() -> Self {
-        let sample_markdown = r#"# WGPUI Web Demo
-
-This is **GPU-accelerated** text rendering in the browser.
-
-## Features
-
-- Token-by-token streaming
-- **Bold** and *italic* text
-- `inline code` blocks
-- Syntax highlighted code
-
-```rust
-fn main() {
-    println!("Hello, WGPUI!");
-}
-```
-
-> GPU rendering via WebGPU/WebGL
-> Running at 60fps
-
-1. Text wrapping
-2. Multiple font sizes
-3. Markdown rendering
-
----
-
-*Scroll to see more content*
-"#;
-
-        let tokens: VecDeque<String> = sample_markdown
-            .chars()
-            .collect::<Vec<_>>()
-            .chunks(3)
-            .map(|chunk| chunk.iter().collect())
-            .collect();
+        let markdown_source = demo_markdown_source();
+        let tokens = tokenize_markdown(&markdown_source);
+        let markdown_view = MarkdownView::new(MarkdownDocument::new())
+            .copy_button_on_hover(true)
+            .on_copy(|text| copy_to_clipboard_web(text));
 
         Self {
             frame_count: 0,
@@ -76,10 +80,13 @@ fn main() {
             scroll_offset: 0.0,
             wrap_width: 400.0,
             streaming_markdown: StreamingMarkdown::new(),
-            markdown_renderer: MarkdownRenderer::new(),
+            markdown_view,
             markdown_tokens: tokens,
             markdown_started: true,
             last_token_frame: 0,
+            markdown_source,
+            markdown_bounds: Bounds::ZERO,
+            markdown_events: EventContext::new(),
         }
     }
 }
@@ -106,45 +113,24 @@ impl DemoState {
     }
 
     fn restart_stream(&mut self) {
-        let sample_markdown = r#"# WGPUI Web Demo
-
-This is **GPU-accelerated** text rendering in the browser.
-
-## Features
-
-- Token-by-token streaming
-- **Bold** and *italic* text
-- `inline code` blocks
-- Syntax highlighted code
-
-```rust
-fn main() {
-    println!("Hello, WGPUI!");
-}
-```
-
-> GPU rendering via WebGPU/WebGL
-> Running at 60fps
-
-1. Text wrapping
-2. Multiple font sizes
-3. Markdown rendering
-
----
-
-*Scroll to see more content*
-"#;
-
-        self.markdown_tokens = sample_markdown
-            .chars()
-            .collect::<Vec<_>>()
-            .chunks(3)
-            .map(|chunk| chunk.iter().collect())
-            .collect();
+        self.markdown_tokens = tokenize_markdown(&self.markdown_source);
 
         self.streaming_markdown.reset();
         self.markdown_started = true;
         self.last_token_frame = self.frame_count;
+    }
+
+    fn handle_input_event(&mut self, event: InputEvent) -> EventResult {
+        self.markdown_view
+            .event(&event, self.markdown_bounds, &mut self.markdown_events)
+    }
+
+    fn clear_markdown_hover(&mut self) {
+        self.markdown_view.clear_hover();
+    }
+
+    fn markdown_cursor(&self) -> Cursor {
+        self.markdown_view.cursor()
     }
 }
 
@@ -188,12 +174,59 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
     // Set up mouse events
     {
         let demo_clone = demo.clone();
+        let platform_clone = platform.clone();
         let canvas = platform.borrow().canvas().clone();
         let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
-            let mut demo = demo_clone.borrow_mut();
-            demo.mouse_pos = Point::new(event.offset_x() as f32, event.offset_y() as f32);
+            let x = event.offset_x() as f32;
+            let y = event.offset_y() as f32;
+            let cursor = {
+                let mut demo = demo_clone.borrow_mut();
+                demo.mouse_pos = Point::new(x, y);
+                let _ = demo.handle_input_event(InputEvent::MouseMove { x, y });
+                demo.markdown_cursor()
+            };
+            platform_clone.borrow().set_cursor(cursor);
         });
         canvas.add_event_listener_with_callback("mousemove", closure.as_ref().unchecked_ref())?;
+        closure.forget();
+    }
+
+    {
+        let demo_clone = demo.clone();
+        let platform_clone = platform.clone();
+        let canvas = platform.borrow().canvas().clone();
+        let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
+            let button = match event.button() {
+                1 => MouseButton::Middle,
+                2 => MouseButton::Right,
+                _ => MouseButton::Left,
+            };
+            let x = event.offset_x() as f32;
+            let y = event.offset_y() as f32;
+            let cursor = {
+                let mut demo = demo_clone.borrow_mut();
+                let _ = demo.handle_input_event(InputEvent::MouseDown { button, x, y });
+                demo.markdown_cursor()
+            };
+            platform_clone.borrow().set_cursor(cursor);
+        });
+        canvas.add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref())?;
+        closure.forget();
+    }
+
+    {
+        let demo_clone = demo.clone();
+        let platform_clone = platform.clone();
+        let canvas = platform.borrow().canvas().clone();
+        let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+            let cursor = {
+                let mut demo = demo_clone.borrow_mut();
+                demo.clear_markdown_hover();
+                demo.markdown_cursor()
+            };
+            platform_clone.borrow().set_cursor(cursor);
+        });
+        canvas.add_event_listener_with_callback("mouseleave", closure.as_ref().unchecked_ref())?;
         closure.forget();
     }
 
@@ -219,6 +252,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         demo.advance_markdown_stream();
 
         let size = platform.logical_size();
+        let scale_factor = platform.scale_factor();
         let mut scene = Scene::new();
 
         build_demo(
@@ -227,6 +261,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             &mut demo,
             size.width,
             size.height,
+            scale_factor,
         );
 
         if let Err(e) = platform.render_scene(&scene) {
@@ -243,6 +278,7 @@ fn build_demo(
     demo: &mut DemoState,
     width: f32,
     height: f32,
+    scale_factor: f32,
 ) {
     let margin = 20.0;
     let col_width = (width - margin * 3.0) / 2.0;
@@ -282,6 +318,7 @@ fn build_demo(
         margin,
         width - margin * 2.0,
         bottom_y,
+        scale_factor,
     );
 }
 
@@ -678,6 +715,7 @@ fn demo_streaming_markdown(
     x: f32,
     width: f32,
     y: f32,
+    scale_factor: f32,
 ) {
     // Section header
     let title_run = text_system.layout(
@@ -694,11 +732,11 @@ fn demo_streaming_markdown(
 
     let content_y = y + 28.0;
 
-    let document = demo.streaming_markdown.document();
+    let document = demo.streaming_markdown.document().clone();
+    let is_complete = document.is_complete;
     let md_width = width - 20.0;
-    let md_size = demo
-        .markdown_renderer
-        .measure(document, md_width, text_system);
+    demo.markdown_view.set_document(document);
+    let md_size = demo.markdown_view.measure(md_width, text_system);
 
     let content_height = (md_size.height + 50.0).max(100.0);
 
@@ -710,7 +748,7 @@ fn demo_streaming_markdown(
 
     // Status
     let status = if demo.markdown_tokens.is_empty() {
-        if document.is_complete {
+        if is_complete {
             "Complete - Press R to restart"
         } else {
             "Streaming..."
@@ -734,7 +772,8 @@ fn demo_streaming_markdown(
     scene.draw_text(status_run);
 
     // Render markdown
-    let md_origin = Point::new(x + 10.0, content_y + 26.0);
-    demo.markdown_renderer
-        .render(document, md_origin, md_width, text_system, scene);
+    let md_bounds = Bounds::new(x + 10.0, content_y + 26.0, md_width, content_height - 34.0);
+    demo.markdown_bounds = md_bounds;
+    let mut paint_cx = PaintContext::new(scene, text_system, scale_factor);
+    demo.markdown_view.paint(md_bounds, &mut paint_cx);
 }

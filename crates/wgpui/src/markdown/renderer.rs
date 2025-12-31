@@ -9,6 +9,13 @@ pub struct MarkdownRenderer {
     config: MarkdownConfig,
 }
 
+struct CodeBlockMetrics {
+    margin: f32,
+    padding: f32,
+    header_height: f32,
+    border_width: f32,
+}
+
 impl MarkdownRenderer {
     pub fn new() -> Self {
         Self::with_config(MarkdownConfig::default())
@@ -16,6 +23,15 @@ impl MarkdownRenderer {
 
     pub fn with_config(config: MarkdownConfig) -> Self {
         Self { config }
+    }
+
+    fn code_block_metrics(&self) -> CodeBlockMetrics {
+        CodeBlockMetrics {
+            margin: theme::spacing::SM,
+            padding: theme::spacing::SM,
+            header_height: theme::font_size::XS + theme::spacing::XS,
+            border_width: 1.0,
+        }
     }
 
     /// Measure the height that rendering this document would take, without actually drawing.
@@ -56,8 +72,7 @@ impl MarkdownRenderer {
             }
 
             MarkdownBlock::CodeBlock { lines, .. } => {
-                let padding = theme::spacing::MD;
-                let margin = theme::spacing::SM;
+                let metrics = self.code_block_metrics();
                 let content_height: f32 = lines
                     .iter()
                     .map(|l| {
@@ -67,7 +82,7 @@ impl MarkdownRenderer {
                             .unwrap_or(self.config.base_font_size * theme::line_height::NORMAL)
                     })
                     .sum();
-                content_height + padding * 2.0 + margin * 2.0
+                content_height + metrics.padding * 2.0 + metrics.header_height + metrics.margin * 2.0
             }
 
             MarkdownBlock::Blockquote(blocks) => {
@@ -149,6 +164,27 @@ impl MarkdownRenderer {
         self.render_with_opacity(document, origin, max_width, text_system, scene, 1.0)
     }
 
+    pub fn render_with_layout(
+        &self,
+        document: &MarkdownDocument,
+        origin: Point,
+        max_width: f32,
+        text_system: &mut TextSystem,
+        scene: &mut Scene,
+    ) -> MarkdownLayout {
+        let mut layout = MarkdownLayout::default();
+        layout.size = self.render_with_opacity_internal(
+            document,
+            origin,
+            max_width,
+            text_system,
+            scene,
+            1.0,
+            Some(&mut layout.code_blocks),
+        );
+        layout
+    }
+
     pub fn render_with_opacity(
         &self,
         document: &MarkdownDocument,
@@ -158,12 +194,32 @@ impl MarkdownRenderer {
         scene: &mut Scene,
         opacity: f32,
     ) -> Size {
+        self.render_with_opacity_internal(
+            document,
+            origin,
+            max_width,
+            text_system,
+            scene,
+            opacity,
+            None,
+        )
+    }
+
+    fn render_with_opacity_internal(
+        &self,
+        document: &MarkdownDocument,
+        origin: Point,
+        max_width: f32,
+        text_system: &mut TextSystem,
+        scene: &mut Scene,
+        opacity: f32,
+        mut code_blocks: Option<&mut Vec<CodeBlockLayout>>,
+    ) -> Size {
         let mut y = origin.y;
         let x = origin.x;
 
         for (i, block) in document.blocks.iter().enumerate() {
             if i > 0 {
-                // Add generous spacing between blocks
                 y += theme::spacing::MD;
             }
 
@@ -174,6 +230,7 @@ impl MarkdownRenderer {
                 text_system,
                 scene,
                 opacity,
+                code_blocks.as_deref_mut(),
             );
         }
 
@@ -188,6 +245,7 @@ impl MarkdownRenderer {
         text_system: &mut TextSystem,
         scene: &mut Scene,
         opacity: f32,
+        code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
         match block {
             MarkdownBlock::Paragraph(lines) => {
@@ -212,16 +270,39 @@ impl MarkdownRenderer {
                     )
             }
 
-            MarkdownBlock::CodeBlock { lines, .. } => {
-                self.render_code_block(lines, origin, max_width, text_system, scene, opacity)
-            }
+            MarkdownBlock::CodeBlock { lines, language, .. } => self.render_code_block(
+                lines,
+                language,
+                origin,
+                max_width,
+                text_system,
+                scene,
+                opacity,
+                code_blocks,
+            ),
 
             MarkdownBlock::Blockquote(blocks) => {
-                self.render_blockquote(blocks, origin, max_width, text_system, scene, opacity)
+                self.render_blockquote(
+                    blocks,
+                    origin,
+                    max_width,
+                    text_system,
+                    scene,
+                    opacity,
+                    code_blocks,
+                )
             }
 
             MarkdownBlock::UnorderedList(items) => {
-                self.render_unordered_list(items, origin, max_width, text_system, scene, opacity)
+                self.render_unordered_list(
+                    items,
+                    origin,
+                    max_width,
+                    text_system,
+                    scene,
+                    opacity,
+                    code_blocks,
+                )
             }
 
             MarkdownBlock::OrderedList { start, items } => self.render_ordered_list(
@@ -232,6 +313,7 @@ impl MarkdownRenderer {
                 text_system,
                 scene,
                 opacity,
+                code_blocks,
             ),
 
             MarkdownBlock::HorizontalRule => {
@@ -342,14 +424,15 @@ impl MarkdownRenderer {
     fn render_code_block(
         &self,
         lines: &[StyledLine],
+        language: &Option<String>,
         origin: Point,
         max_width: f32,
         text_system: &mut TextSystem,
         scene: &mut Scene,
         opacity: f32,
+        code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
-        let padding = theme::spacing::MD;
-        let margin = theme::spacing::SM;
+        let metrics = self.code_block_metrics();
 
         let content_height: f32 = lines
             .iter()
@@ -361,31 +444,81 @@ impl MarkdownRenderer {
             })
             .sum();
 
-        let total_height = content_height + padding * 2.0;
+        let total_height = content_height + metrics.padding * 2.0 + metrics.header_height;
 
         let bg_color = self
             .config
             .code_background
             .with_alpha(self.config.code_background.a * opacity);
-        scene.draw_quad(Quad {
-            bounds: Bounds::new(origin.x, origin.y + margin, max_width, total_height),
-            background: Some(bg_color),
-            border_color: Hsla::transparent(),
-            border_width: 0.0,
-            corner_radius: 0.0,
-        });
+        let border_color = theme::border::DEFAULT.with_alpha(opacity);
+        let block_bounds = Bounds::new(origin.x, origin.y + metrics.margin, max_width, total_height);
+        scene.draw_quad(
+            Quad::new(block_bounds)
+                .with_background(bg_color)
+                .with_border(border_color, metrics.border_width),
+        );
+
+        let header_bounds =
+            Bounds::new(origin.x, origin.y + metrics.margin, max_width, metrics.header_height);
+        scene.draw_quad(Quad::new(header_bounds).with_background(
+            theme::bg::SURFACE.with_alpha(opacity),
+        ));
+        scene.draw_quad(Quad::new(Bounds::new(
+            header_bounds.origin.x,
+            header_bounds.origin.y + header_bounds.size.height - metrics.border_width,
+            header_bounds.size.width,
+            metrics.border_width,
+        ))
+        .with_background(border_color));
+
+        if let Some(lang) = language.as_ref() {
+            let label_x = header_bounds.origin.x + metrics.padding;
+            let label_y = header_bounds.origin.y
+                + header_bounds.size.height * 0.5
+                - theme::font_size::XS * 0.55;
+            let label_color = theme::text::MUTED.with_alpha(opacity);
+            let label = text_system.layout(
+                lang,
+                Point::new(label_x, label_y),
+                theme::font_size::XS,
+                label_color,
+            );
+            scene.draw_text(label);
+        }
+
+        let content_origin = Point::new(
+            origin.x + metrics.padding,
+            origin.y + metrics.margin + metrics.header_height + metrics.padding,
+        );
 
         self.render_lines(
             lines,
-            Point::new(origin.x + padding, origin.y + margin + padding),
-            max_width - padding * 2.0,
+            content_origin,
+            max_width - metrics.padding * 2.0,
             0,
             text_system,
             scene,
             opacity,
         );
 
-        total_height + margin * 2.0
+        if let Some(code_blocks) = code_blocks {
+            let content_bounds = Bounds::new(
+                content_origin.x,
+                content_origin.y,
+                max_width - metrics.padding * 2.0,
+                content_height,
+            );
+            code_blocks.push(CodeBlockLayout {
+                bounds: block_bounds,
+                header_bounds,
+                content_bounds,
+                language: language.clone(),
+                code: collect_code_text(lines),
+                copy_bounds: None,
+            });
+        }
+
+        total_height + metrics.margin * 2.0
     }
 
     fn render_blockquote(
@@ -396,6 +529,7 @@ impl MarkdownRenderer {
         text_system: &mut TextSystem,
         scene: &mut Scene,
         opacity: f32,
+        mut code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
         let bar_width = 4.0;
         let gap = theme::spacing::MD; // Gap between bar and text
@@ -416,6 +550,7 @@ impl MarkdownRenderer {
                 text_system,
                 scene,
                 opacity,
+                code_blocks.as_deref_mut(),
             );
         }
 
@@ -443,6 +578,7 @@ impl MarkdownRenderer {
         text_system: &mut TextSystem,
         scene: &mut Scene,
         opacity: f32,
+        mut code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
         let indent = theme::spacing::XL;
         let bullet_x = origin.x + theme::spacing::SM;
@@ -474,6 +610,7 @@ impl MarkdownRenderer {
                     text_system,
                     scene,
                     opacity,
+                    code_blocks.as_deref_mut(),
                 );
             }
         }
@@ -490,6 +627,7 @@ impl MarkdownRenderer {
         text_system: &mut TextSystem,
         scene: &mut Scene,
         opacity: f32,
+        mut code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
         let indent = theme::spacing::XL * 2.0;
         let number_x = origin.x;
@@ -522,6 +660,7 @@ impl MarkdownRenderer {
                     text_system,
                     scene,
                     opacity,
+                    code_blocks.as_deref_mut(),
                 );
             }
         }
@@ -612,6 +751,19 @@ impl MarkdownRenderer {
 
         y - origin.y
     }
+}
+
+fn collect_code_text(lines: &[StyledLine]) -> String {
+    let mut out = String::new();
+    for (line_ix, line) in lines.iter().enumerate() {
+        if line_ix > 0 {
+            out.push('\n');
+        }
+        for span in &line.spans {
+            out.push_str(&span.text);
+        }
+    }
+    out
 }
 
 impl Default for MarkdownRenderer {

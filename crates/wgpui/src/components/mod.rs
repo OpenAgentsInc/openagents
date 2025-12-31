@@ -21,6 +21,7 @@ pub use component::{AnyComponent, Component, ComponentId, EventResult};
 pub use context::{EventContext, PaintContext};
 pub use div::Div;
 pub use dropdown::{Dropdown, DropdownOption};
+pub use organisms::MarkdownView;
 pub use modal::Modal;
 pub use scroll_view::ScrollView;
 pub use tabs::{Tab, Tabs};
