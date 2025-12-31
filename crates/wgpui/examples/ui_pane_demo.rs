@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use wgpui::components::hud::{
+    CornerConfig, DotShape, DotsGrid, DotsOrigin, DrawDirection, Frame, FrameAnimation, FrameStyle,
+};
+use wgpui::renderer::Renderer;
 use wgpui::{
     Animation, Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size,
     SpringAnimation, TextSystem, theme,
 };
-use wgpui::components::hud::{CornerConfig, DotsGrid, DotsOrigin, DotShape, DrawDirection, Frame, FrameAnimation, FrameStyle};
-use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -33,9 +35,9 @@ impl Priority {
     fn glow_color(&self) -> Option<Hsla> {
         match self {
             Priority::Background | Priority::Normal => None,
-            Priority::Elevated => Some(Hsla::new(0.5, 1.0, 0.6, 0.8)),    // cyan (180°)
-            Priority::Urgent => Some(Hsla::new(0.125, 1.0, 0.5, 0.9)),   // orange (45°)
-            Priority::Critical => Some(Hsla::new(0.0, 1.0, 0.5, 1.0)),   // red (0°)
+            Priority::Elevated => Some(Hsla::new(0.5, 1.0, 0.6, 0.8)), // cyan (180°)
+            Priority::Urgent => Some(Hsla::new(0.125, 1.0, 0.5, 0.9)), // orange (45°)
+            Priority::Critical => Some(Hsla::new(0.0, 1.0, 0.5, 1.0)), // red (0°)
         }
     }
 }
@@ -76,19 +78,15 @@ struct VisualPane {
 
 impl VisualPane {
     fn new(id: &str, title: &str, x: f32, y: f32, w: f32, h: f32) -> Self {
-        let x_anim = Animation::new(x, x, Duration::from_millis(500))
-            .easing(Easing::EaseOutCubic);
-        let y_anim = Animation::new(y, y, Duration::from_millis(500))
-            .easing(Easing::EaseOutCubic);
-        let w_anim = Animation::new(w, w, Duration::from_millis(300))
-            .easing(Easing::EaseOutCubic);
-        let h_anim = Animation::new(h, h, Duration::from_millis(300))
-            .easing(Easing::EaseOutCubic);
-        let mut alpha_anim = Animation::new(0.0, 1.0, Duration::from_millis(400))
-            .easing(Easing::EaseOut);
-        
+        let x_anim = Animation::new(x, x, Duration::from_millis(500)).easing(Easing::EaseOutCubic);
+        let y_anim = Animation::new(y, y, Duration::from_millis(500)).easing(Easing::EaseOutCubic);
+        let w_anim = Animation::new(w, w, Duration::from_millis(300)).easing(Easing::EaseOutCubic);
+        let h_anim = Animation::new(h, h, Duration::from_millis(300)).easing(Easing::EaseOutCubic);
+        let mut alpha_anim =
+            Animation::new(0.0, 1.0, Duration::from_millis(400)).easing(Easing::EaseOut);
+
         alpha_anim.start();
-        
+
         Self {
             id: id.to_string(),
             title: title.to_string(),
@@ -108,7 +106,9 @@ impl VisualPane {
             draw_direction: DrawDirection::CenterOut,
             state: PaneState::Creating,
             z_index: 0,
-            shake: SpringAnimation::new(0.0, 0.0).stiffness(300.0).damping(10.0),
+            shake: SpringAnimation::new(0.0, 0.0)
+                .stiffness(300.0)
+                .damping(10.0),
             shake_target: 0.0,
             shake_phase: 0,
             content_type: "generic".to_string(),
@@ -119,10 +119,12 @@ impl VisualPane {
         self.target_x = x;
         self.target_y = y;
         if animate {
-            self.x_anim = Animation::new(self.x_anim.current_value(), x, Duration::from_millis(400))
-                .easing(Easing::EaseInOutCubic);
-            self.y_anim = Animation::new(self.y_anim.current_value(), y, Duration::from_millis(400))
-                .easing(Easing::EaseInOutCubic);
+            self.x_anim =
+                Animation::new(self.x_anim.current_value(), x, Duration::from_millis(400))
+                    .easing(Easing::EaseInOutCubic);
+            self.y_anim =
+                Animation::new(self.y_anim.current_value(), y, Duration::from_millis(400))
+                    .easing(Easing::EaseInOutCubic);
             self.x_anim.start();
             self.y_anim.start();
         }
@@ -132,10 +134,12 @@ impl VisualPane {
         self.target_w = w;
         self.target_h = h;
         if animate {
-            self.w_anim = Animation::new(self.w_anim.current_value(), w, Duration::from_millis(300))
-                .easing(Easing::EaseInOutCubic);
-            self.h_anim = Animation::new(self.h_anim.current_value(), h, Duration::from_millis(300))
-                .easing(Easing::EaseInOutCubic);
+            self.w_anim =
+                Animation::new(self.w_anim.current_value(), w, Duration::from_millis(300))
+                    .easing(Easing::EaseInOutCubic);
+            self.h_anim =
+                Animation::new(self.h_anim.current_value(), h, Duration::from_millis(300))
+                    .easing(Easing::EaseInOutCubic);
             self.w_anim.start();
             self.h_anim.start();
         }
@@ -157,15 +161,19 @@ impl VisualPane {
 
     fn minimize(&mut self) {
         self.state = PaneState::Minimized;
-        self.h_anim = Animation::new(self.h_anim.current_value(), 30.0, Duration::from_millis(300))
-            .easing(Easing::EaseInOutCubic);
+        self.h_anim = Animation::new(
+            self.h_anim.current_value(),
+            30.0,
+            Duration::from_millis(300),
+        )
+        .easing(Easing::EaseInOutCubic);
         self.h_anim.start();
     }
 
     fn close(&mut self) {
         self.state = PaneState::Closing;
-        self.alpha_anim = Animation::new(1.0, 0.0, Duration::from_millis(300))
-            .easing(Easing::EaseIn);
+        self.alpha_anim =
+            Animation::new(1.0, 0.0, Duration::from_millis(300)).easing(Easing::EaseIn);
         self.alpha_anim.start();
     }
 
@@ -201,7 +209,11 @@ impl VisualPane {
     }
 
     fn current_bounds(&self) -> Bounds {
-        let shake_offset = if self.shake_phase > 0 { self.shake.current() } else { 0.0 };
+        let shake_offset = if self.shake_phase > 0 {
+            self.shake.current()
+        } else {
+            0.0
+        };
         Bounds::new(
             self.x_anim.current_value() + shake_offset,
             self.y_anim.current_value(),
@@ -283,10 +295,19 @@ impl DemoState {
         self.start_time.elapsed().as_secs_f32()
     }
 
-    fn create_pane(&mut self, id: &str, title: &str, x: f32, y: f32, w: f32, h: f32, content_type: &str) {
+    fn create_pane(
+        &mut self,
+        id: &str,
+        title: &str,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        content_type: &str,
+    ) {
         let mut pane = VisualPane::new(id, title, x, y, w, h);
         pane.content_type = content_type.to_string();
-        
+
         match content_type {
             "code" => {
                 pane.frame_style = FrameStyle::Corners;
@@ -310,11 +331,14 @@ impl DemoState {
             }
             _ => {}
         }
-        
+
         self.z_counter += 1;
         pane.z_index = self.z_counter;
         self.panes.insert(id.to_string(), pane);
-        self.tool_log.add(self.elapsed(), format!("CreatePane {{ id: \"{}\", title: \"{}\" }}", id, title));
+        self.tool_log.add(
+            self.elapsed(),
+            format!("CreatePane {{ id: \"{}\", title: \"{}\" }}", id, title),
+        );
     }
 
     fn focus_pane(&mut self, id: &str) {
@@ -322,7 +346,8 @@ impl DemoState {
         if let Some(pane) = self.panes.get_mut(id) {
             pane.z_index = self.z_counter;
         }
-        self.tool_log.add(self.elapsed(), format!("Focus {{ id: \"{}\" }}", id));
+        self.tool_log
+            .add(self.elapsed(), format!("Focus {{ id: \"{}\" }}", id));
     }
 
     fn set_priority(&mut self, id: &str, priority: Priority) {
@@ -336,31 +361,50 @@ impl DemoState {
             Priority::Urgent => "Urgent",
             Priority::Critical => "Critical",
         };
-        self.tool_log.add(self.elapsed(), format!("SetPriority {{ id: \"{}\", priority: \"{}\" }}", id, p_str));
+        self.tool_log.add(
+            self.elapsed(),
+            format!("SetPriority {{ id: \"{}\", priority: \"{}\" }}", id, p_str),
+        );
     }
 
     fn set_glow(&mut self, id: &str, color: Option<Hsla>) {
         if let Some(pane) = self.panes.get_mut(id) {
             pane.set_glow(color);
         }
-        let color_str = color.map(|c| format!("#{:02x}{:02x}{:02x}", 
-            (c.l * 255.0) as u8, (c.s * 255.0) as u8, (c.h as u8)
-        )).unwrap_or_else(|| "none".to_string());
-        self.tool_log.add(self.elapsed(), format!("SetGlow {{ id: \"{}\", color: \"{}\" }}", id, color_str));
+        let color_str = color
+            .map(|c| {
+                format!(
+                    "#{:02x}{:02x}{:02x}",
+                    (c.l * 255.0) as u8,
+                    (c.s * 255.0) as u8,
+                    (c.h as u8)
+                )
+            })
+            .unwrap_or_else(|| "none".to_string());
+        self.tool_log.add(
+            self.elapsed(),
+            format!("SetGlow {{ id: \"{}\", color: \"{}\" }}", id, color_str),
+        );
     }
 
     fn move_pane(&mut self, id: &str, x: f32, y: f32) {
         if let Some(pane) = self.panes.get_mut(id) {
             pane.move_to(x, y, true);
         }
-        self.tool_log.add(self.elapsed(), format!("MovePane {{ id: \"{}\", x: {}, y: {} }}", id, x, y));
+        self.tool_log.add(
+            self.elapsed(),
+            format!("MovePane {{ id: \"{}\", x: {}, y: {} }}", id, x, y),
+        );
     }
 
     fn resize_pane(&mut self, id: &str, w: f32, h: f32) {
         if let Some(pane) = self.panes.get_mut(id) {
             pane.resize_to(w, h, true);
         }
-        self.tool_log.add(self.elapsed(), format!("ResizePane {{ id: \"{}\", w: {}, h: {} }}", id, w, h));
+        self.tool_log.add(
+            self.elapsed(),
+            format!("ResizePane {{ id: \"{}\", w: {}, h: {} }}", id, w, h),
+        );
     }
 
     fn request_attention(&mut self, id: &str, msg: &str) {
@@ -369,21 +413,28 @@ impl DemoState {
             pane.set_priority(Priority::Urgent);
         }
         self.focus_pane(id);
-        self.tool_log.add(self.elapsed(), format!("RequestAttention {{ id: \"{}\", msg: \"{}\" }}", id, msg));
+        self.tool_log.add(
+            self.elapsed(),
+            format!("RequestAttention {{ id: \"{}\", msg: \"{}\" }}", id, msg),
+        );
     }
 
     fn minimize_pane(&mut self, id: &str) {
         if let Some(pane) = self.panes.get_mut(id) {
             pane.minimize();
         }
-        self.tool_log.add(self.elapsed(), format!("SetState {{ id: \"{}\", state: \"Minimized\" }}", id));
+        self.tool_log.add(
+            self.elapsed(),
+            format!("SetState {{ id: \"{}\", state: \"Minimized\" }}", id),
+        );
     }
 
     fn close_pane(&mut self, id: &str) {
         if let Some(pane) = self.panes.get_mut(id) {
             pane.close();
         }
-        self.tool_log.add(self.elapsed(), format!("ClosePane {{ id: \"{}\" }}", id));
+        self.tool_log
+            .add(self.elapsed(), format!("ClosePane {{ id: \"{}\" }}", id));
     }
 
     fn tick(&mut self, dt: Duration) {
@@ -392,7 +443,8 @@ impl DemoState {
         for pane in self.panes.values_mut() {
             pane.tick(dt);
         }
-        self.panes.retain(|_, p| p.is_visible() || p.state != PaneState::Closing);
+        self.panes
+            .retain(|_, p| p.is_visible() || p.state != PaneState::Closing);
     }
 
     fn reset(&mut self) {
@@ -539,7 +591,13 @@ impl ApplicationHandler for App {
                 }
 
                 let mut scene = Scene::new();
-                render_demo(&mut scene, &mut state.text_system, &state.demo, width, height);
+                render_demo(
+                    &mut scene,
+                    &mut state.text_system,
+                    &state.demo,
+                    width,
+                    height,
+                );
 
                 let output = state
                     .surface
@@ -556,11 +614,9 @@ impl ApplicationHandler for App {
                             label: Some("Render Encoder"),
                         });
 
-                state.renderer.resize(
-                    &state.queue,
-                    Size::new(width, height),
-                    1.0,
-                );
+                state
+                    .renderer
+                    .resize(&state.queue, Size::new(width, height), 1.0);
 
                 if state.text_system.is_dirty() {
                     state.renderer.update_atlas(
@@ -572,7 +628,9 @@ impl ApplicationHandler for App {
                 }
 
                 let scale_factor = state.window.scale_factor() as f32;
-                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
+                state
+                    .renderer
+                    .prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));
@@ -591,13 +649,15 @@ impl ApplicationHandler for App {
 
 fn run_demo_script(demo: &mut DemoState, _width: f32, _height: f32) {
     let t = demo.elapsed();
-    
+
     if demo.scenario_index == 0 && t >= 0.5 {
         demo.create_pane("editor", "Code Editor", 50.0, 60.0, 450.0, 250.0, "code");
         demo.scenario_index = 1;
     }
     if demo.scenario_index == 1 && t >= 1.0 {
-        demo.create_pane("terminal", "Terminal", 50.0, 340.0, 450.0, 180.0, "terminal");
+        demo.create_pane(
+            "terminal", "Terminal", 50.0, 340.0, 450.0, 180.0, "terminal",
+        );
         demo.scenario_index = 2;
     }
     if demo.scenario_index == 2 && t >= 1.5 {
@@ -605,7 +665,15 @@ fn run_demo_script(demo: &mut DemoState, _width: f32, _height: f32) {
         demo.scenario_index = 3;
     }
     if demo.scenario_index == 3 && t >= 2.0 {
-        demo.create_pane("diagnostics", "Diagnostics", 540.0, 320.0, 340.0, 200.0, "diagnostics");
+        demo.create_pane(
+            "diagnostics",
+            "Diagnostics",
+            540.0,
+            320.0,
+            340.0,
+            200.0,
+            "diagnostics",
+        );
         demo.scenario_index = 4;
     }
 
@@ -621,7 +689,10 @@ fn run_demo_script(demo: &mut DemoState, _width: f32, _height: f32) {
         if let Some(pane) = demo.panes.get_mut("diagnostics") {
             pane.request_attention();
         }
-        demo.tool_log.add(t, "Animate { id: \"diagnostics\", animation: \"Pulse\" }".to_string());
+        demo.tool_log.add(
+            t,
+            "Animate { id: \"diagnostics\", animation: \"Pulse\" }".to_string(),
+        );
         demo.scenario_index = 7;
     }
 
@@ -675,7 +746,8 @@ fn render_demo(
     width: f32,
     height: f32,
 ) {
-    scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+    scene
+        .draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
     let dots_progress = demo.dots_anim.current_value();
     let mut dots_grid = DotsGrid::new()
@@ -695,7 +767,12 @@ fn render_demo(
     scene.draw_text(run);
 
     let subtitle = "[Space] Pause  [R] Restart  [Esc] Exit";
-    let run = text_system.layout(subtitle, Point::new(width - 300.0, 22.0), 12.0, theme::text::MUTED);
+    let run = text_system.layout(
+        subtitle,
+        Point::new(width - 300.0, 22.0),
+        12.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(run);
 
     scene.draw_quad(
@@ -756,10 +833,20 @@ fn render_demo(
 
         frame.paint(bounds, &mut cx);
 
-        let title_run = cx.text.layout(&pane.title, Point::new(bounds.origin.x + 12.0, bounds.origin.y + 14.0), 13.0, white);
+        let title_run = cx.text.layout(
+            &pane.title,
+            Point::new(bounds.origin.x + 12.0, bounds.origin.y + 14.0),
+            13.0,
+            white,
+        );
         cx.scene.draw_text(title_run);
 
-        let type_run = cx.text.layout(&pane.content_type, Point::new(bounds.origin.x + 12.0, bounds.origin.y + 32.0), 10.0, muted);
+        let type_run = cx.text.layout(
+            &pane.content_type,
+            Point::new(bounds.origin.x + 12.0, bounds.origin.y + 32.0),
+            10.0,
+            muted,
+        );
         cx.scene.draw_text(type_run);
 
         if pane.state == PaneState::Minimized {
@@ -771,8 +858,13 @@ fn render_demo(
         if content_h > 20.0 {
             let content_color = Hsla::new(0.0, 0.0, 0.15, 0.5 * alpha);
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(bounds.origin.x + 8.0, content_y, bounds.size.width - 16.0, content_h))
-                    .with_background(content_color),
+                Quad::new(Bounds::new(
+                    bounds.origin.x + 8.0,
+                    content_y,
+                    bounds.size.width - 16.0,
+                    content_h,
+                ))
+                .with_background(content_color),
             );
 
             let placeholder = match pane.content_type.as_str() {
@@ -782,7 +874,12 @@ fn render_demo(
                 "diagnostics" => "error[E0308]: mismatched types\n  --> src/main.rs:42",
                 _ => "Content placeholder",
             };
-            let text_run = cx.text.layout(placeholder, Point::new(bounds.origin.x + 14.0, content_y + 8.0), 11.0, Hsla::new(0.0, 0.0, 0.7, alpha));
+            let text_run = cx.text.layout(
+                placeholder,
+                Point::new(bounds.origin.x + 14.0, content_y + 8.0),
+                11.0,
+                Hsla::new(0.0, 0.0, 0.7, alpha),
+            );
             cx.scene.draw_text(text_run);
         }
     }
@@ -800,23 +897,43 @@ fn render_demo(
             .with_background(theme::accent::PRIMARY.with_alpha(0.3)),
     );
 
-    let log_title = cx.text.layout("Tool Call Log", Point::new(15.0, log_y + 10.0), 12.0, theme::text::PRIMARY);
+    let log_title = cx.text.layout(
+        "Tool Call Log",
+        Point::new(15.0, log_y + 10.0),
+        12.0,
+        theme::text::PRIMARY,
+    );
     cx.scene.draw_text(log_title);
 
     let mut entry_y = log_y + 30.0;
     for (time, msg) in &demo.tool_log.entries {
         let time_str = format!("[{:.1}s]", time);
-        let time_run = cx.text.layout(&time_str, Point::new(15.0, entry_y), 11.0, theme::accent::PRIMARY);
+        let time_run = cx.text.layout(
+            &time_str,
+            Point::new(15.0, entry_y),
+            11.0,
+            theme::accent::PRIMARY,
+        );
         cx.scene.draw_text(time_run);
 
-        let msg_run = cx.text.layout(&format!("ui_pane.{}", msg), Point::new(70.0, entry_y), 11.0, theme::text::MUTED);
+        let msg_run = cx.text.layout(
+            &format!("ui_pane.{}", msg),
+            Point::new(70.0, entry_y),
+            11.0,
+            theme::text::MUTED,
+        );
         cx.scene.draw_text(msg_run);
 
         entry_y += 14.0;
     }
 
     if demo.paused {
-        let paused_text = cx.text.layout("PAUSED", Point::new(width / 2.0 - 40.0, height / 2.0), 24.0, theme::accent::PRIMARY);
+        let paused_text = cx.text.layout(
+            "PAUSED",
+            Point::new(width / 2.0 - 40.0, height / 2.0),
+            24.0,
+            theme::accent::PRIMARY,
+        );
         cx.scene.draw_text(paused_text);
     }
 }

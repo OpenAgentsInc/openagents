@@ -105,7 +105,8 @@ impl Component for PermissionHistoryItem {
 
         // Left decision indicator
         let indicator = Bounds::new(bounds.origin.x, bounds.origin.y, 3.0, bounds.size.height);
-        cx.scene.draw_quad(Quad::new(indicator).with_background(decision_color));
+        cx.scene
+            .draw_quad(Quad::new(indicator).with_background(decision_color));
 
         let padding = 12.0;
         let mut x = bounds.origin.x + padding + 4.0;
@@ -117,7 +118,12 @@ impl Component for PermissionHistoryItem {
             // Tool icon
             let mut icon = ToolIcon::new(self.history.tool_type).size(16.0);
             icon.paint(
-                Bounds::new(x, bounds.origin.y + (bounds.size.height - 16.0) / 2.0, 16.0, 16.0),
+                Bounds::new(
+                    x,
+                    bounds.origin.y + (bounds.size.height - 16.0) / 2.0,
+                    16.0,
+                    16.0,
+                ),
                 cx,
             );
             x += 22.0;
@@ -179,7 +185,10 @@ impl Component for PermissionHistoryItem {
 
             let decision_run = cx.text.layout(
                 self.history.decision.short_label(),
-                Point::new(decision_bounds.origin.x + 6.0, decision_bounds.origin.y + 3.0),
+                Point::new(
+                    decision_bounds.origin.x + 6.0,
+                    decision_bounds.origin.y + 3.0,
+                ),
                 theme::font_size::XS,
                 decision_color,
             );
@@ -189,7 +198,10 @@ impl Component for PermissionHistoryItem {
             if !self.history.timestamp.is_empty() {
                 let ts_run = cx.text.layout(
                     &self.history.timestamp,
-                    Point::new(bounds.origin.x + bounds.size.width - padding - 80.0, y + 2.0),
+                    Point::new(
+                        bounds.origin.x + bounds.size.width - padding - 80.0,
+                        y + 2.0,
+                    ),
                     theme::font_size::XS,
                     theme::text::DISABLED,
                 );
@@ -248,10 +260,11 @@ mod tests {
 
     #[test]
     fn test_permission_history() {
-        let history = PermissionHistory::new("h-1", ToolType::Bash, "Bash", "Execute shell command")
-            .decision(PermissionDecision::AllowOnce)
-            .timestamp("2 min ago")
-            .session("sess-123");
+        let history =
+            PermissionHistory::new("h-1", ToolType::Bash, "Bash", "Execute shell command")
+                .decision(PermissionDecision::AllowOnce)
+                .timestamp("2 min ago")
+                .session("sess-123");
 
         assert_eq!(history.tool_name, "Bash");
         assert_eq!(history.decision, PermissionDecision::AllowOnce);

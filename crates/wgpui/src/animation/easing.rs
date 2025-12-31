@@ -1,8 +1,7 @@
 use std::f32::consts::PI;
 
 /// Animation easing function.
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Easing {
     /// Linear interpolation (constant speed).
     Linear,
@@ -198,8 +197,7 @@ impl Easing {
                     if t < 0.5 {
                         -(2.0_f32.powf(20.0 * t - 10.0) * ((20.0 * t - 11.125) * c5).sin()) / 2.0
                     } else {
-                        (2.0_f32.powf(-20.0 * t + 10.0) * ((20.0 * t - 11.125) * c5).sin())
-                            / 2.0
+                        (2.0_f32.powf(-20.0 * t + 10.0) * ((20.0 * t - 11.125) * c5).sin()) / 2.0
                             + 1.0
                     }
                 }
@@ -220,17 +218,13 @@ impl Easing {
                 if t < 0.5 {
                     (2.0 * t).powi(2) * ((c2 + 1.0) * 2.0 * t - c2) / 2.0
                 } else {
-                    ((2.0 * t - 2.0).powi(2) * ((c2 + 1.0) * (2.0 * t - 2.0) + c2) + 2.0)
-                        / 2.0
+                    ((2.0 * t - 2.0).powi(2) * ((c2 + 1.0) * (2.0 * t - 2.0) + c2) + 2.0) / 2.0
                 }
             }
-            Easing::CubicBezier(x1, y1, x2, y2) => {
-                cubic_bezier_sample(t, *x1, *y1, *x2, *y2)
-            }
+            Easing::CubicBezier(x1, y1, x2, y2) => cubic_bezier_sample(t, *x1, *y1, *x2, *y2),
         }
     }
 }
-
 
 /// Sample cubic bezier curve at time t.
 fn cubic_bezier_sample(t: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
@@ -467,9 +461,7 @@ mod tests {
 
         assert!((in_circ.apply(0.0) - 0.0).abs() < 0.001);
         assert!((in_circ.apply(1.0) - 1.0).abs() < 0.001);
-        assert!(
-            (in_circ.apply(0.5) - (1.0_f32 - (1.0_f32 - 0.25_f32).sqrt())).abs() < 0.01
-        );
+        assert!((in_circ.apply(0.5) - (1.0_f32 - (1.0_f32 - 0.25_f32).sqrt())).abs() < 0.01);
 
         assert!((out_circ.apply(0.0) - 0.0).abs() < 0.001);
         assert!((out_circ.apply(1.0) - 1.0).abs() < 0.001);

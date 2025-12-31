@@ -106,12 +106,7 @@ impl<C: Component, A: Action> Component for WithAction<C, A> {
         self.inner.paint(bounds, cx);
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
         // Check for pending action
         if let Some(pending) = cx.take_pending_action() {
             // Try to handle if it's our action type
@@ -157,12 +152,7 @@ impl<C: Component> Component for WithContext<C> {
         self.inner.paint(bounds, cx);
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
         // Push context before handling events
         cx.push_context(&self.context);
 
@@ -190,8 +180,8 @@ impl<C: Component> Component for WithContext<C> {
 mod tests {
     use super::*;
     use crate::action::standard::Cancel;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     // Simple test component
     struct TestComponent {
@@ -220,19 +210,17 @@ mod tests {
         let handled = Arc::new(AtomicBool::new(false));
         let handled_clone = handled.clone();
 
-        let _component = TestComponent { id: 1 }
-            .on_action::<Cancel>(move |_| {
-                handled_clone.store(true, Ordering::SeqCst);
-                true
-            });
+        let _component = TestComponent { id: 1 }.on_action::<Cancel>(move |_| {
+            handled_clone.store(true, Ordering::SeqCst);
+            true
+        });
 
         // Component should compile and be usable
     }
 
     #[test]
     fn test_key_context_chainable() {
-        let _component = TestComponent { id: 1 }
-            .key_context("TestContext");
+        let _component = TestComponent { id: 1 }.key_context("TestContext");
 
         // Component should compile and be usable
     }

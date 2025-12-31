@@ -108,13 +108,13 @@ impl Component for ModelSelector {
 
             for (i, model) in self.available_models.iter().enumerate() {
                 let item_y = dropdown_y + i as f32 * item_height;
-                let item_bounds = Bounds::new(bounds.origin.x, item_y, bounds.size.width, item_height);
+                let item_bounds =
+                    Bounds::new(bounds.origin.x, item_y, bounds.size.width, item_height);
 
                 if self.hovered_index == Some(i) {
                     // Brighter hover state
-                    cx.scene.draw_quad(
-                        Quad::new(item_bounds).with_background(theme::bg::SELECTED),
-                    );
+                    cx.scene
+                        .draw_quad(Quad::new(item_bounds).with_background(theme::bg::SELECTED));
                 }
 
                 let mut model_badge = ModelBadge::new(*model);

@@ -20,8 +20,8 @@ pub use animator::{
     AnimatorId, AnimatorManagerKind, AnimatorMessage, AnimatorNode, AnimatorSettings,
     AnimatorSettingsUpdate, AnimatorState, AnimatorTiming, AnimatorTimingUpdate,
 };
-pub use easing::{ease_among, ease_steps, EaseAmong, EaseSteps, EaseStepsDirection, Easing};
-pub use transitions::{draw, fade, flicker, transition, Transition, TransitionAnimation};
+pub use easing::{EaseAmong, EaseSteps, EaseStepsDirection, Easing, ease_among, ease_steps};
+pub use transitions::{Transition, TransitionAnimation, draw, fade, flicker, transition};
 
 /// Animatable value that can be interpolated
 pub trait Animatable: Clone + Copy {
@@ -37,10 +37,7 @@ impl Animatable for f32 {
 
 impl Animatable for Point {
     fn lerp(from: Self, to: Self, t: f32) -> Self {
-        Point::new(
-            f32::lerp(from.x, to.x, t),
-            f32::lerp(from.y, to.y, t),
-        )
+        Point::new(f32::lerp(from.x, to.x, t), f32::lerp(from.y, to.y, t))
     }
 }
 
@@ -62,7 +59,7 @@ impl Animatable for Hsla {
         } else if dh < -180.0 {
             dh += 360.0;
         }
-        
+
         Hsla::new(
             (from.h + dh * t).rem_euclid(360.0),
             f32::lerp(from.s, to.s, t),
@@ -439,7 +436,8 @@ impl SpringAnimation<Point> {
 
         // Check if settled
         let displacement = (dx * dx + dy * dy).sqrt();
-        let vel_mag = (self.velocity.x * self.velocity.x + self.velocity.y * self.velocity.y).sqrt();
+        let vel_mag =
+            (self.velocity.x * self.velocity.x + self.velocity.y * self.velocity.y).sqrt();
         if displacement < self.threshold && vel_mag < self.threshold {
             self.current = self.target;
             self.velocity = Point::new(0.0, 0.0);
@@ -507,7 +505,7 @@ impl<T: Animatable> KeyframeAnimation<T> {
     pub fn new(keyframes: Vec<Keyframe<T>>, duration: Duration) -> Self {
         let mut kf = keyframes;
         kf.sort_by(|a, b| a.offset.partial_cmp(&b.offset).unwrap());
-        
+
         Self {
             keyframes: kf,
             duration,
@@ -609,7 +607,8 @@ impl<T: Animatable> KeyframeAnimation<T> {
         }
 
         // Interpolate between keyframes
-        let segment_progress = (effective_progress - prev_kf.offset) / (next_kf.offset - prev_kf.offset);
+        let segment_progress =
+            (effective_progress - prev_kf.offset) / (next_kf.offset - prev_kf.offset);
         let t = next_kf.easing.apply(segment_progress);
 
         T::lerp(prev_kf.value, next_kf.value, t)
@@ -673,9 +672,9 @@ mod tests {
 
     #[test]
     fn test_animation_basic() {
-        let mut anim = Animation::new(0.0_f32, 100.0, Duration::from_millis(100))
-            .easing(Easing::Linear);
-        
+        let mut anim =
+            Animation::new(0.0_f32, 100.0, Duration::from_millis(100)).easing(Easing::Linear);
+
         anim.start();
         assert!(anim.is_running());
 
@@ -693,7 +692,7 @@ mod tests {
     fn test_animation_with_delay() {
         let mut anim = Animation::new(0.0_f32, 100.0, Duration::from_millis(100))
             .delay(Duration::from_millis(50));
-        
+
         anim.start();
 
         // During delay
@@ -710,7 +709,7 @@ mod tests {
         let mut anim = Animation::new(0.0_f32, 100.0, Duration::from_millis(100))
             .iterations(2)
             .easing(Easing::Linear);
-        
+
         anim.start();
 
         // Complete first iteration
@@ -728,7 +727,7 @@ mod tests {
             .iterations(2)
             .alternate()
             .easing(Easing::Linear);
-        
+
         anim.start();
 
         // First iteration - forward
@@ -762,7 +761,7 @@ mod tests {
     fn test_point_lerp() {
         let from = Point::new(0.0, 0.0);
         let to = Point::new(100.0, 200.0);
-        
+
         let mid = Point::lerp(from, to, 0.5);
         assert!((mid.x - 50.0).abs() < 0.001);
         assert!((mid.y - 100.0).abs() < 0.001);
@@ -772,7 +771,7 @@ mod tests {
     fn test_color_lerp() {
         let from = Hsla::new(0.0, 1.0, 0.5, 1.0);
         let to = Hsla::new(120.0, 1.0, 0.5, 1.0);
-        
+
         let mid = Hsla::lerp(from, to, 0.5);
         assert!((mid.h - 60.0).abs() < 1.0);
     }
@@ -800,7 +799,7 @@ mod tests {
     #[test]
     fn test_animation_controller() {
         let mut controller = AnimationController::new();
-        
+
         // First call returns zero
         let delta1 = controller.delta();
         assert!(delta1.as_millis() == 0);
@@ -833,14 +832,24 @@ mod tests {
 
     #[test]
     fn test_transition_builder() {
-        let mut simple_transition =
-            transition(0.0_f32, 1.0, Duration::from_millis(10), Easing::Linear, None);
+        let mut simple_transition = transition(
+            0.0_f32,
+            1.0,
+            Duration::from_millis(10),
+            Easing::Linear,
+            None,
+        );
         simple_transition.entering.start();
         let v = simple_transition.entering.tick(Duration::from_millis(5));
         assert!((v - 0.5).abs() < 0.1);
 
-        let mut back_transition =
-            transition(0.0_f32, 1.0, Duration::from_millis(10), Easing::Linear, Some(-1.0));
+        let mut back_transition = transition(
+            0.0_f32,
+            1.0,
+            Duration::from_millis(10),
+            Easing::Linear,
+            Some(-1.0),
+        );
         back_transition.exiting.start();
         let v = back_transition.exiting.tick(Duration::from_millis(10));
         assert!((v + 1.0).abs() < 0.1);

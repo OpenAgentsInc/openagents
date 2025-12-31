@@ -1,27 +1,27 @@
-mod message_editor;
 mod code_pane;
+mod message_editor;
 mod metrics_pane;
+mod terminal_pane;
 mod thread_feedback;
 mod thread_header;
 mod thread_view;
-mod terminal_pane;
 mod trajectory_view;
 
 pub use code_pane::{CodeDiff, CodeLine, CodeLineKind, CodePane};
-pub use metrics_pane::{LastPrSummary, MetricsPane, UsageSummary};
 pub use message_editor::MessageEditor;
+pub use metrics_pane::{LastPrSummary, MetricsPane, UsageSummary};
+pub use terminal_pane::{TerminalLine, TerminalPane, TerminalStream};
 pub use thread_feedback::{FeedbackRating, ThreadFeedback};
 pub use thread_header::ThreadHeader;
 pub use thread_view::ThreadView;
-pub use terminal_pane::{TerminalLine, TerminalPane, TerminalStream};
 pub use trajectory_view::{TrajectoryEntry, TrajectoryView};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::Text;
     use crate::components::atoms::Mode;
     use crate::components::organisms::{ThreadEntry, ThreadEntryType as EntryType};
-    use crate::components::Text;
 
     #[test]
     fn test_sections_exports() {
@@ -43,7 +43,10 @@ mod tests {
 
         let mut view = ThreadView::new().auto_scroll(true);
         view.push_entry(ThreadEntry::new(EntryType::User, Text::new("Hello")));
-        view.push_entry(ThreadEntry::new(EntryType::Assistant, Text::new("Hi there!")));
+        view.push_entry(ThreadEntry::new(
+            EntryType::Assistant,
+            Text::new("Hi there!"),
+        ));
 
         let editor = MessageEditor::new()
             .mode(Mode::Normal)

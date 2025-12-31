@@ -2,8 +2,8 @@
 //!
 //! Generates synthetic InputEvents for test steps.
 
-use crate::testing::step::{ClickTarget, ElementSelector, TestStep};
 use crate::testing::context::ComponentRegistry;
+use crate::testing::step::{ClickTarget, ElementSelector, TestStep};
 use crate::{InputEvent, Key, Modifiers, MouseButton, Point};
 use std::time::{Duration, Instant};
 
@@ -81,8 +81,14 @@ impl EventSequence {
     pub fn click(x: f32, y: f32, button: MouseButton) -> EventSequence {
         let mut seq = Self::new();
         seq.push_immediate(InputEvent::MouseMove { x, y });
-        seq.push(InputEvent::MouseDown { button, x, y }, Duration::from_millis(10));
-        seq.push(InputEvent::MouseUp { button, x, y }, Duration::from_millis(50));
+        seq.push(
+            InputEvent::MouseDown { button, x, y },
+            Duration::from_millis(10),
+        );
+        seq.push(
+            InputEvent::MouseUp { button, x, y },
+            Duration::from_millis(50),
+        );
         seq
     }
 
@@ -91,11 +97,23 @@ impl EventSequence {
         let mut seq = Self::new();
         seq.push_immediate(InputEvent::MouseMove { x, y });
         // First click
-        seq.push(InputEvent::MouseDown { button, x, y }, Duration::from_millis(10));
-        seq.push(InputEvent::MouseUp { button, x, y }, Duration::from_millis(50));
+        seq.push(
+            InputEvent::MouseDown { button, x, y },
+            Duration::from_millis(10),
+        );
+        seq.push(
+            InputEvent::MouseUp { button, x, y },
+            Duration::from_millis(50),
+        );
         // Second click
-        seq.push(InputEvent::MouseDown { button, x, y }, Duration::from_millis(100));
-        seq.push(InputEvent::MouseUp { button, x, y }, Duration::from_millis(50));
+        seq.push(
+            InputEvent::MouseDown { button, x, y },
+            Duration::from_millis(100),
+        );
+        seq.push(
+            InputEvent::MouseUp { button, x, y },
+            Duration::from_millis(50),
+        );
         seq
     }
 
@@ -250,13 +268,19 @@ pub fn resolve_click_target(target: &ClickTarget, registry: &ComponentRegistry) 
         ClickTarget::Element(selector) => resolve_selector_center(selector, registry),
         ClickTarget::ElementOffset { selector, offset } => {
             let bounds = resolve_selector_bounds(selector, registry)?;
-            Some(Point::new(bounds.origin.x + offset.x, bounds.origin.y + offset.y))
+            Some(Point::new(
+                bounds.origin.x + offset.x,
+                bounds.origin.y + offset.y,
+            ))
         }
     }
 }
 
 /// Resolve a selector to the center of the element.
-fn resolve_selector_center(selector: &ElementSelector, registry: &ComponentRegistry) -> Option<Point> {
+fn resolve_selector_center(
+    selector: &ElementSelector,
+    registry: &ComponentRegistry,
+) -> Option<Point> {
     let bounds = resolve_selector_bounds(selector, registry)?;
     Some(bounds.center())
 }
@@ -299,9 +323,10 @@ pub fn generate_step_events(
                 .ok_or_else(|| "Could not resolve double-click target".to_string())?;
             Ok(EventSequence::double_click(point.x, point.y, *button))
         }
-        TestStep::Type { text, delay_per_char } => {
-            Ok(EventSequence::type_text(text, *delay_per_char))
-        }
+        TestStep::Type {
+            text,
+            delay_per_char,
+        } => Ok(EventSequence::type_text(text, *delay_per_char)),
         TestStep::KeyPress { key, modifiers } => {
             Ok(EventSequence::key_press(key.clone(), *modifiers))
         }
@@ -385,10 +410,7 @@ mod tests {
 
     #[test]
     fn test_event_sequence_key_press() {
-        let seq = EventSequence::key_press(
-            Key::Named(NamedKey::Enter),
-            Modifiers::default(),
-        );
+        let seq = EventSequence::key_press(Key::Named(NamedKey::Enter), Modifiers::default());
         assert_eq!(seq.len(), 2); // down, up
     }
 

@@ -3,8 +3,8 @@
 //! Subscriptions are handles that automatically unsubscribe when dropped,
 //! ensuring clean resource management for observers and event handlers.
 
-use std::collections::{BTreeMap, BTreeSet};
 use std::cell::{Cell, RefCell};
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 /// A handle to a subscription. When dropped, the subscription is cancelled.
@@ -71,7 +71,7 @@ struct SubscriberSetState<EmitterKey, Callback> {
 }
 
 /// A collection of subscribers keyed by emitter.
-/// 
+///
 /// This is used internally to manage observers and event subscriptions.
 pub(crate) struct SubscriberSet<EmitterKey, Callback>(
     Rc<RefCell<SubscriberSetState<EmitterKey, Callback>>>,
@@ -98,7 +98,7 @@ where
     }
 
     /// Inserts a new subscription for the given emitter key.
-    /// 
+    ///
     /// Returns a tuple of (Subscription, activate_fn). The subscription is
     /// initially inert - call the activate function to make it active.
     pub fn insert(
@@ -110,7 +110,7 @@ where
         let mut lock = self.0.borrow_mut();
         let subscriber_id = lock.next_subscriber_id;
         lock.next_subscriber_id += 1;
-        
+
         lock.subscribers
             .entry(emitter_key.clone())
             .or_default()
@@ -122,7 +122,7 @@ where
                     callback,
                 },
             );
-        
+
         let this = self.0.clone();
         let emitter_key_clone = emitter_key.clone();
 
@@ -231,11 +231,11 @@ mod tests {
     fn test_subscription_drop() {
         let called = Rc::new(RefCell::new(false));
         let called_clone = called.clone();
-        
+
         let sub = Subscription::new(move || {
             *called_clone.borrow_mut() = true;
         });
-        
+
         assert!(!*called.borrow());
         drop(sub);
         assert!(*called.borrow());
@@ -245,11 +245,11 @@ mod tests {
     fn test_subscription_detach() {
         let called = Rc::new(RefCell::new(false));
         let called_clone = called.clone();
-        
+
         let sub = Subscription::new(move || {
             *called_clone.borrow_mut() = true;
         });
-        
+
         sub.detach();
         assert!(!*called.borrow());
     }
@@ -259,14 +259,14 @@ mod tests {
         let count = Rc::new(RefCell::new(0));
         let count1 = count.clone();
         let count2 = count.clone();
-        
+
         let sub1 = Subscription::new(move || {
             *count1.borrow_mut() += 1;
         });
         let sub2 = Subscription::new(move || {
             *count2.borrow_mut() += 1;
         });
-        
+
         let joined = Subscription::join(sub1, sub2);
         assert_eq!(*count.borrow(), 0);
         drop(joined);
@@ -276,39 +276,45 @@ mod tests {
     #[test]
     fn test_subscriber_set_insert_remove() {
         let set: SubscriberSet<u32, Box<dyn FnMut()>> = SubscriberSet::new();
-        
+
         let called = Rc::new(RefCell::new(false));
         let called_clone = called.clone();
-        
-        let (sub, activate) = set.insert(1, Box::new(move || {
-            *called_clone.borrow_mut() = true;
-        }));
+
+        let (sub, activate) = set.insert(
+            1,
+            Box::new(move || {
+                *called_clone.borrow_mut() = true;
+            }),
+        );
         activate();
-        
+
         let callbacks: Vec<_> = set.remove(&1).into_iter().collect();
         assert_eq!(callbacks.len(), 1);
-        
+
         drop(sub);
     }
 
     #[test]
     fn test_subscriber_set_retain() {
         let set: SubscriberSet<u32, Box<dyn FnMut() -> bool>> = SubscriberSet::new();
-        
+
         let count = Rc::new(RefCell::new(0));
         let count_clone = count.clone();
-        
-        let (_sub, activate) = set.insert(1, Box::new(move || {
-            *count_clone.borrow_mut() += 1;
-            *count_clone.borrow() < 3
-        }));
+
+        let (_sub, activate) = set.insert(
+            1,
+            Box::new(move || {
+                *count_clone.borrow_mut() += 1;
+                *count_clone.borrow() < 3
+            }),
+        );
         activate();
-        
+
         // First three calls should succeed
         for _ in 0..3 {
             set.retain(&1, |cb| cb());
         }
-        
+
         assert_eq!(*count.borrow(), 3);
     }
 

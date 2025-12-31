@@ -157,7 +157,10 @@ impl TrajectoryView {
             return ellipsis.chars().take(max_chars).collect();
         }
 
-        let truncated = text.chars().take(max_chars - ellipsis.len()).collect::<String>();
+        let truncated = text
+            .chars()
+            .take(max_chars - ellipsis.len())
+            .collect::<String>();
         format!("{}{}", truncated, ellipsis)
     }
 }
@@ -170,7 +173,8 @@ impl Default for TrajectoryView {
 
 impl Component for TrajectoryView {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        cx.scene.draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
 
         self.content_height = self.calculate_content_height();
         let max_scroll = (self.content_height - bounds.size.height).max(0.0);
@@ -185,12 +189,7 @@ impl Component for TrajectoryView {
             let height = Self::entry_height(entry);
 
             if y + height >= bounds.origin.y && y <= bounds.origin.y + bounds.size.height {
-                let badge_bounds = Bounds::new(
-                    bounds.origin.x + padding,
-                    y + 2.0,
-                    24.0,
-                    22.0,
-                );
+                let badge_bounds = Bounds::new(bounds.origin.x + padding, y + 2.0, 24.0, 22.0);
                 let mut badge = TrajectoryStatusBadge::new(entry.status).compact(true);
                 badge.paint(badge_bounds, cx);
 
@@ -207,12 +206,7 @@ impl Component for TrajectoryView {
                 cx.scene.draw_text(title_run);
 
                 if let Some(detail_line) = Self::detail_line(entry) {
-                    let detail = Self::fit_text(
-                        cx,
-                        &detail_line,
-                        theme::font_size::XS,
-                        text_width,
-                    );
+                    let detail = Self::fit_text(cx, &detail_line, theme::font_size::XS, text_width);
                     let detail_run = cx.text.layout(
                         &detail,
                         Point::new(text_x, y + theme::font_size::SM * 1.2),

@@ -178,7 +178,7 @@ pub trait Styled: Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::styled::{div, Styled};
+    use crate::styled::{Styled, div};
     use crate::theme;
 
     #[test]

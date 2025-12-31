@@ -127,7 +127,7 @@ impl TestRecorder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{NamedKey};
+    use crate::NamedKey;
 
     #[test]
     fn test_records_click_and_scroll() {

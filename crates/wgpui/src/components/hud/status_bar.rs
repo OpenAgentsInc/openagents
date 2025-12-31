@@ -1,4 +1,4 @@
-use crate::components::atoms::{Mode, Model, ModeBadge, ModelBadge, Status, StatusDot};
+use crate::components::atoms::{Mode, ModeBadge, Model, ModelBadge, Status, StatusDot};
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, InputEvent, Point, Quad, theme};
@@ -430,7 +430,9 @@ mod tests {
 
     #[test]
     fn test_status_bar_event_inside_outside_bottom() {
-        let mut bar = StatusBar::new().height(20.0).position(StatusBarPosition::Bottom);
+        let mut bar = StatusBar::new()
+            .height(20.0)
+            .position(StatusBarPosition::Bottom);
         let bounds = Bounds::new(0.0, 0.0, 200.0, 100.0);
         let mut cx = EventContext::new();
 
@@ -453,7 +455,9 @@ mod tests {
 
     #[test]
     fn test_status_bar_event_inside_top() {
-        let mut bar = StatusBar::new().height(20.0).position(StatusBarPosition::Top);
+        let mut bar = StatusBar::new()
+            .height(20.0)
+            .position(StatusBarPosition::Top);
         let bounds = Bounds::new(0.0, 0.0, 200.0, 100.0);
         let mut cx = EventContext::new();
 

@@ -180,8 +180,7 @@ mod tests {
 
     #[test]
     fn test_current_label() {
-        let mut toggle = ThinkingToggle::new()
-            .labels("Collapsed", "Expanded");
+        let mut toggle = ThinkingToggle::new().labels("Collapsed", "Expanded");
 
         assert_eq!(toggle.current_label(), "Collapsed");
         toggle.set_expanded(true);

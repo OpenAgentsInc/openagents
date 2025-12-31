@@ -329,11 +329,7 @@ impl WrappedLineLayout {
     /// Get the character index for a position in wrapped text.
     ///
     /// Returns `Ok(index)` if within the text, `Err(index)` if outside.
-    pub fn index_for_position(
-        &self,
-        position: Point,
-        line_height: f32,
-    ) -> Result<usize, usize> {
+    pub fn index_for_position(&self, position: Point, line_height: f32) -> Result<usize, usize> {
         self._index_for_position(position, line_height, false)
     }
 
@@ -365,14 +361,15 @@ impl WrappedLineLayout {
             (0, 0.0)
         };
 
-        let (wrapped_line_end_index, wrapped_line_end_x) = if wrapped_line_ix < self.wrap_boundaries.len() {
-            let boundary = self.wrap_boundaries[wrapped_line_ix];
-            let run = &self.unwrapped_layout.runs[boundary.run_ix];
-            let glyph = &run.glyphs[boundary.glyph_ix];
-            (glyph.index, glyph.position.x)
-        } else {
-            (self.unwrapped_layout.len, self.unwrapped_layout.width)
-        };
+        let (wrapped_line_end_index, wrapped_line_end_x) =
+            if wrapped_line_ix < self.wrap_boundaries.len() {
+                let boundary = self.wrap_boundaries[wrapped_line_ix];
+                let run = &self.unwrapped_layout.runs[boundary.run_ix];
+                let glyph = &run.glyphs[boundary.glyph_ix];
+                (glyph.index, glyph.position.x)
+            } else {
+                (self.unwrapped_layout.len, self.unwrapped_layout.width)
+            };
 
         position.x += wrapped_line_start_x;
 
@@ -432,11 +429,36 @@ mod tests {
             runs: vec![ShapedRun {
                 font_id: 0,
                 glyphs: vec![
-                    ShapedGlyph { id: 0, position: Point::new(0.0, 0.0), index: 0, is_emoji: false },
-                    ShapedGlyph { id: 1, position: Point::new(10.0, 0.0), index: 1, is_emoji: false },
-                    ShapedGlyph { id: 2, position: Point::new(20.0, 0.0), index: 2, is_emoji: false },
-                    ShapedGlyph { id: 3, position: Point::new(30.0, 0.0), index: 3, is_emoji: false },
-                    ShapedGlyph { id: 4, position: Point::new(40.0, 0.0), index: 4, is_emoji: false },
+                    ShapedGlyph {
+                        id: 0,
+                        position: Point::new(0.0, 0.0),
+                        index: 0,
+                        is_emoji: false,
+                    },
+                    ShapedGlyph {
+                        id: 1,
+                        position: Point::new(10.0, 0.0),
+                        index: 1,
+                        is_emoji: false,
+                    },
+                    ShapedGlyph {
+                        id: 2,
+                        position: Point::new(20.0, 0.0),
+                        index: 2,
+                        is_emoji: false,
+                    },
+                    ShapedGlyph {
+                        id: 3,
+                        position: Point::new(30.0, 0.0),
+                        index: 3,
+                        is_emoji: false,
+                    },
+                    ShapedGlyph {
+                        id: 4,
+                        position: Point::new(40.0, 0.0),
+                        index: 4,
+                        is_emoji: false,
+                    },
                 ],
             }],
             len: 5,
@@ -477,16 +499,28 @@ mod tests {
 
     #[test]
     fn test_font_run() {
-        let run = FontRun { len: 10, font_id: 1 };
+        let run = FontRun {
+            len: 10,
+            font_id: 1,
+        };
         assert_eq!(run.len, 10);
         assert_eq!(run.font_id, 1);
     }
 
     #[test]
     fn test_wrap_boundary_ordering() {
-        let a = WrapBoundary { run_ix: 0, glyph_ix: 5 };
-        let b = WrapBoundary { run_ix: 0, glyph_ix: 10 };
-        let c = WrapBoundary { run_ix: 1, glyph_ix: 0 };
+        let a = WrapBoundary {
+            run_ix: 0,
+            glyph_ix: 5,
+        };
+        let b = WrapBoundary {
+            run_ix: 0,
+            glyph_ix: 10,
+        };
+        let c = WrapBoundary {
+            run_ix: 1,
+            glyph_ix: 0,
+        };
 
         assert!(a < b);
         assert!(b < c);

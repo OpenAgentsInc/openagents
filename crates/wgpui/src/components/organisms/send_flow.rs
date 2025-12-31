@@ -39,8 +39,7 @@ impl SendStep {
 }
 
 /// Send flow state
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct SendFlowState {
     pub address: String,
     pub amount_sats: u64,
@@ -48,7 +47,6 @@ pub struct SendFlowState {
     pub memo: String,
     pub is_lightning: bool,
 }
-
 
 /// Send flow wizard organism
 pub struct SendFlow {
@@ -276,7 +274,8 @@ impl Component for SendFlow {
                 } else {
                     theme::bg::MUTED
                 };
-                cx.scene.draw_quad(Quad::new(line_bounds).with_background(line_color));
+                cx.scene
+                    .draw_quad(Quad::new(line_bounds).with_background(line_color));
             }
         }
 
@@ -431,7 +430,11 @@ impl Component for SendFlow {
                 cx.scene.draw_text(success_text);
 
                 let details = cx.text.layout(
-                    &format!("Sent {} to {}", self.format_amount(), self.truncate_address()),
+                    &format!(
+                        "Sent {} to {}",
+                        self.format_amount(),
+                        self.truncate_address()
+                    ),
                     Point::new(bounds.origin.x + padding, content_y + 28.0),
                     theme::font_size::SM,
                     theme::text::PRIMARY,

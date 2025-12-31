@@ -22,9 +22,9 @@ pub struct ClaudeSession {
 /// A message from a Claude Code session
 #[derive(Debug, Clone)]
 pub struct SessionMessage {
-    pub role: String,               // "user" or "assistant"
-    pub content: String,            // text content
-    pub is_tool_use: bool,          // whether this is a tool use block
+    pub role: String,      // "user" or "assistant"
+    pub content: String,   // text content
+    pub is_tool_use: bool, // whether this is a tool use block
     pub tool_name: Option<String>,
     pub tool_id: Option<String>,    // for linking tool_use to tool_result
     pub tool_input: Option<String>, // JSON params
@@ -125,7 +125,9 @@ pub fn list_claude_sessions() -> Vec<ClaudeSession> {
                     // Try to extract session from file
                     if let Some(session) = parse_session_file(&file_path, &project_name) {
                         // Deduplicate by session_id, keeping most recent
-                        let entry = sessions.entry(session.session_id.clone()).or_insert(session.clone());
+                        let entry = sessions
+                            .entry(session.session_id.clone())
+                            .or_insert(session.clone());
                         if session.timestamp > entry.timestamp {
                             *entry = session;
                         }
@@ -252,10 +254,13 @@ pub fn load_session_messages(path: &PathBuf) -> Vec<SessionMessage> {
                                 None => String::new(),
                             };
 
-                            tool_results.insert(tool_use_id, ToolResult {
-                                content: result_content,
-                                is_error: block.is_error.unwrap_or(false),
-                            });
+                            tool_results.insert(
+                                tool_use_id,
+                                ToolResult {
+                                    content: result_content,
+                                    is_error: block.is_error.unwrap_or(false),
+                                },
+                            );
                         }
                     }
                 }
@@ -301,7 +306,8 @@ pub fn load_session_messages(path: &PathBuf) -> Vec<SessionMessage> {
                             }
                         }
                         "tool_use" => {
-                            let tool_name = block.name.clone().unwrap_or_else(|| "unknown".to_string());
+                            let tool_name =
+                                block.name.clone().unwrap_or_else(|| "unknown".to_string());
                             let tool_id = block.id.clone();
 
                             // Serialize input params for display
@@ -315,7 +321,11 @@ pub fn load_session_messages(path: &PathBuf) -> Vec<SessionMessage> {
                                 if let Some(result) = tool_results.get(id) {
                                     // Truncate very large outputs
                                     let output = if result.content.len() > 5000 {
-                                        format!("{}...\n\n({} bytes total)", &result.content[..5000], result.content.len())
+                                        format!(
+                                            "{}...\n\n({} bytes total)",
+                                            &result.content[..5000],
+                                            result.content.len()
+                                        )
                                     } else {
                                         result.content.clone()
                                     };

@@ -43,12 +43,12 @@ impl SessionStatus {
 
     pub fn color(&self) -> Hsla {
         match self {
-            SessionStatus::Pending => Hsla::new(0.0, 0.0, 0.5, 1.0),       // Gray
-            SessionStatus::Running => Hsla::new(200.0, 0.8, 0.55, 1.0),   // Blue
-            SessionStatus::Paused => Hsla::new(45.0, 0.7, 0.5, 1.0),      // Gold
+            SessionStatus::Pending => Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
+            SessionStatus::Running => Hsla::new(200.0, 0.8, 0.55, 1.0), // Blue
+            SessionStatus::Paused => Hsla::new(45.0, 0.7, 0.5, 1.0), // Gold
             SessionStatus::Completed => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
-            SessionStatus::Failed => Hsla::new(0.0, 0.8, 0.5, 1.0),       // Red
-            SessionStatus::Aborted => Hsla::new(30.0, 0.7, 0.5, 1.0),     // Orange
+            SessionStatus::Failed => Hsla::new(0.0, 0.8, 0.5, 1.0),  // Red
+            SessionStatus::Aborted => Hsla::new(30.0, 0.7, 0.5, 1.0), // Orange
         }
     }
 
@@ -59,7 +59,10 @@ impl SessionStatus {
 
     /// Can this session be forked?
     pub fn can_fork(&self) -> bool {
-        matches!(self, SessionStatus::Completed | SessionStatus::Failed | SessionStatus::Aborted)
+        matches!(
+            self,
+            SessionStatus::Completed | SessionStatus::Failed | SessionStatus::Aborted
+        )
     }
 
     /// Is the session currently active?
@@ -69,7 +72,10 @@ impl SessionStatus {
 
     /// Is the session in a terminal state?
     pub fn is_terminal(&self) -> bool {
-        matches!(self, SessionStatus::Completed | SessionStatus::Failed | SessionStatus::Aborted)
+        matches!(
+            self,
+            SessionStatus::Completed | SessionStatus::Failed | SessionStatus::Aborted
+        )
     }
 }
 
@@ -143,21 +149,30 @@ impl Component for SessionStatusBadge {
 
         // Icon
         let icon = self.status.icon();
-        let icon_run = cx.text.layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
+        let icon_run = cx
+            .text
+            .layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
         cx.scene.draw_text(icon_run);
 
         if !self.compact {
             x += 14.0;
             // Label
             let label = self.status.label();
-            let label_run = cx.text.layout(label, Point::new(x, text_y), theme::font_size::XS, color);
+            let label_run =
+                cx.text
+                    .layout(label, Point::new(x, text_y), theme::font_size::XS, color);
             cx.scene.draw_text(label_run);
             x += label.len() as f32 * 6.5 + 8.0;
 
             // Duration
             if let Some(secs) = self.duration_secs {
                 let dur = format_duration(secs);
-                let dur_run = cx.text.layout(&dur, Point::new(x, text_y), theme::font_size::XS, theme::text::MUTED);
+                let dur_run = cx.text.layout(
+                    &dur,
+                    Point::new(x, text_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
                 cx.scene.draw_text(dur_run);
                 x += dur.len() as f32 * 6.5 + 6.0;
             }
@@ -165,13 +180,23 @@ impl Component for SessionStatusBadge {
             // Task count
             if let Some(count) = self.task_count {
                 let count_text = format!("{} tasks", count);
-                let count_run = cx.text.layout(&count_text, Point::new(x, text_y), theme::font_size::XS, theme::text::MUTED);
+                let count_run = cx.text.layout(
+                    &count_text,
+                    Point::new(x, text_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
                 cx.scene.draw_text(count_run);
             }
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -184,8 +209,12 @@ impl Component for SessionStatusBadge {
             (Some(28.0), Some(22.0))
         } else {
             let mut width = 12.0 + 14.0 + self.status.label().len() as f32 * 6.5;
-            if self.duration_secs.is_some() { width += 50.0; }
-            if self.task_count.is_some() { width += 60.0; }
+            if self.duration_secs.is_some() {
+                width += 50.0;
+            }
+            if self.task_count.is_some() {
+                width += 60.0;
+            }
             (Some(width), Some(22.0))
         }
     }

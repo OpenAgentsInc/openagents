@@ -26,7 +26,7 @@ impl EncryptionStatus {
         match self {
             EncryptionStatus::Encrypted => "\u{1F512}", // Lock
             EncryptionStatus::Decrypted => "\u{1F513}", // Unlock
-            EncryptionStatus::Failed => "\u{26A0}", // Warning
+            EncryptionStatus::Failed => "\u{26A0}",     // Warning
         }
     }
 
@@ -114,7 +114,8 @@ impl Component for DmBubble {
         let is_outgoing = self.message.direction == DmDirection::Outgoing;
 
         // Calculate bubble width based on content
-        let content_width = (self.message.content.len() as f32 * 7.0).min(max_bubble_width - padding * 2.0);
+        let content_width =
+            (self.message.content.len() as f32 * 7.0).min(max_bubble_width - padding * 2.0);
         let bubble_width = content_width + padding * 2.0;
 
         // Position bubble based on direction
@@ -124,7 +125,12 @@ impl Component for DmBubble {
             bounds.origin.x + padding
         };
 
-        let bubble_bounds = Bounds::new(bubble_x, bounds.origin.y + 4.0, bubble_width, bounds.size.height - 8.0);
+        let bubble_bounds = Bounds::new(
+            bubble_x,
+            bounds.origin.y + 4.0,
+            bubble_width,
+            bounds.size.height - 8.0,
+        );
 
         // Background color based on direction
         let bg = if is_outgoing {
@@ -150,17 +156,16 @@ impl Component for DmBubble {
         let mut y = bubble_bounds.origin.y + 8.0;
 
         // Sender name (for incoming only)
-        if !is_outgoing
-            && let Some(sender) = &self.message.sender_name {
-                let sender_run = cx.text.layout(
-                    sender,
-                    Point::new(bubble_bounds.origin.x + padding, y),
-                    theme::font_size::XS,
-                    theme::accent::PRIMARY,
-                );
-                cx.scene.draw_text(sender_run);
-                y += 16.0;
-            }
+        if !is_outgoing && let Some(sender) = &self.message.sender_name {
+            let sender_run = cx.text.layout(
+                sender,
+                Point::new(bubble_bounds.origin.x + padding, y),
+                theme::font_size::XS,
+                theme::accent::PRIMARY,
+            );
+            cx.scene.draw_text(sender_run);
+            y += 16.0;
+        }
 
         // Content
         let content = if self.message.content.len() > 100 {
@@ -201,7 +206,10 @@ impl Component for DmBubble {
         if is_outgoing && self.message.read {
             let read_run = cx.text.layout(
                 "\u{2713}\u{2713}", // Double check
-                Point::new(bubble_bounds.origin.x + bubble_width - padding - 16.0, footer_y),
+                Point::new(
+                    bubble_bounds.origin.x + bubble_width - padding - 16.0,
+                    footer_y,
+                ),
                 theme::font_size::XS,
                 Hsla::new(200.0, 0.6, 0.5, 1.0),
             );
@@ -226,7 +234,9 @@ impl Component for DmBubble {
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         let base_height = 60.0;
-        let extra = if self.message.sender_name.is_some() && self.message.direction == DmDirection::Incoming {
+        let extra = if self.message.sender_name.is_some()
+            && self.message.direction == DmDirection::Incoming
+        {
             16.0
         } else {
             0.0

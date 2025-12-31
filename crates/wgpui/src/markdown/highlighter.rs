@@ -84,7 +84,12 @@ impl SyntaxHighlighter {
         }
     }
 
-    pub fn highlight(&self, code: &str, language: &str, config: &MarkdownConfig) -> Vec<StyledLine> {
+    pub fn highlight(
+        &self,
+        code: &str,
+        language: &str,
+        config: &MarkdownConfig,
+    ) -> Vec<StyledLine> {
         let syntax = match self.get_syntax(language) {
             Some(s) => s,
             None => return self.plain_lines(code, config),

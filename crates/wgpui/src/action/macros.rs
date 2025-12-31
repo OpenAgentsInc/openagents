@@ -130,11 +130,7 @@ mod tests {
 
     // Test the actions! macro
     mod test_namespace {
-        actions!(test_namespace, [
-            ActionOne,
-            ActionTwo,
-            ActionThree,
-        ]);
+        actions!(test_namespace, [ActionOne, ActionTwo, ActionThree,]);
     }
 
     #[test]
@@ -190,16 +186,17 @@ mod tests {
     }
 
     mod field_action {
-        action!(field::GoToLine {
-            line: usize,
-        });
+        action!(field::GoToLine { line: usize });
     }
 
     #[test]
     fn test_action_macro_with_fields() {
         let action = field_action::GoToLine { line: 42 };
         assert_eq!(action.line, 42);
-        assert_eq!(<field_action::GoToLine as Action>::name(), "field::GoToLine");
+        assert_eq!(
+            <field_action::GoToLine as Action>::name(),
+            "field::GoToLine"
+        );
 
         let boxed = Action::boxed_clone(&action);
         assert_eq!(boxed.name(), "field::GoToLine");

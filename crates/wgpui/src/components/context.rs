@@ -82,12 +82,7 @@ impl EventContext {
         self.focused
     }
 
-    pub fn register_focusable(
-        &mut self,
-        id: u64,
-        bounds: Bounds,
-        tab_index: i32,
-    ) -> FocusHandle {
+    pub fn register_focusable(&mut self, id: u64, bounds: Bounds, tab_index: i32) -> FocusHandle {
         let focus_id = FocusId::new(id);
         self.focus_chain.register(focus_id, bounds, tab_index);
         FocusHandle::new(id)

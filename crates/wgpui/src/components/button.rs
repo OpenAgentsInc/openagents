@@ -211,12 +211,7 @@ impl Component for Button {
         }
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        _cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
         if self.disabled {
             return EventResult::Ignored;
         }
@@ -243,9 +238,10 @@ impl Component for Button {
                     self.pressed = false;
 
                     if bounds.contains(Point::new(*x, *y))
-                        && let Some(on_click) = &mut self.on_click {
-                            on_click();
-                        }
+                        && let Some(on_click) = &mut self.on_click
+                    {
+                        on_click();
+                    }
 
                     return EventResult::Handled;
                 }

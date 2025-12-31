@@ -1,15 +1,15 @@
 pub mod atoms;
-pub mod hud;
-pub mod molecules;
-pub mod organisms;
-pub mod sections;
 mod button;
 mod component;
 mod context;
 mod div;
 mod dropdown;
+pub mod hud;
 mod modal;
+pub mod molecules;
+pub mod organisms;
 mod scroll_view;
+pub mod sections;
 mod tabs;
 mod text;
 mod text_effects;
@@ -26,8 +26,8 @@ pub use scroll_view::ScrollView;
 pub use tabs::{Tab, Tabs};
 pub use text::Text;
 pub use text_effects::{
-    animation_text_duration, TextDecipher, TextDurationOptions, TextEffectAnimator,
-    TextEffectFrame, TextEffectTiming, TextSequence,
+    TextDecipher, TextDurationOptions, TextEffectAnimator, TextEffectFrame, TextEffectTiming,
+    TextSequence, animation_text_duration,
 };
 pub use text_input::TextInput;
 pub use virtual_list::VirtualList;

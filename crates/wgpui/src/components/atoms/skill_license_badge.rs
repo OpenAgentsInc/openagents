@@ -40,11 +40,11 @@ impl LicenseStatus {
 
     pub fn color(&self) -> Hsla {
         match self {
-            LicenseStatus::Unknown => Hsla::new(0.0, 0.0, 0.5, 1.0),     // Gray
-            LicenseStatus::Active => Hsla::new(120.0, 0.7, 0.45, 1.0),   // Green
-            LicenseStatus::Pending => Hsla::new(45.0, 0.8, 0.5, 1.0),    // Gold
-            LicenseStatus::Expired => Hsla::new(30.0, 0.7, 0.5, 1.0),    // Orange
-            LicenseStatus::Revoked => Hsla::new(0.0, 0.8, 0.5, 1.0),     // Red
+            LicenseStatus::Unknown => Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
+            LicenseStatus::Active => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
+            LicenseStatus::Pending => Hsla::new(45.0, 0.8, 0.5, 1.0), // Gold
+            LicenseStatus::Expired => Hsla::new(30.0, 0.7, 0.5, 1.0), // Orange
+            LicenseStatus::Revoked => Hsla::new(0.0, 0.8, 0.5, 1.0), // Red
         }
     }
 }
@@ -71,10 +71,10 @@ impl SkillType {
 
     pub fn color(&self) -> Hsla {
         match self {
-            SkillType::Code => Hsla::new(200.0, 0.7, 0.5, 1.0),    // Blue
-            SkillType::Data => Hsla::new(280.0, 0.6, 0.5, 1.0),    // Purple
-            SkillType::Model => Hsla::new(140.0, 0.7, 0.45, 1.0),  // Green
-            SkillType::Tool => Hsla::new(30.0, 0.7, 0.5, 1.0),     // Orange
+            SkillType::Code => Hsla::new(200.0, 0.7, 0.5, 1.0), // Blue
+            SkillType::Data => Hsla::new(280.0, 0.6, 0.5, 1.0), // Purple
+            SkillType::Model => Hsla::new(140.0, 0.7, 0.45, 1.0), // Green
+            SkillType::Tool => Hsla::new(30.0, 0.7, 0.5, 1.0),  // Orange
         }
     }
 }
@@ -133,11 +133,21 @@ impl Component for SkillLicenseBadge {
         if self.compact {
             // Just type icon and status
             let icon = self.skill_type.icon();
-            let run = cx.text.layout(icon, Point::new(x, text_y), theme::font_size::SM, self.skill_type.color());
+            let run = cx.text.layout(
+                icon,
+                Point::new(x, text_y),
+                theme::font_size::SM,
+                self.skill_type.color(),
+            );
             cx.scene.draw_text(run);
             x += 16.0;
             let status_icon = self.status.icon();
-            let run = cx.text.layout(status_icon, Point::new(x, text_y), theme::font_size::SM, status_color);
+            let run = cx.text.layout(
+                status_icon,
+                Point::new(x, text_y),
+                theme::font_size::SM,
+                status_color,
+            );
             cx.scene.draw_text(run);
         } else {
             // Type icon
@@ -191,7 +201,12 @@ impl Component for SkillLicenseBadge {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

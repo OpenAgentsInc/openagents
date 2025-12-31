@@ -37,9 +37,9 @@ impl PrEventType {
             PrEventType::Review => Hsla::new(270.0, 0.6, 0.55, 1.0), // Purple
             PrEventType::Comment => theme::text::MUTED,
             PrEventType::StatusChange => Hsla::new(45.0, 0.7, 0.5, 1.0), // Yellow
-            PrEventType::Merge => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
-            PrEventType::Close => Hsla::new(0.0, 0.7, 0.5, 1.0), // Red
-            PrEventType::Reopen => Hsla::new(120.0, 0.5, 0.5, 1.0), // Light green
+            PrEventType::Merge => Hsla::new(120.0, 0.7, 0.45, 1.0),      // Green
+            PrEventType::Close => Hsla::new(0.0, 0.7, 0.5, 1.0),         // Red
+            PrEventType::Reopen => Hsla::new(120.0, 0.5, 0.5, 1.0),      // Light green
         }
     }
 
@@ -167,9 +167,14 @@ impl Component for PrTimelineItem {
         let dot_size = 10.0;
         let dot_y = bounds.origin.y + 14.0;
         cx.scene.draw_quad(
-            Quad::new(Bounds::new(timeline_x - dot_size / 2.0, dot_y, dot_size, dot_size))
-                .with_background(self.event.event_type.color())
-                .with_border(self.event.event_type.color(), 1.0),
+            Quad::new(Bounds::new(
+                timeline_x - dot_size / 2.0,
+                dot_y,
+                dot_size,
+                dot_size,
+            ))
+            .with_background(self.event.event_type.color())
+            .with_border(self.event.event_type.color(), 1.0),
         );
 
         // Timeline line (unless last item)
@@ -200,11 +205,7 @@ impl Component for PrTimelineItem {
         cx.scene.draw_text(icon_run);
 
         // Actor + action
-        let action_text = format!(
-            "{} {}",
-            self.event.actor,
-            self.event.event_type.label()
-        );
+        let action_text = format!("{} {}", self.event.actor, self.event.event_type.label());
         let action_run = cx.text.layout(
             &action_text,
             Point::new(content_x + 20.0, content_y),
@@ -216,7 +217,10 @@ impl Component for PrTimelineItem {
         // Timestamp
         let time_run = cx.text.layout(
             &self.event.timestamp,
-            Point::new(bounds.origin.x + bounds.size.width - padding - 80.0, content_y),
+            Point::new(
+                bounds.origin.x + bounds.size.width - padding - 80.0,
+                content_y,
+            ),
             theme::font_size::XS,
             theme::text::DISABLED,
         );
@@ -279,7 +283,12 @@ impl Component for PrTimelineItem {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

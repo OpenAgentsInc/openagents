@@ -344,10 +344,7 @@ impl PseudoRng {
     }
 
     fn next_u32(&mut self) -> u32 {
-        self.state = self
-            .state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1);
+        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1);
         (self.state >> 32) as u32
     }
 
@@ -383,7 +380,14 @@ fn create_puffs_sets(
                     let xo = x_offset.0 + rng.next_f32() * x_offset.1;
                     let yo = y_offset.0 + rng.next_f32() * y_offset.1;
                     let ro = radius_offset.0 + rng.next_f32() * radius_offset.1;
-                    Puff { x, y, r, xo, yo, ro }
+                    Puff {
+                        x,
+                        y,
+                        r,
+                        xo,
+                        yo,
+                        ro,
+                    }
                 })
                 .collect()
         })
@@ -412,9 +416,8 @@ fn draw_puff(
 
         let size = (layer_radius * 2.0).max(1.0);
         let bounds = Bounds::new(x - layer_radius, y - layer_radius, size, size);
-        cx.scene.draw_quad(
-            Quad::new(bounds).with_background(color.with_alpha(layer_alpha)),
-        );
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(color.with_alpha(layer_alpha)));
     }
 }
 

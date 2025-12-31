@@ -207,7 +207,12 @@ impl From<Vec<f32>> for UnitInput {
 
 impl From<Vec<i32>> for UnitInput {
     fn from(values: Vec<i32>) -> Self {
-        UnitInput::List(values.into_iter().map(|v| UnitValue::Number(v as f32)).collect())
+        UnitInput::List(
+            values
+                .into_iter()
+                .map(|v| UnitValue::Number(v as f32))
+                .collect(),
+        )
     }
 }
 
@@ -281,7 +286,10 @@ impl ThemeBreakpoints {
             .iter()
             .filter_map(|item| item.key().map(|k| k.to_string()))
             .collect();
-        Self { breakpoints, settings }
+        Self {
+            breakpoints,
+            settings,
+        }
     }
 
     pub fn breakpoints(&self) -> &[String] {
@@ -307,11 +315,7 @@ impl ThemeBreakpoints {
 
     pub fn down_with(&self, key: impl Into<BreakpointKey>, opts: MediaQueryOptions) -> String {
         let value = self.breakpoint_value(key.into());
-        format!(
-            "{}(max-width: calc({} - 1px))",
-            media_prefix(opts),
-            value
-        )
+        format!("{}(max-width: calc({} - 1px))", media_prefix(opts), value)
     }
 
     pub fn between(
@@ -343,9 +347,10 @@ impl ThemeBreakpoints {
             BreakpointKey::Name(name) => {
                 for item in &self.settings {
                     if let ThemeBreakpointSetting::KeyValue { key, value } = item
-                        && key == &name {
-                            return value.clone();
-                        }
+                        && key == &name
+                    {
+                        return value.clone();
+                    }
                 }
                 name
             }
@@ -400,11 +405,7 @@ fn series_item(series: &[String], index: f32) -> String {
 }
 
 fn media_prefix(options: MediaQueryOptions) -> &'static str {
-    if options.strip {
-        ""
-    } else {
-        "@media "
-    }
+    if options.strip { "" } else { "@media " }
 }
 
 #[cfg(test)]
@@ -548,11 +549,7 @@ mod tests {
             "@media (min-width: 100px) and (max-width: calc(200px - 1px))"
         );
         assert_eq!(
-            breakpoints.between_with(
-                "100px",
-                "200px",
-                MediaQueryOptions { strip: true }
-            ),
+            breakpoints.between_with("100px", "200px", MediaQueryOptions { strip: true }),
             "(min-width: 100px) and (max-width: calc(200px - 1px))"
         );
     }

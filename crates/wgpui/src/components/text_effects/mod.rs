@@ -16,7 +16,10 @@ pub struct TextEffectTiming {
 
 impl TextEffectTiming {
     pub const fn new(duration: Duration, char_delay: Duration) -> Self {
-        Self { duration, char_delay }
+        Self {
+            duration,
+            char_delay,
+        }
     }
 
     pub fn total_duration(self, length: usize) -> Duration {
@@ -219,10 +222,7 @@ impl TextEffectAnimator {
 
         let (progress, eased_time) = match state {
             AnimatorState::Entering => (eased, Duration::from_secs_f32(eased * total_secs)),
-            AnimatorState::Exiting => (
-                1.0 - eased,
-                Duration::from_secs_f32(eased * total_secs),
-            ),
+            AnimatorState::Exiting => (1.0 - eased, Duration::from_secs_f32(eased * total_secs)),
             AnimatorState::Entered => (1.0, total_duration),
             AnimatorState::Exited => (0.0, Duration::ZERO),
         };

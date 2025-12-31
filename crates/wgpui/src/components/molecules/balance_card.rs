@@ -1,4 +1,4 @@
-use crate::components::atoms::{BitcoinAmount, AmountDirection, BitcoinNetwork, NetworkBadge};
+use crate::components::atoms::{AmountDirection, BitcoinAmount, BitcoinNetwork, NetworkBadge};
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, InputEvent, Point, Quad, theme};
@@ -106,7 +106,15 @@ impl Component for BalanceCard {
         let mut total_amount = BitcoinAmount::new(self.balance.total())
             .font_size(theme::font_size::XXL)
             .direction(AmountDirection::Neutral);
-        total_amount.paint(Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 32.0), cx);
+        total_amount.paint(
+            Bounds::new(
+                bounds.origin.x + padding,
+                y,
+                bounds.size.width - padding * 2.0,
+                32.0,
+            ),
+            cx,
+        );
 
         y += 40.0;
 
@@ -130,28 +138,51 @@ impl Component for BalanceCard {
             let value_x = bounds.origin.x + bounds.size.width - padding - 100.0;
 
             // Spark balance
-            let spark_label = cx.text.layout("✦ Spark", Point::new(label_x, y), theme::font_size::SM, theme::text::MUTED);
+            let spark_label = cx.text.layout(
+                "✦ Spark",
+                Point::new(label_x, y),
+                theme::font_size::SM,
+                theme::text::MUTED,
+            );
             cx.scene.draw_text(spark_label);
-            let mut spark_amount = BitcoinAmount::new(self.balance.spark_sats).font_size(theme::font_size::SM);
+            let mut spark_amount =
+                BitcoinAmount::new(self.balance.spark_sats).font_size(theme::font_size::SM);
             spark_amount.paint(Bounds::new(value_x, y, 100.0, row_height), cx);
             y += row_height;
 
             // Lightning balance
-            let ln_label = cx.text.layout("⚡ Lightning", Point::new(label_x, y), theme::font_size::SM, theme::text::MUTED);
+            let ln_label = cx.text.layout(
+                "⚡ Lightning",
+                Point::new(label_x, y),
+                theme::font_size::SM,
+                theme::text::MUTED,
+            );
             cx.scene.draw_text(ln_label);
-            let mut ln_amount = BitcoinAmount::new(self.balance.lightning_sats).font_size(theme::font_size::SM);
+            let mut ln_amount =
+                BitcoinAmount::new(self.balance.lightning_sats).font_size(theme::font_size::SM);
             ln_amount.paint(Bounds::new(value_x, y, 100.0, row_height), cx);
             y += row_height;
 
             // On-chain balance
-            let chain_label = cx.text.layout("₿ On-chain", Point::new(label_x, y), theme::font_size::SM, theme::text::MUTED);
+            let chain_label = cx.text.layout(
+                "₿ On-chain",
+                Point::new(label_x, y),
+                theme::font_size::SM,
+                theme::text::MUTED,
+            );
             cx.scene.draw_text(chain_label);
-            let mut chain_amount = BitcoinAmount::new(self.balance.onchain_sats).font_size(theme::font_size::SM);
+            let mut chain_amount =
+                BitcoinAmount::new(self.balance.onchain_sats).font_size(theme::font_size::SM);
             chain_amount.paint(Bounds::new(value_x, y, 100.0, row_height), cx);
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

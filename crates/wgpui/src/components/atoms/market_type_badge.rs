@@ -37,9 +37,9 @@ impl MarketType {
 
     pub fn color(&self) -> Hsla {
         match self {
-            MarketType::Compute => Hsla::new(200.0, 0.8, 0.55, 1.0),   // Blue
-            MarketType::Skills => Hsla::new(280.0, 0.7, 0.55, 1.0),    // Purple
-            MarketType::Data => Hsla::new(45.0, 0.8, 0.5, 1.0),        // Gold
+            MarketType::Compute => Hsla::new(200.0, 0.8, 0.55, 1.0), // Blue
+            MarketType::Skills => Hsla::new(280.0, 0.7, 0.55, 1.0),  // Purple
+            MarketType::Data => Hsla::new(45.0, 0.8, 0.5, 1.0),      // Gold
             MarketType::Trajectories => Hsla::new(140.0, 0.7, 0.5, 1.0), // Green
         }
     }
@@ -89,19 +89,28 @@ impl Component for MarketTypeBadge {
 
         // Icon
         let icon = self.market_type.icon();
-        let icon_run = cx.text.layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
+        let icon_run = cx
+            .text
+            .layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
         cx.scene.draw_text(icon_run);
 
         if !self.compact {
             x += 14.0;
             // Label
             let label = self.market_type.label();
-            let label_run = cx.text.layout(label, Point::new(x, text_y), theme::font_size::XS, color);
+            let label_run =
+                cx.text
+                    .layout(label, Point::new(x, text_y), theme::font_size::XS, color);
             cx.scene.draw_text(label_run);
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

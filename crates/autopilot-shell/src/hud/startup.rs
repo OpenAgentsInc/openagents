@@ -1,11 +1,11 @@
 //! Startup animation sequence
 
+use autopilot::{ClaudeModel, LogStatus, StartupPhase, StartupState, wrap_text};
 use std::time::Instant;
 use wgpui::{
     Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point,
     components::hud::{CornerConfig, DrawDirection, Frame, FrameAnimation},
 };
-use autopilot::{StartupState, StartupPhase, LogStatus, ClaudeModel, wrap_text};
 
 /// Animated startup sequence before revealing the full shell
 pub struct StartupSequence {
@@ -83,7 +83,12 @@ impl Component for StartupSequence {
                 .animation_progress(frame_progress);
 
             frame.paint(
-                Bounds::new(frame_x + bounds.origin.x, frame_y + bounds.origin.y, frame_w, frame_h),
+                Bounds::new(
+                    frame_x + bounds.origin.x,
+                    frame_y + bounds.origin.y,
+                    frame_w,
+                    frame_h,
+                ),
                 cx,
             );
 
@@ -127,7 +132,9 @@ impl Component for StartupSequence {
                         if y > max_y {
                             break;
                         }
-                        let text_run = cx.text.layout(&line, Point::new(text_area_x, y), font_size, color);
+                        let text_run =
+                            cx.text
+                                .layout(&line, Point::new(text_area_x, y), font_size, color);
                         cx.scene.draw_text(text_run);
                         y += line_height;
                     }

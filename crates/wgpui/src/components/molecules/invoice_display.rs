@@ -77,7 +77,7 @@ impl InvoiceInfo {
     pub fn truncated(&self) -> String {
         let pr = &self.payment_request;
         if pr.len() > 32 {
-            format!("{}...{}", &pr[..16], &pr[pr.len()-12..])
+            format!("{}...{}", &pr[..16], &pr[pr.len() - 12..])
         } else {
             pr.clone()
         }
@@ -223,9 +223,8 @@ impl Component for InvoiceDisplay {
             bounds.size.width - padding * 2.0,
             28.0,
         );
-        cx.scene.draw_quad(
-            Quad::new(invoice_bg_bounds).with_background(theme::bg::MUTED),
-        );
+        cx.scene
+            .draw_quad(Quad::new(invoice_bg_bounds).with_background(theme::bg::MUTED));
 
         let invoice_text = self.invoice.truncated();
         let inv_run = cx.text.layout(
@@ -239,14 +238,22 @@ impl Component for InvoiceDisplay {
         // Copy hint
         let copy_hint = cx.text.layout(
             "Click to copy",
-            Point::new(bounds.origin.x + bounds.size.width - padding - 70.0, y + 8.0),
+            Point::new(
+                bounds.origin.x + bounds.size.width - padding - 70.0,
+                y + 8.0,
+            ),
             theme::font_size::XS,
             theme::accent::PRIMARY,
         );
         cx.scene.draw_text(copy_hint);
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -255,7 +262,13 @@ impl Component for InvoiceDisplay {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let height = if self.compact { 120.0 } else if self.show_qr_placeholder { 280.0 } else { 160.0 };
+        let height = if self.compact {
+            120.0
+        } else if self.show_qr_placeholder {
+            280.0
+        } else {
+            160.0
+        };
         (Some(320.0), Some(height))
     }
 }

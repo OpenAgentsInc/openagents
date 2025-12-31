@@ -1,7 +1,7 @@
 use crate::geometry::{Bounds, Point, Size};
 use crate::scene::{Quad, Scene};
 use crate::text::{FontStyle, TextSystem};
-use crate::{theme, Hsla};
+use crate::{Hsla, theme};
 
 use super::types::*;
 
@@ -224,15 +224,29 @@ impl MarkdownRenderer {
                 self.render_unordered_list(items, origin, max_width, text_system, scene, opacity)
             }
 
-            MarkdownBlock::OrderedList { start, items } => {
-                self.render_ordered_list(*start, items, origin, max_width, text_system, scene, opacity)
+            MarkdownBlock::OrderedList { start, items } => self.render_ordered_list(
+                *start,
+                items,
+                origin,
+                max_width,
+                text_system,
+                scene,
+                opacity,
+            ),
+
+            MarkdownBlock::HorizontalRule => {
+                self.render_horizontal_rule(origin, max_width, scene, opacity)
             }
 
-            MarkdownBlock::HorizontalRule => self.render_horizontal_rule(origin, max_width, scene, opacity),
-
-            MarkdownBlock::Table { headers, rows } => {
-                self.render_table(headers, rows, origin, max_width, text_system, scene, opacity)
-            }
+            MarkdownBlock::Table { headers, rows } => self.render_table(
+                headers,
+                rows,
+                origin,
+                max_width,
+                text_system,
+                scene,
+                opacity,
+            ),
         }
     }
 
@@ -255,7 +269,9 @@ impl MarkdownRenderer {
 
             let mut span_x = x;
             // Ensure minimum line height based on font size
-            let base_font_size = line.spans.first()
+            let base_font_size = line
+                .spans
+                .first()
                 .map(|s| s.style.font_size)
                 .unwrap_or(self.config.base_font_size);
             let mut line_height = base_font_size * line.line_height;
@@ -297,7 +313,8 @@ impl MarkdownRenderer {
 
                 // CRITICAL: Use measure_styled with the SAME font_style as layout_styled!
                 // Bold/italic text has different widths than regular text.
-                let span_width = text_system.measure_styled(&span.text, span.style.font_size, font_style);
+                let span_width =
+                    text_system.measure_styled(&span.text, span.style.font_size, font_style);
                 line_height = line_height.max(span.style.font_size * line.line_height);
 
                 scene.draw_text(text_run);
@@ -346,7 +363,10 @@ impl MarkdownRenderer {
 
         let total_height = content_height + padding * 2.0;
 
-        let bg_color = self.config.code_background.with_alpha(self.config.code_background.a * opacity);
+        let bg_color = self
+            .config
+            .code_background
+            .with_alpha(self.config.code_background.a * opacity);
         scene.draw_quad(Quad {
             bounds: Bounds::new(origin.x, origin.y + margin, max_width, total_height),
             background: Some(bg_color),
@@ -433,7 +453,10 @@ impl MarkdownRenderer {
         for item in items {
             let item_y = y;
 
-            let bullet_color = self.config.text_color.with_alpha(self.config.text_color.a * opacity);
+            let bullet_color = self
+                .config
+                .text_color
+                .with_alpha(self.config.text_color.a * opacity);
             let bullet_run = text_system.layout_styled(
                 "\u{2022}",
                 Point::new(bullet_x, item_y),
@@ -478,7 +501,10 @@ impl MarkdownRenderer {
             let item_y = y;
             let number = start + i as u64;
 
-            let number_color = self.config.text_color.with_alpha(self.config.text_color.a * opacity);
+            let number_color = self
+                .config
+                .text_color
+                .with_alpha(self.config.text_color.a * opacity);
             let number_run = text_system.layout_styled(
                 &format!("{}.", number),
                 Point::new(number_x, item_y),
@@ -503,7 +529,13 @@ impl MarkdownRenderer {
         y - origin.y + margin
     }
 
-    fn render_horizontal_rule(&self, origin: Point, max_width: f32, scene: &mut Scene, opacity: f32) -> f32 {
+    fn render_horizontal_rule(
+        &self,
+        origin: Point,
+        max_width: f32,
+        scene: &mut Scene,
+        opacity: f32,
+    ) -> f32 {
         let margin = theme::spacing::LG;
 
         let rule_color = theme::border::DEFAULT.with_alpha(opacity);

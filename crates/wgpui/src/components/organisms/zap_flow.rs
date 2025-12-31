@@ -151,7 +151,11 @@ impl ZapFlow {
 
     fn short_npub(&self) -> String {
         if self.recipient_npub.len() > 20 {
-            format!("{}...{}", &self.recipient_npub[..12], &self.recipient_npub[self.recipient_npub.len()-8..])
+            format!(
+                "{}...{}",
+                &self.recipient_npub[..12],
+                &self.recipient_npub[self.recipient_npub.len() - 8..]
+            )
         } else {
             self.recipient_npub.clone()
         }
@@ -172,10 +176,8 @@ impl Component for ZapFlow {
 
         // Header
         let header = self.header_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(header)
-                .with_background(zap_color.with_alpha(0.1)),
-        );
+        cx.scene
+            .draw_quad(Quad::new(header).with_background(zap_color.with_alpha(0.1)));
 
         // Lightning icon and title
         let title = format!("\u{26A1} Zap {}", self.recipient_name);
@@ -216,9 +218,14 @@ impl Component for ZapFlow {
 
             let dot_radius = 8.0;
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(step_x + step_width / 2.0 - dot_radius, step_y, dot_radius * 2.0, dot_radius * 2.0))
-                    .with_background(color)
-                    .with_border(color, 1.0),
+                Quad::new(Bounds::new(
+                    step_x + step_width / 2.0 - dot_radius,
+                    step_y,
+                    dot_radius * 2.0,
+                    dot_radius * 2.0,
+                ))
+                .with_background(color)
+                .with_border(color, 1.0),
             );
 
             let label_run = cx.text.layout(
@@ -246,7 +253,11 @@ impl Component for ZapFlow {
                     } else {
                         theme::bg::MUTED
                     };
-                    let border = if is_selected { zap_color } else { theme::border::DEFAULT };
+                    let border = if is_selected {
+                        zap_color
+                    } else {
+                        theme::border::DEFAULT
+                    };
 
                     cx.scene.draw_quad(
                         Quad::new(btn)
@@ -257,15 +268,25 @@ impl Component for ZapFlow {
                     let amount_str = self.format_amount(amount);
                     let amount_run = cx.text.layout(
                         &amount_str,
-                        Point::new(btn.origin.x + btn.size.width / 2.0 - 15.0, btn.origin.y + 10.0),
+                        Point::new(
+                            btn.origin.x + btn.size.width / 2.0 - 15.0,
+                            btn.origin.y + 10.0,
+                        ),
                         theme::font_size::BASE,
-                        if is_selected { zap_color } else { theme::text::PRIMARY },
+                        if is_selected {
+                            zap_color
+                        } else {
+                            theme::text::PRIMARY
+                        },
                     );
                     cx.scene.draw_text(amount_run);
 
                     let sats_run = cx.text.layout(
                         "sats",
-                        Point::new(btn.origin.x + btn.size.width / 2.0 - 10.0, btn.origin.y + 32.0),
+                        Point::new(
+                            btn.origin.x + btn.size.width / 2.0 - 10.0,
+                            btn.origin.y + 32.0,
+                        ),
                         theme::font_size::XS,
                         theme::text::MUTED,
                     );
@@ -288,15 +309,27 @@ impl Component for ZapFlow {
                     bounds.size.width - padding * 2.0,
                     36.0,
                 );
-                let field_border = if self.custom_focused { zap_color } else { theme::border::DEFAULT };
+                let field_border = if self.custom_focused {
+                    zap_color
+                } else {
+                    theme::border::DEFAULT
+                };
                 cx.scene.draw_quad(
                     Quad::new(custom_field)
                         .with_background(theme::bg::APP)
                         .with_border(field_border, 1.0),
                 );
 
-                let placeholder = if self.custom_amount.is_empty() { "Enter sats..." } else { &self.custom_amount };
-                let text_color = if self.custom_amount.is_empty() { theme::text::DISABLED } else { theme::text::PRIMARY };
+                let placeholder = if self.custom_amount.is_empty() {
+                    "Enter sats..."
+                } else {
+                    &self.custom_amount
+                };
+                let text_color = if self.custom_amount.is_empty() {
+                    theme::text::DISABLED
+                } else {
+                    theme::text::PRIMARY
+                };
                 let custom_text_run = cx.text.layout(
                     placeholder,
                     Point::new(custom_field.origin.x + 8.0, custom_field.origin.y + 10.0),
@@ -326,8 +359,16 @@ impl Component for ZapFlow {
                         .with_border(theme::border::DEFAULT, 1.0),
                 );
 
-                let placeholder = if self.message.is_empty() { "Write something nice..." } else { &self.message };
-                let text_color = if self.message.is_empty() { theme::text::DISABLED } else { theme::text::PRIMARY };
+                let placeholder = if self.message.is_empty() {
+                    "Write something nice..."
+                } else {
+                    &self.message
+                };
+                let text_color = if self.message.is_empty() {
+                    theme::text::DISABLED
+                } else {
+                    theme::text::PRIMARY
+                };
                 let msg_run = cx.text.layout(
                     placeholder,
                     Point::new(msg_field.origin.x + 8.0, msg_field.origin.y + 8.0),
@@ -415,10 +456,17 @@ impl Component for ZapFlow {
                 );
                 cx.scene.draw_text(complete_run);
 
-                let amount_str = format!("{} sats to {}", self.format_amount(self.amount_sats), self.recipient_name);
+                let amount_str = format!(
+                    "{} sats to {}",
+                    self.format_amount(self.amount_sats),
+                    self.recipient_name
+                );
                 let amount_run = cx.text.layout(
                     &amount_str,
-                    Point::new(bounds.origin.x + bounds.size.width / 2.0 - 80.0, center_y + 30.0),
+                    Point::new(
+                        bounds.origin.x + bounds.size.width / 2.0 - 80.0,
+                        center_y + 30.0,
+                    ),
                     theme::font_size::SM,
                     theme::text::MUTED,
                 );
@@ -452,7 +500,11 @@ impl Component for ZapFlow {
 
             // Next/Send button
             let next_bounds = self.next_button_bounds(&bounds);
-            let next_label = if self.step == ZapStep::Confirm { "Send Zap" } else { "Next \u{2192}" };
+            let next_label = if self.step == ZapStep::Confirm {
+                "Send Zap"
+            } else {
+                "Next \u{2192}"
+            };
             let next_bg = if self.next_hovered {
                 zap_color.with_alpha(0.4)
             } else {
@@ -498,7 +550,10 @@ impl Component for ZapFlow {
                     }
                 }
 
-                if was_next != self.next_hovered || was_back != self.back_hovered || was_preset != self.preset_hovered {
+                if was_next != self.next_hovered
+                    || was_back != self.back_hovered
+                    || was_preset != self.preset_hovered
+                {
                     return EventResult::Handled;
                 }
             }

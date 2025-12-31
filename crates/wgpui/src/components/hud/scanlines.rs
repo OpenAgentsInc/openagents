@@ -80,9 +80,7 @@ impl Default for Scanlines {
 
 impl Component for Scanlines {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let color = self
-            .line_color
-            .with_alpha(self.line_color.a * self.opacity);
+        let color = self.line_color.with_alpha(self.line_color.a * self.opacity);
         let line_width = self.line_width.max(1.0);
         let spacing = self.spacing.max(line_width + 1.0);
         let height = bounds.size.height.max(0.0);
@@ -91,17 +89,20 @@ impl Component for Scanlines {
 
         while y <= max_y {
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(bounds.origin.x, y, bounds.size.width, line_width))
-                    .with_background(color),
+                Quad::new(Bounds::new(
+                    bounds.origin.x,
+                    y,
+                    bounds.size.width,
+                    line_width,
+                ))
+                .with_background(color),
             );
             y += spacing;
         }
 
         let scan_width = self.scan_width.min(height).max(line_width);
         if scan_width > 0.0 {
-            let scan_color = self
-                .scan_color
-                .with_alpha(self.scan_color.a * self.opacity);
+            let scan_color = self.scan_color.with_alpha(self.scan_color.a * self.opacity);
             let scan_y =
                 bounds.origin.y + (height - scan_width) * self.scan_progress.clamp(0.0, 1.0);
             cx.scene.draw_quad(

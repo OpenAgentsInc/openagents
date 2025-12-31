@@ -92,11 +92,7 @@ impl ApmComparisonCard {
     }
 
     fn delta_symbol(delta: f32) -> &'static str {
-        if delta > 0.0 {
-            "+"
-        } else {
-            ""
-        }
+        if delta > 0.0 { "+" } else { "" }
     }
 }
 
@@ -125,8 +121,13 @@ impl Component for ApmComparisonCard {
 
         // Divider
         cx.scene.draw_quad(
-            Quad::new(Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 1.0))
-                .with_background(theme::border::DEFAULT),
+            Quad::new(Bounds::new(
+                bounds.origin.x + padding,
+                y,
+                bounds.size.width - padding * 2.0,
+                1.0,
+            ))
+            .with_background(theme::border::DEFAULT),
         );
         y += 12.0;
 
@@ -140,7 +141,12 @@ impl Component for ApmComparisonCard {
         } else {
             self.session_a.title.clone()
         };
-        let title_a_run = cx.text.layout(&title_a, Point::new(session_a_x, y), theme::font_size::XS, theme::text::MUTED);
+        let title_a_run = cx.text.layout(
+            &title_a,
+            Point::new(session_a_x, y),
+            theme::font_size::XS,
+            theme::text::MUTED,
+        );
         cx.scene.draw_text(title_a_run);
 
         // Session B title
@@ -149,7 +155,12 @@ impl Component for ApmComparisonCard {
         } else {
             self.session_b.title.clone()
         };
-        let title_b_run = cx.text.layout(&title_b, Point::new(session_b_x, y), theme::font_size::XS, theme::text::MUTED);
+        let title_b_run = cx.text.layout(
+            &title_b,
+            Point::new(session_b_x, y),
+            theme::font_size::XS,
+            theme::text::MUTED,
+        );
         cx.scene.draw_text(title_b_run);
         y += 20.0;
 
@@ -163,7 +174,12 @@ impl Component for ApmComparisonCard {
 
         // APM Delta
         let apm_delta = self.session_b.apm - self.session_a.apm;
-        let delta_text = format!("{}APM: {}{:.1}", '\u{0394}', Self::delta_symbol(apm_delta), apm_delta);
+        let delta_text = format!(
+            "{}APM: {}{:.1}",
+            '\u{0394}',
+            Self::delta_symbol(apm_delta),
+            apm_delta
+        );
         let center_x = bounds.origin.x + bounds.size.width / 2.0 - 40.0;
         let delta_run = cx.text.layout(
             &delta_text,
@@ -177,12 +193,21 @@ impl Component for ApmComparisonCard {
         // Metrics comparison
         let metrics = [
             ("Messages", self.session_a.messages, self.session_b.messages),
-            ("Tool Calls", self.session_a.tool_calls, self.session_b.tool_calls),
+            (
+                "Tool Calls",
+                self.session_a.tool_calls,
+                self.session_b.tool_calls,
+            ),
         ];
 
         for (label, val_a, val_b) in metrics {
             // Label
-            let label_run = cx.text.layout(label, Point::new(session_a_x, y), theme::font_size::XS, theme::text::MUTED);
+            let label_run = cx.text.layout(
+                label,
+                Point::new(session_a_x, y),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
             cx.scene.draw_text(label_run);
 
             // Value A
@@ -207,19 +232,39 @@ impl Component for ApmComparisonCard {
         }
 
         // Duration comparison
-        let dur_label = cx.text.layout("Duration", Point::new(session_a_x, y), theme::font_size::XS, theme::text::MUTED);
+        let dur_label = cx.text.layout(
+            "Duration",
+            Point::new(session_a_x, y),
+            theme::font_size::XS,
+            theme::text::MUTED,
+        );
         cx.scene.draw_text(dur_label);
 
         let dur_a = Self::format_duration(self.session_a.duration_secs);
-        let dur_a_run = cx.text.layout(&dur_a, Point::new(session_a_x + 80.0, y), theme::font_size::SM, theme::text::PRIMARY);
+        let dur_a_run = cx.text.layout(
+            &dur_a,
+            Point::new(session_a_x + 80.0, y),
+            theme::font_size::SM,
+            theme::text::PRIMARY,
+        );
         cx.scene.draw_text(dur_a_run);
 
         let dur_b = Self::format_duration(self.session_b.duration_secs);
-        let dur_b_run = cx.text.layout(&dur_b, Point::new(session_b_x + 80.0, y), theme::font_size::SM, theme::text::PRIMARY);
+        let dur_b_run = cx.text.layout(
+            &dur_b,
+            Point::new(session_b_x + 80.0, y),
+            theme::font_size::SM,
+            theme::text::PRIMARY,
+        );
         cx.scene.draw_text(dur_b_run);
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

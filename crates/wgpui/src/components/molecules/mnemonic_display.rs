@@ -183,7 +183,11 @@ impl Component for MnemonicDisplay {
             copy_text,
             Point::new(copy_bounds.origin.x + 18.0, copy_bounds.origin.y + 6.0),
             theme::font_size::SM,
-            if self.copied { Hsla::new(120.0, 0.7, 0.5, 1.0) } else { theme::text::PRIMARY },
+            if self.copied {
+                Hsla::new(120.0, 0.7, 0.5, 1.0)
+            } else {
+                theme::text::PRIMARY
+            },
         );
         cx.scene.draw_text(copy_label);
 
@@ -223,7 +227,11 @@ impl Component for MnemonicDisplay {
                 &display_word,
                 Point::new(word_bounds.origin.x + 26.0, word_bounds.origin.y + 8.0),
                 theme::font_size::SM,
-                if self.revealed { theme::text::PRIMARY } else { theme::text::DISABLED },
+                if self.revealed {
+                    theme::text::PRIMARY
+                } else {
+                    theme::text::DISABLED
+                },
             );
             cx.scene.draw_text(word_run);
         }

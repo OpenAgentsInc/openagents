@@ -1,15 +1,16 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use wgpui::{
-    Bounds, Button, ButtonVariant, Component, Div, InputEvent, MouseButton, Point, 
-    PaintContext, Quad, Scene, Size, Text, TextInput, VirtualList, theme,
-    Animation, Easing, SpringAnimation, Animatable,
-    Tooltip, TooltipPosition, ContextMenu, MenuItem,
+use wgpui::components::atoms::{
+    EntryType, Mode, ModeBadge, Model, ModelBadge, Status, StatusDot, StreamingIndicator,
 };
-use wgpui::components::atoms::{Mode, Model, Status, StatusDot, ModeBadge, ModelBadge, StreamingIndicator, EntryType};
+use wgpui::components::hud::{Command, CommandPalette, Notifications, StatusBar, StatusItem};
 use wgpui::components::molecules::{MessageHeader, ModeSelector, ModelSelector};
-use wgpui::components::hud::{CommandPalette, Command, StatusBar, StatusItem, Notifications};
 use wgpui::renderer::Renderer;
+use wgpui::{
+    Animatable, Animation, Bounds, Button, ButtonVariant, Component, ContextMenu, Div, Easing,
+    InputEvent, MenuItem, MouseButton, PaintContext, Point, Quad, Scene, Size, SpringAnimation,
+    Text, TextInput, Tooltip, TooltipPosition, VirtualList, theme,
+};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -243,11 +244,9 @@ impl ApplicationHandler for App {
                             label: Some("Render Encoder"),
                         });
 
-                state.renderer.resize(
-                    &state.queue,
-                    Size::new(width, height),
-                    1.0,
-                );
+                state
+                    .renderer
+                    .resize(&state.queue, Size::new(width, height), 1.0);
 
                 if state.text_system.is_dirty() {
                     state.renderer.update_atlas(
@@ -259,7 +258,9 @@ impl ApplicationHandler for App {
                 }
 
                 let scale_factor = state.window.scale_factor() as f32;
-                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
+                state
+                    .renderer
+                    .prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));
@@ -285,8 +286,9 @@ fn build_showcase(
 ) {
     let margin = 24.0;
     let col_width = (width - margin * 3.0) / 2.0;
-    
-    scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+
+    scene
+        .draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
     let mut y = margin;
     draw_header(scene, text_system, margin, &mut y, width);
@@ -312,11 +314,23 @@ fn build_showcase(
     draw_virtual_list_section(scene, text_system, demo, left_x, col_width, &mut left_y);
     draw_selectors_section(scene, text_system, demo, right_x, col_width, &mut right_y);
 
-    demo.status_bar.paint(Bounds::new(0.0, 0.0, width, height), &mut PaintContext::new(scene, text_system, 1.0));
-    demo.notifications.paint(Bounds::new(0.0, 0.0, width, height), &mut PaintContext::new(scene, text_system, 1.0));
+    demo.status_bar.paint(
+        Bounds::new(0.0, 0.0, width, height),
+        &mut PaintContext::new(scene, text_system, 1.0),
+    );
+    demo.notifications.paint(
+        Bounds::new(0.0, 0.0, width, height),
+        &mut PaintContext::new(scene, text_system, 1.0),
+    );
 }
 
-fn draw_header(scene: &mut Scene, text_system: &mut wgpui::TextSystem, margin: f32, y: &mut f32, width: f32) {
+fn draw_header(
+    scene: &mut Scene,
+    text_system: &mut wgpui::TextSystem,
+    margin: f32,
+    y: &mut f32,
+    width: f32,
+) {
     let title = "wgpui Component Showcase";
     let subtitle = "GPU-Accelerated UI • 40+ Components • Animation • Accessibility";
 
@@ -344,7 +358,13 @@ fn draw_header(scene: &mut Scene, text_system: &mut wgpui::TextSystem, margin: f
     *y += 90.0;
 }
 
-fn draw_section_title(scene: &mut Scene, text_system: &mut wgpui::TextSystem, x: f32, y: &mut f32, title: &str) {
+fn draw_section_title(
+    scene: &mut Scene,
+    text_system: &mut wgpui::TextSystem,
+    x: f32,
+    y: &mut f32,
+    title: &str,
+) {
     let run = text_system.layout(title, Point::new(x, *y + 16.0), 18.0, theme::text::PRIMARY);
     scene.draw_text(run);
     *y += 32.0;
@@ -369,8 +389,7 @@ fn draw_animation_section(
     let anim_x = x + demo.position_anim.current_value();
     let anim_color = demo.color_anim.current_value();
     scene.draw_quad(
-        Quad::new(Bounds::new(anim_x + 10.0, *y + 20.0, 40.0, 40.0))
-            .with_background(anim_color),
+        Quad::new(Bounds::new(anim_x + 10.0, *y + 20.0, 40.0, 40.0)).with_background(anim_color),
     );
 
     let label = text_system.layout(
@@ -383,8 +402,13 @@ fn draw_animation_section(
 
     let spring_val = demo.spring.current();
     scene.draw_quad(
-        Quad::new(Bounds::new(x + width - 60.0, *y + 20.0 + (100.0 - spring_val) * 0.5, 40.0, 40.0))
-            .with_background(theme::accent::PURPLE),
+        Quad::new(Bounds::new(
+            x + width - 60.0,
+            *y + 20.0 + (100.0 - spring_val) * 0.5,
+            40.0,
+            40.0,
+        ))
+        .with_background(theme::accent::PURPLE),
     );
 
     let spring_label = text_system.layout(
@@ -505,7 +529,8 @@ fn draw_inputs_section(
     draw_section_title(scene, text_system, x, y, "Text Input");
 
     let mut cx = PaintContext::new(scene, text_system, 1.0);
-    demo.text_input.paint(Bounds::new(x, *y, width - 20.0, 36.0), &mut cx);
+    demo.text_input
+        .paint(Bounds::new(x, *y, width - 20.0, 36.0), &mut cx);
 
     *y += 52.0;
 }
@@ -518,7 +543,13 @@ fn draw_virtual_list_section(
     width: f32,
     y: &mut f32,
 ) {
-    draw_section_title(scene, text_system, x, y, &format!("Virtual List ({} items)", demo.message_count));
+    draw_section_title(
+        scene,
+        text_system,
+        x,
+        y,
+        &format!("Virtual List ({} items)", demo.message_count),
+    );
 
     scene.draw_quad(
         Quad::new(Bounds::new(x, *y, width, 200.0))
@@ -535,12 +566,19 @@ fn draw_virtual_list_section(
         items,
         item_height,
         move |item: &String, idx: usize, bounds: Bounds, cx: &mut PaintContext| {
-            let bg = if idx % 2 == 0 { theme::bg::SURFACE } else { theme::bg::MUTED };
+            let bg = if idx % 2 == 0 {
+                theme::bg::SURFACE
+            } else {
+                theme::bg::MUTED
+            };
             cx.scene.draw_quad(Quad::new(bounds).with_background(bg));
-            
+
             let run = cx.text.layout(
                 item,
-                Point::new(bounds.origin.x + 12.0, bounds.origin.y + bounds.size.height * 0.6),
+                Point::new(
+                    bounds.origin.x + 12.0,
+                    bounds.origin.y + bounds.size.height * 0.6,
+                ),
                 theme::font_size::SM,
                 theme::text::PRIMARY,
             );
@@ -565,7 +603,7 @@ fn draw_selectors_section(
     draw_section_title(scene, text_system, x, y, "Mode & Model Selectors");
 
     let mut cx = PaintContext::new(scene, text_system, 1.0);
-    
+
     ModeSelector::new(demo.selected_mode).paint(Bounds::new(x, *y, 150.0, 32.0), &mut cx);
     ModelSelector::new(demo.selected_model).paint(Bounds::new(x + 170.0, *y, 150.0, 32.0), &mut cx);
 

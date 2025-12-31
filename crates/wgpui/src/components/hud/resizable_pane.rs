@@ -416,7 +416,9 @@ impl ResizablePane {
 
     /// Draw a resize handle at the given position
     fn draw_handle(&self, cx: &mut PaintContext, bounds: Bounds, edge: ResizeEdge) {
-        let color = if self.hovered_edge == edge || self.drag_state.as_ref().map(|d| d.edge) == Some(edge) {
+        let color = if self.hovered_edge == edge
+            || self.drag_state.as_ref().map(|d| d.edge) == Some(edge)
+        {
             self.handle_hover_color
         } else {
             self.handle_color
@@ -440,7 +442,8 @@ impl ResizablePane {
             ResizeEdge::None => return,
         };
 
-        cx.scene.draw_quad(Quad::new(handle_bounds).with_background(color));
+        cx.scene
+            .draw_quad(Quad::new(handle_bounds).with_background(color));
     }
 }
 
@@ -461,15 +464,14 @@ impl Component for ResizablePane {
 
         // Draw background if set
         if let Some(bg) = self.background {
-            cx.scene.draw_quad(Quad::new(actual_bounds).with_background(bg));
+            cx.scene
+                .draw_quad(Quad::new(actual_bounds).with_background(bg));
         }
 
         // Draw border if set
         if let Some(border) = self.border_color {
-            cx.scene.draw_quad(
-                Quad::new(actual_bounds)
-                    .with_border(border, self.border_width),
-            );
+            cx.scene
+                .draw_quad(Quad::new(actual_bounds).with_border(border, self.border_width));
         }
 
         // Draw resize handles if enabled and resizable
@@ -485,12 +487,7 @@ impl Component for ResizablePane {
         }
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        _cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
         if !self.resizable {
             return EventResult::Ignored;
         }
@@ -630,19 +627,46 @@ mod tests {
         let bounds = Bounds::new(0.0, 0.0, 100.0, 100.0);
 
         // Test corners
-        assert_eq!(pane.hit_test(bounds, Point::new(5.0, 5.0)), ResizeEdge::TopLeft);
-        assert_eq!(pane.hit_test(bounds, Point::new(95.0, 5.0)), ResizeEdge::TopRight);
-        assert_eq!(pane.hit_test(bounds, Point::new(5.0, 95.0)), ResizeEdge::BottomLeft);
-        assert_eq!(pane.hit_test(bounds, Point::new(95.0, 95.0)), ResizeEdge::BottomRight);
+        assert_eq!(
+            pane.hit_test(bounds, Point::new(5.0, 5.0)),
+            ResizeEdge::TopLeft
+        );
+        assert_eq!(
+            pane.hit_test(bounds, Point::new(95.0, 5.0)),
+            ResizeEdge::TopRight
+        );
+        assert_eq!(
+            pane.hit_test(bounds, Point::new(5.0, 95.0)),
+            ResizeEdge::BottomLeft
+        );
+        assert_eq!(
+            pane.hit_test(bounds, Point::new(95.0, 95.0)),
+            ResizeEdge::BottomRight
+        );
 
         // Test edges
-        assert_eq!(pane.hit_test(bounds, Point::new(50.0, 5.0)), ResizeEdge::Top);
-        assert_eq!(pane.hit_test(bounds, Point::new(50.0, 95.0)), ResizeEdge::Bottom);
-        assert_eq!(pane.hit_test(bounds, Point::new(5.0, 50.0)), ResizeEdge::Left);
-        assert_eq!(pane.hit_test(bounds, Point::new(95.0, 50.0)), ResizeEdge::Right);
+        assert_eq!(
+            pane.hit_test(bounds, Point::new(50.0, 5.0)),
+            ResizeEdge::Top
+        );
+        assert_eq!(
+            pane.hit_test(bounds, Point::new(50.0, 95.0)),
+            ResizeEdge::Bottom
+        );
+        assert_eq!(
+            pane.hit_test(bounds, Point::new(5.0, 50.0)),
+            ResizeEdge::Left
+        );
+        assert_eq!(
+            pane.hit_test(bounds, Point::new(95.0, 50.0)),
+            ResizeEdge::Right
+        );
 
         // Test center (no edge)
-        assert_eq!(pane.hit_test(bounds, Point::new(50.0, 50.0)), ResizeEdge::None);
+        assert_eq!(
+            pane.hit_test(bounds, Point::new(50.0, 50.0)),
+            ResizeEdge::None
+        );
     }
 
     #[test]
@@ -670,9 +694,18 @@ mod tests {
         let bounds = Bounds::new(0.0, 0.0, 100.0, 100.0);
 
         // All positions should return None when not resizable
-        assert_eq!(pane.hit_test(bounds, Point::new(5.0, 5.0)), ResizeEdge::None);
-        assert_eq!(pane.hit_test(bounds, Point::new(95.0, 95.0)), ResizeEdge::None);
-        assert_eq!(pane.hit_test(bounds, Point::new(50.0, 5.0)), ResizeEdge::None);
+        assert_eq!(
+            pane.hit_test(bounds, Point::new(5.0, 5.0)),
+            ResizeEdge::None
+        );
+        assert_eq!(
+            pane.hit_test(bounds, Point::new(95.0, 95.0)),
+            ResizeEdge::None
+        );
+        assert_eq!(
+            pane.hit_test(bounds, Point::new(50.0, 5.0)),
+            ResizeEdge::None
+        );
     }
 
     #[test]

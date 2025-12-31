@@ -53,9 +53,9 @@ impl SigningType {
 
     pub fn icon(&self) -> &'static str {
         match self {
-            SigningType::Transaction => "\u{20BF}", // Bitcoin
-            SigningType::Message => "\u{2709}",     // Envelope
-            SigningType::Event => "\u{26A1}",       // Lightning
+            SigningType::Transaction => "\u{20BF}",  // Bitcoin
+            SigningType::Message => "\u{2709}",      // Envelope
+            SigningType::Event => "\u{26A1}",        // Lightning
             SigningType::KeyRotation => "\u{1F511}", // Key
         }
     }
@@ -217,9 +217,8 @@ impl Component for SigningRequestCard {
 
         // Type indicator stripe
         let stripe_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, 4.0, bounds.size.height);
-        cx.scene.draw_quad(
-            Quad::new(stripe_bounds).with_background(self.request.signing_type.color()),
-        );
+        cx.scene
+            .draw_quad(Quad::new(stripe_bounds).with_background(self.request.signing_type.color()));
 
         let mut y = bounds.origin.y + padding;
 
@@ -245,7 +244,8 @@ impl Component for SigningRequestCard {
         // Urgency badge
         if self.request.urgency != SigningUrgency::Normal {
             let urgency_w = (self.request.urgency.label().len() as f32 * 6.0) + 10.0;
-            let urgency_x = bounds.origin.x + padding + 26.0 + (type_label.len() as f32 * 7.0) + 8.0;
+            let urgency_x =
+                bounds.origin.x + padding + 26.0 + (type_label.len() as f32 * 7.0) + 8.0;
             cx.scene.draw_quad(
                 Quad::new(Bounds::new(urgency_x, y - 1.0, urgency_w, 16.0))
                     .with_background(self.request.urgency.color().with_alpha(0.2))
@@ -261,7 +261,10 @@ impl Component for SigningRequestCard {
         }
 
         // Threshold progress
-        let threshold_text = format!("{}/{} signatures", self.request.threshold.0, self.request.threshold.1);
+        let threshold_text = format!(
+            "{}/{} signatures",
+            self.request.threshold.0, self.request.threshold.1
+        );
         let threshold_x = bounds.origin.x + bounds.size.width - padding - 90.0;
         let threshold_run = cx.text.layout(
             &threshold_text,

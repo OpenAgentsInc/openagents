@@ -126,7 +126,10 @@ impl LineWrapper {
                         new_prev_c = c;
                         self.width_for_char(c)
                     }
-                    WrapBoundaryCandidate::Element { width: element_width, .. } => {
+                    WrapBoundaryCandidate::Element {
+                        width: element_width,
+                        ..
+                    } => {
                         if prev_c == ' ' && first_non_whitespace_ix.is_some() {
                             last_candidate_ix = ix;
                             last_candidate_width = width;

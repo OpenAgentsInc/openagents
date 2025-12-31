@@ -124,7 +124,9 @@ impl SessionCard {
     }
 
     fn action_bounds(&self, bounds: &Bounds) -> Vec<(SessionAction, Bounds)> {
-        if !self.show_actions || !self.session.status.can_resume() && !self.session.status.can_fork() {
+        if !self.show_actions
+            || !self.session.status.can_resume() && !self.session.status.can_fork()
+        {
             return Vec::new();
         }
 
@@ -138,13 +140,19 @@ impl SessionCard {
 
         if self.session.status.can_resume() {
             x -= btn_width;
-            actions.push((SessionAction::Resume, Bounds::new(x, y, btn_width, btn_height)));
+            actions.push((
+                SessionAction::Resume,
+                Bounds::new(x, y, btn_width, btn_height),
+            ));
             x -= gap;
         }
 
         if self.session.status.can_fork() {
             x -= btn_width;
-            actions.push((SessionAction::Fork, Bounds::new(x, y, btn_width, btn_height)));
+            actions.push((
+                SessionAction::Fork,
+                Bounds::new(x, y, btn_width, btn_height),
+            ));
         }
 
         actions
@@ -169,7 +177,8 @@ impl Component for SessionCard {
 
         // Left status accent bar
         let accent_bar = Bounds::new(bounds.origin.x, bounds.origin.y, 3.0, bounds.size.height);
-        cx.scene.draw_quad(Quad::new(accent_bar).with_background(status_color));
+        cx.scene
+            .draw_quad(Quad::new(accent_bar).with_background(status_color));
 
         let padding = 12.0;
         let content_x = bounds.origin.x + padding + 4.0;
@@ -245,7 +254,8 @@ impl Component for SessionCard {
                 theme::text::MUTED
             };
 
-            cx.scene.draw_quad(Quad::new(action_bounds).with_background(btn_bg));
+            cx.scene
+                .draw_quad(Quad::new(action_bounds).with_background(btn_bg));
 
             let label = match action {
                 SessionAction::Resume => "Resume",
@@ -258,7 +268,8 @@ impl Component for SessionCard {
                 label,
                 Point::new(
                     action_bounds.origin.x + 4.0,
-                    action_bounds.origin.y + (action_bounds.size.height - theme::font_size::XS) / 2.0,
+                    action_bounds.origin.y
+                        + (action_bounds.size.height - theme::font_size::XS) / 2.0,
                 ),
                 theme::font_size::XS,
                 btn_text_color,

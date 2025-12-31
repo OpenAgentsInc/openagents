@@ -5,8 +5,7 @@ use crate::{Bounds, Hsla, InputEvent, Quad};
 use std::time::Duration;
 
 /// Frame style variants inspired by Arwes sci-fi UI framework
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum FrameStyle {
     #[default]
     Corners,
@@ -20,9 +19,7 @@ pub enum FrameStyle {
     Circle,
 }
 
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum FrameAnimation {
     #[default]
     Fade,
@@ -30,7 +27,6 @@ pub enum FrameAnimation {
     Flicker,
     Assemble,
 }
-
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DrawDirection {
@@ -256,12 +252,20 @@ impl Frame {
             FrameAnimation::Fade => p,
             FrameAnimation::Flicker => {
                 if self.is_exiting {
-                    if p < 0.33 { 1.0 - p * 3.0 }
-                    else if p < 0.66 { 0.5 }
-                    else { 0.5 - (p - 0.66) * 1.5 }
-                } else if p < 0.33 { p * 3.0 }
-                else if p < 0.66 { 1.0 - (p - 0.33) * 1.5 }
-                else { 0.5 + (p - 0.66) * 1.5 }
+                    if p < 0.33 {
+                        1.0 - p * 3.0
+                    } else if p < 0.66 {
+                        0.5
+                    } else {
+                        0.5 - (p - 0.66) * 1.5
+                    }
+                } else if p < 0.33 {
+                    p * 3.0
+                } else if p < 0.66 {
+                    1.0 - (p - 0.33) * 1.5
+                } else {
+                    0.5 + (p - 0.66) * 1.5
+                }
             }
             FrameAnimation::Draw | FrameAnimation::Assemble => 1.0,
         }
@@ -276,68 +280,113 @@ impl Frame {
         h: f32,
         horizontal: bool,
     ) {
-        let color = self.line_color.with_alpha(self.line_color.a * self.compute_alpha());
+        let color = self
+            .line_color
+            .with_alpha(self.line_color.a * self.compute_alpha());
         let p = self.animation_progress;
 
         match self.animation_mode {
             FrameAnimation::Fade | FrameAnimation::Flicker => {
-                cx.scene.draw_quad(Quad::new(Bounds::new(x, y, w, h)).with_background(color));
+                cx.scene
+                    .draw_quad(Quad::new(Bounds::new(x, y, w, h)).with_background(color));
             }
             FrameAnimation::Draw => {
                 if horizontal {
                     let len = w * p;
                     let (ax, aw) = match self.draw_direction {
                         DrawDirection::LeftToRight | DrawDirection::TopToBottom => (x, len),
-                        DrawDirection::RightToLeft | DrawDirection::BottomToTop => (x + w - len, len),
+                        DrawDirection::RightToLeft | DrawDirection::BottomToTop => {
+                            (x + w - len, len)
+                        }
                         DrawDirection::CenterOut => (x + (w - len) / 2.0, len),
                         DrawDirection::EdgesIn => {
                             let half = len / 2.0;
-                            cx.scene.draw_quad(Quad::new(Bounds::new(x, y, half, h)).with_background(color));
-                            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - half, y, half, h)).with_background(color));
+                            cx.scene.draw_quad(
+                                Quad::new(Bounds::new(x, y, half, h)).with_background(color),
+                            );
+                            cx.scene.draw_quad(
+                                Quad::new(Bounds::new(x + w - half, y, half, h))
+                                    .with_background(color),
+                            );
                             return;
                         }
                     };
-                    cx.scene.draw_quad(Quad::new(Bounds::new(ax, y, aw, h)).with_background(color));
+                    cx.scene
+                        .draw_quad(Quad::new(Bounds::new(ax, y, aw, h)).with_background(color));
                 } else {
                     let len = h * p;
                     let (ay, ah) = match self.draw_direction {
                         DrawDirection::TopToBottom | DrawDirection::LeftToRight => (y, len),
-                        DrawDirection::BottomToTop | DrawDirection::RightToLeft => (y + h - len, len),
+                        DrawDirection::BottomToTop | DrawDirection::RightToLeft => {
+                            (y + h - len, len)
+                        }
                         DrawDirection::CenterOut => (y + (h - len) / 2.0, len),
                         DrawDirection::EdgesIn => {
                             let half = len / 2.0;
-                            cx.scene.draw_quad(Quad::new(Bounds::new(x, y, w, half)).with_background(color));
-                            cx.scene.draw_quad(Quad::new(Bounds::new(x, y + h - half, w, half)).with_background(color));
+                            cx.scene.draw_quad(
+                                Quad::new(Bounds::new(x, y, w, half)).with_background(color),
+                            );
+                            cx.scene.draw_quad(
+                                Quad::new(Bounds::new(x, y + h - half, w, half))
+                                    .with_background(color),
+                            );
                             return;
                         }
                     };
-                    cx.scene.draw_quad(Quad::new(Bounds::new(x, ay, w, ah)).with_background(color));
+                    cx.scene
+                        .draw_quad(Quad::new(Bounds::new(x, ay, w, ah)).with_background(color));
                 }
             }
             FrameAnimation::Assemble => {
                 let offset = (1.0 - p) * 20.0;
                 if horizontal {
-                    cx.scene.draw_quad(Quad::new(Bounds::new(x - offset, y, w, h)).with_background(color));
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(x - offset, y, w, h)).with_background(color),
+                    );
                 } else {
-                    cx.scene.draw_quad(Quad::new(Bounds::new(x, y - offset, w, h)).with_background(color));
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(x, y - offset, w, h)).with_background(color),
+                    );
                 }
             }
         }
     }
 
-    fn draw_glow_line(&self, cx: &mut PaintContext, bx: f32, by: f32, bw: f32, bh: f32, glow: Hsla) {
+    fn draw_glow_line(
+        &self,
+        cx: &mut PaintContext,
+        bx: f32,
+        by: f32,
+        bw: f32,
+        bh: f32,
+        glow: Hsla,
+    ) {
         let layers = 4;
         for i in 0..layers {
             let spread = (i as f32 + 1.0) * 2.5;
             let alpha = glow.a * (1.0 - (i as f32 / layers as f32)).powi(2) * 0.2;
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(bx - spread, by - spread, bw + spread * 2.0, bh + spread * 2.0))
-                    .with_background(glow.with_alpha(alpha)),
+                Quad::new(Bounds::new(
+                    bx - spread,
+                    by - spread,
+                    bw + spread * 2.0,
+                    bh + spread * 2.0,
+                ))
+                .with_background(glow.with_alpha(alpha)),
             );
         }
     }
 
-    fn draw_animated_glow_line(&self, cx: &mut PaintContext, x: f32, y: f32, w: f32, h: f32, horizontal: bool, glow: Hsla) {
+    fn draw_animated_glow_line(
+        &self,
+        cx: &mut PaintContext,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        horizontal: bool,
+        glow: Hsla,
+    ) {
         let p = self.animation_progress;
         match self.animation_mode {
             FrameAnimation::Fade => {
@@ -521,8 +570,7 @@ impl Frame {
 
         let bg_alpha = self.bg_color.a * self.compute_alpha();
         cx.scene.draw_quad(
-            Quad::new(Bounds::new(x, y, w, h))
-                .with_background(self.bg_color.with_alpha(bg_alpha)),
+            Quad::new(Bounds::new(x, y, w, h)).with_background(self.bg_color.with_alpha(bg_alpha)),
         );
 
         let alpha = self.compute_alpha();
@@ -535,7 +583,8 @@ impl Frame {
             let g = glow.with_alpha(glow.a * alpha);
             self.draw_glow_line(cx, x, y + h - t, main_w, t, g);
         }
-        cx.scene.draw_quad(Quad::new(Bounds::new(x, y + h - t, main_w, t)).with_background(color));
+        cx.scene
+            .draw_quad(Quad::new(Bounds::new(x, y + h - t, main_w, t)).with_background(color));
 
         if prog > 0.5 {
             let corner_prog = (prog - 0.5) * 2.0;
@@ -547,8 +596,13 @@ impl Frame {
                 self.draw_glow_line(cx, x + w - ss, y + h - t, corner_h_w, t, g);
                 self.draw_glow_line(cx, x + w - t, y + h - corner_v_h, t, corner_v_h, g);
             }
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss, y + h - t, corner_h_w, t)).with_background(color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - t, y + h - corner_v_h, t, corner_v_h)).with_background(color));
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(x + w - ss, y + h - t, corner_h_w, t)).with_background(color),
+            );
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(x + w - t, y + h - corner_v_h, t, corner_v_h))
+                    .with_background(color),
+            );
         }
     }
 
@@ -640,8 +694,13 @@ impl Frame {
 
         let bg_alpha = self.bg_color.a * self.compute_alpha();
         cx.scene.draw_quad(
-            Quad::new(Bounds::new(x + ss * 2.0, y + t * 2.0, w - ss * 4.0, h - t * 4.0))
-                .with_background(self.bg_color.with_alpha(bg_alpha)),
+            Quad::new(Bounds::new(
+                x + ss * 2.0,
+                y + t * 2.0,
+                w - ss * 4.0,
+                h - t * 4.0,
+            ))
+            .with_background(self.bg_color.with_alpha(bg_alpha)),
         );
 
         if let Some(glow) = self.glow_color {
@@ -726,10 +785,34 @@ impl Frame {
             self.draw_animated_glow_line(cx, inner_x_left, inner_y_top, t, inner_len, false, g);
             self.draw_animated_glow_line(cx, inner_h_right_x, inner_y_top, inner_len, t, true, g);
             self.draw_animated_glow_line(cx, inner_x_right, inner_y_top, t, inner_len, false, g);
-            self.draw_animated_glow_line(cx, inner_h_right_x, inner_y_bottom, inner_len, t, true, g);
-            self.draw_animated_glow_line(cx, inner_x_right, inner_v_bottom_y, t, inner_len, false, g);
+            self.draw_animated_glow_line(
+                cx,
+                inner_h_right_x,
+                inner_y_bottom,
+                inner_len,
+                t,
+                true,
+                g,
+            );
+            self.draw_animated_glow_line(
+                cx,
+                inner_x_right,
+                inner_v_bottom_y,
+                t,
+                inner_len,
+                false,
+                g,
+            );
             self.draw_animated_glow_line(cx, inner_x_left, inner_y_bottom, inner_len, t, true, g);
-            self.draw_animated_glow_line(cx, inner_x_left, inner_v_bottom_y, t, inner_len, false, g);
+            self.draw_animated_glow_line(
+                cx,
+                inner_x_left,
+                inner_v_bottom_y,
+                t,
+                inner_len,
+                false,
+                g,
+            );
         }
 
         self.draw_animated_line(cx, x, y, cl, t, true);
@@ -754,7 +837,10 @@ impl Frame {
     fn paint_header(&self, bounds: Bounds, cx: &mut PaintContext) {
         let p = self.padding;
         let t = self.stroke_width;
-        let accent = self.corner_length.max(t * 2.0).min(bounds.size.height * 0.6);
+        let accent = self
+            .corner_length
+            .max(t * 2.0)
+            .min(bounds.size.height * 0.6);
         let x = bounds.origin.x + p;
         let y = bounds.origin.y + p;
         let w = bounds.size.width - p * 2.0;
@@ -762,8 +848,7 @@ impl Frame {
 
         let bg_alpha = self.bg_color.a * self.compute_alpha();
         cx.scene.draw_quad(
-            Quad::new(Bounds::new(x, y, w, h))
-                .with_background(self.bg_color.with_alpha(bg_alpha)),
+            Quad::new(Bounds::new(x, y, w, h)).with_background(self.bg_color.with_alpha(bg_alpha)),
         );
 
         if let Some(glow) = self.glow_color {
@@ -808,9 +893,10 @@ impl Frame {
         }
 
         let segments_to_draw = match self.animation_mode {
-            FrameAnimation::Draw | FrameAnimation::Assemble => {
-                ((segments as f32) * progress).ceil().clamp(0.0, segments as f32) as u32
-            }
+            FrameAnimation::Draw | FrameAnimation::Assemble => ((segments as f32) * progress)
+                .ceil()
+                .clamp(0.0, segments as f32)
+                as u32,
             _ => segments,
         };
 
@@ -829,7 +915,14 @@ impl Frame {
             let y = cy_center + angle.sin() * radius;
             let bounds = Bounds::new(x - t / 2.0, y - t / 2.0, t, t);
             if let Some(glow_color) = glow {
-                self.draw_glow_line(cx, bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height, glow_color);
+                self.draw_glow_line(
+                    cx,
+                    bounds.origin.x,
+                    bounds.origin.y,
+                    bounds.size.width,
+                    bounds.size.height,
+                    glow_color,
+                );
             }
             cx.scene.draw_quad(Quad::new(bounds).with_background(color));
         }
@@ -840,7 +933,14 @@ impl Frame {
             let y = cy_center + angle.sin() * radius;
             let bounds = Bounds::new(x - t / 2.0, y - t / 2.0, t, t);
             if let Some(glow_color) = glow {
-                self.draw_glow_line(cx, bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height, glow_color);
+                self.draw_glow_line(
+                    cx,
+                    bounds.origin.x,
+                    bounds.origin.y,
+                    bounds.size.width,
+                    bounds.size.height,
+                    glow_color,
+                );
             }
             cx.scene.draw_quad(Quad::new(bounds).with_background(color));
         }
@@ -1093,8 +1193,7 @@ mod tests {
 
     #[test]
     fn test_nefrex_with_corner_config() {
-        let frame = Frame::nefrex()
-            .corner_config(CornerConfig::all());
+        let frame = Frame::nefrex().corner_config(CornerConfig::all());
         assert_eq!(frame.style, FrameStyle::Nefrex);
         assert!(frame.corner_config.left_top);
         assert!(frame.corner_config.right_bottom);
@@ -1125,8 +1224,7 @@ mod tests {
 
     #[test]
     fn test_glow_color() {
-        let frame = Frame::new()
-            .glow_color(Hsla::new(180.0, 1.0, 0.5, 0.5));
+        let frame = Frame::new().glow_color(Hsla::new(180.0, 1.0, 0.5, 0.5));
         assert!(frame.glow_color.is_some());
     }
 
@@ -1291,11 +1389,19 @@ mod tests {
         ));
         let mut frame = Frame::new();
 
-        animator.apply_with_delta(&mut frame, AnimatorState::Entering, Duration::from_millis(5));
+        animator.apply_with_delta(
+            &mut frame,
+            AnimatorState::Entering,
+            Duration::from_millis(5),
+        );
         assert!(frame.animation_progress > 0.0 && frame.animation_progress < 1.0);
         assert!(!frame.is_exiting);
 
-        animator.apply_with_delta(&mut frame, AnimatorState::Entering, Duration::from_millis(5));
+        animator.apply_with_delta(
+            &mut frame,
+            AnimatorState::Entering,
+            Duration::from_millis(5),
+        );
         assert!(frame.animation_progress >= 0.9);
 
         animator.apply_with_delta(&mut frame, AnimatorState::Exiting, Duration::from_millis(5));

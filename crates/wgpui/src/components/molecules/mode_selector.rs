@@ -100,12 +100,12 @@ impl Component for ModeSelector {
 
             for (i, mode) in self.available_modes.iter().enumerate() {
                 let item_y = dropdown_y + i as f32 * item_height;
-                let item_bounds = Bounds::new(bounds.origin.x, item_y, bounds.size.width, item_height);
+                let item_bounds =
+                    Bounds::new(bounds.origin.x, item_y, bounds.size.width, item_height);
 
                 if self.hovered_index == Some(i) {
-                    cx.scene.draw_quad(
-                        Quad::new(item_bounds).with_background(theme::bg::HOVER),
-                    );
+                    cx.scene
+                        .draw_quad(Quad::new(item_bounds).with_background(theme::bg::HOVER));
                 }
 
                 let mut mode_badge = ModeBadge::new(*mode);

@@ -131,7 +131,15 @@ impl Component for ApmSessionRow {
 
         // APM Gauge (compact)
         let mut gauge = ApmGauge::new(self.session.apm).compact(true);
-        gauge.paint(Bounds::new(x, bounds.origin.y + (bounds.size.height - 24.0) / 2.0, 50.0, 24.0), cx);
+        gauge.paint(
+            Bounds::new(
+                x,
+                bounds.origin.y + (bounds.size.height - 24.0) / 2.0,
+                50.0,
+                24.0,
+            ),
+            cx,
+        );
         x += 60.0;
 
         // Title
@@ -152,7 +160,15 @@ impl Component for ApmSessionRow {
 
         // Status badge (compact)
         let mut status = SessionStatusBadge::new(self.session.status).compact(true);
-        status.paint(Bounds::new(x, bounds.origin.y + (bounds.size.height - 22.0) / 2.0, 28.0, 22.0), cx);
+        status.paint(
+            Bounds::new(
+                x,
+                bounds.origin.y + (bounds.size.height - 22.0) / 2.0,
+                28.0,
+                22.0,
+            ),
+            cx,
+        );
         x += 36.0;
 
         // Duration

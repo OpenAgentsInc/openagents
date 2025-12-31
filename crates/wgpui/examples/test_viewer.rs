@@ -5,13 +5,13 @@
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use wgpui::{
-    Bounds, Component, EventContext, EventResult, InputEvent, MouseButton,
-    PaintContext, Point, Quad, Scene, Size, TextSystem, theme,
-};
 use wgpui::renderer::Renderer;
 use wgpui::testing::{
-    test, ClickTarget, InputOverlay, RunnerState, StepResult, TestRunner, TestStep,
+    ClickTarget, InputOverlay, RunnerState, StepResult, TestRunner, TestStep, test,
+};
+use wgpui::{
+    Bounds, Component, EventContext, EventResult, InputEvent, MouseButton, PaintContext, Point,
+    Quad, Scene, Size, TextSystem, theme,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -90,7 +90,10 @@ impl Component for Counter {
         );
         let dec_text = cx.text.layout(
             "-",
-            Point::new(self.decrement_bounds.origin.x + btn_w / 2.0 - 6.0, btn_y + 8.0),
+            Point::new(
+                self.decrement_bounds.origin.x + btn_w / 2.0 - 6.0,
+                btn_y + 8.0,
+            ),
             20.0,
             theme::text::PRIMARY,
         );
@@ -105,7 +108,10 @@ impl Component for Counter {
         );
         let reset_text = cx.text.layout(
             "Reset",
-            Point::new(self.reset_bounds.origin.x + btn_w / 2.0 - 20.0, btn_y + 10.0),
+            Point::new(
+                self.reset_bounds.origin.x + btn_w / 2.0 - 20.0,
+                btn_y + 10.0,
+            ),
             14.0,
             theme::text::PRIMARY,
         );
@@ -120,7 +126,10 @@ impl Component for Counter {
         );
         let inc_text = cx.text.layout(
             "+",
-            Point::new(self.increment_bounds.origin.x + btn_w / 2.0 - 6.0, btn_y + 8.0),
+            Point::new(
+                self.increment_bounds.origin.x + btn_w / 2.0 - 6.0,
+                btn_y + 8.0,
+            ),
             20.0,
             theme::text::PRIMARY,
         );
@@ -133,7 +142,12 @@ impl Component for Counter {
         _bounds: Bounds,
         _cx: &mut EventContext,
     ) -> EventResult {
-        if let InputEvent::MouseDown { button: MouseButton::Left, x, y } = event {
+        if let InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x,
+            y,
+        } = event
+        {
             let point = Point::new(*x, *y);
             if self.increment_bounds.contains(point) {
                 self.count += 1;
@@ -180,24 +194,24 @@ struct DemoState {
 impl DemoState {
     fn new() -> Self {
         // Button positions (center at 400, 300)
-        let inc_x = 400.0 + 40.0 + 10.0 + 40.0;  // Increment button center
-        let dec_x = 400.0 - 80.0 - 10.0 + 40.0;  // Decrement button center
-        let reset_x = 400.0;                       // Reset button center
-        let btn_y = 300.0 + 20.0 + 18.0;          // Button row Y
+        let inc_x = 400.0 + 40.0 + 10.0 + 40.0; // Increment button center
+        let dec_x = 400.0 - 80.0 - 10.0 + 40.0; // Decrement button center
+        let reset_x = 400.0; // Reset button center
+        let btn_y = 300.0 + 20.0 + 18.0; // Button row Y
 
         // Create a test that will run on the counter
         let runner = test("Counter Test")
-            .click_at(inc_x, btn_y)   // Click +
+            .click_at(inc_x, btn_y) // Click +
             .wait(400)
-            .click_at(inc_x, btn_y)   // Click + again
+            .click_at(inc_x, btn_y) // Click + again
             .wait(400)
-            .click_at(inc_x, btn_y)   // Click + again (count = 3)
+            .click_at(inc_x, btn_y) // Click + again (count = 3)
             .wait(400)
-            .click_at(dec_x, btn_y)   // Click - (count = 2)
+            .click_at(dec_x, btn_y) // Click - (count = 2)
             .wait(400)
             .click_at(reset_x, btn_y) // Click Reset (count = 0)
             .wait(400)
-            .click_at(inc_x, btn_y)   // Click + (count = 1)
+            .click_at(inc_x, btn_y) // Click + (count = 1)
             .build();
 
         Self {
@@ -309,8 +323,13 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 // Press Space to start/restart test
                 if event.state == winit::event::ElementState::Pressed {
-                    if let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Space) = event.physical_key {
-                        if !state.demo.test_started || state.demo.runner.state() == RunnerState::Passed || state.demo.runner.state() == RunnerState::Failed {
+                    if let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Space) =
+                        event.physical_key
+                    {
+                        if !state.demo.test_started
+                            || state.demo.runner.state() == RunnerState::Passed
+                            || state.demo.runner.state() == RunnerState::Failed
+                        {
                             // Reset and restart
                             state.demo = DemoState::new();
                             state.demo.runner.start();
@@ -336,7 +355,11 @@ impl ApplicationHandler for App {
                                     if let ClickTarget::Position(p) = target {
                                         // Generate click events
                                         let move_event = InputEvent::MouseMove { x: p.x, y: p.y };
-                                        let down_event = InputEvent::MouseDown { button: *button, x: p.x, y: p.y };
+                                        let down_event = InputEvent::MouseDown {
+                                            button: *button,
+                                            x: p.x,
+                                            y: p.y,
+                                        };
 
                                         // Observe in overlay
                                         state.demo.overlay.observe_event(&move_event);
@@ -344,7 +367,11 @@ impl ApplicationHandler for App {
 
                                         // Send to component
                                         let mut ecx = EventContext::new();
-                                        state.demo.counter.event(&down_event, component_bounds, &mut ecx);
+                                        state.demo.counter.event(
+                                            &down_event,
+                                            component_bounds,
+                                            &mut ecx,
+                                        );
                                     }
                                 }
                                 TestStep::Wait { .. } => {
@@ -390,11 +417,9 @@ impl ApplicationHandler for App {
                             label: Some("Render Encoder"),
                         });
 
-                state.renderer.resize(
-                    &state.queue,
-                    Size::new(width, height),
-                    1.0,
-                );
+                state
+                    .renderer
+                    .resize(&state.queue, Size::new(width, height), 1.0);
 
                 if state.text_system.is_dirty() {
                     state.renderer.update_atlas(
@@ -406,7 +431,9 @@ impl ApplicationHandler for App {
                 }
 
                 let scale_factor = state.window.scale_factor() as f32;
-                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
+                state
+                    .renderer
+                    .prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));
@@ -431,10 +458,8 @@ fn build_demo(
     height: f32,
 ) {
     // Background
-    scene.draw_quad(
-        Quad::new(Bounds::new(0.0, 0.0, width, height))
-            .with_background(theme::bg::APP),
-    );
+    scene
+        .draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
     // Title
     let title = "E2E Test Live Viewer Demo";
@@ -465,7 +490,12 @@ fn build_demo(
         let current = demo.runner.current_step();
         let total = demo.runner.total_steps();
         let progress = format!("Step {}/{}", current + 1, total);
-        let prog_run = text_system.layout(&progress, Point::new(width - 100.0, 30.0), 14.0, theme::text::MUTED);
+        let prog_run = text_system.layout(
+            &progress,
+            Point::new(width - 100.0, 30.0),
+            14.0,
+            theme::text::MUTED,
+        );
         scene.draw_text(prog_run);
 
         // State indicator
@@ -476,7 +506,12 @@ fn build_demo(
             RunnerState::Failed => theme::status::ERROR,
             _ => theme::text::MUTED,
         };
-        let state_run = text_system.layout(state_text, Point::new(width - 100.0, 50.0), 12.0, state_color);
+        let state_run = text_system.layout(
+            state_text,
+            Point::new(width - 100.0, 50.0),
+            12.0,
+            state_color,
+        );
         scene.draw_text(state_run);
     }
 
@@ -486,5 +521,6 @@ fn build_demo(
     demo.counter.paint(component_bounds, &mut cx);
 
     // Overlay
-    demo.overlay.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
+    demo.overlay
+        .paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
 }

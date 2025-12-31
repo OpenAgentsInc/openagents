@@ -340,11 +340,12 @@ impl Renderer {
         });
 
         // Image pipeline (for SVGs and other textured quads)
-        let image_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Image Pipeline Layout"),
-            bind_group_layouts: &[&uniform_bind_group_layout, &image_bind_group_layout],
-            push_constant_ranges: &[],
-        });
+        let image_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Image Pipeline Layout"),
+                bind_group_layouts: &[&uniform_bind_group_layout, &image_bind_group_layout],
+                push_constant_ranges: &[],
+            });
 
         let image_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Image Pipeline"),
@@ -599,7 +600,10 @@ impl Renderer {
 
                     self.svg_texture_cache.insert(
                         cache_key.clone(),
-                        SvgGpuResources { texture, bind_group },
+                        SvgGpuResources {
+                            texture,
+                            bind_group,
+                        },
                     );
                 }
             }
@@ -622,11 +626,12 @@ impl Renderer {
                     tint,
                 };
 
-                let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("SVG Instance Buffer"),
-                    contents: bytemuck::bytes_of(&gpu_quad),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
+                let instance_buffer =
+                    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("SVG Instance Buffer"),
+                        contents: bytemuck::bytes_of(&gpu_quad),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
 
                 self.prepared_svgs.push(PreparedSvg {
                     instance_buffer,

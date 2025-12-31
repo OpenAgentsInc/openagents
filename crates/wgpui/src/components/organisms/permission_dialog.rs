@@ -88,9 +88,8 @@ impl Component for PermissionDialog {
             return;
         }
 
-        cx.scene.draw_quad(
-            Quad::new(bounds).with_background(theme::bg::APP.with_alpha(0.7)),
-        );
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(theme::bg::APP.with_alpha(0.7)));
 
         let dialog_width = 400.0;
         let dialog_height = 200.0;
@@ -255,10 +254,7 @@ mod tests {
     fn test_permission_dialog_new() {
         let dialog = PermissionDialog::new(PermissionType::FileRead("/etc/passwd".to_string()));
         assert!(dialog.is_open());
-        assert_eq!(
-            dialog.permission().description(),
-            "Read file: /etc/passwd"
-        );
+        assert_eq!(dialog.permission().description(), "Read file: /etc/passwd");
     }
 
     #[test]
@@ -273,7 +269,8 @@ mod tests {
 
     #[test]
     fn test_show_hide() {
-        let mut dialog = PermissionDialog::new(PermissionType::Network("https://api.com".to_string()));
+        let mut dialog =
+            PermissionDialog::new(PermissionType::Network("https://api.com".to_string()));
         assert!(dialog.is_open());
         dialog.hide();
         assert!(!dialog.is_open());

@@ -220,9 +220,8 @@ impl Component for CommandPalette {
             return;
         }
 
-        cx.scene.draw_quad(
-            Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.6)),
-        );
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.6)));
 
         let palette_width = 500.0_f32.min(bounds.size.width - 40.0);
         let input_height = 48.0;
@@ -252,7 +251,8 @@ impl Component for CommandPalette {
         );
         self.search_input.paint(input_bounds, cx);
 
-        let visible_end = (self.scroll_offset + self.max_visible_items).min(self.filtered_commands.len());
+        let visible_end =
+            (self.scroll_offset + self.max_visible_items).min(self.filtered_commands.len());
 
         for vis_index in self.scroll_offset..visible_end {
             if let Some(&cmd_index) = self.filtered_commands.get(vis_index) {
@@ -265,7 +265,8 @@ impl Component for CommandPalette {
                 } else {
                     Hsla::transparent()
                 };
-                cx.scene.draw_quad(Quad::new(item_bounds).with_background(bg));
+                cx.scene
+                    .draw_quad(Quad::new(item_bounds).with_background(bg));
 
                 let label_run = cx.text.layout(
                     &command.label,
@@ -296,8 +297,11 @@ impl Component for CommandPalette {
                     let key_run = cx.text.layout(
                         keys,
                         Point::new(
-                            item_bounds.origin.x + item_bounds.size.width - key_width - theme::spacing::SM,
-                            item_bounds.origin.y + (item_bounds.size.height - theme::font_size::XS) / 2.0,
+                            item_bounds.origin.x + item_bounds.size.width
+                                - key_width
+                                - theme::spacing::SM,
+                            item_bounds.origin.y
+                                + (item_bounds.size.height - theme::font_size::XS) / 2.0,
                         ),
                         theme::font_size::XS,
                         theme::text::DISABLED,
@@ -312,7 +316,10 @@ impl Component for CommandPalette {
             let empty_run = cx.text.layout(
                 empty_text,
                 Point::new(
-                    palette_bounds.origin.x + (palette_bounds.size.width - empty_text.len() as f32 * theme::font_size::SM * 0.5) / 2.0,
+                    palette_bounds.origin.x
+                        + (palette_bounds.size.width
+                            - empty_text.len() as f32 * theme::font_size::SM * 0.5)
+                            / 2.0,
                     palette_bounds.origin.y + input_height + padding + theme::spacing::MD,
                 ),
                 theme::font_size::SM,
@@ -328,27 +335,25 @@ impl Component for CommandPalette {
         }
 
         match event {
-            InputEvent::KeyDown { key, .. } => {
-                match key {
-                    Key::Named(NamedKey::Escape) => {
-                        self.close();
-                        return EventResult::Handled;
-                    }
-                    Key::Named(NamedKey::Enter) => {
-                        self.select_current();
-                        return EventResult::Handled;
-                    }
-                    Key::Named(NamedKey::ArrowUp) => {
-                        self.move_selection_up();
-                        return EventResult::Handled;
-                    }
-                    Key::Named(NamedKey::ArrowDown) => {
-                        self.move_selection_down();
-                        return EventResult::Handled;
-                    }
-                    _ => {}
+            InputEvent::KeyDown { key, .. } => match key {
+                Key::Named(NamedKey::Escape) => {
+                    self.close();
+                    return EventResult::Handled;
                 }
-            }
+                Key::Named(NamedKey::Enter) => {
+                    self.select_current();
+                    return EventResult::Handled;
+                }
+                Key::Named(NamedKey::ArrowUp) => {
+                    self.move_selection_up();
+                    return EventResult::Handled;
+                }
+                Key::Named(NamedKey::ArrowDown) => {
+                    self.move_selection_down();
+                    return EventResult::Handled;
+                }
+                _ => {}
+            },
             InputEvent::MouseUp { x, y, .. } => {
                 let point = Point::new(*x, *y);
 
@@ -371,7 +376,8 @@ impl Component for CommandPalette {
                     return EventResult::Handled;
                 }
 
-                let visible_end = (self.scroll_offset + self.max_visible_items).min(self.filtered_commands.len());
+                let visible_end =
+                    (self.scroll_offset + self.max_visible_items).min(self.filtered_commands.len());
                 for vis_index in self.scroll_offset..visible_end {
                     let item_bounds = self.item_bounds(&palette_bounds, vis_index);
                     if item_bounds.contains(point) {
@@ -540,14 +546,12 @@ mod tests {
 
     #[test]
     fn test_command_palette_scroll_offset_updates() {
-        let mut palette = CommandPalette::new()
-            .max_visible_items(2)
-            .commands(vec![
-                Command::new("a", "A"),
-                Command::new("b", "B"),
-                Command::new("c", "C"),
-                Command::new("d", "D"),
-            ]);
+        let mut palette = CommandPalette::new().max_visible_items(2).commands(vec![
+            Command::new("a", "A"),
+            Command::new("b", "B"),
+            Command::new("c", "C"),
+            Command::new("d", "D"),
+        ]);
 
         palette.move_selection_down();
         assert_eq!(palette.selected_index, 1);
@@ -660,7 +664,10 @@ mod tests {
         let palette_width = 500.0_f32.min(bounds.size.width - 40.0);
         let input_height = 48.0;
         let padding = theme::spacing::XS;
-        let visible_items = palette.filtered_commands.len().min(palette.max_visible_items);
+        let visible_items = palette
+            .filtered_commands
+            .len()
+            .min(palette.max_visible_items);
         let list_height = visible_items as f32 * palette.item_height;
         let palette_height = input_height + padding + list_height + padding;
 

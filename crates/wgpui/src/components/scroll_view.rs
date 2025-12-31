@@ -2,7 +2,7 @@
 
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{AnyComponent, Component, ComponentId, EventResult};
-use crate::scroll::{calculate_scrollbar_thumb, ScrollContainer, ScrollDirection};
+use crate::scroll::{ScrollContainer, ScrollDirection, calculate_scrollbar_thumb};
 use crate::{Bounds, InputEvent, MouseButton, Point, Quad, Size, theme};
 
 pub struct ScrollView {
@@ -106,7 +106,9 @@ impl ScrollView {
             ScrollDirection::Vertical | ScrollDirection::Both
         );
 
-        if let Some(thumb_bounds) = calculate_scrollbar_thumb(&self.scroll, is_vertical, track_bounds, 20.0) {
+        if let Some(thumb_bounds) =
+            calculate_scrollbar_thumb(&self.scroll, is_vertical, track_bounds, 20.0)
+        {
             cx.scene.draw_quad(
                 Quad::new(thumb_bounds)
                     .with_background(theme::text::MUTED)
@@ -197,19 +199,17 @@ impl Component for ScrollView {
         }
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
         match event {
             InputEvent::Scroll { dx, dy } => {
                 self.scroll.scroll_by(Point::new(*dx, *dy));
                 return EventResult::Handled;
             }
             InputEvent::MouseDown { button, x, y } => {
-                if *button == MouseButton::Left && self.show_scrollbar && self.is_on_scrollbar(bounds, *x, *y) {
+                if *button == MouseButton::Left
+                    && self.show_scrollbar
+                    && self.is_on_scrollbar(bounds, *x, *y)
+                {
                     self.dragging_scrollbar = true;
                     return EventResult::Handled;
                 }
@@ -277,7 +277,9 @@ mod tests {
     fn test_scroll_view_offset() {
         let mut scroll = ScrollView::new().content_size(Size::new(100.0, 500.0));
 
-        scroll.scroll.set_viewport(Bounds::new(0.0, 0.0, 100.0, 200.0));
+        scroll
+            .scroll
+            .set_viewport(Bounds::new(0.0, 0.0, 100.0, 200.0));
         scroll.scroll.set_content_size(Size::new(100.0, 500.0));
 
         assert_eq!(scroll.scroll_offset(), Point::ZERO);

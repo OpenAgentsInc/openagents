@@ -255,8 +255,12 @@ impl TextSystem {
         }
 
         let physical_font_size = font_size * self.scale_factor;
-        log::debug!("shape_text: font_size={}, scale_factor={}, physical_font_size={}",
-            font_size, self.scale_factor, physical_font_size);
+        log::debug!(
+            "shape_text: font_size={}, scale_factor={}, physical_font_size={}",
+            font_size,
+            self.scale_factor,
+            physical_font_size
+        );
         let metrics = Metrics::new(physical_font_size, physical_font_size * 1.2);
 
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
@@ -479,7 +483,9 @@ mod tests {
             let text_run = system.layout(text, Point::ZERO, font_size, Hsla::white());
 
             // Calculate actual width from glyph positions
-            let actual_width = text_run.glyphs.iter()
+            let actual_width = text_run
+                .glyphs
+                .iter()
                 .map(|g| g.offset.x + g.size.width)
                 .fold(0.0f32, |a, b| a.max(b));
 
@@ -487,7 +493,9 @@ mod tests {
             assert!(
                 measured_width >= actual_width - 1.0,
                 "measure({:?}) = {} but actual glyph width = {}. Text will overlap!",
-                text, measured_width, actual_width
+                text,
+                measured_width,
+                actual_width
             );
         }
     }
@@ -520,7 +528,10 @@ mod tests {
             assert!(
                 (ratio - 1.0).abs() < 0.05,
                 "Logical width at scale {} ({}) should be ~same as base width ({}). Ratio: {}",
-                scales[i], width, base_width, ratio
+                scales[i],
+                width,
+                base_width,
+                ratio
             );
         }
     }
@@ -546,7 +557,9 @@ mod tests {
         assert!(
             (0.95..=1.05).contains(&ratio),
             "Individual span widths ({}) don't match concatenated ({}) - ratio: {}",
-            total_measured, concatenated_width, ratio
+            total_measured,
+            concatenated_width,
+            ratio
         );
 
         // Verify layout at consecutive positions works correctly
@@ -564,7 +577,9 @@ mod tests {
                 assert!(
                     glyph_start >= prev_end - 2.0, // 2px tolerance
                     "Span {:?} starts at {} which overlaps with previous end {}",
-                    span, glyph_start, prev_end
+                    span,
+                    glyph_start,
+                    prev_end
                 );
             }
 
@@ -596,7 +611,8 @@ mod tests {
         assert!(
             (normal_width - bold_width).abs() < 1.0,
             "Monospace font: normal ({}) and bold ({}) should have similar width",
-            normal_width, bold_width
+            normal_width,
+            bold_width
         );
     }
 
@@ -612,7 +628,8 @@ mod tests {
         assert!(
             size.height >= font_size,
             "Line height {} should be >= font_size {}",
-            size.height, font_size
+            size.height,
+            font_size
         );
 
         // Line height should provide reasonable spacing (1.2x is standard)
@@ -620,7 +637,8 @@ mod tests {
         assert!(
             (size.height - expected_line_height).abs() < 1.0,
             "Line height {} should be close to {} (font_size * 1.2)",
-            size.height, expected_line_height
+            size.height,
+            expected_line_height
         );
     }
 
@@ -641,7 +659,10 @@ mod tests {
         let font_size = 14.0;
 
         let text_run = system.layout("A", Point::ZERO, font_size, Hsla::white());
-        assert!(!text_run.glyphs.is_empty(), "Should have at least one glyph");
+        assert!(
+            !text_run.glyphs.is_empty(),
+            "Should have at least one glyph"
+        );
 
         let glyph = &text_run.glyphs[0];
 
@@ -655,14 +676,19 @@ mod tests {
             glyph.size.width <= max_reasonable_width,
             "Glyph width {} exceeds maximum reasonable width {} for {}px font. \
             This suggests double-scaling bug in glyph.physical() call!",
-            glyph.size.width, max_reasonable_width, font_size
+            glyph.size.width,
+            max_reasonable_width,
+            font_size
         );
 
         // Width should be in reasonable range for monospace
         assert!(
             glyph.size.width >= expected_width * 0.5 && glyph.size.width <= expected_width * 2.0,
             "Glyph width {} is not in expected range [{}, {}] for {}px monospace font",
-            glyph.size.width, expected_width * 0.5, expected_width * 2.0, font_size
+            glyph.size.width,
+            expected_width * 0.5,
+            expected_width * 2.0,
+            font_size
         );
     }
 
@@ -691,7 +717,8 @@ mod tests {
             spacing >= width * 0.8,
             "Glyph spacing {} is less than 80% of glyph width {}. \
             This indicates glyphs will overlap! Double-scaling bug likely.",
-            spacing, width
+            spacing,
+            width
         );
 
         // Spacing should not be much larger than width either
@@ -699,7 +726,8 @@ mod tests {
             spacing <= width * 1.5,
             "Glyph spacing {} is more than 150% of glyph width {}. \
             This indicates unexpected gaps between glyphs.",
-            spacing, width
+            spacing,
+            width
         );
     }
 
@@ -733,13 +761,17 @@ mod tests {
             (size_2x / size_1x - 1.0).abs() < tolerance,
             "Glyph size at 2x ({}) differs too much from 1x ({}). Ratio: {}. \
             LOGICAL size should be roughly consistent across scale factors!",
-            size_2x, size_1x, size_2x / size_1x
+            size_2x,
+            size_1x,
+            size_2x / size_1x
         );
         assert!(
             (size_3x / size_1x - 1.0).abs() < tolerance,
             "Glyph size at 3x ({}) differs too much from 1x ({}). Ratio: {}. \
             LOGICAL size should be roughly consistent across scale factors!",
-            size_3x, size_1x, size_3x / size_1x
+            size_3x,
+            size_1x,
+            size_3x / size_1x
         );
     }
 
@@ -756,7 +788,9 @@ mod tests {
         let text_run = system.layout(text, Point::ZERO, font_size, Hsla::white());
 
         // Find the rightmost extent of any glyph
-        let rightmost_extent = text_run.glyphs.iter()
+        let rightmost_extent = text_run
+            .glyphs
+            .iter()
             .map(|g| g.offset.x + g.size.width)
             .fold(0.0f32, |a, b| a.max(b));
 
@@ -766,7 +800,8 @@ mod tests {
             measured_width >= rightmost_extent - 1.0,
             "Measured width {} is less than rightmost glyph extent {}. \
             This means glyphs extend beyond their allocated space!",
-            measured_width, rightmost_extent
+            measured_width,
+            rightmost_extent
         );
 
         // Measured width should not be drastically larger than glyph extent
@@ -774,7 +809,8 @@ mod tests {
             measured_width <= rightmost_extent * 1.2,
             "Measured width {} is much larger than rightmost glyph extent {}. \
             This suggests measurement inconsistency.",
-            measured_width, rightmost_extent
+            measured_width,
+            rightmost_extent
         );
     }
 
@@ -795,12 +831,16 @@ mod tests {
         let run2 = system.layout(span2, Point::new(width1, 0.0), font_size, Hsla::white());
 
         // Find the rightmost ABSOLUTE extent of span1 (origin + offset + width)
-        let span1_right = run1.glyphs.iter()
+        let span1_right = run1
+            .glyphs
+            .iter()
             .map(|g| run1.origin.x + g.offset.x + g.size.width)
             .fold(0.0f32, |a, b| a.max(b));
 
         // Find the leftmost ABSOLUTE position of span2 (origin + offset)
-        let span2_left = run2.glyphs.iter()
+        let span2_left = run2
+            .glyphs
+            .iter()
             .map(|g| run2.origin.x + g.offset.x)
             .fold(f32::MAX, |a, b| a.min(b));
 
@@ -809,7 +849,8 @@ mod tests {
             span2_left >= span1_right - 2.0,
             "Consecutive spans overlap! Span1 ends at {}, span2 starts at {}. \
             This will cause text rendering issues!",
-            span1_right, span2_left
+            span1_right,
+            span2_left
         );
     }
 
@@ -832,7 +873,9 @@ mod tests {
         assert!(
             (ratio - 2.0).abs() < 0.3,
             "28px glyph ({}) should be ~2x 14px glyph ({}). Actual ratio: {}",
-            size_28, size_14, ratio
+            size_28,
+            size_14,
+            ratio
         );
     }
 }

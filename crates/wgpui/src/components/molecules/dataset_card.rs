@@ -80,7 +80,11 @@ pub struct DatasetInfo {
 }
 
 impl DatasetInfo {
-    pub fn new(id: impl Into<String>, name: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             id: id.into(),
             name: name.into(),
@@ -364,7 +368,10 @@ impl Component for DatasetCard {
         );
         let btn_run = cx.text.layout(
             "Download",
-            Point::new(download_bounds.origin.x + 8.0, download_bounds.origin.y + 5.0),
+            Point::new(
+                download_bounds.origin.x + 8.0,
+                download_bounds.origin.y + 5.0,
+            ),
             theme::font_size::XS,
             theme::accent::PRIMARY,
         );
@@ -426,11 +433,15 @@ mod tests {
 
     #[test]
     fn test_dataset_info() {
-        let dataset = DatasetInfo::new("d1", "Training Corpus", "Large language model training data")
-            .format(DataFormat::Parquet)
-            .size(5_368_709_120) // 5 GB
-            .rows(10_000_000)
-            .author("openai");
+        let dataset = DatasetInfo::new(
+            "d1",
+            "Training Corpus",
+            "Large language model training data",
+        )
+        .format(DataFormat::Parquet)
+        .size(5_368_709_120) // 5 GB
+        .rows(10_000_000)
+        .author("openai");
 
         assert_eq!(dataset.name, "Training Corpus");
         assert_eq!(dataset.format, DataFormat::Parquet);

@@ -1,5 +1,5 @@
 use crate::components::{Component, PaintContext as ComponentPaintContext};
-use crate::layout::{px, LayoutEngine, LayoutId, LayoutStyle};
+use crate::layout::{LayoutEngine, LayoutId, LayoutStyle, px};
 use crate::window::DispatchTree;
 use crate::{Bounds, Point, Scene, Size, TextSystem};
 
@@ -193,7 +193,6 @@ impl<C: Component + 'static> Element for ComponentElement<C> {
         _request_layout: &mut Self::RequestLayoutState,
         _cx: &mut PrepaintContext,
     ) -> Self::PrepaintState {
-        
     }
 
     fn paint(

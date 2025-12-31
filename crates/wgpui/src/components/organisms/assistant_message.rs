@@ -96,7 +96,8 @@ impl Component for AssistantMessage {
         );
 
         let content_y = bounds.origin.y + padding + header_height + theme::spacing::SM;
-        let mut content_height = bounds.size.height - padding * 2.0 - header_height - theme::spacing::SM;
+        let mut content_height =
+            bounds.size.height - padding * 2.0 - header_height - theme::spacing::SM;
 
         if self.streaming {
             content_height -= 20.0;
@@ -128,7 +129,12 @@ impl Component for AssistantMessage {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

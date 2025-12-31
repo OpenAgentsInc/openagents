@@ -50,8 +50,14 @@ impl DiffToolCall {
     }
 
     pub fn lines(mut self, lines: Vec<DiffLine>) -> Self {
-        self.additions = lines.iter().filter(|l| l.kind == DiffLineKind::Addition).count();
-        self.deletions = lines.iter().filter(|l| l.kind == DiffLineKind::Deletion).count();
+        self.additions = lines
+            .iter()
+            .filter(|l| l.kind == DiffLineKind::Addition)
+            .count();
+        self.deletions = lines
+            .iter()
+            .filter(|l| l.kind == DiffLineKind::Deletion)
+            .count();
         self.lines = lines;
         self
     }
@@ -156,13 +162,23 @@ impl Component for DiffToolCall {
                 .font_size(theme::font_size::SM)
                 .color(color);
             text.paint(
-                Bounds::new(bounds.origin.x + padding + 8.0, y, content_width - 16.0, line_height),
+                Bounds::new(
+                    bounds.origin.x + padding + 8.0,
+                    y,
+                    content_width - 16.0,
+                    line_height,
+                ),
                 cx,
             );
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -195,8 +211,18 @@ mod tests {
     #[test]
     fn test_diff_tool_call_builder() {
         let lines = vec![
-            DiffLine { kind: DiffLineKind::Addition, content: "new line".into(), old_line: None, new_line: Some(1) },
-            DiffLine { kind: DiffLineKind::Deletion, content: "old line".into(), old_line: Some(1), new_line: None },
+            DiffLine {
+                kind: DiffLineKind::Addition,
+                content: "new line".into(),
+                old_line: None,
+                new_line: Some(1),
+            },
+            DiffLine {
+                kind: DiffLineKind::Deletion,
+                content: "old line".into(),
+                old_line: Some(1),
+                new_line: None,
+            },
         ];
 
         let diff = DiffToolCall::new("test.rs")

@@ -113,7 +113,10 @@ pub fn style_separator(props: StyleSeparatorProps) -> String {
 
     let mut parts = Vec::new();
 
-    if matches!(direction, SeparatorDirection::Left | SeparatorDirection::Both) {
+    if matches!(
+        direction,
+        SeparatorDirection::Left | SeparatorDirection::Both
+    ) {
         parts.extend([
             format!("{color_active} 0px"),
             format!("{color_active} {width}"),
@@ -129,7 +132,10 @@ pub fn style_separator(props: StyleSeparatorProps) -> String {
         parts.push(format!("{color_static} 0%"));
     }
 
-    if matches!(direction, SeparatorDirection::Right | SeparatorDirection::Both) {
+    if matches!(
+        direction,
+        SeparatorDirection::Right | SeparatorDirection::Both
+    ) {
         parts.extend([
             format!("{color_static} calc(100% - {width} * 2 - {space} * 2)"),
             format!("transparent calc(100% - {width} * 2 - {space} * 2)"),

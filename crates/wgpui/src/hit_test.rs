@@ -17,7 +17,9 @@ pub struct Hit {
 
 impl Hit {
     pub fn new() -> Self {
-        Self { entries: Vec::new() }
+        Self {
+            entries: Vec::new(),
+        }
     }
 }
 

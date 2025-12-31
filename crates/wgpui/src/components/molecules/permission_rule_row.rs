@@ -38,10 +38,10 @@ impl PermissionDecision {
 
     pub fn color(&self) -> Hsla {
         match self {
-            PermissionDecision::Ask => Hsla::new(200.0, 0.6, 0.5, 1.0),      // Blue
+            PermissionDecision::Ask => Hsla::new(200.0, 0.6, 0.5, 1.0), // Blue
             PermissionDecision::AllowAlways => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
-            PermissionDecision::AllowOnce => Hsla::new(45.0, 0.7, 0.5, 1.0),  // Gold
-            PermissionDecision::Deny => Hsla::new(0.0, 0.8, 0.5, 1.0),       // Red
+            PermissionDecision::AllowOnce => Hsla::new(45.0, 0.7, 0.5, 1.0), // Gold
+            PermissionDecision::Deny => Hsla::new(0.0, 0.8, 0.5, 1.0),  // Red
         }
     }
 }
@@ -156,18 +156,24 @@ impl PermissionRuleRow {
         let y = bounds.origin.y + (bounds.size.height - btn_height) / 2.0;
 
         vec![
-            (RuleAction::Edit, Bounds::new(
-                bounds.origin.x + bounds.size.width - padding - btn_width * 2.0 - gap,
-                y,
-                btn_width,
-                btn_height,
-            )),
-            (RuleAction::Delete, Bounds::new(
-                bounds.origin.x + bounds.size.width - padding - btn_width,
-                y,
-                btn_width,
-                btn_height,
-            )),
+            (
+                RuleAction::Edit,
+                Bounds::new(
+                    bounds.origin.x + bounds.size.width - padding - btn_width * 2.0 - gap,
+                    y,
+                    btn_width,
+                    btn_height,
+                ),
+            ),
+            (
+                RuleAction::Delete,
+                Bounds::new(
+                    bounds.origin.x + bounds.size.width - padding - btn_width,
+                    y,
+                    btn_width,
+                    btn_height,
+                ),
+            ),
         ]
     }
 }
@@ -195,7 +201,12 @@ impl Component for PermissionRuleRow {
         // Tool icon
         let mut icon = ToolIcon::new(self.rule.tool_type).size(18.0);
         icon.paint(
-            Bounds::new(x, bounds.origin.y + (bounds.size.height - 18.0) / 2.0, 18.0, 18.0),
+            Bounds::new(
+                x,
+                bounds.origin.y + (bounds.size.height - 18.0) / 2.0,
+                18.0,
+                18.0,
+            ),
             cx,
         );
         x += 26.0;
@@ -224,7 +235,12 @@ impl Component for PermissionRuleRow {
         }
 
         // Decision badge
-        let decision_bounds = Bounds::new(x, bounds.origin.y + (bounds.size.height - 22.0) / 2.0, 60.0, 22.0);
+        let decision_bounds = Bounds::new(
+            x,
+            bounds.origin.y + (bounds.size.height - 22.0) / 2.0,
+            60.0,
+            22.0,
+        );
         cx.scene.draw_quad(
             Quad::new(decision_bounds)
                 .with_background(decision_color.with_alpha(0.2))
@@ -233,7 +249,10 @@ impl Component for PermissionRuleRow {
 
         let decision_run = cx.text.layout(
             self.rule.decision.short_label(),
-            Point::new(decision_bounds.origin.x + 6.0, decision_bounds.origin.y + 4.0),
+            Point::new(
+                decision_bounds.origin.x + 6.0,
+                decision_bounds.origin.y + 4.0,
+            ),
             theme::font_size::XS,
             decision_color,
         );
@@ -263,7 +282,8 @@ impl Component for PermissionRuleRow {
                     theme::bg::MUTED
                 };
 
-                cx.scene.draw_quad(Quad::new(action_bounds).with_background(btn_bg));
+                cx.scene
+                    .draw_quad(Quad::new(action_bounds).with_background(btn_bg));
 
                 let label = match action {
                     RuleAction::Edit => "Edit",

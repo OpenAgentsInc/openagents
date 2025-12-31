@@ -255,9 +255,8 @@ impl Component for Dropdown {
                 let is_selected = self.selected_index == Some(i);
 
                 if is_hovered || is_selected {
-                    cx.scene.draw_quad(
-                        Quad::new(item_bounds).with_background(self.hover_color),
-                    );
+                    cx.scene
+                        .draw_quad(Quad::new(item_bounds).with_background(self.hover_color));
                 }
 
                 let option_text_y = item_y + item_height * 0.5 - self.font_size * 0.55;
@@ -272,12 +271,7 @@ impl Component for Dropdown {
         }
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        _cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
         match event {
             InputEvent::MouseMove { x, y } => {
                 let point = Point::new(*x, *y);
@@ -308,10 +302,11 @@ impl Component for Dropdown {
                         );
 
                         if dropdown_bounds.contains(point)
-                            && let Some(index) = self.option_at_y(*y, dropdown_bounds.origin.y) {
-                                self.select(index);
-                                return EventResult::Handled;
-                            }
+                            && let Some(index) = self.option_at_y(*y, dropdown_bounds.origin.y)
+                        {
+                            self.select(index);
+                            return EventResult::Handled;
+                        }
 
                         self.close();
                         return EventResult::Handled;
@@ -396,10 +391,7 @@ mod tests {
 
     #[test]
     fn test_dropdown_builder() {
-        let options = vec![
-            DropdownOption::simple("A"),
-            DropdownOption::simple("B"),
-        ];
+        let options = vec![DropdownOption::simple("A"), DropdownOption::simple("B")];
         let dropdown = Dropdown::new(options)
             .with_id(42)
             .selected(1)
@@ -436,10 +428,7 @@ mod tests {
 
     #[test]
     fn test_dropdown_select() {
-        let options = vec![
-            DropdownOption::simple("A"),
-            DropdownOption::simple("B"),
-        ];
+        let options = vec![DropdownOption::simple("A"), DropdownOption::simple("B")];
         let mut dropdown = Dropdown::new(options);
         dropdown.open = true;
 
@@ -450,10 +439,7 @@ mod tests {
 
     #[test]
     fn test_dropdown_set_selected() {
-        let options = vec![
-            DropdownOption::simple("A"),
-            DropdownOption::simple("B"),
-        ];
+        let options = vec![DropdownOption::simple("A"), DropdownOption::simple("B")];
         let mut dropdown = Dropdown::new(options);
 
         dropdown.set_selected(Some(1));

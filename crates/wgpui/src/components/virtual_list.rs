@@ -193,7 +193,8 @@ mod tests {
         let items: Vec<i32> = (0..100).collect();
         let mut list = VirtualList::new(items, 40.0, |_, _, _, _| {});
 
-        list.scroll.set_viewport(Bounds::new(0.0, 0.0, 100.0, 200.0));
+        list.scroll
+            .set_viewport(Bounds::new(0.0, 0.0, 100.0, 200.0));
 
         list.scroll_to_item(10);
         assert_eq!(list.scroll_offset().y, 400.0);

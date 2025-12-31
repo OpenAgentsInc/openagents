@@ -223,8 +223,8 @@ impl Component for ThreadView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::organisms::ThreadEntryType as EntryType;
     use crate::components::Text;
+    use crate::components::organisms::ThreadEntryType as EntryType;
 
     #[test]
     fn test_thread_view_new() {

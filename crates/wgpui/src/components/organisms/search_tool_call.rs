@@ -101,7 +101,12 @@ impl Component for SearchToolCall {
             .font_size(theme::font_size::XS)
             .color(theme::text::MUTED);
         summary_text.paint(
-            Bounds::new(bounds.origin.x + padding, summary_y, bounds.size.width - padding * 2.0, 16.0),
+            Bounds::new(
+                bounds.origin.x + padding,
+                summary_y,
+                bounds.size.width - padding * 2.0,
+                16.0,
+            ),
             cx,
         );
 
@@ -117,8 +122,13 @@ impl Component for SearchToolCall {
             let y = content_y + i as f32 * match_height;
 
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(bounds.origin.x + padding, y, content_width, match_height - 4.0))
-                    .with_background(theme::bg::MUTED),
+                Quad::new(Bounds::new(
+                    bounds.origin.x + padding,
+                    y,
+                    content_width,
+                    match_height - 4.0,
+                ))
+                .with_background(theme::bg::MUTED),
             );
 
             let file_line = format!("{}:{}", m.file, m.line);
@@ -126,7 +136,12 @@ impl Component for SearchToolCall {
                 .font_size(theme::font_size::XS)
                 .color(theme::accent::PRIMARY);
             file_text.paint(
-                Bounds::new(bounds.origin.x + padding + 8.0, y + 4.0, content_width - 16.0, 14.0),
+                Bounds::new(
+                    bounds.origin.x + padding + 8.0,
+                    y + 4.0,
+                    content_width - 16.0,
+                    14.0,
+                ),
                 cx,
             );
 
@@ -134,13 +149,23 @@ impl Component for SearchToolCall {
                 .font_size(theme::font_size::SM)
                 .color(theme::text::PRIMARY);
             content_text.paint(
-                Bounds::new(bounds.origin.x + padding + 8.0, y + 18.0, content_width - 16.0, 14.0),
+                Bounds::new(
+                    bounds.origin.x + padding + 8.0,
+                    y + 18.0,
+                    content_width - 16.0,
+                    14.0,
+                ),
                 cx,
             );
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -173,8 +198,16 @@ mod tests {
     #[test]
     fn test_search_tool_call_builder() {
         let matches = vec![
-            SearchMatch { file: "main.rs".into(), line: 10, content: "TODO: fix this".into() },
-            SearchMatch { file: "lib.rs".into(), line: 20, content: "TODO: refactor".into() },
+            SearchMatch {
+                file: "main.rs".into(),
+                line: 10,
+                content: "TODO: fix this".into(),
+            },
+            SearchMatch {
+                file: "lib.rs".into(),
+                line: 20,
+                content: "TODO: refactor".into(),
+            },
         ];
 
         let search = SearchToolCall::new("TODO")

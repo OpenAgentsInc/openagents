@@ -36,11 +36,11 @@ impl SkillCategory {
     pub fn color(&self) -> Hsla {
         match self {
             SkillCategory::CodeGeneration => Hsla::new(200.0, 0.7, 0.5, 1.0), // Blue
-            SkillCategory::DataAnalysis => Hsla::new(270.0, 0.6, 0.55, 1.0), // Purple
+            SkillCategory::DataAnalysis => Hsla::new(270.0, 0.6, 0.55, 1.0),  // Purple
             SkillCategory::WebAutomation => Hsla::new(120.0, 0.6, 0.45, 1.0), // Green
-            SkillCategory::FileProcessing => Hsla::new(45.0, 0.7, 0.5, 1.0), // Yellow
+            SkillCategory::FileProcessing => Hsla::new(45.0, 0.7, 0.5, 1.0),  // Yellow
             SkillCategory::ApiIntegration => Hsla::new(180.0, 0.6, 0.5, 1.0), // Cyan
-            SkillCategory::TextProcessing => Hsla::new(0.0, 0.6, 0.55, 1.0), // Red
+            SkillCategory::TextProcessing => Hsla::new(0.0, 0.6, 0.55, 1.0),  // Red
             SkillCategory::ImageProcessing => Hsla::new(310.0, 0.6, 0.55, 1.0), // Magenta
             SkillCategory::Other => theme::text::MUTED,
         }
@@ -92,7 +92,11 @@ pub struct SkillInfo {
 }
 
 impl SkillInfo {
-    pub fn new(id: impl Into<String>, name: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             id: id.into(),
             name: name.into(),

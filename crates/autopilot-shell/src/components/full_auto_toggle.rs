@@ -4,7 +4,8 @@
 //! Visual: ○ FULL AUTO OFF / ● FULL AUTO ON
 
 use wgpui::{
-    Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad, theme,
+    Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad,
+    theme,
 };
 
 /// Full Auto mode toggle - compact one-line style
@@ -49,15 +50,14 @@ impl Component for FullAutoToggle {
 
         // Hover background
         if self.hovered {
-            cx.scene.draw_quad(
-                Quad::new(bounds).with_background(theme::bg::MUTED.with_alpha(0.3)),
-            );
+            cx.scene
+                .draw_quad(Quad::new(bounds).with_background(theme::bg::MUTED.with_alpha(0.3)));
         }
 
         // Indicator + Label + State all on one line
         // Use brighter colors for visibility on dark background
         let bright_green = Hsla::new(0.403, 1.0, 0.6, 1.0); // Brighter than theme::accent::GREEN
-        let bright_red = Hsla::new(0.0, 0.8, 0.6, 1.0);     // Brighter than theme::accent::RED
+        let bright_red = Hsla::new(0.0, 0.8, 0.6, 1.0); // Brighter than theme::accent::RED
         let (indicator, state_text, state_color) = if self.enabled {
             ("●", "ON", bright_green)
         } else {
@@ -65,22 +65,36 @@ impl Component for FullAutoToggle {
         };
 
         // Draw indicator
-        let indicator_run = cx.text.layout(indicator, Point::new(x, y), font_size, state_color);
+        let indicator_run = cx
+            .text
+            .layout(indicator, Point::new(x, y), font_size, state_color);
         cx.scene.draw_text(indicator_run);
 
         // "FULL AUTO" label
         let label_x = x + font_size * 1.2;
-        let label = cx.text.layout("FULL AUTO", Point::new(label_x, y), font_size, theme::text::MUTED);
+        let label = cx.text.layout(
+            "FULL AUTO",
+            Point::new(label_x, y),
+            font_size,
+            theme::text::MUTED,
+        );
         cx.scene.draw_text(label);
 
         // State text (ON/OFF)
         let state_x = label_x + font_size * 6.5;
-        let state_label = cx.text.layout(state_text, Point::new(state_x, y), font_size, state_color);
+        let state_label =
+            cx.text
+                .layout(state_text, Point::new(state_x, y), font_size, state_color);
         cx.scene.draw_text(state_label);
 
         // Hint text
         let hint_x = state_x + font_size * 2.5;
-        let hint = cx.text.layout("(⌘A)", Point::new(hint_x, y), 10.0, theme::text::MUTED.with_alpha(0.5));
+        let hint = cx.text.layout(
+            "(⌘A)",
+            Point::new(hint_x, y),
+            10.0,
+            theme::text::MUTED.with_alpha(0.5),
+        );
         cx.scene.draw_text(hint);
 
         // Subtle divider line at bottom

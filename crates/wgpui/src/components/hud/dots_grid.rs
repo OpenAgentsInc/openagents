@@ -5,8 +5,7 @@ use crate::{Bounds, Hsla, InputEvent, Quad};
 
 use super::backgrounds::BackgroundAnimator;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum DotShape {
     #[default]
     Box,
@@ -14,11 +13,9 @@ pub enum DotShape {
     Cross,
 }
 
-
 /// Origin point for animation reveal effect.
 /// Dots animate outward from this point.
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum DotsOrigin {
     /// Animate from left edge
     Left,
@@ -34,7 +31,6 @@ pub enum DotsOrigin {
     /// Animate from custom point (x%, y%) where 0.0-1.0
     Point(f32, f32),
 }
-
 
 pub struct DotsGrid {
     id: Option<ComponentId>,
@@ -178,7 +174,9 @@ impl DotsGrid {
     pub fn set_state(&mut self, state: AnimatorState) {
         self.animator_enabled = true;
         self.state = state;
-        self.animation_progress = self.animator.update_with_delta(state, std::time::Duration::ZERO);
+        self.animation_progress = self
+            .animator
+            .update_with_delta(state, std::time::Duration::ZERO);
     }
 
     fn distance_from_origin(&self, x: f32, y: f32, width: f32, height: f32) -> f32 {
@@ -187,12 +185,8 @@ impl DotsGrid {
             DotsOrigin::Right => 1.0 - x / width,
             DotsOrigin::Top => y / height,
             DotsOrigin::Bottom => 1.0 - y / height,
-            DotsOrigin::Center => {
-                self.distance_from_point(x, y, width, height, 0.5, 0.5)
-            }
-            DotsOrigin::Point(px, py) => {
-                self.distance_from_point(x, y, width, height, px, py)
-            }
+            DotsOrigin::Center => self.distance_from_point(x, y, width, height, 0.5, 0.5),
+            DotsOrigin::Point(px, py) => self.distance_from_point(x, y, width, height, px, py),
         }
     }
 
@@ -213,11 +207,7 @@ impl DotsGrid {
         let corner_y = if origin_y < 0.5 { height } else { 0.0 };
         let max_dist = ((ox - corner_x).powi(2) + (oy - corner_y).powi(2)).sqrt();
 
-        if max_dist > 0.0 {
-            dist / max_dist
-        } else {
-            0.0
-        }
+        if max_dist > 0.0 { dist / max_dist } else { 0.0 }
     }
 
     fn dot_alpha(&self, distance_progress: f32) -> f32 {
@@ -254,8 +244,7 @@ impl DotsGrid {
         match self.shape {
             DotShape::Box => {
                 cx.scene.draw_quad(
-                    Quad::new(Bounds::new(x - half, y - half, s, s))
-                        .with_background(color),
+                    Quad::new(Bounds::new(x - half, y - half, s, s)).with_background(color),
                 );
             }
             DotShape::Circle => {
@@ -273,25 +262,27 @@ impl DotsGrid {
                     let max_x = x1.max(x2).max(x);
                     let max_y = y1.max(y2).max(y);
                     cx.scene.draw_quad(
-                        Quad::new(Bounds::new(min_x, min_y, (max_x - min_x).max(1.0), (max_y - min_y).max(1.0)))
-                            .with_background(color),
+                        Quad::new(Bounds::new(
+                            min_x,
+                            min_y,
+                            (max_x - min_x).max(1.0),
+                            (max_y - min_y).max(1.0),
+                        ))
+                        .with_background(color),
                     );
                 }
                 cx.scene.draw_quad(
-                    Quad::new(Bounds::new(x - half, y - half, s, s))
-                        .with_background(color),
+                    Quad::new(Bounds::new(x - half, y - half, s, s)).with_background(color),
                 );
             }
             DotShape::Cross => {
                 let t = self.cross_thickness;
                 let half_t = t / 2.0;
                 cx.scene.draw_quad(
-                    Quad::new(Bounds::new(x - half, y - half_t, s, t))
-                        .with_background(color),
+                    Quad::new(Bounds::new(x - half, y - half_t, s, t)).with_background(color),
                 );
                 cx.scene.draw_quad(
-                    Quad::new(Bounds::new(x - half_t, y - half, t, s))
-                        .with_background(color),
+                    Quad::new(Bounds::new(x - half_t, y - half, t, s)).with_background(color),
                 );
             }
         }
@@ -388,10 +379,7 @@ mod tests {
 
     #[test]
     fn test_dots_grid_clamping() {
-        let grid = DotsGrid::new()
-            .distance(2.0)
-            .size(0.5)
-            .opacity(1.5);
+        let grid = DotsGrid::new().distance(2.0).size(0.5).opacity(1.5);
 
         assert_eq!(grid.distance, 5.0);
         assert_eq!(grid.size, 1.0);
@@ -456,10 +444,10 @@ mod tests {
         let grid = DotsGrid::new()
             .animation_progress(0.5)
             .easing(Easing::Linear);
-        
+
         let alpha_near = grid.dot_alpha(0.25);
         let alpha_far = grid.dot_alpha(0.75);
-        
+
         assert!(alpha_near > alpha_far);
     }
 }

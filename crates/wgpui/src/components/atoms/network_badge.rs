@@ -33,7 +33,7 @@ impl BitcoinNetwork {
 
     pub fn color(&self) -> Hsla {
         match self {
-            BitcoinNetwork::Mainnet => Hsla::new(35.0, 0.9, 0.55, 1.0),  // Bitcoin orange
+            BitcoinNetwork::Mainnet => Hsla::new(35.0, 0.9, 0.55, 1.0), // Bitcoin orange
             BitcoinNetwork::Testnet => Hsla::new(200.0, 0.7, 0.5, 1.0), // Blue
             BitcoinNetwork::Signet => Hsla::new(280.0, 0.6, 0.5, 1.0),  // Purple
             BitcoinNetwork::Regtest => theme::text::MUTED,
@@ -106,16 +106,18 @@ impl Component for NetworkBadge {
         let text_x = bounds.origin.x + 6.0;
         let text_y = bounds.origin.y + (bounds.size.height - font_size) / 2.0;
 
-        let text_run = cx.text.layout(
-            text,
-            Point::new(text_x, text_y),
-            font_size,
-            color,
-        );
+        let text_run = cx
+            .text
+            .layout(text, Point::new(text_x, text_y), font_size, color);
         cx.scene.draw_text(text_run);
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

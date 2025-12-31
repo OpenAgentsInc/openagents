@@ -164,7 +164,10 @@ impl Component for RelayRow {
 
             // Events count
             let events_x = bounds.origin.x + 250.0;
-            let events_text = format!("↓{} ↑{}", self.relay.events_received, self.relay.events_sent);
+            let events_text = format!(
+                "↓{} ↑{}",
+                self.relay.events_received, self.relay.events_sent
+            );
             let events_run = cx.text.layout(
                 &events_text,
                 Point::new(events_x, name_y),

@@ -43,17 +43,20 @@ impl DaemonStatus {
 
     pub fn color(&self) -> Hsla {
         match self {
-            DaemonStatus::Offline => Hsla::new(0.0, 0.0, 0.4, 1.0),       // Dark gray
-            DaemonStatus::Starting => Hsla::new(200.0, 0.7, 0.55, 1.0),   // Blue
-            DaemonStatus::Online => Hsla::new(120.0, 0.7, 0.45, 1.0),     // Green
-            DaemonStatus::Restarting => Hsla::new(45.0, 0.7, 0.5, 1.0),   // Gold
-            DaemonStatus::Error => Hsla::new(0.0, 0.8, 0.5, 1.0),         // Red
-            DaemonStatus::Stopping => Hsla::new(30.0, 0.7, 0.5, 1.0),     // Orange
+            DaemonStatus::Offline => Hsla::new(0.0, 0.0, 0.4, 1.0), // Dark gray
+            DaemonStatus::Starting => Hsla::new(200.0, 0.7, 0.55, 1.0), // Blue
+            DaemonStatus::Online => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
+            DaemonStatus::Restarting => Hsla::new(45.0, 0.7, 0.5, 1.0), // Gold
+            DaemonStatus::Error => Hsla::new(0.0, 0.8, 0.5, 1.0),   // Red
+            DaemonStatus::Stopping => Hsla::new(30.0, 0.7, 0.5, 1.0), // Orange
         }
     }
 
     pub fn is_operational(&self) -> bool {
-        matches!(self, DaemonStatus::Online | DaemonStatus::Starting | DaemonStatus::Restarting)
+        matches!(
+            self,
+            DaemonStatus::Online | DaemonStatus::Starting | DaemonStatus::Restarting
+        )
     }
 }
 
@@ -129,21 +132,30 @@ impl Component for DaemonStatusBadge {
 
         // Icon
         let icon = self.status.icon();
-        let icon_run = cx.text.layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
+        let icon_run = cx
+            .text
+            .layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
         cx.scene.draw_text(icon_run);
 
         if !self.compact {
             x += 14.0;
             // Label
             let label = self.status.label();
-            let label_run = cx.text.layout(label, Point::new(x, text_y), theme::font_size::XS, color);
+            let label_run =
+                cx.text
+                    .layout(label, Point::new(x, text_y), theme::font_size::XS, color);
             cx.scene.draw_text(label_run);
             x += label.len() as f32 * 6.5 + 8.0;
 
             // Uptime
             if let Some(secs) = self.uptime_secs {
                 let uptime = format_uptime(secs);
-                let uptime_run = cx.text.layout(&uptime, Point::new(x, text_y), theme::font_size::XS, theme::text::MUTED);
+                let uptime_run = cx.text.layout(
+                    &uptime,
+                    Point::new(x, text_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
                 cx.scene.draw_text(uptime_run);
                 x += uptime.len() as f32 * 6.5 + 6.0;
             }
@@ -151,13 +163,23 @@ impl Component for DaemonStatusBadge {
             // Worker count
             if let Some(count) = self.worker_count {
                 let workers_text = format!("{} workers", count);
-                let workers_run = cx.text.layout(&workers_text, Point::new(x, text_y), theme::font_size::XS, theme::text::MUTED);
+                let workers_run = cx.text.layout(
+                    &workers_text,
+                    Point::new(x, text_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
                 cx.scene.draw_text(workers_run);
             }
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -170,8 +192,12 @@ impl Component for DaemonStatusBadge {
             (Some(28.0), Some(22.0))
         } else {
             let mut width = 12.0 + 14.0 + self.status.label().len() as f32 * 6.5;
-            if self.uptime_secs.is_some() { width += 50.0; }
-            if self.worker_count.is_some() { width += 70.0; }
+            if self.uptime_secs.is_some() {
+                width += 50.0;
+            }
+            if self.worker_count.is_some() {
+                width += 70.0;
+            }
             (Some(width), Some(22.0))
         }
     }

@@ -148,8 +148,8 @@ impl Default for Keymap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::{Action, NoAction};
     use crate::NamedKey;
+    use crate::action::{Action, NoAction};
 
     #[derive(Debug, Clone, Default)]
     struct ActionA;
@@ -314,7 +314,10 @@ mod tests {
         keymap.add(KeyBinding::new("cmd-s", ActionA).unwrap());
         keymap.add(KeyBinding::new("escape", ActionB).unwrap());
 
-        assert_eq!(keymap.binding_for_action("ActionA"), Some("cmd-s".to_string()));
+        assert_eq!(
+            keymap.binding_for_action("ActionA"),
+            Some("cmd-s".to_string())
+        );
         assert_eq!(
             keymap.binding_for_action("ActionB"),
             Some("escape".to_string())

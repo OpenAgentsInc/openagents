@@ -96,7 +96,11 @@ impl ContactInfo {
 
     fn short_npub(&self) -> String {
         if self.npub.len() > 20 {
-            format!("{}...{}", &self.npub[..12], &self.npub[self.npub.len()-8..])
+            format!(
+                "{}...{}",
+                &self.npub[..12],
+                &self.npub[self.npub.len() - 8..]
+            )
         } else {
             self.npub.clone()
         }
@@ -207,7 +211,9 @@ impl Component for ContactCard {
         );
 
         // Initial letter
-        let initial = self.contact.display_name
+        let initial = self
+            .contact
+            .display_name
             .as_ref()
             .and_then(|n| n.chars().next())
             .unwrap_or('?')
@@ -266,7 +272,10 @@ impl Component for ContactCard {
         y += 18.0;
 
         // NIP-05 or npub
-        let identifier = self.contact.nip05.clone()
+        let identifier = self
+            .contact
+            .nip05
+            .clone()
             .unwrap_or_else(|| self.contact.short_npub());
         let id_run = cx.text.layout(
             &identifier,
@@ -296,7 +305,11 @@ impl Component for ContactCard {
 
         // Follow button
         let follow_bounds = self.follow_button_bounds(&bounds);
-        let follow_text = if self.contact.following { "Following" } else { "Follow" };
+        let follow_text = if self.contact.following {
+            "Following"
+        } else {
+            "Follow"
+        };
         let follow_color = if self.contact.following {
             Hsla::new(120.0, 0.6, 0.45, 1.0)
         } else {
@@ -356,7 +369,10 @@ impl Component for ContactCard {
                 self.follow_hovered = follow_bounds.contains(point);
                 self.dm_hovered = dm_bounds.contains(point);
 
-                if was_hovered != self.hovered || was_follow != self.follow_hovered || was_dm != self.dm_hovered {
+                if was_hovered != self.hovered
+                    || was_follow != self.follow_hovered
+                    || was_dm != self.dm_hovered
+                {
                     return EventResult::Handled;
                 }
             }

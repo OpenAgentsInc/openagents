@@ -86,7 +86,9 @@ pub fn load_image_from_bytes(bytes: &[u8]) -> Result<ImageData, ImageLoadError> 
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn load_image_from_path(path: impl AsRef<std::path::Path>) -> Result<ImageData, ImageLoadError> {
+pub fn load_image_from_path(
+    path: impl AsRef<std::path::Path>,
+) -> Result<ImageData, ImageLoadError> {
     let bytes = std::fs::read(path).map_err(|_| ImageLoadError::IoFailed)?;
     load_image_from_bytes(&bytes)
 }
@@ -107,10 +109,16 @@ pub async fn load_image_from_url(url: &str) -> Result<ImageData, ImageLoadError>
     let response_value = JsFuture::from(window.fetch_with_str(url))
         .await
         .map_err(|_| ImageLoadError::IoFailed)?;
-    let response: web_sys::Response = response_value.dyn_into().map_err(|_| ImageLoadError::IoFailed)?;
-    let buffer = JsFuture::from(response.array_buffer().map_err(|_| ImageLoadError::IoFailed)?)
-        .await
+    let response: web_sys::Response = response_value
+        .dyn_into()
         .map_err(|_| ImageLoadError::IoFailed)?;
+    let buffer = JsFuture::from(
+        response
+            .array_buffer()
+            .map_err(|_| ImageLoadError::IoFailed)?,
+    )
+    .await
+    .map_err(|_| ImageLoadError::IoFailed)?;
     let bytes = js_sys::Uint8Array::new(&buffer).to_vec();
     load_image_from_bytes(&bytes)
 }
@@ -122,8 +130,8 @@ mod scheduler {
     use super::TOSchedulerId;
     use std::collections::HashMap;
     use std::sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     };
     use std::thread;
     use std::time::Duration;
@@ -149,15 +157,19 @@ mod scheduler {
 
         pub fn is_pending(&self, id: Option<&str>) -> bool {
             let id = id.unwrap_or(DEFAULT_ID);
-            self.ledger.lock().map(|m| m.contains_key(id)).unwrap_or(false)
+            self.ledger
+                .lock()
+                .map(|m| m.contains_key(id))
+                .unwrap_or(false)
         }
 
         pub fn stop(&self, id: Option<&str>) {
             let id = id.unwrap_or(DEFAULT_ID);
             if let Ok(mut ledger) = self.ledger.lock()
-                && let Some(flag) = ledger.remove(id) {
-                    flag.store(true, Ordering::SeqCst);
-                }
+                && let Some(flag) = ledger.remove(id)
+            {
+                flag.store(true, Ordering::SeqCst);
+            }
         }
 
         pub fn stop_all(&self) {
@@ -215,8 +227,8 @@ mod scheduler {
     use std::rc::Rc;
     use std::time::Duration;
 
-    use wasm_bindgen::closure::Closure;
     use wasm_bindgen::JsCast;
+    use wasm_bindgen::closure::Closure;
 
     const DEFAULT_ID: &str = "";
 
@@ -284,10 +296,12 @@ mod scheduler {
 
             if let Some(window) = web_sys::window() {
                 let delay_ms = delay.as_millis() as i32;
-                if let Ok(timeout_id) = window.set_timeout_with_callback_and_timeout_and_arguments_0(
-                    closure.as_ref().unchecked_ref(),
-                    delay_ms,
-                ) {
+                if let Ok(timeout_id) = window
+                    .set_timeout_with_callback_and_timeout_and_arguments_0(
+                        closure.as_ref().unchecked_ref(),
+                        delay_ms,
+                    )
+                {
                     ledger_for_insert.borrow_mut().insert(
                         id,
                         Scheduled {
@@ -310,7 +324,7 @@ mod scheduler {
 #[cfg(all(target_arch = "wasm32", not(feature = "web")))]
 compile_error!("tools::TOScheduler requires the `web` feature on wasm32 targets.");
 
-pub use scheduler::{create_to_scheduler, Scheduler as TOScheduler};
+pub use scheduler::{Scheduler as TOScheduler, create_to_scheduler};
 
 #[cfg(test)]
 mod tests {

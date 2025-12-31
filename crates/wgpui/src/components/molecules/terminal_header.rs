@@ -92,7 +92,12 @@ impl Component for TerminalHeader {
         let mut badge = ToolStatusBadge::new(self.status).show_icon(false);
         let (badge_w, _) = badge.size_hint();
         badge.paint(
-            Bounds::new(x, bounds.origin.y, badge_w.unwrap_or(60.0), bounds.size.height),
+            Bounds::new(
+                x,
+                bounds.origin.y,
+                badge_w.unwrap_or(60.0),
+                bounds.size.height,
+            ),
             cx,
         );
         x += badge_w.unwrap_or(60.0) + theme::spacing::SM;
@@ -114,7 +119,12 @@ impl Component for TerminalHeader {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

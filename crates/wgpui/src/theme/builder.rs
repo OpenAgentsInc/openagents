@@ -2,13 +2,12 @@ use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use super::color::{create_theme_color, ThemeColor, ThemeColorSettings};
+use super::color::{ThemeColor, ThemeColorSettings, create_theme_color};
 use super::dynamic::{
-    create_theme_breakpoints, create_theme_multiplier, create_theme_unit,
-    ThemeBreakpointSetting, ThemeBreakpoints, ThemeMultiplier, ThemeMultiplierSettings,
-    ThemeUnit, ThemeUnitSettings,
+    ThemeBreakpointSetting, ThemeBreakpoints, ThemeMultiplier, ThemeMultiplierSettings, ThemeUnit,
+    ThemeUnitSettings, create_theme_breakpoints, create_theme_multiplier, create_theme_unit,
 };
-use super::style::{create_theme_style, ThemeStyle, ThemeStyleSettings};
+use super::style::{ThemeStyle, ThemeStyleSettings, create_theme_style};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThemeStructureKind {
@@ -69,7 +68,10 @@ pub struct ThemeCreator {
 
 impl ThemeCreator {
     pub fn new(structure: ThemeStructure, defaults: ThemeSettingsValue) -> Self {
-        Self { structure, defaults }
+        Self {
+            structure,
+            defaults,
+        }
     }
 
     pub fn create(
@@ -95,7 +97,10 @@ impl ThemeCreator {
     }
 }
 
-pub fn create_create_theme(structure: ThemeStructure, defaults: ThemeSettingsValue) -> ThemeCreator {
+pub fn create_create_theme(
+    structure: ThemeStructure,
+    defaults: ThemeSettingsValue,
+) -> ThemeCreator {
     ThemeCreator::new(structure, defaults)
 }
 
@@ -138,9 +143,9 @@ fn build_theme(
 ) -> Result<ThemeValue, ThemeBuilderError> {
     match structure {
         ThemeStructure::Leaf(kind) => match (kind, settings) {
-            (ThemeStructureKind::Multiplier, ThemeSettingsValue::Multiplier(value)) => {
-                Ok(ThemeValue::Multiplier(create_theme_multiplier(value.clone())))
-            }
+            (ThemeStructureKind::Multiplier, ThemeSettingsValue::Multiplier(value)) => Ok(
+                ThemeValue::Multiplier(create_theme_multiplier(value.clone())),
+            ),
             (ThemeStructureKind::Unit, ThemeSettingsValue::Unit(value)) => {
                 Ok(ThemeValue::Unit(create_theme_unit(value.clone())))
             }
@@ -150,9 +155,9 @@ fn build_theme(
             (ThemeStructureKind::Style, ThemeSettingsValue::Style(value)) => {
                 Ok(ThemeValue::Style(create_theme_style(value.clone())))
             }
-            (ThemeStructureKind::Breakpoints, ThemeSettingsValue::Breakpoints(value)) => {
-                Ok(ThemeValue::Breakpoints(create_theme_breakpoints(value.clone())))
-            }
+            (ThemeStructureKind::Breakpoints, ThemeSettingsValue::Breakpoints(value)) => Ok(
+                ThemeValue::Breakpoints(create_theme_breakpoints(value.clone())),
+            ),
             (ThemeStructureKind::Other, ThemeSettingsValue::Other(value)) => {
                 Ok(ThemeValue::Other(value.clone()))
             }
@@ -202,9 +207,9 @@ mod tests {
         );
         defaults.insert(
             "palette".to_string(),
-            ThemeSettingsValue::Color(ThemeColorSettings::Series(vec![
-                ThemeColorInput::hsl(0.0, 0.0, 50.0, 1.0),
-            ])),
+            ThemeSettingsValue::Color(ThemeColorSettings::Series(vec![ThemeColorInput::hsl(
+                0.0, 0.0, 50.0, 1.0,
+            )])),
         );
         let defaults = ThemeSettingsValue::Group(defaults);
 
@@ -216,9 +221,9 @@ mod tests {
             ThemeSettingsValue::Multiplier(ThemeMultiplierSettings::Scalar(3.0)),
         );
         let theme = creator
-            .create(Some(ThemeSettingsExtensions::Single(ThemeSettingsValue::Group(
-                overrides,
-            ))))
+            .create(Some(ThemeSettingsExtensions::Single(
+                ThemeSettingsValue::Group(overrides),
+            )))
             .expect("theme");
 
         if let ThemeValue::Group(values) = theme {

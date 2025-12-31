@@ -4,9 +4,9 @@
 //! the component under test.
 
 use crate::animation::Easing;
-use crate::components::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{theme, Bounds, InputEvent, MouseButton, Point, Quad};
+use crate::components::{EventContext, PaintContext};
+use crate::{Bounds, InputEvent, MouseButton, Point, Quad, theme};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
@@ -246,16 +246,12 @@ impl InputOverlay {
         let color = theme::accent::PRIMARY;
 
         // Horizontal line
-        cx.scene.draw_quad(
-            Quad::new(Bounds::new(x - half, y - 0.5, size, 1.0))
-                .with_background(color),
-        );
+        cx.scene
+            .draw_quad(Quad::new(Bounds::new(x - half, y - 0.5, size, 1.0)).with_background(color));
 
         // Vertical line
-        cx.scene.draw_quad(
-            Quad::new(Bounds::new(x - 0.5, y - half, 1.0, size))
-                .with_background(color),
-        );
+        cx.scene
+            .draw_quad(Quad::new(Bounds::new(x - 0.5, y - half, 1.0, size)).with_background(color));
     }
 
     /// Paint click ripples.
@@ -297,18 +293,24 @@ impl InputOverlay {
 
         // Calculate base position based on key_position
         let (base_x, base_y, align_right) = match self.key_position {
-            KeyDisplayPosition::BottomLeft => {
-                (bounds.origin.x + padding, bounds.origin.y + bounds.size.height - padding - stack_height, false)
-            }
-            KeyDisplayPosition::BottomRight => {
-                (bounds.origin.x + bounds.size.width - padding, bounds.origin.y + bounds.size.height - padding - stack_height, true)
-            }
+            KeyDisplayPosition::BottomLeft => (
+                bounds.origin.x + padding,
+                bounds.origin.y + bounds.size.height - padding - stack_height,
+                false,
+            ),
+            KeyDisplayPosition::BottomRight => (
+                bounds.origin.x + bounds.size.width - padding,
+                bounds.origin.y + bounds.size.height - padding - stack_height,
+                true,
+            ),
             KeyDisplayPosition::TopLeft => {
                 (bounds.origin.x + padding, bounds.origin.y + padding, false)
             }
-            KeyDisplayPosition::TopRight => {
-                (bounds.origin.x + bounds.size.width - padding, bounds.origin.y + padding, true)
-            }
+            KeyDisplayPosition::TopRight => (
+                bounds.origin.x + bounds.size.width - padding,
+                bounds.origin.y + padding,
+                true,
+            ),
         };
 
         for (i, key) in self.key_presses.iter().enumerate() {
@@ -317,7 +319,11 @@ impl InputOverlay {
 
             // Measure text width (approximate)
             let text_width = key.key_text.len() as f32 * 8.0 + 16.0;
-            let x = if align_right { base_x - text_width } else { base_x };
+            let x = if align_right {
+                base_x - text_width
+            } else {
+                base_x
+            };
 
             // Background
             let bg_bounds = Bounds::new(x, y, text_width, key_height);

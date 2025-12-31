@@ -28,10 +28,10 @@ impl GoalPriority {
 
     pub fn color(&self) -> Hsla {
         match self {
-            GoalPriority::Low => Hsla::new(200.0, 0.5, 0.5, 1.0),      // Blue
-            GoalPriority::Medium => Hsla::new(45.0, 0.7, 0.5, 1.0),    // Gold
-            GoalPriority::High => Hsla::new(30.0, 0.8, 0.5, 1.0),      // Orange
-            GoalPriority::Critical => Hsla::new(0.0, 0.8, 0.5, 1.0),   // Red
+            GoalPriority::Low => Hsla::new(200.0, 0.5, 0.5, 1.0), // Blue
+            GoalPriority::Medium => Hsla::new(45.0, 0.7, 0.5, 1.0), // Gold
+            GoalPriority::High => Hsla::new(30.0, 0.8, 0.5, 1.0), // Orange
+            GoalPriority::Critical => Hsla::new(0.0, 0.8, 0.5, 1.0), // Red
         }
     }
 }
@@ -60,11 +60,11 @@ impl GoalStatus {
 
     pub fn color(&self) -> Hsla {
         match self {
-            GoalStatus::NotStarted => Hsla::new(0.0, 0.0, 0.5, 1.0),     // Gray
-            GoalStatus::InProgress => Hsla::new(200.0, 0.8, 0.55, 1.0),  // Blue
-            GoalStatus::Blocked => Hsla::new(45.0, 0.8, 0.5, 1.0),       // Gold
-            GoalStatus::Completed => Hsla::new(120.0, 0.7, 0.45, 1.0),   // Green
-            GoalStatus::Failed => Hsla::new(0.0, 0.8, 0.5, 1.0),         // Red
+            GoalStatus::NotStarted => Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
+            GoalStatus::InProgress => Hsla::new(200.0, 0.8, 0.55, 1.0), // Blue
+            GoalStatus::Blocked => Hsla::new(45.0, 0.8, 0.5, 1.0),   // Gold
+            GoalStatus::Completed => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
+            GoalStatus::Failed => Hsla::new(0.0, 0.8, 0.5, 1.0),     // Red
         }
     }
 }
@@ -170,7 +170,12 @@ impl Component for GoalProgressBadge {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -180,7 +185,9 @@ impl Component for GoalProgressBadge {
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         let mut width = 86.0; // icon + bar + padding
-        if self.show_percentage { width += 36.0; }
+        if self.show_percentage {
+            width += 36.0;
+        }
         (Some(width), Some(22.0))
     }
 }

@@ -4,7 +4,9 @@
 //! Rate limits come from headers like `x-codex-primary-used-percent`.
 
 use autopilot_service::SdkSessionIds;
-use wgpui::{Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad};
+use wgpui::{
+    Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad,
+};
 
 /// Session-level usage stats
 #[derive(Default, Clone)]
@@ -91,7 +93,11 @@ impl ClaudeUsage {
         self.web_searches = count;
     }
 
-    pub fn set_session_ids(&mut self, autopilot_session_id: String, sdk_session_ids: SdkSessionIds) {
+    pub fn set_session_ids(
+        &mut self,
+        autopilot_session_id: String,
+        sdk_session_ids: SdkSessionIds,
+    ) {
         if autopilot_session_id.is_empty() {
             self.autopilot_session_id = None;
         } else {
@@ -113,8 +119,13 @@ impl Component for ClaudeUsage {
 
         // Divider line at top
         cx.scene.draw_quad(
-            Quad::new(Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, 1.0))
-                .with_background(line_color),
+            Quad::new(Bounds::new(
+                bounds.origin.x,
+                bounds.origin.y,
+                bounds.size.width,
+                1.0,
+            ))
+            .with_background(line_color),
         );
 
         let padding = 8.0;
@@ -134,12 +145,16 @@ impl Component for ClaudeUsage {
         let line_height = 14.0;
 
         // Header
-        let header = cx.text.layout("CLAUDE USAGE", Point::new(x, y), font_size, label_color);
+        let header = cx
+            .text
+            .layout("CLAUDE USAGE", Point::new(x, y), font_size, label_color);
         cx.scene.draw_text(header);
         y += line_height + 4.0;
 
         // Model
-        let model_text = cx.text.layout(&self.model, Point::new(x, y), 11.0, value_color);
+        let model_text = cx
+            .text
+            .layout(&self.model, Point::new(x, y), 11.0, value_color);
         cx.scene.draw_text(model_text);
         y += line_height + 8.0;
 
@@ -150,16 +165,25 @@ impl Component for ClaudeUsage {
             0.0
         };
 
-        let ctx_label = cx.text.layout("Context", Point::new(x, y), font_size, muted_color);
+        let ctx_label = cx
+            .text
+            .layout("Context", Point::new(x, y), font_size, muted_color);
         cx.scene.draw_text(ctx_label);
         let pct_text = format!("{:.0}%", ctx_pct);
-        let pct_label = cx.text.layout(&pct_text, Point::new(x + w - 30.0, y), font_size, muted_color);
+        let pct_label = cx.text.layout(
+            &pct_text,
+            Point::new(x + w - 30.0, y),
+            font_size,
+            muted_color,
+        );
         cx.scene.draw_text(pct_label);
         y += line_height;
 
         // Progress bar background
         let bar_h = 4.0;
-        cx.scene.draw_quad(Quad::new(Bounds::new(x, y, w, bar_h)).with_background(Hsla::new(0.0, 0.0, 0.2, 1.0)));
+        cx.scene.draw_quad(
+            Quad::new(Bounds::new(x, y, w, bar_h)).with_background(Hsla::new(0.0, 0.0, 0.2, 1.0)),
+        );
         // Progress bar fill (hue 0-1: yellow=0.125, red=0.0)
         let bar_color = if ctx_pct < 50.0 {
             green_color
@@ -169,23 +193,35 @@ impl Component for ClaudeUsage {
             Hsla::new(0.0, 0.8, 0.5, 1.0) // red
         };
         let fill_w = (w * ctx_pct as f32 / 100.0).min(w);
-        cx.scene.draw_quad(Quad::new(Bounds::new(x, y, fill_w, bar_h)).with_background(bar_color));
+        cx.scene
+            .draw_quad(Quad::new(Bounds::new(x, y, fill_w, bar_h)).with_background(bar_color));
         y += bar_h + 2.0;
 
         // Context tokens
-        let ctx_tokens = format!("{} / {}", format_tokens(self.context_used), format_tokens(self.context_total));
-        let ctx_tok_label = cx.text.layout(&ctx_tokens, Point::new(x, y), 9.0, muted_color);
+        let ctx_tokens = format!(
+            "{} / {}",
+            format_tokens(self.context_used),
+            format_tokens(self.context_total)
+        );
+        let ctx_tok_label = cx
+            .text
+            .layout(&ctx_tokens, Point::new(x, y), 9.0, muted_color);
         cx.scene.draw_text(ctx_tok_label);
         y += line_height + 8.0;
 
         // Usage limits
         for limit in &self.limits {
-            let limit_label = cx.text.layout(&limit.name, Point::new(x, y), font_size, muted_color);
+            let limit_label = cx
+                .text
+                .layout(&limit.name, Point::new(x, y), font_size, muted_color);
             cx.scene.draw_text(limit_label);
             y += line_height;
 
             // Progress bar (hue 0-1: yellow=0.125, red=0.0)
-            cx.scene.draw_quad(Quad::new(Bounds::new(x, y, w, bar_h)).with_background(Hsla::new(0.0, 0.0, 0.2, 1.0)));
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(x, y, w, bar_h))
+                    .with_background(Hsla::new(0.0, 0.0, 0.2, 1.0)),
+            );
             let limit_fill = (w * limit.percent_used as f32 / 100.0).min(w);
             let limit_color = if limit.percent_used < 50.0 {
                 green_color
@@ -194,11 +230,18 @@ impl Component for ClaudeUsage {
             } else {
                 Hsla::new(0.0, 0.8, 0.5, 1.0)
             };
-            cx.scene.draw_quad(Quad::new(Bounds::new(x, y, limit_fill, bar_h)).with_background(limit_color));
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(x, y, limit_fill, bar_h)).with_background(limit_color),
+            );
             y += bar_h + 2.0;
 
-            let limit_info = format!("{:.0}% used · Resets {}", limit.percent_used, limit.resets_at);
-            let limit_info_label = cx.text.layout(&limit_info, Point::new(x, y), 9.0, muted_color);
+            let limit_info = format!(
+                "{:.0}% used · Resets {}",
+                limit.percent_used, limit.resets_at
+            );
+            let limit_info_label = cx
+                .text
+                .layout(&limit_info, Point::new(x, y), 9.0, muted_color);
             cx.scene.draw_text(limit_info_label);
             y += line_height + 6.0;
         }
@@ -207,16 +250,22 @@ impl Component for ClaudeUsage {
         y += 4.0;
 
         // Session header
-        let session_header = cx.text.layout("SESSION", Point::new(x, y), font_size, label_color);
+        let session_header = cx
+            .text
+            .layout("SESSION", Point::new(x, y), font_size, label_color);
         cx.scene.draw_text(session_header);
         y += line_height + 4.0;
 
         // Cost and turns
         let cost_text = format!("${:.4}", self.session.total_cost_usd);
-        let cost_label = cx.text.layout(&cost_text, Point::new(x, y), 11.0, value_color);
+        let cost_label = cx
+            .text
+            .layout(&cost_text, Point::new(x, y), 11.0, value_color);
         cx.scene.draw_text(cost_label);
         let turns_text = format!("{} turns", self.session.num_turns);
-        let turns_label = cx.text.layout(&turns_text, Point::new(x + 70.0, y), font_size, muted_color);
+        let turns_label =
+            cx.text
+                .layout(&turns_text, Point::new(x + 70.0, y), font_size, muted_color);
         cx.scene.draw_text(turns_label);
         y += line_height + 4.0;
 
@@ -225,74 +274,101 @@ impl Component for ClaudeUsage {
 
         // Input tokens
         let in_text = format!("{} in", format_tokens(self.session.input_tokens));
-        let in_label = cx.text.layout(&in_text, Point::new(x, y), font_size, muted_color);
+        let in_label = cx
+            .text
+            .layout(&in_text, Point::new(x, y), font_size, muted_color);
         cx.scene.draw_text(in_label);
 
         // Output tokens
         let out_text = format!("{} out", format_tokens(self.session.output_tokens));
-        let out_label = cx.text.layout(&out_text, Point::new(x + col_w, y), font_size, muted_color);
+        let out_label = cx
+            .text
+            .layout(&out_text, Point::new(x + col_w, y), font_size, muted_color);
         cx.scene.draw_text(out_label);
         y += line_height;
 
         // Cache read
         let cache_read_text = format!("{} cached", format_tokens(self.session.cache_read_tokens));
-        let cache_read_label = cx.text.layout(&cache_read_text, Point::new(x, y), font_size, green_color);
+        let cache_read_label =
+            cx.text
+                .layout(&cache_read_text, Point::new(x, y), font_size, green_color);
         cx.scene.draw_text(cache_read_label);
 
         // Cache written
-        let cache_write_text = format!("{} written", format_tokens(self.session.cache_creation_tokens));
-        let cache_write_label = cx.text.layout(&cache_write_text, Point::new(x + col_w, y), font_size, orange_color);
+        let cache_write_text = format!(
+            "{} written",
+            format_tokens(self.session.cache_creation_tokens)
+        );
+        let cache_write_label = cx.text.layout(
+            &cache_write_text,
+            Point::new(x + col_w, y),
+            font_size,
+            orange_color,
+        );
         cx.scene.draw_text(cache_write_label);
         y += line_height + 4.0;
 
         // Duration
         let dur_text = format!("{} total", format_duration(self.session.duration_ms));
-        let dur_label = cx.text.layout(&dur_text, Point::new(x, y), 9.0, muted_color);
+        let dur_label = cx
+            .text
+            .layout(&dur_text, Point::new(x, y), 9.0, muted_color);
         cx.scene.draw_text(dur_label);
 
         let api_dur_text = format!("{} api", format_duration(self.session.duration_api_ms));
-        let api_dur_label = cx.text.layout(&api_dur_text, Point::new(x + col_w, y), 9.0, muted_color);
+        let api_dur_label =
+            cx.text
+                .layout(&api_dur_text, Point::new(x + col_w, y), 9.0, muted_color);
         cx.scene.draw_text(api_dur_label);
         y += line_height + 4.0;
 
         // Session IDs
-        let session_header = cx.text.layout("SESSIONS", Point::new(x, y), font_size, label_color);
+        let session_header = cx
+            .text
+            .layout("SESSIONS", Point::new(x, y), font_size, label_color);
         cx.scene.draw_text(session_header);
         y += line_height + 4.0;
 
-        let autopilot_id = self
-            .autopilot_session_id
-            .as_deref()
-            .unwrap_or("-");
+        let autopilot_id = self.autopilot_session_id.as_deref().unwrap_or("-");
         let autopilot_line = format!("Autopilot: {}", format_session_id(autopilot_id));
-        let autopilot_label = cx.text.layout(&autopilot_line, Point::new(x, y), 9.0, muted_color);
+        let autopilot_label = cx
+            .text
+            .layout(&autopilot_line, Point::new(x, y), 9.0, muted_color);
         cx.scene.draw_text(autopilot_label);
         y += line_height;
 
         if let Some(ref plan_id) = self.sdk_session_ids.plan {
             let plan_line = format!("Plan: {}", format_session_id(plan_id));
-            let plan_label = cx.text.layout(&plan_line, Point::new(x, y), 9.0, muted_color);
+            let plan_label = cx
+                .text
+                .layout(&plan_line, Point::new(x, y), 9.0, muted_color);
             cx.scene.draw_text(plan_label);
             y += line_height;
         }
 
         if let Some(ref exec_id) = self.sdk_session_ids.exec {
             let exec_line = format!("Exec: {}", format_session_id(exec_id));
-            let exec_label = cx.text.layout(&exec_line, Point::new(x, y), 9.0, muted_color);
+            let exec_label = cx
+                .text
+                .layout(&exec_line, Point::new(x, y), 9.0, muted_color);
             cx.scene.draw_text(exec_label);
             y += line_height;
         }
 
         if let Some(ref review_id) = self.sdk_session_ids.review {
             let review_line = format!("Review: {}", format_session_id(review_id));
-            let review_label = cx.text.layout(&review_line, Point::new(x, y), 9.0, muted_color);
+            let review_label = cx
+                .text
+                .layout(&review_line, Point::new(x, y), 9.0, muted_color);
             cx.scene.draw_text(review_label);
             y += line_height;
         }
 
         if let Some(ref fix_id) = self.sdk_session_ids.fix {
             let fix_line = format!("Fix: {}", format_session_id(fix_id));
-            let fix_label = cx.text.layout(&fix_line, Point::new(x, y), 9.0, muted_color);
+            let fix_label = cx
+                .text
+                .layout(&fix_line, Point::new(x, y), 9.0, muted_color);
             cx.scene.draw_text(fix_label);
             y += line_height;
         }
@@ -300,7 +376,9 @@ impl Component for ClaudeUsage {
         // Web searches
         if self.web_searches > 0 {
             let web_text = format!("{} web searches", self.web_searches);
-            let web_label = cx.text.layout(&web_text, Point::new(x, y), font_size, cyan_color);
+            let web_label = cx
+                .text
+                .layout(&web_text, Point::new(x, y), font_size, cyan_color);
             cx.scene.draw_text(web_label);
         }
     }

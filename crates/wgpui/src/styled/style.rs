@@ -1,5 +1,5 @@
-use crate::layout::LayoutStyle;
 use crate::Hsla;
+use crate::layout::LayoutStyle;
 
 #[derive(Clone, Debug)]
 pub struct Style {

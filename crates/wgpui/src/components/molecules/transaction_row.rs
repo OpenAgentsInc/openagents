@@ -32,7 +32,7 @@ impl TransactionDirection {
     pub fn color(&self) -> Hsla {
         match self {
             TransactionDirection::Incoming => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
-            TransactionDirection::Outgoing => Hsla::new(0.0, 0.8, 0.5, 1.0), // Red
+            TransactionDirection::Outgoing => Hsla::new(0.0, 0.8, 0.5, 1.0),    // Red
         }
     }
 }
@@ -147,8 +147,13 @@ impl Component for TransactionRow {
         // Direction indicator bar
         let bar_w = 3.0;
         cx.scene.draw_quad(
-            Quad::new(Bounds::new(bounds.origin.x, bounds.origin.y, bar_w, bounds.size.height))
-                .with_background(self.transaction.direction.color()),
+            Quad::new(Bounds::new(
+                bounds.origin.x,
+                bounds.origin.y,
+                bar_w,
+                bounds.size.height,
+            ))
+            .with_background(self.transaction.direction.color()),
         );
 
         let content_x = bounds.origin.x + padding + bar_w;
@@ -206,7 +211,11 @@ impl Component for TransactionRow {
         cx.scene.draw_text(status_label);
 
         // Amount (right aligned)
-        let amount_text = format!("{}{}", self.transaction.direction.symbol(), self.format_amount());
+        let amount_text = format!(
+            "{}{}",
+            self.transaction.direction.symbol(),
+            self.format_amount()
+        );
         let amount_x = bounds.origin.x + bounds.size.width - padding - 120.0;
         let amount_run = cx.text.layout(
             &amount_text,
@@ -218,16 +227,17 @@ impl Component for TransactionRow {
 
         // Fee (if outgoing and has fee)
         if self.transaction.direction == TransactionDirection::Outgoing
-            && let Some(fee) = self.transaction.fee_sats {
-                let fee_text = format!("Fee: {} sats", fee);
-                let fee_run = cx.text.layout(
-                    &fee_text,
-                    Point::new(amount_x, text_y + 20.0),
-                    theme::font_size::XS,
-                    theme::text::DISABLED,
-                );
-                cx.scene.draw_text(fee_run);
-            }
+            && let Some(fee) = self.transaction.fee_sats
+        {
+            let fee_text = format!("Fee: {} sats", fee);
+            let fee_run = cx.text.layout(
+                &fee_text,
+                Point::new(amount_x, text_y + 20.0),
+                theme::font_size::XS,
+                theme::text::DISABLED,
+            );
+            cx.scene.draw_text(fee_run);
+        }
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {

@@ -59,9 +59,9 @@ impl UsageLevel {
     pub fn color(&self) -> Hsla {
         // Hue is 0.0-1.0 range: green=0.333, gold=0.125, red=0.0
         match self {
-            UsageLevel::Normal => Hsla::new(0.333, 0.7, 0.45, 1.0),   // Green
-            UsageLevel::Warning => Hsla::new(0.125, 0.8, 0.5, 1.0),   // Gold
-            UsageLevel::Critical => Hsla::new(0.0, 0.8, 0.55, 1.0),   // Red
+            UsageLevel::Normal => Hsla::new(0.333, 0.7, 0.45, 1.0), // Green
+            UsageLevel::Warning => Hsla::new(0.125, 0.8, 0.5, 1.0), // Gold
+            UsageLevel::Critical => Hsla::new(0.0, 0.8, 0.55, 1.0), // Red
         }
     }
 }
@@ -70,7 +70,7 @@ impl UsageLevel {
 pub struct ResourceUsageBar {
     id: Option<ComponentId>,
     resource_type: ResourceType,
-    percent: f32,  // 0-100
+    percent: f32, // 0-100
     show_label: bool,
     show_value: bool,
     bar_width: f32,
@@ -131,14 +131,21 @@ impl Component for ResourceUsageBar {
 
         // Icon
         let icon = self.resource_type.icon();
-        let icon_run = cx.text.layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
+        let icon_run = cx
+            .text
+            .layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
         cx.scene.draw_text(icon_run);
         x += 14.0;
 
         // Label
         if self.show_label {
             let label = self.resource_type.label();
-            let label_run = cx.text.layout(label, Point::new(x, text_y), theme::font_size::XS, theme::text::MUTED);
+            let label_run = cx.text.layout(
+                label,
+                Point::new(x, text_y),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
             cx.scene.draw_text(label_run);
             x += 32.0;
         }
@@ -171,12 +178,22 @@ impl Component for ResourceUsageBar {
         // Value
         if self.show_value {
             let value_text = format!("{:.0}%", self.percent);
-            let value_run = cx.text.layout(&value_text, Point::new(x, text_y), theme::font_size::XS, color);
+            let value_run = cx.text.layout(
+                &value_text,
+                Point::new(x, text_y),
+                theme::font_size::XS,
+                color,
+            );
             cx.scene.draw_text(value_run);
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -186,9 +203,13 @@ impl Component for ResourceUsageBar {
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         let mut width = 12.0 + 14.0;
-        if self.show_label { width += 32.0; }
+        if self.show_label {
+            width += 32.0;
+        }
         width += self.bar_width + 6.0;
-        if self.show_value { width += 30.0; }
+        if self.show_value {
+            width += 30.0;
+        }
         (Some(width), Some(22.0))
     }
 }

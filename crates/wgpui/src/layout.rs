@@ -1,9 +1,9 @@
 //! Layout engine using Taffy for CSS Flexbox layout.
 
 use crate::geometry::{Bounds, Size};
-use slotmap::{new_key_type, SlotMap};
-use taffy::prelude::*;
+use slotmap::{SlotMap, new_key_type};
 use taffy::Overflow;
+use taffy::prelude::*;
 
 new_key_type! {
     /// Identifier for a layout node.
@@ -331,14 +331,15 @@ impl LayoutEngine {
     /// Get the computed bounds for a layout node.
     pub fn layout(&self, id: LayoutId) -> Bounds {
         if let Some(&node_id) = self.nodes.get(id)
-            && let Ok(layout) = self.taffy.layout(node_id) {
-                return Bounds::new(
-                    layout.location.x,
-                    layout.location.y,
-                    layout.size.width,
-                    layout.size.height,
-                );
-            }
+            && let Ok(layout) = self.taffy.layout(node_id)
+        {
+            return Bounds::new(
+                layout.location.x,
+                layout.location.y,
+                layout.size.width,
+                layout.size.height,
+            );
+        }
         Bounds::ZERO
     }
 

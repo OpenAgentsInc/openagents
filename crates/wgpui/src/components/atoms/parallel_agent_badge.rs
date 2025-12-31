@@ -43,12 +43,12 @@ impl ParallelAgentStatus {
 
     pub fn color(&self) -> Hsla {
         match self {
-            ParallelAgentStatus::Idle => Hsla::new(0.0, 0.0, 0.4, 1.0),        // Dark gray
+            ParallelAgentStatus::Idle => Hsla::new(0.0, 0.0, 0.4, 1.0), // Dark gray
             ParallelAgentStatus::Initializing => Hsla::new(200.0, 0.6, 0.5, 1.0), // Muted blue
-            ParallelAgentStatus::Running => Hsla::new(200.0, 0.8, 0.55, 1.0),  // Blue
-            ParallelAgentStatus::Waiting => Hsla::new(45.0, 0.7, 0.5, 1.0),    // Gold
+            ParallelAgentStatus::Running => Hsla::new(200.0, 0.8, 0.55, 1.0), // Blue
+            ParallelAgentStatus::Waiting => Hsla::new(45.0, 0.7, 0.5, 1.0), // Gold
             ParallelAgentStatus::Completed => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
-            ParallelAgentStatus::Failed => Hsla::new(0.0, 0.8, 0.5, 1.0),      // Red
+            ParallelAgentStatus::Failed => Hsla::new(0.0, 0.8, 0.5, 1.0), // Red
         }
     }
 }
@@ -106,20 +106,29 @@ impl Component for ParallelAgentBadge {
 
         // Agent index badge
         let index_text = format!("A{}", self.agent_index);
-        let index_run = cx.text.layout(&index_text, Point::new(x, text_y), theme::font_size::XS, color);
+        let index_run = cx.text.layout(
+            &index_text,
+            Point::new(x, text_y),
+            theme::font_size::XS,
+            color,
+        );
         cx.scene.draw_text(index_run);
         x += 18.0;
 
         // Status icon
         let icon = self.status.icon();
-        let icon_run = cx.text.layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
+        let icon_run = cx
+            .text
+            .layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
         cx.scene.draw_text(icon_run);
 
         if !self.compact {
             x += 14.0;
             // Status label
             let label = self.status.label();
-            let label_run = cx.text.layout(label, Point::new(x, text_y), theme::font_size::XS, color);
+            let label_run =
+                cx.text
+                    .layout(label, Point::new(x, text_y), theme::font_size::XS, color);
             cx.scene.draw_text(label_run);
             x += label.len() as f32 * 6.5 + 8.0;
 
@@ -131,13 +140,23 @@ impl Component for ParallelAgentBadge {
                 } else {
                     task.clone()
                 };
-                let task_run = cx.text.layout(&display_task, Point::new(x, text_y), theme::font_size::XS, theme::text::MUTED);
+                let task_run = cx.text.layout(
+                    &display_task,
+                    Point::new(x, text_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
                 cx.scene.draw_text(task_run);
             }
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -150,7 +169,9 @@ impl Component for ParallelAgentBadge {
             (Some(50.0), Some(22.0))
         } else {
             let mut width = 12.0 + 18.0 + 14.0 + self.status.label().len() as f32 * 6.5;
-            if self.current_task.is_some() { width += 140.0; }
+            if self.current_task.is_some() {
+                width += 140.0;
+            }
             (Some(width), Some(22.0))
         }
     }

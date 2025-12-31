@@ -30,11 +30,11 @@ impl AgentStatus {
 
     pub fn color(&self) -> Hsla {
         match self {
-            AgentStatus::Offline => Hsla::new(0.0, 0.0, 0.4, 1.0),    // Dark gray
-            AgentStatus::Online => Hsla::new(120.0, 0.7, 0.45, 1.0),  // Green
-            AgentStatus::Busy => Hsla::new(200.0, 0.8, 0.5, 1.0),     // Blue
-            AgentStatus::Idle => Hsla::new(45.0, 0.8, 0.5, 1.0),      // Gold
-            AgentStatus::Error => Hsla::new(0.0, 0.8, 0.5, 1.0),      // Red
+            AgentStatus::Offline => Hsla::new(0.0, 0.0, 0.4, 1.0), // Dark gray
+            AgentStatus::Online => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
+            AgentStatus::Busy => Hsla::new(200.0, 0.8, 0.5, 1.0),  // Blue
+            AgentStatus::Idle => Hsla::new(45.0, 0.8, 0.5, 1.0),   // Gold
+            AgentStatus::Error => Hsla::new(0.0, 0.8, 0.5, 1.0),   // Red
         }
     }
 
@@ -77,9 +77,9 @@ impl AgentType {
 
     pub fn color(&self) -> Hsla {
         match self {
-            AgentType::Human => Hsla::new(280.0, 0.6, 0.5, 1.0),     // Purple
+            AgentType::Human => Hsla::new(280.0, 0.6, 0.5, 1.0), // Purple
             AgentType::Sovereign => Hsla::new(140.0, 0.7, 0.5, 1.0), // Green
-            AgentType::Custodial => Hsla::new(30.0, 0.7, 0.5, 1.0),  // Orange
+            AgentType::Custodial => Hsla::new(30.0, 0.7, 0.5, 1.0), // Orange
         }
     }
 }
@@ -138,8 +138,7 @@ impl Component for AgentStatusBadge {
             let dot_size = 8.0;
             let dot_y = bounds.origin.y + (bounds.size.height - dot_size) / 2.0;
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(x, dot_y, dot_size, dot_size))
-                    .with_background(color),
+                Quad::new(Bounds::new(x, dot_y, dot_size, dot_size)).with_background(color),
             );
             x += dot_size + 6.0;
         }
@@ -159,16 +158,18 @@ impl Component for AgentStatusBadge {
 
         // Status label
         let label = self.status.label();
-        let label_run = cx.text.layout(
-            label,
-            Point::new(x, text_y),
-            theme::font_size::XS,
-            color,
-        );
+        let label_run = cx
+            .text
+            .layout(label, Point::new(x, text_y), theme::font_size::XS, color);
         cx.scene.draw_text(label_run);
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -178,8 +179,12 @@ impl Component for AgentStatusBadge {
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         let mut width = 12.0; // padding
-        if self.show_dot { width += 14.0; }
-        if self.agent_type.is_some() { width += 18.0; }
+        if self.show_dot {
+            width += 14.0;
+        }
+        if self.agent_type.is_some() {
+            width += 18.0;
+        }
         width += self.status.label().len() as f32 * 6.5;
         (Some(width), Some(24.0))
     }

@@ -16,8 +16,7 @@ use std::collections::HashMap;
 pub type AccessibleId = u64;
 
 /// Role of an accessible element (similar to ARIA roles)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Role {
     /// Generic container
     #[default]
@@ -113,7 +112,6 @@ pub enum Role {
     /// None (hidden from accessibility tree)
     None,
 }
-
 
 /// State of an accessible element
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -452,9 +450,10 @@ impl AccessibilityTree {
         if let Some(node) = self.nodes.remove(&id) {
             // Remove from parent's children
             if let Some(parent_id) = node.parent
-                && let Some(parent) = self.nodes.get_mut(&parent_id) {
-                    parent.children.retain(|&child_id| child_id != id);
-                }
+                && let Some(parent) = self.nodes.get_mut(&parent_id)
+            {
+                parent.children.retain(|&child_id| child_id != id);
+            }
             // Remove children
             for child_id in node.children {
                 self.remove_node(child_id);
@@ -476,9 +475,10 @@ impl AccessibilityTree {
     /// Add a child to a parent node
     pub fn add_child(&mut self, parent_id: AccessibleId, child_id: AccessibleId) {
         if let Some(parent) = self.nodes.get_mut(&parent_id)
-            && !parent.children.contains(&child_id) {
-                parent.children.push(child_id);
-            }
+            && !parent.children.contains(&child_id)
+        {
+            parent.children.push(child_id);
+        }
         if let Some(child) = self.nodes.get_mut(&child_id) {
             child.parent = Some(parent_id);
         }
@@ -498,41 +498,46 @@ impl AccessibilityTree {
     /// Set focus to a node
     pub fn set_focus(&mut self, id: AccessibleId) -> bool {
         if let Some(node) = self.nodes.get(&id)
-            && node.is_focusable() {
-                // Remove focus from previous
-                if let Some(prev_id) = self.focused
-                    && let Some(prev) = self.nodes.get_mut(&prev_id) {
-                        prev.states.retain(|&s| s != State::Focused);
-                    }
-                // Set focus on new
-                if let Some(new) = self.nodes.get_mut(&id)
-                    && !new.states.contains(&State::Focused) {
-                        new.states.push(State::Focused);
-                    }
-                self.focused = Some(id);
-                return true;
+            && node.is_focusable()
+        {
+            // Remove focus from previous
+            if let Some(prev_id) = self.focused
+                && let Some(prev) = self.nodes.get_mut(&prev_id)
+            {
+                prev.states.retain(|&s| s != State::Focused);
             }
+            // Set focus on new
+            if let Some(new) = self.nodes.get_mut(&id)
+                && !new.states.contains(&State::Focused)
+            {
+                new.states.push(State::Focused);
+            }
+            self.focused = Some(id);
+            return true;
+        }
         false
     }
 
     /// Clear focus
     pub fn clear_focus(&mut self) {
         if let Some(id) = self.focused
-            && let Some(node) = self.nodes.get_mut(&id) {
-                node.states.retain(|&s| s != State::Focused);
-            }
+            && let Some(node) = self.nodes.get_mut(&id)
+        {
+            node.states.retain(|&s| s != State::Focused);
+        }
         self.focused = None;
     }
 
     /// Move focus to next focusable element
     pub fn focus_next(&mut self) -> Option<AccessibleId> {
         self.rebuild_focus_order_if_needed();
-        
+
         if self.focus_order.is_empty() {
             return None;
         }
 
-        let current_idx = self.focused
+        let current_idx = self
+            .focused
             .and_then(|id| self.focus_order.iter().position(|&fid| fid == id));
 
         let next_idx = match current_idx {
@@ -551,12 +556,13 @@ impl AccessibilityTree {
     /// Move focus to previous focusable element
     pub fn focus_prev(&mut self) -> Option<AccessibleId> {
         self.rebuild_focus_order_if_needed();
-        
+
         if self.focus_order.is_empty() {
             return None;
         }
 
-        let current_idx = self.focused
+        let current_idx = self
+            .focused
             .and_then(|id| self.focus_order.iter().position(|&fid| fid == id));
 
         let prev_idx = match current_idx {
@@ -582,7 +588,9 @@ impl AccessibilityTree {
         self.focus_order.clear();
 
         // Collect focusable nodes with their tab indices
-        let mut focusable: Vec<(AccessibleId, i32, Bounds)> = self.nodes.values()
+        let mut focusable: Vec<(AccessibleId, i32, Bounds)> = self
+            .nodes
+            .values()
             .filter(|n| n.is_focusable())
             .map(|n| (n.id, n.tab_index, n.bounds))
             .collect();
@@ -594,7 +602,10 @@ impl AccessibilityTree {
                     // Sort by Y position first, then X
                     match a.2.origin.y.partial_cmp(&b.2.origin.y) {
                         Some(std::cmp::Ordering::Equal) => {
-                            a.2.origin.x.partial_cmp(&b.2.origin.x).unwrap_or(std::cmp::Ordering::Equal)
+                            a.2.origin
+                                .x
+                                .partial_cmp(&b.2.origin.x)
+                                .unwrap_or(std::cmp::Ordering::Equal)
                         }
                         Some(ord) => ord,
                         None => std::cmp::Ordering::Equal,
@@ -611,13 +622,18 @@ impl AccessibilityTree {
     /// Find node at a point (for hit testing)
     pub fn node_at_point(&self, point: Point) -> Option<&AccessibleNode> {
         // Search from deepest to root
-        self.nodes.values()
-            .filter(|n| n.bounds.contains(point) && n.role != Role::Presentation && n.role != Role::None)
+        self.nodes
+            .values()
+            .filter(|n| {
+                n.bounds.contains(point) && n.role != Role::Presentation && n.role != Role::None
+            })
             .min_by(|a, b| {
                 // Prefer smaller (more specific) nodes
                 let area_a = a.bounds.size.width * a.bounds.size.height;
                 let area_b = b.bounds.size.width * b.bounds.size.height;
-                area_a.partial_cmp(&area_b).unwrap_or(std::cmp::Ordering::Equal)
+                area_a
+                    .partial_cmp(&area_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
     }
 
@@ -744,7 +760,12 @@ impl AccessibilityContext {
     }
 
     /// Create a text input node
-    pub fn text_input(&mut self, bounds: Bounds, label: impl Into<String>, value: impl Into<String>) -> AccessibleNode {
+    pub fn text_input(
+        &mut self,
+        bounds: Bounds,
+        label: impl Into<String>,
+        value: impl Into<String>,
+    ) -> AccessibleNode {
         let id = self.tree.next_id();
         AccessibleNode::new(id, Role::TextInput, bounds)
             .label(label)
@@ -753,7 +774,12 @@ impl AccessibilityContext {
     }
 
     /// Create a heading node
-    pub fn heading(&mut self, bounds: Bounds, text: impl Into<String>, level: u8) -> AccessibleNode {
+    pub fn heading(
+        &mut self,
+        bounds: Bounds,
+        text: impl Into<String>,
+        level: u8,
+    ) -> AccessibleNode {
         let id = self.tree.next_id();
         AccessibleNode::new(id, Role::Heading, bounds)
             .label(text)
@@ -763,19 +789,23 @@ impl AccessibilityContext {
     /// Create a static text node
     pub fn text(&mut self, bounds: Bounds, text: impl Into<String>) -> AccessibleNode {
         let id = self.tree.next_id();
-        AccessibleNode::new(id, Role::StaticText, bounds)
-            .label(text)
+        AccessibleNode::new(id, Role::StaticText, bounds).label(text)
     }
 
     /// Create a list node
     pub fn list(&mut self, bounds: Bounds, label: impl Into<String>) -> AccessibleNode {
         let id = self.tree.next_id();
-        AccessibleNode::new(id, Role::List, bounds)
-            .label(label)
+        AccessibleNode::new(id, Role::List, bounds).label(label)
     }
 
     /// Create a list item node
-    pub fn list_item(&mut self, bounds: Bounds, text: impl Into<String>, position: u32, size: u32) -> AccessibleNode {
+    pub fn list_item(
+        &mut self,
+        bounds: Bounds,
+        text: impl Into<String>,
+        position: u32,
+        size: u32,
+    ) -> AccessibleNode {
         let id = self.tree.next_id();
         AccessibleNode::new(id, Role::ListItem, bounds)
             .label(text)
@@ -785,12 +815,18 @@ impl AccessibilityContext {
     /// Create a dialog node
     pub fn dialog(&mut self, bounds: Bounds, title: impl Into<String>) -> AccessibleNode {
         let id = self.tree.next_id();
-        AccessibleNode::new(id, Role::Dialog, bounds)
-            .label(title)
+        AccessibleNode::new(id, Role::Dialog, bounds).label(title)
     }
 
     /// Create a progress bar node
-    pub fn progress(&mut self, bounds: Bounds, label: impl Into<String>, min: f32, max: f32, value: f32) -> AccessibleNode {
+    pub fn progress(
+        &mut self,
+        bounds: Bounds,
+        label: impl Into<String>,
+        min: f32,
+        max: f32,
+        value: f32,
+    ) -> AccessibleNode {
         let id = self.tree.next_id();
         AccessibleNode::new(id, Role::ProgressBar, bounds)
             .label(label)
@@ -800,8 +836,7 @@ impl AccessibilityContext {
     /// Create a status region node
     pub fn status(&mut self, bounds: Bounds) -> AccessibleNode {
         let id = self.tree.next_id();
-        AccessibleNode::new(id, Role::Status, bounds)
-            .live(LiveRegion::Polite)
+        AccessibleNode::new(id, Role::Status, bounds).live(LiveRegion::Polite)
     }
 
     /// Create an alert region node
@@ -854,9 +889,13 @@ mod tests {
 
         let root = AccessibleNode::new(root_id, Role::Main, Bounds::new(0.0, 0.0, 800.0, 600.0))
             .label("Main content");
-        let button = AccessibleNode::new(button_id, Role::Button, Bounds::new(10.0, 10.0, 100.0, 40.0))
-            .label("Submit")
-            .focusable();
+        let button = AccessibleNode::new(
+            button_id,
+            Role::Button,
+            Bounds::new(10.0, 10.0, 100.0, 40.0),
+        )
+        .label("Submit")
+        .focusable();
 
         tree.add_node(root);
         tree.add_node(button);
@@ -876,15 +915,21 @@ mod tests {
         let btn2_id = tree.next_id();
         let btn3_id = tree.next_id();
 
-        tree.add_node(AccessibleNode::new(btn1_id, Role::Button, Bounds::new(0.0, 0.0, 100.0, 40.0))
-            .label("Button 1")
-            .focusable());
-        tree.add_node(AccessibleNode::new(btn2_id, Role::Button, Bounds::new(0.0, 50.0, 100.0, 40.0))
-            .label("Button 2")
-            .focusable());
-        tree.add_node(AccessibleNode::new(btn3_id, Role::Button, Bounds::new(0.0, 100.0, 100.0, 40.0))
-            .label("Button 3")
-            .focusable());
+        tree.add_node(
+            AccessibleNode::new(btn1_id, Role::Button, Bounds::new(0.0, 0.0, 100.0, 40.0))
+                .label("Button 1")
+                .focusable(),
+        );
+        tree.add_node(
+            AccessibleNode::new(btn2_id, Role::Button, Bounds::new(0.0, 50.0, 100.0, 40.0))
+                .label("Button 2")
+                .focusable(),
+        );
+        tree.add_node(
+            AccessibleNode::new(btn3_id, Role::Button, Bounds::new(0.0, 100.0, 100.0, 40.0))
+                .label("Button 3")
+                .focusable(),
+        );
 
         // Set initial focus
         assert!(tree.set_focus(btn1_id));
@@ -911,9 +956,19 @@ mod tests {
         let container_id = tree.next_id();
         let button_id = tree.next_id();
 
-        tree.add_node(AccessibleNode::new(container_id, Role::Group, Bounds::new(0.0, 0.0, 200.0, 200.0)));
-        tree.add_node(AccessibleNode::new(button_id, Role::Button, Bounds::new(50.0, 50.0, 100.0, 40.0))
-            .label("Click"));
+        tree.add_node(AccessibleNode::new(
+            container_id,
+            Role::Group,
+            Bounds::new(0.0, 0.0, 200.0, 200.0),
+        ));
+        tree.add_node(
+            AccessibleNode::new(
+                button_id,
+                Role::Button,
+                Bounds::new(50.0, 50.0, 100.0, 40.0),
+            )
+            .label("Click"),
+        );
 
         // Point inside button should find button (more specific)
         let hit = tree.node_at_point(Point::new(75.0, 70.0));
@@ -1044,7 +1099,7 @@ mod tests {
     #[test]
     fn test_preferences() {
         let mut ctx = AccessibilityContext::new();
-        
+
         assert!(!ctx.high_contrast);
         assert!(!ctx.reduced_motion);
 

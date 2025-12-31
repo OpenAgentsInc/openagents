@@ -23,9 +23,9 @@ impl PermissionAction {
 
     fn color(&self) -> Hsla {
         match self {
-            PermissionAction::Allow | PermissionAction::AllowOnce | PermissionAction::AllowAlways => {
-                theme::status::SUCCESS
-            }
+            PermissionAction::Allow
+            | PermissionAction::AllowOnce
+            | PermissionAction::AllowAlways => theme::status::SUCCESS,
             PermissionAction::Deny => theme::status::ERROR,
         }
     }
@@ -106,9 +106,8 @@ impl Component for PermissionButton {
             self.action.color()
         };
 
-        cx.scene.draw_quad(
-            Quad::new(btn_bounds).with_background(bg_color),
-        );
+        cx.scene
+            .draw_quad(Quad::new(btn_bounds).with_background(bg_color));
 
         let text_x = btn_bounds.origin.x + padding_h;
         let text_y = btn_bounds.origin.y + btn_height * 0.5 - self.font_size * 0.55;
@@ -141,9 +140,10 @@ impl Component for PermissionButton {
                 if *button == MouseButton::Left && self.pressed {
                     self.pressed = false;
                     if bounds.contains(Point::new(*x, *y))
-                        && let Some(on_click) = &mut self.on_click {
-                            on_click(self.action);
-                        }
+                        && let Some(on_click) = &mut self.on_click
+                    {
+                        on_click(self.action);
+                    }
                     return EventResult::Handled;
                 }
             }

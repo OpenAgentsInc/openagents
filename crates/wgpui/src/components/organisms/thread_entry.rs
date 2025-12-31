@@ -108,9 +108,8 @@ impl Component for ThreadEntry {
         let padding = 4.0;
 
         if self.hovered {
-            cx.scene.draw_quad(
-                Quad::new(bounds).with_background(theme::bg::MUTED.with_alpha(0.3)),
-            );
+            cx.scene
+                .draw_quad(Quad::new(bounds).with_background(theme::bg::MUTED.with_alpha(0.3)));
         }
 
         let mut content_bounds = bounds;

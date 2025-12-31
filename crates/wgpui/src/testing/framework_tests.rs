@@ -7,13 +7,12 @@
 //! - Theme system
 //! - Animation/easing (24.2.1)
 
-use crate::components::atoms::{
-    Status, StatusDot, ToolStatus, ToolStatusBadge,
-    StreamingIndicator, ModeBadge, Mode,
-};
-use crate::components::{Component, Text, Button, EventResult};
-use crate::{Bounds, Point, InputEvent, MouseButton, Modifiers, Key, NamedKey, theme};
 use crate::animation::Easing;
+use crate::components::atoms::{
+    Mode, ModeBadge, Status, StatusDot, StreamingIndicator, ToolStatus, ToolStatusBadge,
+};
+use crate::components::{Button, Component, EventResult, Text};
+use crate::{Bounds, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point, theme};
 
 // ============================================================================
 // d-023.1.1: Quad Rendering (Colors and Borders)
@@ -89,11 +88,8 @@ fn test_text_component_with_different_sizes() {
 
 #[test]
 fn test_surface_config_targets_vsync() {
-    let config = crate::platform::default_surface_config(
-        800,
-        600,
-        wgpu::TextureFormat::Bgra8UnormSrgb,
-    );
+    let config =
+        crate::platform::default_surface_config(800, 600, wgpu::TextureFormat::Bgra8UnormSrgb);
 
     assert_eq!(config.present_mode, wgpu::PresentMode::AutoVsync);
     assert_eq!(config.desired_maximum_frame_latency, 2);
@@ -229,15 +225,35 @@ fn test_named_key_event() {
 
 #[test]
 fn test_keyboard_modifiers() {
-    let shift = Modifiers { shift: true, ctrl: false, alt: false, meta: false };
-    let ctrl = Modifiers { shift: false, ctrl: true, alt: false, meta: false };
-    let alt = Modifiers { shift: false, ctrl: false, alt: true, meta: false };
+    let shift = Modifiers {
+        shift: true,
+        ctrl: false,
+        alt: false,
+        meta: false,
+    };
+    let ctrl = Modifiers {
+        shift: false,
+        ctrl: true,
+        alt: false,
+        meta: false,
+    };
+    let alt = Modifiers {
+        shift: false,
+        ctrl: false,
+        alt: true,
+        meta: false,
+    };
 
     assert!(shift.shift);
     assert!(!shift.ctrl);
 
     // Combined modifiers
-    let combined = Modifiers { shift: true, ctrl: true, alt: false, meta: false };
+    let combined = Modifiers {
+        shift: true,
+        ctrl: true,
+        alt: false,
+        meta: false,
+    };
     assert!(combined.shift);
     assert!(combined.ctrl);
     assert!(!combined.alt);
@@ -372,14 +388,28 @@ fn test_all_easing_functions_valid_range() {
 
     for easing in easings {
         // All should start at 0 and end at 1
-        assert!((easing.apply(0.0) - 0.0).abs() < 0.001, "{:?} failed at 0.0", easing);
-        assert!((easing.apply(1.0) - 1.0).abs() < 0.001, "{:?} failed at 1.0", easing);
+        assert!(
+            (easing.apply(0.0) - 0.0).abs() < 0.001,
+            "{:?} failed at 0.0",
+            easing
+        );
+        assert!(
+            (easing.apply(1.0) - 1.0).abs() < 0.001,
+            "{:?} failed at 1.0",
+            easing
+        );
 
         // Output should be in reasonable range
         for i in 0..=10 {
             let t = i as f32 / 10.0;
             let result = easing.apply(t);
-            assert!(result >= -0.1 && result <= 1.1, "{:?} out of range at {}: {}", easing, t, result);
+            assert!(
+                result >= -0.1 && result <= 1.1,
+                "{:?} out of range at {}: {}",
+                easing,
+                t,
+                result
+            );
         }
     }
 }
@@ -409,13 +439,26 @@ fn test_extended_easing_functions_valid_range() {
     ];
 
     for easing in easings {
-        assert!((easing.apply(0.0) - 0.0).abs() < 0.001, "{:?} failed at 0.0", easing);
-        assert!((easing.apply(1.0) - 1.0).abs() < 0.001, "{:?} failed at 1.0", easing);
+        assert!(
+            (easing.apply(0.0) - 0.0).abs() < 0.001,
+            "{:?} failed at 0.0",
+            easing
+        );
+        assert!(
+            (easing.apply(1.0) - 1.0).abs() < 0.001,
+            "{:?} failed at 1.0",
+            easing
+        );
 
         for i in 0..=10 {
             let t = i as f32 / 10.0;
             let result = easing.apply(t);
-            assert!(result.is_finite(), "{:?} returned non-finite at {}", easing, t);
+            assert!(
+                result.is_finite(),
+                "{:?} returned non-finite at {}",
+                easing,
+                t
+            );
             assert!(
                 result >= -2.0 && result <= 2.0,
                 "{:?} out of range at {}: {}",
@@ -694,7 +737,10 @@ fn test_all_named_keys() {
             modifiers: Modifiers::default(),
         };
 
-        if let InputEvent::KeyDown { key: Key::Named(k), .. } = event {
+        if let InputEvent::KeyDown {
+            key: Key::Named(k), ..
+        } = event
+        {
             assert_eq!(k, key);
         } else {
             panic!("Expected KeyDown with Named key");

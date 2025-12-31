@@ -95,13 +95,10 @@ impl Default for Div {
 impl Component for Div {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let border_color = self.style.border_color;
-        let border_width = self.style.border_width.unwrap_or_else(|| {
-            if border_color.is_some() {
-                1.0
-            } else {
-                0.0
-            }
-        });
+        let border_width = self
+            .style
+            .border_width
+            .unwrap_or_else(|| if border_color.is_some() { 1.0 } else { 0.0 });
         let corner_radius = self.style.corner_radius.unwrap_or(0.0);
 
         if self.style.background.is_some() || border_color.is_some() || corner_radius > 0.0 {
@@ -127,12 +124,7 @@ impl Component for Div {
         }
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
         for child in self.children.iter_mut().rev() {
             let result = child.event(event, bounds, cx);
             if result.is_handled() {

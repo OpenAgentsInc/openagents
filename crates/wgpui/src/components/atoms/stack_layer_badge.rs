@@ -19,10 +19,10 @@ pub enum StackLayerStatus {
 impl StackLayerStatus {
     pub fn color(&self) -> Hsla {
         match self {
-            StackLayerStatus::Pending => Hsla::new(0.0, 0.0, 0.5, 1.0),     // Gray
-            StackLayerStatus::Ready => Hsla::new(120.0, 0.7, 0.45, 1.0),    // Green
-            StackLayerStatus::Merged => Hsla::new(280.0, 0.7, 0.55, 1.0),   // Purple
-            StackLayerStatus::Blocked => Hsla::new(45.0, 0.9, 0.5, 1.0),    // Gold
+            StackLayerStatus::Pending => Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
+            StackLayerStatus::Ready => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
+            StackLayerStatus::Merged => Hsla::new(280.0, 0.7, 0.55, 1.0), // Purple
+            StackLayerStatus::Blocked => Hsla::new(45.0, 0.9, 0.5, 1.0), // Gold
         }
     }
 }
@@ -80,7 +80,12 @@ impl Component for StackLayerBadge {
             // Show just "2/4"
             let text = format!("{}/{}", self.layer, self.total);
             let text_x = bounds.origin.x + (bounds.size.width - text.len() as f32 * 6.0) / 2.0;
-            let run = cx.text.layout(&text, Point::new(text_x, text_y), theme::font_size::XS, color);
+            let run = cx.text.layout(
+                &text,
+                Point::new(text_x, text_y),
+                theme::font_size::XS,
+                color,
+            );
             cx.scene.draw_text(run);
         } else {
             // Show "Layer 2 of 4"
@@ -88,7 +93,12 @@ impl Component for StackLayerBadge {
             let mut x = bounds.origin.x + padding;
 
             // Stack icon
-            let icon_run = cx.text.layout("≡", Point::new(x, text_y - 1.0), theme::font_size::SM, color);
+            let icon_run = cx.text.layout(
+                "≡",
+                Point::new(x, text_y - 1.0),
+                theme::font_size::SM,
+                color,
+            );
             cx.scene.draw_text(icon_run);
             x += 14.0;
 
@@ -125,7 +135,12 @@ impl Component for StackLayerBadge {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
