@@ -1,6 +1,6 @@
 //! Diff view rendering with inline comments support
 
-use maud::{html, Markup, PreEscaped};
+use maud::{Markup, PreEscaped, html};
 use nostr::Event;
 use std::collections::HashMap;
 
@@ -104,7 +104,9 @@ pub fn extract_inline_comments(comment_events: &[Event]) -> Vec<InlineComment> {
 
     for event in comment_events {
         // Extract layer info from event tags if present
-        let layer_info = event.tags.iter()
+        let layer_info = event
+            .tags
+            .iter()
             .find(|tag| tag.len() >= 3 && tag[0] == "layer")
             .map(|tag| (tag[1].clone(), tag[2].clone()));
 
@@ -184,8 +186,14 @@ fn group_into_chunks(lines: Vec<DiffLine>, config: &DiffRenderConfig) -> Vec<Dif
                 // Changed line (addition, deletion, or header)
                 if current_unchanged.len() > config.collapse_threshold {
                     // Collapse the unchanged section, keeping context around changes
-                    let start = current_unchanged.first().and_then(|l| l.line_number).unwrap_or(0);
-                    let end = current_unchanged.last().and_then(|l| l.line_number).unwrap_or(0);
+                    let start = current_unchanged
+                        .first()
+                        .and_then(|l| l.line_number)
+                        .unwrap_or(0);
+                    let end = current_unchanged
+                        .last()
+                        .and_then(|l| l.line_number)
+                        .unwrap_or(0);
 
                     // Keep first N context lines
                     let mut visible: Vec<DiffLine> = current_unchanged
@@ -238,8 +246,14 @@ fn group_into_chunks(lines: Vec<DiffLine>, config: &DiffRenderConfig) -> Vec<Dif
     }
     if !current_unchanged.is_empty() {
         if current_unchanged.len() > config.collapse_threshold {
-            let start = current_unchanged.first().and_then(|l| l.line_number).unwrap_or(0);
-            let end = current_unchanged.last().and_then(|l| l.line_number).unwrap_or(0);
+            let start = current_unchanged
+                .first()
+                .and_then(|l| l.line_number)
+                .unwrap_or(0);
+            let end = current_unchanged
+                .last()
+                .and_then(|l| l.line_number)
+                .unwrap_or(0);
             chunks.push(DiffChunk::Collapsed {
                 lines: current_unchanged.clone(),
                 start_line: start,

@@ -1,15 +1,11 @@
 //! Git remote operations
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use git2::{CredentialType, PushOptions, RemoteCallbacks, Repository};
 use std::path::Path;
 
 /// Push a branch to a remote
-pub fn push_branch(
-    repo_path: &Path,
-    remote_name: &str,
-    branch_name: &str,
-) -> Result<()> {
+pub fn push_branch(repo_path: &Path, remote_name: &str, branch_name: &str) -> Result<()> {
     let repo = Repository::open(repo_path)?;
 
     // Find the remote
@@ -105,7 +101,8 @@ pub fn get_remote_url(repo_path: &Path, remote_name: &str) -> Result<String> {
     let repo = Repository::open(repo_path)?;
     let remote = repo.find_remote(remote_name)?;
 
-    remote.url()
+    remote
+        .url()
         .ok_or_else(|| anyhow!("Remote URL not found"))
         .map(|s| s.to_string())
 }
@@ -169,7 +166,12 @@ mod tests {
         let (_dir, repo) = create_test_repo();
 
         add_remote(repo.path(), "origin", "https://github.com/test/repo.git").unwrap();
-        add_remote(repo.path(), "upstream", "https://github.com/upstream/repo.git").unwrap();
+        add_remote(
+            repo.path(),
+            "upstream",
+            "https://github.com/upstream/repo.git",
+        )
+        .unwrap();
 
         let remotes = list_remotes(repo.path()).unwrap();
         assert_eq!(remotes.len(), 2);
@@ -192,12 +194,7 @@ mod tests {
         )
         .unwrap();
 
-        let branch = local_repo
-            .head()
-            .unwrap()
-            .shorthand()
-            .unwrap()
-            .to_string();
+        let branch = local_repo.head().unwrap().shorthand().unwrap().to_string();
 
         push_branch(local_repo.path(), "origin", &branch).unwrap();
 

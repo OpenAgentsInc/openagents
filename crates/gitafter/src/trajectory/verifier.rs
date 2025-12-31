@@ -3,8 +3,8 @@
 //! Verifies that trajectory hash in PR matches actual trajectory events.
 
 use anyhow::Result;
-use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 /// Verification result for agent review trajectories
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,9 +102,9 @@ pub fn compare_to_diff(events_json: &[String], _diff: &str) -> Result<Verificati
     }
 
     // Pattern 2: No Edit or Write tool calls (how was code changed?)
-    let has_edits = events_json.iter().any(|e| {
-        e.contains("\"tool\":\"Edit\"") || e.contains("\"tool\":\"Write\"")
-    });
+    let has_edits = events_json
+        .iter()
+        .any(|e| e.contains("\"tool\":\"Edit\"") || e.contains("\"tool\":\"Write\""));
     if !has_edits && !events_json.is_empty() {
         suspicious_patterns.push("No Edit or Write tool calls found".to_string());
     }
@@ -152,9 +152,7 @@ mod tests {
 
     #[test]
     fn test_verify_trajectory_hash() {
-        let events = vec![
-            r#"{"type":"ToolUse"}"#.to_string(),
-        ];
+        let events = vec![r#"{"type":"ToolUse"}"#.to_string()];
 
         let hash = calculate_trajectory_hash(&events).unwrap();
         assert!(verify_trajectory_hash(&events, &hash).unwrap());
@@ -212,7 +210,11 @@ mod tests {
 
         let result = compare_to_diff(&events, "mock diff").unwrap();
         assert!(matches!(result.status, VerificationStatus::Warning(_)));
-        assert!(result.suspicious_patterns.contains(&"No Edit or Write tool calls found".to_string()));
+        assert!(
+            result
+                .suspicious_patterns
+                .contains(&"No Edit or Write tool calls found".to_string())
+        );
     }
 
     #[test]
@@ -232,6 +234,10 @@ mod tests {
 
         let result = compare_to_diff(&events, "mock diff").unwrap();
         assert!(matches!(result.status, VerificationStatus::Warning(_)));
-        assert!(result.suspicious_patterns.contains(&"Very few trajectory events for this change".to_string()));
+        assert!(
+            result
+                .suspicious_patterns
+                .contains(&"Very few trajectory events for this change".to_string())
+        );
     }
 }

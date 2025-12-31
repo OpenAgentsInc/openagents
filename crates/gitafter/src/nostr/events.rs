@@ -196,7 +196,12 @@ impl IssueClaimBuilder {
     pub fn build(self) -> EventTemplate {
         let mut tags = vec![
             // Reference to issue (root marker)
-            vec!["e".to_string(), self.issue_event_id, "".to_string(), "root".to_string()],
+            vec![
+                "e".to_string(),
+                self.issue_event_id,
+                "".to_string(),
+                "root".to_string(),
+            ],
             // Repository reference
             vec!["a".to_string(), self.repo_address],
             // Issue author reference
@@ -323,7 +328,12 @@ impl BountyOfferBuilder {
     pub fn build(self) -> EventTemplate {
         let mut tags = vec![
             // Reference to issue (root marker)
-            vec!["e".to_string(), self.issue_event_id, "".to_string(), "root".to_string()],
+            vec![
+                "e".to_string(),
+                self.issue_event_id,
+                "".to_string(),
+                "root".to_string(),
+            ],
             // Repository reference
             vec!["a".to_string(), self.repo_address],
             // Amount in sats
@@ -424,7 +434,12 @@ impl WorkAssignmentBuilder {
     pub fn build(self) -> EventTemplate {
         let tags = vec![
             // Reference to issue (root marker)
-            vec!["e".to_string(), self.issue_event_id, "".to_string(), "root".to_string()],
+            vec![
+                "e".to_string(),
+                self.issue_event_id,
+                "".to_string(),
+                "root".to_string(),
+            ],
             // Repository reference
             vec!["a".to_string(), self.repo_address],
             // Assignee reference
@@ -534,18 +549,35 @@ impl BountyClaimBuilder {
     pub fn build(self) -> EventTemplate {
         let mut tags = vec![
             // Reference to bounty (root marker)
-            vec!["e".to_string(), self.bounty_event_id, "".to_string(), "root".to_string()],
+            vec![
+                "e".to_string(),
+                self.bounty_event_id,
+                "".to_string(),
+                "root".to_string(),
+            ],
             // Reference to merged PR
-            vec!["e".to_string(), self.merged_pr_event_id, "".to_string(), "mention".to_string()],
+            vec![
+                "e".to_string(),
+                self.merged_pr_event_id,
+                "".to_string(),
+                "mention".to_string(),
+            ],
             // Repository reference
             vec!["a".to_string(), self.repo_address],
         ];
 
         // Add trajectory with optional relay hint
         if let Some(relay) = &self.relay_hint {
-            tags.push(vec!["trajectory".to_string(), self.trajectory_session_id.clone(), relay.clone()]);
+            tags.push(vec![
+                "trajectory".to_string(),
+                self.trajectory_session_id.clone(),
+                relay.clone(),
+            ]);
         } else {
-            tags.push(vec!["trajectory".to_string(), self.trajectory_session_id.clone()]);
+            tags.push(vec![
+                "trajectory".to_string(),
+                self.trajectory_session_id.clone(),
+            ]);
         }
 
         // Add trajectory hash
@@ -643,7 +675,7 @@ pub struct PullRequestBuilder {
     // Stacked diffs support
     depends_on: Option<String>,
     stack_id: Option<String>,
-    layer_position: Option<(u32, u32)>,  // (current, total)
+    layer_position: Option<(u32, u32)>, // (current, total)
 }
 
 #[allow(dead_code)]
@@ -733,8 +765,12 @@ impl PullRequestBuilder {
     /// - `clone_url` must be set via `.clone_url()`
     pub fn build(self) -> EventTemplate {
         // Validate required fields for NIP-34 compliance
-        let commit = self.commit_id.expect("commit_id is required for NIP-34 pull requests - use .commit()");
-        let url = self.clone_url.expect("clone_url is required for NIP-34 pull requests - use .clone_url()");
+        let commit = self
+            .commit_id
+            .expect("commit_id is required for NIP-34 pull requests - use .commit()");
+        let url = self
+            .clone_url
+            .expect("clone_url is required for NIP-34 pull requests - use .clone_url()");
 
         let mut tags = vec![
             // Repository reference
@@ -767,7 +803,11 @@ impl PullRequestBuilder {
         }
 
         if let Some((current, total)) = self.layer_position {
-            tags.push(vec!["layer".to_string(), current.to_string(), total.to_string()]);
+            tags.push(vec![
+                "layer".to_string(),
+                current.to_string(),
+                total.to_string(),
+            ]);
         }
 
         EventTemplate {
@@ -987,7 +1027,12 @@ impl StatusEventBuilder {
     pub fn build(self) -> EventTemplate {
         let tags = vec![
             // Reference to target PR/patch (root marker)
-            vec!["e".to_string(), self.target_event_id, "".to_string(), "root".to_string()],
+            vec![
+                "e".to_string(),
+                self.target_event_id,
+                "".to_string(),
+                "root".to_string(),
+            ],
             // Repository reference
             vec!["a".to_string(), self.repo_address],
         ];
@@ -1010,55 +1055,93 @@ mod tests {
 
     #[test]
     fn test_issue_claim_builder() {
-        let template = IssueClaimBuilder::new(
-            "issue123",
-            "30617:pubkey123:repo456",
-            "author789",
-        )
-        .content("I'll work on this. Estimated completion: 2 hours.")
-        .trajectory("session_abc")
-        .estimate(7200)
-        .build();
+        let template = IssueClaimBuilder::new("issue123", "30617:pubkey123:repo456", "author789")
+            .content("I'll work on this. Estimated completion: 2 hours.")
+            .trajectory("session_abc")
+            .estimate(7200)
+            .build();
 
         assert_eq!(template.kind, 1634);
-        assert!(template.tags.iter().any(|t| t[0] == "e" && t[1] == "issue123"));
-        assert!(template.tags.iter().any(|t| t[0] == "a" && t[1] == "30617:pubkey123:repo456"));
-        assert!(template.tags.iter().any(|t| t[0] == "p" && t[1] == "author789"));
-        assert!(template.tags.iter().any(|t| t[0] == "trajectory" && t[1] == "session_abc"));
-        assert!(template.tags.iter().any(|t| t[0] == "estimate" && t[1] == "7200"));
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "e" && t[1] == "issue123")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "a" && t[1] == "30617:pubkey123:repo456")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "p" && t[1] == "author789")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "trajectory" && t[1] == "session_abc")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "estimate" && t[1] == "7200")
+        );
     }
 
     #[test]
     fn test_bounty_offer_builder() {
-        let template = BountyOfferBuilder::new(
-            "issue123",
-            "30617:pubkey123:repo456",
-            50000,
-        )
-        .expiry(1700000000)
-        .condition("must include tests")
-        .condition("must pass CI")
-        .build();
+        let template = BountyOfferBuilder::new("issue123", "30617:pubkey123:repo456", 50000)
+            .expiry(1700000000)
+            .condition("must include tests")
+            .condition("must pass CI")
+            .build();
 
         assert_eq!(template.kind, 1636);
-        assert!(template.tags.iter().any(|t| t[0] == "e" && t[1] == "issue123"));
-        assert!(template.tags.iter().any(|t| t[0] == "amount" && t[1] == "50000"));
-        assert!(template.tags.iter().any(|t| t[0] == "expiry" && t[1] == "1700000000"));
-        assert!(template.tags.iter().filter(|t| t[0] == "conditions").count() == 2);
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "e" && t[1] == "issue123")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "amount" && t[1] == "50000")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "expiry" && t[1] == "1700000000")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .filter(|t| t[0] == "conditions")
+                .count()
+                == 2
+        );
     }
 
     #[test]
     fn test_work_assignment_builder() {
-        let template = WorkAssignmentBuilder::new(
-            "issue123",
-            "30617:pubkey123:repo456",
-            "agent789",
-        )
-        .content("Assigned to @agent")
-        .build();
+        let template =
+            WorkAssignmentBuilder::new("issue123", "30617:pubkey123:repo456", "agent789")
+                .content("Assigned to @agent")
+                .build();
 
         assert_eq!(template.kind, 1635);
-        assert!(template.tags.iter().any(|t| t[0] == "p" && t[1] == "agent789" && t.get(3) == Some(&"assignee".to_string())));
+        assert!(template.tags.iter().any(|t| t[0] == "p"
+            && t[1] == "agent789"
+            && t.get(3) == Some(&"assignee".to_string())));
     }
 
     #[test]
@@ -1075,8 +1158,18 @@ mod tests {
         .build();
 
         assert_eq!(template.kind, 1637);
-        assert!(template.tags.iter().any(|t| t[0] == "trajectory_hash" && t[1] == "hash_def"));
-        assert!(template.tags.iter().any(|t| t[0] == "lud16" && t[1] == "agent@getalby.com"));
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "trajectory_hash" && t[1] == "hash_def")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "lud16" && t[1] == "agent@getalby.com")
+        );
     }
 
     #[test]
@@ -1093,12 +1186,42 @@ mod tests {
         .build();
 
         assert_eq!(template.kind, 1618);
-        assert!(template.tags.iter().any(|t| t[0] == "a" && t[1] == "30617:pubkey123:repo456"));
-        assert!(template.tags.iter().any(|t| t[0] == "subject" && t[1] == "Fix authentication bug"));
-        assert!(template.tags.iter().any(|t| t[0] == "c" && t[1] == "abc123def456"));
-        assert!(template.tags.iter().any(|t| t[0] == "clone" && t[1] == "https://github.com/user/repo.git"));
-        assert!(template.tags.iter().any(|t| t[0] == "trajectory" && t[1] == "session_xyz"));
-        assert!(template.tags.iter().any(|t| t[0] == "trajectory_hash" && t[1] == "hash_abc"));
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "a" && t[1] == "30617:pubkey123:repo456")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "subject" && t[1] == "Fix authentication bug")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "c" && t[1] == "abc123def456")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "clone" && t[1] == "https://github.com/user/repo.git")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "trajectory" && t[1] == "session_xyz")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "trajectory_hash" && t[1] == "hash_abc")
+        );
     }
 
     #[test]
@@ -1116,9 +1239,24 @@ mod tests {
         .build();
 
         assert_eq!(template.kind, 1618);
-        assert!(template.tags.iter().any(|t| t[0] == "depends_on" && t[1] == "pr_layer_1_event_id"));
-        assert!(template.tags.iter().any(|t| t[0] == "stack" && t[1] == "stack_uuid_123"));
-        assert!(template.tags.iter().any(|t| t.len() == 3 && t[0] == "layer" && t[1] == "2" && t[2] == "4"));
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "depends_on" && t[1] == "pr_layer_1_event_id")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "stack" && t[1] == "stack_uuid_123")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t.len() == 3 && t[0] == "layer" && t[1] == "2" && t[2] == "4")
+        );
     }
 
     #[test]
@@ -1134,9 +1272,23 @@ mod tests {
         .build();
 
         assert_eq!(template.kind, 1617);
-        assert!(template.tags.iter().any(|t| t[0] == "a" && t[1] == "30617:pubkey123:repo456"));
-        assert!(template.tags.iter().any(|t| t[0] == "subject" && t[1] == "Fix typo in documentation"));
-        assert!(template.content.contains("This patch fixes a typo in the docs"));
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "a" && t[1] == "30617:pubkey123:repo456")
+        );
+        assert!(
+            template
+                .tags
+                .iter()
+                .any(|t| t[0] == "subject" && t[1] == "Fix typo in documentation")
+        );
+        assert!(
+            template
+                .content
+                .contains("This patch fixes a typo in the docs")
+        );
         assert!(template.content.contains("diff --git"));
     }
 }
@@ -1350,8 +1502,16 @@ mod repository_announcement_tests {
 
         assert_eq!(template.kind, 30617);
         assert_eq!(template.content, "");
-        assert!(template.tags.contains(&vec!["d".to_string(), "test-repo".to_string()]));
-        assert!(template.tags.contains(&vec!["name".to_string(), "Test Repository".to_string()]));
+        assert!(
+            template
+                .tags
+                .contains(&vec!["d".to_string(), "test-repo".to_string()])
+        );
+        assert!(
+            template
+                .tags
+                .contains(&vec!["name".to_string(), "Test Repository".to_string()])
+        );
     }
 
     #[test]
@@ -1374,21 +1534,69 @@ mod repository_announcement_tests {
         assert_eq!(template.content, "A revolutionary protocol");
 
         // Check required tags
-        assert!(template.tags.contains(&vec!["d".to_string(), "awesome-project".to_string()]));
-        assert!(template.tags.contains(&vec!["name".to_string(), "Awesome Project".to_string()]));
+        assert!(
+            template
+                .tags
+                .contains(&vec!["d".to_string(), "awesome-project".to_string()])
+        );
+        assert!(
+            template
+                .tags
+                .contains(&vec!["name".to_string(), "Awesome Project".to_string()])
+        );
 
         // Check optional tags
-        assert!(template.tags.contains(&vec!["description".to_string(), "A revolutionary protocol".to_string()]));
-        assert!(template.tags.contains(&vec!["clone".to_string(), "git@github.com:user/awesome-project.git".to_string()]));
-        assert!(template.tags.contains(&vec!["clone".to_string(), "https://github.com/user/awesome-project.git".to_string()]));
-        assert!(template.tags.contains(&vec!["web".to_string(), "https://github.com/user/awesome-project".to_string()]));
-        assert!(template.tags.contains(&vec!["p".to_string(), "npub1alice".to_string()]));
-        assert!(template.tags.contains(&vec!["p".to_string(), "npub1bob".to_string()]));
-        assert!(template.tags.contains(&vec!["r".to_string(), "abc123def456".to_string()]));
-        assert!(template.tags.contains(&vec!["default_branch".to_string(), "main".to_string()]));
-        assert!(template.tags.contains(&vec!["language".to_string(), "rust".to_string()]));
-        assert!(template.tags.contains(&vec!["topic".to_string(), "nostr".to_string()]));
-        assert!(template.tags.contains(&vec!["topic".to_string(), "git".to_string()]));
+        assert!(template.tags.contains(&vec![
+            "description".to_string(),
+            "A revolutionary protocol".to_string()
+        ]));
+        assert!(template.tags.contains(&vec![
+            "clone".to_string(),
+            "git@github.com:user/awesome-project.git".to_string()
+        ]));
+        assert!(template.tags.contains(&vec![
+            "clone".to_string(),
+            "https://github.com/user/awesome-project.git".to_string()
+        ]));
+        assert!(template.tags.contains(&vec![
+            "web".to_string(),
+            "https://github.com/user/awesome-project".to_string()
+        ]));
+        assert!(
+            template
+                .tags
+                .contains(&vec!["p".to_string(), "npub1alice".to_string()])
+        );
+        assert!(
+            template
+                .tags
+                .contains(&vec!["p".to_string(), "npub1bob".to_string()])
+        );
+        assert!(
+            template
+                .tags
+                .contains(&vec!["r".to_string(), "abc123def456".to_string()])
+        );
+        assert!(
+            template
+                .tags
+                .contains(&vec!["default_branch".to_string(), "main".to_string()])
+        );
+        assert!(
+            template
+                .tags
+                .contains(&vec!["language".to_string(), "rust".to_string()])
+        );
+        assert!(
+            template
+                .tags
+                .contains(&vec!["topic".to_string(), "nostr".to_string()])
+        );
+        assert!(
+            template
+                .tags
+                .contains(&vec!["topic".to_string(), "git".to_string()])
+        );
     }
 
     #[test]
@@ -1399,7 +1607,9 @@ mod repository_announcement_tests {
             .clone_url("git@gitlab.com:user/repo.git")
             .build();
 
-        let clone_tags: Vec<_> = template.tags.iter()
+        let clone_tags: Vec<_> = template
+            .tags
+            .iter()
             .filter(|tag| tag.len() >= 2 && tag[0] == "clone")
             .collect();
 
@@ -1414,7 +1624,9 @@ mod repository_announcement_tests {
             .maintainer("npub1charlie")
             .build();
 
-        let maintainer_tags: Vec<_> = template.tags.iter()
+        let maintainer_tags: Vec<_> = template
+            .tags
+            .iter()
             .filter(|tag| tag.len() >= 2 && tag[0] == "p")
             .collect();
 
@@ -1578,7 +1790,11 @@ mod zap_tests {
         let template = ZapRequestBuilder::new("recipient_pubkey").build();
 
         assert_eq!(template.kind, 9734);
-        assert!(template.tags.contains(&vec!["p".to_string(), "recipient_pubkey".to_string()]));
+        assert!(
+            template
+                .tags
+                .contains(&vec!["p".to_string(), "recipient_pubkey".to_string()])
+        );
     }
 
     #[test]
@@ -1593,12 +1809,26 @@ mod zap_tests {
 
         assert_eq!(template.kind, 9734);
         assert_eq!(template.content, "Great work!");
-        assert!(template.tags.contains(&vec!["p".to_string(), "recipient_pubkey".to_string()]));
-        assert!(template.tags.contains(&vec!["e".to_string(), "event123".to_string()]));
-        assert!(template.tags.contains(&vec!["amount".to_string(), "21000".to_string()]));
+        assert!(
+            template
+                .tags
+                .contains(&vec!["p".to_string(), "recipient_pubkey".to_string()])
+        );
+        assert!(
+            template
+                .tags
+                .contains(&vec!["e".to_string(), "event123".to_string()])
+        );
+        assert!(
+            template
+                .tags
+                .contains(&vec!["amount".to_string(), "21000".to_string()])
+        );
 
         // Check relays tag
-        let relays_tag: Vec<_> = template.tags.iter()
+        let relays_tag: Vec<_> = template
+            .tags
+            .iter()
             .filter(|tag| tag.len() >= 1 && tag[0] == "relays")
             .collect();
         assert_eq!(relays_tag.len(), 1);
@@ -1607,11 +1837,11 @@ mod zap_tests {
 
     #[test]
     fn test_zap_amount_conversion() {
-        let template = ZapRequestBuilder::new("recipient")
-            .amount_sats(1)
-            .build();
+        let template = ZapRequestBuilder::new("recipient").amount_sats(1).build();
 
-        let amount_tag = template.tags.iter()
+        let amount_tag = template
+            .tags
+            .iter()
             .find(|tag| tag.len() >= 2 && tag[0] == "amount")
             .expect("amount tag should exist");
 

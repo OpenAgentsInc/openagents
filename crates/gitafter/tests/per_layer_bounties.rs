@@ -200,7 +200,10 @@ fn test_query_all_stack_bounties() {
         })
         .sum();
 
-    assert_eq!(total_bounty, 100000, "Total stack bounty should be 100k sats");
+    assert_eq!(
+        total_bounty, 100000,
+        "Total stack bounty should be 100k sats"
+    );
 }
 
 #[test]
@@ -236,21 +239,13 @@ fn test_partial_stack_bounties() {
     let layer2_bounties = cache
         .get_bounties_for_layer(stack_id, 2)
         .expect("Failed to query layer 2");
-    assert_eq!(
-        layer2_bounties.len(),
-        0,
-        "Layer 2 should have no bounties"
-    );
+    assert_eq!(layer2_bounties.len(), 0, "Layer 2 should have no bounties");
 
     // Layer 3 should have bounty
     let layer3_bounties = cache
         .get_bounties_for_layer(stack_id, 3)
         .expect("Failed to query layer 3");
-    assert_eq!(
-        layer3_bounties.len(),
-        1,
-        "Layer 3 should have 1 bounty"
-    );
+    assert_eq!(layer3_bounties.len(), 1, "Layer 3 should have 1 bounty");
 
     // Stack should have 2 total bounties
     let stack_bounties = cache
@@ -290,9 +285,5 @@ fn test_single_issue_bounty_not_affected() {
     let issue_bounties = cache
         .get_bounties_for_issue("issue-123")
         .expect("Failed to get issue bounties");
-    assert_eq!(
-        issue_bounties.len(),
-        1,
-        "Should find the issue bounty"
-    );
+    assert_eq!(issue_bounties.len(), 1, "Should find the issue bounty");
 }

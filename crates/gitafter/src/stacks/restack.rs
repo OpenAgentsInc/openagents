@@ -30,7 +30,7 @@
 //! }
 //! ```
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nostr::Event;
 use std::collections::HashMap;
 use std::path::Path;
@@ -39,7 +39,7 @@ use std::sync::Arc;
 use crate::git::{abort_rebase, has_rebase_conflicts, rebase_commit};
 use crate::nostr::NostrClient;
 use crate::nostr::events::PullRequestBuilder;
-use crate::stacks::graph::{StackGraph, LayerInfo};
+use crate::stacks::graph::{LayerInfo, StackGraph};
 use wallet::core::identity::UnifiedIdentity;
 
 /// Result of a restack operation
@@ -125,7 +125,8 @@ pub async fn restack_layers(
     let layers = graph.topological_sort()?;
 
     // Filter to only layers in this stack
-    let stack_layers: Vec<_> = layers.into_iter()
+    let stack_layers: Vec<_> = layers
+        .into_iter()
         .filter(|l| l.stack_id == stack_id)
         .collect();
 
@@ -153,10 +154,14 @@ pub async fn restack_layers(
             &nostr_client,
             &identity,
             repo_address,
-        ).await {
+        )
+        .await
+        {
             Ok((old_commit, new_commit, new_pr_event_id)) => {
                 new_commits.insert(layer.event_id.clone(), new_commit.clone());
-                result.updated_prs.insert(layer.event_id.clone(), new_pr_event_id.clone());
+                result
+                    .updated_prs
+                    .insert(layer.event_id.clone(), new_pr_event_id.clone());
                 result.succeeded.push(layer.event_id.clone());
 
                 tracing::info!(
@@ -204,7 +209,9 @@ async fn restack_layer(
     identity: &UnifiedIdentity,
     repo_address: &str,
 ) -> Result<(String, String, String)> {
-    let old_commit = layer.commit_id.as_ref()
+    let old_commit = layer
+        .commit_id
+        .as_ref()
         .ok_or_else(|| anyhow!("Layer {} missing commit ID", layer.event_id))?;
 
     // Determine the new base commit
@@ -216,7 +223,8 @@ async fn restack_layer(
     } else {
         // Not the first layer - rebase onto the previous layer's new commit
         let prev_layer = &all_layers[layer_idx - 1];
-        new_commits.get(&prev_layer.event_id)
+        new_commits
+            .get(&prev_layer.event_id)
             .ok_or_else(|| anyhow!("Previous layer not yet rebased"))?
             .clone()
     };
@@ -230,13 +238,8 @@ async fn restack_layer(
     }
 
     // Publish PR Update event (kind:1619) with new commit ID
-    let pr_update_event_id = publish_pr_update(
-        layer,
-        &new_commit_id,
-        nostr_client,
-        identity,
-        repo_address,
-    ).await?;
+    let pr_update_event_id =
+        publish_pr_update(layer, &new_commit_id, nostr_client, identity, repo_address).await?;
 
     Ok((old_commit.clone(), new_commit_id, pr_update_event_id))
 }
@@ -263,7 +266,10 @@ async fn publish_pr_update(
     // For now, we'll use PullRequestBuilder to create an updated PR event
     let pr_update = PullRequestBuilder::new(
         repo_address,
-        &format!("Layer {}/{} (restacked)", layer.layer_number, layer.total_layers),
+        &format!(
+            "Layer {}/{} (restacked)",
+            layer.layer_number, layer.total_layers
+        ),
         &update_content,
     )
     .commit(new_commit_id)
@@ -280,7 +286,8 @@ async fn publish_pr_update(
     let event_template = pr_update.build();
 
     // Sign the event
-    let signed_event = identity.sign_event(event_template)
+    let signed_event = identity
+        .sign_event(event_template)
         .map_err(|e| anyhow!("Failed to sign PR update event: {}", e))?;
 
     let event_id = signed_event.id.clone();

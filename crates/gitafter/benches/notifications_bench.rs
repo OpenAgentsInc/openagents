@@ -1,8 +1,8 @@
 //! Performance benchmarks for GitAfter notification operations
 
-use gitafter::nostr::cache::EventCache;
 use bip39::Mnemonic;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use gitafter::nostr::cache::EventCache;
 use nostr::EventTemplate;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
@@ -177,8 +177,7 @@ fn bench_get_notifications(c: &mut Criterion) {
     let mut group = c.benchmark_group("get_notifications");
 
     for num_notifications in [10, 100, 1000, 10000].iter() {
-        let (cache, _temp_dir, identity) =
-            create_test_cache_with_events(*num_notifications);
+        let (cache, _temp_dir, identity) = create_test_cache_with_events(*num_notifications);
         let pubkey = identity.nostr_public_key();
 
         // Get recent notifications
@@ -211,8 +210,7 @@ fn bench_get_unread_count(c: &mut Criterion) {
     let mut group = c.benchmark_group("get_unread_count");
 
     for num_notifications in [10, 100, 1000, 10000].iter() {
-        let (cache, _temp_dir, identity) =
-            create_test_cache_with_events(*num_notifications);
+        let (cache, _temp_dir, identity) = create_test_cache_with_events(*num_notifications);
         let pubkey = identity.nostr_public_key();
 
         group.bench_with_input(

@@ -1,7 +1,7 @@
 //! Integration tests for GitAfter notification system
 
-use gitafter::nostr::cache::EventCache;
 use bip39::Mnemonic;
+use gitafter::nostr::cache::EventCache;
 use nostr::EventTemplate;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
@@ -24,7 +24,8 @@ fn test_notification_on_pr_review() {
     let author_identity = UnifiedIdentity::from_mnemonic(author_mnemonic).unwrap();
     let author_pubkey = author_identity.nostr_public_key();
 
-    let reviewer_mnemonic = Mnemonic::parse("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong").unwrap();
+    let reviewer_mnemonic =
+        Mnemonic::parse("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong").unwrap();
     let reviewer_identity = UnifiedIdentity::from_mnemonic(reviewer_mnemonic).unwrap();
 
     let (cache, _temp_dir) = create_test_cache();
@@ -71,17 +72,21 @@ fn test_notification_on_pr_review() {
     assert!(cached_pr.is_some());
 
     // Step 4: Create notification for the review
-    let notification_id = cache.create_notification(
-        &author_pubkey.to_string(),
-        &review_event.id,
-        1,
-        "pr_review",
-        "New review on your PR",
-        Some("Looks good! Just one suggestion on line 42."),
-    ).unwrap();
+    let notification_id = cache
+        .create_notification(
+            &author_pubkey.to_string(),
+            &review_event.id,
+            1,
+            "pr_review",
+            "New review on your PR",
+            Some("Looks good! Just one suggestion on line 42."),
+        )
+        .unwrap();
 
     // Step 5: Verify notification was created
-    let notifications = cache.get_notifications(&author_pubkey.to_string(), 10).unwrap();
+    let notifications = cache
+        .get_notifications(&author_pubkey.to_string(), 10)
+        .unwrap();
     assert_eq!(notifications.len(), 1);
     assert_eq!(notifications[0].id, notification_id);
     assert_eq!(notifications[0].user_pubkey, author_pubkey.to_string());
@@ -97,7 +102,9 @@ fn test_notification_on_pr_review() {
     cache.mark_notification_read(&notification_id).unwrap();
 
     // Step 8: Verify notification is marked as read
-    let notifications_after = cache.get_notifications(&author_pubkey.to_string(), 10).unwrap();
+    let notifications_after = cache
+        .get_notifications(&author_pubkey.to_string(), 10)
+        .unwrap();
     assert_eq!(notifications_after.len(), 1);
     assert!(notifications_after[0].read);
 
@@ -113,7 +120,8 @@ fn test_notification_on_pr_status_change() {
     let author_identity = UnifiedIdentity::from_mnemonic(author_mnemonic).unwrap();
     let author_pubkey = author_identity.nostr_public_key();
 
-    let maintainer_mnemonic = Mnemonic::parse("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong").unwrap();
+    let maintainer_mnemonic =
+        Mnemonic::parse("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong").unwrap();
     let maintainer_identity = UnifiedIdentity::from_mnemonic(maintainer_mnemonic).unwrap();
 
     let (cache, _temp_dir) = create_test_cache();
@@ -154,17 +162,21 @@ fn test_notification_on_pr_status_change() {
     cache.insert_event(&merge_event).unwrap();
 
     // Create notification for the merge
-    cache.create_notification(
-        &author_pubkey.to_string(),
-        &merge_event.id,
-        1631,
-        "pr_status",
-        "Your PR was merged",
-        None,
-    ).unwrap();
+    cache
+        .create_notification(
+            &author_pubkey.to_string(),
+            &merge_event.id,
+            1631,
+            "pr_status",
+            "Your PR was merged",
+            None,
+        )
+        .unwrap();
 
     // Verify notification
-    let notifications = cache.get_notifications(&author_pubkey.to_string(), 10).unwrap();
+    let notifications = cache
+        .get_notifications(&author_pubkey.to_string(), 10)
+        .unwrap();
     assert_eq!(notifications.len(), 1);
     assert_eq!(notifications[0].notification_type, "pr_status");
     assert_eq!(notifications[0].title, "Your PR was merged");
@@ -177,7 +189,8 @@ fn test_notification_on_issue_claim() {
     let issue_author_identity = UnifiedIdentity::from_mnemonic(issue_author_mnemonic).unwrap();
     let issue_author_pubkey = issue_author_identity.nostr_public_key();
 
-    let agent_mnemonic = Mnemonic::parse("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong").unwrap();
+    let agent_mnemonic =
+        Mnemonic::parse("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong").unwrap();
     let agent_identity = UnifiedIdentity::from_mnemonic(agent_mnemonic).unwrap();
 
     let (cache, _temp_dir) = create_test_cache();
@@ -219,17 +232,21 @@ fn test_notification_on_issue_claim() {
     cache.insert_event(&claim_event).unwrap();
 
     // Create notification for the claim
-    cache.create_notification(
-        &issue_author_pubkey.to_string(),
-        &claim_event.id,
-        1634,
-        "issue_claim",
-        "Someone claimed your issue",
-        None,
-    ).unwrap();
+    cache
+        .create_notification(
+            &issue_author_pubkey.to_string(),
+            &claim_event.id,
+            1634,
+            "issue_claim",
+            "Someone claimed your issue",
+            None,
+        )
+        .unwrap();
 
     // Verify notification
-    let notifications = cache.get_notifications(&issue_author_pubkey.to_string(), 10).unwrap();
+    let notifications = cache
+        .get_notifications(&issue_author_pubkey.to_string(), 10)
+        .unwrap();
     assert_eq!(notifications.len(), 1);
     assert_eq!(notifications[0].notification_type, "issue_claim");
     assert_eq!(notifications[0].title, "Someone claimed your issue");
@@ -255,9 +272,7 @@ fn test_mark_all_notifications_read() {
         let event_template = EventTemplate {
             kind: 1,
             content: format!("Review comment {}", i),
-            tags: vec![
-                vec!["p".to_string(), user_pubkey.to_string()],
-            ],
+            tags: vec![vec!["p".to_string(), user_pubkey.to_string()]],
             created_at: now + i,
         };
         let event = user_identity.sign_event(event_template).unwrap();
@@ -267,14 +282,16 @@ fn test_mark_all_notifications_read() {
         cache.insert_event(&event).unwrap();
 
         // Create notification
-        cache.create_notification(
-            &user_pubkey.to_string(),
-            &event_id,
-            1,
-            "pr_review",
-            &format!("Review {}", i),
-            None,
-        ).unwrap();
+        cache
+            .create_notification(
+                &user_pubkey.to_string(),
+                &event_id,
+                1,
+                "pr_review",
+                &format!("Review {}", i),
+                None,
+            )
+            .unwrap();
     }
 
     // Verify 3 unread notifications
@@ -282,7 +299,9 @@ fn test_mark_all_notifications_read() {
     assert_eq!(unread_count, 3);
 
     // Mark all as read
-    let marked = cache.mark_all_notifications_read(&user_pubkey.to_string()).unwrap();
+    let marked = cache
+        .mark_all_notifications_read(&user_pubkey.to_string())
+        .unwrap();
     assert_eq!(marked, 3);
 
     // Verify all are read

@@ -2,8 +2,8 @@
 //!
 //! Tests cloning from different URL schemes with real repositories.
 
-use gitafter::git::{clone_repository, get_workspace_path};
 use git2::{Repository, Signature};
+use gitafter::git::{clone_repository, get_workspace_path};
 use std::path::Path;
 use tempfile::TempDir;
 

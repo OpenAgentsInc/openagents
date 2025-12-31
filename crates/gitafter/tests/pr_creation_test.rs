@@ -19,10 +19,7 @@ async fn test_create_pull_request() -> Result<()> {
     let pr_template = EventTemplate {
         kind: 1618, // PULL_REQUEST
         tags: vec![
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
             vec!["subject".to_string(), "Add new feature".to_string()],
             vec!["c".to_string(), "abc123def456".to_string()], // commit ID
             vec![
@@ -91,27 +88,15 @@ async fn test_create_pr_with_trajectory_proof() -> Result<()> {
     let pr_template = EventTemplate {
         kind: 1618,
         tags: vec![
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
-            vec![
-                "subject".to_string(),
-                "Agent-authored feature".to_string(),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
+            vec!["subject".to_string(), "Agent-authored feature".to_string()],
             vec!["c".to_string(), "commit-hash-789".to_string()],
             vec![
                 "clone".to_string(),
                 "https://github.com/test/repo.git".to_string(),
             ],
-            vec![
-                "trajectory".to_string(),
-                trajectory_session_id.to_string(),
-            ],
-            vec![
-                "trajectory_hash".to_string(),
-                trajectory_hash.to_string(),
-            ],
+            vec!["trajectory".to_string(), trajectory_session_id.to_string()],
+            vec!["trajectory_hash".to_string(), trajectory_hash.to_string()],
         ],
         content: "This PR was created by an agent with full trajectory proof".to_string(),
         created_at: std::time::SystemTime::now()
@@ -156,10 +141,7 @@ async fn test_pr_status_transitions() -> Result<()> {
     let pr_template = EventTemplate {
         kind: 1618,
         tags: vec![
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
             vec!["subject".to_string(), "Feature PR".to_string()],
             vec!["c".to_string(), "commit123".to_string()],
         ],
@@ -235,10 +217,7 @@ async fn test_pr_with_stacked_diff_tags() -> Result<()> {
     let pr1_template = EventTemplate {
         kind: 1618,
         tags: vec![
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
             vec!["subject".to_string(), "Layer 1: Base changes".to_string()],
             vec!["c".to_string(), "commit1".to_string()],
             vec!["stack".to_string(), stack_id.to_string()],
@@ -257,14 +236,8 @@ async fn test_pr_with_stacked_diff_tags() -> Result<()> {
     let pr2_template = EventTemplate {
         kind: 1618,
         tags: vec![
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
-            vec![
-                "subject".to_string(),
-                "Layer 2: Build on base".to_string(),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
+            vec!["subject".to_string(), "Layer 2: Build on base".to_string()],
             vec!["c".to_string(), "commit2".to_string()],
             vec!["stack".to_string(), stack_id.to_string()],
             vec!["layer".to_string(), "2".to_string(), "3".to_string()],
@@ -322,10 +295,7 @@ async fn test_pr_update_event() -> Result<()> {
     let pr_template = EventTemplate {
         kind: 1618,
         tags: vec![
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
             vec!["subject".to_string(), "Initial PR".to_string()],
             vec!["c".to_string(), "commit-v1".to_string()],
         ],

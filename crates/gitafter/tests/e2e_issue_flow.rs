@@ -14,7 +14,11 @@ async fn test_complete_issue_workflow() -> Result<()> {
 
     // Step 1: Create repository
     let repo = app
-        .create_repository("openagents", "OpenAgents", "Desktop foundation for sovereign AI agents")
+        .create_repository(
+            "openagents",
+            "OpenAgents",
+            "Desktop foundation for sovereign AI agents",
+        )
         .await?;
 
     assert_eq!(repo.kind, 30617);
@@ -26,17 +30,29 @@ async fn test_complete_issue_workflow() -> Result<()> {
 
     // Step 2: Create issue on repository
     let issue = app
-        .create_issue("openagents", "Add NIP-77 support", "Implement Negentropy protocol for efficient sync")
+        .create_issue(
+            "openagents",
+            "Add NIP-77 support",
+            "Implement Negentropy protocol for efficient sync",
+        )
         .await?;
 
     assert_eq!(issue.kind, 1621);
-    assert_eq!(issue.content, "Implement Negentropy protocol for efficient sync");
+    assert_eq!(
+        issue.content,
+        "Implement Negentropy protocol for efficient sync"
+    );
 
     // Verify issue has correct repo reference
-    let repo_tag = issue.tags.iter()
+    let repo_tag = issue
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("a"))
         .expect("issue should have 'a' tag");
-    assert_eq!(repo_tag.get(1).unwrap(), &format!("30617:{}:openagents", app.pubkey()));
+    assert_eq!(
+        repo_tag.get(1).unwrap(),
+        &format!("30617:{}:openagents", app.pubkey())
+    );
 
     let issue_events = app.get_events_by_kind(1621).await;
     assert_eq!(issue_events.len(), 1);
@@ -45,8 +61,16 @@ async fn test_complete_issue_workflow() -> Result<()> {
     let bounty_template = EventTemplate {
         kind: 1636, // BOUNTY_OFFER
         tags: vec![
-            vec!["e".to_string(), issue.id.clone(), "".to_string(), "root".to_string()],
-            vec!["a".to_string(), format!("30617:{}:openagents", app.pubkey())],
+            vec![
+                "e".to_string(),
+                issue.id.clone(),
+                "".to_string(),
+                "root".to_string(),
+            ],
+            vec![
+                "a".to_string(),
+                format!("30617:{}:openagents", app.pubkey()),
+            ],
             vec!["amount".to_string(), "50000".to_string()], // 50k sats
             vec!["expiry".to_string(), "1735689600".to_string()], // example timestamp
             vec!["conditions".to_string(), "must include tests".to_string()],
@@ -63,13 +87,20 @@ async fn test_complete_issue_workflow() -> Result<()> {
     assert_eq!(bounty.kind, 1636);
 
     // Verify bounty references issue
-    let bounty_issue_ref = bounty.tags.iter()
-        .find(|t| t.first().map(|s| s.as_str()) == Some("e") && t.get(3).map(|s| s.as_str()) == Some("root"))
+    let bounty_issue_ref = bounty
+        .tags
+        .iter()
+        .find(|t| {
+            t.first().map(|s| s.as_str()) == Some("e")
+                && t.get(3).map(|s| s.as_str()) == Some("root")
+        })
         .expect("bounty should reference issue");
     assert_eq!(bounty_issue_ref.get(1).unwrap(), &issue.id);
 
     // Verify bounty has amount
-    let amount_tag = bounty.tags.iter()
+    let amount_tag = bounty
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("amount"))
         .expect("bounty should have amount");
     assert_eq!(amount_tag.get(1).unwrap(), "50000");
@@ -84,8 +115,13 @@ async fn test_complete_issue_workflow() -> Result<()> {
     assert_eq!(claim.content, "Claiming this issue");
 
     // Verify claim references issue
-    let issue_ref = claim.tags.iter()
-        .find(|t| t.first().map(|s| s.as_str()) == Some("e") && t.get(3).map(|s| s.as_str()) == Some("root"))
+    let issue_ref = claim
+        .tags
+        .iter()
+        .find(|t| {
+            t.first().map(|s| s.as_str()) == Some("e")
+                && t.get(3).map(|s| s.as_str()) == Some("root")
+        })
         .expect("claim should have root 'e' tag");
     assert_eq!(issue_ref.get(1).unwrap(), &issue.id);
 
@@ -94,14 +130,19 @@ async fn test_complete_issue_workflow() -> Result<()> {
 
     // Step 5: Agent posts progress comment (NIP-22)
     let progress_comment = app
-        .comment_on_issue(&issue.id, "Started implementation. Added core types and varint encoding.")
+        .comment_on_issue(
+            &issue.id,
+            "Started implementation. Added core types and varint encoding.",
+        )
         .await?;
 
     assert_eq!(progress_comment.kind, 1);
     assert!(progress_comment.content.contains("Started implementation"));
 
     // Verify comment references issue
-    let comment_ref = progress_comment.tags.iter()
+    let comment_ref = progress_comment
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("e"))
         .expect("comment should reference issue");
     assert_eq!(comment_ref.get(1).unwrap(), &issue.id);
@@ -134,20 +175,29 @@ async fn test_complete_issue_workflow() -> Result<()> {
     assert!(pr.content.contains("NIP-77 Negentropy"));
 
     // Verify PR has trajectory link
-    let trajectory_tag = pr.tags.iter()
+    let trajectory_tag = pr
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("trajectory"))
         .expect("PR should have trajectory tag");
     assert_eq!(trajectory_tag.get(1).unwrap(), trajectory_session_id);
 
     // Verify PR has trajectory hash
-    let hash_tag = pr.tags.iter()
+    let hash_tag = pr
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("trajectory_hash"))
         .expect("PR should have trajectory_hash tag");
     assert_eq!(hash_tag.get(1).unwrap(), trajectory_hash);
 
     // Verify PR references issue
-    let pr_issue_ref = pr.tags.iter()
-        .find(|t| t.first().map(|s| s.as_str()) == Some("e") && t.get(3).map(|s| s.as_str()) == Some("mention"))
+    let pr_issue_ref = pr
+        .tags
+        .iter()
+        .find(|t| {
+            t.first().map(|s| s.as_str()) == Some("e")
+                && t.get(3).map(|s| s.as_str()) == Some("mention")
+        })
         .expect("PR should mention issue");
     assert_eq!(pr_issue_ref.get(1).unwrap(), &issue.id);
 
@@ -163,7 +213,9 @@ async fn test_complete_issue_workflow() -> Result<()> {
     assert!(review_comment.content.contains("LGTM"));
 
     // Verify review references PR
-    let review_ref = review_comment.tags.iter()
+    let review_ref = review_comment
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("e"))
         .expect("review should reference PR");
     assert_eq!(review_ref.get(1).unwrap(), &pr.id);
@@ -172,8 +224,16 @@ async fn test_complete_issue_workflow() -> Result<()> {
     let status_template = EventTemplate {
         kind: 1631, // STATUS_APPLIED
         tags: vec![
-            vec!["e".to_string(), pr.id.clone(), "".to_string(), "root".to_string()],
-            vec!["a".to_string(), format!("30617:{}:openagents", app.pubkey())],
+            vec![
+                "e".to_string(),
+                pr.id.clone(),
+                "".to_string(),
+                "root".to_string(),
+            ],
+            vec![
+                "a".to_string(),
+                format!("30617:{}:openagents", app.pubkey()),
+            ],
         ],
         content: "Merged to main".to_string(),
         created_at: std::time::SystemTime::now()
@@ -188,8 +248,13 @@ async fn test_complete_issue_workflow() -> Result<()> {
     assert_eq!(status.content, "Merged to main");
 
     // Verify status references PR
-    let status_ref = status.tags.iter()
-        .find(|t| t.first().map(|s| s.as_str()) == Some("e") && t.get(3).map(|s| s.as_str()) == Some("root"))
+    let status_ref = status
+        .tags
+        .iter()
+        .find(|t| {
+            t.first().map(|s| s.as_str()) == Some("e")
+                && t.get(3).map(|s| s.as_str()) == Some("root")
+        })
         .expect("status should reference PR");
     assert_eq!(status_ref.get(1).unwrap(), &pr.id);
 
@@ -200,10 +265,27 @@ async fn test_complete_issue_workflow() -> Result<()> {
     let bounty_claim_template = EventTemplate {
         kind: 1637, // BOUNTY_CLAIM
         tags: vec![
-            vec!["e".to_string(), issue.id.clone(), "".to_string(), "mention".to_string()],
-            vec!["e".to_string(), pr.id.clone(), "".to_string(), "mention".to_string()],
-            vec!["a".to_string(), format!("30617:{}:openagents", app.pubkey())],
-            vec!["trajectory".to_string(), trajectory_session_id.to_string(), "wss://relay.nostr.bg".to_string()],
+            vec![
+                "e".to_string(),
+                issue.id.clone(),
+                "".to_string(),
+                "mention".to_string(),
+            ],
+            vec![
+                "e".to_string(),
+                pr.id.clone(),
+                "".to_string(),
+                "mention".to_string(),
+            ],
+            vec![
+                "a".to_string(),
+                format!("30617:{}:openagents", app.pubkey()),
+            ],
+            vec![
+                "trajectory".to_string(),
+                trajectory_session_id.to_string(),
+                "wss://relay.nostr.bg".to_string(),
+            ],
             vec!["trajectory_hash".to_string(), trajectory_hash.to_string()],
             vec!["lud16".to_string(), "agent@getalby.com".to_string()],
         ],
@@ -219,26 +301,34 @@ async fn test_complete_issue_workflow() -> Result<()> {
     assert_eq!(bounty_claim.kind, 1637);
 
     // Verify bounty claim references both issue and PR
-    let claim_issue_ref = bounty_claim.tags.iter()
+    let claim_issue_ref = bounty_claim
+        .tags
+        .iter()
         .filter(|t| t.first().map(|s| s.as_str()) == Some("e"))
         .find(|t| t.get(1).unwrap() == &issue.id)
         .expect("bounty claim should reference issue");
     assert_eq!(claim_issue_ref.get(1).unwrap(), &issue.id);
 
-    let claim_pr_ref = bounty_claim.tags.iter()
+    let claim_pr_ref = bounty_claim
+        .tags
+        .iter()
         .filter(|t| t.first().map(|s| s.as_str()) == Some("e"))
         .find(|t| t.get(1).unwrap() == &pr.id)
         .expect("bounty claim should reference PR");
     assert_eq!(claim_pr_ref.get(1).unwrap(), &pr.id);
 
     // Verify bounty claim has trajectory proof
-    let claim_trajectory = bounty_claim.tags.iter()
+    let claim_trajectory = bounty_claim
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("trajectory"))
         .expect("bounty claim should have trajectory");
     assert_eq!(claim_trajectory.get(1).unwrap(), trajectory_session_id);
 
     // Verify Lightning address
-    let lud16_tag = bounty_claim.tags.iter()
+    let lud16_tag = bounty_claim
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("lud16"))
         .expect("bounty claim should have lud16");
     assert_eq!(lud16_tag.get(1).unwrap(), "agent@getalby.com");
@@ -263,7 +353,9 @@ async fn test_trajectory_hash_validation() -> Result<()> {
     let app = TestApp::new().await?;
 
     // Create minimal setup
-    let _repo = app.create_repository("test-repo", "Test", "Test repo").await?;
+    let _repo = app
+        .create_repository("test-repo", "Test", "Test repo")
+        .await?;
     let issue = app.create_issue("test-repo", "Test issue", "Body").await?;
 
     // Create PR with valid trajectory hash
@@ -286,12 +378,20 @@ async fn test_trajectory_hash_validation() -> Result<()> {
     let pr = app.publish_event(pr_template).await?;
 
     // Verify hash is exactly 64 chars (sha256 hex)
-    let hash_tag = pr.tags.iter()
+    let hash_tag = pr
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("trajectory_hash"))
         .expect("should have trajectory_hash");
 
     assert_eq!(hash_tag.get(1).unwrap().len(), 64);
-    assert!(hash_tag.get(1).unwrap().chars().all(|c| c.is_ascii_hexdigit()));
+    assert!(
+        hash_tag
+            .get(1)
+            .unwrap()
+            .chars()
+            .all(|c| c.is_ascii_hexdigit())
+    );
 
     app.shutdown().await;
     Ok(())
@@ -308,7 +408,12 @@ async fn test_issue_claim_with_estimate() -> Result<()> {
     let claim_template = EventTemplate {
         kind: 1634,
         tags: vec![
-            vec!["e".to_string(), issue.id.clone(), "".to_string(), "root".to_string()],
+            vec![
+                "e".to_string(),
+                issue.id.clone(),
+                "".to_string(),
+                "root".to_string(),
+            ],
             vec!["estimate".to_string(), "3600".to_string()], // 1 hour
         ],
         content: "I'll complete this in 1 hour".to_string(),
@@ -321,7 +426,9 @@ async fn test_issue_claim_with_estimate() -> Result<()> {
     let claim = app.publish_event(claim_template).await?;
 
     // Verify estimate tag
-    let estimate_tag = claim.tags.iter()
+    let estimate_tag = claim
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("estimate"))
         .expect("claim should have estimate");
     assert_eq!(estimate_tag.get(1).unwrap(), "3600");
@@ -335,7 +442,9 @@ async fn test_stacked_pr_dependencies() -> Result<()> {
     let app = TestApp::new().await?;
 
     let _repo = app.create_repository("test", "Test", "Desc").await?;
-    let issue = app.create_issue("test", "Multi-layer feature", "Body").await?;
+    let issue = app
+        .create_issue("test", "Multi-layer feature", "Body")
+        .await?;
 
     // Create layer 1 (base)
     let pr1_template = EventTemplate {
@@ -362,10 +471,17 @@ async fn test_stacked_pr_dependencies() -> Result<()> {
         tags: vec![
             vec!["a".to_string(), format!("30617:{}:test", app.pubkey())],
             vec!["e".to_string(), issue.id.clone()],
-            vec!["subject".to_string(), "Layer 2: Build on foundation".to_string()],
+            vec![
+                "subject".to_string(),
+                "Layer 2: Build on foundation".to_string(),
+            ],
             vec!["stack".to_string(), "stack-uuid-123".to_string()],
             vec!["layer".to_string(), "2".to_string(), "3".to_string()],
-            vec!["depends_on".to_string(), pr1.id.clone(), "wss://relay.nostr.bg".to_string()],
+            vec![
+                "depends_on".to_string(),
+                pr1.id.clone(),
+                "wss://relay.nostr.bg".to_string(),
+            ],
         ],
         content: "Second layer".to_string(),
         created_at: std::time::SystemTime::now()
@@ -377,20 +493,26 @@ async fn test_stacked_pr_dependencies() -> Result<()> {
     let pr2 = app.publish_event(pr2_template).await?;
 
     // Verify stack tags
-    let pr2_stack = pr2.tags.iter()
+    let pr2_stack = pr2
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("stack"))
         .expect("should have stack tag");
     assert_eq!(pr2_stack.get(1).unwrap(), "stack-uuid-123");
 
     // Verify layer tag
-    let pr2_layer = pr2.tags.iter()
+    let pr2_layer = pr2
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("layer"))
         .expect("should have layer tag");
     assert_eq!(pr2_layer.get(1).unwrap(), "2");
     assert_eq!(pr2_layer.get(2).unwrap(), "3");
 
     // Verify depends_on tag
-    let depends_on = pr2.tags.iter()
+    let depends_on = pr2
+        .tags
+        .iter()
         .find(|t| t.first().map(|s| s.as_str()) == Some("depends_on"))
         .expect("should have depends_on tag");
     assert_eq!(depends_on.get(1).unwrap(), &pr1.id);

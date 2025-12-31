@@ -55,7 +55,8 @@ mod tests {
         let sig = repo.signature().expect("Failed to get signature");
         let tree_id = {
             let mut index = repo.index().expect("Failed to get index");
-            index.add_all(["."].iter(), git2::IndexAddOption::DEFAULT, None)
+            index
+                .add_all(["."].iter(), git2::IndexAddOption::DEFAULT, None)
                 .expect("Failed to add files to index");
             index.write().expect("Failed to write index");
             index.write_tree().expect("Failed to write tree")
@@ -74,14 +75,8 @@ mod tests {
             vec![]
         };
 
-        repo.commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            message,
-            &tree,
-            &parents,
-        ).unwrap()
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+            .unwrap()
     }
 
     #[test]

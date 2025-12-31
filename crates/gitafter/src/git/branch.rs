@@ -1,6 +1,6 @@
 //! Git branch operations
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use git2::{BranchType, Repository};
 use std::path::Path;
 
@@ -17,7 +17,8 @@ pub fn create_branch(repo_path: &Path, branch_name: &str) -> Result<String> {
     // Create the branch
     let branch = repo.branch(branch_name, &commit, false)?;
 
-    let branch_name = branch.name()?
+    let branch_name = branch
+        .name()?
         .ok_or_else(|| anyhow!("Branch name is not valid UTF-8"))?
         .to_string();
 
@@ -79,7 +80,8 @@ pub fn current_branch(repo_path: &Path) -> Result<String> {
         return Err(anyhow!("HEAD is not pointing to a branch (detached HEAD)"));
     }
 
-    let branch_name = head.shorthand()
+    let branch_name = head
+        .shorthand()
         .ok_or_else(|| anyhow!("Branch name is not valid UTF-8"))?
         .to_string();
 
@@ -109,14 +111,8 @@ mod tests {
         };
         {
             let tree = repo.find_tree(tree_id).unwrap();
-            repo.commit(
-                Some("HEAD"),
-                &sig,
-                &sig,
-                "Initial commit",
-                &tree,
-                &[],
-            ).unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
+                .unwrap();
         }
 
         (dir, repo)
@@ -152,7 +148,11 @@ mod tests {
 
         let current = current_branch(repo.path()).unwrap();
         // Git default branch depends on system config (main or master)
-        assert!(current == "main" || current == "master", "expected main or master, got {}", current);
+        assert!(
+            current == "main" || current == "master",
+            "expected main or master, got {}",
+            current
+        );
     }
 
     #[test]

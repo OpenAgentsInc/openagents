@@ -1,6 +1,6 @@
 //! Broadcast support for real-time Nostr event streaming.
 
-use actix_web::{web, Error, HttpRequest, HttpResponse};
+use actix_web::{Error, HttpRequest, HttpResponse, web};
 use actix_ws::AggregatedMessage;
 use futures_util::StreamExt;
 use tokio::sync::broadcast;

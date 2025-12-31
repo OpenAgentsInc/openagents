@@ -43,7 +43,10 @@ pub struct SyncWorker {
 impl SyncWorker {
     /// Create a new sync worker with the given config
     pub fn new(config: SyncConfig) -> Self {
-        info!("Created sync worker with {} relays", config.relay_urls.len());
+        info!(
+            "Created sync worker with {} relays",
+            config.relay_urls.len()
+        );
         Self { config }
     }
 

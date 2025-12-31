@@ -55,9 +55,7 @@ pub fn get_status(repo_path: &Path) -> Result<Vec<FileChange>> {
 
     let mut changes = Vec::new();
     for entry in statuses.iter() {
-        let path = entry.path()
-            .unwrap_or("")
-            .to_string();
+        let path = entry.path().unwrap_or("").to_string();
 
         let status = match entry.status() {
             s if s.contains(Status::WT_NEW) => FileStatus::Untracked,
@@ -76,11 +74,7 @@ pub fn get_status(repo_path: &Path) -> Result<Vec<FileChange>> {
 }
 
 /// Generate a diff between two commits
-pub fn diff_commits(
-    repo_path: &Path,
-    old_commit_id: &str,
-    new_commit_id: &str,
-) -> Result<String> {
+pub fn diff_commits(repo_path: &Path, old_commit_id: &str, new_commit_id: &str) -> Result<String> {
     let repo = Repository::open(repo_path)?;
 
     let old_oid = git2::Oid::from_str(old_commit_id)?;
@@ -200,7 +194,8 @@ mod tests {
         let sig = repo.signature().expect("Failed to get signature");
         let tree_id = {
             let mut index = repo.index().expect("Failed to get index");
-            index.add_all(["."].iter(), git2::IndexAddOption::DEFAULT, None)
+            index
+                .add_all(["."].iter(), git2::IndexAddOption::DEFAULT, None)
                 .expect("Failed to add files to index");
             index.write().expect("Failed to write index");
             index.write_tree().expect("Failed to write tree")
@@ -219,14 +214,8 @@ mod tests {
             vec![]
         };
 
-        repo.commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            message,
-            &tree,
-            &parents,
-        ).unwrap()
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+            .unwrap()
     }
 
     #[test]
@@ -275,11 +264,7 @@ mod tests {
         fs::write(dir.path().join("test.txt"), "line1\nline2\n").unwrap();
         let c2 = create_commit(&repo, dir.path(), "Second commit");
 
-        let patch = generate_patch(
-            repo.path(),
-            &c1.to_string(),
-            &c2.to_string(),
-        ).unwrap();
+        let patch = generate_patch(repo.path(), &c1.to_string(), &c2.to_string()).unwrap();
 
         assert!(patch.contains("+line2"));
     }

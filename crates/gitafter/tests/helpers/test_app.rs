@@ -2,9 +2,9 @@
 //!
 //! Provides TestApp pattern for isolated testing with mock relays and test identities.
 
-use gitafter::{NostrClient, WsBroadcaster};
 use anyhow::Result;
-use nostr::{finalize_event, generate_secret_key, EventTemplate};
+use gitafter::{NostrClient, WsBroadcaster};
+use nostr::{EventTemplate, finalize_event, generate_secret_key};
 use std::sync::Arc;
 use testing::MockRelay;
 
@@ -93,7 +93,10 @@ impl TestApp {
         let template = EventTemplate {
             kind: 1621, // ISSUE
             tags: vec![
-                vec!["a".to_string(), format!("30617:{}:{}", self.pubkey(), repo_identifier)],
+                vec![
+                    "a".to_string(),
+                    format!("30617:{}:{}", self.pubkey(), repo_identifier),
+                ],
                 vec!["subject".to_string(), title.to_string()],
             ],
             content: body.to_string(),
@@ -110,9 +113,12 @@ impl TestApp {
     pub async fn claim_issue(&self, issue_id: &str) -> Result<nostr::Event> {
         let template = EventTemplate {
             kind: 1634, // ISSUE_CLAIM
-            tags: vec![
-                vec!["e".to_string(), issue_id.to_string(), "".to_string(), "root".to_string()],
-            ],
+            tags: vec![vec![
+                "e".to_string(),
+                issue_id.to_string(),
+                "".to_string(),
+                "root".to_string(),
+            ]],
             content: "Claiming this issue".to_string(),
             created_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -127,9 +133,12 @@ impl TestApp {
     pub async fn comment_on_issue(&self, issue_id: &str, comment: &str) -> Result<nostr::Event> {
         let template = EventTemplate {
             kind: 1, // Short text note
-            tags: vec![
-                vec!["e".to_string(), issue_id.to_string(), "".to_string(), "root".to_string()],
-            ],
+            tags: vec![vec![
+                "e".to_string(),
+                issue_id.to_string(),
+                "".to_string(),
+                "root".to_string(),
+            ]],
             content: comment.to_string(),
             created_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -145,7 +154,12 @@ impl TestApp {
         let template = EventTemplate {
             kind: 1636, // BOUNTY_OFFER
             tags: vec![
-                vec!["e".to_string(), issue_id.to_string(), "".to_string(), "root".to_string()],
+                vec![
+                    "e".to_string(),
+                    issue_id.to_string(),
+                    "".to_string(),
+                    "root".to_string(),
+                ],
                 vec!["amount".to_string(), amount_sats.to_string()],
             ],
             content: String::new(),
@@ -168,7 +182,10 @@ impl TestApp {
         trajectory_session_id: Option<&str>,
     ) -> Result<nostr::Event> {
         let mut tags = vec![
-            vec!["a".to_string(), format!("30617:{}:{}", self.pubkey(), repo_identifier)],
+            vec![
+                "a".to_string(),
+                format!("30617:{}:{}", self.pubkey(), repo_identifier),
+            ],
             vec!["subject".to_string(), title.to_string()],
             vec!["c".to_string(), commit_id.to_string()],
             vec!["clone".to_string(), clone_url.to_string()],
@@ -195,9 +212,7 @@ impl TestApp {
     pub async fn merge_pr(&self, pr_id: &str) -> Result<nostr::Event> {
         let template = EventTemplate {
             kind: 1631, // APPLIED/MERGED status
-            tags: vec![
-                vec!["e".to_string(), pr_id.to_string()],
-            ],
+            tags: vec![vec!["e".to_string(), pr_id.to_string()]],
             content: String::new(),
             created_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -218,8 +233,18 @@ impl TestApp {
         let template = EventTemplate {
             kind: 1637, // BOUNTY_CLAIM
             tags: vec![
-                vec!["e".to_string(), bounty_id.to_string(), "".to_string(), "root".to_string()],
-                vec!["e".to_string(), pr_id.to_string(), "".to_string(), "mention".to_string()],
+                vec![
+                    "e".to_string(),
+                    bounty_id.to_string(),
+                    "".to_string(),
+                    "root".to_string(),
+                ],
+                vec![
+                    "e".to_string(),
+                    pr_id.to_string(),
+                    "".to_string(),
+                    "mention".to_string(),
+                ],
                 vec!["trajectory".to_string(), trajectory_session_id.to_string()],
             ],
             content: String::new(),
@@ -339,8 +364,14 @@ mod tests {
         let app = TestApp::new().await.unwrap();
 
         // Create repo and issue
-        let _repo = app.create_repository("test-repo", "Test", "Desc").await.unwrap();
-        let issue = app.create_issue("test-repo", "Issue", "Body").await.unwrap();
+        let _repo = app
+            .create_repository("test-repo", "Test", "Desc")
+            .await
+            .unwrap();
+        let issue = app
+            .create_issue("test-repo", "Issue", "Body")
+            .await
+            .unwrap();
 
         // Claim issue
         let claim = app.claim_issue(&issue.id).await.unwrap();
@@ -356,11 +387,20 @@ mod tests {
         let app = TestApp::new().await.unwrap();
 
         // Create issue
-        let _repo = app.create_repository("test-repo", "Test", "Desc").await.unwrap();
-        let issue = app.create_issue("test-repo", "Issue", "Body").await.unwrap();
+        let _repo = app
+            .create_repository("test-repo", "Test", "Desc")
+            .await
+            .unwrap();
+        let issue = app
+            .create_issue("test-repo", "Issue", "Body")
+            .await
+            .unwrap();
 
         // Post comment
-        let comment = app.comment_on_issue(&issue.id, "Great issue!").await.unwrap();
+        let comment = app
+            .comment_on_issue(&issue.id, "Great issue!")
+            .await
+            .unwrap();
 
         assert_eq!(comment.kind, 1);
         assert_eq!(comment.content, "Great issue!");

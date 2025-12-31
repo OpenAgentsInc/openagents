@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result, bail};
 use git2::{FetchOptions, Progress, RemoteCallbacks, Repository};
-use std::path::{Path, PathBuf, Component};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
 
@@ -128,8 +128,7 @@ pub fn clone_repository(
 
     // Ensure parent directory exists with restrictive permissions
     if let Some(parent) = dest_path.parent() {
-        std::fs::create_dir_all(parent)
-            .context("Failed to create workspace directory")?;
+        std::fs::create_dir_all(parent).context("Failed to create workspace directory")?;
 
         // Set restrictive permissions (0700 = owner only) on Unix systems
         #[cfg(unix)]
@@ -271,8 +270,8 @@ pub fn is_repository_cloned(repo_identifier: &str) -> bool {
 /// This function sanitizes the repository identifier to prevent path traversal attacks.
 /// Returns an error if the identifier contains unsafe path components.
 pub fn get_repository_path(repo_identifier: &str) -> Result<PathBuf> {
-    let sanitized = sanitize_repository_identifier(repo_identifier)
-        .context("Invalid repository identifier")?;
+    let sanitized =
+        sanitize_repository_identifier(repo_identifier).context("Invalid repository identifier")?;
     Ok(get_workspace_path().join(sanitized))
 }
 
