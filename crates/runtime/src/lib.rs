@@ -59,6 +59,8 @@
 //! - `DRIVERS.md` — Event drivers (HTTP, WS, Nostr)
 //! - `CONTROL-PLANE.md` — Management API
 //! - `PLAN9.md` — Plan 9 inspirations (filesystem, namespaces)
+//! - `FILESYSTEM.md` — FileService trait and implementations
+//! - `PRIOR-ART.md` — Related work (Plan 9, WANIX, OANIX)
 //!
 //! # Example
 //!
@@ -116,9 +118,15 @@
 // pub mod backend;    // RuntimeBackend trait
 // pub mod error;      // Error types
 //
+// Filesystem (Plan 9 / OANIX inspired):
+// pub mod service;    // FileService, FileHandle traits
+// pub mod namespace;  // Mount tables with longest-prefix matching
+// pub mod env;        // AgentEnv - complete environment abstraction
+// pub mod services;   // Standard services (StatusFs, InboxFs, GoalsFs, etc.)
+// pub mod executor;   // Async I/O bridge for sync FileService
+//
 // Agent-specific:
 // pub mod memory;     // Structured memory (conversations, goals, patterns)
-// pub mod namespace;  // Mount tables and capabilities (Plan 9 inspired)
 // pub mod plumber;    // Event routing rules
 //
 // Drivers (in separate crate):

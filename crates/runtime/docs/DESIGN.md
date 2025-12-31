@@ -625,6 +625,8 @@ The runtime is the substrate of digital life. Agents are born into it, live with
 | [DRIVERS.md](./DRIVERS.md) | Event drivers (HTTP, WS, Nostr, etc.) |
 | [CONTROL-PLANE.md](./CONTROL-PLANE.md) | Management API |
 | [PLAN9.md](./PLAN9.md) | Plan 9 inspirations |
+| [FILESYSTEM.md](./FILESYSTEM.md) | FileService trait and implementations |
+| [PRIOR-ART.md](./PRIOR-ART.md) | Related work (Plan 9, WANIX, OANIX) |
 
 ---
 
@@ -690,3 +692,35 @@ This layout separates:
 - **Core abstractions** (runtime) from **implementations** (runtime-*)
 - **Agent logic** from **infrastructure**
 - **Portable code** from **backend-specific code**
+
+---
+
+## Prior Art & Inspirations
+
+This design builds on proven patterns:
+
+**Plan 9 from Bell Labs:**
+- Everything is a file
+- Per-process namespaces as capability model
+- Services compose through filesystem
+- Plumber for event routing
+
+**WANIX (Jeff Lindsay):**
+- WebAssembly runtime with Plan 9 concepts
+- Browser portability via WASM
+- FileService abstraction
+
+**OANIX (OpenAgents NIX):**
+Our experimental Rust-native agent OS that explored:
+- `FileService` trait for mountable capabilities
+- `Namespace` with longest-prefix matching
+- `ExecutorManager` bridging sync services to async I/O
+- `OanixEnv` as complete execution environment
+- Job scheduler with priority queue
+
+**Cloudflare Durable Objects:**
+- Single-threaded actors with SQLite
+- WebSocket hibernation
+- Alarm-based scheduling
+
+See [PRIOR-ART.md](./PRIOR-ART.md) for detailed analysis of related work.
