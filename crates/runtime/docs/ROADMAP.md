@@ -570,6 +570,7 @@ The `/claude` mount enables agents to command one or more Claude instances. Key 
 - Wired tool-approval workflow and append-only tool logs for both SDK-backed and tunnel sessions; output watch reconciles budget on completion/failure.
 - Added tunnel auth surfaces (`/claude/auth/{tunnels,challenge,status}`), provider health/endpoints surfaces, and admin-only policy/pool/proxy writes via `AgentEnv`.
 - Added runtime tests for `/claude/new` usage/idempotency and output watch; exported `/claude` APIs in `crates/runtime/src/lib.rs` and added required deps.
+- Added default Claude Code container image definition + docs (`docker/claude/`, `docs/claude/container-image.md`) and a local smoke-test helper (`scripts/claude-container-smoke-test.sh`) with Apple Container directory-mount guidance.
 
 ### Exit Criteria
 
