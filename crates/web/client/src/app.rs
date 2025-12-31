@@ -15,6 +15,7 @@ use crate::hud::{
 };
 use crate::state::{AppState, AppView, RepoInfo, UserInfo};
 use crate::views::{build_landing_page, build_repo_selector, build_repo_view};
+use crate::utils::track_funnel_event;
 use crate::wallet::{dispatch_wallet_event, queue_wallet_actions, WalletAction};
 
 #[wasm_bindgen(start)]
@@ -47,6 +48,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         wasm_bindgen_futures::spawn_local(async move {
             let live_hud = fetch_live_hud().await;
             let user_info = fetch_current_user().await;
+            let mut track_landing_repo: Option<String> = None;
 
             {
                 let mut state = state_clone.borrow_mut();
@@ -62,6 +64,18 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     state.landing_live = Some(live);
                     state.view = AppView::Landing;
                 }
+
+                if user_info.is_none() && !state.funnel_landing_tracked {
+                    state.funnel_landing_tracked = true;
+                    track_landing_repo = state
+                        .landing_live
+                        .as_ref()
+                        .map(|live| format!("{}/{}", live.hud_context.username, live.hud_context.repo));
+                }
+            }
+
+            if user_info.is_none() {
+                track_funnel_event("landing_view", track_landing_repo);
             }
 
             if user_info.is_some() {
@@ -141,6 +155,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             if let Some(idx) = state.hovered_repo_idx {
                 if idx < state.repos.len() {
                     let repo_full = state.repos[idx].full_name.clone();
+                    track_funnel_event("repo_selected", Some(repo_full.clone()));
                     let parts: Vec<&str> = repo_full.split('/').collect();
                     let (owner, repo_name) = if parts.len() == 2 {
                         (parts[0].to_string(), parts[1].to_string())
@@ -234,6 +249,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                             let _ = window.location().reload();
                         }
                         AppView::Landing => {
+                            track_funnel_event("github_connect_click", None);
                             let _ = window.location().set_href("/api/auth/github/start");
                         }
                     }
