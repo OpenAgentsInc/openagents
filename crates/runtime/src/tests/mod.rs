@@ -1983,6 +1983,16 @@ fn dummy_event(kind: u16, tags: Vec<Vec<String>>, content: &str) -> Event {
     }
 }
 
+fn find_tag_value<'a>(tags: &'a [Vec<String>], name: &str) -> Option<&'a str> {
+    tags.iter().find_map(|tag| {
+        if tag.get(0).map(|key| key.as_str()) == Some(name) {
+            tag.get(1).map(|value| value.as_str())
+        } else {
+            None
+        }
+    })
+}
+
 #[test]
 fn test_dvm_compute_payment_flow() {
     let transport = Arc::new(TestDvmTransport::new());
@@ -2074,6 +2084,47 @@ fn test_dvm_compute_payment_flow() {
 }
 
 #[test]
+fn test_dvm_compute_wallet_fx_source_bid() {
+    let transport = Arc::new(TestDvmTransport::new());
+    let fx = FxRateSnapshot {
+        sats_per_usd: 200_000,
+        updated_at: Timestamp::now(),
+    };
+    let wallet = Arc::new(TestWallet::new(1_000_000, fx.clone()));
+    let signer = Arc::new(NostrSigner::new());
+    let provider = DvmProvider::with_transport(
+        AgentId::from("agent-dvm-wallet-fx"),
+        transport.clone(),
+        signer,
+        Some(wallet),
+        FxSource::Wallet,
+        60,
+    )
+    .unwrap();
+
+    let request = ComputeRequest {
+        model: "test-model".to_string(),
+        kind: ComputeKind::Complete,
+        input: json!({ "prompt": "hello" }),
+        stream: false,
+        timeout_ms: None,
+        idempotency_key: None,
+        max_cost_usd: Some(150_000),
+    };
+    let _job_id = provider.submit(request).unwrap();
+
+    let event = transport
+        .published_events()
+        .into_iter()
+        .find(|event| event.kind == KIND_JOB_TEXT_GENERATION)
+        .expect("job request");
+    let bid_msats: u64 = find_tag_value(&event.tags, "bid")
+        .and_then(|value| value.parse().ok())
+        .expect("bid tag");
+    assert_eq!(bid_msats, 30_000_000);
+}
+
+#[test]
 fn test_dvm_container_payment_flow() {
     let transport = Arc::new(TestDvmTransport::new());
     let fx = FxRateSnapshot {
@@ -2162,4 +2213,53 @@ fn test_dvm_container_payment_flow() {
         other => panic!("unexpected state: {:?}", other),
     }
     assert_eq!(wallet.payments().len(), 1);
+}
+
+#[test]
+fn test_dvm_container_wallet_fx_source_bid() {
+    let transport = Arc::new(TestDvmTransport::new());
+    let fx = FxRateSnapshot {
+        sats_per_usd: 200_000,
+        updated_at: Timestamp::now(),
+    };
+    let wallet = Arc::new(TestWallet::new(1_000_000, fx.clone()));
+    let signer = Arc::new(NostrSigner::new());
+    let provider = DvmContainerProvider::with_transport(
+        AgentId::from("agent-dvm-container-wallet-fx"),
+        transport.clone(),
+        signer,
+        Some(wallet),
+        FxSource::Wallet,
+        60,
+    )
+    .unwrap();
+
+    let request = ContainerRequest {
+        kind: ContainerKind::Build,
+        image: None,
+        repo: Some(RepoConfig {
+            url: "https://example.com/repo.git".to_string(),
+            git_ref: "main".to_string(),
+            subdir: None,
+            auth: None,
+        }),
+        commands: vec!["echo hello".to_string()],
+        workdir: None,
+        env: HashMap::new(),
+        limits: crate::containers::ResourceLimits::basic(),
+        max_cost_usd: Some(150_000),
+        idempotency_key: None,
+        timeout_ms: None,
+    };
+
+    let _session_id = provider.submit(request).unwrap();
+    let event = transport
+        .published_events()
+        .into_iter()
+        .find(|event| event.kind == KIND_JOB_SANDBOX_RUN)
+        .expect("sandbox request");
+    let bid_msats: u64 = find_tag_value(&event.tags, "bid")
+        .and_then(|value| value.parse().ok())
+        .expect("bid tag");
+    assert_eq!(bid_msats, 30_000_000);
 }

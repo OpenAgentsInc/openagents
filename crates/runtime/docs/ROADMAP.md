@@ -387,6 +387,12 @@ Same container request can run locally or via cloud provider based on policy.
 
 Agent can buy compute from DVM within reserved max cost.
 
+### Implementation Notes (completed)
+
+- Added DVM providers for compute and containers with quote/accept/settle lifecycles in `crates/runtime/src/compute.rs` and `crates/runtime/src/containers.rs`.
+- Wired Lightning settlement with USD↔sats conversion via `FxRateCache` + `WalletFxProvider` (supports `FxSource::Wallet`) in the DVM providers.
+- Added runtime tests for DVM payment flows plus wallet-FX bid conversion in `crates/runtime/src/tests/mod.rs`.
+
 ### References
 
 - [COMPUTE.md](COMPUTE.md) — DvmProvider
