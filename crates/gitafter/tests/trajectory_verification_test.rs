@@ -7,11 +7,11 @@
 //! - Missing events are detected
 //! - Full PR→trajectory→verification flow works end-to-end
 
-use gitafter::trajectory::verifier::{
-    calculate_trajectory_hash, compare_to_diff, detect_gaps, verify_trajectory_hash,
-    VerificationStatus,
-};
 use anyhow::Result;
+use gitafter::trajectory::verifier::{
+    VerificationStatus, calculate_trajectory_hash, compare_to_diff, detect_gaps,
+    verify_trajectory_hash,
+};
 
 /// Helper to create sample trajectory events
 fn sample_trajectory_events() -> Vec<String> {
@@ -167,9 +167,7 @@ fn test_detect_gaps_missing_tool_result() -> Result<()> {
 
 #[test]
 fn test_compare_to_diff_suspicious_too_few_events() -> Result<()> {
-    let events = vec![
-        r#"{"type":"ToolUse","tool":"Edit","args":{}}"#.to_string(),
-    ];
+    let events = vec![r#"{"type":"ToolUse","tool":"Edit","args":{}}"#.to_string()];
     let diff = "- old line\n+ new line\n+ another line\n+ third line\n";
 
     let result = compare_to_diff(&events, diff)?;

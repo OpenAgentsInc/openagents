@@ -46,7 +46,7 @@
 //! assert_eq!(ordered[2].layer_number, 3);
 //! ```
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nostr::Event;
 use std::collections::{HashMap, HashSet};
 
@@ -124,18 +124,24 @@ impl StackGraph {
             // Extract stack information from tags
             let event_id = pr.id.clone();
 
-            let stack_id = pr.tags.iter()
+            let stack_id = pr
+                .tags
+                .iter()
                 .find(|tag| tag.len() >= 2 && tag[0] == "stack")
                 .and_then(|tag| tag.get(1))
                 .ok_or_else(|| anyhow!("PR {} missing stack tag", event_id))?
                 .to_string();
 
-            let depends_on = pr.tags.iter()
+            let depends_on = pr
+                .tags
+                .iter()
                 .find(|tag| tag.len() >= 2 && tag[0] == "depends_on")
                 .and_then(|tag| tag.get(1))
                 .map(|s| s.to_string());
 
-            let (layer_number, total_layers) = pr.tags.iter()
+            let (layer_number, total_layers) = pr
+                .tags
+                .iter()
                 .find(|tag| tag.len() >= 3 && tag[0] == "layer")
                 .and_then(|tag| {
                     let current = tag.get(1)?.parse::<u32>().ok()?;
@@ -144,7 +150,9 @@ impl StackGraph {
                 })
                 .ok_or_else(|| anyhow!("PR {} missing layer tag", event_id))?;
 
-            let commit_id = pr.tags.iter()
+            let commit_id = pr
+                .tags
+                .iter()
                 .find(|tag| tag.len() >= 2 && tag[0] == "c")
                 .and_then(|tag| tag.get(1))
                 .map(|s| s.to_string());
@@ -162,7 +170,10 @@ impl StackGraph {
 
             // Build dependency graph
             if let Some(dep) = depends_on {
-                dependencies.entry(event_id).or_insert_with(Vec::new).push(dep);
+                dependencies
+                    .entry(event_id)
+                    .or_insert_with(Vec::new)
+                    .push(dep);
             }
         }
 
@@ -207,7 +218,9 @@ impl StackGraph {
         let mut visiting = HashSet::new();
 
         // Find base layer (layer with no dependencies)
-        let base_layers: Vec<_> = self.layers.values()
+        let base_layers: Vec<_> = self
+            .layers
+            .values()
             .filter(|l| l.depends_on.is_none())
             .collect();
 
@@ -220,7 +233,12 @@ impl StackGraph {
         }
 
         // Start DFS from base layer
-        self.visit(&base_layers[0].event_id, &mut visited, &mut visiting, &mut sorted)?;
+        self.visit(
+            &base_layers[0].event_id,
+            &mut visited,
+            &mut visiting,
+            &mut sorted,
+        )?;
 
         // Make sure we visited all layers
         if sorted.len() != self.layers.len() {
@@ -270,7 +288,9 @@ impl StackGraph {
 
     /// Get all layers in a stack by stack ID
     pub fn get_stack_layers(&self, stack_id: &str) -> Vec<LayerInfo> {
-        let mut layers: Vec<_> = self.layers.values()
+        let mut layers: Vec<_> = self
+            .layers
+            .values()
             .filter(|l| l.stack_id == stack_id)
             .cloned()
             .collect();
@@ -362,7 +382,9 @@ impl StackGraph {
     /// ```
     pub fn validate_new_pr(&self, new_pr: &Event) -> Result<()> {
         // Extract dependency from new PR
-        let new_depends_on = new_pr.tags.iter()
+        let new_depends_on = new_pr
+            .tags
+            .iter()
             .find(|tag| tag.len() >= 2 && tag[0] == "depends_on")
             .and_then(|tag| tag.get(1))
             .map(|s| s.to_string());
@@ -392,7 +414,11 @@ impl StackGraph {
         for layer in self.layers.values() {
             let mut tags = vec![
                 vec!["stack".to_string(), layer.stack_id.clone()],
-                vec!["layer".to_string(), layer.layer_number.to_string(), layer.total_layers.to_string()],
+                vec![
+                    "layer".to_string(),
+                    layer.layer_number.to_string(),
+                    layer.total_layers.to_string(),
+                ],
             ];
 
             if let Some(dep) = &layer.depends_on {
@@ -425,7 +451,8 @@ impl StackGraph {
         let mut stacks: HashMap<String, Vec<LayerInfo>> = HashMap::new();
 
         for layer in self.layers.values() {
-            stacks.entry(layer.stack_id.clone())
+            stacks
+                .entry(layer.stack_id.clone())
                 .or_insert_with(Vec::new)
                 .push(layer.clone());
         }
@@ -502,7 +529,8 @@ mod tests {
         let pr2 = create_test_pr("pr2", "stack1", 2, 2, Some("pr1"), None);
 
         // Manually create circular dep
-        pr1.tags.push(vec!["depends_on".to_string(), "pr2".to_string()]);
+        pr1.tags
+            .push(vec!["depends_on".to_string(), "pr2".to_string()]);
 
         let graph = StackGraph::from_pr_events(&[pr1, pr2]).unwrap();
         assert!(graph.topological_sort().is_err());
@@ -533,7 +561,12 @@ mod tests {
         let pr3 = create_test_pr("pr3", "stack1", 3, 3, Some("pr2"), None);
         let result = graph.validate_new_pr(&pr3);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("depends on non-existent"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("depends on non-existent")
+        );
     }
 
     #[test]

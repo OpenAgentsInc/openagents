@@ -1,7 +1,7 @@
 //! Performance benchmarks for GitAfter stacks operations
 
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use gitafter::stacks::graph::StackGraph;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use nostr::Event;
 
 /// Create a test PR event for benchmarking
@@ -117,15 +117,11 @@ fn bench_graph_construction(c: &mut Criterion) {
     for size in [3, 10, 25, 50].iter() {
         let prs = generate_linear_stack(*size);
 
-        group.bench_with_input(
-            BenchmarkId::new("linear", size),
-            &prs,
-            |b, prs| {
-                b.iter(|| {
-                    StackGraph::from_pr_events(black_box(prs)).unwrap();
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("linear", size), &prs, |b, prs| {
+            b.iter(|| {
+                StackGraph::from_pr_events(black_box(prs)).unwrap();
+            });
+        });
     }
 
     group.finish();
@@ -139,15 +135,11 @@ fn bench_topological_sort(c: &mut Criterion) {
         let prs = generate_linear_stack(*size);
         let graph = StackGraph::from_pr_events(&prs).unwrap();
 
-        group.bench_with_input(
-            BenchmarkId::new("linear", size),
-            &graph,
-            |b, graph| {
-                b.iter(|| {
-                    black_box(graph.topological_sort().unwrap());
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("linear", size), &graph, |b, graph| {
+            b.iter(|| {
+                black_box(graph.topological_sort().unwrap());
+            });
+        });
     }
 
     // Fan-out stack
@@ -155,15 +147,11 @@ fn bench_topological_sort(c: &mut Criterion) {
         let prs = generate_fanout_stack(*size);
         let graph = StackGraph::from_pr_events(&prs).unwrap();
 
-        group.bench_with_input(
-            BenchmarkId::new("fanout", size),
-            &graph,
-            |b, graph| {
-                b.iter(|| {
-                    black_box(graph.topological_sort().unwrap());
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("fanout", size), &graph, |b, graph| {
+            b.iter(|| {
+                black_box(graph.topological_sort().unwrap());
+            });
+        });
     }
 
     // Diamond stack
@@ -171,15 +159,11 @@ fn bench_topological_sort(c: &mut Criterion) {
         let prs = generate_diamond_stack(*size);
         let graph = StackGraph::from_pr_events(&prs).unwrap();
 
-        group.bench_with_input(
-            BenchmarkId::new("diamond", size),
-            &graph,
-            |b, graph| {
-                b.iter(|| {
-                    black_box(graph.topological_sort().unwrap());
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("diamond", size), &graph, |b, graph| {
+            b.iter(|| {
+                black_box(graph.topological_sort().unwrap());
+            });
+        });
     }
 
     group.finish();

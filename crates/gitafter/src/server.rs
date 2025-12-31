@@ -1,17 +1,30 @@
 //! Actix-web server for GitAfter
 
-use actix_web::{web, App, HttpResponse, HttpServer};
+use actix_web::{App, HttpResponse, HttpServer, web};
 use openagents_spark::SparkWallet;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use wallet::core::identity::UnifiedIdentity;
 
-use crate::git::{clone_repository, get_repository_path, is_repository_cloned, create_branch, get_status, generate_patch, apply_patch, push_branch, current_branch, diff_commits};
+use crate::git::{
+    apply_patch, clone_repository, create_branch, current_branch, diff_commits, generate_patch,
+    get_repository_path, get_status, is_repository_cloned, push_branch,
+};
 use crate::middleware::RateLimiter;
 use crate::nostr::NostrClient;
-use crate::nostr::events::{BountyClaimBuilder, BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder, StatusEventBuilder, ZapRequestBuilder};
-use crate::views::{agent_marketplace_page, agent_profile_page, agents_list_page, bounties_discovery_page, diff_viewer_page, git_branch_create_form_page, git_status_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
-use crate::ws::{ws_handler, WsBroadcaster};
+use crate::nostr::events::{
+    BountyClaimBuilder, BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder,
+    RepositoryAnnouncementBuilder, StatusEventBuilder, ZapRequestBuilder,
+};
+use crate::views::{
+    agent_marketplace_page, agent_profile_page, agents_list_page, bounties_discovery_page,
+    diff_viewer_page, git_branch_create_form_page, git_status_page, home_page_with_repos,
+    issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page,
+    patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page,
+    pull_requests_list_page, repository_create_form_page, repository_detail_page,
+    search_results_page, trajectory_viewer_page,
+};
+use crate::ws::{WsBroadcaster, ws_handler};
 use nostr::{EventTemplate, Issue, KIND_ISSUE};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -62,52 +75,142 @@ pub async fn start_server(
             .route("/repo/new", web::get().to(repository_create_form))
             .route("/repo", web::post().to(repository_create))
             .route("/repo/{identifier}", web::get().to(repository_detail))
-            .route("/repo/{identifier}/issues", web::get().to(repository_issues))
-            .route("/repo/{identifier}/issues/new", web::get().to(issue_create_form))
+            .route(
+                "/repo/{identifier}/issues",
+                web::get().to(repository_issues),
+            )
+            .route(
+                "/repo/{identifier}/issues/new",
+                web::get().to(issue_create_form),
+            )
             .route("/repo/{identifier}/issues", web::post().to(issue_create))
-            .route("/repo/{identifier}/issues/{issue_id}", web::get().to(issue_detail))
-            .route("/repo/{identifier}/issues/{issue_id}/claim", web::post().to(issue_claim))
-            .route("/repo/{identifier}/issues/{issue_id}/bounty", web::post().to(issue_bounty_create))
-            .route("/repo/{identifier}/issues/{issue_id}/comment", web::post().to(issue_comment))
-            .route("/repo/{identifier}/patches", web::get().to(repository_patches))
-            .route("/repo/{identifier}/patches/new", web::get().to(patch_create_form))
+            .route(
+                "/repo/{identifier}/issues/{issue_id}",
+                web::get().to(issue_detail),
+            )
+            .route(
+                "/repo/{identifier}/issues/{issue_id}/claim",
+                web::post().to(issue_claim),
+            )
+            .route(
+                "/repo/{identifier}/issues/{issue_id}/bounty",
+                web::post().to(issue_bounty_create),
+            )
+            .route(
+                "/repo/{identifier}/issues/{issue_id}/comment",
+                web::post().to(issue_comment),
+            )
+            .route(
+                "/repo/{identifier}/patches",
+                web::get().to(repository_patches),
+            )
+            .route(
+                "/repo/{identifier}/patches/new",
+                web::get().to(patch_create_form),
+            )
             .route("/repo/{identifier}/patches", web::post().to(patch_create))
-            .route("/repo/{identifier}/patches/{patch_id}", web::get().to(patch_detail))
-            .route("/repo/{identifier}/patches/{patch_id}/diff", web::get().to(patch_diff_view))
+            .route(
+                "/repo/{identifier}/patches/{patch_id}",
+                web::get().to(patch_detail),
+            )
+            .route(
+                "/repo/{identifier}/patches/{patch_id}/diff",
+                web::get().to(patch_diff_view),
+            )
             .route("/repo/{identifier}/pulls", web::get().to(repository_pulls))
-            .route("/repo/{identifier}/pulls/new", web::get().to(pr_create_form))
-            .route("/repo/{identifier}/pulls/available-deps", web::get().to(pr_available_deps))
-            .route("/repo/{identifier}/pulls/{pr_id}/stack-info", web::get().to(pr_stack_info))
+            .route(
+                "/repo/{identifier}/pulls/new",
+                web::get().to(pr_create_form),
+            )
+            .route(
+                "/repo/{identifier}/pulls/available-deps",
+                web::get().to(pr_available_deps),
+            )
+            .route(
+                "/repo/{identifier}/pulls/{pr_id}/stack-info",
+                web::get().to(pr_stack_info),
+            )
             .route("/repo/{identifier}/pulls", web::post().to(pr_create))
-            .route("/repo/{identifier}/pulls/{pr_id}", web::get().to(pull_request_detail))
-            .route("/repo/{identifier}/pulls/{pr_id}/diff", web::get().to(pr_diff_view))
-            .route("/repo/{identifier}/pulls/{pr_id}/review", web::post().to(pr_review_submit))
-            .route("/repo/{identifier}/pulls/{pr_id}/status", web::post().to(pr_status_change))
-            .route("/repo/{identifier}/pulls/{pr_id}/auto-checks", web::get().to(pr_auto_checks))
-            .route("/repo/{identifier}/pulls/{pr_id}/checklist", web::get().to(pr_checklist))
-            .route("/repo/{identifier}/pulls/{pr_id}/checklist/{item_id}", web::post().to(pr_checklist_toggle))
+            .route(
+                "/repo/{identifier}/pulls/{pr_id}",
+                web::get().to(pull_request_detail),
+            )
+            .route(
+                "/repo/{identifier}/pulls/{pr_id}/diff",
+                web::get().to(pr_diff_view),
+            )
+            .route(
+                "/repo/{identifier}/pulls/{pr_id}/review",
+                web::post().to(pr_review_submit),
+            )
+            .route(
+                "/repo/{identifier}/pulls/{pr_id}/status",
+                web::post().to(pr_status_change),
+            )
+            .route(
+                "/repo/{identifier}/pulls/{pr_id}/auto-checks",
+                web::get().to(pr_auto_checks),
+            )
+            .route(
+                "/repo/{identifier}/pulls/{pr_id}/checklist",
+                web::get().to(pr_checklist),
+            )
+            .route(
+                "/repo/{identifier}/pulls/{pr_id}/checklist/{item_id}",
+                web::post().to(pr_checklist_toggle),
+            )
             .route("/trajectory/{session_id}", web::get().to(trajectory_detail))
             .route("/agent/{pubkey}", web::get().to(agent_profile))
             .route("/agents", web::get().to(agents_list))
             .route("/agents/marketplace", web::get().to(agent_marketplace))
-            .route("/agent/{pubkey}/reputation", web::post().to(publish_reputation_label))
+            .route(
+                "/agent/{pubkey}/reputation",
+                web::post().to(publish_reputation_label),
+            )
             .route("/search", web::get().to(search))
             .route("/watched", web::get().to(watched_repositories))
             .route("/repo/{identifier}/watch", web::post().to(watch_repository))
-            .route("/repo/{identifier}/unwatch", web::post().to(unwatch_repository))
+            .route(
+                "/repo/{identifier}/unwatch",
+                web::post().to(unwatch_repository),
+            )
             .route("/repo/{identifier}/clone", web::post().to(clone_repo))
             .route("/repo/{identifier}/git/status", web::get().to(git_status))
-            .route("/repo/{identifier}/git/branch/new", web::get().to(git_branch_form))
-            .route("/repo/{identifier}/git/branch", web::post().to(git_branch_create))
-            .route("/repo/{identifier}/git/patch/generate", web::post().to(git_patch_generate))
-            .route("/repo/{identifier}/git/patch/apply", web::post().to(git_patch_apply))
+            .route(
+                "/repo/{identifier}/git/branch/new",
+                web::get().to(git_branch_form),
+            )
+            .route(
+                "/repo/{identifier}/git/branch",
+                web::post().to(git_branch_create),
+            )
+            .route(
+                "/repo/{identifier}/git/patch/generate",
+                web::post().to(git_patch_generate),
+            )
+            .route(
+                "/repo/{identifier}/git/patch/apply",
+                web::post().to(git_patch_apply),
+            )
             .route("/repo/{identifier}/git/push", web::post().to(git_push))
-            .route("/bounty/{bounty_claim_id}/pay", web::post().to(bounty_payment))
+            .route(
+                "/bounty/{bounty_claim_id}/pay",
+                web::post().to(bounty_payment),
+            )
             .route("/bounties", web::get().to(bounties_discovery))
             .route("/notifications", web::get().to(notifications_page))
-            .route("/notifications/unread", web::get().to(unread_notifications_api))
-            .route("/notifications/{notification_id}/read", web::post().to(mark_notification_read))
-            .route("/notifications/mark-all-read", web::post().to(mark_all_notifications_read))
+            .route(
+                "/notifications/unread",
+                web::get().to(unread_notifications_api),
+            )
+            .route(
+                "/notifications/{notification_id}/read",
+                web::post().to(mark_notification_read),
+            )
+            .route(
+                "/notifications/mark-all-read",
+                web::post().to(mark_all_notifications_read),
+            )
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -135,7 +238,10 @@ fn filter_repositories_by_query(repositories: &mut Vec<nostr::Event>, query: &Re
             repositories.retain(|repo| {
                 repo.tags.iter().any(|tag| {
                     tag.first().map(|t| t == "language").unwrap_or(false)
-                        && tag.get(1).map(|l| l.eq_ignore_ascii_case(language)).unwrap_or(false)
+                        && tag
+                            .get(1)
+                            .map(|l| l.eq_ignore_ascii_case(language))
+                            .unwrap_or(false)
                 })
             });
         }
@@ -155,10 +261,7 @@ fn filter_repositories_by_query(repositories: &mut Vec<nostr::Event>, query: &Re
 }
 
 /// Home page
-async fn index(
-    state: web::Data<AppState>,
-    query: web::Query<RepoFilterQuery>,
-) -> HttpResponse {
+async fn index(state: web::Data<AppState>, query: web::Query<RepoFilterQuery>) -> HttpResponse {
     // Fetch repositories from cache
     let mut repositories = match state.nostr_client.get_cached_repositories(50).await {
         Ok(repos) => repos,
@@ -177,7 +280,9 @@ async fn index(
 
     if has_bounties_filter {
         for repo in &repositories {
-            let repo_id = repo.tags.iter()
+            let repo_id = repo
+                .tags
+                .iter()
                 .find(|tag| tag.first().map(|t| t == "d").unwrap_or(false))
                 .and_then(|tag| tag.get(1).cloned())
                 .unwrap_or_default();
@@ -185,10 +290,15 @@ async fn index(
             let repo_address = format!("30617:{}:{}", repo.pubkey, repo_id);
 
             // Get issues for this repo
-            if let Ok(issues) = state.nostr_client.get_issues_by_repo(&repo_address, 100).await {
+            if let Ok(issues) = state
+                .nostr_client
+                .get_issues_by_repo(&repo_address, 100)
+                .await
+            {
                 let mut bounty_count = 0;
                 for issue in issues {
-                    if let Ok(bounties) = state.nostr_client.get_bounties_for_issue(&issue.id).await {
+                    if let Ok(bounties) = state.nostr_client.get_bounties_for_issue(&issue.id).await
+                    {
                         bounty_count += bounties.len();
                     }
                 }
@@ -198,7 +308,9 @@ async fn index(
 
         // Filter to only repos with bounties
         repositories.retain(|repo| {
-            let repo_id = repo.tags.iter()
+            let repo_id = repo
+                .tags
+                .iter()
                 .find(|tag| tag.first().map(|t| t == "d").unwrap_or(false))
                 .and_then(|tag| tag.get(1).cloned())
                 .unwrap_or_default();
@@ -209,34 +321,38 @@ async fn index(
     if query.agent_friendly.as_deref() == Some("true") {
         // Filter repos marked as agent-friendly
         repositories.retain(|repo| {
-            repo.tags.iter().any(|tag| {
-                tag.first().map(|t| t == "agent-friendly").unwrap_or(false)
-            })
+            repo.tags
+                .iter()
+                .any(|tag| tag.first().map(|t| t == "agent-friendly").unwrap_or(false))
         });
     }
 
     // Pass bounty counts to the view
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(home_page_with_repos(
-            &repositories,
-            &query.language,
-            &query.topic,
-            query.has_bounties.as_deref() == Some("true"),
-            query.agent_friendly.as_deref() == Some("true"),
-            &repo_bounty_counts,
-        ).into_string())
+        .body(
+            home_page_with_repos(
+                &repositories,
+                &query.language,
+                &query.topic,
+                query.has_bounties.as_deref() == Some("true"),
+                query.agent_friendly.as_deref() == Some("true"),
+                &repo_bounty_counts,
+            )
+            .into_string(),
+        )
 }
 
 /// Repository detail page
-async fn repository_detail(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn repository_detail(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let identifier = path.into_inner();
 
     // Fetch repository from cache by identifier
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             tracing::warn!("Repository not found: {}", identifier);
@@ -264,11 +380,19 @@ async fn repository_detail(
     };
 
     // Fetch repository state (kind:30618)
-    let repo_state = state.nostr_client.get_repository_state(&identifier).await.ok().flatten();
+    let repo_state = state
+        .nostr_client
+        .get_repository_state(&identifier)
+        .await
+        .ok()
+        .flatten();
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(repository_detail_page(&repository, is_cloned, local_path, repo_state.as_ref()).into_string())
+        .body(
+            repository_detail_page(&repository, is_cloned, local_path, repo_state.as_ref())
+                .into_string(),
+        )
 }
 
 /// Query parameters for issue filtering
@@ -289,7 +413,11 @@ async fn repository_issues(
     let identifier = path.into_inner();
 
     // Fetch repository from cache by identifier
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             tracing::warn!("Repository not found: {}", identifier);
@@ -306,8 +434,12 @@ async fn repository_issues(
     };
 
     // Build repository address (30617:pubkey:identifier)
-    let repo_address = format!("30617:{}:{}", repository.pubkey,
-        repository.tags.iter()
+    let repo_address = format!(
+        "30617:{}:{}",
+        repository.pubkey,
+        repository
+            .tags
+            .iter()
             .find(|t| t.first().map(|s| s == "d").unwrap_or(false))
             .and_then(|t| t.get(1))
             .map(|s| s.as_str())
@@ -315,10 +447,18 @@ async fn repository_issues(
     );
 
     // Check if repository is watched
-    let is_watched = state.nostr_client.is_repository_watched(&identifier).await.unwrap_or(false);
+    let is_watched = state
+        .nostr_client
+        .is_repository_watched(&identifier)
+        .await
+        .unwrap_or(false);
 
     // Fetch issues for this repository
-    let mut issues = match state.nostr_client.get_issues_by_repo(&repo_address, 100).await {
+    let mut issues = match state
+        .nostr_client
+        .get_issues_by_repo(&repo_address, 100)
+        .await
+    {
         Ok(iss) => iss,
         Err(e) => {
             tracing::warn!("Failed to fetch issues: {}", e);
@@ -339,12 +479,20 @@ async fn repository_issues(
 
     for issue in &issues {
         if filter_has_bounty {
-            let bounties = state.nostr_client.get_bounties_for_issue(&issue.id).await.unwrap_or_default();
+            let bounties = state
+                .nostr_client
+                .get_bounties_for_issue(&issue.id)
+                .await
+                .unwrap_or_default();
             issue_bounties.insert(issue.id.clone(), !bounties.is_empty());
         }
 
         // Always fetch claims to display claim badges
-        let claims = state.nostr_client.get_claims_for_issue(&issue.id).await.unwrap_or_default();
+        let claims = state
+            .nostr_client
+            .get_claims_for_issue(&issue.id)
+            .await
+            .unwrap_or_default();
         let has_claims = !claims.is_empty();
         issue_claims.insert(issue.id.clone(), has_claims);
 
@@ -360,7 +508,9 @@ async fn repository_issues(
 
     issues.retain(|issue| {
         // Get issue status
-        let status = issue.tags.iter()
+        let status = issue
+            .tags
+            .iter()
             .find(|tag| tag.first().map(|t| t == "status").unwrap_or(false))
             .and_then(|tag| tag.get(1))
             .map(|s| s.as_str())
@@ -391,7 +541,20 @@ async fn repository_issues(
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(issues_list_page(&repository, &issues, is_watched, &identifier, filter_open, filter_closed, filter_has_bounty, filter_claimed, &issue_first_claims).into_string())
+        .body(
+            issues_list_page(
+                &repository,
+                &issues,
+                is_watched,
+                &identifier,
+                filter_open,
+                filter_closed,
+                filter_has_bounty,
+                filter_claimed,
+                &issue_first_claims,
+            )
+            .into_string(),
+        )
 }
 
 /// Issue detail page
@@ -402,7 +565,11 @@ async fn issue_detail(
     let (identifier, issue_id) = path.into_inner();
 
     // Fetch repository from cache by identifier
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             tracing::warn!("Repository not found: {}", identifier);
@@ -464,7 +631,17 @@ async fn issue_detail(
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(issue_detail_page(&repository, &issue, &claims, &bounties, &comments, &identifier).into_string())
+        .body(
+            issue_detail_page(
+                &repository,
+                &issue,
+                &claims,
+                &bounties,
+                &comments,
+                &identifier,
+            )
+            .into_string(),
+        )
 }
 
 /// Claim an issue
@@ -486,7 +663,11 @@ async fn issue_claim(
 
             if let Some(first_claim) = sorted_claims.first() {
                 let claimer_pubkey = if first_claim.pubkey.len() > 16 {
-                    format!("{}...{}", &first_claim.pubkey[..8], &first_claim.pubkey[first_claim.pubkey.len()-8..])
+                    format!(
+                        "{}...{}",
+                        &first_claim.pubkey[..8],
+                        &first_claim.pubkey[first_claim.pubkey.len() - 8..]
+                    )
                 } else {
                     first_claim.pubkey.clone()
                 };
@@ -513,7 +694,11 @@ async fn issue_claim(
     }
 
     // Fetch repository to get pubkey
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             return HttpResponse::NotFound()
@@ -550,11 +735,7 @@ async fn issue_claim(
     let issue_author_pubkey = &issue.pubkey;
 
     // Build issue claim event
-    let mut builder = IssueClaimBuilder::new(
-        &issue_id,
-        &repo_address,
-        issue_author_pubkey,
-    );
+    let mut builder = IssueClaimBuilder::new(&issue_id, &repo_address, issue_author_pubkey);
 
     if !content.is_empty() {
         builder = builder.content(&content);
@@ -574,7 +755,11 @@ async fn issue_claim(
             // Publish to relays
             match state.nostr_client.publish_event(signed_event).await {
                 Ok(_) => {
-                    tracing::info!("Published issue claim: event_id={}, issue_id={}", event_id, issue_id);
+                    tracing::info!(
+                        "Published issue claim: event_id={}, issue_id={}",
+                        event_id,
+                        issue_id
+                    );
 
                     // Return success message
                     HttpResponse::Ok()
@@ -585,8 +770,14 @@ async fn issue_claim(
                                 <p>Message: {}</p>
                                 {}
                             </div>"#,
-                            if content.is_empty() { "No message" } else { &content },
-                            estimate.map(|e| format!("<p>Estimate: {} seconds</p>", e)).unwrap_or_default()
+                            if content.is_empty() {
+                                "No message"
+                            } else {
+                                &content
+                            },
+                            estimate
+                                .map(|e| format!("<p>Estimate: {} seconds</p>", e))
+                                .unwrap_or_default()
                         ))
                 }
                 Err(e) => {
@@ -639,11 +830,20 @@ async fn issue_bounty_create(
     let expiry = form.get("expiry").and_then(|s| s.parse::<u64>().ok());
     let conditions: Vec<String> = form
         .get("conditions")
-        .map(|s| s.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+        .map(|s| {
+            s.lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
 
     // Fetch repository to get pubkey
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             return HttpResponse::NotFound()
@@ -662,11 +862,7 @@ async fn issue_bounty_create(
     let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
 
     // Build bounty offer event
-    let mut builder = BountyOfferBuilder::new(
-        &issue_id,
-        &repo_address,
-        amount,
-    );
+    let mut builder = BountyOfferBuilder::new(&issue_id, &repo_address, amount);
 
     if let Some(exp) = expiry {
         builder = builder.expiry(exp);
@@ -686,7 +882,12 @@ async fn issue_bounty_create(
             // Publish to relays
             match state.nostr_client.publish_event(signed_event).await {
                 Ok(_) => {
-                    tracing::info!("Published bounty offer: event_id={}, issue_id={}, amount={}", event_id, issue_id, amount);
+                    tracing::info!(
+                        "Published bounty offer: event_id={}, issue_id={}, amount={}",
+                        event_id,
+                        issue_id,
+                        amount
+                    );
 
                     // Return success message
                     HttpResponse::Ok()
@@ -699,10 +900,17 @@ async fn issue_bounty_create(
                                 {}
                             </div>"#,
                             amount,
-                            expiry.map(|e| format!("<p>Expires: {}</p>", e)).unwrap_or_default(),
+                            expiry
+                                .map(|e| format!("<p>Expires: {}</p>", e))
+                                .unwrap_or_default(),
                             if !conditions.is_empty() {
-                                format!("<p>Conditions: <ul>{}</ul></p>",
-                                    conditions.iter().map(|c| format!("<li>{}</li>", c)).collect::<String>())
+                                format!(
+                                    "<p>Conditions: <ul>{}</ul></p>",
+                                    conditions
+                                        .iter()
+                                        .map(|c| format!("<li>{}</li>", c))
+                                        .collect::<String>()
+                                )
                             } else {
                                 String::new()
                             }
@@ -780,7 +988,12 @@ async fn issue_comment(
         kind: 1, // Text note (NIP-01)
         content: content.clone(),
         tags: vec![
-            vec!["e".to_string(), issue_id.clone(), "".to_string(), "root".to_string()],
+            vec![
+                "e".to_string(),
+                issue_id.clone(),
+                "".to_string(),
+                "root".to_string(),
+            ],
             vec!["p".to_string(), issue_author_pubkey.clone()],
         ],
         created_at: now,
@@ -794,7 +1007,11 @@ async fn issue_comment(
             // Publish to relays
             match state.nostr_client.publish_event(signed_event).await {
                 Ok(_) => {
-                    tracing::info!("Published issue comment: event_id={}, issue_id={}", event_id, issue_id);
+                    tracing::info!(
+                        "Published issue comment: event_id={}, issue_id={}",
+                        event_id,
+                        issue_id
+                    );
 
                     // Return new comment HTML for HTMX to insert
                     let timestamp = SystemTime::now()
@@ -805,7 +1022,7 @@ async fn issue_comment(
                     let commenter_pubkey = if let Some(identity) = &state.identity {
                         let pk = identity.nostr_public_key();
                         if pk.len() > 16 {
-                            format!("{}...{}", &pk[..8], &pk[pk.len()-8..])
+                            format!("{}...{}", &pk[..8], &pk[pk.len() - 8..])
                         } else {
                             pk.to_string()
                         }
@@ -917,7 +1134,10 @@ async fn pr_review_submit(
     let (_identifier, pr_id) = path.into_inner();
 
     // Extract form data
-    let review_type = form.get("review_type").cloned().unwrap_or_else(|| "comment".to_string());
+    let review_type = form
+        .get("review_type")
+        .cloned()
+        .unwrap_or_else(|| "comment".to_string());
     let content = form.get("content").cloned().unwrap_or_default();
     let trajectory_session_id = form.get("trajectory_session_id").cloned();
     let trajectory_hash = form.get("trajectory_hash").cloned();
@@ -991,11 +1211,17 @@ async fn pr_review_submit(
     let is_agent_review = trajectory_session_id.is_some() && trajectory_hash.is_some();
 
     // Verify trajectory if present
-    let verification_badge = if let (Some(session_id), Some(hash)) = (&trajectory_session_id, &trajectory_hash) {
+    let verification_badge = if let (Some(session_id), Some(hash)) =
+        (&trajectory_session_id, &trajectory_hash)
+    {
         // Fetch and verify trajectory events from Nostr cache
         match verify_trajectory_from_cache(&state.nostr_client, session_id, hash).await {
-            Ok(true) => r#"<span style="color: #48bb78; margin-left: 8px;" title="Trajectory verified">✓ Verified</span>"#,
-            Ok(false) => r#"<span style="color: #f59e0b; margin-left: 8px;" title="Trajectory hash mismatch">⚠ Hash Mismatch</span>"#,
+            Ok(true) => {
+                r#"<span style="color: #48bb78; margin-left: 8px;" title="Trajectory verified">✓ Verified</span>"#
+            }
+            Ok(false) => {
+                r#"<span style="color: #f59e0b; margin-left: 8px;" title="Trajectory hash mismatch">⚠ Hash Mismatch</span>"#
+            }
             Err(e) => {
                 tracing::warn!("Failed to verify trajectory {}: {}", session_id, e);
                 r#"<span style="color: #ef4444; margin-left: 8px;" title="Verification failed">✗ Verification Failed</span>"#
@@ -1006,12 +1232,17 @@ async fn pr_review_submit(
     };
 
     let agent_badge = if is_agent_review {
-        format!(r#"<span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2px 8px; font-size: 0.85em; font-weight: 600; margin-left: 8px;">🤖 AGENT</span>{}"#, verification_badge)
+        format!(
+            r#"<span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2px 8px; font-size: 0.85em; font-weight: 600; margin-left: 8px;">🤖 AGENT</span>{}"#,
+            verification_badge
+        )
     } else {
         String::new()
     };
 
-    let trajectory_section = if let (Some(session_id), Some(hash)) = (trajectory_session_id, trajectory_hash) {
+    let trajectory_section = if let (Some(session_id), Some(hash)) =
+        (trajectory_session_id, trajectory_hash)
+    {
         format!(
             r#"<div style="margin-top: 12px; padding: 10px; background: #f8f9fa; border-left: 3px solid #667eea;">
                 <details>
@@ -1036,11 +1267,7 @@ async fn pr_review_submit(
             <p>Comment: {}</p>
             {}
         </div>"#,
-        review_emoji,
-        agent_badge,
-        review_type,
-        content,
-        trajectory_section
+        review_emoji, agent_badge, review_type, content, trajectory_section
     );
 
     HttpResponse::Ok()
@@ -1050,7 +1277,9 @@ async fn pr_review_submit(
 
 /// Helper function to extract tag value from event
 fn get_tag_value_from_event(event: &nostr::Event, tag_name: &str) -> Option<String> {
-    event.tags.iter()
+    event
+        .tags
+        .iter()
         .find(|tag| tag.first().map(|t| t == tag_name).unwrap_or(false))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
@@ -1091,10 +1320,17 @@ async fn try_create_bounty_claim(
     // 3. Find issue reference in PR
     // PRs can reference issues via "e" tags with "mention" or "reply" markers
     // Or they might reference issue claims
-    let issue_event_id = pr_event.tags.iter()
+    let issue_event_id = pr_event
+        .tags
+        .iter()
         .find(|tag| {
-            tag.len() >= 2 && tag[0] == "e" &&
-            (tag.len() < 4 || (tag.get(3).map(|m| m == "mention" || m == "reply" || m == "root").unwrap_or(false)))
+            tag.len() >= 2
+                && tag[0] == "e"
+                && (tag.len() < 4
+                    || (tag
+                        .get(3)
+                        .map(|m| m == "mention" || m == "reply" || m == "root")
+                        .unwrap_or(false)))
         })
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string());
@@ -1102,14 +1338,19 @@ async fn try_create_bounty_claim(
     let issue_id = match issue_event_id {
         Some(id) => id,
         None => {
-            tracing::debug!("PR {} does not reference an issue, skipping bounty claim", pr_id);
+            tracing::debug!(
+                "PR {} does not reference an issue, skipping bounty claim",
+                pr_id
+            );
             return Ok(None);
         }
     };
 
     // 4. Check if PR has stack and layer tags for per-layer bounties
     let stack_id = get_tag_value_from_event(&pr_event, "stack");
-    let layer_info = pr_event.tags.iter()
+    let layer_info = pr_event
+        .tags
+        .iter()
         .find(|tag| tag.len() >= 2 && tag[0] == "layer")
         .and_then(|tag| tag.get(1))
         .and_then(|s| s.parse::<u32>().ok());
@@ -1117,9 +1358,17 @@ async fn try_create_bounty_claim(
     // 5. Try to find bounty - check layer-specific bounties first, then fall back to issue bounties
     let bounties = if let (Some(stack), Some(layer)) = (stack_id.as_ref(), layer_info) {
         // PR is part of a stack - check for layer-specific bounty first
-        match state.nostr_client.get_bounties_for_layer(stack, layer).await {
+        match state
+            .nostr_client
+            .get_bounties_for_layer(stack, layer)
+            .await
+        {
             Ok(layer_bounties) if !layer_bounties.is_empty() => {
-                tracing::info!("Found layer-specific bounty for stack {} layer {}", stack, layer);
+                tracing::info!(
+                    "Found layer-specific bounty for stack {} layer {}",
+                    stack,
+                    layer
+                );
                 layer_bounties
             }
             _ => {
@@ -1128,7 +1377,10 @@ async fn try_create_bounty_claim(
                 match state.nostr_client.get_bounties_for_issue(&issue_id).await {
                     Ok(b) => b,
                     Err(e) => {
-                        return Err(format!("Failed to fetch bounties for issue {}: {}", issue_id, e));
+                        return Err(format!(
+                            "Failed to fetch bounties for issue {}: {}",
+                            issue_id, e
+                        ));
                     }
                 }
             }
@@ -1138,7 +1390,10 @@ async fn try_create_bounty_claim(
         match state.nostr_client.get_bounties_for_issue(&issue_id).await {
             Ok(b) => b,
             Err(e) => {
-                return Err(format!("Failed to fetch bounties for issue {}: {}", issue_id, e));
+                return Err(format!(
+                    "Failed to fetch bounties for issue {}: {}",
+                    issue_id, e
+                ));
             }
         }
     };
@@ -1153,16 +1408,15 @@ async fn try_create_bounty_claim(
     let bounty_id = bounty.id.clone();
 
     // Extract bounty amount for display
-    let bounty_amount = get_tag_value_from_event(bounty, "amount")
-        .unwrap_or_else(|| "unknown".to_string());
+    let bounty_amount =
+        get_tag_value_from_event(bounty, "amount").unwrap_or_else(|| "unknown".to_string());
 
     // 6. Get Lightning address from identity (if available)
-    let lightning_address = state.identity.as_ref()
-        .and_then(|_id| {
-            // Try to get lud16 from identity metadata
-            // For now, we'll leave this optional
-            None::<String>
-        });
+    let lightning_address = state.identity.as_ref().and_then(|_id| {
+        // Try to get lud16 from identity metadata
+        // For now, we'll leave this optional
+        None::<String>
+    });
 
     // 7. Build and publish bounty claim event
     let mut builder = BountyClaimBuilder::new(
@@ -1191,7 +1445,10 @@ async fn try_create_bounty_claim(
                 Ok(_) => {
                     tracing::info!(
                         "Published bounty claim: claim_id={}, bounty_id={}, pr_id={}, amount={}",
-                        claim_event_id, bounty_id, pr_id, bounty_amount
+                        claim_event_id,
+                        bounty_id,
+                        pr_id,
+                        bounty_amount
                     );
                     Ok(Some(format!(
                         "Bounty claim created! Amount: {} sats. Claim ID: {}",
@@ -1199,14 +1456,10 @@ async fn try_create_bounty_claim(
                         &claim_event_id[..8]
                     )))
                 }
-                Err(e) => {
-                    Err(format!("Failed to publish bounty claim event: {}", e))
-                }
+                Err(e) => Err(format!("Failed to publish bounty claim event: {}", e)),
             }
         }
-        Err(e) => {
-            Err(format!("Failed to sign bounty claim event: {}", e))
-        }
+        Err(e) => Err(format!("Failed to sign bounty claim event: {}", e)),
     }
 }
 
@@ -1219,7 +1472,10 @@ async fn pr_status_change(
     let (identifier, pr_id) = path.into_inner();
 
     // Extract form data
-    let status = form.get("status").cloned().unwrap_or_else(|| "open".to_string());
+    let status = form
+        .get("status")
+        .cloned()
+        .unwrap_or_else(|| "open".to_string());
     let reason = form.get("reason").cloned().unwrap_or_default();
 
     // Map status string to kind
@@ -1236,7 +1492,11 @@ async fn pr_status_change(
     };
 
     // Fetch repository to get pubkey
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             return HttpResponse::NotFound()
@@ -1255,11 +1515,7 @@ async fn pr_status_change(
     let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
 
     // Build status event
-    let mut builder = StatusEventBuilder::new(
-        &pr_id,
-        &repo_address,
-        status_kind,
-    );
+    let mut builder = StatusEventBuilder::new(&pr_id, &repo_address, status_kind);
 
     if !reason.is_empty() {
         builder = builder.reason(&reason);
@@ -1270,12 +1526,18 @@ async fn pr_status_change(
     // Validate merge order for stacked PRs
     if status_kind == 1631 {
         // Fetch all PRs for this repository to check dependencies
-        match state.nostr_client.get_pull_requests_by_repo(&repo_address, 1000).await {
+        match state
+            .nostr_client
+            .get_pull_requests_by_repo(&repo_address, 1000)
+            .await
+        {
             Ok(prs) => {
                 // Find the PR being merged
                 if let Some(pr) = prs.iter().find(|p| p.id == pr_id) {
                     // Check if PR has dependencies
-                    let depends_on = pr.tags.iter()
+                    let depends_on = pr
+                        .tags
+                        .iter()
                         .find(|tag| tag.len() >= 2 && tag[0] == "depends_on")
                         .and_then(|tag| tag.get(1))
                         .map(|s| s.to_string());
@@ -1342,7 +1604,12 @@ async fn pr_status_change(
             // Publish to relays
             match state.nostr_client.publish_event(signed_event).await {
                 Ok(_) => {
-                    tracing::info!("Published status change: event_id={}, pr_id={}, status={}", event_id, pr_id, status_label);
+                    tracing::info!(
+                        "Published status change: event_id={}, pr_id={}, status={}",
+                        event_id,
+                        pr_id,
+                        status_label
+                    );
 
                     // If PR was merged (status_kind == 1631), try to create bounty claim
                     let mut bounty_claim_message = String::new();
@@ -1356,8 +1623,13 @@ async fn pr_status_change(
                                 tracing::debug!("No bounty found for merged PR: {}", pr_id);
                             }
                             Err(e) => {
-                                tracing::warn!("Failed to create bounty claim for PR {}: {}", pr_id, e);
-                                bounty_claim_message = format!("<p>⚠️ Could not create bounty claim: {}</p>", e);
+                                tracing::warn!(
+                                    "Failed to create bounty claim for PR {}: {}",
+                                    pr_id,
+                                    e
+                                );
+                                bounty_claim_message =
+                                    format!("<p>⚠️ Could not create bounty claim: {}</p>", e);
                             }
                         }
                     }
@@ -1412,14 +1684,15 @@ async fn pr_status_change(
 }
 
 /// Issue creation form
-async fn issue_create_form(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn issue_create_form(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let identifier = path.into_inner();
 
     // Fetch repository from cache by identifier
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             tracing::warn!("Repository not found: {}", identifier);
@@ -1449,7 +1722,11 @@ async fn issue_create(
     let identifier = path.into_inner();
 
     // Fetch repository to get pubkey and build address
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             return HttpResponse::NotFound()
@@ -1471,11 +1748,8 @@ async fn issue_create(
     let content = form.description.as_deref().unwrap_or("").to_string();
 
     // Create issue using NIP-34 Issue struct
-    let mut issue = Issue::new(
-        &content,
-        &repo_address,
-        &repository.pubkey,
-    ).with_subject(&form.title);
+    let mut issue =
+        Issue::new(&content, &repo_address, &repository.pubkey).with_subject(&form.title);
 
     // Add labels if provided
     if let Some(labels) = &form.labels {
@@ -1506,7 +1780,11 @@ async fn issue_create(
             // Publish to relays
             match state.nostr_client.publish_event(signed_event).await {
                 Ok(_) => {
-                    tracing::info!("Published issue: event_id={}, title='{}'", event_id, form.title);
+                    tracing::info!(
+                        "Published issue: event_id={}, title='{}'",
+                        event_id,
+                        form.title
+                    );
 
                     // Redirect to issues list
                     HttpResponse::SeeOther()
@@ -1555,14 +1833,15 @@ struct IssueCreateForm {
 }
 
 /// Repository patches list page
-async fn repository_patches(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn repository_patches(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let identifier = path.into_inner();
 
     // Fetch repository from cache by identifier
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             tracing::warn!("Repository not found: {}", identifier);
@@ -1579,9 +1858,12 @@ async fn repository_patches(
     };
 
     // Build repository address (30617:pubkey:identifier)
-    let repo_address = format!("30617:{}:{}",
+    let repo_address = format!(
+        "30617:{}:{}",
         repository.pubkey,
-        repository.tags.iter()
+        repository
+            .tags
+            .iter()
             .find(|t| t.first().map(|s| s == "d").unwrap_or(false))
             .and_then(|t| t.get(1))
             .map(|s| s.as_str())
@@ -1589,7 +1871,11 @@ async fn repository_patches(
     );
 
     // Fetch patches for this repository
-    let patches = match state.nostr_client.get_patches_by_repo(&repo_address, 100).await {
+    let patches = match state
+        .nostr_client
+        .get_patches_by_repo(&repo_address, 100)
+        .await
+    {
         Ok(p) => p,
         Err(e) => {
             tracing::warn!("Failed to fetch patches: {}", e);
@@ -1603,14 +1889,15 @@ async fn repository_patches(
 }
 
 /// Repository pull requests list page
-async fn repository_pulls(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn repository_pulls(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let identifier = path.into_inner();
 
     // Fetch repository from cache by identifier
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             tracing::warn!("Repository not found: {}", identifier);
@@ -1627,9 +1914,12 @@ async fn repository_pulls(
     };
 
     // Build repository address (30617:pubkey:identifier)
-    let repo_address = format!("30617:{}:{}",
+    let repo_address = format!(
+        "30617:{}:{}",
         repository.pubkey,
-        repository.tags.iter()
+        repository
+            .tags
+            .iter()
             .find(|t| t.first().map(|s| s == "d").unwrap_or(false))
             .and_then(|t| t.get(1))
             .map(|s| s.as_str())
@@ -1637,7 +1927,11 @@ async fn repository_pulls(
     );
 
     // Fetch pull requests for this repository
-    let pull_requests = match state.nostr_client.get_pull_requests_by_repo(&repo_address, 100).await {
+    let pull_requests = match state
+        .nostr_client
+        .get_pull_requests_by_repo(&repo_address, 100)
+        .await
+    {
         Ok(prs) => prs,
         Err(e) => {
             tracing::warn!("Failed to fetch pull requests: {}", e);
@@ -1658,7 +1952,11 @@ async fn patch_detail(
     let (identifier, patch_id) = path.into_inner();
 
     // Fetch repository from cache by identifier
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             tracing::warn!("Repository not found: {}", identifier);
@@ -1705,7 +2003,11 @@ async fn patch_detail(
     for review in &reviews {
         let reviewer_pubkey = &review.pubkey;
         if !reviewer_reputations.contains_key(reviewer_pubkey) {
-            let reputation_labels = match state.nostr_client.get_reputation_labels_for_agent(reviewer_pubkey).await {
+            let reputation_labels = match state
+                .nostr_client
+                .get_reputation_labels_for_agent(reviewer_pubkey)
+                .await
+            {
                 Ok(labels) => labels,
                 Err(e) => {
                     tracing::warn!("Failed to fetch reputation for {}: {}", reviewer_pubkey, e);
@@ -1719,7 +2021,16 @@ async fn patch_detail(
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(patch_detail_page(&repository, &patch, &reviews, &reviewer_reputations, &identifier).into_string())
+        .body(
+            patch_detail_page(
+                &repository,
+                &patch,
+                &reviews,
+                &reviewer_reputations,
+                &identifier,
+            )
+            .into_string(),
+        )
 }
 
 /// Pull request detail page
@@ -1730,7 +2041,11 @@ async fn pull_request_detail(
     let (identifier, pr_id) = path.into_inner();
 
     // Fetch repository from cache by identifier
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             tracing::warn!("Repository not found: {}", identifier);
@@ -1781,7 +2096,11 @@ async fn pull_request_detail(
     for review in &reviews {
         let reviewer_pubkey = &review.pubkey;
         if !reviewer_reputations.contains_key(reviewer_pubkey) {
-            let reputation_labels = match state.nostr_client.get_reputation_labels_for_agent(reviewer_pubkey).await {
+            let reputation_labels = match state
+                .nostr_client
+                .get_reputation_labels_for_agent(reviewer_pubkey)
+                .await
+            {
                 Ok(labels) => labels,
                 Err(e) => {
                     tracing::warn!("Failed to fetch reputation for {}: {}", reviewer_pubkey, e);
@@ -1803,7 +2122,9 @@ async fn pull_request_detail(
     };
 
     // Fetch trajectory session linked to this PR via "trajectory" tag
-    let trajectory_session_id = pull_request.tags.iter()
+    let trajectory_session_id = pull_request
+        .tags
+        .iter()
         .find(|tag| tag.len() >= 2 && tag[0] == "trajectory")
         .map(|tag| tag[1].clone());
 
@@ -1826,11 +2147,19 @@ async fn pull_request_detail(
     let trajectory_events = if let Some(ref session) = trajectory_session {
         match state.nostr_client.get_trajectory_events(&session.id).await {
             Ok(events) => {
-                tracing::debug!("Found {} trajectory events for session {}", events.len(), session.id);
+                tracing::debug!(
+                    "Found {} trajectory events for session {}",
+                    events.len(),
+                    session.id
+                );
                 events
             }
             Err(e) => {
-                tracing::warn!("Failed to fetch trajectory events for session {}: {}", session.id, e);
+                tracing::warn!(
+                    "Failed to fetch trajectory events for session {}: {}",
+                    session.id,
+                    e
+                );
                 Vec::new()
             }
         }
@@ -1839,7 +2168,9 @@ async fn pull_request_detail(
     };
 
     // Fetch stacked diff metadata
-    let stack_id = pull_request.tags.iter()
+    let stack_id = pull_request
+        .tags
+        .iter()
         .find(|tag| tag.len() >= 2 && tag[0] == "stack")
         .map(|tag| tag[1].clone());
 
@@ -1892,12 +2223,16 @@ async fn pull_request_detail(
     // Try to fetch diff from locally cloned repo
     let diff_text = {
         // Extract commit ID from PR
-        let commit_id = pull_request.tags.iter()
+        let commit_id = pull_request
+            .tags
+            .iter()
             .find(|tag| tag.len() >= 2 && tag[0] == "c")
             .map(|tag| tag[1].as_str());
 
         // Extract clone URL to determine local repo path
-        let clone_url = pull_request.tags.iter()
+        let clone_url = pull_request
+            .tags
+            .iter()
             .find(|tag| tag.len() >= 2 && tag[0] == "clone")
             .map(|tag| tag[1].as_str());
 
@@ -1934,23 +2269,38 @@ async fn pull_request_detail(
                                                     ) {
                                                         Ok(diff) => Some(diff),
                                                         Err(e) => {
-                                                            tracing::warn!("Failed to generate diff for PR {}: {}", pr_id, e);
+                                                            tracing::warn!(
+                                                                "Failed to generate diff for PR {}: {}",
+                                                                pr_id,
+                                                                e
+                                                            );
                                                             None
                                                         }
                                                     }
                                                 }
                                                 Err(e) => {
-                                                    tracing::warn!("Failed to get parent commit for {}: {}", commit_id, e);
+                                                    tracing::warn!(
+                                                        "Failed to get parent commit for {}: {}",
+                                                        commit_id,
+                                                        e
+                                                    );
                                                     None
                                                 }
                                             }
                                         } else {
-                                            tracing::debug!("Commit {} has no parent (initial commit)", commit_id);
+                                            tracing::debug!(
+                                                "Commit {} has no parent (initial commit)",
+                                                commit_id
+                                            );
                                             None
                                         }
                                     }
                                     Err(e) => {
-                                        tracing::warn!("Failed to find commit {}: {}", commit_id, e);
+                                        tracing::warn!(
+                                            "Failed to find commit {}: {}",
+                                            commit_id,
+                                            e
+                                        );
                                         None
                                     }
                                 }
@@ -1979,7 +2329,9 @@ async fn pull_request_detail(
     // Fetch bounties for this PR (including per-layer bounties)
     let bounties = if let Some(sid) = stack_id.as_ref() {
         // Get layer info for this PR
-        let layer_num = pull_request.tags.iter()
+        let layer_num = pull_request
+            .tags
+            .iter()
             .find(|tag| tag.len() >= 2 && tag[0] == "layer")
             .and_then(|tag| tag[1].parse::<u32>().ok());
 
@@ -1988,7 +2340,12 @@ async fn pull_request_detail(
             match state.nostr_client.get_bounties_for_layer(sid, layer).await {
                 Ok(b) => b,
                 Err(e) => {
-                    tracing::warn!("Failed to fetch layer bounties for stack {} layer {}: {}", sid, layer, e);
+                    tracing::warn!(
+                        "Failed to fetch layer bounties for stack {} layer {}: {}",
+                        sid,
+                        layer,
+                        e
+                    );
                     Vec::new()
                 }
             }
@@ -2015,14 +2372,31 @@ async fn pull_request_detail(
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &reviewer_reputations, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), &dependent_prs, is_mergeable, &pr_updates, diff_text.as_deref(), &inline_comments, &bounties).into_string())
+        .body(
+            pull_request_detail_page(
+                &repository,
+                &pull_request,
+                &reviews,
+                &reviewer_reputations,
+                &status_events,
+                &identifier,
+                trajectory_session.as_ref(),
+                &trajectory_events,
+                &stack_prs,
+                dependency_pr.as_ref(),
+                &dependent_prs,
+                is_mergeable,
+                &pr_updates,
+                diff_text.as_deref(),
+                &inline_comments,
+                &bounties,
+            )
+            .into_string(),
+        )
 }
 
 /// Trajectory detail page
-async fn trajectory_detail(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn trajectory_detail(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let session_id = path.into_inner();
 
     // Fetch trajectory session
@@ -2046,7 +2420,11 @@ async fn trajectory_detail(
     let events = match state.nostr_client.get_trajectory_events(&session_id).await {
         Ok(evts) => evts,
         Err(e) => {
-            tracing::warn!("Failed to fetch trajectory events for session {}: {}", session_id, e);
+            tracing::warn!(
+                "Failed to fetch trajectory events for session {}: {}",
+                session_id,
+                e
+            );
             Vec::new() // Continue with empty events if fetch fails
         }
     };
@@ -2057,14 +2435,15 @@ async fn trajectory_detail(
 }
 
 /// Agent profile page
-async fn agent_profile(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn agent_profile(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let pubkey = path.into_inner();
 
     // Fetch pull requests by this agent
-    let pull_requests = match state.nostr_client.get_pull_requests_by_agent(&pubkey, 50).await {
+    let pull_requests = match state
+        .nostr_client
+        .get_pull_requests_by_agent(&pubkey, 50)
+        .await
+    {
         Ok(prs) => prs,
         Err(e) => {
             tracing::warn!("Failed to fetch pull requests for agent {}: {}", pubkey, e);
@@ -2073,7 +2452,11 @@ async fn agent_profile(
     };
 
     // Fetch issue claims by this agent
-    let issue_claims = match state.nostr_client.get_issue_claims_by_agent(&pubkey, 50).await {
+    let issue_claims = match state
+        .nostr_client
+        .get_issue_claims_by_agent(&pubkey, 50)
+        .await
+    {
         Ok(claims) => claims,
         Err(e) => {
             tracing::warn!("Failed to fetch issue claims for agent {}: {}", pubkey, e);
@@ -2082,28 +2465,40 @@ async fn agent_profile(
     };
 
     // Fetch reputation labels for this agent
-    let reputation_labels = match state.nostr_client.get_reputation_labels_for_agent(&pubkey).await {
+    let reputation_labels = match state
+        .nostr_client
+        .get_reputation_labels_for_agent(&pubkey)
+        .await
+    {
         Ok(labels) => labels,
         Err(e) => {
-            tracing::warn!("Failed to fetch reputation labels for agent {}: {}", pubkey, e);
+            tracing::warn!(
+                "Failed to fetch reputation labels for agent {}: {}",
+                pubkey,
+                e
+            );
             Vec::new()
         }
     };
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(agent_profile_page(&pubkey, &pull_requests, &issue_claims, &reputation_labels).into_string())
+        .body(
+            agent_profile_page(&pubkey, &pull_requests, &issue_claims, &reputation_labels)
+                .into_string(),
+        )
 }
 
 /// Watch a repository
-async fn watch_repository(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn watch_repository(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let identifier = path.into_inner();
 
     // Get repository to extract address
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             return HttpResponse::NotFound()
@@ -2119,8 +2514,12 @@ async fn watch_repository(
     };
 
     // Build repository address
-    let repo_address = format!("30617:{}:{}", repository.pubkey,
-        repository.tags.iter()
+    let repo_address = format!(
+        "30617:{}:{}",
+        repository.pubkey,
+        repository
+            .tags
+            .iter()
             .find(|t| t.first().map(|s| s == "d").unwrap_or(false))
             .and_then(|t| t.get(1))
             .map(|s| s.as_str())
@@ -2128,7 +2527,11 @@ async fn watch_repository(
     );
 
     // Watch the repository
-    if let Err(e) = state.nostr_client.watch_repository(&identifier, &repo_address).await {
+    if let Err(e) = state
+        .nostr_client
+        .watch_repository(&identifier, &repo_address)
+        .await
+    {
         tracing::error!("Failed to watch repository {}: {}", identifier, e);
         return HttpResponse::InternalServerError()
             .content_type("text/html; charset=utf-8")
@@ -2141,10 +2544,7 @@ async fn watch_repository(
 }
 
 /// Unwatch a repository
-async fn unwatch_repository(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn unwatch_repository(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let identifier = path.into_inner();
 
     // Unwatch the repository
@@ -2161,9 +2561,7 @@ async fn unwatch_repository(
 }
 
 /// Watched repositories page
-async fn watched_repositories(
-    state: web::Data<AppState>,
-) -> HttpResponse {
+async fn watched_repositories(state: web::Data<AppState>) -> HttpResponse {
     // Get list of watched repository identifiers
     let watched_ids = match state.nostr_client.get_watched_repositories().await {
         Ok(ids) => ids,
@@ -2189,14 +2587,15 @@ async fn watched_repositories(
 }
 
 /// Clone a repository to local workspace
-async fn clone_repo(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn clone_repo(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let identifier = path.into_inner();
 
     // Fetch repository from cache to get clone URL
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             return HttpResponse::NotFound()
@@ -2212,7 +2611,9 @@ async fn clone_repo(
     };
 
     // Get clone URL from repository tags
-    let clone_url = repository.tags.iter()
+    let clone_url = repository
+        .tags
+        .iter()
         .find(|tag| tag.first().map(|t| t == "clone").unwrap_or(false))
         .and_then(|tag| tag.get(1).cloned());
 
@@ -2254,12 +2655,18 @@ async fn clone_repo(
             tracing::warn!("Invalid repository identifier {}: {}", identifier, e);
             return HttpResponse::BadRequest()
                 .content_type("text/html; charset=utf-8")
-                .body(r#"<div class="error-message"><p>❌ Invalid repository identifier</p></div>"#);
+                .body(
+                    r#"<div class="error-message"><p>❌ Invalid repository identifier</p></div>"#,
+                );
         }
     };
     match clone_repository(&clone_url, &dest_path, None) {
         Ok(_) => {
-            tracing::info!("Successfully cloned repository {} to {:?}", identifier, dest_path);
+            tracing::info!(
+                "Successfully cloned repository {} to {:?}",
+                identifier,
+                dest_path
+            );
             HttpResponse::Ok()
                 .content_type("text/html; charset=utf-8")
                 .body(format!(
@@ -2324,14 +2731,15 @@ async fn search(
 }
 
 /// API endpoint to get available PRs for dependency selection
-async fn pr_available_deps(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn pr_available_deps(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let identifier = path.into_inner();
 
     // Fetch repository to get pubkey
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             return HttpResponse::NotFound()
@@ -2349,7 +2757,11 @@ async fn pr_available_deps(
     let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
 
     // Fetch all PRs for this repository
-    match state.nostr_client.get_pull_requests_by_repo(&repo_address, 1000).await {
+    match state
+        .nostr_client
+        .get_pull_requests_by_repo(&repo_address, 1000)
+        .await
+    {
         Ok(prs) => {
             // Filter to only unmerged, non-closed PRs
             let mut available: Vec<serde_json::Value> = Vec::new();
@@ -2360,13 +2772,17 @@ async fn pr_available_deps(
                     Ok(status) => {
                         // Only include Open (1630) and Draft (1633) PRs
                         if status == 1630 || status == 1633 {
-                            let subject = pr.tags.iter()
+                            let subject = pr
+                                .tags
+                                .iter()
                                 .find(|tag| tag.len() >= 2 && tag[0] == "subject")
                                 .and_then(|tag| tag.get(1))
                                 .map(|s| s.to_string())
                                 .unwrap_or_else(|| "Untitled PR".to_string());
 
-                            let layer_info = pr.tags.iter()
+                            let layer_info = pr
+                                .tags
+                                .iter()
                                 .find(|tag| tag.len() >= 3 && tag[0] == "layer")
                                 .and_then(|tag| {
                                     let current = tag.get(1)?;
@@ -2389,7 +2805,8 @@ async fn pr_available_deps(
             }
 
             // Return HTML options for HTMX
-            let mut html = String::from(r#"<option value="">-- No dependency (base layer) --</option>"#);
+            let mut html =
+                String::from(r#"<option value="">-- No dependency (base layer) --</option>"#);
 
             if available.is_empty() {
                 html.push_str(r#"<option value="" disabled>No open PRs available</option>"#);
@@ -2451,12 +2868,16 @@ async fn pr_stack_info(
     };
 
     // Extract stack_id and layer info from tags
-    let stack_id = pr_event.tags.iter()
+    let stack_id = pr_event
+        .tags
+        .iter()
         .find(|tag| tag.len() >= 2 && tag[0] == "stack")
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string());
 
-    let (layer_current, layer_total) = pr_event.tags.iter()
+    let (layer_current, layer_total) = pr_event
+        .tags
+        .iter()
         .find(|tag| tag.len() >= 3 && tag[0] == "layer")
         .and_then(|tag| {
             let current = tag.get(1)?.parse::<u32>().ok()?;
@@ -2500,14 +2921,15 @@ async fn pr_stack_info(
 }
 
 /// Pull request creation form
-async fn pr_create_form(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn pr_create_form(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let identifier = path.into_inner();
 
     // Fetch repository from cache by identifier
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             tracing::warn!("Repository not found: {}", identifier);
@@ -2537,7 +2959,11 @@ async fn pr_create(
     let identifier = path.into_inner();
 
     // Fetch repository to get pubkey and build address
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             return HttpResponse::NotFound()
@@ -2588,7 +3014,11 @@ async fn pr_create(
     // Validate stacked PR dependencies before signing
     if form.depends_on.is_some() || form.stack_id.is_some() {
         // Fetch all PRs for this repository to build dependency graph
-        let prs = match state.nostr_client.get_pull_requests_by_repo(&repo_address, 1000).await {
+        let prs = match state
+            .nostr_client
+            .get_pull_requests_by_repo(&repo_address, 1000)
+            .await
+        {
             Ok(prs) => prs,
             Err(e) => {
                 tracing::error!("Failed to fetch PRs for validation: {}", e);
@@ -2653,7 +3083,11 @@ async fn pr_create(
             // Publish to relays
             match state.nostr_client.publish_event(signed_event).await {
                 Ok(_) => {
-                    tracing::info!("Published pull request: event_id={}, subject='{}'", event_id, form.subject);
+                    tracing::info!(
+                        "Published pull request: event_id={}, subject='{}'",
+                        event_id,
+                        form.subject
+                    );
 
                     // Redirect to PRs list
                     HttpResponse::SeeOther()
@@ -2709,14 +3143,15 @@ struct PrCreateForm {
 }
 
 /// Patch creation form
-async fn patch_create_form(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn patch_create_form(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let identifier = path.into_inner();
 
     // Fetch repository from cache by identifier
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             tracing::warn!("Repository not found: {}", identifier);
@@ -2746,7 +3181,11 @@ async fn patch_create(
     let identifier = path.into_inner();
 
     // Fetch repository to get pubkey and build address
-    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+    let repository = match state
+        .nostr_client
+        .get_repository_by_identifier(&identifier)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             return HttpResponse::NotFound()
@@ -2765,11 +3204,7 @@ async fn patch_create(
     let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
 
     // Build the patch event using PatchBuilder
-    let mut builder = PatchBuilder::new(
-        &repo_address,
-        &form.title,
-        &form.patch_content,
-    );
+    let mut builder = PatchBuilder::new(&repo_address, &form.title, &form.patch_content);
 
     // Add optional description
     if let Some(desc) = &form.description {
@@ -2786,7 +3221,11 @@ async fn patch_create(
             // Publish to relays
             match state.nostr_client.publish_event(signed_event).await {
                 Ok(_) => {
-                    tracing::info!("Published patch: event_id={}, title='{}'", event_id, form.title);
+                    tracing::info!(
+                        "Published patch: event_id={}, title='{}'",
+                        event_id,
+                        form.title
+                    );
 
                     // Redirect to patches list
                     HttpResponse::SeeOther()
@@ -2876,7 +3315,12 @@ async fn repository_create(
     let maintainers: Vec<String> = form
         .maintainers
         .as_ref()
-        .map(|m| m.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+        .map(|m| {
+            m.lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
 
     let topics: Vec<String> = form
@@ -3004,9 +3448,7 @@ async fn repository_create(
 }
 
 /// Git status page - shows local changes
-async fn git_status(
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn git_status(path: web::Path<String>) -> HttpResponse {
     let identifier = path.into_inner();
 
     // Check if repository is cloned
@@ -3016,15 +3458,20 @@ async fn git_status(
             .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
     }
 
-    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
+    let repo_path = match get_repository_path(&identifier) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Invalid repository identifier {}: {}", identifier, e);
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Invalid repository identifier"}));
+        }
+    };
 
     // Get file status
     match get_status(&repo_path) {
-        Ok(changes) => {
-            HttpResponse::Ok()
-                .content_type("text/html; charset=utf-8")
-                .body(git_status_page(&identifier, &changes).into_string())
-        }
+        Ok(changes) => HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(git_status_page(&identifier, &changes).into_string()),
         Err(e) => {
             tracing::error!("Failed to get git status: {}", e);
             HttpResponse::InternalServerError()
@@ -3035,9 +3482,7 @@ async fn git_status(
 }
 
 /// Git branch creation form
-async fn git_branch_form(
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn git_branch_form(path: web::Path<String>) -> HttpResponse {
     let identifier = path.into_inner();
 
     // Check if repository is cloned
@@ -3074,21 +3519,26 @@ async fn git_branch_create(
             .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
     }
 
-    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
+    let repo_path = match get_repository_path(&identifier) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Invalid repository identifier {}: {}", identifier, e);
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Invalid repository identifier"}));
+        }
+    };
 
     match create_branch(&repo_path, branch_name) {
-        Ok(_) => {
-            HttpResponse::Ok()
-                .content_type("text/html; charset=utf-8")
-                .body(format!(
-                    r#"<div style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
+        Ok(_) => HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(format!(
+                r#"<div style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
                         <h3>Branch Created</h3>
                         <p>Successfully created branch: {}</p>
                         <p><a href="/repo/{}">← Back to Repository</a></p>
                     </div>"#,
-                    branch_name, identifier
-                ))
-        }
+                branch_name, identifier
+            )),
         Err(e) => {
             tracing::error!("Failed to create branch: {}", e);
             HttpResponse::InternalServerError()
@@ -3136,19 +3586,27 @@ async fn git_patch_generate(
             .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
     }
 
-    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
+    let repo_path = match get_repository_path(&identifier) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Invalid repository identifier {}: {}", identifier, e);
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Invalid repository identifier"}));
+        }
+    };
 
     match generate_patch(&repo_path, base_commit, head_commit) {
-        Ok(patch) => {
-            HttpResponse::Ok()
-                .content_type("text/plain; charset=utf-8")
-                .body(patch)
-        }
+        Ok(patch) => HttpResponse::Ok()
+            .content_type("text/plain; charset=utf-8")
+            .body(patch),
         Err(e) => {
             tracing::error!("Failed to generate patch: {}", e);
             HttpResponse::InternalServerError()
                 .content_type("text/html; charset=utf-8")
-                .body(format!("<h1>Error</h1><p>Failed to generate patch: {}</p>", e))
+                .body(format!(
+                    "<h1>Error</h1><p>Failed to generate patch: {}</p>",
+                    e
+                ))
         }
     }
 }
@@ -3175,21 +3633,26 @@ async fn git_patch_apply(
             .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
     }
 
-    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
+    let repo_path = match get_repository_path(&identifier) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Invalid repository identifier {}: {}", identifier, e);
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Invalid repository identifier"}));
+        }
+    };
 
     match apply_patch(&repo_path, patch_content) {
-        Ok(_) => {
-            HttpResponse::Ok()
-                .content_type("text/html; charset=utf-8")
-                .body(format!(
-                    r#"<div style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
+        Ok(_) => HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(format!(
+                r#"<div style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
                         <h3>Patch Applied</h3>
                         <p>Successfully applied patch to repository</p>
                         <p><a href="/repo/{}/git/status">View Changes →</a></p>
                     </div>"#,
-                    identifier
-                ))
-        }
+                identifier
+            )),
         Err(e) => {
             tracing::error!("Failed to apply patch: {}", e);
             HttpResponse::InternalServerError()
@@ -3212,7 +3675,10 @@ async fn git_push(
     form: web::Form<std::collections::HashMap<String, String>>,
 ) -> HttpResponse {
     let identifier = path.into_inner();
-    let remote_name = form.get("remote").cloned().unwrap_or_else(|| "origin".to_string());
+    let remote_name = form
+        .get("remote")
+        .cloned()
+        .unwrap_or_else(|| "origin".to_string());
 
     // Check if repository is cloned
     if !is_repository_cloned(&identifier) {
@@ -3221,7 +3687,14 @@ async fn git_push(
             .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
     }
 
-    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
+    let repo_path = match get_repository_path(&identifier) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Invalid repository identifier {}: {}", identifier, e);
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Invalid repository identifier"}));
+        }
+    };
 
     // Get current branch name
     let branch_name = match current_branch(&repo_path) {
@@ -3229,23 +3702,24 @@ async fn git_push(
         Err(e) => {
             return HttpResponse::InternalServerError()
                 .content_type("text/html; charset=utf-8")
-                .body(format!("<h1>Error</h1><p>Failed to get current branch: {}</p>", e));
+                .body(format!(
+                    "<h1>Error</h1><p>Failed to get current branch: {}</p>",
+                    e
+                ));
         }
     };
 
     match push_branch(&repo_path, &remote_name, &branch_name) {
-        Ok(_) => {
-            HttpResponse::Ok()
-                .content_type("text/html; charset=utf-8")
-                .body(format!(
-                    r#"<div style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
+        Ok(_) => HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(format!(
+                r#"<div style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
                         <h3>Push Successful</h3>
                         <p>Pushed branch {} to {}</p>
                         <p><a href="/repo/{}">← Back to Repository</a></p>
                     </div>"#,
-                    branch_name, remote_name, identifier
-                ))
-        }
+                branch_name, remote_name, identifier
+            )),
         Err(e) => {
             tracing::error!("Failed to push branch: {}", e);
             HttpResponse::InternalServerError()
@@ -3286,11 +3760,15 @@ async fn patch_diff_view(
     };
 
     // Extract commit IDs from patch tags
-    let commit_id = patch_event.tags.iter()
+    let commit_id = patch_event
+        .tags
+        .iter()
         .find(|tag| tag.first().map(|t| t == "c").unwrap_or(false))
         .and_then(|tag| tag.get(1).cloned());
 
-    let parent_commit = patch_event.tags.iter()
+    let parent_commit = patch_event
+        .tags
+        .iter()
         .find(|tag| tag.first().map(|t| t == "parent").unwrap_or(false))
         .and_then(|tag| tag.get(1).cloned());
 
@@ -3301,20 +3779,25 @@ async fn patch_diff_view(
             .body("<h1>Repository not cloned</h1><p>Clone the repository to view diffs.</p>");
     }
 
-    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
+    let repo_path = match get_repository_path(&identifier) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Invalid repository identifier {}: {}", identifier, e);
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Invalid repository identifier"}));
+        }
+    };
 
     // Generate diff
     let diff_output = match (parent_commit.as_ref(), commit_id.as_ref()) {
-        (Some(parent), Some(commit)) => {
-            match diff_commits(&repo_path, parent, commit) {
-                Ok(diff) => diff,
-                Err(e) => {
-                    return HttpResponse::InternalServerError()
-                        .content_type("text/html; charset=utf-8")
-                        .body(format!("<h1>Error generating diff</h1><p>{}</p>", e));
-                }
+        (Some(parent), Some(commit)) => match diff_commits(&repo_path, parent, commit) {
+            Ok(diff) => diff,
+            Err(e) => {
+                return HttpResponse::InternalServerError()
+                    .content_type("text/html; charset=utf-8")
+                    .body(format!("<h1>Error generating diff</h1><p>{}</p>", e));
             }
-        }
+        },
         _ => {
             return HttpResponse::BadRequest()
                 .content_type("text/html; charset=utf-8")
@@ -3351,11 +3834,15 @@ async fn pr_diff_view(
     };
 
     // Extract commit IDs from PR tags
-    let commit_id = pr_event.tags.iter()
+    let commit_id = pr_event
+        .tags
+        .iter()
         .find(|tag| tag.first().map(|t| t == "c").unwrap_or(false))
         .and_then(|tag| tag.get(1).cloned());
 
-    let parent_commit = pr_event.tags.iter()
+    let parent_commit = pr_event
+        .tags
+        .iter()
         .find(|tag| tag.first().map(|t| t == "parent").unwrap_or(false))
         .and_then(|tag| tag.get(1).cloned());
 
@@ -3366,20 +3853,25 @@ async fn pr_diff_view(
             .body("<h1>Repository not cloned</h1><p>Clone the repository to view diffs.</p>");
     }
 
-    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
+    let repo_path = match get_repository_path(&identifier) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Invalid repository identifier {}: {}", identifier, e);
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Invalid repository identifier"}));
+        }
+    };
 
     // Generate diff
     let diff_output = match (parent_commit.as_ref(), commit_id.as_ref()) {
-        (Some(parent), Some(commit)) => {
-            match diff_commits(&repo_path, parent, commit) {
-                Ok(diff) => diff,
-                Err(e) => {
-                    return HttpResponse::InternalServerError()
-                        .content_type("text/html; charset=utf-8")
-                        .body(format!("<h1>Error generating diff</h1><p>{}</p>", e));
-                }
+        (Some(parent), Some(commit)) => match diff_commits(&repo_path, parent, commit) {
+            Ok(diff) => diff,
+            Err(e) => {
+                return HttpResponse::InternalServerError()
+                    .content_type("text/html; charset=utf-8")
+                    .body(format!("<h1>Error generating diff</h1><p>{}</p>", e));
             }
-        }
+        },
         _ => {
             return HttpResponse::BadRequest()
                 .content_type("text/html; charset=utf-8")
@@ -3436,7 +3928,8 @@ async fn agents_list(
     let mut agents = Vec::new();
     for pubkey in agent_pubkeys {
         // Fetch reputation labels
-        let reputation_labels = state.nostr_client
+        let reputation_labels = state
+            .nostr_client
             .get_reputation_labels_for_agent(&pubkey)
             .await
             .unwrap_or_default();
@@ -3445,7 +3938,8 @@ async fn agents_list(
         let reputation_score = calculate_reputation_score(&reputation_labels);
 
         // Count merged PRs
-        let merged_prs = state.nostr_client
+        let merged_prs = state
+            .nostr_client
             .get_pull_requests_by_agent(&pubkey, 100)
             .await
             .unwrap_or_default()
@@ -3510,12 +4004,14 @@ async fn agent_marketplace(
     }
 
     // Build agent data with reputation and specialties
-    let mut agents_by_specialty: std::collections::HashMap<String, Vec<(String, i32, i32)>> = std::collections::HashMap::new();
+    let mut agents_by_specialty: std::collections::HashMap<String, Vec<(String, i32, i32)>> =
+        std::collections::HashMap::new();
     let mut all_specialties = std::collections::HashSet::new();
 
     for pubkey in agent_pubkeys {
         // Fetch reputation labels
-        let reputation_labels = state.nostr_client
+        let reputation_labels = state
+            .nostr_client
             .get_reputation_labels_for_agent(&pubkey)
             .await
             .unwrap_or_default();
@@ -3524,7 +4020,8 @@ async fn agent_marketplace(
         let reputation_score = calculate_reputation_score(&reputation_labels);
 
         // Count merged PRs
-        let merged_prs = state.nostr_client
+        let merged_prs = state
+            .nostr_client
             .get_pull_requests_by_agent(&pubkey, 100)
             .await
             .unwrap_or_default()
@@ -3542,7 +4039,11 @@ async fn agent_marketplace(
         let mut agent_specialties = vec!["general".to_string()]; // Default specialty
 
         // Try to extract specialties from PR languages (basic heuristic)
-        if let Ok(prs) = state.nostr_client.get_pull_requests_by_agent(&pubkey, 10).await {
+        if let Ok(prs) = state
+            .nostr_client
+            .get_pull_requests_by_agent(&pubkey, 10)
+            .await
+        {
             for pr in prs {
                 // Look for common file extensions in PR content or tags
                 if pr.content.contains(".rs") || pr.content.contains("rust") {
@@ -3588,13 +4089,16 @@ async fn agent_marketplace(
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(agent_marketplace_page(
-            &agents_by_specialty,
-            &sorted_specialties,
-            query.specialty.as_deref(),
-            query.min_reputation,
-            query.search.as_deref(),
-        ).into_string())
+        .body(
+            agent_marketplace_page(
+                &agents_by_specialty,
+                &sorted_specialties,
+                query.specialty.as_deref(),
+                query.min_reputation,
+                query.search.as_deref(),
+            )
+            .into_string(),
+        )
 }
 
 /// Publish a reputation label for an agent
@@ -3611,7 +4115,11 @@ async fn publish_reputation_label(
     let mut tags = vec![
         vec!["p".to_string(), target_pubkey.clone()],
         vec!["L".to_string(), "agent.reputation".to_string()],
-        vec!["l".to_string(), label.clone(), "agent.reputation".to_string()],
+        vec![
+            "l".to_string(),
+            label.clone(),
+            "agent.reputation".to_string(),
+        ],
     ];
 
     if let Some(rating_val) = rating {
@@ -3668,7 +4176,9 @@ fn calculate_reputation_score(labels: &[nostr::Event]) -> i32 {
 
     for label in labels {
         // Extract rating tag
-        if let Some(rating_str) = label.tags.iter()
+        if let Some(rating_str) = label
+            .tags
+            .iter()
             .find(|tag| tag.first().map(|t| t == "rating").unwrap_or(false))
             .and_then(|tag| tag.get(1))
         {
@@ -3697,10 +4207,7 @@ fn calculate_reputation_score(labels: &[nostr::Event]) -> i32 {
 /// 5. Waiting for zap receipt (kind:9735) from recipient's wallet
 ///
 /// For now, this creates the zap request and returns a placeholder response.
-async fn bounty_payment(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn bounty_payment(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let bounty_claim_id = path.into_inner();
 
     // 1. Fetch bounty claim event
@@ -3776,7 +4283,7 @@ async fn bounty_payment(
         .amount_sats(amount_sats)
         .relay("wss://relay.damus.io")
         .relay("wss://relay.snort.social")
-        .event(&bounty_claim_id)  // Zap the bounty claim event
+        .event(&bounty_claim_id) // Zap the bounty claim event
         .content(format!("Bounty payment: {} sats", amount_sats));
 
     let zap_template = zap_builder.build();
@@ -3915,7 +4422,10 @@ async fn bounty_payment(
             tracing::error!("Failed to sign zap request: {}", e);
             HttpResponse::InternalServerError()
                 .content_type("text/html; charset=utf-8")
-                .body(format!("<h1>Error</h1><p>Failed to sign payment request: {}</p>", e))
+                .body(format!(
+                    "<h1>Error</h1><p>Failed to sign payment request: {}</p>",
+                    e
+                ))
         }
     }
 }
@@ -3935,18 +4445,24 @@ async fn bounties_discovery(state: web::Data<AppState>) -> HttpResponse {
     let mut all_bounties = Vec::new();
 
     for repo in &repositories {
-        let repo_id = repo.tags.iter()
+        let repo_id = repo
+            .tags
+            .iter()
             .find(|tag| tag.first().map(|t| t == "d").unwrap_or(false))
             .and_then(|tag| tag.get(1).cloned())
             .unwrap_or_default();
 
-        let repo_name = get_tag_value_from_event(repo, "name")
-            .unwrap_or_else(|| "Unnamed".to_string());
+        let repo_name =
+            get_tag_value_from_event(repo, "name").unwrap_or_else(|| "Unnamed".to_string());
 
         let repo_address = format!("30617:{}:{}", repo.pubkey, repo_id);
 
         // Get issues for this repo
-        if let Ok(issues) = state.nostr_client.get_issues_by_repo(&repo_address, 100).await {
+        if let Ok(issues) = state
+            .nostr_client
+            .get_issues_by_repo(&repo_address, 100)
+            .await
+        {
             for issue in issues {
                 // Get bounties for this issue
                 if let Ok(bounties) = state.nostr_client.get_bounties_for_issue(&issue.id).await {
@@ -3955,7 +4471,9 @@ async fn bounties_discovery(state: web::Data<AppState>) -> HttpResponse {
                             .and_then(|s| s.parse::<u64>().ok())
                             .unwrap_or(0);
 
-                        let issue_subject = issue.tags.iter()
+                        let issue_subject = issue
+                            .tags
+                            .iter()
                             .find(|tag| tag.first().map(|t| t == "subject").unwrap_or(false))
                             .and_then(|tag| tag.get(1).cloned())
                             .unwrap_or_else(|| "Untitled Issue".to_string());
@@ -4039,7 +4557,11 @@ async fn mark_notification_read(
 ) -> HttpResponse {
     let notification_id = path.into_inner();
 
-    match state.nostr_client.mark_notification_read(&notification_id).await {
+    match state
+        .nostr_client
+        .mark_notification_read(&notification_id)
+        .await
+    {
         Ok(_) => HttpResponse::Ok()
             .content_type("application/json")
             .body(r#"{"success": true}"#),
@@ -4063,7 +4585,11 @@ async fn mark_all_notifications_read(state: web::Data<AppState>) -> HttpResponse
         }
     };
 
-    match state.nostr_client.mark_all_notifications_read(&user_pubkey).await {
+    match state
+        .nostr_client
+        .mark_all_notifications_read(&user_pubkey)
+        .await
+    {
         Ok(count) => HttpResponse::Ok()
             .content_type("application/json")
             .body(format!(r#"{{"success": true, "count": {}}}"#, count)),
@@ -4123,7 +4649,9 @@ async fn pr_auto_checks(
     let trajectory_session_id = crate::views::get_tag_value(&pull_request, "trajectory");
 
     // Extract dependencies
-    let depends_on = pull_request.tags.iter()
+    let depends_on = pull_request
+        .tags
+        .iter()
         .filter(|tag| tag.first().map(|t| t == "depends_on").unwrap_or(false))
         .filter_map(|tag| tag.get(1).cloned())
         .collect::<Vec<_>>();
@@ -4142,8 +4670,8 @@ async fn pr_auto_checks(
     let results = runner.run_all().await;
 
     // Render results as HTML component
-    use maud::{html, Markup};
     use crate::review::CheckStatus;
+    use maud::{Markup, html};
 
     let html_body: Markup = html! {
         div.check-results {
@@ -4239,29 +4767,45 @@ async fn pr_checklist(
     };
 
     // Extract changed files from PR event tags
-    let changed_files: Vec<String> = pull_request.tags.iter()
+    let changed_files: Vec<String> = pull_request
+        .tags
+        .iter()
         .filter(|tag| tag.first().map(|t| t == "file").unwrap_or(false))
         .filter_map(|tag| tag.get(1).cloned())
         .collect();
 
     // Determine review template from PR tags
     let template = if pull_request.tags.iter().any(|tag| {
-        tag.first().map(|t| t == "label" || t == "type").unwrap_or(false)
-            && tag.get(1).map(|v| v == "nip" || v.starts_with("nip")).unwrap_or(false)
+        tag.first()
+            .map(|t| t == "label" || t == "type")
+            .unwrap_or(false)
+            && tag
+                .get(1)
+                .map(|v| v == "nip" || v.starts_with("nip"))
+                .unwrap_or(false)
     }) {
         ReviewTemplate::NipImplementation
     } else if pull_request.tags.iter().any(|tag| {
-        tag.first().map(|t| t == "label" || t == "type").unwrap_or(false)
-            && tag.get(1).map(|v| v == "bugfix" || v == "bug").unwrap_or(false)
+        tag.first()
+            .map(|t| t == "label" || t == "type")
+            .unwrap_or(false)
+            && tag
+                .get(1)
+                .map(|v| v == "bugfix" || v == "bug")
+                .unwrap_or(false)
     }) {
         ReviewTemplate::BugFix
     } else if pull_request.tags.iter().any(|tag| {
-        tag.first().map(|t| t == "label" || t == "type").unwrap_or(false)
+        tag.first()
+            .map(|t| t == "label" || t == "type")
+            .unwrap_or(false)
             && tag.get(1).map(|v| v == "refactor").unwrap_or(false)
     }) {
         ReviewTemplate::Refactor
     } else if pull_request.tags.iter().any(|tag| {
-        tag.first().map(|t| t == "label" || t == "type").unwrap_or(false)
+        tag.first()
+            .map(|t| t == "label" || t == "type")
+            .unwrap_or(false)
             && tag.get(1).map(|v| v == "feature").unwrap_or(false)
     }) {
         ReviewTemplate::Feature
@@ -4285,11 +4829,11 @@ async fn pr_checklist(
                     // Find matching check result
                     let matching_result = check_results.iter().find(|r| {
                         // Match by ID patterns
-                        r.id == item.id ||
-                        (item.id == "rust-clippy" && r.id == "compilation") ||
-                        (item.id == "rust-tests" && r.id == "tests") ||
-                        (item.id == "d012-no-stubs" && r.id == "compilation") ||
-                        (item.id == "d013-tests" && r.id == "tests")
+                        r.id == item.id
+                            || (item.id == "rust-clippy" && r.id == "compilation")
+                            || (item.id == "rust-tests" && r.id == "tests")
+                            || (item.id == "d012-no-stubs" && r.id == "compilation")
+                            || (item.id == "d013-tests" && r.id == "tests")
                     });
 
                     if let Some(result) = matching_result {
@@ -4304,7 +4848,7 @@ async fn pr_checklist(
     }
 
     // Render as HTML
-    use maud::{html, Markup};
+    use maud::{Markup, html};
 
     let html_body: Markup = html! {
         div.review-checklist style="padding: 1rem;" {
@@ -4407,7 +4951,10 @@ async fn pr_checklist_toggle(
 mod tests {
     use super::*;
     use bip39::Mnemonic;
-    use openagents_spark::{Network, PaymentStatus as SparkStatus, PaymentType as SparkType, SparkSigner, SparkWallet, WalletConfig};
+    use openagents_spark::{
+        Network, PaymentStatus as SparkStatus, PaymentType as SparkType, SparkSigner, SparkWallet,
+        WalletConfig,
+    };
     use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tempfile::TempDir;
@@ -4417,7 +4964,8 @@ mod tests {
     async fn test_pr_review_submit_publishes_review_event() {
         let relay = MockRelay::start().await;
         let broadcaster = Arc::new(WsBroadcaster::new(64));
-        let nostr_client = Arc::new(NostrClient::new(vec![relay.url().to_string()], broadcaster.clone()).unwrap());
+        let nostr_client =
+            Arc::new(NostrClient::new(vec![relay.url().to_string()], broadcaster.clone()).unwrap());
         let mnemonic = Mnemonic::parse("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about").unwrap();
         let identity = Arc::new(UnifiedIdentity::from_mnemonic(mnemonic).unwrap());
 
@@ -4432,10 +4980,16 @@ mod tests {
             kind: 1618,
             content: "PR body".to_string(),
             tags: vec![
-                vec!["a".to_string(), format!("30617:{}:test-repo", identity.nostr_public_key())],
+                vec![
+                    "a".to_string(),
+                    format!("30617:{}:test-repo", identity.nostr_public_key()),
+                ],
                 vec!["subject".to_string(), "Test PR".to_string()],
                 vec!["c".to_string(), "commit-123".to_string()],
-                vec!["clone".to_string(), "https://example.com/repo.git".to_string()],
+                vec![
+                    "clone".to_string(),
+                    "https://example.com/repo.git".to_string(),
+                ],
             ],
             created_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -4462,7 +5016,12 @@ mod tests {
         let reviews = nostr_client.get_reviews_for_pr(&pr_event.id).await.unwrap();
         assert_eq!(reviews.len(), 1);
         assert_eq!(reviews[0].content, "LGTM");
-        assert!(reviews[0].tags.iter().any(|tag| tag.len() >= 2 && tag[0] == "review_type" && tag[1] == "approve"));
+        assert!(
+            reviews[0]
+                .tags
+                .iter()
+                .any(|tag| tag.len() >= 2 && tag[0] == "review_type" && tag[1] == "approve")
+        );
     }
 
     #[test]
@@ -4509,7 +5068,11 @@ mod tests {
             sig: "sig3".to_string(),
         };
 
-        let mut repos = vec![repo_rust_nostr.clone(), repo_python_ai.clone(), repo_rust_tooling.clone()];
+        let mut repos = vec![
+            repo_rust_nostr.clone(),
+            repo_python_ai.clone(),
+            repo_rust_tooling.clone(),
+        ];
 
         let query = RepoFilterQuery {
             language: Some("rust".to_string()),
@@ -4520,7 +5083,11 @@ mod tests {
         filter_repositories_by_query(&mut repos, &query);
         assert_eq!(repos.len(), 2);
 
-        let mut repos = vec![repo_rust_nostr.clone(), repo_python_ai.clone(), repo_rust_tooling.clone()];
+        let mut repos = vec![
+            repo_rust_nostr.clone(),
+            repo_python_ai.clone(),
+            repo_rust_tooling.clone(),
+        ];
         let query = RepoFilterQuery {
             language: None,
             topic: Some("ai".to_string()),
@@ -4543,8 +5110,7 @@ mod tests {
         assert_eq!(repos[0].id, "repo-3");
     }
 
-    const FAUCET_SENDER_MNEMONIC: &str =
-        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const FAUCET_SENDER_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
     const FAUCET_RECEIVER_MNEMONIC: &str = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
 
     struct RealE2eConfig {
@@ -4623,11 +5189,15 @@ mod tests {
         .unwrap_or(Network::Testnet);
 
         if network == Network::Mainnet && std::env::var("GITAFTER_E2E_ALLOW_MAINNET").is_err() {
-            println!("Skipping mainnet GitAfter E2E test - set GITAFTER_E2E_ALLOW_MAINNET=1 to enable");
+            println!(
+                "Skipping mainnet GitAfter E2E test - set GITAFTER_E2E_ALLOW_MAINNET=1 to enable"
+            );
             return None;
         }
         if network == Network::Mainnet && use_faucet {
-            println!("Skipping mainnet GitAfter E2E test - faucet funding only supported on regtest");
+            println!(
+                "Skipping mainnet GitAfter E2E test - faucet funding only supported on regtest"
+            );
             return None;
         }
 
@@ -4654,8 +5224,12 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let dir = std::env::temp_dir()
-            .join(format!("openagents-gitafter-e2e-{}-{}-{}", label, std::process::id(), now));
+        let dir = std::env::temp_dir().join(format!(
+            "openagents-gitafter-e2e-{}-{}-{}",
+            label,
+            std::process::id(),
+            now
+        ));
         std::fs::create_dir_all(&dir).expect("should create gitafter e2e storage dir");
         dir
     }
@@ -4699,7 +5273,9 @@ mod tests {
         let deposit_address = wallet.get_bitcoin_address().await?;
 
         let faucet = RegtestFaucet::new()?;
-        faucet.fund_address(&deposit_address, request_amount).await?;
+        faucet
+            .fund_address(&deposit_address, request_amount)
+            .await?;
         wait_for_min_balance(wallet, balance.total_sats().saturating_add(1), timeout).await?;
 
         Ok(())
@@ -4740,7 +5316,9 @@ mod tests {
     #[ignore = "Requires funded Spark testnet wallets"]
     async fn test_bounty_claim_payout_real_sats() {
         let Some(config) = real_e2e_config() else {
-            println!("Skipping GitAfter E2E test - set GITAFTER_E2E_SENDER_MNEMONIC/GITAFTER_E2E_RECEIVER_MNEMONIC or GITAFTER_E2E_USE_FAUCET=1");
+            println!(
+                "Skipping GitAfter E2E test - set GITAFTER_E2E_SENDER_MNEMONIC/GITAFTER_E2E_RECEIVER_MNEMONIC or GITAFTER_E2E_USE_FAUCET=1"
+            );
             return;
         };
 
@@ -4756,49 +5334,57 @@ mod tests {
         }
 
         let broadcaster = Arc::new(WsBroadcaster::new(64));
-        let nostr_client = Arc::new(NostrClient::new(vec![], broadcaster.clone()).expect("nostr client"));
+        let nostr_client =
+            Arc::new(NostrClient::new(vec![], broadcaster.clone()).expect("nostr client"));
 
         let identity_mnemonic = Mnemonic::parse("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about")
             .expect("identity mnemonic");
-        let identity = Arc::new(UnifiedIdentity::from_mnemonic(identity_mnemonic).expect("identity"));
+        let identity =
+            Arc::new(UnifiedIdentity::from_mnemonic(identity_mnemonic).expect("identity"));
 
-        let sender_signer = SparkSigner::from_mnemonic(&config.sender_mnemonic, "")
-            .expect("sender signer");
-        let receiver_signer = SparkSigner::from_mnemonic(&config.receiver_mnemonic, "")
-            .expect("receiver signer");
+        let sender_signer =
+            SparkSigner::from_mnemonic(&config.sender_mnemonic, "").expect("sender signer");
+        let receiver_signer =
+            SparkSigner::from_mnemonic(&config.receiver_mnemonic, "").expect("receiver signer");
 
-        let sender_wallet = Arc::new(SparkWallet::new(
-            sender_signer,
-            WalletConfig {
-                network: config.network,
-                api_key: config.api_key.clone(),
-                storage_dir: unique_storage_dir("sender"),
-            },
-        )
-        .await
-        .expect("sender wallet"));
+        let sender_wallet = Arc::new(
+            SparkWallet::new(
+                sender_signer,
+                WalletConfig {
+                    network: config.network,
+                    api_key: config.api_key.clone(),
+                    storage_dir: unique_storage_dir("sender"),
+                },
+            )
+            .await
+            .expect("sender wallet"),
+        );
 
-        let receiver_wallet = Arc::new(SparkWallet::new(
-            receiver_signer,
-            WalletConfig {
-                network: config.network,
-                api_key: config.api_key.clone(),
-                storage_dir: unique_storage_dir("receiver"),
-            },
-        )
-        .await
-        .expect("receiver wallet"));
+        let receiver_wallet = Arc::new(
+            SparkWallet::new(
+                receiver_signer,
+                WalletConfig {
+                    network: config.network,
+                    api_key: config.api_key.clone(),
+                    storage_dir: unique_storage_dir("receiver"),
+                },
+            )
+            .await
+            .expect("receiver wallet"),
+        );
 
         if config.use_faucet {
-            if let Err(error) = ensure_funded(&sender_wallet, config.amount_sats, config.timeout).await {
-                println!("Skipping GitAfter E2E test - faucet funding failed: {}", error);
+            if let Err(error) =
+                ensure_funded(&sender_wallet, config.amount_sats, config.timeout).await
+            {
+                println!(
+                    "Skipping GitAfter E2E test - faucet funding failed: {}",
+                    error
+                );
                 return;
             }
         } else {
-            let sender_balance_before = sender_wallet
-                .get_balance()
-                .await
-                .expect("sender balance");
+            let sender_balance_before = sender_wallet.get_balance().await.expect("sender balance");
             if sender_balance_before.total_sats() < config.amount_sats {
                 println!("Sender wallet requires funding before running this test");
                 return;
@@ -4828,7 +5414,10 @@ mod tests {
                 .as_secs(),
         };
         let issue_event = identity.sign_event(issue_template).expect("issue event");
-        nostr_client.publish_event_no_retry(issue_event.clone()).await.expect("cache issue");
+        nostr_client
+            .publish_event_no_retry(issue_event.clone())
+            .await
+            .expect("cache issue");
 
         let bounty_offer_template = BountyOfferBuilder::new(
             issue_event.id.clone(),
@@ -4836,8 +5425,13 @@ mod tests {
             config.amount_sats,
         )
         .build();
-        let bounty_offer_event = identity.sign_event(bounty_offer_template).expect("bounty offer");
-        nostr_client.publish_event_no_retry(bounty_offer_event.clone()).await.expect("cache bounty");
+        let bounty_offer_event = identity
+            .sign_event(bounty_offer_template)
+            .expect("bounty offer");
+        nostr_client
+            .publish_event_no_retry(bounty_offer_event.clone())
+            .await
+            .expect("cache bounty");
 
         let bounty_claim_template = BountyClaimBuilder::new(
             bounty_offer_event.id.clone(),
@@ -4849,8 +5443,13 @@ mod tests {
         .lightning_address("agent@example.com")
         .invoice(invoice.payment_request.clone())
         .build();
-        let bounty_claim_event = identity.sign_event(bounty_claim_template).expect("bounty claim");
-        nostr_client.publish_event_no_retry(bounty_claim_event.clone()).await.expect("cache claim");
+        let bounty_claim_event = identity
+            .sign_event(bounty_claim_template)
+            .expect("bounty claim");
+        nostr_client
+            .publish_event_no_retry(bounty_claim_event.clone())
+            .await
+            .expect("cache claim");
 
         let state = web::Data::new(AppState {
             broadcaster,

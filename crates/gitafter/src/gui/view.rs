@@ -8,11 +8,10 @@ use wgpui::components::molecules::{IssueInfo, IssueRow, RepoCard, RepoInfo, Repo
 use wgpui::components::organisms::{DiffLine, DiffLineKind, DiffToolCall};
 use wgpui::components::{Component, EventResult, Text};
 use wgpui::{
-    Bounds, EventContext, InputEvent, MouseButton, Point, Quad, ScrollContainer, Size, Hsla,
-    theme,
+    Bounds, EventContext, Hsla, InputEvent, MouseButton, Point, Quad, ScrollContainer, Size, theme,
 };
 
-use crate::views::diff::{parse_diff_lines, DiffLineType};
+use crate::views::diff::{DiffLineType, parse_diff_lines};
 
 use super::types::{
     ConnectionStatus, GitafterCommand, GitafterTab, GitafterUpdate, IssueSummary, PrSummary,
@@ -113,8 +112,13 @@ impl PrRow {
         let status_color = self.status.color();
         let bar_w = 3.0;
         cx.scene.draw_quad(
-            Quad::new(Bounds::new(bounds.origin.x, bounds.origin.y, bar_w, bounds.size.height))
-                .with_background(status_color),
+            Quad::new(Bounds::new(
+                bounds.origin.x,
+                bounds.origin.y,
+                bar_w,
+                bounds.size.height,
+            ))
+            .with_background(status_color),
         );
 
         let content_x = bounds.origin.x + padding + bar_w;
@@ -212,7 +216,9 @@ impl GitafterView {
     pub fn new(initial_tab: GitafterTab, pending_repo_id: Option<String>) -> Self {
         let ui_events = Rc::new(RefCell::new(Vec::new()));
         let mut commands = Vec::new();
-        commands.push(GitafterCommand::LoadRepositories { limit: DEFAULT_LIMIT });
+        commands.push(GitafterCommand::LoadRepositories {
+            limit: DEFAULT_LIMIT,
+        });
 
         if matches!(initial_tab, GitafterTab::Issues) {
             commands.push(GitafterCommand::LoadIssues {
@@ -332,7 +338,9 @@ impl GitafterView {
                 RepoCard::new(info).on_click({
                     let ui_events = ui_events.clone();
                     move |_| {
-                        ui_events.borrow_mut().push(GitafterUiEvent::SelectRepo(repo_id.clone()));
+                        ui_events
+                            .borrow_mut()
+                            .push(GitafterUiEvent::SelectRepo(repo_id.clone()));
                     }
                 })
             })
@@ -379,7 +387,9 @@ impl GitafterView {
                 PrRow::new(pr).on_click({
                     let ui_events = ui_events.clone();
                     move |_| {
-                        ui_events.borrow_mut().push(GitafterUiEvent::SelectPr(pr_id.clone()));
+                        ui_events
+                            .borrow_mut()
+                            .push(GitafterUiEvent::SelectPr(pr_id.clone()));
                     }
                 })
             })
@@ -469,7 +479,12 @@ impl GitafterView {
     }
 
     fn layout(&self, bounds: Bounds) -> GitafterLayout {
-        let header = Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, HEADER_HEIGHT);
+        let header = Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            HEADER_HEIGHT,
+        );
         let tabs = Bounds::new(
             bounds.origin.x,
             header.max_y(),
@@ -537,7 +552,15 @@ impl GitafterView {
         }
     }
 
-    fn draw_text(&self, text: &str, x: f32, y: f32, size: f32, color: Hsla, cx: &mut wgpui::PaintContext) {
+    fn draw_text(
+        &self,
+        text: &str,
+        x: f32,
+        y: f32,
+        size: f32,
+        color: Hsla,
+        cx: &mut wgpui::PaintContext,
+    ) {
         let run = cx.text.layout(text, Point::new(x, y), size, color);
         cx.scene.draw_text(run);
     }
@@ -560,7 +583,10 @@ impl GitafterView {
 
         let title_run = cx.text.layout(
             "Nostr Git Collaboration",
-            Point::new(layout.header.origin.x + PADDING, layout.header.origin.y + 36.0),
+            Point::new(
+                layout.header.origin.x + PADDING,
+                layout.header.origin.y + 36.0,
+            ),
             theme::font_size::LG,
             theme::text::PRIMARY,
         );
@@ -751,7 +777,14 @@ impl GitafterView {
         };
 
         let mut y = bounds.origin.y + PADDING;
-        self.draw_text(&repo.name, bounds.origin.x + PADDING, y, theme::font_size::LG, theme::text::PRIMARY, cx);
+        self.draw_text(
+            &repo.name,
+            bounds.origin.x + PADDING,
+            y,
+            theme::font_size::LG,
+            theme::text::PRIMARY,
+            cx,
+        );
         y += 26.0;
 
         if let Some(desc) = &repo.description {
@@ -827,12 +860,26 @@ impl GitafterView {
         };
 
         let mut y = bounds.origin.y + PADDING;
-        self.draw_text(&issue.title, bounds.origin.x + PADDING, y, theme::font_size::LG, theme::text::PRIMARY, cx);
+        self.draw_text(
+            &issue.title,
+            bounds.origin.x + PADDING,
+            y,
+            theme::font_size::LG,
+            theme::text::PRIMARY,
+            cx,
+        );
         y += 24.0;
 
         let status = issue_status_from_str(&issue.status);
         let status_text = format!("Status: {}", status.label());
-        self.draw_text(&status_text, bounds.origin.x + PADDING, y, theme::font_size::SM, status.color(), cx);
+        self.draw_text(
+            &status_text,
+            bounds.origin.x + PADDING,
+            y,
+            theme::font_size::SM,
+            status.color(),
+            cx,
+        );
         y += 22.0;
 
         self.draw_text(
@@ -900,12 +947,26 @@ impl GitafterView {
         };
 
         let mut y = bounds.origin.y + PADDING;
-        self.draw_text(&pr.title, bounds.origin.x + PADDING, y, theme::font_size::LG, theme::text::PRIMARY, cx);
+        self.draw_text(
+            &pr.title,
+            bounds.origin.x + PADDING,
+            y,
+            theme::font_size::LG,
+            theme::text::PRIMARY,
+            cx,
+        );
         y += 24.0;
 
         let status = pr_status_from_str(&pr.status);
         let status_text = format!("Status: {}", status.label());
-        self.draw_text(&status_text, bounds.origin.x + PADDING, y, theme::font_size::SM, status.color(), cx);
+        self.draw_text(
+            &status_text,
+            bounds.origin.x + PADDING,
+            y,
+            theme::font_size::SM,
+            status.color(),
+            cx,
+        );
         y += 22.0;
 
         self.draw_text(
@@ -1016,7 +1077,8 @@ impl Component for GitafterView {
     fn paint(&mut self, bounds: Bounds, cx: &mut wgpui::PaintContext) {
         let layout = self.layout(bounds);
 
-        cx.scene.draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
         self.paint_header(&layout, cx);
         self.paint_tabs(&layout, cx);
 
@@ -1063,10 +1125,14 @@ impl Component for GitafterView {
                 if *button == MouseButton::Left {
                     let point = Point::new(*x, *y);
                     if layout.repos_tab.contains(point) {
-                        self.ui_events.borrow_mut().push(GitafterUiEvent::SelectTab(GitafterTab::Repos));
+                        self.ui_events
+                            .borrow_mut()
+                            .push(GitafterUiEvent::SelectTab(GitafterTab::Repos));
                         result = EventResult::Handled;
                     } else if layout.issues_tab.contains(point) {
-                        self.ui_events.borrow_mut().push(GitafterUiEvent::SelectTab(GitafterTab::Issues));
+                        self.ui_events
+                            .borrow_mut()
+                            .push(GitafterUiEvent::SelectTab(GitafterTab::Issues));
                         result = EventResult::Handled;
                     } else if layout.prs_tab.contains(point) {
                         self.ui_events
@@ -1112,7 +1178,8 @@ impl Component for GitafterView {
                 let mut y = layout.list.origin.y - self.repo_scroll.scroll_offset.y;
                 for card in self.repo_cards.iter_mut() {
                     let height = card.size_hint().1.unwrap_or(90.0);
-                    let card_bounds = Bounds::new(layout.list.origin.x, y, layout.list.size.width, height);
+                    let card_bounds =
+                        Bounds::new(layout.list.origin.x, y, layout.list.size.width, height);
                     result = result.or(card.event(event, card_bounds, cx));
                     y += height + LIST_GAP;
                 }
@@ -1120,7 +1187,8 @@ impl Component for GitafterView {
             GitafterTab::Issues => {
                 let mut y = layout.list.origin.y - self.issue_scroll.scroll_offset.y;
                 for row in self.issue_rows.iter_mut() {
-                    let row_bounds = Bounds::new(layout.list.origin.x, y, layout.list.size.width, 80.0);
+                    let row_bounds =
+                        Bounds::new(layout.list.origin.x, y, layout.list.size.width, 80.0);
                     result = result.or(row.event(event, row_bounds, cx));
                     y += 80.0 + LIST_GAP;
                 }
@@ -1128,7 +1196,12 @@ impl Component for GitafterView {
             GitafterTab::PullRequests => {
                 let mut y = layout.list.origin.y - self.pr_scroll.scroll_offset.y;
                 for row in self.pr_rows.iter_mut() {
-                    let row_bounds = Bounds::new(layout.list.origin.x, y, layout.list.size.width, PR_ROW_HEIGHT);
+                    let row_bounds = Bounds::new(
+                        layout.list.origin.x,
+                        y,
+                        layout.list.size.width,
+                        PR_ROW_HEIGHT,
+                    );
                     result = result.or(row.event(event, row_bounds));
                     y += PR_ROW_HEIGHT + LIST_GAP;
                 }
@@ -1229,8 +1302,16 @@ mod tests {
 
         view.apply_update(GitafterUpdate::RepositoriesLoaded { repos });
         let commands = view.drain_commands();
-        assert!(commands.iter().any(|cmd| matches!(cmd, GitafterCommand::LoadIssues { .. })));
-        assert!(commands.iter().any(|cmd| matches!(cmd, GitafterCommand::LoadPullRequests { .. })));
+        assert!(
+            commands
+                .iter()
+                .any(|cmd| matches!(cmd, GitafterCommand::LoadIssues { .. }))
+        );
+        assert!(
+            commands
+                .iter()
+                .any(|cmd| matches!(cmd, GitafterCommand::LoadPullRequests { .. }))
+        );
     }
 
     #[test]

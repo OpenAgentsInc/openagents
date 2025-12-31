@@ -1,7 +1,7 @@
 //! UI components for displaying publish status and errors
 
 use crate::nostr::{ErrorCategory, PublishResult};
-use maud::{html, Markup};
+use maud::{Markup, html};
 
 /// Render a publish status notification
 #[allow(dead_code)]

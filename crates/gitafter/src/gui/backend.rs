@@ -24,7 +24,12 @@ pub struct GitafterBackendHandle {
 }
 
 impl GitafterBackendHandle {
-    pub fn split(self) -> (UnboundedSender<GitafterCommand>, UnboundedReceiver<GitafterUpdate>) {
+    pub fn split(
+        self,
+    ) -> (
+        UnboundedSender<GitafterCommand>,
+        UnboundedReceiver<GitafterUpdate>,
+    ) {
         (self.sender, self.receiver)
     }
 }
@@ -107,7 +112,10 @@ async fn run_backend(
                     }
                 }
             }
-            GitafterCommand::LoadIssues { repo_address, limit } => {
+            GitafterCommand::LoadIssues {
+                repo_address,
+                limit,
+            } => {
                 let limit = if limit == 0 { DEFAULT_LIMIT } else { limit };
                 let issues = match repo_address.as_deref() {
                     Some(address) => nostr_client.get_issues_by_repo(address, limit).await,
@@ -118,10 +126,11 @@ async fn run_backend(
                     Ok(events) => {
                         let mut summaries = Vec::with_capacity(events.len());
                         for event in events {
-                            let bounty_sats = match nostr_client.get_bounties_for_issue(&event.id).await {
-                                Ok(bounties) => max_bounty_amount(&bounties),
-                                Err(_) => None,
-                            };
+                            let bounty_sats =
+                                match nostr_client.get_bounties_for_issue(&event.id).await {
+                                    Ok(bounties) => max_bounty_amount(&bounties),
+                                    Err(_) => None,
+                                };
                             summaries.push(issue_summary_from_event(&event, bounty_sats));
                         }
                         let _ = update_tx.send(GitafterUpdate::IssuesLoaded { issues: summaries });
@@ -133,7 +142,10 @@ async fn run_backend(
                     }
                 }
             }
-            GitafterCommand::LoadPullRequests { repo_address, limit } => {
+            GitafterCommand::LoadPullRequests {
+                repo_address,
+                limit,
+            } => {
                 let limit = if limit == 0 { DEFAULT_LIMIT } else { limit };
                 let prs = match repo_address.as_deref() {
                     Some(address) => nostr_client.get_pull_requests_by_repo(address, limit).await,
@@ -161,12 +173,16 @@ async fn run_backend(
                     }
                 }
             }
-            GitafterCommand::LoadPullRequestDiff { pr_id, repo_identifier } => {
+            GitafterCommand::LoadPullRequestDiff {
+                pr_id,
+                repo_identifier,
+            } => {
                 let diff = match nostr_client.get_cached_event(&pr_id).await {
                     Ok(Some(event)) => {
                         let commit_id = tag_value(&event, "c");
                         let repo_identifier = repo_identifier.or_else(|| {
-                            tag_value(&event, "a").and_then(|address| repo_identifier_from_address(&address))
+                            tag_value(&event, "a")
+                                .and_then(|address| repo_identifier_from_address(&address))
                         });
 
                         if let (Some(identifier), Some(commit)) = (repo_identifier, commit_id) {

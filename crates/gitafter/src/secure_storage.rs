@@ -32,8 +32,7 @@ fn ensure_store_initialized() -> Result<()> {
 pub fn save_mnemonic(mnemonic: &str) -> Result<()> {
     ensure_store_initialized()?;
 
-    let entry = Entry::new(SERVICE_NAME, MNEMONIC_KEY)
-        .context("Failed to create keyring entry")?;
+    let entry = Entry::new(SERVICE_NAME, MNEMONIC_KEY).context("Failed to create keyring entry")?;
 
     entry
         .set_password(mnemonic)
@@ -53,8 +52,7 @@ pub fn save_mnemonic(mnemonic: &str) -> Result<()> {
 pub fn load_mnemonic() -> Result<Option<String>> {
     ensure_store_initialized()?;
 
-    let entry = Entry::new(SERVICE_NAME, MNEMONIC_KEY)
-        .context("Failed to create keyring entry")?;
+    let entry = Entry::new(SERVICE_NAME, MNEMONIC_KEY).context("Failed to create keyring entry")?;
 
     match entry.get_password() {
         Ok(mnemonic) => {
@@ -65,9 +63,7 @@ pub fn load_mnemonic() -> Result<Option<String>> {
             tracing::debug!("No mnemonic found in secure storage");
             Ok(None)
         }
-        Err(e) => {
-            Err(anyhow::anyhow!("{}", e)).context("Failed to load mnemonic from keychain")
-        }
+        Err(e) => Err(anyhow::anyhow!("{}", e)).context("Failed to load mnemonic from keychain"),
     }
 }
 
@@ -81,8 +77,7 @@ pub fn load_mnemonic() -> Result<Option<String>> {
 pub fn delete_mnemonic() -> Result<()> {
     ensure_store_initialized()?;
 
-    let entry = Entry::new(SERVICE_NAME, MNEMONIC_KEY)
-        .context("Failed to create keyring entry")?;
+    let entry = Entry::new(SERVICE_NAME, MNEMONIC_KEY).context("Failed to create keyring entry")?;
 
     match entry.delete_credential() {
         Ok(()) => {
@@ -93,9 +88,7 @@ pub fn delete_mnemonic() -> Result<()> {
             tracing::debug!("No mnemonic to delete");
             Ok(())
         }
-        Err(e) => {
-            Err(anyhow::anyhow!("{}", e)).context("Failed to delete mnemonic from keychain")
-        }
+        Err(e) => Err(anyhow::anyhow!("{}", e)).context("Failed to delete mnemonic from keychain"),
     }
 }
 

@@ -30,10 +30,7 @@ async fn test_attach_bounty_to_issue() -> Result<()> {
                 "".to_string(),
                 "root".to_string(),
             ],
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
             vec!["amount".to_string(), "50000".to_string()], // 50k sats
             vec![
                 "expiry".to_string(),
@@ -108,10 +105,7 @@ async fn test_claim_bounty_after_pr_merge() -> Result<()> {
                 "".to_string(),
                 "root".to_string(),
             ],
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
             vec!["amount".to_string(), "100000".to_string()],
         ],
         content: String::new(),
@@ -131,11 +125,11 @@ async fn test_claim_bounty_after_pr_merge() -> Result<()> {
     let pr_template = EventTemplate {
         kind: 1618,
         tags: vec![
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
             vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
+                "subject".to_string(),
+                "Fix issue: Add feature X".to_string(),
             ],
-            vec!["subject".to_string(), "Fix issue: Add feature X".to_string()],
             vec!["c".to_string(), "commit-fix-123".to_string()],
             vec![
                 "e".to_string(),
@@ -187,14 +181,8 @@ async fn test_claim_bounty_after_pr_merge() -> Result<()> {
                 "".to_string(),
                 "mention".to_string(),
             ],
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
-            vec![
-                "lud16".to_string(),
-                "agent@getalby.com".to_string(),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
+            vec!["lud16".to_string(), "agent@getalby.com".to_string()],
         ],
         content: String::new(),
         created_at: std::time::SystemTime::now()
@@ -212,20 +200,14 @@ async fn test_claim_bounty_after_pr_merge() -> Result<()> {
     let bounty_ref = bounty_claim
         .tags
         .iter()
-        .find(|t| {
-            t.first().map(|s| s == "e").unwrap_or(false)
-                && t.get(1) == Some(&bounty.id)
-        })
+        .find(|t| t.first().map(|s| s == "e").unwrap_or(false) && t.get(1) == Some(&bounty.id))
         .expect("should reference bounty");
     assert_eq!(bounty_ref.get(3), Some(&"root".to_string()));
 
     let pr_ref = bounty_claim
         .tags
         .iter()
-        .find(|t| {
-            t.first().map(|s| s == "e").unwrap_or(false)
-                && t.get(1) == Some(&pr.id)
-        })
+        .find(|t| t.first().map(|s| s == "e").unwrap_or(false) && t.get(1) == Some(&pr.id))
         .expect("should reference PR");
     assert_eq!(pr_ref.get(3), Some(&"mention".to_string()));
 
@@ -267,10 +249,7 @@ async fn test_bounty_claim_with_trajectory_proof() -> Result<()> {
                 "".to_string(),
                 "root".to_string(),
             ],
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
             vec!["amount".to_string(), "25000".to_string()],
         ],
         content: String::new(),
@@ -289,20 +268,11 @@ async fn test_bounty_claim_with_trajectory_proof() -> Result<()> {
     let pr_template = EventTemplate {
         kind: 1618,
         tags: vec![
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
             vec!["subject".to_string(), "Agent fix".to_string()],
             vec!["c".to_string(), "commit-agent-123".to_string()],
-            vec![
-                "trajectory".to_string(),
-                trajectory_session.to_string(),
-            ],
-            vec![
-                "trajectory_hash".to_string(),
-                trajectory_hash.to_string(),
-            ],
+            vec!["trajectory".to_string(), trajectory_session.to_string()],
+            vec!["trajectory_hash".to_string(), trajectory_hash.to_string()],
         ],
         content: "Agent-authored fix".to_string(),
         created_at: std::time::SystemTime::now()
@@ -347,18 +317,9 @@ async fn test_bounty_claim_with_trajectory_proof() -> Result<()> {
                 "".to_string(),
                 "mention".to_string(),
             ],
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
-            vec![
-                "trajectory".to_string(),
-                trajectory_session.to_string(),
-            ],
-            vec![
-                "trajectory_hash".to_string(),
-                trajectory_hash.to_string(),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
+            vec!["trajectory".to_string(), trajectory_session.to_string()],
+            vec!["trajectory_hash".to_string(), trajectory_hash.to_string()],
             vec![
                 "lud16".to_string(),
                 "sovereign-agent@getalby.com".to_string(),
@@ -401,11 +362,7 @@ async fn test_multiple_bounties_on_same_issue() -> Result<()> {
         .await?;
 
     let issue = app
-        .create_issue(
-            "test-repo",
-            "Complex feature",
-            "This is a complex feature",
-        )
+        .create_issue("test-repo", "Complex feature", "This is a complex feature")
         .await?;
 
     // First bounty offer
@@ -418,10 +375,7 @@ async fn test_multiple_bounties_on_same_issue() -> Result<()> {
                 "".to_string(),
                 "root".to_string(),
             ],
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
             vec!["amount".to_string(), "30000".to_string()],
         ],
         content: String::new(),
@@ -443,10 +397,7 @@ async fn test_multiple_bounties_on_same_issue() -> Result<()> {
                 "".to_string(),
                 "root".to_string(),
             ],
-            vec![
-                "a".to_string(),
-                format!("30617:{}:test-repo", app.pubkey()),
-            ],
+            vec!["a".to_string(), format!("30617:{}:test-repo", app.pubkey())],
             vec!["amount".to_string(), "20000".to_string()],
         ],
         content: String::new(),
@@ -467,10 +418,7 @@ async fn test_multiple_bounties_on_same_issue() -> Result<()> {
         let issue_ref = bounty
             .tags
             .iter()
-            .find(|t| {
-                t.first().map(|s| s == "e").unwrap_or(false)
-                    && t.get(1) == Some(&issue.id)
-            })
+            .find(|t| t.first().map(|s| s == "e").unwrap_or(false) && t.get(1) == Some(&issue.id))
             .expect("should reference issue");
         assert_eq!(issue_ref.get(3), Some(&"root".to_string()));
     }
@@ -522,10 +470,7 @@ async fn test_issue_claim_workflow() -> Result<()> {
     let issue_ref = claim
         .tags
         .iter()
-        .find(|t| {
-            t.first().map(|s| s == "e").unwrap_or(false)
-                && t.get(1) == Some(&issue.id)
-        })
+        .find(|t| t.first().map(|s| s == "e").unwrap_or(false) && t.get(1) == Some(&issue.id))
         .expect("should reference issue");
     assert_eq!(issue_ref.get(3), Some(&"root".to_string()));
 

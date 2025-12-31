@@ -610,9 +610,11 @@ mod tests {
         assert!(!checklist.is_empty());
 
         // Check for bug-specific items
-        assert!(checklist
-            .iter()
-            .any(|item| item.id == "bug-regression-test"));
+        assert!(
+            checklist
+                .iter()
+                .any(|item| item.id == "bug-regression-test")
+        );
     }
 
     #[test]
@@ -634,12 +636,12 @@ mod tests {
         let checklist = ChecklistGenerator::generate(&files, ReviewTemplate::NipImplementation);
 
         // Should have NIP-specific items
-        assert!(checklist
-            .iter()
-            .any(|item| item.id == "nip-spec-compliance"));
-        assert!(checklist
-            .iter()
-            .any(|item| item.id == "nip-interop-tests"));
+        assert!(
+            checklist
+                .iter()
+                .any(|item| item.id == "nip-spec-compliance")
+        );
+        assert!(checklist.iter().any(|item| item.id == "nip-interop-tests"));
     }
 
     #[test]

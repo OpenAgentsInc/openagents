@@ -6,13 +6,13 @@ use nostr_client::{PoolConfig, RelayPool};
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
 use crate::nostr::cache::EventCache;
 use crate::nostr::publish_result::{ErrorCategory, PublishResult, RelayFailure};
-use crate::nostr::retry::{retry_with_backoff, RetryConfig};
+use crate::nostr::retry::{RetryConfig, retry_with_backoff};
 use crate::ws::WsBroadcaster;
 
 /// NIP-34 event kinds for git operations
@@ -140,10 +140,7 @@ impl NostrClient {
         })];
 
         // Subscribe and get event receiver
-        let mut event_rx = self
-            .pool
-            .subscribe("gitafter-main", &filters)
-            .await?;
+        let mut event_rx = self.pool.subscribe("gitafter-main", &filters).await?;
 
         info!("Successfully subscribed to git events");
 
@@ -260,12 +257,22 @@ impl NostrClient {
 
     /// Get a repository by its identifier (d tag)
     pub async fn get_repository_by_identifier(&self, identifier: &str) -> Result<Option<Event>> {
-        self.cache.lock().await.get_repository_by_identifier(identifier)
+        self.cache
+            .lock()
+            .await
+            .get_repository_by_identifier(identifier)
     }
 
     /// Get notifications for a user
-    pub async fn get_notifications(&self, user_pubkey: &str, limit: usize) -> Result<Vec<crate::nostr::cache::Notification>> {
-        self.cache.lock().await.get_notifications(user_pubkey, limit)
+    pub async fn get_notifications(
+        &self,
+        user_pubkey: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::nostr::cache::Notification>> {
+        self.cache
+            .lock()
+            .await
+            .get_notifications(user_pubkey, limit)
     }
 
     /// Get unread notification count for a user
@@ -275,27 +282,50 @@ impl NostrClient {
 
     /// Mark a notification as read
     pub async fn mark_notification_read(&self, notification_id: &str) -> Result<()> {
-        self.cache.lock().await.mark_notification_read(notification_id)
+        self.cache
+            .lock()
+            .await
+            .mark_notification_read(notification_id)
     }
 
     /// Mark all notifications as read for a user
     pub async fn mark_all_notifications_read(&self, user_pubkey: &str) -> Result<usize> {
-        self.cache.lock().await.mark_all_notifications_read(user_pubkey)
+        self.cache
+            .lock()
+            .await
+            .mark_all_notifications_read(user_pubkey)
     }
 
     /// Get issues for a specific repository by its address tag
     pub async fn get_issues_by_repo(&self, repo_address: &str, limit: usize) -> Result<Vec<Event>> {
-        self.cache.lock().await.get_issues_by_repo(repo_address, limit)
+        self.cache
+            .lock()
+            .await
+            .get_issues_by_repo(repo_address, limit)
     }
 
     /// Get patches for a specific repository by its address tag
-    pub async fn get_patches_by_repo(&self, repo_address: &str, limit: usize) -> Result<Vec<Event>> {
-        self.cache.lock().await.get_patches_by_repo(repo_address, limit)
+    pub async fn get_patches_by_repo(
+        &self,
+        repo_address: &str,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
+        self.cache
+            .lock()
+            .await
+            .get_patches_by_repo(repo_address, limit)
     }
 
     /// Get pull requests for a specific repository by its address tag
-    pub async fn get_pull_requests_by_repo(&self, repo_address: &str, limit: usize) -> Result<Vec<Event>> {
-        self.cache.lock().await.get_pull_requests_by_repo(repo_address, limit)
+    pub async fn get_pull_requests_by_repo(
+        &self,
+        repo_address: &str,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
+        self.cache
+            .lock()
+            .await
+            .get_pull_requests_by_repo(repo_address, limit)
     }
 
     /// Get cache statistics
@@ -312,7 +342,10 @@ impl NostrClient {
 
     /// Get repository state (kind:30618) for a repository
     pub async fn get_repository_state(&self, repo_identifier: &str) -> Result<Option<Event>> {
-        self.cache.lock().await.get_repository_state(repo_identifier)
+        self.cache
+            .lock()
+            .await
+            .get_repository_state(repo_identifier)
     }
 
     /// Get claims for a specific issue
@@ -322,7 +355,10 @@ impl NostrClient {
 
     /// Get bounty offers for a specific issue
     pub async fn get_bounties_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
-        self.cache.lock().await.get_bounties_for_issue(issue_event_id)
+        self.cache
+            .lock()
+            .await
+            .get_bounties_for_issue(issue_event_id)
     }
 
     /// Get bounty offers for a specific PR
@@ -332,7 +368,10 @@ impl NostrClient {
 
     /// Get bounties for a specific stack layer
     pub async fn get_bounties_for_layer(&self, stack_id: &str, layer: u32) -> Result<Vec<Event>> {
-        self.cache.lock().await.get_bounties_for_layer(stack_id, layer)
+        self.cache
+            .lock()
+            .await
+            .get_bounties_for_layer(stack_id, layer)
     }
 
     /// Get all bounties for a stack (all layers)
@@ -342,7 +381,11 @@ impl NostrClient {
 
     /// Get the latest status for a PR (returns kind number: 1630=Open, 1631=Merged, 1632=Closed, 1633=Draft)
     pub async fn get_pr_status(&self, pr_event_id: &str) -> Result<u16> {
-        let status_events = self.cache.lock().await.get_status_events_for_pr(pr_event_id)?;
+        let status_events = self
+            .cache
+            .lock()
+            .await
+            .get_status_events_for_pr(pr_event_id)?;
 
         // Return the most recent status event's kind, or 1630 (Open) if no status found
         Ok(status_events.first().map(|e| e.kind).unwrap_or(1630))
@@ -355,7 +398,10 @@ impl NostrClient {
 
     /// Get comments for a specific issue (NIP-22)
     pub async fn get_comments_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
-        self.cache.lock().await.get_comments_for_issue(issue_event_id)
+        self.cache
+            .lock()
+            .await
+            .get_comments_for_issue(issue_event_id)
     }
 
     /// Get trajectory session by ID
@@ -375,22 +421,42 @@ impl NostrClient {
 
     /// Get status events for a PR or patch
     pub async fn get_status_events_for_pr(&self, pr_event_id: &str) -> Result<Vec<Event>> {
-        self.cache.lock().await.get_status_events_for_pr(pr_event_id)
+        self.cache
+            .lock()
+            .await
+            .get_status_events_for_pr(pr_event_id)
     }
 
     /// Get all pull requests by a specific agent (pubkey)
-    pub async fn get_pull_requests_by_agent(&self, agent_pubkey: &str, limit: usize) -> Result<Vec<Event>> {
-        self.cache.lock().await.get_pull_requests_by_agent(agent_pubkey, limit)
+    pub async fn get_pull_requests_by_agent(
+        &self,
+        agent_pubkey: &str,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
+        self.cache
+            .lock()
+            .await
+            .get_pull_requests_by_agent(agent_pubkey, limit)
     }
 
     /// Get all issues claimed by a specific agent (pubkey)
-    pub async fn get_issue_claims_by_agent(&self, agent_pubkey: &str, limit: usize) -> Result<Vec<Event>> {
-        self.cache.lock().await.get_issue_claims_by_agent(agent_pubkey, limit)
+    pub async fn get_issue_claims_by_agent(
+        &self,
+        agent_pubkey: &str,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
+        self.cache
+            .lock()
+            .await
+            .get_issue_claims_by_agent(agent_pubkey, limit)
     }
 
     /// Get reputation labels for an agent (NIP-32, kind:1985)
     pub async fn get_reputation_labels_for_agent(&self, agent_pubkey: &str) -> Result<Vec<Event>> {
-        self.cache.lock().await.get_reputation_labels_for_agent(agent_pubkey)
+        self.cache
+            .lock()
+            .await
+            .get_reputation_labels_for_agent(agent_pubkey)
     }
 
     /// Search repositories by query string (NIP-50)
@@ -405,7 +471,10 @@ impl NostrClient {
 
     /// Watch a repository
     pub async fn watch_repository(&self, repo_identifier: &str, repo_address: &str) -> Result<()> {
-        self.cache.lock().await.watch_repository(repo_identifier, repo_address)
+        self.cache
+            .lock()
+            .await
+            .watch_repository(repo_identifier, repo_address)
     }
 
     /// Unwatch a repository
@@ -415,7 +484,10 @@ impl NostrClient {
 
     /// Check if a repository is watched
     pub async fn is_repository_watched(&self, repo_identifier: &str) -> Result<bool> {
-        self.cache.lock().await.is_repository_watched(repo_identifier)
+        self.cache
+            .lock()
+            .await
+            .is_repository_watched(repo_identifier)
     }
 
     /// Get all watched repositories
@@ -462,24 +534,17 @@ impl NostrClient {
         let pool = Arc::clone(&self.pool);
         let event_clone = event.clone();
 
-        let publish_result = retry_with_backoff(
-            &self.retry_config,
-            "relay publish",
-            || {
-                let pool = Arc::clone(&pool);
-                let event = event_clone.clone();
-                async move {
-                    // Add timeout to prevent indefinite hanging
-                    tokio::time::timeout(
-                        std::time::Duration::from_secs(10),
-                        pool.publish(&event)
-                    )
+        let publish_result = retry_with_backoff(&self.retry_config, "relay publish", || {
+            let pool = Arc::clone(&pool);
+            let event = event_clone.clone();
+            async move {
+                // Add timeout to prevent indefinite hanging
+                tokio::time::timeout(std::time::Duration::from_secs(10), pool.publish(&event))
                     .await
                     .map_err(|_| anyhow::anyhow!("Publish timeout"))
                     .and_then(|r| r.map_err(|e| anyhow::anyhow!("Publish failed: {}", e)))
-                }
-            },
-        )
+            }
+        })
         .await;
 
         // Build detailed result
@@ -533,7 +598,10 @@ impl NostrClient {
     /// Publish a signed event without retry (for time-sensitive operations)
     #[allow(dead_code)]
     pub async fn publish_event_no_retry(&self, event: Event) -> Result<PublishResult> {
-        info!("Publishing event (no retry): kind={} id={}", event.kind, event.id);
+        info!(
+            "Publishing event (no retry): kind={} id={}",
+            event.kind, event.id
+        );
         let event_id = event.id.clone();
 
         // Store in local cache first
@@ -542,11 +610,9 @@ impl NostrClient {
         }
 
         // Publish with timeout
-        let publish_result = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            self.pool.publish(&event)
-        )
-        .await;
+        let publish_result =
+            tokio::time::timeout(std::time::Duration::from_secs(5), self.pool.publish(&event))
+                .await;
 
         let result = match publish_result {
             Ok(Ok(confirmations)) => {
@@ -620,13 +686,18 @@ impl NostrClient {
                 }
             }
             // Status change events (approve, merge, close, draft)
-            kinds::STATUS_OPEN | kinds::STATUS_APPLIED | kinds::STATUS_CLOSED | kinds::STATUS_DRAFT => {
+            kinds::STATUS_OPEN
+            | kinds::STATUS_APPLIED
+            | kinds::STATUS_CLOSED
+            | kinds::STATUS_DRAFT => {
                 for tag in &event.tags {
                     if tag.len() >= 2 && tag[0] == "e" {
                         let pr_event_id = &tag[1];
 
                         if let Ok(Some(pr_event)) = cache_lock.get_event(pr_event_id) {
-                            if pr_event.kind == kinds::PULL_REQUEST && pr_event.pubkey != event.pubkey {
+                            if pr_event.kind == kinds::PULL_REQUEST
+                                && pr_event.pubkey != event.pubkey
+                            {
                                 let status_name = match event.kind {
                                     kinds::STATUS_OPEN => "opened",
                                     kinds::STATUS_APPLIED => "merged",
@@ -658,7 +729,9 @@ impl NostrClient {
                         let issue_event_id = &tag[1];
 
                         if let Ok(Some(issue_event)) = cache_lock.get_event(issue_event_id) {
-                            if issue_event.kind == kinds::ISSUE && issue_event.pubkey != event.pubkey {
+                            if issue_event.kind == kinds::ISSUE
+                                && issue_event.pubkey != event.pubkey
+                            {
                                 let title = "Someone claimed your issue".to_string();
 
                                 cache_lock.create_notification(

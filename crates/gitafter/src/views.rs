@@ -3,25 +3,29 @@
 pub mod diff;
 pub mod publish_status;
 
-use maud::{html, Markup, PreEscaped, DOCTYPE};
-use nostr::Event;
-use chrono::{DateTime, Utc};
-use crate::reputation::{calculate_review_weight, ReputationTier};
+use crate::reputation::{ReputationTier, calculate_review_weight};
 use crate::trajectory::MatchStatus;
+use chrono::{DateTime, Utc};
+use maud::{DOCTYPE, Markup, PreEscaped, html};
+use nostr::Event;
 
 #[allow(unused_imports)]
 pub use publish_status::{publish_status_notification, publish_status_styles};
 
 /// Helper function to extract tag value from event
 pub fn get_tag_value(event: &Event, tag_name: &str) -> Option<String> {
-    event.tags.iter()
+    event
+        .tags
+        .iter()
         .find(|tag| tag.first().map(|t| t == tag_name).unwrap_or(false))
         .and_then(|tag| tag.get(1).cloned())
 }
 
 /// Helper function to extract all values for a tag name
 fn get_all_tag_values(event: &Event, tag_name: &str) -> Vec<String> {
-    event.tags.iter()
+    event
+        .tags
+        .iter()
         .filter(|tag| tag.first().map(|t| t == tag_name).unwrap_or(false))
         .filter_map(|tag| tag.get(1).cloned())
         .collect()
@@ -29,8 +33,7 @@ fn get_all_tag_values(event: &Event, tag_name: &str) -> Vec<String> {
 
 /// Format a Unix timestamp as relative time (e.g., "2 hours ago", "yesterday")
 fn format_relative_time(timestamp: u64) -> String {
-    let dt = DateTime::from_timestamp(timestamp as i64, 0)
-        .unwrap_or_else(|| Utc::now());
+    let dt = DateTime::from_timestamp(timestamp as i64, 0).unwrap_or_else(|| Utc::now());
     let now = Utc::now();
     let duration = now.signed_duration_since(dt);
 
@@ -64,7 +67,10 @@ fn repository_card(event: &Event) -> Markup {
     repository_card_with_bounty_count(event, &std::collections::HashMap::new())
 }
 
-fn repository_card_with_bounty_count(event: &Event, bounty_counts: &std::collections::HashMap<String, usize>) -> Markup {
+fn repository_card_with_bounty_count(
+    event: &Event,
+    bounty_counts: &std::collections::HashMap<String, usize>,
+) -> Markup {
     let name = get_tag_value(event, "name").unwrap_or_else(|| "Unnamed Repository".to_string());
     let description = get_tag_value(event, "description").unwrap_or_default();
     let identifier = get_tag_value(event, "d").unwrap_or_default();
@@ -74,7 +80,11 @@ fn repository_card_with_bounty_count(event: &Event, bounty_counts: &std::collect
 
     // Truncate pubkey for display
     let short_pubkey = if event.pubkey.len() > 16 {
-        format!("{}...{}", &event.pubkey[..8], &event.pubkey[event.pubkey.len()-8..])
+        format!(
+            "{}...{}",
+            &event.pubkey[..8],
+            &event.pubkey[event.pubkey.len() - 8..]
+        )
     } else {
         event.pubkey.clone()
     };
@@ -255,8 +265,14 @@ pub fn home_page_with_repos(
 }
 
 /// Repository detail page
-pub fn repository_detail_page(repository: &Event, is_cloned: bool, local_path: Option<String>, repo_state: Option<&Event>) -> Markup {
-    let name = get_tag_value(repository, "name").unwrap_or_else(|| "Unnamed Repository".to_string());
+pub fn repository_detail_page(
+    repository: &Event,
+    is_cloned: bool,
+    local_path: Option<String>,
+    repo_state: Option<&Event>,
+) -> Markup {
+    let name =
+        get_tag_value(repository, "name").unwrap_or_else(|| "Unnamed Repository".to_string());
     let description = get_tag_value(repository, "description").unwrap_or_default();
     let identifier = get_tag_value(repository, "d").unwrap_or_default();
     let clone_urls = get_all_tag_values(repository, "clone");
@@ -265,7 +281,11 @@ pub fn repository_detail_page(repository: &Event, is_cloned: bool, local_path: O
 
     // Format pubkey for display
     let owner_pubkey = if repository.pubkey.len() > 16 {
-        format!("{}...{}", &repository.pubkey[..8], &repository.pubkey[repository.pubkey.len()-8..])
+        format!(
+            "{}...{}",
+            &repository.pubkey[..8],
+            &repository.pubkey[repository.pubkey.len() - 8..]
+        )
     } else {
         repository.pubkey.clone()
     };
@@ -479,7 +499,17 @@ pub fn repository_detail_page(repository: &Event, is_cloned: bool, local_path: O
 }
 
 /// Issues list page for a repository
-pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, identifier: &str, filter_open: bool, filter_closed: bool, filter_has_bounty: bool, filter_claimed: bool, issue_first_claims: &std::collections::HashMap<String, Event>) -> Markup {
+pub fn issues_list_page(
+    repository: &Event,
+    issues: &[Event],
+    is_watched: bool,
+    identifier: &str,
+    filter_open: bool,
+    filter_closed: bool,
+    filter_has_bounty: bool,
+    filter_claimed: bool,
+    issue_first_claims: &std::collections::HashMap<String, Event>,
+) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
 
     html! {
@@ -732,21 +762,33 @@ pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, 
     }
 }
 /// Issue detail page
-pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bounties: &[Event], comments: &[Event], identifier: &str) -> Markup {
+pub fn issue_detail_page(
+    repository: &Event,
+    issue: &Event,
+    claims: &[Event],
+    bounties: &[Event],
+    comments: &[Event],
+    identifier: &str,
+) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
-    let issue_title = get_tag_value(issue, "subject").unwrap_or_else(|| "Untitled Issue".to_string());
+    let issue_title =
+        get_tag_value(issue, "subject").unwrap_or_else(|| "Untitled Issue".to_string());
     let issue_status = get_tag_value(issue, "status").unwrap_or_else(|| "open".to_string());
 
     // Format pubkey for display
     let issue_author = if issue.pubkey.len() > 16 {
-        format!("{}...{}", &issue.pubkey[..8], &issue.pubkey[issue.pubkey.len()-8..])
+        format!(
+            "{}...{}",
+            &issue.pubkey[..8],
+            &issue.pubkey[issue.pubkey.len() - 8..]
+        )
     } else {
         issue.pubkey.clone()
     };
 
     // Extract all tags for display
     let all_tags = &issue.tags;
-    
+
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -1089,7 +1131,7 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bo
 /// Issue creation form page
 pub fn issue_create_form_page(repository: &Event, identifier: &str) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
-    
+
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -1256,7 +1298,11 @@ pub fn patches_list_page(repository: &Event, patches: &[Event], identifier: &str
 }
 
 /// Pull requests list page for a repository
-pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], identifier: &str) -> Markup {
+pub fn pull_requests_list_page(
+    repository: &Event,
+    pull_requests: &[Event],
+    identifier: &str,
+) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
 
     html! {
@@ -1443,24 +1489,35 @@ pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], iden
 }
 
 /// Patch detail page
-pub fn patch_detail_page(repository: &Event, patch: &Event, _reviews: &[Event], _reviewer_reputations: &std::collections::HashMap<String, i32>, identifier: &str) -> Markup {
+pub fn patch_detail_page(
+    repository: &Event,
+    patch: &Event,
+    _reviews: &[Event],
+    _reviewer_reputations: &std::collections::HashMap<String, i32>,
+    identifier: &str,
+) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
-    let patch_title = get_tag_value(patch, "subject").unwrap_or_else(|| "Untitled Patch".to_string());
-    
+    let patch_title =
+        get_tag_value(patch, "subject").unwrap_or_else(|| "Untitled Patch".to_string());
+
     // Format pubkey for display
     let patch_author = if patch.pubkey.len() > 16 {
-        format!("{}...{}", &patch.pubkey[..8], &patch.pubkey[patch.pubkey.len()-8..])
+        format!(
+            "{}...{}",
+            &patch.pubkey[..8],
+            &patch.pubkey[patch.pubkey.len() - 8..]
+        )
     } else {
         patch.pubkey.clone()
     };
-    
+
     // Extract commit ID and clone URL
     let commit_id = get_tag_value(patch, "c");
     let clone_url = get_tag_value(patch, "clone");
-    
+
     // Extract all tags for display
     let all_tags = &patch.tags;
-    
+
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -1616,30 +1673,52 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, _reviews: &[Event], 
 }
 
 /// Pull request detail page
-pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], reviewer_reputations: &std::collections::HashMap<String, i32>, status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, dependent_prs: &[Event], is_mergeable: bool, pr_updates: &[Event], diff_text: Option<&str>, inline_comments: &[crate::views::diff::InlineComment], bounties: &[Event]) -> Markup {
+pub fn pull_request_detail_page(
+    repository: &Event,
+    pull_request: &Event,
+    reviews: &[Event],
+    reviewer_reputations: &std::collections::HashMap<String, i32>,
+    status_events: &[Event],
+    identifier: &str,
+    trajectory_session: Option<&Event>,
+    trajectory_events: &[Event],
+    stack_prs: &[Event],
+    dependency_pr: Option<&Event>,
+    dependent_prs: &[Event],
+    is_mergeable: bool,
+    pr_updates: &[Event],
+    diff_text: Option<&str>,
+    inline_comments: &[crate::views::diff::InlineComment],
+    bounties: &[Event],
+) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
-    let pr_title = get_tag_value(pull_request, "subject").unwrap_or_else(|| "Untitled Pull Request".to_string());
+    let pr_title = get_tag_value(pull_request, "subject")
+        .unwrap_or_else(|| "Untitled Pull Request".to_string());
     let pr_status = get_tag_value(pull_request, "status").unwrap_or_else(|| "open".to_string());
-    
+
     // Format pubkey for display
     let pr_author = if pull_request.pubkey.len() > 16 {
-        format!("{}...{}", &pull_request.pubkey[..8], &pull_request.pubkey[pull_request.pubkey.len()-8..])
+        format!(
+            "{}...{}",
+            &pull_request.pubkey[..8],
+            &pull_request.pubkey[pull_request.pubkey.len() - 8..]
+        )
     } else {
         pull_request.pubkey.clone()
     };
-    
+
     // Extract commit ID and clone URL
     let commit_id = get_tag_value(pull_request, "c");
     let clone_url = get_tag_value(pull_request, "clone");
-    
+
     // Extract stack-related tags
     let depends_on = get_tag_value(pull_request, "depends_on");
     let stack = get_tag_value(pull_request, "stack");
     let layer = get_all_tag_values(pull_request, "layer");
-    
+
     // Extract all tags for display
     let all_tags = &pull_request.tags;
-    
+
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -2652,13 +2731,18 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
 /// Trajectory viewer page
 pub fn trajectory_viewer_page(session: &Event, events: &[Event]) -> Markup {
     let agent_pubkey = if session.pubkey.len() > 16 {
-        format!("{}...{}", &session.pubkey[..8], &session.pubkey[session.pubkey.len()-8..])
+        format!(
+            "{}...{}",
+            &session.pubkey[..8],
+            &session.pubkey[session.pubkey.len() - 8..]
+        )
     } else {
         session.pubkey.clone()
     };
 
     // Extract session metadata
-    let session_title = get_tag_value(session, "title").unwrap_or_else(|| "Untitled Session".to_string());
+    let session_title =
+        get_tag_value(session, "title").unwrap_or_else(|| "Untitled Session".to_string());
     let task_description = get_tag_value(session, "task");
 
     html! {
@@ -2830,15 +2914,24 @@ pub fn agent_profile_page(
 ) -> Markup {
     // Format pubkey for display
     let display_pubkey = if agent_pubkey.len() > 16 {
-        format!("{}...{}", &agent_pubkey[..8], &agent_pubkey[agent_pubkey.len()-8..])
+        format!(
+            "{}...{}",
+            &agent_pubkey[..8],
+            &agent_pubkey[agent_pubkey.len() - 8..]
+        )
     } else {
         agent_pubkey.to_string()
     };
 
     // Count merged PRs (those with status applied/merged)
-    let merged_count = pull_requests.iter().filter(|pr| {
-        get_tag_value(pr, "status").map(|s| s == "applied" || s == "merged").unwrap_or(false)
-    }).count();
+    let merged_count = pull_requests
+        .iter()
+        .filter(|pr| {
+            get_tag_value(pr, "status")
+                .map(|s| s == "applied" || s == "merged")
+                .unwrap_or(false)
+        })
+        .count();
 
     html! {
         (DOCTYPE)
@@ -3883,7 +3976,12 @@ pub fn git_branch_create_form_page(identifier: &str) -> Markup {
 }
 
 /// Diff viewer page with syntax highlighting
-pub fn diff_viewer_page(identifier: &str, item_id: &str, item_type: &str, diff_content: &str) -> Markup {
+pub fn diff_viewer_page(
+    identifier: &str,
+    item_id: &str,
+    item_type: &str,
+    diff_content: &str,
+) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -3967,7 +4065,7 @@ pub fn diff_viewer_page(identifier: &str, item_id: &str, item_type: &str, diff_c
 
                 main {
                     h2 { "Diff View" }
-                    
+
                     div.diff-viewer {
                         (render_diff_lines(diff_content))
                     }
@@ -4032,7 +4130,12 @@ fn render_diff_lines(diff_content: &str) -> Markup {
                 html_escape(line)
             ));
             old_line_num += 1;
-        } else if !line.starts_with("\\") && !line.starts_with("index ") && !line.starts_with("---") && !line.starts_with("+++") && !line.is_empty() {
+        } else if !line.starts_with("\\")
+            && !line.starts_with("index ")
+            && !line.starts_with("---")
+            && !line.starts_with("+++")
+            && !line.is_empty()
+        {
             html_output.push_str(&format!(
                 r#"<div class="diff-line diff-context"><span class="diff-line-number">{}</span><span class="diff-line-number">{}</span><span class="diff-line-content">{}</span></div>"#,
                 old_line_num,
@@ -4077,10 +4180,10 @@ fn parse_hunk_header(line: &str) -> Option<(i32, i32)> {
     if parts.len() >= 3 {
         let old_part = parts[1].trim_start_matches('-');
         let new_part = parts[2].trim_start_matches('+');
-        
+
         let old_start = old_part.split(',').next()?.parse::<i32>().ok()?;
         let new_start = new_part.split(',').next()?.parse::<i32>().ok()?;
-        
+
         Some((old_start, new_start))
     } else {
         None
@@ -4088,7 +4191,11 @@ fn parse_hunk_header(line: &str) -> Option<(i32, i32)> {
 }
 
 /// Agents list page with filtering
-pub fn agents_list_page(agents: &[(String, i32, i32)], min_reputation: &Option<i32>, min_merged_prs: &Option<i32>) -> Markup {
+pub fn agents_list_page(
+    agents: &[(String, i32, i32)],
+    min_reputation: &Option<i32>,
+    min_merged_prs: &Option<i32>,
+) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -4117,7 +4224,7 @@ pub fn agents_list_page(agents: &[(String, i32, i32)], min_reputation: &Option<i
                     form method="get" action="/agents" style="display: flex; gap: 1rem; margin-bottom: 1rem; padding: 1rem; background: #2a2a2a;" {
                         div {
                             label for="min_reputation" style="display: block; margin-bottom: 0.5rem; color: #aaa;" { "Min Reputation" }
-                            input type="number" name="min_reputation" id="min_reputation" 
+                            input type="number" name="min_reputation" id="min_reputation"
                                 value=(min_reputation.map(|r| r.to_string()).unwrap_or_default())
                                 style="padding: 0.5rem; background: #1a1a1a; color: #fff; border: 1px solid #444;";
                         }
@@ -4408,7 +4515,9 @@ pub fn agent_marketplace_page(
 }
 
 /// Bounty discovery page - list all available bounties across repositories
-pub fn bounties_discovery_page(bounties: &[(String, String, String, String, u64, String)]) -> Markup {
+pub fn bounties_discovery_page(
+    bounties: &[(String, String, String, String, u64, String)],
+) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {

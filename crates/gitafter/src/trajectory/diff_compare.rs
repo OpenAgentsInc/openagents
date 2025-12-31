@@ -93,7 +93,12 @@ pub fn compare_trajectory_to_diff(
     // Extract files modified in trajectory
     let trajectory_files: HashSet<String> = trajectory_mods
         .iter()
-        .filter(|m| matches!(m.tool, ToolType::Edit | ToolType::Write | ToolType::MultiEdit | ToolType::NotebookEdit))
+        .filter(|m| {
+            matches!(
+                m.tool,
+                ToolType::Edit | ToolType::Write | ToolType::MultiEdit | ToolType::NotebookEdit
+            )
+        })
         .map(|m| normalize_path(&m.file_path))
         .collect();
 
@@ -110,20 +115,17 @@ pub fn compare_trajectory_to_diff(
         .cloned()
         .collect();
 
-    let missing_in_diff: Vec<String> = trajectory_files
-        .difference(&diff_files)
-        .cloned()
-        .collect();
+    let missing_in_diff: Vec<String> = trajectory_files.difference(&diff_files).cloned().collect();
 
-    let extra_in_diff: Vec<String> = diff_files
-        .difference(&trajectory_files)
-        .cloned()
-        .collect();
+    let extra_in_diff: Vec<String> = diff_files.difference(&trajectory_files).cloned().collect();
 
     // Determine status and generate notes
     let mut notes = Vec::new();
     let status = if missing_in_diff.is_empty() && extra_in_diff.is_empty() {
-        notes.push(format!("All {} file(s) match between trajectory and diff", matched.len()));
+        notes.push(format!(
+            "All {} file(s) match between trajectory and diff",
+            matched.len()
+        ));
         MatchStatus::FullMatch
     } else if !missing_in_diff.is_empty() {
         notes.push(format!(
@@ -301,13 +303,11 @@ index abc123..def456 100644
 
     #[test]
     fn test_compare_full_match() {
-        let trajectory_mods = vec![
-            TrajectoryModification {
-                file_path: "src/main.rs".to_string(),
-                tool: ToolType::Edit,
-                line_count: None,
-            },
-        ];
+        let trajectory_mods = vec![TrajectoryModification {
+            file_path: "src/main.rs".to_string(),
+            tool: ToolType::Edit,
+            line_count: None,
+        }];
 
         let diff = r#"
 diff --git a/src/main.rs b/src/main.rs

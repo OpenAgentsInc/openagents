@@ -195,10 +195,7 @@ impl NotificationManager {
             escape_shell_string(&notification.title)
         );
 
-        Command::new("osascript")
-            .arg("-e")
-            .arg(&script)
-            .spawn()?;
+        Command::new("osascript").arg("-e").arg(&script).spawn()?;
 
         Ok(())
     }
@@ -240,9 +237,17 @@ $Notifier.Show($Toast);"#,
 }
 
 /// Create a PR review notification
-pub fn pr_review_notification(pr_title: &str, reviewer_pubkey: &str, event_id: &str) -> Notification {
+pub fn pr_review_notification(
+    pr_title: &str,
+    reviewer_pubkey: &str,
+    event_id: &str,
+) -> Notification {
     let short_pubkey = if reviewer_pubkey.len() > 16 {
-        format!("{}...{}", &reviewer_pubkey[..8], &reviewer_pubkey[reviewer_pubkey.len()-8..])
+        format!(
+            "{}...{}",
+            &reviewer_pubkey[..8],
+            &reviewer_pubkey[reviewer_pubkey.len() - 8..]
+        )
     } else {
         reviewer_pubkey.to_string()
     };
@@ -256,9 +261,17 @@ pub fn pr_review_notification(pr_title: &str, reviewer_pubkey: &str, event_id: &
 }
 
 /// Create an issue claim notification
-pub fn issue_claim_notification(issue_title: &str, agent_pubkey: &str, event_id: &str) -> Notification {
+pub fn issue_claim_notification(
+    issue_title: &str,
+    agent_pubkey: &str,
+    event_id: &str,
+) -> Notification {
     let short_pubkey = if agent_pubkey.len() > 16 {
-        format!("{}...{}", &agent_pubkey[..8], &agent_pubkey[agent_pubkey.len()-8..])
+        format!(
+            "{}...{}",
+            &agent_pubkey[..8],
+            &agent_pubkey[agent_pubkey.len() - 8..]
+        )
     } else {
         agent_pubkey.to_string()
     };
@@ -282,7 +295,12 @@ pub fn pr_merged_notification(pr_title: &str, event_id: &str) -> Notification {
 }
 
 /// Create a PR status change notification
-pub fn pr_status_change_notification(pr_title: &str, old_status: &str, new_status: &str, event_id: &str) -> Notification {
+pub fn pr_status_change_notification(
+    pr_title: &str,
+    old_status: &str,
+    new_status: &str,
+    event_id: &str,
+) -> Notification {
     let status_emoji = match new_status {
         "Open" => "🟢",
         "Applied/Merged" => "✅",
@@ -293,14 +311,21 @@ pub fn pr_status_change_notification(pr_title: &str, old_status: &str, new_statu
 
     Notification {
         title: format!("PR Status Changed {}", status_emoji),
-        body: format!("\"{}\" changed from {} to {}", pr_title, old_status, new_status),
+        body: format!(
+            "\"{}\" changed from {} to {}",
+            pr_title, old_status, new_status
+        ),
         notification_type: NotificationType::PrStatusChange,
         event_id: event_id.to_string(),
     }
 }
 
 /// Create a bounty paid notification
-pub fn bounty_paid_notification(amount_sats: u64, issue_title: &str, event_id: &str) -> Notification {
+pub fn bounty_paid_notification(
+    amount_sats: u64,
+    issue_title: &str,
+    event_id: &str,
+) -> Notification {
     Notification {
         title: "Bounty Paid!".to_string(),
         body: format!("Received {} sats for \"{}\"", amount_sats, issue_title),
@@ -310,7 +335,11 @@ pub fn bounty_paid_notification(amount_sats: u64, issue_title: &str, event_id: &
 }
 
 /// Create a matching issue notification
-pub fn matching_issue_notification(issue_title: &str, repo_name: &str, event_id: &str) -> Notification {
+pub fn matching_issue_notification(
+    issue_title: &str,
+    repo_name: &str,
+    event_id: &str,
+) -> Notification {
     Notification {
         title: "New Matching Issue".to_string(),
         body: format!("New issue in {}: \"{}\"", repo_name, issue_title),
@@ -380,7 +409,9 @@ pub async fn send_pr_status_email(
         "info",
     );
 
-    notification.send_email(&[to_email.to_string()], smtp_config).await?;
+    notification
+        .send_email(&[to_email.to_string()], smtp_config)
+        .await?;
     Ok(())
 }
 
@@ -406,7 +437,10 @@ mod tests {
         assert_eq!(escape_shell_string("test\\backslash"), "test\\\\backslash");
 
         // Test newline/control character removal
-        assert_eq!(escape_shell_string("test\nline\r\nbreak"), "test\\nline\\r\\nbreak");
+        assert_eq!(
+            escape_shell_string("test\nline\r\nbreak"),
+            "test\\nline\\r\\nbreak"
+        );
 
         // Test safe strings remain unchanged (except control chars)
         assert_eq!(escape_shell_string("safe-string_123"), "safe-string_123");
@@ -450,7 +484,9 @@ mod tests {
         assert!(manager.shown_notifications.is_empty());
 
         // Simulate showing (without actual platform call)
-        manager.shown_notifications.insert(notification.event_id.clone());
+        manager
+            .shown_notifications
+            .insert(notification.event_id.clone());
 
         // Check deduplication
         assert!(manager.shown_notifications.contains(&notification.event_id));

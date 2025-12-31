@@ -65,7 +65,8 @@ where
 
                 // Exponential backoff with cap
                 backoff = Duration::from_secs_f64(
-                    (backoff.as_secs_f64() * config.backoff_multiplier).min(config.max_backoff.as_secs_f64())
+                    (backoff.as_secs_f64() * config.backoff_multiplier)
+                        .min(config.max_backoff.as_secs_f64()),
                 );
             }
         }

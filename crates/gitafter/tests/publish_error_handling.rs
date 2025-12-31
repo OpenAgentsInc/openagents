@@ -72,7 +72,10 @@ fn test_error_category_from_message() {
 #[test]
 fn test_error_category_descriptions() {
     assert_eq!(ErrorCategory::Timeout.description(), "Connection timed out");
-    assert_eq!(ErrorCategory::Rejected.description(), "Event rejected by relay");
+    assert_eq!(
+        ErrorCategory::Rejected.description(),
+        "Event rejected by relay"
+    );
     assert_eq!(ErrorCategory::Auth.description(), "Authentication required");
     assert_eq!(ErrorCategory::RateLimit.description(), "Rate limited");
     assert_eq!(ErrorCategory::Network.description(), "Network error");
@@ -82,11 +85,7 @@ fn test_error_category_descriptions() {
 /// Test PublishResult success formatting
 #[test]
 fn test_publish_result_success() {
-    let result = gitafter::nostr::PublishResult::success(
-        "event123".to_string(),
-        5,
-        5,
-    );
+    let result = gitafter::nostr::PublishResult::success("event123".to_string(), 5, 5);
 
     assert!(result.success);
     assert_eq!(result.confirmations, 5);
@@ -104,12 +103,8 @@ fn test_publish_result_partial_success() {
         category: ErrorCategory::Timeout,
     }];
 
-    let result = gitafter::nostr::PublishResult::partial_success(
-        "event456".to_string(),
-        4,
-        5,
-        failures,
-    );
+    let result =
+        gitafter::nostr::PublishResult::partial_success("event456".to_string(), 4, 5, failures);
 
     assert!(result.success);
     assert_eq!(result.confirmations, 4);
@@ -135,12 +130,7 @@ fn test_publish_result_failure() {
         },
     ];
 
-    let result = gitafter::nostr::PublishResult::failure(
-        "event789".to_string(),
-        0,
-        2,
-        failures,
-    );
+    let result = gitafter::nostr::PublishResult::failure("event789".to_string(), 0, 2, failures);
 
     assert!(!result.success);
     assert_eq!(result.confirmations, 0);
@@ -154,10 +144,7 @@ fn test_publish_result_failure() {
 #[tokio::test]
 async fn test_broadcast_format_success() {
     let broadcaster = Arc::new(WsBroadcaster::new(64));
-    let _client = NostrClient::new(
-        vec!["wss://relay.example.com".to_string()],
-        broadcaster,
-    );
+    let _client = NostrClient::new(vec!["wss://relay.example.com".to_string()], broadcaster);
 
     // Note: Actual broadcast verification would require mocking or integration testing
     // This test just verifies the client can be created with a broadcaster

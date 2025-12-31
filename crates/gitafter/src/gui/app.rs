@@ -14,7 +14,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey};
 use winit::window::{Window, WindowId};
 
-use super::backend::{start_backend, GitafterBackendHandle};
+use super::backend::{GitafterBackendHandle, start_backend};
 use super::types::{GitafterCommand, GitafterTab, GitafterUpdate};
 use super::view::GitafterView;
 
@@ -156,14 +156,17 @@ impl ApplicationHandler for GitafterAppHandler {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                let mut encoder = state
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("GitAfter Render Encoder"),
-                    });
+                let mut encoder =
+                    state
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("GitAfter Render Encoder"),
+                        });
 
                 let scale_factor = state.window.scale_factor() as f32;
-                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
+                state
+                    .renderer
+                    .prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
                 state.queue.submit(std::iter::once(encoder.finish()));
                 output.present();
@@ -179,7 +182,11 @@ impl ApplicationHandler for GitafterAppHandler {
                     state.window.request_redraw();
                 }
             }
-            WindowEvent::MouseInput { state: mouse_state, button, .. } => {
+            WindowEvent::MouseInput {
+                state: mouse_state,
+                button,
+                ..
+            } => {
                 let button = match button {
                     winit::event::MouseButton::Left => wgpui::MouseButton::Left,
                     winit::event::MouseButton::Right => wgpui::MouseButton::Right,
@@ -208,7 +215,9 @@ impl ApplicationHandler for GitafterAppHandler {
             WindowEvent::MouseWheel { delta, .. } => {
                 let (dx, dy) = match delta {
                     winit::event::MouseScrollDelta::LineDelta(x, y) => (-x * 24.0, -y * 24.0),
-                    winit::event::MouseScrollDelta::PixelDelta(pos) => (-pos.x as f32, -pos.y as f32),
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                        (-pos.x as f32, -pos.y as f32)
+                    }
                 };
                 let input_event = InputEvent::Scroll { dx, dy };
                 let bounds = window_bounds(&state.config);
@@ -311,7 +320,13 @@ async fn init_render_state(
         config,
         renderer,
         text_system,
-        ui: GitafterUi::new(scale_factor, command_tx, update_rx, initial_tab, pending_repo),
+        ui: GitafterUi::new(
+            scale_factor,
+            command_tx,
+            update_rx,
+            initial_tab,
+            pending_repo,
+        ),
     }
 }
 
@@ -358,9 +373,7 @@ impl GitafterUi {
     }
 
     fn handle_input(&mut self, event: &InputEvent, bounds: Bounds) -> bool {
-        let result = self
-            .view
-            .event(event, bounds, &mut self.event_context);
+        let result = self.view.event(event, bounds, &mut self.event_context);
         self.flush_commands();
         matches!(result, EventResult::Handled)
     }

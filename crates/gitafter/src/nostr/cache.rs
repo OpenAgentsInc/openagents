@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use nostr::Event;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::path::PathBuf;
 use tracing::{debug, info};
 
@@ -16,12 +16,10 @@ impl EventCache {
     pub fn new(db_path: PathBuf) -> Result<Self> {
         // Ensure parent directory exists
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent)
-                .context("Failed to create cache directory")?;
+            std::fs::create_dir_all(parent).context("Failed to create cache directory")?;
         }
 
-        let conn = Connection::open(&db_path)
-            .context("Failed to open cache database")?;
+        let conn = Connection::open(&db_path).context("Failed to open cache database")?;
 
         // Enable foreign key constraints
         conn.execute("PRAGMA foreign_keys = ON", [])
@@ -36,8 +34,8 @@ impl EventCache {
 
     /// Create a new in-memory event cache (for testing)
     pub fn new_in_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory()
-            .context("Failed to open in-memory cache database")?;
+        let conn =
+            Connection::open_in_memory().context("Failed to open in-memory cache database")?;
 
         // Enable foreign key constraints
         conn.execute("PRAGMA foreign_keys = ON", [])
@@ -52,8 +50,9 @@ impl EventCache {
 
     /// Initialize the database schema
     fn init_schema(&self) -> Result<()> {
-        self.conn.execute_batch(
-            r#"
+        self.conn
+            .execute_batch(
+                r#"
             CREATE TABLE IF NOT EXISTS events (
                 id TEXT PRIMARY KEY,
                 kind INTEGER NOT NULL,
@@ -161,40 +160,40 @@ impl EventCache {
             CREATE INDEX IF NOT EXISTS idx_events_kind_created ON events(kind, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_events_kind_pubkey ON events(kind, pubkey);
             "#,
-        )
-        .context("Failed to initialize database schema")?;
+            )
+            .context("Failed to initialize database schema")?;
 
         Ok(())
     }
 
     /// Insert or update an event in the cache
     pub fn insert_event(&self, event: &Event) -> Result<()> {
-        let tags_json = serde_json::to_string(&event.tags)
-            .context("Failed to serialize tags")?;
+        let tags_json = serde_json::to_string(&event.tags).context("Failed to serialize tags")?;
 
         let cached_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
 
-        self.conn.execute(
-            r#"
+        self.conn
+            .execute(
+                r#"
             INSERT OR REPLACE INTO events
             (id, kind, pubkey, created_at, content, tags, sig, cached_at)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             "#,
-            params![
-                event.id,
-                event.kind,
-                event.pubkey,
-                event.created_at,
-                event.content,
-                tags_json,
-                event.sig,
-                cached_at,
-            ],
-        )
-        .context("Failed to insert event")?;
+                params![
+                    event.id,
+                    event.kind,
+                    event.pubkey,
+                    event.created_at,
+                    event.content,
+                    tags_json,
+                    event.sig,
+                    cached_at,
+                ],
+            )
+            .context("Failed to insert event")?;
 
         // Index important tags for fast filtering
         self.index_event_tags(event)?;
@@ -234,9 +233,8 @@ impl EventCache {
             "#,
         )?;
 
-        let mut tag_delete_stmt = tx.prepare_cached(
-            "DELETE FROM event_tags WHERE event_id = ?1",
-        )?;
+        let mut tag_delete_stmt =
+            tx.prepare_cached("DELETE FROM event_tags WHERE event_id = ?1")?;
 
         let mut tag_insert_stmt = tx.prepare_cached(
             r#"
@@ -248,8 +246,8 @@ impl EventCache {
         let mut inserted = 0;
 
         for event in events {
-            let tags_json = serde_json::to_string(&event.tags)
-                .context("Failed to serialize tags")?;
+            let tags_json =
+                serde_json::to_string(&event.tags).context("Failed to serialize tags")?;
 
             // Insert event
             event_stmt.execute(params![
@@ -463,17 +461,23 @@ impl EventCache {
 
     /// Transaction-aware repository insert
     fn insert_repository_in_tx(&self, tx: &rusqlite::Transaction, event: &Event) -> Result<()> {
-        let name = event.tags.iter()
+        let name = event
+            .tags
+            .iter()
             .find(|t| t.len() >= 2 && t[0] == "name")
             .and_then(|t| t.get(1))
             .map(|s| s.as_str());
 
-        let description = event.tags.iter()
+        let description = event
+            .tags
+            .iter()
             .find(|t| t.len() >= 2 && t[0] == "description")
             .and_then(|t| t.get(1))
             .map(|s| s.as_str());
 
-        let identifier = event.tags.iter()
+        let identifier = event
+            .tags
+            .iter()
             .find(|t| t.len() >= 2 && t[0] == "d")
             .and_then(|t| t.get(1))
             .map(|s| s.as_str());
@@ -492,17 +496,23 @@ impl EventCache {
 
     /// Transaction-aware issue insert
     fn insert_issue_in_tx(&self, tx: &rusqlite::Transaction, event: &Event) -> Result<()> {
-        let repo_address = event.tags.iter()
+        let repo_address = event
+            .tags
+            .iter()
             .find(|t| t.len() >= 2 && t[0] == "a")
             .and_then(|t| t.get(1))
             .map(|s| s.as_str());
 
-        let title = event.tags.iter()
+        let title = event
+            .tags
+            .iter()
             .find(|t| t.len() >= 2 && t[0] == "subject")
             .and_then(|t| t.get(1))
             .map(|s| s.as_str());
 
-        let status = event.tags.iter()
+        let status = event
+            .tags
+            .iter()
             .find(|t| t.len() >= 2 && t[0] == "status")
             .and_then(|t| t.get(1))
             .map(|s| s.as_str());
@@ -521,12 +531,16 @@ impl EventCache {
 
     /// Transaction-aware patch insert
     fn insert_patch_in_tx(&self, tx: &rusqlite::Transaction, event: &Event) -> Result<()> {
-        let repo_address = event.tags.iter()
+        let repo_address = event
+            .tags
+            .iter()
             .find(|t| t.len() >= 2 && t[0] == "a")
             .and_then(|t| t.get(1))
             .map(|s| s.as_str());
 
-        let title = event.tags.iter()
+        let title = event
+            .tags
+            .iter()
             .find(|t| t.len() >= 2 && t[0] == "subject")
             .and_then(|t| t.get(1))
             .map(|s| s.as_str());
@@ -545,17 +559,23 @@ impl EventCache {
 
     /// Transaction-aware pull request insert
     fn insert_pull_request_in_tx(&self, tx: &rusqlite::Transaction, event: &Event) -> Result<()> {
-        let repo_address = event.tags.iter()
+        let repo_address = event
+            .tags
+            .iter()
             .find(|t| t.len() >= 2 && t[0] == "a")
             .and_then(|t| t.get(1))
             .map(|s| s.as_str());
 
-        let title = event.tags.iter()
+        let title = event
+            .tags
+            .iter()
             .find(|t| t.len() >= 2 && t[0] == "subject")
             .and_then(|t| t.get(1))
             .map(|s| s.as_str());
 
-        let status = event.tags.iter()
+        let status = event
+            .tags
+            .iter()
             .find(|t| t.len() >= 2 && t[0] == "status")
             .and_then(|t| t.get(1))
             .map(|s| s.as_str());
@@ -582,12 +602,13 @@ impl EventCache {
 
         match stmt.query_row(params![event_id], |row| {
             let tags_json: String = row.get(5)?;
-            let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+            let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
                     5,
                     rusqlite::types::Type::Text,
                     Box::new(e),
-                ))?;
+                )
+            })?;
 
             Ok(Event {
                 id: row.get(0)?,
@@ -617,12 +638,13 @@ impl EventCache {
         let events = stmt
             .query_map(params![kind, limit], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -674,12 +696,13 @@ impl EventCache {
 
         match stmt.query_row(params![identifier], |row| {
             let tags_json: String = row.get(5)?;
-            let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+            let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
                     5,
                     rusqlite::types::Type::Text,
                     Box::new(e),
-                ))?;
+                )
+            })?;
 
             Ok(Event {
                 id: row.get(0)?,
@@ -710,12 +733,13 @@ impl EventCache {
         let events = stmt
             .query_map([], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -730,12 +754,12 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter events that match the repository identifier
-        let state = events.into_iter()
-            .find(|event| {
-                event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "d" && tag[1] == repo_identifier
-                })
-            });
+        let state = events.into_iter().find(|event| {
+            event
+                .tags
+                .iter()
+                .any(|tag| tag.len() >= 2 && tag[0] == "d" && tag[1] == repo_identifier)
+        });
 
         Ok(state)
     }
@@ -754,12 +778,13 @@ impl EventCache {
         let events = stmt
             .query_map(params![repo_address, limit], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -790,12 +815,13 @@ impl EventCache {
         let events = stmt
             .query_map(params![repo_address, limit], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -813,7 +839,11 @@ impl EventCache {
     }
 
     /// Get pull requests for a specific repository by its address tag
-    pub fn get_pull_requests_by_repo(&self, repo_address: &str, limit: usize) -> Result<Vec<Event>> {
+    pub fn get_pull_requests_by_repo(
+        &self,
+        repo_address: &str,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
         let mut stmt = self.conn.prepare(
             "SELECT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
              FROM events e
@@ -826,12 +856,13 @@ impl EventCache {
         let events = stmt
             .query_map(params![repo_address, limit], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -857,10 +888,9 @@ impl EventCache {
             .as_secs() as i64
             - max_age_seconds;
 
-        let deleted = self.conn.execute(
-            "DELETE FROM events WHERE cached_at < ?1",
-            params![cutoff],
-        )?;
+        let deleted = self
+            .conn
+            .execute("DELETE FROM events WHERE cached_at < ?1", params![cutoff])?;
 
         info!("Deleted {} old events from cache", deleted);
         Ok(deleted)
@@ -879,23 +909,23 @@ impl EventCache {
             |row| row.get(0),
         )?;
 
-        let issues: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM events WHERE kind = 1621",
-            [],
-            |row| row.get(0),
-        )?;
+        let issues: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM events WHERE kind = 1621", [], |row| {
+                    row.get(0)
+                })?;
 
-        let patches: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM events WHERE kind = 1617",
-            [],
-            |row| row.get(0),
-        )?;
+        let patches: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM events WHERE kind = 1617", [], |row| {
+                    row.get(0)
+                })?;
 
-        let pull_requests: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM events WHERE kind = 1618",
-            [],
-            |row| row.get(0),
-        )?;
+        let pull_requests: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM events WHERE kind = 1618", [], |row| {
+                    row.get(0)
+                })?;
 
         Ok(CacheStats {
             total_events: total_events as usize,
@@ -920,12 +950,13 @@ impl EventCache {
         let events = stmt
             .query_map([], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -940,11 +971,13 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter events that reference this issue
-        let filtered: Vec<Event> = events.into_iter()
+        let filtered: Vec<Event> = events
+            .into_iter()
             .filter(|event| {
-                event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "e" && tag[1] == issue_event_id
-                })
+                event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.len() >= 2 && tag[0] == "e" && tag[1] == issue_event_id)
             })
             .collect();
 
@@ -965,12 +998,13 @@ impl EventCache {
         let events = stmt
             .query_map([], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -985,11 +1019,13 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter events that reference this issue
-        let filtered: Vec<Event> = events.into_iter()
+        let filtered: Vec<Event> = events
+            .into_iter()
             .filter(|event| {
-                event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "e" && tag[1] == issue_event_id
-                })
+                event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.len() >= 2 && tag[0] == "e" && tag[1] == issue_event_id)
             })
             .collect();
 
@@ -1011,12 +1047,13 @@ impl EventCache {
         let events = stmt
             .query_map([], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1031,14 +1068,17 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter for stack_id and layer
-        let filtered: Vec<Event> = events.into_iter()
+        let filtered: Vec<Event> = events
+            .into_iter()
             .filter(|event| {
-                let has_stack = event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "stack" && tag[1] == stack_id
-                });
-                let has_layer = event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "layer" && tag[1] == layer.to_string()
-                });
+                let has_stack = event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.len() >= 2 && tag[0] == "stack" && tag[1] == stack_id);
+                let has_layer = event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.len() >= 2 && tag[0] == "layer" && tag[1] == layer.to_string());
                 has_stack && has_layer
             })
             .collect();
@@ -1061,12 +1101,13 @@ impl EventCache {
         let events = stmt
             .query_map(params![stack_id], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1097,12 +1138,13 @@ impl EventCache {
         let events = stmt
             .query_map(params![pr_event_id], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1133,12 +1175,13 @@ impl EventCache {
         let events = stmt
             .query_map([], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1153,11 +1196,13 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter events that reference this issue as root
-        let filtered: Vec<Event> = events.into_iter()
+        let filtered: Vec<Event> = events
+            .into_iter()
             .filter(|event| {
-                event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "e" && tag[1] == issue_event_id
-                })
+                event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.len() >= 2 && tag[0] == "e" && tag[1] == issue_event_id)
             })
             .collect();
 
@@ -1173,25 +1218,28 @@ impl EventCache {
              WHERE kind = 39230 AND id = ?1",
         )?;
 
-        let event = stmt.query_row(params![session_id], |row| {
-            let tags_json: String = row.get(5)?;
-            let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
-                    5,
-                    rusqlite::types::Type::Text,
-                    Box::new(e),
-                ))?;
+        let event = stmt
+            .query_row(params![session_id], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                })?;
 
-            Ok(Event {
-                id: row.get(0)?,
-                kind: row.get(1)?,
-                pubkey: row.get(2)?,
-                created_at: row.get(3)?,
-                content: row.get(4)?,
-                tags,
-                sig: row.get(6)?,
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
             })
-        }).optional()?;
+            .optional()?;
 
         Ok(event)
     }
@@ -1209,12 +1257,13 @@ impl EventCache {
         let events = stmt
             .query_map([], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1229,11 +1278,13 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter events that reference this session
-        let filtered: Vec<Event> = events.into_iter()
+        let filtered: Vec<Event> = events
+            .into_iter()
             .filter(|event| {
-                event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "e" && tag[1] == session_id
-                })
+                event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.len() >= 2 && tag[0] == "e" && tag[1] == session_id)
             })
             .collect();
 
@@ -1254,12 +1305,13 @@ impl EventCache {
         let events = stmt
             .query_map([], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1274,11 +1326,13 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter events that reference this PR (NIP-22 comments)
-        let filtered: Vec<Event> = events.into_iter()
+        let filtered: Vec<Event> = events
+            .into_iter()
             .filter(|event| {
-                event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "e" && tag[1] == pr_event_id
-                })
+                event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.len() >= 2 && tag[0] == "e" && tag[1] == pr_event_id)
             })
             .collect();
 
@@ -1298,12 +1352,13 @@ impl EventCache {
         let events = stmt
             .query_map([], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1318,11 +1373,13 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter events that reference this PR
-        let filtered: Vec<Event> = events.into_iter()
+        let filtered: Vec<Event> = events
+            .into_iter()
             .filter(|event| {
-                event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "e" && tag[1] == pr_event_id
-                })
+                event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.len() >= 2 && tag[0] == "e" && tag[1] == pr_event_id)
             })
             .collect();
 
@@ -1330,7 +1387,11 @@ impl EventCache {
     }
 
     /// Get all pull requests by a specific agent (pubkey)
-    pub fn get_pull_requests_by_agent(&self, agent_pubkey: &str, limit: usize) -> Result<Vec<Event>> {
+    pub fn get_pull_requests_by_agent(
+        &self,
+        agent_pubkey: &str,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, kind, pubkey, created_at, content, tags, sig
              FROM events
@@ -1342,12 +1403,13 @@ impl EventCache {
         let events = stmt
             .query_map(params![agent_pubkey, limit as i64], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1365,7 +1427,11 @@ impl EventCache {
     }
 
     /// Get all issues claimed by a specific agent (pubkey)
-    pub fn get_issue_claims_by_agent(&self, agent_pubkey: &str, limit: usize) -> Result<Vec<Event>> {
+    pub fn get_issue_claims_by_agent(
+        &self,
+        agent_pubkey: &str,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, kind, pubkey, created_at, content, tags, sig
              FROM events
@@ -1377,12 +1443,13 @@ impl EventCache {
         let events = stmt
             .query_map(params![agent_pubkey, limit as i64], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1411,12 +1478,13 @@ impl EventCache {
         let events = stmt
             .query_map([], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1431,11 +1499,13 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter events that reference this agent via p tag
-        let filtered: Vec<Event> = events.into_iter()
+        let filtered: Vec<Event> = events
+            .into_iter()
             .filter(|event| {
-                event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "p" && tag[1] == agent_pubkey
-                })
+                event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.len() >= 2 && tag[0] == "p" && tag[1] == agent_pubkey)
             })
             .collect();
 
@@ -1458,12 +1528,13 @@ impl EventCache {
         let events = stmt
             .query_map(params![limit as i64], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1478,7 +1549,8 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter by query string (search in name, description, tags)
-        let filtered: Vec<Event> = events.into_iter()
+        let filtered: Vec<Event> = events
+            .into_iter()
             .filter(|event| {
                 // Search in content (description)
                 if event.content.to_lowercase().contains(&query_lower) {
@@ -1518,12 +1590,13 @@ impl EventCache {
         let events = stmt
             .query_map(params![limit as i64], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1538,7 +1611,8 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter by query string
-        let filtered: Vec<Event> = events.into_iter()
+        let filtered: Vec<Event> = events
+            .into_iter()
             .filter(|event| {
                 // Search in content
                 if event.content.to_lowercase().contains(&query_lower) {
@@ -1602,9 +1676,9 @@ impl EventCache {
 
     /// Get all watched repositories
     pub fn get_watched_repositories(&self) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT repo_identifier FROM watched_repos ORDER BY watched_at DESC",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT repo_identifier FROM watched_repos ORDER BY watched_at DESC")?;
 
         let identifiers = stmt
             .query_map([], |row| row.get::<_, String>(0))?
@@ -1640,7 +1714,11 @@ impl EventCache {
     }
 
     /// Get unread notifications for a user
-    pub fn get_unread_notifications(&self, user_pubkey: &str, limit: usize) -> Result<Vec<Notification>> {
+    pub fn get_unread_notifications(
+        &self,
+        user_pubkey: &str,
+        limit: usize,
+    ) -> Result<Vec<Notification>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, user_pubkey, event_id, event_kind, notification_type, title, preview, read, created_at
              FROM notifications
@@ -1715,7 +1793,10 @@ impl EventCache {
             params![user_pubkey],
         )?;
 
-        debug!("Marked {} notifications as read for user {}", updated, user_pubkey);
+        debug!(
+            "Marked {} notifications as read for user {}",
+            updated, user_pubkey
+        );
         Ok(updated)
     }
 
@@ -1754,12 +1835,13 @@ impl EventCache {
         let events = stmt
             .query_map([], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1774,17 +1856,21 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter events that have the stack tag matching stack_id
-        let mut stack_prs: Vec<Event> = events.into_iter()
+        let mut stack_prs: Vec<Event> = events
+            .into_iter()
             .filter(|event| {
-                event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "stack" && tag[1] == stack_id
-                })
+                event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.len() >= 2 && tag[0] == "stack" && tag[1] == stack_id)
             })
             .collect();
 
         // Sort by layer position (extract layer number from tags)
         stack_prs.sort_by_key(|event| {
-            event.tags.iter()
+            event
+                .tags
+                .iter()
                 .find(|tag| tag.len() >= 2 && tag[0] == "layer")
                 .and_then(|tag| tag.get(1))
                 .and_then(|s| s.parse::<u32>().ok())
@@ -1798,7 +1884,9 @@ impl EventCache {
     #[allow(dead_code)]
     pub fn get_dependency_pr(&self, pr_event: &Event) -> Result<Option<Event>> {
         // Find depends_on tag
-        let dep_id = pr_event.tags.iter()
+        let dep_id = pr_event
+            .tags
+            .iter()
             .find(|tag| tag.len() >= 2 && tag[0] == "depends_on")
             .and_then(|tag| tag.get(1));
 
@@ -1813,7 +1901,9 @@ impl EventCache {
     #[allow(dead_code)]
     pub fn is_pr_mergeable(&self, pr_event: &Event) -> Result<bool> {
         // If no depends_on tag, it's mergeable
-        let dep_id = pr_event.tags.iter()
+        let dep_id = pr_event
+            .tags
+            .iter()
             .find(|tag| tag.len() >= 2 && tag[0] == "depends_on")
             .and_then(|tag| tag.get(1));
 
@@ -1841,12 +1931,13 @@ impl EventCache {
         let events = stmt
             .query_map([], |row| {
                 let tags_json: String = row.get(5)?;
-                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
-                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         5,
                         rusqlite::types::Type::Text,
                         Box::new(e),
-                    ))?;
+                    )
+                })?;
 
                 Ok(Event {
                     id: row.get(0)?,
@@ -1861,11 +1952,13 @@ impl EventCache {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Filter PRs that have depends_on tag referencing this PR
-        let dependent_prs: Vec<Event> = events.into_iter()
+        let dependent_prs: Vec<Event> = events
+            .into_iter()
             .filter(|event| {
-                event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "depends_on" && tag[1] == pr_id
-                })
+                event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.len() >= 2 && tag[0] == "depends_on" && tag[1] == pr_id)
             })
             .collect();
 
@@ -1885,27 +1978,29 @@ impl EventCache {
             "#,
         )?;
 
-        let events = stmt.query_map(params![query, limit as i64], |row| {
-            let id: String = row.get(0)?;
-            let kind: u16 = row.get(1)?;
-            let pubkey: String = row.get(2)?;
-            let created_at: i64 = row.get(3)?;
-            let content: String = row.get(4)?;
-            let tags_json: String = row.get(5)?;
-            let sig: String = row.get(6)?;
+        let events = stmt
+            .query_map(params![query, limit as i64], |row| {
+                let id: String = row.get(0)?;
+                let kind: u16 = row.get(1)?;
+                let pubkey: String = row.get(2)?;
+                let created_at: i64 = row.get(3)?;
+                let content: String = row.get(4)?;
+                let tags_json: String = row.get(5)?;
+                let sig: String = row.get(6)?;
 
-            let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).unwrap_or_default();
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).unwrap_or_default();
 
-            Ok(Event {
-                id,
-                kind,
-                pubkey,
-                created_at: created_at as u64,
-                content,
-                tags,
-                sig,
-            })
-        })?.collect::<Result<Vec<_>, _>>()?;
+                Ok(Event {
+                    id,
+                    kind,
+                    pubkey,
+                    created_at: created_at as u64,
+                    content,
+                    tags,
+                    sig,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(events)
     }
@@ -1929,27 +2024,29 @@ impl EventCache {
             "#,
         )?;
 
-        let events = stmt.query_map(params![kind, tag_name, tag_value, limit as i64], |row| {
-            let id: String = row.get(0)?;
-            let kind: u16 = row.get(1)?;
-            let pubkey: String = row.get(2)?;
-            let created_at: i64 = row.get(3)?;
-            let content: String = row.get(4)?;
-            let tags_json: String = row.get(5)?;
-            let sig: String = row.get(6)?;
+        let events = stmt
+            .query_map(params![kind, tag_name, tag_value, limit as i64], |row| {
+                let id: String = row.get(0)?;
+                let kind: u16 = row.get(1)?;
+                let pubkey: String = row.get(2)?;
+                let created_at: i64 = row.get(3)?;
+                let content: String = row.get(4)?;
+                let tags_json: String = row.get(5)?;
+                let sig: String = row.get(6)?;
 
-            let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).unwrap_or_default();
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).unwrap_or_default();
 
-            Ok(Event {
-                id,
-                kind,
-                pubkey,
-                created_at: created_at as u64,
-                content,
-                tags,
-                sig,
-            })
-        })?.collect::<Result<Vec<_>, _>>()?;
+                Ok(Event {
+                    id,
+                    kind,
+                    pubkey,
+                    created_at: created_at as u64,
+                    content,
+                    tags,
+                    sig,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(events)
     }
@@ -1976,9 +2073,11 @@ impl EventCache {
                     "#,
                 )?;
 
-                let events = stmt.query_map(params![repo_address, k, author, limit as i64], |row| {
-                    self.parse_event_row(row)
-                })?.collect::<Result<Vec<_>, _>>()?;
+                let events = stmt
+                    .query_map(params![repo_address, k, author, limit as i64], |row| {
+                        self.parse_event_row(row)
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
                 Ok(events)
             }
             (Some(k), None) => {
@@ -1992,9 +2091,11 @@ impl EventCache {
                     "#,
                 )?;
 
-                let events = stmt.query_map(params![repo_address, k, limit as i64], |row| {
-                    self.parse_event_row(row)
-                })?.collect::<Result<Vec<_>, _>>()?;
+                let events = stmt
+                    .query_map(params![repo_address, k, limit as i64], |row| {
+                        self.parse_event_row(row)
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
                 Ok(events)
             }
             (None, Some(author)) => {
@@ -2008,9 +2109,11 @@ impl EventCache {
                     "#,
                 )?;
 
-                let events = stmt.query_map(params![repo_address, author, limit as i64], |row| {
-                    self.parse_event_row(row)
-                })?.collect::<Result<Vec<_>, _>>()?;
+                let events = stmt
+                    .query_map(params![repo_address, author, limit as i64], |row| {
+                        self.parse_event_row(row)
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
                 Ok(events)
             }
             (None, None) => {
@@ -2024,9 +2127,11 @@ impl EventCache {
                     "#,
                 )?;
 
-                let events = stmt.query_map(params![repo_address, limit as i64], |row| {
-                    self.parse_event_row(row)
-                })?.collect::<Result<Vec<_>, _>>()?;
+                let events = stmt
+                    .query_map(params![repo_address, limit as i64], |row| {
+                        self.parse_event_row(row)
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
                 Ok(events)
             }
         }
@@ -2061,7 +2166,8 @@ impl EventCache {
     /// method explicitly allows you to handle potential close errors.
     #[allow(dead_code)]
     pub fn close(self) -> Result<()> {
-        self.conn.close()
+        self.conn
+            .close()
             .map_err(|(_, e)| e)
             .context("Failed to close cache database")
     }

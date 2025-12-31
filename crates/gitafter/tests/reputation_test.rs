@@ -33,18 +33,9 @@ async fn test_create_reputation_label() -> Result<()> {
                 "quality".to_string(), // Reputation quality indicator
                 "0.85".to_string(),
             ],
-            vec![
-                "merged_prs".to_string(),
-                "12".to_string(),
-            ],
-            vec![
-                "rejected_prs".to_string(),
-                "2".to_string(),
-            ],
-            vec![
-                "issues_fixed".to_string(),
-                "15".to_string(),
-            ],
+            vec!["merged_prs".to_string(), "12".to_string()],
+            vec!["rejected_prs".to_string(), "2".to_string()],
+            vec!["issues_fixed".to_string(), "15".to_string()],
         ],
         content: "High-quality contributor with strong track record".to_string(),
         created_at: std::time::SystemTime::now()
@@ -64,7 +55,10 @@ async fn test_create_reputation_label() -> Result<()> {
         .iter()
         .find(|t| t.first().map(|s| s == "L").unwrap_or(false))
         .expect("L tag should exist");
-    assert_eq!(namespace_tag.get(1), Some(&"gitafter.reputation".to_string()));
+    assert_eq!(
+        namespace_tag.get(1),
+        Some(&"gitafter.reputation".to_string())
+    );
 
     // Verify label value
     let label_tag = label
@@ -208,7 +202,13 @@ async fn test_reputation_score_calculation() -> Result<()> {
     let label = app.publish_event(label_template).await?;
 
     // Verify all metric tags present
-    let metrics = ["merged_prs", "rejected_prs", "issues_fixed", "total_commits", "code_reviews"];
+    let metrics = [
+        "merged_prs",
+        "rejected_prs",
+        "issues_fixed",
+        "total_commits",
+        "code_reviews",
+    ];
 
     for metric in &metrics {
         let tag = label
@@ -304,10 +304,7 @@ async fn test_agent_contribution_history() -> Result<()> {
         let pr_template = EventTemplate {
             kind: 1618,
             tags: vec![
-                vec![
-                    "a".to_string(),
-                    format!("30617:{}:test-repo", agent_pubkey),
-                ],
+                vec!["a".to_string(), format!("30617:{}:test-repo", agent_pubkey)],
                 vec!["subject".to_string(), format!("PR #{}", i + 1)],
                 vec!["c".to_string(), format!("commit{}", i + 1)],
             ],
@@ -381,7 +378,12 @@ async fn test_reputation_oracle_publishing() -> Result<()> {
                 vec!["L".to_string(), "gitafter.reputation".to_string()],
                 vec![
                     "l".to_string(),
-                    if quality > 0.7 { "trusted" } else { "unverified" }.to_string(),
+                    if quality > 0.7 {
+                        "trusted"
+                    } else {
+                        "unverified"
+                    }
+                    .to_string(),
                     "gitafter.reputation".to_string(),
                 ],
                 vec!["p".to_string(), agent.to_string()],
@@ -460,11 +462,7 @@ async fn test_filter_agents_by_reputation_threshold() -> Result<()> {
             label
                 .tags
                 .iter()
-                .find(|t| {
-                    t.first()
-                        .map(|s| s.as_str() == "quality")
-                        .unwrap_or(false)
-                })
+                .find(|t| t.first().map(|s| s.as_str() == "quality").unwrap_or(false))
                 .and_then(|t| t.get(1))
                 .and_then(|v| v.parse::<f64>().ok())
                 .map(|q| q >= 0.70)
@@ -482,11 +480,7 @@ async fn test_filter_agents_by_reputation_threshold() -> Result<()> {
             label
                 .tags
                 .iter()
-                .find(|t| {
-                    t.first()
-                        .map(|s| s.as_str() == "quality")
-                        .unwrap_or(false)
-                })
+                .find(|t| t.first().map(|s| s.as_str() == "quality").unwrap_or(false))
                 .and_then(|t| t.get(1))
                 .and_then(|v| v.parse::<f64>().ok())
                 .map(|q| q >= 0.85)

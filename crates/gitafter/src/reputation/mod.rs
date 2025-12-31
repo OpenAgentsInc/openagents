@@ -46,10 +46,10 @@ impl ReputationTier {
     /// Get the color for this tier (hex)
     pub fn color(&self) -> &'static str {
         match self {
-            ReputationTier::New => "#9ca3af",      // gray
+            ReputationTier::New => "#9ca3af",         // gray
             ReputationTier::Established => "#fbbf24", // yellow
-            ReputationTier::Trusted => "#3b82f6",  // blue
-            ReputationTier::Expert => "#8b5cf6",   // purple
+            ReputationTier::Trusted => "#3b82f6",     // blue
+            ReputationTier::Expert => "#8b5cf6",      // purple
         }
     }
 }
@@ -105,8 +105,17 @@ mod tests {
     #[test]
     fn test_reputation_tier_from_score() {
         assert!(matches!(ReputationTier::from_score(0), ReputationTier::New));
-        assert!(matches!(ReputationTier::from_score(10), ReputationTier::Established));
-        assert!(matches!(ReputationTier::from_score(50), ReputationTier::Trusted));
-        assert!(matches!(ReputationTier::from_score(100), ReputationTier::Expert));
+        assert!(matches!(
+            ReputationTier::from_score(10),
+            ReputationTier::Established
+        ));
+        assert!(matches!(
+            ReputationTier::from_score(50),
+            ReputationTier::Trusted
+        ));
+        assert!(matches!(
+            ReputationTier::from_score(100),
+            ReputationTier::Expert
+        ));
     }
 }

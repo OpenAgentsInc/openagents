@@ -517,7 +517,10 @@ impl AutoCheckRunner {
                 "Required dependency PRs are merged",
                 CheckStatus::Pass,
             )
-            .with_message(format!("All {} dependencies are merged", self.depends_on.len()))
+            .with_message(format!(
+                "All {} dependencies are merged",
+                self.depends_on.len()
+            ))
         } else {
             CheckResult::new(
                 "dependency-order",
@@ -614,7 +617,10 @@ mod tests {
             .with_dependencies(vec!["pr-100".to_string(), "pr-101".to_string()]);
 
         assert_eq!(runner.repo_path, PathBuf::from("/tmp/repo"));
-        assert_eq!(runner.trajectory_session_id, Some("session-456".to_string()));
+        assert_eq!(
+            runner.trajectory_session_id,
+            Some("session-456".to_string())
+        );
         assert_eq!(runner.depends_on.len(), 2);
     }
 

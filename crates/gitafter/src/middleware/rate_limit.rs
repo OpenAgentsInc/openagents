@@ -1,15 +1,15 @@
 //! Rate limiting middleware to prevent DoS attacks
 
 use actix_web::{
-    body::BoxBody,
-    dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
     Error, HttpResponse,
+    body::BoxBody,
+    dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready},
 };
 use futures_util::future::LocalBoxFuture;
 use governor::{
+    Quota, RateLimiter as GovernorRateLimiter,
     clock::DefaultClock,
     state::{InMemoryState, NotKeyed},
-    Quota, RateLimiter as GovernorRateLimiter,
 };
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -51,12 +51,7 @@ where
 
     fn new_transform(&self, service: S) -> Self::Future {
         let limiter = self.limiter.clone();
-        Box::pin(async move {
-            Ok(RateLimiterMiddleware {
-                service,
-                limiter,
-            })
-        })
+        Box::pin(async move { Ok(RateLimiterMiddleware { service, limiter }) })
     }
 }
 
@@ -85,9 +80,7 @@ where
                 .insert_header(("Retry-After", "1"))
                 .body("Rate limit exceeded. Please slow down and try again in a moment.");
 
-            return Box::pin(async move {
-                Ok(req.into_response(response).map_into_boxed_body())
-            });
+            return Box::pin(async move { Ok(req.into_response(response).map_into_boxed_body()) });
         }
 
         // Allow request

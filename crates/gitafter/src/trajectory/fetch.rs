@@ -4,8 +4,8 @@
 
 use anyhow::{Context, Result};
 use nostr::{
-    Event, StepType, TrajectoryEventContent, TrajectorySessionContent, KIND_TRAJECTORY_EVENT,
-    KIND_TRAJECTORY_SESSION,
+    Event, KIND_TRAJECTORY_EVENT, KIND_TRAJECTORY_SESSION, StepType, TrajectoryEventContent,
+    TrajectorySessionContent,
 };
 use nostr_client::{RelayConnection, RelayMessage};
 use serde::{Deserialize, Serialize};
@@ -115,10 +115,7 @@ pub async fn fetch_trajectory_session(
 }
 
 /// Check if trajectory exists on relays
-pub async fn trajectory_exists(
-    session_id: &str,
-    relay_urls: &[String],
-) -> Result<bool> {
+pub async fn trajectory_exists(session_id: &str, relay_urls: &[String]) -> Result<bool> {
     match fetch_trajectory_session(session_id, relay_urls).await {
         Ok(_) => Ok(true),
         Err(_) => Ok(false),
@@ -191,10 +188,7 @@ async fn fetch_events_for_session(
     Ok((session_event, events, sources))
 }
 
-async fn fetch_from_relay(
-    url: &str,
-    filters: &[serde_json::Value],
-) -> Result<Vec<Event>> {
+async fn fetch_from_relay(url: &str, filters: &[serde_json::Value]) -> Result<Vec<Event>> {
     let relay = RelayConnection::new(url)
         .with_context(|| format!("Failed to create relay connection to {}", url))?;
     relay

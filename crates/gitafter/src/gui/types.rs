@@ -58,20 +58,45 @@ pub struct PrSummary {
 
 #[derive(Debug, Clone)]
 pub enum GitafterCommand {
-    LoadRepositories { limit: usize },
-    LoadIssues { repo_address: Option<String>, limit: usize },
-    LoadPullRequests { repo_address: Option<String>, limit: usize },
-    LoadPullRequestDiff { pr_id: String, repo_identifier: Option<String> },
+    LoadRepositories {
+        limit: usize,
+    },
+    LoadIssues {
+        repo_address: Option<String>,
+        limit: usize,
+    },
+    LoadPullRequests {
+        repo_address: Option<String>,
+        limit: usize,
+    },
+    LoadPullRequestDiff {
+        pr_id: String,
+        repo_identifier: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub enum GitafterUpdate {
-    RepositoriesLoaded { repos: Vec<RepoSummary> },
-    IssuesLoaded { issues: Vec<IssueSummary> },
-    PullRequestsLoaded { pull_requests: Vec<PrSummary> },
-    PullRequestDiffLoaded { pr_id: String, diff: Option<String> },
-    ConnectionStatus { status: ConnectionStatus, message: Option<String> },
-    Error { message: String },
+    RepositoriesLoaded {
+        repos: Vec<RepoSummary>,
+    },
+    IssuesLoaded {
+        issues: Vec<IssueSummary>,
+    },
+    PullRequestsLoaded {
+        pull_requests: Vec<PrSummary>,
+    },
+    PullRequestDiffLoaded {
+        pr_id: String,
+        diff: Option<String>,
+    },
+    ConnectionStatus {
+        status: ConnectionStatus,
+        message: Option<String>,
+    },
+    Error {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
