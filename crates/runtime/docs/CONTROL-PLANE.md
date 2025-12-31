@@ -388,13 +388,13 @@ Events delivered:
 
 ## Implementation per Backend
 
-| Endpoint | Local | Cloudflare | Server |
-|----------|-------|------------|--------|
-| Create/Delete | In-memory registry | D1 + DO | Postgres |
-| Status | Direct call | DO fetch | Direct call |
-| Export | SQLite dump | DO SQL export | SQLite/Postgres dump |
-| Stream | Tokio broadcast | DO WebSocket | Tokio broadcast |
-| Metrics | prometheus crate | Workers Analytics | prometheus crate |
+| Endpoint | Browser | Local | Cloudflare | Server |
+|----------|---------|-------|------------|--------|
+| Create/Delete | IndexedDB | In-memory registry | D1 + DO | Postgres |
+| Status | postMessage | Direct call | DO fetch | Direct call |
+| Export | IndexedDB dump | SQLite dump | DO SQL export | SQLite/Postgres dump |
+| Stream | BroadcastChannel | Tokio broadcast | DO WebSocket | Tokio broadcast |
+| Metrics | Performance API | prometheus crate | Workers Analytics | prometheus crate |
 
 ---
 
