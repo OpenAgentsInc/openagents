@@ -50,7 +50,7 @@ All external events normalize to envelopes:
 ```rust
 /// A message delivered to an agent's mailbox
 pub struct Envelope {
-    /// Unique message ID
+    /// Unique message ID (for idempotency/dedup)
     pub id: EnvelopeId,
 
     /// When the event occurred
@@ -64,6 +64,27 @@ pub struct Envelope {
 
     /// Metadata for routing/debugging
     pub metadata: Metadata,
+}
+
+/// Envelope metadata for routing and tracing
+pub struct Metadata {
+    /// Sequence number for ordering (if available from source)
+    pub seq: Option<u64>,
+
+    /// Trace/correlation ID for distributed tracing
+    pub trace_id: Option<String>,
+
+    /// Parent envelope ID (for request/response correlation)
+    pub parent_id: Option<EnvelopeId>,
+
+    /// TTL - drop if not processed by this time
+    pub expires_at: Option<Timestamp>,
+
+    /// Priority hint (lower = higher priority)
+    pub priority: Option<u8>,
+
+    /// Custom key-value pairs from drivers
+    pub extra: HashMap<String, String>,
 }
 
 /// Where the envelope came from

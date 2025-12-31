@@ -49,6 +49,7 @@ In Plan 9, services expose themselves as files. For agents: every agent exposes 
 │   └── pay             # write bolt11 → execute payment
 ├── fs/
 │   └── <mounts>        # mounted capabilities (repos, tools, etc.)
+├── deadletter/         # overflow envelopes (when inbox full)
 └── logs/
     ├── trace           # streaming trace log
     ├── ticks           # tick history
@@ -226,24 +227,25 @@ Plan 9's `factotum` handles authentication. For agents: a dedicated signing serv
 ### Interface
 
 ```rust
-/// Signing service (factotum)
+/// Signing service (factotum) - sync by design.
+/// Backends implement via blocking calls to keychain/HSM/KMS.
 pub trait SigningService: Send + Sync {
-    /// Get the public key for an agent
-    async fn pubkey(&self, agent_id: &AgentId) -> Result<PublicKey>;
+    /// Get the public key for an agent.
+    fn pubkey(&self, agent_id: &AgentId) -> Result<PublicKey>;
 
-    /// Sign data (Schnorr for Nostr)
-    async fn sign(&self, agent_id: &AgentId, data: &[u8]) -> Result<Signature>;
+    /// Sign data (Schnorr for Nostr).
+    fn sign(&self, agent_id: &AgentId, data: &[u8]) -> Result<Signature>;
 
-    /// Encrypt to recipient (NIP-44)
-    async fn encrypt(
+    /// Encrypt to recipient (NIP-44).
+    fn encrypt(
         &self,
         agent_id: &AgentId,
         recipient: &PublicKey,
         plaintext: &[u8],
     ) -> Result<Vec<u8>>;
 
-    /// Decrypt from sender (NIP-44)
-    async fn decrypt(
+    /// Decrypt from sender (NIP-44).
+    fn decrypt(
         &self,
         agent_id: &AgentId,
         sender: &PublicKey,

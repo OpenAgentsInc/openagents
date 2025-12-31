@@ -225,18 +225,31 @@ impl Namespace {
     }
 }
 
-/// Access level for mounted services
-#[derive(Clone, Copy)]
+/// Access level for mounted services (canonical definition in TRAITS.md)
+#[derive(Clone)]
 pub enum AccessLevel {
-    /// Full read/write access
-    ReadWrite,
     /// Read-only access
     ReadOnly,
-    /// Sign-only (for identity services)
+    /// Read and write access
+    ReadWrite,
+    /// Sign-only (for /identity - can sign, not extract keys)
     SignOnly,
-    /// Budgeted access (payments, compute)
-    Budgeted { limit: u64, spent: u64 },
+    /// Budgeted access with spending limits
+    Budgeted(BudgetPolicy),
+    /// Disabled (mount exists but access denied)
+    Disabled,
 }
+
+/// Static budget policy (canonical definition in TRAITS.md)
+pub struct BudgetPolicy {
+    pub per_tick_sats: u64,
+    pub per_day_sats: u64,
+    pub approval_threshold_sats: u64,
+    pub approvers: Vec<PublicKey>,
+}
+
+// Note: BudgetState (spent_tick, spent_day) is tracked by runtime,
+// not stored in AccessLevel. See TRAITS.md for BudgetState definition.
 ```
 
 ### Longest-Prefix Matching
@@ -661,9 +674,21 @@ impl AgentEnv {
         let (service, relative, access) = self.namespace.resolve(path)
             .ok_or(Error::NotFound)?;
 
-        // Check access
-        if flags.write && matches!(access, AccessLevel::ReadOnly) {
-            return Err(Error::PermissionDenied);
+        // Check access level - mount table is the security boundary
+        match access {
+            AccessLevel::Disabled => {
+                return Err(Error::PermissionDenied);  // Mount exists but access denied
+            }
+            AccessLevel::ReadOnly if flags.write => {
+                return Err(Error::PermissionDenied);
+            }
+            AccessLevel::SignOnly if flags.write || flags.read => {
+                // SignOnly: only sign/verify operations allowed (via special paths)
+                if !relative.starts_with("sign") && !relative.starts_with("verify") {
+                    return Err(Error::PermissionDenied);
+                }
+            }
+            _ => {}  // ReadWrite and Budgeted allow access (budget checked by service)
         }
 
         service.open(relative, flags)

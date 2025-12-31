@@ -48,6 +48,7 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 ├── nostr/
 │   ├── relays          # connected relay list
 │   └── publish         # write event to publish
+├── deadletter/         # overflow envelopes (when inbox full)
 ├── logs/
 │   ├── trace           # streaming trace
 │   └── trajectory      # tick history
