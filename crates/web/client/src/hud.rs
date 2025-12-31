@@ -19,7 +19,7 @@ use wgpui::components::sections::{
 };
 
 use crate::state::{AppState, AppView};
-use crate::utils::js_optional_string;
+use crate::utils::{js_optional_string, track_funnel_event};
 
 /// Context from /repo/:owner/:repo route
 #[derive(Clone, Default, Deserialize)]
@@ -1088,6 +1088,13 @@ fn set_share_notice(state: Rc<RefCell<AppState>>, notice: ShareNotice) {
         Some(window) => window,
         None => return,
     };
+    let repo = {
+        let guard = state.borrow();
+        guard
+            .hud_context
+            .as_ref()
+            .map(|ctx| format!("{}/{}", ctx.username, ctx.repo))
+    };
 
     {
         let mut guard = state.borrow_mut();
@@ -1104,6 +1111,13 @@ fn set_share_notice(state: Rc<RefCell<AppState>>, notice: ShareNotice) {
                     window.clear_timeout_with_handle(id);
                 }
             }
+        }
+    }
+
+    if let Some(repo) = repo {
+        match notice {
+            ShareNotice::Url => track_funnel_event("hud_share", Some(repo)),
+            ShareNotice::Embed => track_funnel_event("hud_embed", Some(repo)),
         }
     }
 

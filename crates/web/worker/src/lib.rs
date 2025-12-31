@@ -154,26 +154,16 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             .await
         }
 
-        // Wallet routes (require auth)
-        (Method::Get, "/api/wallet/summary") => {
-            with_auth(&req, &env, |user| routes::wallet::get_summary(user, env.clone())).await
-        }
-        (Method::Get, "/api/wallet/payments") => {
-            with_auth(&req, &env, |user| routes::wallet::list_payments(user, env.clone())).await
-        }
-        (Method::Post, "/api/wallet/receive") => {
-            let body = req.text().await?;
-            with_auth(&req, &env, |user| {
-                routes::wallet::receive(user, env.clone(), body.clone())
-            })
-            .await
-        }
-        (Method::Post, "/api/wallet/send") => {
-            let body = req.text().await?;
-            with_auth(&req, &env, |user| {
-                routes::wallet::send(user, env.clone(), body.clone())
-            })
-            .await
+        // Wallet routes - moved to wallet-worker (6.2MB, requires paid CF plan)
+        // Deploy with: bun run deploy:wallet (needs paid plan or alt hosting)
+        // Then uncomment [[services]] binding in wrangler.toml
+        (_, path) if path.starts_with("/api/wallet") => {
+            Response::from_json(&serde_json::json!({
+                "status": "unavailable",
+                "error": "Wallet worker not deployed - requires Cloudflare paid plan",
+                "size": "6.2MB",
+                "docs": "crates/web/docs/deployment.md#wallet-worker-implementation"
+            }))?.with_status(503)
         }
 
         // Stripe routes
@@ -339,6 +329,13 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
                 routes::hud::start_session(user, env.clone(), body.clone())
             })
             .await
+        }
+
+        // Funnel analytics events
+        (Method::Post, "/api/analytics/event") => {
+            let body = req.text().await?;
+            let maybe_user = get_optional_user(&req, &env).await;
+            routes::analytics::track_event(env, maybe_user, body).await
         }
 
         // Tunnel routes (WebSocket relay)
