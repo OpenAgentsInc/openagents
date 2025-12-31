@@ -12,7 +12,7 @@ categories = ["asynchronous", "web-programming"]
 default = []
 # Backend features - enable one
 cloudflare = ["worker"]
-local = ["rusqlite", "tokio/fs"]
+local = ["rusqlite"]
 # Optional features
 full = ["tracing", "metrics"]
 
@@ -25,12 +25,17 @@ thiserror = "2"
 futures = { workspace = true }
 hex = { workspace = true }
 sha2 = { workspace = true }
+axum = "0.7"
+tokio-stream = "0.1"
+clap = { workspace = true }
+reqwest = { workspace = true }
+uuid = { workspace = true }
 
 # Crypto
 # TODO: Add when implementing identity
 
 # Async
-tokio = { version = "1", features = ["sync", "time"], optional = true }
+tokio = { workspace = true }
 
 # Storage backends
 rusqlite = { version = "0.32", optional = true }

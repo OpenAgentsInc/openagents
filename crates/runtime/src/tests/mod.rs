@@ -2,7 +2,7 @@ use crate::agent::{Agent, AgentContext, AgentState};
 use crate::engine::{manual_trigger, TickEngine};
 use crate::storage::{AgentStorage, InMemoryStorage, StoredState};
 use crate::types::{AgentId, EnvelopeId, Timestamp};
-use crate::{AgentEnv, Envelope, Result, TickResult, WatchEvent};
+use crate::{AgentEnv, ControlPlane, Envelope, LocalRuntime, Result, TickResult, WatchEvent};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -261,4 +261,78 @@ fn test_env_logs_watch() {
         Some(WatchEvent::Data(data)) => assert_eq!(data, b"trace-event"),
         other => panic!("unexpected watch event: {:?}", other),
     }
+}
+
+#[tokio::test]
+async fn test_control_plane_http() {
+    let storage = Arc::new(InMemoryStorage::new());
+    let runtime = Arc::new(LocalRuntime::new(storage));
+    let agent_id = AgentId::from("agent-http");
+    runtime
+        .register_agent(agent_id.clone(), CountingAgent)
+        .await
+        .expect("register agent");
+
+    let control_plane = ControlPlane::new(runtime);
+    let app = control_plane.router();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("serve");
+    });
+
+    let base = format!("http://{}", addr);
+    let client = reqwest::Client::new();
+
+    let list: Vec<String> = client
+        .get(format!("{}/agents", base))
+        .send()
+        .await
+        .expect("list agents")
+        .json()
+        .await
+        .expect("list json");
+    assert_eq!(list, vec![agent_id.to_string()]);
+
+    client
+        .post(format!("{}/agents/{}/send", base, agent_id))
+        .body("hello")
+        .send()
+        .await
+        .expect("send message")
+        .error_for_status()
+        .expect("send status");
+
+    let inbox: Vec<Envelope> = client
+        .get(format!("{}/agents/{}/inbox", base, agent_id))
+        .send()
+        .await
+        .expect("get inbox")
+        .json()
+        .await
+        .expect("inbox json");
+    assert_eq!(inbox.len(), 1);
+
+    let result: TickResult = client
+        .post(format!("{}/agents/{}/tick", base, agent_id))
+        .send()
+        .await
+        .expect("tick")
+        .json()
+        .await
+        .expect("tick json");
+    assert!(result.success);
+
+    let status: serde_json::Value = client
+        .get(format!("{}/agents/{}/status", base, agent_id))
+        .send()
+        .await
+        .expect("status")
+        .json()
+        .await
+        .expect("status json");
+    assert_eq!(status["agent_id"], agent_id.as_str());
 }

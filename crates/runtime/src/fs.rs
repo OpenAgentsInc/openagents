@@ -2,6 +2,7 @@
 
 use crate::identity::PublicKey;
 use crate::types::Timestamp;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::Duration;
 
@@ -118,7 +119,7 @@ pub enum SeekFrom {
 }
 
 /// Directory entry metadata.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DirEntry {
     /// Entry name.
     pub name: String,
@@ -153,7 +154,7 @@ impl DirEntry {
 }
 
 /// File permissions.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Permissions {
     /// Read permission.
     pub read: bool,
@@ -184,7 +185,7 @@ impl Permissions {
 }
 
 /// File metadata.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Stat {
     /// Size in bytes.
     pub size: u64,

@@ -106,6 +106,7 @@
 #![warn(rustdoc::missing_crate_level_docs)]
 
 pub mod agent;
+pub mod control_plane;
 pub mod env;
 pub mod engine;
 pub mod envelope;
@@ -120,6 +121,7 @@ pub mod trigger;
 pub mod types;
 
 pub use agent::{Agent, AgentConfig, AgentContext, AgentState};
+pub use control_plane::{ControlPlane, LocalRuntime};
 pub use env::AgentEnv;
 pub use engine::{manual_trigger, TickEngine};
 pub use envelope::Envelope;

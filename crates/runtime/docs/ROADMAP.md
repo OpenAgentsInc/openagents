@@ -114,6 +114,13 @@ curl -X POST localhost:8080/agents/abc/send    # sends message
 curl localhost:8080/agents/abc/logs/trace      # tails logs (SSE)
 ```
 
+### Implementation Notes (completed)
+
+- Added `LocalRuntime` and `ControlPlane` in `crates/runtime/src/control_plane.rs` with HTTP routes for list, status/info, send, tick, and generic filesystem read/write/watch.
+- Implemented SSE watch bridge for `watch=1` and byte/JSON responses for file reads.
+- Added `agentctl` CLI in `crates/runtime/src/bin/agentctl.rs` for list/status/send/tick/logs.
+- Added HTTP control-plane tests in `crates/runtime/src/tests/mod.rs`.
+
 ### References
 
 - [CONTROL-PLANE.md](CONTROL-PLANE.md) — HTTP + CLI spec
