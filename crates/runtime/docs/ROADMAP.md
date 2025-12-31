@@ -209,6 +209,14 @@ Demo agent can:
 
 "Generate code with `/compute`, test it in `/containers`" works locally.
 
+### Implementation Notes (completed)
+
+- Added container core types, policy, provider trait, and router in `crates/runtime/src/containers.rs`.
+- Implemented `/containers` filesystem routes for new sessions, provider info, policy, usage, session status/result/output, exec jobs, and file read/write with URL decoding + chunking.
+- Wired budget reservation/reconcile and idempotency caching for `/containers/new`, with reconcile on status/output.
+- Implemented `LocalContainerProvider` using Docker CLI for session lifecycle, exec streaming, and file read/write via `docker exec`.
+- Added container conformance tests in `crates/runtime/src/tests/mod.rs` and exported container APIs in `crates/runtime/src/lib.rs`.
+
 ### References
 
 - [CONTAINERS.md](CONTAINERS.md) — full spec

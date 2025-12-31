@@ -108,6 +108,7 @@
 pub mod agent;
 pub mod budget;
 pub mod compute;
+pub mod containers;
 pub mod control_plane;
 pub mod env;
 pub mod engine;
@@ -130,6 +131,14 @@ pub use compute::{
     ComputeRequest, ComputeResponse, ComputeRouter, JobState, LocalProvider, ModelInfo, Prefer,
     ProviderInfo, ProviderLatency, ProviderPricing, ProviderStatus, TokenUsage,
 };
+pub use containers::{
+    ArtifactInfo, CommandResult, ContainerCapabilities, ContainerError, ContainerFs, ContainerKind,
+    ContainerLatency, ContainerLimits, ContainerPolicy, ContainerPricing, ContainerProvider,
+    ContainerProviderInfo, ContainerRequest, ContainerResponse, ContainerRouter, ContainerStatus,
+    ContainerUsage, ExecState, LocalContainerProvider, OutputChunk, OutputStream, RepoAuth,
+    RepoConfig, SessionState,
+};
+pub use containers::ProviderStatus as ContainerProviderStatus;
 pub use control_plane::{ControlPlane, LocalRuntime};
 pub use env::AgentEnv;
 pub use engine::{manual_trigger, TickEngine};

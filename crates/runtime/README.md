@@ -49,18 +49,25 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 │   ├── relays          # connected relay list
 │   └── publish         # write event to publish
 ├── compute/
-│   ├── run             # write request, read response
+│   ├── new             # write request, read job_id
+│   ├── jobs/<id>/      # status, result, stream
 │   ├── providers/      # available AI providers
-│   └── usage           # budget tracking
+│   └── usage           # budget tracking (micro-USD)
 ├── containers/
 │   ├── new             # spawn container, read session_id
 │   ├── providers/      # local, cloudflare, daytona, dvm
 │   ├── sessions/       # per-session status, output, files
 │   └── auth/           # OpenAgents API authentication
+├── hud/
+│   ├── stream          # redacted event stream (public viewers)
+│   └── settings        # public/private, embed_allowed
+├── metrics/
+│   ├── apm             # actions per minute
+│   └── queue           # issue queue depth
 ├── deadletter/         # overflow envelopes (when inbox full)
 ├── logs/
-│   ├── trace           # streaming trace
-│   └── trajectory      # tick history
+│   ├── trace           # streaming trace (owner only)
+│   └── trajectory      # tick history (replay source)
 └── mounts              # show mount table
 ```
 
@@ -183,7 +190,9 @@ See [PRIOR-ART.md](docs/PRIOR-ART.md) for details.
 
 ## Status
 
-**Design phase.** The `docs/` folder contains comprehensive design documents. Implementation is next.
+**Implementation in progress.** Milestones 0-6 complete (core tick engine, filesystem, control plane, budgets, /compute, /containers). See [ROADMAP.md](docs/ROADMAP.md) for details.
+
+Current focus: M7 (HUD).
 
 ## License
 
