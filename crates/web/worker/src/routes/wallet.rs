@@ -235,7 +235,7 @@ pub async fn send(user: AuthenticatedUser, env: Env, body: String) -> Result<Res
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
 
-    let payment = map_payment(&response.payment);
+    let payment = map_payment(response.payment);
     Response::from_json(&WalletSendResponse {
         payment_id: payment.id,
         status: payment.status,

@@ -2,6 +2,7 @@
 
 use crate::db::users;
 use crate::middleware::auth::AuthenticatedUser;
+use crate::routes::container::{ContainerSession, StartContainerRequest, StartContainerResponse};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 use worker::*;
@@ -13,6 +14,26 @@ struct HudContext {
     is_owner: bool,
     is_public: bool,
     embed_mode: bool,
+    // Session info for WebSocket connection
+    session_id: Option<String>,
+    ws_url: Option<String>,
+    status: String, // "idle", "starting", "running", "completed", "failed"
+}
+
+/// Response for session query
+#[derive(Serialize)]
+pub struct SessionResponse {
+    pub status: String,
+    pub session_id: Option<String>,
+    pub ws_url: Option<String>,
+    pub can_start: bool,
+}
+
+/// Request to start a HUD session
+#[derive(Deserialize)]
+pub struct StartSessionRequest {
+    pub repo: String,
+    pub prompt: String,
 }
 
 #[derive(Deserialize)]
@@ -36,6 +57,20 @@ pub async fn view_hud(
         .map(|u| u.github_username.eq_ignore_ascii_case(&username))
         .unwrap_or(false);
 
+    // Check for active session if user is authenticated
+    let (session_id, ws_url, status) = if let Some(ref user) = maybe_user {
+        let full_repo = format!("{}/{}", username, repo);
+        match get_active_session(&env, &user.user_id, &full_repo).await {
+            Ok(Some(session)) => {
+                let ws = format!("/api/container/ws/{}", session.session_id);
+                (Some(session.session_id), Some(ws), "running".to_string())
+            }
+            _ => (None, None, "idle".to_string()),
+        }
+    } else {
+        (None, None, "idle".to_string())
+    };
+
     // Return HUD page
     let context = HudContext {
         username: username.clone(),
@@ -43,9 +78,117 @@ pub async fn view_hud(
         is_owner,
         is_public: true, // Default public for now
         embed_mode: false,
+        session_id,
+        ws_url,
+        status,
     };
 
     serve_hud_html(&env, &context).await
+}
+
+/// Get active session for a user/repo combination
+async fn get_active_session(
+    env: &Env,
+    user_id: &str,
+    repo: &str,
+) -> Result<Option<ContainerSession>> {
+    let kv = env.kv("SESSIONS")?;
+
+    // Look up session by user+repo key
+    let key = format!("hud_session:{}:{}", user_id, repo);
+    let result = kv.get(&key).text().await
+        .map_err(|e| Error::RustError(format!("KV error: {:?}", e)))?;
+
+    match result {
+        Some(session_id) => {
+            // Load the actual session
+            ContainerSession::load(&kv, &session_id).await
+        }
+        None => Ok(None),
+    }
+}
+
+/// Get session status for a repo
+/// GET /api/hud/session?repo=owner/repo
+pub async fn get_session(
+    user: AuthenticatedUser,
+    env: Env,
+    repo: String,
+) -> Result<Response> {
+    match get_active_session(&env, &user.user_id, &repo).await? {
+        Some(session) => {
+            let ws_url = format!("/api/container/ws/{}", session.session_id);
+            Response::from_json(&SessionResponse {
+                status: "running".to_string(),
+                session_id: Some(session.session_id),
+                ws_url: Some(ws_url),
+                can_start: false,
+            })
+        }
+        None => {
+            Response::from_json(&SessionResponse {
+                status: "idle".to_string(),
+                session_id: None,
+                ws_url: None,
+                can_start: true,
+            })
+        }
+    }
+}
+
+/// Start a new HUD session
+/// POST /api/hud/start
+pub async fn start_session(
+    user: AuthenticatedUser,
+    env: Env,
+    body: String,
+) -> Result<Response> {
+    let req: StartSessionRequest = serde_json::from_str(&body)
+        .map_err(|e| Error::RustError(format!("Invalid request: {}", e)))?;
+
+    // Create container session
+    let session = ContainerSession::new(&user.user_id, &req.repo);
+
+    // Save to KV with both session key and user+repo lookup key
+    let kv = env.kv("SESSIONS")?;
+    session.save(&kv).await?;
+
+    // Also save user+repo -> session_id mapping for lookup
+    let lookup_key = format!("hud_session:{}:{}", user.user_id, req.repo);
+    kv.put(&lookup_key, &session.session_id)?
+        .expiration_ttl(86400) // 24 hours
+        .execute()
+        .await?;
+
+    // Get the Durable Object for this user
+    let namespace = env.durable_object("AUTOPILOT_CONTAINER")?;
+    let id = namespace.id_from_name(&user.user_id)?;
+    let stub = id.get_stub()?;
+
+    // Forward start request to container
+    let start_body = serde_json::json!({
+        "repo": format!("https://github.com/{}", req.repo),
+        "prompt": req.prompt,
+    });
+
+    let start_req = Request::new_with_init(
+        "http://internal/api/start",
+        RequestInit::new()
+            .with_method(Method::Post)
+            .with_body(Some(start_body.to_string().into())),
+    )?;
+
+    // Send to DO (which forwards to container)
+    let _resp = stub.fetch_with_request(start_req).await?;
+
+    // Build WebSocket URL (relative for same-origin)
+    let ws_url = format!("/api/container/ws/{}", session.session_id);
+
+    Response::from_json(&StartContainerResponse {
+        session_id: session.session_id,
+        status: "starting".to_string(),
+        ws_url,
+    })
 }
 
 /// Embeddable HUD view: /embed/:username/:repo
@@ -98,6 +241,9 @@ pub async fn embed_hud(env: Env, username: String, repo: String) -> Result<Respo
         is_owner: false,
         is_public: true,
         embed_mode: true,
+        session_id: None, // Embeds don't start sessions
+        ws_url: None,
+        status: "idle".to_string(),
     };
 
     serve_hud_html(&env, &context).await

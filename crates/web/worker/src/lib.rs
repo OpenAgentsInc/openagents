@@ -172,6 +172,23 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             })
             .await
         }
+        (Method::Get, "/api/hud/session") => {
+            let repo = url.query_pairs()
+                .find(|(k, _)| k == "repo")
+                .map(|(_, v)| v.to_string())
+                .unwrap_or_default();
+            with_auth(&req, &env, |user| {
+                routes::hud::get_session(user, env.clone(), repo.clone())
+            })
+            .await
+        }
+        (Method::Post, "/api/hud/start") => {
+            let body = req.text().await?;
+            with_auth(&req, &env, |user| {
+                routes::hud::start_session(user, env.clone(), body.clone())
+            })
+            .await
+        }
 
         // Tunnel routes (WebSocket relay)
         (Method::Post, "/api/tunnel/register") => {
