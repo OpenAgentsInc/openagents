@@ -30,6 +30,10 @@ What code **inside the agent** sees. Root `/` is the agent itself:
 │   └── sign            # Write data, read signature
 ├── wallet/
 │   └── balance         # Read: balance JSON
+├── compute/
+│   ├── run             # Write request, read response
+│   ├── providers/      # Available AI providers
+│   └── usage           # Budget tracking
 └── ...
 ```
 
