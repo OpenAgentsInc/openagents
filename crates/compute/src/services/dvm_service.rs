@@ -3,8 +3,10 @@
 //! Handles job requests from Nostr relays and processes them using available backends.
 //! Supports optional Spark wallet integration for paid jobs.
 
-use crate::backends::{AgentBackend, AgentRegistry, BackendRegistry, CompletionRequest};
-use crate::domain::{DomainEvent, Job, UnifiedIdentity};
+use crate::backends::{AgentRegistry, BackendRegistry, CompletionRequest};
+use crate::domain::{
+    CodeReviewRequest, DomainEvent, Job, PatchGenRequest, SandboxRunRequest, UnifiedIdentity,
+};
 use crate::services::RelayService;
 use chrono::Utc;
 use nostr::{
@@ -854,6 +856,168 @@ impl DvmService {
         Ok(false)
     }
 
+    /// Convert a Job to a JobRequest for parsing by domain types
+    fn job_to_request(&self, job: &Job) -> Result<nostr::JobRequest, DvmError> {
+        let mut request = nostr::JobRequest::new(job.kind)
+            .map_err(|e| DvmError::InferenceFailed(e.to_string()))?;
+
+        // Convert StoredJobInput back to JobInput
+        request.inputs = job
+            .inputs
+            .iter()
+            .filter_map(|stored| stored.to_job_input())
+            .collect();
+
+        request.params = job
+            .params
+            .iter()
+            .map(|(k, v)| nostr::JobParam {
+                key: k.clone(),
+                value: v.clone(),
+            })
+            .collect();
+
+        Ok(request)
+    }
+
+    /// Process an agent job (Bazaar kinds 5930-5933)
+    async fn process_agent_job(&self, job_id: &str) -> Result<(), DvmError> {
+        let job = self
+            .active_jobs
+            .read()
+            .await
+            .get(job_id)
+            .cloned()
+            .ok_or_else(|| DvmError::JobNotFound(job_id.to_string()))?;
+
+        let start_time = std::time::Instant::now();
+
+        // Update job status
+        {
+            let mut jobs = self.active_jobs.write().await;
+            if let Some(j) = jobs.get_mut(job_id) {
+                j.set_processing();
+            }
+        }
+
+        let _ = self.event_tx.send(DomainEvent::JobStarted {
+            job_id: job_id.to_string(),
+            model: "claude".to_string(),
+            timestamp: Utc::now(),
+        });
+
+        // Find agent backend for this kind
+        let agent = self
+            .agent_registry
+            .read()
+            .await
+            .find_for_kind(job.kind)
+            .await
+            .ok_or_else(|| DvmError::NoAgentBackend(job.kind))?;
+
+        // Build JobRequest from Job for parsing
+        let job_request = self.job_to_request(&job)?;
+
+        // Route by kind and execute
+        let result: Result<String, DvmError> = match job.kind {
+            KIND_JOB_PATCH_GEN => {
+                let req = PatchGenRequest::from_job_request(&job_request)
+                    .map_err(|e| DvmError::AgentFailed(e.to_string()))?;
+                let result = agent
+                    .read()
+                    .await
+                    .patch_gen(req, None)
+                    .await
+                    .map_err(|e| DvmError::AgentFailed(e.to_string()))?;
+                Ok(result.to_nip90_content())
+            }
+            KIND_JOB_CODE_REVIEW => {
+                let req = CodeReviewRequest::from_job_request(&job_request)
+                    .map_err(|e| DvmError::AgentFailed(e.to_string()))?;
+                let result = agent
+                    .read()
+                    .await
+                    .code_review(req, None)
+                    .await
+                    .map_err(|e| DvmError::AgentFailed(e.to_string()))?;
+                Ok(result.to_nip90_content())
+            }
+            KIND_JOB_SANDBOX_RUN => {
+                let req = SandboxRunRequest::from_job_request(&job_request)
+                    .map_err(|e| DvmError::AgentFailed(e.to_string()))?;
+                let result = agent
+                    .read()
+                    .await
+                    .sandbox_run(req, None)
+                    .await
+                    .map_err(|e| DvmError::AgentFailed(e.to_string()))?;
+                serde_json::to_string(&result)
+                    .map_err(|e| DvmError::AgentFailed(e.to_string()))
+            }
+            KIND_JOB_REPO_INDEX => {
+                // RepoIndex not implemented yet
+                Err(DvmError::AgentFailed(
+                    "RepoIndex not yet implemented".to_string(),
+                ))
+            }
+            _ => Err(DvmError::UnsupportedKind(job.kind)),
+        };
+
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+
+        match result {
+            Ok(result_content) => {
+                // Update job with result
+                let updated_job = {
+                    let mut jobs = self.active_jobs.write().await;
+                    if let Some(j) = jobs.get_mut(job_id) {
+                        j.set_completed(result_content);
+                    }
+                    jobs.get(job_id).cloned()
+                };
+
+                let _ = self.event_tx.send(DomainEvent::JobCompleted {
+                    job_id: job_id.to_string(),
+                    amount_msats: job.amount_msats,
+                    duration_ms,
+                    timestamp: Utc::now(),
+                });
+
+                // Publish result to Nostr
+                if let Some(ref j) = updated_job {
+                    match self.publish_result(j).await {
+                        Ok(event_id) => {
+                            log::info!("Published agent job result with event id: {}", event_id);
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to publish agent job result: {}", e);
+                        }
+                    }
+                }
+
+                log::info!("Agent job {} completed in {}ms", job_id, duration_ms);
+                Ok(())
+            }
+            Err(e) => {
+                let error = e.to_string();
+                {
+                    let mut jobs = self.active_jobs.write().await;
+                    if let Some(j) = jobs.get_mut(job_id) {
+                        j.set_failed(error.clone());
+                    }
+                }
+
+                let _ = self.event_tx.send(DomainEvent::JobFailed {
+                    job_id: job_id.to_string(),
+                    error: error.clone(),
+                    timestamp: Utc::now(),
+                });
+
+                Err(e)
+            }
+        }
+    }
+
     /// Process a job
     async fn process_job(&self, job_id: &str) -> Result<(), DvmError> {
         let job = {
@@ -861,10 +1025,18 @@ impl DvmService {
             jobs.get(job_id).cloned()
         };
 
-        let mut job = match job {
+        let job = match job {
             Some(j) => j,
             None => return Ok(()),
         };
+
+        // Route agent jobs to agent backends
+        if AGENT_KINDS.contains(&job.kind) {
+            return self.process_agent_job(job_id).await;
+        }
+
+        // For inference jobs, continue with inference logic
+        let mut job = job;
 
         // Get the model to use
         let model = job
@@ -1012,19 +1184,38 @@ impl DvmService {
             .clone()
             .ok_or(DvmError::NotInitialized)?;
 
-        // Get available backends
-        let backends = self.available_backends().await;
-        let backend_desc = if backends.is_empty() {
+        // Get available inference backends
+        let inference_backends = self.available_backends().await;
+
+        // Get available agent backends
+        let agent_backends: Vec<String> = self
+            .agent_registry
+            .read()
+            .await
+            .available_backends()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        // Build description
+        let mut desc_parts = vec![];
+        if !inference_backends.is_empty() {
+            desc_parts.push(format!("Inference: {}", inference_backends.join(", ")));
+        }
+        if !agent_backends.is_empty() {
+            desc_parts.push(format!("Agents: {}", agent_backends.join(", ")));
+        }
+        let backend_desc = if desc_parts.is_empty() {
             "No backends available".to_string()
         } else {
-            format!("Backends: {}", backends.join(", "))
+            desc_parts.join(". ")
         };
 
         // Create handler metadata
         let metadata = HandlerMetadata::new(
             "OpenAgents Compute Provider",
             &format!(
-                "AI inference provider for NIP-90 data vending machine jobs. {}",
+                "AI compute provider for NIP-90 jobs (inference + agentic). {}",
                 backend_desc
             ),
         )
@@ -1040,6 +1231,12 @@ impl DvmService {
         .add_capability("nip90-kind-5050")
         .add_custom_tag("network", &self.config.network);
 
+        // Add capabilities for agent backends (Bazaar kinds)
+        let agent_caps = self.agent_registry.read().await.aggregated_capabilities().await;
+        for kind in agent_caps.supported_kinds() {
+            handler_info = handler_info.add_capability(&format!("nip90-kind-{}", kind));
+        }
+
         // Add pricing if configured
         if self.config.min_price_msats > 0 {
             let pricing = PricingInfo::new(self.config.min_price_msats)
@@ -1051,9 +1248,11 @@ impl DvmService {
         // Serialize metadata to JSON for event content
         let content = serde_json::json!({
             "name": "OpenAgents Compute Provider",
-            "description": format!("AI inference provider for NIP-90 data vending machine jobs. {}", backend_desc),
+            "description": format!("AI compute provider for NIP-90 jobs. {}", backend_desc),
             "website": "https://openagents.com",
-            "backends": backends
+            "inference_backends": inference_backends,
+            "agent_backends": agent_backends,
+            "supported_kinds": agent_caps.supported_kinds()
         })
         .to_string();
 
