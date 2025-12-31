@@ -226,6 +226,17 @@ To run the Claude Agent SDK inside a container, set the following environment va
 
 Container isolation is applied to the `local` and `cloud` providers when `policy.isolation_mode = container`. `network_mode = none` disables networking with `--network none`. `proxy_only` uses the proxy env vars if provided but does not yet hard-block egress on its own.
 
+Default image definition:
+
+- Dockerfile: `docker/claude/Dockerfile`
+- Docs: `docs/claude/container-image.md`
+
+Build example:
+
+```bash
+container build -t openagents/claude-code:latest -f docker/claude/Dockerfile .
+```
+
 ### Multi-Instance Worker Pool
 
 For production, run a pool of Claude workers:
