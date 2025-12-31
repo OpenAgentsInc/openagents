@@ -22,6 +22,9 @@ bitcoin = { version = "0.32.6", features = ["serde"] }
 # Error handling
 thiserror.workspace = true
 
+# Async trait helpers (wasm storage)
+async-trait.workspace = true
+
 # Hex encoding
 hex.workspace = true
 

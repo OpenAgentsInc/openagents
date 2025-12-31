@@ -283,6 +283,15 @@ pub async fn generate_api_key(
     Ok(api_key)
 }
 
+/// Get decrypted identity material for a user (ensures identity exists).
+pub async fn get_identity_material(
+    db: &D1Database,
+    user_id: &str,
+    session_secret: &str,
+) -> Result<identity::IdentityMaterial> {
+    ensure_identity(db, user_id, session_secret).await
+}
+
 async fn ensure_identity(
     db: &D1Database,
     user_id: &str,

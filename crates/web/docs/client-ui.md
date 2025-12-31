@@ -93,15 +93,15 @@ The main Autopilot interface, shown after selecting a repository.
 │ ───────────────────  │                          │ │ ○ FULL AUTO OFF      │ │
 │ Sessions             │      owner/repo          │ └──────────────────────┘ │
 │                      │                          │                          │
-│ ┌──────────────────┐ │  (ThreadView will go     │ Claude Usage             │
-│ │ Today 14:32      │ │   here)                  │ ───────────────────────  │
-│ │            sonnet│ │                          │ Model: sonnet            │
-│ └──────────────────┘ │                          │ ████░░░░░░ Context: 10%  │
+│ ┌──────────────────┐ │  (ThreadView will go     │ Wallet                   │
+│ │ Today 14:32      │ │   here)                  │ ┌──────────────────────┐ │
+│ │            sonnet│ │                          │ │ Overview | Send | Rx  │ │
+│ └──────────────────┘ │                          │ │ Balance + addresses  │ │
+│ ┌──────────────────┐ │                          │ │ Recent payments      │ │
+│ │ Yesterday 09:15  │ │                          │ └──────────────────────┘ │
+│ │             opus │ │                          │                          │
+│ └──────────────────┘ │                          │                          │
 │ ┌──────────────────┐ │                          │                          │
-│ │ Yesterday 09:15  │ │                          │ Tokens:  0 / 0           │
-│ │             opus │ │                          │ Cache:   0               │
-│ └──────────────────┘ │                          │ Turns:   0               │
-│ ┌──────────────────┐ │                          │ Cost:    $0.00           │
 │ │ Dec 28 16:45     │ │                          │                          │
 │ │            sonnet│ │                          │                          │
 │ └──────────────────┘ │                          │                          │
@@ -139,12 +139,11 @@ The main Autopilot interface, shown after selecting a repository.
 
 **Right Dock:**
 - Full Auto toggle (clickable)
-- Claude Usage panel
-  - Model name
-  - Context progress bar
-  - Token counts
-  - Cache stats
-  - Cost tracker
+- Wallet panel (Spark/Breez)
+  - Balance card (Spark/Lightning/On-chain)
+  - Overview/Send/Receive tabs
+  - Addresses and recent payments
+  - Send/receive controls + invoice display
 
 **Status Bar:**
 - Left: Keyboard shortcut hints
@@ -175,6 +174,7 @@ struct AppState {
     full_auto_enabled: bool,          // Default: false
     selected_model: String,           // "sonnet" | "opus" | "haiku"
     sessions: Vec<SessionInfo>,       // Mock session history
+    wallet: WalletUi,                 // Spark wallet UI state
 
     // UI interaction
     mouse_pos: Point,
@@ -207,13 +207,16 @@ All shortcuts require `cmd` (Mac) or `ctrl` (Windows/Linux) modifier.
 | `cmd-\` | Toggle both docks | RepoView |
 | `cmd-a` | Toggle Full Auto | RepoView |
 
+Dock toggles are ignored when a wallet text input is focused to avoid clobbering form input.
+
 Implementation:
 
 ```rust
 // In start_demo(), keydown listener
 let closure = Closure::<dyn FnMut(_)>::new(move |event: KeyboardEvent| {
     let meta = event.meta_key() || event.ctrl_key();
-    if meta && state.view == AppView::RepoView {
+    let wallet_focused = state.wallet.has_focus();
+    if meta && !wallet_focused && state.view == AppView::RepoView {
         match event.key().as_str() {
             "[" => state.left_dock_open = !state.left_dock_open,
             "]" => state.right_dock_open = !state.right_dock_open,
@@ -235,6 +238,14 @@ Click regions are tracked via `Bounds` stored in state:
 | `button_bounds` | Login (Landing) / Logout (other views) |
 | `repo_bounds[i]` | Select repo, switch to RepoView |
 | `full_auto_bounds` | Toggle Full Auto state |
+| Wallet panel | WGPUI component events (send/receive/refresh) |
+
+## Wallet Panel
+
+- **Data:** `/api/wallet/summary` feeds balance, addresses, and recent payments.
+- **Actions:** `/api/wallet/send` and `/api/wallet/receive` handle send + receive flows.
+- **Components:** BalanceCard, InvoiceDisplay, PaymentRow, TextInput, Button.
+- **Events:** Mouse + key events are dispatched into `WalletUi` and spawn async requests.
 
 ## Rendering Pipeline
 

@@ -27,6 +27,8 @@ pub struct SparkSigner {
     private_key: [u8; 32],
     /// The 33-byte compressed public key
     public_key: [u8; 33],
+    /// Raw seed entropy for non-mnemonic initialization
+    seed_entropy: Option<Vec<u8>>,
 }
 
 impl SparkSigner {
@@ -54,7 +56,7 @@ impl SparkSigner {
         let seed = parsed_mnemonic.to_seed(passphrase);
 
         // Derive the keypair from the seed
-        let mut signer = Self::from_seed(&seed)?;
+        let mut signer = Self::from_seed_bytes(&seed)?;
 
         // Store the mnemonic and passphrase
         signer.mnemonic = mnemonic.to_string();
@@ -63,10 +65,10 @@ impl SparkSigner {
         Ok(signer)
     }
 
-    /// Derive a SparkSigner from a 64-byte BIP39 seed
+    /// Derive a SparkSigner from raw entropy bytes
     ///
     /// Uses derivation path: m/44'/0'/0'/0/0
-    fn from_seed(seed: &[u8; 64]) -> Result<Self, SparkError> {
+    fn from_seed_bytes(seed: &[u8]) -> Result<Self, SparkError> {
         let secp = Secp256k1::new();
 
         // Create master key from seed (using Bitcoin mainnet)
@@ -112,7 +114,17 @@ impl SparkSigner {
             passphrase: String::new(),
             private_key,
             public_key,
+            seed_entropy: Some(seed.to_vec()),
         })
+    }
+
+    /// Create a SparkSigner from raw entropy bytes (seed material)
+    ///
+    /// This is useful when a mnemonic is not available (e.g. web storage).
+    pub fn from_entropy(entropy: &[u8]) -> Result<Self, SparkError> {
+        let mut signer = Self::from_seed_bytes(entropy)?;
+        signer.seed_entropy = Some(entropy.to_vec());
+        Ok(signer)
     }
 
     /// Get the private key as raw bytes
@@ -151,6 +163,13 @@ impl SparkSigner {
     /// WARNING: Handle with care - this is sensitive data
     pub fn passphrase(&self) -> &str {
         &self.passphrase
+    }
+
+    /// Get the raw seed entropy (if available)
+    ///
+    /// WARNING: Handle with care - this is sensitive data
+    pub fn seed_entropy(&self) -> Option<&[u8]> {
+        self.seed_entropy.as_deref()
     }
 }
 
