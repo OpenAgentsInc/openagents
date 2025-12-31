@@ -820,10 +820,18 @@ pub(crate) async fn ensure_hud_session(state: Rc<RefCell<AppState>>, repo: Strin
     let session = match existing {
         Some(session) if session.session_id.is_some() => Some(session),
         Some(session) if session.can_start == Some(true) => {
-            start_hud_session(&repo, DEFAULT_AUTOPILOT_PROMPT).await.ok()
+            let issue = issue_from_query(&repo);
+            start_hud_session(&repo, DEFAULT_AUTOPILOT_PROMPT, issue)
+                .await
+                .ok()
         }
         Some(session) => Some(session),
-        None => start_hud_session(&repo, DEFAULT_AUTOPILOT_PROMPT).await.ok(),
+        None => {
+            let issue = issue_from_query(&repo);
+            start_hud_session(&repo, DEFAULT_AUTOPILOT_PROMPT, issue)
+                .await
+                .ok()
+        }
     };
 
     let Some(session) = session else {
@@ -992,10 +1000,12 @@ fn queue_hud_actions(state: Rc<RefCell<AppState>>, actions: Vec<HudAction>) {
                 } else {
                     prompt
                 };
+                let issue = issue_from_prompt(&prompt, &repo)
+                    .or_else(|| issue_from_query(&repo));
 
                 let state_clone = state.clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    match start_hud_session(&repo, &prompt).await {
+                    match start_hud_session(&repo, &prompt, issue).await {
                         Ok(session) => {
                             let share_prompt = {
                                 let mut guard = state_clone.borrow_mut();
@@ -1178,6 +1188,106 @@ fn set_share_prompt_notice(state: Rc<RefCell<AppState>>) {
     cb.forget();
 }
 
+fn issue_from_query(repo: &str) -> Option<StartIssue> {
+    let issue_url = query_param("issue_url").or_else(|| query_param("issue"));
+    let issue_title = query_param("issue_title");
+    let issue_label = query_param("issue_label");
+
+    let mut issue = issue_url
+        .as_deref()
+        .and_then(|url| issue_from_url(repo, url));
+
+    if issue.is_none() && issue_url.is_none() && issue_title.is_none() && issue_label.is_none() {
+        return None;
+    }
+
+    if issue.is_none() {
+        issue = Some(StartIssue {
+            issue_url: issue_url.clone(),
+            issue_title: issue_title.clone(),
+            issue_label: issue_label.clone(),
+        });
+    }
+
+    if let Some(issue) = issue.as_mut() {
+        if issue.issue_url.is_none() {
+            issue.issue_url = issue_url;
+        }
+        if issue.issue_title.is_none() {
+            issue.issue_title = issue_title;
+        }
+        if issue.issue_label.is_none() {
+            issue.issue_label = issue_label;
+        }
+    }
+
+    issue
+}
+
+fn issue_from_prompt(prompt: &str, repo: &str) -> Option<StartIssue> {
+    let url = extract_github_url(prompt)?;
+    issue_from_url(repo, &url)
+}
+
+fn extract_github_url(prompt: &str) -> Option<String> {
+    for token in prompt.split_whitespace() {
+        if token.starts_with("https://github.com/") {
+            return Some(clean_url_token(token));
+        }
+    }
+    None
+}
+
+fn clean_url_token(token: &str) -> String {
+    token
+        .trim_matches(|c: char| {
+            matches!(
+                c,
+                '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | ',' | '.' | ';'
+            )
+        })
+        .to_string()
+}
+
+fn issue_from_url(repo: &str, url: &str) -> Option<StartIssue> {
+    let url = url.trim_end_matches('/');
+    let prefix = "https://github.com/";
+    let path = url.strip_prefix(prefix)?;
+    let mut parts = path.split('/');
+    let owner = parts.next()?;
+    let repo_name = parts.next()?;
+    let kind = parts.next()?;
+    let number_raw = parts.next()?;
+    let number = number_raw
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(number_raw);
+
+    if !(kind == "issues" || kind == "pull") {
+        return None;
+    }
+    if !number.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+
+    let full_repo = format!("{}/{}", owner, repo_name);
+    if !full_repo.eq_ignore_ascii_case(repo) {
+        return None;
+    }
+
+    let label = if kind == "issues" {
+        format!("issue #{}", number)
+    } else {
+        format!("pull #{}", number)
+    };
+
+    Some(StartIssue {
+        issue_url: Some(url.to_string()),
+        issue_title: None,
+        issue_label: Some(label),
+    })
+}
+
 async fn fetch_metrics(agent_id: &str) -> Option<MetricsPayload> {
     let apm = fetch_metric_json(&format!("/agents/{}/metrics/apm", agent_id)).await;
     let queue = fetch_metric_json(&format!("/agents/{}/metrics/queue", agent_id)).await;
@@ -1326,12 +1436,36 @@ async fn fetch_hud_session(repo: &str) -> Option<HudSessionResponse> {
     .ok()
 }
 
-async fn start_hud_session(repo: &str, prompt: &str) -> Result<HudSessionResponse, String> {
+#[derive(Clone, Default)]
+struct StartIssue {
+    issue_url: Option<String>,
+    issue_title: Option<String>,
+    issue_label: Option<String>,
+}
+
+async fn start_hud_session(
+    repo: &str,
+    prompt: &str,
+    issue: Option<StartIssue>,
+) -> Result<HudSessionResponse, String> {
     let window = web_sys::window().ok_or("No window available")?;
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "repo": repo,
         "prompt": prompt,
     });
+    if let Some(issue) = issue {
+        if let Some(obj) = body.as_object_mut() {
+            if let Some(issue_url) = issue.issue_url {
+                obj.insert("issue_url".to_string(), issue_url.into());
+            }
+            if let Some(issue_title) = issue.issue_title {
+                obj.insert("issue_title".to_string(), issue_title.into());
+            }
+            if let Some(issue_label) = issue.issue_label {
+                obj.insert("issue_label".to_string(), issue_label.into());
+            }
+        }
+    }
 
     let opts = web_sys::RequestInit::new();
     opts.set_method("POST");
