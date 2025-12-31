@@ -40,6 +40,7 @@ members = [
     "crates/web-platform",
     "crates/orderbook",
     "crates/relay",
+    "crates/runtime",
     "crates/web",
 ]
 
