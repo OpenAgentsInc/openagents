@@ -750,6 +750,181 @@ console.log('WASM Memory:', memory.buffer.byteLength / 1024 / 1024, 'MB');
 
 ---
 
+## Worker WASM Size Limits
+
+Cloudflare Workers has a **3MB limit** for WASM binaries on the free plan. This section documents how we manage binary size.
+
+### Current Architecture
+
+```
+crates/web/
+├── client/          # Frontend WASM (4.1MB optimized, served as static asset)
+├── worker/          # Backend WASM (768KB, runs on CF edge)
+└── wallet-worker/   # Wallet WASM (6.2MB, requires paid plan or alternate hosting)
+```
+
+The **client WASM** is served as a static asset and not subject to the 3MB limit.
+
+The **worker WASM** runs on Cloudflare's edge and must be under 3MB.
+
+### Size History
+
+| Version | Size | Status | Notes |
+|---------|------|--------|-------|
+| With Spark/Breez | 8.7MB | FAILED | Lightning wallet deps too heavy |
+| With optimizations | 6.5MB | FAILED | Still over limit |
+| **Without wallet** | **768KB** | **DEPLOYED** | Wallet routes return 503 |
+
+### Why Wallet Is Heavy
+
+The `spark` crate pulls in `breez-sdk-spark` which includes:
+
+| Dependency | Size | Purpose |
+|------------|------|---------|
+| breez-sdk-spark | ~4-5MB | Lightning Network SDK |
+| reqwest + TLS | ~800KB | HTTP client with TLS |
+| tonic + gRPC | ~1-1.5MB | gRPC framework |
+| bitcoin | ~600KB | Bitcoin primitives |
+| lightning | ~500KB | LN protocol |
+| prost | ~400KB | Protobuf |
+
+### Build Configuration
+
+**`crates/web/worker/Cargo.toml`:**
+```toml
+[profile.release]
+opt-level = "z"      # Maximum size optimization
+lto = true           # Link-time optimization
+strip = true         # Strip symbols
+codegen-units = 1    # Better optimization
+panic = "abort"      # Smaller panic handling
+```
+
+**`crates/web/package.json`:**
+```json
+{
+  "scripts": {
+    "build:worker": "cd worker && CC_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/clang AR_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/llvm-ar worker-build --release"
+  }
+}
+```
+
+### LLVM Environment Variables
+
+When building WASM that includes C dependencies (like secp256k1), you need Homebrew's LLVM which has WASM target support:
+
+```bash
+# Install LLVM
+brew install llvm
+
+# Set env vars for WASM C compilation
+export CC_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/clang
+export AR_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/llvm-ar
+
+# Build
+bun run build:worker
+```
+
+The system clang on macOS doesn't support `wasm32-unknown-unknown` target.
+
+### Wallet Worker Implementation
+
+The wallet functionality is now in a separate worker crate:
+
+**Directory Structure:**
+```
+crates/web/
+├── wallet-worker/
+│   ├── Cargo.toml        # Has spark dependency
+│   └── src/
+│       ├── lib.rs        # Entry point with /api/wallet/* routes
+│       └── identity.rs   # Decryption for user wallet seeds
+├── wrangler-wallet.toml  # Deployment config
+```
+
+**Build Commands:**
+```bash
+# Build wallet worker
+bun run build:wallet-worker
+
+# Deploy wallet worker (requires paid plan due to size)
+bun run deploy:wallet
+
+# Local development
+bun run dev:wallet
+```
+
+**Deployment Options:**
+
+| Option | Size Limit | Cost |
+|--------|------------|------|
+| Cloudflare paid plan | 10MB | $5/mo |
+| Fly.io free tier | 3GB | Free |
+| Railway free tier | 512MB | Free |
+
+**Service Binding (when wallet worker is deployed):**
+
+Uncomment in `wrangler.toml`:
+```toml
+[[services]]
+binding = "WALLET"
+service = "openagents-wallet"
+```
+
+Then update main worker to proxy:
+```rust
+(_, path) if path.starts_with("/api/wallet") => {
+    env.service("WALLET")?.fetch(req).await
+}
+```
+
+**Required Secrets (both workers):**
+```bash
+# Main worker already has these, wallet worker needs them too
+wrangler secret put SESSION_SECRET --config wrangler-wallet.toml
+wrangler secret put BREEZ_API_KEY --config wrangler-wallet.toml
+```
+
+### Current Wallet Status
+
+**Build size:** 6.4MB (exceeds 3MB free tier limit)
+
+Wallet routes return 503 with status JSON:
+```rust
+(_, path) if path.starts_with("/api/wallet") => {
+    Response::from_json(&json!({
+        "status": "unavailable",
+        "error": "Wallet worker not deployed - requires Cloudflare paid plan",
+        "size": "6.2MB"
+    }))?.with_status(503)
+}
+```
+
+**To enable wallet:**
+1. Upgrade to Cloudflare paid plan ($5/mo): https://dash.cloudflare.com/workers/plans
+2. Deploy wallet worker: `bun run deploy:wallet`
+3. Uncomment `[[services]]` binding in `wrangler.toml`
+4. Update main worker to proxy: `env.service("WALLET")?.fetch(req)`
+5. Redeploy main worker: `bun run deploy`
+
+Tracked in: `crates/web/worker/src/lib.rs:157`
+
+### Cloudflare Containers
+
+The `[[containers]]` section in wrangler.toml is commented out because it requires:
+1. Cloudflare paid plan
+2. `containers:write` scope in API token
+
+When enabled, it runs the autopilot container on Cloudflare edge:
+```toml
+# [[containers]]
+# class_name = "AutopilotContainer"
+# image = "../autopilot-container/Dockerfile"
+# max_instances = 10
+```
+
+---
+
 ## Quick Reference
 
 ### Build Commands

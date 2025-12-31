@@ -625,8 +625,9 @@ fn connect_event_source(state: Rc<RefCell<AppState>>, stream_url: &str) -> Optio
     let onmessage = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MessageEvent| {
         if let Some(data) = event.data().as_string() {
             if let Some(hud_event) = parse_hud_event(&data) {
-                let mut state = state_clone.borrow_mut();
-                apply_hud_event(&mut state.hud_ui, hud_event);
+                if let Ok(mut state) = state_clone.try_borrow_mut() {
+                    apply_hud_event(&mut state.hud_ui, hud_event);
+                }
             }
         }
     });
@@ -635,16 +636,18 @@ fn connect_event_source(state: Rc<RefCell<AppState>>, stream_url: &str) -> Optio
 
     let state_clone = state.clone();
     let onerror = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::Event| {
-        let mut state = state_clone.borrow_mut();
-        state.hud_ui.status_text = "stream error".to_string();
+        if let Ok(mut state) = state_clone.try_borrow_mut() {
+            state.hud_ui.status_text = "stream error".to_string();
+        }
     });
     source.set_onerror(Some(onerror.as_ref().unchecked_ref()));
     onerror.forget();
 
     let state_clone = state.clone();
     let onopen = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::Event| {
-        let mut state = state_clone.borrow_mut();
-        state.hud_ui.status_text = "streaming".to_string();
+        if let Ok(mut state) = state_clone.try_borrow_mut() {
+            state.hud_ui.status_text = "streaming".to_string();
+        }
     });
     source.set_onopen(Some(onopen.as_ref().unchecked_ref()));
     onopen.forget();
@@ -667,8 +670,9 @@ fn connect_websocket(state: Rc<RefCell<AppState>>, ws_url: &str) -> Option<HudSt
     let onmessage = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MessageEvent| {
         if let Some(data) = event.data().as_string() {
             if let Some(hud_event) = parse_hud_event(&data) {
-                let mut state = state_clone.borrow_mut();
-                apply_hud_event(&mut state.hud_ui, hud_event);
+                if let Ok(mut state) = state_clone.try_borrow_mut() {
+                    apply_hud_event(&mut state.hud_ui, hud_event);
+                }
             }
         }
     });
@@ -677,16 +681,18 @@ fn connect_websocket(state: Rc<RefCell<AppState>>, ws_url: &str) -> Option<HudSt
 
     let state_clone = state.clone();
     let onopen = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::Event| {
-        let mut state = state_clone.borrow_mut();
-        state.hud_ui.status_text = "streaming".to_string();
+        if let Ok(mut state) = state_clone.try_borrow_mut() {
+            state.hud_ui.status_text = "streaming".to_string();
+        }
     });
     ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
     onopen.forget();
 
     let state_clone = state.clone();
     let onclose = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::CloseEvent| {
-        let mut state = state_clone.borrow_mut();
-        state.hud_ui.status_text = "disconnected".to_string();
+        if let Ok(mut state) = state_clone.try_borrow_mut() {
+            state.hud_ui.status_text = "disconnected".to_string();
+        }
     });
     ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
     onclose.forget();
@@ -765,16 +771,20 @@ pub(crate) fn init_hud_runtime(state: Rc<RefCell<AppState>>) {
     if context.is_owner && !state.borrow().hud_settings_loaded {
         let state_clone = state.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            if let Some(repo) = state_clone
-                .borrow()
-                .hud_context
-                .as_ref()
-                .map(|ctx| format!("{}/{}", ctx.username, ctx.repo))
-            {
+            let repo = state_clone
+                .try_borrow()
+                .ok()
+                .and_then(|s| {
+                    s.hud_context
+                        .as_ref()
+                        .map(|ctx| format!("{}/{}", ctx.username, ctx.repo))
+                });
+            if let Some(repo) = repo {
                 if let Some(settings) = fetch_hud_settings(&repo).await {
-                    let mut state = state_clone.borrow_mut();
-                    state.hud_ui.settings = settings;
-                    state.hud_settings_loaded = true;
+                    if let Ok(mut state) = state_clone.try_borrow_mut() {
+                        state.hud_ui.settings = settings;
+                        state.hud_settings_loaded = true;
+                    }
                 }
             }
         });
@@ -835,13 +845,16 @@ pub(crate) async fn ensure_hud_session(state: Rc<RefCell<AppState>>, repo: Strin
     };
 
     let Some(session) = session else {
-        let mut guard = state.borrow_mut();
-        guard.hud_ui.status_text = "start failed".to_string();
+        if let Ok(mut guard) = state.try_borrow_mut() {
+            guard.hud_ui.status_text = "start failed".to_string();
+        }
         return;
     };
 
     let share_prompt = {
-        let mut guard = state.borrow_mut();
+        let Ok(mut guard) = state.try_borrow_mut() else {
+            return;
+        };
         apply_hud_session(&mut guard, &repo, session)
     };
     let Some(share_prompt) = share_prompt else {
@@ -899,13 +912,14 @@ fn start_metrics_poll(state: Rc<RefCell<AppState>>, agent_id: String) {
         let agent_id = agent_id.clone();
         wasm_bindgen_futures::spawn_local(async move {
             if let Some(payload) = fetch_metrics(&agent_id).await {
-                let mut state = state_inner.borrow_mut();
-                state.hud_ui.metrics.set_apm(payload.apm);
-                state
-                    .hud_ui
-                    .metrics
-                    .set_queue(payload.queue_depth, payload.oldest_issue);
-                state.hud_ui.metrics.set_last_pr(payload.last_pr);
+                if let Ok(mut state) = state_inner.try_borrow_mut() {
+                    state.hud_ui.metrics.set_apm(payload.apm);
+                    state
+                        .hud_ui
+                        .metrics
+                        .set_queue(payload.queue_depth, payload.oldest_issue);
+                    state.hud_ui.metrics.set_last_pr(payload.last_pr);
+                }
             }
         });
     });
@@ -931,34 +945,33 @@ pub(crate) fn stop_metrics_poll(state: &mut AppState) {
 }
 
 pub(crate) fn dispatch_hud_event(state: &Rc<RefCell<AppState>>, event: InputEvent) -> EventResult {
-    let show_start_form = {
-        let guard = state.borrow();
-        guard.view == AppView::RepoView
-            && guard
-                .hud_context
-                .as_ref()
-                .map(|ctx| ctx.is_owner && ctx.status == "idle")
-                .unwrap_or(false)
+    // Use try_borrow to avoid panic if animation loop holds borrow
+    let Ok(guard) = state.try_borrow() else {
+        return EventResult::Ignored;
     };
-    let show_share = {
-        let guard = state.borrow();
-        guard.view == AppView::RepoView
-            && guard
-                .hud_context
-                .as_ref()
-                .map(|ctx| ctx.is_owner && ctx.is_public)
-                .unwrap_or(false)
-    };
+    let show_start_form = guard.view == AppView::RepoView
+        && guard
+            .hud_context
+            .as_ref()
+            .map(|ctx| ctx.is_owner && ctx.status == "idle")
+            .unwrap_or(false);
+    let show_share = guard.view == AppView::RepoView
+        && guard
+            .hud_context
+            .as_ref()
+            .map(|ctx| ctx.is_owner && ctx.is_public)
+            .unwrap_or(false);
+    drop(guard);
 
-    let (handled, actions) = {
-        let mut guard = state.borrow_mut();
-        let layout = guard.hud_layout;
-        let handled = guard
-            .hud_ui
-            .handle_event(&event, &layout, show_start_form, show_share);
-        let actions = guard.hud_ui.take_actions();
-        (handled, actions)
+    let Ok(mut guard) = state.try_borrow_mut() else {
+        return EventResult::Ignored;
     };
+    let layout = guard.hud_layout;
+    let handled = guard
+        .hud_ui
+        .handle_event(&event, &layout, show_start_form, show_share);
+    let actions = guard.hud_ui.take_actions();
+    drop(guard);
 
     if !actions.is_empty() {
         queue_hud_actions(state.clone(), actions);
@@ -1008,7 +1021,9 @@ fn queue_hud_actions(state: Rc<RefCell<AppState>>, actions: Vec<HudAction>) {
                     match start_hud_session(&repo, &prompt, issue).await {
                         Ok(session) => {
                             let share_prompt = {
-                                let mut guard = state_clone.borrow_mut();
+                                let Ok(mut guard) = state_clone.try_borrow_mut() else {
+                                    return;
+                                };
                                 apply_hud_session(&mut guard, &repo, session)
                             };
                             let Some(share_prompt) = share_prompt else {
@@ -1020,8 +1035,9 @@ fn queue_hud_actions(state: Rc<RefCell<AppState>>, actions: Vec<HudAction>) {
                             init_hud_runtime(state_clone);
                         }
                         Err(_) => {
-                            let mut guard = state_clone.borrow_mut();
-                            guard.hud_ui.status_text = "start failed".to_string();
+                            if let Ok(mut guard) = state_clone.try_borrow_mut() {
+                                guard.hud_ui.status_text = "start failed".to_string();
+                            }
                         }
                     }
                 });
@@ -1133,15 +1149,16 @@ fn set_share_notice(state: Rc<RefCell<AppState>>, notice: ShareNotice) {
 
     let state_clone = state.clone();
     let cb = Closure::once(move || {
-        let mut guard = state_clone.borrow_mut();
-        match notice {
-            ShareNotice::Url => {
-                guard.hud_ui.share_url_copied = false;
-                guard.hud_ui.share_url_timer = None;
-            }
-            ShareNotice::Embed => {
-                guard.hud_ui.embed_code_copied = false;
-                guard.hud_ui.embed_code_timer = None;
+        if let Ok(mut guard) = state_clone.try_borrow_mut() {
+            match notice {
+                ShareNotice::Url => {
+                    guard.hud_ui.share_url_copied = false;
+                    guard.hud_ui.share_url_timer = None;
+                }
+                ShareNotice::Embed => {
+                    guard.hud_ui.embed_code_copied = false;
+                    guard.hud_ui.embed_code_timer = None;
+                }
             }
         }
     });
@@ -1149,10 +1166,11 @@ fn set_share_notice(state: Rc<RefCell<AppState>>, notice: ShareNotice) {
         cb.as_ref().unchecked_ref(),
         1500,
     ) {
-        let mut guard = state.borrow_mut();
-        match notice {
-            ShareNotice::Url => guard.hud_ui.share_url_timer = Some(id),
-            ShareNotice::Embed => guard.hud_ui.embed_code_timer = Some(id),
+        if let Ok(mut guard) = state.try_borrow_mut() {
+            match notice {
+                ShareNotice::Url => guard.hud_ui.share_url_timer = Some(id),
+                ShareNotice::Embed => guard.hud_ui.embed_code_timer = Some(id),
+            }
         }
     }
     cb.forget();
@@ -1174,16 +1192,18 @@ fn set_share_prompt_notice(state: Rc<RefCell<AppState>>) {
 
     let state_clone = state.clone();
     let cb = Closure::once(move || {
-        let mut guard = state_clone.borrow_mut();
-        guard.hud_ui.share_notice = None;
-        guard.hud_ui.share_notice_timer = None;
+        if let Ok(mut guard) = state_clone.try_borrow_mut() {
+            guard.hud_ui.share_notice = None;
+            guard.hud_ui.share_notice_timer = None;
+        }
     });
     if let Ok(id) = window.set_timeout_with_callback_and_timeout_and_arguments_0(
         cb.as_ref().unchecked_ref(),
         4000,
     ) {
-        let mut guard = state.borrow_mut();
-        guard.hud_ui.share_notice_timer = Some(id);
+        if let Ok(mut guard) = state.try_borrow_mut() {
+            guard.hud_ui.share_notice_timer = Some(id);
+        }
     }
     cb.forget();
 }
@@ -1555,18 +1575,23 @@ fn schedule_replay(state: Rc<RefCell<AppState>>, events: Vec<(u64, HudEvent)>, s
         None => return,
     };
     if events.is_empty() {
-        state.borrow_mut().hud_ui.status_text = "replay empty".to_string();
+        if let Ok(mut guard) = state.try_borrow_mut() {
+            guard.hud_ui.status_text = "replay empty".to_string();
+        }
         return;
     }
-    state.borrow_mut().hud_ui.status_text = format!("replay {}x", speed);
+    if let Ok(mut guard) = state.try_borrow_mut() {
+        guard.hud_ui.status_text = format!("replay {}x", speed);
+    }
     let start = events[0].0;
     for (timestamp, event) in events {
         let delay = ((timestamp.saturating_sub(start)) as f64 / speed).round() as i32;
         let state_clone = state.clone();
         let event = event.clone();
         let cb = Closure::once(move || {
-            let mut state = state_clone.borrow_mut();
-            apply_hud_event(&mut state.hud_ui, event);
+            if let Ok(mut state) = state_clone.try_borrow_mut() {
+                apply_hud_event(&mut state.hud_ui, event);
+            }
         });
         let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
             cb.as_ref().unchecked_ref(),

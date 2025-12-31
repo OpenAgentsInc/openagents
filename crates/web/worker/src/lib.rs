@@ -154,16 +154,12 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             .await
         }
 
-        // Wallet routes - moved to wallet-worker (6.2MB, requires paid CF plan)
-        // Deploy with: bun run deploy:wallet (needs paid plan or alt hosting)
-        // Then uncomment [[services]] binding in wrangler.toml
+        // Wallet routes - redirect to wallet-worker
+        // Service binding doesn't cleanly convert response types, so we redirect
         (_, path) if path.starts_with("/api/wallet") => {
-            Response::from_json(&serde_json::json!({
-                "status": "unavailable",
-                "error": "Wallet worker not deployed - requires Cloudflare paid plan",
-                "size": "6.2MB",
-                "docs": "crates/web/docs/deployment.md#wallet-worker-implementation"
-            }))?.with_status(503)
+            let wallet_url = format!("https://openagents-wallet.openagents.workers.dev{}", path);
+            let parsed_url = worker::Url::parse(&wallet_url)?;
+            Response::redirect_with_status(parsed_url, 307)
         }
 
         // Stripe routes

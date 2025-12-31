@@ -1025,21 +1025,22 @@ async fn post_json(url: &str, payload: js_sys::Object) -> Result<JsValue, String
 }
 
 pub(crate) fn dispatch_wallet_event(state: &Rc<RefCell<AppState>>, event: InputEvent) -> EventResult {
-    let (result, actions) = {
-        let mut state = state.borrow_mut();
-        let is_owner = state
-            .hud_context
-            .as_ref()
-            .map(|ctx| ctx.is_owner)
-            .unwrap_or(false);
-        if state.view != AppView::RepoView || !is_owner {
-            return EventResult::Ignored;
-        }
-
-        let result = state.wallet.handle_event(&event);
-        let actions = state.wallet.take_actions();
-        (result, actions)
+    // Use try_borrow_mut to avoid panic if animation loop holds borrow
+    let Ok(mut guard) = state.try_borrow_mut() else {
+        return EventResult::Ignored;
     };
+    let is_owner = guard
+        .hud_context
+        .as_ref()
+        .map(|ctx| ctx.is_owner)
+        .unwrap_or(false);
+    if guard.view != AppView::RepoView || !is_owner {
+        return EventResult::Ignored;
+    }
+
+    let result = guard.wallet.handle_event(&event);
+    let actions = guard.wallet.take_actions();
+    drop(guard);
 
     if !actions.is_empty() {
         queue_wallet_actions(state.clone(), actions);
@@ -1062,21 +1063,22 @@ pub(crate) fn queue_wallet_actions(state: Rc<RefCell<AppState>>, actions: Vec<Wa
 }
 
 async fn refresh_wallet_summary(state: Rc<RefCell<AppState>>) {
-    {
-        let mut state = state.borrow_mut();
-        state.wallet.status = WalletStatus::Loading;
-        state.wallet.error = None;
+    if let Ok(mut guard) = state.try_borrow_mut() {
+        guard.wallet.status = WalletStatus::Loading;
+        guard.wallet.error = None;
     }
 
     match fetch_wallet_summary().await {
         Ok(summary) => {
-            let mut state = state.borrow_mut();
-            state.wallet.apply_summary(summary);
+            if let Ok(mut guard) = state.try_borrow_mut() {
+                guard.wallet.apply_summary(summary);
+            }
         }
         Err(err) => {
-            let mut state = state.borrow_mut();
-            state.wallet.status = WalletStatus::Error;
-            state.wallet.error = Some(err);
+            if let Ok(mut guard) = state.try_borrow_mut() {
+                guard.wallet.status = WalletStatus::Error;
+                guard.wallet.error = Some(err);
+            }
         }
     }
 }
@@ -1086,41 +1088,45 @@ async fn handle_receive_action(
     method: &str,
     requires_amount: bool,
 ) {
-    let amount_input = {
-        let state = state.borrow();
-        state.wallet.receive_amount_input.get_value().to_string()
-    };
+    let amount_input = state
+        .try_borrow()
+        .ok()
+        .map(|s| s.wallet.receive_amount_input.get_value().to_string())
+        .unwrap_or_default();
 
     let amount_sats = match parse_amount_input(&amount_input) {
         Ok(amount) => amount,
         Err(err) => {
-            let mut state = state.borrow_mut();
-            state.wallet.receive_notice = Some(format!("Error: {}", err));
+            if let Ok(mut guard) = state.try_borrow_mut() {
+                guard.wallet.receive_notice = Some(format!("Error: {}", err));
+            }
             return;
         }
     };
 
     if requires_amount && amount_sats.is_none() {
-        let mut state = state.borrow_mut();
-        state.wallet.receive_notice = Some("Error: amount is required".to_string());
+        if let Ok(mut guard) = state.try_borrow_mut() {
+            guard.wallet.receive_notice = Some("Error: amount is required".to_string());
+        }
         return;
     }
 
-    {
-        let mut state = state.borrow_mut();
-        state.wallet.receive_notice = Some("Requesting invoice...".to_string());
-        state.wallet.last_invoice = None;
+    if let Ok(mut guard) = state.try_borrow_mut() {
+        guard.wallet.receive_notice = Some("Requesting invoice...".to_string());
+        guard.wallet.last_invoice = None;
     }
 
     match request_wallet_receive(method, amount_sats).await {
         Ok(invoice) => {
-            let mut state = state.borrow_mut();
-            state.wallet.set_invoice(invoice);
-            state.wallet.receive_amount_input.set_value("");
+            if let Ok(mut guard) = state.try_borrow_mut() {
+                guard.wallet.set_invoice(invoice);
+                guard.wallet.receive_amount_input.set_value("");
+            }
         }
         Err(err) => {
-            let mut state = state.borrow_mut();
-            state.wallet.receive_notice = Some(format!("Error: {}", err));
+            if let Ok(mut guard) = state.try_borrow_mut() {
+                guard.wallet.receive_notice = Some(format!("Error: {}", err));
+            }
             return;
         }
     }
@@ -1134,32 +1140,36 @@ async fn handle_wallet_action(state: Rc<RefCell<AppState>>, action: WalletAction
             refresh_wallet_summary(state).await;
         }
         WalletAction::SendPayment => {
-            let (payment_request, amount_input) = {
-                let state = state.borrow();
-                (
-                    state.wallet.send_address_input.get_value().trim().to_string(),
-                    state.wallet.send_amount_input.get_value().to_string(),
-                )
-            };
+            let (payment_request, amount_input) = state
+                .try_borrow()
+                .ok()
+                .map(|s| {
+                    (
+                        s.wallet.send_address_input.get_value().trim().to_string(),
+                        s.wallet.send_amount_input.get_value().to_string(),
+                    )
+                })
+                .unwrap_or_default();
 
             if payment_request.is_empty() {
-                let mut state = state.borrow_mut();
-                state.wallet.send_notice = Some("Error: payment request required".to_string());
+                if let Ok(mut guard) = state.try_borrow_mut() {
+                    guard.wallet.send_notice = Some("Error: payment request required".to_string());
+                }
                 return;
             }
 
             let amount_sats = match parse_amount_input(&amount_input) {
                 Ok(amount) => amount,
                 Err(err) => {
-                    let mut state = state.borrow_mut();
-                    state.wallet.send_notice = Some(format!("Error: {}", err));
+                    if let Ok(mut guard) = state.try_borrow_mut() {
+                        guard.wallet.send_notice = Some(format!("Error: {}", err));
+                    }
                     return;
                 }
             };
 
-            {
-                let mut state = state.borrow_mut();
-                state.wallet.send_notice = Some("Sending payment...".to_string());
+            if let Ok(mut guard) = state.try_borrow_mut() {
+                guard.wallet.send_notice = Some("Sending payment...".to_string());
             }
 
             match send_wallet_payment(&payment_request, amount_sats).await {
@@ -1178,12 +1188,11 @@ async fn handle_wallet_action(state: Rc<RefCell<AppState>>, action: WalletAction
                         )
                     };
 
-                    {
-                        let mut state = state.borrow_mut();
-                        state.wallet.send_notice = Some(notice);
+                    if let Ok(mut guard) = state.try_borrow_mut() {
+                        guard.wallet.send_notice = Some(notice);
                         if sent.status != "failed" {
-                            state.wallet.send_address_input.set_value("");
-                            state.wallet.send_amount_input.set_value("");
+                            guard.wallet.send_address_input.set_value("");
+                            guard.wallet.send_amount_input.set_value("");
                         }
                     }
 
@@ -1192,8 +1201,9 @@ async fn handle_wallet_action(state: Rc<RefCell<AppState>>, action: WalletAction
                     }
                 }
                 Err(err) => {
-                    let mut state = state.borrow_mut();
-                    state.wallet.send_notice = Some(format!("Error: {}", err));
+                    if let Ok(mut guard) = state.try_borrow_mut() {
+                        guard.wallet.send_notice = Some(format!("Error: {}", err));
+                    }
                 }
             }
         }
