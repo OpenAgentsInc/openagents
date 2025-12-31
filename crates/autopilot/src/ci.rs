@@ -126,7 +126,10 @@ impl CIClient {
         repo: &str,
         sha: &str,
     ) -> Result<CICheckResult> {
-        debug!("Checking CI status for commit {} in {}/{}", sha, owner, repo);
+        debug!(
+            "Checking CI status for commit {} in {}/{}",
+            sha, owner, repo
+        );
 
         use octocrab::params::repos::Commitish;
 
@@ -201,10 +204,7 @@ impl CIClient {
         timeout: Duration,
         poll_interval: Duration,
     ) -> Result<CICheckResult> {
-        info!(
-            "Polling CI status for {} in {}/{}",
-            sha, owner, repo
-        );
+        info!("Polling CI status for {} in {}/{}", sha, owner, repo);
 
         let start = std::time::Instant::now();
 
@@ -245,7 +245,10 @@ impl CIClient {
         repo: &str,
         pr_number: u64,
     ) -> Result<CICheckResult> {
-        debug!("Checking CI status for PR #{} in {}/{}", pr_number, owner, repo);
+        debug!(
+            "Checking CI status for PR #{} in {}/{}",
+            pr_number, owner, repo
+        );
 
         let pr = self
             .octocrab

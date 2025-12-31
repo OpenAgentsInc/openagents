@@ -7,11 +7,11 @@
 //! - Redacted content (secrets removed)
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use std::fs;
 use std::io::{BufRead, BufReader};
-use chrono::{DateTime, Utc};
+use std::path::Path;
 
 use crate::logger::LogEntry;
 
@@ -72,8 +72,7 @@ pub struct ReplayReceipts {
 impl ReplayBundle {
     /// Load a replay bundle from a JSONL session log
     pub fn from_jsonl(path: &Path) -> Result<Self> {
-        let file = fs::File::open(path)
-            .context("Failed to open session log")?;
+        let file = fs::File::open(path).context("Failed to open session log")?;
 
         let reader = BufReader::new(file);
         let mut entries: Vec<LogEntry> = Vec::new();
@@ -84,8 +83,8 @@ impl ReplayBundle {
                 continue;
             }
 
-            let entry: LogEntry = serde_json::from_str(&line)
-                .context("Failed to parse log entry")?;
+            let entry: LogEntry =
+                serde_json::from_str(&line).context("Failed to parse log entry")?;
             entries.push(entry);
         }
 
@@ -98,17 +97,20 @@ impl ReplayBundle {
 
     /// Convert log entries to a replay bundle
     fn from_entries(entries: Vec<LogEntry>, _log_path: &Path) -> Result<Self> {
-        let session_id = entries.first()
+        let session_id = entries
+            .first()
             .map(|e| e.session_id.clone())
             .ok_or_else(|| anyhow::anyhow!("No entries"))?;
 
         // Parse timestamps
-        let start_time = entries.first()
+        let start_time = entries
+            .first()
             .and_then(|e| DateTime::parse_from_rfc3339(&e.timestamp).ok())
             .ok_or_else(|| anyhow::anyhow!("Invalid start timestamp"))?
             .with_timezone(&Utc);
 
-        let end_time = entries.last()
+        let end_time = entries
+            .last()
             .and_then(|e| DateTime::parse_from_rfc3339(&e.timestamp).ok())
             .ok_or_else(|| anyhow::anyhow!("Invalid end timestamp"))?
             .with_timezone(&Utc);
@@ -127,7 +129,9 @@ impl ReplayBundle {
 
             let event = match entry.event_type.as_str() {
                 "tool_use" => {
-                    let tool = entry.data.get("tool")
+                    let tool = entry
+                        .data
+                        .get("tool")
                         .and_then(|t| t.as_str())
                         .map(String::from);
 
@@ -139,7 +143,9 @@ impl ReplayBundle {
                     }
                 }
                 "tool_result" => {
-                    let tool = entry.data.get("tool")
+                    let tool = entry
+                        .data
+                        .get("tool")
                         .and_then(|t| t.as_str())
                         .map(String::from);
 
@@ -150,30 +156,24 @@ impl ReplayBundle {
                         data: entry.data.clone(),
                     }
                 }
-                "assistant" => {
-                    TimelineEvent {
-                        t: t_ms,
-                        event_type: "assistant".to_string(),
-                        tool: None,
-                        data: entry.data.clone(),
-                    }
-                }
-                "phase_start" => {
-                    TimelineEvent {
-                        t: t_ms,
-                        event_type: "phase_start".to_string(),
-                        tool: None,
-                        data: entry.data.clone(),
-                    }
-                }
-                "phase_end" => {
-                    TimelineEvent {
-                        t: t_ms,
-                        event_type: "phase_end".to_string(),
-                        tool: None,
-                        data: entry.data.clone(),
-                    }
-                }
+                "assistant" => TimelineEvent {
+                    t: t_ms,
+                    event_type: "assistant".to_string(),
+                    tool: None,
+                    data: entry.data.clone(),
+                },
+                "phase_start" => TimelineEvent {
+                    t: t_ms,
+                    event_type: "phase_start".to_string(),
+                    tool: None,
+                    data: entry.data.clone(),
+                },
+                "phase_end" => TimelineEvent {
+                    t: t_ms,
+                    event_type: "phase_end".to_string(),
+                    tool: None,
+                    data: entry.data.clone(),
+                },
                 _ => continue,
             };
 
@@ -181,10 +181,12 @@ impl ReplayBundle {
         }
 
         // Extract metadata
-        let model = entries.iter()
+        let model = entries
+            .iter()
             .find_map(|e| {
                 if e.event_type == "phase_start" && e.phase == "planning" {
-                    e.data.get("model")
+                    e.data
+                        .get("model")
                         .and_then(|m| m.as_str())
                         .map(String::from)
                 } else {
@@ -222,27 +224,24 @@ impl ReplayBundle {
 
     /// Save replay bundle to JSON file
     pub fn save(&self, output_path: &Path) -> Result<()> {
-        let json = serde_json::to_string_pretty(self)
-            .context("Failed to serialize replay bundle")?;
+        let json =
+            serde_json::to_string_pretty(self).context("Failed to serialize replay bundle")?;
 
         if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent)
-                .context("Failed to create output directory")?;
+            fs::create_dir_all(parent).context("Failed to create output directory")?;
         }
 
-        fs::write(output_path, json)
-            .context("Failed to write replay bundle")?;
+        fs::write(output_path, json).context("Failed to write replay bundle")?;
 
         Ok(())
     }
 
     /// Load replay bundle from JSON file
     pub fn load(path: &Path) -> Result<Self> {
-        let json = fs::read_to_string(path)
-            .context("Failed to read replay bundle")?;
+        let json = fs::read_to_string(path).context("Failed to read replay bundle")?;
 
-        let bundle: ReplayBundle = serde_json::from_str(&json)
-            .context("Failed to parse replay bundle")?;
+        let bundle: ReplayBundle =
+            serde_json::from_str(&json).context("Failed to parse replay bundle")?;
 
         Ok(bundle)
     }
@@ -262,18 +261,18 @@ fn extract_receipts(entries: &[LogEntry]) -> ReplayReceipts {
             // Extract verification results
             if let Some(checks) = entry.data.get("checks").and_then(|c| c.as_object()) {
                 if let Some(tests) = checks.get("tests_passing") {
-                    tests_run = tests.get("total")
+                    tests_run = tests
+                        .get("total")
                         .and_then(|t| t.as_u64())
                         .map(|n| n as usize);
-                    tests_passed = tests.get("passed")
+                    tests_passed = tests
+                        .get("passed")
                         .and_then(|t| t.as_u64())
                         .map(|n| n as usize);
                 }
 
                 if let Some(ci) = checks.get("ci_status") {
-                    ci_status = ci.get("status")
-                        .and_then(|s| s.as_str())
-                        .map(String::from);
+                    ci_status = ci.get("status").and_then(|s| s.as_str()).map(String::from);
                 }
             }
         }
@@ -335,11 +334,11 @@ fn redact_value(value: &mut serde_json::Value) {
 /// Check if a field name indicates a secret
 fn is_secret_field(key: &str) -> bool {
     let lower = key.to_lowercase();
-    lower.contains("token") ||
-    lower.contains("key") ||
-    lower.contains("secret") ||
-    lower.contains("password") ||
-    lower.contains("auth")
+    lower.contains("token")
+        || lower.contains("key")
+        || lower.contains("secret")
+        || lower.contains("password")
+        || lower.contains("auth")
 }
 
 /// Redact secrets from a string

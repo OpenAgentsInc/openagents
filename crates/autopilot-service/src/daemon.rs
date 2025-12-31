@@ -42,7 +42,9 @@ impl UnixDaemonClient {
 
     fn default_socket_path() -> PathBuf {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home).join(".autopilot").join("autopilotd.sock")
+        PathBuf::from(home)
+            .join(".autopilot")
+            .join("autopilotd.sock")
     }
 }
 
@@ -165,7 +167,11 @@ impl DaemonClient for UnixDaemonClient {
                     .and_then(|d| d.get("memory_total_bytes"))
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0),
-                error: if data.is_some() { None } else { Some("Missing data".to_string()) },
+                error: if data.is_some() {
+                    None
+                } else {
+                    Some("Missing data".to_string())
+                },
             }
         }
     }

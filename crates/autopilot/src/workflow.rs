@@ -144,10 +144,7 @@ fn format_receipt_comment(receipt: &WorkflowReceipt) -> String {
     comment.push_str(&format!("**Files Changed**: {}\n", receipt.files_changed));
 
     if let (Some(run), Some(passed)) = (receipt.tests_run, receipt.tests_passed) {
-        comment.push_str(&format!(
-            "**Tests**: {} / {} passed\n",
-            passed, run
-        ));
+        comment.push_str(&format!("**Tests**: {} / {} passed\n", passed, run));
     }
 
     if let Some(ref status) = receipt.ci_status {

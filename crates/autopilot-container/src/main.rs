@@ -12,25 +12,23 @@
 //! 5. Task completes, repo is cleaned up
 
 use axum::{
+    Json, Router,
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
 };
-use claude_agent_sdk::{
-    AllowAllPermissions, QueryOptions, SdkMessage, SdkResultMessage,
-};
+use claude_agent_sdk::{AllowAllPermissions, QueryOptions, SdkMessage, SdkResultMessage};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use tracing::{error, info, warn};
 
 /// Get workspace directory from env or default to /workspace
@@ -240,10 +238,7 @@ async fn get_status(State(state): State<Arc<AppState>>) -> Json<StatusResponse> 
 }
 
 /// WebSocket handler for streaming events
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
     ws.on_upgrade(|socket| handle_websocket(socket, state))
 }
 
@@ -419,12 +414,9 @@ async fn run_claude_query(
         .include_partial_messages(true);
 
     // Run the query
-    let query_result = claude_agent_sdk::query_with_permissions(
-        prompt,
-        options,
-        StdArc::new(AllowAllPermissions),
-    )
-    .await;
+    let query_result =
+        claude_agent_sdk::query_with_permissions(prompt, options, StdArc::new(AllowAllPermissions))
+            .await;
 
     // Restore original directory
     if let Some(dir) = original_dir {
@@ -452,7 +444,11 @@ async fn run_claude_query(
         match msg {
             SdkMessage::Assistant(assistant_msg) => {
                 // Stream text content - message is serde_json::Value
-                if let Some(content) = assistant_msg.message.get("content").and_then(|c| c.as_array()) {
+                if let Some(content) = assistant_msg
+                    .message
+                    .get("content")
+                    .and_then(|c| c.as_array())
+                {
                     for block in content {
                         if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
                             let _ = state.events_tx.send(TaskEvent::Chunk {

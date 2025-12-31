@@ -1,19 +1,30 @@
+use chrono::Local;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Instant;
-use chrono::Local;
-use serde::{Deserialize, Serialize};
-use tracing::{info, warn, debug};
+use tracing::{debug, info, warn};
 
 use crate::auth;
-use crate::claude::{ClaudeToken, ClaudeEvent, ClaudeUsageData, run_claude_planning, run_claude_execution, run_claude_review};
+use crate::checkpoint::SessionCheckpoint;
+use crate::claude::{
+    ClaudeEvent, ClaudeToken, ClaudeUsageData, run_claude_execution, run_claude_planning,
+    run_claude_review,
+};
 use crate::logger::{SessionLogger, generate_session_id};
 use crate::preflight::PreflightConfig;
-use crate::report::{AfterActionReport, collect_session_stats, generate_suggested_next_steps, generate_questions_for_user};
-use crate::streaming::{StreamToken, query_issue_summary, stream_gpt_oss_analysis, parse_harmony_stream, extract_final_content};
+use crate::report::{
+    AfterActionReport, collect_session_stats, generate_questions_for_user,
+    generate_suggested_next_steps,
+};
+use crate::streaming::{
+    StreamToken, extract_final_content, parse_harmony_stream, query_issue_summary,
+    stream_gpt_oss_analysis,
+};
 use crate::utils::shorten_path;
-use crate::checkpoint::SessionCheckpoint;
-use crate::verification::{TerminationChecklist, VerificationRunner, generate_fix_prompt, should_force_stop};
+use crate::verification::{
+    TerminationChecklist, VerificationRunner, generate_fix_prompt, should_force_stop,
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub enum ClaudeModel {
@@ -37,7 +48,7 @@ fn extract_tool_display(name: &str, params: &str) -> String {
     } else {
         params.to_string()
     };
-    
+
     match name {
         "Read" | "read" | "Edit" | "edit" | "Write" | "write" => {
             shorten_path(&PathBuf::from(&truncated))
@@ -92,11 +103,7 @@ impl StartupSection {
                 let directive_count = details
                     .iter()
                     .find(|l| l.text.contains("directives"))
-                    .and_then(|l| {
-                        l.text
-                            .split_whitespace()
-                            .find(|s| s.parse::<u32>().is_ok())
-                    })
+                    .and_then(|l| l.text.split_whitespace().find(|s| s.parse::<u32>().is_ok()))
                     .unwrap_or("0");
                 format!("Preflight complete ({} directives)", directive_count)
             }
@@ -242,13 +249,13 @@ impl StartupState {
     pub fn new() -> Self {
         Self::with_model(ClaudeModel::default())
     }
-    
+
     pub fn with_model(model: ClaudeModel) -> Self {
         let session_id = generate_session_id();
         let session_logger = SessionLogger::new(&session_id).ok();
         let start_time = Local::now();
         let start_instant = Instant::now();
-        
+
         Self {
             lines: vec![],
             phase: StartupPhase::CheckingOpenCode,
@@ -370,7 +377,11 @@ impl StartupState {
                     return;
                 }
 
-                if !self.lines.iter().any(|l| l.text.contains("OpenAgents auth")) {
+                if !self
+                    .lines
+                    .iter()
+                    .any(|l| l.text.contains("OpenAgents auth"))
+                {
                     self.add_line("Checking OpenAgents auth...", LogStatus::Pending, elapsed);
                 }
 
@@ -420,7 +431,11 @@ impl StartupState {
                 }
 
                 if !self.lines.iter().any(|l| l.text.contains("Copying")) {
-                    self.add_line("Copying credentials from OpenCode...", LogStatus::Pending, elapsed);
+                    self.add_line(
+                        "Copying credentials from OpenCode...",
+                        LogStatus::Pending,
+                        elapsed,
+                    );
                 }
 
                 if phase_time > 0.8 {
@@ -438,7 +453,10 @@ impl StartupState {
                                 elapsed,
                             );
                             self.add_line(
-                                &format!("  Saved to {}", shorten_path(&auth::openagents_auth_path())),
+                                &format!(
+                                    "  Saved to {}",
+                                    shorten_path(&auth::openagents_auth_path())
+                                ),
                                 LogStatus::Success,
                                 elapsed,
                             );
@@ -458,7 +476,11 @@ impl StartupState {
             }
 
             StartupPhase::AuthComplete => {
-                if phase_time > 0.3 && !self.lines.iter().any(|l| l.text.contains("Auth ready") || l.text.contains("Anthropic auth not")) {
+                if phase_time > 0.3
+                    && !self.lines.iter().any(|l| {
+                        l.text.contains("Auth ready") || l.text.contains("Anthropic auth not")
+                    })
+                {
                     if auth::has_anthropic_auth() {
                         info!("Anthropic auth is ready");
                         self.add_line("", LogStatus::Info, elapsed);
@@ -479,7 +501,11 @@ impl StartupState {
                     return;
                 }
 
-                if !self.lines.iter().any(|l| l.text.contains("Running preflight")) {
+                if !self
+                    .lines
+                    .iter()
+                    .any(|l| l.text.contains("Running preflight"))
+                {
                     self.add_line("", LogStatus::Info, elapsed);
                     self.add_line("Running preflight checks...", LogStatus::Pending, elapsed);
                 }
@@ -522,13 +548,21 @@ impl StartupState {
                     return;
                 }
 
-                if !self.lines.iter().any(|l| l.text.contains("Checking local pylon")) {
+                if !self
+                    .lines
+                    .iter()
+                    .any(|l| l.text.contains("Checking local pylon"))
+                {
                     self.add_line("", LogStatus::Info, elapsed);
                     self.add_line("Checking local pylon...", LogStatus::Pending, elapsed);
                 }
 
                 if phase_time > 0.6 {
-                    if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Checking local pylon")) {
+                    if let Some(line) = self
+                        .lines
+                        .iter_mut()
+                        .find(|l| l.text.contains("Checking local pylon"))
+                    {
                         line.status = LogStatus::Info;
                     }
 
@@ -541,13 +575,25 @@ impl StartupState {
                                 let hours = uptime / 3600;
                                 let mins = (uptime % 3600) / 60;
                                 if hours > 0 {
-                                    self.add_line(&format!("  Uptime: {}h {}m", hours, mins), LogStatus::Info, elapsed);
+                                    self.add_line(
+                                        &format!("  Uptime: {}h {}m", hours, mins),
+                                        LogStatus::Info,
+                                        elapsed,
+                                    );
                                 } else {
-                                    self.add_line(&format!("  Uptime: {}m", mins), LogStatus::Info, elapsed);
+                                    self.add_line(
+                                        &format!("  Uptime: {}m", mins),
+                                        LogStatus::Info,
+                                        elapsed,
+                                    );
                                 }
                             }
                             if info.jobs_completed > 0 {
-                                self.add_line(&format!("  Jobs completed: {}", info.jobs_completed), LogStatus::Info, elapsed);
+                                self.add_line(
+                                    &format!("  Jobs completed: {}", info.jobs_completed),
+                                    LogStatus::Info,
+                                    elapsed,
+                                );
                             }
                         }
 
@@ -563,13 +609,18 @@ impl StartupState {
             StartupPhase::StartingPylon => {
                 if !self.lines.iter().any(|l| l.text.contains("Starting pylon")) {
                     if !crate::pylon_integration::pylon_identity_exists() {
-                        self.add_line("Initializing pylon identity...", LogStatus::Pending, elapsed);
+                        self.add_line(
+                            "Initializing pylon identity...",
+                            LogStatus::Pending,
+                            elapsed,
+                        );
                         match crate::pylon_integration::init_pylon_identity() {
                             Ok(()) => {
                                 if let Some(line) = self
                                     .lines
                                     .iter_mut()
-                                    .find(|l| l.text.contains("Initializing pylon identity")) {
+                                    .find(|l| l.text.contains("Initializing pylon identity"))
+                                {
                                     line.status = LogStatus::Success;
                                 }
                                 self.add_line(
@@ -582,7 +633,8 @@ impl StartupState {
                                 if let Some(line) = self
                                     .lines
                                     .iter_mut()
-                                    .find(|l| l.text.contains("Initializing pylon identity")) {
+                                    .find(|l| l.text.contains("Initializing pylon identity"))
+                                {
                                     line.status = LogStatus::Error;
                                 }
                                 self.add_line(
@@ -611,14 +663,22 @@ impl StartupState {
                 }
 
                 if phase_time > 2.0 {
-                    if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Starting pylon")) {
+                    if let Some(line) = self
+                        .lines
+                        .iter_mut()
+                        .find(|l| l.text.contains("Starting pylon"))
+                    {
                         line.status = LogStatus::Info;
                     }
 
                     if crate::pylon_integration::check_pylon_running() {
                         self.add_line("  Pylon started successfully", LogStatus::Success, elapsed);
                     } else {
-                        self.add_line("  Pylon not started (continuing anyway)", LogStatus::Info, elapsed);
+                        self.add_line(
+                            "  Pylon not started (continuing anyway)",
+                            LogStatus::Info,
+                            elapsed,
+                        );
                     }
 
                     self.phase = StartupPhase::DetectingCompute;
@@ -631,13 +691,21 @@ impl StartupState {
                     return;
                 }
 
-                if !self.lines.iter().any(|l| l.text.contains("Detecting compute backends")) {
+                if !self
+                    .lines
+                    .iter()
+                    .any(|l| l.text.contains("Detecting compute backends"))
+                {
                     self.add_line("", LogStatus::Info, elapsed);
                     self.add_line("Detecting compute backends...", LogStatus::Pending, elapsed);
                 }
 
                 if phase_time > 0.8 {
-                    if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Detecting compute backends")) {
+                    if let Some(line) = self
+                        .lines
+                        .iter_mut()
+                        .find(|l| l.text.contains("Detecting compute backends"))
+                    {
                         line.status = LogStatus::Info;
                     }
 
@@ -653,7 +721,12 @@ impl StartupState {
                                 format!(" - {}", backend.models.join(", "))
                             };
                             self.add_line(
-                                &format!("  [OK] {} ({}){}", backend.name, backend.endpoint.as_deref().unwrap_or(""), models_str),
+                                &format!(
+                                    "  [OK] {} ({}){}",
+                                    backend.name,
+                                    backend.endpoint.as_deref().unwrap_or(""),
+                                    models_str
+                                ),
                                 LogStatus::Success,
                                 elapsed,
                             );
@@ -669,21 +742,34 @@ impl StartupState {
 
                     // Discover swarm providers (synchronous for now)
                     self.add_line("", LogStatus::Info, elapsed);
-                    self.add_line("Querying NIP-89 swarm providers...", LogStatus::Pending, elapsed);
+                    self.add_line(
+                        "Querying NIP-89 swarm providers...",
+                        LogStatus::Pending,
+                        elapsed,
+                    );
                     let swarm_providers = crate::pylon_integration::discover_swarm_providers();
 
-                    if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Querying NIP-89")) {
+                    if let Some(line) = self
+                        .lines
+                        .iter_mut()
+                        .find(|l| l.text.contains("Querying NIP-89"))
+                    {
                         line.status = LogStatus::Info;
                     }
 
                     if swarm_providers.is_empty() {
                         self.add_line("  No remote providers discovered", LogStatus::Info, elapsed);
                     } else {
-                        self.add_line(&format!("  Found {} remote provider(s)", swarm_providers.len()), LogStatus::Success, elapsed);
+                        self.add_line(
+                            &format!("  Found {} remote provider(s)", swarm_providers.len()),
+                            LogStatus::Success,
+                            elapsed,
+                        );
                     }
 
                     // Get cloud providers from preflight
-                    let cloud_providers = self.preflight_config
+                    let cloud_providers = self
+                        .preflight_config
                         .as_ref()
                         .map(|c| c.inference.cloud_providers.clone())
                         .unwrap_or_default();
@@ -709,14 +795,19 @@ impl StartupState {
                     // Display compute mix summary
                     // Clone the data we need to avoid borrow issues
                     let mix_summary = self.compute_mix.as_ref().map(|mix| {
-                        let local_names: Vec<_> = mix.local_backends
+                        let local_names: Vec<_> = mix
+                            .local_backends
                             .iter()
                             .filter(|b| b.available)
                             .map(|b| {
                                 if b.models.is_empty() {
                                     b.name.clone()
                                 } else {
-                                    format!("{} ({})", b.name, b.models.first().unwrap_or(&String::new()))
+                                    format!(
+                                        "{} ({})",
+                                        b.name,
+                                        b.models.first().unwrap_or(&String::new())
+                                    )
                                 }
                             })
                             .collect();
@@ -731,17 +822,29 @@ impl StartupState {
 
                         // Local summary
                         if !local_names.is_empty() {
-                            self.add_line(&format!("  Local: {}", local_names.join(", ")), LogStatus::Success, elapsed);
+                            self.add_line(
+                                &format!("  Local: {}", local_names.join(", ")),
+                                LogStatus::Success,
+                                elapsed,
+                            );
                         }
 
                         // Cloud summary
                         if !cloud_providers.is_empty() {
-                            self.add_line(&format!("  Cloud: {}", cloud_providers.join(", ")), LogStatus::Success, elapsed);
+                            self.add_line(
+                                &format!("  Cloud: {}", cloud_providers.join(", ")),
+                                LogStatus::Success,
+                                elapsed,
+                            );
                         }
 
                         // Swarm summary
                         if swarm_count > 0 {
-                            self.add_line(&format!("  Swarm: {} providers via NIP-89", swarm_count), LogStatus::Success, elapsed);
+                            self.add_line(
+                                &format!("  Swarm: {} providers via NIP-89", swarm_count),
+                                LogStatus::Success,
+                                elapsed,
+                            );
                         }
                     }
 
@@ -760,16 +863,24 @@ impl StartupState {
             }
 
             StartupPhase::AnalyzingIssues => {
-                if !self.lines.iter().any(|l| l.text.contains("Analyzing issues")) {
+                if !self
+                    .lines
+                    .iter()
+                    .any(|l| l.text.contains("Analyzing issues"))
+                {
                     self.add_line("", LogStatus::Info, elapsed);
-                    self.add_line("Analyzing issues with gpt-oss...", LogStatus::Pending, elapsed);
+                    self.add_line(
+                        "Analyzing issues with gpt-oss...",
+                        LogStatus::Pending,
+                        elapsed,
+                    );
 
                     let cwd = std::env::current_dir().unwrap_or_default();
                     if let Some(summary) = query_issue_summary(&cwd) {
                         self.issue_summary = Some(summary.clone());
                         let (tx, rx) = mpsc::channel();
                         self.stream_receiver = Some(rx);
-                        
+
                         std::thread::spawn(move || {
                             stream_gpt_oss_analysis(&summary, tx);
                         });
@@ -807,15 +918,19 @@ impl StartupState {
                         StreamToken::Done => {
                             self.finalize_streaming();
                             self.stream_receiver = None;
-                            
+
                             let assessment = extract_final_content(&self.gpt_oss_buffer);
                             self.gpt_oss_assessment = Some(assessment);
-                            
+
                             if auth::has_anthropic_auth() {
                                 self.phase = StartupPhase::PlanningWithClaude;
                             } else {
                                 self.add_line("", LogStatus::Info, elapsed);
-                                self.add_line("Claude auth not available - skipping planning.", LogStatus::Info, elapsed);
+                                self.add_line(
+                                    "Claude auth not available - skipping planning.",
+                                    LogStatus::Info,
+                                    elapsed,
+                                );
                                 self.add_line("", LogStatus::Info, elapsed);
                                 self.add_line("Ready for tasks.", LogStatus::Success, elapsed);
                                 self.phase = StartupPhase::Complete;
@@ -836,17 +951,27 @@ impl StartupState {
                         }
                     }
                 }
-                if done { return; }
+                if done {
+                    return;
+                }
             }
 
             StartupPhase::PlanningWithClaude => {
-                if !self.lines.iter().any(|l| l.text.contains("Creating plan with Claude")) {
+                if !self
+                    .lines
+                    .iter()
+                    .any(|l| l.text.contains("Creating plan with Claude"))
+                {
                     self.add_line("", LogStatus::Info, elapsed);
                     let iteration = self.iteration;
                     if iteration == 1 {
                         self.add_line("Creating plan with Claude...", LogStatus::Pending, elapsed);
                     } else {
-                        self.add_line(&format!("Creating plan (iteration {}) with Claude...", iteration), LogStatus::Pending, elapsed);
+                        self.add_line(
+                            &format!("Creating plan (iteration {}) with Claude...", iteration),
+                            LogStatus::Pending,
+                            elapsed,
+                        );
                     }
 
                     let assessment = self.gpt_oss_assessment.clone().unwrap_or_default();
@@ -855,7 +980,7 @@ impl StartupState {
                     let model = self.model;
                     let logger = self.session_logger.clone();
                     let resume_session_id = self.claude_session_id.clone();
-                    
+
                     let (tx, rx) = mpsc::channel();
                     self.claude_receiver = Some(rx);
 
@@ -930,14 +1055,29 @@ impl StartupState {
                             });
                             self.update_claude_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolDone { name, output, is_error } => {
+                        ClaudeToken::ToolDone {
+                            name,
+                            output,
+                            is_error,
+                        } => {
                             // Find the matching tool and get its params
-                            let params = self.claude_events.iter().rev()
-                                .find_map(|e| {
-                                    if let ClaudeEvent::Tool { name: n, params, done, .. } = e {
-                                        if n == &name && !*done { Some(params.clone()) } else { None }
-                                    } else { None }
-                                });
+                            let params = self.claude_events.iter().rev().find_map(|e| {
+                                if let ClaudeEvent::Tool {
+                                    name: n,
+                                    params,
+                                    done,
+                                    ..
+                                } = e
+                                {
+                                    if n == &name && !*done {
+                                        Some(params.clone())
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            });
                             // Mark original as done (for done counting)
                             for event in self.claude_events.iter_mut().rev() {
                                 if let ClaudeEvent::Tool { name: n, done, .. } = event {
@@ -959,7 +1099,10 @@ impl StartupState {
                             }
                             self.update_claude_streaming_line(elapsed);
                         }
-                        ClaudeToken::Progress { tool_name, elapsed_secs } => {
+                        ClaudeToken::Progress {
+                            tool_name,
+                            elapsed_secs,
+                        } => {
                             self.claude_events.push(ClaudeEvent::ToolProgress {
                                 tool_name,
                                 elapsed_secs,
@@ -977,39 +1120,62 @@ impl StartupState {
                         }
                         ClaudeToken::Done(plan) => {
                             self.claude_receiver = None;
-                            if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Creating plan with Claude")) {
+                            if let Some(line) = self
+                                .lines
+                                .iter_mut()
+                                .find(|l| l.text.contains("Creating plan with Claude"))
+                            {
                                 line.status = LogStatus::Success;
                             }
-                            
+
                             let now = Local::now();
                             let date_dir = now.format("%Y%m%d").to_string();
                             let time_slug = now.format("%H%M%S").to_string();
-                            
+
                             let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-                            let plans_dir = PathBuf::from(&home).join(".openagents/plans").join(&date_dir);
-                            
+                            let plans_dir = PathBuf::from(&home)
+                                .join(".openagents/plans")
+                                .join(&date_dir);
+
                             if let Err(e) = std::fs::create_dir_all(&plans_dir) {
-                                self.add_line(&format!("  Error creating dir: {}", e), LogStatus::Error, elapsed);
+                                self.add_line(
+                                    &format!("  Error creating dir: {}", e),
+                                    LogStatus::Error,
+                                    elapsed,
+                                );
                                 self.phase = StartupPhase::Complete;
                                 self.phase_started = elapsed;
                                 return;
                             }
-                            
-                            let plan_file = plans_dir.join(format!("{}-autopilot-plan.md", time_slug));
+
+                            let plan_file =
+                                plans_dir.join(format!("{}-autopilot-plan.md", time_slug));
                             self.plan_path = Some(plan_file.clone());
-                            
+
                             if let Err(e) = std::fs::write(&plan_file, &plan) {
-                                self.add_line(&format!("  Error writing plan: {}", e), LogStatus::Error, elapsed);
+                                self.add_line(
+                                    &format!("  Error writing plan: {}", e),
+                                    LogStatus::Error,
+                                    elapsed,
+                                );
                             } else {
-                                self.add_line(&format!("  Plan saved: {}", shorten_path(&plan_file)), LogStatus::Success, elapsed);
+                                self.add_line(
+                                    &format!("  Plan saved: {}", shorten_path(&plan_file)),
+                                    LogStatus::Success,
+                                    elapsed,
+                                );
                             }
-                            
+
                             self.phase = StartupPhase::WritingPlan;
                             self.phase_started = elapsed;
                             return;
                         }
                         ClaudeToken::Error(e) => {
-                            self.add_line(&format!("  Claude error: {}", e), LogStatus::Error, elapsed);
+                            self.add_line(
+                                &format!("  Claude error: {}", e),
+                                LogStatus::Error,
+                                elapsed,
+                            );
                             self.claude_receiver = None;
                             self.add_line("", LogStatus::Info, elapsed);
                             self.add_line("Ready for tasks.", LogStatus::Success, elapsed);
@@ -1019,8 +1185,12 @@ impl StartupState {
                         }
                         ClaudeToken::Usage(usage) => {
                             // Accumulate usage data for session stats
-                            tracing::info!("[STARTUP] Received Usage token: input={}, output={}, cost=${:.4}",
-                                usage.input_tokens, usage.output_tokens, usage.total_cost_usd);
+                            tracing::info!(
+                                "[STARTUP] Received Usage token: input={}, output={}, cost=${:.4}",
+                                usage.input_tokens,
+                                usage.output_tokens,
+                                usage.total_cost_usd
+                            );
                             self.session_usage.input_tokens += usage.input_tokens;
                             self.session_usage.output_tokens += usage.output_tokens;
                             self.session_usage.cache_read_tokens += usage.cache_read_tokens;
@@ -1031,8 +1201,12 @@ impl StartupState {
                             self.session_usage.num_turns += usage.num_turns;
                             self.session_usage.context_window = usage.context_window;
                             self.session_usage.model = usage.model.clone();
-                            tracing::info!("[STARTUP] Accumulated usage: input={}, output={}, cost=${:.4}",
-                                self.session_usage.input_tokens, self.session_usage.output_tokens, self.session_usage.total_cost_usd);
+                            tracing::info!(
+                                "[STARTUP] Accumulated usage: input={}, output={}, cost=${:.4}",
+                                self.session_usage.input_tokens,
+                                self.session_usage.output_tokens,
+                                self.session_usage.total_cost_usd
+                            );
                         }
                     }
                 }
@@ -1040,21 +1214,22 @@ impl StartupState {
 
             StartupPhase::WritingPlan => {
                 self.add_line("", LogStatus::Info, elapsed);
-                
-                let summary_lines: Vec<String> = self.claude_full_text
+
+                let summary_lines: Vec<String> = self
+                    .claude_full_text
                     .lines()
                     .filter(|l| l.starts_with("##") || l.starts_with("- ") || l.starts_with("1."))
                     .take(8)
                     .map(|s| s.to_string())
                     .collect();
-                
+
                 if !summary_lines.is_empty() {
                     self.add_line("Plan summary:", LogStatus::Info, elapsed);
                     for line in summary_lines {
                         self.add_line(&format!("  {}", line), LogStatus::Info, elapsed);
                     }
                 }
-                
+
                 self.add_line("", LogStatus::Info, elapsed);
                 self.phase = StartupPhase::ExecutingPlan;
                 self.phase_started = elapsed;
@@ -1072,21 +1247,25 @@ impl StartupState {
                     if iteration == 1 {
                         self.add_line("Executing plan with Claude...", LogStatus::Pending, elapsed);
                     } else {
-                        self.add_line(&format!("Executing plan (iteration {}) with Claude...", iteration), LogStatus::Pending, elapsed);
+                        self.add_line(
+                            &format!("Executing plan (iteration {}) with Claude...", iteration),
+                            LogStatus::Pending,
+                            elapsed,
+                        );
                     }
-                    
+
                     let plan = self.claude_full_text.clone();
                     let model = self.model;
                     let logger = self.session_logger.clone();
                     let resume_session_id = self.exec_session_id.clone();
-                    
+
                     let (tx, rx) = mpsc::channel();
                     self.exec_receiver = Some(rx);
-                    
+
                     std::thread::spawn(move || {
                         run_claude_execution(&plan, model, resume_session_id, tx, logger);
                     });
-                    
+
                     self.phase = StartupPhase::StreamingExecution;
                     self.phase_started = elapsed;
                 }
@@ -1136,14 +1315,29 @@ impl StartupState {
                             });
                             self.update_exec_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolDone { name, output, is_error } => {
+                        ClaudeToken::ToolDone {
+                            name,
+                            output,
+                            is_error,
+                        } => {
                             // Find the matching tool and get its params
-                            let params = self.exec_events.iter().rev()
-                                .find_map(|e| {
-                                    if let ClaudeEvent::Tool { name: n, params, done, .. } = e {
-                                        if n == &name && !*done { Some(params.clone()) } else { None }
-                                    } else { None }
-                                });
+                            let params = self.exec_events.iter().rev().find_map(|e| {
+                                if let ClaudeEvent::Tool {
+                                    name: n,
+                                    params,
+                                    done,
+                                    ..
+                                } = e
+                                {
+                                    if n == &name && !*done {
+                                        Some(params.clone())
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            });
                             // Mark original as done
                             for event in self.exec_events.iter_mut().rev() {
                                 if let ClaudeEvent::Tool { name: n, done, .. } = event {
@@ -1165,7 +1359,10 @@ impl StartupState {
                             }
                             self.update_exec_streaming_line(elapsed);
                         }
-                        ClaudeToken::Progress { tool_name, elapsed_secs } => {
+                        ClaudeToken::Progress {
+                            tool_name,
+                            elapsed_secs,
+                        } => {
                             self.exec_events.push(ClaudeEvent::ToolProgress {
                                 tool_name,
                                 elapsed_secs,
@@ -1183,18 +1380,30 @@ impl StartupState {
                         }
                         ClaudeToken::Done(_result) => {
                             self.exec_receiver = None;
-                            if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Executing plan")) {
+                            if let Some(line) = self
+                                .lines
+                                .iter_mut()
+                                .find(|l| l.text.contains("Executing plan"))
+                            {
                                 line.status = LogStatus::Success;
                             }
-                            
+
                             self.add_line("", LogStatus::Info, elapsed);
-                            self.add_line(&format!("Execution complete (iteration {}).", self.iteration), LogStatus::Success, elapsed);
+                            self.add_line(
+                                &format!("Execution complete (iteration {}).", self.iteration),
+                                LogStatus::Success,
+                                elapsed,
+                            );
                             self.phase = StartupPhase::ReviewingWork;
                             self.phase_started = elapsed;
                             return;
                         }
                         ClaudeToken::Error(e) => {
-                            self.add_line(&format!("  Execution error: {}", e), LogStatus::Error, elapsed);
+                            self.add_line(
+                                &format!("  Execution error: {}", e),
+                                LogStatus::Error,
+                                elapsed,
+                            );
                             self.exec_receiver = None;
                             self.add_line("", LogStatus::Info, elapsed);
                             self.add_line("Execution failed.", LogStatus::Error, elapsed);
@@ -1223,18 +1432,22 @@ impl StartupState {
                 let review_marker = format!("Reviewing work (iteration {})", self.iteration);
                 if !self.lines.iter().any(|l| l.text.contains(&review_marker)) {
                     self.add_line("", LogStatus::Info, elapsed);
-                    self.add_line(&format!("Reviewing work (iteration {})...", self.iteration), LogStatus::Pending, elapsed);
-                    
+                    self.add_line(
+                        &format!("Reviewing work (iteration {})...", self.iteration),
+                        LogStatus::Pending,
+                        elapsed,
+                    );
+
                     let plan = self.claude_full_text.clone();
                     let exec_result = self.exec_full_text.clone();
                     let iteration = self.iteration;
                     let model = self.model;
                     let logger = self.session_logger.clone();
                     let resume_session_id = self.review_session_id.clone();
-                    
+
                     let (tx, rx) = mpsc::channel();
                     self.review_receiver = Some(rx);
-                    
+
                     std::thread::spawn(move || {
                         run_claude_review(
                             &plan,
@@ -1246,7 +1459,7 @@ impl StartupState {
                             logger,
                         );
                     });
-                    
+
                     self.phase = StartupPhase::StreamingReview;
                     self.phase_started = elapsed;
                 }
@@ -1306,14 +1519,29 @@ impl StartupState {
                             });
                             self.update_review_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolDone { name, output, is_error } => {
+                        ClaudeToken::ToolDone {
+                            name,
+                            output,
+                            is_error,
+                        } => {
                             // Find the matching tool and get its params
-                            let params = self.review_events.iter().rev()
-                                .find_map(|e| {
-                                    if let ClaudeEvent::Tool { name: n, params, done, .. } = e {
-                                        if n == &name && !*done { Some(params.clone()) } else { None }
-                                    } else { None }
-                                });
+                            let params = self.review_events.iter().rev().find_map(|e| {
+                                if let ClaudeEvent::Tool {
+                                    name: n,
+                                    params,
+                                    done,
+                                    ..
+                                } = e
+                                {
+                                    if n == &name && !*done {
+                                        Some(params.clone())
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            });
                             // Mark original as done
                             for event in self.review_events.iter_mut().rev() {
                                 if let ClaudeEvent::Tool { name: n, done, .. } = event {
@@ -1335,7 +1563,10 @@ impl StartupState {
                             }
                             self.update_review_streaming_line(elapsed);
                         }
-                        ClaudeToken::Progress { tool_name, elapsed_secs } => {
+                        ClaudeToken::Progress {
+                            tool_name,
+                            elapsed_secs,
+                        } => {
                             self.review_events.push(ClaudeEvent::ToolProgress {
                                 tool_name,
                                 elapsed_secs,
@@ -1353,18 +1584,30 @@ impl StartupState {
                         }
                         ClaudeToken::Done(review_result) => {
                             self.review_receiver = None;
-                            if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Reviewing work")) {
+                            if let Some(line) = self
+                                .lines
+                                .iter_mut()
+                                .find(|l| l.text.contains("Reviewing work"))
+                            {
                                 line.status = LogStatus::Success;
                             }
-                            
+
                             if review_result.contains("CYCLE COMPLETE") {
                                 self.add_line("", LogStatus::Info, elapsed);
-                                self.add_line("Review says work complete. Running verification...", LogStatus::Info, elapsed);
+                                self.add_line(
+                                    "Review says work complete. Running verification...",
+                                    LogStatus::Info,
+                                    elapsed,
+                                );
                                 self.phase = StartupPhase::VerifyingCompletion;
                                 self.phase_started = elapsed;
                             } else {
                                 self.add_line("", LogStatus::Info, elapsed);
-                                self.add_line("Review complete. Starting next iteration...", LogStatus::Info, elapsed);
+                                self.add_line(
+                                    "Review complete. Starting next iteration...",
+                                    LogStatus::Info,
+                                    elapsed,
+                                );
 
                                 self.iteration += 1;
                                 self.claude_session_id = None;
@@ -1377,14 +1620,18 @@ impl StartupState {
                                 self.exec_full_text.clear();
                                 self.review_events.clear();
                                 self.review_full_text.clear();
-                                
+
                                 self.phase = StartupPhase::WritingPlan;
                                 self.phase_started = elapsed;
                             }
                             return;
                         }
                         ClaudeToken::Error(e) => {
-                            self.add_line(&format!("  Review error: {}", e), LogStatus::Error, elapsed);
+                            self.add_line(
+                                &format!("  Review error: {}", e),
+                                LogStatus::Error,
+                                elapsed,
+                            );
                             self.review_receiver = None;
                             self.add_line("", LogStatus::Info, elapsed);
                             self.add_line("Review failed. Stopping.", LogStatus::Error, elapsed);
@@ -1412,14 +1659,18 @@ impl StartupState {
             StartupPhase::VerifyingCompletion => {
                 if self.verification_runner.is_none() {
                     self.add_line("", LogStatus::Info, elapsed);
-                    self.add_line("Running verification checks...", LogStatus::Pending, elapsed);
-                    
+                    self.add_line(
+                        "Running verification checks...",
+                        LogStatus::Pending,
+                        elapsed,
+                    );
+
                     let cwd = std::env::current_dir().unwrap_or_default();
                     self.verification_runner = Some(VerificationRunner::new(&cwd));
                 }
-                
+
                 let mut runner = self.verification_runner.take().unwrap();
-                
+
                 let default_checklist = TerminationChecklist {
                     build_clean: crate::verification::CheckResult::pass(""),
                     clippy_clean: crate::verification::CheckResult::pass(""),
@@ -1432,7 +1683,7 @@ impl StartupState {
                     git_clean: crate::verification::CheckResult::pass(""),
                     git_pushed: crate::verification::CheckResult::pass(""),
                 };
-                
+
                 if let Some(reason) = should_force_stop(
                     self.last_checklist.as_ref().unwrap_or(&default_checklist),
                     &runner,
@@ -1445,16 +1696,24 @@ impl StartupState {
                     self.phase_started = elapsed;
                     return;
                 }
-                
+
                 let checklist = runner.run_all_checks();
                 self.last_checklist = Some(checklist.clone());
-                
-                if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Running verification")) {
+
+                if let Some(line) = self
+                    .lines
+                    .iter_mut()
+                    .find(|l| l.text.contains("Running verification"))
+                {
                     line.status = LogStatus::Success;
                 }
-                
-                self.add_line(&format!("  {}", checklist.summary()), LogStatus::Info, elapsed);
-                
+
+                self.add_line(
+                    &format!("  {}", checklist.summary()),
+                    LogStatus::Info,
+                    elapsed,
+                );
+
                 if checklist.all_passed() {
                     self.add_line("  All checks passed!", LogStatus::Success, elapsed);
                     self.verification_runner = Some(runner);
@@ -1463,9 +1722,13 @@ impl StartupState {
                 } else {
                     let failures = checklist.failing_checks();
                     for (name, result) in &failures {
-                        self.add_line(&format!("  FAIL {}: {}", name, result.message), LogStatus::Error, elapsed);
+                        self.add_line(
+                            &format!("  FAIL {}: {}", name, result.message),
+                            LogStatus::Error,
+                            elapsed,
+                        );
                     }
-                    
+
                     let first_failure = failures.first().map(|(n, _)| *n).unwrap_or("unknown");
                     if runner.track_failure(first_failure) {
                         self.force_stopped = true;
@@ -1474,7 +1737,11 @@ impl StartupState {
                             first_failure
                         ));
                         self.add_line("", LogStatus::Info, elapsed);
-                        self.add_line("Stuck on same failure. Generating report...", LogStatus::Error, elapsed);
+                        self.add_line(
+                            "Stuck on same failure. Generating report...",
+                            LogStatus::Error,
+                            elapsed,
+                        );
                         self.verification_runner = Some(runner);
                         self.phase = StartupPhase::GeneratingReport;
                         self.phase_started = elapsed;
@@ -1490,34 +1757,50 @@ impl StartupState {
             }
 
             StartupPhase::FixingVerificationFailures => {
-                if !self.lines.iter().any(|l| l.text.contains("Fixing verification failures")) {
-                    self.add_line(&format!("Fixing verification failures (iteration {})...", self.iteration), LogStatus::Pending, elapsed);
-                    
-                    let checklist = self.last_checklist.clone().unwrap_or_else(|| TerminationChecklist {
-                        build_clean: crate::verification::CheckResult::fail("", ""),
-                        clippy_clean: crate::verification::CheckResult::fail("", ""),
-                        tests_passing: crate::verification::CheckResult::fail("", ""),
-                        coverage_adequate: crate::verification::CheckResult::fail("", ""),
-                        no_stubs: crate::verification::CheckResult::fail("", ""),
-                        todos_complete: crate::verification::CheckResult::fail("", ""),
-                        user_stories_complete: crate::verification::CheckResult::fail("", ""),
-                        issues_complete: crate::verification::CheckResult::fail("", ""),
-                        git_clean: crate::verification::CheckResult::fail("", ""),
-                        git_pushed: crate::verification::CheckResult::fail("", ""),
-                    });
-                    
+                if !self
+                    .lines
+                    .iter()
+                    .any(|l| l.text.contains("Fixing verification failures"))
+                {
+                    self.add_line(
+                        &format!(
+                            "Fixing verification failures (iteration {})...",
+                            self.iteration
+                        ),
+                        LogStatus::Pending,
+                        elapsed,
+                    );
+
+                    let checklist =
+                        self.last_checklist
+                            .clone()
+                            .unwrap_or_else(|| TerminationChecklist {
+                                build_clean: crate::verification::CheckResult::fail("", ""),
+                                clippy_clean: crate::verification::CheckResult::fail("", ""),
+                                tests_passing: crate::verification::CheckResult::fail("", ""),
+                                coverage_adequate: crate::verification::CheckResult::fail("", ""),
+                                no_stubs: crate::verification::CheckResult::fail("", ""),
+                                todos_complete: crate::verification::CheckResult::fail("", ""),
+                                user_stories_complete: crate::verification::CheckResult::fail(
+                                    "", "",
+                                ),
+                                issues_complete: crate::verification::CheckResult::fail("", ""),
+                                git_clean: crate::verification::CheckResult::fail("", ""),
+                                git_pushed: crate::verification::CheckResult::fail("", ""),
+                            });
+
                     let fix_prompt = generate_fix_prompt(&checklist, self.iteration);
                     let model = self.model;
                     let logger = self.session_logger.clone();
                     let resume_session_id = self.fix_session_id.clone();
-                    
+
                     let (tx, rx) = mpsc::channel();
                     self.fix_receiver = Some(rx);
-                    
+
                     std::thread::spawn(move || {
                         run_claude_execution(&fix_prompt, model, resume_session_id, tx, logger);
                     });
-                    
+
                     self.phase = StartupPhase::StreamingFix;
                     self.phase_started = elapsed;
                 }
@@ -1527,18 +1810,25 @@ impl StartupState {
                 if self.fix_receiver.is_none() {
                     if let Some(session_id) = self.fix_session_id.clone() {
                         let fix_prompt = generate_fix_prompt(
-                            &self.last_checklist.clone().unwrap_or_else(|| TerminationChecklist {
-                                build_clean: crate::verification::CheckResult::fail("", ""),
-                                clippy_clean: crate::verification::CheckResult::fail("", ""),
-                                tests_passing: crate::verification::CheckResult::fail("", ""),
-                                coverage_adequate: crate::verification::CheckResult::fail("", ""),
-                                no_stubs: crate::verification::CheckResult::fail("", ""),
-                                todos_complete: crate::verification::CheckResult::fail("", ""),
-                                user_stories_complete: crate::verification::CheckResult::fail("", ""),
-                                issues_complete: crate::verification::CheckResult::fail("", ""),
-                                git_clean: crate::verification::CheckResult::fail("", ""),
-                                git_pushed: crate::verification::CheckResult::fail("", ""),
-                            }),
+                            &self
+                                .last_checklist
+                                .clone()
+                                .unwrap_or_else(|| TerminationChecklist {
+                                    build_clean: crate::verification::CheckResult::fail("", ""),
+                                    clippy_clean: crate::verification::CheckResult::fail("", ""),
+                                    tests_passing: crate::verification::CheckResult::fail("", ""),
+                                    coverage_adequate: crate::verification::CheckResult::fail(
+                                        "", "",
+                                    ),
+                                    no_stubs: crate::verification::CheckResult::fail("", ""),
+                                    todos_complete: crate::verification::CheckResult::fail("", ""),
+                                    user_stories_complete: crate::verification::CheckResult::fail(
+                                        "", "",
+                                    ),
+                                    issues_complete: crate::verification::CheckResult::fail("", ""),
+                                    git_clean: crate::verification::CheckResult::fail("", ""),
+                                    git_pushed: crate::verification::CheckResult::fail("", ""),
+                                }),
                             self.iteration,
                         );
                         let model = self.model;
@@ -1581,14 +1871,29 @@ impl StartupState {
                             });
                             self.update_fix_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolDone { name, output, is_error } => {
+                        ClaudeToken::ToolDone {
+                            name,
+                            output,
+                            is_error,
+                        } => {
                             // Find the matching tool and get its params
-                            let params = self.fix_events.iter().rev()
-                                .find_map(|e| {
-                                    if let ClaudeEvent::Tool { name: n, params, done, .. } = e {
-                                        if n == &name && !*done { Some(params.clone()) } else { None }
-                                    } else { None }
-                                });
+                            let params = self.fix_events.iter().rev().find_map(|e| {
+                                if let ClaudeEvent::Tool {
+                                    name: n,
+                                    params,
+                                    done,
+                                    ..
+                                } = e
+                                {
+                                    if n == &name && !*done {
+                                        Some(params.clone())
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            });
                             // Mark original as done
                             for event in self.fix_events.iter_mut().rev() {
                                 if let ClaudeEvent::Tool { name: n, done, .. } = event {
@@ -1610,7 +1915,10 @@ impl StartupState {
                             }
                             self.update_fix_streaming_line(elapsed);
                         }
-                        ClaudeToken::Progress { tool_name, elapsed_secs } => {
+                        ClaudeToken::Progress {
+                            tool_name,
+                            elapsed_secs,
+                        } => {
                             self.fix_events.push(ClaudeEvent::ToolProgress {
                                 tool_name,
                                 elapsed_secs,
@@ -1628,23 +1936,35 @@ impl StartupState {
                         }
                         ClaudeToken::Done(_result) => {
                             self.fix_receiver = None;
-                            if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Fixing verification")) {
+                            if let Some(line) = self
+                                .lines
+                                .iter_mut()
+                                .find(|l| l.text.contains("Fixing verification"))
+                            {
                                 line.status = LogStatus::Success;
                             }
-                            
+
                             self.add_line("", LogStatus::Info, elapsed);
-                            self.add_line("Fix attempt complete. Re-verifying...", LogStatus::Info, elapsed);
-                            
+                            self.add_line(
+                                "Fix attempt complete. Re-verifying...",
+                                LogStatus::Info,
+                                elapsed,
+                            );
+
                             self.iteration += 1;
                             self.fix_events.clear();
                             self.fix_full_text.clear();
-                            
+
                             self.phase = StartupPhase::VerifyingCompletion;
                             self.phase_started = elapsed;
                             return;
                         }
                         ClaudeToken::Error(e) => {
-                            self.add_line(&format!("  Fix error: {}", e), LogStatus::Error, elapsed);
+                            self.add_line(
+                                &format!("  Fix error: {}", e),
+                                LogStatus::Error,
+                                elapsed,
+                            );
                             self.fix_receiver = None;
                             self.force_stopped = true;
                             self.force_stop_reason = Some(format!("Fix attempt failed: {}", e));
@@ -1672,8 +1992,12 @@ impl StartupState {
             StartupPhase::GeneratingReport => {
                 if self.report_path.is_none() {
                     self.add_line("", LogStatus::Info, elapsed);
-                    self.add_line("Generating after-action report...", LogStatus::Pending, elapsed);
-                    
+                    self.add_line(
+                        "Generating after-action report...",
+                        LogStatus::Pending,
+                        elapsed,
+                    );
+
                     let cwd = std::env::current_dir().unwrap_or_default();
                     let stats = collect_session_stats(
                         &cwd,
@@ -1681,32 +2005,46 @@ impl StartupState {
                         self.start_time,
                         self.iteration,
                     );
-                    
-                    let checklist = self.last_checklist.clone().unwrap_or_else(|| TerminationChecklist {
-                        build_clean: crate::verification::CheckResult::pass("Not checked"),
-                        clippy_clean: crate::verification::CheckResult::pass("Not checked"),
-                        tests_passing: crate::verification::CheckResult::pass("Not checked"),
-                        coverage_adequate: crate::verification::CheckResult::pass("Not checked"),
-                        no_stubs: crate::verification::CheckResult::pass("Not checked"),
-                        todos_complete: crate::verification::CheckResult::pass("Not checked"),
-                        user_stories_complete: crate::verification::CheckResult::pass("Not checked"),
-                        issues_complete: crate::verification::CheckResult::pass("Not checked"),
-                        git_clean: crate::verification::CheckResult::pass("Not checked"),
-                        git_pushed: crate::verification::CheckResult::pass("Not checked"),
-                    });
-                    
+
+                    let checklist =
+                        self.last_checklist
+                            .clone()
+                            .unwrap_or_else(|| TerminationChecklist {
+                                build_clean: crate::verification::CheckResult::pass("Not checked"),
+                                clippy_clean: crate::verification::CheckResult::pass("Not checked"),
+                                tests_passing: crate::verification::CheckResult::pass(
+                                    "Not checked",
+                                ),
+                                coverage_adequate: crate::verification::CheckResult::pass(
+                                    "Not checked",
+                                ),
+                                no_stubs: crate::verification::CheckResult::pass("Not checked"),
+                                todos_complete: crate::verification::CheckResult::pass(
+                                    "Not checked",
+                                ),
+                                user_stories_complete: crate::verification::CheckResult::pass(
+                                    "Not checked",
+                                ),
+                                issues_complete: crate::verification::CheckResult::pass(
+                                    "Not checked",
+                                ),
+                                git_clean: crate::verification::CheckResult::pass("Not checked"),
+                                git_pushed: crate::verification::CheckResult::pass("Not checked"),
+                            });
+
                     let suggested_next_steps = generate_suggested_next_steps(&checklist);
                     let questions_for_user = generate_questions_for_user(
                         &checklist,
                         self.force_stopped,
                         &self.force_stop_reason,
                     );
-                    
-                    let log_path = self.session_logger
+
+                    let log_path = self
+                        .session_logger
                         .as_ref()
                         .map(|l| l.log_path.clone())
                         .unwrap_or_else(|| PathBuf::from("unknown"));
-                    
+
                     let report = AfterActionReport {
                         stats,
                         checklist,
@@ -1716,33 +2054,64 @@ impl StartupState {
                         questions_for_user,
                         log_path,
                     };
-                    
+
                     match report.save(&cwd) {
                         Ok(path) => {
                             self.report_path = Some(path.clone());
-                            if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Generating after-action")) {
+                            if let Some(line) = self
+                                .lines
+                                .iter_mut()
+                                .find(|l| l.text.contains("Generating after-action"))
+                            {
                                 line.status = LogStatus::Success;
                             }
-                            self.add_line(&format!("  Report saved: {}", shorten_path(&path)), LogStatus::Success, elapsed);
+                            self.add_line(
+                                &format!("  Report saved: {}", shorten_path(&path)),
+                                LogStatus::Success,
+                                elapsed,
+                            );
                         }
                         Err(e) => {
-                            self.add_line(&format!("  Failed to save report: {}", e), LogStatus::Error, elapsed);
+                            self.add_line(
+                                &format!("  Failed to save report: {}", e),
+                                LogStatus::Error,
+                                elapsed,
+                            );
                         }
                     }
-                    
+
                     self.add_line("", LogStatus::Info, elapsed);
                     if self.force_stopped {
-                        self.add_line("Session stopped (see report for details).", LogStatus::Error, elapsed);
+                        self.add_line(
+                            "Session stopped (see report for details).",
+                            LogStatus::Error,
+                            elapsed,
+                        );
                     } else {
                         self.add_line("Session complete!", LogStatus::Success, elapsed);
                     }
-                    self.add_line(&format!("Total iterations: {}", self.iteration), LogStatus::Info, elapsed);
-                    self.add_line(&format!("Runtime: {:.1} hours", self.start_instant.elapsed().as_secs_f32() / 3600.0), LogStatus::Info, elapsed);
-                    
+                    self.add_line(
+                        &format!("Total iterations: {}", self.iteration),
+                        LogStatus::Info,
+                        elapsed,
+                    );
+                    self.add_line(
+                        &format!(
+                            "Runtime: {:.1} hours",
+                            self.start_instant.elapsed().as_secs_f32() / 3600.0
+                        ),
+                        LogStatus::Info,
+                        elapsed,
+                    );
+
                     if let Some(ref logger) = self.session_logger {
-                        self.add_line(&format!("Session log: {}", shorten_path(&logger.log_path)), LogStatus::Info, elapsed);
+                        self.add_line(
+                            &format!("Session log: {}", shorten_path(&logger.log_path)),
+                            LogStatus::Info,
+                            elapsed,
+                        );
                     }
-                    
+
                     self.phase = StartupPhase::Complete;
                     self.phase_started = elapsed;
                 }
@@ -1754,20 +2123,27 @@ impl StartupState {
 
     fn update_streaming_line(&mut self, elapsed: f32) {
         let segments = parse_harmony_stream(&self.gpt_oss_buffer);
-        
-        let start_idx = self.lines.iter().position(|l| l.text.contains("Analyzing issues"))
+
+        let start_idx = self
+            .lines
+            .iter()
+            .position(|l| l.text.contains("Analyzing issues"))
             .map(|i| i + 1)
             .unwrap_or(self.lines.len());
-        
+
         self.lines.truncate(start_idx);
-        
+
         for segment in &segments {
             if segment.content.is_empty() {
                 continue;
             }
 
             let is_thinking = segment.channel == "analysis" || segment.channel == "commentary";
-            let status = if is_thinking { LogStatus::Thinking } else { LogStatus::Info };
+            let status = if is_thinking {
+                LogStatus::Thinking
+            } else {
+                LogStatus::Info
+            };
 
             for line in segment.content.lines() {
                 if !line.trim().is_empty() {
@@ -1782,34 +2158,68 @@ impl StartupState {
     }
 
     fn finalize_streaming(&mut self) {
-        if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Analyzing issues")) {
+        if let Some(line) = self
+            .lines
+            .iter_mut()
+            .find(|l| l.text.contains("Analyzing issues"))
+        {
             line.status = LogStatus::Success;
         }
     }
 
     pub fn update_claude_streaming_line(&mut self, elapsed: f32) {
-        let start_idx = self.lines.iter().position(|l| l.text.contains("Creating plan with Claude"))
+        let start_idx = self
+            .lines
+            .iter()
+            .position(|l| l.text.contains("Creating plan with Claude"))
             .map(|i| i + 1)
             .unwrap_or(self.lines.len());
-        
+
         self.lines.truncate(start_idx);
-        
-        let tool_count = self.claude_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { .. })).count();
-        let done_count = self.claude_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. })).count();
-        let text_count = self.claude_full_text.lines().filter(|l| !l.trim().is_empty()).count();
-        
+
+        let tool_count = self
+            .claude_events
+            .iter()
+            .filter(|e| matches!(e, ClaudeEvent::Tool { .. }))
+            .count();
+        let done_count = self
+            .claude_events
+            .iter()
+            .filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. }))
+            .count();
+        let text_count = self
+            .claude_full_text
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count();
+
         if tool_count > 0 || text_count > 0 {
-            self.add_line(&format!("  {} tools ({} done), {} lines output", tool_count, done_count, text_count), LogStatus::Thinking, elapsed);
+            self.add_line(
+                &format!(
+                    "  {} tools ({} done), {} lines output",
+                    tool_count, done_count, text_count
+                ),
+                LogStatus::Thinking,
+                elapsed,
+            );
         }
-        
+
         let events = self.claude_events.clone();
-        let start = if events.len() > 12 { events.len() - 12 } else { 0 };
-        
+        let start = if events.len() > 12 {
+            events.len() - 12
+        } else {
+            0
+        };
+
         for event in &events[start..] {
             match event {
                 ClaudeEvent::Text(text) => {
                     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
-                    let line_start = if lines.len() > 10 { lines.len() - 10 } else { 0 };
+                    let line_start = if lines.len() > 10 {
+                        lines.len() - 10
+                    } else {
+                        0
+                    };
                     for line in &lines[line_start..] {
                         // Show text without prefix - tool cards handle tool display
                         self.add_line(&format!("  {}", line), LogStatus::Thinking, elapsed);
@@ -1826,28 +2236,58 @@ impl StartupState {
     }
 
     pub fn update_exec_streaming_line(&mut self, elapsed: f32) {
-        let start_idx = self.lines.iter().position(|l| l.text.contains("Executing plan"))
+        let start_idx = self
+            .lines
+            .iter()
+            .position(|l| l.text.contains("Executing plan"))
             .map(|i| i + 1)
             .unwrap_or(self.lines.len());
-        
+
         self.lines.truncate(start_idx);
-        
-        let tool_count = self.exec_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { .. })).count();
-        let done_count = self.exec_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. })).count();
-        let text_count = self.exec_full_text.lines().filter(|l| !l.trim().is_empty()).count();
-        
+
+        let tool_count = self
+            .exec_events
+            .iter()
+            .filter(|e| matches!(e, ClaudeEvent::Tool { .. }))
+            .count();
+        let done_count = self
+            .exec_events
+            .iter()
+            .filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. }))
+            .count();
+        let text_count = self
+            .exec_full_text
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count();
+
         if tool_count > 0 || text_count > 0 {
-            self.add_line(&format!("  {} tools ({} done), {} lines output", tool_count, done_count, text_count), LogStatus::Thinking, elapsed);
+            self.add_line(
+                &format!(
+                    "  {} tools ({} done), {} lines output",
+                    tool_count, done_count, text_count
+                ),
+                LogStatus::Thinking,
+                elapsed,
+            );
         }
-        
+
         let events = self.exec_events.clone();
-        let start = if events.len() > 12 { events.len() - 12 } else { 0 };
-        
+        let start = if events.len() > 12 {
+            events.len() - 12
+        } else {
+            0
+        };
+
         for event in &events[start..] {
             match event {
                 ClaudeEvent::Text(text) => {
                     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
-                    let line_start = if lines.len() > 10 { lines.len() - 10 } else { 0 };
+                    let line_start = if lines.len() > 10 {
+                        lines.len() - 10
+                    } else {
+                        0
+                    };
                     for line in &lines[line_start..] {
                         self.add_line(&format!("  {}", line), LogStatus::Thinking, elapsed);
                     }
@@ -1863,28 +2303,58 @@ impl StartupState {
     }
 
     pub fn update_review_streaming_line(&mut self, elapsed: f32) {
-        let start_idx = self.lines.iter().position(|l| l.text.contains("Reviewing work"))
+        let start_idx = self
+            .lines
+            .iter()
+            .position(|l| l.text.contains("Reviewing work"))
             .map(|i| i + 1)
             .unwrap_or(self.lines.len());
-        
+
         self.lines.truncate(start_idx);
-        
-        let tool_count = self.review_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { .. })).count();
-        let done_count = self.review_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. })).count();
-        let text_count = self.review_full_text.lines().filter(|l| !l.trim().is_empty()).count();
-        
+
+        let tool_count = self
+            .review_events
+            .iter()
+            .filter(|e| matches!(e, ClaudeEvent::Tool { .. }))
+            .count();
+        let done_count = self
+            .review_events
+            .iter()
+            .filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. }))
+            .count();
+        let text_count = self
+            .review_full_text
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count();
+
         if tool_count > 0 || text_count > 0 {
-            self.add_line(&format!("  {} tools ({} done), {} lines output", tool_count, done_count, text_count), LogStatus::Thinking, elapsed);
+            self.add_line(
+                &format!(
+                    "  {} tools ({} done), {} lines output",
+                    tool_count, done_count, text_count
+                ),
+                LogStatus::Thinking,
+                elapsed,
+            );
         }
-        
+
         let events = self.review_events.clone();
-        let start = if events.len() > 12 { events.len() - 12 } else { 0 };
-        
+        let start = if events.len() > 12 {
+            events.len() - 12
+        } else {
+            0
+        };
+
         for event in &events[start..] {
             match event {
                 ClaudeEvent::Text(text) => {
                     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
-                    let line_start = if lines.len() > 10 { lines.len() - 10 } else { 0 };
+                    let line_start = if lines.len() > 10 {
+                        lines.len() - 10
+                    } else {
+                        0
+                    };
                     for line in &lines[line_start..] {
                         self.add_line(&format!("  {}", line), LogStatus::Thinking, elapsed);
                     }
@@ -1900,28 +2370,58 @@ impl StartupState {
     }
 
     pub fn update_fix_streaming_line(&mut self, elapsed: f32) {
-        let start_idx = self.lines.iter().position(|l| l.text.contains("Fixing verification"))
+        let start_idx = self
+            .lines
+            .iter()
+            .position(|l| l.text.contains("Fixing verification"))
             .map(|i| i + 1)
             .unwrap_or(self.lines.len());
-        
+
         self.lines.truncate(start_idx);
-        
-        let tool_count = self.fix_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { .. })).count();
-        let done_count = self.fix_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. })).count();
-        let text_count = self.fix_full_text.lines().filter(|l| !l.trim().is_empty()).count();
-        
+
+        let tool_count = self
+            .fix_events
+            .iter()
+            .filter(|e| matches!(e, ClaudeEvent::Tool { .. }))
+            .count();
+        let done_count = self
+            .fix_events
+            .iter()
+            .filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. }))
+            .count();
+        let text_count = self
+            .fix_full_text
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count();
+
         if tool_count > 0 || text_count > 0 {
-            self.add_line(&format!("  {} tools ({} done), {} lines output", tool_count, done_count, text_count), LogStatus::Thinking, elapsed);
+            self.add_line(
+                &format!(
+                    "  {} tools ({} done), {} lines output",
+                    tool_count, done_count, text_count
+                ),
+                LogStatus::Thinking,
+                elapsed,
+            );
         }
-        
+
         let events = self.fix_events.clone();
-        let start = if events.len() > 12 { events.len() - 12 } else { 0 };
-        
+        let start = if events.len() > 12 {
+            events.len() - 12
+        } else {
+            0
+        };
+
         for event in &events[start..] {
             match event {
                 ClaudeEvent::Text(text) => {
                     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
-                    let line_start = if lines.len() > 10 { lines.len() - 10 } else { 0 };
+                    let line_start = if lines.len() > 10 {
+                        lines.len() - 10
+                    } else {
+                        0
+                    };
                     for line in &lines[line_start..] {
                         self.add_line(&format!("  {}", line), LogStatus::Thinking, elapsed);
                     }
@@ -1939,7 +2439,11 @@ impl StartupState {
     fn display_preflight_results(&mut self, config: &PreflightConfig, elapsed: f32) {
         if let Some(ref git) = config.git {
             if let Some(ref branch) = git.branch {
-                self.add_line(&format!("  Git: {} branch", branch), LogStatus::Success, elapsed);
+                self.add_line(
+                    &format!("  Git: {} branch", branch),
+                    LogStatus::Success,
+                    elapsed,
+                );
             }
             if git.has_changes {
                 self.add_line("  Git: has uncommitted changes", LogStatus::Info, elapsed);

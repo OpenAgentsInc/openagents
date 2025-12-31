@@ -18,7 +18,10 @@ fn main() -> Result<()> {
         eprintln!("Converts a JSONL session log to a publishable replay bundle.");
         eprintln!();
         eprintln!("Example:");
-        eprintln!("  {} ~/.openagents/sessions/20251226/153045-abc123.jsonl demo.json", args[0]);
+        eprintln!(
+            "  {} ~/.openagents/sessions/20251226/153045-abc123.jsonl demo.json",
+            args[0]
+        );
         std::process::exit(1);
     }
 
@@ -56,7 +59,8 @@ fn main() -> Result<()> {
     println!();
     println!("Metadata:");
     println!("  Model: {}", bundle.metadata.model);
-    println!("  Duration: {}s real / {}s demo @ {}x",
+    println!(
+        "  Duration: {}s real / {}s demo @ {}x",
         bundle.metadata.duration_seconds,
         bundle.metadata.demo_duration_seconds,
         bundle.metadata.playback_speed
@@ -64,7 +68,8 @@ fn main() -> Result<()> {
     println!();
     println!("Receipts:");
     if let Some(tests) = bundle.receipts.tests_run {
-        println!("  Tests: {} run, {} passed",
+        println!(
+            "  Tests: {} run, {} passed",
             tests,
             bundle.receipts.tests_passed.unwrap_or(0)
         );

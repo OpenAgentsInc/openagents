@@ -28,7 +28,11 @@ pub fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
         let word_len = word.chars().count();
         let current_len = current_line.chars().count();
         let is_continuation = !lines.is_empty();
-        let effective_max = if is_continuation { max_chars - 2 } else { max_chars };
+        let effective_max = if is_continuation {
+            max_chars - 2
+        } else {
+            max_chars
+        };
 
         if word_len > effective_max {
             if !current_line.is_empty() {
