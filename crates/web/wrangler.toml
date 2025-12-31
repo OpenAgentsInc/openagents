@@ -24,7 +24,8 @@ id = "0aa10501fe834f84ad33672acf4ed741"
 [durable_objects]
 bindings = [
     { name = "TUNNEL_RELAY", class_name = "TunnelRelay" },
-    { name = "AUTOPILOT_CONTAINER", class_name = "AutopilotContainer" }
+    { name = "AUTOPILOT_CONTAINER", class_name = "AutopilotContainer" },
+    { name = "AGENT_DO", class_name = "AgentDo" }
 ]
 
 [[migrations]]
@@ -34,6 +35,10 @@ new_classes = ["TunnelRelay"]
 [[migrations]]
 tag = "v2"
 new_classes = ["AutopilotContainer"]
+
+[[migrations]]
+tag = "v3"
+new_classes = ["AgentDo"]
 
 # Container configuration
 [[containers]]

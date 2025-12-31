@@ -4,6 +4,7 @@
 
 use worker::*;
 
+mod agent_do;
 mod autopilot_container;
 mod db;
 mod identity;
@@ -12,6 +13,7 @@ mod relay;
 mod routes;
 mod services;
 
+pub use agent_do::AgentDo;
 pub use autopilot_container::AutopilotContainer;
 pub use db::sessions::Session;
 pub use middleware::auth::AuthenticatedUser;
@@ -82,6 +84,60 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         }
         (Method::Post, "/api/account/delete") => {
             with_auth(&req, &env, |user| routes::account::delete_account(user, env.clone())).await
+        }
+
+        // Agent routes (require auth)
+        (Method::Get, "/api/agents") => {
+            with_auth(&req, &env, |user| routes::agents::list(user, env.clone())).await
+        }
+        (Method::Post, "/api/agents") => {
+            let body = req.text().await?;
+            with_auth(&req, &env, |user| {
+                routes::agents::create(user, env.clone(), body.clone())
+            })
+            .await
+        }
+        (Method::Get, path) if path.starts_with("/api/agents/") => {
+            let segments: Vec<&str> = path.trim_start_matches("/api/agents/").split('/').collect();
+            if segments.len() == 1 {
+                let agent_id = parse_agent_id(segments[0])?;
+                with_auth(&req, &env, |user| {
+                    routes::agents::get(user, env.clone(), agent_id)
+                })
+                .await
+            } else if segments.len() == 3 && segments[1] == "do" && segments[2] == "status" {
+                let agent_id = parse_agent_id(segments[0])?;
+                with_auth(&req, &env, |user| {
+                    routes::agents::do_status(user, env.clone(), agent_id)
+                })
+                .await
+            } else {
+                Response::error("Invalid agent path", 400)
+            }
+        }
+        (Method::Post, path) if path.starts_with("/api/agents/") => {
+            let segments: Vec<&str> = path.trim_start_matches("/api/agents/").split('/').collect();
+            if segments.len() == 3 && segments[1] == "do" && segments[2] == "tick" {
+                let agent_id = parse_agent_id(segments[0])?;
+                with_auth(&req, &env, |user| {
+                    routes::agents::do_tick(user, env.clone(), agent_id)
+                })
+                .await
+            } else {
+                Response::error("Invalid agent path", 400)
+            }
+        }
+        (Method::Delete, path) if path.starts_with("/api/agents/") => {
+            let segments: Vec<&str> = path.trim_start_matches("/api/agents/").split('/').collect();
+            if segments.len() == 1 {
+                let agent_id = parse_agent_id(segments[0])?;
+                with_auth(&req, &env, |user| {
+                    routes::agents::delete(user, env.clone(), agent_id)
+                })
+                .await
+            } else {
+                Response::error("Invalid agent path", 400)
+            }
         }
 
         // Billing routes (require auth)
@@ -247,4 +303,10 @@ where
 /// Get user if authenticated, None otherwise
 async fn get_optional_user(req: &Request, env: &Env) -> Option<AuthenticatedUser> {
     middleware::auth::authenticate(req, env).await.ok()
+}
+
+fn parse_agent_id(segment: &str) -> Result<i64> {
+    segment
+        .parse::<i64>()
+        .map_err(|_| Error::RustError("Invalid agent id".to_string()))
 }
