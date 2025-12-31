@@ -109,6 +109,16 @@ pub fn derive_keypair_with_account(mnemonic: &str, account: u32) -> Result<Keypa
     derive_keypair_full(mnemonic, "", account)
 }
 
+/// Derive an agent keypair from a mnemonic using agent index.
+///
+/// Agent index 0 maps to account 1, matching the path `m/44'/1237'/{n+1}'/0/0`.
+pub fn derive_agent_keypair(mnemonic: &str, agent_id: u32) -> Result<Keypair, Nip06Error> {
+    let account = agent_id
+        .checked_add(1)
+        .ok_or_else(|| Nip06Error::KeyDerivation("agent index overflow".to_string()))?;
+    derive_keypair_with_account(mnemonic, account)
+}
+
 /// Derive a Nostr keypair from a mnemonic with passphrase and account index.
 ///
 /// Uses derivation path: `m/44'/1237'/<account>'/0/0`
@@ -328,6 +338,19 @@ mod tests {
         assert_ne!(keypair_0.public_key, keypair_1.public_key);
         assert_ne!(keypair_1.public_key, keypair_2.public_key);
         assert_ne!(keypair_0.public_key, keypair_2.public_key);
+    }
+
+    #[test]
+    fn test_agent_derivation_account_offset() {
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
+
+        let agent_keypair = derive_agent_keypair(mnemonic, 0).expect("should derive agent 0");
+        let account_keypair =
+            derive_keypair_with_account(mnemonic, 1).expect("should derive account 1");
+
+        assert_eq!(agent_keypair.private_key, account_keypair.private_key);
+        assert_eq!(agent_keypair.public_key, account_keypair.public_key);
     }
 
     #[test]

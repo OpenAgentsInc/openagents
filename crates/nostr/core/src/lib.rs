@@ -340,9 +340,9 @@ pub use nip05::{Nip05Error, Nip05Identifier, Nip05Response};
 // NIP-06: Key derivation from mnemonic (requires full feature)
 #[cfg(feature = "full")]
 pub use nip06::{
-    Keypair, Nip06Error, derive_keypair, derive_keypair_full, derive_keypair_with_account,
-    mnemonic_to_seed, npub_to_public_key, nsec_to_private_key, private_key_to_nsec,
-    public_key_to_npub,
+    Keypair, Nip06Error, derive_agent_keypair, derive_keypair, derive_keypair_full,
+    derive_keypair_with_account, mnemonic_to_seed, npub_to_public_key, nsec_to_private_key,
+    private_key_to_nsec, public_key_to_npub,
 };
 
 // NIP-07: window.nostr capability for web browsers

@@ -1,6 +1,7 @@
 //! API route handlers
 
 pub mod account;
+pub mod agents;
 pub mod auth;
 pub mod billing;
 pub mod claude_auth;
