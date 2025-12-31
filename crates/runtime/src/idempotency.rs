@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+#[cfg(feature = "cloudflare")]
+use worker::sql::{SqlStorage, SqlStorageValue};
 
 /// Journal result type.
 pub type JournalResult<T> = std::result::Result<T, JournalError>;
@@ -130,6 +132,98 @@ impl IdempotencyJournal for MemoryJournal {
     }
 }
 
+/// Cloudflare Durable Object SQL-backed idempotency journal.
+#[cfg(feature = "cloudflare")]
+#[derive(Clone)]
+pub struct DoJournal {
+    sql: SqlStorage,
+    prefix: String,
+}
+
+#[cfg(feature = "cloudflare")]
+impl DoJournal {
+    /// Create a journal scoped by prefix in the DO SQL database.
+    pub fn new(sql: SqlStorage, prefix: impl Into<String>) -> JournalResult<Self> {
+        let journal = Self {
+            sql,
+            prefix: prefix.into(),
+        };
+        journal.init()?;
+        Ok(journal)
+    }
+
+    fn init(&self) -> JournalResult<()> {
+        self.sql.exec(
+            "CREATE TABLE IF NOT EXISTS idempotency_journal (
+                key TEXT PRIMARY KEY,
+                value BLOB NOT NULL,
+                expires_at INTEGER NOT NULL
+            );",
+            None,
+        )?;
+        Ok(())
+    }
+
+    fn scoped_key(&self, key: &str) -> String {
+        format!("{}{}", self.prefix, key)
+    }
+
+    fn exec(
+        &self,
+        query: &str,
+        bindings: Option<Vec<SqlStorageValue>>,
+    ) -> JournalResult<worker::sql::SqlCursor> {
+        self.sql.exec(query, bindings).map_err(JournalError::from)
+    }
+}
+
+#[cfg(feature = "cloudflare")]
+#[derive(Deserialize)]
+struct DoValueRow {
+    value: Vec<u8>,
+}
+
+#[cfg(feature = "cloudflare")]
+impl IdempotencyJournal for DoJournal {
+    fn get(&self, key: &str) -> JournalResult<Option<Vec<u8>>> {
+        let now_ms = Timestamp::now().as_millis() as i64;
+        let scoped = self.scoped_key(key);
+        let cursor = self.exec(
+            "SELECT value FROM idempotency_journal WHERE key = ?1 AND expires_at > ?2",
+            Some(vec![
+                SqlStorageValue::from(scoped.as_str()),
+                SqlStorageValue::from(now_ms),
+            ]),
+        )?;
+        let rows: Vec<DoValueRow> = cursor.to_array().map_err(JournalError::from)?;
+        Ok(rows.into_iter().next().map(|row| row.value))
+    }
+
+    fn put_with_ttl(&self, key: &str, value: &[u8], ttl: Duration) -> JournalResult<()> {
+        let now_ms = Timestamp::now().as_millis() as i64;
+        let expires_at = now_ms + ttl.as_millis() as i64;
+        let scoped = self.scoped_key(key);
+        self.exec(
+            "INSERT OR REPLACE INTO idempotency_journal (key, value, expires_at) VALUES (?1, ?2, ?3)",
+            Some(vec![
+                SqlStorageValue::from(scoped.as_str()),
+                SqlStorageValue::from(value.to_vec()),
+                SqlStorageValue::from(expires_at),
+            ]),
+        )?;
+        Ok(())
+    }
+
+    fn cleanup(&self) -> JournalResult<usize> {
+        let now_ms = Timestamp::now().as_millis() as i64;
+        let cursor = self.exec(
+            "DELETE FROM idempotency_journal WHERE expires_at <= ?1",
+            Some(vec![SqlStorageValue::from(now_ms)]),
+        )?;
+        Ok(cursor.rows_written())
+    }
+}
+
 /// SQLite-backed idempotency journal.
 #[cfg(feature = "local")]
 #[derive(Clone)]
@@ -238,5 +332,12 @@ impl IdempotencyJournal for SqliteJournal {
     fn cleanup(&self) -> JournalResult<usize> {
         let now_ms = Timestamp::now().as_millis();
         self.purge_expired(now_ms)
+    }
+}
+
+#[cfg(feature = "cloudflare")]
+impl From<worker::Error> for JournalError {
+    fn from(err: worker::Error) -> Self {
+        JournalError::Storage(err.to_string())
     }
 }

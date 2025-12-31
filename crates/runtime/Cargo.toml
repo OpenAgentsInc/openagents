@@ -11,7 +11,7 @@ categories = ["asynchronous", "web-programming"]
 [features]
 default = []
 # Backend features - enable one
-cloudflare = ["worker"]
+cloudflare = ["worker", "wasm-bindgen-futures"]
 local = ["rusqlite"]
 # Optional features
 full = ["tracing", "metrics"]
@@ -46,7 +46,8 @@ tokio = { workspace = true }
 
 # Storage backends
 rusqlite = { version = "0.32", optional = true }
-worker = { version = "0.5", optional = true }
+worker = { version = "0.7", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
 
 # Observability
 tracing = { version = "0.1", optional = true }

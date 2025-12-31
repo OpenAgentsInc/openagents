@@ -110,6 +110,8 @@ pub mod budget;
 pub mod compute;
 pub mod containers;
 pub mod control_plane;
+#[cfg(feature = "cloudflare")]
+pub mod cloudflare;
 pub mod drivers;
 pub mod env;
 pub mod engine;
@@ -132,6 +134,10 @@ pub use compute::{
     ComputeRequest, ComputeResponse, ComputeRouter, JobState, LocalProvider, ModelInfo, Prefer,
     ProviderInfo, ProviderLatency, ProviderPricing, ProviderStatus, TokenUsage,
 };
+#[cfg(feature = "cloudflare")]
+pub use compute::CloudflareProvider;
+#[cfg(feature = "cloudflare")]
+pub use cloudflare::{set_cloudflare_agent_factory, CloudflareAgent};
 pub use containers::{
     ArtifactInfo, CommandResult, ContainerCapabilities, ContainerError, ContainerFs, ContainerKind,
     ContainerLatency, ContainerLimits, ContainerPolicy, ContainerPricing, ContainerProvider,
@@ -151,6 +157,8 @@ pub use envelope::Envelope;
 pub use error::{AgentError, Result};
 pub use fs::{AccessLevel, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat, WatchEvent, WatchHandle};
 pub use idempotency::{IdempotencyJournal, JournalEntry, JournalError, MemoryJournal};
+#[cfg(feature = "cloudflare")]
+pub use idempotency::DoJournal;
 #[cfg(feature = "local")]
 pub use idempotency::SqliteJournal;
 pub use identity::{InMemorySigner, NostrSigner, PublicKey, Signature, SigningService};
@@ -160,6 +168,8 @@ pub use services::{
     LogsFs, MetricsFs, MetricsSnapshot, QueueMetric, StatusFs, StatusSnapshot, TraceEvent,
 };
 pub use storage::{AgentStorage, InMemoryStorage, StorageOp};
+#[cfg(feature = "cloudflare")]
+pub use storage::CloudflareStorage;
 pub use tick::{ResourceUsage, TickResult};
 pub use trigger::{AlarmTrigger, EventTrigger, InitializeTrigger, ManualTrigger, MessageTrigger, Trigger, TriggerMeta};
 pub use types::{AgentId, EnvelopeId, Timestamp};

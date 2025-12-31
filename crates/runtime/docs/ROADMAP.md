@@ -334,6 +334,12 @@ Agent can receive a Nostr DM → tick → reply.
 
 An agent runs on DO, takes HTTP triggers, can do `/compute/new`.
 
+### Implementation Notes (completed)
+
+- Added `CloudflareStorage` DO SQL adapter plus `DoJournal` for idempotency persistence in `crates/runtime/src/storage.rs` and `crates/runtime/src/idempotency.rs`.
+- Implemented `CloudflareProvider` (Workers AI) with async job execution and cost reconciliation that treats reserved `max_cost_usd` as spent when usage is unavailable in `crates/runtime/src/compute.rs`.
+- Added `CloudflareAgent` Durable Object backend with agent factory registration, alarm scheduling, and control-plane fetch → filesystem mapping (read/write/list, tick/send) in `crates/runtime/src/cloudflare.rs`, including `/compute` mount when an AI binding is available.
+
 ### References
 
 - [BACKENDS.md](BACKENDS.md) — Cloudflare backend
