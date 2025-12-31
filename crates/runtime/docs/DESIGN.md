@@ -111,6 +111,155 @@ Hibernation is not death. The agent continues to exist—just suspended.
 
 ---
 
+## Part Three-A: Message Layering (Envelope → Trigger → Response)
+
+The runtime has distinct layers for message handling. This layering is **canonical**—all backends must implement it consistently.
+
+### The Layers
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      External World                              │
+│  (HTTP, WebSocket, Nostr, GitHub, Scheduler, etc.)              │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         DRIVERS                                  │
+│  Convert external I/O ↔ Envelopes                               │
+│  (HttpDriver, NostrDriver, SchedulerDriver, WebhookDriver)      │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ Envelope
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         PLUMBER                                  │
+│  Routes envelopes to agent inboxes based on rules               │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ Envelope (routed)
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         RUNTIME                                  │
+│  Validates envelope, converts to Trigger, invokes agent tick    │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ Trigger
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                          AGENT                                   │
+│  Receives Trigger, executes tick, emits Response/Events         │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ Response/Events
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         RUNTIME                                  │
+│  Converts outputs to Envelopes, routes to Drivers               │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ Envelope
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         DRIVERS                                  │
+│  Deliver envelopes externally (publish, send, respond)          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Definitions
+
+| Concept | Role | Scope |
+|---------|------|-------|
+| **Envelope** | Canonical mail item with id, timestamp, source, payload, metadata | External boundary |
+| **Trigger** | In-process view of envelope after validation/routing | Internal to runtime |
+| **Driver** | Converts external I/O ↔ Envelopes | Edge of system |
+| **Response** | Agent output (reply, event, effect) | Agent → Runtime |
+
+### Key Contracts
+
+1. **Envelope is the wire format** — All external communication uses Envelopes
+2. **Trigger is internal** — Agents never see raw Envelopes, only validated Triggers
+3. **Drivers are I/O adapters** — They don't understand agent semantics, only protocol translation
+4. **Agent-to-agent messaging** uses the same path: Agent A → Envelope → Driver → Relay → Driver → Envelope → Agent B
+
+### What About MessageTransport?
+
+`MessageTransport` (in TRAITS.md) is a **convenience abstraction** over the Driver layer for agent-to-agent communication. It provides:
+- `send(to, message)` — wraps in Envelope, routes through appropriate Driver
+- `request(to, message, timeout)` — send + await response
+
+It is **not** a separate layer—it's sugar over Envelope + Driver.
+
+---
+
+## Part Three-B: Delivery Semantics
+
+Portability requires precise delivery guarantees. These semantics are **mandatory** across all backends.
+
+### Tick Execution
+
+- **At most one tick concurrently per agent** — No parallel ticks, ever
+- **Tick isolation** — A tick sees consistent state from start to finish
+- **Tick atomicity** — State changes commit or rollback together
+
+### Inbox Semantics
+
+- **At-least-once delivery** — Envelopes may be delivered multiple times (crashes, retries)
+- **Per-sender ordering** — Messages from (source, sender) pair preserve send order
+- **No global ordering** — No total order across all senders
+- **Bounded queue** — Inbox has a maximum depth; overflow drops oldest or rejects new
+
+### Idempotency
+
+Since delivery is at-least-once, agents must handle duplicates:
+
+```rust
+/// Envelope includes stable ID for deduplication
+pub struct Envelope {
+    pub id: EnvelopeId,      // Stable, globally unique
+    pub timestamp: Timestamp,
+    pub source: Source,
+    pub payload: Payload,
+    pub metadata: Metadata,
+}
+
+/// Runtime provides dedup helpers
+impl AgentContext {
+    /// Check if envelope was already processed (bounded cache)
+    pub fn seen(&self, envelope_id: &EnvelopeId) -> bool;
+
+    /// Mark envelope as processed
+    pub fn mark_seen(&mut self, envelope_id: &EnvelopeId);
+}
+```
+
+### External Effects
+
+Effects with side-effects (payments, GitHub writes, emails) require idempotency keys:
+
+```rust
+/// Outgoing effect with idempotency
+pub struct Effect {
+    pub idempotency_key: String,  // Client-generated, stable
+    pub effect_type: EffectType,
+    pub payload: serde_json::Value,
+}
+
+impl AgentContext {
+    /// Execute effect with idempotency guarantee
+    pub async fn execute_effect(&mut self, effect: Effect) -> Result<EffectResult>;
+}
+```
+
+If a tick crashes after executing an effect but before committing, the retry will use the same idempotency key and the effect provider should deduplicate.
+
+### Guarantees Summary
+
+| Guarantee | Scope | Implementation |
+|-----------|-------|----------------|
+| Exactly-once tick | Per agent | Runtime lock |
+| At-least-once delivery | Inbox | Retry + dedup cache |
+| Idempotent effects | External | Idempotency keys |
+| Causal ordering | Per sender | Sequence numbers |
+| Atomic state | Per tick | Transaction commit |
+
+---
+
 ## Part Four: The Storage Model
 
 ### What Agents Store
@@ -577,6 +726,105 @@ Agent actions are logged and publishable. Trajectories are first-class. Trust is
 
 ### Built-in Autonomy Levels
 Agents can be supervised, semi-autonomous, or fully autonomous. The runtime enforces approval workflows.
+
+---
+
+## Part Thirteen-A: Supervision
+
+Actor systems win because of supervision. The runtime needs explicit concepts for agent oversight.
+
+### The Supervisor
+
+A **Supervisor** is a runtime-level component (or a special agent) that monitors and manages other agents:
+
+```rust
+pub trait Supervisor: Send + Sync {
+    /// Called when agent tick fails
+    fn on_agent_error(&self, agent_id: &AgentId, error: &AgentError) -> SupervisorAction;
+
+    /// Called when agent exceeds resource limits
+    fn on_resource_violation(&self, agent_id: &AgentId, violation: &Violation) -> SupervisorAction;
+
+    /// Called when agent behavior is anomalous
+    fn on_anomaly(&self, agent_id: &AgentId, anomaly: &Anomaly) -> SupervisorAction;
+
+    /// Periodic health check
+    fn health_check(&self, agent_id: &AgentId) -> HealthStatus;
+}
+
+pub enum SupervisorAction {
+    /// Let it continue
+    Ignore,
+
+    /// Restart the agent with fresh state
+    Restart { preserve_memory: bool },
+
+    /// Pause execution, notify operators
+    Quarantine { reason: String },
+
+    /// Rate-limit future ticks
+    Throttle { max_ticks_per_minute: u32 },
+
+    /// Reduce capabilities
+    Demote { revoke_mounts: Vec<String> },
+
+    /// Terminate the agent
+    Terminate { reason: String },
+
+    /// Escalate to human operator
+    Escalate { urgency: Urgency, context: String },
+}
+```
+
+### Supervision Policies
+
+Supervisors enforce policies:
+
+| Event | Default Policy |
+|-------|----------------|
+| Tick panic/crash | Restart with backoff (3 retries, then quarantine) |
+| Repeated failures | Escalate to operator |
+| Budget exceeded | Quarantine until budget reset |
+| Noisy agent (too many ticks) | Throttle |
+| Security violation | Terminate + alert |
+| Memory exceeded | Evict oldest memories, warn |
+
+### Supervision Hierarchy
+
+```
+                 ┌─────────────────┐
+                 │ RuntimeSupervisor│  (built-in, watches all agents)
+                 └────────┬────────┘
+                          │
+        ┌─────────────────┼─────────────────┐
+        ▼                 ▼                 ▼
+   ┌─────────┐       ┌─────────┐       ┌─────────┐
+   │ Agent A │       │ Agent B │       │Supervisor│  (agent that supervises others)
+   └─────────┘       └─────────┘       │  Agent   │
+                                       └────┬────┘
+                                            │
+                                  ┌─────────┼─────────┐
+                                  ▼         ▼         ▼
+                              ┌─────┐   ┌─────┐   ┌─────┐
+                              │ C   │   │ D   │   │ E   │
+                              └─────┘   └─────┘   └─────┘
+```
+
+### Why Supervision Matters
+
+Without supervision:
+- Failed agents stay failed
+- Noisy agents degrade system
+- Security violations go unnoticed
+- No recovery workflows
+- Operators have no visibility
+
+With supervision:
+- Automatic recovery from transient failures
+- Resource isolation for misbehaving agents
+- Security policy enforcement
+- Clear escalation paths
+- Runtime remains healthy under load
 
 ---
 
