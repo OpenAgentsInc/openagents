@@ -2,7 +2,7 @@
 
 Suggested build order for the OpenAgents Runtime. Each milestone has clear exit criteria.
 
-**Critical path for fastest usable system:** Milestones 1→6 (local runtime + compute + containers + control plane) validates the full abstraction before tackling Cloudflare/browser/DVM complexity.
+**Critical path for fastest usable system:** Milestones 1→7→14 (local runtime + compute + containers + HUD + /claude) validates the full abstraction before tackling Cloudflare/browser/DVM complexity.
 
 ---
 
@@ -452,6 +452,143 @@ Reloading the tab preserves agent state and storage entries via IndexedDB.
 
 ---
 
+## Milestone 14 — /claude (Claude Agent SDK Integration)
+
+**Goal:** Agents can spawn and control Claude Agent SDK instances via filesystem.
+
+**Implementation:** `crates/runtime/src/claude.rs`
+
+### Overview
+
+The `/claude` mount enables agents to command one or more Claude instances. Key innovation: Claude workers run in sandboxed containers but connect to Claude through authenticated tunnels pointing to the user's machine. Credentials never enter the sandbox.
+
+### Tasks
+
+#### Phase 1: Core Types + FileService
+
+- Implement core types in `crates/runtime/src/claude.rs`:
+  - `ClaudeRequest`, `ClaudeResponse`, `ClaudeChunk`
+  - `ClaudeSessionAutonomy` (Full/Supervised/Restricted/ReadOnly)
+  - `ClaudePolicy`, `ClaudeUsageState`
+  - `ClaudeSessionStatus` state machine
+- Implement `ClaudeFs` with FileService trait:
+  - `/claude/new` → session_id (non-blocking)
+  - `/claude/policy` (read-only to agents)
+  - `/claude/usage` (reserved/spent micro-USD)
+  - `/claude/sessions/<id>/{status,prompt,response,output,tools/*,usage,fork,ctl}`
+- Implement session state machine: Creating → Ready → Working → Idle → Complete/Failed/PendingApproval
+
+#### Phase 2: Provider Trait + Local Provider
+
+- Implement `ClaudeProvider` trait (sync for FileService):
+  - `create_session()` → session_id (always async)
+  - `send_prompt()`, `poll_output()` → streaming chunks
+  - `approve_tool()`, `fork_session()`, `stop()`, `pause()`, `resume()`
+- Implement `LocalProvider`:
+  - Same-machine Claude proxy (localhost, no tunnel)
+  - Wraps Claude Agent SDK process
+  - Streams output to `/sessions/<id>/output`
+
+#### Phase 3: Tunnel Provider + Proxy Architecture
+
+- Implement `TunnelProvider`:
+  - WebSocket connection to user's local proxy via tunnel URL
+  - Supports ngrok, Cloudflare Tunnel, Nostr relay endpoints
+- Implement tunnel authentication:
+  - `/claude/auth/tunnels` (admin-only config)
+  - `/claude/auth/challenge` (agent writes signed response)
+  - Nostr signature verification
+- Implement `TunnelMessage` protocol:
+  - CreateSession, Prompt, Chunk, ToolApproval, Stop, Error
+- Implement credential injection pattern:
+  - Proxy adds `Authorization: Bearer sk-...` header
+  - Container only knows tunnel URL, never sees credentials
+
+#### Phase 4: Worker Pool + Security
+
+- Implement worker pool management:
+  - `/claude/workers/<id>/{status,isolation,sessions,metrics}`
+  - `/claude/pool/{config,status,metrics}` (admin-only)
+- Implement isolation modes:
+  - `IsolationMode`: Local, Container, Gvisor, Firecracker
+  - `NetworkMode`: Host, ProxyOnly, None
+- Implement network isolation pattern:
+  - `--network none` for containers
+  - Unix socket mount for proxy (`/var/run/anthropic-proxy.sock`)
+  - `NODE_USE_ENV_PROXY=1` for Node.js fetch()
+- Implement repo filtering:
+  - `RepoFilterMode`: None, Standard, Strict, Custom
+  - Denylist: `.env`, `*.pem`, `credentials.json`, `.git/config`
+
+#### Phase 5: Cloud Provider + Budget Integration
+
+- Implement `CloudProvider`:
+  - Direct Anthropic API (requires API key in secret store)
+  - Model pricing (Sonnet, Opus, Haiku)
+- Implement budget integration:
+  - Reserve/reconcile model (same as /compute, /containers)
+  - `max_cost_usd` reservation on session create
+  - Reconcile actual vs reserved on completion
+  - `/claude/usage` shows reserved + spent
+- Implement tool permissions:
+  - `allowed_tools`, `blocked_tools`, `approval_required_tools`
+  - Tool execution logging to `/sessions/<id>/tools/log`
+  - Pending approval state + `/tools/approve` endpoint
+- Wire policy enforcement:
+  - `allowed_models`, `blocked_models` (glob patterns)
+  - `max_concurrent` sessions per agent
+  - `default_autonomy` level
+
+### Filesystem Layout
+
+```
+/claude/
+├── providers/           # tunnel, cloud, local
+├── new                  # Call (write+read) → session_id
+├── policy               # read-only to agents
+├── usage                # reserved/spent (micro-USD)
+├── auth/                # challenge: agent writes; tunnels: admin
+├── workers/<id>/        # status, isolation, sessions, metrics
+├── pool/                # config, status, metrics (admin-only)
+├── proxy/               # status, allowlist, metrics (admin-only)
+└── sessions/<id>/
+    ├── status           # creating|ready|working|idle|complete|failed|pending_approval
+    ├── prompt           # write to send prompt
+    ├── response         # read latest response
+    ├── output           # watch for streaming chunks
+    ├── context          # conversation summary
+    ├── tools/           # log, pending, approve
+    ├── usage            # session token usage + cost
+    ├── fork             # write to fork session
+    └── ctl              # stop, pause, resume
+```
+
+### Exit Criteria
+
+- Agent can create Claude session via tunnel to user's local proxy
+- Streaming output works via `watch(/claude/sessions/<id>/output)`
+- Tool approval workflow works (PendingApproval state → approve → continue)
+- Session fork creates new session from checkpoint
+- Budget reserve/reconcile matches /compute and /containers patterns
+- Network-isolated container mode works with proxy socket
+
+### Security Requirements
+
+- Credentials never enter container (proxy injection only)
+- Policy files are admin-only (agents read, control plane writes)
+- Tunnel authentication via Nostr signatures
+- Repo filtering strips secrets before mount
+- All tool executions logged to trajectory
+
+### References
+
+- [CLAUDE.md](CLAUDE.md) — Full spec (types, providers, security model)
+- [COMPUTE.md](COMPUTE.md) — Provider pattern, budget integration
+- [CONTAINERS.md](CONTAINERS.md) — Session management pattern
+- [FILESYSTEM.md](FILESYSTEM.md) — FileService trait
+
+---
+
 ## Summary
 
 | Milestone | Goal | Key Deliverable |
@@ -470,6 +607,7 @@ Reloading the tab preserves agent state and storage entries via IndexedDB.
 | M11 | DVM | Decentralized compute/containers |
 | M12 | Browser | WASM runtime |
 | M13 | Browser persistence | IndexedDB-backed storage |
+| M14 | **/claude** | **Claude Agent SDK via tunnel/proxy** |
 
 ---
 
@@ -478,7 +616,7 @@ Reloading the tab preserves agent state and storage entries via IndexedDB.
 For the fastest path to a **launchable** system:
 
 ```
-M1 → M2 → M3 → M4 → M5 → M6 → M7
+M1 → M2 → M3 → M4 → M5 → M6 → M7 → M14
 ```
 
 This gives you:
@@ -489,7 +627,10 @@ This gives you:
 - AI compute (`/compute`)
 - Code execution (`/containers`)
 - **HUD** — The product's signature moment
+- **Claude Agent SDK** — Multi-step autonomous work sessions
 
 **M7 (HUD) is GTM-critical.** The live fishbowl, shareable URLs, and "demo is the product" strategy all depend on it. Without the HUD, there's no viral loop.
+
+**M14 (/claude) unlocks autonomous multi-step work.** While `/compute` handles simple inference and `/containers` handles code execution, `/claude` enables agents to spawn full Claude Agent SDK sessions for complex, tool-using, multi-turn work. The tunnel architecture ensures credentials stay on the user's machine.
 
 The full abstraction is validated before adding Cloudflare/browser/DVM complexity.
