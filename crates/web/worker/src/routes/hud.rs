@@ -43,7 +43,7 @@ struct HudSettingsUpdate {
     embed_allowed: Option<bool>,
 }
 
-/// View a user's HUD: /hud/:username/:repo
+/// View a user's HUD: /repo/:username/:repo
 /// For now, simplified to just serve the HUD without strict user lookup
 pub async fn view_hud(
     env: Env,
@@ -191,7 +191,7 @@ pub async fn start_session(
     })
 }
 
-/// Embeddable HUD view: /embed/:username/:repo
+/// Embeddable HUD view: /repo/:username/:repo/embed
 pub async fn embed_hud(env: Env, username: String, repo: String) -> Result<Response> {
     let db = env.d1("DB")?;
 

@@ -211,8 +211,10 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
                 Response::error("Invalid HUD path", 400)
             }
         }
-        (Method::Get, path) if path.starts_with("/embed/") => {
-            let parts: Vec<&str> = path.trim_start_matches("/embed/").split('/').collect();
+        // Embed route: /repo/:username/:repo/embed
+        (Method::Get, path) if path.starts_with("/repo/") && path.ends_with("/embed") => {
+            let inner = path.trim_start_matches("/repo/").trim_end_matches("/embed");
+            let parts: Vec<&str> = inner.split('/').collect();
             if parts.len() >= 2 {
                 let username = parts[0].to_string();
                 let repo = parts[1..].join("/");
