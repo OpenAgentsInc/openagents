@@ -331,6 +331,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let hud_hover = state.view == AppView::RepoView
                 && (state.hud_layout.settings_public_bounds.contains(state.mouse_pos)
                     || state.hud_layout.settings_embed_bounds.contains(state.mouse_pos));
+            let share_hover = state.view == AppView::RepoView
+                && (state.hud_layout.share_button_bounds.contains(state.mouse_pos)
+                    || state.hud_layout.copy_url_bounds.contains(state.mouse_pos)
+                    || state.hud_layout.copy_embed_bounds.contains(state.mouse_pos));
             let start_hover = state.view == AppView::RepoView
                 && (state.hud_layout.start_prompt_bounds.contains(state.mouse_pos)
                     || state.hud_layout.start_button_bounds.contains(state.mouse_pos));
@@ -339,6 +343,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let cursor = if state.button_hovered
                 || state.hovered_repo_idx.is_some()
                 || hud_hover
+                || share_hover
                 || start_hover
                 || landing_hover
             {
