@@ -80,13 +80,16 @@ pub struct AgentContext<S: AgentState> {
     /// Mutable access to agent state.
     pub state: S,
 
-    /// Agent's cryptographic identity.
+    /// Agent's cryptographic identity (public info only).
     identity: AgentIdentity,
+
+    /// Signing service (Factotum) - keys never exposed.
+    signer: Arc<dyn SigningService>,
 
     /// Storage backend.
     storage: Box<dyn AgentStorage>,
 
-    /// Message transport.
+    /// Message transport (convenience over drivers).
     transport: Box<dyn MessageTransport>,
 
     /// Connected clients (for broadcast).
@@ -100,19 +103,50 @@ pub struct AgentContext<S: AgentState> {
 
     /// Emitted events this tick.
     events: Vec<Event>,
+
+    /// Seen envelope IDs (bounded cache for dedup).
+    seen_envelopes: SeenCache,
 }
 
 impl<S: AgentState> AgentContext<S> {
-    // === Identity ===
+    // === Identity (via SigningService - keys never exposed) ===
 
     /// Agent's public key.
-    pub fn pubkey(&self) -> &PublicKey;
+    pub fn pubkey(&self) -> &PublicKey {
+        &self.identity.pubkey
+    }
 
-    /// Sign data with agent's key.
-    pub fn sign(&self, data: &[u8]) -> Signature;
+    /// Sign data (delegates to signer, may fail for remote KMS/HSM).
+    pub fn sign(&self, data: &[u8]) -> Result<Signature> {
+        self.signer.sign(&self.identity.agent_id, data)
+    }
 
-    /// Verify signature from another key.
-    pub fn verify(&self, pubkey: &PublicKey, data: &[u8], sig: &Signature) -> bool;
+    /// Verify signature from any key (pure crypto, always sync).
+    pub fn verify(&self, pubkey: &PublicKey, data: &[u8], sig: &Signature) -> bool {
+        pubkey.verify(data, sig)
+    }
+
+    /// Encrypt to recipient (NIP-44, delegates to signer).
+    pub fn encrypt_to(&self, recipient: &PublicKey, plaintext: &[u8]) -> Result<Vec<u8>> {
+        self.signer.encrypt(&self.identity.agent_id, recipient, plaintext)
+    }
+
+    /// Decrypt from sender (NIP-44, delegates to signer).
+    pub fn decrypt_from(&self, sender: &PublicKey, ciphertext: &[u8]) -> Result<Vec<u8>> {
+        self.signer.decrypt(&self.identity.agent_id, sender, ciphertext)
+    }
+
+    // === Idempotency (for at-least-once delivery) ===
+
+    /// Check if envelope was already processed (bounded cache).
+    pub fn seen(&self, envelope_id: &EnvelopeId) -> bool {
+        self.seen_envelopes.contains(envelope_id)
+    }
+
+    /// Mark envelope as processed.
+    pub fn mark_seen(&mut self, envelope_id: &EnvelopeId) {
+        self.seen_envelopes.insert(envelope_id.clone());
+    }
 
     // === Storage ===
 
@@ -175,6 +209,55 @@ impl<S: AgentState> AgentContext<S> {
     pub fn record_usage(&mut self, usage: ResourceUsage);
 }
 ```
+
+---
+
+## Signing Service Trait
+
+The Factotum-style signing service. Private keys live here, never exposed to agent code.
+
+```rust
+/// Signing service (Factotum) - holds keys, never exposes them.
+///
+/// This is sync by design. Backends implement via:
+/// - Native: blocking call to keychain/HSM
+/// - Browser: Web Crypto API (may queue internally)
+/// - Cloud: KMS API call
+pub trait SigningService: Send + Sync {
+    /// Get the public key for an agent.
+    fn pubkey(&self, agent_id: &AgentId) -> Result<PublicKey>;
+
+    /// Sign data (agent requests signature, never sees private key).
+    fn sign(&self, agent_id: &AgentId, data: &[u8]) -> Result<Signature>;
+
+    /// Encrypt to recipient (NIP-44).
+    fn encrypt(
+        &self,
+        agent_id: &AgentId,
+        recipient: &PublicKey,
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>>;
+
+    /// Decrypt from sender (NIP-44).
+    fn decrypt(
+        &self,
+        agent_id: &AgentId,
+        sender: &PublicKey,
+        ciphertext: &[u8],
+    ) -> Result<Vec<u8>>;
+}
+```
+
+Implementations:
+
+| Backend | SigningService Implementation |
+|---------|------------------------------|
+| Local dev | In-memory keys (fast, not for production) |
+| Local prod | OS keychain / secure enclave |
+| Browser | Web Crypto API |
+| Cloudflare | Workers secrets + DO storage |
+| Cloud | AWS KMS / GCP Cloud KMS |
+| Threshold | FROST/FROSTR signing quorum |
 
 ---
 
@@ -331,40 +414,81 @@ pub enum AgentLifecycleState {
 ## Trigger Types
 
 ```rust
-/// What caused an agent tick.
+/// What caused an agent tick. Every trigger carries envelope metadata for dedup + tracing.
 pub enum Trigger {
     /// Incoming message from another agent or user.
-    Message(IncomingMessage),
+    Message(MessageTrigger),
 
     /// Scheduled alarm fired.
     Alarm(AlarmTrigger),
 
     /// External event (webhook, file change, etc.).
-    Event(ExternalEvent),
+    Event(EventTrigger),
 
     /// Manual invocation (API call, CLI).
     Manual(ManualTrigger),
 
     /// First tick after creation.
-    Initialize,
+    Initialize(InitializeTrigger),
+}
+
+/// Common metadata on all triggers (for dedup + trace correlation).
+pub struct TriggerMeta {
+    /// Envelope ID for idempotency (use with ctx.seen/mark_seen).
+    pub envelope_id: EnvelopeId,
+
+    /// Source system (driver name, relay URL, etc.).
+    pub source: String,
+
+    /// Sequence number for ordering (if available).
+    pub seq: Option<u64>,
+
+    /// Timestamp when envelope was created.
+    pub created_at: Timestamp,
+}
+
+pub struct MessageTrigger {
+    pub meta: TriggerMeta,
+    pub from: AgentId,
+    pub message: Message,
+    pub reply_to: Option<EnvelopeId>,
 }
 
 pub struct AlarmTrigger {
+    pub meta: TriggerMeta,
     pub alarm_id: AlarmId,
     pub scheduled_at: Timestamp,
     pub fired_at: Timestamp,
     pub payload: Option<Vec<u8>>,
 }
 
-pub struct ExternalEvent {
-    pub source: String,
+pub struct EventTrigger {
+    pub meta: TriggerMeta,
     pub event_type: String,
     pub payload: serde_json::Value,
 }
 
 pub struct ManualTrigger {
+    pub meta: TriggerMeta,
     pub invoked_by: Option<String>,
     pub reason: Option<String>,
+}
+
+pub struct InitializeTrigger {
+    pub meta: TriggerMeta,
+}
+
+impl Trigger {
+    /// Get envelope ID for deduplication.
+    pub fn envelope_id(&self) -> &EnvelopeId {
+        match self {
+            Trigger::Message(t) => &t.meta.envelope_id,
+            Trigger::Alarm(t) => &t.meta.envelope_id,
+            Trigger::Event(t) => &t.meta.envelope_id,
+            Trigger::Manual(t) => &t.meta.envelope_id,
+            Trigger::Initialize(t) => &t.meta.envelope_id,
+        }
+    }
 }
 ```
 
@@ -408,4 +532,74 @@ pub struct ResourceUsage {
     pub messages_sent: u64,
     pub api_calls: u64,
 }
+```
+
+---
+
+## Budget Types
+
+Canonical budget definitions used across the runtime.
+
+```rust
+/// Static budget policy (configured at mount/agent level).
+pub struct BudgetPolicy {
+    /// Maximum spend per tick (sats).
+    pub per_tick_sats: u64,
+
+    /// Maximum spend per day (sats).
+    pub per_day_sats: u64,
+
+    /// Spend above this requires approval.
+    pub approval_threshold_sats: u64,
+
+    /// Who can approve large spends.
+    pub approvers: Vec<PublicKey>,
+}
+
+/// Dynamic budget state (tracked by runtime, shown in /status).
+pub struct BudgetState {
+    /// Amount spent this tick.
+    pub spent_tick_sats: u64,
+
+    /// Amount spent today.
+    pub spent_day_sats: u64,
+
+    /// Day boundary (resets spent_day).
+    pub day_start: Timestamp,
+
+    /// Remaining budget this tick.
+    pub remaining_tick(&self) -> u64;
+
+    /// Remaining budget today.
+    pub remaining_day(&self) -> u64;
+}
+
+/// Access level for mounted capabilities.
+pub enum AccessLevel {
+    /// Read-only access.
+    ReadOnly,
+
+    /// Read and write access.
+    ReadWrite,
+
+    /// Sign-only (for /identity - can sign, not extract keys).
+    SignOnly,
+
+    /// Budgeted access with spending limits.
+    Budgeted(BudgetPolicy),
+
+    /// Disabled (mount exists but access denied).
+    Disabled,
+}
+```
+
+Usage in mount table:
+
+```rust
+namespace.mount("/wallet", wallet_fs, AccessLevel::Budgeted(BudgetPolicy {
+    per_tick_sats: 1000,
+    per_day_sats: 50000,
+    approval_threshold_sats: 5000,
+    approvers: vec![owner_pubkey],
+}));
 ```
