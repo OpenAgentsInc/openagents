@@ -12,6 +12,7 @@ categories = ["asynchronous", "web-programming"]
 default = []
 # Backend features - enable one
 cloudflare = ["worker", "wasm-bindgen-futures"]
+browser = ["wasm-bindgen", "wasm-bindgen-futures", "web-sys", "js-sys"]
 local = ["rusqlite"]
 # Optional features
 full = ["tracing", "metrics"]
@@ -26,33 +27,56 @@ futures = { workspace = true }
 hex = { workspace = true }
 sha2 = { workspace = true }
 base64 = { workspace = true }
-bitcoin = { workspace = true }
-nostr = { workspace = true }
-nostr-client = { path = "../nostr/client" }
-axum = "0.7"
-tokio-stream = "0.1"
+bech32 = "0.11.0"
 clap = { workspace = true }
-reqwest = { workspace = true }
 uuid = { workspace = true }
-compute = { path = "../compute" }
 urlencoding = "2.1.3"
-tempfile = { workspace = true }
 
 # Crypto
 # TODO: Add when implementing identity
 
 # Async
-tokio = { workspace = true }
+# tokio is non-wasm only (see target-specific deps below)
 
 # Storage backends
 rusqlite = { version = "0.32", optional = true }
 worker = { version = "0.7", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+web-sys = { version = "0.3", optional = true, features = [
+    "Headers",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+    "Window",
+    "WorkerGlobalScope",
+] }
+js-sys = { version = "0.3", optional = true }
 
 # Observability
 tracing = { version = "0.1", optional = true }
 metrics = { version = "0.24", optional = true }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+axum = "0.7"
+tokio = { workspace = true }
+tokio-stream = "0.1"
+reqwest = { workspace = true }
+tempfile = { workspace = true }
+nostr-client = { path = "../nostr/client" }
+compute = { path = "../compute" }
+bitcoin = { workspace = true }
+nostr = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
 tempfile = { workspace = true }
+
+[[bin]]
+name = "agentctl"
+path = "src/bin/agentctl.rs"
+required-features = ["local"]

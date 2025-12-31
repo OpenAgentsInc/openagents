@@ -1,26 +1,48 @@
 //! Compute filesystem service and providers.
 
 use crate::budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetTracker};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::dvm::{msats_to_sats, parse_feedback_event, DvmFeedbackStatus, DvmTransport, RelayPoolTransport};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::fx::{FxRateCache, FxRateProvider, FxSource};
 use crate::fs::{
     BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Permissions,
     SeekFrom, Stat, WatchEvent, WatchHandle,
 };
 use crate::idempotency::{IdempotencyJournal, JournalError};
+use crate::identity::SigningService;
 use crate::types::{AgentId, Timestamp};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::wallet::{WalletFxProvider, WalletService};
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+use crate::wasm_http;
+#[cfg(not(target_arch = "wasm32"))]
+use nostr::{
+    create_deletion_tags, get_event_hash, get_result_kind, HandlerInfo, HandlerType, JobInput,
+    JobRequest, JobResult, JobStatus, UnsignedEvent, DELETION_REQUEST_KIND, KIND_HANDLER_INFO,
+    KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_TEXT_GENERATION,
+};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::sync::{mpsc, RwLock as TokioRwLock};
-#[cfg(feature = "cloudflare")]
+#[cfg(all(
+    target_arch = "wasm32",
+    any(feature = "cloudflare", feature = "browser")
+))]
 use wasm_bindgen_futures::spawn_local;
 #[cfg(feature = "cloudflare")]
 use worker::Ai;
 
+#[cfg(not(target_arch = "wasm32"))]
 use ::compute as compute_provider;
+#[cfg(not(target_arch = "wasm32"))]
 use compute_provider::backends::{
     BackendRegistry, CompletionRequest, CompletionResponse, UsageInfo as BackendUsageInfo,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use compute_provider::backends::{BackendError, InferenceBackend};
 
 const IDEMPOTENCY_TTL: Duration = Duration::from_secs(3600);
@@ -320,6 +342,7 @@ impl From<JournalError> for ComputeError {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl From<BackendError> for ComputeError {
     fn from(err: BackendError) -> Self {
         ComputeError::ProviderError(err.to_string())
@@ -375,6 +398,12 @@ pub trait ComputeProvider: Send + Sync {
     fn poll_stream(&self, job_id: &str) -> Result<Option<ComputeChunk>, ComputeError>;
     /// Cancel a running job.
     fn cancel(&self, job_id: &str) -> Result<(), ComputeError>;
+}
+
+/// Source for API tokens used by remote compute providers.
+pub trait ApiTokenProvider: Send + Sync {
+    /// Return the current API token, if available.
+    fn api_token(&self) -> Option<String>;
 }
 
 /// Routes compute requests to appropriate providers.
@@ -1128,12 +1157,9 @@ impl WatchHandle for StreamWatchHandle {
                 Err(err) => return Err(FsError::Other(err.to_string())),
             }
 
-            if let Some(deadline) = deadline {
-                if Instant::now() >= deadline {
-                    return Ok(None);
-                }
+            if !wait_for_stream(deadline)? {
+                return Ok(None);
             }
-            std::thread::sleep(Duration::from_millis(25));
         }
     }
 
@@ -1142,18 +1168,39 @@ impl WatchHandle for StreamWatchHandle {
     }
 }
 
+fn wait_for_stream(deadline: Option<Instant>) -> FsResult<bool> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = deadline;
+        return Ok(false);
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if let Some(deadline) = deadline {
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(25));
+        Ok(true)
+    }
+}
+
 /// Local provider backed by the compute registry.
+#[cfg(not(target_arch = "wasm32"))]
 pub struct LocalProvider {
     registry: Arc<BackendRegistry>,
     executor: Executor,
     jobs: Arc<RwLock<HashMap<String, LocalJobState>>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct LocalJobState {
     status: JobState,
     stream_rx: Option<Mutex<mpsc::Receiver<ComputeChunk>>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl LocalProvider {
     /// Detect available local backends.
     pub fn detect() -> Result<Self, ComputeError> {
@@ -1250,6 +1297,7 @@ impl LocalProvider {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl ComputeProvider for LocalProvider {
     fn id(&self) -> &str {
         "local"
@@ -1669,11 +1717,1357 @@ impl ComputeProvider for CloudflareProvider {
     }
 }
 
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+#[derive(Default)]
+struct RemoteJobState {
+    remote_id: Option<String>,
+    cursor: Option<String>,
+    queue: VecDeque<ComputeChunk>,
+    refreshing: bool,
+    streaming: bool,
+}
+
+/// OpenAgents API-backed compute provider for browser targets.
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+pub struct OpenAgentsComputeProvider {
+    base_url: String,
+    provider_id: String,
+    token_provider: Arc<dyn ApiTokenProvider>,
+    info: Arc<RwLock<ProviderInfo>>,
+    jobs: Arc<RwLock<HashMap<String, JobState>>>,
+    remote: Arc<Mutex<HashMap<String, RemoteJobState>>>,
+}
+
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+impl OpenAgentsComputeProvider {
+    /// Create a new OpenAgents API compute provider.
+    pub fn new(
+        base_url: impl Into<String>,
+        provider_id: impl Into<String>,
+        token_provider: Arc<dyn ApiTokenProvider>,
+    ) -> Self {
+        let provider_id = provider_id.into();
+        let info = ProviderInfo {
+            id: provider_id.clone(),
+            name: format!("OpenAgents ({})", provider_id),
+            models: Vec::new(),
+            capabilities: Vec::new(),
+            pricing: None,
+            latency: ProviderLatency {
+                ttft_ms: 0,
+                tokens_per_sec: None,
+                measured: false,
+            },
+            region: Some("openagents".to_string()),
+            status: ProviderStatus::Degraded {
+                reason: "loading provider info".to_string(),
+            },
+        };
+        let provider = Self {
+            base_url: base_url.into(),
+            provider_id,
+            token_provider,
+            info: Arc::new(RwLock::new(info)),
+            jobs: Arc::new(RwLock::new(HashMap::new())),
+            remote: Arc::new(Mutex::new(HashMap::new())),
+        };
+        provider.spawn_info_refresh();
+        provider
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!(
+            "{}/{}",
+            self.base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        )
+    }
+
+    fn spawn_info_refresh(&self) {
+        let info = Arc::clone(&self.info);
+        let provider_id = self.provider_id.clone();
+        let url = self.url(&format!("compute/providers/{}/info", provider_id));
+        let token_provider = Arc::clone(&self.token_provider);
+        spawn_local(async move {
+            let token = token_provider.api_token();
+            let response = wasm_http::request_bytes("GET", &url, token.as_deref(), None).await;
+            let updated = match response {
+                Ok((status, bytes)) if (200..300).contains(&status) => {
+                    match serde_json::from_slice::<ProviderInfo>(&bytes) {
+                        Ok(mut info) => {
+                            if info.id.is_empty() {
+                                info.id = provider_id.clone();
+                            }
+                            if info.name.is_empty() {
+                                info.name = format!("OpenAgents ({})", provider_id);
+                            }
+                            info
+                        }
+                        Err(err) => ProviderInfo {
+                            id: provider_id.clone(),
+                            name: format!("OpenAgents ({})", provider_id),
+                            models: Vec::new(),
+                            capabilities: Vec::new(),
+                            pricing: None,
+                            latency: ProviderLatency {
+                                ttft_ms: 0,
+                                tokens_per_sec: None,
+                                measured: false,
+                            },
+                            region: Some("openagents".to_string()),
+                            status: ProviderStatus::Unavailable {
+                                reason: format!("invalid provider info: {}", err),
+                            },
+                        },
+                    }
+                }
+                Ok((status, bytes)) => {
+                    let body = String::from_utf8_lossy(&bytes);
+                    ProviderInfo {
+                        id: provider_id.clone(),
+                        name: format!("OpenAgents ({})", provider_id),
+                        models: Vec::new(),
+                        capabilities: Vec::new(),
+                        pricing: None,
+                        latency: ProviderLatency {
+                            ttft_ms: 0,
+                            tokens_per_sec: None,
+                            measured: false,
+                        },
+                        region: Some("openagents".to_string()),
+                        status: ProviderStatus::Unavailable {
+                            reason: format!("openagents api {}: {}", status, body),
+                        },
+                    }
+                }
+                Err(err) => ProviderInfo {
+                    id: provider_id.clone(),
+                    name: format!("OpenAgents ({})", provider_id),
+                    models: Vec::new(),
+                    capabilities: Vec::new(),
+                    pricing: None,
+                    latency: ProviderLatency {
+                        ttft_ms: 0,
+                        tokens_per_sec: None,
+                        measured: false,
+                    },
+                    region: Some("openagents".to_string()),
+                    status: ProviderStatus::Unavailable {
+                        reason: err,
+                    },
+                },
+            };
+            let mut guard = info.write().unwrap_or_else(|e| e.into_inner());
+            *guard = updated;
+        });
+    }
+
+    fn spawn_refresh(&self, job_id: &str) {
+        let (remote_id, url, token_provider, jobs, remote, job_id) = {
+            let mut guard = self.remote.lock().unwrap_or_else(|e| e.into_inner());
+            let state = match guard.get_mut(job_id) {
+                Some(state) => state,
+                None => return,
+            };
+            if state.refreshing {
+                return;
+            }
+            let remote_id = match state.remote_id.clone() {
+                Some(id) => id,
+                None => return,
+            };
+            state.refreshing = true;
+            let url = self.url(&format!("compute/jobs/{}", remote_id));
+            (
+                remote_id,
+                url,
+                Arc::clone(&self.token_provider),
+                Arc::clone(&self.jobs),
+                Arc::clone(&self.remote),
+                job_id.to_string(),
+            )
+        };
+
+        spawn_local(async move {
+            let token = token_provider.api_token();
+            let response = wasm_http::request_bytes("GET", &url, token.as_deref(), None).await;
+            let next_state = match response {
+                Ok((status, bytes)) if (200..300).contains(&status) => {
+                    serde_json::from_slice::<JobState>(&bytes)
+                        .map_err(|err| format!("invalid job state: {}", err))
+                }
+                Ok((404, _)) => Err("job not found".to_string()),
+                Ok((status, bytes)) => {
+                    let body = String::from_utf8_lossy(&bytes);
+                    Err(format!("openagents api {}: {}", status, body))
+                }
+                Err(err) => Err(err),
+            };
+
+            match next_state {
+                Ok(state) => {
+                    let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(job_id.clone(), state);
+                }
+                Err(err) => {
+                    let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        job_id.clone(),
+                        JobState::Failed {
+                            error: err,
+                            at: Timestamp::now(),
+                        },
+                    );
+                }
+            }
+
+            let mut guard = remote.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(state) = guard.get_mut(&job_id) {
+                state.refreshing = false;
+                state.remote_id = Some(remote_id);
+            }
+        });
+    }
+
+    fn spawn_stream_poll(&self, job_id: &str) {
+        let (url, token_provider, jobs, remote, job_id, cursor) = {
+            let mut guard = self.remote.lock().unwrap_or_else(|e| e.into_inner());
+            let state = match guard.get_mut(job_id) {
+                Some(state) => state,
+                None => return,
+            };
+            if state.streaming {
+                return;
+            }
+            let remote_id = match state.remote_id.clone() {
+                Some(id) => id,
+                None => return,
+            };
+            state.streaming = true;
+            let cursor = state.cursor.clone();
+            let url = match cursor.as_ref() {
+                Some(cursor) => self.url(&format!(
+                    "compute/jobs/{}/stream?cursor={}",
+                    remote_id, cursor
+                )),
+                None => self.url(&format!("compute/jobs/{}/stream", remote_id)),
+            };
+            (
+                url,
+                Arc::clone(&self.token_provider),
+                Arc::clone(&self.jobs),
+                Arc::clone(&self.remote),
+                job_id.to_string(),
+                cursor,
+            )
+        };
+
+        spawn_local(async move {
+            let token = token_provider.api_token();
+            let response = wasm_http::request_bytes("GET", &url, token.as_deref(), None).await;
+            let mut next_chunk: Option<ComputeChunk> = None;
+            let mut next_cursor = cursor.clone();
+            let mut error: Option<String> = None;
+
+            match response {
+                Ok((status, bytes)) if status == 204 || bytes.is_empty() => {}
+                Ok((status, bytes)) if (200..300).contains(&status) => {
+                    #[derive(Deserialize)]
+                    struct StreamResponse {
+                        chunk: Option<ComputeChunk>,
+                        cursor: Option<String>,
+                    }
+
+                    if let Ok(payload) = serde_json::from_slice::<StreamResponse>(&bytes) {
+                        next_chunk = payload.chunk;
+                        next_cursor = payload.cursor.or(next_cursor);
+                    } else if let Ok(chunk) = serde_json::from_slice::<ComputeChunk>(&bytes) {
+                        next_chunk = Some(chunk);
+                    }
+                }
+                Ok((status, bytes)) => {
+                    let body = String::from_utf8_lossy(&bytes);
+                    error = Some(format!("openagents api {}: {}", status, body));
+                }
+                Err(err) => error = Some(err),
+            }
+
+            if let Some(err) = error {
+                let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+                guard.insert(
+                    job_id.clone(),
+                    JobState::Failed {
+                        error: err,
+                        at: Timestamp::now(),
+                    },
+                );
+            } else if let Some(chunk) = next_chunk {
+                {
+                    let mut guard = remote.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(state) = guard.get_mut(&job_id) {
+                        state.queue.push_back(chunk);
+                        state.cursor = next_cursor.clone();
+                    }
+                }
+                let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+                let updated = match guard.get(&job_id) {
+                    Some(JobState::Streaming {
+                        started_at,
+                        chunks_emitted,
+                    }) => JobState::Streaming {
+                        started_at: *started_at,
+                        chunks_emitted: chunks_emitted.saturating_add(1),
+                    },
+                    Some(JobState::Running { started_at }) => JobState::Streaming {
+                        started_at: *started_at,
+                        chunks_emitted: 1,
+                    },
+                    Some(JobState::Pending { .. }) | None => JobState::Streaming {
+                        started_at: Timestamp::now(),
+                        chunks_emitted: 1,
+                    },
+                    Some(JobState::Complete(response)) => JobState::Complete(response.clone()),
+                    Some(JobState::Failed { error, at }) => JobState::Failed {
+                        error: error.clone(),
+                        at: *at,
+                    },
+                };
+                guard.insert(job_id.clone(), updated);
+            }
+
+            let mut guard = remote.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(state) = guard.get_mut(&job_id) {
+                state.streaming = false;
+                state.cursor = next_cursor;
+            }
+        });
+    }
+}
+
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+impl ComputeProvider for OpenAgentsComputeProvider {
+    fn id(&self) -> &str {
+        &self.provider_id
+    }
+
+    fn info(&self) -> ProviderInfo {
+        self.info.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    fn is_available(&self) -> bool {
+        let info = self.info.read().unwrap_or_else(|e| e.into_inner());
+        matches!(
+            info.status,
+            ProviderStatus::Available | ProviderStatus::Degraded { .. }
+        )
+    }
+
+    fn supports_model(&self, model: &str) -> bool {
+        let info = self.info.read().unwrap_or_else(|e| e.into_inner());
+        if info.models.is_empty() {
+            return true;
+        }
+        info.models.iter().any(|entry| entry.id == model)
+    }
+
+    fn submit(&self, request: ComputeRequest) -> Result<String, ComputeError> {
+        let job_id = uuid::Uuid::new_v4().to_string();
+        let started_at = Timestamp::now();
+        self.jobs
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                job_id.clone(),
+                JobState::Pending {
+                    submitted_at: started_at,
+                },
+            );
+        self.remote
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(job_id.clone(), RemoteJobState::default());
+
+        let jobs = Arc::clone(&self.jobs);
+        let remote = Arc::clone(&self.remote);
+        let token_provider = Arc::clone(&self.token_provider);
+        let url = self.url(&format!("compute/providers/{}/jobs", self.provider_id));
+        let job_id_clone = job_id.clone();
+        let request_clone = request.clone();
+
+        spawn_local(async move {
+            let token = match token_provider.api_token() {
+                Some(token) => token,
+                None => {
+                    let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        job_id_clone.clone(),
+                        JobState::Failed {
+                            error: "OpenAgents API token required".to_string(),
+                            at: Timestamp::now(),
+                        },
+                    );
+                    return;
+                }
+            };
+            let body = match serde_json::to_string(&request_clone) {
+                Ok(body) => body,
+                Err(err) => {
+                    let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        job_id_clone.clone(),
+                        JobState::Failed {
+                            error: err.to_string(),
+                            at: Timestamp::now(),
+                        },
+                    );
+                    return;
+                }
+            };
+            let response = wasm_http::request_bytes("POST", &url, Some(&token), Some(body)).await;
+            #[derive(Deserialize)]
+            struct JobResponse {
+                job_id: String,
+            }
+            match response {
+                Ok((status, bytes)) if (200..300).contains(&status) => {
+                    match serde_json::from_slice::<JobResponse>(&bytes) {
+                        Ok(payload) => {
+                            let mut remote_guard =
+                                remote.lock().unwrap_or_else(|e| e.into_inner());
+                            if let Some(state) = remote_guard.get_mut(&job_id_clone) {
+                                state.remote_id = Some(payload.job_id);
+                            }
+                            let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+                            let state = if request_clone.stream {
+                                JobState::Streaming {
+                                    started_at,
+                                    chunks_emitted: 0,
+                                }
+                            } else {
+                                JobState::Running { started_at }
+                            };
+                            guard.insert(job_id_clone.clone(), state);
+                        }
+                        Err(err) => {
+                            let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+                            guard.insert(
+                                job_id_clone.clone(),
+                                JobState::Failed {
+                                    error: format!("invalid response: {}", err),
+                                    at: Timestamp::now(),
+                                },
+                            );
+                        }
+                    }
+                }
+                Ok((status, bytes)) => {
+                    let body = String::from_utf8_lossy(&bytes);
+                    let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        job_id_clone.clone(),
+                        JobState::Failed {
+                            error: format!("openagents api {}: {}", status, body),
+                            at: Timestamp::now(),
+                        },
+                    );
+                }
+                Err(err) => {
+                    let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        job_id_clone.clone(),
+                        JobState::Failed {
+                            error: err,
+                            at: Timestamp::now(),
+                        },
+                    );
+                }
+            }
+        });
+
+        Ok(job_id)
+    }
+
+    fn get_job(&self, job_id: &str) -> Option<JobState> {
+        let state = self
+            .jobs
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(job_id)
+            .cloned();
+        if let Some(state) = state.as_ref() {
+            if !matches!(state, JobState::Complete(_) | JobState::Failed { .. }) {
+                self.spawn_refresh(job_id);
+            }
+        }
+        state
+    }
+
+    fn poll_stream(&self, job_id: &str) -> Result<Option<ComputeChunk>, ComputeError> {
+        let mut chunk = None;
+        {
+            let mut guard = self.remote.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(state) = guard.get_mut(job_id) {
+                chunk = state.queue.pop_front();
+            }
+        }
+        if chunk.is_some() {
+            return Ok(chunk);
+        }
+        self.spawn_stream_poll(job_id);
+        Ok(None)
+    }
+
+    fn cancel(&self, job_id: &str) -> Result<(), ComputeError> {
+        let remote_id = {
+            let mut guard = self.remote.lock().unwrap_or_else(|e| e.into_inner());
+            let state = guard.get_mut(job_id).ok_or(ComputeError::JobNotFound)?;
+            state.remote_id.clone()
+        };
+        let mut jobs = self.jobs.write().unwrap_or_else(|e| e.into_inner());
+        jobs.insert(
+            job_id.to_string(),
+            JobState::Failed {
+                error: "cancelled".to_string(),
+                at: Timestamp::now(),
+            },
+        );
+
+        if let Some(remote_id) = remote_id {
+            let url = self.url(&format!("compute/jobs/{}/cancel", remote_id));
+            let token_provider = Arc::clone(&self.token_provider);
+            spawn_local(async move {
+                if let Some(token) = token_provider.api_token() {
+                    let _ = wasm_http::request_bytes("POST", &url, Some(&token), None).await;
+                }
+            });
+        }
+        Ok(())
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+const DVM_QUOTE_WINDOW: Duration = Duration::from_secs(5);
+
+/// NIP-90 DVM provider for decentralized compute.
+#[cfg(not(target_arch = "wasm32"))]
+pub struct DvmProvider {
+    agent_id: AgentId,
+    transport: Arc<dyn DvmTransport>,
+    signer: Arc<dyn SigningService>,
+    wallet: Option<Arc<dyn WalletService>>,
+    fx: Arc<FxRateCache>,
+    executor: Executor,
+    jobs: Arc<RwLock<HashMap<String, DvmJobState>>>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
+struct DvmQuote {
+    provider_pubkey: String,
+    price_sats: u64,
+    price_usd: u64,
+    event_id: String,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone)]
+enum DvmLifecycle {
+    AwaitingQuotes {
+        since: Timestamp,
+        timeout_at: Timestamp,
+    },
+    Processing {
+        accepted_at: Timestamp,
+        provider: String,
+    },
+    PendingSettlement {
+        result_at: Timestamp,
+        invoice: Option<String>,
+    },
+    Settled {
+        settled_at: Timestamp,
+    },
+    Failed {
+        error: String,
+        at: Timestamp,
+    },
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone)]
+struct DvmJobState {
+    job_id: String,
+    request_event_id: String,
+    request_kind: u16,
+    request: ComputeRequest,
+    submitted_at: Timestamp,
+    lifecycle: DvmLifecycle,
+    quotes: Vec<DvmQuote>,
+    accepted_quote: Option<DvmQuote>,
+    result: Option<ComputeResponse>,
+    partials: VecDeque<ComputeChunk>,
+    payment_made: bool,
+    paid_amount_sats: Option<u64>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl DvmProvider {
+    /// Create a new DVM provider using Nostr relays.
+    pub fn new(
+        agent_id: AgentId,
+        relays: Vec<String>,
+        signer: Arc<dyn SigningService>,
+        wallet: Option<Arc<dyn WalletService>>,
+        fx_source: FxSource,
+        fx_cache_secs: u64,
+    ) -> Result<Self, ComputeError> {
+        let transport = Arc::new(RelayPoolTransport::new(relays));
+        Self::with_transport(agent_id, transport, signer, wallet, fx_source, fx_cache_secs)
+    }
+
+    /// Create a DVM provider with a custom transport (tests).
+    pub(crate) fn with_transport(
+        agent_id: AgentId,
+        transport: Arc<dyn DvmTransport>,
+        signer: Arc<dyn SigningService>,
+        wallet: Option<Arc<dyn WalletService>>,
+        fx_source: FxSource,
+        fx_cache_secs: u64,
+    ) -> Result<Self, ComputeError> {
+        let executor = Executor::new()?;
+        let runtime = executor.runtime();
+        executor
+            .block_on(transport.connect())
+            .map_err(ComputeError::ProviderError)?;
+        let wallet_fx = wallet.as_ref().map(|wallet| {
+            Arc::new(WalletFxProvider::new(wallet.clone())) as Arc<dyn FxRateProvider>
+        });
+        let fx = Arc::new(FxRateCache::new(
+            fx_source,
+            fx_cache_secs,
+            wallet_fx,
+            runtime,
+        ));
+        Ok(Self {
+            agent_id,
+            transport,
+            signer,
+            wallet,
+            fx,
+            executor,
+            jobs: Arc::new(RwLock::new(HashMap::new())),
+        })
+    }
+
+    fn map_kind(kind: &ComputeKind) -> Result<u16, ComputeError> {
+        match kind {
+            ComputeKind::Chat | ComputeKind::Complete => Ok(KIND_JOB_TEXT_GENERATION),
+            ComputeKind::ImageGenerate => Ok(KIND_JOB_IMAGE_GENERATION),
+            ComputeKind::Transcribe => Ok(KIND_JOB_SPEECH_TO_TEXT),
+            other => Err(ComputeError::UnsupportedKind(format!("{:?}", other))),
+        }
+    }
+
+    fn build_job_request(
+        &self,
+        request: &ComputeRequest,
+        kind: u16,
+    ) -> Result<JobRequest, ComputeError> {
+        let prompt = match request.kind {
+            ComputeKind::Chat => parse_messages(&request.input),
+            ComputeKind::Complete | ComputeKind::ImageGenerate | ComputeKind::Transcribe => {
+                parse_prompt(&request.input)
+            }
+            _ => None,
+        }
+        .ok_or_else(|| ComputeError::InvalidRequest("missing prompt".to_string()))?;
+
+        let mut job = JobRequest::new(kind)
+            .map_err(|err| ComputeError::InvalidRequest(err.to_string()))?
+            .add_input(JobInput::text(prompt))
+            .add_param("model", request.model.clone());
+
+        if let Some(obj) = request.input.as_object() {
+            if let Some(max_tokens) = obj.get("max_tokens").and_then(|v| v.as_u64()) {
+                job = job.add_param("max_tokens", max_tokens.to_string());
+            }
+            if let Some(temp) = obj.get("temperature").and_then(|v| v.as_f64()) {
+                job = job.add_param("temperature", temp.to_string());
+            }
+            if let Some(top_p) = obj.get("top_p").and_then(|v| v.as_f64()) {
+                job = job.add_param("top_p", top_p.to_string());
+            }
+            if let Some(stop) = obj.get("stop").and_then(|v| v.as_array()) {
+                for (idx, item) in stop.iter().enumerate() {
+                    if let Some(value) = item.as_str() {
+                        job = job.add_param(format!("stop_{}", idx), value.to_string());
+                    }
+                }
+            }
+        }
+
+        for relay in self.transport.relays() {
+            job = job.add_relay(relay);
+        }
+
+        let max_cost_usd = request.max_cost_usd.unwrap_or(100_000);
+        let max_cost_sats = self
+            .fx
+            .usd_to_sats(max_cost_usd)
+            .map_err(|err| ComputeError::ProviderError(err.to_string()))?;
+        let bid_msats = u128::from(max_cost_sats) * 1000;
+        let bid_msats = u64::try_from(bid_msats)
+            .map_err(|_| ComputeError::ProviderError("bid overflow".to_string()))?;
+        job = job.with_bid(bid_msats);
+
+        Ok(job)
+    }
+
+    fn sign_event(
+        &self,
+        kind: u16,
+        tags: Vec<Vec<String>>,
+        content: String,
+    ) -> Result<nostr::Event, ComputeError> {
+        let created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let pubkey = self
+            .signer
+            .pubkey(&self.agent_id)
+            .map_err(|err| ComputeError::ProviderError(err.to_string()))?;
+        let pubkey_hex = pubkey.to_hex();
+        let unsigned = UnsignedEvent {
+            pubkey: pubkey_hex.clone(),
+            created_at,
+            kind,
+            tags,
+            content,
+        };
+        let id = get_event_hash(&unsigned).map_err(|err| ComputeError::ProviderError(err.to_string()))?;
+        let id_bytes = hex::decode(&id).map_err(|err| ComputeError::ProviderError(err.to_string()))?;
+        let sig = self
+            .signer
+            .sign(&self.agent_id, &id_bytes)
+            .map_err(|err| ComputeError::ProviderError(err.to_string()))?;
+
+        Ok(nostr::Event {
+            id,
+            pubkey: pubkey_hex,
+            created_at,
+            kind,
+            tags: unsigned.tags,
+            content: unsigned.content,
+            sig: sig.to_hex(),
+        })
+    }
+
+    fn spawn_quote_manager(&self, job_id: String) {
+        let jobs = self.jobs.clone();
+        let transport = self.transport.clone();
+        let signer = self.signer.clone();
+        let agent_id = self.agent_id.clone();
+        let executor = self.executor.clone();
+
+        executor.spawn(async move {
+            tokio::time::sleep(DVM_QUOTE_WINDOW).await;
+
+            let (request_event_id, quote) = {
+                let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+                let job = match guard.get_mut(&job_id) {
+                    Some(job) => job,
+                    None => return,
+                };
+                if !matches!(job.lifecycle, DvmLifecycle::AwaitingQuotes { .. }) {
+                    return;
+                }
+                let best = match job
+                    .quotes
+                    .iter()
+                    .min_by_key(|quote| quote.price_usd)
+                    .cloned()
+                {
+                    Some(best) => best,
+                    None => {
+                        job.lifecycle = DvmLifecycle::Failed {
+                            error: "no quotes received".to_string(),
+                            at: Timestamp::now(),
+                        };
+                        return;
+                    }
+                };
+                job.accepted_quote = Some(best.clone());
+                job.lifecycle = DvmLifecycle::Processing {
+                    accepted_at: Timestamp::now(),
+                    provider: best.provider_pubkey.clone(),
+                };
+                (job.request_event_id.clone(), best)
+            };
+
+            let tags = vec![
+                vec!["e".to_string(), request_event_id],
+                vec!["e".to_string(), quote.event_id.clone()],
+                vec!["p".to_string(), quote.provider_pubkey.clone()],
+                vec!["status".to_string(), "processing".to_string()],
+            ];
+
+            let created_at = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let pubkey = match signer.pubkey(&agent_id) {
+                Ok(pubkey) => pubkey,
+                Err(_) => return,
+            };
+            let pubkey_hex = pubkey.to_hex();
+            let unsigned = UnsignedEvent {
+                pubkey: pubkey_hex.clone(),
+                created_at,
+                kind: KIND_JOB_FEEDBACK,
+                tags,
+                content: String::new(),
+            };
+            let id = match get_event_hash(&unsigned) {
+                Ok(id) => id,
+                Err(_) => return,
+            };
+            let id_bytes = match hex::decode(&id) {
+                Ok(bytes) => bytes,
+                Err(_) => return,
+            };
+            let sig = match signer.sign(&agent_id, &id_bytes) {
+                Ok(sig) => sig,
+                Err(_) => return,
+            };
+            let event = nostr::Event {
+                id,
+                pubkey: pubkey_hex,
+                created_at,
+                kind: KIND_JOB_FEEDBACK,
+                tags: unsigned.tags,
+                content: unsigned.content,
+                sig: sig.to_hex(),
+            };
+            let _ = transport.publish(event).await;
+        });
+    }
+
+    fn subscribe_job_events(
+        &self,
+        job_id: String,
+        request_event_id: String,
+        request_kind: u16,
+    ) -> Result<(), ComputeError> {
+        let result_kind = get_result_kind(request_kind)
+            .ok_or_else(|| ComputeError::ProviderError("invalid job kind".to_string()))?;
+        let filters = vec![
+            serde_json::json!({
+                "kinds": [result_kind],
+                "#e": [request_event_id],
+            }),
+            serde_json::json!({
+                "kinds": [KIND_JOB_FEEDBACK],
+                "#e": [request_event_id],
+            }),
+        ];
+        let subscription_id = format!("dvm-job-{}", request_event_id);
+        let mut rx = self
+            .executor
+            .block_on(self.transport.subscribe(&subscription_id, &filters))
+            .map_err(ComputeError::ProviderError)?;
+
+        let jobs = self.jobs.clone();
+        let fx = self.fx.clone();
+        let wallet = self.wallet.clone();
+        let request_model = {
+            let guard = jobs.read().unwrap_or_else(|e| e.into_inner());
+            guard
+                .get(&job_id)
+                .map(|job| job.request.model.clone())
+                .unwrap_or_default()
+        };
+
+        self.executor.spawn(async move {
+            while let Some(event) = rx.recv().await {
+                if event.kind == result_kind {
+                    handle_dvm_result(
+                        &job_id,
+                        &request_model,
+                        &event,
+                        &jobs,
+                        &fx,
+                        &wallet,
+                    );
+                } else if event.kind == KIND_JOB_FEEDBACK {
+                    if let Some(feedback) = parse_feedback_event(&event) {
+                        handle_dvm_feedback(&job_id, feedback, &jobs, &fx, &wallet);
+                    }
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    fn query_handlers(&self) -> Result<Vec<HandlerInfo>, ComputeError> {
+        let filters = vec![serde_json::json!({
+            "kinds": [KIND_HANDLER_INFO],
+            "limit": 100
+        })];
+        let events = self
+            .executor
+            .block_on(self.transport.query(&filters, Duration::from_secs(2)))
+            .map_err(ComputeError::ProviderError)?;
+        let mut handlers = Vec::new();
+        for event in events {
+            if let Ok(handler) = HandlerInfo::from_event(&event) {
+                if handler.handler_type == HandlerType::ComputeProvider {
+                    handlers.push(handler);
+                }
+            }
+        }
+        Ok(handlers)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl ComputeProvider for DvmProvider {
+    fn id(&self) -> &str {
+        "dvm"
+    }
+
+    fn info(&self) -> ProviderInfo {
+        let handlers = self.query_handlers().unwrap_or_default();
+        let mut models = Vec::new();
+        for handler in handlers {
+            for (key, value) in handler.custom_tags {
+                if key == "model" {
+                    models.push(ModelInfo {
+                        id: value.clone(),
+                        name: value,
+                        context_length: None,
+                        capabilities: vec![ComputeKind::Chat, ComputeKind::Complete],
+                        pricing: None,
+                    });
+                }
+            }
+        }
+        ProviderInfo {
+            id: "dvm".to_string(),
+            name: "NIP-90 DVM Network".to_string(),
+            models,
+            capabilities: vec![
+                ComputeKind::Chat,
+                ComputeKind::Complete,
+                ComputeKind::ImageGenerate,
+                ComputeKind::Transcribe,
+            ],
+            pricing: None,
+            latency: ProviderLatency {
+                ttft_ms: 2000,
+                tokens_per_sec: None,
+                measured: false,
+            },
+            region: None,
+            status: if self.wallet.is_none() {
+                ProviderStatus::Unavailable {
+                    reason: "wallet not configured".to_string(),
+                }
+            } else if self.transport.relays().is_empty() {
+                ProviderStatus::Unavailable {
+                    reason: "no relays configured".to_string(),
+                }
+            } else {
+                ProviderStatus::Available
+            },
+        }
+    }
+
+    fn is_available(&self) -> bool {
+        self.wallet.is_some() && !self.transport.relays().is_empty()
+    }
+
+    fn supports_model(&self, model: &str) -> bool {
+        self.query_handlers()
+            .map(|handlers| {
+                handlers.iter().any(|handler| {
+                    handler
+                        .custom_tags
+                        .iter()
+                        .any(|(key, value)| key == "model" && value == model)
+                })
+            })
+            .unwrap_or(false)
+    }
+
+    fn submit(&self, request: ComputeRequest) -> Result<String, ComputeError> {
+        if self.wallet.is_none() {
+            return Err(ComputeError::ProviderError(
+                "wallet not configured".to_string(),
+            ));
+        }
+
+        let kind = Self::map_kind(&request.kind)?;
+        let job_request = self.build_job_request(&request, kind)?;
+        let event = self.sign_event(
+            job_request.kind,
+            job_request.to_tags(),
+            job_request.content.clone(),
+        )?;
+        let event_id = event.id.clone();
+
+        self.executor
+            .block_on(self.transport.publish(event))
+            .map_err(ComputeError::ProviderError)?;
+
+        let job_id = uuid::Uuid::new_v4().to_string();
+        let now = Timestamp::now();
+        self.jobs
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                job_id.clone(),
+                DvmJobState {
+                    job_id: job_id.clone(),
+                    request_event_id: event_id.clone(),
+                    request_kind: kind,
+                    request: request.clone(),
+                    submitted_at: now,
+                    lifecycle: DvmLifecycle::AwaitingQuotes {
+                        since: now,
+                        timeout_at: Timestamp::from_millis(
+                            now.as_millis() + DVM_QUOTE_WINDOW.as_millis() as u64,
+                        ),
+                    },
+                    quotes: Vec::new(),
+                    accepted_quote: None,
+                    result: None,
+                    partials: VecDeque::new(),
+                    payment_made: false,
+                    paid_amount_sats: None,
+                },
+            );
+
+        self.subscribe_job_events(job_id.clone(), event_id, kind)?;
+        self.spawn_quote_manager(job_id.clone());
+        Ok(job_id)
+    }
+
+    fn get_job(&self, job_id: &str) -> Option<JobState> {
+        let guard = self.jobs.read().unwrap_or_else(|e| e.into_inner());
+        let job = guard.get(job_id)?;
+        Some(match &job.lifecycle {
+            DvmLifecycle::AwaitingQuotes { .. } => JobState::Pending {
+                submitted_at: job.submitted_at,
+            },
+            DvmLifecycle::Processing { accepted_at, .. } => JobState::Running {
+                started_at: *accepted_at,
+            },
+            DvmLifecycle::PendingSettlement { .. } => JobState::Running {
+                started_at: job.submitted_at,
+            },
+            DvmLifecycle::Settled { .. } => job
+                .result
+                .clone()
+                .map(JobState::Complete)
+                .unwrap_or(JobState::Running {
+                    started_at: job.submitted_at,
+                }),
+            DvmLifecycle::Failed { error, at } => JobState::Failed {
+                error: error.clone(),
+                at: *at,
+            },
+        })
+    }
+
+    fn poll_stream(&self, job_id: &str) -> Result<Option<ComputeChunk>, ComputeError> {
+        let mut guard = self.jobs.write().unwrap_or_else(|e| e.into_inner());
+        let job = guard.get_mut(job_id).ok_or(ComputeError::JobNotFound)?;
+        Ok(job.partials.pop_front())
+    }
+
+    fn cancel(&self, job_id: &str) -> Result<(), ComputeError> {
+        let (request_event_id, request_kind) = {
+            let mut guard = self.jobs.write().unwrap_or_else(|e| e.into_inner());
+            let job = guard.get_mut(job_id).ok_or(ComputeError::JobNotFound)?;
+            job.lifecycle = DvmLifecycle::Failed {
+                error: "cancelled".to_string(),
+                at: Timestamp::now(),
+            };
+            (job.request_event_id.clone(), job.request_kind)
+        };
+
+        let tags = create_deletion_tags(&[request_event_id.as_str()], Some(request_kind));
+        let event = self.sign_event(DELETION_REQUEST_KIND, tags, String::new())?;
+        self.executor
+            .block_on(self.transport.publish(event))
+            .map_err(ComputeError::ProviderError)?;
+        Ok(())
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn handle_dvm_feedback(
+    job_id: &str,
+    feedback: crate::dvm::DvmFeedback,
+    jobs: &Arc<RwLock<HashMap<String, DvmJobState>>>,
+    fx: &Arc<FxRateCache>,
+    wallet: &Option<Arc<dyn WalletService>>,
+) {
+    let mut payment_request = None;
+
+    {
+        let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+        let Some(job) = guard.get_mut(job_id) else {
+            return;
+        };
+        if matches!(job.lifecycle, DvmLifecycle::Failed { .. } | DvmLifecycle::Settled { .. }) {
+            return;
+        }
+
+        match feedback.status {
+            DvmFeedbackStatus::Quote => {
+                if let Some(amount_msats) = feedback.amount_msats {
+                    let price_sats = msats_to_sats(amount_msats);
+                    let price_usd = match fx.sats_to_usd(price_sats) {
+                        Ok(price_usd) => price_usd,
+                        Err(err) => {
+                            job.lifecycle = DvmLifecycle::Failed {
+                                error: err.to_string(),
+                                at: Timestamp::now(),
+                            };
+                            return;
+                        }
+                    };
+                    let quote = DvmQuote {
+                        provider_pubkey: feedback.provider_pubkey.clone(),
+                        price_sats,
+                        price_usd,
+                        event_id: feedback.event_id.clone(),
+                    };
+                    if let Some(existing) = job
+                        .quotes
+                        .iter_mut()
+                        .find(|q| q.provider_pubkey == quote.provider_pubkey)
+                    {
+                        if quote.price_usd < existing.price_usd {
+                            *existing = quote;
+                        }
+                    } else {
+                        job.quotes.push(quote);
+                    }
+                }
+            }
+            DvmFeedbackStatus::Job(JobStatus::Partial) => {
+                let chunk = ComputeChunk {
+                    job_id: job_id.to_string(),
+                    delta: serde_json::json!({ "text": feedback.content }),
+                    finish_reason: None,
+                    usage: None,
+                };
+                job.partials.push_back(chunk);
+            }
+            DvmFeedbackStatus::Job(JobStatus::Processing) => {
+                job.lifecycle = DvmLifecycle::Processing {
+                    accepted_at: Timestamp::now(),
+                    provider: feedback.provider_pubkey.clone(),
+                };
+            }
+            DvmFeedbackStatus::Job(JobStatus::PaymentRequired) => {
+                if job.payment_made {
+                    return;
+                }
+                let invoice = feedback
+                    .bolt11
+                    .clone()
+                    .or_else(|| {
+                        let trimmed = feedback.content.trim();
+                        if trimmed.starts_with("ln") {
+                            Some(trimmed.to_string())
+                        } else {
+                            None
+                        }
+                    });
+                if let Some(invoice) = invoice {
+                    payment_request = Some((invoice, feedback.amount_msats, feedback.provider_pubkey));
+                } else {
+                    job.lifecycle = DvmLifecycle::Failed {
+                        error: "payment required but invoice missing".to_string(),
+                        at: Timestamp::now(),
+                    };
+                }
+            }
+            DvmFeedbackStatus::Job(JobStatus::Error) => {
+                job.lifecycle = DvmLifecycle::Failed {
+                    error: feedback.status_extra.unwrap_or_else(|| "provider error".to_string()),
+                    at: Timestamp::now(),
+                };
+            }
+            _ => {}
+        }
+    }
+
+    let Some((invoice, amount_msats, provider_pubkey)) = payment_request else {
+        return;
+    };
+    let Some(wallet) = wallet.as_ref() else {
+        let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(job) = guard.get_mut(job_id) {
+            job.lifecycle = DvmLifecycle::Failed {
+                error: "wallet not configured".to_string(),
+                at: Timestamp::now(),
+            };
+        }
+        return;
+    };
+    let amount_sats = amount_msats.map(msats_to_sats);
+    let payment = tokio::task::block_in_place(|| wallet.pay_invoice(&invoice, amount_sats));
+    match payment {
+        Ok(payment) => {
+            let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(job) = guard.get_mut(job_id) {
+                job.payment_made = true;
+                job.paid_amount_sats = Some(payment.amount_sats);
+                job.lifecycle = DvmLifecycle::Processing {
+                    accepted_at: Timestamp::now(),
+                    provider: provider_pubkey,
+                };
+            }
+        }
+        Err(err) => {
+            let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(job) = guard.get_mut(job_id) {
+                job.lifecycle = DvmLifecycle::Failed {
+                    error: err.to_string(),
+                    at: Timestamp::now(),
+                };
+            }
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn handle_dvm_result(
+    job_id: &str,
+    model: &str,
+    event: &nostr::Event,
+    jobs: &Arc<RwLock<HashMap<String, DvmJobState>>>,
+    fx: &Arc<FxRateCache>,
+    wallet: &Option<Arc<dyn WalletService>>,
+) {
+    let result = match JobResult::from_event(event) {
+        Ok(result) => result,
+        Err(_) => return,
+    };
+    let invoice = result.bolt11.clone();
+    let amount_sats = result.amount.map(msats_to_sats);
+
+    let (response, already_paid) = {
+        let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+        let Some(job) = guard.get_mut(job_id) else {
+            return;
+        };
+        if matches!(job.lifecycle, DvmLifecycle::Failed { .. }) {
+            return;
+        }
+        let cost_sats = amount_sats
+            .or(job.paid_amount_sats)
+            .or_else(|| job.accepted_quote.as_ref().map(|quote| quote.price_sats))
+            .unwrap_or(0);
+        let cost_usd = match fx.sats_to_usd(cost_sats) {
+            Ok(cost_usd) => cost_usd,
+            Err(err) => {
+                job.lifecycle = DvmLifecycle::Failed {
+                    error: err.to_string(),
+                    at: Timestamp::now(),
+                };
+                return;
+            }
+        };
+        let output = serde_json::from_str(&result.content)
+            .unwrap_or_else(|_| serde_json::json!({ "text": result.content }));
+        let latency_ms = Timestamp::now()
+            .as_millis()
+            .saturating_sub(job.submitted_at.as_millis()) as u64;
+        let response = ComputeResponse {
+            job_id: job_id.to_string(),
+            output,
+            usage: None,
+            cost_usd,
+            latency_ms,
+            provider_id: "dvm".to_string(),
+            model: model.to_string(),
+        };
+        job.result = Some(response.clone());
+        if invoice.is_some() {
+            job.lifecycle = DvmLifecycle::PendingSettlement {
+                result_at: Timestamp::now(),
+                invoice: invoice.clone(),
+            };
+        } else {
+            job.lifecycle = DvmLifecycle::Settled {
+                settled_at: Timestamp::now(),
+            };
+        }
+        (response, job.payment_made)
+    };
+
+    if invoice.is_none() || already_paid {
+        if already_paid {
+            let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(job) = guard.get_mut(job_id) {
+                job.lifecycle = DvmLifecycle::Settled {
+                    settled_at: Timestamp::now(),
+                };
+            }
+        }
+        return;
+    }
+
+    let Some(wallet) = wallet.as_ref() else {
+        let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(job) = guard.get_mut(job_id) {
+            job.lifecycle = DvmLifecycle::Failed {
+                error: "wallet not configured".to_string(),
+                at: Timestamp::now(),
+            };
+        }
+        return;
+    };
+    let invoice = invoice.unwrap();
+    let payment = tokio::task::block_in_place(|| wallet.pay_invoice(&invoice, amount_sats));
+    match payment {
+        Ok(payment) => {
+            let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(job) = guard.get_mut(job_id) {
+                job.payment_made = true;
+                job.paid_amount_sats = Some(payment.amount_sats);
+                job.result = Some(response);
+                job.lifecycle = DvmLifecycle::Settled {
+                    settled_at: Timestamp::now(),
+                };
+            }
+        }
+        Err(err) => {
+            let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(job) = guard.get_mut(job_id) {
+                job.lifecycle = DvmLifecycle::Failed {
+                    error: err.to_string(),
+                    at: Timestamp::now(),
+                };
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+#[cfg(not(target_arch = "wasm32"))]
 struct Executor {
     runtime: Arc<tokio::runtime::Runtime>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Executor {
     fn new() -> Result<Self, ComputeError> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -1683,6 +3077,10 @@ impl Executor {
         Ok(Self {
             runtime: Arc::new(runtime),
         })
+    }
+
+    fn runtime(&self) -> Arc<tokio::runtime::Runtime> {
+        self.runtime.clone()
     }
 
     fn block_on<F: std::future::Future>(&self, fut: F) -> F::Output {

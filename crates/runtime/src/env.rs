@@ -2,7 +2,11 @@
 
 use crate::budget::BudgetTracker;
 use crate::fs::{AccessLevel, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat, WatchHandle};
-use crate::identity::{NostrSigner, SigningService};
+use crate::identity::SigningService;
+#[cfg(target_arch = "wasm32")]
+use crate::identity::InMemorySigner;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::identity::NostrSigner;
 use crate::namespace::Namespace;
 use crate::services::{
     DeadletterFs, GoalsFs, HudFs, IdentityFs, InboxFs, LogsFs, MetricsFs, StatusFs,
@@ -44,7 +48,10 @@ pub struct AgentEnv {
 impl AgentEnv {
     /// Create an environment with default services and a stub signer.
     pub fn new(agent_id: AgentId, storage: Arc<dyn AgentStorage>) -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
         let signer = Arc::new(NostrSigner::new());
+        #[cfg(target_arch = "wasm32")]
+        let signer = Arc::new(InMemorySigner::new());
         Self::with_signer(agent_id, storage, signer)
     }
 
