@@ -20,48 +20,82 @@ This runtime is not a generic actor framework. It is purpose-built for **autonom
 
 ## Built-In Identity
 
-Every agent has a **cryptographic keypair** from birth:
+Every agent has a **cryptographic identity** from birth. Critically, **agents never hold extractable private keys**—all signing and encryption operations go through a Factotum-style signing service.
 
 ```rust
+/// Agent identity (public information only)
 pub struct AgentIdentity {
     /// Public key - the agent's address
     pub pubkey: PublicKey,
 
-    /// Derivation path from user's master seed
+    /// Derivation path from user's master seed (for recovery)
     pub derivation_path: DerivationPath,
 
-    /// Optional threshold configuration
+    /// Optional threshold configuration (FROST)
     pub threshold: Option<ThresholdConfig>,
 }
 
+/// Signing service (Factotum) - holds keys, never exposes them
+pub trait SigningService: Send + Sync {
+    /// Get the public key for an agent
+    fn pubkey(&self, agent_id: &AgentId) -> Result<PublicKey>;
+
+    /// Sign data (agent requests signature, never sees private key)
+    fn sign(&self, agent_id: &AgentId, data: &[u8]) -> Result<Signature>;
+
+    /// Encrypt to recipient (NIP-44)
+    fn encrypt(&self, agent_id: &AgentId, recipient: &PublicKey, plaintext: &[u8]) -> Result<Vec<u8>>;
+
+    /// Decrypt from sender (NIP-44)
+    fn decrypt(&self, agent_id: &AgentId, sender: &PublicKey, ciphertext: &[u8]) -> Result<Vec<u8>>;
+}
+
+/// Agent context holds a reference to signer, not keys
+pub struct AgentContext {
+    identity: AgentIdentity,
+    signer: Arc<dyn SigningService>,  // Factotum reference
+    // ... other fields
+}
+
 impl AgentContext {
-    /// Sign data as this agent
-    pub fn sign(&self, data: &[u8]) -> Signature {
-        self.identity.sign(data)
+    /// Sign data as this agent (delegates to signer)
+    pub fn sign(&self, data: &[u8]) -> Result<Signature> {
+        self.signer.sign(&self.agent_id(), data)
     }
 
-    /// Verify a signature from any key
+    /// Verify a signature from any key (pure crypto, no secrets needed)
     pub fn verify(&self, pubkey: &PublicKey, data: &[u8], sig: &Signature) -> bool {
         pubkey.verify(data, sig)
     }
 
-    /// Encrypt message to another agent
-    pub fn encrypt_to(&self, recipient: &PublicKey, plaintext: &[u8]) -> Vec<u8> {
-        nip44_encrypt(&self.identity.privkey, recipient, plaintext)
+    /// Encrypt message to another agent (delegates to signer)
+    pub fn encrypt_to(&self, recipient: &PublicKey, plaintext: &[u8]) -> Result<Vec<u8>> {
+        self.signer.encrypt(&self.agent_id(), recipient, plaintext)
     }
 
-    /// Decrypt message from another agent
+    /// Decrypt message from another agent (delegates to signer)
     pub fn decrypt_from(&self, sender: &PublicKey, ciphertext: &[u8]) -> Result<Vec<u8>> {
-        nip44_decrypt(&self.identity.privkey, sender, ciphertext)
+        self.signer.decrypt(&self.agent_id(), sender, ciphertext)
     }
 }
 ```
 
-**Why this matters:**
-- Agents can prove who they are
-- Messages can't be forged
-- State can be encrypted to self
-- Cross-agent trust is verifiable
+**Why the Factotum model matters:**
+- **Keys are never extractable** — Compromised agent code can't steal keys
+- **Key rotation without restart** — Signer can rotate keys transparently
+- **Threshold protection** — FROST signing quorums are natural
+- **Audit trail** — All signing operations are logged by the signer
+- **HSM integration** — Hardware security modules work seamlessly
+
+**SigningService implementations:**
+
+| Backend | Implementation |
+|---------|----------------|
+| Local dev | In-memory keys (fast, not for production) |
+| Local prod | OS keychain / secure enclave |
+| Browser | Web Crypto API |
+| Cloud | KMS (AWS/GCP) or encrypted blob + user unlock |
+| Threshold | FROST/FROSTR signing quorum |
 
 ---
 
@@ -419,6 +453,83 @@ pub enum AgentMessage {
 - Task markets emerge
 - Knowledge sharing across agents
 - Multi-agent systems coordinate
+
+---
+
+## Capability Mounts as the Security Model
+
+The **real** differentiator for agent security: capabilities are granted via the mount table, not checked inline.
+
+### The Mount Table is the Security Boundary
+
+```rust
+/// Agent's capability namespace
+pub struct AgentNamespace {
+    mounts: Vec<Mount>,
+}
+
+pub struct Mount {
+    path: String,
+    service: Arc<dyn FileService>,
+    access: AccessLevel,
+}
+
+pub enum AccessLevel {
+    ReadOnly,
+    ReadWrite,
+    SignOnly,           // Can sign, not extract keys
+    Budgeted {          // Has spending limits
+        per_tick: u64,
+        per_day: u64,
+        approval_threshold: u64,
+    },
+    Disabled,           // Mount exists but access denied
+}
+```
+
+### Autonomy Levels Map to Mount Grants
+
+| Autonomy Level | `/wallet` | `/compute` | `/secrets` | `/nostr` |
+|----------------|-----------|------------|------------|----------|
+| Supervised | Disabled | Disabled | SignOnly | ReadOnly |
+| SemiAutonomous | Budgeted(low) | ReadOnly | SignOnly | ReadWrite |
+| Autonomous | Budgeted(high) | ReadWrite | SignOnly | ReadWrite |
+
+**Promoting autonomy** = expanding mount access levels.
+**Demoting** = restricting or disabling mounts.
+
+### Security Properties
+
+1. **Agent cannot access what isn't mounted**
+   - No `/compute` mount → no code execution capability
+   - No `/wallet` mount → no spending capability
+
+2. **Access levels are enforced at the mount**
+   - `SignOnly` for `/secrets` → agent can request signatures but never see keys
+   - `Budgeted` for `/wallet` → spending capped regardless of agent code
+
+3. **Mounts can be dynamically changed**
+   - Operator revokes `/compute` → agent loses capability immediately
+   - Useful for incident response
+
+4. **Mount configuration is auditable**
+   - Agent's capability set is visible in `mounts` file
+   - Changes logged to trajectory
+
+### Example: High-Risk Action Flow
+
+```
+Agent wants to: pay 10,000 sats
+
+1. Agent calls: ctx.write("/wallet/pay", invoice)
+2. Namespace resolves: /wallet → WalletFs with Budgeted(1000, 50000, 5000)
+3. WalletFs checks: 10,000 > approval_threshold (5000)
+4. WalletFs returns: Error::ApprovalRequired
+5. Agent receives error, can request approval or abort
+6. If approved by human, mount temporarily elevated
+```
+
+This is **Plan 9 meets agent safety**: capabilities as mounted filesystems, access levels as file permissions, budget enforcement at the mount layer.
 
 ---
 

@@ -28,15 +28,35 @@ This model works universally across serverless, long-running, and local backends
 Inspired by Plan 9, every agent exposes a virtual filesystem:
 
 ```
-/agents/<id>/
-├── status          # agent state
-├── inbox/          # incoming messages
-├── outbox/         # emitted events
-├── goals/          # active goals
-├── memory/         # conversations, patterns
-├── identity/       # pubkey, signing
-└── wallet/         # balance, payments
+/agents/<id>/                    # Global admin view (operators, CLI, HTTP)
+├── ctl                 # control: tick, hibernate, wake
+├── status              # agent state, last_tick, queue_depth
+├── inbox/              # incoming messages (write to enqueue)
+├── outbox/             # emitted events (streaming)
+├── goals/              # active goals (CRUD)
+├── memory/
+│   ├── conversations/  # conversation files
+│   ├── patterns/       # learned patterns
+│   └── export          # full state bundle
+├── identity/
+│   ├── pubkey          # agent's public key
+│   ├── sign            # write data, read signature
+│   └── verify          # verify signatures
+├── wallet/
+│   ├── balance         # current balance
+│   └── pay             # write bolt11 to pay
+├── nostr/
+│   ├── relays          # connected relay list
+│   └── publish         # write event to publish
+├── logs/
+│   ├── trace           # streaming trace
+│   └── trajectory      # tick history
+└── mounts              # show mount table
 ```
+
+**Two namespace scopes:**
+- **Agent-local** (what code inside the agent sees): root `/` is that agent. Paths like `/status`, `/inbox`.
+- **Global admin** (what operators/CLI see): `/agents/<id>/...` prefix. Just a namespacing wrapper.
 
 The same interface works locally (FUSE), in the cloud (HTTP), or in a UI.
 

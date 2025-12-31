@@ -191,19 +191,51 @@ agent-abc123.bundle/
     └── recent.jsonl    # Recent trajectory (optional)
 ```
 
-Manifest:
+Manifest (with versioning for portability):
 ```json
 {
-  "version": 1,
+  "manifest_version": 1,
   "agent_id": "agent_abc123",
   "agent_name": "my-agent",
   "pubkey": "npub1...",
   "exported_at": "2025-01-01T12:00:00Z",
   "source_runtime": "cloudflare",
-  "state_version": 42,
+
+  "versioning": {
+    "agent_code_digest": "sha256:abc123...",
+    "runtime_api_version": "0.1.0",
+    "state_schema_version": 3,
+    "state_version": 42
+  },
+
+  "capabilities": {
+    "required_mounts": ["/wallet", "/nostr", "/compute"],
+    "required_access": {
+      "/wallet": "budgeted",
+      "/nostr": "read_write",
+      "/compute": "read_only"
+    }
+  },
+
   "includes_logs": true
 }
 ```
+
+### Import Compatibility
+
+Before importing, the runtime checks compatibility:
+
+| Check | Action if Failed |
+|-------|------------------|
+| `runtime_api_version` incompatible | Reject import |
+| `state_schema_version` newer than target | Reject or migrate |
+| `required_mounts` not available | Warn, import without those mounts |
+| `agent_code_digest` mismatch | Warn (code may have changed) |
+
+Import modes:
+- **restore** — Requires exact version match
+- **clone** — New ID, allows version differences with migration
+- **migrate** — Explicit schema migration (prompts user)
 
 ### Import Bundle
 

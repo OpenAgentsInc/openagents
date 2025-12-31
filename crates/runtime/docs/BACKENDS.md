@@ -4,7 +4,23 @@ How the runtime abstraction maps to concrete deployment targets.
 
 ---
 
-## Backend Overview
+## Backend vs Deployment Mode
+
+**Important distinction:**
+
+- **Backend** = A distinct `RuntimeBackend` implementation with different storage, wake, and hibernation semantics
+- **Deployment Mode** = How you run a backend (Docker, Kubernetes, systemd, etc.)
+
+There are **four backends**:
+
+| Backend | Storage | Wake Mechanism | Hibernation |
+|---------|---------|----------------|-------------|
+| **Browser** | IndexedDB | postMessage | Worker termination |
+| **Cloudflare** | DO SQLite | HTTP fetch | DO hibernation |
+| **Local** | File SQLite | IPC/socket | Process suspend |
+| **Server** | SQLite/Postgres | HTTP/gRPC | Process pool |
+
+Docker and Kubernetes are **deployment modes** for the Server backend, not separate backends:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -14,11 +30,18 @@ How the runtime abstraction maps to concrete deployment targets.
 │  (Agent trait, Context, Triggers, Lifecycle)                    │
 ├─────────────────────────────────────────────────────────────────┤
 │                      Backend Trait                              │
-├─────────┬─────────┬─────────┬─────────┬─────────┬─────────────┤
-│ Browser │Cloudflare│  Local  │ Docker  │   K8s   │   Custom    │
-│  WASM   │ Workers │ Device  │Container│  Pods   │   Backend   │
-└─────────┴─────────┴─────────┴─────────┴─────────┴─────────────┘
+├──────────────┬──────────────┬──────────────┬───────────────────┤
+│   Browser    │  Cloudflare  │    Local     │      Server       │
+│    WASM      │   Workers    │    Device    │                   │
+└──────────────┴──────────────┴──────────────┴───────────────────┘
+                                                      │
+                                    ┌─────────────────┼─────────────────┐
+                                    │                 │                 │
+                               Bare Metal         Docker          Kubernetes
+                                 systemd        Compose              Pods
 ```
+
+If you truly need "one agent = one container" or "one agent = one pod" (for isolation, GPU access, etc.), that's a **variant of the Server backend** with different process management, not a fundamentally different runtime abstraction.
 
 ---
 
@@ -482,16 +505,29 @@ spec:
 
 ## Comparison Matrix
 
-| Aspect | Browser | Cloudflare | Local | Docker | Kubernetes |
-|--------|---------|------------|-------|--------|------------|
-| **Cold start** | <10ms | 10-50ms | 100ms | 1-5s | 5-30s |
-| **Warm latency** | <1ms | <1ms | <1ms | <10ms | <10ms |
-| **Max agents** | Single | Millions | Hundreds | Hundreds | Thousands |
-| **Ops burden** | Zero | Zero | Low | Medium | High |
-| **Cost model** | Free | Pay-per-use | Fixed | Fixed | Fixed |
-| **Offline** | Yes | No | Yes | Yes | Yes |
-| **Privacy** | Maximum | Cloud | Full | Self-host | Self-host |
-| **Multi-region** | N/A | Built-in | Manual | Manual | Federation |
+### By Backend (Runtime Abstraction)
+
+| Aspect | Browser | Cloudflare | Local | Server |
+|--------|---------|------------|-------|--------|
+| **Cold start** | <10ms | 10-50ms | 100ms | 100ms-5s* |
+| **Warm latency** | <1ms | <1ms | <1ms | <10ms |
+| **Max agents** | Single | Millions | Hundreds | Thousands |
+| **Ops burden** | Zero | Zero | Low | Medium-High |
+| **Cost model** | Free | Pay-per-use | Fixed | Fixed |
+| **Offline** | Yes | No | Yes | Yes |
+| **Privacy** | Maximum | Cloud | Full | Self-host |
+
+*Server cold start depends on deployment mode (bare metal vs Docker vs K8s)
+
+### Server Deployment Modes
+
+| Aspect | Bare Metal | Docker | Kubernetes |
+|--------|------------|--------|------------|
+| **Cold start** | 100ms | 1-5s | 5-30s |
+| **Ops burden** | Medium | Medium | High |
+| **Scale** | Single node | Single node | Multi-node |
+| **Isolation** | Process | Container | Pod |
+| **Multi-region** | Manual | Manual | Federation |
 
 ---
 
@@ -512,22 +548,21 @@ spec:
 - Agents are mostly idle (hibernation is free)
 
 ### Use Local When:
-- Privacy is critical
+- Privacy is critical (data never leaves device)
 - Offline operation needed
-- Single user / small scale
-- Cost sensitive (free after hardware)
+- Development and testing
+- Single-user scenarios
 
-### Use Docker When:
-- Self-hosting required
-- Moderate scale
-- Simple deployment
-- Team already uses Docker
+### Use Server When:
+- Full control over infrastructure
+- Multi-agent systems with high throughput
+- Custom integrations (GPUs, databases, etc.)
+- Compliance requirements (data residency)
 
-### Use Kubernetes When:
-- Enterprise scale
-- Multi-tenant
-- Existing K8s infrastructure
-- Need advanced orchestration
+**Server deployment mode selection:**
+- **Bare metal** — Maximum performance, minimal overhead
+- **Docker** — Easy deployment, good isolation, single-node
+- **Kubernetes** — Multi-node scaling, auto-healing, but high ops burden
 
 ---
 

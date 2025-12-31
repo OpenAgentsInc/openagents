@@ -12,6 +12,56 @@ This pattern originates from Plan 9 and was explored in OANIX (OpenAgents Nix), 
 
 ---
 
+## Namespace Scopes
+
+There are **two views** of an agent's filesystem:
+
+### Agent-Local Namespace
+
+What code **inside the agent** sees. Root `/` is the agent itself:
+
+```
+/                       # Agent's root
+├── status              # Read: agent state JSON
+├── inbox/              # Write to enqueue, read to peek
+├── goals/              # CRUD goal files
+├── identity/
+│   ├── pubkey          # Read: hex pubkey
+│   └── sign            # Write data, read signature
+├── wallet/
+│   └── balance         # Read: balance JSON
+└── ...
+```
+
+Agents use paths like `/status`, `/inbox`, `/wallet/balance`.
+
+### Global Admin Namespace
+
+What **operators, CLI tools, and HTTP clients** see. Prefixed with agent ID:
+
+```
+/agents/<agent-id>/
+├── status
+├── inbox/
+├── goals/
+└── ...
+```
+
+This is just a namespacing wrapper—the underlying services are the same.
+
+### HTTP Mapping
+
+The global namespace maps to HTTP:
+
+| Filesystem Operation | HTTP Equivalent |
+|---------------------|-----------------|
+| `cat /agents/abc/status` | `GET /agents/abc/status` |
+| `echo msg > /agents/abc/inbox` | `POST /agents/abc/inbox` |
+| `ls /agents/abc/goals/` | `GET /agents/abc/goals/` |
+| `tail -f /agents/abc/logs/trace` | `GET /agents/abc/logs/trace?watch=1` (SSE) |
+
+---
+
 ## Core Traits
 
 ### FileService
@@ -39,8 +89,28 @@ pub trait FileService: Send + Sync {
     /// Rename/move a file
     fn rename(&self, from: &str, to: &str) -> Result<()>;
 
+    /// Watch for changes (optional, returns None if not supported)
+    fn watch(&self, path: &str) -> Result<Option<Box<dyn WatchHandle>>>;
+
     /// Service name for debugging
     fn name(&self) -> &str;
+}
+
+/// Handle for watching file/directory changes
+pub trait WatchHandle: Send {
+    /// Block until next change event (or timeout)
+    fn next(&mut self, timeout: Option<Duration>) -> Result<Option<WatchEvent>>;
+
+    /// Close the watch
+    fn close(&mut self) -> Result<()>;
+}
+
+/// Watch event types
+pub enum WatchEvent {
+    Modified { path: String },
+    Created { path: String },
+    Deleted { path: String },
+    Data(Vec<u8>),  // For streaming files like logs/trace
 }
 
 /// Flags for opening files
@@ -684,6 +754,58 @@ Key lessons from OANIX experimentation:
 3. **StringHandle covers 80% of cases** — Most reads return JSON strings
 4. **Write-then-read pattern** — For operations like sign: write data, read result
 5. **Budget enforcement at mount level** — Cleaner than per-operation checks
+
+### Sync vs Async Reality (Critical for Browser/WASM)
+
+`FileService` is **sync by design** for simplicity. However, `ExecutorManager.block_on()` cannot exist in browser/WASM (no threads to block).
+
+**Backend-specific async handling:**
+
+| Backend | Async Strategy |
+|---------|----------------|
+| Native (Local/Server) | `ExecutorManager.block_on()` — sync call blocks on async work |
+| Cloudflare Workers | Single-threaded event loop — naturally async |
+| Browser WASM | **Cannot block** — must use event-driven approach |
+
+**Browser solution: Buffer + Flush + Callback**
+
+For WASM targets, network operations use a different pattern:
+
+```rust
+#[cfg(target_arch = "wasm32")]
+impl FileHandle for PublishHandle {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        // Buffer synchronously
+        self.event_json.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        // Queue async operation, return immediately
+        // Actual publish happens via JS callback
+        let event: NostrEvent = serde_json::from_slice(&self.event_json)?;
+        self.queue_publish(event);  // Non-blocking
+        Ok(())
+    }
+}
+```
+
+**Alternative: AsyncFileService for WASM**
+
+For use cases where blocking is impossible and callback doesn't suffice:
+
+```rust
+#[cfg(target_arch = "wasm32")]
+pub trait AsyncFileService: Send + Sync {
+    async fn open(&self, path: &str, flags: OpenFlags) -> Result<Box<dyn AsyncFileHandle>>;
+    async fn stat(&self, path: &str) -> Result<Stat>;
+    // ... other async methods
+}
+```
+
+The runtime detects `target_arch` and uses the appropriate trait.
+
+**Key principle:** Browser backend must not require blocking. If a service can't work without blocking, it's not available on browser backend (document this in capability manifest).
 
 ### Thread Safety
 
