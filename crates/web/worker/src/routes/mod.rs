@@ -8,3 +8,4 @@ pub mod container;
 pub mod hud;
 pub mod stripe;
 pub mod tunnel;
+pub mod wallet;

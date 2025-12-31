@@ -79,6 +79,8 @@
 pub mod error;
 pub mod signer;
 pub mod wallet;
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+mod wasm_storage;
 
 pub use error::SparkError;
 pub use signer::SparkSigner;

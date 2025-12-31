@@ -7,6 +7,16 @@ This file summarizes the openagents-spark wrapper API and common flows.
 - SparkWallet: Breez SDK wrapper for payments and wallet operations.
 - SparkWalletBuilder: Advanced SDK config and key set selection.
 
+## Seed sources
+When you already have raw seed entropy (16-64 bytes), use `SparkSigner::from_entropy`.
+
+```rust
+use openagents_spark::SparkSigner;
+
+let signer = SparkSigner::from_entropy(&[0u8; 32])?;
+println!("Pubkey: {}", signer.public_key_hex());
+```
+
 ## Parsing inputs
 Use parse_input to classify a payment request or address.
 

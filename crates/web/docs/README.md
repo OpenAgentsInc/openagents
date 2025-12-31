@@ -56,6 +56,7 @@ Keyboard shortcuts (in App Shell):
 │   │   │ /api/repos    │   │ Session data  │   │ edge          │         │   │
 │   │   │ /api/billing/*│   │ OAuth state   │   │               │         │   │
 │   │   │ /api/stripe/* │   │               │   │ Users         │         │   │
+│   │   │ /api/wallet/* │   │               │   │ Identity keys │         │   │
 │   │   └───────────────┘   └───────────────┘   │ Billing       │         │   │
 │   │           │                   │           │ Stripe        │         │   │
 │   │           └───────────────────┴───────────┤               │         │   │
@@ -83,6 +84,8 @@ External Services:
 │   OAuth      │     │   Payments   │
 │   API        │     │   Webhooks   │
 └──────────────┘     └──────────────┘
+
+Wallet services rely on the Breez Spark SDK via `openagents-spark`.
 ```
 
 ## Quick Start
@@ -145,6 +148,7 @@ crates/web/
 │       │   ├── account.rs      # User settings, API keys
 │       │   ├── billing.rs      # Credits, plans, packages
 │       │   ├── stripe.rs       # Payment methods, webhooks
+│       │   ├── wallet.rs       # Spark wallet routes
 │       │   └── hud.rs          # HUD page rendering
 │       └── services/
 │           ├── mod.rs
@@ -215,6 +219,17 @@ bun run cf:tail          # Live logs from production
 |--------|----------|-------------|
 | GET | `/api/repos` | List user's GitHub repositories |
 
+### Wallet (requires auth)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/wallet/summary` | Balance, addresses, and recent payments |
+| GET | `/api/wallet/payments` | Paginated payment history |
+| POST | `/api/wallet/receive` | Create Spark/Lightning/on-chain receive request |
+| POST | `/api/wallet/send` | Send payment (Spark/Lightning/on-chain) |
+
+`/api/wallet/summary` returns `status`, `network`, `balance`, `addresses`, `payments`, and `error`.
+
 ### Account (requires auth)
 
 | Method | Endpoint | Description |
@@ -251,6 +266,47 @@ Account settings include `nostr_npub` when available.
 | GET | `/embed/:username/:repo` | Embeddable iframe HUD |
 | POST | `/api/hud/settings` | Update HUD visibility |
 
+### Tunnel (Free Tier - Local Compute)
+
+Routes for the local tunnel mode where users run `openagents connect` on their machine.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/tunnel/register` | Register a new tunnel session |
+| GET | `/api/tunnel/status/:session_id` | Check tunnel connection status |
+| GET | `/api/tunnel/ws/:session_id` | WebSocket relay to local CLI |
+
+Tunnel mode uses the `TunnelRelay` Durable Object to maintain WebSocket connections between the browser and the user's local machine.
+
+### Container (Paid Tier - Cloud Compute)
+
+Routes for cloud-based autopilot execution via Cloudflare Containers.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/container/start` | Start autopilot task in container |
+| GET | `/api/container/status` | Get current task status |
+| GET | `/api/container/ws/:session_id` | WebSocket for streaming events |
+
+**POST /api/container/start request:**
+```json
+{
+  "repo": "https://github.com/owner/repo",
+  "prompt": "Analyze this codebase"
+}
+```
+
+**Response:**
+```json
+{
+  "task_id": "uuid",
+  "session_id": "uuid",
+  "ws_url": "/api/container/ws/uuid"
+}
+```
+
+Container mode uses the `AutopilotContainer` Durable Object which spawns and manages a container running the autopilot service. See [autopilot-container docs](../../autopilot-container/docs/README.md) for WebSocket event format.
+
 ## Configuration
 
 ### Environment Variables
@@ -261,7 +317,10 @@ Set in `wrangler.toml` `[vars]`:
 [vars]
 GITHUB_CLIENT_ID = "Ov23li..."
 STRIPE_PUBLISHABLE_KEY = "pk_live_..."
+SPARK_NETWORK = "testnet"
 ```
+
+`SPARK_NETWORK` supports `mainnet`, `testnet`, `signet`, or `regtest`.
 
 ### Secrets
 
@@ -272,6 +331,9 @@ wrangler secret put GITHUB_CLIENT_SECRET
 wrangler secret put STRIPE_SECRET_KEY
 wrangler secret put STRIPE_WEBHOOK_SECRET
 wrangler secret put SESSION_SECRET
+wrangler secret put BREEZ_API_KEY
+# Optional alias:
+# wrangler secret put SPARK_API_KEY
 ```
 
 ### D1 Database
@@ -299,13 +361,13 @@ After logging in and selecting a repository, users see the main Autopilot interf
 │                      │                          │                          │
 │ Model: sonnet        │                          │ ○ FULL AUTO OFF          │
 │ ───────────────────  │                          │                          │
-│ Sessions             │      owner/repo          │ Claude Usage             │
-│ ┌──────────────────┐ │                          │ ───────────────────────  │
-│ │ Today 14:32      │ │  (ThreadView will go     │ Model: sonnet            │
-│ └──────────────────┘ │   here)                  │ Context: ████░░░░░░ 10%  │
-│                      │                          │                          │
-│ Hotkeys              │                          │ Tokens:  0 / 0           │
-│ cmd-[   left dock    │                          │ Cost:    $0.00           │
+│ Sessions             │      owner/repo          │ Wallet                   │
+│ ┌──────────────────┐ │                          │ ┌──────────────────────┐ │
+│ │ Today 14:32      │ │  (ThreadView will go     │ │ Overview | Send | Rx  │ │
+│ └──────────────────┘ │   here)                  │ │ Balance + addresses   │ │
+│                      │                          │ │ Recent payments       │ │
+│ Hotkeys              │                          │ └──────────────────────┘ │
+│ cmd-[   left dock    │                          │                          │
 │ cmd-]   right dock   │                          │                          │
 ├──────────────────────┴──────────────────────────┴──────────────────────────┤
 │ cmd-[ / cmd-] toggle docks                                  owner/repo     │

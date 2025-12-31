@@ -15,8 +15,8 @@
 
 use crate::{SparkSigner, SparkError};
 use breez_sdk_spark::{
-    BreezSdk, ClaimHtlcPaymentRequest, ConnectRequest, EventListener, Network as SdkNetwork,
-    PrepareSendPaymentRequest, SdkBuilder, Seed, connect, default_config,
+    BreezSdk, ClaimHtlcPaymentRequest, EventListener, Network as SdkNetwork,
+    PrepareSendPaymentRequest, SdkBuilder, Seed, Storage, default_config,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -269,13 +269,18 @@ pub struct WalletConfig {
 
 impl Default for WalletConfig {
     fn default() -> Self {
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let storage_dir = std::path::PathBuf::from("openagents").join("spark");
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        let storage_dir = dirs::data_local_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("openagents")
+            .join("spark");
+
         Self {
             network: Network::Testnet,
             api_key: None,
-            storage_dir: dirs::data_local_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join("openagents")
-                .join("spark"),
+            storage_dir,
         }
     }
 }
@@ -288,6 +293,7 @@ pub struct SparkWalletBuilder {
     key_set_type: Option<KeySetType>,
     use_address_index: bool,
     account_number: Option<u32>,
+    storage: Option<Arc<dyn Storage>>,
 }
 
 impl SparkWalletBuilder {
@@ -299,6 +305,7 @@ impl SparkWalletBuilder {
             key_set_type: None,
             use_address_index: false,
             account_number: None,
+            storage: None,
         }
     }
 
@@ -321,16 +328,13 @@ impl SparkWalletBuilder {
         self
     }
 
+    pub fn with_storage(mut self, storage: Arc<dyn Storage>) -> Self {
+        self.storage = Some(storage);
+        self
+    }
+
     pub async fn build(self) -> Result<SparkWallet, SparkError> {
-        let passphrase = if self.signer.passphrase().is_empty() {
-            None
-        } else {
-            Some(self.signer.passphrase().to_string())
-        };
-        let seed = Seed::Mnemonic {
-            mnemonic: self.signer.mnemonic().to_string(),
-            passphrase,
-        };
+        let seed = seed_from_signer(&self.signer)?;
 
         let mut sdk_config = match self.sdk_config {
             Some(config) => {
@@ -361,8 +365,26 @@ impl SparkWalletBuilder {
             sdk_config.api_key = self.config.api_key.clone();
         }
 
-        let mut builder = SdkBuilder::new(sdk_config, seed)
-            .with_default_storage(self.config.storage_dir.to_string_lossy().to_string());
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        {
+            // Web builds use in-memory storage and disable realtime sync by default.
+            sdk_config.real_time_sync_server_url = None;
+        }
+
+        let mut builder = SdkBuilder::new(sdk_config, seed);
+
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        {
+            builder = builder.with_default_storage(self.config.storage_dir.to_string_lossy().to_string());
+        }
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        {
+            let storage = self
+                .storage
+                .unwrap_or_else(|| Arc::new(crate::wasm_storage::MemoryStorage::new()));
+            builder = builder.with_storage(storage);
+        }
 
         let configure_key_set = self.key_set_type.is_some()
             || self.account_number.is_some()
@@ -386,6 +408,28 @@ impl SparkWalletBuilder {
             sdk: Arc::new(sdk),
         })
     }
+}
+
+fn seed_from_signer(signer: &SparkSigner) -> Result<Seed, SparkError> {
+    if !signer.mnemonic().is_empty() {
+        let passphrase = if signer.passphrase().is_empty() {
+            None
+        } else {
+            Some(signer.passphrase().to_string())
+        };
+        return Ok(Seed::Mnemonic {
+            mnemonic: signer.mnemonic().to_string(),
+            passphrase,
+        });
+    }
+
+    if let Some(entropy) = signer.seed_entropy() {
+        return Ok(Seed::Entropy(entropy.to_vec()));
+    }
+
+    Err(SparkError::InitializationFailed(
+        "Missing seed material for Spark signer".to_string(),
+    ))
 }
 
 /// Spark wallet for Bitcoin/Lightning payments
@@ -465,43 +509,7 @@ impl SparkWallet {
     /// let wallet = SparkWallet::new(signer, config).await?;
     /// ```
     pub async fn new(signer: SparkSigner, config: WalletConfig) -> Result<Self, SparkError> {
-        // Create SDK config for the target network
-        let mut sdk_config = default_config(config.network.to_sdk_network());
-
-        // Set API key if provided
-        if config.api_key.is_some() {
-            sdk_config.api_key = config.api_key.clone();
-        } else {
-            // Disable real-time sync when no API key is provided
-            // This prevents "invalid auth header" errors on regtest
-            sdk_config.real_time_sync_server_url = None;
-        }
-
-        // Build connect request with mnemonic seed
-        let passphrase = if signer.passphrase().is_empty() {
-            None
-        } else {
-            Some(signer.passphrase().to_string())
-        };
-        let connect_request = ConnectRequest {
-            config: sdk_config,
-            seed: Seed::Mnemonic {
-                mnemonic: signer.mnemonic().to_string(),
-                passphrase,
-            },
-            storage_dir: config.storage_dir.to_string_lossy().to_string(),
-        };
-
-        // Connect to the Breez SDK
-        let sdk = connect(connect_request)
-            .await
-            .map_err(|e| SparkError::InitializationFailed(e.to_string()))?;
-
-        Ok(Self {
-            signer,
-            config,
-            sdk: Arc::new(sdk),
-        })
+        SparkWalletBuilder::new(signer, config).build().await
     }
 
     /// Get the wallet's Spark address for receiving payments
@@ -603,13 +611,25 @@ impl SparkWallet {
     /// Check network connectivity by forcing a sync with a timeout
     pub async fn network_status(&self, timeout: Duration) -> NetworkStatusReport {
         let request = SyncWalletRequest {};
-        match tokio::time::timeout(timeout, self.sdk.sync_wallet(request)).await {
-            Ok(Ok(_)) => NetworkStatusReport::connected(),
-            Ok(Err(err)) => NetworkStatusReport::disconnected(Some(err.to_string())),
-            Err(_) => NetworkStatusReport::disconnected(Some(format!(
-                "Timed out after {} seconds",
-                timeout.as_secs()
-            ))),
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        {
+            match tokio::time::timeout(timeout, self.sdk.sync_wallet(request)).await {
+                Ok(Ok(_)) => NetworkStatusReport::connected(),
+                Ok(Err(err)) => NetworkStatusReport::disconnected(Some(err.to_string())),
+                Err(_) => NetworkStatusReport::disconnected(Some(format!(
+                    "Timed out after {} seconds",
+                    timeout.as_secs()
+                ))),
+            }
+        }
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        {
+            let _ = timeout;
+            match self.sdk.sync_wallet(request).await {
+                Ok(_) => NetworkStatusReport::connected(),
+                Err(err) => NetworkStatusReport::disconnected(Some(err.to_string())),
+            }
         }
     }
 

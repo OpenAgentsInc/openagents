@@ -98,6 +98,28 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             .await
         }
 
+        // Wallet routes (require auth)
+        (Method::Get, "/api/wallet/summary") => {
+            with_auth(&req, &env, |user| routes::wallet::get_summary(user, env.clone())).await
+        }
+        (Method::Get, "/api/wallet/payments") => {
+            with_auth(&req, &env, |user| routes::wallet::list_payments(user, env.clone())).await
+        }
+        (Method::Post, "/api/wallet/receive") => {
+            let body = req.text().await?;
+            with_auth(&req, &env, |user| {
+                routes::wallet::receive(user, env.clone(), body.clone())
+            })
+            .await
+        }
+        (Method::Post, "/api/wallet/send") => {
+            let body = req.text().await?;
+            with_auth(&req, &env, |user| {
+                routes::wallet::send(user, env.clone(), body.clone())
+            })
+            .await
+        }
+
         // Stripe routes
         (Method::Get, "/api/stripe/config") => routes::stripe::get_config(env).await,
         (Method::Get, "/api/stripe/payment-methods") => {

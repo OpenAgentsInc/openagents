@@ -32,3 +32,7 @@ Use SparkWalletBuilder when you need advanced Breez SDK configuration (LNURL dom
 
 ## Network support
 Breez SDK supports Mainnet and Regtest. In this crate, Network::Testnet and Network::Signet map to Regtest.
+
+## Web/wasm notes
+- Use `SparkSigner::from_entropy` when your seed material comes from external storage.
+- wasm builds default to an in-memory storage backend; override via `SparkWalletBuilder::with_storage`.

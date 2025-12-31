@@ -8,9 +8,14 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use wgpui::{
-    Bounds, Point, Quad, Scene, TextSystem, Platform,
-    WebPlatform, run_animation_loop, setup_resize_observer,
-    theme,
+    Bounds, Point, Quad, Scene, TextSystem, Platform, InputEvent, MouseButton, Key, NamedKey,
+    Modifiers, EventContext, PaintContext, Component, EventResult, Button, ButtonVariant,
+    TextInput, WebPlatform, run_animation_loop, setup_resize_observer, theme,
+};
+use wgpui::components::atoms::{BitcoinNetwork, PaymentMethod, PaymentStatus};
+use wgpui::components::molecules::{
+    BalanceCard, InvoiceDisplay, InvoiceInfo, InvoiceType, PaymentDirection, PaymentInfo,
+    PaymentRow, WalletBalance,
 };
 
 #[wasm_bindgen(start)]
@@ -56,6 +61,743 @@ struct SessionInfo {
     model: String,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum WalletStatus {
+    Loading,
+    Ready,
+    Partial,
+    Error,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum WalletView {
+    Overview,
+    Send,
+    Receive,
+}
+
+#[derive(Clone)]
+struct WalletBalanceData {
+    spark_sats: u64,
+    lightning_sats: u64,
+    onchain_sats: u64,
+    total_sats: u64,
+}
+
+#[derive(Clone, Default)]
+struct WalletAddressesData {
+    spark: Option<String>,
+    onchain: Option<String>,
+}
+
+#[derive(Clone)]
+struct WalletPaymentData {
+    id: String,
+    amount_sats: u64,
+    fee_sats: u64,
+    direction: String,
+    method: String,
+    status: String,
+    timestamp: String,
+    description: Option<String>,
+}
+
+#[derive(Clone)]
+struct WalletInvoiceData {
+    method: String,
+    payment_request: String,
+    amount_sats: Option<u64>,
+    description: Option<String>,
+}
+
+enum WalletAction {
+    Refresh,
+    SendPayment,
+    ReceiveSpark,
+    ReceiveLightning,
+    ReceiveOnchain,
+}
+
+#[derive(Clone, Default)]
+struct WalletLayout {
+    bounds: Bounds,
+    refresh_button: Bounds,
+    tab_overview: Bounds,
+    tab_send: Bounds,
+    tab_receive: Bounds,
+    send_address: Bounds,
+    send_amount: Bounds,
+    send_button: Bounds,
+    receive_amount: Bounds,
+    receive_spark_button: Bounds,
+    receive_lightning_button: Bounds,
+    receive_onchain_button: Bounds,
+    payment_rows: Vec<Bounds>,
+}
+
+struct WalletUi {
+    status: WalletStatus,
+    view: WalletView,
+    network: Option<String>,
+    balance: Option<WalletBalanceData>,
+    addresses: WalletAddressesData,
+    payments: Vec<WalletPaymentData>,
+    payment_rows: Vec<PaymentRow>,
+    last_invoice: Option<WalletInvoiceData>,
+    error: Option<String>,
+    send_notice: Option<String>,
+    receive_notice: Option<String>,
+    send_address_input: TextInput,
+    send_amount_input: TextInput,
+    receive_amount_input: TextInput,
+    send_button: Button,
+    receive_spark_button: Button,
+    receive_lightning_button: Button,
+    receive_onchain_button: Button,
+    refresh_button: Button,
+    event_ctx: EventContext,
+    layout: WalletLayout,
+    actions: Rc<RefCell<Vec<WalletAction>>>,
+}
+
+impl WalletUi {
+    fn new() -> Self {
+        let actions = Rc::new(RefCell::new(Vec::new()));
+
+        let send_actions = actions.clone();
+        let receive_spark_actions = actions.clone();
+        let receive_lightning_actions = actions.clone();
+        let receive_onchain_actions = actions.clone();
+        let refresh_actions = actions.clone();
+
+        let send_button = Button::new("Send")
+            .variant(ButtonVariant::Primary)
+            .padding(14.0, 6.0)
+            .on_click(move || {
+                send_actions.borrow_mut().push(WalletAction::SendPayment);
+            });
+
+        let receive_spark_button = Button::new("Spark Address")
+            .variant(ButtonVariant::Secondary)
+            .padding(10.0, 6.0)
+            .on_click(move || {
+                receive_spark_actions
+                    .borrow_mut()
+                    .push(WalletAction::ReceiveSpark);
+            });
+
+        let receive_lightning_button = Button::new("Lightning Invoice")
+            .variant(ButtonVariant::Secondary)
+            .padding(10.0, 6.0)
+            .on_click(move || {
+                receive_lightning_actions
+                    .borrow_mut()
+                    .push(WalletAction::ReceiveLightning);
+            });
+
+        let receive_onchain_button = Button::new("On-chain Address")
+            .variant(ButtonVariant::Secondary)
+            .padding(10.0, 6.0)
+            .on_click(move || {
+                receive_onchain_actions
+                    .borrow_mut()
+                    .push(WalletAction::ReceiveOnchain);
+            });
+
+        let refresh_button = Button::new("Refresh")
+            .variant(ButtonVariant::Secondary)
+            .padding(10.0, 4.0)
+            .on_click(move || {
+                refresh_actions.borrow_mut().push(WalletAction::Refresh);
+            });
+
+        Self {
+            status: WalletStatus::Loading,
+            view: WalletView::Overview,
+            network: None,
+            balance: None,
+            addresses: WalletAddressesData::default(),
+            payments: Vec::new(),
+            payment_rows: Vec::new(),
+            last_invoice: None,
+            error: None,
+            send_notice: None,
+            receive_notice: None,
+            send_address_input: TextInput::new().placeholder("Invoice or address"),
+            send_amount_input: TextInput::new().placeholder("Amount (sats)"),
+            receive_amount_input: TextInput::new().placeholder("Amount (sats, optional)"),
+            send_button,
+            receive_spark_button,
+            receive_lightning_button,
+            receive_onchain_button,
+            refresh_button,
+            event_ctx: EventContext::new(),
+            layout: WalletLayout::default(),
+            actions,
+        }
+    }
+
+    fn apply_summary(&mut self, summary: WalletSummaryData) {
+        self.status = summary.status;
+        self.network = summary.network;
+        self.balance = summary.balance;
+        self.addresses = summary.addresses;
+        self.payments = summary.payments;
+        self.error = summary.error;
+        self.rebuild_rows();
+    }
+
+    fn set_invoice(&mut self, invoice: WalletInvoiceData) {
+        self.last_invoice = Some(invoice);
+        self.receive_notice = Some("Receive request ready".to_string());
+    }
+
+    fn rebuild_rows(&mut self) {
+        self.payment_rows = self
+            .payments
+            .iter()
+            .map(|payment| payment_row_from_data(payment))
+            .collect();
+    }
+
+    fn clear_notices(&mut self) {
+        self.send_notice = None;
+        self.receive_notice = None;
+    }
+
+    fn take_actions(&self) -> Vec<WalletAction> {
+        let mut actions = self.actions.borrow_mut();
+        std::mem::take(&mut *actions)
+    }
+
+    fn set_view(&mut self, view: WalletView) {
+        self.view = view;
+        self.send_address_input.blur();
+        self.send_amount_input.blur();
+        self.receive_amount_input.blur();
+        self.clear_notices();
+    }
+
+    fn handle_event(&mut self, event: &InputEvent) -> EventResult {
+        if let InputEvent::MouseDown { button, x, y } = event {
+            if *button == MouseButton::Left {
+                let point = Point::new(*x, *y);
+                if self.layout.tab_overview.contains(point) {
+                    self.set_view(WalletView::Overview);
+                } else if self.layout.tab_send.contains(point) {
+                    self.set_view(WalletView::Send);
+                } else if self.layout.tab_receive.contains(point) {
+                    self.set_view(WalletView::Receive);
+                }
+            }
+        }
+
+        let mut handled = EventResult::Ignored;
+        handled = merge_event_result(
+            handled,
+            self.refresh_button.event(event, self.layout.refresh_button, &mut self.event_ctx),
+        );
+
+        match self.view {
+            WalletView::Overview => {
+                for (row, bounds) in self.payment_rows.iter_mut().zip(self.layout.payment_rows.iter())
+                {
+                    handled = merge_event_result(
+                        handled,
+                        row.event(event, *bounds, &mut self.event_ctx),
+                    );
+                }
+            }
+            WalletView::Send => {
+                handled = merge_event_result(
+                    handled,
+                    self.send_address_input.event(
+                        event,
+                        self.layout.send_address,
+                        &mut self.event_ctx,
+                    ),
+                );
+                handled = merge_event_result(
+                    handled,
+                    self.send_amount_input.event(
+                        event,
+                        self.layout.send_amount,
+                        &mut self.event_ctx,
+                    ),
+                );
+                handled = merge_event_result(
+                    handled,
+                    self.send_button.event(event, self.layout.send_button, &mut self.event_ctx),
+                );
+            }
+            WalletView::Receive => {
+                handled = merge_event_result(
+                    handled,
+                    self.receive_amount_input.event(
+                        event,
+                        self.layout.receive_amount,
+                        &mut self.event_ctx,
+                    ),
+                );
+                handled = merge_event_result(
+                    handled,
+                    self.receive_spark_button.event(
+                        event,
+                        self.layout.receive_spark_button,
+                        &mut self.event_ctx,
+                    ),
+                );
+                handled = merge_event_result(
+                    handled,
+                    self.receive_lightning_button.event(
+                        event,
+                        self.layout.receive_lightning_button,
+                        &mut self.event_ctx,
+                    ),
+                );
+                handled = merge_event_result(
+                    handled,
+                    self.receive_onchain_button.event(
+                        event,
+                        self.layout.receive_onchain_button,
+                        &mut self.event_ctx,
+                    ),
+                );
+            }
+        }
+
+        self.sync_focus();
+        handled
+    }
+
+    fn sync_focus(&mut self) {
+        if self.send_address_input.is_focused() {
+            self.send_amount_input.blur();
+            self.receive_amount_input.blur();
+            return;
+        }
+
+        if self.send_amount_input.is_focused() {
+            self.send_address_input.blur();
+            self.receive_amount_input.blur();
+            return;
+        }
+
+        if self.receive_amount_input.is_focused() {
+            self.send_address_input.blur();
+            self.send_amount_input.blur();
+        }
+    }
+
+    fn has_focus(&self) -> bool {
+        self.send_address_input.is_focused()
+            || self.send_amount_input.is_focused()
+            || self.receive_amount_input.is_focused()
+    }
+
+    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        self.layout = WalletLayout::default();
+        self.layout.bounds = bounds;
+
+        let padding = 10.0;
+        let gap = 8.0;
+        let section_gap = 12.0;
+        let content_x = bounds.origin.x + padding;
+        let content_w = bounds.size.width - padding * 2.0;
+        let mut y = bounds.origin.y + padding;
+
+        cx.scene.draw_quad(
+            Quad::new(bounds)
+                .with_background(theme::bg::ELEVATED)
+                .with_border(theme::border::DEFAULT, 1.0),
+        );
+
+        let header = cx.text.layout(
+            "Wallet",
+            Point::new(content_x, y),
+            12.0,
+            theme::text::PRIMARY,
+        );
+        cx.scene.draw_text(header);
+
+        let refresh_w = 72.0;
+        let refresh_h = 22.0;
+        let refresh_bounds = Bounds::new(
+            bounds.origin.x + bounds.size.width - padding - refresh_w,
+            y - 3.0,
+            refresh_w,
+            refresh_h,
+        );
+        self.refresh_button.paint(refresh_bounds, cx);
+        self.layout.refresh_button = refresh_bounds;
+
+        if let Some(network) = self.network.as_deref() {
+            let net_label = cx.text.layout(
+                network,
+                Point::new(content_x + 56.0, y),
+                10.0,
+                theme::text::MUTED,
+            );
+            cx.scene.draw_text(net_label);
+        }
+
+        y += 28.0;
+
+        if let Some(balance) = &self.balance {
+            let mut balance_card = BalanceCard::new(WalletBalance::new(
+                balance.spark_sats,
+                balance.lightning_sats,
+                balance.onchain_sats,
+            ))
+            .network(network_from_label(self.network.as_deref()))
+            .show_breakdown(true);
+
+            let card_bounds = Bounds::new(content_x, y, content_w, 180.0);
+            balance_card.paint(card_bounds, cx);
+            y = card_bounds.origin.y + card_bounds.size.height + section_gap;
+        } else {
+            let balance_label = if matches!(self.status, WalletStatus::Loading) {
+                "Loading wallet..."
+            } else {
+                "Balance unavailable"
+            };
+            let balance_text = cx.text.layout(
+                balance_label,
+                Point::new(content_x, y),
+                10.0,
+                theme::text::MUTED,
+            );
+            cx.scene.draw_text(balance_text);
+            y += 20.0 + section_gap;
+        }
+
+        let tab_height = 24.0;
+        let tab_width = (content_w - gap * 2.0) / 3.0;
+        let tab_y = y;
+
+        self.layout.tab_overview = Bounds::new(content_x, tab_y, tab_width, tab_height);
+        self.layout.tab_send = Bounds::new(content_x + tab_width + gap, tab_y, tab_width, tab_height);
+        self.layout.tab_receive = Bounds::new(
+            content_x + (tab_width + gap) * 2.0,
+            tab_y,
+            tab_width,
+            tab_height,
+        );
+
+        draw_wallet_tab(
+            cx,
+            self.layout.tab_overview,
+            "Overview",
+            self.view == WalletView::Overview,
+        );
+        draw_wallet_tab(
+            cx,
+            self.layout.tab_send,
+            "Send",
+            self.view == WalletView::Send,
+        );
+        draw_wallet_tab(
+            cx,
+            self.layout.tab_receive,
+            "Receive",
+            self.view == WalletView::Receive,
+        );
+
+        y += tab_height + section_gap;
+
+        match self.view {
+            WalletView::Overview => {
+                let addr_label = cx.text.layout(
+                    "Addresses",
+                    Point::new(content_x, y),
+                    10.0,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(addr_label);
+                y += 14.0;
+
+                if let Some(address) = self.addresses.spark.as_deref() {
+                    let info = InvoiceInfo::new(InvoiceType::SparkAddress, address)
+                        .status(PaymentStatus::Pending);
+                    let mut display = InvoiceDisplay::new(info).show_qr(false).compact(true);
+                    let bounds = Bounds::new(content_x, y, content_w, 120.0);
+                    display.paint(bounds, cx);
+                    y = bounds.origin.y + bounds.size.height + gap;
+                } else {
+                    let msg = cx.text.layout(
+                        "Spark address unavailable",
+                        Point::new(content_x, y),
+                        10.0,
+                        theme::text::MUTED,
+                    );
+                    cx.scene.draw_text(msg);
+                    y += 16.0 + gap;
+                }
+
+                if let Some(address) = self.addresses.onchain.as_deref() {
+                    let info = InvoiceInfo::new(InvoiceType::OnChainAddress, address)
+                        .status(PaymentStatus::Pending);
+                    let mut display = InvoiceDisplay::new(info).show_qr(false).compact(true);
+                    let bounds = Bounds::new(content_x, y, content_w, 120.0);
+                    display.paint(bounds, cx);
+                    y = bounds.origin.y + bounds.size.height + section_gap;
+                } else {
+                    let msg = cx.text.layout(
+                        "On-chain address unavailable",
+                        Point::new(content_x, y),
+                        10.0,
+                        theme::text::MUTED,
+                    );
+                    cx.scene.draw_text(msg);
+                    y += 16.0 + section_gap;
+                }
+
+                let history_label = cx.text.layout(
+                    "Recent Payments",
+                    Point::new(content_x, y),
+                    10.0,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(history_label);
+                y += 16.0;
+
+                self.layout.payment_rows.clear();
+                if self.payment_rows.is_empty() {
+                    let empty = cx.text.layout(
+                        "No payments yet",
+                        Point::new(content_x, y),
+                        10.0,
+                        theme::text::MUTED,
+                    );
+                    cx.scene.draw_text(empty);
+                } else {
+                    let row_h = 56.0;
+                    let available_h = bounds.origin.y + bounds.size.height - y - gap;
+                    let max_rows = if available_h >= row_h {
+                        (available_h / (row_h + gap)).floor().max(1.0) as usize
+                    } else {
+                        0
+                    };
+                    for (idx, row) in self.payment_rows.iter_mut().take(max_rows).enumerate() {
+                        let row_bounds = Bounds::new(
+                            content_x,
+                            y + idx as f32 * (row_h + gap),
+                            content_w,
+                            row_h,
+                        );
+                        row.paint(row_bounds, cx);
+                        self.layout.payment_rows.push(row_bounds);
+                    }
+                }
+            }
+            WalletView::Send => {
+                let send_label = cx.text.layout(
+                    "Send",
+                    Point::new(content_x, y),
+                    10.0,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(send_label);
+                y += 14.0;
+
+                let address_bounds = Bounds::new(content_x, y, content_w, 32.0);
+                self.send_address_input.paint(address_bounds, cx);
+                self.layout.send_address = address_bounds;
+                y += 32.0 + gap;
+
+                let amount_bounds = Bounds::new(content_x, y, content_w, 32.0);
+                self.send_amount_input.paint(amount_bounds, cx);
+                self.layout.send_amount = amount_bounds;
+                y += 32.0 + gap;
+
+                let button_bounds = Bounds::new(content_x, y, 120.0, 30.0);
+                self.send_button.paint(button_bounds, cx);
+                self.layout.send_button = button_bounds;
+                y += 30.0 + gap;
+
+                if let Some(notice) = self.send_notice.as_deref() {
+                    let color = if notice.starts_with("Error:") {
+                        theme::status::ERROR
+                    } else {
+                        theme::status::SUCCESS
+                    };
+                    let note = cx.text.layout(
+                        notice,
+                        Point::new(content_x, y),
+                        10.0,
+                        color,
+                    );
+                    cx.scene.draw_text(note);
+                }
+            }
+            WalletView::Receive => {
+                let receive_label = cx.text.layout(
+                    "Receive",
+                    Point::new(content_x, y),
+                    10.0,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(receive_label);
+                y += 14.0;
+
+                let amount_bounds = Bounds::new(content_x, y, content_w, 32.0);
+                self.receive_amount_input.paint(amount_bounds, cx);
+                self.layout.receive_amount = amount_bounds;
+                y += 32.0 + gap;
+
+                let btn_w = (content_w - gap * 2.0) / 3.0;
+                let btn_h = 28.0;
+
+                let spark_bounds = Bounds::new(content_x, y, btn_w, btn_h);
+                self.receive_spark_button.paint(spark_bounds, cx);
+                self.layout.receive_spark_button = spark_bounds;
+
+                let lightning_bounds = Bounds::new(content_x + btn_w + gap, y, btn_w, btn_h);
+                self.receive_lightning_button.paint(lightning_bounds, cx);
+                self.layout.receive_lightning_button = lightning_bounds;
+
+                let onchain_bounds =
+                    Bounds::new(content_x + (btn_w + gap) * 2.0, y, btn_w, btn_h);
+                self.receive_onchain_button.paint(onchain_bounds, cx);
+                self.layout.receive_onchain_button = onchain_bounds;
+
+                y += btn_h + section_gap;
+
+                if let Some(invoice) = &self.last_invoice {
+                    let invoice_type = match invoice.method.as_str() {
+                        "lightning" => InvoiceType::Bolt11,
+                        "onchain" | "bitcoin" => InvoiceType::OnChainAddress,
+                        _ => InvoiceType::SparkAddress,
+                    };
+                    let mut info = InvoiceInfo::new(invoice_type, &invoice.payment_request)
+                        .status(PaymentStatus::Pending);
+                    if let Some(amount) = invoice.amount_sats {
+                        info = info.amount(amount);
+                    }
+                    if let Some(desc) = invoice.description.as_deref() {
+                        info = info.description(desc);
+                    }
+                    let show_qr = invoice.method == "lightning";
+                    let mut display = InvoiceDisplay::new(info).show_qr(show_qr);
+                    let bounds = Bounds::new(content_x, y, content_w, if show_qr { 280.0 } else { 160.0 });
+                    display.paint(bounds, cx);
+                } else if let Some(notice) = self.receive_notice.as_deref() {
+                    let note = cx.text.layout(
+                        notice,
+                        Point::new(content_x, y),
+                        10.0,
+                        theme::status::SUCCESS,
+                    );
+                    cx.scene.draw_text(note);
+                }
+            }
+        }
+
+        if let Some(err) = self.error.as_deref() {
+            let error_text = cx.text.layout(
+                err,
+                Point::new(content_x, bounds.origin.y + bounds.size.height - 18.0),
+                9.0,
+                theme::status::ERROR,
+            );
+            cx.scene.draw_text(error_text);
+        }
+    }
+}
+
+#[derive(Clone)]
+struct WalletSummaryData {
+    status: WalletStatus,
+    network: Option<String>,
+    balance: Option<WalletBalanceData>,
+    addresses: WalletAddressesData,
+    payments: Vec<WalletPaymentData>,
+    error: Option<String>,
+}
+
+#[derive(Clone)]
+struct WalletSendData {
+    payment_id: String,
+    status: String,
+    method: String,
+    amount_sats: u64,
+    fee_sats: u64,
+}
+
+fn merge_event_result(lhs: EventResult, rhs: EventResult) -> EventResult {
+    if matches!(lhs, EventResult::Handled) || matches!(rhs, EventResult::Handled) {
+        EventResult::Handled
+    } else {
+        EventResult::Ignored
+    }
+}
+
+fn draw_wallet_tab(cx: &mut PaintContext, bounds: Bounds, label: &str, active: bool) {
+    let bg = if active {
+        theme::accent::PRIMARY.with_alpha(0.25)
+    } else {
+        theme::bg::SURFACE
+    };
+    let border = if active {
+        theme::accent::PRIMARY
+    } else {
+        theme::border::DEFAULT
+    };
+    cx.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(bg)
+            .with_border(border, 1.0),
+    );
+
+    let label_run = cx.text.layout(
+        label,
+        Point::new(bounds.origin.x + 6.0, bounds.origin.y + 6.0),
+        10.0,
+        if active { theme::accent::PRIMARY } else { theme::text::MUTED },
+    );
+    cx.scene.draw_text(label_run);
+}
+
+fn payment_row_from_data(payment: &WalletPaymentData) -> PaymentRow {
+    let direction = match payment.direction.as_str() {
+        "receive" => PaymentDirection::Receive,
+        _ => PaymentDirection::Send,
+    };
+    let method = match payment.method.as_str() {
+        "spark" => PaymentMethod::Spark,
+        "onchain" | "bitcoin" => PaymentMethod::OnChain,
+        "token" => PaymentMethod::Token,
+        "deposit" => PaymentMethod::Deposit,
+        "withdraw" => PaymentMethod::Withdraw,
+        _ => PaymentMethod::Lightning,
+    };
+    let status = match payment.status.as_str() {
+        "completed" => PaymentStatus::Completed,
+        "failed" => PaymentStatus::Failed,
+        _ => PaymentStatus::Pending,
+    };
+
+    let mut info = PaymentInfo::new(payment.id.clone(), payment.amount_sats, direction)
+        .fee(payment.fee_sats)
+        .method(method)
+        .status(status)
+        .timestamp(payment.timestamp.clone());
+
+    if let Some(desc) = payment.description.as_deref() {
+        info = info.description(desc);
+    }
+
+    PaymentRow::new(info)
+}
+
+fn network_from_label(label: Option<&str>) -> BitcoinNetwork {
+    match label.unwrap_or("testnet") {
+        "mainnet" => BitcoinNetwork::Mainnet,
+        "signet" => BitcoinNetwork::Signet,
+        "regtest" => BitcoinNetwork::Regtest,
+        _ => BitcoinNetwork::Testnet,
+    }
+}
 struct AppState {
     mouse_pos: Point,
     button_hovered: bool,
@@ -79,6 +821,7 @@ struct AppState {
     full_auto_bounds: Bounds,
     selected_model: String,
     sessions: Vec<SessionInfo>,
+    wallet: WalletUi,
 }
 
 impl Default for AppState {
@@ -108,6 +851,7 @@ impl Default for AppState {
                 SessionInfo { id: "def456".into(), timestamp: "Yesterday 09:15".into(), model: "opus".into() },
                 SessionInfo { id: "ghi789".into(), timestamp: "Dec 28 16:45".into(), model: "sonnet".into() },
             ],
+            wallet: WalletUi::new(),
         }
     }
 }
@@ -233,6 +977,520 @@ async fn fetch_repos() -> Vec<RepoInfo> {
     repos
 }
 
+fn wallet_status_from_label(label: &str) -> WalletStatus {
+    match label {
+        "ready" => WalletStatus::Ready,
+        "partial" => WalletStatus::Partial,
+        "error" => WalletStatus::Error,
+        _ => WalletStatus::Loading,
+    }
+}
+
+fn js_value_u64(value: &JsValue) -> Option<u64> {
+    if let Some(num) = value.as_f64() {
+        if num.is_finite() && num >= 0.0 {
+            return Some(num as u64);
+        }
+    }
+
+    value
+        .as_string()
+        .and_then(|text| text.trim().parse::<u64>().ok())
+}
+
+fn js_optional_string(value: &JsValue) -> Option<String> {
+    if value.is_null() || value.is_undefined() {
+        None
+    } else {
+        value.as_string()
+    }
+}
+
+fn parse_wallet_balance(value: &JsValue) -> Option<WalletBalanceData> {
+    if value.is_null() || value.is_undefined() {
+        return None;
+    }
+
+    let obj = js_sys::Object::from(value.clone());
+    Some(WalletBalanceData {
+        spark_sats: js_value_u64(&js_sys::Reflect::get(&obj, &"spark_sats".into()).ok()?)?,
+        lightning_sats: js_value_u64(&js_sys::Reflect::get(&obj, &"lightning_sats".into()).ok()?)?,
+        onchain_sats: js_value_u64(&js_sys::Reflect::get(&obj, &"onchain_sats".into()).ok()?)?,
+        total_sats: js_value_u64(&js_sys::Reflect::get(&obj, &"total_sats".into()).ok()?)?,
+    })
+}
+
+fn parse_wallet_addresses(value: &JsValue) -> WalletAddressesData {
+    if value.is_null() || value.is_undefined() {
+        return WalletAddressesData::default();
+    }
+
+    let obj = js_sys::Object::from(value.clone());
+    WalletAddressesData {
+        spark: js_optional_string(&js_sys::Reflect::get(&obj, &"spark".into()).unwrap_or(JsValue::NULL)),
+        onchain: js_optional_string(&js_sys::Reflect::get(&obj, &"onchain".into()).unwrap_or(JsValue::NULL)),
+    }
+}
+
+fn parse_wallet_payment(value: &JsValue) -> Option<WalletPaymentData> {
+    if value.is_null() || value.is_undefined() {
+        return None;
+    }
+
+    let obj = js_sys::Object::from(value.clone());
+    let id = js_sys::Reflect::get(&obj, &"id".into())
+        .ok()
+        .and_then(|v| v.as_string())?;
+
+    let amount_sats = js_value_u64(&js_sys::Reflect::get(&obj, &"amount_sats".into()).ok()?)
+        .unwrap_or(0);
+    let fee_sats = js_value_u64(&js_sys::Reflect::get(&obj, &"fee_sats".into()).ok()?)
+        .unwrap_or(0);
+    let direction = js_sys::Reflect::get(&obj, &"direction".into())
+        .ok()
+        .and_then(|v| v.as_string())
+        .unwrap_or_else(|| "send".to_string());
+    let method = js_sys::Reflect::get(&obj, &"method".into())
+        .ok()
+        .and_then(|v| v.as_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let status = js_sys::Reflect::get(&obj, &"status".into())
+        .ok()
+        .and_then(|v| v.as_string())
+        .unwrap_or_else(|| "pending".to_string());
+    let timestamp = js_sys::Reflect::get(&obj, &"timestamp".into())
+        .ok()
+        .and_then(|v| v.as_string())
+        .unwrap_or_default();
+    let description = js_sys::Reflect::get(&obj, &"description".into())
+        .ok()
+        .and_then(|v| js_optional_string(&v));
+
+    Some(WalletPaymentData {
+        id,
+        amount_sats,
+        fee_sats,
+        direction,
+        method,
+        status,
+        timestamp,
+        description,
+    })
+}
+
+fn parse_wallet_summary(value: JsValue) -> Option<WalletSummaryData> {
+    let obj = js_sys::Object::from(value);
+    let status = js_sys::Reflect::get(&obj, &"status".into())
+        .ok()
+        .and_then(|v| v.as_string())
+        .map(|status| wallet_status_from_label(&status))
+        .unwrap_or(WalletStatus::Loading);
+    let network = js_sys::Reflect::get(&obj, &"network".into())
+        .ok()
+        .and_then(|v| v.as_string());
+    let balance = js_sys::Reflect::get(&obj, &"balance".into())
+        .ok()
+        .and_then(|v| parse_wallet_balance(&v));
+    let addresses = js_sys::Reflect::get(&obj, &"addresses".into())
+        .ok()
+        .map(|v| parse_wallet_addresses(&v))
+        .unwrap_or_default();
+    let payments = js_sys::Reflect::get(&obj, &"payments".into())
+        .ok()
+        .map(|v| {
+            js_sys::Array::try_from(v)
+                .ok()
+                .map(|arr| {
+                    let mut items = Vec::new();
+                    for idx in 0..arr.length() {
+                        if let Some(payment) = parse_wallet_payment(&arr.get(idx)) {
+                            items.push(payment);
+                        }
+                    }
+                    items
+                })
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+    let error = js_sys::Reflect::get(&obj, &"error".into())
+        .ok()
+        .and_then(|v| js_optional_string(&v));
+
+    Some(WalletSummaryData {
+        status,
+        network,
+        balance,
+        addresses,
+        payments,
+        error,
+    })
+}
+
+fn parse_wallet_send(value: JsValue) -> Option<WalletSendData> {
+    let obj = js_sys::Object::from(value);
+    Some(WalletSendData {
+        payment_id: js_sys::Reflect::get(&obj, &"payment_id".into())
+            .ok()
+            .and_then(|v| v.as_string())?,
+        status: js_sys::Reflect::get(&obj, &"status".into())
+            .ok()
+            .and_then(|v| v.as_string())?,
+        method: js_sys::Reflect::get(&obj, &"method".into())
+            .ok()
+            .and_then(|v| v.as_string())?,
+        amount_sats: js_value_u64(&js_sys::Reflect::get(&obj, &"amount_sats".into()).ok()?)?,
+        fee_sats: js_value_u64(&js_sys::Reflect::get(&obj, &"fee_sats".into()).ok()?)?,
+    })
+}
+
+fn parse_wallet_invoice(value: JsValue) -> Option<WalletInvoiceData> {
+    let obj = js_sys::Object::from(value);
+    Some(WalletInvoiceData {
+        method: js_sys::Reflect::get(&obj, &"method".into())
+            .ok()
+            .and_then(|v| v.as_string())?,
+        payment_request: js_sys::Reflect::get(&obj, &"payment_request".into())
+            .ok()
+            .and_then(|v| v.as_string())?,
+        amount_sats: js_sys::Reflect::get(&obj, &"amount_sats".into())
+            .ok()
+            .and_then(|v| js_value_u64(&v)),
+        description: js_sys::Reflect::get(&obj, &"description".into())
+            .ok()
+            .and_then(|v| js_optional_string(&v)),
+    })
+}
+
+async fn fetch_wallet_summary() -> Result<WalletSummaryData, String> {
+    let window = web_sys::window().ok_or("No window available")?;
+    let resp = JsFuture::from(window.fetch_with_str("/api/wallet/summary"))
+        .await
+        .map_err(|_| "Failed to fetch wallet summary".to_string())?;
+    let resp: web_sys::Response = resp
+        .dyn_into()
+        .map_err(|_| "Wallet summary response invalid".to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("Wallet summary failed ({})", resp.status()));
+    }
+
+    let json = JsFuture::from(resp.json().map_err(|_| "Wallet summary JSON invalid".to_string())?)
+        .await
+        .map_err(|_| "Wallet summary JSON invalid".to_string())?;
+
+    parse_wallet_summary(json).ok_or_else(|| "Wallet summary malformed".to_string())
+}
+
+async fn post_json(url: &str, payload: js_sys::Object) -> Result<JsValue, String> {
+    let window = web_sys::window().ok_or("No window available")?;
+    let body = js_sys::JSON::stringify(&payload)
+        .map_err(|_| "Failed to serialize request body".to_string())?;
+
+    let opts = web_sys::RequestInit::new();
+    opts.set_method("POST");
+    opts.set_body(body.as_ref());
+
+    let headers = web_sys::Headers::new().map_err(|_| "Failed to create headers".to_string())?;
+    headers
+        .set("Content-Type", "application/json")
+        .map_err(|_| "Failed to set headers".to_string())?;
+    opts.set_headers(headers.as_ref());
+
+    let resp = JsFuture::from(window.fetch_with_str_and_init(url, &opts))
+        .await
+        .map_err(|_| "Request failed".to_string())?;
+    let resp: web_sys::Response = resp.dyn_into().map_err(|_| "Response invalid".to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("Request failed ({})", resp.status()));
+    }
+
+    JsFuture::from(resp.json().map_err(|_| "Response JSON invalid".to_string())?)
+        .await
+        .map_err(|_| "Response JSON invalid".to_string())
+}
+
+async fn send_wallet_payment(
+    payment_request: &str,
+    amount_sats: Option<u64>,
+) -> Result<WalletSendData, String> {
+    let payload = js_sys::Object::new();
+    js_sys::Reflect::set(
+        &payload,
+        &"payment_request".into(),
+        &JsValue::from_str(payment_request),
+    )
+    .map_err(|_| "Failed to build payment payload".to_string())?;
+
+    if let Some(amount) = amount_sats {
+        js_sys::Reflect::set(
+            &payload,
+            &"amount_sats".into(),
+            &JsValue::from_f64(amount as f64),
+        )
+        .map_err(|_| "Failed to build payment payload".to_string())?;
+    }
+
+    let json = post_json("/api/wallet/send", payload).await?;
+    parse_wallet_send(json).ok_or_else(|| "Payment response malformed".to_string())
+}
+
+async fn request_wallet_receive(
+    method: &str,
+    amount_sats: Option<u64>,
+) -> Result<WalletInvoiceData, String> {
+    let payload = js_sys::Object::new();
+    js_sys::Reflect::set(&payload, &"method".into(), &JsValue::from_str(method))
+        .map_err(|_| "Failed to build receive payload".to_string())?;
+
+    if let Some(amount) = amount_sats {
+        js_sys::Reflect::set(
+            &payload,
+            &"amount_sats".into(),
+            &JsValue::from_f64(amount as f64),
+        )
+        .map_err(|_| "Failed to build receive payload".to_string())?;
+    }
+
+    let json = post_json("/api/wallet/receive", payload).await?;
+    parse_wallet_invoice(json).ok_or_else(|| "Receive response malformed".to_string())
+}
+
+fn modifiers_from_event(event: &web_sys::KeyboardEvent) -> Modifiers {
+    Modifiers {
+        shift: event.shift_key(),
+        ctrl: event.ctrl_key(),
+        alt: event.alt_key(),
+        meta: event.meta_key(),
+    }
+}
+
+fn key_from_event(event: &web_sys::KeyboardEvent) -> Option<Key> {
+    let key = event.key();
+    match key.as_str() {
+        "Enter" => Some(Key::Named(NamedKey::Enter)),
+        "Escape" => Some(Key::Named(NamedKey::Escape)),
+        "Backspace" => Some(Key::Named(NamedKey::Backspace)),
+        "Delete" => Some(Key::Named(NamedKey::Delete)),
+        "Tab" => Some(Key::Named(NamedKey::Tab)),
+        "Home" => Some(Key::Named(NamedKey::Home)),
+        "End" => Some(Key::Named(NamedKey::End)),
+        "PageUp" => Some(Key::Named(NamedKey::PageUp)),
+        "PageDown" => Some(Key::Named(NamedKey::PageDown)),
+        "ArrowUp" => Some(Key::Named(NamedKey::ArrowUp)),
+        "ArrowDown" => Some(Key::Named(NamedKey::ArrowDown)),
+        "ArrowLeft" => Some(Key::Named(NamedKey::ArrowLeft)),
+        "ArrowRight" => Some(Key::Named(NamedKey::ArrowRight)),
+        _ => {
+            if key.chars().count() == 1 {
+                Some(Key::Character(key))
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn mouse_button_from_event(event: &web_sys::MouseEvent) -> MouseButton {
+    match event.button() {
+        1 => MouseButton::Middle,
+        2 => MouseButton::Right,
+        _ => MouseButton::Left,
+    }
+}
+
+fn parse_amount_input(value: &str) -> Result<Option<u64>, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    trimmed
+        .parse::<u64>()
+        .map(Some)
+        .map_err(|_| "Amount must be a whole number of sats".to_string())
+}
+
+fn dispatch_wallet_event(state: &Rc<RefCell<AppState>>, event: InputEvent) -> EventResult {
+    let (result, actions) = {
+        let mut state = state.borrow_mut();
+        if state.view != AppView::RepoView || !state.right_dock_open {
+            return EventResult::Ignored;
+        }
+
+        let result = state.wallet.handle_event(&event);
+        let actions = state.wallet.take_actions();
+        (result, actions)
+    };
+
+    if !actions.is_empty() {
+        queue_wallet_actions(state.clone(), actions);
+    }
+
+    result
+}
+
+fn queue_wallet_actions(state: Rc<RefCell<AppState>>, actions: Vec<WalletAction>) {
+    if actions.is_empty() {
+        return;
+    }
+
+    for action in actions {
+        let state_clone = state.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            handle_wallet_action(state_clone, action).await;
+        });
+    }
+}
+
+async fn refresh_wallet_summary(state: Rc<RefCell<AppState>>) {
+    {
+        let mut state = state.borrow_mut();
+        state.wallet.status = WalletStatus::Loading;
+        state.wallet.error = None;
+    }
+
+    match fetch_wallet_summary().await {
+        Ok(summary) => {
+            let mut state = state.borrow_mut();
+            state.wallet.apply_summary(summary);
+        }
+        Err(err) => {
+            let mut state = state.borrow_mut();
+            state.wallet.status = WalletStatus::Error;
+            state.wallet.error = Some(err);
+        }
+    }
+}
+
+async fn handle_receive_action(
+    state: Rc<RefCell<AppState>>,
+    method: &str,
+    requires_amount: bool,
+) {
+    let amount_input = {
+        let state = state.borrow();
+        state.wallet.receive_amount_input.get_value().to_string()
+    };
+
+    let amount_sats = match parse_amount_input(&amount_input) {
+        Ok(amount) => amount,
+        Err(err) => {
+            let mut state = state.borrow_mut();
+            state.wallet.receive_notice = Some(format!("Error: {}", err));
+            return;
+        }
+    };
+
+    if requires_amount && amount_sats.is_none() {
+        let mut state = state.borrow_mut();
+        state.wallet.receive_notice = Some("Error: amount is required".to_string());
+        return;
+    }
+
+    {
+        let mut state = state.borrow_mut();
+        state.wallet.receive_notice = Some("Requesting invoice...".to_string());
+        state.wallet.last_invoice = None;
+    }
+
+    match request_wallet_receive(method, amount_sats).await {
+        Ok(invoice) => {
+            let mut state = state.borrow_mut();
+            state.wallet.set_invoice(invoice);
+            state.wallet.receive_amount_input.set_value("");
+        }
+        Err(err) => {
+            let mut state = state.borrow_mut();
+            state.wallet.receive_notice = Some(format!("Error: {}", err));
+            return;
+        }
+    }
+
+    refresh_wallet_summary(state).await;
+}
+
+async fn handle_wallet_action(state: Rc<RefCell<AppState>>, action: WalletAction) {
+    match action {
+        WalletAction::Refresh => {
+            refresh_wallet_summary(state).await;
+        }
+        WalletAction::SendPayment => {
+            let (payment_request, amount_input) = {
+                let state = state.borrow();
+                (
+                    state.wallet.send_address_input.get_value().trim().to_string(),
+                    state.wallet.send_amount_input.get_value().to_string(),
+                )
+            };
+
+            if payment_request.is_empty() {
+                let mut state = state.borrow_mut();
+                state.wallet.send_notice = Some("Error: payment request required".to_string());
+                return;
+            }
+
+            let amount_sats = match parse_amount_input(&amount_input) {
+                Ok(amount) => amount,
+                Err(err) => {
+                    let mut state = state.borrow_mut();
+                    state.wallet.send_notice = Some(format!("Error: {}", err));
+                    return;
+                }
+            };
+
+            {
+                let mut state = state.borrow_mut();
+                state.wallet.send_notice = Some("Sending payment...".to_string());
+            }
+
+            match send_wallet_payment(&payment_request, amount_sats).await {
+                Ok(sent) => {
+                    let notice = if sent.status == "failed" {
+                        "Error: payment failed".to_string()
+                    } else {
+                        let status_label = match sent.status.as_str() {
+                            "completed" => "Sent",
+                            "pending" => "Pending",
+                            _ => "Status",
+                        };
+                        format!(
+                            "{} {} sats (fee {}, {})",
+                            status_label, sent.amount_sats, sent.fee_sats, sent.method
+                        )
+                    };
+
+                    {
+                        let mut state = state.borrow_mut();
+                        state.wallet.send_notice = Some(notice);
+                        if sent.status != "failed" {
+                            state.wallet.send_address_input.set_value("");
+                            state.wallet.send_amount_input.set_value("");
+                        }
+                    }
+
+                    if sent.status != "failed" {
+                        refresh_wallet_summary(state).await;
+                    }
+                }
+                Err(err) => {
+                    let mut state = state.borrow_mut();
+                    state.wallet.send_notice = Some(format!("Error: {}", err));
+                }
+            }
+        }
+        WalletAction::ReceiveSpark => {
+            handle_receive_action(state, "spark", false).await;
+        }
+        WalletAction::ReceiveLightning => {
+            handle_receive_action(state, "lightning", true).await;
+        }
+        WalletAction::ReceiveOnchain => {
+            handle_receive_action(state, "onchain", false).await;
+        }
+    }
+}
+
 #[wasm_bindgen]
 pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
     let platform = WebPlatform::init(canvas_id)
@@ -265,6 +1523,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
 
             // Fetch repos if logged in
             if user_info.is_some() {
+                queue_wallet_actions(state_clone.clone(), vec![WalletAction::Refresh]);
+
                 let repos = fetch_repos().await;
                 let mut state = state_clone.borrow_mut();
                 state.repos = repos;
@@ -287,18 +1547,28 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         let state_clone = state.clone();
         let canvas = platform.borrow().canvas().clone();
         let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
-            let mut state = state_clone.borrow_mut();
-            state.mouse_pos = Point::new(event.offset_x() as f32, event.offset_y() as f32);
-            state.button_hovered = state.button_bounds.contains(state.mouse_pos);
+            let x = event.offset_x() as f32;
+            let y = event.offset_y() as f32;
 
-            // Check repo hover
-            state.hovered_repo_idx = None;
-            for (i, bounds) in state.repo_bounds.iter().enumerate() {
-                if bounds.contains(state.mouse_pos) {
-                    state.hovered_repo_idx = Some(i);
-                    break;
+            {
+                let mut state = state_clone.borrow_mut();
+                state.mouse_pos = Point::new(x, y);
+                state.button_hovered = state.button_bounds.contains(state.mouse_pos);
+
+                // Check repo hover
+                state.hovered_repo_idx = None;
+                for (i, bounds) in state.repo_bounds.iter().enumerate() {
+                    if bounds.contains(state.mouse_pos) {
+                        state.hovered_repo_idx = Some(i);
+                        break;
+                    }
                 }
             }
+
+            dispatch_wallet_event(
+                &state_clone,
+                InputEvent::MouseMove { x, y },
+            );
         });
         canvas.add_event_listener_with_callback("mousemove", closure.as_ref().unchecked_ref())?;
         closure.forget();
@@ -366,6 +1636,34 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         closure.forget();
     }
 
+    // Mouse down events for wallet interactions
+    {
+        let state_clone = state.clone();
+        let canvas = platform.borrow().canvas().clone();
+        let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
+            let x = event.offset_x() as f32;
+            let y = event.offset_y() as f32;
+            let button = mouse_button_from_event(&event);
+            dispatch_wallet_event(&state_clone, InputEvent::MouseDown { button, x, y });
+        });
+        canvas.add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref())?;
+        closure.forget();
+    }
+
+    // Mouse up events for wallet interactions
+    {
+        let state_clone = state.clone();
+        let canvas = platform.borrow().canvas().clone();
+        let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
+            let x = event.offset_x() as f32;
+            let y = event.offset_y() as f32;
+            let button = mouse_button_from_event(&event);
+            dispatch_wallet_event(&state_clone, InputEvent::MouseUp { button, x, y });
+        });
+        canvas.add_event_listener_with_callback("mouseup", closure.as_ref().unchecked_ref())?;
+        closure.forget();
+    }
+
     // Scroll events for repo list
     {
         let state_clone = state.clone();
@@ -404,10 +1702,24 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         let state_clone = state.clone();
         let window = web_sys::window().unwrap();
         let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::KeyboardEvent| {
+            let mut handled = EventResult::Ignored;
+
+            if let Some(key) = key_from_event(&event) {
+                let modifiers = modifiers_from_event(&event);
+                handled = dispatch_wallet_event(
+                    &state_clone,
+                    InputEvent::KeyDown { key, modifiers },
+                );
+            }
+
             let meta = event.meta_key() || event.ctrl_key();
             let key = event.key();
+            let wallet_focused = {
+                let state = state_clone.borrow();
+                state.view == AppView::RepoView && state.right_dock_open && state.wallet.has_focus()
+            };
 
-            if meta && state_clone.borrow().view == AppView::RepoView {
+            if meta && !wallet_focused && state_clone.borrow().view == AppView::RepoView {
                 let mut state = state_clone.borrow_mut();
                 match key.as_str() {
                     "[" => {
@@ -431,6 +1743,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     _ => {}
                 }
             }
+
+            if matches!(handled, EventResult::Handled) {
+                event.prevent_default();
+            }
         });
         window.add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref())?;
         closure.forget();
@@ -447,6 +1763,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
 
         let mut scene = Scene::new();
 
+        let scale_factor = platform.scale_factor();
+
         match state.view {
             AppView::Landing => {
                 build_landing_page(&mut scene, platform.text_system(), &mut state, width, height);
@@ -455,7 +1773,14 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 build_repo_selector(&mut scene, platform.text_system(), &mut state, width, height);
             }
             AppView::RepoView => {
-                build_repo_view(&mut scene, platform.text_system(), &mut state, width, height);
+                build_repo_view(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
             }
         }
 
@@ -637,9 +1962,6 @@ fn build_repo_selector(
         scene.draw_text(empty_run);
     } else {
         let row_height = 56.0;
-        let visible_start = state.scroll_offset;
-        let visible_end = visible_start + (height - y);
-
         for (i, repo) in state.repos.iter().enumerate() {
             let row_y = y + (i as f32 * row_height) - state.scroll_offset;
 
@@ -748,6 +2070,7 @@ fn build_repo_view(
     state: &mut AppState,
     width: f32,
     height: f32,
+    scale_factor: f32,
 ) {
     // Background
     scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
@@ -769,7 +2092,16 @@ fn build_repo_view(
     draw_center_pane(scene, text_system, state, center_x, 0.0, center_w, content_h);
 
     if state.right_dock_open {
-        draw_right_sidebar(scene, text_system, state, width - right_w, 0.0, right_w, content_h);
+        draw_right_sidebar(
+            scene,
+            text_system,
+            state,
+            width - right_w,
+            0.0,
+            right_w,
+            content_h,
+            scale_factor,
+        );
     }
 
     // Draw status bar
@@ -887,6 +2219,7 @@ fn draw_right_sidebar(
     y: f32,
     w: f32,
     h: f32,
+    scale_factor: f32,
 ) {
     // Sidebar background
     scene.draw_quad(
@@ -935,62 +2268,11 @@ fn draw_right_sidebar(
     );
     cy += 16.0;
 
-    // Claude Usage header
-    let usage_header = text_system.layout(
-        "Claude Usage",
-        Point::new(x + padding, cy),
-        12.0,
-        theme::text::MUTED,
-    );
-    scene.draw_text(usage_header);
-    cy += 24.0;
-
-    // Model info
-    let model_info = text_system.layout(
-        &format!("Model: {}", state.selected_model),
-        Point::new(x + padding, cy),
-        11.0,
-        theme::text::PRIMARY,
-    );
-    scene.draw_text(model_info);
-    cy += 20.0;
-
-    // Context progress bar (placeholder)
-    let bar_w = w - padding * 2.0;
-    scene.draw_quad(
-        Quad::new(Bounds::new(x + padding, cy, bar_w, 8.0))
-            .with_background(theme::bg::ELEVATED),
-    );
-    // Filled portion (10% for demo)
-    scene.draw_quad(
-        Quad::new(Bounds::new(x + padding, cy, bar_w * 0.1, 8.0))
-            .with_background(theme::accent::PRIMARY),
-    );
-    cy += 16.0;
-
-    let context_label = text_system.layout(
-        "Context: 10%",
-        Point::new(x + padding, cy),
-        10.0,
-        theme::text::MUTED,
-    );
-    scene.draw_text(context_label);
-    cy += 24.0;
-
-    // Stats
-    let stats = [
-        ("Tokens:", "0 / 0"),
-        ("Cache:", "0"),
-        ("Turns:", "0"),
-        ("Cost:", "$0.00"),
-    ];
-
-    for (label, value) in stats {
-        let label_run = text_system.layout(label, Point::new(x + padding, cy), 10.0, theme::text::MUTED);
-        scene.draw_text(label_run);
-        let value_run = text_system.layout(value, Point::new(x + padding + 60.0, cy), 10.0, theme::text::PRIMARY);
-        scene.draw_text(value_run);
-        cy += 16.0;
+    let wallet_height = (y + h - padding) - cy;
+    if wallet_height > 0.0 {
+        let wallet_bounds = Bounds::new(x + padding, cy, w - padding * 2.0, wallet_height);
+        let mut cx = PaintContext::new(scene, text_system, scale_factor);
+        state.wallet.paint(wallet_bounds, &mut cx);
     }
 }
 

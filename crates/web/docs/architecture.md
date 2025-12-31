@@ -37,6 +37,7 @@ Both are 100% Rust, compiled to WebAssembly, running at the edge.
 │  │  │  routes/account.rs   → User settings, API keys                   │  ││
 │  │  │  routes/billing.rs   → Credits, plans, packages                  │  ││
 │  │  │  routes/stripe.rs    → Payment methods, webhooks                 │  ││
+│  │  │  routes/wallet.rs    → Spark wallet summary/send/receive         │  ││
 │  │  │  routes/hud.rs       → Personal HUD URLs, embed                  │  ││
 │  │  └──────────────────────────────────────────────────────────────────┘  ││
 │  │                                                                          ││
@@ -208,6 +209,23 @@ Cookie format:
 ```
 oa_session=<token>; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000; Secure
 ```
+
+### Wallet Flow (Spark)
+
+```
+Client (WGPUI) ──▶ /api/wallet/summary|send|receive
+        │
+        ▼
+Worker routes/wallet.rs
+  ├─ load identity material (D1 + session secret)
+  ├─ derive SparkSigner from seed entropy
+  ├─ build SparkWallet (openagents-spark + Breez SDK)
+  └─ return balance, addresses, payments, or send/receive results
+```
+
+Environment inputs:
+- `SPARK_NETWORK` (mainnet/testnet/signet/regtest)
+- `BREEZ_API_KEY` (or `SPARK_API_KEY`) for Breez SDK access
 
 ### Database Schema (D1)
 

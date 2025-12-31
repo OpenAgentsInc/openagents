@@ -102,6 +102,17 @@ let pubkey = signer.public_key_hex();
 println!("Bitcoin public key: {}", pubkey);
 ```
 
+### Seed Entropy (Web/External Storage)
+
+```rust
+use spark::SparkSigner;
+
+// Derive Bitcoin keys from raw seed entropy (16-64 bytes)
+let entropy = [0u8; 32];
+let signer = SparkSigner::from_entropy(&entropy)?;
+println!("Bitcoin public key: {}", signer.public_key_hex());
+```
+
 ### Wallet Operations (Available)
 
 ```rust
@@ -129,6 +140,9 @@ println!("Network: {}", report.status.as_str());
 ```
 
 Note: Breez SDK currently supports Mainnet and Regtest. Network::Testnet and Network::Signet map to Regtest in this crate.
+
+Note: In wasm builds, SparkWallet uses in-memory storage by default. Use SparkWalletBuilder::with_storage
+to supply a custom storage backend when targeting the web.
 
 ## Breez SDK Integration
 

@@ -18,6 +18,10 @@ let config = WalletConfig {
 };
 ```
 
+Defaults:
+- Native builds use `dirs::data_local_dir()/openagents/spark`.
+- wasm builds set `storage_dir` to `openagents/spark` but default to in-memory storage unless overridden.
+
 ## Breez SDK Config via SparkWalletBuilder
 When you need advanced configuration, use SparkWalletBuilder and pass a full breez_sdk_spark::Config.
 
@@ -51,6 +55,23 @@ sdk_config.optimization_config = OptimizationConfig {
 
 let wallet = SparkWallet::builder(signer, wallet_config)
     .with_sdk_config(sdk_config)
+    .build()
+    .await?;
+# Ok(())
+# }
+```
+
+### Custom storage (wasm or embedded targets)
+Use `with_storage` to provide your own `breez_sdk_spark::Storage` implementation.
+
+```rust
+use openagents_spark::{SparkWalletBuilder, WalletConfig, SparkSigner};
+use std::sync::Arc;
+
+# async fn example(storage: Arc<dyn breez_sdk_spark::Storage>) -> Result<(), Box<dyn std::error::Error>> {
+let signer = SparkSigner::from_entropy(&[0u8; 32])?;
+let wallet = SparkWalletBuilder::new(signer, WalletConfig::default())
+    .with_storage(storage)
     .build()
     .await?;
 # Ok(())
