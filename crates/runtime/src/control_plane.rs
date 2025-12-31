@@ -1,6 +1,7 @@
 //! Local control plane HTTP server and runtime registry.
 
 use crate::agent::Agent;
+use crate::drivers::{EnvelopeSink, RoutedEnvelope};
 use crate::env::AgentEnv;
 use crate::envelope::Envelope;
 use crate::error::Result;
@@ -24,7 +25,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
@@ -52,6 +53,18 @@ impl LocalRuntime {
         let mut guard = self.agents.write().await;
         guard.insert(entry.id.clone(), entry);
         Ok(())
+    }
+
+    /// Create a sink that routes driver envelopes into agent inboxes.
+    pub fn driver_sink(self: &Arc<Self>) -> EnvelopeSink {
+        let (tx, mut rx) = mpsc::channel::<RoutedEnvelope>(128);
+        let runtime = Arc::clone(self);
+        tokio::spawn(async move {
+            while let Some(routed) = rx.recv().await {
+                let _ = runtime.send_envelope(&routed.agent_id, routed.envelope).await;
+            }
+        });
+        tx
     }
 
     /// List all registered agent ids.

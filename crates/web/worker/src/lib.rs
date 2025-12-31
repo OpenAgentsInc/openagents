@@ -199,18 +199,6 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             routes::stripe::webhook(env, signature, body).await
         }
 
-        // Repo routes (GTM)
-        (Method::Get, path) if path.starts_with("/repo/") => {
-            let parts: Vec<&str> = path.trim_start_matches("/repo/").split('/').collect();
-            if parts.len() >= 2 {
-                let username = parts[0].to_string();
-                let repo = parts[1..].join("/");
-                let maybe_user = get_optional_user(&req, &env).await;
-                routes::hud::view_hud(env, username, repo, maybe_user).await
-            } else {
-                Response::error("Invalid HUD path", 400)
-            }
-        }
         // Embed route: /repo/:username/:repo/embed
         (Method::Get, path) if path.starts_with("/repo/") && path.ends_with("/embed") => {
             let inner = path.trim_start_matches("/repo/").trim_end_matches("/embed");
@@ -218,9 +206,45 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             if parts.len() >= 2 {
                 let username = parts[0].to_string();
                 let repo = parts[1..].join("/");
-                routes::hud::embed_hud(env, username, repo).await
+                let agent_id = url
+                    .query_pairs()
+                    .find(|(k, _)| k == "agent_id")
+                    .map(|(_, v)| v.to_string());
+                let stream_override = url
+                    .query_pairs()
+                    .find(|(k, _)| k == "stream")
+                    .map(|(_, v)| v.to_string());
+                routes::hud::embed_hud(env, username, repo, agent_id, stream_override).await
             } else {
                 Response::error("Invalid embed path", 400)
+            }
+        }
+        // Repo routes (GTM)
+        (Method::Get, path) if path.starts_with("/repo/") => {
+            let parts: Vec<&str> = path.trim_start_matches("/repo/").split('/').collect();
+            if parts.len() >= 2 {
+                let username = parts[0].to_string();
+                let repo = parts[1..].join("/");
+                let maybe_user = get_optional_user(&req, &env).await;
+                let agent_id = url
+                    .query_pairs()
+                    .find(|(k, _)| k == "agent_id")
+                    .map(|(_, v)| v.to_string());
+                let stream_override = url
+                    .query_pairs()
+                    .find(|(k, _)| k == "stream")
+                    .map(|(_, v)| v.to_string());
+                routes::hud::view_hud(
+                    env,
+                    username,
+                    repo,
+                    maybe_user,
+                    agent_id,
+                    stream_override,
+                )
+                .await
+            } else {
+                Response::error("Invalid HUD path", 400)
             }
         }
         (Method::Post, "/api/hud/settings") => {

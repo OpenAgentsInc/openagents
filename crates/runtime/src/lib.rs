@@ -110,6 +110,7 @@ pub mod budget;
 pub mod compute;
 pub mod containers;
 pub mod control_plane;
+pub mod drivers;
 pub mod env;
 pub mod engine;
 pub mod envelope;
@@ -140,6 +141,10 @@ pub use containers::{
 };
 pub use containers::ProviderStatus as ContainerProviderStatus;
 pub use control_plane::{ControlPlane, LocalRuntime};
+pub use drivers::{
+    Driver, DriverHandle, EnvelopeSink, NostrDriver, NostrDriverConfig, NostrPublishRequest,
+    RoutedEnvelope,
+};
 pub use env::AgentEnv;
 pub use engine::{manual_trigger, TickEngine};
 pub use envelope::Envelope;
@@ -148,9 +153,12 @@ pub use fs::{AccessLevel, DirEntry, FileHandle, FileService, FsError, FsResult, 
 pub use idempotency::{IdempotencyJournal, JournalEntry, JournalError, MemoryJournal};
 #[cfg(feature = "local")]
 pub use idempotency::SqliteJournal;
-pub use identity::{InMemorySigner, PublicKey, Signature, SigningService};
+pub use identity::{InMemorySigner, NostrSigner, PublicKey, Signature, SigningService};
 pub use namespace::Namespace;
-pub use services::{DeadletterFs, GoalsFs, IdentityFs, InboxFs, LogsFs, StatusFs, StatusSnapshot, TraceEvent};
+pub use services::{
+    ApmMetric, DeadletterFs, GoalsFs, HudFs, HudSettings, IdentityFs, InboxFs, LastPrMetric,
+    LogsFs, MetricsFs, MetricsSnapshot, QueueMetric, StatusFs, StatusSnapshot, TraceEvent,
+};
 pub use storage::{AgentStorage, InMemoryStorage, StorageOp};
 pub use tick::{ResourceUsage, TickResult};
 pub use trigger::{AlarmTrigger, EventTrigger, InitializeTrigger, ManualTrigger, MessageTrigger, Trigger, TriggerMeta};

@@ -15,7 +15,12 @@ use crate::fs::{AccessLevel, FileHandle, FileService, FsError, FsResult, OpenFla
 use crate::idempotency::{IdempotencyJournal, MemoryJournal};
 use crate::storage::{AgentStorage, InMemoryStorage, StoredState};
 use crate::types::{AgentId, EnvelopeId, Timestamp};
-use crate::{AgentEnv, ControlPlane, Envelope, LocalRuntime, Result, TickResult, WatchEvent};
+use crate::{
+    AgentEnv, ControlPlane, Envelope, HudFs, HudSettings, LocalRuntime, LogsFs, MetricsFs,
+    NostrSigner, Result, RoutedEnvelope, TickResult, TraceEvent, WatchEvent,
+};
+use crate::identity::SigningService;
+use nostr::{Event, ENCRYPTED_DM_KIND, KIND_SHORT_TEXT_NOTE};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{HashMap, VecDeque};
@@ -653,6 +658,216 @@ fn test_container_exec_and_files() {
             .unwrap(),
     );
     assert_eq!(chunk_bytes, b"hello");
+}
+
+#[test]
+fn test_hud_settings_and_redaction() {
+    let storage = Arc::new(InMemoryStorage::new());
+    let logs = Arc::new(LogsFs::new());
+    let agent_id = AgentId::from("agent-hud");
+    let hud = HudFs::new(agent_id.clone(), storage, logs.clone());
+
+    let settings_bytes = read_handle(hud.open("settings", OpenFlags::read()).unwrap());
+    let settings: HudSettings = serde_json::from_slice(&settings_bytes).expect("settings");
+    assert!(settings.public);
+
+    let mut handle = hud.open("settings", OpenFlags::write()).unwrap();
+    let new_settings = HudSettings {
+        public: false,
+        embed_allowed: false,
+        redaction_policy: "standard".to_string(),
+    };
+    handle
+        .write(&serde_json::to_vec(&new_settings).unwrap())
+        .unwrap();
+    handle.flush().unwrap();
+
+    let settings_bytes = read_handle(hud.open("settings", OpenFlags::read()).unwrap());
+    let settings: HudSettings = serde_json::from_slice(&settings_bytes).expect("settings");
+    assert!(!settings.public);
+    assert!(!settings.embed_allowed);
+
+    let mut watch = hud.watch("stream").unwrap().unwrap();
+    logs.emit_trace(br#"{"event":"tool","token":"secret-value"}"#);
+    let event = watch.next(Some(Duration::from_millis(100))).expect("event");
+    let data = match event {
+        Some(WatchEvent::Data(data)) => data,
+        _ => panic!("missing data"),
+    };
+    let value: serde_json::Value = serde_json::from_slice(&data).expect("json");
+    assert_eq!(value["token"], "[REDACTED]");
+}
+
+#[test]
+fn test_metrics_read_write() {
+    let metrics = MetricsFs::new();
+    let bytes = read_handle(metrics.open("apm", OpenFlags::read()).unwrap());
+    let value: serde_json::Value = serde_json::from_slice(&bytes).expect("apm");
+    assert_eq!(value["value"].as_f64(), Some(0.0));
+
+    let mut handle = metrics.open("apm", OpenFlags::write()).unwrap();
+    handle.write(br#"{"value":12.5,"window_secs":60}"#).unwrap();
+    handle.flush().unwrap();
+
+    let bytes = read_handle(metrics.open("apm", OpenFlags::read()).unwrap());
+    let value: serde_json::Value = serde_json::from_slice(&bytes).expect("apm");
+    assert_eq!(value["value"].as_f64(), Some(12.5));
+}
+
+#[test]
+fn test_logs_trajectory() {
+    let logs = LogsFs::new();
+    logs.emit_trace(br#"{"event":"tick"}"#);
+
+    let bytes = read_handle(logs.open("trajectory", OpenFlags::read()).unwrap());
+    let text = String::from_utf8(bytes).expect("utf8");
+    let line = text.lines().next().expect("line");
+    let event: TraceEvent = serde_json::from_str(line).expect("trace");
+    assert!(event.data.contains("tick"));
+}
+
+#[test]
+fn test_nostr_signer_sign_verify() {
+    let signer = NostrSigner::new();
+    let agent_id = AgentId::from("agent-nostr");
+    let pubkey = signer.pubkey(&agent_id).expect("pubkey");
+    let sig = signer.sign(&agent_id, b"hello").expect("sign");
+    assert!(signer.verify(&pubkey, b"hello", &sig));
+    assert!(!signer.verify(&pubkey, b"other", &sig));
+}
+
+#[test]
+fn test_nostr_signer_encrypt_decrypt() {
+    let signer = NostrSigner::new();
+    let sender = AgentId::from("agent-sender");
+    let receiver = AgentId::from("agent-receiver");
+
+    let receiver_pubkey = signer.pubkey(&receiver).expect("receiver pubkey");
+    let sender_pubkey = signer.pubkey(&sender).expect("sender pubkey");
+
+    let ciphertext = signer
+        .encrypt(&sender, &receiver_pubkey, b"secret")
+        .expect("encrypt");
+    let plaintext = signer
+        .decrypt(&receiver, &sender_pubkey, &ciphertext)
+        .expect("decrypt");
+
+    assert_eq!(plaintext, b"secret");
+}
+
+#[test]
+fn test_nostr_driver_routes_mentions() {
+    let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
+    let agent_id = AgentId::from("agent-mention");
+    let pubkey_hex = signer.pubkey(&agent_id).expect("pubkey").to_hex();
+
+    let mut pubkey_map = HashMap::new();
+    pubkey_map.insert(pubkey_hex.clone(), agent_id.clone());
+
+    let event = fake_event(
+        "11".repeat(32),
+        KIND_SHORT_TEXT_NOTE,
+        "hello".to_string(),
+        vec![vec!["p".to_string(), pubkey_hex.clone()]],
+    );
+
+    let routed = crate::drivers::nostr::route_event(&signer, &pubkey_map, &event);
+    assert_eq!(routed.len(), 1);
+    assert_eq!(routed[0].agent_id, agent_id);
+    assert_eq!(routed[0].envelope.payload["type"], "nostr_mention");
+}
+
+#[test]
+fn test_nostr_driver_routes_dm() {
+    let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
+    let sender = AgentId::from("agent-dm-sender");
+    let receiver = AgentId::from("agent-dm-receiver");
+
+    let receiver_pubkey = signer.pubkey(&receiver).expect("receiver pubkey");
+    let receiver_pubkey_hex = receiver_pubkey.to_hex();
+    let sender_pubkey_hex = signer.pubkey(&sender).expect("sender pubkey").to_hex();
+
+    let ciphertext = signer
+        .encrypt(&sender, &receiver_pubkey, b"secret")
+        .expect("encrypt");
+    let content = String::from_utf8(ciphertext).expect("utf8");
+
+    let event = fake_event(
+        sender_pubkey_hex.clone(),
+        ENCRYPTED_DM_KIND,
+        content,
+        vec![vec!["p".to_string(), receiver_pubkey_hex.clone()]],
+    );
+
+    let mut pubkey_map = HashMap::new();
+    pubkey_map.insert(receiver_pubkey_hex.clone(), receiver.clone());
+
+    let routed = crate::drivers::nostr::route_event(&signer, &pubkey_map, &event);
+    assert_eq!(routed.len(), 1);
+    assert_eq!(routed[0].agent_id, receiver);
+    assert_eq!(routed[0].envelope.payload["type"], "nostr_dm");
+    assert_eq!(routed[0].envelope.payload["nostr"]["content"], "secret");
+    assert_eq!(routed[0].envelope.payload["nostr"]["decrypted"], true);
+}
+
+#[tokio::test]
+async fn test_driver_sink_routes_envelope() {
+    let storage = Arc::new(InMemoryStorage::new());
+    let runtime = Arc::new(LocalRuntime::new(storage));
+    let agent_id = AgentId::from("agent-driver");
+    runtime
+        .register_agent(agent_id.clone(), CountingAgent)
+        .await
+        .expect("register agent");
+
+    let sink = runtime.driver_sink();
+    let envelope = Envelope {
+        id: EnvelopeId::new("env-driver"),
+        timestamp: Timestamp::now(),
+        payload: json!({ "message": "hello" }),
+    };
+    sink.send(RoutedEnvelope { agent_id: agent_id.clone(), envelope })
+        .await
+        .expect("send");
+
+    let control_plane = ControlPlane::new(runtime);
+    let app = control_plane.router();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("serve");
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let base = format!("http://{}", addr);
+    let client = reqwest::Client::new();
+    let items: Vec<Envelope> = client
+        .get(format!("{}/agents/{}/inbox", base, agent_id))
+        .send()
+        .await
+        .expect("get inbox")
+        .json()
+        .await
+        .expect("parse inbox");
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id.as_str(), "env-driver");
+}
+
+fn fake_event(pubkey: String, kind: u16, content: String, tags: Vec<Vec<String>>) -> Event {
+    Event {
+        id: "01".repeat(32),
+        pubkey,
+        created_at: 1_700_000_000,
+        kind,
+        tags,
+        content,
+        sig: "00".repeat(64),
+    }
 }
 
 #[tokio::test]

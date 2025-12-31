@@ -67,6 +67,17 @@ impl LogsFs {
         serde_json::to_vec_pretty(&*recent).map_err(|err| FsError::Other(err.to_string()))
     }
 
+    fn trajectory_jsonl(&self) -> FsResult<Vec<u8>> {
+        let recent = self.recent.lock().unwrap_or_else(|e| e.into_inner());
+        let mut out = String::new();
+        for event in recent.iter() {
+            let line = serde_json::to_string(event).map_err(|err| FsError::Other(err.to_string()))?;
+            out.push_str(&line);
+            out.push('\n');
+        }
+        Ok(out.into_bytes())
+    }
+
     fn subscribe(&self) -> std::sync::mpsc::Receiver<Vec<u8>> {
         self.traces.subscribe_stream()
     }
@@ -87,6 +98,7 @@ impl FileService for LogsFs {
         match path {
             "trace" => Ok(Box::new(StreamHandle::new(self.subscribe()))),
             "recent" => Ok(Box::new(BytesHandle::new(self.recent_json()?))),
+            "trajectory" => Ok(Box::new(BytesHandle::new(self.trajectory_jsonl()?))),
             "" => Err(FsError::IsDirectory),
             _ => Err(FsError::NotFound),
         }
@@ -97,6 +109,7 @@ impl FileService for LogsFs {
             "" => Ok(vec![
                 DirEntry::file("trace", 0),
                 DirEntry::file("recent", self.recent_json()?.len() as u64),
+                DirEntry::file("trajectory", self.trajectory_jsonl()?.len() as u64),
             ]),
             _ => Err(FsError::NotFound),
         }
@@ -107,6 +120,7 @@ impl FileService for LogsFs {
             "" => Ok(Stat::dir()),
             "trace" => Ok(Stat::file(0)),
             "recent" => Ok(Stat::file(self.recent_json()?.len() as u64)),
+            "trajectory" => Ok(Stat::file(self.trajectory_jsonl()?.len() as u64)),
             _ => Err(FsError::NotFound),
         }
     }
