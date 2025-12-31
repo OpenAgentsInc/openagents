@@ -36,6 +36,20 @@ struct LiveHudResponse {
     issue: Option<LiveIssue>,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+struct LiveHudRecord {
+    repo: Option<String>,
+    agent_id: Option<String>,
+    stream_url: Option<String>,
+    ws_url: Option<String>,
+    session_id: Option<String>,
+    status: Option<String>,
+    issue_url: Option<String>,
+    issue_title: Option<String>,
+    issue_label: Option<String>,
+    started_at: Option<String>,
+}
+
 /// Response for session query
 #[derive(Serialize)]
 pub struct SessionResponse {
@@ -50,6 +64,12 @@ pub struct SessionResponse {
 pub struct StartSessionRequest {
     pub repo: String,
     pub prompt: String,
+    #[serde(default)]
+    pub issue_url: Option<String>,
+    #[serde(default)]
+    pub issue_title: Option<String>,
+    #[serde(default)]
+    pub issue_label: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -233,6 +253,28 @@ pub async fn start_session(
     // Build WebSocket URL (relative for same-origin)
     let ws_url = format!("/api/container/ws/{}", session.session_id);
 
+    if let Some(live_repo) = env_var_non_empty(&env, "LIVE_HUD_REPO") {
+        if live_repo.eq_ignore_ascii_case(&req.repo) {
+            let live_record = LiveHudRecord {
+                repo: Some(req.repo.clone()),
+                agent_id: None,
+                stream_url: None,
+                ws_url: Some(ws_url.clone()),
+                session_id: Some(session.session_id.clone()),
+                status: Some("live".to_string()),
+                issue_url: req.issue_url.clone(),
+                issue_title: req.issue_title.clone(),
+                issue_label: req.issue_label.clone(),
+                started_at: Some(chrono::Utc::now().to_rfc3339()),
+            };
+            if let Ok(payload) = serde_json::to_string(&live_record) {
+                if let Ok(put) = kv.put("live_hud:active", &payload) {
+                    let _ = put.expiration_ttl(21600).execute().await;
+                }
+            }
+        }
+    }
+
     Response::from_json(&StartContainerResponse {
         session_id: session.session_id,
         status: "starting".to_string(),
@@ -404,7 +446,12 @@ pub async fn get_settings(
 
 /// Live HUD configuration for landing page.
 pub async fn live_hud(env: Env) -> Result<Response> {
-    let repo = match env_var_non_empty(&env, "LIVE_HUD_REPO") {
+    let live_record = load_live_hud_record(&env).await?;
+    let repo = live_record
+        .as_ref()
+        .and_then(|record| record.repo.clone())
+        .or_else(|| env_var_non_empty(&env, "LIVE_HUD_REPO"));
+    let repo = match repo {
         Some(value) => value,
         None => {
             return Response::from_json(&LiveHudResponse {
@@ -426,9 +473,21 @@ pub async fn live_hud(env: Env) -> Result<Response> {
 
     let username = parts[0].to_string();
     let repo_name = parts[1..].join("/");
-    let agent_id = env_var_non_empty(&env, "LIVE_HUD_AGENT_ID");
-    let stream_url = env_var_non_empty(&env, "LIVE_HUD_STREAM_URL");
-    if agent_id.is_none() && stream_url.is_none() {
+    let agent_id = live_record
+        .as_ref()
+        .and_then(|record| record.agent_id.clone())
+        .or_else(|| env_var_non_empty(&env, "LIVE_HUD_AGENT_ID"));
+    let stream_url = live_record
+        .as_ref()
+        .and_then(|record| record.stream_url.clone())
+        .or_else(|| env_var_non_empty(&env, "LIVE_HUD_STREAM_URL"));
+    let ws_url = live_record
+        .as_ref()
+        .and_then(|record| record.ws_url.clone());
+    let session_id = live_record
+        .as_ref()
+        .and_then(|record| record.session_id.clone());
+    if agent_id.is_none() && stream_url.is_none() && ws_url.is_none() {
         return Response::from_json(&LiveHudResponse {
             enabled: false,
             hud_context: None,
@@ -436,13 +495,26 @@ pub async fn live_hud(env: Env) -> Result<Response> {
         });
     }
 
-    let status = env_var_non_empty(&env, "LIVE_HUD_STATUS")
+    let status = live_record
+        .as_ref()
+        .and_then(|record| record.status.clone())
+        .or_else(|| env_var_non_empty(&env, "LIVE_HUD_STATUS"))
         .unwrap_or_else(|| "live".to_string());
 
-    let issue_url = env_var_non_empty(&env, "LIVE_HUD_ISSUE_URL");
-    let issue_title = env_var_non_empty(&env, "LIVE_HUD_ISSUE_TITLE");
-    let issue_label = env_var_non_empty(&env, "LIVE_HUD_ISSUE_LABEL").or_else(|| {
-        issue_url.as_ref().and_then(|url| {
+    let issue_url = live_record
+        .as_ref()
+        .and_then(|record| record.issue_url.clone())
+        .or_else(|| env_var_non_empty(&env, "LIVE_HUD_ISSUE_URL"));
+    let issue_title = live_record
+        .as_ref()
+        .and_then(|record| record.issue_title.clone())
+        .or_else(|| env_var_non_empty(&env, "LIVE_HUD_ISSUE_TITLE"));
+    let issue_label = live_record
+        .as_ref()
+        .and_then(|record| record.issue_label.clone())
+        .or_else(|| env_var_non_empty(&env, "LIVE_HUD_ISSUE_LABEL"))
+        .or_else(|| {
+            issue_url.as_ref().and_then(|url| {
             let trimmed = url.trim_end_matches('/');
             let last = trimmed.rsplit('/').next()?;
             if last.chars().all(|c| c.is_ascii_digit()) {
@@ -470,8 +542,8 @@ pub async fn live_hud(env: Env) -> Result<Response> {
         embed_mode: false,
         agent_id,
         stream_url,
-        session_id: None,
-        ws_url: None,
+        session_id,
+        ws_url,
         status,
     };
 
@@ -487,6 +559,19 @@ fn env_var_non_empty(env: &Env, key: &str) -> Option<String> {
         .ok()
         .map(|value| value.to_string())
         .filter(|value| !value.trim().is_empty())
+}
+
+async fn load_live_hud_record(env: &Env) -> Result<Option<LiveHudRecord>> {
+    let kv = env.kv("SESSIONS")?;
+    let result = kv
+        .get("live_hud:active")
+        .text()
+        .await
+        .map_err(|e| Error::RustError(format!("KV error: {:?}", e)))?;
+    let Some(json) = result else {
+        return Ok(None);
+    };
+    Ok(serde_json::from_str(&json).ok())
 }
 
 /// Serve the HUD HTML page with context
