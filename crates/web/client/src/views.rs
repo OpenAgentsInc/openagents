@@ -757,16 +757,23 @@ pub(crate) fn build_landing_page(
             );
             scene.draw_text(name_run);
 
-            // Content preview (main area)
+            // Content preview (main area) - single line only
             let content_start_x = pad + 100.0;
             let time_width = 36.0;
             let content_max_width = feed_w - (content_start_x - pad) - time_width - 16.0;
             let max_content_chars = (content_max_width / 6.5) as usize;
 
-            let content_preview = if note.content.len() > max_content_chars {
-                format!("{}...", &note.content[..max_content_chars.saturating_sub(3)])
+            // Take first line only, strip whitespace
+            let first_line = note.content
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim();
+
+            let content_preview = if first_line.len() > max_content_chars {
+                format!("{}...", &first_line[..max_content_chars.saturating_sub(3)])
             } else {
-                note.content.replace('\n', " ").replace('\r', "")
+                first_line.to_string()
             };
 
             if !content_preview.is_empty() {
