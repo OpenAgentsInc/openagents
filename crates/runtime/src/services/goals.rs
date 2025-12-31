@@ -1,6 +1,8 @@
 //! Goals filesystem service.
 
-use crate::fs::{BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat};
+use crate::fs::{
+    BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat,
+};
 use crate::storage::AgentStorage;
 use crate::types::AgentId;
 use std::sync::Arc;
@@ -62,10 +64,7 @@ impl FileService for GoalsFs {
 
         let goal_id = path.trim_end_matches(".json");
         if flags.write || flags.create {
-            Ok(Box::new(GoalWriter::new(
-                self.clone(),
-                goal_id.to_string(),
-            )))
+            Ok(Box::new(GoalWriter::new(self.clone(), goal_id.to_string())))
         } else {
             let data = self.get_goal(goal_id)?;
             Ok(Box::new(BytesHandle::new(data)))
@@ -77,7 +76,10 @@ impl FileService for GoalsFs {
             "" => {
                 let mut entries = Vec::new();
                 for goal_id in self.list_goal_ids()? {
-                    let size = self.get_goal(&goal_id).map(|data| data.len() as u64).unwrap_or(0);
+                    let size = self
+                        .get_goal(&goal_id)
+                        .map(|data| data.len() as u64)
+                        .unwrap_or(0);
                     entries.push(DirEntry::file(format!("{goal_id}.json"), size));
                 }
                 Ok(entries)

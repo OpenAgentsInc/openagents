@@ -3,9 +3,9 @@
 use crate::agent::{Agent, AgentContext, AgentState, SeenCache, SeenCacheState};
 use crate::error::Result;
 use crate::storage::{AgentStorage, StorageOp, StoredState};
-use crate::types::{AgentId, EnvelopeId, Timestamp};
-use crate::trigger::Trigger;
 use crate::tick::TickResult;
+use crate::trigger::Trigger;
+use crate::types::{AgentId, EnvelopeId, Timestamp};
 use futures::lock::Mutex as AsyncMutex;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -76,10 +76,7 @@ impl TickEngine {
         Ok(result)
     }
 
-    async fn load_state<S: AgentState>(
-        &self,
-        agent_id: &AgentId,
-    ) -> Result<(S, SeenCache, bool)> {
+    async fn load_state<S: AgentState>(&self, agent_id: &AgentId) -> Result<(S, SeenCache, bool)> {
         let state_bytes = self.storage.load_state(agent_id).await?;
         let (state, is_new) = match state_bytes {
             Some(bytes) => (StoredState::decode::<S>(&bytes)?, false),

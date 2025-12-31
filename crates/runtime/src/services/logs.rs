@@ -1,6 +1,9 @@
 //! Logs filesystem service.
 
-use crate::fs::{BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat, StreamHandle, WatchEvent, WatchHandle};
+use crate::fs::{
+    BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat,
+    StreamHandle, WatchEvent, WatchHandle,
+};
 use crate::types::Timestamp;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -59,7 +62,8 @@ impl LogsFs {
         recent.push_back(event);
         drop(recent);
 
-        self.traces.broadcast(WatchEvent::Data(payload.into_bytes()));
+        self.traces
+            .broadcast(WatchEvent::Data(payload.into_bytes()));
     }
 
     fn recent_json(&self) -> FsResult<Vec<u8>> {
@@ -71,7 +75,8 @@ impl LogsFs {
         let recent = self.recent.lock().unwrap_or_else(|e| e.into_inner());
         let mut out = String::new();
         for event in recent.iter() {
-            let line = serde_json::to_string(event).map_err(|err| FsError::Other(err.to_string()))?;
+            let line =
+                serde_json::to_string(event).map_err(|err| FsError::Other(err.to_string()))?;
             out.push_str(&line);
             out.push('\n');
         }
@@ -174,7 +179,9 @@ impl WatchHub {
         rx
     }
 
-    fn wrap_stream_sender(sender: std::sync::mpsc::Sender<Vec<u8>>) -> std::sync::mpsc::Sender<WatchEvent> {
+    fn wrap_stream_sender(
+        sender: std::sync::mpsc::Sender<Vec<u8>>,
+    ) -> std::sync::mpsc::Sender<WatchEvent> {
         let (proxy_tx, proxy_rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             while let Ok(event) = proxy_rx.recv() {

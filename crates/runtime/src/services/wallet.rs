@@ -4,8 +4,8 @@ use crate::fs::{
     BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, SeekFrom, Stat,
 };
 use crate::fx::FxRateSnapshot;
-use crate::wallet::WalletService;
 use crate::types::Timestamp;
+use crate::wallet::WalletService;
 use serde_json::Value;
 use std::str;
 use std::sync::Arc;
@@ -153,9 +153,8 @@ impl WalletPayHandle {
             "amount_sats": payment.amount_sats,
             "paid_at": Timestamp::now().as_millis(),
         });
-        self.response = Some(
-            serde_json::to_vec(&json).map_err(|err| FsError::Other(err.to_string()))?,
-        );
+        self.response =
+            Some(serde_json::to_vec(&json).map_err(|err| FsError::Other(err.to_string()))?);
         Ok(())
     }
 }

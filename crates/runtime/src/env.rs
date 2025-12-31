@@ -1,16 +1,17 @@
 //! Agent environment with mounted filesystem services.
 
 use crate::budget::BudgetTracker;
-use crate::fs::{AccessLevel, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat, WatchHandle};
-use crate::identity::SigningService;
+use crate::fs::{
+    AccessLevel, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat, WatchHandle,
+};
 #[cfg(target_arch = "wasm32")]
 use crate::identity::InMemorySigner;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::identity::NostrSigner;
+use crate::identity::SigningService;
 use crate::namespace::Namespace;
 use crate::services::{
-    DeadletterFs, GoalsFs, HudFs, IdentityFs, InboxFs, LogsFs, MetricsFs, StatusFs,
-    StatusSnapshot,
+    DeadletterFs, GoalsFs, HudFs, IdentityFs, InboxFs, LogsFs, MetricsFs, StatusFs, StatusSnapshot,
 };
 use crate::storage::AgentStorage;
 use crate::types::AgentId;
@@ -187,7 +188,9 @@ impl AgentEnv {
     pub fn mount(&mut self, path: &str, service: Arc<dyn FileService>, access: AccessLevel) {
         if let AccessLevel::Budgeted(policy) = &access {
             let mut budgets = self.budgets.lock().unwrap_or_else(|e| e.into_inner());
-            budgets.entry(path.to_string()).or_insert_with(|| BudgetTracker::new(policy.clone()));
+            budgets
+                .entry(path.to_string())
+                .or_insert_with(|| BudgetTracker::new(policy.clone()));
         }
         self.namespace.mount(path, service, access);
     }

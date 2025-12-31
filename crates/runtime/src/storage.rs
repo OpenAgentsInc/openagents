@@ -110,19 +110,28 @@ impl InMemoryStorage {
 #[async_trait]
 impl AgentStorage for InMemoryStorage {
     async fn load_state(&self, agent_id: &AgentId) -> StorageResult<Option<Vec<u8>>> {
-        let map = self.inner.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let map = self
+            .inner
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         Ok(map.get(agent_id).and_then(|record| record.state.clone()))
     }
 
     async fn save_state(&self, agent_id: &AgentId, state: &[u8]) -> StorageResult<()> {
-        let mut map = self.inner.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let mut map = self
+            .inner
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         let record = map.entry(agent_id.clone()).or_default();
         record.state = Some(state.to_vec());
         Ok(())
     }
 
     async fn delete_state(&self, agent_id: &AgentId) -> StorageResult<()> {
-        let mut map = self.inner.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let mut map = self
+            .inner
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         if let Some(record) = map.get_mut(agent_id) {
             record.state = None;
         }
@@ -130,21 +139,30 @@ impl AgentStorage for InMemoryStorage {
     }
 
     async fn get(&self, agent_id: &AgentId, key: &str) -> StorageResult<Option<Vec<u8>>> {
-        let map = self.inner.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let map = self
+            .inner
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         Ok(map
             .get(agent_id)
             .and_then(|record| record.kv.get(key).cloned()))
     }
 
     async fn set(&self, agent_id: &AgentId, key: &str, value: &[u8]) -> StorageResult<()> {
-        let mut map = self.inner.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let mut map = self
+            .inner
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         let record = map.entry(agent_id.clone()).or_default();
         record.kv.insert(key.to_string(), value.to_vec());
         Ok(())
     }
 
     async fn delete(&self, agent_id: &AgentId, key: &str) -> StorageResult<()> {
-        let mut map = self.inner.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let mut map = self
+            .inner
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         if let Some(record) = map.get_mut(agent_id) {
             record.kv.remove(key);
         }
@@ -152,7 +170,10 @@ impl AgentStorage for InMemoryStorage {
     }
 
     async fn list(&self, agent_id: &AgentId, prefix: &str) -> StorageResult<Vec<String>> {
-        let map = self.inner.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let map = self
+            .inner
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         let mut keys = Vec::new();
         if let Some(record) = map.get(agent_id) {
             for key in record.kv.keys() {
@@ -165,7 +186,10 @@ impl AgentStorage for InMemoryStorage {
     }
 
     async fn transaction(&self, agent_id: &AgentId, ops: Vec<StorageOp>) -> StorageResult<()> {
-        let mut map = self.inner.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let mut map = self
+            .inner
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         let record = map.entry(agent_id.clone()).or_default();
         let mut new_record = record.clone();
 
@@ -211,7 +235,10 @@ impl SqliteStorage {
     }
 
     fn init(&self) -> StorageResult<()> {
-        let conn = self.conn.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS agent_state (
@@ -234,7 +261,10 @@ impl SqliteStorage {
 #[async_trait]
 impl AgentStorage for SqliteStorage {
     async fn load_state(&self, agent_id: &AgentId) -> StorageResult<Option<Vec<u8>>> {
-        let conn = self.conn.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         let mut stmt = conn.prepare("SELECT state FROM agent_state WHERE agent_id = ?1")?;
         let mut rows = stmt.query([agent_id.as_str()])?;
         if let Some(row) = rows.next()? {
@@ -246,7 +276,10 @@ impl AgentStorage for SqliteStorage {
     }
 
     async fn save_state(&self, agent_id: &AgentId, state: &[u8]) -> StorageResult<()> {
-        let conn = self.conn.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         conn.execute(
             "INSERT OR REPLACE INTO agent_state (agent_id, state) VALUES (?1, ?2)",
             rusqlite::params![agent_id.as_str(), state],
@@ -255,7 +288,10 @@ impl AgentStorage for SqliteStorage {
     }
 
     async fn delete_state(&self, agent_id: &AgentId) -> StorageResult<()> {
-        let conn = self.conn.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         conn.execute(
             "DELETE FROM agent_state WHERE agent_id = ?1",
             rusqlite::params![agent_id.as_str()],
@@ -264,10 +300,12 @@ impl AgentStorage for SqliteStorage {
     }
 
     async fn get(&self, agent_id: &AgentId, key: &str) -> StorageResult<Option<Vec<u8>>> {
-        let conn = self.conn.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
-        let mut stmt = conn.prepare(
-            "SELECT value FROM agent_kv WHERE agent_id = ?1 AND key = ?2",
-        )?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let mut stmt =
+            conn.prepare("SELECT value FROM agent_kv WHERE agent_id = ?1 AND key = ?2")?;
         let mut rows = stmt.query(rusqlite::params![agent_id.as_str(), key])?;
         if let Some(row) = rows.next()? {
             let data: Vec<u8> = row.get(0)?;
@@ -278,7 +316,10 @@ impl AgentStorage for SqliteStorage {
     }
 
     async fn set(&self, agent_id: &AgentId, key: &str, value: &[u8]) -> StorageResult<()> {
-        let conn = self.conn.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         conn.execute(
             "INSERT OR REPLACE INTO agent_kv (agent_id, key, value) VALUES (?1, ?2, ?3)",
             rusqlite::params![agent_id.as_str(), key, value],
@@ -287,7 +328,10 @@ impl AgentStorage for SqliteStorage {
     }
 
     async fn delete(&self, agent_id: &AgentId, key: &str) -> StorageResult<()> {
-        let conn = self.conn.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         conn.execute(
             "DELETE FROM agent_kv WHERE agent_id = ?1 AND key = ?2",
             rusqlite::params![agent_id.as_str(), key],
@@ -296,11 +340,13 @@ impl AgentStorage for SqliteStorage {
     }
 
     async fn list(&self, agent_id: &AgentId, prefix: &str) -> StorageResult<Vec<String>> {
-        let conn = self.conn.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         let pattern = format!("{}%", prefix);
-        let mut stmt = conn.prepare(
-            "SELECT key FROM agent_kv WHERE agent_id = ?1 AND key LIKE ?2",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT key FROM agent_kv WHERE agent_id = ?1 AND key LIKE ?2")?;
         let rows = stmt.query_map(rusqlite::params![agent_id.as_str(), pattern], |row| {
             row.get(0)
         })?;
@@ -312,8 +358,10 @@ impl AgentStorage for SqliteStorage {
     }
 
     async fn transaction(&self, agent_id: &AgentId, ops: Vec<StorageOp>) -> StorageResult<()> {
-        let mut conn =
-            self.conn.lock().map_err(|_| StorageError::Other("lock poisoned".into()))?;
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| StorageError::Other("lock poisoned".into()))?;
         let tx = conn.transaction()?;
 
         for op in ops {
@@ -560,9 +608,9 @@ use futures::channel::oneshot;
 #[cfg(all(target_arch = "wasm32", feature = "browser"))]
 use js_sys::{Array, Promise, Uint8Array};
 #[cfg(all(target_arch = "wasm32", feature = "browser"))]
-use wasm_bindgen::{closure::Closure, JsCast, JsValue};
+use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 #[cfg(all(target_arch = "wasm32", feature = "browser"))]
-use wasm_bindgen_futures::{spawn_local, JsFuture};
+use wasm_bindgen_futures::{JsFuture, spawn_local};
 #[cfg(all(target_arch = "wasm32", feature = "browser"))]
 use web_sys::{
     DomException, IdbDatabase, IdbFactory, IdbObjectStore, IdbRequest, IdbTransaction,
@@ -603,9 +651,7 @@ impl AgentStorage for IndexedDbStorage {
         run_indexeddb_task(async move {
             let db = open_db(&db_name).await?;
             let tx = open_transaction(&db, IdbTransactionMode::Readonly)?;
-            let store = tx
-                .object_store(STATE_STORE)
-                .map_err(js_error)?;
+            let store = tx.object_store(STATE_STORE).map_err(js_error)?;
             let result = store_get(&store, agent_id.as_str()).await?;
             await_transaction(tx).await?;
             Ok(result)
@@ -620,9 +666,7 @@ impl AgentStorage for IndexedDbStorage {
         run_indexeddb_task(async move {
             let db = open_db(&db_name).await?;
             let tx = open_transaction(&db, IdbTransactionMode::Readwrite)?;
-            let store = tx
-                .object_store(STATE_STORE)
-                .map_err(js_error)?;
+            let store = tx.object_store(STATE_STORE).map_err(js_error)?;
             store_put(&store, agent_id.as_str(), &state).await?;
             await_transaction(tx).await?;
             Ok(())
@@ -636,9 +680,7 @@ impl AgentStorage for IndexedDbStorage {
         run_indexeddb_task(async move {
             let db = open_db(&db_name).await?;
             let tx = open_transaction(&db, IdbTransactionMode::Readwrite)?;
-            let store = tx
-                .object_store(STATE_STORE)
-                .map_err(js_error)?;
+            let store = tx.object_store(STATE_STORE).map_err(js_error)?;
             store_delete(&store, agent_id.as_str()).await?;
             await_transaction(tx).await?;
             Ok(())
@@ -653,9 +695,7 @@ impl AgentStorage for IndexedDbStorage {
         run_indexeddb_task(async move {
             let db = open_db(&db_name).await?;
             let tx = open_transaction(&db, IdbTransactionMode::Readonly)?;
-            let store = tx
-                .object_store(KV_STORE)
-                .map_err(js_error)?;
+            let store = tx.object_store(KV_STORE).map_err(js_error)?;
             let storage_key = IndexedDbStorage::kv_key(&agent_id, &key);
             let result = store_get(&store, &storage_key).await?;
             await_transaction(tx).await?;
@@ -672,9 +712,7 @@ impl AgentStorage for IndexedDbStorage {
         run_indexeddb_task(async move {
             let db = open_db(&db_name).await?;
             let tx = open_transaction(&db, IdbTransactionMode::Readwrite)?;
-            let store = tx
-                .object_store(KV_STORE)
-                .map_err(js_error)?;
+            let store = tx.object_store(KV_STORE).map_err(js_error)?;
             let storage_key = IndexedDbStorage::kv_key(&agent_id, &key);
             store_put(&store, &storage_key, &value).await?;
             await_transaction(tx).await?;
@@ -690,9 +728,7 @@ impl AgentStorage for IndexedDbStorage {
         run_indexeddb_task(async move {
             let db = open_db(&db_name).await?;
             let tx = open_transaction(&db, IdbTransactionMode::Readwrite)?;
-            let store = tx
-                .object_store(KV_STORE)
-                .map_err(js_error)?;
+            let store = tx.object_store(KV_STORE).map_err(js_error)?;
             let storage_key = IndexedDbStorage::kv_key(&agent_id, &key);
             store_delete(&store, &storage_key).await?;
             await_transaction(tx).await?;
@@ -708,9 +744,7 @@ impl AgentStorage for IndexedDbStorage {
         run_indexeddb_task(async move {
             let db = open_db(&db_name).await?;
             let tx = open_transaction(&db, IdbTransactionMode::Readonly)?;
-            let store = tx
-                .object_store(KV_STORE)
-                .map_err(js_error)?;
+            let store = tx.object_store(KV_STORE).map_err(js_error)?;
             let keys = store_list_keys(&store).await?;
             await_transaction(tx).await?;
             let prefix_root = IndexedDbStorage::kv_prefix(&agent_id);
@@ -733,12 +767,8 @@ impl AgentStorage for IndexedDbStorage {
         run_indexeddb_task(async move {
             let db = open_db(&db_name).await?;
             let tx = open_transaction(&db, IdbTransactionMode::Readwrite)?;
-            let state_store = tx
-                .object_store(STATE_STORE)
-                .map_err(js_error)?;
-            let kv_store = tx
-                .object_store(KV_STORE)
-                .map_err(js_error)?;
+            let state_store = tx.object_store(STATE_STORE).map_err(js_error)?;
+            let kv_store = tx.object_store(KV_STORE).map_err(js_error)?;
 
             for op in ops {
                 match op {
@@ -857,9 +887,7 @@ async fn store_put(store: &IdbObjectStore, key: &str, value: &[u8]) -> StorageRe
 
 #[cfg(all(target_arch = "wasm32", feature = "browser"))]
 async fn store_delete(store: &IdbObjectStore, key: &str) -> StorageResult<()> {
-    let request = store
-        .delete(&JsValue::from_str(key))
-        .map_err(js_error)?;
+    let request = store.delete(&JsValue::from_str(key)).map_err(js_error)?;
     let _ = request_result(request).await?;
     Ok(())
 }
@@ -888,7 +916,9 @@ async fn await_transaction(tx: IdbTransaction) -> StorageResult<()> {
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "browser"))]
-fn request_result(request: IdbRequest) -> impl std::future::Future<Output = StorageResult<JsValue>> {
+fn request_result(
+    request: IdbRequest,
+) -> impl std::future::Future<Output = StorageResult<JsValue>> {
     async move {
         let promise = request_promise(&request);
         JsFuture::from(promise)

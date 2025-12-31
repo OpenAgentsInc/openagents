@@ -18,7 +18,7 @@ use crate::storage::{AgentStorage, IndexedDbStorage};
 use crate::tick::TickResult;
 use crate::trigger::Trigger;
 use crate::types::{AgentId, EnvelopeId, Timestamp};
-use crate::{manual_trigger, StatusSnapshot, TickEngine};
+use crate::{StatusSnapshot, TickEngine, manual_trigger};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -129,7 +129,10 @@ impl BrowserRuntime {
             .entry(id)
             .ok_or_else(|| "agent not found".to_string())?;
         let data = serde_json::to_vec(&envelope)?;
-        entry.env.write("/inbox", &data).map_err(|err| err.to_string())?;
+        entry
+            .env
+            .write("/inbox", &data)
+            .map_err(|err| err.to_string())?;
         entry.refresh_status();
         Ok(())
     }
@@ -169,11 +172,8 @@ impl BrowserRuntime {
     }
 
     fn build_env(&self, agent_id: &AgentId) -> Arc<AgentEnv> {
-        let mut env = AgentEnv::with_signer(
-            agent_id.clone(),
-            self.storage.clone(),
-            self.signer.clone(),
-        );
+        let mut env =
+            AgentEnv::with_signer(agent_id.clone(), self.storage.clone(), self.signer.clone());
 
         let auth = Arc::new(OpenAgentsAuth::with_base_url(
             agent_id.clone(),
@@ -203,7 +203,8 @@ impl BrowserRuntime {
 
         let mut container_router = ContainerRouter::new();
         for provider_id in &self.config.container_provider_ids {
-            let provider: Arc<dyn crate::containers::ContainerProvider> = match provider_id.as_str() {
+            let provider: Arc<dyn crate::containers::ContainerProvider> = match provider_id.as_str()
+            {
                 "cloudflare" => Arc::new(WasmOpenAgentsContainerProvider::cloudflare(
                     self.config.api_base_url.clone(),
                     auth.clone(),
@@ -230,7 +231,11 @@ impl BrowserRuntime {
             Arc::new(MemoryJournal::new()),
             auth,
         );
-        env.mount("/containers", Arc::new(container_fs), AccessLevel::ReadWrite);
+        env.mount(
+            "/containers",
+            Arc::new(container_fs),
+            AccessLevel::ReadWrite,
+        );
 
         Arc::new(env)
     }

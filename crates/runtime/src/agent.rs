@@ -1,10 +1,10 @@
 //! Agent traits and execution context.
 
 use crate::error::{AgentError, Result};
-use crate::types::{AgentId, EnvelopeId};
-use crate::trigger::Trigger;
 use crate::tick::TickResult;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use crate::trigger::Trigger;
+use crate::types::{AgentId, EnvelopeId};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::{HashSet, VecDeque};
 
 /// A persistent autonomous entity with identity, memory, and agency.

@@ -26,7 +26,11 @@ enum Command {
     /// Trigger a manual tick.
     Tick { id: String },
     /// Show logs (follow for stream).
-    Logs { id: String, #[arg(long)] follow: bool },
+    Logs {
+        id: String,
+        #[arg(long)]
+        follow: bool,
+    },
 }
 
 #[tokio::main]

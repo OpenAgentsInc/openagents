@@ -10,22 +10,22 @@ use crate::storage::AgentStorage;
 use crate::tick::TickResult;
 use crate::trigger::Trigger;
 use crate::types::{AgentId, EnvelopeId, Timestamp};
-use crate::{manual_trigger, StatusSnapshot, TickEngine};
+use crate::{StatusSnapshot, TickEngine, manual_trigger};
 use async_trait::async_trait;
+use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::Json;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
@@ -61,7 +61,9 @@ impl LocalRuntime {
         let runtime = Arc::clone(self);
         tokio::spawn(async move {
             while let Some(routed) = rx.recv().await {
-                let _ = runtime.send_envelope(&routed.agent_id, routed.envelope).await;
+                let _ = runtime
+                    .send_envelope(&routed.agent_id, routed.envelope)
+                    .await;
             }
         });
         tx
@@ -86,7 +88,10 @@ impl LocalRuntime {
             .await
             .ok_or_else(|| "agent not found".to_string())?;
         let data = serde_json::to_vec(&envelope)?;
-        entry.env.write("/inbox", &data).map_err(|err| err.to_string())?;
+        entry
+            .env
+            .write("/inbox", &data)
+            .map_err(|err| err.to_string())?;
         entry.refresh_status().await;
         Ok(())
     }
@@ -193,8 +198,12 @@ impl AgentRuntimeState {
 
 #[async_trait]
 trait DynAgent: Send + Sync {
-    async fn tick(&self, engine: &TickEngine, agent_id: AgentId, trigger: Trigger)
-        -> Result<TickResult>;
+    async fn tick(
+        &self,
+        engine: &TickEngine,
+        agent_id: AgentId,
+        trigger: Trigger,
+    ) -> Result<TickResult>;
 }
 
 struct AgentRunner<A: Agent> {
@@ -238,10 +247,7 @@ impl ControlPlane {
             .route("/agents/:id", get(agent_info))
             .route("/agents/:id/tick", post(tick_agent))
             .route("/agents/:id/send", post(send_agent))
-            .route(
-                "/agents/:id/*path",
-                get(read_path).post(write_path),
-            )
+            .route("/agents/:id/*path", get(read_path).post(write_path))
             .with_state(self.runtime.clone())
     }
 }
@@ -267,10 +273,7 @@ async fn list_agents(State(runtime): State<Arc<LocalRuntime>>) -> impl IntoRespo
     Json(ids)
 }
 
-async fn agent_info(
-    State(runtime): State<Arc<LocalRuntime>>,
-    Path(id): Path<String>,
-) -> Response {
+async fn agent_info(State(runtime): State<Arc<LocalRuntime>>, Path(id): Path<String>) -> Response {
     let agent_id = AgentId::new(id);
     let entry = match runtime.entry(&agent_id).await {
         Some(entry) => entry,
@@ -280,10 +283,7 @@ async fn agent_info(
     Json(info).into_response()
 }
 
-async fn tick_agent(
-    State(runtime): State<Arc<LocalRuntime>>,
-    Path(id): Path<String>,
-) -> Response {
+async fn tick_agent(State(runtime): State<Arc<LocalRuntime>>, Path(id): Path<String>) -> Response {
     let agent_id = AgentId::new(id);
     match runtime.tick_manual(&agent_id).await {
         Ok(result) => Json(result).into_response(),
@@ -443,7 +443,11 @@ fn watch_response(handle: Box<dyn crate::fs::WatchHandle>) -> Response {
     });
 
     Sse::new(stream)
-        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("keep-alive"))
+        .keep_alive(
+            KeepAlive::new()
+                .interval(Duration::from_secs(15))
+                .text("keep-alive"),
+        )
         .into_response()
 }
 

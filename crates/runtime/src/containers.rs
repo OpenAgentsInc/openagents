@@ -4658,6 +4658,24 @@ fn wrap_shell_command(command: &str) -> String {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn is_daytona_snapshot_resource_error(err: &daytona::DaytonaError) -> bool {
+    matches!(
+        err,
+        daytona::DaytonaError::ApiError { message, .. }
+            if message.contains("Cannot specify Sandbox resources")
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn is_daytona_snapshot_not_found(err: &daytona::DaytonaError) -> bool {
+    matches!(
+        err,
+        daytona::DaytonaError::ApiError { message, .. }
+            if message.contains("Snapshot") && message.contains("not found")
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn join_daytona_path(base: &str, path: &str) -> String {
     if path.starts_with('/') {
         path.to_string()
@@ -5159,7 +5177,7 @@ async fn run_daytona_session(
     let request = session.request.clone();
     let snapshot = resolve_daytona_snapshot(&request, &config);
 
-    let mut create = CreateSandbox::new(snapshot);
+    let mut create = CreateSandbox::new(snapshot.clone());
     if let Some(target) = config.target.as_ref() {
         create = create.target(target.clone());
     }
@@ -5172,6 +5190,15 @@ async fn run_daytona_session(
     if let Some(minutes) = config.auto_delete_minutes {
         create = create.auto_delete_interval(minutes);
     }
+
+    let mut labels = HashMap::new();
+    labels.insert(
+        "openagents_session_id".to_string(),
+        session.session_id.clone(),
+    );
+    create = create.labels(labels);
+
+    let base_create = create.clone();
     let cpu = request.limits.max_cpu_cores.ceil().max(1.0) as i32;
     let memory_gb = ((request.limits.max_memory_mb as f64) / 1024.0).ceil() as i32;
     let disk_gb = ((request.limits.max_disk_mb as f64) / 1024.0).ceil() as i32;
@@ -5185,17 +5212,28 @@ async fn run_daytona_session(
         create = create.disk(disk_gb);
     }
 
-    let mut labels = HashMap::new();
-    labels.insert(
-        "openagents_session_id".to_string(),
-        session.session_id.clone(),
-    );
-    create = create.labels(labels);
-
-    let sandbox = client
-        .create_sandbox(&create)
-        .await
-        .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+    let sandbox = match client.create_sandbox(&create).await {
+        Ok(sandbox) => sandbox,
+        Err(err) if is_daytona_snapshot_resource_error(&err) => {
+            match client.create_sandbox(&base_create).await {
+                Ok(sandbox) => sandbox,
+                Err(err) if is_daytona_snapshot_not_found(&err) => {
+                    return Err(ContainerError::ProviderError(
+                        "Daytona snapshot not found. Set DAYTONA_SNAPSHOT to a snapshot you can access."
+                            .to_string(),
+                    ));
+                }
+                Err(err) => return Err(ContainerError::ProviderError(err.to_string())),
+            }
+        }
+        Err(err) if is_daytona_snapshot_not_found(&err) => {
+            return Err(ContainerError::ProviderError(
+                "Daytona snapshot not found. Set DAYTONA_SNAPSHOT to a snapshot you can access."
+                    .to_string(),
+            ));
+        }
+        Err(err) => return Err(ContainerError::ProviderError(err.to_string())),
+    };
     session.set_sandbox_id(sandbox.id.clone());
 
     client

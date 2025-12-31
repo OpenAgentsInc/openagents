@@ -2,13 +2,15 @@
 
 use crate::budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetTracker};
 #[cfg(not(target_arch = "wasm32"))]
-use crate::dvm::{msats_to_sats, parse_feedback_event, DvmFeedbackStatus, DvmTransport, RelayPoolTransport};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::fx::{FxRateCache, FxRateProvider, FxSource};
+use crate::dvm::{
+    DvmFeedbackStatus, DvmTransport, RelayPoolTransport, msats_to_sats, parse_feedback_event,
+};
 use crate::fs::{
     BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Permissions,
     SeekFrom, Stat, WatchEvent, WatchHandle,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use crate::fx::{FxRateCache, FxRateProvider, FxSource};
 use crate::idempotency::{IdempotencyJournal, JournalError};
 use crate::identity::SigningService;
 use crate::types::{AgentId, Timestamp};
@@ -18,16 +20,16 @@ use crate::wallet::{WalletFxProvider, WalletService};
 use crate::wasm_http;
 #[cfg(not(target_arch = "wasm32"))]
 use nostr::{
-    create_deletion_tags, get_event_hash, get_result_kind, HandlerInfo, HandlerType, JobInput,
-    JobRequest, JobResult, JobStatus, UnsignedEvent, DELETION_REQUEST_KIND, KIND_HANDLER_INFO,
-    KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_TEXT_GENERATION,
+    DELETION_REQUEST_KIND, HandlerInfo, HandlerType, JobInput, JobRequest, JobResult, JobStatus,
+    KIND_HANDLER_INFO, KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION, KIND_JOB_SPEECH_TO_TEXT,
+    KIND_JOB_TEXT_GENERATION, UnsignedEvent, create_deletion_tags, get_event_hash, get_result_kind,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 #[cfg(not(target_arch = "wasm32"))]
-use tokio::sync::{mpsc, RwLock as TokioRwLock};
+use tokio::sync::{RwLock as TokioRwLock, mpsc};
 #[cfg(all(
     target_arch = "wasm32",
     any(feature = "cloudflare", feature = "browser")
@@ -39,11 +41,11 @@ use worker::Ai;
 #[cfg(not(target_arch = "wasm32"))]
 use ::compute as compute_provider;
 #[cfg(not(target_arch = "wasm32"))]
+use compute_provider::backends::{BackendError, InferenceBackend};
+#[cfg(not(target_arch = "wasm32"))]
 use compute_provider::backends::{
     BackendRegistry, CompletionRequest, CompletionResponse, UsageInfo as BackendUsageInfo,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use compute_provider::backends::{BackendError, InferenceBackend};
 
 const IDEMPOTENCY_TTL: Duration = Duration::from_secs(3600);
 
@@ -415,7 +417,9 @@ pub struct ComputeRouter {
 impl ComputeRouter {
     /// Create a new router.
     pub fn new() -> Self {
-        Self { providers: Vec::new() }
+        Self {
+            providers: Vec::new(),
+        }
     }
 
     /// Register a provider.
@@ -430,10 +434,7 @@ impl ComputeRouter {
 
     /// Get provider by id.
     pub fn provider_by_id(&self, id: &str) -> Option<Arc<dyn ComputeProvider>> {
-        self.providers
-            .iter()
-            .find(|p| p.id() == id)
-            .cloned()
+        self.providers.iter().find(|p| p.id() == id).cloned()
     }
 
     /// Select best provider for request based on policy.
@@ -452,8 +453,7 @@ impl ComputeRouter {
                     || policy.allowed_providers.contains(&p.id().to_string())
             })
             .filter(|_| {
-                policy.allowed_models.is_empty()
-                    || policy.allowed_models.contains(&request.model)
+                policy.allowed_models.is_empty() || policy.allowed_models.contains(&request.model)
             })
             .filter(|_| !policy.blocked_models.contains(&request.model))
             .cloned()
@@ -475,7 +475,10 @@ impl ComputeRouter {
                 .min_by_key(|p| p.info().latency.ttft_ms),
             Prefer::Quality => candidates.into_iter().max_by_key(|p| {
                 let info = p.info();
-                (info.latency.measured, info.latency.tokens_per_sec.unwrap_or(0))
+                (
+                    info.latency.measured,
+                    info.latency.tokens_per_sec.unwrap_or(0),
+                )
             }),
             Prefer::Balanced => candidates.into_iter().min_by_key(|p| {
                 let cost = self.estimate_provider_cost_usd(p, request);
@@ -502,7 +505,9 @@ impl ComputeRouter {
             .find(|model| model.id == request.model)
             .and_then(|model| model.pricing.clone())
         {
-            return pricing.input_per_1k_microusd.saturating_add(pricing.output_per_1k_microusd);
+            return pricing
+                .input_per_1k_microusd
+                .saturating_add(pricing.output_per_1k_microusd);
         }
         if let Some(pricing) = info.pricing {
             return pricing
@@ -853,7 +858,9 @@ impl ComputeNewHandle {
             .clone();
 
         if policy.require_idempotency && request.idempotency_key.is_none() {
-            return Err(FsError::Other(ComputeError::IdempotencyRequired.to_string()));
+            return Err(FsError::Other(
+                ComputeError::IdempotencyRequired.to_string(),
+            ));
         }
 
         if request.timeout_ms.is_none() {
@@ -890,9 +897,10 @@ impl ComputeNewHandle {
             .map_err(|err| FsError::Other(err.to_string()))?;
         let provider_id = provider.id().to_string();
 
-        let scoped_key = request.idempotency_key.as_ref().map(|key| {
-            format!("{}:{}:{}", self.agent_id.as_str(), provider_id, key)
-        });
+        let scoped_key = request
+            .idempotency_key
+            .as_ref()
+            .map(|key| format!("{}:{}:{}", self.agent_id.as_str(), provider_id, key));
 
         if let Some(key) = scoped_key.as_ref() {
             if let Some(cached) = self
@@ -920,7 +928,9 @@ impl ComputeNewHandle {
 
         let reservation = {
             let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
-            let reservation = tracker.reserve(max_cost_usd).map_err(|_| FsError::BudgetExceeded)?;
+            let reservation = tracker
+                .reserve(max_cost_usd)
+                .map_err(|_| FsError::BudgetExceeded)?;
             let state = tracker.state().clone();
             if let Some(limit) = policy.max_cost_usd_per_tick {
                 if state.reserved_tick_usd + state.spent_tick_usd > limit {
@@ -946,17 +956,14 @@ impl ComputeNewHandle {
             }
         };
 
-        self.jobs
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(
-                job_id.clone(),
-                JobRecord {
-                    provider_id,
-                    reservation,
-                    reconciled: false,
-                },
-            );
+        self.jobs.write().unwrap_or_else(|e| e.into_inner()).insert(
+            job_id.clone(),
+            JobRecord {
+                provider_id,
+                reservation,
+                reconciled: false,
+            },
+        );
 
         let response_json = serde_json::json!({
             "job_id": job_id,
@@ -965,8 +972,8 @@ impl ComputeNewHandle {
             "stream_path": format!("/compute/jobs/{}/stream", job_id),
             "result_path": format!("/compute/jobs/{}/result", job_id),
         });
-        let response_bytes = serde_json::to_vec(&response_json)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let response_bytes =
+            serde_json::to_vec(&response_json).map_err(|err| FsError::Other(err.to_string()))?;
 
         if let Some(key) = scoped_key.as_ref() {
             self.journal
@@ -1068,8 +1075,8 @@ impl FileHandle for PolicyWriteHandle {
         if self.buffer.is_empty() {
             return Ok(());
         }
-        let policy: ComputePolicy = serde_json::from_slice(&self.buffer)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let policy: ComputePolicy =
+            serde_json::from_slice(&self.buffer).map_err(|err| FsError::Other(err.to_string()))?;
         let mut guard = self.policy.write().unwrap_or_else(|e| e.into_inner());
         *guard = policy;
         self.buffer.clear();
@@ -1232,8 +1239,7 @@ impl LocalProvider {
     /// Detect available local backends.
     pub fn detect() -> Result<Self, ComputeError> {
         let executor = Executor::new()?;
-        let registry = executor
-            .block_on(async { BackendRegistry::detect().await });
+        let registry = executor.block_on(async { BackendRegistry::detect().await });
         Ok(Self {
             registry: Arc::new(registry),
             executor,
@@ -1267,12 +1273,7 @@ impl LocalProvider {
                 .ok_or_else(|| ComputeError::InvalidRequest("missing prompt".to_string()))?,
             ComputeKind::Chat => parse_messages(&request.input)
                 .ok_or_else(|| ComputeError::InvalidRequest("missing messages".to_string()))?,
-            _ => {
-                return Err(ComputeError::UnsupportedKind(format!(
-                    "{:?}",
-                    request.kind
-                )))
-            }
+            _ => return Err(ComputeError::UnsupportedKind(format!("{:?}", request.kind))),
         };
 
         let mut completion = CompletionRequest::new(request.model.clone(), prompt);
@@ -1399,18 +1400,15 @@ impl ComputeProvider for LocalProvider {
             (None, None)
         };
 
-        self.jobs
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(
-                job_id.clone(),
-                LocalJobState {
-                    status: JobState::Pending {
-                        submitted_at: Timestamp::now(),
-                    },
-                    stream_rx,
+        self.jobs.write().unwrap_or_else(|e| e.into_inner()).insert(
+            job_id.clone(),
+            LocalJobState {
+                status: JobState::Pending {
+                    submitted_at: Timestamp::now(),
                 },
-            );
+                stream_rx,
+            },
+        );
 
         executor.spawn(async move {
             let backend = LocalProvider::backend_for_model(&registry, &request_clone.model).await;
@@ -1488,8 +1486,10 @@ impl ComputeProvider for LocalProvider {
                             }
                             let mut jobs = jobs.write().unwrap_or_else(|e| e.into_inner());
                             if let Some(job) = jobs.get_mut(&job_id_clone) {
-                                if let JobState::Streaming { started_at, chunks_emitted } =
-                                    job.status.clone()
+                                if let JobState::Streaming {
+                                    started_at,
+                                    chunks_emitted,
+                                } = job.status.clone()
                                 {
                                     job.status = JobState::Streaming {
                                         started_at,
@@ -1624,7 +1624,10 @@ impl ComputeProvider for CloudflareProvider {
 
     fn info(&self) -> ProviderInfo {
         let latency = {
-            let guard = self.last_latency_ms.lock().unwrap_or_else(|e| e.into_inner());
+            let guard = self
+                .last_latency_ms
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             ProviderLatency {
                 ttft_ms: guard.unwrap_or(0),
                 tokens_per_sec: None,
@@ -1659,15 +1662,12 @@ impl ComputeProvider for CloudflareProvider {
         let last_latency_ms = Arc::clone(&self.last_latency_ms);
         let request_clone = request.clone();
 
-        self.jobs
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(
-                job_id.clone(),
-                JobState::Pending {
-                    submitted_at: Timestamp::now(),
-                },
-            );
+        self.jobs.write().unwrap_or_else(|e| e.into_inner()).insert(
+            job_id.clone(),
+            JobState::Pending {
+                submitted_at: Timestamp::now(),
+            },
+        );
 
         spawn_local(async move {
             {
@@ -1680,8 +1680,9 @@ impl ComputeProvider for CloudflareProvider {
             }
 
             let start = Instant::now();
-            let output: Result<serde_json::Value, worker::Error> =
-                ai.run(&request_clone.model, request_clone.input.clone()).await;
+            let output: Result<serde_json::Value, worker::Error> = ai
+                .run(&request_clone.model, request_clone.input.clone())
+                .await;
             let latency_ms = start.elapsed().as_millis() as u64;
 
             {
@@ -1692,9 +1693,7 @@ impl ComputeProvider for CloudflareProvider {
             let mut jobs = jobs.write().unwrap_or_else(|e| e.into_inner());
             match output {
                 Ok(output) => {
-                    let cost_usd = request_clone
-                        .max_cost_usd
-                        .unwrap_or(0); // usage not available; treat reservation as spend
+                    let cost_usd = request_clone.max_cost_usd.unwrap_or(0); // usage not available; treat reservation as spend
                     let response = ComputeResponse {
                         job_id: job_id_clone.clone(),
                         output,
@@ -1879,9 +1878,7 @@ impl OpenAgentsComputeProvider {
                         measured: false,
                     },
                     region: Some("openagents".to_string()),
-                    status: ProviderStatus::Unavailable {
-                        reason: err,
-                    },
+                    status: ProviderStatus::Unavailable { reason: err },
                 },
             };
             let mut guard = info.write().unwrap_or_else(|e| e.into_inner());
@@ -2100,15 +2097,12 @@ impl ComputeProvider for OpenAgentsComputeProvider {
     fn submit(&self, request: ComputeRequest) -> Result<String, ComputeError> {
         let job_id = uuid::Uuid::new_v4().to_string();
         let started_at = Timestamp::now();
-        self.jobs
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(
-                job_id.clone(),
-                JobState::Pending {
-                    submitted_at: started_at,
-                },
-            );
+        self.jobs.write().unwrap_or_else(|e| e.into_inner()).insert(
+            job_id.clone(),
+            JobState::Pending {
+                submitted_at: started_at,
+            },
+        );
         self.remote
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -2159,8 +2153,7 @@ impl ComputeProvider for OpenAgentsComputeProvider {
                 Ok((status, bytes)) if (200..300).contains(&status) => {
                     match serde_json::from_slice::<JobResponse>(&bytes) {
                         Ok(payload) => {
-                            let mut remote_guard =
-                                remote.lock().unwrap_or_else(|e| e.into_inner());
+                            let mut remote_guard = remote.lock().unwrap_or_else(|e| e.into_inner());
                             if let Some(state) = remote_guard.get_mut(&job_id_clone) {
                                 state.remote_id = Some(payload.job_id);
                             }
@@ -2349,7 +2342,14 @@ impl DvmProvider {
         fx_cache_secs: u64,
     ) -> Result<Self, ComputeError> {
         let transport = Arc::new(RelayPoolTransport::new(relays));
-        Self::with_transport(agent_id, transport, signer, wallet, fx_source, fx_cache_secs)
+        Self::with_transport(
+            agent_id,
+            transport,
+            signer,
+            wallet,
+            fx_source,
+            fx_cache_secs,
+        )
     }
 
     /// Create a DVM provider with a custom transport (tests).
@@ -2472,8 +2472,10 @@ impl DvmProvider {
             tags,
             content,
         };
-        let id = get_event_hash(&unsigned).map_err(|err| ComputeError::ProviderError(err.to_string()))?;
-        let id_bytes = hex::decode(&id).map_err(|err| ComputeError::ProviderError(err.to_string()))?;
+        let id = get_event_hash(&unsigned)
+            .map_err(|err| ComputeError::ProviderError(err.to_string()))?;
+        let id_bytes =
+            hex::decode(&id).map_err(|err| ComputeError::ProviderError(err.to_string()))?;
         let sig = self
             .signer
             .sign(&self.agent_id, &id_bytes)
@@ -2618,14 +2620,7 @@ impl DvmProvider {
         self.executor.spawn(async move {
             while let Some(event) = rx.recv().await {
                 if event.kind == result_kind {
-                    handle_dvm_result(
-                        &job_id,
-                        &request_model,
-                        &event,
-                        &jobs,
-                        &fx,
-                        &wallet,
-                    );
+                    handle_dvm_result(&job_id, &request_model, &event, &jobs, &fx, &wallet);
                 } else if event.kind == KIND_JOB_FEEDBACK {
                     if let Some(feedback) = parse_feedback_event(&event) {
                         handle_dvm_feedback(&job_id, feedback, &jobs, &fx, &wallet);
@@ -2750,31 +2745,28 @@ impl ComputeProvider for DvmProvider {
 
         let job_id = uuid::Uuid::new_v4().to_string();
         let now = Timestamp::now();
-        self.jobs
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(
-                job_id.clone(),
-                DvmJobState {
-                    job_id: job_id.clone(),
-                    request_event_id: event_id.clone(),
-                    request_kind: kind,
-                    request: request.clone(),
-                    submitted_at: now,
-                    lifecycle: DvmLifecycle::AwaitingQuotes {
-                        since: now,
-                        timeout_at: Timestamp::from_millis(
-                            now.as_millis() + DVM_QUOTE_WINDOW.as_millis() as u64,
-                        ),
-                    },
-                    quotes: Vec::new(),
-                    accepted_quote: None,
-                    result: None,
-                    partials: VecDeque::new(),
-                    payment_made: false,
-                    paid_amount_sats: None,
+        self.jobs.write().unwrap_or_else(|e| e.into_inner()).insert(
+            job_id.clone(),
+            DvmJobState {
+                job_id: job_id.clone(),
+                request_event_id: event_id.clone(),
+                request_kind: kind,
+                request: request.clone(),
+                submitted_at: now,
+                lifecycle: DvmLifecycle::AwaitingQuotes {
+                    since: now,
+                    timeout_at: Timestamp::from_millis(
+                        now.as_millis() + DVM_QUOTE_WINDOW.as_millis() as u64,
+                    ),
                 },
-            );
+                quotes: Vec::new(),
+                accepted_quote: None,
+                result: None,
+                partials: VecDeque::new(),
+                payment_made: false,
+                paid_amount_sats: None,
+            },
+        );
 
         self.subscribe_job_events(job_id.clone(), event_id, kind)?;
         self.spawn_quote_manager(job_id.clone());
@@ -2794,13 +2786,14 @@ impl ComputeProvider for DvmProvider {
             DvmLifecycle::PendingSettlement { .. } => JobState::Running {
                 started_at: job.submitted_at,
             },
-            DvmLifecycle::Settled { .. } => job
-                .result
-                .clone()
-                .map(JobState::Complete)
-                .unwrap_or(JobState::Running {
-                    started_at: job.submitted_at,
-                }),
+            DvmLifecycle::Settled { .. } => {
+                job.result
+                    .clone()
+                    .map(JobState::Complete)
+                    .unwrap_or(JobState::Running {
+                        started_at: job.submitted_at,
+                    })
+            }
             DvmLifecycle::Failed { error, at } => JobState::Failed {
                 error: error.clone(),
                 at: *at,
@@ -2849,7 +2842,10 @@ fn handle_dvm_feedback(
         let Some(job) = guard.get_mut(job_id) else {
             return;
         };
-        if matches!(job.lifecycle, DvmLifecycle::Failed { .. } | DvmLifecycle::Settled { .. }) {
+        if matches!(
+            job.lifecycle,
+            DvmLifecycle::Failed { .. } | DvmLifecycle::Settled { .. }
+        ) {
             return;
         }
 
@@ -2905,19 +2901,17 @@ fn handle_dvm_feedback(
                 if job.payment_made {
                     return;
                 }
-                let invoice = feedback
-                    .bolt11
-                    .clone()
-                    .or_else(|| {
-                        let trimmed = feedback.content.trim();
-                        if trimmed.starts_with("ln") {
-                            Some(trimmed.to_string())
-                        } else {
-                            None
-                        }
-                    });
+                let invoice = feedback.bolt11.clone().or_else(|| {
+                    let trimmed = feedback.content.trim();
+                    if trimmed.starts_with("ln") {
+                        Some(trimmed.to_string())
+                    } else {
+                        None
+                    }
+                });
                 if let Some(invoice) = invoice {
-                    payment_request = Some((invoice, feedback.amount_msats, feedback.provider_pubkey));
+                    payment_request =
+                        Some((invoice, feedback.amount_msats, feedback.provider_pubkey));
                 } else {
                     job.lifecycle = DvmLifecycle::Failed {
                         error: "payment required but invoice missing".to_string(),
@@ -2927,7 +2921,9 @@ fn handle_dvm_feedback(
             }
             DvmFeedbackStatus::Job(JobStatus::Error) => {
                 job.lifecycle = DvmLifecycle::Failed {
-                    error: feedback.status_extra.unwrap_or_else(|| "provider error".to_string()),
+                    error: feedback
+                        .status_extra
+                        .unwrap_or_else(|| "provider error".to_string()),
                     at: Timestamp::now(),
                 };
             }
@@ -3125,7 +3121,10 @@ impl Executor {
 fn parse_prompt(input: &serde_json::Value) -> Option<String> {
     match input {
         serde_json::Value::String(prompt) => Some(prompt.clone()),
-        serde_json::Value::Object(map) => map.get("prompt").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        serde_json::Value::Object(map) => map
+            .get("prompt")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         _ => None,
     }
 }

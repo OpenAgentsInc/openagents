@@ -1066,7 +1066,7 @@ hint.
 DAYTONA_API_KEY=dtn_xxxxx
 DAYTONA_API_URL=https://api.daytona.io   # or DAYTONA_BASE_URL
 DAYTONA_TARGET=us
-DAYTONA_SNAPSHOT=daytonaio/sandbox:latest
+DAYTONA_SNAPSHOT=daytonaio/sandbox:0.4.3
 DAYTONA_ORG_ID=org_xxxxx                  # optional
 DAYTONA_AUTO_STOP_MINUTES=15             # optional
 DAYTONA_AUTO_DELETE_MINUTES=0            # optional
@@ -1076,10 +1076,15 @@ Notes:
 
 - if `DAYTONA_API_KEY` is unset, the runtime falls back to the OpenAgents API-backed Daytona
   provider when configured (requires OpenAgents auth + credits).
-- `image` → snapshot (fallback: `DAYTONA_SNAPSHOT` or `daytonaio/sandbox:latest`).
+- `image` → snapshot (fallback: `DAYTONA_SNAPSHOT`, then `DAYTONA_DEFAULT_SNAPSHOT`,
+  then `daytonaio/sandbox:latest`).
+- `DAYTONA_SNAPSHOT` must reference a snapshot available in your Daytona account. If the
+  default snapshot is missing, set this explicitly (or create the snapshot in the dashboard).
 - `repo` clones into the Daytona project dir (typically `/workspace`); workdir resolves from
   `repo.subdir` + `workdir`.
 - exec/output are async; Daytona returns combined stdout/stderr, emitted as stdout chunks.
+- Daytona snapshots define resource sizing; the runtime retries without CPU/memory/disk overrides
+  if the API rejects resource settings for a snapshot.
 - when usage is unavailable, `cost_usd` is reconciled as `max_cost_usd` to avoid refunds.
 
 ### NIP-90 DVM Provider

@@ -34,7 +34,11 @@ pub trait WalletService: Send + Sync {
     /// Return total balance in sats.
     fn balance_sats(&self) -> Result<u64, WalletError>;
     /// Pay a Lightning invoice.
-    fn pay_invoice(&self, invoice: &str, amount_sats: Option<u64>) -> Result<WalletPayment, WalletError>;
+    fn pay_invoice(
+        &self,
+        invoice: &str,
+        amount_sats: Option<u64>,
+    ) -> Result<WalletPayment, WalletError>;
     /// Return FX rate snapshot.
     fn fx_rate(&self) -> Result<FxRateSnapshot, WalletError>;
 }

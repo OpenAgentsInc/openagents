@@ -1,7 +1,9 @@
 //! Inbox filesystem service.
 
 use crate::envelope::Envelope;
-use crate::fs::{BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat};
+use crate::fs::{
+    BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat,
+};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
@@ -165,8 +167,8 @@ impl FileHandle for InboxWriter {
         if self.buffer.is_empty() {
             return Ok(());
         }
-        let envelope: Envelope = serde_json::from_slice(&self.buffer)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let envelope: Envelope =
+            serde_json::from_slice(&self.buffer).map_err(|err| FsError::Other(err.to_string()))?;
         self.inbox.enqueue(envelope);
         self.buffer.clear();
         Ok(())
