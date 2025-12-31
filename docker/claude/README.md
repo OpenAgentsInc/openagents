@@ -46,14 +46,38 @@ Docker equivalent:
 docker run --rm openagents/claude-code:latest
 ```
 
-If you want to reuse your existing Claude login from the host:
+Credential smoke tests (local only):
+
+Docker supports file mounts, so you can mount just the credentials file without
+masking the bundled CLI:
 
 ```bash
-container run --rm -i \
-  -v ~/.claude:/home/agent/.claude:rw \
+docker run --rm -i \
+  -v ~/.claude/.credentials.json:/home/agent/.claude/.credentials.json:ro \
   openagents/claude-code:latest \
-  claude --version
+  claude --print "Reply with OK" --max-budget-usd 0.10
 ```
+
+Apple Container requires directory mounts and will reject single-file mounts.
+Use a temp directory and point `CLAUDE_CONFIG_DIR` at it so the CLI can write
+its state without masking `/home/agent/.claude/bin/claude`:
+
+```bash
+mkdir -p /tmp/claude
+cp ~/.claude/.credentials.json /tmp/claude/
+container run --rm -i \
+  -v /tmp/claude:/tmp/claude \
+  -e CLAUDE_CONFIG_DIR=/tmp/claude \
+  openagents/claude-code:latest \
+  /home/agent/.claude/bin/claude --print "Reply with OK" --max-budget-usd 0.10
+```
+
+Notes:
+
+- Keep the Apple Container mount writable; the CLI writes `.claude.json` in the
+  config directory.
+- Avoid mounting a host directory onto `/home/agent/.claude` or the `claude`
+  binary gets hidden.
 
 ## Runtime wiring
 

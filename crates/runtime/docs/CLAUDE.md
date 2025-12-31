@@ -237,6 +237,16 @@ Build example:
 container build -t openagents/claude-code:latest -f docker/claude/Dockerfile .
 ```
 
+Manual credential smoke tests:
+
+- Docker: mount `~/.claude/.credentials.json` as a file into
+  `/home/agent/.claude/.credentials.json` so the bundled CLI remains visible.
+- Apple Container: only directory mounts are supported; mount a temp directory
+  and set `CLAUDE_CONFIG_DIR` so the CLI can write `.claude.json` without
+  masking `/home/agent/.claude/bin/claude`.
+
+For full command examples, see `docs/claude/container-image.md`.
+
 ### Multi-Instance Worker Pool
 
 For production, run a pool of Claude workers:
