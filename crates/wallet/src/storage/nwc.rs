@@ -49,15 +49,19 @@ impl NwcConnectionStore {
                 .with_context(|| format!("Failed to create {}", parent.display()))?;
         }
 
-        let contents = serde_json::to_string_pretty(self)
-            .context("Failed to serialize NWC connections")?;
+        let contents =
+            serde_json::to_string_pretty(self).context("Failed to serialize NWC connections")?;
         fs::write(&path, contents)
             .with_context(|| format!("Failed to write NWC connections {}", path.display()))?;
         Ok(())
     }
 
     pub fn add(&mut self, connection: NwcConnection) -> Result<()> {
-        if self.connections.iter().any(|entry| entry.id == connection.id) {
+        if self
+            .connections
+            .iter()
+            .any(|entry| entry.id == connection.id)
+        {
             anyhow::bail!("NWC connection '{}' already exists.", connection.id);
         }
 
@@ -76,9 +80,11 @@ impl NwcConnectionStore {
     }
 
     pub fn remove(&mut self, id_or_name: &str) -> Result<NwcConnection> {
-        if let Some(index) = self.connections.iter().position(|entry| {
-            entry.id == id_or_name || entry.name.as_deref() == Some(id_or_name)
-        }) {
+        if let Some(index) = self
+            .connections
+            .iter()
+            .position(|entry| entry.id == id_or_name || entry.name.as_deref() == Some(id_or_name))
+        {
             return Ok(self.connections.remove(index));
         }
 
@@ -97,8 +103,7 @@ fn connections_path() -> Result<PathBuf> {
         return Ok(PathBuf::from(path));
     }
 
-    let home = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
     Ok(home.join(".openagents").join("nwc_connections.json"))
 }
 
@@ -134,7 +139,9 @@ mod tests {
         let mut store = NwcConnectionStore::load().unwrap();
         assert!(store.connections.is_empty());
 
-        store.add(sample_connection("conn-1", Some("default"))).unwrap();
+        store
+            .add(sample_connection("conn-1", Some("default")))
+            .unwrap();
         store.save().unwrap();
 
         let store = NwcConnectionStore::load().unwrap();
@@ -163,8 +170,12 @@ mod tests {
     #[test]
     fn test_reject_duplicate_name() {
         let mut store = NwcConnectionStore::default();
-        store.add(sample_connection("conn-1", Some("alpha"))).unwrap();
-        let err = store.add(sample_connection("conn-2", Some("alpha"))).unwrap_err();
+        store
+            .add(sample_connection("conn-1", Some("alpha")))
+            .unwrap();
+        let err = store
+            .add(sample_connection("conn-2", Some("alpha")))
+            .unwrap_err();
         assert!(err.to_string().contains("already exists"));
     }
 }

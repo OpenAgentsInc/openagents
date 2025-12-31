@@ -190,7 +190,8 @@ impl SocialScore {
         let rating_score = (self.avg_rating / 5.0).clamp(0.0, 1.0);
 
         // Endorsement bonus (diminishing returns)
-        let endorsement_score = (self.endorsements as f32 / (self.endorsements as f32 + 10.0)).clamp(0.0, 1.0);
+        let endorsement_score =
+            (self.endorsements as f32 / (self.endorsements as f32 + 10.0)).clamp(0.0, 1.0);
 
         // Review count weight (more reviews = more reliable)
         let review_weight = (self.review_count.min(50) as f32 / 50.0).clamp(0.0, 1.0);
@@ -275,8 +276,7 @@ impl Default for EconomicScore {
 }
 
 /// Verification score component
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VerificationScore {
     /// Identity verified
     pub identity_verified: bool,
@@ -327,7 +327,6 @@ impl VerificationScore {
         score
     }
 }
-
 
 /// Complete provider reputation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -409,7 +408,8 @@ impl ProviderReputation {
         let decay_factor = 0.95_f32.powf(weeks);
 
         self.overall_score = (self.overall_score * decay_factor).clamp(0.0, 1.0);
-        self.track_record.uptime_pct = (self.track_record.uptime_pct * decay_factor).clamp(0.0, 1.0);
+        self.track_record.uptime_pct =
+            (self.track_record.uptime_pct * decay_factor).clamp(0.0, 1.0);
 
         self.last_updated = Utc::now();
     }

@@ -10,8 +10,8 @@ use crate::domain::{
 use crate::services::RelayService;
 use chrono::Utc;
 use nostr::{
-    finalize_event, EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, JobInput,
-    JobResult, PricingInfo, KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION,
+    EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, JobInput, JobResult,
+    KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION, PricingInfo, finalize_event,
 };
 use nostr::nip90::{
     KIND_JOB_CODE_REVIEW, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX, KIND_JOB_SANDBOX_RUN,
@@ -20,7 +20,7 @@ use spark::{PaymentDetails, PaymentStatus, SparkWallet};
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
 /// Supported NIP-90 job kinds - inference
 pub const INFERENCE_KINDS: &[u16] = &[
@@ -256,7 +256,8 @@ impl DvmService {
 
         // Subscribe to job requests
         let pubkey = identity.public_key_hex();
-        let (_sub_id, mut event_rx) = self.relay_service
+        let (_sub_id, mut event_rx) = self
+            .relay_service
             .subscribe_job_requests(&pubkey)
             .await
             .map_err(|e| DvmError::RelayError(e.to_string()))?;
@@ -282,12 +283,17 @@ impl DvmService {
                     break;
                 }
 
-                log::info!("Received job request event: {} (kind: {})", event.id, event.kind);
+                log::info!(
+                    "Received job request event: {} (kind: {})",
+                    event.id,
+                    event.kind
+                );
 
                 // Parse the job request from the event
                 match nostr::JobRequest::from_event(&event) {
                     Ok(job_request) => {
-                        log::info!("Parsed job request from {}: {} inputs, {} params",
+                        log::info!(
+                            "Parsed job request from {}: {} inputs, {} params",
                             &event.pubkey[..16],
                             job_request.inputs.len(),
                             job_request.params.len()
@@ -295,7 +301,8 @@ impl DvmService {
 
                         // Convert inputs and params to the format expected by handle_job_request
                         let inputs: Vec<JobInput> = job_request.inputs;
-                        let params: HashMap<String, String> = job_request.params
+                        let params: HashMap<String, String> = job_request
+                            .params
                             .into_iter()
                             .map(|p| (p.key, p.value))
                             .collect();
@@ -327,17 +334,20 @@ impl DvmService {
                                 let amount_sats = config.min_price_msats / 1000;
                                 let description = format!("NIP-90 job {}", job_id);
 
-                                match w.create_invoice(amount_sats, Some(description), Some(3600)).await {
+                                match w
+                                    .create_invoice(amount_sats, Some(description), Some(3600))
+                                    .await
+                                {
                                     Ok(invoice_response) => {
                                         let bolt11 = invoice_response.payment_request.clone();
                                         let amount_msats = config.min_price_msats;
 
                                         job.require_payment(amount_msats, bolt11.clone());
                                         active_jobs.write().await.insert(job_id.clone(), job);
-                                        pending_invoices.write().await.insert(
-                                            job_id.clone(),
-                                            (bolt11.clone(), amount_msats),
-                                        );
+                                        pending_invoices
+                                            .write()
+                                            .await
+                                            .insert(job_id.clone(), (bolt11.clone(), amount_msats));
 
                                         let _ = event_tx.send(DomainEvent::InvoiceCreated {
                                             job_id: job_id.clone(),
@@ -361,17 +371,28 @@ impl DvmService {
                         // Process job immediately (no payment required)
                         let start_time = std::time::Instant::now();
                         job.set_processing();
-                        active_jobs.write().await.insert(job_id.clone(), job.clone());
+                        active_jobs
+                            .write()
+                            .await
+                            .insert(job_id.clone(), job.clone());
 
                         // Get the prompt from inputs
-                        let prompt = inputs.iter()
+                        let prompt = inputs
+                            .iter()
                             .find(|i| i.input_type == nostr::InputType::Text)
                             .map(|i| i.data.clone())
                             .or_else(|| Some(job_request.content.clone()))
                             .unwrap_or_default();
 
-                        log::info!("Processing job {} with prompt: {}", job_id,
-                            if prompt.len() > 50 { format!("{}...", &prompt[..50]) } else { prompt.clone() });
+                        log::info!(
+                            "Processing job {} with prompt: {}",
+                            job_id,
+                            if prompt.len() > 50 {
+                                format!("{}...", &prompt[..50])
+                            } else {
+                                prompt.clone()
+                            }
+                        );
 
                         // Get the backend
                         let registry = backend_registry.read().await;
@@ -382,9 +403,10 @@ impl DvmService {
                                     prompt.clone(),
                                 )
                                 .with_max_tokens(
-                                    params.get("max_tokens")
+                                    params
+                                        .get("max_tokens")
                                         .and_then(|s| s.parse().ok())
-                                        .unwrap_or(512)
+                                        .unwrap_or(512),
                                 );
 
                                 let backend_guard = backend.read().await;
@@ -392,7 +414,11 @@ impl DvmService {
 
                                 match backend_guard.complete(request).await {
                                     Ok(response) => {
-                                        let tokens = response.usage.as_ref().map(|u| u.total_tokens).unwrap_or(0);
+                                        let tokens = response
+                                            .usage
+                                            .as_ref()
+                                            .map(|u| u.total_tokens)
+                                            .unwrap_or(0);
                                         log::info!("Job {} completed, {} tokens", job_id, tokens);
 
                                         // Publish result
@@ -407,45 +433,76 @@ impl DvmService {
 
                                             match result {
                                                 Ok(result) => {
-                                                    let template = nostr::create_job_result_event(&result);
-                                                    match nostr::finalize_event(&template, identity.private_key_bytes()) {
+                                                    let template =
+                                                        nostr::create_job_result_event(&result);
+                                                    match nostr::finalize_event(
+                                                        &template,
+                                                        identity.private_key_bytes(),
+                                                    ) {
                                                         Ok(result_event) => {
-                                                            match relay_service.publish(result_event).await {
+                                                            match relay_service
+                                                                .publish(result_event)
+                                                                .await
+                                                            {
                                                                 Ok(count) => {
-                                                                    log::info!("Published job result to {} relays", count);
+                                                                    log::info!(
+                                                                        "Published job result to {} relays",
+                                                                        count
+                                                                    );
 
                                                                     // Update job status
-                                                                    if let Some(j) = active_jobs.write().await.get_mut(&job_id) {
-                                                                        j.set_completed(response.text.clone());
+                                                                    if let Some(j) = active_jobs
+                                                                        .write()
+                                                                        .await
+                                                                        .get_mut(&job_id)
+                                                                    {
+                                                                        j.set_completed(
+                                                                            response.text.clone(),
+                                                                        );
                                                                     }
 
-                                                                    let duration_ms = start_time.elapsed().as_millis() as u64;
-                                                                    let _ = event_tx.send(DomainEvent::JobCompleted {
-                                                                        job_id: job_id.clone(),
-                                                                        amount_msats: None,
-                                                                        duration_ms,
-                                                                        timestamp: Utc::now(),
-                                                                    });
+                                                                    let duration_ms = start_time
+                                                                        .elapsed()
+                                                                        .as_millis()
+                                                                        as u64;
+                                                                    let _ = event_tx.send(
+                                                                        DomainEvent::JobCompleted {
+                                                                            job_id: job_id.clone(),
+                                                                            amount_msats: None,
+                                                                            duration_ms,
+                                                                            timestamp: Utc::now(),
+                                                                        },
+                                                                    );
                                                                 }
                                                                 Err(e) => {
-                                                                    log::error!("Failed to publish job result: {}", e);
+                                                                    log::error!(
+                                                                        "Failed to publish job result: {}",
+                                                                        e
+                                                                    );
                                                                 }
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            log::error!("Failed to sign job result: {}", e);
+                                                            log::error!(
+                                                                "Failed to sign job result: {}",
+                                                                e
+                                                            );
                                                         }
                                                     }
                                                 }
                                                 Err(e) => {
-                                                    log::error!("Failed to create job result: {}", e);
+                                                    log::error!(
+                                                        "Failed to create job result: {}",
+                                                        e
+                                                    );
                                                 }
                                             }
                                         }
                                     }
                                     Err(e) => {
                                         log::error!("Inference failed for job {}: {}", job_id, e);
-                                        if let Some(j) = active_jobs.write().await.get_mut(&job_id) {
+                                        if let Some(j) = active_jobs.write().await.get_mut(&job_id)
+                                        {
                                             j.set_failed(e.to_string());
                                         }
                                     }
@@ -486,9 +543,13 @@ impl DvmService {
 
                     // Get list of pending invoices to check (job_id, bolt11, amount_msats)
                     let invoices: Vec<(String, (String, u64))> = {
-                        pending_invoices.read().await
+                        pending_invoices
+                            .read()
+                            .await
                             .iter()
-                            .map(|(job_id, (bolt11, amount))| (job_id.clone(), (bolt11.clone(), *amount)))
+                            .map(|(job_id, (bolt11, amount))| {
+                                (job_id.clone(), (bolt11.clone(), *amount))
+                            })
                             .collect()
                     };
 
@@ -514,9 +575,15 @@ impl DvmService {
                                             _ => false,
                                         };
 
-                                        if payment.status == PaymentStatus::Completed && invoice_matches {
+                                        if payment.status == PaymentStatus::Completed
+                                            && invoice_matches
+                                        {
                                             let amount_sats = amount_msats / 1000;
-                                            log::info!("Payment received for job {}: {} sats (invoice matched)", job_id, amount_sats);
+                                            log::info!(
+                                                "Payment received for job {}: {} sats (invoice matched)",
+                                                job_id,
+                                                amount_sats
+                                            );
 
                                             // Remove from pending invoices
                                             pending_invoices.write().await.remove(&job_id);
@@ -529,15 +596,20 @@ impl DvmService {
                                             });
 
                                             // Update job status and process
-                                            if let Some(job) = active_jobs.write().await.get_mut(&job_id) {
+                                            if let Some(job) =
+                                                active_jobs.write().await.get_mut(&job_id)
+                                            {
                                                 job.amount_msats = Some(amount_msats);
                                                 job.status = crate::domain::job::JobStatus::Pending;
                                             }
 
                                             // Process the job (simplified - just get and run inference)
                                             drop(wallet_guard);
-                                            if let Some(job) = active_jobs.read().await.get(&job_id).cloned() {
-                                                let model = job.requested_model()
+                                            if let Some(job) =
+                                                active_jobs.read().await.get(&job_id).cloned()
+                                            {
+                                                let model = job
+                                                    .requested_model()
                                                     .unwrap_or(&config.default_model)
                                                     .to_string();
 
@@ -550,30 +622,58 @@ impl DvmService {
                                                 if let Some(prompt) = job.text_input() {
                                                     let registry = backend_registry.read().await;
                                                     if let Some(backend) = registry.default() {
-                                                        let request = CompletionRequest::new(&model, prompt);
+                                                        let request =
+                                                            CompletionRequest::new(&model, prompt);
                                                         let start_time = std::time::Instant::now();
                                                         drop(registry);
 
-                                                        match backend.read().await.complete(request).await {
+                                                        match backend
+                                                            .read()
+                                                            .await
+                                                            .complete(request)
+                                                            .await
+                                                        {
                                                             Ok(response) => {
-                                                                let duration_ms = start_time.elapsed().as_millis() as u64;
-                                                                log::info!("Job {} completed after payment", job_id);
+                                                                let duration_ms = start_time
+                                                                    .elapsed()
+                                                                    .as_millis()
+                                                                    as u64;
+                                                                log::info!(
+                                                                    "Job {} completed after payment",
+                                                                    job_id
+                                                                );
 
                                                                 // Update job status
-                                                                if let Some(j) = active_jobs.write().await.get_mut(&job_id) {
-                                                                    j.set_completed(response.text.clone());
+                                                                if let Some(j) = active_jobs
+                                                                    .write()
+                                                                    .await
+                                                                    .get_mut(&job_id)
+                                                                {
+                                                                    j.set_completed(
+                                                                        response.text.clone(),
+                                                                    );
                                                                 }
 
-                                                                let _ = event_tx.send(DomainEvent::JobCompleted {
-                                                                    job_id: job_id.clone(),
-                                                                    amount_msats: Some(amount_msats),
-                                                                    duration_ms,
-                                                                    timestamp: Utc::now(),
-                                                                });
+                                                                let _ = event_tx.send(
+                                                                    DomainEvent::JobCompleted {
+                                                                        job_id: job_id.clone(),
+                                                                        amount_msats: Some(
+                                                                            amount_msats,
+                                                                        ),
+                                                                        duration_ms,
+                                                                        timestamp: Utc::now(),
+                                                                    },
+                                                                );
 
                                                                 // Publish result
-                                                                if let Some(ref identity) = *identity.read().await {
-                                                                    if let Some(job) = active_jobs.read().await.get(&job_id) {
+                                                                if let Some(ref identity) =
+                                                                    *identity.read().await
+                                                                {
+                                                                    if let Some(job) = active_jobs
+                                                                        .read()
+                                                                        .await
+                                                                        .get(&job_id)
+                                                                    {
                                                                         let result = nostr::JobResult::new(
                                                                             job.kind,
                                                                             &job.request_event_id,
@@ -590,7 +690,11 @@ impl DvmService {
                                                                 }
                                                             }
                                                             Err(e) => {
-                                                                log::error!("Inference failed for paid job {}: {}", job_id, e);
+                                                                log::error!(
+                                                                    "Inference failed for paid job {}: {}",
+                                                                    job_id,
+                                                                    e
+                                                                );
                                                             }
                                                         }
                                                     }
@@ -611,7 +715,9 @@ impl DvmService {
                     let now = Utc::now().timestamp();
                     let expired: Vec<String> = {
                         let jobs = active_jobs.read().await;
-                        pending_invoices.read().await
+                        pending_invoices
+                            .read()
+                            .await
                             .keys()
                             .filter(|job_id| {
                                 if let Some(job) = jobs.get(*job_id) {
@@ -726,7 +832,10 @@ impl DvmService {
                 let amount_sats = self.config.min_price_msats / 1000;
                 let description = format!("NIP-90 job {}", job_id);
 
-                match wallet.create_invoice(amount_sats, Some(description), Some(3600)).await {
+                match wallet
+                    .create_invoice(amount_sats, Some(description), Some(3600))
+                    .await
+                {
                     Ok(invoice_response) => {
                         let bolt11 = invoice_response.payment_request.clone();
                         let amount_msats = self.config.min_price_msats;
@@ -736,10 +845,10 @@ impl DvmService {
 
                         // Store job and pending invoice
                         self.active_jobs.write().await.insert(job_id.clone(), job);
-                        self.pending_invoices.write().await.insert(
-                            job_id.clone(),
-                            (bolt11.clone(), amount_msats),
-                        );
+                        self.pending_invoices
+                            .write()
+                            .await
+                            .insert(job_id.clone(), (bolt11.clone(), amount_msats));
 
                         // Emit invoice created event
                         let _ = self.event_tx.send(DomainEvent::InvoiceCreated {
@@ -752,7 +861,10 @@ impl DvmService {
                         return Ok(());
                     }
                     Err(e) => {
-                        return Err(DvmError::PaymentError(format!("Failed to create invoice: {}", e)));
+                        return Err(DvmError::PaymentError(format!(
+                            "Failed to create invoice: {}",
+                            e
+                        )));
                     }
                 }
             } else {
@@ -791,7 +903,7 @@ impl DvmService {
                 return Err(DvmError::PaymentError(format!(
                     "Job {} not waiting for payment",
                     job_id
-                )))
+                )));
             }
         };
 
@@ -808,7 +920,10 @@ impl DvmService {
         // Update job with payment info
         job.amount_msats = Some(amount_msats);
         job.status = crate::domain::job::JobStatus::Pending;
-        self.active_jobs.write().await.insert(job_id.to_string(), job);
+        self.active_jobs
+            .write()
+            .await
+            .insert(job_id.to_string(), job);
 
         // Now process the job
         self.process_job(job_id).await
@@ -843,9 +958,7 @@ impl DvmService {
         for payment in payments {
             // Check if this payment matches our amount and is completed
             // Note: This is a simplified check. Production code should match by invoice/payment_hash.
-            if payment.status == PaymentStatus::Completed
-                && payment.amount as u64 == amount_sats
-            {
+            if payment.status == PaymentStatus::Completed && payment.amount as u64 == amount_sats {
                 // Payment received! Confirm and process
                 drop(wallet_guard); // Release lock before calling confirm_payment
                 self.confirm_payment(job_id).await?;
@@ -1309,9 +1422,10 @@ impl DvmService {
 
         // Add payment info if configured
         if let Some(amount) = job.amount_msats
-            && let Some(bolt11) = &job.bolt11 {
-                job_result = job_result.with_amount(amount, Some(bolt11.clone()));
-            }
+            && let Some(bolt11) = &job.bolt11
+        {
+            job_result = job_result.with_amount(amount, Some(bolt11.clone()));
+        }
 
         // Create event template
         let template = EventTemplate {

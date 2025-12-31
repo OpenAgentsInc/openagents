@@ -6,8 +6,9 @@ use colored::*;
 use std::path::{Path, PathBuf};
 
 use recorder::{
-    convert::{convert_file, ConvertOptions},
-    parse_content, parse_file, validate, LineType, Severity, ValidationResult,
+    LineType, Severity, ValidationResult,
+    convert::{ConvertOptions, convert_file},
+    parse_content, parse_file, validate,
 };
 
 #[derive(Parser)]
@@ -712,8 +713,7 @@ fn cmd_fix(
 fn renumber_steps_sequential(content: &str) -> Result<(String, usize)> {
     use regex::Regex;
 
-    let step_re = Regex::new(r"step=(\d+)")
-        .expect("Invalid regex pattern for step renumbering");
+    let step_re = Regex::new(r"step=(\d+)").expect("Invalid regex pattern for step renumbering");
     let lines: Vec<&str> = content.lines().collect();
 
     // First pass: find all lines with step= and their current numbers
@@ -721,9 +721,10 @@ fn renumber_steps_sequential(content: &str) -> Result<(String, usize)> {
 
     for (i, line) in lines.iter().enumerate() {
         if let Some(caps) = step_re.captures(line)
-            && let Ok(step_num) = caps[1].parse::<u32>() {
-                step_lines.push((i, step_num));
-            }
+            && let Ok(step_num) = caps[1].parse::<u32>()
+        {
+            step_lines.push((i, step_num));
+        }
     }
 
     if step_lines.is_empty() {

@@ -15,10 +15,12 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 /// Test mnemonic for sender wallet (BIP39 standard test vector)
-const SENDER_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const SENDER_MNEMONIC: &str =
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
 /// Test mnemonic for receiver wallet (different from sender)
-const RECEIVER_MNEMONIC: &str = "legal winner thank year wave sausage worth useful legal winner thank yellow";
+const RECEIVER_MNEMONIC: &str =
+    "legal winner thank year wave sausage worth useful legal winner thank yellow";
 
 /// Amount to send in satoshis (1000 sats)
 const PAYMENT_AMOUNT_SATS: u64 = 1_000;
@@ -49,8 +51,14 @@ async fn test_lightning_payment_flow_e2e() -> Result<()> {
     println!("✓ Receiver wallet connected");
 
     // Step 3: Display wallet info
-    println!("Sender address: {}", sender_wallet.get_spark_address().await?);
-    println!("Receiver address: {}", receiver_wallet.get_spark_address().await?);
+    println!(
+        "Sender address: {}",
+        sender_wallet.get_spark_address().await?
+    );
+    println!(
+        "Receiver address: {}",
+        receiver_wallet.get_spark_address().await?
+    );
 
     // Step 4: Receiver generates invoice
     let invoice = receiver_wallet
@@ -68,7 +76,10 @@ async fn test_lightning_payment_flow_e2e() -> Result<()> {
         .send_payment_simple(&invoice.payment_request, None)
         .await?;
 
-    println!("✓ Payment sent - payment ID: {}", payment_response.payment.id);
+    println!(
+        "✓ Payment sent - payment ID: {}",
+        payment_response.payment.id
+    );
 
     // Step 6: Wait for payment settlement
     sleep(Duration::from_secs(5)).await;

@@ -6,7 +6,7 @@
 
 use bip39::Mnemonic;
 use nostr::{Keypair, Nip06Error, derive_keypair_full};
-use spark::{SparkSigner, SparkError};
+use spark::{SparkError, SparkSigner};
 use thiserror::Error;
 
 /// Errors that can occur during identity operations
@@ -30,9 +30,7 @@ impl From<Nip06Error> for IdentityError {
         match e {
             Nip06Error::InvalidMnemonic(s) => IdentityError::InvalidMnemonic(s),
             Nip06Error::KeyDerivation(s) => IdentityError::KeyDerivation(s),
-            Nip06Error::Bech32Encode(s) | Nip06Error::Bech32Decode(s) => {
-                IdentityError::Bech32(s)
-            }
+            Nip06Error::Bech32Encode(s) | Nip06Error::Bech32Decode(s) => IdentityError::Bech32(s),
             Nip06Error::InvalidKeyFormat(s) => IdentityError::KeyDerivation(s),
             Nip06Error::InvalidHrp { expected, got } => {
                 IdentityError::Bech32(format!("expected {expected}, got {got}"))
@@ -91,8 +89,8 @@ impl UnifiedIdentity {
     /// during BIP39 seed derivation, not for encryption.
     pub fn from_mnemonic(mnemonic: &str, passphrase: &str) -> Result<Self, IdentityError> {
         // Validate the mnemonic
-        let _parsed = Mnemonic::parse(mnemonic)
-            .map_err(|e| IdentityError::InvalidMnemonic(e.to_string()))?;
+        let _parsed =
+            Mnemonic::parse(mnemonic).map_err(|e| IdentityError::InvalidMnemonic(e.to_string()))?;
 
         // Derive Nostr keypair using NIP-06 (m/44'/1237'/0'/0/0)
         let nostr_keypair = derive_keypair_full(mnemonic, passphrase, 0)?;
@@ -220,7 +218,8 @@ mod tests {
         // Using NIP-06 test vector
         let mnemonic =
             "leader monkey parrot ring guide accident before fence cannon height naive bean";
-        let identity = UnifiedIdentity::from_mnemonic(mnemonic, "").expect("should create identity");
+        let identity =
+            UnifiedIdentity::from_mnemonic(mnemonic, "").expect("should create identity");
 
         let expected_npub = "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu";
         assert_eq!(identity.npub().unwrap(), expected_npub);
@@ -255,7 +254,8 @@ mod tests {
     #[test]
     fn test_spark_integration() {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-        let identity = UnifiedIdentity::from_mnemonic(mnemonic, "").expect("should create identity");
+        let identity =
+            UnifiedIdentity::from_mnemonic(mnemonic, "").expect("should create identity");
 
         // Should have spark signer
         let signer = identity.spark_signer();
@@ -271,7 +271,8 @@ mod tests {
 
     #[test]
     fn test_spark_deterministic_derivation() {
-        let mnemonic = "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
 
         let identity1 = UnifiedIdentity::from_mnemonic(mnemonic, "").unwrap();
         let identity2 = UnifiedIdentity::from_mnemonic(mnemonic, "").unwrap();
@@ -286,7 +287,8 @@ mod tests {
     #[test]
     fn test_unified_identity_both_keys() {
         let mnemonic = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
-        let identity = UnifiedIdentity::from_mnemonic(mnemonic, "").expect("should create identity");
+        let identity =
+            UnifiedIdentity::from_mnemonic(mnemonic, "").expect("should create identity");
 
         // Should have both Nostr and Spark keys
         let npub = identity.npub().expect("should have npub");

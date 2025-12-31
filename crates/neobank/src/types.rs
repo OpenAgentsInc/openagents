@@ -119,7 +119,10 @@ impl Amount {
             "Cannot subtract amounts with different currencies"
         );
         Self {
-            value: self.value.checked_sub(other.value).expect("Amount underflow"),
+            value: self
+                .value
+                .checked_sub(other.value)
+                .expect("Amount underflow"),
             currency: self.currency,
         }
     }

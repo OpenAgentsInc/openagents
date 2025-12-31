@@ -58,7 +58,9 @@ impl InferenceBackend for OllamaBackend {
         let response = self.client.get(&url).send().await?;
 
         if !response.status().is_success() {
-            return Err(BackendError::Unavailable("Ollama not responding".to_string()));
+            return Err(BackendError::Unavailable(
+                "Ollama not responding".to_string(),
+            ));
         }
 
         let tags: OllamaTagsResponse = response.json().await?;
@@ -114,7 +116,8 @@ impl InferenceBackend for OllamaBackend {
                 prompt_tokens: ollama_response.prompt_eval_count.unwrap_or(0) as usize,
                 completion_tokens: ollama_response.eval_count.unwrap_or(0) as usize,
                 total_tokens: (ollama_response.prompt_eval_count.unwrap_or(0)
-                    + ollama_response.eval_count.unwrap_or(0)) as usize,
+                    + ollama_response.eval_count.unwrap_or(0))
+                    as usize,
             }),
             extra: HashMap::new(),
         })

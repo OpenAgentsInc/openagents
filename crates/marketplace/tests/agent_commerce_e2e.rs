@@ -1,7 +1,4 @@
 use chrono::Utc;
-use marketplace::{
-    Agent, AgentAvailability, AgentListing, AgentPricing, AgentStatus, AgentWallet, PricingModel,
-};
 use marketplace::agent_commerce::{
     AgentContract, ContractStatus, CoordinatorTask, DelegatedTask, HireAgentRequest,
     HiringRequirements, TaskSpec,
@@ -13,11 +10,14 @@ use marketplace::agent_lifecycle::{
 use marketplace::coalitions::{
     Coalition, CoalitionMember, CoalitionStatus, CoalitionType, Contribution, PaymentPool,
 };
-use nostr::{finalize_event, generate_secret_key, EventTemplate};
-use nostr::{
-    AgentProfileContent, AgentStateContent, AutonomyLevel as NipAutonomyLevel,
-    Goal, MemoryEntry, KIND_AGENT_PROFILE, KIND_AGENT_STATE,
+use marketplace::{
+    Agent, AgentAvailability, AgentListing, AgentPricing, AgentStatus, AgentWallet, PricingModel,
 };
+use nostr::{
+    AgentProfileContent, AgentStateContent, AutonomyLevel as NipAutonomyLevel, Goal,
+    KIND_AGENT_PROFILE, KIND_AGENT_STATE, MemoryEntry,
+};
+use nostr::{EventTemplate, finalize_event, generate_secret_key};
 use nostr_client::RelayConnection;
 use nostr_relay::{Database, DatabaseConfig, RelayConfig, RelayServer};
 use serde_json::json;
@@ -124,7 +124,10 @@ async fn test_agent_profile_publish_to_relay() {
     let parsed: AgentProfileContent =
         AgentProfileContent::from_json(&received.content).expect("parse");
     assert_eq!(parsed.name, "CodeReviewer");
-    assert_eq!(parsed.about, "Expert code review agent specializing in Rust and TypeScript");
+    assert_eq!(
+        parsed.about,
+        "Expert code review agent specializing in Rust and TypeScript"
+    );
     assert_eq!(parsed.capabilities.len(), 2);
     assert_eq!(parsed.version, "1.0.0");
 
@@ -326,10 +329,12 @@ fn test_death_causes() {
     assert!(!DeathCause::EconomicStarvation.is_voluntary());
     assert!(!DeathCause::CompetitiveDisplacement.is_voluntary());
     assert!(DeathCause::VoluntaryTermination.is_voluntary());
-    assert!(DeathCause::SponsorDecision {
-        reason: "budget cuts".to_string()
-    }
-    .is_voluntary());
+    assert!(
+        DeathCause::SponsorDecision {
+            reason: "budget cuts".to_string()
+        }
+        .is_voluntary()
+    );
 }
 
 #[test]
@@ -355,12 +360,17 @@ fn test_agent_listing_creation() {
 #[test]
 fn test_agent_pricing_models() {
     let per_task = AgentPricing::per_task(1000);
-    assert!(matches!(per_task.model, PricingModel::PerTask { base_sats: 1000 }));
+    assert!(matches!(
+        per_task.model,
+        PricingModel::PerTask { base_sats: 1000 }
+    ));
 
     let hourly = AgentPricing::hourly(5000);
     assert!(matches!(
         hourly.model,
-        PricingModel::Hourly { sats_per_hour: 5000 }
+        PricingModel::Hourly {
+            sats_per_hour: 5000
+        }
     ));
 
     let per_unit = AgentPricing::per_unit(100);
@@ -385,8 +395,8 @@ fn test_hire_agent_request() {
         .require_skill("rust")
         .with_max_latency(5000);
 
-    let request = HireAgentRequest::new("hirer123", "worker456", task, 10000)
-        .with_requirements(requirements);
+    let request =
+        HireAgentRequest::new("hirer123", "worker456", task, 10000).with_requirements(requirements);
 
     assert_eq!(request.hirer_id, "hirer123");
     assert_eq!(request.target_agent_id, "worker456");
@@ -451,8 +461,7 @@ fn test_task_deadline() {
     let future = Utc::now() + chrono::Duration::hours(1);
     let past = Utc::now() - chrono::Duration::hours(1);
 
-    let future_task =
-        TaskSpec::new("test", "desc", json!({}), "output").with_deadline(future);
+    let future_task = TaskSpec::new("test", "desc", json!({}), "output").with_deadline(future);
     assert!(!future_task.is_past_deadline());
 
     let past_task = TaskSpec::new("test", "desc", json!({}), "output").with_deadline(past);

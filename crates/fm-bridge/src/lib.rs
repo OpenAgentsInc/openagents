@@ -1,3 +1,4 @@
+pub mod backend;
 /// Foundation Model API Bridge
 ///
 /// Rust client for Apple Foundation Models via HTTP bridge.
@@ -22,7 +23,6 @@
 pub mod client;
 pub mod error;
 pub mod types;
-pub mod backend;
 
 // Re-export main types
 pub use client::{FMClient, FMClientBuilder};

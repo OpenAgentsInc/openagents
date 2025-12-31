@@ -24,8 +24,8 @@
 use crate::error::{Error, Result};
 use crate::types::Amount;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
@@ -179,7 +179,12 @@ pub struct Escrow {
 
 impl Escrow {
     /// Create a new escrow for a trade
-    pub fn new(trade_id: impl Into<String>, trade_amount_sats: u64, bond_pct: f64, duration: Duration) -> Self {
+    pub fn new(
+        trade_id: impl Into<String>,
+        trade_amount_sats: u64,
+        bond_pct: f64,
+        duration: Duration,
+    ) -> Self {
         let now = now_secs();
         let counter = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
 
@@ -324,7 +329,7 @@ impl Default for EscrowConfig {
         Self {
             default_bond_pct: 5.0, // 5%
             min_bond_sats: 1_000,
-            max_bond_sats: 10_000_000, // 0.1 BTC
+            max_bond_sats: 10_000_000,                    // 0.1 BTC
             default_duration: Duration::from_secs(86400), // 24 hours
             dispute_timeout: Duration::from_secs(604800), // 7 days
         }
@@ -403,7 +408,9 @@ impl EscrowService {
         }
 
         if bond.is_locked() {
-            return Err(Error::Database("Bond already locked to a trade".to_string()));
+            return Err(Error::Database(
+                "Bond already locked to a trade".to_string(),
+            ));
         }
 
         bond.lock_to_trade(trade_id);
@@ -607,7 +614,10 @@ impl EscrowService {
         };
 
         let dispute_id = dispute.id.clone();
-        self.disputes.write().await.insert(dispute_id.clone(), dispute);
+        self.disputes
+            .write()
+            .await
+            .insert(dispute_id.clone(), dispute);
 
         Ok(dispute_id)
     }
@@ -630,7 +640,8 @@ impl EscrowService {
                 .get_mut(dispute_id)
                 .ok_or_else(|| Error::Database("Dispute not found".to_string()))?;
 
-            if dispute.status != DisputeStatus::Open && dispute.status != DisputeStatus::UnderReview {
+            if dispute.status != DisputeStatus::Open && dispute.status != DisputeStatus::UnderReview
+            {
                 return Err(Error::Database("Dispute not open".to_string()));
             }
 

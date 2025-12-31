@@ -3,12 +3,12 @@
 /// These tests verify that FMClient correctly implements the LocalModelBackend trait
 /// using a mock HTTP server to simulate the Apple Foundation Models API.
 use fm_bridge::FMClient;
-use local_inference::{LocalModelBackend, LocalModelBackendExt, CompletionRequest};
-use wiremock::{
-    matchers::{method, path},
-    Mock, MockServer, ResponseTemplate,
-};
+use local_inference::{CompletionRequest, LocalModelBackend, LocalModelBackendExt};
 use serde_json::json;
+use wiremock::{
+    Mock, MockServer, ResponseTemplate,
+    matchers::{method, path},
+};
 
 #[tokio::test]
 async fn test_fm_bridge_initialize() {
@@ -28,11 +28,20 @@ async fn test_fm_bridge_initialize() {
         .build()
         .expect("Failed to build client");
 
-    assert!(!client.is_ready().await, "Should not be ready before initialization");
+    assert!(
+        !client.is_ready().await,
+        "Should not be ready before initialization"
+    );
 
-    client.initialize().await.expect("Initialization should succeed");
+    client
+        .initialize()
+        .await
+        .expect("Initialization should succeed");
 
-    assert!(client.is_ready().await, "Should be ready after initialization");
+    assert!(
+        client.is_ready().await,
+        "Should be ready after initialization"
+    );
 }
 
 #[tokio::test]
@@ -54,7 +63,10 @@ async fn test_fm_bridge_initialize_failure() {
         .expect("Failed to build client");
 
     let result = client.initialize().await;
-    assert!(result.is_err(), "Initialization should fail when service is down");
+    assert!(
+        result.is_err(),
+        "Initialization should fail when service is down"
+    );
 }
 
 #[tokio::test]
@@ -189,7 +201,10 @@ async fn test_fm_bridge_complete() {
         .build()
         .expect("Failed to build client");
 
-    client.initialize().await.expect("Initialization should succeed");
+    client
+        .initialize()
+        .await
+        .expect("Initialization should succeed");
 
     let request = CompletionRequest::new("apple-intelligence-1", "What is Rust?");
     let response = LocalModelBackend::complete(&client, request)
@@ -252,7 +267,10 @@ async fn test_fm_bridge_complete_simple() {
         .build()
         .expect("Failed to build client");
 
-    client.initialize().await.expect("Initialization should succeed");
+    client
+        .initialize()
+        .await
+        .expect("Initialization should succeed");
 
     // Test the convenience method from LocalModelBackendExt
     let text = client
@@ -285,9 +303,9 @@ async fn test_fm_bridge_complete_stream() {
                     "data: {\"text\":\"Rust\",\"finish_reason\":null}\n\n\
                      data: {\"text\":\" is\",\"finish_reason\":null}\n\n\
                      data: {\"text\":\" amazing\",\"finish_reason\":null}\n\n\
-                     data: {\"text\":\"!\",\"finish_reason\":\"stop\"}\n\n"
+                     data: {\"text\":\"!\",\"finish_reason\":\"stop\"}\n\n",
                 )
-                .insert_header("content-type", "text/event-stream")
+                .insert_header("content-type", "text/event-stream"),
         )
         .mount(&mock_server)
         .await;
@@ -297,7 +315,10 @@ async fn test_fm_bridge_complete_stream() {
         .build()
         .expect("Failed to build client");
 
-    client.initialize().await.expect("Initialization should succeed");
+    client
+        .initialize()
+        .await
+        .expect("Initialization should succeed");
 
     let request = CompletionRequest::new("apple-intelligence-1", "What is Rust?");
     let mut rx = client
@@ -319,7 +340,10 @@ async fn test_fm_bridge_complete_stream() {
 
     // Last chunk should have finish_reason
     let last_chunk = chunks.last().unwrap();
-    assert!(last_chunk.finish_reason.is_some(), "Last chunk should have finish_reason");
+    assert!(
+        last_chunk.finish_reason.is_some(),
+        "Last chunk should have finish_reason"
+    );
 }
 
 #[tokio::test]
@@ -357,12 +381,18 @@ async fn test_fm_bridge_has_model() {
 
     // Test the convenience method from LocalModelBackendExt
     assert!(
-        client.has_model("apple-intelligence-1").await.expect("has_model should succeed"),
+        client
+            .has_model("apple-intelligence-1")
+            .await
+            .expect("has_model should succeed"),
         "Should have apple-intelligence-1"
     );
 
     assert!(
-        !client.has_model("nonexistent").await.expect("has_model should succeed"),
+        !client
+            .has_model("nonexistent")
+            .await
+            .expect("has_model should succeed"),
         "Should not have nonexistent model"
     );
 }
@@ -385,7 +415,10 @@ async fn test_fm_bridge_shutdown() {
         .build()
         .expect("Failed to build client");
 
-    client.initialize().await.expect("Initialization should succeed");
+    client
+        .initialize()
+        .await
+        .expect("Initialization should succeed");
     assert!(client.is_ready().await);
 
     client.shutdown().await.expect("Shutdown should succeed");
@@ -423,7 +456,10 @@ async fn test_fm_bridge_error_handling() {
         .build()
         .expect("Failed to build client");
 
-    client.initialize().await.expect("Initialization should succeed");
+    client
+        .initialize()
+        .await
+        .expect("Initialization should succeed");
 
     let request = CompletionRequest::new("apple-intelligence-1", "Test");
     let result = LocalModelBackend::complete(&client, request).await;

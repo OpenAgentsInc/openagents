@@ -44,8 +44,8 @@ impl AddressBook {
                 .with_context(|| format!("Failed to create {}", parent.display()))?;
         }
 
-        let contents = serde_json::to_string_pretty(self)
-            .context("Failed to serialize address book")?;
+        let contents =
+            serde_json::to_string_pretty(self).context("Failed to serialize address book")?;
         fs::write(&path, contents)
             .with_context(|| format!("Failed to write address book {}", path.display()))?;
         Ok(())
@@ -77,8 +77,7 @@ fn address_book_path() -> Result<PathBuf> {
         return Ok(PathBuf::from(path));
     }
 
-    let home = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
     Ok(home.join(".openagents").join("address_book.json"))
 }
 
@@ -102,7 +101,8 @@ mod tests {
         let mut book = AddressBook::load().unwrap();
         assert!(book.entries.is_empty());
 
-        book.add("alice".to_string(), "lnbc1alice".to_string()).unwrap();
+        book.add("alice".to_string(), "lnbc1alice".to_string())
+            .unwrap();
         book.save().unwrap();
 
         let book = AddressBook::load().unwrap();

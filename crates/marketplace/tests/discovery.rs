@@ -1,6 +1,6 @@
 //! Unit tests for skill discovery and search functionality
 
-use marketplace::discovery::{SearchFilters, SortOrder, SkillListing, discover_local_skills};
+use marketplace::discovery::{SearchFilters, SkillListing, SortOrder, discover_local_skills};
 use std::fs;
 use std::path::PathBuf;
 
@@ -262,7 +262,8 @@ name: valid-skill
 description: Valid skill
 ---
 # Valid"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Invalid skill (no SKILL.md)
     let invalid_dir = temp_dir.join("invalid-skill");

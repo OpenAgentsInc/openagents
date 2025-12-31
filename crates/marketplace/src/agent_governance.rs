@@ -314,10 +314,7 @@ pub struct AutonomyPolicy {
 
 impl AutonomyPolicy {
     /// Create new autonomy policy
-    pub fn new(
-        level: crate::agent_lifecycle::AutonomyLevel,
-        action_limits: ActionLimits,
-    ) -> Self {
+    pub fn new(level: crate::agent_lifecycle::AutonomyLevel, action_limits: ActionLimits) -> Self {
         Self {
             level,
             action_limits,
@@ -488,10 +485,7 @@ mod tests {
             EscalationAction::PauseAgent,
         );
 
-        assert_eq!(
-            trigger.condition,
-            EscalationCondition::SpendExceedsLimit
-        );
+        assert_eq!(trigger.condition, EscalationCondition::SpendExceedsLimit);
         assert_eq!(trigger.action, EscalationAction::PauseAgent);
     }
 
@@ -540,9 +534,7 @@ mod tests {
     fn test_autonomy_policy() {
         let limits = ActionLimits::new(10000, 100000);
         let policy = AutonomyPolicy::new(AutonomyLevel::Supervised, limits)
-            .add_approval(
-                ApprovalRequirement::new(ActionType::PaymentSend).with_threshold(5000),
-            )
+            .add_approval(ApprovalRequirement::new(ActionType::PaymentSend).with_threshold(5000))
             .add_escalation(EscalationTrigger::new(
                 EscalationCondition::SpendExceedsLimit,
                 EscalationAction::NotifyHuman,
@@ -556,9 +548,8 @@ mod tests {
     #[test]
     fn test_autonomy_policy_requires_approval() {
         let limits = ActionLimits::new(10000, 100000);
-        let policy = AutonomyPolicy::new(AutonomyLevel::Supervised, limits).add_approval(
-            ApprovalRequirement::new(ActionType::PaymentSend).with_threshold(5000),
-        );
+        let policy = AutonomyPolicy::new(AutonomyLevel::Supervised, limits)
+            .add_approval(ApprovalRequirement::new(ActionType::PaymentSend).with_threshold(5000));
 
         // Below threshold - no approval needed
         assert!(!policy.requires_approval(&ActionType::PaymentSend, Some(4000)));

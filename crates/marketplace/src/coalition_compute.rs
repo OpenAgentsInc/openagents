@@ -130,11 +130,7 @@ pub struct Subtask {
 
 impl Subtask {
     /// Create a new subtask
-    pub fn new(
-        id: impl Into<String>,
-        prompt: impl Into<String>,
-        estimated_tokens: u64,
-    ) -> Self {
+    pub fn new(id: impl Into<String>, prompt: impl Into<String>, estimated_tokens: u64) -> Self {
         Self {
             id: id.into(),
             prompt: prompt.into(),
@@ -227,11 +223,7 @@ pub struct CoalitionComputeRequest {
 
 impl CoalitionComputeRequest {
     /// Create a new compute request
-    pub fn new(
-        id: impl Into<String>,
-        task: DecomposableTask,
-        budget_sats: u64,
-    ) -> Self {
+    pub fn new(id: impl Into<String>, task: DecomposableTask, budget_sats: u64) -> Self {
         Self {
             id: id.into(),
             task,
@@ -316,12 +308,7 @@ impl ProviderContribution {
     }
 
     /// Add a completed subtask
-    pub fn add_subtask(
-        &mut self,
-        subtask_id: impl Into<String>,
-        tokens: u64,
-        cost_sats: u64,
-    ) {
+    pub fn add_subtask(&mut self, subtask_id: impl Into<String>, tokens: u64, cost_sats: u64) {
         self.subtasks_completed.push(subtask_id.into());
         self.tokens_processed += tokens;
         self.cost_sats += cost_sats;
@@ -352,10 +339,7 @@ pub struct CoalitionResult {
 
 impl CoalitionResult {
     /// Create a new coalition result
-    pub fn new(
-        request_id: impl Into<String>,
-        aggregated_output: impl Into<String>,
-    ) -> Self {
+    pub fn new(request_id: impl Into<String>, aggregated_output: impl Into<String>) -> Self {
         Self {
             request_id: request_id.into(),
             subtask_results: Vec::new(),
@@ -373,7 +357,11 @@ impl CoalitionResult {
 
     /// Finalize contributions by calculating shares
     pub fn finalize_contributions(&mut self) {
-        let total_tokens: u64 = self.subtask_results.iter().map(|r| r.tokens_processed).sum();
+        let total_tokens: u64 = self
+            .subtask_results
+            .iter()
+            .map(|r| r.tokens_processed)
+            .sum();
 
         for contribution in &mut self.provider_contributions {
             contribution.calculate_share(total_tokens);

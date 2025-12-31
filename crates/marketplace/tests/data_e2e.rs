@@ -6,7 +6,7 @@
 use chrono::Utc;
 use marketplace::core::payments::MockPaymentService;
 use marketplace::{DataListing, DataListingType, DatasetMetadata};
-use nostr::{finalize_event, generate_secret_key, get_public_key, EventTemplate};
+use nostr::{EventTemplate, finalize_event, generate_secret_key, get_public_key};
 use nostr::{HandlerMetadata, KIND_HANDLER_INFO};
 use nostr_client::RelayConnection;
 use nostr_relay::{Database, DatabaseConfig, RelayConfig, RelayServer};
@@ -128,8 +128,7 @@ async fn test_dataset_discovery_over_relay() {
     assert_eq!(received.id, data_event.id);
     assert_eq!(received.kind, KIND_HANDLER_INFO);
 
-    let parsed: HandlerMetadata =
-        serde_json::from_str(&received.content).expect("should parse");
+    let parsed: HandlerMetadata = serde_json::from_str(&received.content).expect("should parse");
     assert_eq!(parsed.name, "rust-coding-sessions-2025");
 
     let has_data_type = received
@@ -166,7 +165,11 @@ async fn test_dataset_publish_flow() {
     let start_date = now - chrono::Duration::days(90);
     let metadata = DatasetMetadata::new(
         vec!["claude-code".to_string(), "cursor".to_string()],
-        vec!["rust".to_string(), "python".to_string(), "typescript".to_string()],
+        vec![
+            "rust".to_string(),
+            "python".to_string(),
+            "typescript".to_string(),
+        ],
         (start_date, now),
         0.92,
     )
@@ -245,11 +248,19 @@ async fn test_dataset_publish_flow() {
     assert_eq!(parsed_listing.id, "dataset-premium-2025-01");
     assert_eq!(parsed_listing.price_sats, 75000);
     assert_eq!(parsed_listing.record_count, 5000);
-    assert!(matches!(parsed_listing.listing_type, DataListingType::Premium));
+    assert!(matches!(
+        parsed_listing.listing_type,
+        DataListingType::Premium
+    ));
 
     // Verify metadata
     assert_eq!(parsed_listing.metadata.sources.len(), 2);
-    assert!(parsed_listing.metadata.sources.contains(&"claude-code".to_string()));
+    assert!(
+        parsed_listing
+            .metadata
+            .sources
+            .contains(&"claude-code".to_string())
+    );
     assert_eq!(parsed_listing.metadata.languages.len(), 3);
     assert_eq!(parsed_listing.metadata.quality_score, 0.92);
     assert_eq!(parsed_listing.metadata.contributor_count, Some(500));
@@ -309,13 +320,21 @@ async fn test_dataset_purchase_mock() {
     // Consumer initiates purchase with MockPaymentService
     let mut payment_service = MockPaymentService::new();
     let mock_invoice = payment_service.create_invoice(25000, "Dataset purchase");
-    
-    assert!(!payment_service.is_paid(&mock_invoice.invoice), "Invoice should not be paid yet");
+
+    assert!(
+        !payment_service.is_paid(&mock_invoice.invoice),
+        "Invoice should not be paid yet"
+    );
 
     // Consumer pays
-    let preimage = payment_service.pay_invoice(&mock_invoice.invoice).expect("payment should succeed");
+    let preimage = payment_service
+        .pay_invoice(&mock_invoice.invoice)
+        .expect("payment should succeed");
     assert!(!preimage.is_empty(), "Preimage should not be empty");
-    assert!(payment_service.is_paid(&mock_invoice.invoice), "Invoice should be paid now");
+    assert!(
+        payment_service.is_paid(&mock_invoice.invoice),
+        "Invoice should be paid now"
+    );
 
     // Provider creates access grant event after payment verification
     let access_grant_kind: u16 = 38040; // Custom kind for data access grant
@@ -471,7 +490,10 @@ async fn test_dataset_encrypted_delivery() {
     let has_chunk_tag = received.tags.iter().any(|t| t[0] == "chunk" && t[1] == "1");
     assert!(has_chunk_tag, "Should have chunk tag");
 
-    let has_total_tag = received.tags.iter().any(|t| t[0] == "total_chunks" && t[1] == "10");
+    let has_total_tag = received
+        .tags
+        .iter()
+        .any(|t| t[0] == "total_chunks" && t[1] == "10");
     assert!(has_total_tag, "Should have total_chunks tag");
 
     relay.disconnect().await.ok();
@@ -490,8 +512,18 @@ async fn test_data_listing_filtering() {
     // Publish multiple listings with different types
     let listings = vec![
         ("premium-rust", "Premium Rust sessions", "premium", 100000),
-        ("standard-python", "Standard Python sessions", "standard", 50000),
-        ("aggregated-stats", "Aggregated statistics", "aggregated", 10000),
+        (
+            "standard-python",
+            "Standard Python sessions",
+            "standard",
+            50000,
+        ),
+        (
+            "aggregated-stats",
+            "Aggregated statistics",
+            "aggregated",
+            10000,
+        ),
     ];
 
     let relay = RelayConnection::new(&relay_url).expect("connection");

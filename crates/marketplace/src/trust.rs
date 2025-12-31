@@ -197,7 +197,8 @@ impl EconomicComponent {
         let stake_score = (self.stake_sats.min(1_000_000) as f32 / 1_000_000.0) * 0.4;
 
         // Earnings history: 30% (10M sats = max)
-        let earnings_score = (self.earnings_history_sats.min(10_000_000) as f32 / 10_000_000.0) * 0.3;
+        let earnings_score =
+            (self.earnings_history_sats.min(10_000_000) as f32 / 10_000_000.0) * 0.3;
 
         // Payment reliability: 20%
         let reliability_score = (self.payment_reliability as f32 / 100.0) * 0.2;

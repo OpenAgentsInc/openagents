@@ -1,7 +1,7 @@
 //! Trajectory contribution to marketplace via Nostr
 
-use super::{TrajectorySession, RedactionEngine, RedactionLevel, Anonymizer, RewardCalculator};
 use super::validate::validate_trajectory;
+use super::{Anonymizer, RedactionEngine, RedactionLevel, RewardCalculator, TrajectorySession};
 use crate::db::init_db;
 use anyhow::{Context, Result};
 use rusqlite::Connection;
@@ -120,8 +120,7 @@ pub struct ContributionClient {
 impl ContributionClient {
     /// Create a new contribution client
     pub fn new(config: ContributionConfig) -> Result<Self> {
-        let db = init_db(&config.db_path)
-            .context("Failed to initialize contribution database")?;
+        let db = init_db(&config.db_path).context("Failed to initialize contribution database")?;
 
         Ok(Self { config, db })
     }
@@ -146,14 +145,11 @@ impl ContributionClient {
         }
 
         // Load trajectory content from file
-        let content = std::fs::read_to_string(&session.path)
-            .context("Failed to read trajectory file")?;
+        let content =
+            std::fs::read_to_string(&session.path).context("Failed to read trajectory file")?;
 
         // Apply redaction
-        let redaction_engine = RedactionEngine::new(
-            self.config.redaction_level.clone(),
-            vec![]
-        )?;
+        let redaction_engine = RedactionEngine::new(self.config.redaction_level.clone(), vec![])?;
         let redaction_result = redaction_engine.redact(&content)?;
 
         // Apply anonymization
@@ -165,7 +161,7 @@ impl ContributionClient {
         let reward = calculator.calculate_reward(
             &session,
             validation.quality_score,
-            self.config.min_quality
+            self.config.min_quality,
         );
 
         // Create contribution ID and hash
@@ -261,15 +257,20 @@ impl ContributionClient {
             |row| row.get(0),
         )?;
 
-        status_str.parse::<ContributionStatus>()
+        status_str
+            .parse::<ContributionStatus>()
             .map_err(|e| anyhow::anyhow!("{}", e))
     }
 
     /// Get all contributions with optional status filter
-    pub fn list_contributions(&self, status_filter: Option<ContributionStatus>) -> Result<Vec<ContributionRecord>> {
+    pub fn list_contributions(
+        &self,
+        status_filter: Option<ContributionStatus>,
+    ) -> Result<Vec<ContributionRecord>> {
         let mut query = "SELECT contribution_id, session_id, source, status, quality_score, \
                          estimated_reward_sats, actual_reward_sats, submitted_at, paid_at \
-                         FROM trajectory_contributions".to_string();
+                         FROM trajectory_contributions"
+            .to_string();
 
         let mut params: Vec<String> = vec![];
 
@@ -282,16 +283,17 @@ impl ContributionClient {
 
         let mut stmt = self.db.prepare(&query)?;
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter()
-            .map(|p| p as &dyn rusqlite::ToSql)
-            .collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
 
         let rows = stmt.query_map(&params_refs[..], |row| {
             Ok(ContributionRecord {
                 contribution_id: row.get(0)?,
                 session_id: row.get(1)?,
                 source: row.get(2)?,
-                status: row.get::<_, String>(3)?.parse::<ContributionStatus>()
+                status: row
+                    .get::<_, String>(3)?
+                    .parse::<ContributionStatus>()
                     .unwrap_or(ContributionStatus::Pending),
                 quality_score: row.get(4)?,
                 estimated_reward_sats: row.get::<_, i64>(5)? as u64,
@@ -312,7 +314,7 @@ impl ContributionClient {
             FROM trajectory_contributions
             WHERE status = ? AND actual_reward_sats IS NOT NULL
             ORDER BY paid_at DESC
-            "#
+            "#,
         )?;
 
         let rows = stmt.query_map([ContributionStatus::Accepted.as_str()], |row| {
@@ -347,7 +349,7 @@ pub struct ContributionRecord {
 
 /// Simple SHA-256 hash function for content hashing
 fn sha256_hash(content: &str) -> String {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
     format!("{:x}", hasher.finalize())
@@ -429,7 +431,10 @@ mod tests {
     #[test]
     fn test_contribution_config_default() {
         let config = ContributionConfig::default();
-        assert_eq!(config.db_path, std::path::PathBuf::from(".openagents/marketplace.db"));
+        assert_eq!(
+            config.db_path,
+            std::path::PathBuf::from(".openagents/marketplace.db")
+        );
         assert_eq!(config.relays.len(), 2);
         assert_eq!(config.min_quality, 0.5);
     }

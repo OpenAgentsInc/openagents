@@ -4,14 +4,14 @@ use std::cell::RefCell;
 use std::ops::Range;
 use std::rc::Rc;
 
+use crate::storage::config::WalletConfig as LocalWalletConfig;
 use qrcode::QrCode;
 use spark::{Balance, Payment, PaymentMethod, PaymentStatus, PaymentType};
 use wgpui::components::{Button, Component, EventResult, TextInput};
 use wgpui::{
-    Bounds, EventContext, InputEvent, MouseButton, Point, Quad, Scene, Size, TextSystem,
-    ScrollContainer, Hsla, theme,
+    Bounds, EventContext, Hsla, InputEvent, MouseButton, Point, Quad, Scene, ScrollContainer, Size,
+    TextSystem, theme,
 };
-use crate::storage::config::WalletConfig as LocalWalletConfig;
 
 use super::types::{WalletCommand, WalletTab, WalletUpdate};
 
@@ -172,9 +172,7 @@ impl WalletView {
         let send_button = Button::new("Send Payment")
             .padding(18.0, 8.0)
             .on_click(move || {
-                send_events
-                    .borrow_mut()
-                    .push(WalletUiEvent::SubmitSend);
+                send_events.borrow_mut().push(WalletUiEvent::SubmitSend);
             });
 
         let receive_button = Button::new("Generate QR")
@@ -357,7 +355,12 @@ impl WalletView {
     }
 
     fn layout(&self, bounds: Bounds) -> WalletLayout {
-        let header = Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, HEADER_HEIGHT);
+        let header = Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            HEADER_HEIGHT,
+        );
         let tabs = Bounds::new(
             bounds.origin.x,
             bounds.origin.y + HEADER_HEIGHT,
@@ -465,8 +468,8 @@ impl WalletView {
         let available_for_chart =
             (content.size.height - PADDING * 2.0 - HISTORY_HEADER_HEIGHT - GAP - reserved_details)
                 .max(0.0);
-        let chart_height = HISTORY_CHART_HEIGHT
-            .min((available_for_chart - min_list_height).max(0.0));
+        let chart_height =
+            HISTORY_CHART_HEIGHT.min((available_for_chart - min_list_height).max(0.0));
         let chart_gap = if chart_height > 0.0 { GAP } else { 0.0 };
 
         let history_chart = Bounds::new(
@@ -578,16 +581,34 @@ impl WalletView {
             theme::text::MUTED
         };
 
-        scene.draw_quad(Quad::new(bounds).with_background(background).with_border(theme::border::DEFAULT, 1.0));
+        scene.draw_quad(
+            Quad::new(bounds)
+                .with_background(background)
+                .with_border(theme::border::DEFAULT, 1.0),
+        );
 
         let font_size = theme::font_size::SM;
         let text_width = text_width(label, font_size);
         let text_x = bounds.origin.x + (bounds.size.width - text_width) / 2.0;
         let text_y = bounds.origin.y + (bounds.size.height - font_size) / 2.0;
-        self.draw_text(label, text_x, text_y, font_size, text_color, text_system, scene);
+        self.draw_text(
+            label,
+            text_x,
+            text_y,
+            font_size,
+            text_color,
+            text_system,
+            scene,
+        );
     }
 
-    fn draw_notice(&self, notice: &Notice, bounds: Bounds, text_system: &mut TextSystem, scene: &mut Scene) {
+    fn draw_notice(
+        &self,
+        notice: &Notice,
+        bounds: Bounds,
+        text_system: &mut TextSystem,
+        scene: &mut Scene,
+    ) {
         self.draw_text(
             &notice.message,
             bounds.origin.x,
@@ -628,7 +649,10 @@ impl WalletView {
         let background = theme::bg::APP;
         let foreground = theme::text::PRIMARY;
 
-        scene.draw_quad(Quad::new(Bounds::new(origin_x, origin_y, total_size, total_size)).with_background(background));
+        scene.draw_quad(
+            Quad::new(Bounds::new(origin_x, origin_y, total_size, total_size))
+                .with_background(background),
+        );
 
         for y in 0..module_count {
             for x in 0..module_count {
@@ -647,7 +671,10 @@ impl WalletView {
                 if is_dark {
                     let px = origin_x + x as f32 * module_size;
                     let py = origin_y + y as f32 * module_size;
-                    scene.draw_quad(Quad::new(Bounds::new(px, py, module_size, module_size)).with_background(foreground));
+                    scene.draw_quad(
+                        Quad::new(Bounds::new(px, py, module_size, module_size))
+                            .with_background(foreground),
+                    );
                 }
             }
         }
@@ -802,10 +829,12 @@ impl WalletView {
             let y = baseline - height;
 
             let bar_bounds = Bounds::new(x, y, bar_width, height.max(1.0));
-            cx.scene.draw_quad(Quad::new(bar_bounds).with_background(bar_color));
+            cx.scene
+                .draw_quad(Quad::new(bar_bounds).with_background(bar_color));
 
             let dot_bounds = Bounds::new(x, y - 1.0, bar_width.max(2.0), 2.0);
-            cx.scene.draw_quad(Quad::new(dot_bounds).with_background(line_color));
+            cx.scene
+                .draw_quad(Quad::new(dot_bounds).with_background(line_color));
         }
 
         let min_label = format_sats_u128(min_balance);
@@ -842,8 +871,7 @@ impl WalletView {
             let Some(payment) = self.history_items.get(index) else {
                 continue;
             };
-            let row_y =
-                list_bounds.origin.y + index as f32 * HISTORY_ROW_HEIGHT - scroll_offset;
+            let row_y = list_bounds.origin.y + index as f32 * HISTORY_ROW_HEIGHT - scroll_offset;
             let row_bounds = Bounds::new(
                 list_bounds.origin.x,
                 row_y,
@@ -1050,18 +1078,26 @@ impl WalletView {
                         if pending.amount == sats && pending.destination == destination {
                             self.pending_large_send = None;
                         } else {
-                            self.pending_large_send = Some(PendingSend { destination, amount: sats });
+                            self.pending_large_send = Some(PendingSend {
+                                destination,
+                                amount: sats,
+                            });
                             self.notice = Some(Notice {
                                 kind: NoticeKind::Info,
-                                message: "Large payment detected. Click Send again to confirm.".to_string(),
+                                message: "Large payment detected. Click Send again to confirm."
+                                    .to_string(),
                             });
                             return;
                         }
                     } else {
-                        self.pending_large_send = Some(PendingSend { destination, amount: sats });
+                        self.pending_large_send = Some(PendingSend {
+                            destination,
+                            amount: sats,
+                        });
                         self.notice = Some(Notice {
                             kind: NoticeKind::Info,
-                            message: "Large payment detected. Click Send again to confirm.".to_string(),
+                            message: "Large payment detected. Click Send again to confirm."
+                                .to_string(),
                         });
                         return;
                     }
@@ -1078,7 +1114,10 @@ impl WalletView {
             message: "Sending payment...".to_string(),
         });
 
-        self.commands.push(WalletCommand::SendPayment { destination, amount });
+        self.commands.push(WalletCommand::SendPayment {
+            destination,
+            amount,
+        });
     }
 
     fn generate_receive(&mut self) {
@@ -1107,7 +1146,8 @@ impl Component for WalletView {
     fn paint(&mut self, bounds: Bounds, cx: &mut wgpui::PaintContext) {
         let layout = self.layout(bounds);
 
-        cx.scene.draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
         cx.scene
             .draw_quad(Quad::new(layout.header).with_background(theme::bg::SURFACE));
         cx.scene.draw_quad(
@@ -1131,7 +1171,8 @@ impl Component for WalletView {
         let balance_label = "BALANCE";
         let balance_label_size = theme::font_size::XS;
         let balance_label_width = text_width(balance_label, balance_label_size);
-        let balance_label_x = layout.header.origin.x + layout.header.size.width - balance_label_width - PADDING;
+        let balance_label_x =
+            layout.header.origin.x + layout.header.size.width - balance_label_width - PADDING;
         let balance_label_y = layout.header.origin.y + 22.0;
         self.draw_text(
             balance_label,
@@ -1159,7 +1200,13 @@ impl Component for WalletView {
         );
 
         self.draw_tab("Send", WalletTab::Send, layout.send_tab, cx.text, cx.scene);
-        self.draw_tab("Receive", WalletTab::Receive, layout.receive_tab, cx.text, cx.scene);
+        self.draw_tab(
+            "Receive",
+            WalletTab::Receive,
+            layout.receive_tab,
+            cx.text,
+            cx.scene,
+        );
         self.draw_tab(
             "History",
             WalletTab::History,
@@ -1179,7 +1226,8 @@ impl Component for WalletView {
                     cx.text,
                     cx.scene,
                 );
-                self.send_destination.paint(layout.send.destination_input, cx);
+                self.send_destination
+                    .paint(layout.send.destination_input, cx);
 
                 self.draw_text(
                     "Amount (sats)",
@@ -1204,7 +1252,8 @@ impl Component for WalletView {
                     cx.scene,
                 );
                 self.receive_amount.paint(layout.receive.amount_input, cx);
-                self.receive_button.paint(layout.receive.generate_button, cx);
+                self.receive_button
+                    .paint(layout.receive.generate_button, cx);
                 self.draw_qr(layout.receive.qr, cx.text, cx.scene);
 
                 if let Some(payload) = &self.receive_payload {
@@ -1259,7 +1308,9 @@ impl Component for WalletView {
                 if *button == MouseButton::Left {
                     let point = Point::new(*x, *y);
                     if layout.send_tab.contains(point) {
-                        self.ui_events.borrow_mut().push(WalletUiEvent::SelectTab(WalletTab::Send));
+                        self.ui_events
+                            .borrow_mut()
+                            .push(WalletUiEvent::SelectTab(WalletTab::Send));
                         result = EventResult::Handled;
                     } else if layout.receive_tab.contains(point) {
                         self.ui_events
@@ -1297,13 +1348,23 @@ impl Component for WalletView {
 
         match self.tab {
             WalletTab::Send => {
-                result = result.or(self.send_destination.event(event, layout.send.destination_input, cx));
+                result = result.or(self.send_destination.event(
+                    event,
+                    layout.send.destination_input,
+                    cx,
+                ));
                 result = result.or(self.send_amount.event(event, layout.send.amount_input, cx));
                 result = result.or(self.send_button.event(event, layout.send.submit_button, cx));
             }
             WalletTab::Receive => {
-                result = result.or(self.receive_amount.event(event, layout.receive.amount_input, cx));
-                result = result.or(self.receive_button.event(event, layout.receive.generate_button, cx));
+                result =
+                    result.or(self
+                        .receive_amount
+                        .event(event, layout.receive.amount_input, cx));
+                result =
+                    result.or(self
+                        .receive_button
+                        .event(event, layout.receive.generate_button, cx));
             }
             WalletTab::History => {}
         }
@@ -1476,11 +1537,7 @@ fn min_max_balance(points: &[BalancePoint]) -> (u128, u128) {
         min = min.min(point.balance);
         max = max.max(point.balance);
     }
-    if min == u128::MAX {
-        (0, 0)
-    } else {
-        (min, max)
-    }
+    if min == u128::MAX { (0, 0) } else { (min, max) }
 }
 
 #[cfg(test)]
@@ -1538,12 +1595,20 @@ mod tests {
         view.send_destination.set_value("lnbc1send");
         view.send_amount.set_value("2500");
         let layout = view.layout(bounds);
-        click_at(&mut view, bounds, layout.send.submit_button.origin.x + 5.0, layout.send.submit_button.origin.y + 5.0);
+        click_at(
+            &mut view,
+            bounds,
+            layout.send.submit_button.origin.x + 5.0,
+            layout.send.submit_button.origin.y + 5.0,
+        );
 
         let commands = view.drain_commands();
         assert_eq!(commands.len(), 1);
         match &commands[0] {
-            WalletCommand::SendPayment { destination, amount } => {
+            WalletCommand::SendPayment {
+                destination,
+                amount,
+            } => {
                 assert_eq!(destination, "lnbc1send");
                 assert_eq!(amount, &Some(2500));
             }
@@ -1557,7 +1622,12 @@ mod tests {
         view.drain_commands();
         let bounds = Bounds::new(0.0, 0.0, 900.0, 700.0);
         let layout = view.layout(bounds);
-        click_at(&mut view, bounds, layout.receive_tab.origin.x + 5.0, layout.receive_tab.origin.y + 5.0);
+        click_at(
+            &mut view,
+            bounds,
+            layout.receive_tab.origin.x + 5.0,
+            layout.receive_tab.origin.y + 5.0,
+        );
         view.receive_amount.set_value("1200");
 
         let layout = view.layout(bounds);
@@ -1608,7 +1678,10 @@ mod tests {
         });
 
         let mut cx = EventContext::new();
-        let scroll = InputEvent::Scroll { dx: 0.0, dy: 10_000.0 };
+        let scroll = InputEvent::Scroll {
+            dx: 0.0,
+            dy: 10_000.0,
+        };
         view.event(&scroll, bounds, &mut cx);
 
         let commands = view.drain_commands();
@@ -1703,7 +1776,13 @@ mod tests {
         view.send_amount.set_value("2000");
         view.submit_send();
 
-        assert!(matches!(view.notice, Some(Notice { kind: NoticeKind::Error, .. })));
+        assert!(matches!(
+            view.notice,
+            Some(Notice {
+                kind: NoticeKind::Error,
+                ..
+            })
+        ));
         assert!(view.drain_commands().is_empty());
     }
 

@@ -1,7 +1,7 @@
 //! Unit tests for Job domain module
 
-use compute::domain::{Job, JobStatus};
 use compute::domain::job::StoredJobInput;
+use compute::domain::{Job, JobStatus};
 use nostr::JobInput;
 use std::collections::HashMap;
 
@@ -117,8 +117,8 @@ fn test_stored_job_input_from_job_input_with_marker() {
 
 #[test]
 fn test_stored_job_input_to_job_input_roundtrip() {
-    let original = JobInput::event("event123", Some("wss://relay.com".to_string()))
-        .with_marker("source");
+    let original =
+        JobInput::event("event123", Some("wss://relay.com".to_string())).with_marker("source");
     let stored = StoredJobInput::from(&original);
     let recovered = stored.to_job_input().unwrap();
 
@@ -155,10 +155,7 @@ fn test_text_input_none() {
 
 #[test]
 fn test_text_input_multiple_finds_first() {
-    let inputs = vec![
-        JobInput::text("First text"),
-        JobInput::text("Second text"),
-    ];
+    let inputs = vec![JobInput::text("First text"), JobInput::text("Second text")];
     let job = Job::new(
         "job1".to_string(),
         "event1".to_string(),
@@ -231,10 +228,7 @@ fn test_set_processing() {
     let mut job = create_test_job();
     job.set_processing();
 
-    assert_eq!(
-        job.status,
-        JobStatus::Processing { progress: None }
-    );
+    assert_eq!(job.status, JobStatus::Processing { progress: None });
 }
 
 #[test]
@@ -535,7 +529,9 @@ fn test_job_status_serialization() {
             bolt11: "lnbc...".to_string(),
             amount_msats: 1000,
         },
-        JobStatus::Processing { progress: Some(0.5) },
+        JobStatus::Processing {
+            progress: Some(0.5),
+        },
         JobStatus::Completed {
             result: "Done".to_string(),
         },

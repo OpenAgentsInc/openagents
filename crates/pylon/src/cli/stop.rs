@@ -4,8 +4,7 @@ use clap::Args;
 use std::time::Duration;
 
 use crate::daemon::{
-    is_daemon_running, pid_path, socket_path, ControlClient, DaemonCommand, DaemonResponse,
-    PidFile,
+    ControlClient, DaemonCommand, DaemonResponse, PidFile, is_daemon_running, pid_path, socket_path,
 };
 
 /// Arguments for the stop command
@@ -62,7 +61,10 @@ pub async fn run(args: StopArgs) -> anyhow::Result<()> {
                 println!("Unexpected response: {:?}", other);
             }
             Err(e) => {
-                println!("Control socket unavailable ({}), falling back to SIGTERM...", e);
+                println!(
+                    "Control socket unavailable ({}), falling back to SIGTERM...",
+                    e
+                );
             }
         }
     }
@@ -83,7 +85,10 @@ pub async fn run(args: StopArgs) -> anyhow::Result<()> {
     let timeout = Duration::from_secs(args.timeout);
     let start = std::time::Instant::now();
 
-    println!("Waiting for graceful shutdown (timeout: {}s)...", args.timeout);
+    println!(
+        "Waiting for graceful shutdown (timeout: {}s)...",
+        args.timeout
+    );
 
     while start.elapsed() < timeout {
         if !pid_file.is_running() {

@@ -391,8 +391,7 @@ impl McpSession {
 
     /// Add a connected server
     pub fn add_server(mut self, server: ConnectedServer) -> Self {
-        self.available_tools
-            .extend(server.tools.iter().cloned());
+        self.available_tools.extend(server.tools.iter().cloned());
         self.connected_servers.push(server);
         self
     }
@@ -412,10 +411,7 @@ impl McpSession {
     /// Check if all servers are connected
     pub fn is_ready(&self) -> bool {
         !self.connected_servers.is_empty()
-            && self
-                .connected_servers
-                .iter()
-                .all(|s| s.status.is_active())
+            && self.connected_servers.iter().all(|s| s.status.is_active())
     }
 
     /// Get count of connected servers
@@ -463,18 +459,8 @@ mod tests {
     #[test]
     fn test_skill_mcp_binding() {
         let binding = SkillMcpBinding::new("skill1")
-            .add_required(McpCapability::new(
-                "fs",
-                "read",
-                "Read",
-                json!({}),
-            ))
-            .add_optional(McpCapability::new(
-                "web",
-                "fetch",
-                "Fetch",
-                json!({}),
-            ));
+            .add_required(McpCapability::new("fs", "read", "Read", json!({})))
+            .add_optional(McpCapability::new("web", "fetch", "Fetch", json!({})));
 
         assert_eq!(binding.skill_id, "skill1");
         assert_eq!(binding.required_capabilities.len(), 1);
@@ -485,18 +471,8 @@ mod tests {
     #[test]
     fn test_skill_mcp_binding_all_capabilities() {
         let binding = SkillMcpBinding::new("skill1")
-            .add_required(McpCapability::new(
-                "fs",
-                "read",
-                "Read",
-                json!({}),
-            ))
-            .add_optional(McpCapability::new(
-                "web",
-                "fetch",
-                "Fetch",
-                json!({}),
-            ));
+            .add_required(McpCapability::new("fs", "read", "Read", json!({})))
+            .add_optional(McpCapability::new("web", "fetch", "Fetch", json!({})));
 
         let all = binding.all_capabilities();
         assert_eq!(all.len(), 2);
@@ -504,7 +480,10 @@ mod tests {
 
     #[test]
     fn test_mcp_server_creation() {
-        let server = McpServer::new("filesystem", vec!["read_file".to_string(), "write_file".to_string()]);
+        let server = McpServer::new(
+            "filesystem",
+            vec!["read_file".to_string(), "write_file".to_string()],
+        );
 
         assert_eq!(server.name, "filesystem");
         assert!(server.has_tool("read_file"));
@@ -546,18 +525,8 @@ mod tests {
     #[test]
     fn test_check_mcp_dependencies_missing() {
         let binding = SkillMcpBinding::new("skill1")
-            .add_required(McpCapability::new(
-                "fs",
-                "read",
-                "Read",
-                json!({}),
-            ))
-            .add_required(McpCapability::new(
-                "web",
-                "fetch",
-                "Fetch",
-                json!({}),
-            ));
+            .add_required(McpCapability::new("fs", "read", "Read", json!({})))
+            .add_required(McpCapability::new("web", "fetch", "Fetch", json!({})));
 
         let servers = vec![McpServer::new("fs", vec!["read".to_string()])];
 
@@ -571,18 +540,8 @@ mod tests {
     #[test]
     fn test_check_mcp_dependencies_optional() {
         let binding = SkillMcpBinding::new("skill1")
-            .add_required(McpCapability::new(
-                "fs",
-                "read",
-                "Read",
-                json!({}),
-            ))
-            .add_optional(McpCapability::new(
-                "web",
-                "fetch",
-                "Fetch",
-                json!({}),
-            ));
+            .add_required(McpCapability::new("fs", "read", "Read", json!({})))
+            .add_optional(McpCapability::new("web", "fetch", "Fetch", json!({})));
 
         let servers = vec![McpServer::new("fs", vec!["read".to_string()])];
 
@@ -670,8 +629,12 @@ mod tests {
     #[test]
     fn test_mcp_dependency_check_missing_count() {
         let mut check = McpDependencyCheck::new("skill1");
-        check.missing.push(McpCapability::new("fs", "read", "Read", json!({})));
-        check.missing.push(McpCapability::new("web", "fetch", "Fetch", json!({})));
+        check
+            .missing
+            .push(McpCapability::new("fs", "read", "Read", json!({})));
+        check
+            .missing
+            .push(McpCapability::new("web", "fetch", "Fetch", json!({})));
 
         assert_eq!(check.missing_count(), 2);
         assert!(!check.is_satisfied());

@@ -6,8 +6,8 @@
 use async_trait::async_trait;
 use breez_sdk_spark::{
     AssetFilter, DepositInfo, ListPaymentsRequest, Payment, PaymentDetails, PaymentMetadata,
-    PaymentMethod, SetLnurlMetadataItem, SparkHtlcStatus, Storage,
-    StorageError, UpdateDepositPayload,
+    PaymentMethod, SetLnurlMetadataItem, SparkHtlcStatus, Storage, StorageError,
+    UpdateDepositPayload,
 };
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -33,11 +33,15 @@ impl MemoryStorage {
     fn matches_invoice(payment: &Payment, invoice: &str) -> bool {
         match &payment.details {
             Some(PaymentDetails::Lightning { invoice: inv, .. }) => inv == invoice,
-            Some(PaymentDetails::Spark { invoice_details, .. }) => invoice_details
+            Some(PaymentDetails::Spark {
+                invoice_details, ..
+            }) => invoice_details
                 .as_ref()
                 .map(|details| details.invoice == invoice)
                 .unwrap_or(false),
-            Some(PaymentDetails::Token { invoice_details, .. }) => invoice_details
+            Some(PaymentDetails::Token {
+                invoice_details, ..
+            }) => invoice_details
                 .as_ref()
                 .map(|details| details.invoice == invoice)
                 .unwrap_or(false),
@@ -72,24 +76,27 @@ impl MemoryStorage {
 #[async_trait(?Send)]
 impl Storage for MemoryStorage {
     async fn delete_cached_item(&self, key: String) -> Result<(), StorageError> {
-        let mut cache = self.cache.lock().map_err(|e| {
-            StorageError::Implementation(format!("Cache lock poisoned: {e}"))
-        })?;
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("Cache lock poisoned: {e}")))?;
         cache.remove(&key);
         Ok(())
     }
 
     async fn get_cached_item(&self, key: String) -> Result<Option<String>, StorageError> {
-        let cache = self.cache.lock().map_err(|e| {
-            StorageError::Implementation(format!("Cache lock poisoned: {e}"))
-        })?;
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("Cache lock poisoned: {e}")))?;
         Ok(cache.get(&key).cloned())
     }
 
     async fn set_cached_item(&self, key: String, value: String) -> Result<(), StorageError> {
-        let mut cache = self.cache.lock().map_err(|e| {
-            StorageError::Implementation(format!("Cache lock poisoned: {e}"))
-        })?;
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("Cache lock poisoned: {e}")))?;
         cache.insert(key, value);
         Ok(())
     }
@@ -98,9 +105,10 @@ impl Storage for MemoryStorage {
         &self,
         request: ListPaymentsRequest,
     ) -> Result<Vec<Payment>, StorageError> {
-        let payments = self.payments.lock().map_err(|e| {
-            StorageError::Implementation(format!("Payments lock poisoned: {e}"))
-        })?;
+        let payments = self
+            .payments
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("Payments lock poisoned: {e}")))?;
         let mut filtered = payments.clone();
 
         if let Some(types) = &request.type_filter {
@@ -148,9 +156,10 @@ impl Storage for MemoryStorage {
     }
 
     async fn insert_payment(&self, payment: Payment) -> Result<(), StorageError> {
-        let mut payments = self.payments.lock().map_err(|e| {
-            StorageError::Implementation(format!("Payments lock poisoned: {e}"))
-        })?;
+        let mut payments = self
+            .payments
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("Payments lock poisoned: {e}")))?;
         if let Some(existing) = payments.iter_mut().find(|item| item.id == payment.id) {
             *existing = payment;
         } else {
@@ -164,17 +173,19 @@ impl Storage for MemoryStorage {
         payment_id: String,
         metadata: PaymentMetadata,
     ) -> Result<(), StorageError> {
-        let mut meta = self.payment_metadata.lock().map_err(|e| {
-            StorageError::Implementation(format!("Metadata lock poisoned: {e}"))
-        })?;
+        let mut meta = self
+            .payment_metadata
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("Metadata lock poisoned: {e}")))?;
         meta.insert(payment_id, metadata);
         Ok(())
     }
 
     async fn get_payment_by_id(&self, id: String) -> Result<Payment, StorageError> {
-        let payments = self.payments.lock().map_err(|e| {
-            StorageError::Implementation(format!("Payments lock poisoned: {e}"))
-        })?;
+        let payments = self
+            .payments
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("Payments lock poisoned: {e}")))?;
         payments
             .iter()
             .find(|payment| payment.id == id)
@@ -186,9 +197,10 @@ impl Storage for MemoryStorage {
         &self,
         invoice: String,
     ) -> Result<Option<Payment>, StorageError> {
-        let payments = self.payments.lock().map_err(|e| {
-            StorageError::Implementation(format!("Payments lock poisoned: {e}"))
-        })?;
+        let payments = self
+            .payments
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("Payments lock poisoned: {e}")))?;
         Ok(payments
             .iter()
             .find(|payment| Self::matches_invoice(payment, &invoice))
@@ -201,9 +213,10 @@ impl Storage for MemoryStorage {
         vout: u32,
         amount_sats: u64,
     ) -> Result<(), StorageError> {
-        let mut deposits = self.deposits.lock().map_err(|e| {
-            StorageError::Implementation(format!("Deposits lock poisoned: {e}"))
-        })?;
+        let mut deposits = self
+            .deposits
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("Deposits lock poisoned: {e}")))?;
         deposits.insert(
             Self::deposit_key(&txid, vout),
             DepositInfo {
@@ -219,17 +232,19 @@ impl Storage for MemoryStorage {
     }
 
     async fn delete_deposit(&self, txid: String, vout: u32) -> Result<(), StorageError> {
-        let mut deposits = self.deposits.lock().map_err(|e| {
-            StorageError::Implementation(format!("Deposits lock poisoned: {e}"))
-        })?;
+        let mut deposits = self
+            .deposits
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("Deposits lock poisoned: {e}")))?;
         deposits.remove(&Self::deposit_key(&txid, vout));
         Ok(())
     }
 
     async fn list_deposits(&self) -> Result<Vec<DepositInfo>, StorageError> {
-        let deposits = self.deposits.lock().map_err(|e| {
-            StorageError::Implementation(format!("Deposits lock poisoned: {e}"))
-        })?;
+        let deposits = self
+            .deposits
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("Deposits lock poisoned: {e}")))?;
         Ok(deposits.values().cloned().collect())
     }
 
@@ -239,25 +254,29 @@ impl Storage for MemoryStorage {
         vout: u32,
         payload: UpdateDepositPayload,
     ) -> Result<(), StorageError> {
-        let mut deposits = self.deposits.lock().map_err(|e| {
-            StorageError::Implementation(format!("Deposits lock poisoned: {e}"))
-        })?;
-        let entry = deposits.entry(Self::deposit_key(&txid, vout)).or_insert(
-            DepositInfo {
+        let mut deposits = self
+            .deposits
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("Deposits lock poisoned: {e}")))?;
+        let entry = deposits
+            .entry(Self::deposit_key(&txid, vout))
+            .or_insert(DepositInfo {
                 txid,
                 vout,
                 amount_sats: 0,
                 refund_tx: None,
                 refund_tx_id: None,
                 claim_error: None,
-            },
-        );
+            });
 
         match payload {
             UpdateDepositPayload::ClaimError { error } => {
                 entry.claim_error = Some(error);
             }
-            UpdateDepositPayload::Refund { refund_txid, refund_tx } => {
+            UpdateDepositPayload::Refund {
+                refund_txid,
+                refund_tx,
+            } => {
                 entry.refund_tx_id = Some(refund_txid);
                 entry.refund_tx = Some(refund_tx);
             }
@@ -270,9 +289,10 @@ impl Storage for MemoryStorage {
         &self,
         metadata: Vec<SetLnurlMetadataItem>,
     ) -> Result<(), StorageError> {
-        let mut lnurl_metadata = self.lnurl_metadata.lock().map_err(|e| {
-            StorageError::Implementation(format!("LNURL lock poisoned: {e}"))
-        })?;
+        let mut lnurl_metadata = self
+            .lnurl_metadata
+            .lock()
+            .map_err(|e| StorageError::Implementation(format!("LNURL lock poisoned: {e}")))?;
         for item in metadata {
             lnurl_metadata.insert(item.payment_hash.clone(), item);
         }

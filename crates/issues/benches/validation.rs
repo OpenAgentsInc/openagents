@@ -1,6 +1,6 @@
 //! Benchmarks for input validation functions
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use issues::validation::{validate_agent, validate_description, validate_title};
 use std::hint::black_box;
 
@@ -29,9 +29,7 @@ fn bench_validate_title(c: &mut Criterion) {
     });
 
     // Benchmark empty title (rejected)
-    group.bench_function("empty", |b| {
-        b.iter(|| validate_title(black_box("")))
-    });
+    group.bench_function("empty", |b| b.iter(|| validate_title(black_box(""))));
 
     // Benchmark too long title (rejected)
     let too_long = "a".repeat(201);
@@ -52,9 +50,7 @@ fn bench_validate_description(c: &mut Criterion) {
     let mut group = c.benchmark_group("validate_description");
 
     // Benchmark None description
-    group.bench_function("none", |b| {
-        b.iter(|| validate_description(black_box(None)))
-    });
+    group.bench_function("none", |b| b.iter(|| validate_description(black_box(None))));
 
     // Benchmark valid descriptions of different lengths
     for len in [100, 1000, 5000, 10000] {
@@ -85,13 +81,9 @@ fn bench_validate_agent(c: &mut Criterion) {
     let mut group = c.benchmark_group("validate_agent");
 
     // Benchmark valid agents
-    group.bench_function("claude", |b| {
-        b.iter(|| validate_agent(black_box("claude")))
-    });
+    group.bench_function("claude", |b| b.iter(|| validate_agent(black_box("claude"))));
 
-    group.bench_function("codex", |b| {
-        b.iter(|| validate_agent(black_box("codex")))
-    });
+    group.bench_function("codex", |b| b.iter(|| validate_agent(black_box("codex"))));
 
     // Benchmark invalid agents
     group.bench_function("invalid_gpt4", |b| {

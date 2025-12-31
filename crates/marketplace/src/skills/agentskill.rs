@@ -60,17 +60,19 @@ impl SkillMetadata {
 
         // Validate description
         if self.description.is_empty() || self.description.len() > 1024 {
-            return Err(SkillError::InvalidDescription(
-                format!("Description must be 1-1024 characters, got {}", self.description.len())
-            ));
+            return Err(SkillError::InvalidDescription(format!(
+                "Description must be 1-1024 characters, got {}",
+                self.description.len()
+            )));
         }
 
         // Validate compatibility length if present
         if let Some(ref compat) = self.compatibility {
             if compat.len() > 500 {
-                return Err(SkillError::InvalidDescription(
-                    format!("Compatibility field must be max 500 characters, got {}", compat.len())
-                ));
+                return Err(SkillError::InvalidDescription(format!(
+                    "Compatibility field must be max 500 characters, got {}",
+                    compat.len()
+                )));
             }
         }
 
@@ -112,9 +114,10 @@ impl Skill {
         // Validate name matches directory
         if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
             if dir_name != metadata.name {
-                return Err(SkillError::InvalidName(
-                    format!("Skill name '{}' must match directory name '{}'", metadata.name, dir_name)
-                ));
+                return Err(SkillError::InvalidName(format!(
+                    "Skill name '{}' must match directory name '{}'",
+                    metadata.name, dir_name
+                )));
             }
         }
 
@@ -149,29 +152,33 @@ pub struct SkillManifest {
 pub fn validate_skill_name(name: &str) -> Result<(), SkillError> {
     // Length check
     if name.is_empty() || name.len() > 64 {
-        return Err(SkillError::InvalidName(
-            format!("Name must be 1-64 characters, got {}", name.len())
-        ));
+        return Err(SkillError::InvalidName(format!(
+            "Name must be 1-64 characters, got {}",
+            name.len()
+        )));
     }
 
     // Character check: lowercase alphanumeric and hyphens only
-    if !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
         return Err(SkillError::InvalidName(
-            "Name must contain only lowercase alphanumeric characters and hyphens".to_string()
+            "Name must contain only lowercase alphanumeric characters and hyphens".to_string(),
         ));
     }
 
     // Cannot start or end with hyphen
     if name.starts_with('-') || name.ends_with('-') {
         return Err(SkillError::InvalidName(
-            "Name cannot start or end with a hyphen".to_string()
+            "Name cannot start or end with a hyphen".to_string(),
         ));
     }
 
     // No consecutive hyphens
     if name.contains("--") {
         return Err(SkillError::InvalidName(
-            "Name cannot contain consecutive hyphens".to_string()
+            "Name cannot contain consecutive hyphens".to_string(),
         ));
     }
 
@@ -185,7 +192,7 @@ fn parse_frontmatter(content: &str) -> Result<(String, String), SkillError> {
     // Must start with ---
     if lines.first().is_none_or(|l| l.trim() != "---") {
         return Err(SkillError::MissingField(
-            "SKILL.md must start with YAML frontmatter (---)".to_string()
+            "SKILL.md must start with YAML frontmatter (---)".to_string(),
         ));
     }
 
@@ -193,9 +200,9 @@ fn parse_frontmatter(content: &str) -> Result<(String, String), SkillError> {
     let end_idx = lines[1..]
         .iter()
         .position(|l| l.trim() == "---")
-        .ok_or_else(|| SkillError::MissingField(
-            "SKILL.md frontmatter must end with ---".to_string()
-        ))?;
+        .ok_or_else(|| {
+            SkillError::MissingField("SKILL.md frontmatter must end with ---".to_string())
+        })?;
 
     // Extract frontmatter (between the two ---)
     let frontmatter = lines[1..=end_idx].join("\n");
@@ -229,7 +236,11 @@ pub fn discover_skills(dir: &std::path::Path) -> Result<Vec<Skill>, SkillError> 
                 Ok(skill) => skills.push(skill),
                 Err(e) => {
                     // Log error but continue discovering other skills
-                    eprintln!("Warning: Failed to parse skill at {}: {}", path.display(), e);
+                    eprintln!(
+                        "Warning: Failed to parse skill at {}: {}",
+                        path.display(),
+                        e
+                    );
                 }
             }
         }
@@ -310,10 +321,7 @@ license: MIT
 
 Use this skill for PDF operations."#;
 
-        let skill = Skill::from_content(
-            content.to_string(),
-            PathBuf::from("pdf-tools"),
-        ).unwrap();
+        let skill = Skill::from_content(content.to_string(), PathBuf::from("pdf-tools")).unwrap();
 
         assert_eq!(skill.metadata.name, "pdf-tools");
         assert_eq!(skill.metadata.license, Some("MIT".to_string()));

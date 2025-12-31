@@ -1,8 +1,8 @@
 //! Wallet settings and configuration CLI commands
 
+use crate::storage::config::WalletConfig;
 use anyhow::Result;
 use colored::Colorize;
-use crate::storage::config::WalletConfig;
 
 pub fn show() -> Result<()> {
     println!("{}", "Wallet Settings".cyan().bold());
@@ -25,7 +25,10 @@ pub fn show() -> Result<()> {
     println!("  backup_enabled = {}", config.storage.backup_enabled);
     println!();
     println!("[security]");
-    println!("  max_send_sats = {}", format_optional_sats(config.security.max_send_sats));
+    println!(
+        "  max_send_sats = {}",
+        format_optional_sats(config.security.max_send_sats)
+    );
     println!(
         "  confirm_large_sats = {}",
         format_optional_sats(config.security.confirm_large_sats)

@@ -1,10 +1,10 @@
 //! Trajectory collection from local AI coding assistant logs
 
-use super::{TrajectorySession, TrajectoryConfig};
+use super::{TrajectoryConfig, TrajectorySession};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 /// Supported trajectory sources
@@ -118,7 +118,8 @@ impl TrajectoryCollector {
 
     /// Scan a specific source for trajectories
     pub fn scan_source(&self, source: &TrajectorySource) -> Result<ScanResult> {
-        let log_dir = source.default_log_dir()
+        let log_dir = source
+            .default_log_dir()
             .ok_or_else(|| anyhow::anyhow!("Could not determine log directory"))?;
 
         self.scan_directory(source, &log_dir)
@@ -171,7 +172,7 @@ impl TrajectoryCollector {
                 } else if path.extension().and_then(|s| s.to_str()) == Some("rlog") {
                     match self.parse_trajectory_file(source, &path) {
                         Ok(Some(session)) => sessions.push(session),
-                        Ok(None) => {}, // File didn't meet quality threshold
+                        Ok(None) => {} // File didn't meet quality threshold
                         Err(e) => errors.push(format!("{}: {}", path.display(), e)),
                     }
                 }
@@ -180,7 +181,11 @@ impl TrajectoryCollector {
     }
 
     /// Parse a trajectory file and extract session metadata
-    fn parse_trajectory_file(&self, source: &TrajectorySource, path: &Path) -> Result<Option<TrajectorySession>> {
+    fn parse_trajectory_file(
+        &self,
+        source: &TrajectorySource,
+        path: &Path,
+    ) -> Result<Option<TrajectorySession>> {
         // Read file content
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read file: {}", path.display()))?;
@@ -189,7 +194,8 @@ impl TrajectoryCollector {
         let (metadata, log_content) = parse_rlog_header(&content);
 
         // Extract session ID - prefer metadata, fallback to filename
-        let session_id = metadata.get("id")
+        let session_id = metadata
+            .get("id")
             .cloned()
             .or_else(|| {
                 path.file_stem()
@@ -199,7 +205,8 @@ impl TrajectoryCollector {
             .unwrap_or_else(|| "unknown".to_string());
 
         // Parse token counts from metadata
-        let token_count = metadata.get("tokens_total_in")
+        let token_count = metadata
+            .get("tokens_total_in")
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or_else(|| {
                 // Fall back to word count estimation
@@ -262,15 +269,25 @@ impl TrajectoryCollector {
         let mut score: f64 = 0.0;
 
         // Bonus for git commit correlation
-        if has_initial_commit { score += 0.3; }
-        if has_final_commit { score += 0.3; }
+        if has_initial_commit {
+            score += 0.3;
+        }
+        if has_final_commit {
+            score += 0.3;
+        }
 
         // Bonus for meaningful length
-        if token_count > 100 { score += 0.2; }
-        if token_count > 1000 { score += 0.1; }
+        if token_count > 100 {
+            score += 0.2;
+        }
+        if token_count > 1000 {
+            score += 0.1;
+        }
 
         // Bonus for tool usage (indicates actual work done)
-        if tool_calls > 5 { score += 0.1; }
+        if tool_calls > 5 {
+            score += 0.1;
+        }
 
         score.min(1.0)
     }
@@ -298,15 +315,13 @@ fn parse_rlog_header(content: &str) -> (std::collections::HashMap<String, String
         } else if in_header {
             // Parse key: value pairs
             if let Some((key, value)) = line.split_once(':') {
-                metadata.insert(
-                    key.trim().to_string(),
-                    value.trim().to_string()
-                );
+                metadata.insert(key.trim().to_string(), value.trim().to_string());
             }
         }
     }
 
-    let log_content = content.lines()
+    let log_content = content
+        .lines()
         .skip(log_start_idx)
         .collect::<Vec<_>>()
         .join("\n");
@@ -317,7 +332,8 @@ fn parse_rlog_header(content: &str) -> (std::collections::HashMap<String, String
 /// Count actual tool calls from log content
 fn count_tool_calls(content: &str) -> usize {
     // Count lines starting with "t!:" which indicate tool invocations
-    content.lines()
+    content
+        .lines()
         .filter(|line| line.trim_start().starts_with("t!:"))
         .count()
 }
@@ -364,7 +380,10 @@ fn extract_git_commits(content: &str) -> (Option<String>, Option<String>) {
         // Pattern 4: specific contexts to avoid false positives
         else if line.contains("git") && line.contains("commit") {
             for word in line.split_whitespace() {
-                if word.len() >= 7 && word.len() <= 40 && word.chars().all(|c| c.is_ascii_hexdigit()) {
+                if word.len() >= 7
+                    && word.len() <= 40
+                    && word.chars().all(|c| c.is_ascii_hexdigit())
+                {
                     all_commits.push(word.to_string());
                 }
             }
@@ -443,7 +462,10 @@ fn detect_ci_results(content: &str) -> Option<bool> {
 fn extract_session_times(
     content: &str,
     _metadata: &std::collections::HashMap<String, String>,
-) -> (chrono::DateTime<chrono::Utc>, Option<chrono::DateTime<chrono::Utc>>) {
+) -> (
+    chrono::DateTime<chrono::Utc>,
+    Option<chrono::DateTime<chrono::Utc>>,
+) {
     use chrono::{DateTime, Utc};
 
     // Try to parse from @start and @end markers
@@ -481,9 +503,18 @@ mod tests {
 
     #[test]
     fn test_trajectory_source_parsing() {
-        assert_eq!(TrajectorySource::from_str("claude"), Ok(TrajectorySource::ClaudeCode));
-        assert_eq!(TrajectorySource::from_str("cursor"), Ok(TrajectorySource::Cursor));
-        assert_eq!(TrajectorySource::from_str("codex"), Ok(TrajectorySource::Codex));
+        assert_eq!(
+            TrajectorySource::from_str("claude"),
+            Ok(TrajectorySource::ClaudeCode)
+        );
+        assert_eq!(
+            TrajectorySource::from_str("cursor"),
+            Ok(TrajectorySource::Cursor)
+        );
+        assert_eq!(
+            TrajectorySource::from_str("codex"),
+            Ok(TrajectorySource::Codex)
+        );
         assert!(TrajectorySource::from_str("unknown").is_err());
     }
 
@@ -518,9 +549,15 @@ Some log content here
 
         let (metadata, log_content) = parse_rlog_header(content);
 
-        assert_eq!(metadata.get("id"), Some(&"303cc83b-1f79-40e2-91ac-95138e826d77".to_string()));
+        assert_eq!(
+            metadata.get("id"),
+            Some(&"303cc83b-1f79-40e2-91ac-95138e826d77".to_string())
+        );
         assert_eq!(metadata.get("tokens_total_in"), Some(&"598".to_string()));
-        assert_eq!(metadata.get("model"), Some(&"claude-sonnet-4-5-20250929".to_string()));
+        assert_eq!(
+            metadata.get("model"),
+            Some(&"claude-sonnet-4-5-20250929".to_string())
+        );
         assert!(log_content.contains("@start"));
         assert!(log_content.contains("Some log content"));
     }

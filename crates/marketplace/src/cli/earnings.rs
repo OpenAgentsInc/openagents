@@ -1,11 +1,11 @@
 //! Earnings CLI commands
 
+use crate::core::earnings::{EarningsTracker, RevenueType};
+use crate::db::init_db;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use colored::Colorize;
 use std::fmt;
-use crate::core::earnings::{EarningsTracker, RevenueType};
-use crate::db::init_db;
 use std::path::PathBuf;
 
 /// Earnings commands
@@ -85,15 +85,22 @@ impl EarningsCommands {
             EarningsSubcommand::Dashboard { json, period } => {
                 execute_dashboard(json, &period).await
             }
-            EarningsSubcommand::History { json, limit, source } => {
-                execute_history(json, limit, source).await
-            }
-            EarningsSubcommand::Withdraw { amount, invoice, yes } => {
-                execute_withdraw(amount, invoice, yes).await
-            }
-            EarningsSubcommand::Export { output, format, from, to } => {
-                execute_export(&output, &format, from, to).await
-            }
+            EarningsSubcommand::History {
+                json,
+                limit,
+                source,
+            } => execute_history(json, limit, source).await,
+            EarningsSubcommand::Withdraw {
+                amount,
+                invoice,
+                yes,
+            } => execute_withdraw(amount, invoice, yes).await,
+            EarningsSubcommand::Export {
+                output,
+                format,
+                from,
+                to,
+            } => execute_export(&output, &format, from, to).await,
         }
     }
 }
@@ -160,26 +167,60 @@ async fn execute_dashboard(json: bool, period: &str) -> Result<()> {
     println!();
 
     println!("{}", "Total Earned".bright_green().bold());
-    println!("  {} sats", stats.total_gross_sats.to_string().bright_white());
+    println!(
+        "  {} sats",
+        stats.total_gross_sats.to_string().bright_white()
+    );
     println!();
 
     println!("{}", "Earnings by Source".bright_cyan().bold());
-    println!("  {:<15} {:>10}", "Compute:", format!("{} sats", stats.by_type.compute_sats));
-    println!("  {:<15} {:>10}", "Skills:", format!("{} sats", stats.by_type.skill_sats));
-    println!("  {:<15} {:>10}", "Data:", format!("{} sats", stats.by_type.data_sats));
-    println!("  {:<15} {:>10}", "Trajectories:", format!("{} sats", stats.by_type.trajectory_sats));
+    println!(
+        "  {:<15} {:>10}",
+        "Compute:",
+        format!("{} sats", stats.by_type.compute_sats)
+    );
+    println!(
+        "  {:<15} {:>10}",
+        "Skills:",
+        format!("{} sats", stats.by_type.skill_sats)
+    );
+    println!(
+        "  {:<15} {:>10}",
+        "Data:",
+        format!("{} sats", stats.by_type.data_sats)
+    );
+    println!(
+        "  {:<15} {:>10}",
+        "Trajectories:",
+        format!("{} sats", stats.by_type.trajectory_sats)
+    );
     println!();
 
     println!("{}", "Recent Activity".bright_magenta().bold());
-    println!("  Last hour:       +{} sats", stats.by_period.last_hour_sats);
+    println!(
+        "  Last hour:       +{} sats",
+        stats.by_period.last_hour_sats
+    );
     println!("  Last 24 hours:   +{} sats", stats.by_period.last_day_sats);
-    println!("  Last 7 days:     +{} sats", stats.by_period.last_week_sats);
-    println!("  Last 30 days:    +{} sats", stats.by_period.last_month_sats);
+    println!(
+        "  Last 7 days:     +{} sats",
+        stats.by_period.last_week_sats
+    );
+    println!(
+        "  Last 30 days:    +{} sats",
+        stats.by_period.last_month_sats
+    );
     println!();
 
     println!("{}", "Next Actions".bright_yellow());
-    println!("  • Run {} to see detailed history", "marketplace earnings history".cyan());
-    println!("  • Run {} to export data", "marketplace earnings export".cyan());
+    println!(
+        "  • Run {} to see detailed history",
+        "marketplace earnings history".cyan()
+    );
+    println!(
+        "  • Run {} to export data",
+        "marketplace earnings export".cyan()
+    );
     println!();
 
     Ok(())
@@ -213,7 +254,8 @@ async fn execute_history(json: bool, limit: usize, source_filter: Option<String>
         return Ok(());
     }
 
-    println!("{:<20} {:<15} {:<30} {:>12}",
+    println!(
+        "{:<20} {:<15} {:<30} {:>12}",
         "TIMESTAMP".bright_white().bold(),
         "SOURCE".bright_white().bold(),
         "ITEM ID".bright_white().bold(),
@@ -243,10 +285,16 @@ async fn execute_history(json: bool, limit: usize, source_filter: Option<String>
     }
 
     println!();
-    println!("{}", format!("Showing {} records", buckets.len()).bright_black());
+    println!(
+        "{}",
+        format!("Showing {} records", buckets.len()).bright_black()
+    );
 
     if let Some(filter) = source_filter {
-        println!("{}", format!("Filtered by source: {}", filter).bright_black());
+        println!(
+            "{}",
+            format!("Filtered by source: {}", filter).bright_black()
+        );
     }
 
     println!();
@@ -277,15 +325,32 @@ async fn execute_withdraw(
     }
 
     println!("{}", "Withdrawal Details".bright_white().bold());
-    println!("  Amount:    {} sats", withdraw_amount.to_string().bright_white());
-    println!("  Available: {} sats", available_balance.to_string().bright_yellow());
+    println!(
+        "  Amount:    {} sats",
+        withdraw_amount.to_string().bright_white()
+    );
+    println!(
+        "  Available: {} sats",
+        available_balance.to_string().bright_yellow()
+    );
     println!();
 
     if let Some(ref inv) = invoice {
-        println!("  Invoice:   {}...{}", &inv[..20.min(inv.len())], if inv.len() > 40 { &inv[inv.len()-20..] } else { "" });
+        println!(
+            "  Invoice:   {}...{}",
+            &inv[..20.min(inv.len())],
+            if inv.len() > 40 {
+                &inv[inv.len() - 20..]
+            } else {
+                ""
+            }
+        );
         println!();
     } else {
-        println!("{}", "No invoice provided. Will withdraw to default Lightning address.".yellow());
+        println!(
+            "{}",
+            "No invoice provided. Will withdraw to default Lightning address.".yellow()
+        );
         println!();
     }
 
@@ -313,10 +378,21 @@ async fn execute_withdraw(
 
     println!("{}", "✓ Withdrawal successful!".bright_green().bold());
     println!();
-    println!("  Amount withdrawn: {} sats", withdraw_amount.to_string().bright_white());
-    println!("  New balance:      {} sats", (available_balance - withdraw_amount).to_string().bright_yellow());
+    println!(
+        "  Amount withdrawn: {} sats",
+        withdraw_amount.to_string().bright_white()
+    );
+    println!(
+        "  New balance:      {} sats",
+        (available_balance - withdraw_amount)
+            .to_string()
+            .bright_yellow()
+    );
     println!();
-    println!("{}", "Payment should arrive within 1-2 minutes.".bright_black());
+    println!(
+        "{}",
+        "Payment should arrive within 1-2 minutes.".bright_black()
+    );
     println!();
 
     Ok(())
@@ -346,7 +422,7 @@ async fn execute_export(
 
     // Validate format
     match format {
-        "csv" | "json" => {},
+        "csv" | "json" => {}
         _ => anyhow::bail!("Unsupported format: {}. Use 'csv' or 'json'.", format),
     }
 
@@ -398,10 +474,12 @@ async fn execute_export(
 fn parse_date_to_timestamp(date_str: &str) -> Result<u64> {
     use chrono::NaiveDate;
 
-    let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-        .map_err(|e| anyhow::anyhow!("Invalid date format '{}': {}. Use YYYY-MM-DD", date_str, e))?;
+    let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d").map_err(|e| {
+        anyhow::anyhow!("Invalid date format '{}': {}. Use YYYY-MM-DD", date_str, e)
+    })?;
 
-    let datetime = date.and_hms_opt(0, 0, 0)
+    let datetime = date
+        .and_hms_opt(0, 0, 0)
         .ok_or_else(|| anyhow::anyhow!("Failed to create datetime from date"))?;
 
     Ok(datetime.and_utc().timestamp() as u64)
@@ -409,8 +487,8 @@ fn parse_date_to_timestamp(date_str: &str) -> Result<u64> {
 
 /// Get database path for marketplace earnings
 fn get_db_path() -> Result<PathBuf> {
-    let home = std::env::var("HOME")
-        .map_err(|_| anyhow::anyhow!("HOME environment variable not set"))?;
+    let home =
+        std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME environment variable not set"))?;
     let mut path = PathBuf::from(home);
     path.push(".openagents");
     path.push("marketplace");

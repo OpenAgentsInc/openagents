@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io;
 use std::os::unix::io::AsRawFd;
 
-use super::{pid_path, PidFile};
+use super::{PidFile, pid_path};
 
 /// Check if the daemon is already running
 pub fn is_daemon_running() -> bool {
@@ -78,10 +78,7 @@ pub fn daemonize() -> anyhow::Result<bool> {
 
 /// Redirect stdin, stdout, stderr to /dev/null
 fn redirect_stdio() -> io::Result<()> {
-    let dev_null = File::options()
-        .read(true)
-        .write(true)
-        .open("/dev/null")?;
+    let dev_null = File::options().read(true).write(true).open("/dev/null")?;
 
     let null_fd = dev_null.as_raw_fd();
 

@@ -3,15 +3,15 @@
 use anyhow::{Context, Result};
 use std::io::IsTerminal;
 
-use crate::storage::identities::{current_identity, DEFAULT_IDENTITY_NAME};
+use crate::storage::identities::{DEFAULT_IDENTITY_NAME, current_identity};
 use crate::storage::keychain::{SecureKeychain, WALLET_PASSWORD_ENV};
 
 pub mod bitcoin;
 pub mod error;
 pub mod frostr;
 pub mod identity;
-pub mod payee;
 pub mod password;
+pub mod payee;
 pub mod settings;
 pub mod validation;
 
@@ -37,7 +37,10 @@ pub fn load_mnemonic() -> Result<String> {
                 .context("Failed to unlock wallet with provided password");
         }
 
-        anyhow::bail!("Wallet is password protected. Set {} to unlock.", WALLET_PASSWORD_ENV);
+        anyhow::bail!(
+            "Wallet is password protected. Set {} to unlock.",
+            WALLET_PASSWORD_ENV
+        );
     }
 
     SecureKeychain::retrieve_mnemonic_for(&identity)

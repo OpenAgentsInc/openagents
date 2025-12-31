@@ -22,7 +22,7 @@ pub use patch_gen::{
     PatchGenRequest, PatchGenResult, PatchVerification, PathFilter, TokenUsage,
 };
 pub use pricing::{
-    quote_repo_index, quote_sandbox_run, PriceBook, Quote, RepoIndexPricing, SandboxRunPricing,
+    PriceBook, Quote, RepoIndexPricing, SandboxRunPricing, quote_repo_index, quote_sandbox_run,
 };
 pub use repo_index::{IndexData, IndexType, RepoIndexRequest, RepoIndexResult, Symbol};
 pub use sandbox_run::{

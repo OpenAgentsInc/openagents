@@ -362,20 +362,24 @@ mod tests {
     fn test_dvm_result_status_is_success() {
         assert!(DvmResultStatus::Success.is_success());
         assert!(!DvmResultStatus::Partial.is_success());
-        assert!(!DvmResultStatus::Error {
-            message: "error".to_string()
-        }
-        .is_success());
+        assert!(
+            !DvmResultStatus::Error {
+                message: "error".to_string()
+            }
+            .is_success()
+        );
     }
 
     #[test]
     fn test_dvm_result_status_is_error() {
         assert!(!DvmResultStatus::Success.is_error());
         assert!(!DvmResultStatus::Partial.is_error());
-        assert!(DvmResultStatus::Error {
-            message: "error".to_string()
-        }
-        .is_error());
+        assert!(
+            DvmResultStatus::Error {
+                message: "error".to_string()
+            }
+            .is_error()
+        );
     }
 
     #[test]
@@ -431,8 +435,8 @@ mod tests {
 
     #[test]
     fn test_dvm_job_result_with_invoice() {
-        let result = DvmJobResult::success("job123", "provider456", "data")
-            .with_invoice("lnbc1000n1...");
+        let result =
+            DvmJobResult::success("job123", "provider456", "data").with_invoice("lnbc1000n1...");
         assert_eq!(result.invoice, Some("lnbc1000n1...".to_string()));
     }
 
@@ -479,8 +483,8 @@ mod tests {
 
     #[test]
     fn test_dvm_job_result_serde() {
-        let result = DvmJobResult::success("job123", "provider456", "data")
-            .with_invoice("lnbc1000n1...");
+        let result =
+            DvmJobResult::success("job123", "provider456", "data").with_invoice("lnbc1000n1...");
         let json = serde_json::to_string(&result).unwrap();
         let deserialized: DvmJobResult = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.job_id, result.job_id);

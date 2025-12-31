@@ -281,7 +281,11 @@ impl ReputationService {
     // ============================================================
 
     /// Calculate reputation score from attestations
-    pub fn calculate_score(&self, pubkey: &str, attestations: &[TradeAttestation]) -> ReputationScore {
+    pub fn calculate_score(
+        &self,
+        pubkey: &str,
+        attestations: &[TradeAttestation],
+    ) -> ReputationScore {
         if attestations.is_empty() {
             return ReputationScore::new(pubkey);
         }
@@ -620,7 +624,11 @@ mod tests {
         excellent.avg_settlement_ms = 10000; // Fast settlement
         excellent.dispute_rate = 0.0;
         // Verify the score is actually >= 0.8
-        assert!(excellent.composite_score() >= 0.8, "Expected >= 0.8, got {}", excellent.composite_score());
+        assert!(
+            excellent.composite_score() >= 0.8,
+            "Expected >= 0.8, got {}",
+            excellent.composite_score()
+        );
         assert_eq!(service.trust_level(&excellent), TrustLevel::Excellent);
 
         // Good - need composite >= 0.6 and 10+ trades
@@ -630,7 +638,11 @@ mod tests {
         good.avg_settlement_ms = 10000; // Faster settlement
         good.dispute_rate = 0.0;
         // composite = 0.9*0.4 + 0.5*0.2 + 1.0*0.2 = 0.36 + 0.1 + 0.2 = 0.66
-        assert!(good.composite_score() >= 0.6, "Expected >= 0.6, got {}", good.composite_score());
+        assert!(
+            good.composite_score() >= 0.6,
+            "Expected >= 0.6, got {}",
+            good.composite_score()
+        );
         assert_eq!(service.trust_level(&good), TrustLevel::Good);
     }
 

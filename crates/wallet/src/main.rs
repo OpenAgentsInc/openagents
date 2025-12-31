@@ -422,51 +422,37 @@ fn main() {
 
 fn run(command: Commands) -> anyhow::Result<()> {
     match command {
-        Commands::Init { show_mnemonic } => {
-            cli::identity::init(show_mnemonic)
-        }
-        Commands::Import { mnemonic } => {
-            cli::identity::import(mnemonic)
-        }
-        Commands::Export => {
-            cli::identity::export()
-        }
+        Commands::Init { show_mnemonic } => cli::identity::init(show_mnemonic),
+        Commands::Import { mnemonic } => cli::identity::import(mnemonic),
+        Commands::Export => cli::identity::export(),
         Commands::Password(cmd) => match cmd {
-            PasswordCommands::Set { password, current_password } => {
-                cli::password::set(password, current_password)
-            }
+            PasswordCommands::Set {
+                password,
+                current_password,
+            } => cli::password::set(password, current_password),
         },
-        Commands::Whoami => {
-            cli::identity::whoami()
-        }
+        Commands::Whoami => cli::identity::whoami(),
         Commands::Profile(cmd) => match cmd {
             ProfileCommands::Show => cli::identity::profile_show(),
-            ProfileCommands::Set { name, about, picture, nip05 } => {
-                cli::identity::profile_set(name, about, picture, nip05)
-            }
+            ProfileCommands::Set {
+                name,
+                about,
+                picture,
+                nip05,
+            } => cli::identity::profile_set(name, about, picture, nip05),
         },
         Commands::Contacts(cmd) => match cmd {
             ContactsCommands::List => cli::identity::contacts_list(),
             ContactsCommands::Add { npub, name } => cli::identity::contacts_add(npub, name),
             ContactsCommands::Remove { npub } => cli::identity::contacts_remove(npub),
         },
-        Commands::Post { content } => {
-            cli::identity::post(content)
-        }
+        Commands::Post { content } => cli::identity::post(content),
         Commands::Dm(cmd) => match cmd {
-            DmCommands::Send { recipient, message } => {
-                cli::identity::dm_send(recipient, message)
-            }
-            DmCommands::List { limit } => {
-                cli::identity::dm_list(limit)
-            }
-            DmCommands::Read { event_id } => {
-                cli::identity::dm_read(event_id)
-            }
-        }
-        Commands::Feed { limit } => {
-            cli::identity::feed(limit)
-        }
+            DmCommands::Send { recipient, message } => cli::identity::dm_send(recipient, message),
+            DmCommands::List { limit } => cli::identity::dm_list(limit),
+            DmCommands::Read { event_id } => cli::identity::dm_read(event_id),
+        },
+        Commands::Feed { limit } => cli::identity::feed(limit),
         Commands::Bitcoin(cmd) => match cmd {
             BitcoinCommands::Balance => {
                 anyhow::bail!(
@@ -482,7 +468,10 @@ fn run(command: Commands) -> anyhow::Result<()> {
                     Track progress: directive d-001"
                 )
             }
-            BitcoinCommands::Withdraw { address: _, amount: _ } => {
+            BitcoinCommands::Withdraw {
+                address: _,
+                amount: _,
+            } => {
                 anyhow::bail!(
                     "Withdraw commands require Spark SDK integration (d-001).\n\
                     The Breez SDK integration is pending. See crates/spark/src/wallet.rs.\n\n\
@@ -504,14 +493,20 @@ fn run(command: Commands) -> anyhow::Result<()> {
                 Track progress: directive d-001"
             )
         }
-        Commands::Send { address: _, amount: _ } => {
+        Commands::Send {
+            address: _,
+            amount: _,
+        } => {
             anyhow::bail!(
                 "Send command requires Spark SDK integration (d-001).\n\
                 The Breez SDK integration is pending. See crates/spark/src/wallet.rs.\n\n\
                 Track progress: directive d-001"
             )
         }
-        Commands::Invoice { amount: _, description: _ } => {
+        Commands::Invoice {
+            amount: _,
+            description: _,
+        } => {
             anyhow::bail!(
                 "Invoice command requires Spark SDK integration (d-001).\n\
                 The Breez SDK integration is pending. See crates/spark/src/wallet.rs.\n\n\
@@ -532,12 +527,8 @@ fn run(command: Commands) -> anyhow::Result<()> {
                 Track progress: directive d-001"
             )
         }
-        Commands::Zap { note_id, amount } => {
-            cli::bitcoin::zap(note_id, amount)
-        }
-        Commands::Zaps { note_id } => {
-            cli::bitcoin::zaps(note_id)
-        }
+        Commands::Zap { note_id, amount } => cli::bitcoin::zap(note_id, amount),
+        Commands::Zaps { note_id } => cli::bitcoin::zaps(note_id),
         Commands::Nwc(cmd) => match cmd {
             NwcCommands::Create { name } => cli::bitcoin::nwc_create(name),
             NwcCommands::List => cli::bitcoin::nwc_list(),
@@ -563,31 +554,19 @@ fn run(command: Commands) -> anyhow::Result<()> {
                     FrostrCommands::ImportShare { credential } => {
                         cli::frostr::import_share(credential).await
                     }
-                    FrostrCommands::ExportShare => {
-                        cli::frostr::export_share().await
-                    }
-                    FrostrCommands::Sign { event_hash } => {
-                        cli::frostr::sign(event_hash).await
-                    }
-                    FrostrCommands::Status => {
-                        cli::frostr::status().await
-                    }
-                    FrostrCommands::ListGroups => {
-                        cli::frostr::list_groups().await
-                    }
+                    FrostrCommands::ExportShare => cli::frostr::export_share().await,
+                    FrostrCommands::Sign { event_hash } => cli::frostr::sign(event_hash).await,
+                    FrostrCommands::Status => cli::frostr::status().await,
+                    FrostrCommands::ListGroups => cli::frostr::list_groups().await,
                     FrostrCommands::Peers(peers_cmd) => match peers_cmd {
                         PeersCommands::Add { npub, relay, name } => {
                             cli::frostr::peers_add(npub, relay, name).await
                         }
-                        PeersCommands::List => {
-                            cli::frostr::peers_list().await
-                        }
-                        PeersCommands::Remove { npub } => {
-                            cli::frostr::peers_remove(npub).await
-                        }
+                        PeersCommands::List => cli::frostr::peers_list().await,
+                        PeersCommands::Remove { npub } => cli::frostr::peers_remove(npub).await,
                     },
                 }
             })
-        },
+        }
     }
 }

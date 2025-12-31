@@ -114,10 +114,7 @@ impl EarningsTracker {
 
 /// Get the start of the current day (UTC midnight)
 fn start_of_day(dt: DateTime<Utc>) -> DateTime<Utc> {
-    dt.date_naive()
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_utc()
+    dt.date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc()
 }
 
 /// Get the start of the current week (Monday UTC midnight)

@@ -26,14 +26,14 @@
 
 use crate::error::{Error, Result};
 use crate::exchange::{Order, OrderSide, OrderStatus, TradeAttestation, TradeOutcome};
-use nostr::{finalize_event, Event, EventTemplate};
+use nostr::{Event, EventTemplate, finalize_event};
 use nostr_client::{PoolConfig, RelayPool};
 use serde_json::json;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 use tracing::warn;
 
 /// Event kind for P2P orders (NIP-69)
@@ -73,25 +73,16 @@ pub enum SettlementMessage {
         reputation: f64,
     },
     /// Send a token to counterparty
-    SendToken {
-        trade_id: String,
-        token: String,
-    },
+    SendToken { trade_id: String, token: String },
     /// Acknowledge receipt of token
-    TokenReceived {
-        trade_id: String,
-        amount: u64,
-    },
+    TokenReceived { trade_id: String, amount: u64 },
     /// Report settlement complete
     SettlementComplete {
         trade_id: String,
         receipt_hash: String,
     },
     /// Report an issue
-    DisputeInitiated {
-        trade_id: String,
-        reason: String,
-    },
+    DisputeInitiated { trade_id: String, reason: String },
 }
 
 /// Exchange relay client for Nostr connectivity
@@ -668,7 +659,10 @@ mod tests {
             reputation: 0.95,
         };
         match msg {
-            SettlementMessage::StartSettlement { trade_id, reputation } => {
+            SettlementMessage::StartSettlement {
+                trade_id,
+                reputation,
+            } => {
                 assert_eq!(trade_id, "trade-123");
                 assert_eq!(reputation, 0.95);
             }
@@ -693,7 +687,11 @@ mod tests {
     #[test]
     fn test_get_tag_values() {
         let tags = vec![
-            vec!["pm".to_string(), "cashu".to_string(), "lightning".to_string()],
+            vec![
+                "pm".to_string(),
+                "cashu".to_string(),
+                "lightning".to_string(),
+            ],
             vec!["d".to_string(), "order-123".to_string()],
         ];
 
@@ -734,7 +732,10 @@ mod tests {
         assert!(tags.iter().any(|t| t[0] == "s" && t[1] == "pending"));
         assert!(tags.iter().any(|t| t[0] == "amt" && t[1] == "10000"));
         assert!(tags.iter().any(|t| t[0] == "fa" && t[1] == "100"));
-        assert!(tags.iter().any(|t| t[0] == "pm" && t.contains(&"cashu".to_string())));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "pm" && t.contains(&"cashu".to_string()))
+        );
         assert!(tags.iter().any(|t| t[0] == "y" && t[1] == "openagents"));
     }
 
@@ -755,9 +756,15 @@ mod tests {
 
         assert!(tags.iter().any(|t| t[0] == "L" && t[1] == "exchange/trade"));
         assert!(tags.iter().any(|t| t[0] == "l" && t[1] == "success"));
-        assert!(tags.iter().any(|t| t[0] == "p" && t[1] == "counterparty_pubkey"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "p" && t[1] == "counterparty_pubkey")
+        );
         assert!(tags.iter().any(|t| t[0] == "e" && t[1] == "trade-456"));
         assert!(tags.iter().any(|t| t[0] == "amount" && t[1] == "10000"));
-        assert!(tags.iter().any(|t| t[0] == "settlement_ms" && t[1] == "150"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "settlement_ms" && t[1] == "150")
+        );
     }
 }

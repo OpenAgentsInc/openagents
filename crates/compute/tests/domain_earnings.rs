@@ -1,7 +1,7 @@
 //! Unit tests for EarningsTracker domain module
 
-use compute::domain::EarningsTracker;
 use chrono::{Duration, Utc};
+use compute::domain::EarningsTracker;
 
 // =========================================================================
 // EarningsTracker initialization
@@ -52,8 +52,8 @@ fn test_record_multiple_payments() {
     let mut tracker = EarningsTracker::new();
 
     tracker.record_payment(100_000); // 100 sats
-    tracker.record_payment(50_000);  // 50 sats
-    tracker.record_payment(25_000);  // 25 sats
+    tracker.record_payment(50_000); // 50 sats
+    tracker.record_payment(25_000); // 25 sats
 
     assert_eq!(tracker.today_sats, 175);
     assert_eq!(tracker.week_sats, 175);
@@ -174,7 +174,10 @@ fn test_format_sats_millions() {
 #[test]
 fn test_format_sats_billions() {
     assert_eq!(EarningsTracker::format_sats(1_000_000_000), "1,000,000,000");
-    assert_eq!(EarningsTracker::format_sats(21_000_000_000_000), "21,000,000,000,000");
+    assert_eq!(
+        EarningsTracker::format_sats(21_000_000_000_000),
+        "21,000,000,000,000"
+    );
 }
 
 #[test]
@@ -218,7 +221,7 @@ fn test_day_rollover_resets_today() {
     tracker.record_payment(100_000);
 
     assert_eq!(tracker.today_sats, 100); // Reset + new
-    assert_eq!(tracker.jobs_today, 1);   // Reset + new
+    assert_eq!(tracker.jobs_today, 1); // Reset + new
     assert_eq!(tracker.all_time_sats, 100); // Only new payment (rollover doesn't preserve old today)
 }
 
@@ -235,7 +238,7 @@ fn test_week_rollover_resets_week() {
     tracker.record_payment(200_000);
 
     assert_eq!(tracker.week_sats, 200); // Reset + new
-    assert_eq!(tracker.jobs_week, 1);   // Reset + new
+    assert_eq!(tracker.jobs_week, 1); // Reset + new
 }
 
 #[test]
@@ -372,11 +375,11 @@ fn test_typical_day_scenario() {
     let mut tracker = EarningsTracker::new();
 
     // Simulate a day of work
-    tracker.record_payment(5_000);    // 5 sats
-    tracker.record_payment(10_000);   // 10 sats
-    tracker.record_payment(7_500);    // 7.5 sats (truncated to 7)
-    tracker.record_payment(15_000);   // 15 sats
-    tracker.record_payment(20_000);   // 20 sats
+    tracker.record_payment(5_000); // 5 sats
+    tracker.record_payment(10_000); // 10 sats
+    tracker.record_payment(7_500); // 7.5 sats (truncated to 7)
+    tracker.record_payment(15_000); // 15 sats
+    tracker.record_payment(20_000); // 20 sats
 
     assert_eq!(tracker.jobs_today, 5);
     assert_eq!(tracker.today_sats, 57); // 5+10+7+15+20

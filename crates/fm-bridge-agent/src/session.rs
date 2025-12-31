@@ -11,8 +11,8 @@ use uuid::Uuid;
 use fm_bridge::{CompletionOptions, FMClient};
 use gpt_oss_agent::tools::{Tool, ToolRequest, ToolResult};
 
-use crate::error::{FmBridgeAgentError, Result};
 use crate::FmBridgeAgentConfig;
+use crate::error::{FmBridgeAgentError, Result};
 
 /// A message in the conversation history
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -181,13 +181,14 @@ impl FmBridgeSession {
         {
             let mut history = self.history.write().await;
             if let Some(last) = history.last_mut()
-                && last.role == "assistant" {
-                    last.tool_calls.push(ToolCall {
-                        tool: request.tool,
-                        parameters: request.parameters,
-                        result: Some(result.clone()),
-                    });
-                }
+                && last.role == "assistant"
+            {
+                last.tool_calls.push(ToolCall {
+                    tool: request.tool,
+                    parameters: request.parameters,
+                    result: Some(result.clone()),
+                });
+            }
         }
 
         Ok(result)
@@ -223,7 +224,11 @@ impl FmBridgeSession {
 
         let mut prompt = String::new();
         for msg in history.iter() {
-            let prefix = if msg.role == "user" { "User" } else { "Assistant" };
+            let prefix = if msg.role == "user" {
+                "User"
+            } else {
+                "Assistant"
+            };
             prompt.push_str(&format!("{}: {}\n", prefix, msg.content));
         }
         prompt.push_str("Assistant:");

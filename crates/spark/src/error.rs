@@ -148,7 +148,10 @@ mod tests {
             SparkError::Wallet("test".to_string()),
             SparkError::Network("test".to_string()),
             SparkError::InvalidAddress("test".to_string()),
-            SparkError::InsufficientFunds { required: 1000, available: 500 },
+            SparkError::InsufficientFunds {
+                required: 1000,
+                available: 500,
+            },
             SparkError::PaymentFailed("test".to_string()),
             SparkError::PaymentRouteNotFound,
             SparkError::PaymentTimeout,
@@ -160,7 +163,11 @@ mod tests {
 
         for error in errors {
             let msg = error.user_friendly_message();
-            assert!(!msg.is_empty(), "Error {:?} should have a user-friendly message", error);
+            assert!(
+                !msg.is_empty(),
+                "Error {:?} should have a user-friendly message",
+                error
+            );
         }
     }
 
@@ -170,7 +177,13 @@ mod tests {
         assert!(SparkError::PaymentFailed("test".to_string()).balance_unaffected());
         assert!(SparkError::PaymentRouteNotFound.balance_unaffected());
         assert!(SparkError::PaymentTimeout.balance_unaffected());
-        assert!(SparkError::InsufficientFunds { required: 1000, available: 500 }.balance_unaffected());
+        assert!(
+            SparkError::InsufficientFunds {
+                required: 1000,
+                available: 500
+            }
+            .balance_unaffected()
+        );
         assert!(SparkError::InvalidInvoice("test".to_string()).balance_unaffected());
         assert!(SparkError::InvoiceExpired.balance_unaffected());
     }
@@ -185,10 +198,16 @@ mod tests {
 
     #[test]
     fn test_insufficient_funds_message_shows_amounts() {
-        let error = SparkError::InsufficientFunds { required: 1000, available: 500 };
+        let error = SparkError::InsufficientFunds {
+            required: 1000,
+            available: 500,
+        };
         let msg = error.user_friendly_message();
         assert!(msg.contains("1000"), "Should show required amount");
         assert!(msg.contains("500"), "Should show available amount");
-        assert!(msg.contains("NOT deducted"), "Should clarify balance is safe");
+        assert!(
+            msg.contains("NOT deducted"),
+            "Should clarify balance is safe"
+        );
     }
 }

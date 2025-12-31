@@ -6,12 +6,15 @@
 //! 3. Send a job request
 //! 4. Verify the response
 
-use compute::backends::{BackendRegistry, CompletionRequest, CompletionResponse, InferenceBackend, ModelInfo, Result, StreamChunk};
+use async_trait::async_trait;
+use compute::backends::{
+    BackendRegistry, CompletionRequest, CompletionResponse, InferenceBackend, ModelInfo, Result,
+    StreamChunk,
+};
 use compute::domain::UnifiedIdentity;
 use compute::services::{DvmService, RelayService};
-use async_trait::async_trait;
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{RwLock, broadcast, mpsc};
 
 /// Mock backend for testing
 struct MockBackend {
@@ -78,13 +81,15 @@ impl InferenceBackend for MockBackend {
                 }
             }
             // Send final chunk
-            let _ = tx.send(Ok(StreamChunk {
-                id: "chunk-final".to_string(),
-                model,
-                delta: String::new(),
-                finish_reason: Some("stop".to_string()),
-                extra: Default::default(),
-            })).await;
+            let _ = tx
+                .send(Ok(StreamChunk {
+                    id: "chunk-final".to_string(),
+                    model,
+                    delta: String::new(),
+                    finish_reason: Some("stop".to_string()),
+                    extra: Default::default(),
+                }))
+                .await;
         });
 
         Ok(rx)
@@ -109,13 +114,19 @@ async fn test_backend_registry_with_mock() {
     let backend_guard = backend.read().await;
 
     // Test list_models
-    let models = backend_guard.list_models().await.expect("should list models");
+    let models = backend_guard
+        .list_models()
+        .await
+        .expect("should list models");
     assert_eq!(models.len(), 1);
     assert_eq!(models[0].id, "mock-model");
 
     // Test complete
     let request = CompletionRequest::new("mock-model", "What is 2+2?");
-    let response = backend_guard.complete(request).await.expect("should complete");
+    let response = backend_guard
+        .complete(request)
+        .await
+        .expect("should complete");
 
     assert_eq!(response.model, "mock-model");
     assert!(response.text.contains("What is 2+2?"));
@@ -128,7 +139,12 @@ async fn test_backend_streaming() {
     let backend: Arc<RwLock<dyn InferenceBackend>> = Arc::new(RwLock::new(mock));
 
     let request = CompletionRequest::new("mock-model", "test prompt");
-    let mut rx = backend.read().await.complete_stream(request).await.expect("should stream");
+    let mut rx = backend
+        .read()
+        .await
+        .complete_stream(request)
+        .await
+        .expect("should stream");
 
     let mut collected = Vec::new();
     while let Some(chunk) = rx.recv().await {
@@ -155,7 +171,10 @@ async fn test_dvm_service_with_mock_backend() {
 
     // Create registry with mock backend
     let mut registry = BackendRegistry::new();
-    registry.register_with_id("mock", Arc::new(RwLock::new(MockBackend::new("Test response"))));
+    registry.register_with_id(
+        "mock",
+        Arc::new(RwLock::new(MockBackend::new("Test response"))),
+    );
 
     // Create services
     let relay_service = Arc::new(RelayService::new());
@@ -181,16 +200,27 @@ async fn test_multiple_backends_priority() {
     let mut registry = BackendRegistry::new();
 
     // Register multiple backends
-    registry.register_with_id("ollama", Arc::new(RwLock::new(MockBackend::new("Ollama response"))));
-    registry.register_with_id("llamacpp", Arc::new(RwLock::new(MockBackend::new("Llama.cpp response"))));
-    registry.register_with_id("apple_fm", Arc::new(RwLock::new(MockBackend::new("Apple FM response"))));
+    registry.register_with_id(
+        "ollama",
+        Arc::new(RwLock::new(MockBackend::new("Ollama response"))),
+    );
+    registry.register_with_id(
+        "llamacpp",
+        Arc::new(RwLock::new(MockBackend::new("Llama.cpp response"))),
+    );
+    registry.register_with_id(
+        "apple_fm",
+        Arc::new(RwLock::new(MockBackend::new("Apple FM response"))),
+    );
 
     // First registered should be default
     assert_eq!(registry.default_id(), Some("ollama"));
 
     // Can access specific backend
     let llamacpp = registry.get("llamacpp").expect("should get llamacpp");
-    let response = llamacpp.read().await
+    let response = llamacpp
+        .read()
+        .await
         .complete(CompletionRequest::new("model", "test"))
         .await
         .expect("should complete");
@@ -202,7 +232,9 @@ async fn test_multiple_backends_priority() {
 
     // Default backend should be apple_fm now
     let default = registry.default().expect("should have default");
-    let response = default.read().await
+    let response = default
+        .read()
+        .await
         .complete(CompletionRequest::new("model", "test"))
         .await
         .expect("should complete");
@@ -243,7 +275,10 @@ async fn test_full_job_processing_flow() {
 
     // Create registry with mock backend
     let mut registry = BackendRegistry::new();
-    registry.register_with_id("mock", Arc::new(RwLock::new(MockBackend::new("The answer is 42"))));
+    registry.register_with_id(
+        "mock",
+        Arc::new(RwLock::new(MockBackend::new("The answer is 42"))),
+    );
 
     // Create services
     let relay_service = Arc::new(RelayService::new());
@@ -261,13 +296,15 @@ async fn test_full_job_processing_flow() {
     params.insert("backend".to_string(), "mock".to_string());
 
     // Handle the job request
-    let result = dvm.handle_job_request(
-        "event123456789abcdef",  // event_id
-        5050,                    // kind (text generation)
-        &customer_pubkey,
-        job_inputs,
-        params,
-    ).await;
+    let result = dvm
+        .handle_job_request(
+            "event123456789abcdef", // event_id
+            5050,                   // kind (text generation)
+            &customer_pubkey,
+            job_inputs,
+            params,
+        )
+        .await;
 
     assert!(result.is_ok(), "Job request should succeed");
 
@@ -282,20 +319,29 @@ async fn test_full_job_processing_flow() {
 
     // Should have JobReceived event
     assert!(
-        events.iter().any(|e| matches!(e, DomainEvent::JobReceived { .. })),
-        "Should have JobReceived event. Got: {:?}", event_descriptions
+        events
+            .iter()
+            .any(|e| matches!(e, DomainEvent::JobReceived { .. })),
+        "Should have JobReceived event. Got: {:?}",
+        event_descriptions
     );
 
     // Should have JobStarted event
     assert!(
-        events.iter().any(|e| matches!(e, DomainEvent::JobStarted { .. })),
-        "Should have JobStarted event. Got: {:?}", event_descriptions
+        events
+            .iter()
+            .any(|e| matches!(e, DomainEvent::JobStarted { .. })),
+        "Should have JobStarted event. Got: {:?}",
+        event_descriptions
     );
 
     // Should have JobCompleted event
     assert!(
-        events.iter().any(|e| matches!(e, DomainEvent::JobCompleted { .. })),
-        "Should have JobCompleted event. Got: {:?}", event_descriptions
+        events
+            .iter()
+            .any(|e| matches!(e, DomainEvent::JobCompleted { .. })),
+        "Should have JobCompleted event. Got: {:?}",
+        event_descriptions
     );
 
     // Verify the job was stored
@@ -309,7 +355,10 @@ async fn test_full_job_processing_flow() {
     // Check job completed with result
     match &job.status {
         compute::domain::job::JobStatus::Completed { result } => {
-            assert!(result.contains("The answer is 42"), "Result should contain mock response");
+            assert!(
+                result.contains("The answer is 42"),
+                "Result should contain mock response"
+            );
         }
         other => panic!("Expected Completed status, got {:?}", other),
     }
@@ -340,13 +389,15 @@ async fn test_job_with_missing_backend() {
     let job_inputs = vec![JobInput::text("test")];
     let params = HashMap::new();
 
-    let result = dvm.handle_job_request(
-        "event_no_backend",
-        5050,
-        &customer_identity.public_key_hex(),
-        job_inputs,
-        params,
-    ).await;
+    let result = dvm
+        .handle_job_request(
+            "event_no_backend",
+            5050,
+            &customer_identity.public_key_hex(),
+            job_inputs,
+            params,
+        )
+        .await;
 
     // Should fail because no backends are available
     assert!(result.is_err(), "Should fail without backends");
@@ -359,7 +410,9 @@ async fn test_job_with_missing_backend() {
 
     // Should have JobFailed event
     assert!(
-        events.iter().any(|e| matches!(e, compute::domain::DomainEvent::JobFailed { .. })),
+        events
+            .iter()
+            .any(|e| matches!(e, compute::domain::DomainEvent::JobFailed { .. })),
         "Should have JobFailed event"
     );
 }
@@ -374,8 +427,14 @@ async fn test_job_routing_to_specific_backend() {
 
     // Create registry with multiple backends
     let mut registry = BackendRegistry::new();
-    registry.register_with_id("ollama", Arc::new(RwLock::new(MockBackend::new("From Ollama"))));
-    registry.register_with_id("llamacpp", Arc::new(RwLock::new(MockBackend::new("From Llama.cpp"))));
+    registry.register_with_id(
+        "ollama",
+        Arc::new(RwLock::new(MockBackend::new("From Ollama"))),
+    );
+    registry.register_with_id(
+        "llamacpp",
+        Arc::new(RwLock::new(MockBackend::new("From Llama.cpp"))),
+    );
 
     let relay_service = Arc::new(RelayService::new());
     let backend_registry = Arc::new(RwLock::new(registry));
@@ -394,13 +453,22 @@ async fn test_job_routing_to_specific_backend() {
         &customer.public_key_hex(),
         vec![JobInput::text("test")],
         params,
-    ).await.expect("should succeed");
+    )
+    .await
+    .expect("should succeed");
 
     // Check result used the correct backend
-    let job = dvm.get_job("job_event_specific_b").await.expect("should have job");
+    let job = dvm
+        .get_job("job_event_specific_b")
+        .await
+        .expect("should have job");
     match &job.status {
         compute::domain::job::JobStatus::Completed { result } => {
-            assert!(result.contains("From Llama.cpp"), "Should use llamacpp backend. Got: {}", result);
+            assert!(
+                result.contains("From Llama.cpp"),
+                "Should use llamacpp backend. Got: {}",
+                result
+            );
         }
         other => panic!("Expected Completed, got {:?}", other),
     }
@@ -418,7 +486,10 @@ async fn test_payment_required_without_wallet() {
 
     // Create registry with mock backend
     let mut registry = BackendRegistry::new();
-    registry.register_with_id("mock", Arc::new(RwLock::new(MockBackend::new("Test response"))));
+    registry.register_with_id(
+        "mock",
+        Arc::new(RwLock::new(MockBackend::new("Test response"))),
+    );
 
     let relay_service = Arc::new(RelayService::new());
     let backend_registry = Arc::new(RwLock::new(registry));
@@ -436,20 +507,23 @@ async fn test_payment_required_without_wallet() {
     dvm.set_identity(Arc::new(identity)).await;
 
     // Try to handle a job request - should fail because no wallet configured
-    let result = dvm.handle_job_request(
-        "event_no_wallet",
-        5050,
-        &customer.public_key_hex(),
-        vec![JobInput::text("test")],
-        HashMap::new(),
-    ).await;
+    let result = dvm
+        .handle_job_request(
+            "event_no_wallet",
+            5050,
+            &customer.public_key_hex(),
+            vec![JobInput::text("test")],
+            HashMap::new(),
+        )
+        .await;
 
     // Should fail with NoWalletConfigured error
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
         matches!(err, compute::services::DvmError::NoWalletConfigured),
-        "Expected NoWalletConfigured, got {:?}", err
+        "Expected NoWalletConfigured, got {:?}",
+        err
     );
 }
 
@@ -474,7 +548,10 @@ async fn test_paid_job_flow_with_manual_confirmation() {
 
     // Create registry with mock backend
     let mut registry = BackendRegistry::new();
-    registry.register_with_id("mock", Arc::new(RwLock::new(MockBackend::new("Paid job result!"))));
+    registry.register_with_id(
+        "mock",
+        Arc::new(RwLock::new(MockBackend::new("Paid job result!"))),
+    );
 
     // Create services
     let relay_service = Arc::new(RelayService::new());
@@ -498,7 +575,9 @@ async fn test_paid_job_flow_with_manual_confirmation() {
         &customer_pubkey,
         job_inputs,
         params,
-    ).await.expect("should process free job");
+    )
+    .await
+    .expect("should process free job");
 
     // Collect events
     let mut events = Vec::new();
@@ -508,25 +587,37 @@ async fn test_paid_job_flow_with_manual_confirmation() {
 
     // Verify free job completed (job_id is "job_" + first 16 chars of event_id)
     // "event_free_job123" -> first 16 chars = "event_free_job12"
-    let job = dvm.get_job("job_event_free_job12").await.expect("should have job");
+    let job = dvm
+        .get_job("job_event_free_job12")
+        .await
+        .expect("should have job");
     match &job.status {
         JobStatus::Completed { result } => {
-            assert!(result.contains("Paid job result!"), "Should contain mock response");
+            assert!(
+                result.contains("Paid job result!"),
+                "Should contain mock response"
+            );
         }
         other => panic!("Expected Completed, got {:?}", other),
     }
 
     // Verify events
     assert!(
-        events.iter().any(|e| matches!(e, DomainEvent::JobReceived { .. })),
+        events
+            .iter()
+            .any(|e| matches!(e, DomainEvent::JobReceived { .. })),
         "Should have JobReceived event"
     );
     assert!(
-        events.iter().any(|e| matches!(e, DomainEvent::JobStarted { .. })),
+        events
+            .iter()
+            .any(|e| matches!(e, DomainEvent::JobStarted { .. })),
         "Should have JobStarted event"
     );
     assert!(
-        events.iter().any(|e| matches!(e, DomainEvent::JobCompleted { .. })),
+        events
+            .iter()
+            .any(|e| matches!(e, DomainEvent::JobCompleted { .. })),
         "Should have JobCompleted event"
     );
 }
@@ -546,7 +637,10 @@ async fn test_confirm_payment_on_pending_job() {
 
     // Create registry with mock backend
     let mut registry = BackendRegistry::new();
-    registry.register_with_id("mock", Arc::new(RwLock::new(MockBackend::new("Confirmed payment response"))));
+    registry.register_with_id(
+        "mock",
+        Arc::new(RwLock::new(MockBackend::new("Confirmed payment response"))),
+    );
 
     let relay_service = Arc::new(RelayService::new());
     let backend_registry = Arc::new(RwLock::new(registry));
@@ -562,11 +656,16 @@ async fn test_confirm_payment_on_pending_job() {
         &customer.public_key_hex(),
         vec![JobInput::text("test payment confirmation")],
         HashMap::new(),
-    ).await.expect("should handle request");
+    )
+    .await
+    .expect("should handle request");
 
     // Job should be completed (since require_payment is false by default)
     // job_id is "job_" + first 16 chars of event_id
-    let job = dvm.get_job("job_event_confirm_te").await.expect("should have job");
+    let job = dvm
+        .get_job("job_event_confirm_te")
+        .await
+        .expect("should have job");
     assert!(
         matches!(job.status, JobStatus::Completed { .. }),
         "Job should be completed without payment requirement"
@@ -592,7 +691,10 @@ async fn test_job_payment_amount_tracking() {
 
     // Create registry with mock backend
     let mut registry = BackendRegistry::new();
-    registry.register_with_id("mock", Arc::new(RwLock::new(MockBackend::new("Tracking response"))));
+    registry.register_with_id(
+        "mock",
+        Arc::new(RwLock::new(MockBackend::new("Tracking response"))),
+    );
 
     let relay_service = Arc::new(RelayService::new());
     let backend_registry = Arc::new(RwLock::new(registry));
@@ -608,16 +710,24 @@ async fn test_job_payment_amount_tracking() {
         &customer.public_key_hex(),
         vec![JobInput::text("track amount")],
         HashMap::new(),
-    ).await.expect("should handle request");
+    )
+    .await
+    .expect("should handle request");
 
     // job_id is "job_" + first 16 chars of event_id
-    let job = dvm.get_job("job_event_amount_tra").await.expect("should have job");
+    let job = dvm
+        .get_job("job_event_amount_tra")
+        .await
+        .expect("should have job");
 
     // Verify job completed
     assert!(matches!(job.status, JobStatus::Completed { .. }));
 
     // For free jobs, amount_msats should be None
-    assert!(job.amount_msats.is_none(), "Free job should have no payment amount");
+    assert!(
+        job.amount_msats.is_none(),
+        "Free job should have no payment amount"
+    );
 
     // Verify other job metadata
     assert_eq!(job.kind, 5050);

@@ -5,15 +5,15 @@
 use clap::{Args, ValueEnum};
 use compute::domain::{DomainEvent, UnifiedIdentity};
 use std::time::Instant;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
 use crate::config::PylonConfig;
 use crate::daemon::{
-    daemonize, db_path, is_daemon_running, pid_path, socket_path, ControlSocket, DaemonCommand,
-    DaemonResponse, PidFile,
+    ControlSocket, DaemonCommand, DaemonResponse, PidFile, daemonize, db_path, is_daemon_running,
+    pid_path, socket_path,
 };
-use crate::db::jobs::{Job, JobStatus};
 use crate::db::PylonDb;
+use crate::db::jobs::{Job, JobStatus};
 use crate::host::AgentRunner;
 use crate::neobank_service::{NeobankConfig, NeobankService};
 use crate::provider::PylonProvider;
@@ -419,7 +419,11 @@ async fn run_daemon(
                                 tracing::warn!("Failed to mark job as failed: {}", e);
                             }
                         }
-                        DomainEvent::PaymentReceived { job_id, amount_msats, .. } => {
+                        DomainEvent::PaymentReceived {
+                            job_id,
+                            amount_msats,
+                            ..
+                        } => {
                             earnings_msats += amount_msats;
                             // Mark the invoice as paid
                             if let Err(e) = db.mark_invoice_paid(job_id, *amount_msats) {
@@ -432,7 +436,12 @@ async fn run_daemon(
                                 tracing::warn!("Failed to update job status: {}", e);
                             }
                         }
-                        DomainEvent::InvoiceCreated { job_id, bolt11, amount_msats, .. } => {
+                        DomainEvent::InvoiceCreated {
+                            job_id,
+                            bolt11,
+                            amount_msats,
+                            ..
+                        } => {
                             // Record the invoice in the database
                             if let Err(e) = db.record_invoice(job_id, bolt11, *amount_msats) {
                                 tracing::warn!("Failed to record invoice: {}", e);

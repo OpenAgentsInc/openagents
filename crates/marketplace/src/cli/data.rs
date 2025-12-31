@@ -1,7 +1,7 @@
 //! Data CLI commands
 
-use clap::Subcommand;
 use crate::data::{DatasetBrowser, DatasetCategory, SearchFilters, SortBy};
+use clap::Subcommand;
 
 #[derive(Subcommand)]
 pub enum DataCommands {
@@ -98,7 +98,9 @@ impl DataCommands {
                 free,
                 sort,
             } => {
-                browse_datasets(category, mime_type, max_price, min_size, max_size, free, &sort)?;
+                browse_datasets(
+                    category, mime_type, max_price, min_size, max_size, free, &sort,
+                )?;
             }
             DataCommands::Search { query, sort } => {
                 search_datasets(&query, &sort)?;
@@ -201,7 +203,11 @@ fn search_datasets(query: &str, sort: &str) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    println!("Search Results for '{}' ({} found):\n", query, datasets.len());
+    println!(
+        "Search Results for '{}' ({} found):\n",
+        query,
+        datasets.len()
+    );
     for dataset in datasets {
         print_dataset_listing(&dataset);
     }
@@ -290,7 +296,10 @@ fn download_dataset(id: &str, output: &str) -> anyhow::Result<()> {
 
 fn publish_dataset(path: &str, name: &str, price: Option<u64>) -> anyhow::Result<()> {
     if let Some(p) = price {
-        println!("Publishing dataset {} from {} for {} sats...", name, path, p);
+        println!(
+            "Publishing dataset {} from {} for {} sats...",
+            name, path, p
+        );
     } else {
         println!("Publishing free dataset {} from {}...", name, path);
     }

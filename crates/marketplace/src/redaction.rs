@@ -94,7 +94,11 @@ impl RedactionType {
     pub fn is_critical(&self) -> bool {
         matches!(
             self,
-            Self::ApiKey | Self::Password | Self::PrivateKey | Self::CreditCard | Self::SocialSecurity
+            Self::ApiKey
+                | Self::Password
+                | Self::PrivateKey
+                | Self::CreditCard
+                | Self::SocialSecurity
         )
     }
 }
@@ -396,9 +400,7 @@ impl RedactionPreferences {
     /// Check if a detection should block contribution
     pub fn should_block(&self, detection: &SecretDetection) -> bool {
         detection.confidence >= self.min_confidence
-            && self
-                .block_on_detection
-                .contains(&detection.detection_type)
+            && self.block_on_detection.contains(&detection.detection_type)
     }
 }
 
@@ -492,8 +494,8 @@ mod tests {
     #[test]
     fn test_secret_detection() {
         let span = TextSpan::new(0, 10);
-        let detection = SecretDetection::new(RedactionType::ApiKey, 0.95, span)
-            .with_preview("sk_test_...");
+        let detection =
+            SecretDetection::new(RedactionType::ApiKey, 0.95, span).with_preview("sk_test_...");
 
         assert_eq!(detection.detection_type, RedactionType::ApiKey);
         assert_eq!(detection.confidence, 0.95);
@@ -506,11 +508,7 @@ mod tests {
 
     #[test]
     fn test_custom_redaction_pattern() {
-        let pattern = CustomRedactionPattern::new(
-            "internal-id",
-            r"INT-\d{6}",
-            "[INTERNAL_ID]",
-        );
+        let pattern = CustomRedactionPattern::new("internal-id", r"INT-\d{6}", "[INTERNAL_ID]");
 
         assert_eq!(pattern.name, "internal-id");
         assert!(pattern.case_sensitive);
@@ -527,9 +525,7 @@ mod tests {
         assert!(prefs.review_before_submit);
         assert_eq!(prefs.min_confidence, 0.7);
         assert_eq!(prefs.block_on_detection.len(), 5);
-        assert!(prefs
-            .block_on_detection
-            .contains(&RedactionType::ApiKey));
+        assert!(prefs.block_on_detection.contains(&RedactionType::ApiKey));
     }
 
     #[test]
@@ -537,25 +533,14 @@ mod tests {
         let mut prefs = RedactionPreferences::new();
         prefs.add_blocking_type(RedactionType::Email);
 
-        let api_key_detection = SecretDetection::new(
-            RedactionType::ApiKey,
-            0.9,
-            TextSpan::new(0, 10),
-        );
+        let api_key_detection =
+            SecretDetection::new(RedactionType::ApiKey, 0.9, TextSpan::new(0, 10));
         assert!(prefs.should_block(&api_key_detection));
 
-        let email_detection = SecretDetection::new(
-            RedactionType::Email,
-            0.8,
-            TextSpan::new(0, 20),
-        );
+        let email_detection = SecretDetection::new(RedactionType::Email, 0.8, TextSpan::new(0, 20));
         assert!(prefs.should_block(&email_detection));
 
-        let low_confidence = SecretDetection::new(
-            RedactionType::ApiKey,
-            0.5,
-            TextSpan::new(0, 10),
-        );
+        let low_confidence = SecretDetection::new(RedactionType::ApiKey, 0.5, TextSpan::new(0, 10));
         assert!(!prefs.should_block(&low_confidence)); // Below threshold
     }
 
@@ -580,11 +565,7 @@ mod tests {
 
     #[test]
     fn test_secret_detection_serde() {
-        let detection = SecretDetection::new(
-            RedactionType::Password,
-            0.85,
-            TextSpan::new(5, 15),
-        );
+        let detection = SecretDetection::new(RedactionType::Password, 0.85, TextSpan::new(5, 15));
         let json = serde_json::to_string(&detection).unwrap();
         let deserialized: SecretDetection = serde_json::from_str(&json).unwrap();
 

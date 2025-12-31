@@ -256,10 +256,12 @@ mod tests {
         let conn = init_memory_db().unwrap();
 
         // Create a project first
-        let project = project::create_project(&conn, "test-project", "/path", None, None, None).unwrap();
+        let project =
+            project::create_project(&conn, "test-project", "/path", None, None, None).unwrap();
 
         // Create a session
-        let session = create_session(&conn, &project.id, "test prompt", "sonnet", Some(1234)).unwrap();
+        let session =
+            create_session(&conn, &project.id, "test prompt", "sonnet", Some(1234)).unwrap();
 
         assert_eq!(session.project_id, project.id);
         assert_eq!(session.prompt, "test prompt");
@@ -277,7 +279,8 @@ mod tests {
     fn test_update_session_status() {
         let conn = init_memory_db().unwrap();
 
-        let project = project::create_project(&conn, "test-project", "/path", None, None, None).unwrap();
+        let project =
+            project::create_project(&conn, "test-project", "/path", None, None, None).unwrap();
         let session = create_session(&conn, &project.id, "test", "sonnet", None).unwrap();
 
         // Update status to completed
@@ -294,7 +297,8 @@ mod tests {
     fn test_update_session_metrics() {
         let conn = init_memory_db().unwrap();
 
-        let project = project::create_project(&conn, "test-project", "/path", None, None, None).unwrap();
+        let project =
+            project::create_project(&conn, "test-project", "/path", None, None, None).unwrap();
         let session = create_session(&conn, &project.id, "test", "sonnet", None).unwrap();
 
         // Update metrics
@@ -311,7 +315,8 @@ mod tests {
     fn test_get_active_sessions() {
         let conn = init_memory_db().unwrap();
 
-        let project = project::create_project(&conn, "test-project", "/path", None, None, None).unwrap();
+        let project =
+            project::create_project(&conn, "test-project", "/path", None, None, None).unwrap();
 
         // Create multiple sessions
         let session1 = create_session(&conn, &project.id, "test1", "sonnet", None).unwrap();
@@ -330,7 +335,8 @@ mod tests {
     fn test_cascade_delete_on_project_delete() {
         let conn = init_memory_db().unwrap();
 
-        let project = project::create_project(&conn, "test-project", "/path", None, None, None).unwrap();
+        let project =
+            project::create_project(&conn, "test-project", "/path", None, None, None).unwrap();
         create_session(&conn, &project.id, "test", "sonnet", None).unwrap();
 
         // Delete project

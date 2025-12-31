@@ -1,6 +1,6 @@
 //! Agent state persistence for host mode
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use super::PylonDb;
@@ -258,7 +258,11 @@ impl PylonDb {
     }
 
     /// Get tick history for an agent
-    pub fn get_tick_history(&self, agent_npub: &str, limit: usize) -> anyhow::Result<Vec<TickRecord>> {
+    pub fn get_tick_history(
+        &self,
+        agent_npub: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<TickRecord>> {
         let mut stmt = self.conn().prepare(
             "SELECT id, agent_npub, tick_number, prompt_tokens, completion_tokens, actions_json, cost_sats, duration_ms, created_at
              FROM tick_history
@@ -289,16 +293,12 @@ impl PylonDb {
     /// Delete an agent and its tick history
     pub fn delete_agent(&self, npub: &str) -> anyhow::Result<()> {
         // Delete tick history first (foreign key)
-        self.conn().execute(
-            "DELETE FROM tick_history WHERE agent_npub = ?",
-            [npub],
-        )?;
+        self.conn()
+            .execute("DELETE FROM tick_history WHERE agent_npub = ?", [npub])?;
 
         // Delete agent
-        self.conn().execute(
-            "DELETE FROM agents WHERE npub = ?",
-            [npub],
-        )?;
+        self.conn()
+            .execute("DELETE FROM agents WHERE npub = ?", [npub])?;
 
         Ok(())
     }
@@ -358,7 +358,8 @@ mod tests {
         };
 
         db.upsert_agent(&agent).unwrap();
-        db.update_agent_state("npub1test2", LifecycleState::Active).unwrap();
+        db.update_agent_state("npub1test2", LifecycleState::Active)
+            .unwrap();
 
         let retrieved = db.get_agent("npub1test2").unwrap().unwrap();
         assert_eq!(retrieved.lifecycle_state, LifecycleState::Active);
@@ -382,8 +383,16 @@ mod tests {
         };
 
         db.upsert_agent(&agent).unwrap();
-        db.record_tick("npub1test3", 1, Some(100), Some(50), Some("[\"Post\"]"), Some(5), Some(1200))
-            .unwrap();
+        db.record_tick(
+            "npub1test3",
+            1,
+            Some(100),
+            Some(50),
+            Some("[\"Post\"]"),
+            Some(5),
+            Some(1200),
+        )
+        .unwrap();
 
         let retrieved = db.get_agent("npub1test3").unwrap().unwrap();
         assert_eq!(retrieved.tick_count, 1);

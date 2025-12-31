@@ -265,7 +265,12 @@ impl MintTrustService {
     // ============================================================
 
     /// Add a mint to the known list
-    pub async fn add_mint(&self, url: &str, currency: Currency, network: MintNetwork) -> Result<()> {
+    pub async fn add_mint(
+        &self,
+        url: &str,
+        currency: Currency,
+        network: MintNetwork,
+    ) -> Result<()> {
         let url = Url::parse(url).map_err(|e| Error::Database(e.to_string()))?;
         let key = url.to_string();
 
@@ -382,8 +387,7 @@ impl MintTrustService {
             if let Some(mint) = mints.get_mut(&key) {
                 mint.mark_seen();
                 if health.is_healthy() {
-                    mint.avg_response_ms =
-                        (mint.avg_response_ms + health.response_ms) / 2;
+                    mint.avg_response_ms = (mint.avg_response_ms + health.response_ms) / 2;
                 }
             }
         }
@@ -422,11 +426,7 @@ impl MintTrustService {
     // ============================================================
 
     /// Calculate trust score for a mint
-    async fn calculate_trust_score(
-        &self,
-        mint: &MintInfo,
-        _wot_follows: &[String],
-    ) -> f64 {
+    async fn calculate_trust_score(&self, mint: &MintInfo, _wot_follows: &[String]) -> f64 {
         let mut score = 0.0;
 
         // Recommendation component
@@ -643,14 +643,15 @@ mod tests {
         let service = MintTrustService::new();
 
         service
-            .add_mint("https://mint.example.com", Currency::Btc, MintNetwork::Mainnet)
+            .add_mint(
+                "https://mint.example.com",
+                Currency::Btc,
+                MintNetwork::Mainnet,
+            )
             .await
             .unwrap();
 
-        let mint = service
-            .get_mint("https://mint.example.com/")
-            .await
-            .unwrap();
+        let mint = service.get_mint("https://mint.example.com/").await.unwrap();
 
         assert_eq!(mint.currency, Currency::Btc);
         assert_eq!(mint.network, MintNetwork::Mainnet);
@@ -661,15 +662,27 @@ mod tests {
         let service = MintTrustService::new();
 
         service
-            .add_mint("https://btc1.example.com", Currency::Btc, MintNetwork::Mainnet)
+            .add_mint(
+                "https://btc1.example.com",
+                Currency::Btc,
+                MintNetwork::Mainnet,
+            )
             .await
             .unwrap();
         service
-            .add_mint("https://btc2.example.com", Currency::Btc, MintNetwork::Testnet)
+            .add_mint(
+                "https://btc2.example.com",
+                Currency::Btc,
+                MintNetwork::Testnet,
+            )
             .await
             .unwrap();
         service
-            .add_mint("https://usd.example.com", Currency::Usd, MintNetwork::Mainnet)
+            .add_mint(
+                "https://usd.example.com",
+                Currency::Usd,
+                MintNetwork::Mainnet,
+            )
             .await
             .unwrap();
 
@@ -686,7 +699,11 @@ mod tests {
         let url = Url::parse("https://mint.example.com").unwrap();
 
         service
-            .add_mint("https://mint.example.com", Currency::Btc, MintNetwork::Mainnet)
+            .add_mint(
+                "https://mint.example.com",
+                Currency::Btc,
+                MintNetwork::Mainnet,
+            )
             .await
             .unwrap();
 
@@ -700,7 +717,9 @@ mod tests {
 
         service.add_recommendation(rec).await;
 
-        let recs = service.get_recommendations("https://mint.example.com/").await;
+        let recs = service
+            .get_recommendations("https://mint.example.com/")
+            .await;
         assert_eq!(recs.len(), 1);
         assert_eq!(recs[0].rating, 5);
 
@@ -735,19 +754,33 @@ mod tests {
         let service = MintTrustService::new();
 
         service
-            .add_mint("https://low.example.com", Currency::Btc, MintNetwork::Mainnet)
+            .add_mint(
+                "https://low.example.com",
+                Currency::Btc,
+                MintNetwork::Mainnet,
+            )
             .await
             .unwrap();
         service
-            .add_mint("https://high.example.com", Currency::Btc, MintNetwork::Mainnet)
+            .add_mint(
+                "https://high.example.com",
+                Currency::Btc,
+                MintNetwork::Mainnet,
+            )
             .await
             .unwrap();
 
         // Set different trust scores
         {
             let mut mints = service.mints.write().await;
-            mints.get_mut("https://low.example.com/").unwrap().trust_score = 0.3;
-            mints.get_mut("https://high.example.com/").unwrap().trust_score = 0.8;
+            mints
+                .get_mut("https://low.example.com/")
+                .unwrap()
+                .trust_score = 0.3;
+            mints
+                .get_mut("https://high.example.com/")
+                .unwrap()
+                .trust_score = 0.8;
         }
 
         // Select with low min trust
@@ -802,7 +835,10 @@ mod tests {
 
         let tags = service.build_recommendation_tags(&url, 5, Some("Great!"));
 
-        assert!(tags.iter().any(|t| t[0] == "u" && t[1] == "https://mint.example.com/"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "u" && t[1] == "https://mint.example.com/")
+        );
         assert!(tags.iter().any(|t| t[0] == "rating" && t[1] == "5"));
         assert!(tags.iter().any(|t| t[0] == "comment" && t[1] == "Great!"));
     }
@@ -813,7 +849,11 @@ mod tests {
         let url = Url::parse("https://mint.example.com").unwrap();
 
         service
-            .add_mint("https://mint.example.com", Currency::Btc, MintNetwork::Mainnet)
+            .add_mint(
+                "https://mint.example.com",
+                Currency::Btc,
+                MintNetwork::Mainnet,
+            )
             .await
             .unwrap();
 

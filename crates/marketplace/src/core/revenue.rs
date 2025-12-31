@@ -16,8 +16,8 @@
 //!
 //! Total: 100%
 
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
 /// Revenue split configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,10 +153,7 @@ impl RevenueSplit {
 
     /// Verify the split adds up to the gross amount
     pub fn verify(&self) -> Result<()> {
-        let total = self.creator_sats
-            + self.compute_sats
-            + self.platform_sats
-            + self.referrer_sats;
+        let total = self.creator_sats + self.compute_sats + self.platform_sats + self.referrer_sats;
 
         if total != self.gross_sats {
             return Err(anyhow::anyhow!(
@@ -194,10 +191,7 @@ mod tests {
     fn test_custom_config_invalid() {
         let result = RevenueSplitConfig::new(60, 20, 15, 10);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("must sum to 100"));
+        assert!(result.unwrap_err().to_string().contains("must sum to 100"));
     }
 
     #[test]
@@ -239,10 +233,8 @@ mod tests {
         // Verify total equals gross (rounding handled)
         assert!(split.verify().is_ok());
 
-        let total = split.creator_sats
-            + split.compute_sats
-            + split.platform_sats
-            + split.referrer_sats;
+        let total =
+            split.creator_sats + split.compute_sats + split.platform_sats + split.referrer_sats;
         assert_eq!(total, 1_000);
     }
 

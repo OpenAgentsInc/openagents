@@ -5,9 +5,9 @@
 use anyhow::Result;
 use colored::Colorize;
 
-use crate::storage::address_book::AddressBook;
 use super::error::{WalletError, format_error_with_hint};
-use super::validation::{detect_and_validate_destination, PaymentDestinationType};
+use super::validation::{PaymentDestinationType, detect_and_validate_destination};
+use crate::storage::address_book::AddressBook;
 
 fn validate_payee_name(name: &str) -> Result<(), WalletError> {
     let trimmed = name.trim();
@@ -22,9 +22,13 @@ fn validate_payee_name(name: &str) -> Result<(), WalletError> {
         ));
     }
 
-    if !trimmed.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ') {
+    if !trimmed
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ')
+    {
         return Err(WalletError::Other(
-            "Payee name can only contain letters, numbers, spaces, hyphens, and underscores".to_string(),
+            "Payee name can only contain letters, numbers, spaces, hyphens, and underscores"
+                .to_string(),
         ));
     }
 
@@ -59,10 +63,18 @@ pub fn list() -> Result<()> {
 
     for entry in &book.entries {
         let type_hint = match detect_and_validate_destination(&entry.address) {
-            Ok(validated) => format!(" ({})", format_destination_type(&validated.destination_type)),
+            Ok(validated) => format!(
+                " ({})",
+                format_destination_type(&validated.destination_type)
+            ),
             Err(_) => String::new(),
         };
-        println!("  {} → {}{}", entry.name.green(), entry.address, type_hint.dimmed());
+        println!(
+            "  {} → {}{}",
+            entry.name.green(),
+            entry.address,
+            type_hint.dimmed()
+        );
     }
 
     println!();

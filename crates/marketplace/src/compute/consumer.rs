@@ -3,7 +3,7 @@
 //! This module provides the consumer side of the compute marketplace,
 //! allowing users to submit inference jobs to providers and receive results.
 
-use crate::compute::events::{ComputeJobRequest, ComputeJobResult, ComputeJobFeedback};
+use crate::compute::events::{ComputeJobFeedback, ComputeJobRequest, ComputeJobResult};
 use nostr::{JobStatus, Nip90Error};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -89,7 +89,11 @@ impl JobInfo {
     }
 
     /// Update job state from feedback
-    pub fn update_from_feedback(&mut self, feedback: &ComputeJobFeedback, provider: impl Into<String>) {
+    pub fn update_from_feedback(
+        &mut self,
+        feedback: &ComputeJobFeedback,
+        provider: impl Into<String>,
+    ) {
         let inner = feedback.inner();
         self.state = JobState::from(inner.status.clone());
         self.provider = Some(provider.into());
@@ -173,20 +177,11 @@ pub enum JobUpdate {
         extra: Option<String>,
     },
     /// Partial result available
-    Partial {
-        job_id: String,
-        content: String,
-    },
+    Partial { job_id: String, content: String },
     /// Job completed
-    Completed {
-        job_id: String,
-        result: String,
-    },
+    Completed { job_id: String, result: String },
     /// Job failed
-    Failed {
-        job_id: String,
-        error: String,
-    },
+    Failed { job_id: String, error: String },
 }
 
 /// Handle for managing an active job
@@ -204,7 +199,11 @@ impl JobHandle {
     /// Create a new job handle
     #[allow(dead_code)]
     fn new(job_id: String, info: Arc<Mutex<JobInfo>>, updates: mpsc::Receiver<JobUpdate>) -> Self {
-        Self { job_id, updates, info }
+        Self {
+            job_id,
+            updates,
+            info,
+        }
     }
 
     /// Get current job info
@@ -290,7 +289,10 @@ impl Consumer {
         let inner = feedback.inner();
         let new_state = JobState::from(inner.status.clone());
 
-        let senders = self.update_senders.lock().expect("Update senders lock poisoned");
+        let senders = self
+            .update_senders
+            .lock()
+            .expect("Update senders lock poisoned");
         if let Some(tx) = senders.get(job_id) {
             let update = match inner.status {
                 JobStatus::PaymentRequired => JobUpdate::PaymentRequired {
@@ -339,7 +341,10 @@ impl Consumer {
         }
 
         // Send completion update
-        let senders = self.update_senders.lock().expect("Update senders lock poisoned");
+        let senders = self
+            .update_senders
+            .lock()
+            .expect("Update senders lock poisoned");
         if let Some(tx) = senders.get(job_id) {
             let update = JobUpdate::Completed {
                 job_id: job_id.to_string(),
@@ -352,7 +357,8 @@ impl Consumer {
     /// Get job info by ID
     pub fn get_job(&self, job_id: &str) -> Option<JobInfo> {
         let jobs = self.jobs.lock().expect("Jobs lock poisoned");
-        jobs.get(job_id).map(|info| info.lock().expect("Job info lock poisoned").clone())
+        jobs.get(job_id)
+            .map(|info| info.lock().expect("Job info lock poisoned").clone())
     }
 
     /// Get all jobs
@@ -387,7 +393,9 @@ impl Consumer {
     pub fn cancel_job(&self, job_id: &str) {
         let jobs = self.jobs.lock().expect("Jobs lock poisoned");
         if let Some(info) = jobs.get(job_id) {
-            info.lock().expect("Job info lock poisoned").mark_cancelled();
+            info.lock()
+                .expect("Job info lock poisoned")
+                .mark_cancelled();
         }
 
         // Publishing cancellation events requires relay client integration.
@@ -406,7 +414,10 @@ impl Consumer {
             .as_secs();
 
         let mut jobs = self.jobs.lock().expect("Jobs lock poisoned");
-        let mut senders = self.update_senders.lock().expect("Update senders lock poisoned");
+        let mut senders = self
+            .update_senders
+            .lock()
+            .expect("Update senders lock poisoned");
 
         jobs.retain(|job_id, info| {
             let info = info.lock().expect("Job info lock poisoned");
@@ -544,10 +555,8 @@ mod tests {
         let consumer = Consumer::new();
 
         // Submit multiple jobs
-        let result1 = consumer
-            .submit_job(ComputeJobRequest::text_generation("Q1").unwrap());
-        let result2 = consumer
-            .submit_job(ComputeJobRequest::text_generation("Q2").unwrap());
+        let result1 = consumer.submit_job(ComputeJobRequest::text_generation("Q1").unwrap());
+        let result2 = consumer.submit_job(ComputeJobRequest::text_generation("Q2").unwrap());
 
         // Consumer returns error when not implemented per d-012 (No Stubs)
         assert!(result1.is_err());
@@ -567,8 +576,7 @@ mod tests {
         let consumer = Consumer::new();
 
         // Submit and complete a job
-        let result = consumer
-            .submit_job(ComputeJobRequest::text_generation("Q1").unwrap());
+        let result = consumer.submit_job(ComputeJobRequest::text_generation("Q1").unwrap());
 
         // Consumer returns error when not implemented per d-012 (No Stubs)
         assert!(result.is_err());

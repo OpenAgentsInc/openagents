@@ -1,8 +1,8 @@
+use marketplace::coalitions::{Contribution, PaymentPool};
 use marketplace::ledger::{
     Balance, Direction, LedgerAmounts, LedgerEntry, LedgerEntryType, LedgerFilters,
     LedgerOperation, LedgerParties, LedgerReferences,
 };
-use marketplace::coalitions::{Contribution, PaymentPool};
 
 #[test]
 fn test_ledger_amounts_creation() {

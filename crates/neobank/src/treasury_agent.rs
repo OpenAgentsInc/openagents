@@ -323,11 +323,7 @@ impl TreasuryAgent {
     /// Post liquidity orders for a trading pair
     ///
     /// Creates both a buy and sell order at bid/ask prices.
-    pub async fn post_liquidity(
-        &self,
-        pair: TradingPair,
-        amount_sats: u64,
-    ) -> Result<Vec<String>> {
+    pub async fn post_liquidity(&self, pair: TradingPair, amount_sats: u64) -> Result<Vec<String>> {
         // Validate amount
         if amount_sats < self.config.min_trade_sats {
             return Err(Error::Database(format!(
@@ -412,13 +408,7 @@ impl TreasuryAgent {
             .as_ref()
             .ok_or_else(|| Error::Database("No exchange configured".to_string()))?;
 
-        let orders: Vec<String> = self
-            .active_orders
-            .read()
-            .await
-            .keys()
-            .cloned()
-            .collect();
+        let orders: Vec<String> = self.active_orders.read().await.keys().cloned().collect();
 
         let mut cancelled = 0;
         for order_id in orders {
@@ -456,11 +446,19 @@ impl TreasuryAgent {
         let pair = match request.currency.to_uppercase().as_str() {
             "USD" => TradingPair::BtcUsd,
             "EUR" => TradingPair::BtcEur,
-            _ => return Err(Error::Database(format!("Unsupported currency: {}", request.currency))),
+            _ => {
+                return Err(Error::Database(format!(
+                    "Unsupported currency: {}",
+                    request.currency
+                )));
+            }
         };
 
         if !self.config.supported_pairs.contains(&pair) {
-            return Err(Error::Database(format!("Pair not supported: {}", pair.as_str())));
+            return Err(Error::Database(format!(
+                "Pair not supported: {}",
+                pair.as_str()
+            )));
         }
 
         // Validate amount
@@ -553,10 +551,7 @@ impl TreasuryAgent {
         let mut tags = vec![
             vec!["d".to_string(), "treasury-agent".to_string()],
             vec!["k".to_string(), "38383".to_string()], // P2P order kind we handle
-            vec![
-                "name".to_string(),
-                "OpenAgents Treasury Agent".to_string(),
-            ],
+            vec!["name".to_string(), "OpenAgents Treasury Agent".to_string()],
             vec![
                 "description".to_string(),
                 "Automated liquidity provider for BTC/USD trading".to_string(),

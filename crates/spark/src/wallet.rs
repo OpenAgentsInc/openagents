@@ -13,7 +13,7 @@
 //!   └─ Local persistence (wallet state)
 //! ```
 
-use crate::{SparkSigner, SparkError};
+use crate::{SparkError, SparkSigner};
 use breez_sdk_spark::{
     BreezSdk, ClaimHtlcPaymentRequest, EventListener, Network as SdkNetwork,
     PrepareSendPaymentRequest, SdkBuilder, Seed, Storage, default_config,
@@ -24,78 +24,24 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // Re-export SDK types that consumers need
 pub use breez_sdk_spark::{
-    Config,
-    BitcoinAddressDetails,
-    BitcoinNetwork,
-    Bolt11Invoice,
-    Bolt11InvoiceDetails,
-    CheckLightningAddressRequest,
-    CheckMessageRequest,
-    CheckMessageResponse,
-    ClaimDepositRequest,
-    ClaimDepositResponse,
-    ClaimHtlcPaymentResponse,
-    DepositInfo,
-    ExternalInputParser,
-    Fee,
-    GetInfoRequest,
-    GetInfoResponse,
-    GetPaymentRequest,
-    GetPaymentResponse,
-    GetTokensMetadataRequest,
-    GetTokensMetadataResponse,
-    InputType,
-    LightningAddressInfo,
-    ListFiatCurrenciesResponse,
-    ListFiatRatesResponse,
-    ListPaymentsRequest,
-    ListPaymentsResponse,
-    ListUnclaimedDepositsRequest,
-    ListUnclaimedDepositsResponse,
-    LnurlPayRequest,
-    LnurlPayResponse,
-    LnurlWithdrawRequest,
-    LnurlWithdrawResponse,
-    KeySetType,
-    MaxFee,
-    OptimizationConfig,
-    OptimizationProgress,
-    Payment,
-    PaymentDetails,
-    PaymentMethod,
-    PaymentRequestSource,
-    PaymentStatus,
-    PaymentType,
-    PrepareLnurlPayRequest,
-    PrepareLnurlPayResponse,
-    PrepareSendPaymentResponse,
-    ReceivePaymentMethod,
-    ReceivePaymentRequest,
-    ReceivePaymentResponse,
-    RecommendedFees,
-    RegisterLightningAddressRequest,
-    RefundDepositRequest,
-    RefundDepositResponse,
-    SendOnchainFeeQuote,
-    SendOnchainSpeedFeeQuote,
-    SendPaymentMethod,
-    SendPaymentOptions,
-    SendPaymentRequest,
-    SendPaymentResponse,
-    SignMessageRequest,
-    SignMessageResponse,
-    SparkHtlcDetails,
-    SparkHtlcOptions,
-    SparkHtlcStatus,
-    SparkInvoiceDetails,
-    SparkInvoicePaymentDetails,
-    SyncWalletRequest,
-    SyncWalletResponse,
-    TokenBalance,
-    TokenIssuer,
-    TokenMetadata,
-    UpdateUserSettingsRequest,
-    UserSettings,
+    BitcoinAddressDetails, BitcoinNetwork, Bolt11Invoice, Bolt11InvoiceDetails,
+    CheckLightningAddressRequest, CheckMessageRequest, CheckMessageResponse, ClaimDepositRequest,
+    ClaimDepositResponse, ClaimHtlcPaymentResponse, Config, DepositInfo, ExternalInputParser, Fee,
+    GetInfoRequest, GetInfoResponse, GetPaymentRequest, GetPaymentResponse,
+    GetTokensMetadataRequest, GetTokensMetadataResponse, InputType, KeySetType,
+    LightningAddressInfo, ListFiatCurrenciesResponse, ListFiatRatesResponse, ListPaymentsRequest,
+    ListPaymentsResponse, ListUnclaimedDepositsRequest, ListUnclaimedDepositsResponse,
+    LnurlPayRequest, LnurlPayResponse, LnurlWithdrawRequest, LnurlWithdrawResponse, MaxFee,
+    OptimizationConfig, OptimizationProgress, Payment, PaymentDetails, PaymentMethod,
+    PaymentRequestSource, PaymentStatus, PaymentType, PrepareLnurlPayRequest,
+    PrepareLnurlPayResponse, PrepareSendPaymentResponse, ReceivePaymentMethod,
+    ReceivePaymentRequest, ReceivePaymentResponse, RecommendedFees, RefundDepositRequest,
+    RefundDepositResponse, RegisterLightningAddressRequest, SendOnchainFeeQuote,
+    SendOnchainSpeedFeeQuote, SendPaymentMethod, SendPaymentOptions, SendPaymentRequest,
+    SendPaymentResponse, SignMessageRequest, SignMessageResponse, SparkHtlcDetails,
+    SparkHtlcOptions, SparkHtlcStatus, SparkInvoiceDetails, SparkInvoicePaymentDetails,
+    SyncWalletRequest, SyncWalletResponse, TokenBalance, TokenIssuer, TokenMetadata,
+    UpdateUserSettingsRequest, UserSettings,
 };
 
 /// Bitcoin network to use for Spark wallet
@@ -156,7 +102,9 @@ pub struct Balance {
 impl Balance {
     /// Get total balance across all layers
     pub fn total_sats(&self) -> u64 {
-        self.spark_sats.saturating_add(self.lightning_sats).saturating_add(self.onchain_sats)
+        self.spark_sats
+            .saturating_add(self.lightning_sats)
+            .saturating_add(self.onchain_sats)
     }
 
     /// Check if wallet has any funds
@@ -340,9 +288,7 @@ impl SparkWalletBuilder {
             Some(config) => {
                 let expected = self.config.network.to_sdk_network();
                 // breez_sdk_spark::Network does not implement PartialEq.
-                if std::mem::discriminant(&config.network)
-                    != std::mem::discriminant(&expected)
-                {
+                if std::mem::discriminant(&config.network) != std::mem::discriminant(&expected) {
                     return Err(SparkError::InitializationFailed(format!(
                         "SDK config network {:?} does not match wallet network {:?}",
                         config.network, expected
@@ -375,7 +321,8 @@ impl SparkWalletBuilder {
 
         #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         {
-            builder = builder.with_default_storage(self.config.storage_dir.to_string_lossy().to_string());
+            builder =
+                builder.with_default_storage(self.config.storage_dir.to_string_lossy().to_string());
         }
 
         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
@@ -386,9 +333,8 @@ impl SparkWalletBuilder {
             builder = builder.with_storage(storage);
         }
 
-        let configure_key_set = self.key_set_type.is_some()
-            || self.account_number.is_some()
-            || self.use_address_index;
+        let configure_key_set =
+            self.key_set_type.is_some() || self.account_number.is_some() || self.use_address_index;
         if configure_key_set {
             builder = builder.with_key_set(
                 self.key_set_type.unwrap_or(KeySetType::Default),
@@ -521,7 +467,9 @@ impl SparkWallet {
             payment_method: ReceivePaymentMethod::SparkAddress,
         };
 
-        let response = self.sdk.receive_payment(request)
+        let response = self
+            .sdk
+            .receive_payment(request)
             .await
             .map_err(|e| SparkError::GetAddressFailed(e.to_string()))?;
 
@@ -537,7 +485,9 @@ impl SparkWallet {
             payment_method: ReceivePaymentMethod::BitcoinAddress,
         };
 
-        let response = self.sdk.receive_payment(request)
+        let response = self
+            .sdk
+            .receive_payment(request)
             .await
             .map_err(|e| SparkError::GetAddressFailed(e.to_string()))?;
 
@@ -695,7 +645,8 @@ impl SparkWallet {
             idempotency_key,
         };
 
-        self.sdk.send_payment(request)
+        self.sdk
+            .send_payment(request)
             .await
             .map_err(|e| SparkError::PaymentFailed(e.to_string()))
     }
@@ -713,7 +664,8 @@ impl SparkWallet {
             idempotency_key,
         };
 
-        self.sdk.send_payment(request)
+        self.sdk
+            .send_payment(request)
             .await
             .map_err(|e| SparkError::PaymentFailed(e.to_string()))
     }
@@ -780,7 +732,8 @@ impl SparkWallet {
             preimage: preimage.to_string(),
         };
 
-        self.sdk.claim_htlc_payment(request)
+        self.sdk
+            .claim_htlc_payment(request)
             .await
             .map_err(|e| SparkError::PaymentFailed(e.to_string()))
     }
@@ -803,7 +756,8 @@ impl SparkWallet {
             payment_method: ReceivePaymentMethod::SparkAddress,
         };
 
-        self.sdk.receive_payment(request)
+        self.sdk
+            .receive_payment(request)
             .await
             .map_err(|e| SparkError::Wallet(e.to_string()))
     }
@@ -837,7 +791,8 @@ impl SparkWallet {
         let request = build_receive_request(amount_sats, description, expiry_seconds)
             .map_err(|e| SparkError::Wallet(e.to_string()))?;
 
-        self.sdk.receive_payment(request)
+        self.sdk
+            .receive_payment(request)
             .await
             .map_err(|e| SparkError::Wallet(e.to_string()))
     }
@@ -890,9 +845,7 @@ impl SparkWallet {
             ..Default::default()
         };
 
-        let response = self
-            .list_payments_request(request)
-            .await?;
+        let response = self.list_payments_request(request).await?;
 
         Ok(response.payments)
     }
@@ -1100,9 +1053,7 @@ impl SparkWallet {
     }
 
     /// Get the currently registered Lightning address
-    pub async fn get_lightning_address(
-        &self,
-    ) -> Result<Option<LightningAddressInfo>, SparkError> {
+    pub async fn get_lightning_address(&self) -> Result<Option<LightningAddressInfo>, SparkError> {
         self.sdk
             .get_lightning_address()
             .await
@@ -1129,9 +1080,7 @@ impl SparkWallet {
     }
 
     /// List supported fiat currencies
-    pub async fn list_fiat_currencies(
-        &self,
-    ) -> Result<ListFiatCurrenciesResponse, SparkError> {
+    pub async fn list_fiat_currencies(&self) -> Result<ListFiatCurrenciesResponse, SparkError> {
         self.sdk
             .list_fiat_currencies()
             .await
@@ -1139,9 +1088,7 @@ impl SparkWallet {
     }
 
     /// List fiat exchange rates
-    pub async fn list_fiat_rates(
-        &self,
-    ) -> Result<ListFiatRatesResponse, SparkError> {
+    pub async fn list_fiat_rates(&self) -> Result<ListFiatRatesResponse, SparkError> {
         self.sdk
             .list_fiat_rates()
             .await
@@ -1275,8 +1222,8 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("time")
             .as_secs();
-        let request = build_receive_request(4_200, description.clone(), Some(60))
-            .expect("build request");
+        let request =
+            build_receive_request(4_200, description.clone(), Some(60)).expect("build request");
         let after = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time")
@@ -1328,7 +1275,9 @@ mod tests {
         let signer = SparkSigner::from_mnemonic(mnemonic, "").expect("should create signer");
         let config = WalletConfig::default();
 
-        let _wallet = SparkWallet::new(signer, config).await.expect("should create wallet");
+        let _wallet = SparkWallet::new(signer, config)
+            .await
+            .expect("should create wallet");
     }
 
     #[tokio::test]

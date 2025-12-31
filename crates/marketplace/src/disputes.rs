@@ -593,8 +593,14 @@ mod tests {
 
     #[test]
     fn test_refund_trigger_description() {
-        assert_eq!(RefundTrigger::JobFailure.description(), "Job failed to complete");
-        assert_eq!(RefundTrigger::QualityDispute.description(), "Quality dispute");
+        assert_eq!(
+            RefundTrigger::JobFailure.description(),
+            "Job failed to complete"
+        );
+        assert_eq!(
+            RefundTrigger::QualityDispute.description(),
+            "Quality dispute"
+        );
     }
 
     #[test]
@@ -692,20 +698,10 @@ mod tests {
 
     #[test]
     fn test_evidence_validation() {
-        let valid = Evidence::new(
-            EvidenceType::Receipt,
-            "content",
-            "abc123",
-            "user1",
-        );
+        let valid = Evidence::new(EvidenceType::Receipt, "content", "abc123", "user1");
         assert!(valid.validate_hash().is_ok());
 
-        let invalid = Evidence::new(
-            EvidenceType::Receipt,
-            "content",
-            "invalid hash!",
-            "user1",
-        );
+        let invalid = Evidence::new(EvidenceType::Receipt, "content", "invalid hash!", "user1");
         assert!(invalid.validate_hash().is_err());
     }
 
@@ -797,7 +793,10 @@ mod tests {
     #[test]
     fn test_resolution_decision_refund_amount() {
         assert_eq!(ResolutionDecision::FullRefund.refund_amount(), None);
-        assert_eq!(ResolutionDecision::PartialRefund(500).refund_amount(), Some(500));
+        assert_eq!(
+            ResolutionDecision::PartialRefund(500).refund_amount(),
+            Some(500)
+        );
         assert_eq!(ResolutionDecision::NoRefund.refund_amount(), None);
     }
 

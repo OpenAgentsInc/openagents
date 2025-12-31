@@ -30,8 +30,8 @@ pub use test_app::*;
 mod tests {
     use super::fixtures;
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     };
     use tokio::sync::Barrier;
 

@@ -53,8 +53,8 @@ use std::collections::HashMap;
 
 /// Re-export NIP-89 types
 pub use nostr::{
-    is_handler_info_kind, is_handler_recommendation_kind, is_nip89_kind, HandlerType, Nip89Error,
-    KIND_HANDLER_INFO, KIND_HANDLER_RECOMMENDATION,
+    HandlerType, KIND_HANDLER_INFO, KIND_HANDLER_RECOMMENDATION, Nip89Error, is_handler_info_kind,
+    is_handler_recommendation_kind, is_nip89_kind,
 };
 
 /// Compute provider information discovered via NIP-89
@@ -319,8 +319,16 @@ impl ProviderQuery {
             }
             SortBy::Price => {
                 providers.sort_by(|a, b| {
-                    let a_price = a.pricing.as_ref().map(|p| p.amount_msats).unwrap_or(u64::MAX);
-                    let b_price = b.pricing.as_ref().map(|p| p.amount_msats).unwrap_or(u64::MAX);
+                    let a_price = a
+                        .pricing
+                        .as_ref()
+                        .map(|p| p.amount_msats)
+                        .unwrap_or(u64::MAX);
+                    let b_price = b
+                        .pricing
+                        .as_ref()
+                        .map(|p| p.amount_msats)
+                        .unwrap_or(u64::MAX);
                     a_price.cmp(&b_price)
                 });
             }
@@ -409,10 +417,8 @@ impl ProviderDiscovery {
         // Update trust score if we have one
         if let Some(score) = self.trust_scores.get(&info.pubkey) {
             provider.trust_score = score.trust_score;
-            provider.recommendation_count = score.direct_follows
-                + score.follow_of_follows
-                + score.two_degrees
-                + score.unknown;
+            provider.recommendation_count =
+                score.direct_follows + score.follow_of_follows + score.two_degrees + score.unknown;
         }
 
         self.providers.insert(info.pubkey, provider);
@@ -584,7 +590,8 @@ mod tests {
 
         // Add multiple providers with different trust scores
         for i in 1..=3 {
-            let metadata = HandlerMetadata::new(format!("Provider {}", i), format!("Provider {}", i));
+            let metadata =
+                HandlerMetadata::new(format!("Provider {}", i), format!("Provider {}", i));
             let info = HandlerInfo::new(
                 format!("pubkey{}", i),
                 HandlerType::ComputeProvider,

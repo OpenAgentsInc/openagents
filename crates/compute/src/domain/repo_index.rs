@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use nostr::nip90::{JobInput, JobRequest, JobResult, Nip90Error, KIND_JOB_REPO_INDEX};
+use nostr::nip90::{JobInput, JobRequest, JobResult, KIND_JOB_REPO_INDEX, Nip90Error};
 
 /// Type of index to generate
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -350,13 +350,7 @@ impl RepoIndexResult {
     }
 
     /// Set processing stats
-    pub fn with_stats(
-        mut self,
-        tokens: u64,
-        files: u32,
-        bytes: u64,
-        duration_ms: u64,
-    ) -> Self {
+    pub fn with_stats(mut self, tokens: u64, files: u32, bytes: u64, duration_ms: u64) -> Self {
         self.tokens_processed = tokens;
         self.files_indexed = files;
         self.bytes_processed = bytes;
@@ -371,15 +365,10 @@ impl RepoIndexResult {
         customer_pubkey: &str,
         amount: Option<u64>,
     ) -> Result<JobResult, Nip90Error> {
-        let content = serde_json::to_string(self)
-            .map_err(|e| Nip90Error::Serialization(e.to_string()))?;
+        let content =
+            serde_json::to_string(self).map_err(|e| Nip90Error::Serialization(e.to_string()))?;
 
-        let mut result = JobResult::new(
-            KIND_JOB_REPO_INDEX,
-            request_id,
-            customer_pubkey,
-            content,
-        )?;
+        let mut result = JobResult::new(KIND_JOB_REPO_INDEX, request_id, customer_pubkey, content)?;
 
         if let Some(amt) = amount {
             result = result.with_amount(amt, None);
@@ -390,8 +379,7 @@ impl RepoIndexResult {
 
     /// Parse from NIP-90 JobResult content
     pub fn from_job_result(result: &JobResult) -> Result<Self, Nip90Error> {
-        serde_json::from_str(&result.content)
-            .map_err(|e| Nip90Error::Serialization(e.to_string()))
+        serde_json::from_str(&result.content).map_err(|e| Nip90Error::Serialization(e.to_string()))
     }
 }
 
@@ -443,9 +431,16 @@ mod tests {
         assert!(request.index_types.contains(&IndexType::Symbols));
         assert!(request.index_types.contains(&IndexType::Embeddings));
         assert!(request.include_patterns.contains(&"**/*.rs".to_string()));
-        assert!(request.exclude_patterns.contains(&"**/tests/**".to_string()));
+        assert!(
+            request
+                .exclude_patterns
+                .contains(&"**/tests/**".to_string())
+        );
         assert_eq!(request.max_file_size, Some(512 * 1024));
-        assert_eq!(request.embedding_model, Some("text-embedding-3-small".to_string()));
+        assert_eq!(
+            request.embedding_model,
+            Some("text-embedding-3-small".to_string())
+        );
     }
 
     #[test]
@@ -476,17 +471,15 @@ mod tests {
     #[test]
     fn test_index_data_entry_count() {
         let symbols = IndexData::Symbols {
-            entries: vec![
-                Symbol {
-                    name: "foo".to_string(),
-                    kind: "function".to_string(),
-                    file_path: "src/lib.rs".to_string(),
-                    line: 1,
-                    column: 1,
-                    documentation: None,
-                    signature: None,
-                },
-            ],
+            entries: vec![Symbol {
+                name: "foo".to_string(),
+                kind: "function".to_string(),
+                file_path: "src/lib.rs".to_string(),
+                line: 1,
+                column: 1,
+                documentation: None,
+                signature: None,
+            }],
         };
 
         assert_eq!(symbols.entry_count(), 1);

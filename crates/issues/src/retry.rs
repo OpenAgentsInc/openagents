@@ -253,9 +253,7 @@ mod tests {
             .unwrap();
 
         let result = with_retry(|| {
-            conn.query_row("SELECT COUNT(*) FROM test", [], |row| {
-                row.get::<_, i64>(0)
-            })
+            conn.query_row("SELECT COUNT(*) FROM test", [], |row| row.get::<_, i64>(0))
         });
 
         assert_eq!(result.unwrap(), 0);

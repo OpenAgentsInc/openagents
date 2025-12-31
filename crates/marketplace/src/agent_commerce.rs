@@ -36,10 +36,7 @@ impl ContractStatus {
 
     /// Check if contract is active (worker can still complete it)
     pub fn is_active(&self) -> bool {
-        matches!(
-            self,
-            ContractStatus::Accepted | ContractStatus::InProgress
-        )
+        matches!(self, ContractStatus::Accepted | ContractStatus::InProgress)
     }
 }
 
@@ -255,10 +252,7 @@ impl AgentContract {
     /// Cancel the contract
     pub fn cancel(&mut self) -> Result<(), String> {
         if self.status.is_terminal() {
-            return Err(format!(
-                "Cannot cancel contract in {:?} state",
-                self.status
-            ));
+            return Err(format!("Cannot cancel contract in {:?} state", self.status));
         }
         self.status = ContractStatus::Cancelled;
         Ok(())
@@ -550,7 +544,11 @@ mod tests {
         delegated1.status = ContractStatus::Completed;
         let coordinator = CoordinatorTask::new("coord", 0.1)
             .add_subtask(delegated1)
-            .add_subtask(DelegatedTask::new("worker2", TaskSpec::new("t", "d", json!({}), "o"), 2000));
+            .add_subtask(DelegatedTask::new(
+                "worker2",
+                TaskSpec::new("t", "d", json!({}), "o"),
+                2000,
+            ));
 
         assert!(!coordinator.all_complete());
         assert_eq!(coordinator.completed_count(), 1);

@@ -2,17 +2,17 @@
 
 use anyhow::{Context, Result};
 use nostr::{
-    decrypt, decrypt_v2, encrypt, encrypt_v2, finalize_event, Event, EventTemplate, ErrorCode,
-    ErrorResponse, GetBalanceParams, GetInfoParams, InfoResult, Invoice, InvoiceState,
-    ListTransactionsParams, ListTransactionsResult, LookupInvoiceParams, MakeInvoiceParams,
-    Method, Network as Nip47Network, PayInvoiceParams, PayInvoiceResult, Request, RequestParams,
-    Response, ResponseResult, Transaction, TransactionType, INFO_EVENT_KIND, REQUEST_KIND,
-    RESPONSE_KIND,
+    ErrorCode, ErrorResponse, Event, EventTemplate, GetBalanceParams, GetInfoParams,
+    INFO_EVENT_KIND, InfoResult, Invoice, InvoiceState, ListTransactionsParams,
+    ListTransactionsResult, LookupInvoiceParams, MakeInvoiceParams, Method,
+    Network as Nip47Network, PayInvoiceParams, PayInvoiceResult, REQUEST_KIND, RESPONSE_KIND,
+    Request, RequestParams, Response, ResponseResult, Transaction, TransactionType, decrypt,
+    decrypt_v2, encrypt, encrypt_v2, finalize_event,
 };
 use nostr_client::{PoolConfig, RelayPool};
 use serde_json::json;
-use spark::{Payment, PaymentStatus, PaymentType, SparkError, SparkWallet};
 use spark::wallet::PaymentDetails;
+use spark::{Payment, PaymentStatus, PaymentType, SparkError, SparkWallet};
 use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, warn};
@@ -60,20 +60,17 @@ pub struct NwcConnectionOutput {
     pub uri: String,
 }
 
-pub fn build_connection(
-    name: Option<String>,
-    relays: Vec<String>,
-) -> Result<NwcConnectionOutput> {
+pub fn build_connection(name: Option<String>, relays: Vec<String>) -> Result<NwcConnectionOutput> {
     if relays.is_empty() {
         anyhow::bail!("At least one relay is required to create an NWC connection.");
     }
 
     let wallet_secret = nostr::generate_secret_key();
-    let wallet_pubkey = nostr::get_public_key_hex(&wallet_secret)
-        .context("Failed to derive wallet pubkey")?;
+    let wallet_pubkey =
+        nostr::get_public_key_hex(&wallet_secret).context("Failed to derive wallet pubkey")?;
     let client_secret = nostr::generate_secret_key();
-    let client_pubkey = nostr::get_public_key_hex(&client_secret)
-        .context("Failed to derive client pubkey")?;
+    let client_pubkey =
+        nostr::get_public_key_hex(&client_secret).context("Failed to derive client pubkey")?;
 
     let created_at = current_timestamp()?;
     let wallet_secret_hex = hex::encode(wallet_secret);
@@ -89,8 +86,8 @@ pub fn build_connection(
         created_at,
     };
 
-    let uri = nostr::NostrWalletConnectUrl::new(wallet_pubkey, relays, client_secret_hex)
-        .to_string();
+    let uri =
+        nostr::NostrWalletConnectUrl::new(wallet_pubkey, relays, client_secret_hex).to_string();
 
     Ok(NwcConnectionOutput { connection, uri })
 }
@@ -99,7 +96,10 @@ pub async fn publish_info_event(connection: &NwcConnection) -> Result<()> {
     let secret_key = secret_hex_to_bytes(&connection.wallet_secret)?;
     let content = supported_methods().join(" ");
 
-    let tags = vec![vec![ENCRYPTION_TAG.to_string(), ENCRYPTION_SUPPORTED.to_string()]];
+    let tags = vec![vec![
+        ENCRYPTION_TAG.to_string(),
+        ENCRYPTION_SUPPORTED.to_string(),
+    ]];
 
     let event = finalize_event(
         &EventTemplate {
@@ -176,10 +176,7 @@ impl NwcService {
             "#p": wallet_pubkeys,
         });
 
-        let mut rx = self
-            .pool
-            .subscribe("nwc-requests", &[filter])
-            .await?;
+        let mut rx = self.pool.subscribe("nwc-requests", &[filter]).await?;
 
         while let Some(event) = rx.recv().await {
             if let Err(err) = self.handle_event(event).await {
@@ -241,7 +238,8 @@ impl NwcService {
                 },
             )
         } else {
-            self.handle_request(request, &connection.wallet_pubkey).await
+            self.handle_request(request, &connection.wallet_pubkey)
+                .await
         };
 
         let response_event = build_response_event(&response, scheme, connection, &event)?;
@@ -274,7 +272,10 @@ impl NwcService {
                 RequestParams::ListTransactions(params) => {
                     handle_list_transactions(&self.wallet, params).await
                 }
-                _ => invalid_request(Method::ListTransactions, "Expected list_transactions params"),
+                _ => invalid_request(
+                    Method::ListTransactions,
+                    "Expected list_transactions params",
+                ),
             },
             Method::GetBalance => match request.params {
                 RequestParams::GetBalance(GetBalanceParams {}) => {
@@ -288,15 +289,15 @@ impl NwcService {
                 }
                 _ => invalid_request(Method::GetInfo, "Expected get_info params"),
             },
-            Method::PayKeysend
-            | Method::MultiPayInvoice
-            | Method::MultiPayKeysend => Response::error(
-                request.method.as_str(),
-                ErrorResponse {
-                    code: ErrorCode::NotImplemented,
-                    message: "Method not implemented".to_string(),
-                },
-            ),
+            Method::PayKeysend | Method::MultiPayInvoice | Method::MultiPayKeysend => {
+                Response::error(
+                    request.method.as_str(),
+                    ErrorResponse {
+                        code: ErrorCode::NotImplemented,
+                        message: "Method not implemented".to_string(),
+                    },
+                )
+            }
         }
     }
 }
@@ -316,7 +317,7 @@ async fn handle_pay_invoice(
                         code: ErrorCode::Other,
                         message: err.to_string(),
                     },
-                )
+                );
             }
         },
         None => None,
@@ -334,7 +335,10 @@ async fn handle_pay_invoice(
         }
     }
 
-    match wallet.send_payment_simple(&params.invoice, amount_sats).await {
+    match wallet
+        .send_payment_simple(&params.invoice, amount_sats)
+        .await
+    {
         Ok(response) => {
             let preimage = match extract_preimage(&response.payment) {
                 Some(value) => value,
@@ -345,7 +349,7 @@ async fn handle_pay_invoice(
                             code: ErrorCode::Internal,
                             message: "Payment completed without preimage".to_string(),
                         },
-                    )
+                    );
                 }
             };
             let fees_paid = match msats_from_sats(response.payment.fees) {
@@ -354,7 +358,10 @@ async fn handle_pay_invoice(
             };
             Response::success(
                 Method::PayInvoice.as_str(),
-                ResponseResult::PayInvoice(PayInvoiceResult { preimage, fees_paid }),
+                ResponseResult::PayInvoice(PayInvoiceResult {
+                    preimage,
+                    fees_paid,
+                }),
             )
         }
         Err(err) => Response::error(Method::PayInvoice.as_str(), spark_error(err)),
@@ -371,7 +378,7 @@ async fn handle_make_invoice(wallet: &SparkWallet, params: MakeInvoiceParams) ->
                     code: ErrorCode::Other,
                     message: err.to_string(),
                 },
-            )
+            );
         }
     };
 
@@ -385,8 +392,7 @@ async fn handle_make_invoice(wallet: &SparkWallet, params: MakeInvoiceParams) ->
             let (payment_hash, description, description_hash, expires_at, invoice_amount) =
                 invoice_details;
 
-            let amount_msats = invoice_amount
-                .unwrap_or_else(|| params.amount);
+            let amount_msats = invoice_amount.unwrap_or_else(|| params.amount);
 
             let invoice = Invoice {
                 transaction_type: TransactionType::Incoming,
@@ -404,7 +410,10 @@ async fn handle_make_invoice(wallet: &SparkWallet, params: MakeInvoiceParams) ->
                 metadata: params.metadata,
             };
 
-            Response::success(Method::MakeInvoice.as_str(), ResponseResult::MakeInvoice(invoice))
+            Response::success(
+                Method::MakeInvoice.as_str(),
+                ResponseResult::MakeInvoice(invoice),
+            )
         }
         Err(err) => Response::error(Method::MakeInvoice.as_str(), spark_error(err)),
     }
@@ -625,9 +634,9 @@ fn find_connection_for_event<'a>(
         return None;
     }
 
-    connections.iter().find(|connection| {
-        tags.iter().any(|tag| tag == &connection.wallet_pubkey)
-    })
+    connections
+        .iter()
+        .find(|connection| tags.iter().any(|tag| tag == &connection.wallet_pubkey))
 }
 
 fn decrypt_request(
@@ -647,8 +656,8 @@ fn decrypt_request(
         };
 
         if let Ok(plaintext) = decrypted {
-            let request: Request = serde_json::from_str(&plaintext)
-                .context("Failed to parse NWC request")?;
+            let request: Request =
+                serde_json::from_str(&plaintext).context("Failed to parse NWC request")?;
             return Ok((*scheme, request));
         }
     }
@@ -766,12 +775,16 @@ fn payment_hash_for(payment: &Payment) -> String {
 fn extract_invoice(payment: &Payment) -> Option<String> {
     match payment.details.as_ref() {
         Some(PaymentDetails::Lightning { invoice, .. }) => Some(invoice.clone()),
-        Some(PaymentDetails::Spark { invoice_details, .. }) => {
-            invoice_details.as_ref().map(|details| details.invoice.clone())
-        }
-        Some(PaymentDetails::Token { invoice_details, .. }) => {
-            invoice_details.as_ref().map(|details| details.invoice.clone())
-        }
+        Some(PaymentDetails::Spark {
+            invoice_details, ..
+        }) => invoice_details
+            .as_ref()
+            .map(|details| details.invoice.clone()),
+        Some(PaymentDetails::Token {
+            invoice_details, ..
+        }) => invoice_details
+            .as_ref()
+            .map(|details| details.invoice.clone()),
         _ => None,
     }
 }
@@ -779,10 +792,14 @@ fn extract_invoice(payment: &Payment) -> Option<String> {
 fn extract_description(payment: &Payment) -> Option<String> {
     match payment.details.as_ref() {
         Some(PaymentDetails::Lightning { description, .. }) => description.clone(),
-        Some(PaymentDetails::Spark { invoice_details, .. }) => invoice_details
+        Some(PaymentDetails::Spark {
+            invoice_details, ..
+        }) => invoice_details
             .as_ref()
             .and_then(|details| details.description.clone()),
-        Some(PaymentDetails::Token { invoice_details, .. }) => invoice_details
+        Some(PaymentDetails::Token {
+            invoice_details, ..
+        }) => invoice_details
             .as_ref()
             .and_then(|details| details.description.clone()),
         _ => None,
@@ -842,8 +859,8 @@ fn payment_to_transaction(payment: &Payment) -> Result<Option<Transaction>> {
 }
 
 fn payment_to_invoice(payment: &Payment) -> Result<Invoice> {
-    let invoice = extract_invoice(payment)
-        .ok_or_else(|| anyhow::anyhow!("Payment has no invoice"))?;
+    let invoice =
+        extract_invoice(payment).ok_or_else(|| anyhow::anyhow!("Payment has no invoice"))?;
     let amount = msats_from_sats(payment.amount)?;
     let fees_paid = match msats_from_sats(payment.fees) {
         Ok(value) if value > 0 => Some(value),
@@ -876,7 +893,13 @@ fn payment_to_invoice(payment: &Payment) -> Result<Invoice> {
 
 async fn parse_invoice_details(
     invoice: &str,
-) -> (String, Option<String>, Option<String>, Option<u64>, Option<u64>) {
+) -> (
+    String,
+    Option<String>,
+    Option<String>,
+    Option<u64>,
+    Option<u64>,
+) {
     let hash = sha256_hex(invoice);
 
     if let Ok(input) = breez_sdk_spark::parse_input(invoice, None).await {
@@ -981,10 +1004,15 @@ async fn list_transactions(
         page_offset = page_offset.saturating_add(page_size);
     }
 
-    Ok(ListTransactionsResult { transactions: results })
+    Ok(ListTransactionsResult {
+        transactions: results,
+    })
 }
 
-async fn find_payment(wallet: &SparkWallet, params: &LookupInvoiceParams) -> Result<Option<Payment>> {
+async fn find_payment(
+    wallet: &SparkWallet,
+    params: &LookupInvoiceParams,
+) -> Result<Option<Payment>> {
     let mut page_offset = 0u32;
     let page_size = 50u32;
 
@@ -1021,7 +1049,7 @@ async fn find_payment(wallet: &SparkWallet, params: &LookupInvoiceParams) -> Res
 }
 
 fn sha256_hex(value: &str) -> String {
-    use bitcoin::hashes::{sha256, Hash};
+    use bitcoin::hashes::{Hash, sha256};
     let hash = sha256::Hash::hash(value.as_bytes());
     hex::encode(hash.as_byte_array())
 }

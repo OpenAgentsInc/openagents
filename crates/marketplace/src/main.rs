@@ -2,10 +2,10 @@
 
 use clap::Parser;
 use marketplace::cli::compute::ComputeCommands;
-use marketplace::cli::skills::SkillsCommands;
 use marketplace::cli::data::DataCommands;
-use marketplace::cli::trajectories::TrajectoriesCommands;
 use marketplace::cli::earnings::EarningsCommands;
+use marketplace::cli::skills::SkillsCommands;
+use marketplace::cli::trajectories::TrajectoriesCommands;
 use marketplace::deprecation;
 
 #[derive(Parser)]

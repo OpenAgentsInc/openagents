@@ -5,7 +5,7 @@ use local_inference::{
 };
 use tokio::sync::mpsc;
 
-use crate::{FMClient, CompletionOptions};
+use crate::{CompletionOptions, FMClient};
 
 /// LocalModelBackend implementation for FMClient
 #[async_trait]

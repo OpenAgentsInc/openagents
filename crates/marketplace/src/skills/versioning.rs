@@ -107,9 +107,10 @@ impl SkillVersion {
 
         let nums: Vec<&str> = version_part.split('.').collect();
         if nums.len() != 3 {
-            return Err(VersionError::InvalidVersion(
-                format!("Expected major.minor.patch, got '{}'", s),
-            ));
+            return Err(VersionError::InvalidVersion(format!(
+                "Expected major.minor.patch, got '{}'",
+                s
+            )));
         }
 
         let major = nums[0]
@@ -166,11 +167,7 @@ impl SkillVersion {
     }
 
     /// Deprecate this version
-    pub fn deprecate(
-        &mut self,
-        notice: impl Into<String>,
-        replacement: Option<impl Into<String>>,
-    ) {
+    pub fn deprecate(&mut self, notice: impl Into<String>, replacement: Option<impl Into<String>>) {
         self.deprecated = true;
         self.deprecation_notice = Some(notice.into());
         self.replacement_version = replacement.map(|r| r.into());
@@ -279,9 +276,7 @@ impl VersionRegistry {
 
     /// Find a specific version
     pub fn find_version(&self, version_str: &str) -> Option<&SkillVersion> {
-        self.versions
-            .iter()
-            .find(|v| v.as_string() == version_str)
+        self.versions.iter().find(|v| v.as_string() == version_str)
     }
 
     /// List all versions
@@ -316,9 +311,10 @@ impl VersionRegistry {
 
     /// Get upgrade path from one version to another
     pub fn get_upgrade_path(&self, from: &str, to: &str) -> Option<&UpgradePath> {
-        self.upgrade_paths.as_ref()?.iter().find(|path| {
-            path.from_version == from && path.to_version == to
-        })
+        self.upgrade_paths
+            .as_ref()?
+            .iter()
+            .find(|path| path.from_version == from && path.to_version == to)
     }
 
     /// Add an upgrade path
@@ -465,12 +461,18 @@ mod tests {
         assert!(version.deprecated);
 
         // Cannot deprecate again
-        assert!(registry
-            .deprecate_version("1.0.0", "Already deprecated", None::<&str>)
-            .is_err());
+        assert!(
+            registry
+                .deprecate_version("1.0.0", "Already deprecated", None::<&str>)
+                .is_err()
+        );
 
         // Cannot deprecate non-existent version
-        assert!(registry.deprecate_version("3.0.0", "N/A", None::<&str>).is_err());
+        assert!(
+            registry
+                .deprecate_version("3.0.0", "N/A", None::<&str>)
+                .is_err()
+        );
     }
 
     #[test]

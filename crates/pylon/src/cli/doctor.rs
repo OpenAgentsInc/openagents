@@ -86,7 +86,11 @@ pub async fn run(args: DoctorArgs) -> anyhow::Result<()> {
         println!("\nConfiguration:");
         println!("  Config file: {:?}", PylonConfig::config_path()?);
         println!("  Data dir:    {:?}", config.data_path()?);
-        println!("  Min price:   {} msats ({} sats)", config.min_price_msats, config.min_price_msats / 1000);
+        println!(
+            "  Min price:   {} msats ({} sats)",
+            config.min_price_msats,
+            config.min_price_msats / 1000
+        );
         println!("  Default model: {}", config.default_model);
     }
 

@@ -45,7 +45,11 @@ fn test_identity_generation() {
     assert!(!npub.is_empty(), "Should have Nostr public key");
 
     let nsec = identity.nostr_secret_key();
-    assert_eq!(nsec.len(), 64, "Secret key should be 32 bytes (64 hex chars)");
+    assert_eq!(
+        nsec.len(),
+        64,
+        "Secret key should be 32 bytes (64 hex chars)"
+    );
 }
 
 /// Test identity can be derived from mnemonic
@@ -85,17 +89,21 @@ fn test_mnemonic_storage() {
     let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
     // Store mnemonic
-    SecureKeychain::store_mnemonic(test_mnemonic)
-        .expect("Should store mnemonic");
+    SecureKeychain::store_mnemonic(test_mnemonic).expect("Should store mnemonic");
 
     // Verify it exists
-    assert!(SecureKeychain::has_mnemonic(), "Should have mnemonic after storage");
+    assert!(
+        SecureKeychain::has_mnemonic(),
+        "Should have mnemonic after storage"
+    );
 
     // Retrieve and verify
-    let retrieved = SecureKeychain::retrieve_mnemonic()
-        .expect("Should retrieve mnemonic");
+    let retrieved = SecureKeychain::retrieve_mnemonic().expect("Should retrieve mnemonic");
 
-    assert_eq!(retrieved, test_mnemonic, "Retrieved mnemonic should match stored");
+    assert_eq!(
+        retrieved, test_mnemonic,
+        "Retrieved mnemonic should match stored"
+    );
 }
 
 /// Test mnemonic deletion
@@ -104,20 +112,22 @@ fn test_mnemonic_storage() {
 fn test_mnemonic_deletion() {
     let _guard = KeychainGuard;
 
-    let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    let test_mnemonic =
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
     // Store mnemonic
-    SecureKeychain::store_mnemonic(test_mnemonic)
-        .expect("Should store mnemonic");
+    SecureKeychain::store_mnemonic(test_mnemonic).expect("Should store mnemonic");
 
     assert!(SecureKeychain::has_mnemonic(), "Should have mnemonic");
 
     // Delete mnemonic
-    SecureKeychain::delete_mnemonic()
-        .expect("Should delete mnemonic");
+    SecureKeychain::delete_mnemonic().expect("Should delete mnemonic");
 
     // Verify it's gone
-    assert!(!SecureKeychain::has_mnemonic(), "Should not have mnemonic after deletion");
+    assert!(
+        !SecureKeychain::has_mnemonic(),
+        "Should not have mnemonic after deletion"
+    );
 }
 
 /// Test retrieving non-existent mnemonic returns error
@@ -133,7 +143,10 @@ fn test_retrieve_missing_mnemonic() {
     // Try to retrieve non-existent mnemonic
     let result = SecureKeychain::retrieve_mnemonic();
 
-    assert!(result.is_err(), "Should error when retrieving missing mnemonic");
+    assert!(
+        result.is_err(),
+        "Should error when retrieving missing mnemonic"
+    );
 }
 
 /// Test identity persistence across sessions
@@ -203,7 +216,10 @@ fn test_identity_export_format() {
     // Verify nsec is hex (64 chars)
     let nsec = identity.nostr_secret_key();
     assert_eq!(nsec.len(), 64, "Secret key should be 32 bytes hex");
-    assert!(nsec.chars().all(|c| c.is_ascii_hexdigit()), "Secret key should be valid hex");
+    assert!(
+        nsec.chars().all(|c| c.is_ascii_hexdigit()),
+        "Secret key should be valid hex"
+    );
 }
 
 /// Test Spark wallet address generation
@@ -285,5 +301,8 @@ fn test_keychain_overwrite() {
 
     // Verify second mnemonic is stored
     let retrieved = SecureKeychain::retrieve_mnemonic().unwrap();
-    assert_eq!(retrieved, mnemonic2, "Should retrieve most recently stored mnemonic");
+    assert_eq!(
+        retrieved, mnemonic2,
+        "Should retrieve most recently stored mnemonic"
+    );
 }

@@ -1,9 +1,8 @@
 //! CLI commands for trajectory contribution
 
 use crate::trajectories::{
-    TrajectoryCollector, TrajectoryConfig, TrajectorySource, RedactionLevel,
+    RedactionLevel, RewardCalculator, TrajectoryCollector, TrajectoryConfig, TrajectorySource,
     validate::validate_trajectory,
-    RewardCalculator,
 };
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -110,27 +109,31 @@ impl TrajectoriesCommands {
     /// Execute the trajectories command
     pub async fn execute(self) -> Result<()> {
         match self.command {
-            TrajectoriesSubcommand::Scan { source, verbose } => {
-                execute_scan(source, verbose).await
-            }
+            TrajectoriesSubcommand::Scan { source, verbose } => execute_scan(source, verbose).await,
             TrajectoriesSubcommand::Preview { limit, detailed } => {
                 execute_preview(limit, detailed).await
             }
-            TrajectoriesSubcommand::Redact { session_id, dry_run, level } => {
-                execute_redact(&session_id, dry_run, &level).await
-            }
+            TrajectoriesSubcommand::Redact {
+                session_id,
+                dry_run,
+                level,
+            } => execute_redact(&session_id, dry_run, &level).await,
             TrajectoriesSubcommand::Contribute { batch, review } => {
                 execute_contribute(batch, review).await
             }
-            TrajectoriesSubcommand::Status { pending, accepted, rejected } => {
-                execute_status(pending, accepted, rejected).await
-            }
+            TrajectoriesSubcommand::Status {
+                pending,
+                accepted,
+                rejected,
+            } => execute_status(pending, accepted, rejected).await,
             TrajectoriesSubcommand::Earnings { detail, since } => {
                 execute_earnings(detail, since).await
             }
-            TrajectoriesSubcommand::Config { auto, min_quality, sources } => {
-                execute_config(auto, min_quality, sources).await
-            }
+            TrajectoriesSubcommand::Config {
+                auto,
+                min_quality,
+                sources,
+            } => execute_config(auto, min_quality, sources).await,
         }
     }
 }
@@ -141,7 +144,8 @@ async fn execute_scan(source: Option<String>, verbose: bool) -> Result<()> {
     let collector = TrajectoryCollector::new(config);
 
     let results = if let Some(source_name) = source {
-        let source = source_name.parse::<TrajectorySource>()
+        let source = source_name
+            .parse::<TrajectorySource>()
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         vec![collector.scan_source(&source)?]
     } else {
@@ -159,7 +163,8 @@ async fn execute_scan(source: Option<String>, verbose: bool) -> Result<()> {
         if verbose && !result.sessions.is_empty() {
             println!("\nSessions:");
             for session in &result.sessions {
-                println!("  - {} (quality: {:.2}, tokens: {}, tools: {})",
+                println!(
+                    "  - {} (quality: {:.2}, tokens: {}, tools: {})",
                     session.session_id,
                     session.quality_score,
                     session.token_count,
@@ -218,7 +223,7 @@ async fn execute_preview(limit: usize, detailed: bool) -> Result<()> {
                 let reward = calculator.calculate_reward(
                     session,
                     validation.quality_score,
-                    config.min_quality_score
+                    config.min_quality_score,
                 );
                 println!("  Estimated reward: {} sats", reward.total_sats);
             } else {
@@ -241,7 +246,8 @@ async fn execute_preview(limit: usize, detailed: bool) -> Result<()> {
 
 /// Execute redact command
 async fn execute_redact(session_id: &str, dry_run: bool, level: &str) -> Result<()> {
-    let redaction_level = level.parse::<RedactionLevel>()
+    let redaction_level = level
+        .parse::<RedactionLevel>()
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     println!("Redacting session: {}", session_id);
@@ -270,7 +276,9 @@ async fn execute_contribute(batch: bool, review: bool) -> Result<()> {
     // Load configuration
     let config = TrajectoryConfig::default();
     let contrib_config = ContributionConfig {
-        redaction_level: config.redaction_level.parse::<RedactionLevel>()
+        redaction_level: config
+            .redaction_level
+            .parse::<RedactionLevel>()
             .unwrap_or(RedactionLevel::Standard),
         min_quality: config.min_quality_score,
         ..Default::default()
@@ -296,8 +304,11 @@ async fn execute_contribute(batch: bool, review: bool) -> Result<()> {
             if !validation.passed {
                 skipped += 1;
                 if !batch {
-                    println!("⊗ Skipping {} - {}", session.session_id,
-                        validation.failure_reasons.join(", "));
+                    println!(
+                        "⊗ Skipping {} - {}",
+                        session.session_id,
+                        validation.failure_reasons.join(", ")
+                    );
                 }
                 continue;
             }
@@ -307,7 +318,7 @@ async fn execute_contribute(batch: bool, review: bool) -> Result<()> {
             let reward = calculator.calculate_reward(
                 &session,
                 validation.quality_score,
-                config.min_quality_score
+                config.min_quality_score,
             );
 
             // Review mode - ask for confirmation
@@ -315,7 +326,10 @@ async fn execute_contribute(batch: bool, review: bool) -> Result<()> {
                 println!("\nSession: {}", session.session_id);
                 println!("  Quality: {:.2}", validation.quality_score.value());
                 println!("  Estimated reward: {} sats", reward.total_sats);
-                println!("  Tokens: {}, Tool calls: {}", session.token_count, session.tool_calls);
+                println!(
+                    "  Tokens: {}, Tool calls: {}",
+                    session.token_count, session.tool_calls
+                );
                 print!("\nContribute this session? [y/N]: ");
                 std::io::Write::flush(&mut std::io::stdout())?;
 
@@ -334,8 +348,10 @@ async fn execute_contribute(batch: bool, review: bool) -> Result<()> {
                 Ok(response) => {
                     contributed += 1;
                     total_reward += response.estimated_reward_sats;
-                    println!("✓ Contributed {} - {} sats",
-                        session.session_id, response.estimated_reward_sats);
+                    println!(
+                        "✓ Contributed {} - {} sats",
+                        session.session_id, response.estimated_reward_sats
+                    );
                 }
                 Err(e) => {
                     eprintln!("✗ Failed to contribute {}: {}", session.session_id, e);
@@ -381,10 +397,9 @@ async fn execute_status(pending: bool, accepted: bool, rejected: bool) -> Result
             println!("  (none)");
         } else {
             for contrib in pending_contribs.iter().take(10) {
-                println!("  • {} (quality: {:.2}, {} sats)",
-                    contrib.session_id,
-                    contrib.quality_score,
-                    contrib.estimated_reward_sats
+                println!(
+                    "  • {} (quality: {:.2}, {} sats)",
+                    contrib.session_id, contrib.quality_score, contrib.estimated_reward_sats
                 );
             }
             if pending_contribs.len() > 10 {
@@ -396,7 +411,8 @@ async fn execute_status(pending: bool, accepted: bool, rejected: bool) -> Result
 
     if accepted || show_all {
         let accepted_contribs = client.list_contributions(Some(ContributionStatus::Accepted))?;
-        let total_earned: u64 = accepted_contribs.iter()
+        let total_earned: u64 = accepted_contribs
+            .iter()
             .filter_map(|c| c.actual_reward_sats)
             .sum();
 
@@ -405,11 +421,18 @@ async fn execute_status(pending: bool, accepted: bool, rejected: bool) -> Result
             println!("  (none)");
         } else {
             for contrib in accepted_contribs.iter().take(10) {
-                let reward = contrib.actual_reward_sats.unwrap_or(contrib.estimated_reward_sats);
-                println!("  ✓ {} - {} sats{}",
+                let reward = contrib
+                    .actual_reward_sats
+                    .unwrap_or(contrib.estimated_reward_sats);
+                println!(
+                    "  ✓ {} - {} sats{}",
                     contrib.session_id,
                     reward,
-                    if contrib.paid_at.is_some() { " (paid)" } else { "" }
+                    if contrib.paid_at.is_some() {
+                        " (paid)"
+                    } else {
+                        ""
+                    }
                 );
             }
             if accepted_contribs.len() > 10 {
@@ -427,9 +450,9 @@ async fn execute_status(pending: bool, accepted: bool, rejected: bool) -> Result
             println!("  (none)");
         } else {
             for contrib in rejected_contribs.iter().take(10) {
-                println!("  ✗ {} (quality: {:.2})",
-                    contrib.session_id,
-                    contrib.quality_score
+                println!(
+                    "  ✗ {} (quality: {:.2})",
+                    contrib.session_id, contrib.quality_score
                 );
             }
             if rejected_contribs.len() > 10 {
@@ -465,10 +488,9 @@ async fn execute_earnings(detail: bool, _since: Option<String>) -> Result<()> {
         println!("\nDetailed breakdown:");
         for earning in earnings.iter() {
             let date = earning.paid_at.format("%Y-%m-%d");
-            println!("  {} - {} sats ({})",
-                earning.session_id,
-                earning.reward_sats,
-                date
+            println!(
+                "  {} - {} sats ({})",
+                earning.session_id, earning.reward_sats, date
             );
             if let Some(ref preimage) = earning.payment_preimage {
                 println!("    Proof: {}...", &preimage[..16.min(preimage.len())]);
@@ -489,7 +511,10 @@ async fn execute_config(
     println!("=====================================\n");
 
     if let Some(enabled) = auto {
-        println!("✓ Auto-contribution: {}", if enabled { "enabled" } else { "disabled" });
+        println!(
+            "✓ Auto-contribution: {}",
+            if enabled { "enabled" } else { "disabled" }
+        );
     }
 
     if let Some(quality) = min_quality {

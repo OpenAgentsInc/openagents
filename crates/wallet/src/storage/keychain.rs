@@ -9,11 +9,11 @@
 
 use anyhow::{Context, Result};
 use argon2::Argon2;
-use base64::engine::general_purpose::STANDARD as Base64;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as Base64;
 use chacha20poly1305::{
-    aead::{Aead, KeyInit},
     ChaCha20Poly1305, Key, Nonce,
+    aead::{Aead, KeyInit},
 };
 use keyring::Entry;
 use rand::RngCore;
@@ -160,8 +160,8 @@ fn write_raw_mnemonic_for(identity: &str, value: &str) -> Result<()> {
 
 fn read_raw_mnemonic_for(identity: &str) -> Result<String> {
     if let Some(path) = file_override_path(identity) {
-        let mnemonic = std::fs::read_to_string(&path)
-            .context("Failed to read keychain override file")?;
+        let mnemonic =
+            std::fs::read_to_string(&path).context("Failed to read keychain override file")?;
         return Ok(mnemonic);
     }
 
@@ -220,10 +220,7 @@ impl SecureKeychain {
         Ok(raw)
     }
 
-    pub fn retrieve_mnemonic_with_password_for(
-        identity: &str,
-        password: &str,
-    ) -> Result<String> {
+    pub fn retrieve_mnemonic_with_password_for(identity: &str, password: &str) -> Result<String> {
         let raw = read_raw_mnemonic_for(identity)?;
         if let Some(encrypted) = EncryptedMnemonic::parse(&raw) {
             return encrypted.decrypt(password);
@@ -239,8 +236,7 @@ impl SecureKeychain {
     pub fn delete_mnemonic_for(identity: &str) -> Result<()> {
         if let Some(path) = file_override_path(identity) {
             if path.exists() {
-                std::fs::remove_file(&path)
-                    .context("Failed to delete keychain override file")?;
+                std::fs::remove_file(&path).context("Failed to delete keychain override file")?;
             }
             return Ok(());
         }

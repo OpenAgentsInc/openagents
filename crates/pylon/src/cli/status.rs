@@ -4,8 +4,7 @@ use clap::Args;
 
 use crate::config::PylonConfig;
 use crate::daemon::{
-    is_daemon_running, pid_path, socket_path, ControlClient, DaemonCommand, DaemonResponse,
-    PidFile,
+    ControlClient, DaemonCommand, DaemonResponse, PidFile, is_daemon_running, pid_path, socket_path,
 };
 use crate::provider::PylonProvider;
 
@@ -33,7 +32,13 @@ pub async fn run(args: StatusArgs) -> anyhow::Result<()> {
                 jobs_completed,
                 earnings_msats,
                 ..
-            }) => Some((uptime_secs, provider_active, host_active, jobs_completed, earnings_msats)),
+            }) => Some((
+                uptime_secs,
+                provider_active,
+                host_active,
+                jobs_completed,
+                earnings_msats,
+            )),
             _ => None,
         }
     } else {

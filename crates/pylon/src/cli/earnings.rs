@@ -55,7 +55,10 @@ pub async fn run(args: EarningsArgs) -> anyhow::Result<()> {
         println!("==============\n");
 
         println!("Summary:");
-        println!("  Total earned: {} sats ({} msats)", summary.total_sats, summary.total_msats);
+        println!(
+            "  Total earned: {} sats ({} msats)",
+            summary.total_sats, summary.total_msats
+        );
         println!("  Jobs completed: {}", summary.job_count);
         println!();
 

@@ -2,8 +2,8 @@
 //!
 //! Handles secure key storage and persistent data
 
-pub mod config;
 pub mod address_book;
-pub mod keychain;
+pub mod config;
 pub mod identities;
+pub mod keychain;
 pub mod nwc;

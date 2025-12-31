@@ -1,7 +1,7 @@
 //! Job database for persistent storage of marketplace compute jobs
 
 use crate::compute::consumer::{JobInfo, JobState};
-use rusqlite::{params, Connection, Result as SqliteResult};
+use rusqlite::{Connection, Result as SqliteResult, params};
 use std::path::PathBuf;
 
 /// Job database for persistent storage
@@ -113,7 +113,11 @@ impl JobDatabase {
     }
 
     /// Get all jobs, optionally filtered by state
-    pub fn get_jobs(&self, state_filter: Option<JobState>, limit: Option<usize>) -> SqliteResult<Vec<JobInfo>> {
+    pub fn get_jobs(
+        &self,
+        state_filter: Option<JobState>,
+        limit: Option<usize>,
+    ) -> SqliteResult<Vec<JobInfo>> {
         let query = if let Some(state) = state_filter {
             format!(
                 "SELECT job_id, state, request, result, error, provider,
@@ -158,9 +162,9 @@ impl JobDatabase {
 
     /// Get job count by state
     pub fn count_jobs_by_state(&self) -> SqliteResult<Vec<(JobState, usize)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT state, COUNT(*) FROM jobs GROUP BY state"
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT state, COUNT(*) FROM jobs GROUP BY state")?;
 
         let rows = stmt.query_map([], |row| {
             let state_str: String = row.get(0)?;
@@ -252,7 +256,12 @@ mod tests {
         // Update job - manually set to completed
         job.state = JobState::Completed;
         job.result = Some("result data".to_string());
-        job.completed_at = Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs());
+        job.completed_at = Some(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        );
         db.save_job(&job).unwrap();
 
         let loaded = db.get_job("job456").unwrap().unwrap();

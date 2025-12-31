@@ -57,7 +57,10 @@ pub enum FallbackResult {
         duration_ms: u64,
     },
     /// Both failed
-    Failed { local_error: String, swarm_error: Option<String> },
+    Failed {
+        local_error: String,
+        swarm_error: Option<String>,
+    },
 }
 
 /// Metrics for fallback usage tracking
@@ -180,11 +183,7 @@ impl FallbackManager {
     ///
     /// # Returns
     /// Result with response text and information about which backend was used
-    pub async fn execute_with_fallback(
-        &self,
-        model: &str,
-        prompt: &str,
-    ) -> Result<FallbackResult> {
+    pub async fn execute_with_fallback(&self, model: &str, prompt: &str) -> Result<FallbackResult> {
         let config = self.config.read().await.clone();
         let start_time = std::time::Instant::now();
 

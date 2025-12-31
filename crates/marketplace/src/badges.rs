@@ -205,8 +205,12 @@ impl BadgeRequirement {
     pub fn description(&self) -> String {
         match self {
             BadgeRequirement::MinJobs(n) => format!("Complete at least {} jobs", n),
-            BadgeRequirement::MinSuccessRate(r) => format!("Maintain {}% success rate", (r * 100.0) as u32),
-            BadgeRequirement::BenchmarkScore(s) => format!("Achieve {}% benchmark score", (s * 100.0) as u32),
+            BadgeRequirement::MinSuccessRate(r) => {
+                format!("Maintain {}% success rate", (r * 100.0) as u32)
+            }
+            BadgeRequirement::BenchmarkScore(s) => {
+                format!("Achieve {}% benchmark score", (s * 100.0) as u32)
+            }
             BadgeRequirement::AuditPassed => "Pass security audit".to_string(),
             BadgeRequirement::KycCompleted => "Complete KYC verification".to_string(),
             BadgeRequirement::AttestationCount(n) => format!("Receive {} attestations", n),
@@ -244,14 +248,17 @@ impl BadgeRequirements {
     /// Get default requirements for each badge type
     pub fn defaults(badge_type: BadgeType) -> Self {
         match badge_type {
-            BadgeType::VerifiedIdentity => Self::new(badge_type)
-                .add_requirement(BadgeRequirement::KycCompleted),
+            BadgeType::VerifiedIdentity => {
+                Self::new(badge_type).add_requirement(BadgeRequirement::KycCompleted)
+            }
 
-            BadgeType::Benchmarked => Self::new(badge_type)
-                .add_requirement(BadgeRequirement::BenchmarkScore(0.85)),
+            BadgeType::Benchmarked => {
+                Self::new(badge_type).add_requirement(BadgeRequirement::BenchmarkScore(0.85))
+            }
 
-            BadgeType::Audited => Self::new(badge_type)
-                .add_requirement(BadgeRequirement::AuditPassed),
+            BadgeType::Audited => {
+                Self::new(badge_type).add_requirement(BadgeRequirement::AuditPassed)
+            }
 
             BadgeType::Official => Self::new(badge_type), // Platform-issued only
 
@@ -281,9 +288,7 @@ pub enum IdentityVerification {
         min_required: u32,
     },
     /// Stake-based verification
-    StakeBased {
-        stake_sats: u64,
-    },
+    StakeBased { stake_sats: u64 },
 }
 
 impl IdentityVerification {
@@ -312,9 +317,10 @@ impl IdentityVerification {
     pub fn is_verified(&self) -> bool {
         match self {
             IdentityVerification::Kyc { .. } => true,
-            IdentityVerification::SocialAttestation { attestors, min_required } => {
-                attestors.len() >= *min_required as usize
-            }
+            IdentityVerification::SocialAttestation {
+                attestors,
+                min_required,
+            } => attestors.len() >= *min_required as usize,
             IdentityVerification::StakeBased { stake_sats } => *stake_sats >= 100_000, // 100k sats min
         }
     }
@@ -402,8 +408,12 @@ mod tests {
 
     #[test]
     fn test_badge_type_trust_boost() {
-        assert!(BadgeType::Official.default_trust_boost() > BadgeType::Popular.default_trust_boost());
-        assert!(BadgeType::Audited.default_trust_boost() > BadgeType::Benchmarked.default_trust_boost());
+        assert!(
+            BadgeType::Official.default_trust_boost() > BadgeType::Popular.default_trust_boost()
+        );
+        assert!(
+            BadgeType::Audited.default_trust_boost() > BadgeType::Benchmarked.default_trust_boost()
+        );
     }
 
     #[test]
@@ -433,8 +443,7 @@ mod tests {
 
     #[test]
     fn test_badge_expiration() {
-        let badge = Badge::new(BadgeType::Benchmarked, "entity1", "tester")
-            .expires_in_days(30);
+        let badge = Badge::new(BadgeType::Benchmarked, "entity1", "tester").expires_in_days(30);
 
         assert!(!badge.is_expired());
         assert!(badge.is_active());
@@ -453,13 +462,11 @@ mod tests {
 
     #[test]
     fn test_badge_trust_boost_clamping() {
-        let badge = Badge::new(BadgeType::Elite, "entity1", "platform")
-            .with_trust_boost(1.5);
+        let badge = Badge::new(BadgeType::Elite, "entity1", "platform").with_trust_boost(1.5);
 
         assert_eq!(badge.trust_boost, 1.0);
 
-        let badge = Badge::new(BadgeType::Elite, "entity1", "platform")
-            .with_trust_boost(-0.5);
+        let badge = Badge::new(BadgeType::Elite, "entity1", "platform").with_trust_boost(-0.5);
 
         assert_eq!(badge.trust_boost, 0.0);
     }
@@ -484,10 +491,20 @@ mod tests {
     fn test_badge_requirements_defaults() {
         let elite_reqs = BadgeRequirements::defaults(BadgeType::Elite);
         assert!(!elite_reqs.requirements.is_empty());
-        assert!(elite_reqs.requirements.iter().any(|r| matches!(r, BadgeRequirement::MinJobs(_))));
+        assert!(
+            elite_reqs
+                .requirements
+                .iter()
+                .any(|r| matches!(r, BadgeRequirement::MinJobs(_)))
+        );
 
         let identity_reqs = BadgeRequirements::defaults(BadgeType::VerifiedIdentity);
-        assert!(identity_reqs.requirements.iter().any(|r| matches!(r, BadgeRequirement::KycCompleted)));
+        assert!(
+            identity_reqs
+                .requirements
+                .iter()
+                .any(|r| matches!(r, BadgeRequirement::KycCompleted))
+        );
     }
 
     #[test]
@@ -504,10 +521,7 @@ mod tests {
         );
         assert!(verification.is_verified());
 
-        let insufficient = IdentityVerification::social_attestation(
-            vec!["user1".to_string()],
-            3,
-        );
+        let insufficient = IdentityVerification::social_attestation(vec!["user1".to_string()], 3);
         assert!(!insufficient.is_verified());
     }
 
@@ -579,8 +593,7 @@ mod tests {
 
     #[test]
     fn test_badge_serde() {
-        let badge = Badge::new(BadgeType::Official, "entity1", "platform")
-            .expires_in_days(365);
+        let badge = Badge::new(BadgeType::Official, "entity1", "platform").expires_in_days(365);
 
         let json = serde_json::to_string(&badge).unwrap();
         let deserialized: Badge = serde_json::from_str(&json).unwrap();

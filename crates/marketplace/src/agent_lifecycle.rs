@@ -226,11 +226,7 @@ pub struct AgentSpawnRequest {
 
 impl AgentSpawnRequest {
     /// Create a new spawn request
-    pub fn new(
-        name: impl Into<String>,
-        sponsor: SponsorInfo,
-        bootstrap_sats: u64,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, sponsor: SponsorInfo, bootstrap_sats: u64) -> Self {
         Self {
             name: name.into(),
             sponsor,
@@ -651,10 +647,12 @@ mod tests {
     #[test]
     fn test_death_cause_is_voluntary() {
         assert!(DeathCause::VoluntaryTermination.is_voluntary());
-        assert!(DeathCause::SponsorDecision {
-            reason: "test".to_string()
-        }
-        .is_voluntary());
+        assert!(
+            DeathCause::SponsorDecision {
+                reason: "test".to_string()
+            }
+            .is_voluntary()
+        );
         assert!(!DeathCause::EconomicStarvation.is_voluntary());
         assert!(!DeathCause::CompetitiveDisplacement.is_voluntary());
     }

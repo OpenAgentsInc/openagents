@@ -4,13 +4,11 @@
 //! Part of d-015: Comprehensive Marketplace and Agent Commerce E2E Tests
 
 use chrono::Utc;
-use marketplace::trajectories::{
-    TrajectoryConfig, TrajectorySession,
-};
-use nostr::{finalize_event, generate_secret_key, get_public_key, EventTemplate};
+use marketplace::trajectories::{TrajectoryConfig, TrajectorySession};
+use nostr::{EventTemplate, finalize_event, generate_secret_key, get_public_key};
 use nostr::{
-    StepType, TrajectoryEventContent, TrajectorySessionContent, TrajectoryVisibility,
-    KIND_TRAJECTORY_EVENT, KIND_TRAJECTORY_SESSION,
+    KIND_TRAJECTORY_EVENT, KIND_TRAJECTORY_SESSION, StepType, TrajectoryEventContent,
+    TrajectorySessionContent, TrajectoryVisibility,
 };
 use nostr_client::RelayConnection;
 use nostr_relay::{Database, DatabaseConfig, RelayConfig, RelayServer};
@@ -103,8 +101,11 @@ async fn test_trajectory_session_publish_to_relay() {
             .with_total_events(42);
 
     // Create NIP-SA trajectory session
-    let session =
-        nostr::TrajectorySession::new(session_content.clone(), "tick-001", TrajectoryVisibility::Public);
+    let session = nostr::TrajectorySession::new(
+        session_content.clone(),
+        "tick-001",
+        TrajectoryVisibility::Public,
+    );
 
     let session_json = session_content.to_json().expect("serialize");
     let session_tags = session.build_tags();
@@ -116,8 +117,7 @@ async fn test_trajectory_session_publish_to_relay() {
         created_at: now,
     };
 
-    let session_event =
-        finalize_event(&session_template, &contributor_secret_key).expect("sign");
+    let session_event = finalize_event(&session_template, &contributor_secret_key).expect("sign");
 
     let relay = RelayConnection::new(&relay_url).expect("connection");
     relay.connect().await.expect("connect");
@@ -175,10 +175,22 @@ async fn test_trajectory_events_publish_to_relay() {
 
     // Create multiple trajectory events
     let events_data = vec![
-        (StepType::ToolUse, json!({"tool": "Read", "path": "/src/main.rs"})),
-        (StepType::ToolResult, json!({"success": true, "output": "file contents..."})),
-        (StepType::Thinking, json!({"thought": "I need to analyze the code"})),
-        (StepType::Message, json!({"message": "Here's the analysis..."})),
+        (
+            StepType::ToolUse,
+            json!({"tool": "Read", "path": "/src/main.rs"}),
+        ),
+        (
+            StepType::ToolResult,
+            json!({"success": true, "output": "file contents..."}),
+        ),
+        (
+            StepType::Thinking,
+            json!({"thought": "I need to analyze the code"}),
+        ),
+        (
+            StepType::Message,
+            json!({"message": "Here's the analysis..."}),
+        ),
     ];
 
     let relay = RelayConnection::new(&relay_url).expect("connection");
@@ -203,7 +215,8 @@ async fn test_trajectory_events_publish_to_relay() {
             content = content.with_data(key, value.clone());
         }
 
-        let event = nostr::TrajectoryEvent::new(content.clone(), "session-123", "tick-001", seq as u32);
+        let event =
+            nostr::TrajectoryEvent::new(content.clone(), "session-123", "tick-001", seq as u32);
 
         let event_json = content.to_json().expect("serialize");
         let event_tags = event.build_tags();
@@ -238,7 +251,10 @@ async fn test_trajectory_events_publish_to_relay() {
     // Verify all have correct kind and session reference
     for event in &received_events {
         assert_eq!(event.kind, KIND_TRAJECTORY_EVENT);
-        let has_session_ref = event.tags.iter().any(|t| t[0] == "session" && t[1] == "session-123");
+        let has_session_ref = event
+            .tags
+            .iter()
+            .any(|t| t[0] == "session" && t[1] == "session-123");
         assert!(has_session_ref, "Event should reference session");
     }
 
@@ -270,8 +286,8 @@ async fn test_trajectory_with_hash_verification() {
     ];
 
     let events_str: Vec<String> = events_json.iter().map(|e| e.to_string()).collect();
-    let trajectory_hash = TrajectorySessionContent::calculate_hash(&events_str)
-        .expect("calculate hash");
+    let trajectory_hash =
+        TrajectorySessionContent::calculate_hash(&events_str).expect("calculate hash");
 
     // Create session with hash
     let session_content =
@@ -280,8 +296,11 @@ async fn test_trajectory_with_hash_verification() {
             .with_total_events(2)
             .with_hash(trajectory_hash.clone());
 
-    let session =
-        nostr::TrajectorySession::new(session_content.clone(), "tick-hash-001", TrajectoryVisibility::Public);
+    let session = nostr::TrajectorySession::new(
+        session_content.clone(),
+        "tick-hash-001",
+        TrajectoryVisibility::Public,
+    );
 
     let session_json = session_content.to_json().expect("serialize");
     let session_tags = session.build_tags();
@@ -331,12 +350,13 @@ async fn test_trajectory_with_hash_verification() {
 
     // Verify we can reproduce the hash
     let verified_hash = TrajectorySessionContent::calculate_hash(&events_str).unwrap();
-    assert_eq!(verified_hash, trajectory_hash, "Hash should be reproducible");
+    assert_eq!(
+        verified_hash, trajectory_hash,
+        "Hash should be reproducible"
+    );
 
     relay.disconnect().await.ok();
 }
-
-
 
 // =============================================================================
 // Configuration Tests
@@ -347,8 +367,14 @@ fn test_trajectory_config_defaults() {
     let config = TrajectoryConfig::default();
 
     assert!(!config.sources.is_empty(), "Should have default sources");
-    assert!(!config.auto_contribute, "Auto-contribute should be off by default");
-    assert!(config.min_quality_score > 0.0, "Should have minimum threshold");
+    assert!(
+        !config.auto_contribute,
+        "Auto-contribute should be off by default"
+    );
+    assert!(
+        config.min_quality_score > 0.0,
+        "Should have minimum threshold"
+    );
 }
 
 #[test]
@@ -356,7 +382,10 @@ fn test_trajectory_session_creation() {
     let session = create_test_session();
 
     assert!(!session.session_id.is_empty(), "Should have session ID");
-    assert!(session.initial_commit.is_some(), "Should have initial commit");
+    assert!(
+        session.initial_commit.is_some(),
+        "Should have initial commit"
+    );
     assert!(session.final_commit.is_some(), "Should have final commit");
     assert!(session.ci_passed.is_some(), "Should have CI result");
     assert!(session.token_count > 0, "Should have tokens");

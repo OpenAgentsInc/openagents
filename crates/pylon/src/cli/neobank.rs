@@ -55,51 +55,66 @@ pub async fn run(args: NeobankArgs) -> anyhow::Result<()> {
     let client = ControlClient::new(socket_path);
 
     match args.command {
-        NeobankCommand::Balance { currency } => {
-            match client.neobank_balance(&currency)? {
-                DaemonResponse::NeobankBalance { sats } => {
-                    let currency_upper = currency.to_uppercase();
-                    if currency_upper == "BTC" {
-                        println!("Balance: {} sats ({:.8} BTC)", sats, sats as f64 / 100_000_000.0);
-                    } else {
-                        println!("Balance: {} cents (${:.2})", sats, sats as f64 / 100.0);
-                    }
-                }
-                DaemonResponse::Error(e) => {
-                    println!("Error: {}", e);
-                }
-                _ => {
-                    println!("Unexpected response from daemon");
+        NeobankCommand::Balance { currency } => match client.neobank_balance(&currency)? {
+            DaemonResponse::NeobankBalance { sats } => {
+                let currency_upper = currency.to_uppercase();
+                if currency_upper == "BTC" {
+                    println!(
+                        "Balance: {} sats ({:.8} BTC)",
+                        sats,
+                        sats as f64 / 100_000_000.0
+                    );
+                } else {
+                    println!("Balance: {} cents (${:.2})", sats, sats as f64 / 100.0);
                 }
             }
-        }
-        NeobankCommand::Status => {
-            match client.neobank_status()? {
-                DaemonResponse::NeobankStatus {
+            DaemonResponse::Error(e) => {
+                println!("Error: {}", e);
+            }
+            _ => {
+                println!("Unexpected response from daemon");
+            }
+        },
+        NeobankCommand::Status => match client.neobank_status()? {
+            DaemonResponse::NeobankStatus {
+                btc_balance_sats,
+                usd_balance_cents,
+                treasury_active,
+                btc_usd_rate,
+            } => {
+                println!("Neobank Treasury Status");
+                println!("=======================");
+                println!();
+                println!(
+                    "BTC Balance: {} sats ({:.8} BTC)",
                     btc_balance_sats,
+                    btc_balance_sats as f64 / 100_000_000.0
+                );
+                println!(
+                    "USD Balance: {} cents (${:.2})",
                     usd_balance_cents,
-                    treasury_active,
-                    btc_usd_rate,
-                } => {
-                    println!("Neobank Treasury Status");
-                    println!("=======================");
-                    println!();
-                    println!("BTC Balance: {} sats ({:.8} BTC)", btc_balance_sats, btc_balance_sats as f64 / 100_000_000.0);
-                    println!("USD Balance: {} cents (${:.2})", usd_balance_cents, usd_balance_cents as f64 / 100.0);
-                    println!();
-                    println!("Treasury Agent: {}", if treasury_active { "Active" } else { "Inactive" });
-                    if let Some(rate) = btc_usd_rate {
-                        println!("BTC/USD Rate: ${:.2}", rate);
+                    usd_balance_cents as f64 / 100.0
+                );
+                println!();
+                println!(
+                    "Treasury Agent: {}",
+                    if treasury_active {
+                        "Active"
+                    } else {
+                        "Inactive"
                     }
-                }
-                DaemonResponse::Error(e) => {
-                    println!("Error: {}", e);
-                }
-                _ => {
-                    println!("Unexpected response from daemon");
+                );
+                if let Some(rate) = btc_usd_rate {
+                    println!("BTC/USD Rate: ${:.2}", rate);
                 }
             }
-        }
+            DaemonResponse::Error(e) => {
+                println!("Error: {}", e);
+            }
+            _ => {
+                println!("Unexpected response from daemon");
+            }
+        },
         NeobankCommand::Pay { bolt11 } => {
             println!("Paying invoice...");
             match client.neobank_pay(&bolt11)? {
