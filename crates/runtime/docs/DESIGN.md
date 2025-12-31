@@ -474,6 +474,63 @@ The runtime enforces budgets uniformly:
 
 ---
 
+## Part Seven-A: The Compute Model
+
+Agents need AI compute. The runtime provides a portable abstraction for accessing LLMs and other AI capabilities.
+
+### Why Abstract Compute?
+
+Without a compute abstraction:
+- Agent code is tied to specific providers (OpenAI, Anthropic, Ollama, etc.)
+- Budget enforcement is inconsistent
+- Retries cause double-billing
+- Streaming patterns vary wildly across providers
+
+### The /compute Filesystem
+
+Compute is accessed like any other capability—as a filesystem:
+
+```
+/compute/
+├── providers/          # Available providers (local, cloudflare, swarm)
+├── run                 # Write request → read response
+├── policy              # Allowed models, cost limits
+├── usage               # Budget tracking
+└── jobs/               # Async job tracking
+    └── <job_id>/
+        ├── status      # running|streaming|complete|failed
+        └── stream      # Watch for streaming chunks
+```
+
+### Key Concepts
+
+| Concept | Description |
+|---------|-------------|
+| **ComputeProvider** | Adapter for a compute source (Ollama, Workers AI, DVM) |
+| **ComputeRouter** | Routes requests to providers based on policy |
+| **ComputePolicy** | Per-agent restrictions (models, cost limits, preferences) |
+| **IdempotencyJournal** | Prevents double-billing on retries |
+
+### Provider Types
+
+| Provider | Latency | Cost | Availability |
+|----------|---------|------|--------------|
+| **Local** (Ollama/llama.cpp) | Lowest | Free | Requires local server |
+| **Cloudflare** (Workers AI) | 10-50ms | Per-token | Always available |
+| **Swarm** (NIP-90 DVMs) | Variable | Bid-based | Decentralized |
+
+### Budget Integration
+
+Compute costs integrate with the resource model:
+- Per-tick cost limits (micro-USD)
+- Per-day cost limits
+- Model restrictions
+- Approval thresholds for large requests
+
+See [COMPUTE.md](./COMPUTE.md) for full specification.
+
+---
+
 ## Part Eight: The Failure Model
 
 ### Agents Will Fail

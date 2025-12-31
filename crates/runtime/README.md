@@ -48,6 +48,10 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 ├── nostr/
 │   ├── relays          # connected relay list
 │   └── publish         # write event to publish
+├── compute/
+│   ├── run             # write request, read response
+│   ├── providers/      # available AI providers
+│   └── usage           # budget tracking
 ├── deadletter/         # overflow envelopes (when inbox full)
 ├── logs/
 │   ├── trace           # streaming trace
@@ -100,6 +104,7 @@ This is not a generic actor framework. It's purpose-built for AI agents:
 | [CONTROL-PLANE.md](docs/CONTROL-PLANE.md) | Management API (HTTP + CLI) |
 | [PLAN9.md](docs/PLAN9.md) | Plan 9 inspirations (filesystem, namespaces, plumber) |
 | [FILESYSTEM.md](docs/FILESYSTEM.md) | FileService trait and implementations |
+| [COMPUTE.md](docs/COMPUTE.md) | AI compute abstraction (providers, budgets, streaming) |
 | [PRIOR-ART.md](docs/PRIOR-ART.md) | Related work (Plan 9, WANIX, OANIX) |
 
 ## Quick Example
