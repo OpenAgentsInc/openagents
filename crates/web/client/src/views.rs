@@ -1090,9 +1090,24 @@ pub(crate) fn build_repo_selector(
                 .with_background(theme::border::SUBTLE),
         );
 
+        let panel_gap = 12.0;
+        let mut code_panel_height = (sidebar_height * 0.42).max(180.0);
+        let max_code_panel = (sidebar_height - 220.0).max(120.0);
+        code_panel_height = code_panel_height.min(max_code_panel);
+        let editor_panel_height = (sidebar_height - code_panel_height - panel_gap).max(0.0);
+
+        let code_panel_top = sidebar_top;
+        let code_panel_bounds =
+            Bounds::new(sidebar_x + 8.0, code_panel_top + 8.0, sidebar_width - 16.0, code_panel_height - 8.0);
+        scene.draw_quad(
+            Quad::new(code_panel_bounds)
+                .with_background(theme::bg::SURFACE)
+                .with_border(theme::border::SUBTLE, 1.0),
+        );
+
         let title_run = text_system.layout(
             "Code Blocks",
-            Point::new(sidebar_x + 12.0, sidebar_top + 10.0),
+            Point::new(code_panel_bounds.origin.x + 12.0, code_panel_bounds.origin.y + 10.0),
             13.0,
             theme::text::PRIMARY,
         );
@@ -1100,7 +1115,7 @@ pub(crate) fn build_repo_selector(
 
         let subtitle_run = text_system.layout(
             "WGPUI MarkdownView",
-            Point::new(sidebar_x + 12.0, sidebar_top + 26.0),
+            Point::new(code_panel_bounds.origin.x + 12.0, code_panel_bounds.origin.y + 26.0),
             10.0,
             theme::text::MUTED,
         );
@@ -1108,30 +1123,36 @@ pub(crate) fn build_repo_selector(
 
         scene.draw_quad(
             Quad::new(Bounds::new(
-                sidebar_x + 12.0,
-                sidebar_top + 40.0,
-                sidebar_width - 24.0,
+                code_panel_bounds.origin.x + 12.0,
+                code_panel_bounds.origin.y + 40.0,
+                code_panel_bounds.size.width - 24.0,
                 1.0,
             ))
             .with_background(theme::border::SUBTLE),
         );
 
-        let content_y = sidebar_top + 48.0;
-        let content_height = (sidebar_height - (content_y - sidebar_top) - 12.0).max(0.0);
-        let content_bounds =
-            Bounds::new(sidebar_x + 10.0, content_y, sidebar_width - 20.0, content_height);
+        let code_content_y = code_panel_bounds.origin.y + 48.0;
+        let code_content_height =
+            (code_panel_bounds.size.height - (code_content_y - code_panel_bounds.origin.y) - 12.0)
+                .max(0.0);
+        let code_content_bounds = Bounds::new(
+            code_panel_bounds.origin.x + 10.0,
+            code_content_y,
+            code_panel_bounds.size.width - 20.0,
+            code_content_height,
+        );
         scene.draw_quad(
-            Quad::new(content_bounds)
+            Quad::new(code_content_bounds)
                 .with_background(theme::bg::APP)
                 .with_border(theme::border::SUBTLE, 1.0),
         );
 
-        if content_height > 0.0 {
+        if code_content_height > 0.0 {
             let md_bounds = Bounds::new(
-                content_bounds.origin.x + 8.0,
-                content_bounds.origin.y + 8.0,
-                (content_bounds.size.width - 16.0).max(0.0),
-                (content_bounds.size.height - 16.0).max(0.0),
+                code_content_bounds.origin.x + 8.0,
+                code_content_bounds.origin.y + 8.0,
+                (code_content_bounds.size.width - 16.0).max(0.0),
+                (code_content_bounds.size.height - 16.0).max(0.0),
             );
             state.markdown_demo.bounds = md_bounds;
             let document = state.markdown_demo.streaming.document().clone();
@@ -1142,9 +1163,82 @@ pub(crate) fn build_repo_selector(
             state.markdown_demo.bounds = Bounds::ZERO;
             state.markdown_demo.clear_hover();
         }
+
+        if editor_panel_height > 0.0 {
+            let editor_panel_top = code_panel_top + code_panel_height + panel_gap;
+            let editor_panel_bounds =
+                Bounds::new(sidebar_x + 8.0, editor_panel_top, sidebar_width - 16.0, editor_panel_height);
+            scene.draw_quad(
+                Quad::new(editor_panel_bounds)
+                    .with_background(theme::bg::SURFACE)
+                    .with_border(theme::border::SUBTLE, 1.0),
+            );
+
+            let editor_title = text_system.layout(
+                "Editor Core",
+                Point::new(editor_panel_bounds.origin.x + 12.0, editor_panel_bounds.origin.y + 10.0),
+                13.0,
+                theme::text::PRIMARY,
+            );
+            scene.draw_text(editor_title);
+
+            let editor_subtitle = text_system.layout(
+                "WGPUI EditorView",
+                Point::new(editor_panel_bounds.origin.x + 12.0, editor_panel_bounds.origin.y + 26.0),
+                10.0,
+                theme::text::MUTED,
+            );
+            scene.draw_text(editor_subtitle);
+
+            scene.draw_quad(
+                Quad::new(Bounds::new(
+                    editor_panel_bounds.origin.x + 12.0,
+                    editor_panel_bounds.origin.y + 40.0,
+                    editor_panel_bounds.size.width - 24.0,
+                    1.0,
+                ))
+                .with_background(theme::border::SUBTLE),
+            );
+
+            let editor_content_y = editor_panel_bounds.origin.y + 48.0;
+            let editor_content_height =
+                (editor_panel_bounds.size.height - (editor_content_y - editor_panel_bounds.origin.y) - 12.0)
+                    .max(0.0);
+            let editor_content_bounds = Bounds::new(
+                editor_panel_bounds.origin.x + 10.0,
+                editor_content_y,
+                editor_panel_bounds.size.width - 20.0,
+                editor_content_height,
+            );
+            scene.draw_quad(
+                Quad::new(editor_content_bounds)
+                    .with_background(theme::bg::APP)
+                    .with_border(theme::border::SUBTLE, 1.0),
+            );
+
+            if editor_content_height > 0.0 {
+                let editor_bounds = Bounds::new(
+                    editor_content_bounds.origin.x + 8.0,
+                    editor_content_bounds.origin.y + 8.0,
+                    (editor_content_bounds.size.width - 16.0).max(0.0),
+                    (editor_content_bounds.size.height - 16.0).max(0.0),
+                );
+                state.editor_demo.bounds = editor_bounds;
+                let mut cx = PaintContext::new(scene, text_system, scale_factor);
+                state.editor_demo.view.paint(editor_bounds, &mut cx);
+            } else {
+                state.editor_demo.bounds = Bounds::ZERO;
+                state.editor_demo.clear_hover();
+            }
+        } else {
+            state.editor_demo.bounds = Bounds::ZERO;
+            state.editor_demo.clear_hover();
+        }
     } else {
         state.markdown_demo.bounds = Bounds::ZERO;
         state.markdown_demo.clear_hover();
+        state.editor_demo.bounds = Bounds::ZERO;
+        state.editor_demo.clear_hover();
     }
 }
 

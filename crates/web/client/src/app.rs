@@ -133,6 +133,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     let _ = state
                         .markdown_demo
                         .handle_event(InputEvent::MouseMove { x, y });
+                    let _ = state
+                        .editor_demo
+                        .handle_event(InputEvent::MouseMove { x, y });
                 }
             }
 
@@ -350,6 +353,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             if let Ok(mut state) = state_clone.try_borrow_mut() {
                 if state.view == AppView::RepoSelector {
                     let _ = state.markdown_demo.handle_event(input_event.clone());
+                    let _ = state.editor_demo.handle_event(input_event.clone());
                 }
             }
             dispatch_hud_event(&state_clone, input_event.clone());
@@ -367,6 +371,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let y = event.offset_y() as f32;
             let button = mouse_button_from_event(&event);
             let input_event = InputEvent::MouseUp { button, x, y };
+            if let Ok(mut state) = state_clone.try_borrow_mut() {
+                if state.view == AppView::RepoSelector {
+                    let _ = state.editor_demo.handle_event(input_event.clone());
+                }
+            }
             dispatch_hud_event(&state_clone, input_event.clone());
             dispatch_wallet_event(&state_clone, input_event);
         });
@@ -383,6 +392,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 return;
             };
             if state.view == AppView::RepoSelector {
+                let point = Point::new(event.offset_x() as f32, event.offset_y() as f32);
+                let scroll = InputEvent::Scroll {
+                    dx: 0.0,
+                    dy: event.delta_y() as f32 * 0.5,
+                };
+                if state.editor_demo.bounds.contains(point) {
+                    let _ = state.editor_demo.handle_event(scroll);
+                    return;
+                }
+
                 state.scroll_offset += event.delta_y() as f32 * 0.5;
                 state.scroll_offset = state.scroll_offset.max(0.0);
                 return;
@@ -487,6 +506,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 && state.nip90_event_bounds.iter().any(|b| b.contains(state.mouse_pos));
             let markdown_hover = state.view == AppView::RepoSelector
                 && matches!(state.markdown_demo.cursor(), Cursor::Pointer);
+            let editor_cursor = if state.view == AppView::RepoSelector {
+                state.editor_demo.cursor()
+            } else {
+                Cursor::Default
+            };
             let cursor = if state.button_hovered
                 || state.hovered_repo_idx.is_some()
                 || hud_hover
@@ -499,6 +523,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 || markdown_hover
             {
                 "pointer"
+            } else if matches!(editor_cursor, Cursor::Text) {
+                "text"
             } else {
                 "default"
             };
@@ -517,9 +543,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             if let Some(key) = key_from_event(&event) {
                 let modifiers = modifiers_from_event(&event);
                 let input_event = InputEvent::KeyDown { key, modifiers };
-                handled = dispatch_hud_event(&state_clone, input_event.clone());
+                if let Ok(mut state) = state_clone.try_borrow_mut() {
+                    if state.view == AppView::RepoSelector {
+                        handled = state.editor_demo.handle_event(input_event.clone());
+                    }
+                }
                 if matches!(handled, EventResult::Ignored) {
-                    handled = dispatch_wallet_event(&state_clone, input_event);
+                    handled = dispatch_hud_event(&state_clone, input_event.clone());
+                    if matches!(handled, EventResult::Ignored) {
+                        handled = dispatch_wallet_event(&state_clone, input_event);
+                    }
                 }
             }
 
@@ -547,6 +580,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             state.markdown_demo.tick();
         } else {
             state.markdown_demo.clear_hover();
+            state.editor_demo.clear_hover();
         }
 
         match state.view {

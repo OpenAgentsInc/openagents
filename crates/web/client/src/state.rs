@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use editor::EditorView;
 use wgpui::{
     Bounds, Component, Cursor, EventContext, EventResult, InputEvent, MarkdownDocument,
     MarkdownView, Point, StreamingMarkdown,
@@ -143,6 +144,43 @@ impl MarkdownDemo {
     }
 }
 
+pub(crate) struct EditorDemo {
+    pub(crate) view: EditorView,
+    pub(crate) bounds: Bounds,
+    pub(crate) events: EventContext,
+}
+
+impl EditorDemo {
+    pub(crate) fn new() -> Self {
+        let source = demo_editor_source();
+        let view = EditorView::from_text(&source).on_copy(copy_to_clipboard);
+        Self {
+            view,
+            bounds: Bounds::ZERO,
+            events: EventContext::new(),
+        }
+    }
+
+    pub(crate) fn handle_event(&mut self, event: InputEvent) -> EventResult {
+        if self.bounds.size.width <= 0.0 || self.bounds.size.height <= 0.0 {
+            return EventResult::Ignored;
+        }
+        self.view.event(&event, self.bounds, &mut self.events)
+    }
+
+    pub(crate) fn cursor(&self) -> Cursor {
+        if self.bounds.size.width <= 0.0 || self.bounds.size.height <= 0.0 {
+            Cursor::Default
+        } else {
+            self.view.cursor()
+        }
+    }
+
+    pub(crate) fn clear_hover(&mut self) {
+        self.view.clear_hover();
+    }
+}
+
 pub(crate) struct AppState {
     pub(crate) mouse_pos: Point,
     pub(crate) button_hovered: bool,
@@ -201,6 +239,7 @@ pub(crate) struct AppState {
     // Background dots grid
     pub(crate) dots_grid: DotsGrid,
     pub(crate) markdown_demo: MarkdownDemo,
+    pub(crate) editor_demo: EditorDemo,
 }
 
 impl Default for AppState {
@@ -256,6 +295,7 @@ impl Default for AppState {
             cta_frames_started: false,
             dots_grid: DotsGrid::new(),
             markdown_demo: MarkdownDemo::new(),
+            editor_demo: EditorDemo::new(),
         }
     }
 }
@@ -362,4 +402,13 @@ fn tokenize_markdown(source: &str) -> VecDeque<String> {
         .chunks(3)
         .map(|chunk| chunk.iter().collect())
         .collect()
+}
+
+fn demo_editor_source() -> String {
+    let source = include_str!("views.rs");
+    source
+        .lines()
+        .take(160)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
