@@ -5,7 +5,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use wgpui::{
-    Bounds, Component, EventContext, EventResult, InputEvent, Key, Modifiers, MouseButton,
+    Bounds, Component, Cursor, EventContext, EventResult, InputEvent, Key, Modifiers, MouseButton,
     NamedKey, Platform, Point, Scene, WebPlatform, run_animation_loop, setup_resize_observer,
 };
 
@@ -127,6 +127,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         state.hovered_repo_idx = Some(i);
                         break;
                     }
+                }
+
+                if state.view == AppView::RepoSelector {
+                    let _ = state
+                        .markdown_demo
+                        .handle_event(InputEvent::MouseMove { x, y });
                 }
             }
 
@@ -341,6 +347,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let y = event.offset_y() as f32;
             let button = mouse_button_from_event(&event);
             let input_event = InputEvent::MouseDown { button, x, y };
+            if let Ok(mut state) = state_clone.try_borrow_mut() {
+                if state.view == AppView::RepoSelector {
+                    let _ = state.markdown_demo.handle_event(input_event.clone());
+                }
+            }
             dispatch_hud_event(&state_clone, input_event.clone());
             dispatch_wallet_event(&state_clone, input_event);
         });
@@ -474,6 +485,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     || state.dvm_tab_bounds[1].contains(state.mouse_pos));
             let dvm_content_hover = state.view == AppView::Landing
                 && state.nip90_event_bounds.iter().any(|b| b.contains(state.mouse_pos));
+            let markdown_hover = state.view == AppView::RepoSelector
+                && matches!(state.markdown_demo.cursor(), Cursor::Pointer);
             let cursor = if state.button_hovered
                 || state.hovered_repo_idx.is_some()
                 || hud_hover
@@ -483,6 +496,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 || bazaar_cta_hover
                 || dvm_tab_hover
                 || dvm_content_hover
+                || markdown_hover
             {
                 "pointer"
             } else {
@@ -529,6 +543,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
 
         let scale_factor = platform.scale_factor();
 
+        if state.view == AppView::RepoSelector {
+            state.markdown_demo.tick();
+        } else {
+            state.markdown_demo.clear_hover();
+        }
+
         match state.view {
             AppView::Landing => {
                 build_landing_page(
@@ -541,7 +561,14 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 );
             }
             AppView::RepoSelector => {
-                build_repo_selector(&mut scene, platform.text_system(), &mut state, width, height);
+                build_repo_selector(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
             }
             AppView::RepoView => {
                 build_repo_view(
