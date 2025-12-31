@@ -1,0 +1,11 @@
+[package]
+name = "editor"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+ropey = "1.6"
+wgpui = { path = "../wgpui", default-features = true }
+
+[dev-dependencies]

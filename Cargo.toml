@@ -42,6 +42,7 @@ members = [
     "crates/orderbook",
     "crates/relay",
     "crates/runtime",
+    "crates/editor",
     "crates/web",
 ]
 
