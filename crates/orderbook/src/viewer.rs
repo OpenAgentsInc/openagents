@@ -69,10 +69,7 @@ pub fn print_order_raw(order: &ParsedOrder) {
         truncate(&order.event_id, 12),
         order.relay_url
     );
-    println!(
-        "  Coord: {}",
-        order.coord.to_addr()
-    );
+    println!("  Coord: {}", order.coord.to_addr());
     println!(
         "  {} | Status: {} | Currency: {}",
         side_display,

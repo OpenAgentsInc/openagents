@@ -5,9 +5,11 @@
 use clap::Parser;
 use nostr::Event;
 use nostr_client::RelayConnection;
-use orderbook::parser::{parse_order_lenient, P2P_ORDER_KIND};
+use orderbook::parser::{P2P_ORDER_KIND, parse_order_lenient};
 use orderbook::state::OrderbookState;
-use orderbook::viewer::{print_aggregated_view, print_banner, print_order_json, print_order_raw, DisplayMode};
+use orderbook::viewer::{
+    DisplayMode, print_aggregated_view, print_banner, print_order_json, print_order_raw,
+};
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
@@ -236,7 +238,13 @@ async fn main() -> anyhow::Result<()> {
                 }
 
                 let mut state_guard = state.write().await;
-                process_event(event, &relay_url, &mut state_guard, &args_clone, display_mode);
+                process_event(
+                    event,
+                    &relay_url,
+                    &mut state_guard,
+                    &args_clone,
+                    display_mode,
+                );
             }
 
             warn!("Event stream ended for {}", relay_url);

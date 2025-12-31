@@ -55,5 +55,5 @@ pub mod viewer;
 pub mod gui;
 
 pub use market::MarketKey;
-pub use parser::{parse_order_lenient, ParsedOrder, P2P_ORDER_KIND};
+pub use parser::{P2P_ORDER_KIND, ParsedOrder, parse_order_lenient};
 pub use state::{OrderCoord, OrderbookState};

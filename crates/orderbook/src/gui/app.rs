@@ -2,14 +2,14 @@
 
 use super::colors::orderbook as ob_colors;
 use super::state::{GuiState, RelayStatus};
-use crate::parser::{parse_order_lenient, P2P_ORDER_KIND};
+use crate::parser::{P2P_ORDER_KIND, parse_order_lenient};
 use crate::state::OrderbookState;
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc;
 use tokio::sync::RwLock;
+use tokio::sync::mpsc;
 use wgpui::renderer::Renderer;
 use wgpui::{Bounds, Hsla, Point, Quad, Scene, Size, TextSystem, theme};
 use winit::application::ApplicationHandler;
@@ -81,10 +81,8 @@ impl OrderbookApp {
                     let relay = match RelayConnection::new(&relay_url) {
                         Ok(r) => r,
                         Err(e) => {
-                            let _ = event_tx.send(RelayEvent::Error(
-                                relay_url.clone(),
-                                e.to_string(),
-                            ));
+                            let _ =
+                                event_tx.send(RelayEvent::Error(relay_url.clone(), e.to_string()));
                             return;
                         }
                     };
@@ -291,7 +289,13 @@ impl ApplicationHandler for OrderbookApp {
                 state.last_frame = Instant::now();
 
                 let mut scene = Scene::new();
-                render_orderbook(&mut scene, &mut state.text_system, &state.gui, width, height);
+                render_orderbook(
+                    &mut scene,
+                    &mut state.text_system,
+                    &state.gui,
+                    width,
+                    height,
+                );
 
                 let output = state
                     .surface
@@ -322,7 +326,9 @@ impl ApplicationHandler for OrderbookApp {
                 }
 
                 let scale_factor = state.window.scale_factor() as f32;
-                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
+                state
+                    .renderer
+                    .prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));
@@ -348,7 +354,8 @@ fn render_orderbook(
     height: f32,
 ) {
     // Background
-    scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+    scene
+        .draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
     // Header bar (40px)
     render_header(scene, text_system, gui, width);
@@ -412,15 +419,23 @@ fn render_header(scene: &mut Scene, text_system: &mut TextSystem, gui: &GuiState
     // Selected market indicator
     if let Some(market) = &gui.selected_market {
         let market_text = market.to_string();
-        let market_run =
-            text_system.layout(&market_text, Point::new(width - 200.0, 14.0), 14.0, theme::text::PRIMARY);
+        let market_run = text_system.layout(
+            &market_text,
+            Point::new(width - 200.0, 14.0),
+            14.0,
+            theme::text::PRIMARY,
+        );
         scene.draw_text(market_run);
     }
 
     // Keyboard hints
     let hints = "[Tab] Switch Market  [1-5] Select  [Esc] Exit";
-    let hints_run =
-        text_system.layout(hints, Point::new(width - 380.0, 26.0), 10.0, theme::text::MUTED);
+    let hints_run = text_system.layout(
+        hints,
+        Point::new(width - 380.0, 26.0),
+        10.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(hints_run);
 }
 
@@ -469,7 +484,8 @@ fn render_market_tabs(
             theme::text::PRIMARY
         };
         let market_text = market.to_string();
-        let market_run = text_system.layout(&market_text, Point::new(12.0, tab_y + 8.0), 12.0, color);
+        let market_run =
+            text_system.layout(&market_text, Point::new(12.0, tab_y + 8.0), 12.0, color);
         scene.draw_text(market_run);
 
         // Order count for this market (try to get from orderbook)
@@ -489,8 +505,12 @@ fn render_market_tabs(
     // Show placeholder if no markets
     if gui.markets.is_empty() {
         let placeholder = "Waiting for events...";
-        let placeholder_run =
-            text_system.layout(placeholder, Point::new(12.0, y + 50.0), 11.0, theme::text::MUTED);
+        let placeholder_run = text_system.layout(
+            placeholder,
+            Point::new(12.0, y + 50.0),
+            11.0,
+            theme::text::MUTED,
+        );
         scene.draw_text(placeholder_run);
     }
 }
@@ -509,13 +529,22 @@ fn render_orderbook_panel(
 
     // Bids header (left)
     let bids_label = "BIDS";
-    let bids_run = text_system.layout(bids_label, Point::new(x + 12.0, y + 10.0), 13.0, ob_colors::BID);
+    let bids_run = text_system.layout(
+        bids_label,
+        Point::new(x + 12.0, y + 10.0),
+        13.0,
+        ob_colors::BID,
+    );
     scene.draw_text(bids_run);
 
     // Asks header (right)
     let asks_label = "ASKS";
-    let asks_run =
-        text_system.layout(asks_label, Point::new(x + half_width + 12.0, y + 10.0), 13.0, ob_colors::ASK);
+    let asks_run = text_system.layout(
+        asks_label,
+        Point::new(x + half_width + 12.0, y + 10.0),
+        13.0,
+        ob_colors::ASK,
+    );
     scene.draw_text(asks_run);
 
     // Column headers
@@ -524,9 +553,24 @@ fn render_orderbook_panel(
     let header_color = theme::text::MUTED;
 
     // Bid column headers
-    text_system.layout(&headers[0].to_string(), Point::new(x + 12.0, col_y), 10.0, header_color);
-    text_system.layout(&headers[1].to_string(), Point::new(x + 80.0, col_y), 10.0, header_color);
-    text_system.layout(&headers[2].to_string(), Point::new(x + 160.0, col_y), 10.0, header_color);
+    text_system.layout(
+        &headers[0].to_string(),
+        Point::new(x + 12.0, col_y),
+        10.0,
+        header_color,
+    );
+    text_system.layout(
+        &headers[1].to_string(),
+        Point::new(x + 80.0, col_y),
+        10.0,
+        header_color,
+    );
+    text_system.layout(
+        &headers[2].to_string(),
+        Point::new(x + 160.0, col_y),
+        10.0,
+        header_color,
+    );
 
     // Ask column headers
     text_system.layout(
@@ -654,7 +698,11 @@ fn render_order_row(
     is_best: bool,
     max_amount: f32,
 ) {
-    let color = if is_bid { ob_colors::BID } else { ob_colors::ASK };
+    let color = if is_bid {
+        ob_colors::BID
+    } else {
+        ob_colors::ASK
+    };
     let depth_color = if is_bid {
         ob_colors::BID_DEPTH
     } else {
@@ -674,12 +722,22 @@ fn render_order_row(
 
     // Premium
     let premium_text = order.premium_display();
-    let premium_run = text_system.layout(&premium_text, Point::new(x + 12.0, y + 4.0), 11.0, text_color);
+    let premium_run = text_system.layout(
+        &premium_text,
+        Point::new(x + 12.0, y + 4.0),
+        11.0,
+        text_color,
+    );
     scene.draw_text(premium_run);
 
     // Amount
     let amount_text = format_sats(order.amount_sats.unwrap_or(0));
-    let amount_run = text_system.layout(&amount_text, Point::new(x + 80.0, y + 4.0), 11.0, theme::text::PRIMARY);
+    let amount_run = text_system.layout(
+        &amount_text,
+        Point::new(x + 80.0, y + 4.0),
+        11.0,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(amount_run);
 
     // Payment methods (truncated)
@@ -689,7 +747,12 @@ fn render_order_row(
     } else {
         methods
     };
-    let methods_run = text_system.layout(&methods_display, Point::new(x + 160.0, y + 4.0), 10.0, theme::text::MUTED);
+    let methods_run = text_system.layout(
+        &methods_display,
+        Point::new(x + 160.0, y + 4.0),
+        10.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(methods_run);
 }
 
@@ -704,7 +767,8 @@ fn render_event_feed(
 ) {
     // Feed background
     scene.draw_quad(
-        Quad::new(Bounds::new(0.0, y, width, height)).with_background(Hsla::new(0.0, 0.0, 0.05, 0.95)),
+        Quad::new(Bounds::new(0.0, y, width, height))
+            .with_background(Hsla::new(0.0, 0.0, 0.05, 0.95)),
     );
 
     // Top border
@@ -742,37 +806,58 @@ fn render_event_feed(
                 ob_colors::ASK
             };
             let side_text = if order.is_buy() { "BUY " } else { "SELL" };
-            let side_run = text_system.layout(side_text, Point::new(12.0, row_y + 1.0), 10.0, side_color);
+            let side_run =
+                text_system.layout(side_text, Point::new(12.0, row_y + 1.0), 10.0, side_color);
             scene.draw_text(side_run);
 
             // Currency
             let currency = order.currency.as_deref().unwrap_or("?");
-            let currency_run =
-                text_system.layout(currency, Point::new(60.0, row_y + 1.0), 10.0, theme::text::PRIMARY);
+            let currency_run = text_system.layout(
+                currency,
+                Point::new(60.0, row_y + 1.0),
+                10.0,
+                theme::text::PRIMARY,
+            );
             scene.draw_text(currency_run);
 
             // Amount
             let amount_text = format_sats(order.amount_sats.unwrap_or(0));
-            let amount_run =
-                text_system.layout(&amount_text, Point::new(110.0, row_y + 1.0), 10.0, theme::text::PRIMARY);
+            let amount_run = text_system.layout(
+                &amount_text,
+                Point::new(110.0, row_y + 1.0),
+                10.0,
+                theme::text::PRIMARY,
+            );
             scene.draw_text(amount_run);
 
             // Fiat
             let fiat_text = order.fiat_display();
-            let fiat_run =
-                text_system.layout(&fiat_text, Point::new(180.0, row_y + 1.0), 10.0, theme::text::MUTED);
+            let fiat_run = text_system.layout(
+                &fiat_text,
+                Point::new(180.0, row_y + 1.0),
+                10.0,
+                theme::text::MUTED,
+            );
             scene.draw_text(fiat_run);
 
             // Premium
             let premium_text = order.premium_display();
-            let premium_run =
-                text_system.layout(&premium_text, Point::new(250.0, row_y + 1.0), 10.0, theme::text::PRIMARY);
+            let premium_run = text_system.layout(
+                &premium_text,
+                Point::new(250.0, row_y + 1.0),
+                10.0,
+                theme::text::PRIMARY,
+            );
             scene.draw_text(premium_run);
 
             // Platform
             let platform = order.platform.as_deref().unwrap_or("?");
-            let platform_run =
-                text_system.layout(platform, Point::new(320.0, row_y + 1.0), 10.0, theme::text::MUTED);
+            let platform_run = text_system.layout(
+                platform,
+                Point::new(320.0, row_y + 1.0),
+                10.0,
+                theme::text::MUTED,
+            );
             scene.draw_text(platform_run);
 
             // Relay (shortened)
@@ -782,8 +867,12 @@ fn render_event_feed(
                 .chars()
                 .take(20)
                 .collect::<String>();
-            let relay_run =
-                text_system.layout(&relay, Point::new(420.0, row_y + 1.0), 10.0, theme::text::MUTED);
+            let relay_run = text_system.layout(
+                &relay,
+                Point::new(420.0, row_y + 1.0),
+                10.0,
+                theme::text::MUTED,
+            );
             scene.draw_text(relay_run);
         }
     }
