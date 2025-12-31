@@ -11,7 +11,6 @@ pub(crate) struct UserInfo {
 
 #[derive(Clone)]
 pub(crate) struct RepoInfo {
-    pub(crate) name: String,
     pub(crate) full_name: String,
     pub(crate) description: Option<String>,
     pub(crate) private: bool,

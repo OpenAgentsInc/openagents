@@ -93,7 +93,6 @@ pub(crate) enum HudEvent {
 pub(crate) struct HudSettingsData {
     pub(crate) public: bool,
     pub(crate) embed_allowed: bool,
-    pub(crate) redaction_policy: String,
 }
 
 #[derive(Clone, Default)]
@@ -102,6 +101,7 @@ pub(crate) struct HudLayout {
     pub(crate) code_bounds: Bounds,
     pub(crate) terminal_bounds: Bounds,
     pub(crate) metrics_bounds: Bounds,
+    pub(crate) wallet_bounds: Bounds,
     pub(crate) status_bounds: Bounds,
     pub(crate) settings_public_bounds: Bounds,
     pub(crate) settings_embed_bounds: Bounds,
@@ -140,7 +140,6 @@ impl HudUi {
             settings: HudSettingsData {
                 public: true,
                 embed_allowed: true,
-                redaction_policy: "standard".to_string(),
             },
         }
     }
@@ -823,7 +822,6 @@ async fn fetch_hud_settings(repo: &str) -> Option<HudSettingsData> {
             .get("embed_allowed")
             .and_then(|v| v.as_bool())
             .unwrap_or(true),
-        redaction_policy: "standard".to_string(),
     })
 }
 
@@ -1034,15 +1032,18 @@ pub(crate) fn draw_hud_view(
     let code_bounds;
     let terminal_bounds;
     let metrics_bounds;
+    let wallet_bounds;
 
     if width < 900.0 {
-        let pane_h = ((content_h - gutter * 3.0) / 4.0).max(120.0);
+        let pane_h = ((content_h - gutter * 4.0) / 5.0).max(0.0);
         thread_bounds = Bounds::new(content_x, content_y, content_w, pane_h);
         code_bounds = Bounds::new(content_x, content_y + pane_h + gutter, content_w, pane_h);
         terminal_bounds =
             Bounds::new(content_x, content_y + (pane_h + gutter) * 2.0, content_w, pane_h);
         metrics_bounds =
             Bounds::new(content_x, content_y + (pane_h + gutter) * 3.0, content_w, pane_h);
+        wallet_bounds =
+            Bounds::new(content_x, content_y + (pane_h + gutter) * 4.0, content_w, pane_h);
     } else {
         let left_w = (content_w * 0.34).max(280.0).min(420.0);
         let right_w = (content_w * 0.28).max(240.0).min(360.0);
@@ -1052,13 +1053,23 @@ pub(crate) fn draw_hud_view(
         let right_x = center_x + center_w + gutter;
         thread_bounds = Bounds::new(left_x, content_y, left_w, content_h);
         code_bounds = Bounds::new(center_x, content_y, center_w, content_h);
-        let terminal_h = (content_h * 0.6).max(180.0);
+        let mut terminal_h = (content_h * 0.6).max(0.0);
+        terminal_h = terminal_h.min(content_h - gutter * 2.0).max(0.0);
+        let remaining_h = (content_h - terminal_h - gutter * 2.0).max(0.0);
+        let metrics_h = remaining_h * 0.5;
+        let wallet_h = remaining_h - metrics_h;
         terminal_bounds = Bounds::new(right_x, content_y, right_w, terminal_h);
         metrics_bounds = Bounds::new(
             right_x,
             content_y + terminal_h + gutter,
             right_w,
-            content_h - terminal_h - gutter,
+            metrics_h,
+        );
+        wallet_bounds = Bounds::new(
+            right_x,
+            content_y + terminal_h + gutter + metrics_h + gutter,
+            right_w,
+            wallet_h,
         );
     }
 
@@ -1090,6 +1101,7 @@ pub(crate) fn draw_hud_view(
     layout.code_bounds = code_bounds;
     layout.terminal_bounds = terminal_bounds;
     layout.metrics_bounds = metrics_bounds;
+    layout.wallet_bounds = wallet_bounds;
     layout.status_bounds = Bounds::new(0.0, height - status_h, width, status_h);
     state.hud_layout = layout;
 
@@ -1098,6 +1110,14 @@ pub(crate) fn draw_hud_view(
     state.hud_ui.code.paint(code_bounds, &mut cx);
     state.hud_ui.terminal.paint(terminal_bounds, &mut cx);
     state.hud_ui.metrics.paint(metrics_bounds, &mut cx);
+    let show_wallet = state
+        .hud_context
+        .as_ref()
+        .map(|ctx| ctx.is_owner)
+        .unwrap_or(false);
+    if show_wallet {
+        state.wallet.paint(wallet_bounds, &mut cx);
+    }
 
     if state.hud_ui.thread.entry_count() == 0 {
         let placeholder = cx.text.layout(
@@ -1111,7 +1131,13 @@ pub(crate) fn draw_hud_view(
 
     if let Some(ctx) = state.hud_context.as_ref() {
         let repo = format!("{}/{}", ctx.username, ctx.repo);
-        let scope = if ctx.is_public { "public" } else { "private" };
+        let scope = if ctx.embed_mode {
+            "embed"
+        } else if ctx.is_public {
+            "public"
+        } else {
+            "private"
+        };
         state.hud_ui.status_bar.set_items(vec![
             StatusItem::text("status", state.hud_ui.status_text.clone())
                 .align(StatusItemAlignment::Left),

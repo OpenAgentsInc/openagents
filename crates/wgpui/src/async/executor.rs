@@ -4,7 +4,9 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 use futures::channel::oneshot;
-use futures::executor::{block_on, LocalPool};
+#[cfg(any(not(target_arch = "wasm32"), all(target_arch = "wasm32", not(feature = "web"))))]
+use futures::executor::block_on;
+use futures::executor::LocalPool;
 use futures::task::LocalSpawnExt;
 
 use super::Task;
