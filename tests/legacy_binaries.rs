@@ -34,7 +34,9 @@ fn test_install_legacy_symlinks_creates_links() {
 
     let target = temp_dir.join("openagents");
     fs::write(&target, "#!/bin/sh\necho openagents\n").expect("write target");
-    let mut perms = fs::metadata(&target).expect("target metadata").permissions();
+    let mut perms = fs::metadata(&target)
+        .expect("target metadata")
+        .permissions();
     perms.set_mode(0o755);
     fs::set_permissions(&target, perms).expect("chmod target");
 
@@ -48,7 +50,13 @@ fn test_install_legacy_symlinks_creates_links() {
         .expect("run symlink script");
     assert!(status.success(), "symlink script failed");
 
-    for name in ["wallet", "marketplace", "autopilot", "autopilotd", "gitafter"] {
+    for name in [
+        "wallet",
+        "marketplace",
+        "autopilot",
+        "autopilotd",
+        "gitafter",
+    ] {
         let link = temp_dir.join(name);
         assert!(link.exists(), "missing symlink: {}", name);
         let dest = fs::read_link(&link).expect("read symlink");

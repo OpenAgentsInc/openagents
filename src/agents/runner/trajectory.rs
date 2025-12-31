@@ -6,14 +6,14 @@
 //! - Debugging and analysis
 //! - Trust and transparency for agent actions
 
+use crate::agents::SharedRelay;
 use anyhow::Result;
 use compute::domain::UnifiedIdentity;
 use nostr::nip_sa::{
-    StepType, TrajectoryEvent, TrajectoryEventContent, TrajectorySession, TrajectorySessionContent,
-    TrajectoryVisibility, KIND_TRAJECTORY_EVENT, KIND_TRAJECTORY_SESSION,
+    KIND_TRAJECTORY_EVENT, KIND_TRAJECTORY_SESSION, StepType, TrajectoryEvent,
+    TrajectoryEventContent, TrajectorySession, TrajectorySessionContent, TrajectoryVisibility,
 };
-use nostr::{finalize_event, Event, EventTemplate};
-use crate::agents::SharedRelay;
+use nostr::{Event, EventTemplate, finalize_event};
 use std::time::Duration;
 
 /// Trajectory publisher for agent tick execution

@@ -204,7 +204,8 @@ pub fn merge_with_defaults(partial_json: &str, project_id: &str) -> ConfigResult
 
     let merged = merge_json_values(defaults_value, partial);
 
-    let config: ProjectConfig = serde_json::from_value(merged).map_err(|e| ConfigError::ParseError(e.to_string()))?;
+    let config: ProjectConfig =
+        serde_json::from_value(merged).map_err(|e| ConfigError::ParseError(e.to_string()))?;
 
     // Validate the merged config
     validate_config(&config)?;

@@ -1,6 +1,6 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-use nostr::{DmRelayList, Event, KIND_DM_RELAY_LIST, RelayListMetadata, RELAY_LIST_METADATA_KIND};
+use nostr::{DmRelayList, Event, KIND_DM_RELAY_LIST, RELAY_LIST_METADATA_KIND, RelayListMetadata};
 use nostr_client::{PoolConfig, RelayConnection, RelayPool};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -57,7 +57,9 @@ impl RelayApi for RelayConnection {
         subscription_id: &str,
         filters: &[Value],
     ) -> Result<mpsc::Receiver<Event>> {
-        let rx = self.subscribe_with_channel(subscription_id, filters).await?;
+        let rx = self
+            .subscribe_with_channel(subscription_id, filters)
+            .await?;
         Ok(rx)
     }
 
@@ -229,7 +231,9 @@ impl RelayHub {
         }
 
         if next.is_empty() {
-            return Err(anyhow!("RelayHub relay list update requires at least one relay URL"));
+            return Err(anyhow!(
+                "RelayHub relay list update requires at least one relay URL"
+            ));
         }
 
         let allow_prune = self.allow_relay_prune();

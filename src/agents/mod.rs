@@ -28,4 +28,7 @@ pub mod runner;
 
 pub use protocol::*;
 pub use relay::{RelayApi, RelayHub, SharedRelay};
-pub use runner::{ComputeClient, Scheduler, StateManager, TickExecutor, TickResult, TickTrigger, TrajectoryPublisher};
+pub use runner::{
+    ComputeClient, Scheduler, StateManager, TickExecutor, TickResult, TickTrigger,
+    TrajectoryPublisher,
+};

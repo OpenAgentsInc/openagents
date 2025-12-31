@@ -3,10 +3,10 @@
 //! Manages heartbeat timing and event triggers for agent ticks.
 
 use super::tick::{TickExecutor, TickResult, TickTrigger};
+use crate::agents::SharedRelay;
 use agent::LifecycleState;
 use anyhow::Result;
 use nostr::{Event, KIND_CHANNEL_MESSAGE};
-use crate::agents::SharedRelay;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use uuid::Uuid;

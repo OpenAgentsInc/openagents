@@ -10,14 +10,14 @@
 
 use clap::Parser;
 use nostr::{
-    derive_keypair, finalize_event, Event, EventTemplate, HandlerInfo, Keypair,
-    KIND_DM_RELAY_LIST, KIND_HANDLER_INFO, RELAY_LIST_METADATA_KIND,
+    Event, EventTemplate, HandlerInfo, KIND_DM_RELAY_LIST, KIND_HANDLER_INFO, Keypair,
+    RELAY_LIST_METADATA_KIND, derive_keypair, finalize_event,
 };
 use openagents::agents::{
-    now, parse_agent_message, parse_job_feedback, parse_job_result, publish_job_request,
-    send_channel_message, subscribe_job_responses, subscribe_to_channel, AgentMessage, JobStatus,
-    RelayApi, RelayHub, SharedRelay, CUSTOMER_MNEMONIC, DEFAULT_RELAY, KIND_JOB_FEEDBACK,
-    KIND_JOB_REQUEST_TEXT, KIND_JOB_RESULT_TEXT,
+    AgentMessage, CUSTOMER_MNEMONIC, DEFAULT_RELAY, JobStatus, KIND_JOB_FEEDBACK,
+    KIND_JOB_REQUEST_TEXT, KIND_JOB_RESULT_TEXT, RelayApi, RelayHub, SharedRelay, now,
+    parse_agent_message, parse_job_feedback, parse_job_result, publish_job_request,
+    send_channel_message, subscribe_job_responses, subscribe_to_channel,
 };
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use rand::Rng;
@@ -45,7 +45,9 @@ struct DiscoveredProvider {
 
 #[derive(Parser)]
 #[command(name = "agent-customer")]
-#[command(about = "NIP-90 Customer Agent - requests compute services via direct events or optional NIP-28 channels")]
+#[command(
+    about = "NIP-90 Customer Agent - requests compute services via direct events or optional NIP-28 channels"
+)]
 struct Args {
     /// NIP-28 channel ID for legacy/coordination (optional - primary flow uses direct events)
     #[arg(long)]
@@ -178,9 +180,7 @@ async fn watch_relay_list_updates(relay_hub: Arc<RelayHub>, pubkey_hex: String) 
     let mut latest_seen = 0_u64;
 
     while let Some(event) = rx.recv().await {
-        if event.kind != RELAY_LIST_METADATA_KIND
-            && event.kind != KIND_DM_RELAY_LIST
-        {
+        if event.kind != RELAY_LIST_METADATA_KIND && event.kind != KIND_DM_RELAY_LIST {
             continue;
         }
         if event.created_at < latest_seen {
@@ -225,8 +225,11 @@ async fn discover_providers(
 
     while std::time::Instant::now() < discovery_deadline {
         let remaining = discovery_deadline.saturating_duration_since(std::time::Instant::now());
-        match tokio::time::timeout(remaining.max(Duration::from_millis(100)), discovery_rx.recv())
-            .await
+        match tokio::time::timeout(
+            remaining.max(Duration::from_millis(100)),
+            discovery_rx.recv(),
+        )
+        .await
         {
             Ok(Some(event)) => events.push(event),
             Ok(None) => break,
@@ -382,10 +385,9 @@ async fn request_via_direct_events(
                             continue;
                         }
 
-                        let bolt11 =
-                            bolt11.ok_or::<Box<dyn std::error::Error + Send + Sync>>(
-                                "No invoice in feedback".into(),
-                            )?;
+                        let bolt11 = bolt11.ok_or::<Box<dyn std::error::Error + Send + Sync>>(
+                            "No invoice in feedback".into(),
+                        )?;
                         let amount_msats = amount.unwrap_or(provider.price_msats);
                         let amount_sats = amount_msats / 1000;
 
@@ -456,12 +458,11 @@ async fn request_via_channel(
 
     // Subscribe to channel
     let subscription_id = format!("customer-channel-{}", Uuid::new_v4());
-    let mut rx: mpsc::Receiver<Event> =
-        subscribe_to_channel(relay, channel_id, &subscription_id)
-            .await
-            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-                format!("Failed to subscribe to channel: {}", e).into()
-            })?;
+    let mut rx: mpsc::Receiver<Event> = subscribe_to_channel(relay, channel_id, &subscription_id)
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+            format!("Failed to subscribe to channel: {}", e).into()
+        })?;
 
     // Record start time (accept messages from last 5 minutes)
     let start_time = now().saturating_sub(300);
@@ -554,7 +555,13 @@ async fn request_via_channel(
                         let expiry_secs: u64 = 3600;
 
                         match w
-                            .send_htlc_payment(&bolt11, amount_sats, &htlc_payment_hash, expiry_secs, None)
+                            .send_htlc_payment(
+                                &bolt11,
+                                amount_sats,
+                                &htlc_payment_hash,
+                                expiry_secs,
+                                None,
+                            )
                             .await
                         {
                             Ok(payment) => {
@@ -566,10 +573,12 @@ async fn request_via_channel(
                                     amount_msats,
                                     expiry_secs,
                                 };
-                                let _ = send_channel_message(relay, channel_id, keypair, &locked).await;
+                                let _ =
+                                    send_channel_message(relay, channel_id, keypair, &locked).await;
 
                                 let confirm = AgentMessage::PaymentSent { job_id, payment_id };
-                                let _ = send_channel_message(relay, channel_id, keypair, &confirm).await;
+                                let _ = send_channel_message(relay, channel_id, keypair, &confirm)
+                                    .await;
                             }
                             Err(e) => {
                                 println!("[CUSTOMER] HTLC payment failed: {}", e);
@@ -700,10 +709,7 @@ async fn main() -> Result<()> {
     } else {
         args.relays.clone()
     };
-    println!(
-        "[CUSTOMER] Connecting to relays: {}",
-        relay_urls.join(", ")
-    );
+    println!("[CUSTOMER] Connecting to relays: {}", relay_urls.join(", "));
     let relay_hub = Arc::new(RelayHub::new(relay_urls)?);
     relay_hub.connect_all().await?;
     println!("[CUSTOMER] Connected to relays");
@@ -757,10 +763,7 @@ async fn main() -> Result<()> {
     );
     for (i, p) in discovered.iter().enumerate() {
         println!("  [{}] {}", i, p.name);
-        println!(
-            "      Pubkey: {}...",
-            &p.pubkey[..16.min(p.pubkey.len())]
-        );
+        println!("      Pubkey: {}...", &p.pubkey[..16.min(p.pubkey.len())]);
         println!("      Price: {} msats", p.price_msats);
         if let Some(ref ch) = p.channel_id {
             println!("      Channel: {}...", &ch[..16.min(ch.len())]);

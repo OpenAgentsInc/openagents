@@ -16,11 +16,11 @@ use clap::Parser;
 use compute::domain::UnifiedIdentity;
 use nostr::nip_sa::{
     AgentProfile, AgentProfileContent, AgentSchedule, AutonomyLevel as NipSaAutonomyLevel,
-    ThresholdConfig, TriggerType, KIND_AGENT_PROFILE, KIND_AGENT_SCHEDULE,
+    KIND_AGENT_PROFILE, KIND_AGENT_SCHEDULE, ThresholdConfig, TriggerType,
 };
 use nostr::{
-    finalize_event, EventTemplate, KIND_CHANNEL_MESSAGE, KIND_DM_RELAY_LIST,
-    RELAY_LIST_METADATA_KIND,
+    EventTemplate, KIND_CHANNEL_MESSAGE, KIND_DM_RELAY_LIST, RELAY_LIST_METADATA_KIND,
+    finalize_event,
 };
 use openagents::agents::{
     ComputeClient, RelayApi, RelayHub, Scheduler, SharedRelay, StateManager, TickExecutor,
@@ -113,9 +113,7 @@ async fn publish_agent_profile_schedule(
     };
 
     let event = finalize_event(&profile_event, identity.private_key_bytes())?;
-    relay
-        .publish_event(&event, Duration::from_secs(10))
-        .await?;
+    relay.publish_event(&event, Duration::from_secs(10)).await?;
 
     let mut schedule = AgentSchedule::new();
     if config.schedule.heartbeat_seconds > 0 {
@@ -143,9 +141,7 @@ async fn publish_agent_profile_schedule(
     };
 
     let event = finalize_event(&schedule_event, identity.private_key_bytes())?;
-    relay
-        .publish_event(&event, Duration::from_secs(10))
-        .await?;
+    relay.publish_event(&event, Duration::from_secs(10)).await?;
 
     Ok(())
 }
@@ -227,10 +223,7 @@ async fn publish_dm_relay_list(
     Ok(())
 }
 
-async fn watch_relay_list_updates(
-    relay_hub: Arc<RelayHub>,
-    pubkey_hex: String,
-) -> Result<()> {
+async fn watch_relay_list_updates(relay_hub: Arc<RelayHub>, pubkey_hex: String) -> Result<()> {
     let filters = vec![serde_json::json!({
         "kinds": [RELAY_LIST_METADATA_KIND as u64, KIND_DM_RELAY_LIST as u64],
         "authors": [pubkey_hex],
@@ -242,9 +235,7 @@ async fn watch_relay_list_updates(
     let mut latest_seen = 0_u64;
 
     while let Some(event) = rx.recv().await {
-        if event.kind != RELAY_LIST_METADATA_KIND
-            && event.kind != KIND_DM_RELAY_LIST
-        {
+        if event.kind != RELAY_LIST_METADATA_KIND && event.kind != KIND_DM_RELAY_LIST {
             continue;
         }
         if event.created_at < latest_seen {
@@ -291,7 +282,10 @@ async fn main() -> Result<()> {
 
         if config.state == LifecycleState::Dormant {
             println!("Agent {} is dormant (zero balance).", config.name);
-            println!("Fund it first to revive: openagents agent fund {}", config.name);
+            println!(
+                "Fund it first to revive: openagents agent fund {}",
+                config.name
+            );
             return Ok(());
         }
 
@@ -353,11 +347,7 @@ async fn main() -> Result<()> {
             .unwrap_or_else(|| std::path::PathBuf::from("."))
             .join("openagents")
             .join("agents")
-            .join(
-                identity
-                    .npub()
-                    .unwrap_or_else(|_| "unknown".to_string()),
-            ),
+            .join(identity.npub().unwrap_or_else(|_| "unknown".to_string())),
     };
 
     let wallet = SparkWallet::new(identity.spark_signer().clone(), wallet_config).await?;
@@ -450,9 +440,7 @@ async fn main() -> Result<()> {
     }
 
     if let Some(ref config) = config {
-        if let Err(e) =
-            publish_agent_profile_schedule(&relay, &identity, config, &triggers).await
-        {
+        if let Err(e) = publish_agent_profile_schedule(&relay, &identity, config, &triggers).await {
             tracing::warn!("Failed to publish agent profile/schedule: {}", e);
         }
     }

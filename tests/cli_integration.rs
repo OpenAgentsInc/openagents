@@ -113,7 +113,10 @@ fn test_wallet_init_creates_mnemonic() {
 
     let mnemonic = fs::read_to_string(&keychain_path).expect("read keychain file");
     let word_count = mnemonic.split_whitespace().count();
-    assert!(word_count == 12 || word_count == 24, "unexpected word count");
+    assert!(
+        word_count == 12 || word_count == 24,
+        "unexpected word count"
+    );
 
     fs::remove_dir_all(&workspace).expect("cleanup workspace");
 }

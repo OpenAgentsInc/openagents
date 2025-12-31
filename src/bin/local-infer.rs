@@ -5,8 +5,8 @@ use clap::{Parser, ValueEnum};
 use serde_json::Value;
 
 use fm_bridge_agent::{FmBridgeAgent, FmBridgeAgentConfig};
-use gpt_oss_agent::{GptOssAgent, GptOssAgentConfig};
 use gpt_oss_agent::tools::{ToolRequest, ToolResult};
+use gpt_oss_agent::{GptOssAgent, GptOssAgentConfig};
 
 const TOOL_CALL_OPEN: &str = "<tool_call>";
 const TOOL_CALL_CLOSE: &str = "</tool_call>";
@@ -178,32 +178,31 @@ where
     loop {
         let response = send_message(message).await.map_err(anyhow::Error::msg)?;
 
-        if enable_tools
-            && let Some(request) = extract_tool_call(&response) {
-                if tool_turns >= max_tool_turns {
-                    println!("Max tool turns reached, returning last response.");
-                    println!("{}", response.trim());
-                    break;
-                }
-
-                tool_turns += 1;
-                println!("[tool:{backend}] {}", request.tool);
-                let result = execute_tool(request.clone())
-                    .await
-                    .map_err(anyhow::Error::msg)?;
-                let result_payload = serde_json::json!({
-                    "tool": request.tool,
-                    "success": result.success,
-                    "output": result.output,
-                    "error": result.error,
-                });
-                let result_block = format!(
-                    "Tool result:\n<tool_result>{}</tool_result>",
-                    serde_json::to_string_pretty(&result_payload)?
-                );
-                message = result_block;
-                continue;
+        if enable_tools && let Some(request) = extract_tool_call(&response) {
+            if tool_turns >= max_tool_turns {
+                println!("Max tool turns reached, returning last response.");
+                println!("{}", response.trim());
+                break;
             }
+
+            tool_turns += 1;
+            println!("[tool:{backend}] {}", request.tool);
+            let result = execute_tool(request.clone())
+                .await
+                .map_err(anyhow::Error::msg)?;
+            let result_payload = serde_json::json!({
+                "tool": request.tool,
+                "success": result.success,
+                "output": result.output,
+                "error": result.error,
+            });
+            let result_block = format!(
+                "Tool result:\n<tool_result>{}</tool_result>",
+                serde_json::to_string_pretty(&result_payload)?
+            );
+            message = result_block;
+            continue;
+        }
 
         println!("{}", response.trim());
         break;

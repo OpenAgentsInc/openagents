@@ -193,7 +193,10 @@ impl LifecycleManager {
     }
 
     /// Update state based on current balance
-    pub fn update_from_balance(&mut self, balance_sats: u64) -> Result<&LifecycleState, LifecycleError> {
+    pub fn update_from_balance(
+        &mut self,
+        balance_sats: u64,
+    ) -> Result<&LifecycleState, LifecycleError> {
         let analysis = self.analyze_runway(balance_sats);
 
         if analysis.recommended_state != self.current_state {

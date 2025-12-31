@@ -2,11 +2,11 @@
 //!
 //! Fetches, decrypts, encrypts, and publishes agent state (kind:38001).
 
+use crate::agents::SharedRelay;
 use anyhow::Result;
 use compute::domain::UnifiedIdentity;
 use nostr::nip_sa::{AgentState, AgentStateContent, KIND_AGENT_STATE, STATE_D_TAG, STATE_VERSION};
-use nostr::{finalize_event, Event, EventTemplate};
-use crate::agents::SharedRelay;
+use nostr::{Event, EventTemplate, finalize_event};
 use std::time::Duration;
 use uuid::Uuid;
 
