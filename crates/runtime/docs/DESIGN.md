@@ -612,3 +612,81 @@ The OpenAgents Runtime provides:
 8. **Backend abstraction** — Same agent code, any infrastructure
 
 The runtime is the substrate of digital life. Agents are born into it, live within it, and persist through it. The runtime's job is to be invisible—to make the hard parts easy so agents can focus on being agents.
+
+---
+
+## Related Documents
+
+| Document | Contents |
+|----------|----------|
+| [TRAITS.md](./TRAITS.md) | Rust trait definitions |
+| [BACKENDS.md](./BACKENDS.md) | Backend implementations |
+| [AGENT-SPECIFIC.md](./AGENT-SPECIFIC.md) | What makes this agent-specific |
+| [DRIVERS.md](./DRIVERS.md) | Event drivers (HTTP, WS, Nostr, etc.) |
+| [CONTROL-PLANE.md](./CONTROL-PLANE.md) | Management API |
+| [PLAN9.md](./PLAN9.md) | Plan 9 inspirations |
+
+---
+
+## Suggested Crate Layout
+
+```
+crates/
+├── runtime/              # This crate - core abstractions
+│   ├── src/
+│   │   ├── agent.rs      # Agent trait, context
+│   │   ├── envelope.rs   # Message types
+│   │   ├── trigger.rs    # Tick triggers
+│   │   ├── storage.rs    # Storage trait
+│   │   ├── transport.rs  # Message transport trait
+│   │   ├── identity.rs   # Signing service trait
+│   │   ├── budget.rs     # Resource budgets
+│   │   └── backend.rs    # Backend trait
+│   └── docs/             # Design documents
+│
+├── runtime-local/        # Local device backend
+│   └── src/
+│       ├── daemon.rs     # agentd - multi-agent daemon
+│       ├── storage.rs    # SQLite storage
+│       ├── scheduler.rs  # Tokio-based alarms
+│       └── drivers/      # HTTP, WS, Nostr drivers
+│
+├── runtime-cloudflare/   # Cloudflare Workers backend
+│   └── src/
+│       ├── handler.rs    # DO handler
+│       ├── storage.rs    # DO SQLite adapter
+│       └── drivers/      # Fetch, WS, alarm drivers
+│
+├── runtime-server/       # Container/VM backend
+│   └── src/
+│       ├── server.rs     # Multi-tenant server
+│       ├── storage.rs    # Postgres or SQLite
+│       └── drivers/      # HTTP, WS, gRPC drivers
+│
+├── agent-memory/         # Structured memory schema
+│   └── src/
+│       ├── conversations.rs
+│       ├── goals.rs
+│       ├── patterns.rs
+│       ├── peers.rs
+│       └── migrations/
+│
+├── agent-identity/       # Identity and signing
+│   └── src/
+│       ├── derivation.rs # BIP44 key derivation
+│       ├── signer.rs     # Signing service
+│       └── threshold.rs  # FROST support (future)
+│
+└── agent-drivers/        # Shared driver implementations
+    └── src/
+        ├── http.rs
+        ├── websocket.rs
+        ├── nostr.rs
+        ├── scheduler.rs
+        └── plumber.rs    # Event routing rules
+```
+
+This layout separates:
+- **Core abstractions** (runtime) from **implementations** (runtime-*)
+- **Agent logic** from **infrastructure**
+- **Portable code** from **backend-specific code**

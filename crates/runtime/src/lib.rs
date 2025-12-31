@@ -11,6 +11,44 @@
 //! - **Communication** — Message passing between agents
 //! - **Resources** — Budget enforcement and limits
 //!
+//! # Core Concepts
+//!
+//! ## Tick Model
+//!
+//! Agents execute in discrete **ticks**:
+//! 1. Wake (from hibernate or cold start)
+//! 2. Load state from storage
+//! 3. Receive trigger (message, alarm, event)
+//! 4. Execute logic (may involve LLM, tools)
+//! 5. Update state
+//! 6. Schedule next wake or hibernate
+//!
+//! ## Drivers
+//!
+//! External events (HTTP, WebSocket, Nostr, etc.) are translated into
+//! **envelopes** by drivers. Agents see one mailbox regardless of source.
+//!
+//! ## Backends
+//!
+//! The same agent code runs on any backend:
+//! - Cloudflare Workers (Durable Objects)
+//! - Local device (SQLite + tokio)
+//! - Server (containers, Kubernetes)
+//!
+//! ## Agent Filesystem
+//!
+//! Inspired by Plan 9, every agent exposes a virtual filesystem:
+//! ```text
+//! /agents/<id>/
+//! ├── status      # agent state
+//! ├── inbox/      # incoming messages
+//! ├── outbox/     # emitted events
+//! ├── goals/      # active goals
+//! ├── memory/     # conversations, patterns
+//! ├── identity/   # pubkey, signing
+//! └── wallet/     # balance, payments
+//! ```
+//!
 //! # Design Documents
 //!
 //! See the `docs/` folder for design considerations:
@@ -18,6 +56,9 @@
 //! - `TRAITS.md` — Trait definitions and interfaces
 //! - `BACKENDS.md` — Backend implementations
 //! - `AGENT-SPECIFIC.md` — What makes this agent-specific
+//! - `DRIVERS.md` — Event drivers (HTTP, WS, Nostr)
+//! - `CONTROL-PLANE.md` — Management API
+//! - `PLAN9.md` — Plan 9 inspirations (filesystem, namespaces)
 //!
 //! # Example
 //!
@@ -63,11 +104,22 @@
 #![warn(rustdoc::missing_crate_level_docs)]
 
 // TODO: Implement core modules
+//
+// Core abstractions:
 // pub mod agent;      // Agent trait and context
-// pub mod backend;    // Backend trait and implementations
-// pub mod identity;   // Cryptographic identity
-// pub mod memory;     // Structured agent memory
-// pub mod message;    // Message types and transport
-// pub mod budget;     // Resource budgets
-// pub mod trigger;    // Tick triggers
+// pub mod envelope;   // Message envelope types
+// pub mod trigger;    // Tick triggers (Message, Alarm, Event, etc.)
+// pub mod storage;    // AgentStorage trait
+// pub mod transport;  // MessageTransport trait
+// pub mod identity;   // SigningService trait
+// pub mod budget;     // Resource budgets and limits
+// pub mod backend;    // RuntimeBackend trait
 // pub mod error;      // Error types
+//
+// Agent-specific:
+// pub mod memory;     // Structured memory (conversations, goals, patterns)
+// pub mod namespace;  // Mount tables and capabilities (Plan 9 inspired)
+// pub mod plumber;    // Event routing rules
+//
+// Drivers (in separate crate):
+// - HttpDriver, WebSocketDriver, NostrDriver, SchedulerDriver
