@@ -105,29 +105,21 @@
 #![warn(missing_docs)]
 #![warn(rustdoc::missing_crate_level_docs)]
 
-// TODO: Implement core modules
-//
-// Core abstractions:
-// pub mod agent;      // Agent trait and context
-// pub mod envelope;   // Message envelope types
-// pub mod trigger;    // Tick triggers (Message, Alarm, Event, etc.)
-// pub mod storage;    // AgentStorage trait
-// pub mod transport;  // MessageTransport trait
-// pub mod identity;   // SigningService trait
-// pub mod budget;     // Resource budgets and limits
-// pub mod backend;    // RuntimeBackend trait
-// pub mod error;      // Error types
-//
-// Filesystem (Plan 9 / OANIX inspired):
-// pub mod service;    // FileService, FileHandle traits
-// pub mod namespace;  // Mount tables with longest-prefix matching
-// pub mod env;        // AgentEnv - complete environment abstraction
-// pub mod services;   // Standard services (StatusFs, InboxFs, GoalsFs, etc.)
-// pub mod executor;   // Async I/O bridge for sync FileService
-//
-// Agent-specific:
-// pub mod memory;     // Structured memory (conversations, goals, patterns)
-// pub mod plumber;    // Event routing rules
-//
-// Drivers (in separate crate):
-// - HttpDriver, WebSocketDriver, NostrDriver, SchedulerDriver
+pub mod agent;
+pub mod engine;
+pub mod error;
+pub mod storage;
+pub mod tick;
+pub mod trigger;
+pub mod types;
+
+pub use agent::{Agent, AgentConfig, AgentContext, AgentState};
+pub use engine::{manual_trigger, TickEngine};
+pub use error::{AgentError, Result};
+pub use storage::{AgentStorage, InMemoryStorage, StorageOp};
+pub use tick::{ResourceUsage, TickResult};
+pub use trigger::{AlarmTrigger, EventTrigger, InitializeTrigger, ManualTrigger, MessageTrigger, Trigger, TriggerMeta};
+pub use types::{AgentId, EnvelopeId, Timestamp};
+
+#[cfg(test)]
+mod tests;
