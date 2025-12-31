@@ -427,6 +427,82 @@ impl PatchGenResult {
     pub fn from_json(json: &str) -> Result<Self, Nip90Error> {
         serde_json::from_str(json).map_err(|e| Nip90Error::Serialization(e.to_string()))
     }
+
+    /// Get the patch content for NIP-90 result event content field
+    pub fn to_nip90_content(&self) -> String {
+        self.patch.clone()
+    }
+
+    /// Get additional NIP-90 result tags for verification data
+    pub fn to_nip90_tags(&self) -> Vec<Vec<String>> {
+        let mut tags = vec![];
+
+        // Patch hash for verification
+        tags.push(vec![
+            "result".to_string(),
+            "patch_sha256".to_string(),
+            self.patch_sha256.clone(),
+        ]);
+
+        // Trajectory ID for replay
+        if let Some(ref tid) = self.trajectory_id {
+            tags.push(vec![
+                "result".to_string(),
+                "trajectory_id".to_string(),
+                tid.clone(),
+            ]);
+        }
+
+        // Verification data
+        tags.push(vec![
+            "result".to_string(),
+            "applies_cleanly".to_string(),
+            self.verification.applies_cleanly.to_string(),
+        ]);
+
+        if let Some(code) = self.verification.test_exit_code {
+            tags.push(vec![
+                "result".to_string(),
+                "test_exit_code".to_string(),
+                code.to_string(),
+            ]);
+        }
+
+        tags.push(vec![
+            "result".to_string(),
+            "files_changed".to_string(),
+            self.verification.files_changed.to_string(),
+        ]);
+
+        tags.push(vec![
+            "result".to_string(),
+            "lines_added".to_string(),
+            self.verification.lines_added.to_string(),
+        ]);
+
+        tags.push(vec![
+            "result".to_string(),
+            "lines_removed".to_string(),
+            self.verification.lines_removed.to_string(),
+        ]);
+
+        // Duration and model
+        tags.push(vec![
+            "result".to_string(),
+            "duration_ms".to_string(),
+            self.duration_ms.to_string(),
+        ]);
+
+        if !self.model_used.is_empty() {
+            tags.push(vec![
+                "result".to_string(),
+                "model".to_string(),
+                self.model_used.clone(),
+            ]);
+        }
+
+        tags
+    }
 }
 
 #[cfg(test)]

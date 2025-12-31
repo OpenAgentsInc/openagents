@@ -644,6 +644,11 @@ impl CodeReviewResult {
         serde_json::from_str(&result.content)
             .map_err(|e| Nip90Error::Serialization(e.to_string()))
     }
+
+    /// Get the content for NIP-90 result event content field
+    pub fn to_nip90_content(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
