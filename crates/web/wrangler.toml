@@ -51,6 +51,13 @@ max_instances = 10
 GITHUB_CLIENT_ID = "Ov23lirHI1DWTzZ1zT1u"
 STRIPE_PUBLISHABLE_KEY = ""
 # CLAUDE_CLIENT_ID = "" # Set when available
+LIVE_HUD_REPO = ""
+LIVE_HUD_AGENT_ID = ""
+LIVE_HUD_STREAM_URL = ""
+LIVE_HUD_STATUS = "live"
+LIVE_HUD_ISSUE_URL = ""
+LIVE_HUD_ISSUE_LABEL = ""
+LIVE_HUD_ISSUE_TITLE = ""
 
 # Secrets (set via: wrangler secret put <NAME>)
 # GITHUB_CLIENT_SECRET

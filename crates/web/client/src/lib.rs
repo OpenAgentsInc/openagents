@@ -55,19 +55,59 @@ enum AppView {
 }
 
 /// Context from /repo/:owner/:repo route
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Deserialize)]
+#[serde(default)]
 struct HudContext {
     username: String,
     repo: String,
+    #[serde(default)]
     is_owner: bool,
+    #[serde(default = "default_true")]
     is_public: bool,
+    #[serde(default)]
     embed_mode: bool,
+    #[serde(default)]
     agent_id: Option<String>,
+    #[serde(default)]
     stream_url: Option<String>,
     // Session info for WebSocket connection
+    #[serde(default)]
     session_id: Option<String>,
+    #[serde(default)]
     ws_url: Option<String>,
+    #[serde(default = "default_status")]
     status: String, // "idle", "starting", "running", "completed", "failed"
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_status() -> String {
+    "idle".to_string()
+}
+
+#[derive(Clone, Deserialize)]
+struct LiveIssue {
+    label: String,
+    url: String,
+    #[serde(default)]
+    title: Option<String>,
+}
+
+#[derive(Clone, Deserialize)]
+struct LiveHudResponse {
+    enabled: bool,
+    #[serde(default)]
+    hud_context: Option<HudContext>,
+    #[serde(default)]
+    issue: Option<LiveIssue>,
+}
+
+#[derive(Clone)]
+struct LandingLive {
+    hud_context: HudContext,
+    issue: Option<LiveIssue>,
 }
 
 /// HUD event types from streaming or replay.
@@ -884,6 +924,9 @@ struct AppState {
     mouse_pos: Point,
     button_hovered: bool,
     button_bounds: Bounds,
+    landing_issue_bounds: Bounds,
+    landing_issue_url: Option<String>,
+    landing_live: Option<LandingLive>,
     user: UserInfo,
     loading: bool,
     view: AppView,
@@ -900,6 +943,7 @@ struct AppState {
     hud_stream: Option<HudStreamHandle>,
     hud_settings_loaded: bool,
     hud_metrics_polling: bool,
+    hud_metrics_timer: Option<i32>,
     wallet: WalletUi,
 }
 
@@ -909,6 +953,9 @@ impl Default for AppState {
             mouse_pos: Point::ZERO,
             button_hovered: false,
             button_bounds: Bounds::ZERO,
+            landing_issue_bounds: Bounds::ZERO,
+            landing_issue_url: None,
+            landing_live: None,
             user: UserInfo::default(),
             loading: true,
             view: AppView::Landing,
@@ -924,6 +971,7 @@ impl Default for AppState {
             hud_stream: None,
             hud_settings_loaded: false,
             hud_metrics_polling: false,
+            hud_metrics_timer: None,
             wallet: WalletUi::new(),
         }
     }
@@ -1231,6 +1279,19 @@ enum HudStreamHandle {
     WebSocket(web_sys::WebSocket),
 }
 
+impl HudStreamHandle {
+    fn close(self) {
+        match self {
+            HudStreamHandle::EventSource(source) => {
+                source.close();
+            }
+            HudStreamHandle::WebSocket(ws) => {
+                let _ = ws.close();
+            }
+        }
+    }
+}
+
 fn connect_event_source(state: Rc<RefCell<AppState>>, stream_url: &str) -> Option<HudStreamHandle> {
     let source = web_sys::EventSource::new(stream_url).ok()?;
     let state_clone = state.clone();
@@ -1334,6 +1395,31 @@ async fn fetch_current_user() -> Option<UserInfo> {
             github_username: Some(github_username),
             nostr_npub,
         })
+}
+
+async fn fetch_live_hud() -> Option<LandingLive> {
+    let window = web_sys::window()?;
+    let resp = JsFuture::from(window.fetch_with_str("/api/hud/live")).await.ok()?;
+    let resp: web_sys::Response = resp.dyn_into().ok()?;
+    if !resp.ok() {
+        return None;
+    }
+
+    let json = JsFuture::from(resp.json().ok()?).await.ok()?;
+    let payload: LiveHudResponse = serde_json::from_str(
+        &js_sys::JSON::stringify(&json)
+            .ok()?
+            .as_string()?,
+    )
+    .ok()?;
+    if !payload.enabled {
+        return None;
+    }
+    let context = payload.hud_context?;
+    Some(LandingLive {
+        hud_context: context,
+        issue: payload.issue,
+    })
 }
 
 /// Fetch repos from /api/repos
@@ -1441,17 +1527,69 @@ fn init_hud_runtime(state: Rc<RefCell<AppState>>) {
 
     if let Some(agent_id) = context.agent_id.clone() {
         start_metrics_poll(state.clone(), agent_id.clone());
-        if context.is_owner && !state.borrow().hud_settings_loaded {
-            let state_clone = state.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                if let Some(settings) = fetch_hud_settings(&agent_id).await {
+    }
+
+    if context.is_owner && !state.borrow().hud_settings_loaded {
+        let state_clone = state.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Some(repo) = state_clone
+                .borrow()
+                .hud_context
+                .as_ref()
+                .map(|ctx| format!("{}/{}", ctx.username, ctx.repo))
+            {
+                if let Some(settings) = fetch_hud_settings(&repo).await {
                     let mut state = state_clone.borrow_mut();
                     state.hud_ui.settings = settings;
                     state.hud_settings_loaded = true;
                 }
-            });
+            }
+        });
+    }
+}
+
+async fn ensure_hud_session(state: Rc<RefCell<AppState>>, repo: String) {
+    let existing = fetch_hud_session(&repo).await;
+    let session = match existing {
+        Some(session) if session.session_id.is_some() => Some(session),
+        Some(session) if session.can_start == Some(true) => {
+            start_hud_session(&repo, DEFAULT_AUTOPILOT_PROMPT).await.ok()
+        }
+        Some(session) => Some(session),
+        None => start_hud_session(&repo, DEFAULT_AUTOPILOT_PROMPT).await.ok(),
+    };
+
+    let Some(session) = session else {
+        let mut guard = state.borrow_mut();
+        guard.hud_ui.status_text = "start failed".to_string();
+        return;
+    };
+
+    let matches_repo = state
+        .borrow()
+        .hud_context
+        .as_ref()
+        .map(|ctx| format!("{}/{}", ctx.username, ctx.repo) == repo)
+        .unwrap_or(false);
+    if !matches_repo {
+        return;
+    }
+
+    {
+        let mut guard = state.borrow_mut();
+        if let Some(ctx) = guard.hud_context.as_mut() {
+            ctx.session_id = session.session_id.clone();
+            ctx.ws_url = session.ws_url.clone();
+            ctx.status = session.status.clone();
+        }
+        guard.hud_ui.status_text = session.status.clone();
+        guard.hud_settings_loaded = false;
+        if let Some(handle) = guard.hud_stream.take() {
+            handle.close();
         }
     }
+
+    init_hud_runtime(state);
 }
 
 fn replay_speed_from_query() -> Option<f64> {
@@ -1511,11 +1649,24 @@ fn start_metrics_poll(state: Rc<RefCell<AppState>>, agent_id: String) {
         });
     });
 
-    let _ = window.set_interval_with_callback_and_timeout_and_arguments_0(
+    let interval_id = window.set_interval_with_callback_and_timeout_and_arguments_0(
         closure.as_ref().unchecked_ref(),
         4000,
     );
+    if let Ok(id) = interval_id {
+        let mut guard = state.borrow_mut();
+        guard.hud_metrics_timer = Some(id);
+    }
     closure.forget();
+}
+
+fn stop_metrics_poll(state: &mut AppState) {
+    if let Some(window) = web_sys::window() {
+        if let Some(id) = state.hud_metrics_timer.take() {
+            window.clear_interval_with_handle(id);
+        }
+    }
+    state.hud_metrics_polling = false;
 }
 
 async fn fetch_metrics(agent_id: &str) -> Option<MetricsPayload> {
@@ -1575,9 +1726,10 @@ async fn fetch_metric_json(url: &str) -> Option<serde_json::Value> {
     serde_json::from_str(&js_sys::JSON::stringify(&json).ok()?.as_string()?).ok()
 }
 
-async fn fetch_hud_settings(agent_id: &str) -> Option<HudSettingsData> {
+async fn fetch_hud_settings(repo: &str) -> Option<HudSettingsData> {
     let window = web_sys::window()?;
-    let url = format!("/agents/{}/hud/settings", agent_id);
+    let repo_param = js_sys::encode_uri_component(repo);
+    let url = format!("/api/hud/settings?repo={}", repo_param);
     let resp = JsFuture::from(window.fetch_with_str(&url)).await.ok()?;
     let resp: web_sys::Response = resp.dyn_into().ok()?;
     if !resp.ok() {
@@ -1592,26 +1744,22 @@ async fn fetch_hud_settings(agent_id: &str) -> Option<HudSettingsData> {
     .ok()?;
 
     Some(HudSettingsData {
-        public: value.get("public").and_then(|v| v.as_bool()).unwrap_or(true),
+        public: value.get("is_public").and_then(|v| v.as_bool()).unwrap_or(true),
         embed_allowed: value
             .get("embed_allowed")
             .and_then(|v| v.as_bool())
             .unwrap_or(true),
-        redaction_policy: value
-            .get("redaction_policy")
-            .and_then(|v| v.as_str())
-            .unwrap_or("standard")
-            .to_string(),
+        redaction_policy: "standard".to_string(),
     })
 }
 
-async fn update_hud_settings(agent_id: &str, settings: HudSettingsData) -> Result<(), String> {
+async fn update_hud_settings(repo: &str, settings: HudSettingsData) -> Result<(), String> {
     let window = web_sys::window().ok_or("No window available")?;
-    let url = format!("/agents/{}/hud/settings", agent_id);
+    let url = "/api/hud/settings";
     let body = serde_json::json!({
-        "public": settings.public,
+        "repo": repo,
+        "is_public": settings.public,
         "embed_allowed": settings.embed_allowed,
-        "redaction_policy": settings.redaction_policy,
     });
 
     let opts = web_sys::RequestInit::new();
@@ -1633,6 +1781,75 @@ async fn update_hud_settings(agent_id: &str, settings: HudSettingsData) -> Resul
     }
 
     Ok(())
+}
+
+const DEFAULT_AUTOPILOT_PROMPT: &str =
+    "Work the highest priority open issues and report progress in the HUD.";
+
+#[derive(Clone, Deserialize)]
+struct HudSessionResponse {
+    status: String,
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    ws_url: Option<String>,
+    #[serde(default)]
+    can_start: Option<bool>,
+}
+
+async fn fetch_hud_session(repo: &str) -> Option<HudSessionResponse> {
+    let window = web_sys::window()?;
+    let repo_param = js_sys::encode_uri_component(repo);
+    let url = format!("/api/hud/session?repo={}", repo_param);
+    let resp = JsFuture::from(window.fetch_with_str(&url)).await.ok()?;
+    let resp: web_sys::Response = resp.dyn_into().ok()?;
+    if !resp.ok() {
+        return None;
+    }
+    let json = JsFuture::from(resp.json().ok()?).await.ok()?;
+    serde_json::from_str(
+        &js_sys::JSON::stringify(&json)
+            .ok()?
+            .as_string()?,
+    )
+    .ok()
+}
+
+async fn start_hud_session(repo: &str, prompt: &str) -> Result<HudSessionResponse, String> {
+    let window = web_sys::window().ok_or("No window available")?;
+    let body = serde_json::json!({
+        "repo": repo,
+        "prompt": prompt,
+    });
+
+    let opts = web_sys::RequestInit::new();
+    opts.set_method("POST");
+    opts.set_body(&JsValue::from_str(&body.to_string()));
+
+    let headers = web_sys::Headers::new().map_err(|_| "Failed to create headers".to_string())?;
+    headers
+        .set("Content-Type", "application/json")
+        .map_err(|_| "Failed to set headers".to_string())?;
+    opts.set_headers(&headers);
+
+    let resp = JsFuture::from(window.fetch_with_str_and_init("/api/hud/start", &opts))
+        .await
+        .map_err(|_| "Request failed".to_string())?;
+    let resp: web_sys::Response = resp.dyn_into().map_err(|_| "Response invalid".to_string())?;
+    if !resp.ok() {
+        return Err(format!("HUD start failed ({})", resp.status()));
+    }
+
+    let json = JsFuture::from(resp.json().map_err(|_| "Invalid response".to_string())?)
+        .await
+        .map_err(|_| "Invalid response".to_string())?;
+    serde_json::from_str(
+        &js_sys::JSON::stringify(&json)
+            .map_err(|_| "Invalid response".to_string())?
+            .as_string()
+            .ok_or_else(|| "Invalid response".to_string())?,
+    )
+    .map_err(|_| "Invalid response".to_string())
 }
 
 #[derive(Deserialize)]
@@ -2249,9 +2466,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         drop(state_guard);
         init_hud_runtime(state.clone());
     } else {
-        // Fetch current user - if logged in, show repo selector, then app shell after selection
+        // Fetch live HUD and current user. Landing shows live fishbowl if logged out.
         let state_clone = state.clone();
         wasm_bindgen_futures::spawn_local(async move {
+            let live_hud = fetch_live_hud().await;
             let user_info = fetch_current_user().await;
 
             {
@@ -2263,10 +2481,14 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     state.user = info;
                     state.view = AppView::RepoSelector;
                     state.repos_loading = true;
+                } else if let Some(live) = live_hud.clone() {
+                    state.hud_ui.status_text = live.hud_context.status.clone();
+                    state.hud_context = Some(live.hud_context.clone());
+                    state.landing_live = Some(live);
+                    state.view = AppView::Landing;
                 }
             }
 
-            // Fetch repos if logged in
             if user_info.is_some() {
                 queue_wallet_actions(state_clone.clone(), vec![WalletAction::Refresh]);
 
@@ -2274,6 +2496,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 let mut state = state_clone.borrow_mut();
                 state.repos = repos;
                 state.repos_loading = false;
+            } else if state_clone.borrow().hud_context.is_some() {
+                init_hud_runtime(state_clone.clone());
             }
         });
     }
@@ -2327,6 +2551,19 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let mut state = state_clone.borrow_mut();
             let click_pos = Point::new(event.offset_x() as f32, event.offset_y() as f32);
 
+            // Landing issue banner click
+            if state.view == AppView::Landing
+                && state.landing_issue_bounds.contains(click_pos)
+                && state.landing_issue_url.is_some()
+            {
+                if let Some(window) = web_sys::window() {
+                    if let Some(url) = state.landing_issue_url.clone() {
+                        let _ = window.open_with_url_and_target(&url, "_blank");
+                    }
+                }
+                return;
+            }
+
             // Check repo click - select repo and switch to app shell (no navigation)
             if let Some(idx) = state.hovered_repo_idx {
                 if idx < state.repos.len() {
@@ -2341,6 +2578,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         (full_name.clone(), "".to_string())
                     };
 
+                    let share_owner = owner.clone();
+                    let share_repo = repo_name.clone();
                     state.selected_repo = Some(full_name);
                     state.hud_context = Some(HudContext {
                         username: owner,
@@ -2352,11 +2591,31 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         stream_url: None,
                         session_id: None,
                         ws_url: None,
-                        status: "idle".to_string(),
+                        status: "starting".to_string(),
                     });
+                    state.hud_ui.status_text = "starting".to_string();
                     state.view = AppView::RepoView;
+                    state.hud_settings_loaded = false;
+                    state.landing_live = None;
+                    state.landing_issue_bounds = Bounds::ZERO;
+                    state.landing_issue_url = None;
+                    if let Some(handle) = state.hud_stream.take() {
+                        handle.close();
+                    }
+                    stop_metrics_poll(&mut state);
                     drop(state);
                     init_hud_runtime(state_clone.clone());
+                    let repo_full = repo.full_name.clone();
+                    let state_for_session = state_clone.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        ensure_hud_session(state_for_session, repo_full).await;
+                    });
+                    if let Some(window) = web_sys::window() {
+                        if let Ok(history) = window.history() {
+                            let path = format!("/hud/@{}/{}", share_owner, share_repo);
+                            let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&path));
+                        }
+                    }
                     return;
                 }
             }
@@ -2379,15 +2638,15 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         changed = true;
                     }
                     if changed {
-                        if let Some(agent_id) = state
+                        if let Some(repo) = state
                             .hud_context
                             .as_ref()
-                            .and_then(|ctx| ctx.agent_id.clone())
+                            .map(|ctx| format!("{}/{}", ctx.username, ctx.repo))
                         {
                             let settings = state.hud_ui.settings.clone();
                             drop(state);
                             wasm_bindgen_futures::spawn_local(async move {
-                                let _ = update_hud_settings(&agent_id, settings).await;
+                                let _ = update_hud_settings(&repo, settings).await;
                             });
                             return;
                         }
@@ -2503,7 +2762,13 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let hud_hover = state.view == AppView::RepoView
                 && (state.hud_layout.settings_public_bounds.contains(state.mouse_pos)
                     || state.hud_layout.settings_embed_bounds.contains(state.mouse_pos));
-            let cursor = if state.button_hovered || state.hovered_repo_idx.is_some() || hud_hover {
+            let landing_hover =
+                state.view == AppView::Landing && state.landing_issue_bounds.contains(state.mouse_pos);
+            let cursor = if state.button_hovered
+                || state.hovered_repo_idx.is_some()
+                || hud_hover
+                || landing_hover
+            {
                 "pointer"
             } else {
                 "default"
@@ -2550,7 +2815,14 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
 
         match state.view {
             AppView::Landing => {
-                build_landing_page(&mut scene, platform.text_system(), &mut state, width, height);
+                build_landing_page(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
             }
             AppView::RepoSelector => {
                 build_repo_selector(&mut scene, platform.text_system(), &mut state, width, height);
@@ -2581,40 +2853,142 @@ fn build_landing_page(
     state: &mut AppState,
     width: f32,
     height: f32,
+    scale_factor: f32,
 ) {
-    // Background
-    scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+    let has_live = state.landing_live.is_some() && state.hud_context.is_some();
+    if has_live {
+        draw_hud_view(scene, text_system, state, width, height, scale_factor);
+        scene.draw_quad(
+            Quad::new(Bounds::new(0.0, 0.0, width, height))
+                .with_background(theme::bg::APP.with_alpha(0.12)),
+        );
+    } else {
+        scene.draw_quad(
+            Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP),
+        );
+    }
 
-    let center_x = width / 2.0;
-    let center_y = height / 2.0;
+    state.landing_issue_bounds = Bounds::ZERO;
+    state.landing_issue_url = None;
 
-    // Title
-    let title = "OpenAgents";
-    let title_size = 48.0;
-    let title_width = title.len() as f32 * title_size * 0.6;
+    let pad = 12.0;
+    if let Some(live) = state.landing_live.as_ref() {
+        let banner_h = 22.0;
+        let live_label = "LIVE";
+        let label_size = 10.0;
+        let label_w = live_label.len() as f32 * label_size * 0.6 + 10.0;
+        let label_bounds = Bounds::new(pad, pad, label_w, banner_h);
+
+        scene.draw_quad(
+            Quad::new(label_bounds)
+                .with_background(theme::status::ERROR)
+                .with_border(theme::border::DEFAULT, 1.0)
+                .with_corner_radius(0.0),
+        );
+
+        let label_run = text_system.layout(
+            live_label,
+            Point::new(label_bounds.origin.x + 5.0, label_bounds.origin.y + 5.0),
+            label_size,
+            theme::bg::APP,
+        );
+        scene.draw_text(label_run);
+
+        let issue_text = live
+            .issue
+            .as_ref()
+            .map(|issue| format!("Autopilot is working on {}", issue.label))
+            .unwrap_or_else(|| "Autopilot is working live".to_string());
+        let issue_size = 12.0;
+        let issue_x = label_bounds.origin.x + label_bounds.size.width + 8.0;
+        let issue_y = label_bounds.origin.y + 4.0;
+        let issue_run = text_system.layout(
+            &issue_text,
+            Point::new(issue_x, issue_y),
+            issue_size,
+            theme::text::PRIMARY,
+        );
+        scene.draw_text(issue_run);
+
+        if let Some(issue) = live.issue.as_ref() {
+            let issue_w = issue_text.len() as f32 * issue_size * 0.6;
+            state.landing_issue_bounds = Bounds::new(issue_x, issue_y, issue_w, banner_h);
+            state.landing_issue_url = Some(issue.url.clone());
+        }
+
+        let repo_label = format!("@{}/{}", live.hud_context.username, live.hud_context.repo);
+        let repo_run = text_system.layout(
+            &repo_label,
+            Point::new(pad, label_bounds.origin.y + label_bounds.size.height + 6.0),
+            11.0,
+            theme::text::MUTED,
+        );
+        scene.draw_text(repo_run);
+
+        if let Some(issue) = live.issue.as_ref().and_then(|issue| issue.title.as_ref()) {
+            let title_run = text_system.layout(
+                issue,
+                Point::new(pad, label_bounds.origin.y + label_bounds.size.height + 20.0),
+                11.0,
+                theme::text::MUTED,
+            );
+            scene.draw_text(title_run);
+        }
+    } else {
+        let placeholder = text_system.layout(
+            "No live session is broadcasting right now.",
+            Point::new(pad, pad),
+            12.0,
+            theme::text::MUTED,
+        );
+        scene.draw_text(placeholder);
+    }
+
+    let panel_h = if height < 560.0 { 108.0 } else { 128.0 };
+    let panel_w = (width - pad * 2.0).max(240.0);
+    let panel_x = pad;
+    let panel_y = height - panel_h - pad;
+    let panel_bounds = Bounds::new(panel_x, panel_y, panel_w, panel_h);
+
+    scene.draw_quad(
+        Quad::new(panel_bounds)
+            .with_background(theme::bg::SURFACE.with_alpha(0.94))
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(0.0),
+    );
+
+    let title = "Autopilot for code";
     let title_run = text_system.layout(
         title,
-        Point::new(center_x - title_width / 2.0, center_y - 60.0),
-        title_size,
+        Point::new(panel_x + 12.0, panel_y + 10.0),
+        if width < 600.0 { 18.0 } else { 22.0 },
         theme::text::PRIMARY,
     );
     scene.draw_text(title_run);
 
-    // Button
+    let subtitle = "Watch it work. Connect GitHub to get your own HUD in under 30 seconds.";
+    let subtitle_run = text_system.layout(
+        subtitle,
+        Point::new(panel_x + 12.0, panel_y + 40.0),
+        12.0,
+        theme::text::MUTED,
+    );
+    scene.draw_text(subtitle_run);
+
     let (button_text, button_bg_base): (&str, _) = if state.loading {
-        ("Loading...", theme::text::MUTED)
+        ("Connecting...", theme::text::MUTED)
     } else {
-        ("Login with GitHub", theme::accent::PRIMARY)
+        ("Connect GitHub → Get Your Own Autopilot", theme::accent::PRIMARY)
     };
 
-    let button_font_size = 16.0;
+    let button_font_size = 13.0;
     let button_text_width = button_text.len() as f32 * button_font_size * 0.6;
-    let button_padding_x = 32.0;
-    let button_padding_y = 16.0;
+    let button_padding_x = 18.0;
+    let button_padding_y = 10.0;
     let button_width = button_text_width + button_padding_x * 2.0;
     let button_height = button_font_size + button_padding_y * 2.0;
-    let button_x = center_x - button_width / 2.0;
-    let button_y = center_y + 20.0;
+    let button_x = panel_x + 12.0;
+    let button_y = panel_y + panel_h - button_height - 12.0;
 
     if !state.loading {
         state.button_bounds = Bounds::new(button_x, button_y, button_width, button_height);
@@ -2625,13 +2999,14 @@ fn build_landing_page(
     let button_bg = if state.button_hovered && !state.loading {
         button_bg_base
     } else {
-        button_bg_base.with_alpha(0.8)
+        button_bg_base.with_alpha(0.85)
     };
 
     scene.draw_quad(
         Quad::new(Bounds::new(button_x, button_y, button_width, button_height))
             .with_background(button_bg)
-            .with_corner_radius(4.0),
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(0.0),
     );
 
     let button_text_run = text_system.layout(

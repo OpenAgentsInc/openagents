@@ -27,6 +27,8 @@ Full-stack Rust web application on Cloudflare's edge: GPU-accelerated WGPUI fron
 │                                                                             │
 └────────────────────────────────────────────────────────────────────────────┘
 
+Landing can render a live HUD fishbowl (from `/api/hud/live`) behind the CTA when configured.
+
 Keyboard shortcuts (in App Shell):
   cmd-[     Toggle left dock
   cmd-]     Toggle right dock
@@ -266,9 +268,17 @@ Account settings include `nostr_npub` when available.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/repo/:username/:repo` | View personal HUD |
-| GET | `/repo/:username/:repo/embed` | Embeddable iframe HUD |
+| GET | `/hud/@:username/:repo` | Shareable personal HUD (canonical) |
+| GET | `/repo/:username/:repo` | HUD view (legacy alias) |
+| GET | `/hud/@:username/:repo/embed` | Embeddable iframe HUD (canonical) |
+| GET | `/repo/:username/:repo/embed` | Embeddable iframe HUD (legacy alias) |
+| GET | `/api/hud/live` | Live fishbowl config for landing page |
+| GET | `/api/hud/settings?repo=owner/repo` | Get HUD visibility (owner only) |
 | POST | `/api/hud/settings` | Update HUD visibility |
+| GET | `/api/hud/session?repo=owner/repo` | Check active HUD session (owner only) |
+| POST | `/api/hud/start` | Start HUD session (owner only) |
+
+HUDs are public by default, opt-out via `/api/hud/settings`.
 
 ### Tunnel (Free Tier - Local Compute)
 
@@ -322,9 +332,18 @@ Set in `wrangler.toml` `[vars]`:
 GITHUB_CLIENT_ID = "Ov23li..."
 STRIPE_PUBLISHABLE_KEY = "pk_live_..."
 SPARK_NETWORK = "testnet"
+LIVE_HUD_REPO = "openagents/openagents"
+LIVE_HUD_AGENT_ID = ""
+LIVE_HUD_STREAM_URL = ""
+LIVE_HUD_STATUS = "live"
+LIVE_HUD_ISSUE_URL = ""
+LIVE_HUD_ISSUE_LABEL = ""
+LIVE_HUD_ISSUE_TITLE = ""
 ```
 
 `SPARK_NETWORK` supports `mainnet`, `testnet`, `signet`, or `regtest`.
+`LIVE_HUD_*` configures the landing-page fishbowl and issue banner. Use `LIVE_HUD_STREAM_URL`
+for public SSE streams, or `LIVE_HUD_AGENT_ID` to use `/agents/{id}/hud/stream`.
 
 ### Secrets
 
