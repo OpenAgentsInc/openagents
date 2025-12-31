@@ -62,17 +62,18 @@ The same interface works locally (FUSE), in the cloud (HTTP), or in a UI.
 
 ## Backends
 
-Same agent code runs on any backend:
+Same agent code runs on any of the four backends:
 
 | Backend | Cold Start | Max Agents | Best For |
 |---------|------------|------------|----------|
 | **Browser** | <10ms | Single | Privacy, offline, zero cost |
 | **Cloudflare** | 10-50ms | Millions | Global scale, zero ops |
-| **Local** | <100ms | Hundreds | Privacy, offline, free |
-| **Docker** | 1-5s | Hundreds | Self-hosting |
-| **Kubernetes** | 5-30s | Thousands | Enterprise scale |
+| **Local** | <100ms | Hundreds | Privacy, offline, dev |
+| **Server** | 100ms-5s | Thousands | Self-hosting, enterprise |
 
-The browser backend is inspired by [WANIX](https://github.com/tractordev/wanix) (Plan 9 in browser) and [Apptron](https://github.com/progrium/apptron) (full Linux in browser). Same WASI binary runs on server (native), desktop (native), or browser (WASM).
+The **Server** backend can be deployed on bare metal, Docker, or Kubernetes—these are deployment modes, not separate backends.
+
+The Browser backend is inspired by [WANIX](https://github.com/tractordev/wanix) (Plan 9 in browser) and [Apptron](https://github.com/progrium/apptron) (full Linux in browser). Same WASI binary runs on server (native), desktop (native), or browser (WASM).
 
 ## What Makes This Agent-Specific
 
@@ -138,19 +139,20 @@ impl Agent for MyAgent {
 crates/
 ├── runtime/              # This crate - core abstractions
 ├── runtime-browser/      # Browser backend (WASM + IndexedDB)
-├── runtime-local/        # Local device backend (SQLite + tokio)
 ├── runtime-cloudflare/   # Cloudflare Workers backend (DO)
-├── runtime-server/       # Container/VM backend
+├── runtime-local/        # Local device backend (SQLite + tokio)
+├── runtime-server/       # Server backend (Docker/K8s/bare metal)
 ├── agent-memory/         # Structured memory schema
-├── agent-identity/       # Identity and signing
+├── agent-identity/       # Identity and signing (SigningService)
 └── agent-drivers/        # Shared driver implementations
 ```
 
 ## Feature Flags
 
-- `browser` — Browser backend with WASM + IndexedDB
-- `cloudflare` — Cloudflare Workers/Durable Objects backend
-- `local` — Local device backend with SQLite
+- `browser` — Browser backend (WASM + IndexedDB)
+- `cloudflare` — Cloudflare Workers backend (Durable Objects)
+- `local` — Local device backend (SQLite + tokio)
+- `server` — Server backend (for Docker/K8s/bare metal deployment)
 - `full` — Enable all optional features (tracing, metrics)
 
 ## Prior Art

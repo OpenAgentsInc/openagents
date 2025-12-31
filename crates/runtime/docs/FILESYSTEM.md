@@ -759,23 +759,29 @@ Key lessons from OANIX experimentation:
 
 `FileService` is **sync by design** for simplicity. However, `ExecutorManager.block_on()` cannot exist in browser/WASM (no threads to block).
 
+**The Official Story:**
+
+1. **Sync FileService is the universal interface** — All backends implement it
+2. **Buffer + Flush is the WASM pattern** — For network operations in browser
+3. **AsyncFileService is NOT used** — Adds complexity, breaks uniformity
+
 **Backend-specific async handling:**
 
 | Backend | Async Strategy |
 |---------|----------------|
 | Native (Local/Server) | `ExecutorManager.block_on()` — sync call blocks on async work |
-| Cloudflare Workers | Single-threaded event loop — naturally async |
-| Browser WASM | **Cannot block** — must use event-driven approach |
+| Cloudflare Workers | Single-threaded event loop — naturally async internally |
+| Browser WASM | **Buffer + Flush + Callback** (see below) |
 
-**Browser solution: Buffer + Flush + Callback**
+**The Buffer + Flush Pattern (Canonical for WASM)**
 
-For WASM targets, network operations use a different pattern:
+For WASM targets, network operations buffer synchronously and execute asynchronously on flush:
 
 ```rust
 #[cfg(target_arch = "wasm32")]
 impl FileHandle for PublishHandle {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        // Buffer synchronously
+        // Buffer synchronously — never blocks
         self.event_json.extend_from_slice(buf);
         Ok(buf.len())
     }
@@ -784,28 +790,36 @@ impl FileHandle for PublishHandle {
         // Queue async operation, return immediately
         // Actual publish happens via JS callback
         let event: NostrEvent = serde_json::from_slice(&self.event_json)?;
-        self.queue_publish(event);  // Non-blocking
+        self.queue_publish(event);  // Non-blocking, queues to JS event loop
         Ok(())
     }
 }
 ```
 
-**Alternative: AsyncFileService for WASM**
+**Completion notification** comes via:
+- Watch on `/nostr/events` for published event confirmation
+- Watch on `/logs/trace` for operation result
+- Callback registered in service initialization
 
-For use cases where blocking is impossible and callback doesn't suffice:
+**Capability availability:**
 
-```rust
-#[cfg(target_arch = "wasm32")]
-pub trait AsyncFileService: Send + Sync {
-    async fn open(&self, path: &str, flags: OpenFlags) -> Result<Box<dyn AsyncFileHandle>>;
-    async fn stat(&self, path: &str) -> Result<Stat>;
-    // ... other async methods
+Some services cannot work in browser:
+- `/compute/exec` — No arbitrary code execution
+- `/secrets/raw` — No HSM access
+
+Document unavailable capabilities in mount manifest:
+
+```json
+{
+  "required_capabilities": ["/nostr", "/wallet"],
+  "optional_capabilities": ["/compute"],
+  "unavailable_on": {
+    "browser": ["/compute/exec", "/secrets/raw"]
+  }
 }
 ```
 
-The runtime detects `target_arch` and uses the appropriate trait.
-
-**Key principle:** Browser backend must not require blocking. If a service can't work without blocking, it's not available on browser backend (document this in capability manifest).
+**Key principle:** FileService stays sync everywhere. Browser backend uses buffer+flush+callback. Services that can't work this way are unavailable on browser.
 
 ### Thread Safety
 

@@ -184,12 +184,25 @@ agent-abc123.bundle/
 ├── manifest.json       # Bundle metadata
 ├── state.sqlite        # Full SQLite database
 ├── config.json         # Agent configuration
-├── mounts.json         # Mount table
+├── mounts.json         # Mount table + access levels
 ├── identity/
 │   └── pubkey          # Public key (not private!)
+├── runtime/            # Runtime state for safe migration
+│   ├── seen_envelopes.json     # Bounded dedup cache
+│   ├── idempotency_journal.json # Recent effect idempotency keys
+│   ├── budget_state.json       # Current budget counters
+│   └── plumber_rules.yaml      # Event routing rules
+├── deadletter/         # Dead-lettered envelopes (if any)
+│   └── envelopes.jsonl
 └── logs/
     └── recent.jsonl    # Recent trajectory (optional)
 ```
+
+The `runtime/` directory ensures safe migration:
+- **seen_envelopes** — Prevents reprocessing on restore
+- **idempotency_journal** — Prevents duplicate external effects
+- **budget_state** — Preserves daily spend counters
+- **plumber_rules** — Preserves custom routing
 
 Manifest (with versioning for portability):
 ```json

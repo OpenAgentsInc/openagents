@@ -202,7 +202,45 @@ Portability requires precise delivery guarantees. These semantics are **mandator
 - **At-least-once delivery** — Envelopes may be delivered multiple times (crashes, retries)
 - **Per-sender ordering** — Messages from (source, sender) pair preserve send order
 - **No global ordering** — No total order across all senders
-- **Bounded queue** — Inbox has a maximum depth; overflow drops oldest or rejects new
+- **Bounded queue** — Inbox has a maximum depth; overflow handled per policy
+
+### Inbox Overflow Handling
+
+When inbox is full, the runtime follows the configured overflow policy:
+
+```rust
+pub enum OverflowPolicy {
+    /// Reject new envelopes with error (sender retries).
+    RejectNew,
+
+    /// Drop oldest envelopes to make room.
+    DropOldest,
+
+    /// Move overflow to dead-letter queue.
+    DeadLetter,
+}
+```
+
+The dead-letter queue is visible at `/agents/<id>/deadletter/`:
+
+```
+/agents/<id>/deadletter/
+├── count           # Number of dead-lettered envelopes
+├── list            # List envelope IDs
+├── <envelope_id>   # Read individual envelope
+└── ctl             # Write "replay <id>" or "discard <id>"
+```
+
+**Default policy:** `DeadLetter` — preserves messages for debugging/replay.
+
+Overflow settings via `/agents/<id>/inbox/overflow`:
+```json
+{
+  "max_depth": 1000,
+  "policy": "dead_letter",
+  "dead_letter_max": 100
+}
+```
 
 ### Idempotency
 
@@ -315,7 +353,7 @@ Across agents:
 
 Identity is not optional. Every agent has:
 - A **public key** (npub) — its address, how others find it
-- A **private key** (nsec) — its signing capability, never leaves runtime
+- A **private key** (nsec) — held by SigningService (Factotum), never exposed to agent code
 
 ### Derivation
 
@@ -546,13 +584,15 @@ This enables:
 
 ### What Varies by Backend
 
-| Concern | Browser | Cloudflare | Local | Kubernetes |
-|---------|---------|------------|-------|------------|
-| **Process model** | Web Worker | Isolate per request | Daemon | Pod |
-| **Storage** | IndexedDB | DO SQLite | File SQLite | PostgreSQL |
+| Concern | Browser | Cloudflare | Local | Server |
+|---------|---------|------------|-------|--------|
+| **Process model** | Web Worker | Isolate per request | Daemon | Process/Container |
+| **Storage** | IndexedDB | DO SQLite | File SQLite | SQLite/PostgreSQL |
 | **Wake trigger** | postMessage | HTTP/WS | IPC/file | HTTP/gRPC |
-| **Hibernation** | Kill Worker | Automatic | Manual | Automatic |
-| **Scaling** | N/A | Automatic | N/A | HPA |
+| **Hibernation** | Kill Worker | Automatic | Manual | Process pool |
+| **Scaling** | N/A | Automatic | N/A | Manual/HPA* |
+
+*Server backend scaling depends on deployment mode (bare metal vs Docker vs K8s).
 
 ### Backend Trait
 
@@ -598,11 +638,12 @@ This enables:
 - Wake via channel/IPC
 - Hibernation via serialization to disk
 
-**KubernetesBackend:**
-- Agents are StatefulSet pods
-- PostgreSQL or CockroachDB storage
-- Wake via gRPC or HTTP
-- Hibernation via scale-to-zero
+**ServerBackend:**
+- Agents are processes in a pool (or containers in Docker/K8s)
+- SQLite or PostgreSQL storage
+- Wake via HTTP/gRPC
+- Hibernation via process pool management
+- Deployment modes: bare metal, Docker Compose, Kubernetes
 
 ---
 
@@ -858,6 +899,55 @@ With supervision:
 - **File system:** Agents with persistent file storage
 - **Container spawn:** Agents that spawn heavy compute jobs
 - **Hardware access:** Agents controlling physical devices
+
+---
+
+## Part Fifteen: Conformance Testing
+
+Since "semantics are mandatory across all backends" is a pillar of portability, every backend must pass the conformance suite.
+
+### Required Tests
+
+| Test | What It Verifies |
+|------|------------------|
+| `test_single_tick_lock` | Only one tick executes at a time per agent |
+| `test_at_least_once_delivery` | Messages are delivered even after crash/restart |
+| `test_dedup_helpers` | `ctx.seen()` / `ctx.mark_seen()` work correctly |
+| `test_per_sender_ordering` | Messages from same sender arrive in order |
+| `test_idempotent_effects` | Same idempotency key doesn't execute twice |
+| `test_watch_semantics` | `watch()` returns events on file changes |
+| `test_budget_enforcement` | Budgeted mounts enforce limits |
+| `test_signer_no_key_leak` | SigningService never exposes private keys |
+| `test_trigger_envelope_id` | All triggers carry valid EnvelopeId |
+| `test_overflow_deadletter` | Inbox overflow moves to dead-letter queue |
+| `test_export_import_roundtrip` | Export → import preserves all state |
+| `test_hibernation_state_persists` | State survives hibernation cycle |
+
+### Running Conformance
+
+```bash
+# Run against specific backend
+cargo test --features browser conformance::
+cargo test --features cloudflare conformance::
+cargo test --features local conformance::
+cargo test --features server conformance::
+
+# Run all backends (CI)
+./scripts/conformance-all-backends.sh
+```
+
+### Backend-Specific Exemptions
+
+Some tests don't apply to all backends:
+
+| Test | Browser | Cloudflare | Local | Server |
+|------|---------|------------|-------|--------|
+| `test_watch_semantics` | ✅ | ✅ | ✅ | ✅ |
+| `test_hibernation_state_persists` | ✅ | ✅ | ✅ | ✅ |
+| `test_fuse_mount` | ❌ | ❌ | ✅ | ✅ |
+| `test_multi_agent_scale` | ❌ | ✅ | ⚠️ | ✅ |
+
+❌ = Not applicable, ✅ = Required, ⚠️ = Optional (limited scale)
 
 ---
 
