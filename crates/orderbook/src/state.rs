@@ -17,7 +17,11 @@ pub struct OrderCoord {
 
 impl OrderCoord {
     pub fn new(kind: u16, pubkey: String, d_tag: String) -> Self {
-        Self { kind, pubkey, d_tag }
+        Self {
+            kind,
+            pubkey,
+            d_tag,
+        }
     }
 
     /// Format as "kind:pubkey:d_tag" (NIP-33 style)
@@ -100,10 +104,7 @@ impl OrderbookState {
         if should_update {
             // Move old order to history if it exists
             if let Some(old) = self.orders.remove(&coord) {
-                self.history
-                    .entry(coord.clone())
-                    .or_default()
-                    .push(old);
+                self.history.entry(coord.clone()).or_default().push(old);
             }
 
             // Insert new order as latest
@@ -111,10 +112,7 @@ impl OrderbookState {
             true
         } else {
             // Older event - add to history only
-            self.history
-                .entry(coord)
-                .or_default()
-                .push(order);
+            self.history.entry(coord).or_default().push(order);
             false
         }
     }
@@ -142,7 +140,8 @@ impl OrderbookState {
 
     /// Get all unique market keys in the orderbook
     pub fn get_markets(&self) -> Vec<MarketKey> {
-        let mut markets: Vec<_> = self.orders
+        let mut markets: Vec<_> = self
+            .orders
             .values()
             .map(|o| o.market_key())
             .collect::<std::collections::HashSet<_>>()
@@ -171,14 +170,18 @@ impl OrderbookState {
         let mut orders_by_market = HashMap::new();
 
         for order in self.orders.values() {
-            let status = order.status.clone().unwrap_or_else(|| "unknown".to_string());
+            let status = order
+                .status
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string());
             *orders_by_status.entry(status).or_insert(0) += 1;
 
             let market = order.market_key();
             *orders_by_market.entry(market).or_insert(0) += 1;
         }
 
-        let active_orders = self.orders
+        let active_orders = self
+            .orders
             .values()
             .filter(|o| o.status.as_deref() == Some("pending"))
             .count();

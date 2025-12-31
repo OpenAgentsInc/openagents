@@ -2,8 +2,8 @@
 //!
 //! A graphical orderbook viewer using wgpui.
 
-use orderbook::gui::OrderbookApp;
 use orderbook::OrderbookState;
+use orderbook::gui::OrderbookApp;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use winit::event_loop::EventLoop;

@@ -97,7 +97,11 @@ impl ParsedOrder {
         match self.fiat_amount.len() {
             0 => "?".to_string(),
             1 => format!("{}", self.fiat_amount[0]),
-            _ => format!("{}-{}", self.fiat_amount[0], self.fiat_amount.last().unwrap()),
+            _ => format!(
+                "{}-{}",
+                self.fiat_amount[0],
+                self.fiat_amount.last().unwrap()
+            ),
         }
     }
 
@@ -150,7 +154,10 @@ pub fn parse_order_lenient(event: &Event, relay_url: &str) -> ParsedOrder {
     if side.is_none() {
         errors.push("Missing 'k' tag (order type)".to_string());
     } else if !matches!(side.as_deref(), Some("buy") | Some("sell")) {
-        errors.push(format!("Invalid 'k' tag: expected 'buy' or 'sell', got {:?}", side));
+        errors.push(format!(
+            "Invalid 'k' tag: expected 'buy' or 'sell', got {:?}",
+            side
+        ));
     }
 
     // Extract currency (f tag)
@@ -166,8 +173,7 @@ pub fn parse_order_lenient(event: &Event, relay_url: &str) -> ParsedOrder {
     }
 
     // Extract amount (amt tag)
-    let amount_sats = extract_tag(&event.tags, "amt")
-        .and_then(|s| s.parse::<u64>().ok());
+    let amount_sats = extract_tag(&event.tags, "amt").and_then(|s| s.parse::<u64>().ok());
     if amount_sats.is_none() {
         errors.push("Missing or invalid 'amt' tag".to_string());
     }
@@ -183,8 +189,7 @@ pub fn parse_order_lenient(event: &Event, relay_url: &str) -> ParsedOrder {
     }
 
     // Extract premium
-    let premium = extract_tag(&event.tags, "premium")
-        .and_then(|s| s.parse::<f64>().ok());
+    let premium = extract_tag(&event.tags, "premium").and_then(|s| s.parse::<f64>().ok());
 
     // Extract payment methods (pm tag)
     let payment_methods = extract_tag_values(&event.tags, "pm");
@@ -199,10 +204,8 @@ pub fn parse_order_lenient(event: &Event, relay_url: &str) -> ParsedOrder {
     let layer = extract_tag(&event.tags, "layer");
 
     // Extract expiration times
-    let expires_at = extract_tag(&event.tags, "expires_at")
-        .and_then(|s| s.parse::<u64>().ok());
-    let expiration = extract_tag(&event.tags, "expiration")
-        .and_then(|s| s.parse::<u64>().ok());
+    let expires_at = extract_tag(&event.tags, "expires_at").and_then(|s| s.parse::<u64>().ok());
+    let expiration = extract_tag(&event.tags, "expiration").and_then(|s| s.parse::<u64>().ok());
 
     // Extract platform (y tag)
     let platform = extract_tag(&event.tags, "y");
@@ -211,8 +214,7 @@ pub fn parse_order_lenient(event: &Event, relay_url: &str) -> ParsedOrder {
     let source = extract_tag(&event.tags, "source");
     let name = extract_tag(&event.tags, "name");
     let geohash = extract_tag(&event.tags, "g");
-    let bond = extract_tag(&event.tags, "bond")
-        .and_then(|s| s.parse::<u64>().ok());
+    let bond = extract_tag(&event.tags, "bond").and_then(|s| s.parse::<u64>().ok());
 
     // Determine if valid (has all required fields)
     let is_valid = d_tag.is_some()
@@ -225,11 +227,7 @@ pub fn parse_order_lenient(event: &Event, relay_url: &str) -> ParsedOrder {
 
     ParsedOrder {
         event_id: event.id.clone(),
-        coord: OrderCoord::new(
-            event.kind,
-            event.pubkey.clone(),
-            d_tag.unwrap_or_default(),
-        ),
+        coord: OrderCoord::new(event.kind, event.pubkey.clone(), d_tag.unwrap_or_default()),
         created_at: event.created_at,
         relay_url: relay_url.to_string(),
         side,
@@ -278,7 +276,11 @@ mod tests {
             vec!["s".to_string(), "pending".to_string()],
             vec!["amt".to_string(), "10000".to_string()],
             vec!["fa".to_string(), "100".to_string()],
-            vec!["pm".to_string(), "cashu".to_string(), "lightning".to_string()],
+            vec![
+                "pm".to_string(),
+                "cashu".to_string(),
+                "lightning".to_string(),
+            ],
             vec!["premium".to_string(), "2.5".to_string()],
             vec!["network".to_string(), "mainnet".to_string()],
             vec!["layer".to_string(), "lightning".to_string()],
@@ -333,21 +335,34 @@ mod tests {
 
         assert!(!order.is_valid);
         assert!(!order.validation_errors.is_empty());
-        assert!(order.validation_errors.iter().any(|e| e.contains("'k' tag")));
-        assert!(order.validation_errors.iter().any(|e| e.contains("'f' tag")));
+        assert!(
+            order
+                .validation_errors
+                .iter()
+                .any(|e| e.contains("'k' tag"))
+        );
+        assert!(
+            order
+                .validation_errors
+                .iter()
+                .any(|e| e.contains("'f' tag"))
+        );
     }
 
     #[test]
     fn test_parse_wrong_kind() {
-        let tags = vec![
-            vec!["d".to_string(), "note-123".to_string()],
-        ];
+        let tags = vec![vec!["d".to_string(), "note-123".to_string()]];
 
         let event = make_test_event(1, tags); // Kind 1, not 38383
         let order = parse_order_lenient(&event, "wss://test.relay");
 
         assert!(!order.is_valid);
-        assert!(order.validation_errors.iter().any(|e| e.contains("Wrong event kind")));
+        assert!(
+            order
+                .validation_errors
+                .iter()
+                .any(|e| e.contains("Wrong event kind"))
+        );
     }
 
     #[test]

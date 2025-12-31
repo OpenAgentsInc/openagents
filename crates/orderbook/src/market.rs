@@ -44,8 +44,11 @@ impl std::fmt::Display for MarketKey {
 
 impl Ord for MarketKey {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (&self.currency, &self.layer, &self.network)
-            .cmp(&(&other.currency, &other.layer, &other.network))
+        (&self.currency, &self.layer, &self.network).cmp(&(
+            &other.currency,
+            &other.layer,
+            &other.network,
+        ))
     }
 }
 
@@ -110,7 +113,11 @@ mod tests {
 
     #[test]
     fn test_market_key_display() {
-        let key = MarketKey::new("USD".to_string(), "mainnet".to_string(), "lightning".to_string());
+        let key = MarketKey::new(
+            "USD".to_string(),
+            "mainnet".to_string(),
+            "lightning".to_string(),
+        );
         assert_eq!(key.to_string(), "USD/lightning/mainnet");
     }
 
@@ -124,9 +131,21 @@ mod tests {
 
     #[test]
     fn test_market_key_ordering() {
-        let key1 = MarketKey::new("EUR".to_string(), "mainnet".to_string(), "lightning".to_string());
-        let key2 = MarketKey::new("USD".to_string(), "mainnet".to_string(), "lightning".to_string());
-        let key3 = MarketKey::new("USD".to_string(), "mainnet".to_string(), "onchain".to_string());
+        let key1 = MarketKey::new(
+            "EUR".to_string(),
+            "mainnet".to_string(),
+            "lightning".to_string(),
+        );
+        let key2 = MarketKey::new(
+            "USD".to_string(),
+            "mainnet".to_string(),
+            "lightning".to_string(),
+        );
+        let key3 = MarketKey::new(
+            "USD".to_string(),
+            "mainnet".to_string(),
+            "onchain".to_string(),
+        );
 
         assert!(key1 < key2);
         assert!(key2 < key3);

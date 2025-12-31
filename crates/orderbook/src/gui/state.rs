@@ -75,9 +75,9 @@ impl GuiState {
 
     /// Get index of selected market
     pub fn selected_index(&self) -> Option<usize> {
-        self.selected_market.as_ref().and_then(|selected| {
-            self.markets.iter().position(|m| m == selected)
-        })
+        self.selected_market
+            .as_ref()
+            .and_then(|selected| self.markets.iter().position(|m| m == selected))
     }
 
     /// Update relay connection status
@@ -88,7 +88,8 @@ impl GuiState {
 
     fn update_connection_counts(&mut self) {
         self.relay_count = self.relay_status.len();
-        self.connected_count = self.relay_status
+        self.connected_count = self
+            .relay_status
             .values()
             .filter(|s| matches!(s, RelayStatus::Connected))
             .count();
