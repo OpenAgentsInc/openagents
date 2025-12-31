@@ -1,11 +1,11 @@
 // Autopilot job runner - manages autonomous code execution jobs
 
-use actix_web::{web, HttpResponse, Result};
+use actix_web::{HttpResponse, Result, web};
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::collections::HashMap;
+use tracing::info;
 
 // In-memory job store (use database in production)
 #[allow(dead_code)]
@@ -56,9 +56,7 @@ pub struct StartJobResponse {
     pub message: String,
 }
 
-pub async fn start_job(
-    req: web::Json<StartJobRequest>,
-) -> Result<HttpResponse> {
+pub async fn start_job(req: web::Json<StartJobRequest>) -> Result<HttpResponse> {
     info!("Starting autopilot job for repo: {}", req.repo_url);
 
     // Generate job ID
@@ -90,7 +88,8 @@ pub async fn start_job(
     Ok(HttpResponse::Created().json(StartJobResponse {
         job_id,
         status: "queued".to_string(),
-        message: "Autopilot job queued. In production, this would spawn a real execution.".to_string(),
+        message: "Autopilot job queued. In production, this would spawn a real execution."
+            .to_string(),
     }))
 }
 
@@ -99,9 +98,7 @@ pub struct JobStatusResponse {
     pub job: AutopilotJob,
 }
 
-pub async fn job_status(
-    job_id: web::Path<String>,
-) -> Result<HttpResponse> {
+pub async fn job_status(job_id: web::Path<String>) -> Result<HttpResponse> {
     info!("Checking status for job: {}", job_id);
 
     // In production, fetch from database
@@ -117,9 +114,7 @@ pub async fn job_status(
         result: None,
     };
 
-    Ok(HttpResponse::Ok().json(JobStatusResponse {
-        job: mock_job,
-    }))
+    Ok(HttpResponse::Ok().json(JobStatusResponse { job: mock_job }))
 }
 
 #[derive(Debug, Serialize)]
@@ -128,9 +123,7 @@ pub struct CancelJobResponse {
     pub message: String,
 }
 
-pub async fn cancel_job(
-    job_id: web::Path<String>,
-) -> Result<HttpResponse> {
+pub async fn cancel_job(job_id: web::Path<String>) -> Result<HttpResponse> {
     info!("Cancelling job: {}", job_id);
 
     // In production:

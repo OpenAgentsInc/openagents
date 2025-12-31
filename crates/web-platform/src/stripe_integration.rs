@@ -1,8 +1,8 @@
 // Stripe integration for credit purchases
 
-use actix_web::{web, HttpRequest, HttpResponse, Result};
+use actix_web::{HttpRequest, HttpResponse, Result, web};
 use serde::{Deserialize, Serialize};
-use tracing::{info, error};
+use tracing::{error, info};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateCheckoutRequest {
@@ -18,22 +18,29 @@ pub struct CheckoutSession {
 pub async fn create_checkout_session(
     req: web::Json<CreateCheckoutRequest>,
 ) -> Result<HttpResponse> {
-    info!("Creating Stripe checkout session for {} credits", req.credits);
+    info!(
+        "Creating Stripe checkout session for {} credits",
+        req.credits
+    );
 
     // Pricing: $20 for 500,000 credits
     // Calculate price based on credits requested
     let price_per_credit = 20.0 / 500_000.0; // $0.00004 per credit
     let total_price = (req.credits as f64 * price_per_credit * 100.0) as i64; // Convert to cents
 
-    let _stripe_secret_key = std::env::var("STRIPE_SECRET_KEY")
-        .expect("STRIPE_SECRET_KEY must be set");
+    let _stripe_secret_key =
+        std::env::var("STRIPE_SECRET_KEY").expect("STRIPE_SECRET_KEY must be set");
 
     // In production, use stripe-rust crate to create actual session
     // For now, return mock response
     let session_id = format!("cs_test_{}", rand::random::<u64>());
     let checkout_url = format!("https://checkout.stripe.com/c/pay/{}", session_id);
 
-    info!("Created checkout session: {}, total: ${:.2}", session_id, total_price as f64 / 100.0);
+    info!(
+        "Created checkout session: {}, total: ${:.2}",
+        session_id,
+        total_price as f64 / 100.0
+    );
 
     Ok(HttpResponse::Ok().json(CheckoutSession {
         session_id: session_id.clone(),
@@ -46,7 +53,8 @@ pub async fn checkout_success(req: HttpRequest) -> Result<HttpResponse> {
     let query_string = req.query_string();
     info!("Checkout success: {}", query_string);
 
-    Ok(HttpResponse::Ok().content_type("text/html").body(r#"
+    Ok(HttpResponse::Ok().content_type("text/html").body(
+        r#"
         <!DOCTYPE html>
         <html>
         <head>
@@ -88,11 +96,13 @@ pub async fn checkout_success(req: HttpRequest) -> Result<HttpResponse> {
             </div>
         </body>
         </html>
-    "#))
+    "#,
+    ))
 }
 
 pub async fn checkout_cancel() -> Result<HttpResponse> {
-    Ok(HttpResponse::Ok().content_type("text/html").body(r#"
+    Ok(HttpResponse::Ok().content_type("text/html").body(
+        r#"
         <!DOCTYPE html>
         <html>
         <head>
@@ -134,7 +144,8 @@ pub async fn checkout_cancel() -> Result<HttpResponse> {
             </div>
         </body>
         </html>
-    "#))
+    "#,
+    ))
 }
 
 #[allow(dead_code)]
@@ -145,9 +156,7 @@ pub struct StripeWebhookEvent {
     pub data: serde_json::Value,
 }
 
-pub async fn stripe_webhook(
-    payload: web::Bytes,
-) -> Result<HttpResponse> {
+pub async fn stripe_webhook(payload: web::Bytes) -> Result<HttpResponse> {
     // In production:
     // 1. Verify webhook signature using Stripe-Signature header
     // 2. Parse event

@@ -1,14 +1,14 @@
 // OpenAgents Web Platform
 // Provides GitHub OAuth, Stripe checkout, and autopilot execution as a service
 
-use actix_web::{web, App, HttpResponse, HttpServer, Result};
+use actix_web::{App, HttpResponse, HttpServer, Result, web};
 use serde::Serialize;
 use tracing::info;
 
-mod github;
-mod stripe_integration;
 mod autopilot_runner;
 mod db;
+mod github;
+mod stripe_integration;
 
 #[derive(Debug, Serialize)]
 struct HealthResponse {
@@ -24,7 +24,9 @@ async fn health() -> Result<HttpResponse> {
 }
 
 async fn index() -> Result<HttpResponse> {
-    Ok(HttpResponse::Ok().content_type("text/html").body(INDEX_HTML))
+    Ok(HttpResponse::Ok()
+        .content_type("text/html")
+        .body(INDEX_HTML))
 }
 
 const INDEX_HTML: &str = r#"<!DOCTYPE html>
@@ -179,8 +181,8 @@ async fn main() -> std::io::Result<()> {
     info!("Starting OpenAgents Web Platform on port {}", port);
 
     // Initialize database
-    let db_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite:web-platform.db".to_string());
+    let db_url =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:web-platform.db".to_string());
 
     info!("Connecting to database: {}", db_url);
 
@@ -192,22 +194,40 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/auth")
                     .route("/github", web::get().to(github::start_oauth))
-                    .route("/github/callback", web::get().to(github::oauth_callback))
+                    .route("/github/callback", web::get().to(github::oauth_callback)),
             )
             // Stripe checkout routes
             .service(
                 web::scope("/checkout")
-                    .route("/create-session", web::post().to(stripe_integration::create_checkout_session))
-                    .route("/success", web::get().to(stripe_integration::checkout_success))
-                    .route("/cancel", web::get().to(stripe_integration::checkout_cancel))
-                    .route("/webhook", web::post().to(stripe_integration::stripe_webhook))
+                    .route(
+                        "/create-session",
+                        web::post().to(stripe_integration::create_checkout_session),
+                    )
+                    .route(
+                        "/success",
+                        web::get().to(stripe_integration::checkout_success),
+                    )
+                    .route(
+                        "/cancel",
+                        web::get().to(stripe_integration::checkout_cancel),
+                    )
+                    .route(
+                        "/webhook",
+                        web::post().to(stripe_integration::stripe_webhook),
+                    ),
             )
             // Autopilot routes
             .service(
                 web::scope("/autopilot")
                     .route("/start", web::post().to(autopilot_runner::start_job))
-                    .route("/status/{job_id}", web::get().to(autopilot_runner::job_status))
-                    .route("/cancel/{job_id}", web::post().to(autopilot_runner::cancel_job))
+                    .route(
+                        "/status/{job_id}",
+                        web::get().to(autopilot_runner::job_status),
+                    )
+                    .route(
+                        "/cancel/{job_id}",
+                        web::post().to(autopilot_runner::cancel_job),
+                    ),
             )
     })
     .bind(("0.0.0.0", port))?
