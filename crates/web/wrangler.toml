@@ -30,20 +30,20 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["TunnelRelay"]
+new_sqlite_classes = ["TunnelRelay"]
 
 [[migrations]]
 tag = "v2"
-new_classes = ["AutopilotContainer"]
+new_sqlite_classes = ["AutopilotContainer"]
 
 [[migrations]]
 tag = "v3"
-new_classes = ["AgentDo"]
+new_sqlite_classes = ["AgentDo"]
 
 # Container configuration
 [[containers]]
 class_name = "AutopilotContainer"
-image = "./worker/../autopilot-container/Dockerfile"
+image = "../autopilot-container/Dockerfile"
 max_instances = 10
 
 # Environment variables (non-secret)

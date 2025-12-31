@@ -111,10 +111,7 @@ pub async fn start_task(
     let _resp = stub.fetch_with_request(start_req).await?;
 
     // Build WebSocket URL
-    let ws_url = format!(
-        "wss://openagents.com/api/container/ws/{}",
-        session.session_id
-    );
+    let ws_url = format!("/api/container/ws/{}", session.session_id);
 
     Response::from_json(&StartContainerResponse {
         session_id: session.session_id,
