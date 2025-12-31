@@ -337,3 +337,12 @@ Require macOS 26 machine:
 - Backroom planning doc: `/Users/christopherdavid/code/backroom/reference/openagents-docs/claude/plans/containers.md`
 - Runtime containers: `/Users/christopherdavid/code/openagents/crates/runtime/src/containers.rs`
 - Runtime docs: `/Users/christopherdavid/code/openagents/crates/runtime/docs/CONTAINERS.md`
+
+---
+
+## Log
+
+- 2025-12-31 12:03:44 CST: Started implementation; reviewing plan and current runtime container/claude integration points.
+- 2025-12-31 12:31:20 CST: Implemented AppleContainerProvider with macOS 26+ detection (`sw_vers`) and `container system status`, added CLI-based run/exec/file IO, and registered it ahead of Docker in default providers.
+- 2025-12-31 12:31:20 CST: Added Claude containerized CLI support (Apple Container/Docker auto-detect, env-configured image/proxy), wired `isolation_mode: container` to wrap local/cloud providers, and updated runtime docs.
+- 2025-12-31 12:35:20 CST: Ran `cargo test -p openagents-runtime` (pass; warnings present).

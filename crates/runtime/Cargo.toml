@@ -15,6 +15,7 @@ cloudflare = ["worker", "wasm-bindgen-futures"]
 browser = ["wasm-bindgen", "wasm-bindgen-futures", "web-sys", "js-sys"]
 local = ["rusqlite"]
 # Optional features
+apple-container = []
 full = ["tracing", "metrics"]
 
 [dependencies]

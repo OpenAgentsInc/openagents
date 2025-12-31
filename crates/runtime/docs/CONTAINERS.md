@@ -8,7 +8,7 @@ Portable container abstraction for agents.
 
 Agents access isolated compute environments through the `/containers` mount. The runtime provides:
 
-- **Provider abstraction** — Same interface for local Docker, cloud sandboxes, and decentralized DVMs
+- **Provider abstraction** — Same interface for local Docker/Apple Container, cloud sandboxes, and decentralized DVMs
 - **Policy enforcement** — Per-agent container restrictions and resource limits
 - **Budget tracking** — USD-denominated accounting (settled in sats via Lightning for DVMs)
 - **OpenAgents API auth** — Nostr identity or API keys for cloud providers
@@ -37,6 +37,7 @@ This enables agents to spawn isolated execution environments without hardcoding 
 ```
 /containers/
 ├── providers/           # Available container providers
+│   ├── apple/          # Apple Container (macOS 26+)
 │   ├── local/          # Docker on local machine
 │   │   ├── info        # Read: provider info JSON
 │   │   ├── images      # Read: available images
@@ -88,6 +89,8 @@ This enables agents to spawn isolated execution environments without hardcoding 
    call pattern (single handle). Interactive commands are also non-blocking—poll status or watch output.
 
 3. **File paths are URL-encoded.** The path `/containers/sessions/<id>/files/src%2Fmain.rs` accesses `src/main.rs` in the container.
+
+**Apple Container provider:** Available on macOS 26+ when the runtime is built with the `apple-container` feature. Uses the `container` CLI (`container system status`) for availability checks.
 
 ---
 
@@ -664,7 +667,7 @@ mounts:
       per_day_usd: 50000000       # $50/day (in micro-USD)
       approval_threshold_usd: 5000000  # $5 requires approval
     policy:
-      allowed_providers: ["local", "cloudflare", "daytona", "dvm"]
+      allowed_providers: ["apple", "local", "cloudflare", "daytona", "dvm"]
       allowed_images: ["node:*", "python:*", "rust:*"]
       blocked_images: ["*:latest"]  # Require pinned versions
       allow_network: true

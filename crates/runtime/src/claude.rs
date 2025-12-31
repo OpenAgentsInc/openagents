@@ -12,6 +12,8 @@ use base64::Engine;
 use crate::types::{AgentId, Timestamp};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
+use std::process::Command;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
@@ -57,6 +59,10 @@ struct ClaudeRequestInternal {
     tool_policy: ToolPolicy,
     fork: bool,
     resume_backend_id: Option<String>,
+    #[cfg(not(target_arch = "wasm32"))]
+    container: Option<ClaudeContainerConfig>,
+    #[cfg(not(target_arch = "wasm32"))]
+    executable: Option<claude_agent_sdk::ExecutableConfig>,
 }
 
 /// A Claude session request (provider-agnostic).
@@ -368,6 +374,23 @@ pub enum NetworkMode {
     ProxyOnly,
     /// Completely air-gapped.
     None,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClaudeContainerRuntime {
+    Apple,
+    Docker,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, Clone)]
+struct ClaudeContainerConfig {
+    runtime: ClaudeContainerRuntime,
+    image: String,
+    network_mode: NetworkMode,
+    proxy_url: Option<String>,
+    command: Option<String>,
 }
 
 /// Repo filtering mode.
@@ -1585,6 +1608,10 @@ impl ClaudeNewHandle {
             tool_policy,
             fork: false,
             resume_backend_id: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            container: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            executable: None,
         });
 
         let router = self.router.read().unwrap_or_else(|e| e.into_inner());
@@ -1602,6 +1629,23 @@ impl ClaudeNewHandle {
                 .map_err(|err| FsError::Other(err.to_string()))?
         };
         let provider_id = provider.id().to_string();
+
+        #[cfg(not(target_arch = "wasm32"))]
+        if matches!(policy.isolation_mode, IsolationMode::Container)
+            && matches!(provider_id.as_str(), "local" | "cloud")
+        {
+            let config = resolve_container_config(&policy)
+                .map_err(|err| FsError::Other(err.to_string()))?;
+            request.internal.container = Some(config);
+        }
+        #[cfg(target_arch = "wasm32")]
+        if matches!(policy.isolation_mode, IsolationMode::Container)
+            && matches!(provider_id.as_str(), "local" | "cloud")
+        {
+            return Err(FsError::Other(
+                "container isolation not supported on wasm".to_string(),
+            ));
+        }
 
         let scoped_key = request.idempotency_key.as_ref().map(|key| {
             format!("{}:{}:{}", self.agent_id.as_str(), provider_id, key)
@@ -2658,6 +2702,110 @@ impl From<JournalError> for ClaudeError {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_container_config(policy: &ClaudePolicy) -> Result<ClaudeContainerConfig, ClaudeError> {
+    let image = std::env::var("OPENAGENTS_CLAUDE_CONTAINER_IMAGE").map_err(|_| {
+        ClaudeError::ProviderError("OPENAGENTS_CLAUDE_CONTAINER_IMAGE not set".to_string())
+    })?;
+    let command = std::env::var("OPENAGENTS_CLAUDE_CONTAINER_COMMAND").ok();
+    let proxy_url = std::env::var("OPENAGENTS_CLAUDE_PROXY_URL").ok();
+    let runtime = resolve_container_runtime()?;
+    Ok(ClaudeContainerConfig {
+        runtime,
+        image,
+        network_mode: policy.network_mode.clone(),
+        proxy_url,
+        command,
+    })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_container_runtime() -> Result<ClaudeContainerRuntime, ClaudeError> {
+    if let Ok(value) = std::env::var("OPENAGENTS_CLAUDE_CONTAINER_RUNTIME") {
+        let normalized = value.trim().to_lowercase();
+        match normalized.as_str() {
+            "apple" | "container" => {
+                if apple_container_available() {
+                    return Ok(ClaudeContainerRuntime::Apple);
+                }
+                return Err(ClaudeError::ProviderError(
+                    "apple container runtime unavailable".to_string(),
+                ));
+            }
+            "docker" => {
+                if docker_available() {
+                    return Ok(ClaudeContainerRuntime::Docker);
+                }
+                return Err(ClaudeError::ProviderError(
+                    "docker runtime unavailable".to_string(),
+                ));
+            }
+            "auto" | "" => {}
+            _ => {
+                return Err(ClaudeError::ProviderError(format!(
+                    "invalid OPENAGENTS_CLAUDE_CONTAINER_RUNTIME: {}",
+                    value
+                )));
+            }
+        }
+    }
+
+    if apple_container_available() {
+        Ok(ClaudeContainerRuntime::Apple)
+    } else if docker_available() {
+        Ok(ClaudeContainerRuntime::Docker)
+    } else {
+        Err(ClaudeError::ProviderError(
+            "no container runtime available".to_string(),
+        ))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn docker_available() -> bool {
+    Command::new("docker")
+        .arg("version")
+        .arg("--format")
+        .arg("{{.Server.Version}}")
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(all(target_os = "macos", feature = "apple-container"))]
+fn apple_container_available() -> bool {
+    let major = macos_version_major().unwrap_or(0);
+    if major < 26 {
+        return false;
+    }
+    Command::new("container")
+        .args(["system", "status"])
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(not(all(target_os = "macos", feature = "apple-container")))]
+fn apple_container_available() -> bool {
+    false
+}
+
+#[cfg(all(target_os = "macos", feature = "apple-container"))]
+fn macos_version_major() -> Option<u32> {
+    let output = Command::new("sw_vers")
+        .arg("-productVersion")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let version = String::from_utf8_lossy(&output.stdout);
+    let mut parts = version.trim().split('.');
+    let major = parts.next().unwrap_or("");
+    let digits: String = major.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse::<u32>().ok()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PoolConfig {
     min_workers: u32,
@@ -2886,6 +3034,7 @@ mod providers {
     use claude_agent_sdk::protocol::{PermissionResult, SdkMessage, SdkResultMessage, SdkSystemMessage};
     use claude_agent_sdk::{ExecutableConfig, Query, QueryOptions, ToolsConfig};
     use futures::{SinkExt, StreamExt};
+    use std::path::PathBuf;
     use tokio::sync::mpsc;
     use tokio::sync::oneshot;
     use tokio_stream::wrappers::ReceiverStream;
@@ -2912,6 +3061,51 @@ mod providers {
             F: std::future::Future<Output = ()> + Send + 'static,
         {
             self.runtime.spawn(fut);
+        }
+    }
+
+    fn container_command(runtime: ClaudeContainerRuntime) -> &'static str {
+        match runtime {
+            ClaudeContainerRuntime::Apple => "container",
+            ClaudeContainerRuntime::Docker => "docker",
+        }
+    }
+
+    fn container_executable(
+        config: &ClaudeContainerConfig,
+        env: &HashMap<String, String>,
+    ) -> ExecutableConfig {
+        let mut args = Vec::new();
+        args.push("run".to_string());
+        args.push("--rm".to_string());
+        args.push("-i".to_string());
+        if matches!(config.network_mode, NetworkMode::None) {
+            args.push("--network".to_string());
+            args.push("none".to_string());
+        }
+        for (key, value) in env {
+            args.push("-e".to_string());
+            args.push(format!("{}={}", key, value));
+        }
+        if let Some(proxy_url) = config.proxy_url.as_ref() {
+            args.push("-e".to_string());
+            args.push(format!("HTTPS_PROXY={}", proxy_url));
+            args.push("-e".to_string());
+            args.push(format!("HTTP_PROXY={}", proxy_url));
+            args.push("-e".to_string());
+            args.push("NODE_USE_ENV_PROXY=1".to_string());
+        }
+        args.push(config.image.clone());
+        args.push(
+            config
+                .command
+                .clone()
+                .unwrap_or_else(|| "claude".to_string()),
+        );
+        ExecutableConfig {
+            path: Some(PathBuf::from(container_command(config.runtime))),
+            executable: None,
+            executable_args: args,
         }
     }
 
@@ -3068,6 +3262,11 @@ mod providers {
                     options.fork_session = request.internal.fork;
                 }
                 options.env = Some(base_env);
+                let executable = request
+                    .internal
+                    .executable
+                    .clone()
+                    .unwrap_or(executable);
                 options.executable = executable;
                 let prompt = request.initial_prompt.clone().unwrap_or_default();
 
@@ -3377,6 +3576,9 @@ mod providers {
         }
 
         fn create_session(&self, mut request: ClaudeRequest) -> Result<String, ClaudeError> {
+            if let Some(container) = request.internal.container.clone() {
+                request.internal.executable = Some(container_executable(&container, &self.inner.base_env));
+            }
             let session_id = uuid::Uuid::new_v4().to_string();
             if let Some(resume_id) = request.resume_session_id.as_ref() {
                 let session = self.inner.session(resume_id)?;
@@ -3525,6 +3727,9 @@ mod providers {
                 return Err(ClaudeError::ProviderError("missing ANTHROPIC_API_KEY".to_string()));
             }
             let mut request = request;
+            if let Some(container) = request.internal.container.clone() {
+                request.internal.executable = Some(container_executable(&container, &self.inner.base_env));
+            }
             if let Some(resume_id) = request.resume_session_id.as_ref() {
                 let session = self.inner.session(resume_id)?;
                 let backend = session

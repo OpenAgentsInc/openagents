@@ -59,7 +59,7 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 │   ├── policy          # compute policy (agents: read-only)
 │   └── usage           # reserved/spent (micro-USD)
 ├── containers/
-│   ├── providers/      # local, cloudflare, daytona, dvm
+│   ├── providers/      # apple, local, cloudflare, daytona, dvm
 │   ├── new             # Call (write+read) → session_id
 │   ├── sessions/       # per-session status, output, files
 │   ├── policy          # container policy (agents: read-only)
