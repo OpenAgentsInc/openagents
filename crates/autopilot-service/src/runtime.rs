@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use autopilot::{ClaudeEvent, ClaudeModel, ClaudeUsageData, LogLine, LogStatus, SessionCheckpoint, StartupPhase, StartupSection, StartupState};
+use autopilot::{
+    ClaudeEvent, ClaudeModel, ClaudeUsageData, LogLine, LogStatus, SessionCheckpoint, StartupPhase,
+    StartupSection, StartupState,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,10 +158,7 @@ impl AutopilotRuntime {
             if let Some(section) = line.section {
                 // Only group startup sections, not Claude
                 if section != StartupSection::Claude {
-                    section_lines
-                        .entry(section)
-                        .or_default()
-                        .push(line.clone());
+                    section_lines.entry(section).or_default().push(line.clone());
                 }
             }
         }
@@ -273,7 +273,13 @@ impl AutopilotRuntime {
                     phase,
                     content: content.clone(),
                 }),
-                ClaudeEvent::Tool { name, params, done, output, is_error } => out.push(SessionEvent::Tool {
+                ClaudeEvent::Tool {
+                    name,
+                    params,
+                    done,
+                    output,
+                    is_error,
+                } => out.push(SessionEvent::Tool {
                     phase,
                     name: name.clone(),
                     params: params.clone(),
@@ -281,7 +287,10 @@ impl AutopilotRuntime {
                     output: output.clone(),
                     is_error: *is_error,
                 }),
-                ClaudeEvent::ToolProgress { tool_name, elapsed_secs } => out.push(SessionEvent::ToolProgress {
+                ClaudeEvent::ToolProgress {
+                    tool_name,
+                    elapsed_secs,
+                } => out.push(SessionEvent::ToolProgress {
                     phase,
                     tool_name: tool_name.clone(),
                     elapsed_secs: *elapsed_secs,

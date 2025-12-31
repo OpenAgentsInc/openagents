@@ -31,7 +31,7 @@ pub fn query_issue_summary(cwd: &Path) -> Option<String> {
     }
 
     let raw = String::from_utf8_lossy(&output.stdout);
-    
+
     let mut done = 0;
     let mut in_progress = 0;
     let mut open = 0;
@@ -66,7 +66,11 @@ pub fn query_issue_summary(cwd: &Path) -> Option<String> {
 
     let mut summary = format!(
         "Issue Status: {} total, {} done ({}%), {} in-progress, {} open\n\nActive issues:\n",
-        total, done, (done * 100) / total, in_progress, open
+        total,
+        done,
+        (done * 100) / total,
+        in_progress,
+        open
     );
 
     for issue in active_issues {
@@ -167,7 +171,7 @@ pub fn parse_harmony_stream(text: &str) -> Vec<HarmonySegment> {
             }
 
             let after_channel = &remaining[channel_start + 11..];
-            
+
             if let Some(msg_start) = after_channel.find("<|message|>") {
                 current_channel = after_channel[..msg_start].to_string();
                 remaining = &after_channel[msg_start + 11..];
@@ -201,7 +205,11 @@ pub fn parse_harmony_stream(text: &str) -> Vec<HarmonySegment> {
 
     if !current_content.is_empty() {
         segments.push(HarmonySegment {
-            channel: if current_channel.is_empty() { "final".to_string() } else { current_channel },
+            channel: if current_channel.is_empty() {
+                "final".to_string()
+            } else {
+                current_channel
+            },
             content: current_content.trim().to_string(),
         });
     }
@@ -211,18 +219,21 @@ pub fn parse_harmony_stream(text: &str) -> Vec<HarmonySegment> {
 
 pub fn extract_final_content(harmony_buffer: &str) -> String {
     let segments = parse_harmony_stream(harmony_buffer);
-    
+
     for segment in segments.iter().rev() {
         if segment.channel == "final" || segment.channel == "response" {
             return segment.content.clone();
         }
     }
-    
+
     for segment in segments.iter().rev() {
-        if segment.channel != "analysis" && segment.channel != "commentary" && !segment.content.is_empty() {
+        if segment.channel != "analysis"
+            && segment.channel != "commentary"
+            && !segment.content.is_empty()
+        {
             return segment.content.clone();
         }
     }
-    
+
     harmony_buffer.to_string()
 }

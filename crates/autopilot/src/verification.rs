@@ -226,10 +226,7 @@ impl VerificationRunner {
             Ok(o) => {
                 let stdout = String::from_utf8_lossy(&o.stdout);
                 let stderr = String::from_utf8_lossy(&o.stderr);
-                CheckResult::fail(
-                    "Some tests failed",
-                    format!("{}\n{}", stdout, stderr),
-                )
+                CheckResult::fail("Some tests failed", format!("{}\n{}", stdout, stderr))
             }
             Err(e) => CheckResult::fail("Test check failed", e.to_string()),
         }
@@ -246,7 +243,10 @@ impl VerificationRunner {
                 let stdout = String::from_utf8_lossy(&o.stdout);
                 if let Some(coverage) = parse_coverage_percent(&stdout) {
                     if coverage >= COVERAGE_THRESHOLD {
-                        CheckResult::pass(format!("{:.1}% coverage (threshold: {}%)", coverage, COVERAGE_THRESHOLD))
+                        CheckResult::pass(format!(
+                            "{:.1}% coverage (threshold: {}%)",
+                            coverage, COVERAGE_THRESHOLD
+                        ))
                     } else {
                         CheckResult::fail(
                             format!("{:.1}% coverage (need {}%)", coverage, COVERAGE_THRESHOLD),
@@ -486,7 +486,7 @@ fn parse_coverage_percent(output: &str) -> Option<f32> {
             }
         }
     }
-    
+
     for line in output.lines() {
         let parts: Vec<&str> = line.split_whitespace().collect();
         for part in parts {
@@ -497,13 +497,13 @@ fn parse_coverage_percent(output: &str) -> Option<f32> {
             }
         }
     }
-    
+
     None
 }
 
 pub fn generate_fix_prompt(checklist: &TerminationChecklist, iteration: u32) -> String {
     let failures = checklist.failing_checks();
-    
+
     let mut prompt = format!(
         r#"## Verification Failed (Iteration {})
 

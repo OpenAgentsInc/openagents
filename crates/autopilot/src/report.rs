@@ -51,18 +51,9 @@ impl AfterActionReport {
 
         report.push_str("# Autopilot Session Report\n\n");
 
-        report.push_str(&format!(
-            "**Session ID:** {}\n",
-            self.stats.session_id
-        ));
-        report.push_str(&format!(
-            "**Duration:** {}\n",
-            self.stats.duration_string()
-        ));
-        report.push_str(&format!(
-            "**Iterations:** {}\n",
-            self.stats.iterations
-        ));
+        report.push_str(&format!("**Session ID:** {}\n", self.stats.session_id));
+        report.push_str(&format!("**Duration:** {}\n", self.stats.duration_string()));
+        report.push_str(&format!("**Iterations:** {}\n", self.stats.iterations));
         report.push_str(&format!(
             "**Total Actions:** {}\n",
             self.stats.total_actions
@@ -76,10 +67,7 @@ impl AfterActionReport {
         }
 
         report.push_str("\n## Summary\n\n");
-        report.push_str(&format!(
-            "- {} files changed\n",
-            self.stats.files_modified
-        ));
+        report.push_str(&format!("- {} files changed\n", self.stats.files_modified));
         report.push_str(&format!(
             "- +{} insertions, -{} deletions\n",
             self.stats.insertions, self.stats.deletions
@@ -206,7 +194,12 @@ fn get_diff_stats(workdir: &Path, since: &chrono::DateTime<Local>) -> (u32, u32,
     let since_str = since.format("%Y-%m-%d %H:%M:%S").to_string();
 
     let output = Command::new("git")
-        .args(["diff", "--shortstat", &format!("--since={}", since_str), "HEAD"])
+        .args([
+            "diff",
+            "--shortstat",
+            &format!("--since={}", since_str),
+            "HEAD",
+        ])
         .current_dir(workdir)
         .output();
 
@@ -268,12 +261,10 @@ fn get_recent_commits(workdir: &Path, since: &chrono::DateTime<Local>) -> Vec<St
         .output();
 
     match output {
-        Ok(o) if o.status.success() => {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .map(|s| s.to_string())
-                .collect()
-        }
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .map(|s| s.to_string())
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -293,12 +284,10 @@ fn get_resolved_issues(workdir: &Path) -> Vec<String> {
         .output();
 
     match output {
-        Ok(o) if o.status.success() => {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .map(|s| s.to_string())
-                .collect()
-        }
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .map(|s| s.to_string())
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -346,9 +335,7 @@ pub fn generate_questions_for_user(
                 );
             }
             if reason.contains("runtime") {
-                questions.push(
-                    "Would you like to extend the runtime and continue?".to_string(),
-                );
+                questions.push("Would you like to extend the runtime and continue?".to_string());
             }
         }
     }
@@ -361,7 +348,8 @@ pub fn generate_questions_for_user(
 
     if !checklist.tests_passing.passed {
         questions.push(
-            "Some tests are failing. Are these known failures, or should they be fixed?".to_string(),
+            "Some tests are failing. Are these known failures, or should they be fixed?"
+                .to_string(),
         );
     }
 

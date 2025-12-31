@@ -106,10 +106,18 @@ impl GitHubClient {
             .context("Failed to get repository")?;
 
         Ok(ConnectedRepo {
-            owner: repo.owner.ok_or_else(|| anyhow::anyhow!("Missing owner"))?.login,
+            owner: repo
+                .owner
+                .ok_or_else(|| anyhow::anyhow!("Missing owner"))?
+                .login,
             name: repo.name,
-            full_name: repo.full_name.ok_or_else(|| anyhow::anyhow!("Missing full_name"))?,
-            clone_url: repo.clone_url.ok_or_else(|| anyhow::anyhow!("Missing clone_url"))?.to_string(),
+            full_name: repo
+                .full_name
+                .ok_or_else(|| anyhow::anyhow!("Missing full_name"))?,
+            clone_url: repo
+                .clone_url
+                .ok_or_else(|| anyhow::anyhow!("Missing clone_url"))?
+                .to_string(),
             default_branch: repo.default_branch.unwrap_or_else(|| "main".to_string()),
             language: repo.language.and_then(|v| v.as_str().map(String::from)),
             has_issues: repo.has_issues.unwrap_or(false),
@@ -129,10 +137,7 @@ impl GitHubClient {
         issue_number: u64,
         agent_identity: &str,
     ) -> Result<()> {
-        info!(
-            "Claiming issue #{} in {}/{}",
-            issue_number, owner, repo
-        );
+        info!("Claiming issue #{} in {}/{}", issue_number, owner, repo);
 
         let comment = format!(
             "I'll take this issue.\n\n🤖 Claimed by: {}\n\n_This is an automated response from OpenAgents Autopilot._",
@@ -184,13 +189,14 @@ impl GitHubClient {
             branch_name, owner, repo, base_sha
         );
 
-        let _: serde_json::Value = self.octocrab
+        let _: serde_json::Value = self
+            .octocrab
             .post(
                 format!("/repos/{}/{}/git/refs", owner, repo),
                 Some(&serde_json::json!({
                     "ref": format!("refs/heads/{}", branch_name),
                     "sha": base_sha
-                }))
+                })),
             )
             .await
             .context("Failed to create branch")?;
@@ -209,10 +215,7 @@ impl GitHubClient {
         head: &str,
         base: &str,
     ) -> Result<u64> {
-        info!(
-            "Creating PR in {}/{}: {} -> {}",
-            owner, repo, head, base
-        );
+        info!("Creating PR in {}/{}: {} -> {}", owner, repo, head, base);
 
         let pr = self
             .octocrab
@@ -235,10 +238,7 @@ impl GitHubClient {
         pr_number: u64,
         comment: &str,
     ) -> Result<()> {
-        debug!(
-            "Posting comment on PR #{} in {}/{}",
-            pr_number, owner, repo
-        );
+        debug!("Posting comment on PR #{} in {}/{}", pr_number, owner, repo);
 
         self.octocrab
             .issues(owner, repo)
@@ -261,11 +261,10 @@ pub fn github_token_path() -> PathBuf {
 /// Load GitHub token from disk
 pub fn load_github_token() -> Result<GitHubToken> {
     let path = github_token_path();
-    let contents = std::fs::read_to_string(&path)
-        .context("Failed to read GitHub token file")?;
+    let contents = std::fs::read_to_string(&path).context("Failed to read GitHub token file")?;
 
-    let token: GitHubToken = serde_json::from_str(&contents)
-        .context("Failed to parse GitHub token")?;
+    let token: GitHubToken =
+        serde_json::from_str(&contents).context("Failed to parse GitHub token")?;
 
     debug!("Loaded GitHub token from {:?}", path);
     Ok(token)
@@ -276,15 +275,12 @@ pub fn save_github_token(token: &GitHubToken) -> Result<()> {
     let path = github_token_path();
 
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .context("Failed to create .openagents directory")?;
+        std::fs::create_dir_all(parent).context("Failed to create .openagents directory")?;
     }
 
-    let contents = serde_json::to_string_pretty(token)
-        .context("Failed to serialize token")?;
+    let contents = serde_json::to_string_pretty(token).context("Failed to serialize token")?;
 
-    std::fs::write(&path, contents)
-        .context("Failed to write GitHub token file")?;
+    std::fs::write(&path, contents).context("Failed to write GitHub token file")?;
 
     info!("Saved GitHub token to {:?}", path);
     Ok(())
@@ -293,26 +289,22 @@ pub fn save_github_token(token: &GitHubToken) -> Result<()> {
 /// Check if GitHub token exists and is valid
 pub async fn check_github_auth() -> Result<bool> {
     match load_github_token() {
-        Ok(token) => {
-            match GitHubClient::new(&token.access_token) {
-                Ok(client) => {
-                    match client.octocrab.current().user().await {
-                        Ok(user) => {
-                            info!("GitHub authenticated as: {}", user.login);
-                            Ok(true)
-                        }
-                        Err(e) => {
-                            warn!("GitHub token is invalid: {}", e);
-                            Ok(false)
-                        }
-                    }
+        Ok(token) => match GitHubClient::new(&token.access_token) {
+            Ok(client) => match client.octocrab.current().user().await {
+                Ok(user) => {
+                    info!("GitHub authenticated as: {}", user.login);
+                    Ok(true)
                 }
                 Err(e) => {
-                    warn!("Failed to create GitHub client: {}", e);
+                    warn!("GitHub token is invalid: {}", e);
                     Ok(false)
                 }
+            },
+            Err(e) => {
+                warn!("Failed to create GitHub client: {}", e);
+                Ok(false)
             }
-        }
+        },
         Err(_) => {
             debug!("No GitHub token found");
             Ok(false)

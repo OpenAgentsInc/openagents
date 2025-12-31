@@ -7,15 +7,15 @@ use futures_util::StreamExt;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cwd = env::current_dir()?;
-    
+
     println!("=== Autopilot Preflight Demo ===\n");
-    
+
     println!("Step 1: Running preflight checks...");
     let config = PreflightConfig::run(&cwd)?;
-    
+
     println!("\n--- Preflight Results ---");
     println!("{}", config.to_system_prompt());
-    
+
     let gpt_oss_available = config
         .inference
         .local_backends
@@ -33,30 +33,30 @@ async fn main() -> anyhow::Result<()> {
     }
 
     println!("\n[OK] GPT-OSS detected on localhost:8000");
-    
+
     println!("\nStep 2: Saving config...");
     let config_path = config.save()?;
     println!("Saved to: {}", config_path.display());
-    
+
     println!("\nStep 3: Running demo inference (streaming)...\n");
     println!("--- GPT-OSS Response ---");
-    
+
     let prompt = format!(
         "You are an AI assistant analyzing a developer environment. \
          Based on this configuration, give a brief (2-3 sentence) assessment:\n\n{}",
         config.to_system_prompt()
     );
-    
+
     stream_gpt_oss_response(&prompt).await?;
-    
+
     println!("\n\n--- Demo Complete ---");
-    
+
     Ok(())
 }
 
 async fn stream_gpt_oss_response(prompt: &str) -> anyhow::Result<()> {
     let client = reqwest::Client::new();
-    
+
     let body = serde_json::json!({
         "model": "gpt-oss-120b",
         "messages": [
@@ -65,7 +65,7 @@ async fn stream_gpt_oss_response(prompt: &str) -> anyhow::Result<()> {
         "max_tokens": 256,
         "stream": true
     });
-    
+
     let response = client
         .post("http://localhost:8000/v1/chat/completions")
         .header("Content-Type", "application/json")
@@ -84,14 +84,14 @@ async fn stream_gpt_oss_response(prompt: &str) -> anyhow::Result<()> {
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
         let text = String::from_utf8_lossy(&chunk);
-        
+
         for line in text.lines() {
             if line.starts_with("data: ") {
                 let data = &line[6..];
                 if data == "[DONE]" {
                     break;
                 }
-                
+
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
                     if let Some(content) = json
                         .get("choices")

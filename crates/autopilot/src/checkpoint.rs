@@ -134,7 +134,9 @@ impl SessionCheckpoint {
 
     /// Get the checkpoint file path for a session.
     pub fn checkpoint_path(session_id: &str) -> PathBuf {
-        Self::sessions_dir().join(session_id).join("checkpoint.json")
+        Self::sessions_dir()
+            .join(session_id)
+            .join("checkpoint.json")
     }
 
     /// Save this checkpoint to disk.

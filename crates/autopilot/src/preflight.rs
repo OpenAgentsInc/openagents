@@ -293,7 +293,8 @@ impl PreflightConfig {
     pub fn run(working_dir: &Path) -> Result<Self> {
         info!("Running preflight checks for {:?}", working_dir);
 
-        let working_directory = working_dir.canonicalize()
+        let working_directory = working_dir
+            .canonicalize()
             .unwrap_or_else(|_| working_dir.to_path_buf());
 
         let path_hash = hash_path(&working_directory);
@@ -327,16 +328,13 @@ impl PreflightConfig {
         let config_dir = self.config_dir();
 
         // Create directory
-        std::fs::create_dir_all(&config_dir)
-            .context("Failed to create config directory")?;
+        std::fs::create_dir_all(&config_dir).context("Failed to create config directory")?;
 
         let config_path = config_dir.join("config.json");
 
-        let json = serde_json::to_string_pretty(self)
-            .context("Failed to serialize config")?;
+        let json = serde_json::to_string_pretty(self).context("Failed to serialize config")?;
 
-        std::fs::write(&config_path, &json)
-            .context("Failed to write config file")?;
+        std::fs::write(&config_path, &json).context("Failed to write config file")?;
 
         info!("Saved preflight config to {:?}", config_path);
 
@@ -354,7 +352,8 @@ impl PreflightConfig {
 
     /// Load an existing config for a path, if it exists
     pub fn load(working_dir: &Path) -> Result<Option<Self>> {
-        let working_directory = working_dir.canonicalize()
+        let working_directory = working_dir
+            .canonicalize()
             .unwrap_or_else(|_| working_dir.to_path_buf());
         let path_hash = hash_path(&working_directory);
 
@@ -369,11 +368,11 @@ impl PreflightConfig {
             return Ok(None);
         }
 
-        let content = std::fs::read_to_string(&config_path)
-            .context("Failed to read config file")?;
+        let content =
+            std::fs::read_to_string(&config_path).context("Failed to read config file")?;
 
-        let config: PreflightConfig = serde_json::from_str(&content)
-            .context("Failed to parse config file")?;
+        let config: PreflightConfig =
+            serde_json::from_str(&content).context("Failed to parse config file")?;
 
         Ok(Some(config))
     }
@@ -383,7 +382,10 @@ impl PreflightConfig {
         let mut lines = Vec::new();
 
         lines.push("# Autopilot Environment Configuration".to_string());
-        lines.push(format!("Working directory: {}", self.working_directory.display()));
+        lines.push(format!(
+            "Working directory: {}",
+            self.working_directory.display()
+        ));
         lines.push(String::new());
 
         // Git info
@@ -425,7 +427,10 @@ impl PreflightConfig {
         // Auth info
         lines.push("## Authentication".to_string());
         if !self.auth.authenticated_providers.is_empty() {
-            lines.push(format!("- Authenticated: {}", self.auth.authenticated_providers.join(", ")));
+            lines.push(format!(
+                "- Authenticated: {}",
+                self.auth.authenticated_providers.join(", ")
+            ));
         } else {
             lines.push("- No providers authenticated".to_string());
         }
@@ -434,7 +439,10 @@ impl PreflightConfig {
         // Inference info
         lines.push("## Inference Providers".to_string());
         if !self.inference.cloud_providers.is_empty() {
-            lines.push(format!("- Cloud: {}", self.inference.cloud_providers.join(", ")));
+            lines.push(format!(
+                "- Cloud: {}",
+                self.inference.cloud_providers.join(", ")
+            ));
         }
         for backend in &self.inference.local_backends {
             if backend.available {
@@ -591,30 +599,43 @@ fn detect_auth() -> AuthInfo {
             None => (None, false),
         };
 
-        providers.insert(provider.to_string(), ProviderAuth {
-            authenticated,
-            auth_type,
-            expired,
-        });
+        providers.insert(
+            provider.to_string(),
+            ProviderAuth {
+                authenticated,
+                auth_type,
+                expired,
+            },
+        );
     }
 
     // Also check environment variables for API keys
-    if std::env::var("ANTHROPIC_API_KEY").is_ok() && !authenticated_providers.contains(&"anthropic".to_string()) {
+    if std::env::var("ANTHROPIC_API_KEY").is_ok()
+        && !authenticated_providers.contains(&"anthropic".to_string())
+    {
         authenticated_providers.push("anthropic".to_string());
-        providers.insert("anthropic".to_string(), ProviderAuth {
-            authenticated: true,
-            auth_type: Some("env".to_string()),
-            expired: false,
-        });
+        providers.insert(
+            "anthropic".to_string(),
+            ProviderAuth {
+                authenticated: true,
+                auth_type: Some("env".to_string()),
+                expired: false,
+            },
+        );
     }
 
-    if std::env::var("OPENAI_API_KEY").is_ok() && !authenticated_providers.contains(&"openai".to_string()) {
+    if std::env::var("OPENAI_API_KEY").is_ok()
+        && !authenticated_providers.contains(&"openai".to_string())
+    {
         authenticated_providers.push("openai".to_string());
-        providers.insert("openai".to_string(), ProviderAuth {
-            authenticated: true,
-            auth_type: Some("env".to_string()),
-            expired: false,
-        });
+        providers.insert(
+            "openai".to_string(),
+            ProviderAuth {
+                authenticated: true,
+                auth_type: Some("env".to_string()),
+                expired: false,
+            },
+        );
     }
 
     AuthInfo {
@@ -731,9 +752,9 @@ fn detect_inference() -> InferenceInfo {
         local_backends,
         has_swarm_providers,
         env_vars,
-        pylon: None,                  // Filled in later by pylon integration
-        swarm_providers: Vec::new(),  // Filled in later by pylon integration
-        neobank: None,                // Filled in later by pylon integration
+        pylon: None,                 // Filled in later by pylon integration
+        swarm_providers: Vec::new(), // Filled in later by pylon integration
+        neobank: None,               // Filled in later by pylon integration
     }
 }
 

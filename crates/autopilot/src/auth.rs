@@ -6,15 +6,15 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, error, info, warn};
 
 /// OpenCode auth file location (XDG data dir)
 pub fn opencode_auth_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
 
     // XDG_DATA_HOME or default
-    let data_home = std::env::var("XDG_DATA_HOME")
-        .unwrap_or_else(|_| format!("{}/.local/share", home));
+    let data_home =
+        std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| format!("{}/.local/share", home));
 
     PathBuf::from(data_home).join("opencode").join("auth.json")
 }
@@ -140,11 +140,11 @@ pub fn copy_opencode_auth() -> Result<AuthStatus> {
     info!("Copying auth from {:?} to {:?}", src_path, dst_path);
 
     // Read source
-    let content = std::fs::read_to_string(&src_path)
-        .context("Failed to read OpenCode auth.json")?;
+    let content =
+        std::fs::read_to_string(&src_path).context("Failed to read OpenCode auth.json")?;
 
-    let store: AuthStore = serde_json::from_str(&content)
-        .context("Failed to parse OpenCode auth.json")?;
+    let store: AuthStore =
+        serde_json::from_str(&content).context("Failed to parse OpenCode auth.json")?;
 
     let providers: Vec<String> = store.keys().cloned().collect();
 
@@ -156,16 +156,13 @@ pub fn copy_opencode_auth() -> Result<AuthStatus> {
     // Create destination directory
     if let Some(parent) = dst_path.parent() {
         debug!("Creating directory {:?}", parent);
-        std::fs::create_dir_all(parent)
-            .context("Failed to create ~/.openagents directory")?;
+        std::fs::create_dir_all(parent).context("Failed to create ~/.openagents directory")?;
     }
 
     // Write destination with restricted permissions
-    let json = serde_json::to_string_pretty(&store)
-        .context("Failed to serialize auth")?;
+    let json = serde_json::to_string_pretty(&store).context("Failed to serialize auth")?;
 
-    std::fs::write(&dst_path, &json)
-        .context("Failed to write OpenAgents auth.json")?;
+    std::fs::write(&dst_path, &json).context("Failed to write OpenAgents auth.json")?;
 
     // Set file permissions to 600 (owner read/write only)
     #[cfg(unix)]

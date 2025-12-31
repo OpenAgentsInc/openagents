@@ -126,13 +126,19 @@ fn maybe_send_session_id(
 #[derive(Clone, Serialize, Deserialize)]
 pub enum ClaudeToken {
     Chunk(String),
-    ToolUse { name: String, params: String },
+    ToolUse {
+        name: String,
+        params: String,
+    },
     ToolDone {
         name: String,
         output: Option<String>,
         is_error: bool,
     },
-    Progress { tool_name: String, elapsed_secs: f64 },
+    Progress {
+        tool_name: String,
+        elapsed_secs: f64,
+    },
     SessionId(String),
     Done(String),
     Error(String),
@@ -165,7 +171,10 @@ pub enum ClaudeEvent {
         output: Option<String>,
         is_error: bool,
     },
-    ToolProgress { tool_name: String, elapsed_secs: f64 },
+    ToolProgress {
+        tool_name: String,
+        elapsed_secs: f64,
+    },
 }
 
 pub fn run_claude_planning(
@@ -178,7 +187,7 @@ pub fn run_claude_planning(
     logger: Option<SessionLogger>,
 ) {
     use futures_util::StreamExt;
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
 
     if let Some(ref log) = logger {
         log.log_phase_start("planning");
@@ -256,13 +265,16 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
-            let _ = tx.send(ClaudeToken::Error(format!("Failed to create runtime: {}", e)));
+            let _ = tx.send(ClaudeToken::Error(format!(
+                "Failed to create runtime: {}",
+                e
+            )));
             return;
         }
     };
 
     rt.block_on(async {
-        use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode, SettingSource};
+        use claude_agent_sdk::{PermissionMode, QueryOptions, SdkMessage, SettingSource, query};
 
         let mut attempt = 0;
         let mut last_error = String::new();
@@ -275,8 +287,14 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
             }
 
             if attempt >= MAX_RETRIES {
-                eprintln!("[CLAUDE] All {} retries exhausted. Last error: {}", MAX_RETRIES, last_error);
-                let _ = tx.send(ClaudeToken::Error(format!("Failed after {} retries: {}", MAX_RETRIES, last_error)));
+                eprintln!(
+                    "[CLAUDE] All {} retries exhausted. Last error: {}",
+                    MAX_RETRIES, last_error
+                );
+                let _ = tx.send(ClaudeToken::Error(format!(
+                    "Failed after {} retries: {}",
+                    MAX_RETRIES, last_error
+                )));
                 return;
             }
 
@@ -285,8 +303,17 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
             if let Some(ref session_id) = resume_session_id {
                 verbose_println!("[CLAUDE] Resuming session {}", session_id);
             }
-            verbose_println!("[CLAUDE] Starting query (attempt {}/{}) with prompt length: {} chars", attempt, MAX_RETRIES, prompt.len());
-            verbose_println!("[CLAUDE] Options: cwd={:?}, model={}, permission_mode=Plan, max_turns=50", cwd_clone, model.as_str());
+            verbose_println!(
+                "[CLAUDE] Starting query (attempt {}/{}) with prompt length: {} chars",
+                attempt,
+                MAX_RETRIES,
+                prompt.len()
+            );
+            verbose_println!(
+                "[CLAUDE] Options: cwd={:?}, model={}, permission_mode=Plan, max_turns=50",
+                cwd_clone,
+                model.as_str()
+            );
 
             let mut options = QueryOptions::new()
                 .cwd(cwd_clone.clone())
@@ -305,13 +332,18 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                 options = options.resume(session_id.clone());
             }
 
-            let prompt_to_send = if resume_session_id.is_some() { "" } else { &prompt };
+            let prompt_to_send = if resume_session_id.is_some() {
+                ""
+            } else {
+                &prompt
+            };
 
             // Start query with timeout
             let query_result = timeout(
                 Duration::from_secs(QUERY_START_TIMEOUT_SECS),
-                query(prompt_to_send, options)
-            ).await;
+                query(prompt_to_send, options),
+            )
+            .await;
 
             let mut stream = match query_result {
                 Ok(Ok(s)) => {
@@ -340,7 +372,8 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                     continue 'retry;
                 }
                 Err(_) => {
-                    last_error = format!("Timeout starting query after {}s", QUERY_START_TIMEOUT_SECS);
+                    last_error =
+                        format!("Timeout starting query after {}s", QUERY_START_TIMEOUT_SECS);
                     eprintln!("[CLAUDE] {}", last_error);
                     continue 'retry;
                 }
@@ -351,10 +384,8 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
             let mut last_tool_name = String::new();
 
             loop {
-                let next_result = timeout(
-                    Duration::from_secs(STREAM_IDLE_TIMEOUT_SECS),
-                    stream.next()
-                ).await;
+                let next_result =
+                    timeout(Duration::from_secs(STREAM_IDLE_TIMEOUT_SECS), stream.next()).await;
 
                 let msg = match next_result {
                     Ok(Some(msg)) => msg,
@@ -369,7 +400,8 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                         break;
                     }
                     Err(_) => {
-                        last_error = format!("Stream idle timeout after {}s", STREAM_IDLE_TIMEOUT_SECS);
+                        last_error =
+                            format!("Stream idle timeout after {}s", STREAM_IDLE_TIMEOUT_SECS);
                         eprintln!("[CLAUDE] {}", last_error);
                         let _ = stream.abort().await;
                         continue 'retry;
@@ -385,32 +417,54 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                 match msg {
                     Ok(SdkMessage::Assistant(assistant_msg)) => {
                         verbose_println!("[CLAUDE][ASSISTANT] uuid={}", assistant_msg.uuid);
-                        verbose_println!("[CLAUDE][ASSISTANT] message={}", serde_json::to_string_pretty(&assistant_msg.message).unwrap_or_default());
+                        verbose_println!(
+                            "[CLAUDE][ASSISTANT] message={}",
+                            serde_json::to_string_pretty(&assistant_msg.message)
+                                .unwrap_or_default()
+                        );
                         if let Some(ref log) = logger {
                             log.log_assistant("planning", &assistant_msg.message);
                         }
                         if let Some(content) = assistant_msg.message.get("content") {
                             if let Some(blocks) = content.as_array() {
                                 for block in blocks {
-                                    verbose_println!("[CLAUDE][BLOCK] type={}", block.get("type").and_then(|t| t.as_str()).unwrap_or("unknown"));
+                                    verbose_println!(
+                                        "[CLAUDE][BLOCK] type={}",
+                                        block
+                                            .get("type")
+                                            .and_then(|t| t.as_str())
+                                            .unwrap_or("unknown")
+                                    );
                                     if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
                                         verbose_println!("[CLAUDE][TEXT] {}", text);
                                         full_response.push_str(text);
                                         let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
                                     }
-                                    if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
+                                    if let Some(tool_name) =
+                                        block.get("name").and_then(|n| n.as_str())
+                                    {
                                         verbose_println!("[CLAUDE][TOOL_USE] name={}", tool_name);
                                         let input = block.get("input");
                                         let params = extract_tool_params(tool_name, input);
                                         last_tool_name = tool_name.to_string();
                                         if let Some(ref log) = logger {
-                                            log.log_tool_use("planning", tool_name, input.unwrap_or(&serde_json::Value::Null));
+                                            log.log_tool_use(
+                                                "planning",
+                                                tool_name,
+                                                input.unwrap_or(&serde_json::Value::Null),
+                                            );
                                         }
                                         let _ = tx.send(ClaudeToken::ToolUse {
                                             name: tool_name.to_string(),
-                                            params
+                                            params,
                                         });
-                                        verbose_println!("[CLAUDE][TOOL_USE] input={}", serde_json::to_string_pretty(input.unwrap_or(&serde_json::Value::Null)).unwrap_or_default());
+                                        verbose_println!(
+                                            "[CLAUDE][TOOL_USE] input={}",
+                                            serde_json::to_string_pretty(
+                                                input.unwrap_or(&serde_json::Value::Null)
+                                            )
+                                            .unwrap_or_default()
+                                        );
                                     }
                                 }
                             }
@@ -418,12 +472,16 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                     }
                     Ok(SdkMessage::User(user_msg)) => {
                         verbose_println!("[CLAUDE][USER] session_id={}", user_msg.session_id);
-                        verbose_println!("[CLAUDE][USER] message={}", serde_json::to_string_pretty(&user_msg.message).unwrap_or_default());
+                        verbose_println!(
+                            "[CLAUDE][USER] message={}",
+                            serde_json::to_string_pretty(&user_msg.message).unwrap_or_default()
+                        );
                         if let Some(ref log) = logger {
                             log.log_user("planning", &user_msg.message);
                         }
                         if let Some(tool_result) = &user_msg.tool_use_result {
-                            let tool_name = tool_result.get("name")
+                            let tool_name = tool_result
+                                .get("name")
                                 .and_then(|n| n.as_str())
                                 .or_else(|| tool_result.get("tool_name").and_then(|n| n.as_str()))
                                 .unwrap_or(&last_tool_name)
@@ -442,7 +500,10 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                                 output,
                                 is_error,
                             });
-                            verbose_println!("[CLAUDE][TOOL_RESULT] {}", serde_json::to_string_pretty(tool_result).unwrap_or_default());
+                            verbose_println!(
+                                "[CLAUDE][TOOL_RESULT] {}",
+                                serde_json::to_string_pretty(tool_result).unwrap_or_default()
+                            );
                         }
                     }
                     Ok(SdkMessage::System(sys_msg)) => {
@@ -452,20 +513,30 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                         verbose_println!("[CLAUDE][STREAM] {:?}", event);
                     }
                     Ok(SdkMessage::ToolProgress(progress)) => {
-                        verbose_println!("[CLAUDE][TOOL_PROGRESS] tool={} elapsed={}s", progress.tool_name, progress.elapsed_time_seconds);
+                        verbose_println!(
+                            "[CLAUDE][TOOL_PROGRESS] tool={} elapsed={}s",
+                            progress.tool_name,
+                            progress.elapsed_time_seconds
+                        );
                         let _ = tx.send(ClaudeToken::Progress {
                             tool_name: progress.tool_name.clone(),
                             elapsed_secs: progress.elapsed_time_seconds,
                         });
                     }
                     Ok(SdkMessage::AuthStatus(auth)) => {
-                        verbose_println!("[CLAUDE][AUTH] is_authenticating={}", auth.is_authenticating);
+                        verbose_println!(
+                            "[CLAUDE][AUTH] is_authenticating={}",
+                            auth.is_authenticating
+                        );
                     }
                     Ok(SdkMessage::Result(result)) => {
                         verbose_println!("[CLAUDE][RESULT] {:?}", result);
                         // Log result to session logger
                         if let Some(ref log) = logger {
-                            log.log_result("planning", &serde_json::to_value(&result).unwrap_or_default());
+                            log.log_result(
+                                "planning",
+                                &serde_json::to_value(&result).unwrap_or_default(),
+                            );
                         }
                         // Extract final usage data and send it (replaces initial estimate)
                         let usage = extract_usage_from_result(&result, model.as_str());
@@ -487,11 +558,20 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                 verbose_println!("[CLAUDE] Abort returned error (expected): {}", e);
             }
 
-            verbose_println!("[CLAUDE] Done. Total response length: {} chars, {} lines",
+            verbose_println!(
+                "[CLAUDE] Done. Total response length: {} chars, {} lines",
                 full_response.len(),
-                full_response.lines().count());
+                full_response.lines().count()
+            );
             if let Some(ref log) = logger {
-                log.log_phase_end("planning", &format!("{} chars, {} lines", full_response.len(), full_response.lines().count()));
+                log.log_phase_end(
+                    "planning",
+                    &format!(
+                        "{} chars, {} lines",
+                        full_response.len(),
+                        full_response.lines().count()
+                    ),
+                );
             }
             let _ = tx.send(ClaudeToken::Done(full_response));
 
@@ -515,13 +595,14 @@ pub fn run_claude_execution(
     logger: Option<SessionLogger>,
 ) {
     use futures_util::StreamExt;
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
 
     if let Some(ref log) = logger {
         log.log_phase_start("execution");
     }
 
-    let prompt = format!(r#"You are an autonomous software engineer executing a plan for the OpenAgents project.
+    let prompt = format!(
+        r#"You are an autonomous software engineer executing a plan for the OpenAgents project.
 
 ## The Plan
 
@@ -536,14 +617,19 @@ Execute this plan step by step. For each recommended action:
 
 Work autonomously. Make real changes to the codebase. If you encounter blockers, note them and move to the next actionable item.
 
-Start now."#, plan);
+Start now."#,
+        plan
+    );
 
     let cwd_clone = std::env::current_dir().unwrap_or_default();
 
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
-            let _ = tx.send(ClaudeToken::Error(format!("Failed to create runtime: {}", e)));
+            let _ = tx.send(ClaudeToken::Error(format!(
+                "Failed to create runtime: {}",
+                e
+            )));
             return;
         }
     };
@@ -763,13 +849,14 @@ pub fn run_claude_review(
     logger: Option<SessionLogger>,
 ) {
     use futures_util::StreamExt;
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
 
     if let Some(ref log) = logger {
         log.log_phase_start(&format!("review_{}", iteration));
     }
 
-    let prompt = format!(r#"You are reviewing work done by an autonomous software engineer on the OpenAgents project.
+    let prompt = format!(
+        r#"You are reviewing work done by an autonomous software engineer on the OpenAgents project.
 
 ## Iteration {iteration}
 
@@ -797,14 +884,18 @@ Based on your review, create a NEW plan for the next iteration that includes:
 If ALL planned work is complete and no new issues were found, respond with:
 "CYCLE COMPLETE - All planned work has been finished."
 
-Otherwise, provide a detailed plan for the next iteration in the same format as the original plan."#);
+Otherwise, provide a detailed plan for the next iteration in the same format as the original plan."#
+    );
 
     let cwd_clone = std::env::current_dir().unwrap_or_default();
 
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
-            let _ = tx.send(ClaudeToken::Error(format!("Failed to create runtime: {}", e)));
+            let _ = tx.send(ClaudeToken::Error(format!(
+                "Failed to create runtime: {}",
+                e
+            )));
             return;
         }
     };
@@ -1014,11 +1105,15 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
 }
 
 /// Extract usage data from SDK Result message into ClaudeUsageData.
-fn extract_usage_from_result(result: &claude_agent_sdk::SdkResultMessage, model: &str) -> ClaudeUsageData {
+fn extract_usage_from_result(
+    result: &claude_agent_sdk::SdkResultMessage,
+    model: &str,
+) -> ClaudeUsageData {
     use claude_agent_sdk::SdkResultMessage;
 
     // Extract common fields from success or error variants
-    let (duration_ms, duration_api_ms, num_turns, total_cost_usd, usage, model_usage) = match result {
+    let (duration_ms, duration_api_ms, num_turns, total_cost_usd, usage, model_usage) = match result
+    {
         SdkResultMessage::Success(s) => (
             s.duration_ms,
             s.duration_api_ms,
