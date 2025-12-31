@@ -38,7 +38,6 @@ pub(crate) struct WalletBalanceData {
     pub(crate) spark_sats: u64,
     pub(crate) lightning_sats: u64,
     pub(crate) onchain_sats: u64,
-    pub(crate) total_sats: u64,
 }
 
 #[derive(Clone, Default)]
@@ -347,12 +346,6 @@ impl WalletUi {
             self.send_address_input.blur();
             self.send_amount_input.blur();
         }
-    }
-
-    pub(crate) fn has_focus(&self) -> bool {
-        self.send_address_input.is_focused()
-            || self.send_amount_input.is_focused()
-            || self.receive_amount_input.is_focused()
     }
 
     pub(crate) fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
@@ -677,7 +670,6 @@ struct WalletSummaryData {
 
 #[derive(Clone)]
 struct WalletSendData {
-    payment_id: String,
     status: String,
     method: String,
     amount_sats: u64,
@@ -802,7 +794,6 @@ fn parse_wallet_balance(value: &JsValue) -> Option<WalletBalanceData> {
         spark_sats: js_value_u64(&js_sys::Reflect::get(&obj, &"spark_sats".into()).ok()?)?,
         lightning_sats: js_value_u64(&js_sys::Reflect::get(&obj, &"lightning_sats".into()).ok()?)?,
         onchain_sats: js_value_u64(&js_sys::Reflect::get(&obj, &"onchain_sats".into()).ok()?)?,
-        total_sats: js_value_u64(&js_sys::Reflect::get(&obj, &"total_sats".into()).ok()?)?,
     })
 }
 
@@ -886,11 +877,12 @@ fn parse_wallet_summary(value: JsValue) -> Option<WalletSummaryData> {
         .and_then(|v| js_optional_string(&v));
 
     let mut payments = Vec::new();
-    if let Ok(arr) = js_sys::Array::try_from(js_sys::Reflect::get(&obj, &"payments".into()).unwrap_or(JsValue::NULL)) {
-        for idx in 0..arr.length() {
-            if let Some(payment) = parse_wallet_payment(&arr.get(idx)) {
-                payments.push(payment);
-            }
+    let payments_value =
+        js_sys::Reflect::get(&obj, &"payments".into()).unwrap_or(JsValue::NULL);
+    let arr = js_sys::Array::from(&payments_value);
+    for idx in 0..arr.length() {
+        if let Some(payment) = parse_wallet_payment(&arr.get(idx)) {
+            payments.push(payment);
         }
     }
 
@@ -906,9 +898,6 @@ fn parse_wallet_summary(value: JsValue) -> Option<WalletSummaryData> {
 
 fn parse_wallet_send(value: JsValue) -> Option<WalletSendData> {
     let obj = js_sys::Object::from(value);
-    let payment_id = js_sys::Reflect::get(&obj, &"payment_id".into())
-        .ok()
-        .and_then(|v| v.as_string())?;
     let status = js_sys::Reflect::get(&obj, &"status".into())
         .ok()
         .and_then(|v| v.as_string())
@@ -922,7 +911,6 @@ fn parse_wallet_send(value: JsValue) -> Option<WalletSendData> {
     let fee_sats = js_value_u64(&js_sys::Reflect::get(&obj, &"fee_sats".into()).ok()?).unwrap_or(0);
 
     Some(WalletSendData {
-        payment_id,
         status,
         method,
         amount_sats,
@@ -1039,7 +1027,12 @@ async fn post_json(url: &str, payload: js_sys::Object) -> Result<JsValue, String
 pub(crate) fn dispatch_wallet_event(state: &Rc<RefCell<AppState>>, event: InputEvent) -> EventResult {
     let (result, actions) = {
         let mut state = state.borrow_mut();
-        if state.view != AppView::RepoView {
+        let is_owner = state
+            .hud_context
+            .as_ref()
+            .map(|ctx| ctx.is_owner)
+            .unwrap_or(false);
+        if state.view != AppView::RepoView || !is_owner {
             return EventResult::Ignored;
         }
 

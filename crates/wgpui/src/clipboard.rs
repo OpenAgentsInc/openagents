@@ -1,6 +1,8 @@
 //! Clipboard utilities for copying text to the system clipboard.
 
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
 use std::io::Write;
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
 use std::process::{Command, Stdio};
 
 /// Copy text to the system clipboard.
@@ -9,22 +11,22 @@ use std::process::{Command, Stdio};
 /// - macOS: `pbcopy`
 /// - Linux: `wl-copy` (Wayland), `xclip`, or `xsel`
 /// - Windows: `clip`
-pub fn copy_to_clipboard(contents: &str) -> Result<(), String> {
+pub fn copy_to_clipboard(_contents: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        return copy_with_command("pbcopy", &[], contents);
+        return copy_with_command("pbcopy", &[], _contents);
     }
 
     #[cfg(target_os = "linux")]
     {
         // Try Wayland first, then X11 tools
-        if try_command("wl-copy", &[], contents).is_ok() {
+        if try_command("wl-copy", &[], _contents).is_ok() {
             return Ok(());
         }
-        if try_command("xclip", &["-selection", "clipboard"], contents).is_ok() {
+        if try_command("xclip", &["-selection", "clipboard"], _contents).is_ok() {
             return Ok(());
         }
-        if try_command("xsel", &["--clipboard", "--input"], contents).is_ok() {
+        if try_command("xsel", &["--clipboard", "--input"], _contents).is_ok() {
             return Ok(());
         }
         return Err("No clipboard tool available. Install wl-copy, xclip, or xsel.".into());
@@ -32,7 +34,7 @@ pub fn copy_to_clipboard(contents: &str) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        return copy_with_command("cmd", &["/C", "clip"], contents);
+        return copy_with_command("cmd", &["/C", "clip"], _contents);
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
@@ -41,6 +43,7 @@ pub fn copy_to_clipboard(contents: &str) -> Result<(), String> {
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
 fn copy_with_command(cmd: &str, args: &[&str], contents: &str) -> Result<(), String> {
     let mut child = Command::new(cmd)
         .args(args)

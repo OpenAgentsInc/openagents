@@ -515,10 +515,6 @@ async fn fetch_repos() -> Vec<RepoInfo> {
     let mut repos = Vec::new();
     for i in 0..arr.length() {
         let obj = arr.get(i);
-        let name = js_sys::Reflect::get(&obj, &"name".into())
-            .ok()
-            .and_then(|v| v.as_string())
-            .unwrap_or_default();
         let full_name = js_sys::Reflect::get(&obj, &"full_name".into())
             .ok()
             .and_then(|v| v.as_string())
@@ -532,7 +528,6 @@ async fn fetch_repos() -> Vec<RepoInfo> {
             .unwrap_or(false);
 
         repos.push(RepoInfo {
-            name,
             full_name,
             description,
             private,
