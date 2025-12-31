@@ -1,7 +1,7 @@
 use wgpui::{Bounds, Point, Quad, Scene, TextSystem, theme};
 
 use crate::hud::draw_hud_view;
-use crate::state::AppState;
+use crate::state::{AppState, JobStatus};
 
 pub(crate) fn build_landing_page(
     scene: &mut Scene,
@@ -9,169 +9,188 @@ pub(crate) fn build_landing_page(
     state: &mut AppState,
     width: f32,
     height: f32,
-    scale_factor: f32,
+    _scale_factor: f32,
 ) {
-    let has_live = state.landing_live.is_some() && state.hud_context.is_some();
-    if has_live {
-        draw_hud_view(scene, text_system, state, width, height, scale_factor);
-        scene.draw_quad(
-            Quad::new(Bounds::new(0.0, 0.0, width, height))
-                .with_background(theme::bg::APP.with_alpha(0.12)),
-        );
-    } else {
-        scene.draw_quad(
-            Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP),
-        );
-    }
-
-    state.landing_issue_bounds = Bounds::ZERO;
-    state.landing_issue_url = None;
-
-    let pad = 12.0;
-    if let Some(live) = state.landing_live.as_ref() {
-        let banner_h = 22.0;
-        let live_label = "LIVE";
-        let label_size = 10.0;
-        let label_w = live_label.len() as f32 * label_size * 0.6 + 10.0;
-        let label_bounds = Bounds::new(pad, pad, label_w, banner_h);
-
-        scene.draw_quad(
-            Quad::new(label_bounds)
-                .with_background(theme::status::ERROR)
-                .with_border(theme::border::DEFAULT, 1.0)
-                .with_corner_radius(0.0),
-        );
-
-        let label_run = text_system.layout(
-            live_label,
-            Point::new(label_bounds.origin.x + 5.0, label_bounds.origin.y + 5.0),
-            label_size,
-            theme::bg::APP,
-        );
-        scene.draw_text(label_run);
-
-        let issue_text = live
-            .issue
-            .as_ref()
-            .map(|issue| format!("Autopilot is working on {}", issue.label))
-            .unwrap_or_else(|| "Autopilot is working live".to_string());
-        let issue_size = 12.0;
-        let issue_x = label_bounds.origin.x + label_bounds.size.width + 8.0;
-        let issue_y = label_bounds.origin.y + 4.0;
-        let issue_run = text_system.layout(
-            &issue_text,
-            Point::new(issue_x, issue_y),
-            issue_size,
-            theme::text::PRIMARY,
-        );
-        scene.draw_text(issue_run);
-
-        if let Some(issue) = live.issue.as_ref() {
-            let issue_w = issue_text.len() as f32 * issue_size * 0.6;
-            state.landing_issue_bounds = Bounds::new(issue_x, issue_y, issue_w, banner_h);
-            state.landing_issue_url = Some(issue.url.clone());
-        }
-
-        let repo_label = format!("@{}/{}", live.hud_context.username, live.hud_context.repo);
-        let repo_run = text_system.layout(
-            &repo_label,
-            Point::new(pad, label_bounds.origin.y + label_bounds.size.height + 6.0),
-            11.0,
-            theme::text::MUTED,
-        );
-        scene.draw_text(repo_run);
-
-        if let Some(issue) = live.issue.as_ref().and_then(|issue| issue.title.as_ref()) {
-            let title_run = text_system.layout(
-                issue,
-                Point::new(pad, label_bounds.origin.y + label_bounds.size.height + 20.0),
-                11.0,
-                theme::text::MUTED,
-            );
-            scene.draw_text(title_run);
-        }
-    } else {
-        let placeholder = text_system.layout(
-            "No live session is broadcasting right now.",
-            Point::new(pad, pad),
-            12.0,
-            theme::text::MUTED,
-        );
-        scene.draw_text(placeholder);
-    }
-
-    let panel_h = if height < 560.0 { 108.0 } else { 128.0 };
-    let panel_w = (width - pad * 2.0).max(240.0);
-    let panel_x = pad;
-    let panel_y = height - panel_h - pad;
-    let panel_bounds = Bounds::new(panel_x, panel_y, panel_w, panel_h);
-
+    // Background
     scene.draw_quad(
-        Quad::new(panel_bounds)
-            .with_background(theme::bg::SURFACE.with_alpha(0.94))
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(0.0),
+        Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP),
     );
 
-    let title = "Autopilot for code";
+    let pad = 24.0;
+
+    // === HEADER ===
+    let title = "THE BAZAAR";
     let title_run = text_system.layout(
         title,
-        Point::new(panel_x + 12.0, panel_y + 10.0),
-        if width < 600.0 { 18.0 } else { 22.0 },
+        Point::new(pad, pad),
+        28.0,
         theme::text::PRIMARY,
     );
     scene.draw_text(title_run);
 
-    let subtitle = "Watch it work. Connect GitHub to get your own HUD in under 30 seconds.";
-    let subtitle_run = text_system.layout(
-        subtitle,
-        Point::new(panel_x + 12.0, panel_y + 40.0),
-        12.0,
+    let tagline = "An open market for agent work";
+    let tagline_run = text_system.layout(
+        tagline,
+        Point::new(pad, pad + 36.0),
+        14.0,
         theme::text::MUTED,
     );
-    scene.draw_text(subtitle_run);
+    scene.draw_text(tagline_run);
 
-    let (button_text, button_bg_base): (&str, _) = if state.loading {
-        ("Connecting...", theme::text::MUTED)
-    } else {
-        ("Connect GitHub → Get Your Own Autopilot", theme::accent::PRIMARY)
-    };
+    // === LIVE MARKET FEED ===
+    let feed_y = pad + 80.0;
+    let feed_w = width - pad * 2.0;
+    let row_h = 28.0;
+    let num_jobs = state.market_jobs.len();
+    let feed_h = (num_jobs as f32 * row_h) + 36.0;
 
-    let button_font_size = 13.0;
-    let button_text_width = button_text.len() as f32 * button_font_size * 0.6;
-    let button_padding_x = 18.0;
-    let button_padding_y = 10.0;
-    let button_width = button_text_width + button_padding_x * 2.0;
-    let button_height = button_font_size + button_padding_y * 2.0;
-    let button_x = panel_x + 12.0;
-    let button_y = panel_y + panel_h - button_height - 12.0;
+    // Feed container
+    scene.draw_quad(
+        Quad::new(Bounds::new(pad, feed_y, feed_w, feed_h))
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
 
+    // Job rows
+    state.job_bounds.clear();
+    let mut row_y = feed_y + 4.0;
+    for job in &state.market_jobs {
+        let status_color = match job.status {
+            JobStatus::Paid => theme::status::SUCCESS,
+            JobStatus::Verifying => theme::status::WARNING,
+            JobStatus::Working => theme::accent::PRIMARY,
+        };
+
+        // Status dot
+        scene.draw_quad(
+            Quad::new(Bounds::new(pad + 12.0, row_y + 10.0, 8.0, 8.0))
+                .with_background(status_color)
+                .with_corner_radius(4.0),
+        );
+
+        // Provider name
+        let provider_run = text_system.layout(
+            job.provider,
+            Point::new(pad + 28.0, row_y + 6.0),
+            12.0,
+            theme::text::PRIMARY,
+        );
+        scene.draw_text(provider_run);
+
+        // Repo
+        let repo_run = text_system.layout(
+            job.repo,
+            Point::new(pad + 118.0, row_y + 6.0),
+            12.0,
+            theme::text::MUTED,
+        );
+        scene.draw_text(repo_run);
+
+        // Amount
+        let amount_text = format!("{} sats", job.amount_sats);
+        let amount_run = text_system.layout(
+            &amount_text,
+            Point::new(pad + feed_w - 160.0, row_y + 6.0),
+            12.0,
+            theme::text::PRIMARY,
+        );
+        scene.draw_text(amount_run);
+
+        // Status text
+        let status_text = match job.status {
+            JobStatus::Paid => "PAID",
+            JobStatus::Verifying => "VERIFYING",
+            JobStatus::Working => "WORKING",
+        };
+        let status_run = text_system.layout(
+            status_text,
+            Point::new(pad + feed_w - 70.0, row_y + 6.0),
+            10.0,
+            status_color,
+        );
+        scene.draw_text(status_run);
+
+        state.job_bounds.push(Bounds::new(pad, row_y, feed_w, row_h));
+        row_y += row_h;
+    }
+
+    // Stats bar
+    let stats_text = format!(
+        "Jobs: {} | Cleared: {} sats | Providers: {}",
+        state.market_stats.jobs_today,
+        state.market_stats.cleared_sats,
+        state.market_stats.providers
+    );
+    let stats_run = text_system.layout(
+        &stats_text,
+        Point::new(pad + 12.0, row_y + 4.0),
+        11.0,
+        theme::text::MUTED,
+    );
+    scene.draw_text(stats_run);
+
+    // === DUAL CTA CARDS ===
+    let cards_y = feed_y + feed_h + 24.0;
+    let card_gap = 16.0;
+    let card_w = (feed_w - card_gap) / 2.0;
+    let card_h = 140.0;
+
+    // Left card
+    let left_x = pad;
+    state.left_cta_bounds = Bounds::new(left_x, cards_y, card_w, card_h);
+    scene.draw_quad(
+        Quad::new(state.left_cta_bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+
+    let left_title_run = text_system.layout("GET WORK DONE", Point::new(left_x + 16.0, cards_y + 16.0), 16.0, theme::text::PRIMARY);
+    scene.draw_text(left_title_run);
+    let left_l1 = text_system.layout("Point Autopilot at your issue backlog.", Point::new(left_x + 16.0, cards_y + 44.0), 12.0, theme::text::MUTED);
+    scene.draw_text(left_l1);
+    let left_l2 = text_system.layout("Wake up to PRs.", Point::new(left_x + 16.0, cards_y + 60.0), 12.0, theme::text::MUTED);
+    scene.draw_text(left_l2);
+
+    // Left button
+    let left_btn_text = if state.loading { "Connecting..." } else { "Connect GitHub" };
+    let left_btn_y = cards_y + card_h - 48.0;
+    let left_btn_bg = if state.left_cta_hovered && !state.loading { theme::accent::PRIMARY } else { theme::accent::PRIMARY.with_alpha(0.85) };
+    scene.draw_quad(Quad::new(Bounds::new(left_x + 16.0, left_btn_y, 140.0, 32.0)).with_background(left_btn_bg).with_border(theme::border::DEFAULT, 1.0));
+    let left_btn_run = text_system.layout(left_btn_text, Point::new(left_x + 32.0, left_btn_y + 8.0), 13.0, theme::bg::APP);
+    scene.draw_text(left_btn_run);
+
+    // Right card
+    let right_x = pad + card_w + card_gap;
+    state.right_cta_bounds = Bounds::new(right_x, cards_y, card_w, card_h);
+    scene.draw_quad(
+        Quad::new(state.right_cta_bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+
+    let right_title_run = text_system.layout("DO WORK FOR BITCOIN", Point::new(right_x + 16.0, cards_y + 16.0), 16.0, theme::text::PRIMARY);
+    scene.draw_text(right_title_run);
+    let right_l1 = text_system.layout("Bring your coding agent. Accept jobs.", Point::new(right_x + 16.0, cards_y + 44.0), 12.0, theme::text::MUTED);
+    scene.draw_text(right_l1);
+    let right_l2 = text_system.layout("Average: 47,000 sats/day", Point::new(right_x + 16.0, cards_y + 64.0), 11.0, theme::status::SUCCESS);
+    scene.draw_text(right_l2);
+
+    // Right button
+    let right_btn_y = cards_y + card_h - 48.0;
+    let right_btn_bg = if state.right_cta_hovered { theme::status::SUCCESS } else { theme::status::SUCCESS.with_alpha(0.85) };
+    scene.draw_quad(Quad::new(Bounds::new(right_x + 16.0, right_btn_y, 120.0, 32.0)).with_background(right_btn_bg).with_border(theme::border::DEFAULT, 1.0));
+    let right_btn_run = text_system.layout("Start Earning", Point::new(right_x + 32.0, right_btn_y + 8.0), 13.0, theme::bg::APP);
+    scene.draw_text(right_btn_run);
+
+    // Set button_bounds for main CTA
     if !state.loading {
-        state.button_bounds = Bounds::new(button_x, button_y, button_width, button_height);
+        state.button_bounds = Bounds::new(left_x + 16.0, left_btn_y, 140.0, 32.0);
     } else {
         state.button_bounds = Bounds::ZERO;
     }
 
-    let button_bg = if state.button_hovered && !state.loading {
-        button_bg_base
-    } else {
-        button_bg_base.with_alpha(0.85)
-    };
-
-    scene.draw_quad(
-        Quad::new(Bounds::new(button_x, button_y, button_width, button_height))
-            .with_background(button_bg)
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(0.0),
-    );
-
-    let button_text_run = text_system.layout(
-        button_text,
-        Point::new(button_x + button_padding_x, button_y + button_padding_y),
-        button_font_size,
-        theme::bg::APP,
-    );
-    scene.draw_text(button_text_run);
+    state.landing_issue_bounds = Bounds::ZERO;
+    state.landing_issue_url = None;
 }
 
 pub(crate) fn build_repo_selector(
