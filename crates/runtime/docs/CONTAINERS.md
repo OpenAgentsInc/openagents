@@ -53,9 +53,9 @@ This enables agents to spawn isolated execution environments without hardcoding 
 │       ├── info
 │       ├── handlers    # Available DVM handlers
 │       └── health
-├── new                  # Write request → read session_id (always async)
-├── policy               # Read/write: container policy JSON
-├── usage                # Read: current tick/day usage (USD) + reserved vs spent
+├── new                  # Call (write+read same handle) → session_id (always async)
+├── policy               # Read-only to agents (control plane updates)
+├── usage                # Read: current tick/day usage (reserved/spent USD)
 ├── auth/               # OpenAgents API authentication
 │   ├── status          # Read: auth state JSON (never exposes token)
 │   ├── token           # Write-only: set API token (stored in secret store)
@@ -67,7 +67,7 @@ This enables agents to spawn isolated execution environments without hardcoding 
         ├── result      # Read: final result (when complete)
         ├── output      # Watch: streaming stdout/stderr
         ├── exec/       # Interactive command execution (job-based)
-        │   ├── new     # Write command → read exec_id
+        │   ├── new     # Call (write+read same handle) → exec_id
         │   └── <exec_id>/
         │       ├── status   # Read: pending|running|complete|failed
         │       ├── result   # Read: command result
@@ -80,9 +80,12 @@ This enables agents to spawn isolated execution environments without hardcoding 
 
 **Key principles:**
 
-1. **`/containers/new` always returns a session_id immediately.** The agent then reads `/containers/sessions/<id>/status` to poll or watches `/containers/sessions/<id>/output` for streaming.
+1. **`/containers/new` always returns a session_id immediately.** Use `env.call("/containers/new", ...)`
+   or open a read/write handle so the response is read from the same handle. The agent then reads
+   `/containers/sessions/<id>/status` to poll or watches `/containers/sessions/<id>/output` for streaming.
 
-2. **`/containers/sessions/<id>/exec/new` always returns an exec_id immediately.** Interactive commands are also non-blocking—poll status or watch output.
+2. **`/containers/sessions/<id>/exec/new` always returns an exec_id immediately.** Use the same
+   call pattern (single handle). Interactive commands are also non-blocking—poll status or watch output.
 
 3. **File paths are URL-encoded.** The path `/containers/sessions/<id>/files/src%2Fmain.rs` accesses `src/main.rs` in the container.
 
@@ -634,20 +637,20 @@ The `/containers/usage` file shows reserved vs spent:
     "reserved_usd": 500000,
     "spent_usd": 123456,
     "limit_usd": 1000000,
-    "available_usd": 500000
+    "remaining_usd": 500000
   },
   "day": {
     "reserved_usd": 2500000,
     "spent_usd": 1234567,
     "limit_usd": 10000000,
-    "available_usd": 7500000
+    "remaining_usd": 7500000
   }
 }
 ```
 
 - `reserved_usd`: Sum of `max_cost_usd` for active sessions
 - `spent_usd`: Sum of `cost_usd` for completed sessions
-- `available_usd`: `limit_usd - reserved_usd`
+- `remaining_usd`: `limit_usd - reserved_usd - spent_usd`
 
 ### Mount Configuration
 
@@ -1269,8 +1272,8 @@ let request = serde_json::json!({
 });
 
 // Submit request (returns immediately)
-env.write("/containers/new", &serde_json::to_vec(&request)?)?;
-let session_info: serde_json::Value = serde_json::from_slice(&env.read("/containers/new")?)?;
+let session_info: serde_json::Value =
+    serde_json::from_slice(&env.call("/containers/new", &serde_json::to_vec(&request)?)?)?;
 let session_id = session_info["session_id"].as_str().unwrap();
 
 // Poll for completion
@@ -1316,7 +1319,8 @@ let request = serde_json::json!({
     "idempotency_key": "build_abc123"
 });
 
-env.write("/containers/new", &serde_json::to_vec(&request)?)?;
+let _session_info: serde_json::Value =
+    serde_json::from_slice(&env.call("/containers/new", &serde_json::to_vec(&request)?)?)?;
 ```
 
 ### Interactive Session with Job-Based Exec
@@ -1336,20 +1340,18 @@ let request = serde_json::json!({
     "max_cost_usd": 10000000  // $10
 });
 
-env.write("/containers/new", &serde_json::to_vec(&request)?)?;
-let session_id = get_session_id(&env)?;
+let session_info: serde_json::Value =
+    serde_json::from_slice(&env.call("/containers/new", &serde_json::to_vec(&request)?)?)?;
+let session_id = session_info["session_id"].as_str().unwrap().to_string();
 
 // Wait for running state
 wait_for_status(&env, &session_id, "running")?;
 
 // Execute command (non-blocking, returns exec_id)
-env.write(
+let exec_info: serde_json::Value = serde_json::from_slice(&env.call(
     &format!("/containers/sessions/{}/exec/new", session_id),
-    b"cargo test --no-fail-fast"
-)?;
-let exec_info: serde_json::Value = serde_json::from_slice(
-    &env.read(&format!("/containers/sessions/{}/exec/new", session_id))?
-)?;
+    b"cargo test --no-fail-fast",
+)?)?;
 let exec_id = exec_info["exec_id"].as_str().unwrap();
 
 // Watch exec output
@@ -1391,8 +1393,7 @@ if !auth.authenticated {
     let challenge: NostrAuthChallenge = serde_json::from_slice(&challenge)?;
 
     // Sign challenge using agent's identity
-    env.write("/identity/sign", challenge.challenge.as_bytes())?;
-    let signature = env.read("/identity/sign")?;
+    let signature = env.call("/identity/sign", challenge.challenge.as_bytes())?;
 
     // Submit signed response
     let response = NostrAuthResponse {

@@ -117,7 +117,7 @@ Because mounts are the security boundary, implement "public HUD" as:
 | Owner | Can watch everything, including `/logs/trace` |
 | Private | Only owner, no public access |
 
-**Settings file (`/hud/settings`):**
+**Settings file (`/hud/settings`, read-only to agents; control plane updates):**
 
 ```json
 {
@@ -337,7 +337,7 @@ Response must include HUD URLs:
 
 ```http
 GET /agents/{id}/hud/settings
-PUT /agents/{id}/hud/settings
+PUT /agents/{id}/hud/settings  (owner/admin only)
 
 {
   "public": true,

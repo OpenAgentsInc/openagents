@@ -101,17 +101,12 @@ impl AgentEnv {
 
     /// Open a file handle with access enforcement.
     pub fn open(&self, path: &str, flags: OpenFlags) -> FsResult<Box<dyn FileHandle>> {
-        if !path.starts_with('/') {
-            return Err(FsError::InvalidPath);
-        }
+        self.open_internal(path, flags, false)
+    }
 
-        let (service, relative, access, mount_path) =
-            self.namespace.resolve(path).ok_or(FsError::NotFound)?;
-
-        ensure_access(&access, relative, flags.write)?;
-        self.charge_budget(&mount_path, &access, flags.write)?;
-
-        service.open(relative, flags)
+    /// Open a file handle with admin privileges (bypasses agent-local write restrictions).
+    pub fn open_admin(&self, path: &str, flags: OpenFlags) -> FsResult<Box<dyn FileHandle>> {
+        self.open_internal(path, flags, true)
     }
 
     /// Read all bytes from a path.
@@ -135,6 +130,24 @@ impl AgentEnv {
         handle.write(data)?;
         handle.flush()?;
         Ok(())
+    }
+
+    /// Write bytes to a path with admin privileges.
+    pub fn write_admin(&self, path: &str, data: &[u8]) -> FsResult<()> {
+        let mut handle = self.open_admin(path, OpenFlags::write())?;
+        handle.write(data)?;
+        handle.flush()?;
+        Ok(())
+    }
+
+    /// Write a request and read the response from the same handle.
+    pub fn call(&self, path: &str, data: &[u8]) -> FsResult<Vec<u8>> {
+        self.call_internal(path, data, false, false)
+    }
+
+    /// Write a request and read the response from the same handle (admin).
+    pub fn call_admin(&self, path: &str, data: &[u8]) -> FsResult<Vec<u8>> {
+        self.call_internal(path, data, true, true)
     }
 
     /// Watch a path for updates.
@@ -178,23 +191,65 @@ impl AgentEnv {
         }
         self.namespace.mount(path, service, access);
     }
+
+    fn open_internal(
+        &self,
+        path: &str,
+        flags: OpenFlags,
+        admin: bool,
+    ) -> FsResult<Box<dyn FileHandle>> {
+        if !path.starts_with('/') {
+            return Err(FsError::InvalidPath);
+        }
+
+        let (service, relative, access, mount_path) =
+            self.namespace.resolve(path).ok_or(FsError::NotFound)?;
+
+        ensure_access(&access, relative, flags.write)?;
+        if flags.write && !admin && is_restricted_write(&mount_path, relative) {
+            return Err(FsError::PermissionDenied);
+        }
+        self.charge_budget(&mount_path, &access, flags.write)?;
+
+        service.open(relative, flags)
+    }
+
+    fn call_internal(
+        &self,
+        path: &str,
+        data: &[u8],
+        admin: bool,
+        allow_read_denied: bool,
+    ) -> FsResult<Vec<u8>> {
+        let mut handle = self.open_internal(path, OpenFlags::read_write(), admin)?;
+        handle.write(data)?;
+        handle.flush()?;
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            match handle.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                Err(FsError::PermissionDenied) if allow_read_denied && buf.is_empty() => break,
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(buf)
+    }
 }
 
-fn is_sign_only_path(relative: &str) -> bool {
-    matches!(relative, "pubkey" | "sign" | "verify" | "encrypt" | "decrypt")
+fn is_restricted_write(mount_path: &str, relative: &str) -> bool {
+    matches!(
+        (mount_path, relative),
+        ("/compute", "policy") | ("/containers", "policy") | ("/hud", "settings")
+    )
 }
 
-fn ensure_access(access: &AccessLevel, relative: &str, write: bool) -> FsResult<()> {
+fn ensure_access(access: &AccessLevel, _relative: &str, write: bool) -> FsResult<()> {
     match access {
         AccessLevel::Disabled => Err(FsError::PermissionDenied),
         AccessLevel::ReadOnly if write => Err(FsError::PermissionDenied),
-        AccessLevel::SignOnly => {
-            if relative.is_empty() || is_sign_only_path(relative) {
-                Ok(())
-            } else {
-                Err(FsError::PermissionDenied)
-            }
-        }
+        AccessLevel::SignOnly => Ok(()),
         _ => Ok(()),
     }
 }

@@ -492,10 +492,10 @@ Compute is accessed like any other capability—as a filesystem:
 
 ```
 /compute/
-├── providers/          # Available providers (local, cloudflare, swarm)
-├── run                 # Write request → read response
-├── policy              # Allowed models, cost limits
-├── usage               # Budget tracking
+├── providers/          # Available providers (local, cloudflare, dvm)
+├── new                 # Call (write+read same handle) → job_id
+├── policy              # Allowed models, cost limits (read-only to agents)
+├── usage               # Budget tracking (reserved/spent)
 └── jobs/               # Async job tracking
     └── <job_id>/
         ├── status      # running|streaming|complete|failed
@@ -517,7 +517,7 @@ Compute is accessed like any other capability—as a filesystem:
 |----------|---------|------|--------------|
 | **Local** (Ollama/llama.cpp) | Lowest | Free | Requires local server |
 | **Cloudflare** (Workers AI) | 10-50ms | Per-token | Always available |
-| **Swarm** (NIP-90 DVMs) | Variable | Bid-based | Decentralized |
+| **DVM** (NIP-90) | Variable | Bid-based | Decentralized |
 
 ### Budget Integration
 
@@ -550,9 +550,9 @@ Containers are accessed like any other capability—as a filesystem:
 ```
 /containers/
 ├── providers/          # Available providers (local, cloudflare, daytona, dvm)
-├── new                 # Write request → read session_id (always async)
-├── policy              # Allowed images, resource limits, cost caps
-├── usage               # Budget tracking (micro-USD)
+├── new                 # Call (write+read same handle) → session_id (always async)
+├── policy              # Allowed images, resource limits, cost caps (read-only to agents)
+├── usage               # Budget tracking (reserved/spent micro-USD)
 ├── auth/               # OpenAgents API authentication
 │   ├── status          # Auth state
 │   ├── token           # API key (write)

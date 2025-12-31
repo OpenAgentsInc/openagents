@@ -560,6 +560,12 @@ pub struct BudgetPolicy {
 /// Dynamic budget state (tracked by runtime, shown in /status).
 /// All amounts in micro-USD (1 micro-USD = $0.000001).
 pub struct BudgetState {
+    /// Amount reserved this tick (micro-USD).
+    pub reserved_tick_usd: u64,
+
+    /// Amount reserved today (micro-USD).
+    pub reserved_day_usd: u64,
+
     /// Amount spent this tick (micro-USD).
     pub spent_tick_usd: u64,
 
@@ -584,7 +590,7 @@ pub enum AccessLevel {
     /// Read and write access.
     ReadWrite,
 
-    /// Sign-only (for /identity - can sign, not extract keys).
+    /// Sign-only (for /identity; key ops allowed, private keys never exposed).
     SignOnly,
 
     /// Budgeted access with spending limits.
@@ -599,9 +605,9 @@ Usage in mount table:
 
 ```rust
 namespace.mount("/wallet", wallet_fs, AccessLevel::Budgeted(BudgetPolicy {
-    per_tick_sats: 1000,
-    per_day_sats: 50000,
-    approval_threshold_sats: 5000,
+    per_tick_usd: 1000,
+    per_day_usd: 50000,
+    approval_threshold_usd: 5000,
     approvers: vec![owner_pubkey],
 }));
 ```

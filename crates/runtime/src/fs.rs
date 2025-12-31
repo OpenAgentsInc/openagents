@@ -309,7 +309,7 @@ pub enum AccessLevel {
     ReadOnly,
     /// Read and write access.
     ReadWrite,
-    /// Sign-only (for /identity - can sign, not extract keys).
+    /// Sign-only (for /identity; key operations allowed, private keys never exposed).
     SignOnly,
     /// Budgeted access with spending limits.
     Budgeted(BudgetPolicy),
