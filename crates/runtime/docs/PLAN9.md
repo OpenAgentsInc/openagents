@@ -425,8 +425,10 @@ cat /agents/my-agent/wallet/balance
 # {"balance_usd": 5000000, "daily_spent_usd": 120000, "daily_limit_usd": 5000000}
 
 # Sign something
-echo "hello world" > /agents/my-agent/identity/sign
-cat /agents/my-agent/identity/sign
+# Single-handle pattern (pseudocode)
+fd := open("/agents/my-agent/identity/sign", ORDWR)
+write(fd, "hello world")
+read(fd, buf)
 # <signature>
 
 # Export agent

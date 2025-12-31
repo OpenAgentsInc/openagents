@@ -627,12 +627,12 @@ Browser agents cannot spawn local containers (no Docker access). They access con
 ```javascript
 // Browser agent spawning cloud container
 env.write("/containers/auth/token", apiKey);
-env.write("/containers/new", JSON.stringify({
+const session = JSON.parse(env.call("/containers/new", JSON.stringify({
     kind: "ephemeral",
     image: "node:20",
     commands: ["npm test"],
-    max_cost_sats: 1000
-}));
+    max_cost_usd: 100000
+})));
 ```
 
 ### Cloudflare Workers
@@ -657,13 +657,16 @@ Local agents have direct Docker access:
 
 ```rust
 // Local agent spawning Docker container
-env.write("/containers/new", serde_json::to_vec(&ContainerRequest {
-    kind: ContainerKind::Ephemeral,
-    image: Some("rust:1.75".to_string()),
-    commands: vec!["cargo test".to_string()],
-    limits: ResourceLimits::basic(),
-    ..Default::default()
-})?)?;
+let session_info: serde_json::Value = serde_json::from_slice(&env.call(
+    "/containers/new",
+    &serde_json::to_vec(&ContainerRequest {
+        kind: ContainerKind::Ephemeral,
+        image: Some("rust:1.75".to_string()),
+        commands: vec!["cargo test".to_string()],
+        limits: ResourceLimits::basic(),
+        ..Default::default()
+    })?,
+)?)?;
 ```
 
 Local Docker is free (no auth required), but agents can also use cloud providers if authenticated.

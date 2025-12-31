@@ -83,7 +83,8 @@ struct SignHandle {
     signer: Arc<dyn SigningService>,
     agent_id: AgentId,
     buffer: Vec<u8>,
-    signature: Option<Signature>,
+    output: Option<Vec<u8>>,
+    position: usize,
 }
 
 impl SignHandle {
@@ -92,25 +93,29 @@ impl SignHandle {
             signer,
             agent_id,
             buffer: Vec::new(),
-            signature: None,
+            output: None,
+            position: 0,
         }
     }
 }
 
 impl FileHandle for SignHandle {
     fn read(&mut self, buf: &mut [u8]) -> FsResult<usize> {
-        if self.signature.is_none() {
+        if self.output.is_none() {
             let sig = self
                 .signer
                 .sign(&self.agent_id, &self.buffer)
                 .map_err(|err| FsError::Other(err.to_string()))?;
-            self.signature = Some(sig);
+            self.output = Some(sig.to_hex().into_bytes());
         }
-        let sig = self.signature.as_ref().expect("signature");
-        let hex = sig.to_hex();
-        let bytes = hex.as_bytes();
-        let len = bytes.len().min(buf.len());
-        buf[..len].copy_from_slice(&bytes[..len]);
+
+        let output = self.output.as_ref().expect("signature bytes");
+        if self.position >= output.len() {
+            return Ok(0);
+        }
+        let len = (output.len() - self.position).min(buf.len());
+        buf[..len].copy_from_slice(&output[self.position..self.position + len]);
+        self.position += len;
         Ok(len)
     }
 
@@ -124,7 +129,7 @@ impl FileHandle for SignHandle {
     }
 
     fn position(&self) -> u64 {
-        self.buffer.len() as u64
+        self.position as u64
     }
 
     fn flush(&mut self) -> FsResult<()> {
@@ -139,7 +144,8 @@ impl FileHandle for SignHandle {
 struct VerifyHandle {
     signer: Arc<dyn SigningService>,
     buffer: Vec<u8>,
-    result: Option<bool>,
+    output: Option<Vec<u8>>,
+    position: usize,
 }
 
 impl VerifyHandle {
@@ -147,14 +153,15 @@ impl VerifyHandle {
         Self {
             signer,
             buffer: Vec::new(),
-            result: None,
+            output: None,
+            position: 0,
         }
     }
 }
 
 impl FileHandle for VerifyHandle {
     fn read(&mut self, buf: &mut [u8]) -> FsResult<usize> {
-        if self.result.is_none() {
+        if self.output.is_none() {
             let payload: serde_json::Value = serde_json::from_slice(&self.buffer)
                 .map_err(|err| FsError::Other(err.to_string()))?;
             let pubkey_hex = payload
@@ -177,13 +184,18 @@ impl FileHandle for VerifyHandle {
             let pubkey = PublicKey::new(pubkey_bytes);
             let signature = Signature::new(sig_bytes);
 
-            self.result = Some(self.signer.verify(&pubkey, message.as_bytes(), &signature));
+            let result = self.signer.verify(&pubkey, message.as_bytes(), &signature);
+            let output = if result { "true" } else { "false" };
+            self.output = Some(output.as_bytes().to_vec());
         }
 
-        let output = if self.result == Some(true) { "true" } else { "false" };
-        let bytes = output.as_bytes();
-        let len = bytes.len().min(buf.len());
-        buf[..len].copy_from_slice(&bytes[..len]);
+        let output = self.output.as_ref().expect("verify output");
+        if self.position >= output.len() {
+            return Ok(0);
+        }
+        let len = (output.len() - self.position).min(buf.len());
+        buf[..len].copy_from_slice(&output[self.position..self.position + len]);
+        self.position += len;
         Ok(len)
     }
 
@@ -197,7 +209,7 @@ impl FileHandle for VerifyHandle {
     }
 
     fn position(&self) -> u64 {
-        self.buffer.len() as u64
+        self.position as u64
     }
 
     fn flush(&mut self) -> FsResult<()> {
@@ -214,6 +226,7 @@ struct EncryptHandle {
     agent_id: AgentId,
     buffer: Vec<u8>,
     output: Option<Vec<u8>>,
+    position: usize,
 }
 
 impl EncryptHandle {
@@ -223,6 +236,7 @@ impl EncryptHandle {
             agent_id,
             buffer: Vec::new(),
             output: None,
+            position: 0,
         }
     }
 }
@@ -253,8 +267,12 @@ impl FileHandle for EncryptHandle {
         }
 
         let output = self.output.as_ref().expect("encrypt output");
-        let len = output.len().min(buf.len());
-        buf[..len].copy_from_slice(&output[..len]);
+        if self.position >= output.len() {
+            return Ok(0);
+        }
+        let len = (output.len() - self.position).min(buf.len());
+        buf[..len].copy_from_slice(&output[self.position..self.position + len]);
+        self.position += len;
         Ok(len)
     }
 
@@ -268,7 +286,7 @@ impl FileHandle for EncryptHandle {
     }
 
     fn position(&self) -> u64 {
-        self.buffer.len() as u64
+        self.position as u64
     }
 
     fn flush(&mut self) -> FsResult<()> {
@@ -285,6 +303,7 @@ struct DecryptHandle {
     agent_id: AgentId,
     buffer: Vec<u8>,
     output: Option<Vec<u8>>,
+    position: usize,
 }
 
 impl DecryptHandle {
@@ -294,6 +313,7 @@ impl DecryptHandle {
             agent_id,
             buffer: Vec::new(),
             output: None,
+            position: 0,
         }
     }
 }
@@ -326,8 +346,12 @@ impl FileHandle for DecryptHandle {
         }
 
         let output = self.output.as_ref().expect("decrypt output");
-        let len = output.len().min(buf.len());
-        buf[..len].copy_from_slice(&output[..len]);
+        if self.position >= output.len() {
+            return Ok(0);
+        }
+        let len = (output.len() - self.position).min(buf.len());
+        buf[..len].copy_from_slice(&output[self.position..self.position + len]);
+        self.position += len;
         Ok(len)
     }
 
@@ -341,7 +365,7 @@ impl FileHandle for DecryptHandle {
     }
 
     fn position(&self) -> u64 {
-        self.buffer.len() as u64
+        self.position as u64
     }
 
     fn flush(&mut self) -> FsResult<()> {

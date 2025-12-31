@@ -461,6 +461,57 @@ fn test_compute_stream_watch() {
 }
 
 #[test]
+fn test_compute_stream_fallback_for_non_streaming_provider() {
+    let mut router = ComputeRouter::new();
+    router.register(Arc::new(NoStreamProvider::new()));
+    let policy = ComputePolicy::default();
+    let budget = BudgetPolicy {
+        per_tick_usd: 10,
+        per_day_usd: 10,
+        approval_threshold_usd: 0,
+        approvers: Vec::new(),
+    };
+    let journal = Arc::new(MemoryJournal::new());
+    let compute = ComputeFs::new(
+        AgentId::from("agent-compute-nostream"),
+        router,
+        policy,
+        budget,
+        journal,
+    );
+
+    let request = ComputeRequest {
+        model: "nostream-model".to_string(),
+        kind: ComputeKind::Complete,
+        input: json!({ "prompt": "hello" }),
+        stream: true,
+        timeout_ms: None,
+        idempotency_key: Some("req-nostream".to_string()),
+        max_cost_usd: Some(5),
+    };
+
+    let response = submit_compute(&compute, &request);
+    let job_id = response["job_id"].as_str().expect("job_id").to_string();
+
+    let mut watch = compute
+        .watch(&format!("jobs/{}/stream", job_id))
+        .expect("watch")
+        .expect("handle");
+
+    let first = watch.next(Some(Duration::from_millis(100))).expect("first");
+    let first_data = match first {
+        Some(WatchEvent::Data(data)) => data,
+        _ => panic!("no data"),
+    };
+    let first_chunk: ComputeChunk = serde_json::from_slice(&first_data).expect("chunk");
+    assert_eq!(first_chunk.delta.get("text").and_then(|v| v.as_str()), Some("ok"));
+    assert_eq!(first_chunk.finish_reason.as_deref(), Some("complete"));
+
+    let done = watch.next(Some(Duration::from_millis(50))).expect("done");
+    assert!(done.is_none());
+}
+
+#[test]
 fn test_container_new_usage_and_idempotency() {
     let mut router = ContainerRouter::new();
     router.register(Arc::new(TestContainerProvider::new()));
@@ -1251,6 +1302,110 @@ impl TestProvider {
             jobs: Arc::new(RwLock::new(HashMap::new())),
             streams: Arc::new(std::sync::Mutex::new(HashMap::new())),
             responses: Arc::new(std::sync::Mutex::new(HashMap::new())),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct NoStreamProvider {
+    jobs: Arc<RwLock<HashMap<String, JobState>>>,
+}
+
+impl NoStreamProvider {
+    fn new() -> Self {
+        Self {
+            jobs: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
+
+impl ComputeProvider for NoStreamProvider {
+    fn id(&self) -> &str {
+        "nostream"
+    }
+
+    fn info(&self) -> ProviderInfo {
+        ProviderInfo {
+            id: "nostream".to_string(),
+            name: "No-Stream Provider".to_string(),
+            models: vec![ModelInfo {
+                id: "nostream-model".to_string(),
+                name: "No-Stream Model".to_string(),
+                context_length: Some(1024),
+                capabilities: vec![ComputeKind::Complete],
+                pricing: None,
+            }],
+            capabilities: vec![ComputeKind::Complete],
+            pricing: None,
+            latency: ProviderLatency {
+                ttft_ms: 1,
+                tokens_per_sec: Some(10),
+                measured: true,
+            },
+            region: Some("local".to_string()),
+            status: ProviderStatus::Available,
+        }
+    }
+
+    fn is_available(&self) -> bool {
+        true
+    }
+
+    fn supports_model(&self, model: &str) -> bool {
+        model == "nostream-model"
+    }
+
+    fn submit(&self, request: ComputeRequest) -> std::result::Result<String, ComputeError> {
+        let job_id = format!(
+            "job-{}",
+            JOB_COUNTER.fetch_add(1, Ordering::SeqCst)
+        );
+        let response = ComputeResponse {
+            job_id: job_id.clone(),
+            output: json!({ "text": "ok" }),
+            usage: None,
+            cost_usd: request.max_cost_usd.unwrap_or(0),
+            latency_ms: 1,
+            provider_id: "nostream".to_string(),
+            model: request.model.clone(),
+        };
+        self.jobs
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(job_id.clone(), JobState::Complete(response));
+        Ok(job_id)
+    }
+
+    fn get_job(&self, job_id: &str) -> Option<JobState> {
+        self.jobs
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(job_id)
+            .cloned()
+    }
+
+    fn poll_stream(
+        &self,
+        job_id: &str,
+    ) -> std::result::Result<Option<ComputeChunk>, ComputeError> {
+        if self
+            .jobs
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(job_id)
+        {
+            Ok(None)
+        } else {
+            Err(ComputeError::JobNotFound)
+        }
+    }
+
+    fn cancel(&self, job_id: &str) -> std::result::Result<(), ComputeError> {
+        let mut jobs = self.jobs.write().unwrap_or_else(|e| e.into_inner());
+        if jobs.remove(job_id).is_some() {
+            Ok(())
+        } else {
+            Err(ComputeError::JobNotFound)
         }
     }
 }

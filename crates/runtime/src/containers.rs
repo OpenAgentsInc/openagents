@@ -884,13 +884,10 @@ impl ContainerRouter {
         provider: &Arc<dyn ContainerProvider>,
         request: &ContainerRequest,
     ) -> u64 {
-        if let Some(max_usd) = request.max_cost_usd {
-            return max_usd;
-        }
         let info = provider.info();
         let pricing = match info.pricing {
             Some(pricing) => pricing,
-            None => return 0,
+            None => return request.max_cost_usd.unwrap_or(0),
         };
         let estimated_secs = request.limits.max_time_secs as u64;
         pricing

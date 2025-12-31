@@ -495,17 +495,22 @@ impl ComputeRouter {
         provider: &Arc<dyn ComputeProvider>,
         request: &ComputeRequest,
     ) -> u64 {
-        if let Some(max_usd) = request.max_cost_usd {
-            return max_usd;
+        let info = provider.info();
+        if let Some(pricing) = info
+            .models
+            .iter()
+            .find(|model| model.id == request.model)
+            .and_then(|model| model.pricing.clone())
+        {
+            return pricing.input_per_1k_microusd.saturating_add(pricing.output_per_1k_microusd);
+        }
+        if let Some(pricing) = info.pricing {
+            return pricing
+                .input_per_1k_microusd
+                .saturating_add(pricing.output_per_1k_microusd);
         }
 
-        let info = provider.info();
-        let pricing = match info.pricing {
-            Some(p) => p,
-            None => return 0,
-        };
-
-        pricing.input_per_1k_microusd + pricing.output_per_1k_microusd
+        request.max_cost_usd.unwrap_or(0)
     }
 }
 
@@ -1082,6 +1087,7 @@ struct StreamWatchHandle {
     router: Arc<RwLock<ComputeRouter>>,
     jobs: Arc<RwLock<HashMap<String, JobRecord>>>,
     budget: Arc<Mutex<BudgetTracker>>,
+    emitted_chunk: bool,
 }
 
 impl StreamWatchHandle {
@@ -1098,6 +1104,7 @@ impl StreamWatchHandle {
             router,
             jobs,
             budget,
+            emitted_chunk: false,
         }
     }
 
@@ -1139,6 +1146,7 @@ impl WatchHandle for StreamWatchHandle {
             };
             match provider.poll_stream(&self.job_id) {
                 Ok(Some(chunk)) => {
+                    self.emitted_chunk = true;
                     if let Some(state) = provider.get_job(&self.job_id) {
                         self.reconcile(&state)?;
                     }
@@ -1148,9 +1156,28 @@ impl WatchHandle for StreamWatchHandle {
                 }
                 Ok(None) => {
                     if let Some(state) = provider.get_job(&self.job_id) {
-                        if matches!(state, JobState::Complete(_) | JobState::Failed { .. }) {
-                            self.reconcile(&state)?;
-                            return Ok(None);
+                        match &state {
+                            JobState::Complete(response) => {
+                                self.reconcile(&state)?;
+                                if !self.emitted_chunk {
+                                    self.emitted_chunk = true;
+                                    let chunk = ComputeChunk {
+                                        job_id: self.job_id.clone(),
+                                        delta: response.output.clone(),
+                                        finish_reason: Some("complete".to_string()),
+                                        usage: response.usage.clone(),
+                                    };
+                                    let payload = serde_json::to_vec(&chunk)
+                                        .map_err(|err| FsError::Other(err.to_string()))?;
+                                    return Ok(Some(WatchEvent::Data(payload)));
+                                }
+                                return Ok(None);
+                            }
+                            JobState::Failed { .. } => {
+                                self.reconcile(&state)?;
+                                return Ok(None);
+                            }
+                            _ => {}
                         }
                     }
                 }

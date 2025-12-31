@@ -27,13 +27,13 @@ What code **inside the agent** sees. Root `/` is the agent itself:
 ├── goals/              # CRUD goal files
 ├── identity/
 │   ├── pubkey          # Read: hex pubkey
-│   └── sign            # Write data, read signature
+│   └── sign            # Call (write+read same handle) → signature
 ├── wallet/
 │   └── balance         # Read: balance JSON
 ├── compute/
-│   ├── run             # Write request, read response
+│   ├── new             # Call (write+read same handle) → job_id
 │   ├── providers/      # Available AI providers
-│   └── usage           # Budget tracking
+│   └── usage           # Budget tracking (reserved/spent)
 └── ...
 ```
 
@@ -236,7 +236,7 @@ pub enum AccessLevel {
     ReadOnly,
     /// Read and write access
     ReadWrite,
-    /// Sign-only (for /identity - can sign, not extract keys)
+    /// Sign-only (for /identity; key ops allowed, private keys never exposed)
     SignOnly,
     /// Budgeted access with spending limits
     Budgeted(BudgetPolicy),
@@ -246,13 +246,13 @@ pub enum AccessLevel {
 
 /// Static budget policy (canonical definition in TRAITS.md)
 pub struct BudgetPolicy {
-    pub per_tick_sats: u64,
-    pub per_day_sats: u64,
-    pub approval_threshold_sats: u64,
+    pub per_tick_usd: u64,
+    pub per_day_usd: u64,
+    pub approval_threshold_usd: u64,
     pub approvers: Vec<PublicKey>,
 }
 
-// Note: BudgetState (spent_tick, spent_day) is tracked by runtime,
+// Note: BudgetState (reserved/spent counters) is tracked by runtime,
 // not stored in AccessLevel. See TRAITS.md for BudgetState definition.
 ```
 

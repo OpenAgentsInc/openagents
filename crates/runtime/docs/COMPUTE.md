@@ -13,6 +13,7 @@ Agents access AI compute through the `/compute` mount. The runtime provides:
 - **Budget tracking** — USD-denominated accounting (settled in sats via Lightning)
 - **Idempotency** — Dedup via scoped journal to prevent double-billing
 - **Streaming** — Token-by-token output via `watch()` on job streams
+- **Non-streaming fallback** — Providers without streaming emit one final chunk on completion
 
 This enables agents to use any AI model without hardcoding providers.
 
@@ -47,9 +48,9 @@ This enables agents to use any AI model without hardcoding providers.
 │       ├── info
 │       ├── models
 │       └── health
-├── new                  # Write request → read job_id (always async)
-├── policy               # Read/write: compute policy JSON
-├── usage                # Read: current tick/day usage (USD)
+├── new                  # Call (write+read same handle) → job_id (always async)
+├── policy               # Read-only to agents (control plane updates)
+├── usage                # Read: current tick/day usage (reserved/spent USD)
 └── jobs/
     └── <job_id>/       # Individual job tracking
         ├── status      # Read: pending|running|streaming|complete|failed
@@ -57,7 +58,10 @@ This enables agents to use any AI model without hardcoding providers.
         └── stream      # Watch: streaming chunks
 ```
 
-**Key principle: `/compute/new` always returns a job_id immediately.** The agent then reads `/compute/jobs/<id>/status` to poll or watches `/compute/jobs/<id>/stream` for streaming. This avoids blocking and shared-file races.
+**Key principle: `/compute/new` always returns a job_id immediately.** Use `env.call("/compute/new", ...)`
+or open a read/write handle so the response is read from the same handle. The agent then reads
+`/compute/jobs/<id>/status` to poll or watches `/compute/jobs/<id>/stream` for streaming. This avoids
+blocking and shared-file races.
 
 ---
 
@@ -573,6 +577,8 @@ pub struct ComputeFs {
 pub struct ComputeUsageState {
     pub tick_start: Timestamp,
     pub day_start: Timestamp,
+    pub reserved_tick_usd: u64,
+    pub reserved_day_usd: u64,
     pub spent_tick_usd: u64,
     pub spent_day_usd: u64,
 }
@@ -596,7 +602,7 @@ impl FileService for ComputeFs {
                 )))
             }
 
-            // /compute/policy — read/write policy
+            // /compute/policy — read-only to agents (control plane updates)
             ["policy"] => {
                 if flags.write {
                     Ok(Box::new(PolicyWriteHandle::new(self.policy.clone())))
@@ -612,16 +618,18 @@ impl FileService for ComputeFs {
                 let policy = self.policy.read();
                 let json = serde_json::json!({
                     "tick": {
+                        "reserved_usd": usage.reserved_tick_usd,
                         "spent_usd": usage.spent_tick_usd,
                         "limit_usd": policy.max_cost_usd_per_tick,
                         "remaining_usd": policy.max_cost_usd_per_tick
-                            .map(|l| l.saturating_sub(usage.spent_tick_usd)),
+                            .map(|l| l.saturating_sub(usage.reserved_tick_usd + usage.spent_tick_usd)),
                     },
                     "day": {
+                        "reserved_usd": usage.reserved_day_usd,
                         "spent_usd": usage.spent_day_usd,
                         "limit_usd": policy.max_cost_usd_per_day,
                         "remaining_usd": policy.max_cost_usd_per_day
-                            .map(|l| l.saturating_sub(usage.spent_day_usd)),
+                            .map(|l| l.saturating_sub(usage.reserved_day_usd + usage.spent_day_usd)),
                     }
                 });
                 Ok(Box::new(StringHandle::new(json.to_string())))
@@ -739,7 +747,8 @@ impl FileService for ComputeFs {
 
 ## ComputeNewHandle
 
-Write-then-read pattern for `/compute/new`. Always returns job_id immediately (no blocking):
+Single-handle request/response for `/compute/new`. Use `env.call` (or open a read/write handle)
+so the response is read from the same handle. Always returns job_id immediately (no blocking):
 
 ```rust
 /// Handle for /compute/new
@@ -1735,8 +1744,8 @@ let request = serde_json::json!({
 });
 
 // Submit request (returns immediately with job_id)
-env.write("/compute/new", &serde_json::to_vec(&request)?)?;
-let job_info: serde_json::Value = serde_json::from_slice(&env.read("/compute/new")?)?;
+let job_info: serde_json::Value =
+    serde_json::from_slice(&env.call("/compute/new", &serde_json::to_vec(&request)?)?)?;
 let job_id = job_info["job_id"].as_str().unwrap();
 
 // Poll for completion
@@ -1772,8 +1781,8 @@ let request = serde_json::json!({
 });
 
 // Submit
-env.write("/compute/new", &serde_json::to_vec(&request)?)?;
-let job_info: serde_json::Value = serde_json::from_slice(&env.read("/compute/new")?)?;
+let job_info: serde_json::Value =
+    serde_json::from_slice(&env.call("/compute/new", &serde_json::to_vec(&request)?)?)?;
 let job_id = job_info["job_id"].as_str().unwrap();
 
 // Watch for chunks (only way to stream)
@@ -1791,6 +1800,9 @@ if let Some(mut watch) = env.watch(&format!("/compute/jobs/{}/stream", job_id))?
 }
 ```
 
+If the selected provider does not support streaming, the watch emits a single chunk containing the
+full output with `finish_reason = "complete"`, then closes.
+
 ### Check Usage
 
 ```rust
@@ -1799,8 +1811,10 @@ let usage_bytes = env.read("/compute/usage")?;
 let usage: serde_json::Value = serde_json::from_slice(&usage_bytes)?;
 
 // Values are in micro-USD
+let tick_reserved = usage["tick"]["reserved_usd"].as_u64().unwrap_or(0);
 let tick_spent = usage["tick"]["spent_usd"].as_u64().unwrap_or(0);
 let tick_limit = usage["tick"]["limit_usd"].as_u64().unwrap_or(0);
+let day_reserved = usage["day"]["reserved_usd"].as_u64().unwrap_or(0);
 let day_spent = usage["day"]["spent_usd"].as_u64().unwrap_or(0);
 let day_limit = usage["day"]["limit_usd"].as_u64().unwrap_or(0);
 
@@ -1841,8 +1855,8 @@ let request = serde_json::json!({
     "idempotency_key": "dvm_analysis_123"
 });
 
-env.write("/compute/new", &serde_json::to_vec(&request)?)?;
-let job_info: serde_json::Value = serde_json::from_slice(&env.read("/compute/new")?)?;
+let job_info: serde_json::Value =
+    serde_json::from_slice(&env.call("/compute/new", &serde_json::to_vec(&request)?)?)?;
 let job_id = job_info["job_id"].as_str().unwrap();
 
 // For DVM jobs, status progresses through:

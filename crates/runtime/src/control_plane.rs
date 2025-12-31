@@ -367,8 +367,9 @@ async fn write_path(
     };
 
     let fs_path = format!("/{}", path);
-    match entry.env.write(&fs_path, &body) {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+    match entry.env.call_admin(&fs_path, &body) {
+        Ok(bytes) if bytes.is_empty() => StatusCode::NO_CONTENT.into_response(),
+        Ok(bytes) => bytes_response(bytes),
         Err(err) => map_fs_error(err).into_response(),
     }
 }

@@ -382,8 +382,9 @@ impl CloudflareAgent {
     async fn handle_write(&self, path: &str, req: &mut Request) -> worker::Result<Response> {
         let runtime = self.runtime().map_err(map_agent_error)?;
         let body = req.bytes().await?;
-        match runtime.env.write(path, &body) {
-            Ok(()) => Ok(Response::empty()?.with_status(204)),
+        match runtime.env.call_admin(path, &body) {
+            Ok(bytes) if bytes.is_empty() => Ok(Response::empty()?.with_status(204)),
+            Ok(bytes) => bytes_response(bytes),
             Err(err) => Response::error(err.to_string(), map_fs_error(err)),
         }
     }

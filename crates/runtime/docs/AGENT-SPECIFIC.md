@@ -179,13 +179,13 @@ pub struct AgentWallet {
 /// Budget enforcement
 pub struct BudgetConfig {
     /// Maximum spend per tick
-    pub max_per_tick_sats: u64,
+    pub max_per_tick_usd: u64,
 
     /// Maximum spend per day
-    pub max_daily_sats: u64,
+    pub max_daily_usd: u64,
 
     /// Approval required above this amount
-    pub approval_threshold_sats: u64,
+    pub approval_threshold_usd: u64,
 
     /// Who can approve large spends
     pub approvers: Vec<PublicKey>,
@@ -193,16 +193,16 @@ pub struct BudgetConfig {
 
 impl AgentContext {
     /// Check if spend is within budget
-    pub fn can_spend(&self, amount_sats: u64) -> bool {
-        self.budget.can_afford(amount_sats)
+    pub fn can_spend(&self, amount_usd: u64) -> bool {
+        self.budget.can_afford(amount_usd)
     }
 
     /// Spend with automatic budget tracking
-    pub async fn spend(&mut self, amount_sats: u64, reason: &str) -> Result<()> {
-        if !self.can_spend(amount_sats) {
+    pub async fn spend(&mut self, amount_usd: u64, reason: &str) -> Result<()> {
+        if !self.can_spend(amount_usd) {
             return Err(AgentError::BudgetExceeded);
         }
-        self.budget.record_spend(amount_sats, reason);
+        self.budget.record_spend(amount_usd, reason);
         Ok(())
     }
 }
