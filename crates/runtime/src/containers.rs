@@ -1851,6 +1851,38 @@ impl ContainerFs {
         Self::with_auth(agent_id, router, policy, budget_policy, journal, auth)
     }
 
+    /// Create a container filesystem with local + OpenAgents providers from env.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn with_default_providers(
+        agent_id: AgentId,
+        policy: ContainerPolicy,
+        budget_policy: BudgetPolicy,
+        journal: Arc<dyn IdempotencyJournal>,
+        storage: Arc<dyn AgentStorage>,
+        signer: Arc<dyn SigningService>,
+    ) -> Self {
+        let api = openagents_api_from_env();
+        let auth = Arc::new(OpenAgentsAuth::new(
+            agent_id.clone(),
+            storage,
+            signer,
+            api.clone(),
+        ));
+        let mut router = ContainerRouter::new();
+        router.register(Arc::new(LocalContainerProvider::new()));
+        if let Some(api) = api {
+            router.register(Arc::new(OpenAgentsContainerProvider::cloudflare(
+                api.clone(),
+                auth.clone(),
+            )));
+            router.register(Arc::new(OpenAgentsContainerProvider::daytona(
+                api,
+                auth.clone(),
+            )));
+        }
+        Self::with_auth(agent_id, router, policy, budget_policy, journal, auth)
+    }
+
     /// Create a container filesystem with a preconfigured auth manager.
     pub fn with_auth(
         agent_id: AgentId,

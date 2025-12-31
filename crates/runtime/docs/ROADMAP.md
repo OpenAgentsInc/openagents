@@ -361,6 +361,12 @@ An agent runs on DO, takes HTTP triggers, can do `/compute/new`.
 
 Same container request can run locally or via cloud provider based on policy.
 
+### Implementation Notes (completed)
+
+- Added OpenAgents API auth + credits manager with `/containers/auth/*` surfaces in `crates/runtime/src/containers.rs`.
+- Implemented OpenAgents API-backed container providers (cloudflare/daytona) and `/containers/providers/*` listing in `crates/runtime/src/containers.rs`.
+- Added `ContainerFs::with_default_providers` plus a policy-selection test (`test_container_policy_selects_allowed_provider`) in `crates/runtime/src/tests/mod.rs`.
+
 ### References
 
 - [CONTAINERS.md](CONTAINERS.md) — OpenAgentsProvider, DaytonaProvider
