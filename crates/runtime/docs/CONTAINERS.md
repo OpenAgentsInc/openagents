@@ -1058,94 +1058,29 @@ impl ContainerProvider for CloudflareContainerProvider {
 
 ### Daytona SDK Provider
 
-```rust
-/// Daytona SDK container provider
-pub struct DaytonaProvider {
-    client: Arc<DaytonaClient>,
-    config: DaytonaConfig,
-    sandboxes: Arc<RwLock<HashMap<String, DaytonaSandbox>>>,
-    execs: Arc<RwLock<HashMap<String, ExecState>>>,
-    executor: Arc<ExecutorManager>,
-}
+Local/server runtimes can talk to Daytona directly via the SDK (no OpenAgents credits) when
+`DAYTONA_API_KEY` is set. The provider registers as `daytona` and treats `image` as the snapshot
+hint.
 
-impl ContainerProvider for DaytonaProvider {
-    fn id(&self) -> &str { "daytona" }
-
-    fn info(&self) -> ContainerProviderInfo {
-        ContainerProviderInfo {
-            id: "daytona".to_string(),
-            name: "Daytona Cloud Sandbox".to_string(),
-            available_images: vec!["daytona-sandbox".to_string()],
-            capabilities: ContainerCapabilities {
-                git_clone: true,
-                file_access: true,
-                interactive: true,
-                artifacts: true,
-                streaming: true,
-            },
-            pricing: Some(ContainerPricing {
-                startup_usd: 500,
-                per_second_usd: 50,
-                network_per_gb_usd: 40000,
-            }),
-            latency: ContainerLatency { startup_ms: 5000, measured: true },
-            limits: ContainerLimits {
-                max_memory_mb: 8192,
-                max_cpu_cores: 4.0,
-                max_disk_mb: 20480,
-                max_time_secs: 3600,  // 1 hour
-                network_allowed: true,
-            },
-            status: ProviderStatus::Available,
-        }
-    }
-
-    fn submit_exec(&self, session_id: &str, command: &str) -> Result<String, ContainerError> {
-        let exec_id = generate_exec_id();
-        let sandboxes = self.sandboxes.read();
-        let sandbox = sandboxes.get(session_id).ok_or(ContainerError::SessionNotFound)?;
-
-        // Daytona exec is async via SDK
-        let client = self.client.clone();
-        let sandbox_id = sandbox.id.clone();
-        let execs = self.execs.clone();
-        let eid = exec_id.clone();
-        let cmd = command.to_string();
-
-        self.executor.spawn(async move {
-            let result = client.execute(&sandbox_id, &cmd).await;
-            let mut execs = execs.write();
-            if let Some(exec) = execs.get_mut(&eid) {
-                match result {
-                    Ok(r) => *exec = ExecState::Complete(r),
-                    Err(e) => *exec = ExecState::Failed {
-                        error: e.to_string(),
-                        at: Timestamp::now(),
-                    },
-                }
-            }
-        });
-
-        Ok(exec_id)
-    }
-
-    // Daytona has native file operations
-    fn read_file(&self, session_id: &str, path: &str, offset: u64, len: u64) -> Result<Vec<u8>, ContainerError> {
-        if path.contains("..") || path.starts_with('/') {
-            return Err(ContainerError::InvalidPath);
-        }
-
-        let sandboxes = self.sandboxes.read();
-        let sandbox = sandboxes.get(session_id).ok_or(ContainerError::SessionNotFound)?;
-
-        self.executor.execute(async {
-            let data = self.client.read_file(&sandbox.id, path).await?;
-            let end = std::cmp::min(offset as usize + len as usize, data.len());
-            Ok(data[offset as usize..end].to_vec())
-        })
-    }
-}
+```env
+DAYTONA_API_KEY=dtn_xxxxx
+DAYTONA_API_URL=https://api.daytona.io   # or DAYTONA_BASE_URL
+DAYTONA_TARGET=us
+DAYTONA_SNAPSHOT=daytonaio/sandbox:latest
+DAYTONA_ORG_ID=org_xxxxx                  # optional
+DAYTONA_AUTO_STOP_MINUTES=15             # optional
+DAYTONA_AUTO_DELETE_MINUTES=0            # optional
 ```
+
+Notes:
+
+- if `DAYTONA_API_KEY` is unset, the runtime falls back to the OpenAgents API-backed Daytona
+  provider when configured (requires OpenAgents auth + credits).
+- `image` → snapshot (fallback: `DAYTONA_SNAPSHOT` or `daytonaio/sandbox:latest`).
+- `repo` clones into the Daytona project dir (typically `/workspace`); workdir resolves from
+  `repo.subdir` + `workdir`.
+- exec/output are async; Daytona returns combined stdout/stderr, emitted as stdout chunks.
+- when usage is unavailable, `cost_usd` is reconciled as `max_cost_usd` to avoid refunds.
 
 ### NIP-90 DVM Provider
 
@@ -1241,10 +1176,10 @@ impl ContainerProvider for DvmContainerProvider {
 
 | Feature | Local (Docker) | Cloudflare | Daytona | DVM |
 |---------|----------------|------------|---------|-----|
-| **Provider** | `LocalContainerProvider` | `CloudflareContainerProvider` | `DaytonaProvider` | `DvmContainerProvider` |
-| **Auth Required** | Optional (policy) | Required | Required | Required (Nostr) |
-| **Pricing** | Free | Per-second (micro-USD) | Per-second (micro-USD) | Bid-based (sats) |
-| **Payment** | None | OpenAgents credits | OpenAgents credits | Lightning |
+| **Provider** | `LocalContainerProvider` | `CloudflareContainerProvider` | `DaytonaContainerProvider` | `DvmContainerProvider` |
+| **Auth Required** | Optional (policy) | Required | `DAYTONA_API_KEY` (SDK) or OpenAgents auth | Required (Nostr) |
+| **Pricing** | Free | Per-second (micro-USD) | Daytona billing | Bid-based (sats) |
+| **Payment** | None | OpenAgents credits | Daytona API key (or OpenAgents credits) | Lightning |
 | **Max Duration** | 24 hours | 15 minutes | 1 hour | 30 minutes |
 | **Max Memory** | Host-limited | 4 GB | 8 GB | Handler-dependent |
 | **Network** | Configurable | Configurable | Always | Handler-dependent |

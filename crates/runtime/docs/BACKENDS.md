@@ -671,13 +671,16 @@ let session_info: serde_json::Value = serde_json::from_slice(&env.call(
 
 Local Docker is free (no auth required), but agents can also use cloud providers if authenticated.
 
+If `DAYTONA_API_KEY` is set, the local runtime also registers a direct Daytona provider
+(`daytona`) via the SDK (no OpenAgents credits).
+
 ### Server (Docker/K8s)
 
 Server agents have the richest container support:
 
 - **Docker daemon** — Direct access to host Docker (compose deployments)
 - **Kubernetes API** — Spawn Jobs/Pods (K8s deployments)
-- **Cloud providers** — Cloudflare, Daytona, DVMs via API
+- **Cloud providers** — Cloudflare via OpenAgents API, Daytona via SDK (or OpenAgents API when no key), DVMs via Nostr
 
 For K8s deployments, the agent's ServiceAccount needs appropriate RBAC to create Jobs:
 
@@ -698,7 +701,7 @@ rules:
 |----------|---------|------------|-------|--------|
 | **Local Docker** | — | — | ✅ Free | ✅ Free |
 | **Cloudflare Containers** | ✅ Credits | ✅ Native | ✅ Credits | ✅ Credits |
-| **Daytona** | ✅ Credits | ✅ Credits | ✅ Credits | ✅ Credits |
+| **Daytona** | ✅ Credits | ✅ Credits | ✅ SDK | ✅ SDK |
 | **NIP-90 DVMs** | ✅ Lightning | ✅ Lightning | ✅ Lightning | ✅ Lightning |
 | **K8s Jobs** | — | — | — | ✅ Free* |
 

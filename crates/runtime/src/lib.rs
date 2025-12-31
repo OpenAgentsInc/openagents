@@ -106,26 +106,26 @@
 #![warn(rustdoc::missing_crate_level_docs)]
 
 pub mod agent;
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+pub mod browser;
 pub mod budget;
 pub mod claude;
+#[cfg(feature = "cloudflare")]
+pub mod cloudflare;
 pub mod compute;
 pub mod containers;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod control_plane;
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) mod dvm;
-#[cfg(feature = "cloudflare")]
-pub mod cloudflare;
-#[cfg(all(feature = "browser", target_arch = "wasm32"))]
-pub mod browser;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod drivers;
-pub mod env;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod dvm;
 pub mod engine;
+pub mod env;
 pub mod envelope;
 pub mod error;
-pub mod fx;
 pub mod fs;
+pub mod fx;
 pub mod idempotency;
 pub mod identity;
 pub mod namespace;
@@ -139,17 +139,28 @@ pub mod wallet;
 pub(crate) mod wasm_http;
 
 pub use agent::{Agent, AgentConfig, AgentContext, AgentState};
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+pub use browser::{BrowserRuntime, BrowserRuntimeConfig};
 pub use budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetState, BudgetTracker};
 pub use claude::{
     ClaudeCapabilities, ClaudeChunk, ClaudeError, ClaudeFs, ClaudeModelInfo, ClaudePolicy,
     ClaudePricing, ClaudeProvider, ClaudeProviderInfo, ClaudeProviderStatus, ClaudeRequest,
     ClaudeResponse, ClaudeRouter, ClaudeSessionAutonomy, ClaudeSessionStatus, ClaudeUsage,
-    ClaudeUsageState, IsolationMode, NetworkMode, RateLimit, RepoFilterMode, SessionState as ClaudeSessionState,
-    ToolDefinition, ToolLogEntry, TunnelAuth, TunnelAuthChallenge, TunnelAuthResponse,
-    TunnelAuthState, TunnelEndpoint,
+    ClaudeUsageState, IsolationMode, NetworkMode, RateLimit, RepoFilterMode,
+    SessionState as ClaudeSessionState, ToolDefinition, ToolLogEntry, TunnelAuth,
+    TunnelAuthChallenge, TunnelAuthResponse, TunnelAuthState, TunnelEndpoint,
 };
 #[cfg(not(target_arch = "wasm32"))]
-pub use claude::{CloudProvider as ClaudeCloudProvider, LocalProvider as ClaudeLocalProvider, TunnelProvider as ClaudeTunnelProvider};
+pub use claude::{
+    CloudProvider as ClaudeCloudProvider, LocalProvider as ClaudeLocalProvider,
+    TunnelProvider as ClaudeTunnelProvider,
+};
+#[cfg(feature = "cloudflare")]
+pub use cloudflare::{CloudflareAgent, set_cloudflare_agent_factory};
+#[cfg(feature = "cloudflare")]
+pub use compute::CloudflareProvider;
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+pub use compute::OpenAgentsComputeProvider;
 pub use compute::{
     ComputeChunk, ComputeError, ComputeFs, ComputeKind, ComputePolicy, ComputeProvider,
     ComputeRequest, ComputeResponse, ComputeRouter, JobState, ModelInfo, Prefer, ProviderInfo,
@@ -157,26 +168,20 @@ pub use compute::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use compute::{DvmProvider, LocalProvider};
+pub use containers::ProviderStatus as ContainerProviderStatus;
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
-pub use compute::OpenAgentsComputeProvider;
-#[cfg(feature = "cloudflare")]
-pub use compute::CloudflareProvider;
-#[cfg(feature = "cloudflare")]
-pub use cloudflare::{set_cloudflare_agent_factory, CloudflareAgent};
+pub use containers::WasmOpenAgentsContainerProvider;
 pub use containers::{
     ApiAuthResponse, ApiAuthState, ArtifactInfo, AuthMethod, CommandResult, ContainerCapabilities,
     ContainerError, ContainerFs, ContainerKind, ContainerLatency, ContainerLimits, ContainerPolicy,
-    ContainerPricing, ContainerProvider, ContainerProviderInfo, ContainerRequest, ContainerResponse,
-    ContainerRouter, ContainerStatus, ContainerUsage, ExecState,
+    ContainerPricing, ContainerProvider, ContainerProviderInfo, ContainerRequest,
+    ContainerResponse, ContainerRouter, ContainerStatus, ContainerUsage, ExecState,
     NostrAuthChallenge, NostrAuthResponse, OpenAgentsApiClient, OpenAgentsAuth,
     OpenAgentsContainerProvider, OutputChunk, OutputStream, RateLimitStatus, RepoAuth, RepoConfig,
     SessionState,
 };
 #[cfg(not(target_arch = "wasm32"))]
-pub use containers::{DvmContainerProvider, LocalContainerProvider};
-#[cfg(all(feature = "browser", target_arch = "wasm32"))]
-pub use containers::WasmOpenAgentsContainerProvider;
-pub use containers::ProviderStatus as ContainerProviderStatus;
+pub use containers::{DaytonaContainerProvider, DvmContainerProvider, LocalContainerProvider};
 #[cfg(not(target_arch = "wasm32"))]
 pub use control_plane::{ControlPlane, LocalRuntime};
 #[cfg(not(target_arch = "wasm32"))]
@@ -184,37 +189,41 @@ pub use drivers::{
     Driver, DriverHandle, EnvelopeSink, NostrDriver, NostrDriverConfig, NostrPublishRequest,
     RoutedEnvelope,
 };
-#[cfg(all(feature = "browser", target_arch = "wasm32"))]
-pub use browser::{BrowserRuntime, BrowserRuntimeConfig};
+pub use engine::{TickEngine, manual_trigger};
 pub use env::AgentEnv;
-pub use engine::{manual_trigger, TickEngine};
 pub use envelope::Envelope;
 pub use error::{AgentError, Result};
-pub use fs::{AccessLevel, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat, WatchEvent, WatchHandle};
-pub use idempotency::{IdempotencyJournal, JournalEntry, JournalError, MemoryJournal};
+pub use fs::{
+    AccessLevel, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat, WatchEvent,
+    WatchHandle,
+};
+#[cfg(not(target_arch = "wasm32"))]
+pub use fx::FxRateCache;
+pub use fx::{FxError, FxRateProvider, FxRateSnapshot, FxSource};
 #[cfg(feature = "cloudflare")]
 pub use idempotency::DoJournal;
 #[cfg(feature = "local")]
 pub use idempotency::SqliteJournal;
-pub use identity::{InMemorySigner, PublicKey, Signature, SigningService};
+pub use idempotency::{IdempotencyJournal, JournalEntry, JournalError, MemoryJournal};
 #[cfg(not(target_arch = "wasm32"))]
 pub use identity::NostrSigner;
+pub use identity::{InMemorySigner, PublicKey, Signature, SigningService};
 pub use namespace::Namespace;
-pub use fx::{FxError, FxRateProvider, FxRateSnapshot, FxSource};
-#[cfg(not(target_arch = "wasm32"))]
-pub use fx::FxRateCache;
 pub use services::{
     ApmMetric, DeadletterFs, GoalsFs, HudFs, HudSettings, IdentityFs, InboxFs, LastPrMetric,
     LogsFs, MetricsFs, MetricsSnapshot, QueueMetric, StatusFs, StatusSnapshot, TraceEvent,
     WalletFs,
 };
-pub use storage::{AgentStorage, InMemoryStorage, StorageOp};
-#[cfg(all(feature = "browser", target_arch = "wasm32"))]
-pub use storage::IndexedDbStorage;
 #[cfg(feature = "cloudflare")]
 pub use storage::CloudflareStorage;
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+pub use storage::IndexedDbStorage;
+pub use storage::{AgentStorage, InMemoryStorage, StorageOp};
 pub use tick::{ResourceUsage, TickResult};
-pub use trigger::{AlarmTrigger, EventTrigger, InitializeTrigger, ManualTrigger, MessageTrigger, Trigger, TriggerMeta};
+pub use trigger::{
+    AlarmTrigger, EventTrigger, InitializeTrigger, ManualTrigger, MessageTrigger, Trigger,
+    TriggerMeta,
+};
 pub use types::{AgentId, EnvelopeId, Timestamp};
 pub use wallet::{WalletError, WalletFxProvider, WalletPayment, WalletService};
 

@@ -365,11 +365,12 @@ Same container request can run locally or via cloud provider based on policy.
 
 - Added OpenAgents API auth + credits manager with `/containers/auth/*` surfaces in `crates/runtime/src/containers.rs`.
 - Implemented OpenAgents API-backed container providers (cloudflare/daytona) and `/containers/providers/*` listing in `crates/runtime/src/containers.rs`.
+- Added Daytona SDK-backed container provider (direct API key) with env-based configuration and async exec/output handling in `crates/runtime/src/containers.rs`.
 - Added `ContainerFs::with_default_providers` plus a policy-selection test (`test_container_policy_selects_allowed_provider`) in `crates/runtime/src/tests/mod.rs`.
 
 ### References
 
-- [CONTAINERS.md](CONTAINERS.md) — OpenAgentsProvider, DaytonaProvider
+- [CONTAINERS.md](CONTAINERS.md) — OpenAgentsProvider, DaytonaContainerProvider
 
 ---
 
