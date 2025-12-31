@@ -200,6 +200,10 @@ bun run deploy:preview   # Deploy to preview environment
 bun run cf:tail          # Live logs from production
 ```
 
+## Build Notes
+
+- Worker WASM builds need a clang that can target wasm. On macOS: `brew install llvm` and run `CC_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/clang bun run build:worker`.
+
 ## API Reference
 
 ### Authentication
