@@ -259,7 +259,10 @@ fn parse_hud_event(data: &str) -> Option<HudEvent> {
                     .or_else(|| obj.get("output"))
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
-                success: obj.get("success").and_then(|v| v.as_bool()),
+                success: obj
+                    .get("success")
+                    .and_then(|v| v.as_bool())
+                    .or_else(|| obj.get("is_error").and_then(|v| v.as_bool()).map(|e| !e)),
             }),
             "chunk" => Some(HudEvent::Chunk {
                 text: obj
@@ -294,8 +297,15 @@ fn parse_hud_event(data: &str) -> Option<HudEvent> {
             "usage" => Some(HudEvent::Usage {
                 input_tokens: obj.get("input_tokens").and_then(|v| v.as_u64()),
                 output_tokens: obj.get("output_tokens").and_then(|v| v.as_u64()),
-                cost_usd: obj.get("cost_usd").and_then(|v| v.as_f64()),
+                cost_usd: obj
+                    .get("cost_usd")
+                    .or_else(|| obj.get("total_cost_usd"))
+                    .and_then(|v| v.as_f64()),
             }),
+            "status" => Some(HudEvent::SessionStart {
+                session_id: obj.get("task_id").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            }),
+            "done" => Some(HudEvent::SessionEnd { success: Some(true) }),
             "error" => Some(HudEvent::Error {
                 error: obj
                     .get("message")

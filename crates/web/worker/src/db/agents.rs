@@ -32,9 +32,9 @@ pub async fn list_for_user(db: &D1Database, user_id: &str) -> Result<Vec<AgentRe
          ORDER BY agent_id",
     )
     .bind(&[user_id.into()])?
-    .all::<AgentRecord>()
+    .all()
     .await
-    .map(|result| result.results)
+    .and_then(|result| result.results::<AgentRecord>())
 }
 
 /// Get agent by ID for a user
