@@ -754,6 +754,63 @@ fn test_container_auth_token_credits_reconcile() {
 }
 
 #[test]
+fn test_container_policy_selects_allowed_provider() {
+    let mut router = ContainerRouter::new();
+    router.register(Arc::new(TestContainerProvider::with_id("local")));
+    router.register(Arc::new(TestContainerProvider::with_id("remote")));
+
+    let mut policy = ContainerPolicy::default();
+    policy.allowed_providers = vec!["remote".to_string()];
+
+    let budget = BudgetPolicy {
+        per_tick_usd: 20,
+        per_day_usd: 20,
+        approval_threshold_usd: 0,
+        approvers: Vec::new(),
+    };
+    let journal = Arc::new(MemoryJournal::new());
+    let storage = Arc::new(InMemoryStorage::new());
+    let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
+    let auth = Arc::new(OpenAgentsAuth::new(
+        AgentId::from("agent-containers-select"),
+        storage.clone(),
+        signer,
+        None,
+    ));
+    let containers = ContainerFs::with_auth(
+        AgentId::from("agent-containers-select"),
+        router,
+        policy,
+        budget,
+        journal,
+        auth,
+    );
+
+    let request = ContainerRequest {
+        kind: ContainerKind::Ephemeral,
+        image: Some("test-image".to_string()),
+        repo: None,
+        commands: vec!["echo ok".to_string()],
+        workdir: None,
+        env: HashMap::new(),
+        limits: crate::containers::ResourceLimits::basic(),
+        max_cost_usd: Some(5),
+        idempotency_key: None,
+        timeout_ms: None,
+    };
+
+    let response = submit_container(&containers, &request);
+    let session_id = response["session_id"].as_str().expect("session_id");
+    let result_bytes = read_handle(
+        containers
+            .open(&format!("sessions/{}/result", session_id), OpenFlags::read())
+            .unwrap(),
+    );
+    let result: ContainerResponse = serde_json::from_slice(&result_bytes).expect("result");
+    assert_eq!(result.provider_id, "remote");
+}
+
+#[test]
 fn test_hud_settings_and_redaction() {
     let storage = Arc::new(InMemoryStorage::new());
     let logs = Arc::new(LogsFs::new());
