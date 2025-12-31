@@ -51,6 +51,45 @@ struct HudContext {
     username: String,
     repo: String,
     is_owner: bool,
+    // Session info for WebSocket connection
+    session_id: Option<String>,
+    ws_url: Option<String>,
+    status: String, // "idle", "starting", "running", "completed", "failed"
+}
+
+/// Task event types from WebSocket streaming
+#[derive(Clone, Debug)]
+enum TaskEvent {
+    Status { status: String },
+    Chunk { text: String },
+    ToolStart { tool_name: String, tool_id: String },
+    ToolDone { tool_id: String, output: String, is_error: bool },
+    ToolProgress { tool_id: String, elapsed_secs: f32 },
+    Usage { input_tokens: u64, output_tokens: u64, total_cost_usd: f64 },
+    Done { summary: String },
+    Error { error: String },
+}
+
+/// Tool call state for rendering
+#[derive(Clone, Debug)]
+struct ToolCallState {
+    tool_name: String,
+    tool_id: String,
+    output: Option<String>,
+    is_error: bool,
+    elapsed_secs: f32,
+    done: bool,
+}
+
+/// Thread state for streaming content
+#[derive(Clone, Default)]
+struct ThreadState {
+    status: String,
+    text_chunks: Vec<String>,
+    tool_calls: Vec<ToolCallState>,
+    usage: Option<(u64, u64, f64)>, // (input, output, cost)
+    done: bool,
+    error: Option<String>,
 }
 
 /// Session info for sidebar
@@ -822,6 +861,14 @@ struct AppState {
     selected_model: String,
     sessions: Vec<SessionInfo>,
     wallet: WalletUi,
+
+    // Thread state for streaming events
+    thread: ThreadState,
+    // Start form
+    prompt_input: TextInput,
+    start_button: Button,
+    start_button_bounds: Bounds,
+    prompt_input_bounds: Bounds,
 }
 
 impl Default for AppState {
@@ -852,6 +899,12 @@ impl Default for AppState {
                 SessionInfo { id: "ghi789".into(), timestamp: "Dec 28 16:45".into(), model: "sonnet".into() },
             ],
             wallet: WalletUi::new(),
+            // Thread state
+            thread: ThreadState::default(),
+            prompt_input: TextInput::new().placeholder("What would you like to do?"),
+            start_button: Button::new("Start Autopilot").variant(ButtonVariant::Primary).padding(16.0, 8.0),
+            start_button_bounds: Bounds::ZERO,
+            prompt_input_bounds: Bounds::ZERO,
         }
     }
 }
@@ -875,12 +928,264 @@ fn get_hud_context() -> Option<HudContext> {
         .ok()
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let session_id = js_sys::Reflect::get(&context, &"session_id".into())
+        .ok()
+        .and_then(|v| js_optional_string(&v));
+    let ws_url = js_sys::Reflect::get(&context, &"ws_url".into())
+        .ok()
+        .and_then(|v| js_optional_string(&v));
+    let status = js_sys::Reflect::get(&context, &"status".into())
+        .ok()
+        .and_then(|v| v.as_string())
+        .unwrap_or_else(|| "idle".to_string());
 
     Some(HudContext {
         username,
         repo,
         is_owner,
+        session_id,
+        ws_url,
+        status,
     })
+}
+
+/// Parse a WebSocket message into a TaskEvent
+fn parse_task_event(data: &str) -> Option<TaskEvent> {
+    let obj: serde_json::Value = serde_json::from_str(data).ok()?;
+    let event_type = obj.get("type")?.as_str()?;
+
+    match event_type {
+        "status" => Some(TaskEvent::Status {
+            status: obj.get("status")?.as_str()?.to_string(),
+        }),
+        "chunk" => Some(TaskEvent::Chunk {
+            text: obj.get("text")?.as_str()?.to_string(),
+        }),
+        "tool_start" => Some(TaskEvent::ToolStart {
+            tool_name: obj.get("tool_name")?.as_str()?.to_string(),
+            tool_id: obj.get("tool_id")?.as_str()?.to_string(),
+        }),
+        "tool_done" => Some(TaskEvent::ToolDone {
+            tool_id: obj.get("tool_id")?.as_str()?.to_string(),
+            output: obj.get("output").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            is_error: obj.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false),
+        }),
+        "tool_progress" => Some(TaskEvent::ToolProgress {
+            tool_id: obj.get("tool_id")?.as_str()?.to_string(),
+            elapsed_secs: obj.get("elapsed_secs").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+        }),
+        "usage" => Some(TaskEvent::Usage {
+            input_tokens: obj.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+            output_tokens: obj.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+            total_cost_usd: obj.get("total_cost_usd").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        }),
+        "done" => Some(TaskEvent::Done {
+            summary: obj.get("summary").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        }),
+        "error" => Some(TaskEvent::Error {
+            error: obj.get("error")?.as_str()?.to_string(),
+        }),
+        _ => None,
+    }
+}
+
+/// Apply a task event to the thread state
+fn apply_task_event(thread: &mut ThreadState, event: TaskEvent) {
+    match event {
+        TaskEvent::Status { status } => {
+            thread.status = status;
+        }
+        TaskEvent::Chunk { text } => {
+            thread.text_chunks.push(text);
+        }
+        TaskEvent::ToolStart { tool_name, tool_id } => {
+            thread.tool_calls.push(ToolCallState {
+                tool_name,
+                tool_id,
+                output: None,
+                is_error: false,
+                elapsed_secs: 0.0,
+                done: false,
+            });
+        }
+        TaskEvent::ToolDone { tool_id, output, is_error } => {
+            if let Some(tool) = thread.tool_calls.iter_mut().find(|t| t.tool_id == tool_id) {
+                tool.output = Some(output);
+                tool.is_error = is_error;
+                tool.done = true;
+            }
+        }
+        TaskEvent::ToolProgress { tool_id, elapsed_secs } => {
+            if let Some(tool) = thread.tool_calls.iter_mut().find(|t| t.tool_id == tool_id) {
+                tool.elapsed_secs = elapsed_secs;
+            }
+        }
+        TaskEvent::Usage { input_tokens, output_tokens, total_cost_usd } => {
+            thread.usage = Some((input_tokens, output_tokens, total_cost_usd));
+        }
+        TaskEvent::Done { summary: _ } => {
+            thread.done = true;
+            thread.status = "completed".to_string();
+        }
+        TaskEvent::Error { error } => {
+            thread.error = Some(error);
+            thread.status = "failed".to_string();
+        }
+    }
+}
+
+/// Connect to WebSocket for streaming events
+fn connect_websocket(state: Rc<RefCell<AppState>>, ws_url: &str) {
+    let window = match web_sys::window() {
+        Some(w) => w,
+        None => return,
+    };
+
+    // Build full WebSocket URL
+    let protocol = if window.location().protocol().unwrap_or_default() == "https:" {
+        "wss:"
+    } else {
+        "ws:"
+    };
+    let host = window.location().host().unwrap_or_default();
+    let full_url = format!("{}//{}{}", protocol, host, ws_url);
+
+    let ws = match web_sys::WebSocket::new(&full_url) {
+        Ok(ws) => ws,
+        Err(e) => {
+            web_sys::console::error_1(&format!("WebSocket creation failed: {:?}", e).into());
+            return;
+        }
+    };
+
+    // Handle incoming messages
+    let state_clone = state.clone();
+    let onmessage = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MessageEvent| {
+        if let Some(data) = event.data().as_string() {
+            if let Some(task_event) = parse_task_event(&data) {
+                let mut state = state_clone.borrow_mut();
+                apply_task_event(&mut state.thread, task_event);
+            }
+        }
+    });
+    ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
+    onmessage.forget();
+
+    // Handle open
+    let state_clone = state.clone();
+    let onopen = Closure::<dyn FnMut(_)>::new(move |_: web_sys::Event| {
+        let mut state = state_clone.borrow_mut();
+        state.thread.status = "connected".to_string();
+        web_sys::console::log_1(&"WebSocket connected".into());
+    });
+    ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
+    onopen.forget();
+
+    // Handle errors
+    let onerror = Closure::<dyn FnMut(_)>::new(move |e: web_sys::ErrorEvent| {
+        web_sys::console::error_1(&format!("WebSocket error: {:?}", e.message()).into());
+    });
+    ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+    onerror.forget();
+
+    // Handle close
+    let state_clone = state.clone();
+    let onclose = Closure::<dyn FnMut(_)>::new(move |_: web_sys::CloseEvent| {
+        let mut state = state_clone.borrow_mut();
+        if !state.thread.done && state.thread.error.is_none() {
+            state.thread.status = "disconnected".to_string();
+        }
+        web_sys::console::log_1(&"WebSocket closed".into());
+    });
+    ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
+    onclose.forget();
+}
+
+/// Start autopilot session via POST /api/hud/start
+async fn start_autopilot(state: Rc<RefCell<AppState>>, repo: String, prompt: String) {
+    // Set starting status
+    {
+        let mut s = state.borrow_mut();
+        s.thread.status = "starting".to_string();
+        s.thread.text_chunks.clear();
+        s.thread.tool_calls.clear();
+        s.thread.usage = None;
+        s.thread.done = false;
+        s.thread.error = None;
+    }
+
+    let window = match web_sys::window() {
+        Some(w) => w,
+        None => return,
+    };
+
+    // Build request body
+    let body = serde_json::json!({
+        "repo": repo,
+        "prompt": prompt,
+    });
+
+    let opts = web_sys::RequestInit::new();
+    opts.set_method("POST");
+    opts.set_body(&JsValue::from_str(&body.to_string()));
+
+    let headers = match web_sys::Headers::new() {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+    let _ = headers.set("Content-Type", "application/json");
+    opts.set_headers(&headers);
+
+    let resp = match JsFuture::from(window.fetch_with_str_and_init("/api/hud/start", &opts)).await {
+        Ok(r) => r,
+        Err(e) => {
+            let mut s = state.borrow_mut();
+            s.thread.status = "failed".to_string();
+            s.thread.error = Some(format!("Failed to start: {:?}", e));
+            return;
+        }
+    };
+
+    let resp: web_sys::Response = match resp.dyn_into() {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+
+    if !resp.ok() {
+        let mut s = state.borrow_mut();
+        s.thread.status = "failed".to_string();
+        s.thread.error = Some(format!("Start failed ({})", resp.status()));
+        return;
+    }
+
+    let json = match resp.json() {
+        Ok(p) => match JsFuture::from(p).await {
+            Ok(j) => j,
+            Err(_) => return,
+        },
+        Err(_) => return,
+    };
+
+    // Parse response
+    let obj = js_sys::Object::from(json);
+    let ws_url = js_sys::Reflect::get(&obj, &"ws_url".into())
+        .ok()
+        .and_then(|v| v.as_string());
+
+    if let Some(url) = ws_url {
+        // Update HUD context with new session
+        {
+            let mut s = state.borrow_mut();
+            if let Some(ctx) = s.hud_context.as_mut() {
+                ctx.ws_url = Some(url.clone());
+                ctx.status = "running".to_string();
+            }
+            s.thread.status = "running".to_string();
+        }
+
+        // Connect WebSocket
+        connect_websocket(state, &url);
+    }
 }
 
 /// Fetch current user from /api/auth/me
@@ -1607,9 +1912,36 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         username: owner,
                         repo: repo_name,
                         is_owner: true,
+                        session_id: None,
+                        ws_url: None,
+                        status: "idle".to_string(),
                     });
                     state.view = AppView::RepoView;
                     return;
+                }
+            }
+
+            // Check start button click (in RepoView)
+            if state.view == AppView::RepoView && state.start_button_bounds.contains(click_pos) {
+                // Get repo and prompt
+                if let Some(ctx) = state.hud_context.as_ref() {
+                    let repo = format!("{}/{}", ctx.username, ctx.repo);
+                    let prompt = state.prompt_input.get_value().to_string();
+
+                    if !prompt.is_empty() {
+                        // Clear prompt and start
+                        state.prompt_input.set_value("");
+
+                        // Drop the borrow before spawning async
+                        drop(state);
+
+                        // Spawn the start task
+                        let state_for_start = state_clone.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            start_autopilot(state_for_start, repo, prompt).await;
+                        });
+                        return;
+                    }
                 }
             }
 
@@ -1636,7 +1968,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         closure.forget();
     }
 
-    // Mouse down events for wallet interactions
+    // Mouse down events for wallet and prompt input
     {
         let state_clone = state.clone();
         let canvas = platform.borrow().canvas().clone();
@@ -1644,7 +1976,19 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let x = event.offset_x() as f32;
             let y = event.offset_y() as f32;
             let button = mouse_button_from_event(&event);
-            dispatch_wallet_event(&state_clone, InputEvent::MouseDown { button, x, y });
+            let input_event = InputEvent::MouseDown { button, x, y };
+
+            // Handle prompt input
+            {
+                let mut state = state_clone.borrow_mut();
+                if state.view == AppView::RepoView {
+                    let mut event_ctx = EventContext::new();
+                    let bounds = state.prompt_input_bounds;
+                    state.prompt_input.event(&input_event, bounds, &mut event_ctx);
+                }
+            }
+
+            dispatch_wallet_event(&state_clone, input_event);
         });
         canvas.add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref())?;
         closure.forget();
@@ -1697,7 +2041,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         closure.forget();
     }
 
-    // Keyboard events for dock toggles
+    // Keyboard events for dock toggles and prompt input
     {
         let state_clone = state.clone();
         let window = web_sys::window().unwrap();
@@ -1706,20 +2050,40 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
 
             if let Some(key) = key_from_event(&event) {
                 let modifiers = modifiers_from_event(&event);
-                handled = dispatch_wallet_event(
-                    &state_clone,
-                    InputEvent::KeyDown { key, modifiers },
-                );
+                let input_event = InputEvent::KeyDown { key, modifiers };
+
+                // Handle prompt input
+                {
+                    let mut state = state_clone.borrow_mut();
+                    if state.view == AppView::RepoView && state.prompt_input.is_focused() {
+                        let mut event_ctx = EventContext::new();
+                        let bounds = state.prompt_input_bounds;
+                        let result = state.prompt_input.event(&input_event, bounds, &mut event_ctx);
+                        if matches!(result, EventResult::Handled) {
+                            handled = EventResult::Handled;
+                        }
+                    }
+                }
+
+                if matches!(handled, EventResult::Ignored) {
+                    handled = dispatch_wallet_event(
+                        &state_clone,
+                        input_event,
+                    );
+                }
             }
 
             let meta = event.meta_key() || event.ctrl_key();
             let key = event.key();
-            let wallet_focused = {
+
+            let (wallet_focused, prompt_focused) = {
                 let state = state_clone.borrow();
-                state.view == AppView::RepoView && state.right_dock_open && state.wallet.has_focus()
+                let wallet = state.view == AppView::RepoView && state.right_dock_open && state.wallet.has_focus();
+                let prompt = state.view == AppView::RepoView && state.prompt_input.is_focused();
+                (wallet, prompt)
             };
 
-            if meta && !wallet_focused && state_clone.borrow().view == AppView::RepoView {
+            if meta && !wallet_focused && !prompt_focused && state_clone.borrow().view == AppView::RepoView {
                 let mut state = state_clone.borrow_mut();
                 match key.as_str() {
                     "[" => {
@@ -2089,7 +2453,7 @@ fn build_repo_view(
     }
 
     // Draw center placeholder
-    draw_center_pane(scene, text_system, state, center_x, 0.0, center_w, content_h);
+    draw_center_pane(scene, text_system, state, center_x, 0.0, center_w, content_h, scale_factor);
 
     if state.right_dock_open {
         draw_right_sidebar(
@@ -2279,11 +2643,12 @@ fn draw_right_sidebar(
 fn draw_center_pane(
     scene: &mut Scene,
     text_system: &mut TextSystem,
-    state: &AppState,
+    state: &mut AppState,
     x: f32,
     y: f32,
     w: f32,
     h: f32,
+    scale_factor: f32,
 ) {
     // Center pane background (slightly different from sidebars)
     scene.draw_quad(
@@ -2291,8 +2656,10 @@ fn draw_center_pane(
             .with_background(theme::bg::APP),
     );
 
-    let center_x = x + w / 2.0;
-    let center_y = y + h / 2.0;
+    let padding = 24.0;
+    let mut cy = y + padding;
+    let content_x = x + padding;
+    let content_w = w - padding * 2.0;
 
     // Get repo info for display
     let (owner, repo) = state.hud_context.as_ref()
@@ -2303,20 +2670,191 @@ fn draw_center_pane(
     let title = format!("{}/{}", owner, repo);
     let title_run = text_system.layout(
         &title,
-        Point::new(center_x - title.len() as f32 * 7.0, center_y - 30.0),
-        24.0,
+        Point::new(content_x, cy),
+        20.0,
         theme::text::PRIMARY,
     );
     scene.draw_text(title_run);
+    cy += 32.0;
 
-    let hint = "(ThreadView will go here)";
-    let hint_run = text_system.layout(
-        hint,
-        Point::new(center_x - hint.len() as f32 * 4.5, center_y + 20.0),
-        10.0,
-        theme::text::MUTED,
+    // Status indicator
+    let (status_text, status_color) = match state.thread.status.as_str() {
+        "idle" => ("Ready to start", theme::text::MUTED),
+        "starting" => ("Starting...", theme::status::WARNING),
+        "connected" | "running" => ("Running", theme::status::SUCCESS),
+        "completed" => ("Completed", theme::status::SUCCESS),
+        "failed" => ("Failed", theme::status::ERROR),
+        "disconnected" => ("Disconnected", theme::status::WARNING),
+        _ => ("Ready", theme::text::MUTED),
+    };
+    let status_run = text_system.layout(status_text, Point::new(content_x, cy), 11.0, status_color);
+    scene.draw_text(status_run);
+    cy += 20.0;
+
+    // Show usage if available
+    if let Some((input, output, cost)) = state.thread.usage {
+        let usage_text = format!("{} in / {} out, ${:.4}", input, output, cost);
+        let usage_run = text_system.layout(&usage_text, Point::new(content_x + 120.0, cy - 20.0), 10.0, theme::text::MUTED);
+        scene.draw_text(usage_run);
+    }
+
+    // Divider
+    scene.draw_quad(
+        Quad::new(Bounds::new(content_x, cy, content_w, 1.0))
+            .with_background(theme::border::DEFAULT),
     );
-    scene.draw_text(hint_run);
+    cy += 16.0;
+
+    // Check if we should show start form or thread content
+    let is_idle = state.thread.status == "idle" || state.thread.status.is_empty();
+    let has_content = !state.thread.text_chunks.is_empty() || !state.thread.tool_calls.is_empty();
+
+    if is_idle && !has_content {
+        // Show start form
+        draw_start_form(scene, text_system, state, content_x, cy, content_w, h - cy - padding, scale_factor);
+    } else {
+        // Show thread content
+        draw_thread_content(scene, text_system, state, content_x, cy, content_w, h - cy - padding);
+    }
+}
+
+fn draw_start_form(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    state: &mut AppState,
+    x: f32,
+    y: f32,
+    w: f32,
+    _h: f32,
+    scale_factor: f32,
+) {
+    let mut cy = y;
+
+    // Label
+    let label = text_system.layout(
+        "What would you like Autopilot to do?",
+        Point::new(x, cy),
+        14.0,
+        theme::text::PRIMARY,
+    );
+    scene.draw_text(label);
+    cy += 28.0;
+
+    // Prompt input
+    let input_h = 80.0;
+    let input_bounds = Bounds::new(x, cy, w, input_h);
+    state.prompt_input_bounds = input_bounds;
+
+    // Draw input background
+    scene.draw_quad(
+        Quad::new(input_bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+
+    // Draw the actual text input
+    let mut cx = PaintContext::new(scene, text_system, scale_factor);
+    state.prompt_input.paint(input_bounds, &mut cx);
+    cy += input_h + 16.0;
+
+    // Start button
+    let button_w = 160.0;
+    let button_h = 36.0;
+    let button_bounds = Bounds::new(x, cy, button_w, button_h);
+    state.start_button_bounds = button_bounds;
+
+    let mut cx = PaintContext::new(scene, text_system, scale_factor);
+    state.start_button.paint(button_bounds, &mut cx);
+}
+
+fn draw_thread_content(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    state: &AppState,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    let mut cy = y;
+    let line_height = 14.0;
+    let max_y = y + h - 20.0;
+
+    // Combine all text chunks
+    let full_text: String = state.thread.text_chunks.join("");
+
+    // Wrap text and display
+    let chars_per_line = (w / 7.0).floor() as usize;
+    let lines: Vec<&str> = full_text.lines().collect();
+
+    for line in lines {
+        if cy > max_y {
+            // Show "more..." indicator
+            let more = text_system.layout("...", Point::new(x, cy), 11.0, theme::text::MUTED);
+            scene.draw_text(more);
+            break;
+        }
+
+        // Wrap long lines
+        if line.len() > chars_per_line && chars_per_line > 0 {
+            for chunk in line.as_bytes().chunks(chars_per_line) {
+                if cy > max_y { break; }
+                if let Ok(chunk_str) = std::str::from_utf8(chunk) {
+                    let text_run = text_system.layout(chunk_str, Point::new(x, cy), 11.0, theme::text::PRIMARY);
+                    scene.draw_text(text_run);
+                    cy += line_height;
+                }
+            }
+        } else if !line.is_empty() {
+            let text_run = text_system.layout(line, Point::new(x, cy), 11.0, theme::text::PRIMARY);
+            scene.draw_text(text_run);
+            cy += line_height;
+        } else {
+            cy += line_height * 0.5; // Empty line
+        }
+    }
+
+    // Draw tool calls
+    if !state.thread.tool_calls.is_empty() && cy < max_y {
+        cy += 12.0;
+        let tools_label = text_system.layout("Tool Calls:", Point::new(x, cy), 10.0, theme::text::MUTED);
+        scene.draw_text(tools_label);
+        cy += 16.0;
+
+        for tool in &state.thread.tool_calls {
+            if cy > max_y { break; }
+
+            let status_icon = if tool.done {
+                if tool.is_error { "x" } else { "+" }
+            } else {
+                "o"
+            };
+            let tool_color = if tool.is_error {
+                theme::status::ERROR
+            } else if tool.done {
+                theme::status::SUCCESS
+            } else {
+                theme::status::WARNING
+            };
+
+            let tool_text = format!("{} {} ({:.1}s)", status_icon, tool.tool_name, tool.elapsed_secs);
+            let tool_run = text_system.layout(&tool_text, Point::new(x + 8.0, cy), 10.0, tool_color);
+            scene.draw_text(tool_run);
+            cy += 14.0;
+        }
+    }
+
+    // Show error if any
+    if let Some(ref error) = state.thread.error {
+        let error_y = (y + h - 40.0).max(cy + 8.0);
+        scene.draw_quad(
+            Quad::new(Bounds::new(x, error_y, w, 32.0))
+                .with_background(theme::status::ERROR.with_alpha(0.15))
+                .with_border(theme::status::ERROR, 1.0),
+        );
+        let error_run = text_system.layout(error, Point::new(x + 8.0, error_y + 8.0), 10.0, theme::status::ERROR);
+        scene.draw_text(error_run);
+    }
 }
 
 fn draw_status_bar(
