@@ -60,9 +60,14 @@ impl ThinkingBlock {
         if self.expanded {
             &self.content
         } else {
-            let lines: Vec<&str> = self.content.lines().take(self.max_collapsed_lines).collect();
+            let lines: Vec<&str> = self
+                .content
+                .lines()
+                .take(self.max_collapsed_lines)
+                .collect();
             if lines.len() < self.content.lines().count() {
-                return &self.content[..self.content
+                return &self.content[..self
+                    .content
                     .lines()
                     .take(self.max_collapsed_lines)
                     .map(|l| l.len() + 1)
@@ -164,7 +169,8 @@ impl Component for ThinkingBlock {
             self.max_collapsed_lines.min(self.content.lines().count()) + 1
         };
 
-        let height = padding * 2.0 + toggle_height + theme::spacing::XS + visible_lines as f32 * line_height;
+        let height =
+            padding * 2.0 + toggle_height + theme::spacing::XS + visible_lines as f32 * line_height;
         (None, Some(height))
     }
 }

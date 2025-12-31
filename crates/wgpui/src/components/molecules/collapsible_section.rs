@@ -166,7 +166,10 @@ impl Component for CollapsibleSection {
         };
         let arrow_run = cx.text.layout(
             arrow,
-            Point::new(bounds.origin.x + padding, bounds.origin.y + header_height * 0.3),
+            Point::new(
+                bounds.origin.x + padding,
+                bounds.origin.y + header_height * 0.3,
+            ),
             self.font_size,
             arrow_color,
         );

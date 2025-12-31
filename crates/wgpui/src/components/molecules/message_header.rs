@@ -104,17 +104,19 @@ impl Component for MessageHeader {
         if let Some(ts) = &self.timestamp {
             let font_size = theme::font_size::XS;
             let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
-            let text_run = cx.text.layout(
-                ts,
-                Point::new(x, text_y),
-                font_size,
-                theme::text::MUTED,
-            );
+            let text_run = cx
+                .text
+                .layout(ts, Point::new(x, text_y), font_size, theme::text::MUTED);
             cx.scene.draw_text(text_run);
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

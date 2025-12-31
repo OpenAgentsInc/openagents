@@ -286,7 +286,10 @@ impl Component for ReceiveFlow {
 
                 let btc_label = cx.text.layout(
                     "Bitcoin",
-                    Point::new(bitcoin_bounds.origin.x + 12.0, bitcoin_bounds.origin.y + 12.0),
+                    Point::new(
+                        bitcoin_bounds.origin.x + 12.0,
+                        bitcoin_bounds.origin.y + 12.0,
+                    ),
                     theme::font_size::LG,
                     ReceiveType::Bitcoin.color(),
                 );
@@ -294,7 +297,10 @@ impl Component for ReceiveFlow {
 
                 let btc_desc = cx.text.layout(
                     "On-chain transaction",
-                    Point::new(bitcoin_bounds.origin.x + 12.0, bitcoin_bounds.origin.y + 40.0),
+                    Point::new(
+                        bitcoin_bounds.origin.x + 12.0,
+                        bitcoin_bounds.origin.y + 40.0,
+                    ),
                     theme::font_size::XS,
                     theme::text::MUTED,
                 );
@@ -302,7 +308,10 @@ impl Component for ReceiveFlow {
 
                 let btc_time = cx.text.layout(
                     "~10 min confirmation",
-                    Point::new(bitcoin_bounds.origin.x + 12.0, bitcoin_bounds.origin.y + 56.0),
+                    Point::new(
+                        bitcoin_bounds.origin.x + 12.0,
+                        bitcoin_bounds.origin.y + 56.0,
+                    ),
                     theme::font_size::XS,
                     theme::text::DISABLED,
                 );
@@ -330,7 +339,10 @@ impl Component for ReceiveFlow {
 
                 let ln_label = cx.text.layout(
                     "Lightning",
-                    Point::new(lightning_bounds.origin.x + 12.0, lightning_bounds.origin.y + 12.0),
+                    Point::new(
+                        lightning_bounds.origin.x + 12.0,
+                        lightning_bounds.origin.y + 12.0,
+                    ),
                     theme::font_size::LG,
                     ReceiveType::Lightning.color(),
                 );
@@ -338,7 +350,10 @@ impl Component for ReceiveFlow {
 
                 let ln_desc = cx.text.layout(
                     "Instant payment",
-                    Point::new(lightning_bounds.origin.x + 12.0, lightning_bounds.origin.y + 40.0),
+                    Point::new(
+                        lightning_bounds.origin.x + 12.0,
+                        lightning_bounds.origin.y + 40.0,
+                    ),
                     theme::font_size::XS,
                     theme::text::MUTED,
                 );
@@ -346,7 +361,10 @@ impl Component for ReceiveFlow {
 
                 let ln_time = cx.text.layout(
                     "~1 second confirmation",
-                    Point::new(lightning_bounds.origin.x + 12.0, lightning_bounds.origin.y + 56.0),
+                    Point::new(
+                        lightning_bounds.origin.x + 12.0,
+                        lightning_bounds.origin.y + 56.0,
+                    ),
                     theme::font_size::XS,
                     theme::text::DISABLED,
                 );

@@ -2,10 +2,10 @@
 //!
 //! Shows agent name, type, status, and capabilities.
 
+use crate::components::atoms::{AgentStatus, AgentType};
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, InputEvent, MouseButton, Point, Quad, theme};
-use crate::components::atoms::{AgentStatus, AgentType};
 
 /// Agent profile information
 #[derive(Debug, Clone)]
@@ -69,7 +69,7 @@ impl AgentProfileInfo {
     fn short_npub(&self) -> Option<String> {
         self.npub.as_ref().map(|n| {
             if n.len() > 20 {
-                format!("{}...{}", &n[..12], &n[n.len()-8..])
+                format!("{}...{}", &n[..12], &n[n.len() - 8..])
             } else {
                 n.clone()
             }
@@ -149,9 +149,8 @@ impl Component for AgentProfileCard {
 
         // Type indicator stripe
         let stripe_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, 4.0, bounds.size.height);
-        cx.scene.draw_quad(
-            Quad::new(stripe_bounds).with_background(self.profile.agent_type.color()),
-        );
+        cx.scene
+            .draw_quad(Quad::new(stripe_bounds).with_background(self.profile.agent_type.color()));
 
         let mut y = bounds.origin.y + padding;
 

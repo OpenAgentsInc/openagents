@@ -13,12 +13,10 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use wgpui::{
-    Bounds, Component, PaintContext, Point, Quad, Scene, Size, TextSystem, theme,
-};
 use wgpui::components::atoms::{ToolStatus, ToolType};
 use wgpui::components::organisms::{AssistantMessage, ToolCallCard, UserMessage};
 use wgpui::renderer::Renderer;
+use wgpui::{Bounds, Component, PaintContext, Point, Quad, Scene, Size, TextSystem, theme};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -72,7 +70,9 @@ fn generate_acp_scenario() -> VecDeque<AcpEvent> {
         "I'll ", "read ", "the ", "main.rs ", "file ", "for ", "you.\n\n",
     ];
     for token in response_tokens {
-        events.push_back(AcpEvent::TextDelta { text: token.to_string() });
+        events.push_back(AcpEvent::TextDelta {
+            text: token.to_string(),
+        });
         events.push_back(AcpEvent::Wait { ms: 50 });
     }
 
@@ -88,7 +88,9 @@ fn generate_acp_scenario() -> VecDeque<AcpEvent> {
     // Tool input streaming
     let input_chars: Vec<char> = "/src/main.rs".chars().collect();
     for ch in input_chars {
-        events.push_back(AcpEvent::ToolInputDelta { text: ch.to_string() });
+        events.push_back(AcpEvent::ToolInputDelta {
+            text: ch.to_string(),
+        });
         events.push_back(AcpEvent::Wait { ms: 20 });
     }
 
@@ -106,12 +108,29 @@ fn generate_acp_scenario() -> VecDeque<AcpEvent> {
     events.push_back(AcpEvent::ContentBlockStart);
 
     let summary_tokens = [
-        "The ", "file ", "contains ", "a ", "simple ", "main ", "function ",
-        "that ", "prints ", "\"Hello\" ", "to ", "the ", "console. ",
-        "It's ", "a ", "minimal ", "Rust ", "program."
+        "The ",
+        "file ",
+        "contains ",
+        "a ",
+        "simple ",
+        "main ",
+        "function ",
+        "that ",
+        "prints ",
+        "\"Hello\" ",
+        "to ",
+        "the ",
+        "console. ",
+        "It's ",
+        "a ",
+        "minimal ",
+        "Rust ",
+        "program.",
     ];
     for token in summary_tokens {
-        events.push_back(AcpEvent::TextDelta { text: token.to_string() });
+        events.push_back(AcpEvent::TextDelta {
+            text: token.to_string(),
+        });
         events.push_back(AcpEvent::Wait { ms: 40 });
     }
 
@@ -150,16 +169,13 @@ impl ChatState {
     fn apply_event(&mut self, event: &AcpEvent) {
         match event {
             AcpEvent::UserMessage { text } => {
-                self.entries.push(ChatEntry::User(
-                    UserMessage::new(text).timestamp("now")
-                ));
+                self.entries
+                    .push(ChatEntry::User(UserMessage::new(text).timestamp("now")));
             }
             AcpEvent::ContentBlockStart => {
                 let idx = self.entries.len();
                 self.entries.push(ChatEntry::Assistant(
-                    AssistantMessage::new("")
-                        .streaming(true)
-                        .timestamp("now")
+                    AssistantMessage::new("").streaming(true).timestamp("now"),
                 ));
                 self.current_streaming = Some(idx);
             }
@@ -178,7 +194,7 @@ impl ChatState {
                         self.entries[idx] = ChatEntry::Assistant(
                             AssistantMessage::new(content)
                                 .streaming(false)
-                                .timestamp("now")
+                                .timestamp("now"),
                         );
                     }
                 }
@@ -187,8 +203,7 @@ impl ChatState {
             AcpEvent::ToolCallStart { name, tool_type } => {
                 let idx = self.entries.len();
                 self.entries.push(ChatEntry::Tool(
-                    ToolCallCard::new(*tool_type, name)
-                        .status(ToolStatus::Running)
+                    ToolCallCard::new(*tool_type, name).status(ToolStatus::Running),
                 ));
                 self.current_tool = Some(idx);
                 self.current_tool_input.clear();
@@ -202,7 +217,7 @@ impl ChatState {
                         self.entries[idx] = ChatEntry::Tool(
                             ToolCallCard::new(ToolType::Read, &name)
                                 .status(ToolStatus::Running)
-                                .input(&self.current_tool_input)
+                                .input(&self.current_tool_input),
                         );
                     }
                 }
@@ -211,12 +226,16 @@ impl ChatState {
                 if let Some(idx) = self.current_tool {
                     if let Some(ChatEntry::Tool(card)) = self.entries.get_mut(idx) {
                         let name = card.tool_name().to_string();
-                        let status = if *success { ToolStatus::Success } else { ToolStatus::Error };
+                        let status = if *success {
+                            ToolStatus::Success
+                        } else {
+                            ToolStatus::Error
+                        };
                         self.entries[idx] = ChatEntry::Tool(
                             ToolCallCard::new(ToolType::Read, &name)
                                 .status(status)
                                 .input(&self.current_tool_input)
-                                .output(output)
+                                .output(output),
                         );
                     }
                 }
@@ -298,30 +317,25 @@ struct DemoState {
 impl DemoState {
     fn new() -> Self {
         let assertions = vec![
-            Assertion::new(
-                "User message appears in chat",
-                |s| s.entry_count() >= 1
-            ),
-            Assertion::new(
-                "Streaming starts after user message",
-                |s| s.entry_count() >= 2 && s.is_streaming()
-            ),
-            Assertion::new(
-                "Tokens accumulate in assistant message",
-                |s| s.assistant_content(1).map(|c| c.len() > 10).unwrap_or(false)
-            ),
-            Assertion::new(
-                "Tool call appears after first response",
-                |s| s.entry_count() >= 3
-            ),
-            Assertion::new(
-                "Second assistant response streams",
-                |s| s.entry_count() >= 4 && s.assistant_content(3).map(|c| c.len() > 20).unwrap_or(false)
-            ),
-            Assertion::new(
-                "All entries present at end",
-                |s| s.entry_count() == 4
-            ),
+            Assertion::new("User message appears in chat", |s| s.entry_count() >= 1),
+            Assertion::new("Streaming starts after user message", |s| {
+                s.entry_count() >= 2 && s.is_streaming()
+            }),
+            Assertion::new("Tokens accumulate in assistant message", |s| {
+                s.assistant_content(1)
+                    .map(|c| c.len() > 10)
+                    .unwrap_or(false)
+            }),
+            Assertion::new("Tool call appears after first response", |s| {
+                s.entry_count() >= 3
+            }),
+            Assertion::new("Second assistant response streams", |s| {
+                s.entry_count() >= 4
+                    && s.assistant_content(3)
+                        .map(|c| c.len() > 20)
+                        .unwrap_or(false)
+            }),
+            Assertion::new("All entries present at end", |s| s.entry_count() == 4),
         ];
 
         Self {
@@ -375,7 +389,8 @@ impl DemoState {
         for assertion in &mut self.assertions {
             if assertion.passed.is_none() {
                 if assertion.evaluate(&self.chat) {
-                    self.assertion_results.push((assertion.description.clone(), true));
+                    self.assertion_results
+                        .push((assertion.description.clone(), true));
                 }
             }
         }
@@ -505,7 +520,9 @@ impl ApplicationHandler for App {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == winit::event::ElementState::Pressed {
-                    if let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Space) = event.physical_key {
+                    if let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Space) =
+                        event.physical_key
+                    {
                         if !state.demo.test_started {
                             state.demo.start();
                         } else if state.demo.is_complete() {
@@ -548,11 +565,9 @@ impl ApplicationHandler for App {
                             label: Some("Render Encoder"),
                         });
 
-                state.renderer.resize(
-                    &state.queue,
-                    Size::new(width, height),
-                    1.0,
-                );
+                state
+                    .renderer
+                    .resize(&state.queue, Size::new(width, height), 1.0);
 
                 if state.text_system.is_dirty() {
                     state.renderer.update_atlas(
@@ -564,7 +579,9 @@ impl ApplicationHandler for App {
                 }
 
                 let scale_factor = state.window.scale_factor() as f32;
-                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
+                state
+                    .renderer
+                    .prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));
@@ -589,10 +606,8 @@ fn build_demo(
     height: f32,
 ) {
     // Background
-    scene.draw_quad(
-        Quad::new(Bounds::new(0.0, 0.0, width, height))
-            .with_background(theme::bg::APP),
-    );
+    scene
+        .draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
     // Title
     let title = "E2E Test: Autopilot Chat Streaming";
@@ -682,12 +697,7 @@ fn build_demo(
             None => ("○", theme::text::MUTED),
         };
 
-        let status = text_system.layout(
-            icon,
-            Point::new(assert_x + 10.0, ay),
-            14.0,
-            color,
-        );
+        let status = text_system.layout(icon, Point::new(assert_x + 10.0, ay), 14.0, color);
         scene.draw_text(status);
 
         let desc = text_system.layout(

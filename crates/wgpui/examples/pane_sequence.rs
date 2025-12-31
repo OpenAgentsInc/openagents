@@ -1,11 +1,12 @@
 use std::sync::Arc;
 use std::time::Instant;
-use wgpui::{
-    Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size,
-    TextSystem, theme,
+use wgpui::components::hud::{
+    CornerConfig, DotShape, DotsGrid, DotsOrigin, DrawDirection, Frame, FrameAnimation,
 };
-use wgpui::components::hud::{CornerConfig, DotsGrid, DotsOrigin, DotShape, DrawDirection, Frame, FrameAnimation};
 use wgpui::renderer::Renderer;
+use wgpui::{
+    Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, TextSystem, theme,
+};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -247,7 +248,13 @@ impl ApplicationHandler for App {
                 state.sequence.tick();
 
                 let mut scene = Scene::new();
-                render_sequence(&mut scene, &mut state.text_system, &state.sequence, width, height);
+                render_sequence(
+                    &mut scene,
+                    &mut state.text_system,
+                    &state.sequence,
+                    width,
+                    height,
+                );
 
                 let output = state
                     .surface
@@ -257,13 +264,16 @@ impl ApplicationHandler for App {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                let mut encoder = state
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("Render Encoder"),
-                    });
+                let mut encoder =
+                    state
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Render Encoder"),
+                        });
 
-                state.renderer.resize(&state.queue, Size::new(width, height), 1.0);
+                state
+                    .renderer
+                    .resize(&state.queue, Size::new(width, height), 1.0);
 
                 if state.text_system.is_dirty() {
                     state.renderer.update_atlas(
@@ -275,7 +285,9 @@ impl ApplicationHandler for App {
                 }
 
                 let scale_factor = state.window.scale_factor() as f32;
-                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
+                state
+                    .renderer
+                    .prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));
@@ -300,11 +312,9 @@ fn render_sequence(
     height: f32,
 ) {
     let fade = seq.fade_out;
-    
-    scene.draw_quad(
-        Quad::new(Bounds::new(0.0, 0.0, width, height))
-            .with_background(theme::bg::APP),
-    );
+
+    scene
+        .draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
     let mut cx = PaintContext::new(scene, text_system, 1.0);
 
@@ -346,7 +356,7 @@ fn render_sequence(
 
         if seq.text_alpha > 0.0 {
             let text_fade = seq.text_alpha * fade;
-            
+
             let title = "OpenAgents";
             let title_run = cx.text.layout(
                 title,
@@ -367,7 +377,7 @@ fn render_sequence(
 
             let body_lines = [
                 "Build autonomous agents",
-                "Deploy on decentralized compute", 
+                "Deploy on decentralized compute",
                 "Earn Bitcoin for contributions",
             ];
 

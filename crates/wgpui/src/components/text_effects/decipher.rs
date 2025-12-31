@@ -30,7 +30,11 @@ impl TextDecipher {
     pub fn new(text: impl Into<String>) -> Self {
         let text = text.into();
         let mut animator = TextEffectAnimator::new();
-        let frame = animator.update_with_delta(AnimatorState::Entered, text.chars().count(), Duration::ZERO);
+        let frame = animator.update_with_delta(
+            AnimatorState::Entered,
+            text.chars().count(),
+            Duration::ZERO,
+        );
         let mut decipher = Self {
             id: None,
             text,
@@ -123,13 +127,17 @@ impl TextDecipher {
 
     pub fn timing(mut self, timing: TextEffectTiming) -> Self {
         self.animator.set_timing(timing);
-        self.frame = self.animator.update_with_delta(self.state, self.text_len(), Duration::ZERO);
+        self.frame = self
+            .animator
+            .update_with_delta(self.state, self.text_len(), Duration::ZERO);
         self
     }
 
     pub fn set_timing(&mut self, timing: TextEffectTiming) {
         self.animator.set_timing(timing);
-        self.frame = self.animator.update_with_delta(self.state, self.text_len(), Duration::ZERO);
+        self.frame = self
+            .animator
+            .update_with_delta(self.state, self.text_len(), Duration::ZERO);
     }
 
     pub fn easing(mut self, easing: crate::animation::Easing) -> Self {
@@ -146,7 +154,9 @@ impl TextDecipher {
     }
 
     pub fn set_state(&mut self, state: AnimatorState) {
-        self.frame = self.animator.update_with_delta(state, self.text_len(), Duration::ZERO);
+        self.frame = self
+            .animator
+            .update_with_delta(state, self.text_len(), Duration::ZERO);
         self.scramble.update(Duration::ZERO, state);
         self.state = state;
     }
@@ -169,7 +179,9 @@ impl TextDecipher {
     }
 
     pub fn update_with_delta(&mut self, state: AnimatorState, delta: Duration) -> TextEffectFrame {
-        let frame = self.animator.update_with_delta(state, self.text_len(), delta);
+        let frame = self
+            .animator
+            .update_with_delta(state, self.text_len(), delta);
         self.scramble.update(delta, state);
         self.state = state;
         self.frame = frame;
@@ -178,7 +190,9 @@ impl TextDecipher {
 
     pub fn set_text(&mut self, text: impl Into<String>) {
         self.text = text.into();
-        self.frame = self.animator.update_with_delta(self.state, self.text_len(), Duration::ZERO);
+        self.frame = self
+            .animator
+            .update_with_delta(self.state, self.text_len(), Duration::ZERO);
         self.rebuild_reveal_order();
     }
 
@@ -353,10 +367,14 @@ mod tests {
 
     #[test]
     fn test_decipher_custom_charset() {
-        let mut decipher = TextDecipher::new("A B")
-            .characters("01")
-            .seed(42)
-            .timing(TextEffectTiming::new(Duration::from_secs(1), Duration::ZERO));
+        let mut decipher =
+            TextDecipher::new("A B")
+                .characters("01")
+                .seed(42)
+                .timing(TextEffectTiming::new(
+                    Duration::from_secs(1),
+                    Duration::ZERO,
+                ));
 
         let frame = decipher.update_with_delta(AnimatorState::Entering, Duration::from_millis(400));
         let display = decipher.build_display_text(&frame);

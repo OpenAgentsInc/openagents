@@ -36,8 +36,8 @@ pub mod web {
     use crate::renderer::Renderer;
     use std::cell::RefCell;
     use std::rc::Rc;
-    use wasm_bindgen::prelude::*;
     use wasm_bindgen::JsCast;
+    use wasm_bindgen::prelude::*;
     use web_sys::HtmlCanvasElement;
 
     pub struct WebPlatform {
@@ -87,7 +87,9 @@ pub mod web {
             let surface_caps = surface.get_capabilities(&adapter);
 
             // Log available formats for debugging
-            let formats_str = surface_caps.formats.iter()
+            let formats_str = surface_caps
+                .formats
+                .iter()
                 .map(|f| format!("{:?}", f))
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -154,10 +156,19 @@ pub mod web {
             canvas: &HtmlCanvasElement,
             _physical_width: u32,
             _physical_height: u32,
-        ) -> Result<(wgpu::Device, wgpu::Queue, wgpu::Surface<'static>, wgpu::Adapter), String> {
+        ) -> Result<
+            (
+                wgpu::Device,
+                wgpu::Queue,
+                wgpu::Surface<'static>,
+                wgpu::Adapter,
+            ),
+            String,
+        > {
             // Try WebGPU first (only on reliable platforms)
             if Self::is_webgpu_reliable() {
-                if let Ok(result) = Self::try_backend(canvas, wgpu::Backends::BROWSER_WEBGPU).await {
+                if let Ok(result) = Self::try_backend(canvas, wgpu::Backends::BROWSER_WEBGPU).await
+                {
                     web_sys::console::log_1(&"Using WebGPU backend".into());
                     return Ok(result);
                 }
@@ -175,7 +186,15 @@ pub mod web {
         async fn try_backend(
             canvas: &HtmlCanvasElement,
             backends: wgpu::Backends,
-        ) -> Result<(wgpu::Device, wgpu::Queue, wgpu::Surface<'static>, wgpu::Adapter), String> {
+        ) -> Result<
+            (
+                wgpu::Device,
+                wgpu::Queue,
+                wgpu::Surface<'static>,
+                wgpu::Adapter,
+            ),
+            String,
+        > {
             let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
                 backends,
                 ..Default::default()
@@ -233,7 +252,8 @@ pub mod web {
                 self.text_system.mark_clean();
             }
 
-            self.renderer.prepare(&self.device, &self.queue, scene, self.scale_factor);
+            self.renderer
+                .prepare(&self.device, &self.queue, scene, self.scale_factor);
 
             let frame = self
                 .surface

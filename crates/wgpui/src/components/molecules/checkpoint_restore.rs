@@ -106,9 +106,8 @@ impl Component for CheckpointRestore {
             let item_bounds = Bounds::new(x, items_y, item_width, item_height);
 
             if is_hovered && !is_selected {
-                cx.scene.draw_quad(
-                    Quad::new(item_bounds).with_background(theme::bg::HOVER),
-                );
+                cx.scene
+                    .draw_quad(Quad::new(item_bounds).with_background(theme::bg::HOVER));
             }
 
             let mut badge = CheckpointBadge::new(checkpoint).active(is_selected);
@@ -211,8 +210,8 @@ mod tests {
 
     #[test]
     fn test_select() {
-        let mut restore = CheckpointRestore::new()
-            .checkpoints(vec!["a".to_string(), "b".to_string()]);
+        let mut restore =
+            CheckpointRestore::new().checkpoints(vec!["a".to_string(), "b".to_string()]);
         restore.select(1);
         assert_eq!(restore.selected_index(), Some(1));
     }

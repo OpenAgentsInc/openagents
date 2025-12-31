@@ -2,11 +2,13 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::{Arc, Mutex};
 
 use autopilot::{ClaudeModel, LogLine, LogStatus, SessionCheckpoint, StartupSection};
-use autopilot_service::{AutopilotRuntime, DaemonStatus, LogSection, RuntimeSnapshot, SessionEvent, SessionPhase};
+use autopilot_service::{
+    AutopilotRuntime, DaemonStatus, LogSection, RuntimeSnapshot, SessionEvent, SessionPhase,
+};
 use tracing::info;
 use wgpui::{
     Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext,
@@ -16,14 +18,16 @@ use wgpui::{
     components::molecules::{CollapsibleSection, SectionStatus},
     components::organisms::{ChildTool, ThreadEntry, ThreadEntryType, ToolCallCard},
     components::sections::ThreadView,
-    keymap::{Keymap, KeyContext},
+    keymap::{KeyContext, Keymap},
 };
 
 use crate::components::FullAutoToggle;
 use crate::dock::{Dock, DockPosition, Panel};
 use crate::hud::{HudBackground, StartupSequence};
 use crate::keymap::shell_keymap;
-use crate::panels::{SessionAction, SessionInfo, SessionsPanel, SessionUsage, SystemPanel, UsageLimit};
+use crate::panels::{
+    SessionAction, SessionInfo, SessionUsage, SessionsPanel, SystemPanel, UsageLimit,
+};
 use crate::rate_limits::{RateLimitFetcher, RateLimitSnapshot};
 
 /// Layout dimensions calculated from current bounds
@@ -187,7 +191,10 @@ impl AutopilotShell {
                 // Create tokio runtime for the async fetch
                 let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
                 if let Ok(snapshot) = rt.block_on(fetcher.fetch_rate_limits()) {
-                    info!("Fetched initial rate limits: {:?}", snapshot.primary.as_ref().map(|p| p.used_percent));
+                    info!(
+                        "Fetched initial rate limits: {:?}",
+                        snapshot.primary.as_ref().map(|p| p.used_percent)
+                    );
                     if let Ok(mut guard) = limits_arc.lock() {
                         *guard = Some(snapshot);
                     }
@@ -206,7 +213,11 @@ impl AutopilotShell {
             let multiplier = tier
                 .rsplit('_')
                 .next()
-                .filter(|s| s.ends_with('x') && s.len() > 1 && s[..s.len()-1].chars().all(|c| c.is_ascii_digit()))
+                .filter(|s| {
+                    s.ends_with('x')
+                        && s.len() > 1
+                        && s[..s.len() - 1].chars().all(|c| c.is_ascii_digit())
+                })
                 .unwrap_or("");
 
             // Show subscription type in UI (actual usage % comes from API responses)
@@ -332,7 +343,11 @@ impl AutopilotShell {
             let multiplier = tier
                 .rsplit('_')
                 .next()
-                .filter(|s| s.ends_with('x') && s.len() > 1 && s[..s.len()-1].chars().all(|c| c.is_ascii_digit()))
+                .filter(|s| {
+                    s.ends_with('x')
+                        && s.len() > 1
+                        && s[..s.len() - 1].chars().all(|c| c.is_ascii_digit())
+                })
                 .unwrap_or("");
 
             let sub_display = match sub {
@@ -421,7 +436,8 @@ impl AutopilotShell {
         // Use input_tokens as a rough proxy for context used in this session
         let context_used = snapshot.session_usage.input_tokens;
         let context_total = snapshot.session_usage.context_window.max(200_000);
-        self.system_panel.update_usage(model_str, context_used, context_total);
+        self.system_panel
+            .update_usage(model_str, context_used, context_total);
 
         // Update session stats from accumulated usage data
         let session = SessionUsage {
@@ -550,8 +566,8 @@ impl AutopilotShell {
                     .unwrap_or_default();
 
                 // Build new card with all children
-                let mut card = ToolCallCard::new(ToolType::Task, display_name)
-                    .status(ToolStatus::Running);
+                let mut card =
+                    ToolCallCard::new(ToolType::Task, display_name).status(ToolStatus::Running);
                 if !input_params.is_empty() {
                     card = card.input(input_params);
                 }
@@ -656,7 +672,10 @@ impl AutopilotShell {
                         if found_parent.is_none() {
                             for (_, parent_idx) in &self.active_tasks {
                                 if let Some(children) = self.task_children.get(parent_idx) {
-                                    if children.iter().any(|c| c.name == *name && c.status == ToolStatus::Running) {
+                                    if children
+                                        .iter()
+                                        .any(|c| c.name == *name && c.status == ToolStatus::Running)
+                                    {
                                         found_parent = Some(*parent_idx);
                                         break;
                                     }
@@ -678,10 +697,14 @@ impl AutopilotShell {
                                     }
                                 }
                                 // Fallback: if no exact match found, try name-only
-                                let any_updated = children.iter().any(|c| c.name == *name && c.status != ToolStatus::Running);
+                                let any_updated = children
+                                    .iter()
+                                    .any(|c| c.name == *name && c.status != ToolStatus::Running);
                                 if !any_updated {
                                     for child in children.iter_mut().rev() {
-                                        if child.name == *name && child.status == ToolStatus::Running {
+                                        if child.name == *name
+                                            && child.status == ToolStatus::Running
+                                        {
                                             child.status = status;
                                             break;
                                         }
@@ -716,13 +739,16 @@ impl AutopilotShell {
                         let entry_idx = self.thread_view.entry_count();
                         self.pending_tools.insert(tool_key.clone(), entry_idx);
                         self.active_tasks.push((tool_key.clone(), entry_idx));
-                        self.pending_tool_meta.insert(entry_idx, PendingToolMeta {
-                            tool_name: name.clone(),
-                            display_name: display_name.clone(),
-                            tool_type,
-                            params: params.clone(),
-                            elapsed_secs: None,
-                        });
+                        self.pending_tool_meta.insert(
+                            entry_idx,
+                            PendingToolMeta {
+                                tool_name: name.clone(),
+                                display_name: display_name.clone(),
+                                tool_type,
+                                params: params.clone(),
+                                elapsed_secs: None,
+                            },
+                        );
 
                         let card = ToolCallCard::new(tool_type, display_name)
                             .status(ToolStatus::Running)
@@ -732,9 +758,13 @@ impl AutopilotShell {
                     } else if !self.active_tasks.is_empty() {
                         // Non-Task tool with active parent(s) - add as nested child
                         // Find the active Task with fewest children (distribute evenly)
-                        let parent_idx = self.active_tasks.iter()
+                        let parent_idx = self
+                            .active_tasks
+                            .iter()
                             .map(|(_, idx)| *idx)
-                            .min_by_key(|idx| self.task_children.get(idx).map(|c| c.len()).unwrap_or(0))
+                            .min_by_key(|idx| {
+                                self.task_children.get(idx).map(|c| c.len()).unwrap_or(0)
+                            })
                             .unwrap(); // Safe: we checked active_tasks is not empty
 
                         let child = ChildTool {
@@ -756,13 +786,16 @@ impl AutopilotShell {
                         // No active task - add to main thread normally
                         let entry_idx = self.thread_view.entry_count();
                         self.pending_tools.insert(tool_key.clone(), entry_idx);
-                        self.pending_tool_meta.insert(entry_idx, PendingToolMeta {
-                            tool_name: name.clone(),
-                            display_name: display_name.clone(),
-                            tool_type,
-                            params: params.clone(),
-                            elapsed_secs: None,
-                        });
+                        self.pending_tool_meta.insert(
+                            entry_idx,
+                            PendingToolMeta {
+                                tool_name: name.clone(),
+                                display_name: display_name.clone(),
+                                tool_type,
+                                params: params.clone(),
+                                elapsed_secs: None,
+                            },
+                        );
 
                         let card = ToolCallCard::new(tool_type, display_name)
                             .status(ToolStatus::Running)
@@ -772,7 +805,11 @@ impl AutopilotShell {
                     }
                 }
             }
-            SessionEvent::ToolProgress { tool_name, elapsed_secs, .. } => {
+            SessionEvent::ToolProgress {
+                tool_name,
+                elapsed_secs,
+                ..
+            } => {
                 let mut updated_entries = Vec::new();
                 for (entry_idx, meta) in self.pending_tool_meta.iter_mut() {
                     if meta.tool_name == *tool_name {
@@ -786,9 +823,10 @@ impl AutopilotShell {
                         if meta.tool_type == ToolType::Task {
                             self.rebuild_task_entry(entry_idx);
                         } else if let Some(entry) = self.thread_view.entry_mut(entry_idx) {
-                            let mut card = ToolCallCard::new(meta.tool_type, meta.display_name.clone())
-                                .status(ToolStatus::Running)
-                                .input(meta.params.clone());
+                            let mut card =
+                                ToolCallCard::new(meta.tool_type, meta.display_name.clone())
+                                    .status(ToolStatus::Running)
+                                    .input(meta.params.clone());
                             if let Some(elapsed) = meta.elapsed_secs {
                                 card = card.elapsed_secs(elapsed);
                             }
@@ -877,8 +915,9 @@ impl AutopilotShell {
             }
             "shell::ToggleAllSidebars" => {
                 // Toggle all - if any open, close all; else open all
-                let any_open =
-                    self.left_dock.is_open() || self.right_dock.is_open() || self.bottom_dock.is_open();
+                let any_open = self.left_dock.is_open()
+                    || self.right_dock.is_open()
+                    || self.bottom_dock.is_open();
                 if any_open {
                     if self.left_dock.is_open() {
                         self.left_dock.toggle();
@@ -964,7 +1003,11 @@ impl AutopilotShell {
     /// Handle actions from the sessions panel
     fn handle_session_action(&mut self, action: SessionAction) {
         match action {
-            SessionAction::ResumeSession { session_id, resume_at, fork_session } => {
+            SessionAction::ResumeSession {
+                session_id,
+                resume_at,
+                fork_session,
+            } => {
                 // Load Claude Code session from ~/.claude/projects/
                 if let Some(file_path) = crate::claude_sessions::find_session_file(&session_id) {
                     let messages = crate::claude_sessions::load_session_messages(&file_path);
@@ -977,7 +1020,8 @@ impl AutopilotShell {
                     self.task_children.clear();
 
                     // Add header
-                    let header = format!("Loaded session: {}", &session_id[..8.min(session_id.len())]);
+                    let header =
+                        format!("Loaded session: {}", &session_id[..8.min(session_id.len())]);
                     self.thread_view.push_entry(
                         ThreadEntry::new(ThreadEntryType::System, Text::new(&header))
                             .copyable_text(&session_id),
@@ -1005,10 +1049,16 @@ impl AutopilotShell {
                     }
 
                     // Group child tools by parent Task ID for nesting
-                    let mut task_children_map: HashMap<String, Vec<&crate::claude_sessions::SessionMessage>> = HashMap::new();
+                    let mut task_children_map: HashMap<
+                        String,
+                        Vec<&crate::claude_sessions::SessionMessage>,
+                    > = HashMap::new();
                     for msg in &messages {
                         if let Some(parent_id) = &msg.parent_task_id {
-                            task_children_map.entry(parent_id.clone()).or_default().push(msg);
+                            task_children_map
+                                .entry(parent_id.clone())
+                                .or_default()
+                                .push(msg);
                         }
                     }
 
@@ -1031,8 +1081,7 @@ impl AutopilotShell {
                                 (None, _) => ToolStatus::Pending,
                             };
 
-                            let mut card = ToolCallCard::new(tool_type, tool_name)
-                                .status(status);
+                            let mut card = ToolCallCard::new(tool_type, tool_name).status(status);
 
                             // Add input params
                             if let Some(input) = &msg.tool_input {
@@ -1049,22 +1098,28 @@ impl AutopilotShell {
                                 if let Some(tool_id) = &msg.tool_id {
                                     if let Some(children) = task_children_map.get(tool_id) {
                                         for child_msg in children {
-                                            let child_name = child_msg.tool_name.as_deref().unwrap_or("unknown");
+                                            let child_name =
+                                                child_msg.tool_name.as_deref().unwrap_or("unknown");
                                             let child_type = tool_type_from_name(child_name);
                                             let child_status = match child_msg.is_error {
                                                 Some(true) => ToolStatus::Error,
                                                 Some(false) => ToolStatus::Success,
-                                                None => if child_msg.tool_output.is_some() {
-                                                    ToolStatus::Success
-                                                } else {
-                                                    ToolStatus::Pending
-                                                },
+                                                None => {
+                                                    if child_msg.tool_output.is_some() {
+                                                        ToolStatus::Success
+                                                    } else {
+                                                        ToolStatus::Pending
+                                                    }
+                                                }
                                             };
 
                                             card.add_child(ChildTool {
                                                 tool_type: child_type,
                                                 name: child_name.to_string(),
-                                                params: child_msg.tool_input.clone().unwrap_or_default(),
+                                                params: child_msg
+                                                    .tool_input
+                                                    .clone()
+                                                    .unwrap_or_default(),
                                                 status: child_status,
                                                 elapsed_secs: None,
                                             });
@@ -1073,9 +1128,8 @@ impl AutopilotShell {
                                 }
                             }
 
-                            self.thread_view.push_entry(
-                                ThreadEntry::new(ThreadEntryType::Tool, card),
-                            );
+                            self.thread_view
+                                .push_entry(ThreadEntry::new(ThreadEntryType::Tool, card));
                         } else {
                             // Text message
                             let entry_type = if msg.role == "user" {
@@ -1105,9 +1159,11 @@ impl AutopilotShell {
 
                     // Show ready to resume message
                     self.thread_view.push_entry(
-                        ThreadEntry::new(ThreadEntryType::System,
-                            Text::new("Session loaded. Toggle Full Auto (cmd-a) to continue."))
-                            .copyable_text("Toggle Full Auto to continue"),
+                        ThreadEntry::new(
+                            ThreadEntryType::System,
+                            Text::new("Session loaded. Toggle Full Auto (cmd-a) to continue."),
+                        )
+                        .copyable_text("Toggle Full Auto to continue"),
                     );
                     self.thread_view.push_entry(
                         ThreadEntry::new(
@@ -1204,7 +1260,10 @@ impl AutopilotShell {
             let rt = match tokio::runtime::Runtime::new() {
                 Ok(rt) => rt,
                 Err(e) => {
-                    let _ = tx.send(SdkMessageEvent::Error(format!("Failed to create runtime: {}", e)));
+                    let _ = tx.send(SdkMessageEvent::Error(format!(
+                        "Failed to create runtime: {}",
+                        e
+                    )));
                     return;
                 }
             };
@@ -1222,13 +1281,17 @@ impl AutopilotShell {
                 }
 
                 // Resume the session
-                let mut session = match claude_agent_sdk::unstable_v2_resume_session(session_id, options).await {
-                    Ok(s) => s,
-                    Err(e) => {
-                        let _ = tx.send(SdkMessageEvent::Error(format!("Failed to resume session: {}", e)));
-                        return;
-                    }
-                };
+                let mut session =
+                    match claude_agent_sdk::unstable_v2_resume_session(session_id, options).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            let _ = tx.send(SdkMessageEvent::Error(format!(
+                                "Failed to resume session: {}",
+                                e
+                            )));
+                            return;
+                        }
+                    };
 
                 let mut last_session_id: Option<String> = None;
 
@@ -1256,13 +1319,23 @@ impl AutopilotShell {
                         Ok(msg) => match msg {
                             SdkMessage::Assistant(a) => {
                                 // Extract text content from assistant message (message is serde_json::Value)
-                                if let Some(content) = a.message.get("content").and_then(|c| c.as_array()) {
+                                if let Some(content) =
+                                    a.message.get("content").and_then(|c| c.as_array())
+                                {
                                     for block in content {
-                                        if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                            let _ = tx.send(SdkMessageEvent::AssistantText(text.to_string()));
+                                        if let Some(text) =
+                                            block.get("text").and_then(|t| t.as_str())
+                                        {
+                                            let _ = tx.send(SdkMessageEvent::AssistantText(
+                                                text.to_string(),
+                                            ));
                                         }
-                                        if let Some(name) = block.get("name").and_then(|n| n.as_str()) {
-                                            let _ = tx.send(SdkMessageEvent::ToolUse { name: name.to_string() });
+                                        if let Some(name) =
+                                            block.get("name").and_then(|n| n.as_str())
+                                        {
+                                            let _ = tx.send(SdkMessageEvent::ToolUse {
+                                                name: name.to_string(),
+                                            });
                                         }
                                     }
                                 }
@@ -1294,49 +1367,50 @@ impl AutopilotShell {
         if let Some(ref rx) = self.sdk_message_rx {
             loop {
                 match rx.try_recv() {
-                    Ok(event) => {
-                        match event {
-                            SdkMessageEvent::AssistantText(text) => {
-                                self.thread_view.push_entry(
-                                    ThreadEntry::new(ThreadEntryType::Assistant, Text::new(&text))
-                                        .copyable_text(&text),
-                                );
-                            }
-                            SdkMessageEvent::ToolUse { name } => {
-                                let msg = format!("Tool: {}", name);
-                                self.thread_view.push_entry(
-                                    ThreadEntry::new(ThreadEntryType::Tool, Text::new(&msg))
-                                        .copyable_text(&msg),
-                                );
-                            }
-                            SdkMessageEvent::SessionId(session_id) => {
-                                self.resumed_session_id = Some(session_id.clone());
-                                let msg = format!("Session id: {}", session_id);
-                                self.thread_view.push_entry(
-                                    ThreadEntry::new(ThreadEntryType::System, Text::new(&msg))
-                                        .copyable_text(&session_id),
-                                );
-                            }
-                            SdkMessageEvent::Completed => {
-                                self.thread_view.push_entry(
-                                    ThreadEntry::new(ThreadEntryType::System, Text::new("Session completed."))
-                                        .copyable_text("Session completed."),
-                                );
-                                self.sdk_message_rx = None;
-                                self.full_auto_toggle.set_enabled(false);
-                                break;
-                            }
-                            SdkMessageEvent::Error(e) => {
-                                self.thread_view.push_entry(
-                                    ThreadEntry::new(ThreadEntryType::Error, Text::new(&e))
-                                        .copyable_text(&e),
-                                );
-                                self.sdk_message_rx = None;
-                                self.full_auto_toggle.set_enabled(false);
-                                break;
-                            }
+                    Ok(event) => match event {
+                        SdkMessageEvent::AssistantText(text) => {
+                            self.thread_view.push_entry(
+                                ThreadEntry::new(ThreadEntryType::Assistant, Text::new(&text))
+                                    .copyable_text(&text),
+                            );
                         }
-                    }
+                        SdkMessageEvent::ToolUse { name } => {
+                            let msg = format!("Tool: {}", name);
+                            self.thread_view.push_entry(
+                                ThreadEntry::new(ThreadEntryType::Tool, Text::new(&msg))
+                                    .copyable_text(&msg),
+                            );
+                        }
+                        SdkMessageEvent::SessionId(session_id) => {
+                            self.resumed_session_id = Some(session_id.clone());
+                            let msg = format!("Session id: {}", session_id);
+                            self.thread_view.push_entry(
+                                ThreadEntry::new(ThreadEntryType::System, Text::new(&msg))
+                                    .copyable_text(&session_id),
+                            );
+                        }
+                        SdkMessageEvent::Completed => {
+                            self.thread_view.push_entry(
+                                ThreadEntry::new(
+                                    ThreadEntryType::System,
+                                    Text::new("Session completed."),
+                                )
+                                .copyable_text("Session completed."),
+                            );
+                            self.sdk_message_rx = None;
+                            self.full_auto_toggle.set_enabled(false);
+                            break;
+                        }
+                        SdkMessageEvent::Error(e) => {
+                            self.thread_view.push_entry(
+                                ThreadEntry::new(ThreadEntryType::Error, Text::new(&e))
+                                    .copyable_text(&e),
+                            );
+                            self.sdk_message_rx = None;
+                            self.full_auto_toggle.set_enabled(false);
+                            break;
+                        }
+                    },
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => {
                         self.sdk_message_rx = None;
@@ -1480,7 +1554,10 @@ impl Component for AutopilotShell {
 
         // Handle keyboard via keymap
         if let InputEvent::KeyDown { key, modifiers } = event {
-            if let Some(action) = self.keymap.match_keystroke(key, modifiers, &self.key_context) {
+            if let Some(action) = self
+                .keymap
+                .match_keystroke(key, modifiers, &self.key_context)
+            {
                 let result = self.handle_action(action.name());
                 if result.is_handled() {
                     return result;

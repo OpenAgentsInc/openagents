@@ -28,8 +28,8 @@ impl ProviderStatus {
     pub fn color(&self) -> Hsla {
         match self {
             ProviderStatus::Online => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
-            ProviderStatus::Busy => Hsla::new(45.0, 0.7, 0.5, 1.0), // Yellow
-            ProviderStatus::Offline => Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
+            ProviderStatus::Busy => Hsla::new(45.0, 0.7, 0.5, 1.0),     // Yellow
+            ProviderStatus::Offline => Hsla::new(0.0, 0.0, 0.5, 1.0),   // Gray
             ProviderStatus::Maintenance => Hsla::new(200.0, 0.6, 0.5, 1.0), // Blue
         }
     }
@@ -299,7 +299,11 @@ impl Component for ProviderCard {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let height = if self.provider.specs.gpu.is_some() { 110.0 } else { 95.0 };
+        let height = if self.provider.specs.gpu.is_some() {
+            110.0
+        } else {
+            95.0
+        };
         (None, Some(height))
     }
 }

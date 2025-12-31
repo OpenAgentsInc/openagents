@@ -71,9 +71,8 @@ impl LineLayoutCache {
         let mut current_frame = self.current_frame.write().unwrap();
 
         // Collect keys to reuse first (to avoid borrow issues)
-        let line_keys: Vec<_> = previous_frame.used_lines
-            [range.start.lines_index..range.end.lines_index]
-            .to_vec();
+        let line_keys: Vec<_> =
+            previous_frame.used_lines[range.start.lines_index..range.end.lines_index].to_vec();
         let wrapped_keys: Vec<_> = previous_frame.used_wrapped_lines
             [range.start.wrapped_lines_index..range.end.wrapped_lines_index]
             .to_vec();
@@ -474,13 +473,15 @@ mod tests {
     fn test_wrapped_cache() {
         let cache = LineLayoutCache::new();
 
-        let layout1 = cache.layout_wrapped_line("hello world", 14.0, &[], Some(50.0), |_, _, _, _| {
-            WrappedLineLayout::default()
-        });
+        let layout1 =
+            cache.layout_wrapped_line("hello world", 14.0, &[], Some(50.0), |_, _, _, _| {
+                WrappedLineLayout::default()
+            });
 
-        let layout2 = cache.layout_wrapped_line("hello world", 14.0, &[], Some(50.0), |_, _, _, _| {
-            panic!("Should not be called - cache hit expected")
-        });
+        let layout2 =
+            cache.layout_wrapped_line("hello world", 14.0, &[], Some(50.0), |_, _, _, _| {
+                panic!("Should not be called - cache hit expected")
+            });
 
         // Same Arc
         assert!(Arc::ptr_eq(&layout1, &layout2));

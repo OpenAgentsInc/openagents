@@ -39,10 +39,10 @@ impl PaymentMethod {
 
     pub fn color(&self) -> Hsla {
         match self {
-            PaymentMethod::Lightning => Hsla::new(45.0, 1.0, 0.5, 1.0),  // Yellow/gold
-            PaymentMethod::Spark => Hsla::new(280.0, 0.8, 0.6, 1.0),     // Purple
-            PaymentMethod::OnChain => Hsla::new(35.0, 0.9, 0.55, 1.0),   // Orange (Bitcoin)
-            PaymentMethod::Token => Hsla::new(180.0, 0.7, 0.5, 1.0),     // Cyan
+            PaymentMethod::Lightning => Hsla::new(45.0, 1.0, 0.5, 1.0), // Yellow/gold
+            PaymentMethod::Spark => Hsla::new(280.0, 0.8, 0.6, 1.0),    // Purple
+            PaymentMethod::OnChain => Hsla::new(35.0, 0.9, 0.55, 1.0),  // Orange (Bitcoin)
+            PaymentMethod::Token => Hsla::new(180.0, 0.7, 0.5, 1.0),    // Cyan
             PaymentMethod::Deposit => theme::status::SUCCESS,
             PaymentMethod::Withdraw => theme::status::WARNING,
         }
@@ -122,7 +122,12 @@ impl Component for PaymentMethodIcon {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

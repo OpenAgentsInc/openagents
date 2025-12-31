@@ -136,7 +136,10 @@ impl Component for ApmLeaderboard {
         // Title
         let title_run = cx.text.layout(
             &self.title,
-            Point::new(bounds.origin.x + padding, bounds.origin.y + (header_height - theme::font_size::SM) / 2.0),
+            Point::new(
+                bounds.origin.x + padding,
+                bounds.origin.y + (header_height - theme::font_size::SM) / 2.0,
+            ),
             theme::font_size::SM,
             theme::text::PRIMARY,
         );
@@ -151,8 +154,13 @@ impl Component for ApmLeaderboard {
         let header_y = bounds.origin.y + header_height - 4.0;
 
         cx.scene.draw_quad(
-            Quad::new(Bounds::new(bounds.origin.x, header_y + 4.0, bounds.size.width, 1.0))
-                .with_background(theme::border::DEFAULT),
+            Quad::new(Bounds::new(
+                bounds.origin.x,
+                header_y + 4.0,
+                bounds.size.width,
+                1.0,
+            ))
+            .with_background(theme::border::DEFAULT),
         );
 
         // Entries
@@ -162,23 +170,33 @@ impl Component for ApmLeaderboard {
             // Highlight selected/hovered
             if self.selected_index == Some(idx) {
                 cx.scene.draw_quad(
-                    Quad::new(row)
-                        .with_background(theme::accent::PRIMARY.with_alpha(0.2)),
+                    Quad::new(row).with_background(theme::accent::PRIMARY.with_alpha(0.2)),
                 );
             } else if self.hovered_index == Some(idx) {
-                cx.scene.draw_quad(Quad::new(row).with_background(theme::bg::HOVER));
+                cx.scene
+                    .draw_quad(Quad::new(row).with_background(theme::bg::HOVER));
             }
 
             let text_y = row.origin.y + (row.size.height - theme::font_size::SM) / 2.0;
 
             // Rank
             let rank_text = format!("#{}", idx + 1);
-            let rank_run = cx.text.layout(&rank_text, Point::new(col_rank_x, text_y), theme::font_size::SM, Self::rank_color(idx));
+            let rank_run = cx.text.layout(
+                &rank_text,
+                Point::new(col_rank_x, text_y),
+                theme::font_size::SM,
+                Self::rank_color(idx),
+            );
             cx.scene.draw_text(rank_run);
 
             // APM with tier color
             let apm_text = format!("{:.0}", entry.apm);
-            let apm_run = cx.text.layout(&apm_text, Point::new(col_apm_x, text_y), theme::font_size::SM, entry.level.color());
+            let apm_run = cx.text.layout(
+                &apm_text,
+                Point::new(col_apm_x, text_y),
+                theme::font_size::SM,
+                entry.level.color(),
+            );
             cx.scene.draw_text(apm_run);
 
             // Tier badge
@@ -197,12 +215,22 @@ impl Component for ApmLeaderboard {
             } else {
                 entry.title.clone()
             };
-            let title_run = cx.text.layout(&title, Point::new(col_title_x, text_y), theme::font_size::SM, theme::text::PRIMARY);
+            let title_run = cx.text.layout(
+                &title,
+                Point::new(col_title_x, text_y),
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+            );
             cx.scene.draw_text(title_run);
 
             // Stats
             let stats = format!("{} msg / {} tools", entry.messages, entry.tool_calls);
-            let stats_run = cx.text.layout(&stats, Point::new(col_stats_x, text_y), theme::font_size::XS, theme::text::MUTED);
+            let stats_run = cx.text.layout(
+                &stats,
+                Point::new(col_stats_x, text_y),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
             cx.scene.draw_text(stats_run);
         }
 
@@ -266,7 +294,8 @@ impl Component for ApmLeaderboard {
         let header_height = 36.0;
         let row_height = 36.0;
         let min_rows = 3.0;
-        let height = header_height + (self.entries.len().max(min_rows as usize) as f32) * row_height;
+        let height =
+            header_height + (self.entries.len().max(min_rows as usize) as f32) * row_height;
         (None, Some(height))
     }
 }

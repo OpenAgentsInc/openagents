@@ -209,7 +209,12 @@ impl ScheduleConfig {
     }
 
     fn type_section_bounds(&self, bounds: &Bounds) -> Bounds {
-        Bounds::new(bounds.origin.x, bounds.origin.y + 50.0, bounds.size.width, 100.0)
+        Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y + 50.0,
+            bounds.size.width,
+            100.0,
+        )
     }
 
     fn type_button_bounds(&self, bounds: &Bounds, index: usize) -> Bounds {
@@ -225,11 +230,21 @@ impl ScheduleConfig {
     }
 
     fn heartbeat_section_bounds(&self, bounds: &Bounds) -> Bounds {
-        Bounds::new(bounds.origin.x, bounds.origin.y + 150.0, bounds.size.width, 80.0)
+        Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y + 150.0,
+            bounds.size.width,
+            80.0,
+        )
     }
 
     fn tick_section_bounds(&self, bounds: &Bounds) -> Bounds {
-        Bounds::new(bounds.origin.x, bounds.origin.y + 230.0, bounds.size.width, 80.0)
+        Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y + 230.0,
+            bounds.size.width,
+            80.0,
+        )
     }
 
     fn footer_bounds(&self, bounds: &Bounds) -> Bounds {
@@ -284,10 +299,8 @@ impl Component for ScheduleConfig {
 
         // Header
         let header = self.header_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(header)
-                .with_background(theme::bg::MUTED),
-        );
+        cx.scene
+            .draw_quad(Quad::new(header).with_background(theme::bg::MUTED));
 
         let title_run = cx.text.layout(
             "Schedule Configuration",
@@ -306,7 +319,10 @@ impl Component for ScheduleConfig {
 
         let status_run = cx.text.layout(
             status_text,
-            Point::new(bounds.origin.x + bounds.size.width - padding - 60.0, bounds.origin.y + 18.0),
+            Point::new(
+                bounds.origin.x + bounds.size.width - padding - 60.0,
+                bounds.origin.y + 18.0,
+            ),
             theme::font_size::XS,
             status_color,
         );
@@ -317,7 +333,10 @@ impl Component for ScheduleConfig {
 
         let type_label = cx.text.layout(
             "Schedule Type",
-            Point::new(type_section.origin.x + padding, type_section.origin.y + 12.0),
+            Point::new(
+                type_section.origin.x + padding,
+                type_section.origin.y + 12.0,
+            ),
             theme::font_size::SM,
             theme::text::SECONDARY,
         );
@@ -374,10 +393,8 @@ impl Component for ScheduleConfig {
 
         // Heartbeat section
         let heartbeat = self.heartbeat_section_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(heartbeat)
-                .with_background(theme::bg::APP),
-        );
+        cx.scene
+            .draw_quad(Quad::new(heartbeat).with_background(theme::bg::APP));
 
         let heartbeat_label = cx.text.layout(
             "Heartbeat Interval",
@@ -403,7 +420,10 @@ impl Component for ScheduleConfig {
         let heartbeat_total = format!("= {} seconds", self.config.heartbeat_seconds());
         let heartbeat_total_run = cx.text.layout(
             &heartbeat_total,
-            Point::new(heartbeat.origin.x + padding + 100.0, heartbeat.origin.y + 38.0),
+            Point::new(
+                heartbeat.origin.x + padding + 100.0,
+                heartbeat.origin.y + 38.0,
+            ),
             theme::font_size::XS,
             theme::text::MUTED,
         );
@@ -411,10 +431,8 @@ impl Component for ScheduleConfig {
 
         // Tick section
         let tick = self.tick_section_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(tick)
-                .with_background(theme::bg::APP),
-        );
+        cx.scene
+            .draw_quad(Quad::new(tick).with_background(theme::bg::APP));
 
         let tick_label = cx.text.layout(
             "Tick Interval",
@@ -448,10 +466,8 @@ impl Component for ScheduleConfig {
 
         // Footer with buttons
         let footer = self.footer_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(footer)
-                .with_background(theme::bg::MUTED),
-        );
+        cx.scene
+            .draw_quad(Quad::new(footer).with_background(theme::bg::MUTED));
 
         // Reset button
         let reset_btn = self.reset_button_bounds(&bounds);
@@ -598,16 +614,14 @@ mod tests {
 
     #[test]
     fn test_heartbeat_seconds() {
-        let config = ScheduleData::default()
-            .heartbeat(5, IntervalUnit::Minutes);
+        let config = ScheduleData::default().heartbeat(5, IntervalUnit::Minutes);
 
         assert_eq!(config.heartbeat_seconds(), 300);
     }
 
     #[test]
     fn test_schedule_config() {
-        let config = ScheduleData::new(ScheduleType::Cron)
-            .cron("0 * * * *");
+        let config = ScheduleData::new(ScheduleType::Cron).cron("0 * * * *");
 
         let schedule = ScheduleConfig::new(config);
         assert_eq!(schedule.config.schedule_type, ScheduleType::Cron);

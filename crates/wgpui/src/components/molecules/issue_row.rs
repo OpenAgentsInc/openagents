@@ -163,8 +163,13 @@ impl Component for IssueRow {
         let status_color = self.issue.status.color();
         let bar_w = 3.0;
         cx.scene.draw_quad(
-            Quad::new(Bounds::new(bounds.origin.x, bounds.origin.y, bar_w, bounds.size.height))
-                .with_background(status_color),
+            Quad::new(Bounds::new(
+                bounds.origin.x,
+                bounds.origin.y,
+                bar_w,
+                bounds.size.height,
+            ))
+            .with_background(status_color),
         );
 
         let content_x = bounds.origin.x + padding + bar_w;

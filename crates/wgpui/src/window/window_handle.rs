@@ -1,7 +1,4 @@
-use std::sync::{
-    Arc,
-    atomic::Ordering,
-};
+use std::sync::{Arc, atomic::Ordering};
 
 use super::invalidator::{InvalidationState, LAYOUT_BIT, PAINT_BIT, PREPAINT_BIT};
 

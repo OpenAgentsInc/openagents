@@ -156,7 +156,12 @@ impl AgentStateInspector {
     }
 
     fn tabs_bounds(&self, bounds: &Bounds) -> Bounds {
-        Bounds::new(bounds.origin.x, bounds.origin.y + 50.0, bounds.size.width, 36.0)
+        Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y + 50.0,
+            bounds.size.width,
+            36.0,
+        )
     }
 
     fn content_bounds(&self, bounds: &Bounds) -> Bounds {
@@ -177,7 +182,12 @@ impl AgentStateInspector {
             InspectorTab::Memory => 2,
             InspectorTab::Resources => 3,
         };
-        Bounds::new(tabs.origin.x + idx as f32 * tab_width, tabs.origin.y, tab_width, 36.0)
+        Bounds::new(
+            tabs.origin.x + idx as f32 * tab_width,
+            tabs.origin.y,
+            tab_width,
+            36.0,
+        )
     }
 
     fn tab_from_index(idx: usize) -> Option<InspectorTab> {
@@ -232,7 +242,10 @@ impl AgentStateInspector {
             };
             let status_run = cx.text.layout(
                 status_text,
-                Point::new(content.origin.x + content.size.width - padding - 60.0, y + 8.0),
+                Point::new(
+                    content.origin.x + content.size.width - padding - 60.0,
+                    y + 8.0,
+                ),
                 theme::font_size::XS,
                 status_color,
             );
@@ -242,17 +255,13 @@ impl AgentStateInspector {
             let bar_y = y + 32.0;
             let bar_width = content.size.width - padding * 2.0 - 80.0;
             let bar_bounds = Bounds::new(content.origin.x + padding, bar_y, bar_width, 8.0);
-            cx.scene.draw_quad(
-                Quad::new(bar_bounds)
-                    .with_background(theme::bg::MUTED),
-            );
+            cx.scene
+                .draw_quad(Quad::new(bar_bounds).with_background(theme::bg::MUTED));
 
             let fill_width = bar_width * goal.progress;
             let fill_bounds = Bounds::new(content.origin.x + padding, bar_y, fill_width, 8.0);
-            cx.scene.draw_quad(
-                Quad::new(fill_bounds)
-                    .with_background(status_color),
-            );
+            cx.scene
+                .draw_quad(Quad::new(fill_bounds).with_background(status_color));
 
             // Progress percentage
             let pct = format!("{:.0}%", goal.progress * 100.0);
@@ -313,7 +322,10 @@ impl AgentStateInspector {
             if !action.timestamp.is_empty() {
                 let ts_run = cx.text.layout(
                     &action.timestamp,
-                    Point::new(content.origin.x + content.size.width - padding - 60.0, y + 12.0),
+                    Point::new(
+                        content.origin.x + content.size.width - padding - 60.0,
+                        y + 12.0,
+                    ),
                     theme::font_size::XS,
                     theme::text::DISABLED,
                 );
@@ -382,7 +394,10 @@ impl AgentStateInspector {
         );
         cx.scene.draw_text(tokens_label);
 
-        let tokens_value = format!("{} / {}", self.resource_usage.tokens_used, self.resource_usage.tokens_limit);
+        let tokens_value = format!(
+            "{} / {}",
+            self.resource_usage.tokens_used, self.resource_usage.tokens_limit
+        );
         let tokens_run = cx.text.layout(
             &tokens_value,
             Point::new(content.origin.x + padding, y + 18.0),
@@ -395,10 +410,8 @@ impl AgentStateInspector {
         let bar_y = y + 42.0;
         let bar_width = content.size.width - padding * 2.0;
         let bar_bounds = Bounds::new(content.origin.x + padding, bar_y, bar_width, 8.0);
-        cx.scene.draw_quad(
-            Quad::new(bar_bounds)
-                .with_background(theme::bg::MUTED),
-        );
+        cx.scene
+            .draw_quad(Quad::new(bar_bounds).with_background(theme::bg::MUTED));
 
         let usage_ratio = if self.resource_usage.tokens_limit > 0 {
             self.resource_usage.tokens_used as f32 / self.resource_usage.tokens_limit as f32
@@ -412,11 +425,14 @@ impl AgentStateInspector {
         } else {
             Hsla::new(120.0, 0.6, 0.45, 1.0)
         };
-        let fill_bounds = Bounds::new(content.origin.x + padding, bar_y, bar_width * usage_ratio.min(1.0), 8.0);
-        cx.scene.draw_quad(
-            Quad::new(fill_bounds)
-                .with_background(fill_color),
+        let fill_bounds = Bounds::new(
+            content.origin.x + padding,
+            bar_y,
+            bar_width * usage_ratio.min(1.0),
+            8.0,
         );
+        cx.scene
+            .draw_quad(Quad::new(fill_bounds).with_background(fill_color));
 
         // Actions count
         let actions_y = y + 70.0;
@@ -473,10 +489,8 @@ impl Component for AgentStateInspector {
 
         // Header
         let header = self.header_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(header)
-                .with_background(theme::bg::MUTED),
-        );
+        cx.scene
+            .draw_quad(Quad::new(header).with_background(theme::bg::MUTED));
 
         // Title
         let title_run = cx.text.layout(
@@ -498,10 +512,8 @@ impl Component for AgentStateInspector {
 
         // Tabs
         let tabs = self.tabs_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(tabs)
-                .with_background(theme::bg::APP),
-        );
+        cx.scene
+            .draw_quad(Quad::new(tabs).with_background(theme::bg::APP));
 
         let tab_labels = ["Goals", "Actions", "Memory", "Resources"];
         for (i, label) in tab_labels.iter().enumerate() {
@@ -512,15 +524,11 @@ impl Component for AgentStateInspector {
             let is_hovered = self.tab_hovered == Some(tab);
 
             if is_active {
-                cx.scene.draw_quad(
-                    Quad::new(tab_bounds)
-                        .with_background(theme::bg::SURFACE),
-                );
+                cx.scene
+                    .draw_quad(Quad::new(tab_bounds).with_background(theme::bg::SURFACE));
             } else if is_hovered {
-                cx.scene.draw_quad(
-                    Quad::new(tab_bounds)
-                        .with_background(theme::bg::HOVER),
-                );
+                cx.scene
+                    .draw_quad(Quad::new(tab_bounds).with_background(theme::bg::HOVER));
             }
 
             let text_color = if is_active {
@@ -530,7 +538,10 @@ impl Component for AgentStateInspector {
             };
             let label_run = cx.text.layout(
                 label,
-                Point::new(tab_bounds.origin.x + tab_bounds.size.width / 2.0 - 24.0, tab_bounds.origin.y + 10.0),
+                Point::new(
+                    tab_bounds.origin.x + tab_bounds.size.width / 2.0 - 24.0,
+                    tab_bounds.origin.y + 10.0,
+                ),
                 theme::font_size::XS,
                 text_color,
             );
@@ -618,7 +629,9 @@ mod tests {
     fn test_agent_state_inspector() {
         let inspector = AgentStateInspector::new("Test Agent", "agent-123")
             .goals(vec![
-                AgentGoal::new("g1", "Complete task A").progress(0.5).status(AgentGoalStatus::Active),
+                AgentGoal::new("g1", "Complete task A")
+                    .progress(0.5)
+                    .status(AgentGoalStatus::Active),
             ])
             .actions(vec![
                 AgentAction::new("Read", "Reading file.rs").timestamp("12:34"),

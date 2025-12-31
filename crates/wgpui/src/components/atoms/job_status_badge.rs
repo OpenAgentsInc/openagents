@@ -43,12 +43,12 @@ impl JobStatus {
 
     pub fn color(&self) -> Hsla {
         match self {
-            JobStatus::Pending => Hsla::new(0.0, 0.0, 0.5, 1.0),       // Gray
+            JobStatus::Pending => Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
             JobStatus::Processing => Hsla::new(200.0, 0.8, 0.55, 1.0), // Blue
-            JobStatus::Streaming => Hsla::new(180.0, 0.7, 0.5, 1.0),   // Cyan
-            JobStatus::Completed => Hsla::new(120.0, 0.7, 0.45, 1.0),  // Green
-            JobStatus::Failed => Hsla::new(0.0, 0.8, 0.5, 1.0),        // Red
-            JobStatus::Cancelled => Hsla::new(30.0, 0.7, 0.5, 1.0),    // Orange
+            JobStatus::Streaming => Hsla::new(180.0, 0.7, 0.5, 1.0), // Cyan
+            JobStatus::Completed => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
+            JobStatus::Failed => Hsla::new(0.0, 0.8, 0.5, 1.0),  // Red
+            JobStatus::Cancelled => Hsla::new(30.0, 0.7, 0.5, 1.0), // Orange
         }
     }
 }
@@ -111,27 +111,41 @@ impl Component for JobStatusBadge {
 
         // Icon
         let icon = self.status.icon();
-        let icon_run = cx.text.layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
+        let icon_run = cx
+            .text
+            .layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
         cx.scene.draw_text(icon_run);
 
         if !self.compact {
             x += 14.0;
             // Label
             let label = self.status.label();
-            let label_run = cx.text.layout(label, Point::new(x, text_y), theme::font_size::XS, color);
+            let label_run =
+                cx.text
+                    .layout(label, Point::new(x, text_y), theme::font_size::XS, color);
             cx.scene.draw_text(label_run);
             x += label.len() as f32 * 6.5 + 8.0;
 
             // Cost
             if let Some(sats) = self.cost_sats {
                 let cost_text = format!("{}sats", sats);
-                let cost_run = cx.text.layout(&cost_text, Point::new(x, text_y), theme::font_size::XS, theme::text::MUTED);
+                let cost_run = cx.text.layout(
+                    &cost_text,
+                    Point::new(x, text_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
                 cx.scene.draw_text(cost_run);
             }
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -144,7 +158,9 @@ impl Component for JobStatusBadge {
             (Some(28.0), Some(22.0))
         } else {
             let mut width = 12.0 + 14.0 + self.status.label().len() as f32 * 6.5;
-            if self.cost_sats.is_some() { width += 60.0; }
+            if self.cost_sats.is_some() {
+                width += 60.0;
+            }
             (Some(width), Some(22.0))
         }
     }

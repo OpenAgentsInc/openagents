@@ -24,7 +24,7 @@ impl RepoVisibility {
     pub fn color(&self) -> Hsla {
         match self {
             RepoVisibility::Public => Hsla::new(120.0, 0.6, 0.45, 1.0), // Green
-            RepoVisibility::Private => Hsla::new(45.0, 0.7, 0.5, 1.0), // Yellow
+            RepoVisibility::Private => Hsla::new(45.0, 0.7, 0.5, 1.0),  // Yellow
         }
     }
 }
@@ -207,9 +207,8 @@ impl Component for RepoCard {
         // Language
         if let Some(lang) = &self.repo.language {
             let dot_bounds = Bounds::new(bounds.origin.x + padding, stats_y + 4.0, 8.0, 8.0);
-            cx.scene.draw_quad(
-                Quad::new(dot_bounds).with_background(self.language_color()),
-            );
+            cx.scene
+                .draw_quad(Quad::new(dot_bounds).with_background(self.language_color()));
             let lang_run = cx.text.layout(
                 lang,
                 Point::new(bounds.origin.x + padding + 14.0, stats_y),
@@ -255,7 +254,10 @@ impl Component for RepoCard {
         // Updated at
         let updated_run = cx.text.layout(
             &self.repo.updated_at,
-            Point::new(bounds.origin.x + bounds.size.width - padding - 80.0, stats_y),
+            Point::new(
+                bounds.origin.x + bounds.size.width - padding - 80.0,
+                stats_y,
+            ),
             theme::font_size::XS,
             theme::text::DISABLED,
         );
@@ -289,7 +291,11 @@ impl Component for RepoCard {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let height = if self.repo.description.is_some() { 100.0 } else { 80.0 };
+        let height = if self.repo.description.is_some() {
+            100.0
+        } else {
+            80.0
+        };
         (None, Some(height))
     }
 }

@@ -9,15 +9,20 @@
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use wgpui::components::atoms::{
+    Mode, ModeBadge, Model, ModelBadge, Status, StatusDot, StreamingIndicator,
+};
+use wgpui::components::hud::{
+    CornerConfig, DotShape, DotsGrid, DotsOrigin, DrawDirection, Frame, FrameAnimation,
+    Notifications, StatusBar, StatusItem,
+};
+use wgpui::components::molecules::{MessageHeader, ModeSelector, ModelSelector};
+use wgpui::renderer::Renderer;
 use wgpui::{
     Animation, Bounds, Button, ButtonVariant, Component, Div, Easing, EventContext, Hsla,
     InputEvent, PaintContext, Point, Quad, Scene, Size, SpringAnimation, Text, TextSystem,
     VirtualList, theme,
 };
-use wgpui::components::atoms::{Mode, Model, Status, StatusDot, ModeBadge, ModelBadge, StreamingIndicator};
-use wgpui::components::molecules::{MessageHeader, ModeSelector, ModelSelector};
-use wgpui::components::hud::{CornerConfig, DotsGrid, DotsOrigin, DotShape, DrawDirection, Frame, FrameAnimation, StatusBar, StatusItem, Notifications};
-use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -86,16 +91,31 @@ impl Default for DemoState {
             .stiffness(80.0)
             .damping(8.0);
 
-        let items: Vec<String> = (0..10000).map(|i| format!("Item #{} - Virtual scrolling", i)).collect();
+        let items: Vec<String> = (0..10000)
+            .map(|i| format!("Item #{} - Virtual scrolling", i))
+            .collect();
         let item_height = 26.0;
         let font_size = 12.0;
-        let virtual_list = VirtualList::new(items, item_height, move |item: &String, idx: usize, bounds: Bounds, cx: &mut PaintContext| {
-            let bg = if idx % 2 == 0 { theme::bg::SURFACE } else { theme::bg::MUTED };
-            cx.scene.draw_quad(Quad::new(bounds).with_background(bg));
-            let text_y = bounds.origin.y + (bounds.size.height - font_size) / 2.0;
-            let run = cx.text.layout(item, Point::new(bounds.origin.x + 10.0, text_y), font_size, theme::text::PRIMARY);
-            cx.scene.draw_text(run);
-        });
+        let virtual_list = VirtualList::new(
+            items,
+            item_height,
+            move |item: &String, idx: usize, bounds: Bounds, cx: &mut PaintContext| {
+                let bg = if idx % 2 == 0 {
+                    theme::bg::SURFACE
+                } else {
+                    theme::bg::MUTED
+                };
+                cx.scene.draw_quad(Quad::new(bounds).with_background(bg));
+                let text_y = bounds.origin.y + (bounds.size.height - font_size) / 2.0;
+                let run = cx.text.layout(
+                    item,
+                    Point::new(bounds.origin.x + 10.0, text_y),
+                    font_size,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(run);
+            },
+        );
 
         Self {
             start_time: Instant::now(),
@@ -238,11 +258,17 @@ impl ApplicationHandler for App {
             WindowEvent::MouseWheel { delta, .. } => {
                 let (dx, dy) = match delta {
                     winit::event::MouseScrollDelta::LineDelta(x, y) => (-x * 20.0, -y * 20.0),
-                    winit::event::MouseScrollDelta::PixelDelta(pos) => (-pos.x as f32, -pos.y as f32),
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                        (-pos.x as f32, -pos.y as f32)
+                    }
                 };
                 let scroll_event = InputEvent::Scroll { dx, dy };
                 let mut ecx = EventContext::new();
-                state.demo.virtual_list.event(&scroll_event, state.demo.virtual_list_bounds, &mut ecx);
+                state.demo.virtual_list.event(
+                    &scroll_event,
+                    state.demo.virtual_list_bounds,
+                    &mut ecx,
+                );
                 state.window.request_redraw();
             }
             WindowEvent::RedrawRequested => {
@@ -291,11 +317,9 @@ impl ApplicationHandler for App {
                             label: Some("Render Encoder"),
                         });
 
-                state.renderer.resize(
-                    &state.queue,
-                    Size::new(width, height),
-                    1.0,
-                );
+                state
+                    .renderer
+                    .resize(&state.queue, Size::new(width, height), 1.0);
 
                 if state.text_system.is_dirty() {
                     state.renderer.update_atlas(
@@ -307,7 +331,9 @@ impl ApplicationHandler for App {
                 }
 
                 let scale_factor = state.window.scale_factor() as f32;
-                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
+                state
+                    .renderer
+                    .prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));
@@ -335,7 +361,8 @@ fn build_full_demo(
     let section_spacing = 28.0;
     let col_width = (width - margin * 3.0) / 2.0;
 
-    scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+    scene
+        .draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
     let dots_progress = demo.dots_anim.current_value();
     demo.dots_grid = DotsGrid::new()
@@ -349,7 +376,8 @@ fn build_full_demo(
         .animation_progress(dots_progress);
 
     let mut cx = PaintContext::new(scene, text_system, 1.0);
-    demo.dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
+    demo.dots_grid
+        .paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
 
     let mut y = margin;
     draw_header(scene, text_system, margin, &mut y, width);
@@ -386,17 +414,34 @@ fn build_full_demo(
     demo_animated_frames(scene, text_system, demo, right_x, col_width, &mut right_y);
 
     let mut cx = PaintContext::new(scene, text_system, 1.0);
-    demo.status_bar.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
+    demo.status_bar
+        .paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
 }
 
-fn draw_header(scene: &mut Scene, text_system: &mut TextSystem, margin: f32, y: &mut f32, width: f32) {
+fn draw_header(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    margin: f32,
+    y: &mut f32,
+    width: f32,
+) {
     let title = "wgpui Component Showcase";
     let subtitle = "GPU-Accelerated UI • Animation • Atoms • Molecules • HUD • 377 Tests";
 
-    let title_run = text_system.layout(title, Point::new(margin, *y + 24.0), 26.0, theme::text::PRIMARY);
+    let title_run = text_system.layout(
+        title,
+        Point::new(margin, *y + 24.0),
+        26.0,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(title_run);
 
-    let subtitle_run = text_system.layout(subtitle, Point::new(margin, *y + 50.0), 13.0, theme::text::MUTED);
+    let subtitle_run = text_system.layout(
+        subtitle,
+        Point::new(margin, *y + 50.0),
+        13.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(subtitle_run);
 
     scene.draw_quad(
@@ -407,11 +452,18 @@ fn draw_header(scene: &mut Scene, text_system: &mut TextSystem, margin: f32, y: 
     *y += 82.0;
 }
 
-fn draw_section_header(scene: &mut Scene, text_system: &mut TextSystem, x: f32, y: &mut f32, title: &str) {
+fn draw_section_header(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    x: f32,
+    y: &mut f32,
+    title: &str,
+) {
     let run = text_system.layout(title, Point::new(x, *y + 14.0), 15.0, theme::text::PRIMARY);
     scene.draw_text(run);
     scene.draw_quad(
-        Quad::new(Bounds::new(x, *y + 28.0, 150.0, 1.0)).with_background(theme::accent::PRIMARY.with_alpha(0.5)),
+        Quad::new(Bounds::new(x, *y + 28.0, 150.0, 1.0))
+            .with_background(theme::accent::PRIMARY.with_alpha(0.5)),
     );
     *y += 38.0;
 }
@@ -435,26 +487,47 @@ fn demo_animation_system(
     let anim_x = x + demo.position_anim.current_value();
     let anim_color = demo.color_anim.current_value();
     scene.draw_quad(
-        Quad::new(Bounds::new(anim_x + 10.0, *y + 15.0, 35.0, 35.0))
-            .with_background(anim_color),
+        Quad::new(Bounds::new(anim_x + 10.0, *y + 15.0, 35.0, 35.0)).with_background(anim_color),
     );
 
-    let label = text_system.layout("Easing + Color Animation", Point::new(x + 10.0, *y + 70.0), 11.0, theme::text::MUTED);
+    let label = text_system.layout(
+        "Easing + Color Animation",
+        Point::new(x + 10.0, *y + 70.0),
+        11.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(label);
 
     let spring_val = demo.spring.current();
     scene.draw_quad(
-        Quad::new(Bounds::new(x + width - 55.0, *y + 15.0 + (100.0 - spring_val) * 0.4, 35.0, 35.0))
-            .with_background(theme::accent::PURPLE),
+        Quad::new(Bounds::new(
+            x + width - 55.0,
+            *y + 15.0 + (100.0 - spring_val) * 0.4,
+            35.0,
+            35.0,
+        ))
+        .with_background(theme::accent::PURPLE),
     );
 
-    let spring_label = text_system.layout("Spring Physics", Point::new(x + width - 100.0, *y + 85.0), 11.0, theme::text::MUTED);
+    let spring_label = text_system.layout(
+        "Spring Physics",
+        Point::new(x + width - 100.0, *y + 85.0),
+        11.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(spring_label);
 
     *y += 110.0;
 }
 
-fn demo_atoms(scene: &mut Scene, text_system: &mut TextSystem, demo: &mut DemoState, x: f32, width: f32, y: &mut f32) {
+fn demo_atoms(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    demo: &mut DemoState,
+    x: f32,
+    width: f32,
+    y: &mut f32,
+) {
     draw_section_header(scene, text_system, x, y, "Atoms (13 Components)");
 
     scene.draw_quad(
@@ -475,7 +548,12 @@ fn demo_atoms(scene: &mut Scene, text_system: &mut TextSystem, demo: &mut DemoSt
     ax += 20.0;
     StatusDot::new(Status::Offline).paint(Bounds::new(ax, ay, 10.0, 10.0), &mut cx);
 
-    let label = cx.text.layout("StatusDot", Point::new(x + 12.0, ay + 18.0), 10.0, theme::text::MUTED);
+    let label = cx.text.layout(
+        "StatusDot",
+        Point::new(x + 12.0, ay + 18.0),
+        10.0,
+        theme::text::MUTED,
+    );
     cx.scene.draw_text(label);
 
     ax = x + 12.0;
@@ -486,7 +564,12 @@ fn demo_atoms(scene: &mut Scene, text_system: &mut TextSystem, demo: &mut DemoSt
     ax += 60.0;
     ModeBadge::new(Mode::Act).paint(Bounds::new(ax, ay2, 55.0, 18.0), &mut cx);
 
-    let label2 = cx.text.layout("ModeBadge", Point::new(x + 12.0, ay2 + 24.0), 10.0, theme::text::MUTED);
+    let label2 = cx.text.layout(
+        "ModeBadge",
+        Point::new(x + 12.0, ay2 + 24.0),
+        10.0,
+        theme::text::MUTED,
+    );
     cx.scene.draw_text(label2);
 
     ax = x + width - 160.0;
@@ -494,17 +577,34 @@ fn demo_atoms(scene: &mut Scene, text_system: &mut TextSystem, demo: &mut DemoSt
     ax += 75.0;
     ModelBadge::new(Model::Gpt4).paint(Bounds::new(ax, ay, 70.0, 20.0), &mut cx);
 
-    let label3 = cx.text.layout("ModelBadge", Point::new(x + width - 160.0, ay + 26.0), 10.0, theme::text::MUTED);
+    let label3 = cx.text.layout(
+        "ModelBadge",
+        Point::new(x + width - 160.0, ay + 26.0),
+        10.0,
+        theme::text::MUTED,
+    );
     cx.scene.draw_text(label3);
 
-    demo.streaming_indicator.paint(Bounds::new(x + width - 80.0, ay2, 60.0, 18.0), &mut cx);
-    let label4 = cx.text.layout("Streaming", Point::new(x + width - 80.0, ay2 + 24.0), 10.0, theme::text::MUTED);
+    demo.streaming_indicator
+        .paint(Bounds::new(x + width - 80.0, ay2, 60.0, 18.0), &mut cx);
+    let label4 = cx.text.layout(
+        "Streaming",
+        Point::new(x + width - 80.0, ay2 + 24.0),
+        10.0,
+        theme::text::MUTED,
+    );
     cx.scene.draw_text(label4);
 
     *y += 110.0;
 }
 
-fn demo_molecules(scene: &mut Scene, text_system: &mut TextSystem, x: f32, width: f32, y: &mut f32) {
+fn demo_molecules(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    x: f32,
+    width: f32,
+    y: &mut f32,
+) {
     draw_section_header(scene, text_system, x, y, "Molecules (10 Components)");
 
     scene.draw_quad(
@@ -521,9 +621,15 @@ fn demo_molecules(scene: &mut Scene, text_system: &mut TextSystem, x: f32, width
         .paint(Bounds::new(x + 8.0, *y + 8.0, width - 16.0, 32.0), &mut cx);
 
     ModeSelector::new(Mode::Normal).paint(Bounds::new(x + 12.0, *y + 50.0, 120.0, 28.0), &mut cx);
-    ModelSelector::new(Model::Claude).paint(Bounds::new(x + 145.0, *y + 50.0, 120.0, 28.0), &mut cx);
+    ModelSelector::new(Model::Claude)
+        .paint(Bounds::new(x + 145.0, *y + 50.0, 120.0, 28.0), &mut cx);
 
-    let label = text_system.layout("MessageHeader + Selectors", Point::new(x + 280.0, *y + 58.0), 10.0, theme::text::MUTED);
+    let label = text_system.layout(
+        "MessageHeader + Selectors",
+        Point::new(x + 280.0, *y + 58.0),
+        10.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(label);
 
     *y += 100.0;
@@ -541,7 +647,9 @@ fn demo_text_component(
     let mut text_normal = Text::new("Normal text - The quick brown fox");
     let mut text_bold = Text::new("Bold text - WGPUI rendering").bold();
     let mut text_italic = Text::new("Italic text - Beautiful typography").italic();
-    let mut text_accent = Text::new("Accent (20px)").font_size(20.0).color(theme::accent::PRIMARY);
+    let mut text_accent = Text::new("Accent (20px)")
+        .font_size(20.0)
+        .color(theme::accent::PRIMARY);
 
     let text_height = 22.0;
     let mut cx = PaintContext::new(scene, text_system, 1.0);
@@ -567,40 +675,75 @@ fn demo_button_component(scene: &mut Scene, text_system: &mut TextSystem, x: f32
 
     Button::new("Primary").paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
     bx += btn_w + spacing;
-    Button::new("Secondary").variant(ButtonVariant::Secondary).paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
+    Button::new("Secondary")
+        .variant(ButtonVariant::Secondary)
+        .paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
     bx += btn_w + spacing;
-    Button::new("Ghost").variant(ButtonVariant::Ghost).paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
+    Button::new("Ghost")
+        .variant(ButtonVariant::Ghost)
+        .paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
     bx += btn_w + spacing;
-    Button::new("Danger").variant(ButtonVariant::Danger).paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
+    Button::new("Danger")
+        .variant(ButtonVariant::Danger)
+        .paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
     bx += btn_w + spacing;
-    Button::new("Disabled").disabled(true).paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
+    Button::new("Disabled")
+        .disabled(true)
+        .paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
 
     *y += btn_h + 8.0;
 }
 
-fn demo_div_component(scene: &mut Scene, text_system: &mut TextSystem, x: f32, width: f32, y: &mut f32) {
+fn demo_div_component(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    x: f32,
+    width: f32,
+    y: &mut f32,
+) {
     draw_section_header(scene, text_system, x, y, "Div Container");
 
     let div_h = 50.0;
     let div_w = (width - 16.0) / 3.0;
     let mut cx = PaintContext::new(scene, text_system, 1.0);
 
-    Div::new().background(theme::bg::SURFACE).paint(Bounds::new(x, *y, div_w, div_h), &mut cx);
-    Div::new().background(theme::bg::MUTED).border(theme::border::DEFAULT, 1.0)
+    Div::new()
+        .background(theme::bg::SURFACE)
+        .paint(Bounds::new(x, *y, div_w, div_h), &mut cx);
+    Div::new()
+        .background(theme::bg::MUTED)
+        .border(theme::border::DEFAULT, 1.0)
         .paint(Bounds::new(x + div_w + 8.0, *y, div_w, div_h), &mut cx);
-    Div::new().background(theme::accent::PRIMARY.with_alpha(0.2)).border(theme::accent::PRIMARY, 2.0)
-        .paint(Bounds::new(x + (div_w + 8.0) * 2.0, *y, div_w, div_h), &mut cx);
+    Div::new()
+        .background(theme::accent::PRIMARY.with_alpha(0.2))
+        .border(theme::accent::PRIMARY, 2.0)
+        .paint(
+            Bounds::new(x + (div_w + 8.0) * 2.0, *y, div_w, div_h),
+            &mut cx,
+        );
 
     let labels = ["Surface", "Border", "Accent"];
     for (i, label) in labels.iter().enumerate() {
-        let lbl = text_system.layout(label, Point::new(x + (div_w + 8.0) * i as f32 + 8.0, *y + div_h / 2.0 + 4.0), 11.0, theme::text::MUTED);
+        let lbl = text_system.layout(
+            label,
+            Point::new(x + (div_w + 8.0) * i as f32 + 8.0, *y + div_h / 2.0 + 4.0),
+            11.0,
+            theme::text::MUTED,
+        );
         scene.draw_text(lbl);
     }
 
     *y += div_h + 8.0;
 }
 
-fn demo_virtual_list(scene: &mut Scene, text_system: &mut TextSystem, demo: &mut DemoState, x: f32, width: f32, y: &mut f32) {
+fn demo_virtual_list(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    demo: &mut DemoState,
+    x: f32,
+    width: f32,
+    y: &mut f32,
+) {
     draw_section_header(scene, text_system, x, y, "VirtualList (10k items)");
 
     let list_h = 130.0;
@@ -627,16 +770,31 @@ fn demo_theme_colors(scene: &mut Scene, text_system: &mut TextSystem, x: f32, y:
     let mut cx = x;
 
     for color in [theme::bg::APP, theme::bg::SURFACE, theme::bg::MUTED] {
-        scene.draw_quad(Quad::new(Bounds::new(cx, *y, size, size)).with_background(color).with_border(theme::border::DEFAULT, 1.0));
+        scene.draw_quad(
+            Quad::new(Bounds::new(cx, *y, size, size))
+                .with_background(color)
+                .with_border(theme::border::DEFAULT, 1.0),
+        );
         cx += size + gap;
     }
     cx += gap;
-    for color in [theme::accent::PRIMARY, theme::accent::BLUE, theme::accent::GREEN, theme::accent::RED, theme::accent::PURPLE] {
+    for color in [
+        theme::accent::PRIMARY,
+        theme::accent::BLUE,
+        theme::accent::GREEN,
+        theme::accent::RED,
+        theme::accent::PURPLE,
+    ] {
         scene.draw_quad(Quad::new(Bounds::new(cx, *y, size, size)).with_background(color));
         cx += size + gap;
     }
     cx += gap;
-    for color in [theme::status::SUCCESS, theme::status::WARNING, theme::status::ERROR, theme::status::INFO] {
+    for color in [
+        theme::status::SUCCESS,
+        theme::status::WARNING,
+        theme::status::ERROR,
+        theme::status::INFO,
+    ] {
         scene.draw_quad(Quad::new(Bounds::new(cx, *y, size, size)).with_background(color));
         cx += size + gap;
     }
@@ -644,22 +802,44 @@ fn demo_theme_colors(scene: &mut Scene, text_system: &mut TextSystem, x: f32, y:
     *y += size + 8.0;
 }
 
-fn draw_bitcoin_symbol(scene: &mut Scene, text_system: &mut TextSystem, x: f32, y: f32, font_size: f32, color: Hsla) {
+fn draw_bitcoin_symbol(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    x: f32,
+    y: f32,
+    font_size: f32,
+    color: Hsla,
+) {
     let bar_h = font_size * 0.18;
     let bar_w = 2.0;
     let bar_x1 = x + font_size * 0.15;
     let bar_x2 = x + font_size * 0.38;
-    
-    scene.draw_quad(Quad::new(Bounds::new(bar_x1, y - bar_h + 2.0, bar_w, bar_h)).with_background(color));
-    scene.draw_quad(Quad::new(Bounds::new(bar_x2, y - bar_h + 2.0, bar_w, bar_h)).with_background(color));
-    scene.draw_quad(Quad::new(Bounds::new(bar_x1, y + font_size - 4.0, bar_w, bar_h)).with_background(color));
-    scene.draw_quad(Quad::new(Bounds::new(bar_x2, y + font_size - 4.0, bar_w, bar_h)).with_background(color));
-    
+
+    scene.draw_quad(
+        Quad::new(Bounds::new(bar_x1, y - bar_h + 2.0, bar_w, bar_h)).with_background(color),
+    );
+    scene.draw_quad(
+        Quad::new(Bounds::new(bar_x2, y - bar_h + 2.0, bar_w, bar_h)).with_background(color),
+    );
+    scene.draw_quad(
+        Quad::new(Bounds::new(bar_x1, y + font_size - 4.0, bar_w, bar_h)).with_background(color),
+    );
+    scene.draw_quad(
+        Quad::new(Bounds::new(bar_x2, y + font_size - 4.0, bar_w, bar_h)).with_background(color),
+    );
+
     let b = text_system.layout("B", Point::new(x, y), font_size, color);
     scene.draw_text(b);
 }
 
-fn demo_animated_frames(scene: &mut Scene, text_system: &mut TextSystem, demo: &DemoState, x: f32, width: f32, y: &mut f32) {
+fn demo_animated_frames(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    demo: &DemoState,
+    x: f32,
+    width: f32,
+    y: &mut f32,
+) {
     draw_section_header(scene, text_system, x, y, "Animated Frames (4 Modes)");
 
     let white = Hsla::new(0.0, 0.0, 1.0, 1.0);
@@ -684,7 +864,12 @@ fn demo_animated_frames(scene: &mut Scene, text_system: &mut TextSystem, demo: &
         .animation_mode(FrameAnimation::Fade)
         .animation_progress(progress)
         .paint(Bounds::new(x, *y, frame_w, frame_h), &mut cx);
-    let lbl = cx.text.layout("Fade", Point::new(x + 10.0, *y + frame_h / 2.0), 11.0, white.with_alpha(progress));
+    let lbl = cx.text.layout(
+        "Fade",
+        Point::new(x + 10.0, *y + frame_h / 2.0),
+        11.0,
+        white.with_alpha(progress),
+    );
     cx.scene.draw_text(lbl);
 
     Frame::lines()
@@ -695,8 +880,16 @@ fn demo_animated_frames(scene: &mut Scene, text_system: &mut TextSystem, demo: &
         .animation_mode(FrameAnimation::Draw)
         .draw_direction(DrawDirection::CenterOut)
         .animation_progress(progress)
-        .paint(Bounds::new(x + frame_w + 8.0, *y, frame_w, frame_h), &mut cx);
-    let lbl = cx.text.layout("Draw (CenterOut)", Point::new(x + frame_w + 18.0, *y + frame_h / 2.0), 11.0, white);
+        .paint(
+            Bounds::new(x + frame_w + 8.0, *y, frame_w, frame_h),
+            &mut cx,
+        );
+    let lbl = cx.text.layout(
+        "Draw (CenterOut)",
+        Point::new(x + frame_w + 18.0, *y + frame_h / 2.0),
+        11.0,
+        white,
+    );
     cx.scene.draw_text(lbl);
 
     *y += frame_h + 10.0;
@@ -710,7 +903,12 @@ fn demo_animated_frames(scene: &mut Scene, text_system: &mut TextSystem, demo: &
         .animation_mode(FrameAnimation::Flicker)
         .animation_progress(progress)
         .paint(Bounds::new(x, *y, frame_w, frame_h), &mut cx);
-    let lbl = cx.text.layout("Flicker", Point::new(x + 10.0, *y + frame_h / 2.0), 11.0, white);
+    let lbl = cx.text.layout(
+        "Flicker",
+        Point::new(x + 10.0, *y + frame_h / 2.0),
+        11.0,
+        white,
+    );
     cx.scene.draw_text(lbl);
 
     Frame::nefrex()
@@ -724,8 +922,16 @@ fn demo_animated_frames(scene: &mut Scene, text_system: &mut TextSystem, demo: &
         .corner_config(CornerConfig::all())
         .animation_mode(FrameAnimation::Assemble)
         .animation_progress(progress)
-        .paint(Bounds::new(x + frame_w + 8.0, *y, frame_w, frame_h), &mut cx);
-    let lbl = cx.text.layout("Assemble", Point::new(x + frame_w + 18.0, *y + frame_h / 2.0), 11.0, white);
+        .paint(
+            Bounds::new(x + frame_w + 8.0, *y, frame_w, frame_h),
+            &mut cx,
+        );
+    let lbl = cx.text.layout(
+        "Assemble",
+        Point::new(x + frame_w + 18.0, *y + frame_h / 2.0),
+        11.0,
+        white,
+    );
     cx.scene.draw_text(lbl);
 
     *y += frame_h + 10.0;
@@ -740,7 +946,12 @@ fn demo_animated_frames(scene: &mut Scene, text_system: &mut TextSystem, demo: &
         .draw_direction(DrawDirection::LeftToRight)
         .animation_progress(progress)
         .paint(Bounds::new(x, *y, frame_w, frame_h), &mut cx);
-    let lbl = cx.text.layout("Underline (Draw)", Point::new(x + 10.0, *y + frame_h / 2.0), 11.0, white);
+    let lbl = cx.text.layout(
+        "Underline (Draw)",
+        Point::new(x + 10.0, *y + frame_h / 2.0),
+        11.0,
+        white,
+    );
     cx.scene.draw_text(lbl);
 
     Frame::kranox()
@@ -754,8 +965,16 @@ fn demo_animated_frames(scene: &mut Scene, text_system: &mut TextSystem, demo: &
         .animation_mode(FrameAnimation::Draw)
         .draw_direction(DrawDirection::EdgesIn)
         .animation_progress(progress)
-        .paint(Bounds::new(x + frame_w + 8.0, *y, frame_w, frame_h), &mut cx);
-    let lbl = cx.text.layout("Kranox (EdgesIn)", Point::new(x + frame_w + 18.0, *y + frame_h / 2.0), 11.0, white);
+        .paint(
+            Bounds::new(x + frame_w + 8.0, *y, frame_w, frame_h),
+            &mut cx,
+        );
+    let lbl = cx.text.layout(
+        "Kranox (EdgesIn)",
+        Point::new(x + frame_w + 18.0, *y + frame_h / 2.0),
+        11.0,
+        white,
+    );
     cx.scene.draw_text(lbl);
 
     *y += frame_h + 14.0;
@@ -772,7 +991,9 @@ fn demo_animated_frames(scene: &mut Scene, text_system: &mut TextSystem, demo: &
         .animation_progress(progress)
         .paint(wallet_bounds, &mut cx);
 
-    let balance_label = cx.text.layout("Balance", Point::new(x + 20.0, *y + 14.0), 11.0, muted);
+    let balance_label = cx
+        .text
+        .layout("Balance", Point::new(x + 20.0, *y + 14.0), 11.0, muted);
     cx.scene.draw_text(balance_label);
 
     let font_size = 28.0;
@@ -780,10 +1001,17 @@ fn demo_animated_frames(scene: &mut Scene, text_system: &mut TextSystem, demo: &
     let symbol_y = *y + 28.0;
     draw_bitcoin_symbol(cx.scene, cx.text, symbol_x, symbol_y, font_size, white);
 
-    let sats_amount = cx.text.layout("42069", Point::new(symbol_x + font_size * 0.55, symbol_y), font_size, white);
+    let sats_amount = cx.text.layout(
+        "42069",
+        Point::new(symbol_x + font_size * 0.55, symbol_y),
+        font_size,
+        white,
+    );
     cx.scene.draw_text(sats_amount);
 
-    let usd_value = cx.text.layout("~ $42.07", Point::new(x + 20.0, *y + 60.0), 13.0, muted);
+    let usd_value = cx
+        .text
+        .layout("~ $42.07", Point::new(x + 20.0, *y + 60.0), 13.0, muted);
     cx.scene.draw_text(usd_value);
 
     *y += 88.0;

@@ -106,9 +106,8 @@ impl Component for RelayStatusDot {
             self.size,
             self.size,
         );
-        cx.scene.draw_quad(
-            Quad::new(dot_bounds).with_background(color),
-        );
+        cx.scene
+            .draw_quad(Quad::new(dot_bounds).with_background(color));
 
         // Draw label if enabled
         if self.show_label {
@@ -125,7 +124,12 @@ impl Component for RelayStatusDot {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -134,7 +138,11 @@ impl Component for RelayStatusDot {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let width = if self.show_label { self.size + 40.0 } else { self.size };
+        let width = if self.show_label {
+            self.size + 40.0
+        } else {
+            self.size
+        };
         (Some(width), Some(self.size))
     }
 }
@@ -182,7 +190,12 @@ impl Component for RelayStatusBadge {
         cx.scene.draw_text(run);
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

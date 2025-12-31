@@ -55,11 +55,7 @@ impl DockState {
     }
 
     pub fn effective_size(&self) -> f32 {
-        if self.open {
-            self.size
-        } else {
-            0.0
-        }
+        if self.open { self.size } else { 0.0 }
     }
 }
 

@@ -35,10 +35,7 @@ impl ActionListeners {
     /// Register a handler for a specific action type.
     ///
     /// The handler receives the action (as `&dyn Any`) and returns `true` if handled.
-    pub fn on_action<A: super::Action>(
-        &mut self,
-        mut handler: impl FnMut(&A) -> bool + 'static,
-    ) {
+    pub fn on_action<A: super::Action>(&mut self, mut handler: impl FnMut(&A) -> bool + 'static) {
         let action_id = std::any::TypeId::of::<A>();
         self.listeners.insert(
             action_id,

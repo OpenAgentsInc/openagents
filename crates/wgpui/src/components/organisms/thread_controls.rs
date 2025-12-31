@@ -4,7 +4,6 @@ use crate::components::molecules::{ModeSelector, ModelSelector};
 use crate::components::{Button, ButtonVariant, Component, ComponentId, EventResult};
 use crate::{Bounds, InputEvent, Point, Quad, theme};
 
-
 pub struct ThreadControls {
     id: Option<ComponentId>,
     mode: Mode,
@@ -225,12 +224,13 @@ impl Component for ThreadControls {
             );
 
             if let InputEvent::MouseUp { x, y, .. } = event
-                && stop_bounds.contains(Point::new(*x, *y)) {
-                    if let Some(callback) = &mut self.on_stop {
-                        callback();
-                    }
-                    return EventResult::Handled;
+                && stop_bounds.contains(Point::new(*x, *y))
+            {
+                if let Some(callback) = &mut self.on_stop {
+                    callback();
                 }
+                return EventResult::Handled;
+            }
         } else {
             let btn_width = 60.0;
             let btn_height = 28.0;
@@ -242,12 +242,13 @@ impl Component for ThreadControls {
             );
 
             if let InputEvent::MouseUp { x, y, .. } = event
-                && run_bounds.contains(Point::new(*x, *y)) {
-                    if let Some(callback) = &mut self.on_run {
-                        callback();
-                    }
-                    return EventResult::Handled;
+                && run_bounds.contains(Point::new(*x, *y))
+            {
+                if let Some(callback) = &mut self.on_run {
+                    callback();
                 }
+                return EventResult::Handled;
+            }
         }
 
         EventResult::Ignored
@@ -296,11 +297,9 @@ mod tests {
         let called = Rc::new(Cell::new(false));
         let called_clone = called.clone();
 
-        let mut controls = ThreadControls::new()
-            .running(true)
-            .on_stop(move || {
-                called_clone.set(true);
-            });
+        let mut controls = ThreadControls::new().running(true).on_stop(move || {
+            called_clone.set(true);
+        });
 
         let bounds = Bounds::new(0.0, 0.0, 300.0, 44.0);
         let padding = theme::spacing::SM;
@@ -326,11 +325,9 @@ mod tests {
         let called = Rc::new(Cell::new(false));
         let called_clone = called.clone();
 
-        let mut controls = ThreadControls::new()
-            .running(false)
-            .on_run(move || {
-                called_clone.set(true);
-            });
+        let mut controls = ThreadControls::new().running(false).on_run(move || {
+            called_clone.set(true);
+        });
 
         let bounds = Bounds::new(0.0, 0.0, 300.0, 44.0);
         let padding = theme::spacing::SM;

@@ -148,7 +148,7 @@ mod snapshot_tests;
 
 pub use assertion::{AssertionResult, TestAssertion};
 pub use context::{ComponentRegistry, TestContext};
-pub use dsl::{test, Test};
+pub use dsl::{Test, test};
 pub use harness::TestHarness;
 pub use injection::{EventPlayer, EventSequence, TimedEvent, generate_step_events};
 pub use overlay::{ClickRipple, InputOverlay, KeyDisplay, KeyDisplayPosition};

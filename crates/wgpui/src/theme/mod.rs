@@ -11,8 +11,8 @@
 //! let text = theme().colors.text;
 //! ```
 
-use std::sync::RwLock;
 use crate::color::Hsla;
+use std::sync::RwLock;
 
 // Re-export submodules
 pub mod builder;

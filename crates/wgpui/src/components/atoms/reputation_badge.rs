@@ -37,10 +37,10 @@ impl TrustTier {
 
     pub fn color(&self) -> Hsla {
         match self {
-            TrustTier::New => Hsla::new(0.0, 0.0, 0.5, 1.0),        // Gray
+            TrustTier::New => Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
             TrustTier::Established => Hsla::new(45.0, 0.7, 0.5, 1.0), // Gold
-            TrustTier::Trusted => Hsla::new(120.0, 0.7, 0.45, 1.0),  // Green
-            TrustTier::Expert => Hsla::new(280.0, 0.7, 0.55, 1.0),   // Purple
+            TrustTier::Trusted => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
+            TrustTier::Expert => Hsla::new(280.0, 0.7, 0.55, 1.0), // Purple
         }
     }
 
@@ -119,14 +119,18 @@ impl Component for ReputationBadge {
 
         // Icon
         let icon = self.tier.icon();
-        let icon_run = cx.text.layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
+        let icon_run = cx
+            .text
+            .layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
         cx.scene.draw_text(icon_run);
 
         if !self.compact {
             x += 14.0;
             // Label
             let label = self.tier.label();
-            let label_run = cx.text.layout(label, Point::new(x, text_y), theme::font_size::XS, color);
+            let label_run =
+                cx.text
+                    .layout(label, Point::new(x, text_y), theme::font_size::XS, color);
             cx.scene.draw_text(label_run);
             x += label.len() as f32 * 6.5 + 8.0;
 
@@ -140,13 +144,23 @@ impl Component for ReputationBadge {
                 } else {
                     theme::status::ERROR
                 };
-                let rate_run = cx.text.layout(&rate_text, Point::new(x, text_y), theme::font_size::XS, rate_color);
+                let rate_run = cx.text.layout(
+                    &rate_text,
+                    Point::new(x, text_y),
+                    theme::font_size::XS,
+                    rate_color,
+                );
                 cx.scene.draw_text(rate_run);
             }
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -159,7 +173,9 @@ impl Component for ReputationBadge {
             (Some(28.0), Some(22.0))
         } else {
             let mut width = 12.0 + 14.0 + self.tier.label().len() as f32 * 6.5;
-            if self.success_rate.is_some() { width += 40.0; }
+            if self.success_rate.is_some() {
+                width += 40.0;
+            }
             (Some(width), Some(22.0))
         }
     }

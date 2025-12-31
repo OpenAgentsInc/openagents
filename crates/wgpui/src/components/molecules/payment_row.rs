@@ -1,6 +1,6 @@
 use crate::components::atoms::{
-    AmountDirection, BitcoinAmount, PaymentMethod, PaymentMethodIcon,
-    PaymentStatus, PaymentStatusBadge,
+    AmountDirection, BitcoinAmount, PaymentMethod, PaymentMethodIcon, PaymentStatus,
+    PaymentStatusBadge,
 };
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
@@ -135,7 +135,12 @@ impl Component for PaymentRow {
         // Payment method icon
         let mut method_icon = PaymentMethodIcon::new(self.payment.method).size(icon_size);
         method_icon.paint(
-            Bounds::new(bounds.origin.x + padding, bounds.origin.y + (bounds.size.height - icon_size) / 2.0, icon_size, icon_size),
+            Bounds::new(
+                bounds.origin.x + padding,
+                bounds.origin.y + (bounds.size.height - icon_size) / 2.0,
+                icon_size,
+                icon_size,
+            ),
             cx,
         );
 
@@ -151,7 +156,11 @@ impl Component for PaymentRow {
         cx.scene.draw_text(dir_run);
 
         // Description or method label
-        let desc = self.payment.description.as_deref().unwrap_or(self.payment.method.label());
+        let desc = self
+            .payment
+            .description
+            .as_deref()
+            .unwrap_or(self.payment.method.label());
         let desc_run = cx.text.layout(
             desc,
             Point::new(text_x, bounds.origin.y + 28.0),
@@ -189,7 +198,12 @@ impl Component for PaymentRow {
         let badge_x = bounds.origin.x + bounds.size.width - padding - badge_w;
         let mut status_badge = PaymentStatusBadge::new(self.payment.status);
         status_badge.paint(
-            Bounds::new(badge_x, bounds.origin.y + (bounds.size.height - badge_h) / 2.0, badge_w, badge_h),
+            Bounds::new(
+                badge_x,
+                bounds.origin.y + (bounds.size.height - badge_h) / 2.0,
+                badge_w,
+                badge_h,
+            ),
             cx,
         );
 

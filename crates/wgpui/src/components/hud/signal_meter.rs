@@ -95,9 +95,8 @@ impl Component for SignalMeter {
                 self.inactive_color
             };
 
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(x, y, bar_width, height)).with_background(color),
-            );
+            cx.scene
+                .draw_quad(Quad::new(Bounds::new(x, y, bar_width, height)).with_background(color));
         }
     }
 

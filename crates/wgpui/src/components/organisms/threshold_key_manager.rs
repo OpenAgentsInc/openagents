@@ -212,7 +212,12 @@ impl ThresholdKeyManager {
     }
 
     fn tabs_bounds(&self, bounds: &Bounds) -> Bounds {
-        Bounds::new(bounds.origin.x, bounds.origin.y + 50.0, bounds.size.width, 36.0)
+        Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y + 50.0,
+            bounds.size.width,
+            36.0,
+        )
     }
 
     fn content_bounds(&self, bounds: &Bounds) -> Bounds {
@@ -233,7 +238,12 @@ impl ThresholdKeyManager {
             KeyManagerTab::Requests => 2,
             KeyManagerTab::Backup => 3,
         };
-        Bounds::new(tabs.origin.x + idx as f32 * tab_width, tabs.origin.y, tab_width, 36.0)
+        Bounds::new(
+            tabs.origin.x + idx as f32 * tab_width,
+            tabs.origin.y,
+            tab_width,
+            36.0,
+        )
     }
 
     fn tab_from_index(idx: usize) -> Option<KeyManagerTab> {
@@ -247,7 +257,10 @@ impl ThresholdKeyManager {
     }
 
     fn online_peers_count(&self) -> usize {
-        self.peers.iter().filter(|p| p.status == PeerStatus::Online || p.status == PeerStatus::Signing).count()
+        self.peers
+            .iter()
+            .filter(|p| p.status == PeerStatus::Online || p.status == PeerStatus::Signing)
+            .count()
     }
 
     fn paint_overview(&self, content: Bounds, cx: &mut PaintContext) {
@@ -355,7 +368,11 @@ impl ThresholdKeyManager {
                 &req_value,
                 Point::new(content.origin.x + padding, req_y + 18.0),
                 theme::font_size::SM,
-                if self.requests.is_empty() { theme::text::PRIMARY } else { theme::accent::PRIMARY },
+                if self.requests.is_empty() {
+                    theme::text::PRIMARY
+                } else {
+                    theme::accent::PRIMARY
+                },
             );
             cx.scene.draw_text(req_run);
         } else {
@@ -402,10 +419,8 @@ impl ThresholdKeyManager {
                 PeerStatus::Signing => Hsla::new(200.0, 0.7, 0.5, 1.0),
             };
             let dot_bounds = Bounds::new(content.origin.x + padding, y + 18.0, 8.0, 8.0);
-            cx.scene.draw_quad(
-                Quad::new(dot_bounds)
-                    .with_background(status_color),
-            );
+            cx.scene
+                .draw_quad(Quad::new(dot_bounds).with_background(status_color));
 
             // Name
             let name_run = cx.text.layout(
@@ -434,7 +449,10 @@ impl ThresholdKeyManager {
             };
             let status_run = cx.text.layout(
                 status_text,
-                Point::new(content.origin.x + content.size.width - padding - 60.0, y + 16.0),
+                Point::new(
+                    content.origin.x + content.size.width - padding - 60.0,
+                    y + 16.0,
+                ),
                 theme::font_size::XS,
                 status_color,
             );
@@ -487,7 +505,10 @@ impl ThresholdKeyManager {
             cx.scene.draw_text(meta_run);
 
             // Signature progress
-            let progress = format!("{}/{} signatures", request.signatures_collected, request.signatures_required);
+            let progress = format!(
+                "{}/{} signatures",
+                request.signatures_collected, request.signatures_required
+            );
             let progress_run = cx.text.layout(
                 &progress,
                 Point::new(content.origin.x + padding, y + 46.0),
@@ -561,12 +582,7 @@ impl ThresholdKeyManager {
 
         // Backup button
         let btn_y = y + 160.0;
-        let btn_bounds = Bounds::new(
-            content.origin.x + padding,
-            btn_y,
-            140.0,
-            36.0,
-        );
+        let btn_bounds = Bounds::new(content.origin.x + padding, btn_y, 140.0, 36.0);
         let btn_bg = if self.backup_button_hovered {
             theme::accent::PRIMARY.with_alpha(0.3)
         } else {
@@ -616,10 +632,8 @@ impl Component for ThresholdKeyManager {
 
         // Header
         let header = self.header_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(header)
-                .with_background(theme::bg::MUTED),
-        );
+        cx.scene
+            .draw_quad(Quad::new(header).with_background(theme::bg::MUTED));
 
         // Title
         let title_run = cx.text.layout(
@@ -641,10 +655,8 @@ impl Component for ThresholdKeyManager {
 
         // Tabs
         let tabs = self.tabs_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(tabs)
-                .with_background(theme::bg::APP),
-        );
+        cx.scene
+            .draw_quad(Quad::new(tabs).with_background(theme::bg::APP));
 
         let tab_labels = ["Overview", "Peers", "Requests", "Backup"];
         for (i, label) in tab_labels.iter().enumerate() {
@@ -655,15 +667,11 @@ impl Component for ThresholdKeyManager {
             let is_hovered = self.tab_hovered == Some(tab);
 
             if is_active {
-                cx.scene.draw_quad(
-                    Quad::new(tab_bounds)
-                        .with_background(theme::bg::SURFACE),
-                );
+                cx.scene
+                    .draw_quad(Quad::new(tab_bounds).with_background(theme::bg::SURFACE));
             } else if is_hovered {
-                cx.scene.draw_quad(
-                    Quad::new(tab_bounds)
-                        .with_background(theme::bg::HOVER),
-                );
+                cx.scene
+                    .draw_quad(Quad::new(tab_bounds).with_background(theme::bg::HOVER));
             }
 
             // Request count badge
@@ -675,8 +683,7 @@ impl Component for ThresholdKeyManager {
                     18.0,
                 );
                 cx.scene.draw_quad(
-                    Quad::new(badge_bounds)
-                        .with_background(Hsla::new(0.0, 0.7, 0.5, 1.0)),
+                    Quad::new(badge_bounds).with_background(Hsla::new(0.0, 0.7, 0.5, 1.0)),
                 );
                 let badge_text = format!("{}", self.requests.len().min(9));
                 let badge_run = cx.text.layout(
@@ -735,7 +742,9 @@ impl Component for ThresholdKeyManager {
                 self.backup_button_hovered = self.active_tab == KeyManagerTab::Backup
                     && self.backup_button_bounds(&bounds).contains(point);
 
-                if old_tab_hovered != self.tab_hovered || old_backup_hovered != self.backup_button_hovered {
+                if old_tab_hovered != self.tab_hovered
+                    || old_backup_hovered != self.backup_button_hovered
+                {
                     return EventResult::Handled;
                 }
             }
@@ -755,12 +764,13 @@ impl Component for ThresholdKeyManager {
 
                     // Backup button
                     if self.active_tab == KeyManagerTab::Backup
-                        && self.backup_button_bounds(&bounds).contains(point) {
-                            if let Some(callback) = &mut self.on_backup {
-                                callback();
-                            }
-                            return EventResult::Handled;
+                        && self.backup_button_bounds(&bounds).contains(point)
+                    {
+                        if let Some(callback) = &mut self.on_backup {
+                            callback();
                         }
+                        return EventResult::Handled;
+                    }
                 }
             }
             InputEvent::Scroll { dy, .. } => {
@@ -807,12 +817,11 @@ mod tests {
 
     #[test]
     fn test_online_peers_count() {
-        let manager = ThresholdKeyManager::new()
-            .peers(vec![
-                ThresholdPeer::new("npub1...", "Alice", 1).status(PeerStatus::Online),
-                ThresholdPeer::new("npub2...", "Bob", 2).status(PeerStatus::Offline),
-                ThresholdPeer::new("npub3...", "Carol", 3).status(PeerStatus::Signing),
-            ]);
+        let manager = ThresholdKeyManager::new().peers(vec![
+            ThresholdPeer::new("npub1...", "Alice", 1).status(PeerStatus::Online),
+            ThresholdPeer::new("npub2...", "Bob", 2).status(PeerStatus::Offline),
+            ThresholdPeer::new("npub3...", "Carol", 3).status(PeerStatus::Signing),
+        ]);
         assert_eq!(manager.online_peers_count(), 2);
     }
 

@@ -397,12 +397,7 @@ impl Component for Notifications {
         }
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        _cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
         match event {
             InputEvent::MouseMove { x, y } => {
                 let point = Point::new(*x, *y);
@@ -653,13 +648,13 @@ mod tests {
         let bounds = Bounds::new(0.0, 0.0, 800.0, 600.0);
         let notif_bounds = notifs.notification_bounds(&bounds, 0);
         let dismiss_bounds = notifs.dismiss_button_bounds(&notif_bounds);
-        let point = Point::new(
-            dismiss_bounds.origin.x + 1.0,
-            dismiss_bounds.origin.y + 1.0,
-        );
+        let point = Point::new(dismiss_bounds.origin.x + 1.0, dismiss_bounds.origin.y + 1.0);
 
         let mut cx = EventContext::new();
-        let hover = InputEvent::MouseMove { x: point.x, y: point.y };
+        let hover = InputEvent::MouseMove {
+            x: point.x,
+            y: point.y,
+        };
         let result = notifs.event(&hover, bounds, &mut cx);
         assert_eq!(result, EventResult::Handled);
         assert_eq!(notifs.hovered_dismiss, Some(id));
@@ -684,10 +679,7 @@ mod tests {
 
         let second_bounds = notifs.notification_bounds(&bounds, 1);
         let dismiss_bounds = notifs.dismiss_button_bounds(&second_bounds);
-        let point = Point::new(
-            dismiss_bounds.origin.x + 1.0,
-            dismiss_bounds.origin.y + 1.0,
-        );
+        let point = Point::new(dismiss_bounds.origin.x + 1.0, dismiss_bounds.origin.y + 1.0);
 
         let mut cx = EventContext::new();
         let click = InputEvent::MouseUp {

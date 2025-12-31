@@ -122,7 +122,8 @@ impl Component for ThreadHeader {
                 Hsla::transparent()
             };
 
-            cx.scene.draw_quad(Quad::new(back_bounds).with_background(bg));
+            cx.scene
+                .draw_quad(Quad::new(back_bounds).with_background(bg));
 
             let arrow = "\u{2190}";
             let arrow_size = theme::font_size::LG;
@@ -163,7 +164,8 @@ impl Component for ThreadHeader {
 
         if let Some(subtitle) = &self.subtitle {
             let subtitle_font_size = theme::font_size::XS;
-            let subtitle_y = bounds.origin.y + bounds.size.height * 0.65 - subtitle_font_size * 0.35;
+            let subtitle_y =
+                bounds.origin.y + bounds.size.height * 0.65 - subtitle_font_size * 0.35;
 
             let subtitle_run = cx.text.layout(
                 subtitle,
@@ -182,7 +184,8 @@ impl Component for ThreadHeader {
                 Hsla::transparent()
             };
 
-            cx.scene.draw_quad(Quad::new(menu_bounds).with_background(bg));
+            cx.scene
+                .draw_quad(Quad::new(menu_bounds).with_background(bg));
 
             let dots = "\u{22EE}";
             let dots_size = theme::font_size::LG;

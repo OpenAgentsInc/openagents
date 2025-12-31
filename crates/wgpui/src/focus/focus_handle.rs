@@ -24,7 +24,9 @@ pub struct FocusHandle {
 
 impl FocusHandle {
     pub const fn new(id: u64) -> Self {
-        Self { id: FocusId::new(id) }
+        Self {
+            id: FocusId::new(id),
+        }
     }
 
     pub const fn id(self) -> FocusId {

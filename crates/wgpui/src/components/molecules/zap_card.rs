@@ -122,9 +122,8 @@ impl Component for ZapCard {
 
         // Lightning bolt indicator
         let bolt_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, 4.0, bounds.size.height);
-        cx.scene.draw_quad(
-            Quad::new(bolt_bounds).with_background(zap_color),
-        );
+        cx.scene
+            .draw_quad(Quad::new(bolt_bounds).with_background(zap_color));
 
         let mut y = bounds.origin.y + padding;
 
@@ -151,7 +150,10 @@ impl Component for ZapCard {
         y += 20.0;
 
         // Sender
-        let sender = self.zap.sender_name.clone()
+        let sender = self
+            .zap
+            .sender_name
+            .clone()
             .unwrap_or_else(|| self.zap.short_npub());
         let from_text = format!("from {}", sender);
         let from_run = cx.text.layout(
@@ -208,7 +210,11 @@ impl Component for ZapCard {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let height = if self.zap.message.is_some() { 80.0 } else { 65.0 };
+        let height = if self.zap.message.is_some() {
+            80.0
+        } else {
+            65.0
+        };
         (None, Some(height))
     }
 }

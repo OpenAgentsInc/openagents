@@ -2,15 +2,13 @@ use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult, TextInput};
 use crate::{Bounds, InputEvent, Point, Quad, theme};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FeedbackRating {
     #[default]
     None,
     Positive,
     Negative,
 }
-
 
 pub struct ThreadFeedback {
     id: Option<ComponentId>,
@@ -87,7 +85,12 @@ impl ThreadFeedback {
         let center_x = bounds.origin.x + bounds.size.width / 2.0;
         let y = bounds.origin.y + theme::spacing::MD;
 
-        Bounds::new(center_x - btn_size - theme::spacing::SM, y, btn_size, btn_size)
+        Bounds::new(
+            center_x - btn_size - theme::spacing::SM,
+            y,
+            btn_size,
+            btn_size,
+        )
     }
 
     fn negative_bounds(&self, bounds: &Bounds) -> Bounds {
@@ -178,8 +181,10 @@ impl Component for ThreadFeedback {
             theme::bg::MUTED
         };
 
-        cx.scene.draw_quad(Quad::new(pos_bounds).with_background(pos_bg));
-        cx.scene.draw_quad(Quad::new(neg_bounds).with_background(neg_bg));
+        cx.scene
+            .draw_quad(Quad::new(pos_bounds).with_background(pos_bg));
+        cx.scene
+            .draw_quad(Quad::new(neg_bounds).with_background(neg_bg));
 
         let thumb_up = "\u{1F44D}";
         let thumb_down = "\u{1F44E}";
@@ -224,14 +229,17 @@ impl Component for ThreadFeedback {
                 theme::accent::PRIMARY
             };
 
-            cx.scene.draw_quad(Quad::new(submit_bounds).with_background(submit_bg));
+            cx.scene
+                .draw_quad(Quad::new(submit_bounds).with_background(submit_bg));
 
             let submit_text = "Submit";
             let submit_size = theme::font_size::SM;
             let submit_run = cx.text.layout(
                 submit_text,
                 Point::new(
-                    submit_bounds.origin.x + (submit_bounds.size.width - submit_text.len() as f32 * submit_size * 0.5) / 2.0,
+                    submit_bounds.origin.x
+                        + (submit_bounds.size.width - submit_text.len() as f32 * submit_size * 0.5)
+                            / 2.0,
                     submit_bounds.origin.y + (submit_bounds.size.height - submit_size) / 2.0,
                 ),
                 submit_size,
@@ -255,7 +263,8 @@ impl Component for ThreadFeedback {
 
                 self.positive_hovered = self.positive_bounds(&bounds).contains(point);
                 self.negative_hovered = self.negative_bounds(&bounds).contains(point);
-                self.submit_hovered = self.show_comment_input && self.submit_bounds(&bounds).contains(point);
+                self.submit_hovered =
+                    self.show_comment_input && self.submit_bounds(&bounds).contains(point);
 
                 if was_pos != self.positive_hovered
                     || was_neg != self.negative_hovered

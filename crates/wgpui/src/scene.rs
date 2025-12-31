@@ -16,12 +16,18 @@ impl GpuImageQuad {
     /// Create a GPU image quad from bounds and optional tint.
     /// UV is full texture (0,0 to 1,1).
     pub fn new(position: [f32; 2], size: [f32; 2], tint: Option<Hsla>) -> Self {
-        let tint_color = tint.map(|c| {
-            #[cfg(not(target_arch = "wasm32"))]
-            { c.to_linear_rgba() }
-            #[cfg(target_arch = "wasm32")]
-            { c.to_rgba() }
-        }).unwrap_or([1.0, 1.0, 1.0, 1.0]); // White = no tint
+        let tint_color = tint
+            .map(|c| {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    c.to_linear_rgba()
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    c.to_rgba()
+                }
+            })
+            .unwrap_or([1.0, 1.0, 1.0, 1.0]); // White = no tint
 
         Self {
             position,
@@ -200,7 +206,12 @@ pub struct GpuTextQuad {
 impl GpuTextQuad {
     /// Create a GPU text quad from a glyph instance.
     /// This is the GPU boundary where we scale from logical to physical pixels.
-    pub fn from_glyph(glyph: &GlyphInstance, origin: Point, color: Hsla, scale_factor: f32) -> Self {
+    pub fn from_glyph(
+        glyph: &GlyphInstance,
+        origin: Point,
+        color: Hsla,
+        scale_factor: f32,
+    ) -> Self {
         // Scale from LOGICAL to PHYSICAL pixels at GPU boundary.
         // - origin: logical position where text run starts
         // - glyph.offset: logical offset from origin (already divided by scale_factor in text.rs)
@@ -341,7 +352,12 @@ impl Scene {
         let mut quads = Vec::new();
         for run in &self.text_runs {
             for glyph in &run.glyphs {
-                quads.push(GpuTextQuad::from_glyph(glyph, run.origin, run.color, scale_factor));
+                quads.push(GpuTextQuad::from_glyph(
+                    glyph,
+                    run.origin,
+                    run.color,
+                    scale_factor,
+                ));
             }
         }
         quads
@@ -463,8 +479,8 @@ mod tests {
         // Position and size should be scaled by 2x
         assert!((gpu_quad.origin[0] - 20.0).abs() < 0.001); // 10 * 2 = 20
         assert!((gpu_quad.origin[1] - 40.0).abs() < 0.001); // 20 * 2 = 40
-        assert!((gpu_quad.size[0] - 200.0).abs() < 0.001);  // 100 * 2 = 200
-        assert!((gpu_quad.size[1] - 100.0).abs() < 0.001);  // 50 * 2 = 100
+        assert!((gpu_quad.size[0] - 200.0).abs() < 0.001); // 100 * 2 = 200
+        assert!((gpu_quad.size[1] - 100.0).abs() < 0.001); // 50 * 2 = 100
         assert!((gpu_quad.border_width - 4.0).abs() < 0.001); // 2 * 2 = 4
     }
 
@@ -499,8 +515,8 @@ mod tests {
         // Position and size should be scaled by 2x
         assert!((gpu_quad.position[0] - 30.0).abs() < 0.001); // (10 + 5) * 2 = 30
         assert!((gpu_quad.position[1] - 40.0).abs() < 0.001); // (20 + 0) * 2 = 40
-        assert!((gpu_quad.size[0] - 16.0).abs() < 0.001);     // 8 * 2 = 16
-        assert!((gpu_quad.size[1] - 28.0).abs() < 0.001);     // 14 * 2 = 28
+        assert!((gpu_quad.size[0] - 16.0).abs() < 0.001); // 8 * 2 = 16
+        assert!((gpu_quad.size[1] - 28.0).abs() < 0.001); // 14 * 2 = 28
     }
 
     #[test]

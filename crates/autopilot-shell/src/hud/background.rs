@@ -3,7 +3,7 @@
 use std::time::Instant;
 use wgpui::{
     Bounds, Component, Easing, EventContext, EventResult, Hsla, InputEvent, PaintContext,
-    components::hud::{DotsGrid, DotsOrigin, DotShape},
+    components::hud::{DotShape, DotsGrid, DotsOrigin},
 };
 
 /// Background layer with subtle DotsGrid

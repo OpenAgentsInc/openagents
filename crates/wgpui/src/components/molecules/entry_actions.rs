@@ -156,12 +156,9 @@ impl Component for EntryActions {
                 theme::text::MUTED
             };
 
-            let text_run = cx.text.layout(
-                label,
-                Point::new(x, text_y),
-                font_size,
-                text_color,
-            );
+            let text_run = cx
+                .text
+                .layout(label, Point::new(x, text_y), font_size, text_color);
             cx.scene.draw_text(text_run);
             x += label.len() as f32 * font_size * 0.6 + gap;
         }
@@ -201,7 +198,8 @@ impl Component for EntryActions {
 
                     let mut current_x = bounds.origin.x;
                     if self.show_feedback {
-                        let up_bounds = Bounds::new(current_x, bounds.origin.y, btn_size, bounds.size.height);
+                        let up_bounds =
+                            Bounds::new(current_x, bounds.origin.y, btn_size, bounds.size.height);
                         if up_bounds.contains(click) {
                             self.feedback_up = !self.feedback_up;
                             self.feedback_down = false;
@@ -212,7 +210,8 @@ impl Component for EntryActions {
                         }
                         current_x += btn_size + gap;
 
-                        let down_bounds = Bounds::new(current_x, bounds.origin.y, btn_size, bounds.size.height);
+                        let down_bounds =
+                            Bounds::new(current_x, bounds.origin.y, btn_size, bounds.size.height);
                         if down_bounds.contains(click) {
                             self.feedback_down = !self.feedback_down;
                             self.feedback_up = false;
@@ -227,7 +226,8 @@ impl Component for EntryActions {
                     let font_size = theme::font_size::XS;
                     for (label, action) in self.action_buttons() {
                         let width = label.len() as f32 * font_size * 0.6;
-                        let action_bounds = Bounds::new(current_x, bounds.origin.y, width, bounds.size.height);
+                        let action_bounds =
+                            Bounds::new(current_x, bounds.origin.y, width, bounds.size.height);
                         if action_bounds.contains(click) {
                             // Store for polling
                             self.triggered_action = Some(action);

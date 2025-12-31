@@ -2,67 +2,48 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use wgpui::{
-    Animation, AnimatorState, Bounds, Component, Easing, EventContext, EventResult, Hsla,
-    Illuminator, InputEvent, Key, Modifiers, MouseButton, NamedKey, PaintContext, Point, Quad,
-    Scene, Size, SpringAnimation, Text, TextDecipher, TextEffectTiming, TextSequence, TextSystem,
-    theme,
-};
 use wgpui::components::atoms::{
-    AgentScheduleBadge, AgentStatus, AgentStatusBadge, AgentType, AmountDirection, ApmGauge, ApmLevel,
-    Bech32Entity, Bech32Type, BitcoinAmount, BitcoinNetwork, BitcoinUnit, BountyBadge, BountyStatus,
-    CheckpointBadge, ContentType, ContentTypeIcon, ContributionStatus, DaemonStatus, DaemonStatusBadge,
-    EarningsBadge, EarningsType, EntryMarker, EntryType, EventKind, EventKindBadge, FeedbackButton,
-    GoalPriority, GoalProgressBadge, GoalStatus, IssueStatus, IssueStatusBadge, JobStatus, JobStatusBadge,
-    KeybindingHint, LicenseStatus, MarketType, MarketTypeBadge, Mode, ModeBadge, Model, ModelBadge,
-    NetworkBadge, ParallelAgentBadge, ParallelAgentStatus, PaymentMethod, PaymentMethodIcon, PaymentStatus,
-    PaymentStatusBadge, PermissionAction, PermissionButton, PrStatus, PrStatusBadge, RelayStatus,
-    RelayStatusBadge, RelayStatusDot, ReputationBadge, ResourceType, ResourceUsageBar, SessionStatus,
-    SessionStatusBadge, SkillLicenseBadge, SkillType, StackLayerBadge, StackLayerStatus, Status, StatusDot,
-    StreamingIndicator, ThinkingToggle, ThresholdKeyBadge, TickEventBadge, TickOutcome,
+    AgentScheduleBadge, AgentStatus, AgentStatusBadge, AgentType, AmountDirection, ApmGauge,
+    ApmLevel, Bech32Entity, Bech32Type, BitcoinAmount, BitcoinNetwork, BitcoinUnit, BountyBadge,
+    BountyStatus, CheckpointBadge, ContentType, ContentTypeIcon, ContributionStatus, DaemonStatus,
+    DaemonStatusBadge, EarningsBadge, EarningsType, EntryMarker, EntryType, EventKind,
+    EventKindBadge, FeedbackButton, GoalPriority, GoalProgressBadge, GoalStatus, IssueStatus,
+    IssueStatusBadge, JobStatus, JobStatusBadge, KeybindingHint, LicenseStatus, MarketType,
+    MarketTypeBadge, Mode, ModeBadge, Model, ModelBadge, NetworkBadge, ParallelAgentBadge,
+    ParallelAgentStatus, PaymentMethod, PaymentMethodIcon, PaymentStatus, PaymentStatusBadge,
+    PermissionAction, PermissionButton, PrStatus, PrStatusBadge, RelayStatus, RelayStatusBadge,
+    RelayStatusDot, ReputationBadge, ResourceType, ResourceUsageBar, SessionStatus,
+    SessionStatusBadge, SkillLicenseBadge, SkillType, StackLayerBadge, StackLayerStatus, Status,
+    StatusDot, StreamingIndicator, ThinkingToggle, ThresholdKeyBadge, TickEventBadge, TickOutcome,
     ToolIcon, ToolStatus, ToolStatusBadge, ToolType, TrajectorySource, TrajectorySourceBadge,
     TrajectoryStatus, TrajectoryStatusBadge, TriggerType, TrustTier,
 };
+use wgpui::components::atoms::{BreadcrumbItem, SessionBreadcrumb};
 use wgpui::components::hud::{
-    Command, CommandPalette, ContextMenu, CornerConfig, DotsGrid, DotsOrigin, DotShape, DrawDirection,
-    Frame, FrameAnimation, FrameStyle, GridLinesBackground, LineDirection, MenuItem,
+    Command, CommandPalette, ContextMenu, CornerConfig, DotShape, DotsGrid, DotsOrigin,
+    DrawDirection, Frame, FrameAnimation, FrameStyle, GridLinesBackground, LineDirection, MenuItem,
     MovingLinesBackground, Notification, NotificationLevel, NotificationPosition, Notifications,
     PuffsBackground, ResizablePane, ResizeEdge, Reticle, Scanlines, SignalMeter, StatusBar,
     StatusBarPosition, StatusItem, StatusItemAlignment, Tooltip, TooltipPosition,
+};
+use wgpui::components::molecules::{
+    AddressCard, AddressType, AgentProfileCard, AgentProfileInfo, ApmComparisonCard,
+    ApmSessionData, ApmSessionRow, ComparisonSession, ContactCard, ContactInfo,
+    ContactVerification, DataFormat, DataLicense, DatasetCard, DatasetInfo, DmBubble, DmDirection,
+    DmMessage, EncryptionStatus, IssueInfo, IssueLabel, IssueRow, MnemonicDisplay,
+    PermissionDecision, PermissionHistory, PermissionHistoryItem, PermissionRule,
+    PermissionRuleRow, PermissionScope, PrEvent, PrEventType, PrTimelineItem, ProviderCard,
+    ProviderInfo, ProviderSpecs, ProviderStatus, RepoCard, RepoInfo, RepoVisibility, ReviewState,
+    SessionCard, SessionInfo, SessionSearchBar, SigningRequestCard, SigningRequestInfo,
+    SigningType, SigningUrgency, SkillCard, SkillCategory, SkillInfo, SkillInstallStatus,
+    TransactionDirection, TransactionInfo, TransactionRow, ZapCard, ZapInfo,
 };
 use wgpui::components::molecules::{
     BalanceCard, CheckpointRestore, DiffHeader, DiffType, InvoiceDisplay, InvoiceInfo, InvoiceType,
     MessageHeader, ModeSelector, ModelSelector, PaymentDirection, PaymentInfo, PaymentRow,
     PermissionBar, RelayInfo, RelayRow, ThinkingBlock, ToolHeader, WalletBalance,
 };
-use wgpui::components::organisms::{
-    AssistantMessage, DiffToolCall, DiffLine, DiffLineKind, PermissionDialog, SearchMatch,
-    SearchToolCall, TerminalToolCall, ThreadControls, ThreadEntry, ThreadEntryType, ToolCallCard,
-    UserMessage,
-};
-use wgpui::components::sections::{
-    FeedbackRating, MessageEditor, ThreadFeedback, ThreadHeader, ThreadView,
-    TrajectoryEntry, TrajectoryView,
-};
 use wgpui::components::molecules::{EntryActions, TerminalHeader};
-use wgpui::components::molecules::{
-    PermissionHistoryItem, PermissionHistory, PermissionRuleRow, PermissionRule,
-    PermissionDecision, PermissionScope,
-    SessionCard, SessionInfo, SessionSearchBar,
-    ApmSessionRow, ApmSessionData, ApmComparisonCard, ComparisonSession,
-    MnemonicDisplay, AddressCard, AddressType, TransactionRow, TransactionInfo, TransactionDirection,
-    RepoCard, RepoInfo, RepoVisibility, IssueRow, IssueInfo, IssueLabel,
-    PrTimelineItem, PrEvent, PrEventType, ReviewState,
-    ProviderCard, ProviderInfo, ProviderSpecs, ProviderStatus,
-    SkillCard, SkillInfo, SkillCategory, SkillInstallStatus,
-    DatasetCard, DatasetInfo, DataFormat, DataLicense,
-    ContactCard, ContactInfo, ContactVerification,
-    DmBubble, DmMessage, DmDirection, EncryptionStatus,
-    ZapCard, ZapInfo,
-    AgentProfileCard, AgentProfileInfo,
-    SigningRequestCard, SigningRequestInfo, SigningType, SigningUrgency,
-};
-use wgpui::components::atoms::{BreadcrumbItem, SessionBreadcrumb};
 use wgpui::components::organisms::{
     AgentAction, AgentGoal, AgentGoalStatus, AgentStateInspector, ApmLeaderboard, DmThread,
     EventCategory, EventData, EventInspector, InspectorView, IntervalUnit, KeyShare,
@@ -70,11 +51,26 @@ use wgpui::components::organisms::{
     ResourceUsage, ScheduleConfig, ScheduleData, ScheduleType, SendFlow, SendStep, SigningRequest,
     TagData, ThresholdKeyManager, ThresholdPeer, ZapFlow,
 };
+use wgpui::components::organisms::{
+    AssistantMessage, DiffLine, DiffLineKind, DiffToolCall, PermissionDialog, SearchMatch,
+    SearchToolCall, TerminalToolCall, ThreadControls, ThreadEntry, ThreadEntryType, ToolCallCard,
+    UserMessage,
+};
+use wgpui::components::sections::{
+    FeedbackRating, MessageEditor, ThreadFeedback, ThreadHeader, ThreadView, TrajectoryEntry,
+    TrajectoryView,
+};
 use wgpui::renderer::Renderer;
+use wgpui::{
+    Animation, AnimatorState, Bounds, Component, Easing, EventContext, EventResult, Hsla,
+    Illuminator, InputEvent, Key, Modifiers, MouseButton, NamedKey, PaintContext, Point, Quad,
+    Scene, Size, SpringAnimation, Text, TextDecipher, TextEffectTiming, TextSequence, TextSystem,
+    theme,
+};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
-use winit::keyboard::{Key as WinitKey, NamedKey as WinitNamedKey, ModifiersState};
+use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey};
 use winit::window::{Window, WindowId};
 
 const MARGIN: f32 = 24.0;
@@ -139,14 +135,38 @@ struct GlowPreset {
 }
 
 const GLOW_PRESETS: [GlowPreset; 8] = [
-    GlowPreset { short: "Wht", color: Hsla::new(0.0, 0.0, 1.0, 0.6) },
-    GlowPreset { short: "Cyn", color: Hsla::new(180.0, 1.0, 0.7, 0.5) },
-    GlowPreset { short: "Pur", color: Hsla::new(280.0, 1.0, 0.7, 0.5) },
-    GlowPreset { short: "Grn", color: Hsla::new(120.0, 1.0, 0.6, 0.5) },
-    GlowPreset { short: "C2", color: Hsla::new(0.5, 1.0, 0.6, 0.8) },
-    GlowPreset { short: "Org", color: Hsla::new(0.125, 1.0, 0.5, 0.9) },
-    GlowPreset { short: "Red", color: Hsla::new(0.0, 1.0, 0.5, 1.0) },
-    GlowPreset { short: "G2", color: Hsla::new(0.389, 1.0, 0.5, 0.8) },
+    GlowPreset {
+        short: "Wht",
+        color: Hsla::new(0.0, 0.0, 1.0, 0.6),
+    },
+    GlowPreset {
+        short: "Cyn",
+        color: Hsla::new(180.0, 1.0, 0.7, 0.5),
+    },
+    GlowPreset {
+        short: "Pur",
+        color: Hsla::new(280.0, 1.0, 0.7, 0.5),
+    },
+    GlowPreset {
+        short: "Grn",
+        color: Hsla::new(120.0, 1.0, 0.6, 0.5),
+    },
+    GlowPreset {
+        short: "C2",
+        color: Hsla::new(0.5, 1.0, 0.6, 0.8),
+    },
+    GlowPreset {
+        short: "Org",
+        color: Hsla::new(0.125, 1.0, 0.5, 0.9),
+    },
+    GlowPreset {
+        short: "Red",
+        color: Hsla::new(0.0, 1.0, 0.5, 1.0),
+    },
+    GlowPreset {
+        short: "G2",
+        color: Hsla::new(0.389, 1.0, 0.5, 0.8),
+    },
 ];
 
 const FRAME_STYLES: [FrameStyle; 9] = [
@@ -369,7 +389,11 @@ impl ApplicationHandler for App {
                     state.window.request_redraw();
                 }
             }
-            WindowEvent::MouseInput { state: mouse_state, button, .. } => {
+            WindowEvent::MouseInput {
+                state: mouse_state,
+                button,
+                ..
+            } => {
                 let button = match button {
                     winit::event::MouseButton::Left => MouseButton::Left,
                     winit::event::MouseButton::Right => MouseButton::Right,
@@ -426,9 +450,10 @@ impl ApplicationHandler for App {
                 let bounds = window_bounds(&state.config);
                 let mut scene = Scene::new();
                 state.story.tick();
-                state
-                    .story
-                    .paint(bounds, &mut PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor));
+                state.story.paint(
+                    bounds,
+                    &mut PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor),
+                );
 
                 state.renderer.resize(
                     &state.queue,
@@ -466,7 +491,9 @@ impl ApplicationHandler for App {
                         });
 
                 let scale_factor = state.window.scale_factor() as f32;
-                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
+                state
+                    .renderer
+                    .prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
                 state.queue.submit(std::iter::once(encoder.finish()));
                 output.present();
@@ -714,7 +741,11 @@ impl Storybook {
         if let Some(offset) = self.scroll_offsets.get_mut(self.active_section) {
             *offset = offset.clamp(0.0, max_scroll);
         }
-        let scroll = self.scroll_offsets.get(self.active_section).copied().unwrap_or(0.0);
+        let scroll = self
+            .scroll_offsets
+            .get(self.active_section)
+            .copied()
+            .unwrap_or(0.0);
         let content_bounds = Bounds::new(
             layout.content.origin.x,
             layout.content.origin.y - scroll,
@@ -780,7 +811,11 @@ impl Storybook {
             return handled;
         }
 
-        let scroll = self.scroll_offsets.get(self.active_section).copied().unwrap_or(0.0);
+        let scroll = self
+            .scroll_offsets
+            .get(self.active_section)
+            .copied()
+            .unwrap_or(0.0);
         let content_bounds = Bounds::new(
             layout.content.origin.x,
             layout.content.origin.y - scroll,
@@ -808,7 +843,9 @@ impl Storybook {
         match self.active_section {
             SECTION_MOLECULES => handled |= self.handle_molecules_event(&event, content_bounds),
             SECTION_ORGANISMS => handled |= self.handle_organisms_event(&event, content_bounds),
-            SECTION_INTERACTIONS => handled |= self.handle_interactions_event(&event, content_bounds),
+            SECTION_INTERACTIONS => {
+                handled |= self.handle_interactions_event(&event, content_bounds)
+            }
             _ => {}
         }
 
@@ -881,7 +918,8 @@ impl Storybook {
             };
 
             if bg.a > 0.0 {
-                cx.scene.draw_quad(Quad::new(item_bounds).with_background(bg));
+                cx.scene
+                    .draw_quad(Quad::new(item_bounds).with_background(bg));
             }
 
             let mut text = Text::new(*label)
@@ -996,7 +1034,12 @@ impl Storybook {
             let row_y = inner.origin.y;
 
             // Tool icons
-            for tool_type in &[ToolType::Bash, ToolType::Read, ToolType::Edit, ToolType::Search] {
+            for tool_type in &[
+                ToolType::Bash,
+                ToolType::Read,
+                ToolType::Edit,
+                ToolType::Search,
+            ] {
                 let mut icon = ToolIcon::new(*tool_type);
                 icon.paint(Bounds::new(x, row_y, 28.0, 22.0), cx);
                 x += 36.0;
@@ -1024,7 +1067,12 @@ impl Storybook {
                     Status::Error => "Error",
                     _ => "",
                 };
-                let label_run = cx.text.layout(label, Point::new(x + 16.0, dots_y), theme::font_size::XS, theme::text::MUTED);
+                let label_run = cx.text.layout(
+                    label,
+                    Point::new(x + 16.0, dots_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
                 cx.scene.draw_text(label_run);
                 x += 70.0;
             }
@@ -1055,7 +1103,12 @@ impl Storybook {
             // Content types
             x = inner.origin.x;
             let content_y = model_y + 35.0;
-            for content in &[ContentType::Markdown, ContentType::Code, ContentType::Image, ContentType::Text] {
+            for content in &[
+                ContentType::Markdown,
+                ContentType::Code,
+                ContentType::Image,
+                ContentType::Text,
+            ] {
                 let mut icon = ContentTypeIcon::new(*content);
                 icon.paint(Bounds::new(x, content_y, 28.0, 22.0), cx);
                 x += 36.0;
@@ -1063,7 +1116,12 @@ impl Storybook {
 
             // Entry markers
             x = inner.origin.x + 180.0;
-            for entry in &[EntryType::User, EntryType::Assistant, EntryType::Tool, EntryType::System] {
+            for entry in &[
+                EntryType::User,
+                EntryType::Assistant,
+                EntryType::Tool,
+                EntryType::System,
+            ] {
                 let mut marker = EntryMarker::new(*entry);
                 marker.paint(Bounds::new(x, content_y, 28.0, 22.0), cx);
                 x += 36.0;
@@ -1106,7 +1164,9 @@ impl Storybook {
                 (1.0, GoalStatus::Completed, GoalPriority::High),
                 (0.3, GoalStatus::Blocked, GoalPriority::Critical),
             ] {
-                let mut badge = GoalProgressBadge::new(*progress).status(*status).priority(*priority);
+                let mut badge = GoalProgressBadge::new(*progress)
+                    .status(*status)
+                    .priority(*priority);
                 badge.paint(Bounds::new(x, goal_y, 130.0, 22.0), cx);
                 x += 140.0;
             }
@@ -1114,7 +1174,11 @@ impl Storybook {
             // Stack layer badges
             x = inner.origin.x;
             let stack_y = goal_y + 35.0;
-            for (layer, status) in &[(1, StackLayerStatus::Pending), (2, StackLayerStatus::Ready), (3, StackLayerStatus::Merged)] {
+            for (layer, status) in &[
+                (1, StackLayerStatus::Pending),
+                (2, StackLayerStatus::Ready),
+                (3, StackLayerStatus::Merged),
+            ] {
                 let mut badge = StackLayerBadge::new(*layer, 3).status(status.clone());
                 badge.paint(Bounds::new(x, stack_y, 100.0, 22.0), cx);
                 x += 110.0;
@@ -1141,7 +1205,12 @@ impl Storybook {
             // Network badges
             x = inner.origin.x;
             let net_y = inner.origin.y + 35.0;
-            for network in &[BitcoinNetwork::Mainnet, BitcoinNetwork::Testnet, BitcoinNetwork::Signet, BitcoinNetwork::Regtest] {
+            for network in &[
+                BitcoinNetwork::Mainnet,
+                BitcoinNetwork::Testnet,
+                BitcoinNetwork::Signet,
+                BitcoinNetwork::Regtest,
+            ] {
                 let mut badge = NetworkBadge::new(*network);
                 badge.paint(Bounds::new(x, net_y, 80.0, 22.0), cx);
                 x += 90.0;
@@ -1150,7 +1219,11 @@ impl Storybook {
             // Payment method icons
             x = inner.origin.x;
             let method_y = net_y + 35.0;
-            for method in &[PaymentMethod::Lightning, PaymentMethod::OnChain, PaymentMethod::Spark] {
+            for method in &[
+                PaymentMethod::Lightning,
+                PaymentMethod::OnChain,
+                PaymentMethod::Spark,
+            ] {
                 let mut icon = PaymentMethodIcon::new(*method);
                 icon.paint(Bounds::new(x, method_y, 28.0, 22.0), cx);
                 x += 36.0;
@@ -1158,7 +1231,11 @@ impl Storybook {
 
             // Payment status badges
             x = inner.origin.x + 120.0;
-            for status in &[PaymentStatus::Pending, PaymentStatus::Completed, PaymentStatus::Failed] {
+            for status in &[
+                PaymentStatus::Pending,
+                PaymentStatus::Completed,
+                PaymentStatus::Failed,
+            ] {
                 let mut badge = PaymentStatusBadge::new(*status);
                 badge.paint(Bounds::new(x, method_y, 90.0, 22.0), cx);
                 x += 100.0;
@@ -1180,7 +1257,12 @@ impl Storybook {
         draw_panel("Nostr Protocol Atoms", nostr_bounds, cx, |inner, cx| {
             // Relay status badges
             let mut x = inner.origin.x;
-            for status in &[RelayStatus::Connected, RelayStatus::Connecting, RelayStatus::Disconnected, RelayStatus::Error] {
+            for status in &[
+                RelayStatus::Connected,
+                RelayStatus::Connecting,
+                RelayStatus::Disconnected,
+                RelayStatus::Error,
+            ] {
                 let mut badge = RelayStatusBadge::new(*status);
                 badge.paint(Bounds::new(x, inner.origin.y, 160.0, 22.0), cx);
                 x += 170.0;
@@ -1189,7 +1271,12 @@ impl Storybook {
             // Relay status dots
             x = inner.origin.x;
             let dot_y = inner.origin.y + 35.0;
-            for status in &[RelayStatus::Connected, RelayStatus::Connecting, RelayStatus::Disconnected, RelayStatus::Error] {
+            for status in &[
+                RelayStatus::Connected,
+                RelayStatus::Connecting,
+                RelayStatus::Disconnected,
+                RelayStatus::Error,
+            ] {
                 let mut dot = RelayStatusDot::new(*status);
                 dot.paint(Bounds::new(x, dot_y, 12.0, 12.0), cx);
                 x += 24.0;
@@ -1198,7 +1285,12 @@ impl Storybook {
             // Event kind badges
             x = inner.origin.x;
             let event_y = dot_y + 30.0;
-            for kind in &[EventKind::TextNote, EventKind::EncryptedDm, EventKind::Reaction, EventKind::Repost] {
+            for kind in &[
+                EventKind::TextNote,
+                EventKind::EncryptedDm,
+                EventKind::Reaction,
+                EventKind::Repost,
+            ] {
                 let mut badge = EventKindBadge::new(*kind);
                 badge.paint(Bounds::new(x, event_y, 90.0, 22.0), cx);
                 x += 100.0;
@@ -1221,7 +1313,12 @@ impl Storybook {
         draw_panel("GitAfter Atoms", git_bounds, cx, |inner, cx| {
             // Issue status badges
             let mut x = inner.origin.x;
-            for status in &[IssueStatus::Open, IssueStatus::InProgress, IssueStatus::Closed, IssueStatus::Claimed] {
+            for status in &[
+                IssueStatus::Open,
+                IssueStatus::InProgress,
+                IssueStatus::Closed,
+                IssueStatus::Claimed,
+            ] {
                 let mut badge = IssueStatusBadge::new(*status);
                 badge.paint(Bounds::new(x, inner.origin.y, 100.0, 22.0), cx);
                 x += 110.0;
@@ -1230,7 +1327,12 @@ impl Storybook {
             // PR status badges
             x = inner.origin.x;
             let pr_y = inner.origin.y + 35.0;
-            for status in &[PrStatus::Open, PrStatus::Merged, PrStatus::Closed, PrStatus::Draft] {
+            for status in &[
+                PrStatus::Open,
+                PrStatus::Merged,
+                PrStatus::Closed,
+                PrStatus::Draft,
+            ] {
                 let mut badge = PrStatusBadge::new(*status);
                 badge.paint(Bounds::new(x, pr_y, 80.0, 22.0), cx);
                 x += 90.0;
@@ -1270,7 +1372,12 @@ impl Storybook {
         draw_panel("Marketplace Atoms", market_bounds, cx, |inner, cx| {
             // Market type badges
             let mut x = inner.origin.x;
-            for mtype in &[MarketType::Compute, MarketType::Skills, MarketType::Data, MarketType::Trajectories] {
+            for mtype in &[
+                MarketType::Compute,
+                MarketType::Skills,
+                MarketType::Data,
+                MarketType::Trajectories,
+            ] {
                 let mut badge = MarketTypeBadge::new(*mtype);
                 badge.paint(Bounds::new(x, inner.origin.y, 90.0, 22.0), cx);
                 x += 100.0;
@@ -1279,7 +1386,12 @@ impl Storybook {
             // Job status badges
             x = inner.origin.x;
             let job_y = inner.origin.y + 35.0;
-            for status in &[JobStatus::Pending, JobStatus::Processing, JobStatus::Completed, JobStatus::Failed] {
+            for status in &[
+                JobStatus::Pending,
+                JobStatus::Processing,
+                JobStatus::Completed,
+                JobStatus::Failed,
+            ] {
                 let mut badge = JobStatusBadge::new(*status);
                 badge.paint(Bounds::new(x, job_y, 100.0, 22.0), cx);
                 x += 110.0;
@@ -1288,7 +1400,12 @@ impl Storybook {
             // Reputation badges
             x = inner.origin.x;
             let rep_y = job_y + 35.0;
-            for tier in &[TrustTier::New, TrustTier::Established, TrustTier::Trusted, TrustTier::Expert] {
+            for tier in &[
+                TrustTier::New,
+                TrustTier::Established,
+                TrustTier::Trusted,
+                TrustTier::Expert,
+            ] {
                 let mut badge = ReputationBadge::new(*tier);
                 badge.paint(Bounds::new(x, rep_y, 100.0, 22.0), cx);
                 x += 110.0;
@@ -1297,14 +1414,22 @@ impl Storybook {
             // Trajectory source badges
             x = inner.origin.x;
             let traj_y = rep_y + 35.0;
-            for source in &[TrajectorySource::Claude, TrajectorySource::Cursor, TrajectorySource::Codex] {
+            for source in &[
+                TrajectorySource::Claude,
+                TrajectorySource::Cursor,
+                TrajectorySource::Codex,
+            ] {
                 let mut badge = TrajectorySourceBadge::new(*source);
                 badge.paint(Bounds::new(x, traj_y, 90.0, 22.0), cx);
                 x += 100.0;
             }
 
             // Trajectory status badges
-            for status in &[TrajectoryStatus::Verified, TrajectoryStatus::Partial, TrajectoryStatus::Suspicious] {
+            for status in &[
+                TrajectoryStatus::Verified,
+                TrajectoryStatus::Partial,
+                TrajectoryStatus::Suspicious,
+            ] {
                 let mut badge = TrajectoryStatusBadge::new(*status);
                 badge.paint(Bounds::new(x, traj_y, 100.0, 22.0), cx);
                 x += 110.0;
@@ -1318,7 +1443,12 @@ impl Storybook {
         draw_panel("Autopilot Atoms", auto_bounds, cx, |inner, cx| {
             // Session status badges
             let mut x = inner.origin.x;
-            for status in &[SessionStatus::Pending, SessionStatus::Running, SessionStatus::Completed, SessionStatus::Failed] {
+            for status in &[
+                SessionStatus::Pending,
+                SessionStatus::Running,
+                SessionStatus::Completed,
+                SessionStatus::Failed,
+            ] {
                 let mut badge = SessionStatusBadge::new(*status);
                 badge.paint(Bounds::new(x, inner.origin.y, 90.0, 22.0), cx);
                 x += 100.0;
@@ -1336,7 +1466,11 @@ impl Storybook {
             // Resource usage bars
             x = inner.origin.x;
             let res_y = apm_y + 35.0;
-            for (rtype, pct) in &[(ResourceType::Memory, 35.0), (ResourceType::Memory, 75.0), (ResourceType::Cpu, 50.0)] {
+            for (rtype, pct) in &[
+                (ResourceType::Memory, 35.0),
+                (ResourceType::Memory, 75.0),
+                (ResourceType::Cpu, 50.0),
+            ] {
                 let mut bar = ResourceUsageBar::new(*rtype, *pct).bar_width(50.0);
                 bar.paint(Bounds::new(x, res_y, 140.0, 22.0), cx);
                 x += 150.0;
@@ -1345,7 +1479,11 @@ impl Storybook {
             // Daemon status badges
             x = inner.origin.x;
             let daemon_y = res_y + 35.0;
-            for status in &[DaemonStatus::Offline, DaemonStatus::Online, DaemonStatus::Error] {
+            for status in &[
+                DaemonStatus::Offline,
+                DaemonStatus::Online,
+                DaemonStatus::Error,
+            ] {
                 let mut badge = DaemonStatusBadge::new(*status).compact(true);
                 badge.paint(Bounds::new(x, daemon_y, 28.0, 22.0), cx);
                 x += 36.0;
@@ -1353,7 +1491,11 @@ impl Storybook {
 
             // Parallel agent badges
             x = inner.origin.x + 120.0;
-            for (idx, status) in &[(0, ParallelAgentStatus::Idle), (1, ParallelAgentStatus::Running), (2, ParallelAgentStatus::Completed)] {
+            for (idx, status) in &[
+                (0, ParallelAgentStatus::Idle),
+                (1, ParallelAgentStatus::Running),
+                (2, ParallelAgentStatus::Completed),
+            ] {
                 let mut badge = ParallelAgentBadge::new(*idx, *status).compact(true);
                 badge.paint(Bounds::new(x, daemon_y, 50.0, 22.0), cx);
                 x += 60.0;
@@ -1367,7 +1509,11 @@ impl Storybook {
         draw_panel("Interactive Atoms", interact_bounds, cx, |inner, cx| {
             // Permission buttons
             let mut x = inner.origin.x;
-            for action in &[PermissionAction::AllowOnce, PermissionAction::AllowAlways, PermissionAction::Deny] {
+            for action in &[
+                PermissionAction::AllowOnce,
+                PermissionAction::AllowAlways,
+                PermissionAction::Deny,
+            ] {
                 let mut btn = PermissionButton::new(*action);
                 btn.paint(Bounds::new(x, inner.origin.y, 100.0, 26.0), cx);
                 x += 110.0;
@@ -1402,7 +1548,8 @@ impl Storybook {
             cp2.paint(Bounds::new(x + 290.0, key_y, 60.0, 22.0), cx);
 
             // Streaming indicator
-            self.streaming_indicator.paint(Bounds::new(x + 370.0, key_y, 80.0, 22.0), cx);
+            self.streaming_indicator
+                .paint(Bounds::new(x + 370.0, key_y, 80.0, 22.0), cx);
 
             // Skill license badges
             x = inner.origin.x;
@@ -1418,7 +1565,11 @@ impl Storybook {
             }
 
             // Earnings badges (compact)
-            for etype in &[EarningsType::Compute, EarningsType::Skills, EarningsType::Data] {
+            for etype in &[
+                EarningsType::Compute,
+                EarningsType::Skills,
+                EarningsType::Data,
+            ] {
                 let mut badge = EarningsBadge::new(*etype, 25000).compact(true);
                 badge.paint(Bounds::new(x, skill_y, 70.0, 22.0), cx);
                 x += 80.0;
@@ -1475,7 +1626,8 @@ impl Storybook {
                 Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, row_height),
                 cx,
             );
-            let mut tool_header = ToolHeader::new(ToolType::Read, "read_file").status(ToolStatus::Success);
+            let mut tool_header =
+                ToolHeader::new(ToolType::Read, "read_file").status(ToolStatus::Success);
             tool_header.paint(
                 Bounds::new(
                     inner.origin.x,
@@ -1693,7 +1845,12 @@ impl Storybook {
             let col_gap = 16.0;
             let col_width = ((inner.size.width - col_gap) / 2.0).max(0.0);
             let left = Bounds::new(inner.origin.x, inner.origin.y, col_width, inner.size.height);
-            let right = Bounds::new(inner.origin.x + col_width + col_gap, inner.origin.y, col_width, inner.size.height);
+            let right = Bounds::new(
+                inner.origin.x + col_width + col_gap,
+                inner.origin.y,
+                col_width,
+                inner.size.height,
+            );
 
             let mut tool = ToolCallCard::new(ToolType::Search, "grep")
                 .status(ToolStatus::Success)
@@ -1758,7 +1915,13 @@ impl Storybook {
         let available = (width - PANEL_PADDING * 2.0).max(0.0);
 
         let permutations = FRAME_STYLES.len() * FRAME_ANIMATIONS.len() * FRAME_DIRECTIONS.len();
-        let grid = grid_metrics(available, permutations, FRAME_TILE_W, FRAME_TILE_H, FRAME_TILE_GAP);
+        let grid = grid_metrics(
+            available,
+            permutations,
+            FRAME_TILE_W,
+            FRAME_TILE_H,
+            FRAME_TILE_GAP,
+        );
         let permutation_height = panel_height(grid.height);
         let panel_bounds = Bounds::new(bounds.origin.x, y, width, permutation_height);
         draw_panel(
@@ -1816,7 +1979,13 @@ impl Storybook {
         y += permutation_height + SECTION_GAP;
 
         let flicker_count = FRAME_STYLES.len() * 2;
-        let flicker_grid = grid_metrics(available, flicker_count, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP);
+        let flicker_grid = grid_metrics(
+            available,
+            flicker_count,
+            FRAME_VARIANT_W,
+            FRAME_VARIANT_H,
+            FRAME_TILE_GAP,
+        );
         let flicker_height = panel_height(flicker_grid.height);
         let flicker_bounds = Bounds::new(bounds.origin.x, y, width, flicker_height);
         draw_panel(
@@ -1863,7 +2032,13 @@ impl Storybook {
         y += flicker_height + SECTION_GAP;
 
         let glow_count = FRAME_STYLES.len() * 2;
-        let glow_grid = grid_metrics(available, glow_count, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP);
+        let glow_grid = grid_metrics(
+            available,
+            glow_count,
+            FRAME_VARIANT_W,
+            FRAME_VARIANT_H,
+            FRAME_TILE_GAP,
+        );
         let glow_height = panel_height(glow_grid.height);
         let glow_bounds = Bounds::new(bounds.origin.x, y, width, glow_height);
         draw_panel("Glow toggle (off/on)", glow_bounds, cx, |inner, cx| {
@@ -1907,66 +2082,82 @@ impl Storybook {
         y += glow_height + SECTION_GAP;
 
         let glow_palette_count = FRAME_STYLES.len() * FRAME_ANIMATIONS.len() * GLOW_PRESETS.len();
-        let glow_palette_grid =
-            grid_metrics(available, glow_palette_count, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP);
+        let glow_palette_grid = grid_metrics(
+            available,
+            glow_palette_count,
+            FRAME_VARIANT_W,
+            FRAME_VARIANT_H,
+            FRAME_TILE_GAP,
+        );
         let glow_palette_height = panel_height(glow_palette_grid.height);
         let glow_palette_bounds = Bounds::new(bounds.origin.x, y, width, glow_palette_height);
-        draw_panel("Glow palette x animation", glow_palette_bounds, cx, |inner, cx| {
-            let grid = grid_metrics(
-                inner.size.width,
-                glow_palette_count,
-                FRAME_VARIANT_W,
-                FRAME_VARIANT_H,
-                FRAME_TILE_GAP,
-            );
-            let progress = self.light_frame_anim.current_value();
-            let glow_pulse = self.glow_pulse_anim.current_value();
-            let flicker_exit = progress > 0.5;
-            let white = Hsla::new(0.0, 0.0, 1.0, 1.0);
-            let dark_bg = Hsla::new(0.0, 0.0, 0.08, 0.85);
-            let mut idx = 0;
+        draw_panel(
+            "Glow palette x animation",
+            glow_palette_bounds,
+            cx,
+            |inner, cx| {
+                let grid = grid_metrics(
+                    inner.size.width,
+                    glow_palette_count,
+                    FRAME_VARIANT_W,
+                    FRAME_VARIANT_H,
+                    FRAME_TILE_GAP,
+                );
+                let progress = self.light_frame_anim.current_value();
+                let glow_pulse = self.glow_pulse_anim.current_value();
+                let flicker_exit = progress > 0.5;
+                let white = Hsla::new(0.0, 0.0, 1.0, 1.0);
+                let dark_bg = Hsla::new(0.0, 0.0, 0.08, 0.85);
+                let mut idx = 0;
 
-            for style in FRAME_STYLES.iter().copied() {
-                for animation in FRAME_ANIMATIONS.iter().copied() {
-                    for preset in GLOW_PRESETS.iter().copied() {
-                        let row = idx / grid.cols;
-                        let col = idx % grid.cols;
-                        let tile_bounds = Bounds::new(
-                            inner.origin.x + col as f32 * (FRAME_VARIANT_W + FRAME_TILE_GAP),
-                            inner.origin.y + row as f32 * (FRAME_VARIANT_H + FRAME_TILE_GAP),
-                            FRAME_VARIANT_W,
-                            FRAME_VARIANT_H,
-                        );
-                        let label = format!(
-                            "{} {} {}",
-                            frame_style_short(style),
-                            frame_animation_label(animation),
-                            preset.short
-                        );
-                        draw_tile(tile_bounds, &label, cx, |inner, cx| {
-                            let mut frame = demo_frame(style)
-                                .line_color(white)
-                                .bg_color(dark_bg)
-                                .stroke_width(2.0)
-                                .animation_mode(animation)
-                                .draw_direction(DrawDirection::CenterOut)
-                                .animation_progress(progress);
-                            if animation == FrameAnimation::Flicker {
-                                frame = frame.is_exiting(flicker_exit);
-                            }
-                            let glow = preset.color.with_alpha(preset.color.a * glow_pulse);
-                            frame = frame.glow_color(glow);
-                            frame.paint(inset_bounds(inner, 4.0), cx);
-                        });
-                        idx += 1;
+                for style in FRAME_STYLES.iter().copied() {
+                    for animation in FRAME_ANIMATIONS.iter().copied() {
+                        for preset in GLOW_PRESETS.iter().copied() {
+                            let row = idx / grid.cols;
+                            let col = idx % grid.cols;
+                            let tile_bounds = Bounds::new(
+                                inner.origin.x + col as f32 * (FRAME_VARIANT_W + FRAME_TILE_GAP),
+                                inner.origin.y + row as f32 * (FRAME_VARIANT_H + FRAME_TILE_GAP),
+                                FRAME_VARIANT_W,
+                                FRAME_VARIANT_H,
+                            );
+                            let label = format!(
+                                "{} {} {}",
+                                frame_style_short(style),
+                                frame_animation_label(animation),
+                                preset.short
+                            );
+                            draw_tile(tile_bounds, &label, cx, |inner, cx| {
+                                let mut frame = demo_frame(style)
+                                    .line_color(white)
+                                    .bg_color(dark_bg)
+                                    .stroke_width(2.0)
+                                    .animation_mode(animation)
+                                    .draw_direction(DrawDirection::CenterOut)
+                                    .animation_progress(progress);
+                                if animation == FrameAnimation::Flicker {
+                                    frame = frame.is_exiting(flicker_exit);
+                                }
+                                let glow = preset.color.with_alpha(preset.color.a * glow_pulse);
+                                frame = frame.glow_color(glow);
+                                frame.paint(inset_bounds(inner, 4.0), cx);
+                            });
+                            idx += 1;
+                        }
                     }
                 }
-            }
-        });
+            },
+        );
         y += glow_palette_height + SECTION_GAP;
 
         let nefrex_count = 16;
-        let nefrex_grid = grid_metrics(available, nefrex_count, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP);
+        let nefrex_grid = grid_metrics(
+            available,
+            nefrex_count,
+            FRAME_VARIANT_W,
+            FRAME_VARIANT_H,
+            FRAME_TILE_GAP,
+        );
         let nefrex_height = panel_height(nefrex_grid.height);
         let nefrex_bounds = Bounds::new(bounds.origin.x, y, width, nefrex_height);
         draw_panel(
@@ -2010,7 +2201,13 @@ impl Storybook {
         y += nefrex_height + SECTION_GAP;
 
         let header_count = 2;
-        let header_grid = grid_metrics(available, header_count, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP);
+        let header_grid = grid_metrics(
+            available,
+            header_count,
+            FRAME_VARIANT_W,
+            FRAME_VARIANT_H,
+            FRAME_TILE_GAP,
+        );
         let header_height = panel_height(header_grid.height);
         let header_bounds = Bounds::new(bounds.origin.x, y, width, header_height);
         draw_panel("Header bottom toggle", header_bounds, cx, |inner, cx| {
@@ -2044,7 +2241,13 @@ impl Storybook {
 
         let circle_segments = [8u32, 16, 32, 64];
         let circle_count = circle_segments.len();
-        let circle_grid = grid_metrics(available, circle_count, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP);
+        let circle_grid = grid_metrics(
+            available,
+            circle_count,
+            FRAME_VARIANT_W,
+            FRAME_VARIANT_H,
+            FRAME_TILE_GAP,
+        );
         let circle_height = panel_height(circle_grid.height);
         let circle_bounds = Bounds::new(bounds.origin.x, y, width, circle_height);
         draw_panel("Circle segments", circle_bounds, cx, |inner, cx| {
@@ -2090,7 +2293,13 @@ impl Storybook {
             dots_bounds,
             cx,
             |inner, cx| {
-                let grid = grid_metrics(inner.size.width, dots_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+                let grid = grid_metrics(
+                    inner.size.width,
+                    dots_count,
+                    BG_TILE_W,
+                    BG_TILE_H,
+                    BG_TILE_GAP,
+                );
                 let mut idx = 0;
                 for shape in DOT_SHAPES.iter().copied() {
                     for origin in DOT_ORIGINS.iter().copied() {
@@ -2130,52 +2339,28 @@ impl Storybook {
 
         let dots_states = [0.0f32, 0.35, 0.7, 1.0];
         let dots_state_count = dots_states.len();
-        let dots_state_grid = grid_metrics(available, dots_state_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+        let dots_state_grid = grid_metrics(
+            available,
+            dots_state_count,
+            BG_TILE_W,
+            BG_TILE_H,
+            BG_TILE_GAP,
+        );
         let dots_state_height = panel_height(dots_state_grid.height);
         let dots_state_bounds = Bounds::new(bounds.origin.x, y, width, dots_state_height);
-        draw_panel("DotsGrid progress states", dots_state_bounds, cx, |inner, cx| {
-            let grid = grid_metrics(inner.size.width, dots_state_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
-            for (idx, progress) in dots_states.iter().enumerate() {
-                let row = idx / grid.cols;
-                let col = idx % grid.cols;
-                let tile_bounds = Bounds::new(
-                    inner.origin.x + col as f32 * (BG_TILE_W + BG_TILE_GAP),
-                    inner.origin.y + row as f32 * (BG_TILE_H + BG_TILE_GAP),
+        draw_panel(
+            "DotsGrid progress states",
+            dots_state_bounds,
+            cx,
+            |inner, cx| {
+                let grid = grid_metrics(
+                    inner.size.width,
+                    dots_state_count,
                     BG_TILE_W,
                     BG_TILE_H,
+                    BG_TILE_GAP,
                 );
-                let label = format!("{}%", (progress * 100.0) as i32);
-                draw_tile(tile_bounds, &label, cx, |inner, cx| {
-                    let mut grid = DotsGrid::new()
-                        .shape(DotShape::Box)
-                        .origin(DotsOrigin::Center)
-                        .distance(18.0)
-                        .size(5.0)
-                        .opacity(1.0)
-                        .animation_progress(*progress)
-                        .color(Hsla::new(280.0, 0.9, 0.6, 0.95));
-                    grid.paint(inner, cx);
-                });
-            }
-        });
-        y += dots_state_height + SECTION_GAP;
-
-        let grid_lines_count = 8;
-        let grid_lines_grid = grid_metrics(available, grid_lines_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
-        let grid_lines_height = panel_height(grid_lines_grid.height);
-        let grid_lines_bounds = Bounds::new(bounds.origin.x, y, width, grid_lines_height);
-        draw_panel("GridLines permutations (orientation x dash)", grid_lines_bounds, cx, |inner, cx| {
-            let grid = grid_metrics(inner.size.width, grid_lines_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
-            let orientations = [
-                (true, true, "HV"),
-                (true, false, "H"),
-                (false, true, "V"),
-                (false, false, "None"),
-            ];
-            let dashes = [(Vec::new(), "Solid"), (vec![6.0, 4.0], "Dash")];
-            let mut idx = 0;
-            for (h, v, label) in orientations {
-                for (dash, dash_label) in dashes.iter() {
+                for (idx, progress) in dots_states.iter().enumerate() {
                     let row = idx / grid.cols;
                     let col = idx % grid.cols;
                     let tile_bounds = Bounds::new(
@@ -2184,59 +2369,132 @@ impl Storybook {
                         BG_TILE_W,
                         BG_TILE_H,
                     );
-                    let label = format!("{label} {dash_label}");
+                    let label = format!("{}%", (progress * 100.0) as i32);
                     draw_tile(tile_bounds, &label, cx, |inner, cx| {
-                        let mut grid = GridLinesBackground::new()
-                            .horizontal(h)
-                            .vertical(v)
-                            .spacing(24.0)
-                            .line_width(2.0)
-                            .color(Hsla::new(120.0, 0.7, 0.5, 0.8))
-                            .horizontal_dash(dash.clone())
-                            .vertical_dash(dash.clone());
-                        grid.set_state(AnimatorState::Entered);
+                        let mut grid = DotsGrid::new()
+                            .shape(DotShape::Box)
+                            .origin(DotsOrigin::Center)
+                            .distance(18.0)
+                            .size(5.0)
+                            .opacity(1.0)
+                            .animation_progress(*progress)
+                            .color(Hsla::new(280.0, 0.9, 0.6, 0.95));
                         grid.paint(inner, cx);
                     });
-                    idx += 1;
                 }
-            }
-        });
+            },
+        );
+        y += dots_state_height + SECTION_GAP;
+
+        let grid_lines_count = 8;
+        let grid_lines_grid = grid_metrics(
+            available,
+            grid_lines_count,
+            BG_TILE_W,
+            BG_TILE_H,
+            BG_TILE_GAP,
+        );
+        let grid_lines_height = panel_height(grid_lines_grid.height);
+        let grid_lines_bounds = Bounds::new(bounds.origin.x, y, width, grid_lines_height);
+        draw_panel(
+            "GridLines permutations (orientation x dash)",
+            grid_lines_bounds,
+            cx,
+            |inner, cx| {
+                let grid = grid_metrics(
+                    inner.size.width,
+                    grid_lines_count,
+                    BG_TILE_W,
+                    BG_TILE_H,
+                    BG_TILE_GAP,
+                );
+                let orientations = [
+                    (true, true, "HV"),
+                    (true, false, "H"),
+                    (false, true, "V"),
+                    (false, false, "None"),
+                ];
+                let dashes = [(Vec::new(), "Solid"), (vec![6.0, 4.0], "Dash")];
+                let mut idx = 0;
+                for (h, v, label) in orientations {
+                    for (dash, dash_label) in dashes.iter() {
+                        let row = idx / grid.cols;
+                        let col = idx % grid.cols;
+                        let tile_bounds = Bounds::new(
+                            inner.origin.x + col as f32 * (BG_TILE_W + BG_TILE_GAP),
+                            inner.origin.y + row as f32 * (BG_TILE_H + BG_TILE_GAP),
+                            BG_TILE_W,
+                            BG_TILE_H,
+                        );
+                        let label = format!("{label} {dash_label}");
+                        draw_tile(tile_bounds, &label, cx, |inner, cx| {
+                            let mut grid = GridLinesBackground::new()
+                                .horizontal(h)
+                                .vertical(v)
+                                .spacing(24.0)
+                                .line_width(2.0)
+                                .color(Hsla::new(120.0, 0.7, 0.5, 0.8))
+                                .horizontal_dash(dash.clone())
+                                .vertical_dash(dash.clone());
+                            grid.set_state(AnimatorState::Entered);
+                            grid.paint(inner, cx);
+                        });
+                        idx += 1;
+                    }
+                }
+            },
+        );
         y += grid_lines_height + SECTION_GAP;
 
         let moving_count = LINE_DIRECTIONS.len() * 2;
         let moving_grid = grid_metrics(available, moving_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
         let moving_height = panel_height(moving_grid.height);
         let moving_bounds = Bounds::new(bounds.origin.x, y, width, moving_height);
-        draw_panel("MovingLines permutations (direction x spacing)", moving_bounds, cx, |inner, cx| {
-            let grid = grid_metrics(inner.size.width, moving_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
-            let spacings = [30.0, 70.0];
-            let mut idx = 0;
-            for direction in LINE_DIRECTIONS.iter().copied() {
-                for spacing in spacings.iter().copied() {
-                    let row = idx / grid.cols;
-                    let col = idx % grid.cols;
-                    let tile_bounds = Bounds::new(
-                        inner.origin.x + col as f32 * (BG_TILE_W + BG_TILE_GAP),
-                        inner.origin.y + row as f32 * (BG_TILE_H + BG_TILE_GAP),
-                        BG_TILE_W,
-                        BG_TILE_H,
-                    );
-                    let label = format!("{} {}", line_direction_label(direction), spacing as i32);
-                    draw_tile(tile_bounds, &label, cx, |inner, cx| {
-                        let mut lines = MovingLinesBackground::new()
-                            .direction(direction)
-                            .spacing(spacing)
-                            .line_width(2.5)
-                            .color(Hsla::new(45.0, 0.9, 0.6, 0.85))
-                            .sets(5)
-                            .cycle_duration(Duration::from_secs(4));
-                        lines.update_with_delta(AnimatorState::Entered, Duration::from_millis(600));
-                        lines.paint(inner, cx);
-                    });
-                    idx += 1;
+        draw_panel(
+            "MovingLines permutations (direction x spacing)",
+            moving_bounds,
+            cx,
+            |inner, cx| {
+                let grid = grid_metrics(
+                    inner.size.width,
+                    moving_count,
+                    BG_TILE_W,
+                    BG_TILE_H,
+                    BG_TILE_GAP,
+                );
+                let spacings = [30.0, 70.0];
+                let mut idx = 0;
+                for direction in LINE_DIRECTIONS.iter().copied() {
+                    for spacing in spacings.iter().copied() {
+                        let row = idx / grid.cols;
+                        let col = idx % grid.cols;
+                        let tile_bounds = Bounds::new(
+                            inner.origin.x + col as f32 * (BG_TILE_W + BG_TILE_GAP),
+                            inner.origin.y + row as f32 * (BG_TILE_H + BG_TILE_GAP),
+                            BG_TILE_W,
+                            BG_TILE_H,
+                        );
+                        let label =
+                            format!("{} {}", line_direction_label(direction), spacing as i32);
+                        draw_tile(tile_bounds, &label, cx, |inner, cx| {
+                            let mut lines = MovingLinesBackground::new()
+                                .direction(direction)
+                                .spacing(spacing)
+                                .line_width(2.5)
+                                .color(Hsla::new(45.0, 0.9, 0.6, 0.85))
+                                .sets(5)
+                                .cycle_duration(Duration::from_secs(4));
+                            lines.update_with_delta(
+                                AnimatorState::Entered,
+                                Duration::from_millis(600),
+                            );
+                            lines.paint(inner, cx);
+                        });
+                        idx += 1;
+                    }
                 }
-            }
-        });
+            },
+        );
         y += moving_height + SECTION_GAP;
 
         let puff_presets = 6;
@@ -2244,12 +2502,21 @@ impl Storybook {
         let puff_height = panel_height(puff_grid.height);
         let puff_bounds = Bounds::new(bounds.origin.x, y, width, puff_height);
         draw_panel("Puffs permutations", puff_bounds, cx, |inner, cx| {
-            let grid = grid_metrics(inner.size.width, puff_presets, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+            let grid = grid_metrics(
+                inner.size.width,
+                puff_presets,
+                BG_TILE_W,
+                BG_TILE_H,
+                BG_TILE_GAP,
+            );
             let presets: Vec<(&str, PuffsBackground)> = vec![
-                ("Cyan", PuffsBackground::new()
-                    .color(Hsla::new(180.0, 0.9, 0.5, 0.4))
-                    .quantity(12)
-                    .layers(8)),
+                (
+                    "Cyan",
+                    PuffsBackground::new()
+                        .color(Hsla::new(180.0, 0.9, 0.5, 0.4))
+                        .quantity(12)
+                        .layers(8),
+                ),
                 (
                     "Dense Magenta",
                     PuffsBackground::new()
@@ -2314,122 +2581,157 @@ impl Storybook {
         let available = (width - PANEL_PADDING * 2.0).max(0.0);
 
         let sequence_presets = 8;
-        let sequence_grid = grid_metrics(available, sequence_presets, TEXT_TILE_W, TEXT_TILE_H, TEXT_TILE_GAP);
+        let sequence_grid = grid_metrics(
+            available,
+            sequence_presets,
+            TEXT_TILE_W,
+            TEXT_TILE_H,
+            TEXT_TILE_GAP,
+        );
         let sequence_height = panel_height(sequence_grid.height);
         let sequence_bounds = Bounds::new(bounds.origin.x, y, width, sequence_height);
-        draw_panel("TextSequence permutations", sequence_bounds, cx, |inner, cx| {
-            let grid = grid_metrics(inner.size.width, sequence_presets, TEXT_TILE_W, TEXT_TILE_H, TEXT_TILE_GAP);
-            let mut items: Vec<(String, TextSequence)> = Vec::new();
-            items.push((
-                "Normal cursor".to_string(),
-                TextSequence::new("Sequence reveal"),
-            ));
-            items.push((
-                "Cursor off".to_string(),
-                TextSequence::new("Sequence reveal").show_cursor(false),
-            ));
-            items.push((
-                "Bold".to_string(),
-                TextSequence::new("Sequence reveal").bold(),
-            ));
-            items.push((
-                "Italic".to_string(),
-                TextSequence::new("Sequence reveal").italic(),
-            ));
-            items.push((
-                "Bold Italic".to_string(),
-                TextSequence::new("Sequence reveal").bold_italic(),
-            ));
-            items.push((
-                "Cursor _".to_string(),
-                TextSequence::new("Sequence reveal").cursor_char('_'),
-            ));
-            let mut entering = TextSequence::new("Sequence reveal")
-                .timing(TextEffectTiming::new(Duration::from_millis(900), Duration::from_millis(50)));
-            entering.update_with_delta(AnimatorState::Entering, Duration::from_millis(350));
-            items.push(("Entering".to_string(), entering));
-            let mut exiting = TextSequence::new("Sequence reveal");
-            exiting.update_with_delta(AnimatorState::Exiting, Duration::from_millis(350));
-            items.push(("Exiting".to_string(), exiting));
-
-            for (idx, (label, mut seq)) in items.into_iter().enumerate() {
-                let row = idx / grid.cols;
-                let col = idx % grid.cols;
-                let tile_bounds = Bounds::new(
-                    inner.origin.x + col as f32 * (TEXT_TILE_W + TEXT_TILE_GAP),
-                    inner.origin.y + row as f32 * (TEXT_TILE_H + TEXT_TILE_GAP),
+        draw_panel(
+            "TextSequence permutations",
+            sequence_bounds,
+            cx,
+            |inner, cx| {
+                let grid = grid_metrics(
+                    inner.size.width,
+                    sequence_presets,
                     TEXT_TILE_W,
                     TEXT_TILE_H,
+                    TEXT_TILE_GAP,
                 );
-                draw_tile(tile_bounds, &label, cx, |inner, cx| {
-                    let text_bounds = Bounds::new(
-                        inner.origin.x,
-                        inner.origin.y + 8.0,
-                        inner.size.width,
-                        inner.size.height - 8.0,
+                let mut items: Vec<(String, TextSequence)> = Vec::new();
+                items.push((
+                    "Normal cursor".to_string(),
+                    TextSequence::new("Sequence reveal"),
+                ));
+                items.push((
+                    "Cursor off".to_string(),
+                    TextSequence::new("Sequence reveal").show_cursor(false),
+                ));
+                items.push((
+                    "Bold".to_string(),
+                    TextSequence::new("Sequence reveal").bold(),
+                ));
+                items.push((
+                    "Italic".to_string(),
+                    TextSequence::new("Sequence reveal").italic(),
+                ));
+                items.push((
+                    "Bold Italic".to_string(),
+                    TextSequence::new("Sequence reveal").bold_italic(),
+                ));
+                items.push((
+                    "Cursor _".to_string(),
+                    TextSequence::new("Sequence reveal").cursor_char('_'),
+                ));
+                let mut entering = TextSequence::new("Sequence reveal").timing(
+                    TextEffectTiming::new(Duration::from_millis(900), Duration::from_millis(50)),
+                );
+                entering.update_with_delta(AnimatorState::Entering, Duration::from_millis(350));
+                items.push(("Entering".to_string(), entering));
+                let mut exiting = TextSequence::new("Sequence reveal");
+                exiting.update_with_delta(AnimatorState::Exiting, Duration::from_millis(350));
+                items.push(("Exiting".to_string(), exiting));
+
+                for (idx, (label, mut seq)) in items.into_iter().enumerate() {
+                    let row = idx / grid.cols;
+                    let col = idx % grid.cols;
+                    let tile_bounds = Bounds::new(
+                        inner.origin.x + col as f32 * (TEXT_TILE_W + TEXT_TILE_GAP),
+                        inner.origin.y + row as f32 * (TEXT_TILE_H + TEXT_TILE_GAP),
+                        TEXT_TILE_W,
+                        TEXT_TILE_H,
                     );
-                    seq.paint(text_bounds, cx);
-                });
-            }
-        });
+                    draw_tile(tile_bounds, &label, cx, |inner, cx| {
+                        let text_bounds = Bounds::new(
+                            inner.origin.x,
+                            inner.origin.y + 8.0,
+                            inner.size.width,
+                            inner.size.height - 8.0,
+                        );
+                        seq.paint(text_bounds, cx);
+                    });
+                }
+            },
+        );
         y += sequence_height + SECTION_GAP;
 
         let decipher_presets = 6;
-        let decipher_grid = grid_metrics(available, decipher_presets, TEXT_TILE_W, TEXT_TILE_H, TEXT_TILE_GAP);
+        let decipher_grid = grid_metrics(
+            available,
+            decipher_presets,
+            TEXT_TILE_W,
+            TEXT_TILE_H,
+            TEXT_TILE_GAP,
+        );
         let decipher_height = panel_height(decipher_grid.height);
         let decipher_bounds = Bounds::new(bounds.origin.x, y, width, decipher_height);
-        draw_panel("TextDecipher permutations", decipher_bounds, cx, |inner, cx| {
-            let grid = grid_metrics(inner.size.width, decipher_presets, TEXT_TILE_W, TEXT_TILE_H, TEXT_TILE_GAP);
-            let mut items: Vec<(String, TextDecipher)> = Vec::new();
-            let mut default = TextDecipher::new("Decrypting payload");
-            default.update_with_delta(AnimatorState::Entering, Duration::from_millis(350));
-            items.push(("Default".to_string(), default));
-
-            let mut digits = TextDecipher::new("Decrypting payload")
-                .characters("0123456789")
-                .scramble_interval(Duration::from_millis(40));
-            digits.update_with_delta(AnimatorState::Entering, Duration::from_millis(350));
-            items.push(("Digits".to_string(), digits));
-
-            let mut binary = TextDecipher::new("Decrypting payload")
-                .characters("01")
-                .scramble_interval(Duration::from_millis(25));
-            binary.update_with_delta(AnimatorState::Entering, Duration::from_millis(350));
-            items.push(("Binary".to_string(), binary));
-
-            let mut slow = TextDecipher::new("Decrypting payload")
-                .scramble_interval(Duration::from_millis(120));
-            slow.update_with_delta(AnimatorState::Entering, Duration::from_millis(350));
-            items.push(("Slow".to_string(), slow));
-
-            let mut bold = TextDecipher::new("Decrypting payload").bold();
-            bold.update_with_delta(AnimatorState::Entering, Duration::from_millis(350));
-            items.push(("Bold".to_string(), bold));
-
-            let mut exit = TextDecipher::new("Decrypting payload");
-            exit.update_with_delta(AnimatorState::Exiting, Duration::from_millis(350));
-            items.push(("Exiting".to_string(), exit));
-
-            for (idx, (label, mut decipher)) in items.into_iter().enumerate() {
-                let row = idx / grid.cols;
-                let col = idx % grid.cols;
-                let tile_bounds = Bounds::new(
-                    inner.origin.x + col as f32 * (TEXT_TILE_W + TEXT_TILE_GAP),
-                    inner.origin.y + row as f32 * (TEXT_TILE_H + TEXT_TILE_GAP),
+        draw_panel(
+            "TextDecipher permutations",
+            decipher_bounds,
+            cx,
+            |inner, cx| {
+                let grid = grid_metrics(
+                    inner.size.width,
+                    decipher_presets,
                     TEXT_TILE_W,
                     TEXT_TILE_H,
+                    TEXT_TILE_GAP,
                 );
-                draw_tile(tile_bounds, &label, cx, |inner, cx| {
-                    let text_bounds = Bounds::new(
-                        inner.origin.x,
-                        inner.origin.y + 8.0,
-                        inner.size.width,
-                        inner.size.height - 8.0,
+                let mut items: Vec<(String, TextDecipher)> = Vec::new();
+                let mut default = TextDecipher::new("Decrypting payload");
+                default.update_with_delta(AnimatorState::Entering, Duration::from_millis(350));
+                items.push(("Default".to_string(), default));
+
+                let mut digits = TextDecipher::new("Decrypting payload")
+                    .characters("0123456789")
+                    .scramble_interval(Duration::from_millis(40));
+                digits.update_with_delta(AnimatorState::Entering, Duration::from_millis(350));
+                items.push(("Digits".to_string(), digits));
+
+                let mut binary = TextDecipher::new("Decrypting payload")
+                    .characters("01")
+                    .scramble_interval(Duration::from_millis(25));
+                binary.update_with_delta(AnimatorState::Entering, Duration::from_millis(350));
+                items.push(("Binary".to_string(), binary));
+
+                let mut slow = TextDecipher::new("Decrypting payload")
+                    .scramble_interval(Duration::from_millis(120));
+                slow.update_with_delta(AnimatorState::Entering, Duration::from_millis(350));
+                items.push(("Slow".to_string(), slow));
+
+                let mut bold = TextDecipher::new("Decrypting payload").bold();
+                bold.update_with_delta(AnimatorState::Entering, Duration::from_millis(350));
+                items.push(("Bold".to_string(), bold));
+
+                let mut exit = TextDecipher::new("Decrypting payload");
+                exit.update_with_delta(AnimatorState::Exiting, Duration::from_millis(350));
+                items.push(("Exiting".to_string(), exit));
+
+                for (idx, (label, mut decipher)) in items.into_iter().enumerate() {
+                    let row = idx / grid.cols;
+                    let col = idx % grid.cols;
+                    let tile_bounds = Bounds::new(
+                        inner.origin.x + col as f32 * (TEXT_TILE_W + TEXT_TILE_GAP),
+                        inner.origin.y + row as f32 * (TEXT_TILE_H + TEXT_TILE_GAP),
+                        TEXT_TILE_W,
+                        TEXT_TILE_H,
                     );
-                    decipher.paint(text_bounds, cx);
-                });
-            }
-        });
+                    draw_tile(tile_bounds, &label, cx, |inner, cx| {
+                        let text_bounds = Bounds::new(
+                            inner.origin.x,
+                            inner.origin.y + 8.0,
+                            inner.size.width,
+                            inner.size.height - 8.0,
+                        );
+                        decipher.paint(text_bounds, cx);
+                    });
+                }
+            },
+        );
     }
 
     fn paint_arwes_illuminator(&mut self, bounds: Bounds, cx: &mut PaintContext) {
@@ -2594,12 +2896,26 @@ impl Storybook {
             ("Deep", 16.0, 34.0, 0.55, 200.0, 0.55),
         ];
 
-        let scan_grid = grid_metrics(available, scan_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+        let scan_grid = grid_metrics(
+            available,
+            scan_presets.len(),
+            BG_TILE_W,
+            BG_TILE_H,
+            BG_TILE_GAP,
+        );
         let scan_height = panel_height(scan_grid.height);
         let scan_bounds = Bounds::new(bounds.origin.x, y, width, scan_height);
         draw_panel("Scanline sweeps", scan_bounds, cx, |inner, cx| {
-            let grid = grid_metrics(inner.size.width, scan_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
-            for (idx, (label, spacing, scan_width, opacity, hue, offset)) in scan_presets.iter().enumerate() {
+            let grid = grid_metrics(
+                inner.size.width,
+                scan_presets.len(),
+                BG_TILE_W,
+                BG_TILE_H,
+                BG_TILE_GAP,
+            );
+            for (idx, (label, spacing, scan_width, opacity, hue, offset)) in
+                scan_presets.iter().enumerate()
+            {
                 let row = idx / grid.cols;
                 let col = idx % grid.cols;
                 let tile_bounds = Bounds::new(
@@ -2632,11 +2948,23 @@ impl Storybook {
             ("Green", 5, 0.8, 120.0),
         ];
 
-        let meter_grid = grid_metrics(available, meter_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+        let meter_grid = grid_metrics(
+            available,
+            meter_presets.len(),
+            BG_TILE_W,
+            BG_TILE_H,
+            BG_TILE_GAP,
+        );
         let meter_height = panel_height(meter_grid.height);
         let meter_bounds = Bounds::new(bounds.origin.x, y, width, meter_height);
         draw_panel("Signal meters", meter_bounds, cx, |inner, cx| {
-            let grid = grid_metrics(inner.size.width, meter_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+            let grid = grid_metrics(
+                inner.size.width,
+                meter_presets.len(),
+                BG_TILE_W,
+                BG_TILE_H,
+                BG_TILE_GAP,
+            );
             for (idx, (label, bars, level, hue)) in meter_presets.iter().enumerate() {
                 let row = idx / grid.cols;
                 let col = idx % grid.cols;
@@ -2670,12 +2998,26 @@ impl Storybook {
             ("Offset", 24.0, 10.0, 10.0, 8.0, 160.0),
         ];
 
-        let reticle_grid = grid_metrics(available, reticle_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+        let reticle_grid = grid_metrics(
+            available,
+            reticle_presets.len(),
+            BG_TILE_W,
+            BG_TILE_H,
+            BG_TILE_GAP,
+        );
         let reticle_height = panel_height(reticle_grid.height);
         let reticle_bounds = Bounds::new(bounds.origin.x, y, width, reticle_height);
         draw_panel("Reticle variants", reticle_bounds, cx, |inner, cx| {
-            let grid = grid_metrics(inner.size.width, reticle_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
-            for (idx, (label, line_length, gap, center, tick, hue)) in reticle_presets.iter().enumerate() {
+            let grid = grid_metrics(
+                inner.size.width,
+                reticle_presets.len(),
+                BG_TILE_W,
+                BG_TILE_H,
+                BG_TILE_GAP,
+            );
+            for (idx, (label, line_length, gap, center, tick, hue)) in
+                reticle_presets.iter().enumerate()
+            {
                 let row = idx / grid.cols;
                 let col = idx % grid.cols;
                 let tile_bounds = Bounds::new(
@@ -2707,12 +3049,26 @@ impl Storybook {
             ("Styled", true, true, 10.0),
         ];
 
-        let resizable_grid = grid_metrics(available, resizable_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+        let resizable_grid = grid_metrics(
+            available,
+            resizable_presets.len(),
+            BG_TILE_W,
+            BG_TILE_H,
+            BG_TILE_GAP,
+        );
         let resizable_height = panel_height(resizable_grid.height);
         let resizable_bounds = Bounds::new(bounds.origin.x, y, width, resizable_height);
         draw_panel("Resizable panes", resizable_bounds, cx, |inner, cx| {
-            let grid = grid_metrics(inner.size.width, resizable_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
-            for (idx, (label, resizable, show_handles, handle_size)) in resizable_presets.iter().enumerate() {
+            let grid = grid_metrics(
+                inner.size.width,
+                resizable_presets.len(),
+                BG_TILE_W,
+                BG_TILE_H,
+                BG_TILE_GAP,
+            );
+            for (idx, (label, resizable, show_handles, handle_size)) in
+                resizable_presets.iter().enumerate()
+            {
                 let row = idx / grid.cols;
                 let col = idx % grid.cols;
                 let tile_bounds = Bounds::new(
@@ -2987,9 +3343,13 @@ impl Storybook {
                 ];
                 for (idx, line) in body_lines.iter().enumerate() {
                     let line_y = pane_y + 130.0 + idx as f32 * 28.0;
-                    let bullet = cx.text.layout(">", Point::new(pane_x + 30.0, line_y), 14.0, accent);
+                    let bullet =
+                        cx.text
+                            .layout(">", Point::new(pane_x + 30.0, line_y), 14.0, accent);
                     cx.scene.draw_text(bullet);
-                    let text = cx.text.layout(line, Point::new(pane_x + 44.0, line_y + 2.0), 13.0, muted);
+                    let text =
+                        cx.text
+                            .layout(line, Point::new(pane_x + 44.0, line_y + 2.0), 13.0, muted);
                     cx.scene.draw_text(text);
                 }
             }
@@ -2998,7 +3358,12 @@ impl Storybook {
 
     fn paint_toolcall_demo(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let demo_height = panel_height(TOOLCALL_DEMO_INNER_H);
-        let panel_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, demo_height);
+        let panel_bounds = Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            demo_height,
+        );
         draw_panel("Toolcall UI demo", panel_bounds, cx, |inner, cx| {
             self.toolcall_demo.paint(inner, cx);
         });
@@ -3055,9 +3420,10 @@ impl Storybook {
                 cx.scene.draw_text(btn_text);
 
                 // Draw tooltip (always visible for demo)
-                let mut tooltip = Tooltip::new(format!("Tooltip positioned {}", label.to_lowercase()))
-                    .position(*position)
-                    .target(btn_bounds);
+                let mut tooltip =
+                    Tooltip::new(format!("Tooltip positioned {}", label.to_lowercase()))
+                        .position(*position)
+                        .target(btn_bounds);
                 tooltip.show();
                 tooltip.paint(tile_bounds, cx);
             }
@@ -3069,7 +3435,8 @@ impl Storybook {
         let status_bounds = Bounds::new(bounds.origin.x, y, width, status_height);
         draw_panel("StatusBar variants", status_bounds, cx, |inner, cx| {
             // Top status bar
-            let top_bar_bounds = Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 32.0);
+            let top_bar_bounds =
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 32.0);
             let mut top_bar = StatusBar::new()
                 .position(StatusBarPosition::Top)
                 .height(28.0)
@@ -3082,7 +3449,12 @@ impl Storybook {
             top_bar.paint(top_bar_bounds, cx);
 
             // Bottom status bar
-            let bot_bar_bounds = Bounds::new(inner.origin.x, inner.origin.y + 50.0, inner.size.width, 32.0);
+            let bot_bar_bounds = Bounds::new(
+                inner.origin.x,
+                inner.origin.y + 50.0,
+                inner.size.width,
+                32.0,
+            );
             let mut bot_bar = StatusBar::new()
                 .position(StatusBarPosition::Top)
                 .height(28.0)
@@ -3103,9 +3475,21 @@ impl Storybook {
         draw_panel("Notification levels", notif_bounds, cx, |inner, cx| {
             let levels = [
                 ("Info", NotificationLevel::Info, "System update available"),
-                ("Success", NotificationLevel::Success, "Build completed successfully"),
-                ("Warning", NotificationLevel::Warning, "Deprecated API usage detected"),
-                ("Error", NotificationLevel::Error, "Connection to server failed"),
+                (
+                    "Success",
+                    NotificationLevel::Success,
+                    "Build completed successfully",
+                ),
+                (
+                    "Warning",
+                    NotificationLevel::Warning,
+                    "Deprecated API usage detected",
+                ),
+                (
+                    "Error",
+                    NotificationLevel::Error,
+                    "Connection to server failed",
+                ),
             ];
 
             let notif_w = 320.0;
@@ -3161,7 +3545,8 @@ impl Storybook {
             // Draw a static preview of a context menu
             let menu_w = 180.0;
             let menu_h = 160.0;
-            let menu_bounds = Bounds::new(inner.origin.x + 20.0, inner.origin.y + 10.0, menu_w, menu_h);
+            let menu_bounds =
+                Bounds::new(inner.origin.x + 20.0, inner.origin.y + 10.0, menu_w, menu_h);
 
             cx.scene.draw_quad(
                 Quad::new(menu_bounds)
@@ -3199,12 +3584,21 @@ impl Storybook {
                 let is_hovered = idx == 1; // Highlight "Copy"
                 if is_hovered {
                     cx.scene.draw_quad(
-                        Quad::new(Bounds::new(menu_bounds.origin.x + 4.0, item_y, menu_w - 8.0, item_h))
-                            .with_background(theme::bg::MUTED),
+                        Quad::new(Bounds::new(
+                            menu_bounds.origin.x + 4.0,
+                            item_y,
+                            menu_w - 8.0,
+                            item_h,
+                        ))
+                        .with_background(theme::bg::MUTED),
                     );
                 }
 
-                let text_color = if *disabled { theme::text::MUTED } else { theme::text::PRIMARY };
+                let text_color = if *disabled {
+                    theme::text::MUTED
+                } else {
+                    theme::text::PRIMARY
+                };
                 let label_run = cx.text.layout(
                     *label,
                     Point::new(menu_bounds.origin.x + 12.0, item_y + 8.0),
@@ -3256,9 +3650,14 @@ impl Storybook {
             // Search input
             let input_h = 36.0;
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(palette_x + 8.0, palette_y + 8.0, palette_w - 16.0, input_h))
-                    .with_background(theme::bg::SURFACE)
-                    .with_border(theme::border::DEFAULT, 1.0),
+                Quad::new(Bounds::new(
+                    palette_x + 8.0,
+                    palette_y + 8.0,
+                    palette_w - 16.0,
+                    input_h,
+                ))
+                .with_background(theme::bg::SURFACE)
+                .with_border(theme::border::DEFAULT, 1.0),
             );
             let search_text = cx.text.layout(
                 "file",
@@ -3285,8 +3684,13 @@ impl Storybook {
 
                 if is_selected {
                     cx.scene.draw_quad(
-                        Quad::new(Bounds::new(palette_x + 4.0, item_y, palette_w - 8.0, item_h))
-                            .with_background(theme::bg::MUTED),
+                        Quad::new(Bounds::new(
+                            palette_x + 4.0,
+                            item_y,
+                            palette_w - 8.0,
+                            item_h,
+                        ))
+                        .with_background(theme::bg::MUTED),
                     );
                 }
 
@@ -3331,8 +3735,9 @@ impl Storybook {
 
             // User message
             let user_h = 100.0;
-            let mut user_msg = UserMessage::new("Can you help me understand how async/await works in Rust?")
-                .timestamp("10:30 AM");
+            let mut user_msg =
+                UserMessage::new("Can you help me understand how async/await works in Rust?")
+                    .timestamp("10:30 AM");
             user_msg.paint(Bounds::new(inner.origin.x, entry_y, entry_w, user_h), cx);
             entry_y += user_h + entry_gap;
 
@@ -3344,7 +3749,7 @@ impl Storybook {
                  1. `async fn` - declares a function that returns a Future\n\
                  2. `.await` - suspends execution until the Future completes\n\
                  3. An executor (like tokio) runs these Futures to completion\n\n\
-                 Would you like me to show you a practical example?"
+                 Would you like me to show you a practical example?",
             )
             .model(Model::ClaudeSonnet)
             .timestamp("10:30 AM");
@@ -3353,8 +3758,9 @@ impl Storybook {
 
             // Follow-up user message
             let user2_h = 80.0;
-            let mut user_msg2 = UserMessage::new("Yes please! Show me a simple HTTP request example.")
-                .timestamp("10:31 AM");
+            let mut user_msg2 =
+                UserMessage::new("Yes please! Show me a simple HTTP request example.")
+                    .timestamp("10:31 AM");
             user_msg2.paint(Bounds::new(inner.origin.x, entry_y, entry_w, user2_h), cx);
         });
         y += simple_height + SECTION_GAP;
@@ -3368,8 +3774,9 @@ impl Storybook {
 
             // User request
             let user_h = 80.0;
-            let mut user_msg = UserMessage::new("Find all TODO comments in the codebase and list them")
-                .timestamp("2:15 PM");
+            let mut user_msg =
+                UserMessage::new("Find all TODO comments in the codebase and list them")
+                    .timestamp("2:15 PM");
             user_msg.paint(Bounds::new(inner.origin.x, entry_y, entry_w, user_h), cx);
             entry_y += user_h + entry_gap;
 
@@ -3386,10 +3793,26 @@ impl Storybook {
             let mut search_tool = SearchToolCall::new("TODO")
                 .status(ToolStatus::Success)
                 .matches(vec![
-                    SearchMatch { file: "src/main.rs".into(), line: 42, content: "TODO: Add error handling".into() },
-                    SearchMatch { file: "src/lib.rs".into(), line: 78, content: "TODO: Implement caching".into() },
-                    SearchMatch { file: "src/utils.rs".into(), line: 15, content: "TODO: Refactor this function".into() },
-                    SearchMatch { file: "tests/integration.rs".into(), line: 23, content: "TODO: Add more test cases".into() },
+                    SearchMatch {
+                        file: "src/main.rs".into(),
+                        line: 42,
+                        content: "TODO: Add error handling".into(),
+                    },
+                    SearchMatch {
+                        file: "src/lib.rs".into(),
+                        line: 78,
+                        content: "TODO: Implement caching".into(),
+                    },
+                    SearchMatch {
+                        file: "src/utils.rs".into(),
+                        line: 15,
+                        content: "TODO: Refactor this function".into(),
+                    },
+                    SearchMatch {
+                        file: "tests/integration.rs".into(),
+                        line: 23,
+                        content: "TODO: Add more test cases".into(),
+                    },
                 ]);
             search_tool.paint(Bounds::new(inner.origin.x, entry_y, entry_w, search_h), cx);
             entry_y += search_h + entry_gap;
@@ -3407,7 +3830,7 @@ impl Storybook {
             let summary_h = 80.0;
             let mut summary = AssistantMessage::new(
                 "Found 4 TODO comments across 3 source files totaling 135 lines. \
-                 The main areas needing attention are error handling, caching, and test coverage."
+                 The main areas needing attention are error handling, caching, and test coverage.",
             )
             .model(Model::ClaudeSonnet)
             .timestamp("2:16 PM");
@@ -3444,17 +3867,72 @@ impl Storybook {
                 .status(ToolStatus::Success)
                 .diff_type(DiffType::Unified)
                 .lines(vec![
-                    DiffLine { kind: DiffLineKind::Header, content: "@@ -45,6 +45,12 @@".into(), old_line: None, new_line: None },
-                    DiffLine { kind: DiffLineKind::Context, content: "fn process_data(input: &str) -> String {".into(), old_line: Some(45), new_line: Some(45) },
-                    DiffLine { kind: DiffLineKind::Deletion, content: "    input.parse().unwrap()".into(), old_line: Some(46), new_line: None },
-                    DiffLine { kind: DiffLineKind::Addition, content: "    match input.parse() {".into(), old_line: None, new_line: Some(46) },
-                    DiffLine { kind: DiffLineKind::Addition, content: "        Ok(val) => val,".into(), old_line: None, new_line: Some(47) },
-                    DiffLine { kind: DiffLineKind::Addition, content: "        Err(e) => {".into(), old_line: None, new_line: Some(48) },
-                    DiffLine { kind: DiffLineKind::Addition, content: "            eprintln!(\"Parse error: {}\", e);".into(), old_line: None, new_line: Some(49) },
-                    DiffLine { kind: DiffLineKind::Addition, content: "            String::new()".into(), old_line: None, new_line: Some(50) },
-                    DiffLine { kind: DiffLineKind::Addition, content: "        }".into(), old_line: None, new_line: Some(51) },
-                    DiffLine { kind: DiffLineKind::Addition, content: "    }".into(), old_line: None, new_line: Some(52) },
-                    DiffLine { kind: DiffLineKind::Context, content: "}".into(), old_line: Some(47), new_line: Some(53) },
+                    DiffLine {
+                        kind: DiffLineKind::Header,
+                        content: "@@ -45,6 +45,12 @@".into(),
+                        old_line: None,
+                        new_line: None,
+                    },
+                    DiffLine {
+                        kind: DiffLineKind::Context,
+                        content: "fn process_data(input: &str) -> String {".into(),
+                        old_line: Some(45),
+                        new_line: Some(45),
+                    },
+                    DiffLine {
+                        kind: DiffLineKind::Deletion,
+                        content: "    input.parse().unwrap()".into(),
+                        old_line: Some(46),
+                        new_line: None,
+                    },
+                    DiffLine {
+                        kind: DiffLineKind::Addition,
+                        content: "    match input.parse() {".into(),
+                        old_line: None,
+                        new_line: Some(46),
+                    },
+                    DiffLine {
+                        kind: DiffLineKind::Addition,
+                        content: "        Ok(val) => val,".into(),
+                        old_line: None,
+                        new_line: Some(47),
+                    },
+                    DiffLine {
+                        kind: DiffLineKind::Addition,
+                        content: "        Err(e) => {".into(),
+                        old_line: None,
+                        new_line: Some(48),
+                    },
+                    DiffLine {
+                        kind: DiffLineKind::Addition,
+                        content: "            eprintln!(\"Parse error: {}\", e);".into(),
+                        old_line: None,
+                        new_line: Some(49),
+                    },
+                    DiffLine {
+                        kind: DiffLineKind::Addition,
+                        content: "            String::new()".into(),
+                        old_line: None,
+                        new_line: Some(50),
+                    },
+                    DiffLine {
+                        kind: DiffLineKind::Addition,
+                        content: "        }".into(),
+                        old_line: None,
+                        new_line: Some(51),
+                    },
+                    DiffLine {
+                        kind: DiffLineKind::Addition,
+                        content: "    }".into(),
+                        old_line: None,
+                        new_line: Some(52),
+                    },
+                    DiffLine {
+                        kind: DiffLineKind::Context,
+                        content: "}".into(),
+                        old_line: Some(47),
+                        new_line: Some(53),
+                    },
                 ]);
             diff_tool.paint(Bounds::new(inner.origin.x, entry_y, entry_w, diff_h), cx);
             entry_y += diff_h + entry_gap;
@@ -3463,11 +3941,14 @@ impl Storybook {
             let complete_h = 80.0;
             let mut complete = AssistantMessage::new(
                 "I've added proper error handling with a match statement. The function now logs \
-                 parse errors to stderr and returns an empty string instead of panicking."
+                 parse errors to stderr and returns an empty string instead of panicking.",
             )
             .model(Model::ClaudeSonnet)
             .timestamp("3:43 PM");
-            complete.paint(Bounds::new(inner.origin.x, entry_y, entry_w, complete_h), cx);
+            complete.paint(
+                Bounds::new(inner.origin.x, entry_y, entry_w, complete_h),
+                cx,
+            );
         });
         y += edit_height + SECTION_GAP;
 
@@ -3499,9 +3980,24 @@ impl Storybook {
             let mut grep_tool = SearchToolCall::new("fn authenticate")
                 .status(ToolStatus::Success)
                 .matches(vec![
-                    SearchMatch { file: "src/auth/mod.rs".into(), line: 12, content: "pub fn authenticate(token: &str) -> Result<User, AuthError>".into() },
-                    SearchMatch { file: "src/auth/jwt.rs".into(), line: 45, content: "fn authenticate_jwt(token: &str) -> Result<Claims, JwtError>".into() },
-                    SearchMatch { file: "src/middleware/auth.rs".into(), line: 28, content: "async fn authenticate(req: Request) -> Result<Response, Error>".into() },
+                    SearchMatch {
+                        file: "src/auth/mod.rs".into(),
+                        line: 12,
+                        content: "pub fn authenticate(token: &str) -> Result<User, AuthError>"
+                            .into(),
+                    },
+                    SearchMatch {
+                        file: "src/auth/jwt.rs".into(),
+                        line: 45,
+                        content: "fn authenticate_jwt(token: &str) -> Result<Claims, JwtError>"
+                            .into(),
+                    },
+                    SearchMatch {
+                        file: "src/middleware/auth.rs".into(),
+                        line: 28,
+                        content: "async fn authenticate(req: Request) -> Result<Response, Error>"
+                            .into(),
+                    },
                 ]);
             grep_tool.paint(Bounds::new(inner.origin.x, entry_y, entry_w, grep_h), cx);
             entry_y += grep_h + entry_gap;
@@ -3559,7 +4055,7 @@ impl Storybook {
             let user_h = 100.0;
             let mut user_msg = UserMessage::new(
                 "Create a new API endpoint for user preferences with GET and POST methods. \
-                 Include input validation and proper error responses."
+                 Include input validation and proper error responses.",
             )
             .timestamp("9:00 AM");
             user_msg.paint(Bounds::new(inner.origin.x, entry_y, entry_w, user_h), cx);
@@ -3572,7 +4068,7 @@ impl Storybook {
                  1. Create preference types and validation\n\
                  2. Add route handlers for GET/POST\n\
                  3. Write integration tests\n\
-                 4. Update API documentation"
+                 4. Update API documentation",
             )
             .model(Model::ClaudeSonnet)
             .timestamp("9:00 AM");
@@ -3602,10 +4098,12 @@ impl Storybook {
             let mut test_tool = TerminalToolCall::new("cargo test preferences")
                 .status(ToolStatus::Success)
                 .exit_code(0)
-                .output("running 5 tests\ntest api::preferences::tests::test_get_prefs ... ok\n\
+                .output(
+                    "running 5 tests\ntest api::preferences::tests::test_get_prefs ... ok\n\
                          test api::preferences::tests::test_post_prefs ... ok\n\
                          test api::preferences::tests::test_validation ... ok\n\n\
-                         test result: ok. 5 passed; 0 failed");
+                         test result: ok. 5 passed; 0 failed",
+                );
             test_tool.paint(Bounds::new(inner.origin.x, entry_y, entry_w, test_h), cx);
             entry_y += test_h + entry_gap;
 
@@ -3624,7 +4122,7 @@ impl Storybook {
                 "The preferences API is now complete:\n\
                  - `GET /api/preferences` returns user preferences\n\
                  - `POST /api/preferences` updates them with validation\n\
-                 - All 5 tests pass and documentation is updated"
+                 - All 5 tests pass and documentation is updated",
             )
             .model(Model::ClaudeSonnet)
             .timestamp("9:03 AM");
@@ -3641,8 +4139,8 @@ impl Storybook {
 
             // User request
             let user_h = 60.0;
-            let mut user_msg = UserMessage::new("Run the database migration script")
-                .timestamp("5:30 PM");
+            let mut user_msg =
+                UserMessage::new("Run the database migration script").timestamp("5:30 PM");
             user_msg.paint(Bounds::new(inner.origin.x, entry_y, entry_w, user_h), cx);
             entry_y += user_h + entry_gap;
 
@@ -3659,7 +4157,7 @@ impl Storybook {
             let error_h = 80.0;
             let mut error_msg = AssistantMessage::new(
                 "The migration failed because the database server isn't running. \
-                 Please start PostgreSQL with `sudo systemctl start postgresql` and try again."
+                 Please start PostgreSQL with `sudo systemctl start postgresql` and try again.",
             )
             .model(Model::ClaudeSonnet)
             .timestamp("5:30 PM");
@@ -3704,7 +4202,10 @@ impl Storybook {
 
                 // Draw icon with label
                 let mut icon = PaymentMethodIcon::new(*method).size(24.0).show_label(true);
-                icon.paint(Bounds::new(tile_x + 12.0, tile_y + 14.0, tile_w - 24.0, 24.0), cx);
+                icon.paint(
+                    Bounds::new(tile_x + 12.0, tile_y + 14.0, tile_w - 24.0, 24.0),
+                    cx,
+                );
             }
         });
         y += methods_height + SECTION_GAP;
@@ -3798,38 +4299,68 @@ impl Storybook {
         // ========== Panel 4: Bitcoin Amounts ==========
         let amounts_height = panel_height(200.0);
         let amounts_bounds = Bounds::new(bounds.origin.x, y, width, amounts_height);
-        draw_panel("Bitcoin Amount Formatting", amounts_bounds, cx, |inner, cx| {
-            let amounts_data = [
-                (1000, AmountDirection::Neutral, BitcoinUnit::Sats, "Small amount"),
-                (50000, AmountDirection::Incoming, BitcoinUnit::Sats, "Incoming payment"),
-                (25000, AmountDirection::Outgoing, BitcoinUnit::Sats, "Outgoing payment"),
-                (100_000_000, AmountDirection::Neutral, BitcoinUnit::Btc, "One Bitcoin"),
-                (2_100_000_000_000_000, AmountDirection::Neutral, BitcoinUnit::Btc, "Max supply"),
-            ];
+        draw_panel(
+            "Bitcoin Amount Formatting",
+            amounts_bounds,
+            cx,
+            |inner, cx| {
+                let amounts_data = [
+                    (
+                        1000,
+                        AmountDirection::Neutral,
+                        BitcoinUnit::Sats,
+                        "Small amount",
+                    ),
+                    (
+                        50000,
+                        AmountDirection::Incoming,
+                        BitcoinUnit::Sats,
+                        "Incoming payment",
+                    ),
+                    (
+                        25000,
+                        AmountDirection::Outgoing,
+                        BitcoinUnit::Sats,
+                        "Outgoing payment",
+                    ),
+                    (
+                        100_000_000,
+                        AmountDirection::Neutral,
+                        BitcoinUnit::Btc,
+                        "One Bitcoin",
+                    ),
+                    (
+                        2_100_000_000_000_000,
+                        AmountDirection::Neutral,
+                        BitcoinUnit::Btc,
+                        "Max supply",
+                    ),
+                ];
 
-            let row_h = 32.0;
-            let gap = 8.0;
+                let row_h = 32.0;
+                let gap = 8.0;
 
-            for (idx, (sats, direction, unit, label)) in amounts_data.iter().enumerate() {
-                let row_y = inner.origin.y + idx as f32 * (row_h + gap);
+                for (idx, (sats, direction, unit, label)) in amounts_data.iter().enumerate() {
+                    let row_y = inner.origin.y + idx as f32 * (row_h + gap);
 
-                // Label
-                let label_run = cx.text.layout(
-                    *label,
-                    Point::new(inner.origin.x, row_y + 8.0),
-                    theme::font_size::SM,
-                    theme::text::MUTED,
-                );
-                cx.scene.draw_text(label_run);
+                    // Label
+                    let label_run = cx.text.layout(
+                        *label,
+                        Point::new(inner.origin.x, row_y + 8.0),
+                        theme::font_size::SM,
+                        theme::text::MUTED,
+                    );
+                    cx.scene.draw_text(label_run);
 
-                // Amount
-                let mut amount = BitcoinAmount::new(*sats)
-                    .direction(*direction)
-                    .unit(*unit)
-                    .font_size(theme::font_size::LG);
-                amount.paint(Bounds::new(inner.origin.x + 180.0, row_y, 200.0, row_h), cx);
-            }
-        });
+                    // Amount
+                    let mut amount = BitcoinAmount::new(*sats)
+                        .direction(*direction)
+                        .unit(*unit)
+                        .font_size(theme::font_size::LG);
+                    amount.paint(Bounds::new(inner.origin.x + 180.0, row_y, 200.0, row_h), cx);
+                }
+            },
+        );
         y += amounts_height + SECTION_GAP;
 
         // ========== Panel 5: Balance Cards ==========
@@ -3841,7 +4372,10 @@ impl Storybook {
             let mut mainnet_card = BalanceCard::new(mainnet_balance)
                 .network(BitcoinNetwork::Mainnet)
                 .show_breakdown(true);
-            mainnet_card.paint(Bounds::new(inner.origin.x, inner.origin.y, 300.0, 180.0), cx);
+            mainnet_card.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, 300.0, 180.0),
+                cx,
+            );
 
             // Testnet balance
             let testnet_balance = WalletBalance::new(1_000_000, 500_000, 0);
@@ -3889,7 +4423,10 @@ impl Storybook {
             for (idx, payment) in transactions.iter().enumerate() {
                 let row_y = inner.origin.y + idx as f32 * (row_h + gap);
                 let mut row = PaymentRow::new(payment.clone());
-                row.paint(Bounds::new(inner.origin.x, row_y, inner.size.width, row_h), cx);
+                row.paint(
+                    Bounds::new(inner.origin.x, row_y, inner.size.width, row_h),
+                    cx,
+                );
             }
         });
         y += txn_height + SECTION_GAP;
@@ -3897,122 +4434,142 @@ impl Storybook {
         // ========== Panel 7: Invoice Displays ==========
         let invoice_height = panel_height(320.0);
         let invoice_bounds = Bounds::new(bounds.origin.x, y, width, invoice_height);
-        draw_panel("Invoice & Address Displays", invoice_bounds, cx, |inner, cx| {
-            // Lightning invoice
-            let ln_invoice = InvoiceInfo::new(
-                InvoiceType::Bolt11,
-                "lnbc500u1pn9xnxhpp5e5wfyknkdxqmz9f0vs4j8kqz3h5qf7c4xhp2s5ngrqj6u4m8qz",
-            )
-            .amount(50000)
-            .description("Payment for services")
-            .expiry("10 minutes")
-            .status(PaymentStatus::Pending);
-            let mut ln_display = InvoiceDisplay::new(ln_invoice).show_qr(true);
-            ln_display.paint(Bounds::new(inner.origin.x, inner.origin.y, 320.0, 280.0), cx);
+        draw_panel(
+            "Invoice & Address Displays",
+            invoice_bounds,
+            cx,
+            |inner, cx| {
+                // Lightning invoice
+                let ln_invoice = InvoiceInfo::new(
+                    InvoiceType::Bolt11,
+                    "lnbc500u1pn9xnxhpp5e5wfyknkdxqmz9f0vs4j8kqz3h5qf7c4xhp2s5ngrqj6u4m8qz",
+                )
+                .amount(50000)
+                .description("Payment for services")
+                .expiry("10 minutes")
+                .status(PaymentStatus::Pending);
+                let mut ln_display = InvoiceDisplay::new(ln_invoice).show_qr(true);
+                ln_display.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y, 320.0, 280.0),
+                    cx,
+                );
 
-            // Spark address (compact)
-            let spark_addr = InvoiceInfo::new(
-                InvoiceType::SparkAddress,
-                "sp1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx",
-            )
-            .status(PaymentStatus::Pending);
-            let mut spark_display = InvoiceDisplay::new(spark_addr).show_qr(false).compact(true);
-            let spark_x = inner.origin.x + 340.0;
-            if spark_x + 320.0 <= inner.origin.x + inner.size.width {
-                spark_display.paint(Bounds::new(spark_x, inner.origin.y, 320.0, 120.0), cx);
-            }
+                // Spark address (compact)
+                let spark_addr = InvoiceInfo::new(
+                    InvoiceType::SparkAddress,
+                    "sp1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx",
+                )
+                .status(PaymentStatus::Pending);
+                let mut spark_display =
+                    InvoiceDisplay::new(spark_addr).show_qr(false).compact(true);
+                let spark_x = inner.origin.x + 340.0;
+                if spark_x + 320.0 <= inner.origin.x + inner.size.width {
+                    spark_display.paint(Bounds::new(spark_x, inner.origin.y, 320.0, 120.0), cx);
+                }
 
-            // Bitcoin address
-            let btc_addr = InvoiceInfo::new(
-                InvoiceType::OnChainAddress,
-                "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
-            )
-            .status(PaymentStatus::Pending);
-            let mut btc_display = InvoiceDisplay::new(btc_addr).show_qr(false).compact(true);
-            if spark_x + 320.0 <= inner.origin.x + inner.size.width {
-                btc_display.paint(Bounds::new(spark_x, inner.origin.y + 140.0, 320.0, 120.0), cx);
-            }
-        });
+                // Bitcoin address
+                let btc_addr = InvoiceInfo::new(
+                    InvoiceType::OnChainAddress,
+                    "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+                )
+                .status(PaymentStatus::Pending);
+                let mut btc_display = InvoiceDisplay::new(btc_addr).show_qr(false).compact(true);
+                if spark_x + 320.0 <= inner.origin.x + inner.size.width {
+                    btc_display.paint(
+                        Bounds::new(spark_x, inner.origin.y + 140.0, 320.0, 120.0),
+                        cx,
+                    );
+                }
+            },
+        );
         y += invoice_height + SECTION_GAP;
 
         // ========== Panel 8: Complete Wallet Dashboard ==========
         let dashboard_height = panel_height(400.0);
         let dashboard_bounds = Bounds::new(bounds.origin.x, y, width, dashboard_height);
-        draw_panel("Complete Wallet Dashboard", dashboard_bounds, cx, |inner, cx| {
-            // Left column: Balance card
-            let col_w = (inner.size.width - 20.0) / 2.0;
+        draw_panel(
+            "Complete Wallet Dashboard",
+            dashboard_bounds,
+            cx,
+            |inner, cx| {
+                // Left column: Balance card
+                let col_w = (inner.size.width - 20.0) / 2.0;
 
-            let balance = WalletBalance::new(250000, 100000, 50000);
-            let mut balance_card = BalanceCard::new(balance)
-                .network(BitcoinNetwork::Mainnet)
-                .show_breakdown(true);
-            balance_card.paint(Bounds::new(inner.origin.x, inner.origin.y, col_w.min(320.0), 180.0), cx);
+                let balance = WalletBalance::new(250000, 100000, 50000);
+                let mut balance_card = BalanceCard::new(balance)
+                    .network(BitcoinNetwork::Mainnet)
+                    .show_breakdown(true);
+                balance_card.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y, col_w.min(320.0), 180.0),
+                    cx,
+                );
 
-            // Below balance: Quick actions hints
-            let actions_y = inner.origin.y + 200.0;
-            let actions = ["Send Payment", "Receive", "History", "Settings"];
-            let btn_w = 100.0;
-            let btn_h = 32.0;
-            let btn_gap = 12.0;
+                // Below balance: Quick actions hints
+                let actions_y = inner.origin.y + 200.0;
+                let actions = ["Send Payment", "Receive", "History", "Settings"];
+                let btn_w = 100.0;
+                let btn_h = 32.0;
+                let btn_gap = 12.0;
 
-            for (idx, action) in actions.iter().enumerate() {
-                let btn_x = inner.origin.x + idx as f32 * (btn_w + btn_gap);
-                if btn_x + btn_w > inner.origin.x + col_w {
-                    break;
+                for (idx, action) in actions.iter().enumerate() {
+                    let btn_x = inner.origin.x + idx as f32 * (btn_w + btn_gap);
+                    if btn_x + btn_w > inner.origin.x + col_w {
+                        break;
+                    }
+
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(btn_x, actions_y, btn_w, btn_h))
+                            .with_background(theme::bg::MUTED)
+                            .with_border(theme::border::DEFAULT, 1.0),
+                    );
+
+                    let btn_text = cx.text.layout(
+                        *action,
+                        Point::new(btn_x + 8.0, actions_y + 8.0),
+                        theme::font_size::XS,
+                        theme::text::PRIMARY,
+                    );
+                    cx.scene.draw_text(btn_text);
                 }
 
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(btn_x, actions_y, btn_w, btn_h))
-                        .with_background(theme::bg::MUTED)
-                        .with_border(theme::border::DEFAULT, 1.0),
-                );
+                // Right column: Recent transactions
+                let right_x = inner.origin.x + col_w + 20.0;
+                if right_x + col_w <= inner.origin.x + inner.size.width {
+                    let header_run = cx.text.layout(
+                        "Recent Transactions",
+                        Point::new(right_x, inner.origin.y),
+                        theme::font_size::SM,
+                        theme::text::PRIMARY,
+                    );
+                    cx.scene.draw_text(header_run);
 
-                let btn_text = cx.text.layout(
-                    *action,
-                    Point::new(btn_x + 8.0, actions_y + 8.0),
-                    theme::font_size::XS,
-                    theme::text::PRIMARY,
-                );
-                cx.scene.draw_text(btn_text);
-            }
+                    let recent = [
+                        PaymentInfo::new("r1", 10000, PaymentDirection::Receive)
+                            .method(PaymentMethod::Lightning)
+                            .status(PaymentStatus::Completed)
+                            .timestamp("Just now"),
+                        PaymentInfo::new("r2", 5000, PaymentDirection::Send)
+                            .method(PaymentMethod::Spark)
+                            .status(PaymentStatus::Completed)
+                            .timestamp("5 min ago"),
+                        PaymentInfo::new("r3", 75000, PaymentDirection::Receive)
+                            .method(PaymentMethod::OnChain)
+                            .status(PaymentStatus::Pending)
+                            .timestamp("1 hour ago"),
+                    ];
 
-            // Right column: Recent transactions
-            let right_x = inner.origin.x + col_w + 20.0;
-            if right_x + col_w <= inner.origin.x + inner.size.width {
-                let header_run = cx.text.layout(
-                    "Recent Transactions",
-                    Point::new(right_x, inner.origin.y),
-                    theme::font_size::SM,
-                    theme::text::PRIMARY,
-                );
-                cx.scene.draw_text(header_run);
+                    let row_h = 56.0;
+                    let gap = 4.0;
+                    let txn_y = inner.origin.y + 28.0;
 
-                let recent = [
-                    PaymentInfo::new("r1", 10000, PaymentDirection::Receive)
-                        .method(PaymentMethod::Lightning)
-                        .status(PaymentStatus::Completed)
-                        .timestamp("Just now"),
-                    PaymentInfo::new("r2", 5000, PaymentDirection::Send)
-                        .method(PaymentMethod::Spark)
-                        .status(PaymentStatus::Completed)
-                        .timestamp("5 min ago"),
-                    PaymentInfo::new("r3", 75000, PaymentDirection::Receive)
-                        .method(PaymentMethod::OnChain)
-                        .status(PaymentStatus::Pending)
-                        .timestamp("1 hour ago"),
-                ];
-
-                let row_h = 56.0;
-                let gap = 4.0;
-                let txn_y = inner.origin.y + 28.0;
-
-                for (idx, payment) in recent.iter().enumerate() {
-                    let row_y = txn_y + idx as f32 * (row_h + gap);
-                    let mut row = PaymentRow::new(payment.clone()).show_fee(false);
-                    row.paint(Bounds::new(right_x, row_y, col_w.min(400.0), row_h), cx);
+                    for (idx, payment) in recent.iter().enumerate() {
+                        let row_y = txn_y + idx as f32 * (row_h + gap);
+                        let mut row = PaymentRow::new(payment.clone()).show_fee(false);
+                        row.paint(Bounds::new(right_x, row_y, col_w.min(400.0), row_h), cx);
+                    }
                 }
-            }
-        });
+            },
+        );
     }
 
     fn paint_nostr_protocol(&mut self, bounds: Bounds, cx: &mut PaintContext) {
@@ -4121,27 +4678,55 @@ impl Storybook {
         // ========== Panel 3: Bech32 Entities ==========
         let entities_height = panel_height(200.0);
         let entities_bounds = Bounds::new(bounds.origin.x, y, width, entities_height);
-        draw_panel("Bech32 Entities (NIP-19)", entities_bounds, cx, |inner, cx| {
-            let entities = [
-                (Bech32Type::Npub, "npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqsutj2v5"),
-                (Bech32Type::Note, "note1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq5nkr4f"),
-                (Bech32Type::Nevent, "nevent1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqnmupg"),
-                (Bech32Type::Nprofile, "nprofile1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqsdp8el"),
-                (Bech32Type::Nsec, "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq9wlz3w"),
-                (Bech32Type::Nrelay, "nrelay1qqxrgvfex9j3n8qerc94kk"),
-            ];
+        draw_panel(
+            "Bech32 Entities (NIP-19)",
+            entities_bounds,
+            cx,
+            |inner, cx| {
+                let entities = [
+                    (
+                        Bech32Type::Npub,
+                        "npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqsutj2v5",
+                    ),
+                    (
+                        Bech32Type::Note,
+                        "note1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq5nkr4f",
+                    ),
+                    (
+                        Bech32Type::Nevent,
+                        "nevent1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqnmupg",
+                    ),
+                    (
+                        Bech32Type::Nprofile,
+                        "nprofile1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqsdp8el",
+                    ),
+                    (
+                        Bech32Type::Nsec,
+                        "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq9wlz3w",
+                    ),
+                    (Bech32Type::Nrelay, "nrelay1qqxrgvfex9j3n8qerc94kk"),
+                ];
 
-            let row_h = 40.0;
-            let gap = 8.0;
+                let row_h = 40.0;
+                let gap = 8.0;
 
-            for (idx, (entity_type, value)) in entities.iter().enumerate() {
-                let row_y = inner.origin.y + idx as f32 * (row_h + gap);
-                let mut entity = Bech32Entity::new(*entity_type, *value)
-                    .show_prefix_badge(true)
-                    .truncate(true);
-                entity.paint(Bounds::new(inner.origin.x, row_y, inner.size.width.min(400.0), row_h - 4.0), cx);
-            }
-        });
+                for (idx, (entity_type, value)) in entities.iter().enumerate() {
+                    let row_y = inner.origin.y + idx as f32 * (row_h + gap);
+                    let mut entity = Bech32Entity::new(*entity_type, *value)
+                        .show_prefix_badge(true)
+                        .truncate(true);
+                    entity.paint(
+                        Bounds::new(
+                            inner.origin.x,
+                            row_y,
+                            inner.size.width.min(400.0),
+                            row_h - 4.0,
+                        ),
+                        cx,
+                    );
+                }
+            },
+        );
         y += entities_height + SECTION_GAP;
 
         // ========== Panel 4: Relay Connection List ==========
@@ -4151,30 +4736,36 @@ impl Storybook {
             let relays = [
                 RelayInfo::new("wss://relay.damus.io")
                     .status(RelayStatus::Connected)
-                    .read(true).write(true)
+                    .read(true)
+                    .write(true)
                     .events(15420, 342)
                     .latency(45),
                 RelayInfo::new("wss://nos.lol")
                     .status(RelayStatus::Connected)
-                    .read(true).write(true)
+                    .read(true)
+                    .write(true)
                     .events(8934, 156)
                     .latency(78),
                 RelayInfo::new("wss://relay.nostr.band")
                     .status(RelayStatus::Connecting)
-                    .read(true).write(false)
+                    .read(true)
+                    .write(false)
                     .events(0, 0),
                 RelayInfo::new("wss://purplepag.es")
                     .status(RelayStatus::Connected)
-                    .read(true).write(false)
+                    .read(true)
+                    .write(false)
                     .events(2341, 0)
                     .latency(120),
                 RelayInfo::new("wss://relay.snort.social")
                     .status(RelayStatus::Disconnected)
-                    .read(true).write(true)
+                    .read(true)
+                    .write(true)
                     .events(0, 0),
                 RelayInfo::new("wss://offchain.pub")
                     .status(RelayStatus::Error)
-                    .read(true).write(true)
+                    .read(true)
+                    .write(true)
                     .events(0, 0),
             ];
 
@@ -4184,7 +4775,10 @@ impl Storybook {
             for (idx, relay) in relays.iter().enumerate() {
                 let row_y = inner.origin.y + idx as f32 * (row_h + gap);
                 let mut row = RelayRow::new(relay.clone());
-                row.paint(Bounds::new(inner.origin.x, row_y, inner.size.width.min(500.0), row_h), cx);
+                row.paint(
+                    Bounds::new(inner.origin.x, row_y, inner.size.width.min(500.0), row_h),
+                    cx,
+                );
             }
         });
         y += relays_height + SECTION_GAP;
@@ -4192,107 +4786,120 @@ impl Storybook {
         // ========== Panel 5: Complete Relay Dashboard ==========
         let dashboard_height = panel_height(320.0);
         let dashboard_bounds = Bounds::new(bounds.origin.x, y, width, dashboard_height);
-        draw_panel("Complete Relay Dashboard", dashboard_bounds, cx, |inner, cx| {
-            // Dashboard header
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 40.0))
+        draw_panel(
+            "Complete Relay Dashboard",
+            dashboard_bounds,
+            cx,
+            |inner, cx| {
+                // Dashboard header
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y,
+                        inner.size.width,
+                        40.0,
+                    ))
                     .with_background(theme::bg::ELEVATED)
                     .with_border(theme::accent::PRIMARY, 1.0),
-            );
+                );
 
-            let header_run = cx.text.layout(
-                "Nostr Relay Pool",
-                Point::new(inner.origin.x + 12.0, inner.origin.y + 12.0),
-                theme::font_size::BASE,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(header_run);
+                let header_run = cx.text.layout(
+                    "Nostr Relay Pool",
+                    Point::new(inner.origin.x + 12.0, inner.origin.y + 12.0),
+                    theme::font_size::BASE,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(header_run);
 
-            // Stats summary
-            let stats_run = cx.text.layout(
-                "4 Connected | 1 Connecting | 1 Error",
-                Point::new(inner.origin.x + inner.size.width - 220.0, inner.origin.y + 14.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(stats_run);
-
-            // Split into two columns
-            let col_gap = 24.0;
-            let col_w = (inner.size.width - col_gap) / 2.0;
-            let content_y = inner.origin.y + 52.0;
-
-            // Left column: Active relays
-            let left_x = inner.origin.x;
-            let active_label = cx.text.layout(
-                "Active Relays",
-                Point::new(left_x, content_y),
-                theme::font_size::SM,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(active_label);
-
-            let active_relays = [
-                RelayInfo::new("wss://relay.damus.io")
-                    .status(RelayStatus::Connected)
-                    .events(15420, 342)
-                    .latency(45),
-                RelayInfo::new("wss://nos.lol")
-                    .status(RelayStatus::Connected)
-                    .events(8934, 156)
-                    .latency(78),
-            ];
-
-            let row_h = 36.0;
-            let row_gap = 4.0;
-            let relay_y = content_y + 24.0;
-
-            for (idx, relay) in active_relays.iter().enumerate() {
-                let row_y = relay_y + idx as f32 * (row_h + row_gap);
-                let mut row = RelayRow::new(relay.clone()).compact(true);
-                row.paint(Bounds::new(left_x, row_y, col_w.min(320.0), row_h), cx);
-            }
-
-            // Right column: Event statistics
-            let right_x = inner.origin.x + col_w + col_gap;
-            let stats_label = cx.text.layout(
-                "Event Statistics",
-                Point::new(right_x, content_y),
-                theme::font_size::SM,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(stats_label);
-
-            // Event kind summary
-            let event_summary = [
-                ("Notes (kind:1)", "12,453"),
-                ("Reactions (kind:7)", "8,921"),
-                ("Profiles (kind:0)", "1,234"),
-                ("Zaps (kind:9735)", "456"),
-                ("DMs (kind:4)", "89"),
-            ];
-
-            let stat_y = content_y + 24.0;
-            for (idx, (label, count)) in event_summary.iter().enumerate() {
-                let y_pos = stat_y + idx as f32 * 28.0;
-
-                let label_run = cx.text.layout(
-                    *label,
-                    Point::new(right_x, y_pos),
+                // Stats summary
+                let stats_run = cx.text.layout(
+                    "4 Connected | 1 Connecting | 1 Error",
+                    Point::new(
+                        inner.origin.x + inner.size.width - 220.0,
+                        inner.origin.y + 14.0,
+                    ),
                     theme::font_size::XS,
                     theme::text::MUTED,
                 );
-                cx.scene.draw_text(label_run);
+                cx.scene.draw_text(stats_run);
 
-                let count_run = cx.text.layout(
-                    *count,
-                    Point::new(right_x + 140.0, y_pos),
+                // Split into two columns
+                let col_gap = 24.0;
+                let col_w = (inner.size.width - col_gap) / 2.0;
+                let content_y = inner.origin.y + 52.0;
+
+                // Left column: Active relays
+                let left_x = inner.origin.x;
+                let active_label = cx.text.layout(
+                    "Active Relays",
+                    Point::new(left_x, content_y),
                     theme::font_size::SM,
                     theme::text::PRIMARY,
                 );
-                cx.scene.draw_text(count_run);
-            }
-        });
+                cx.scene.draw_text(active_label);
+
+                let active_relays = [
+                    RelayInfo::new("wss://relay.damus.io")
+                        .status(RelayStatus::Connected)
+                        .events(15420, 342)
+                        .latency(45),
+                    RelayInfo::new("wss://nos.lol")
+                        .status(RelayStatus::Connected)
+                        .events(8934, 156)
+                        .latency(78),
+                ];
+
+                let row_h = 36.0;
+                let row_gap = 4.0;
+                let relay_y = content_y + 24.0;
+
+                for (idx, relay) in active_relays.iter().enumerate() {
+                    let row_y = relay_y + idx as f32 * (row_h + row_gap);
+                    let mut row = RelayRow::new(relay.clone()).compact(true);
+                    row.paint(Bounds::new(left_x, row_y, col_w.min(320.0), row_h), cx);
+                }
+
+                // Right column: Event statistics
+                let right_x = inner.origin.x + col_w + col_gap;
+                let stats_label = cx.text.layout(
+                    "Event Statistics",
+                    Point::new(right_x, content_y),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(stats_label);
+
+                // Event kind summary
+                let event_summary = [
+                    ("Notes (kind:1)", "12,453"),
+                    ("Reactions (kind:7)", "8,921"),
+                    ("Profiles (kind:0)", "1,234"),
+                    ("Zaps (kind:9735)", "456"),
+                    ("DMs (kind:4)", "89"),
+                ];
+
+                let stat_y = content_y + 24.0;
+                for (idx, (label, count)) in event_summary.iter().enumerate() {
+                    let y_pos = stat_y + idx as f32 * 28.0;
+
+                    let label_run = cx.text.layout(
+                        *label,
+                        Point::new(right_x, y_pos),
+                        theme::font_size::XS,
+                        theme::text::MUTED,
+                    );
+                    cx.scene.draw_text(label_run);
+
+                    let count_run = cx.text.layout(
+                        *count,
+                        Point::new(right_x + 140.0, y_pos),
+                        theme::font_size::SM,
+                        theme::text::PRIMARY,
+                    );
+                    cx.scene.draw_text(count_run);
+                }
+            },
+        );
     }
 
     fn paint_gitafter(&mut self, bounds: Bounds, cx: &mut PaintContext) {
@@ -4440,7 +5047,9 @@ impl Storybook {
                 badge.paint(Bounds::new(tile_x, tile_y, 80.0, 24.0), cx);
 
                 // Compact badge
-                let mut compact = StackLayerBadge::new(*layer, *total).status(*status).compact(true);
+                let mut compact = StackLayerBadge::new(*layer, *total)
+                    .status(*status)
+                    .compact(true);
                 compact.paint(Bounds::new(tile_x, tile_y + 32.0, 36.0, 22.0), cx);
             }
         });
@@ -4449,63 +5058,65 @@ impl Storybook {
         // ========== Panel 5: Agent Status Badges ==========
         let agent_height = panel_height(180.0);
         let agent_bounds = Bounds::new(bounds.origin.x, y, width, agent_height);
-        draw_panel("Agent Status & Type Badges", agent_bounds, cx, |inner, cx| {
-            let statuses = [
-                AgentStatus::Online,
-                AgentStatus::Busy,
-                AgentStatus::Idle,
-                AgentStatus::Offline,
-                AgentStatus::Error,
-            ];
+        draw_panel(
+            "Agent Status & Type Badges",
+            agent_bounds,
+            cx,
+            |inner, cx| {
+                let statuses = [
+                    AgentStatus::Online,
+                    AgentStatus::Busy,
+                    AgentStatus::Idle,
+                    AgentStatus::Offline,
+                    AgentStatus::Error,
+                ];
 
-            // Row 1: Agent statuses
-            let mut x = inner.origin.x;
-            for status in &statuses {
-                let mut badge = AgentStatusBadge::new(*status).show_dot(true);
-                badge.paint(Bounds::new(x, inner.origin.y, 80.0, 24.0), cx);
-                x += 90.0;
-            }
+                // Row 1: Agent statuses
+                let mut x = inner.origin.x;
+                for status in &statuses {
+                    let mut badge = AgentStatusBadge::new(*status).show_dot(true);
+                    badge.paint(Bounds::new(x, inner.origin.y, 80.0, 24.0), cx);
+                    x += 90.0;
+                }
 
-            // Row 2: Agent types
-            let types = [
-                AgentType::Human,
-                AgentType::Sovereign,
-                AgentType::Custodial,
-            ];
+                // Row 2: Agent types
+                let types = [AgentType::Human, AgentType::Sovereign, AgentType::Custodial];
 
-            let mut x = inner.origin.x;
-            let row_y = inner.origin.y + 40.0;
-            for agent_type in &types {
-                let mut badge = AgentStatusBadge::new(AgentStatus::Online).agent_type(*agent_type);
-                badge.paint(Bounds::new(x, row_y, 100.0, 24.0), cx);
-                x += 110.0;
-            }
+                let mut x = inner.origin.x;
+                let row_y = inner.origin.y + 40.0;
+                for agent_type in &types {
+                    let mut badge =
+                        AgentStatusBadge::new(AgentStatus::Online).agent_type(*agent_type);
+                    badge.paint(Bounds::new(x, row_y, 100.0, 24.0), cx);
+                    x += 110.0;
+                }
 
-            // Row 3: Combined status + type
-            let combined = [
-                (AgentType::Sovereign, AgentStatus::Busy, "Working on issue"),
-                (AgentType::Human, AgentStatus::Online, "Reviewing PRs"),
-                (AgentType::Sovereign, AgentStatus::Idle, "Waiting for work"),
-            ];
+                // Row 3: Combined status + type
+                let combined = [
+                    (AgentType::Sovereign, AgentStatus::Busy, "Working on issue"),
+                    (AgentType::Human, AgentStatus::Online, "Reviewing PRs"),
+                    (AgentType::Sovereign, AgentStatus::Idle, "Waiting for work"),
+                ];
 
-            let mut x = inner.origin.x;
-            let row_y = inner.origin.y + 80.0;
-            for (agent_type, status, desc) in &combined {
-                // Badge
-                let mut badge = AgentStatusBadge::new(*status).agent_type(*agent_type);
-                badge.paint(Bounds::new(x, row_y, 100.0, 24.0), cx);
+                let mut x = inner.origin.x;
+                let row_y = inner.origin.y + 80.0;
+                for (agent_type, status, desc) in &combined {
+                    // Badge
+                    let mut badge = AgentStatusBadge::new(*status).agent_type(*agent_type);
+                    badge.paint(Bounds::new(x, row_y, 100.0, 24.0), cx);
 
-                // Description
-                let desc_run = cx.text.layout(
-                    *desc,
-                    Point::new(x, row_y + 28.0),
-                    theme::font_size::XS,
-                    theme::text::MUTED,
-                );
-                cx.scene.draw_text(desc_run);
-                x += 140.0;
-            }
-        });
+                    // Description
+                    let desc_run = cx.text.layout(
+                        *desc,
+                        Point::new(x, row_y + 28.0),
+                        theme::font_size::XS,
+                        theme::text::MUTED,
+                    );
+                    cx.scene.draw_text(desc_run);
+                    x += 140.0;
+                }
+            },
+        );
         y += agent_height + SECTION_GAP;
 
         // ========== Panel 6: Trajectory Status Badges ==========
@@ -4546,97 +5157,126 @@ impl Storybook {
         // ========== Panel 7: Complete GitAfter Dashboard ==========
         let dashboard_height = panel_height(360.0);
         let dashboard_bounds = Bounds::new(bounds.origin.x, y, width, dashboard_height);
-        draw_panel("GitAfter Dashboard Preview", dashboard_bounds, cx, |inner, cx| {
-            // Header bar
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 40.0))
+        draw_panel(
+            "GitAfter Dashboard Preview",
+            dashboard_bounds,
+            cx,
+            |inner, cx| {
+                // Header bar
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y,
+                        inner.size.width,
+                        40.0,
+                    ))
                     .with_background(theme::bg::ELEVATED)
                     .with_border(theme::accent::PRIMARY, 1.0),
-            );
+                );
 
-            let title_run = cx.text.layout(
-                "openagents/openagents",
-                Point::new(inner.origin.x + 12.0, inner.origin.y + 12.0),
-                theme::font_size::BASE,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(title_run);
+                let title_run = cx.text.layout(
+                    "openagents/openagents",
+                    Point::new(inner.origin.x + 12.0, inner.origin.y + 12.0),
+                    theme::font_size::BASE,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(title_run);
 
-            // Issue row example
-            let issue_y = inner.origin.y + 52.0;
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, issue_y, inner.size.width, 56.0))
-                    .with_background(theme::bg::SURFACE)
-                    .with_border(theme::border::DEFAULT, 1.0),
-            );
+                // Issue row example
+                let issue_y = inner.origin.y + 52.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(inner.origin.x, issue_y, inner.size.width, 56.0))
+                        .with_background(theme::bg::SURFACE)
+                        .with_border(theme::border::DEFAULT, 1.0),
+                );
 
-            // Issue status
-            let mut issue_status = IssueStatusBadge::new(IssueStatus::Open);
-            issue_status.paint(Bounds::new(inner.origin.x + 8.0, issue_y + 17.0, 60.0, 22.0), cx);
+                // Issue status
+                let mut issue_status = IssueStatusBadge::new(IssueStatus::Open);
+                issue_status.paint(
+                    Bounds::new(inner.origin.x + 8.0, issue_y + 17.0, 60.0, 22.0),
+                    cx,
+                );
 
-            // Issue title
-            let issue_title = cx.text.layout(
-                "#42: Add NIP-SA trajectory publishing",
-                Point::new(inner.origin.x + 76.0, issue_y + 8.0),
-                theme::font_size::SM,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(issue_title);
+                // Issue title
+                let issue_title = cx.text.layout(
+                    "#42: Add NIP-SA trajectory publishing",
+                    Point::new(inner.origin.x + 76.0, issue_y + 8.0),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(issue_title);
 
-            // Bounty
-            let mut bounty = BountyBadge::new(50000).status(BountyStatus::Active);
-            bounty.paint(Bounds::new(inner.origin.x + 76.0, issue_y + 28.0, 90.0, 22.0), cx);
+                // Bounty
+                let mut bounty = BountyBadge::new(50000).status(BountyStatus::Active);
+                bounty.paint(
+                    Bounds::new(inner.origin.x + 76.0, issue_y + 28.0, 90.0, 22.0),
+                    cx,
+                );
 
-            // Agent claimant
-            let claimed_run = cx.text.layout(
-                "Claimed by npub1agent...",
-                Point::new(inner.origin.x + 180.0, issue_y + 32.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(claimed_run);
+                // Agent claimant
+                let claimed_run = cx.text.layout(
+                    "Claimed by npub1agent...",
+                    Point::new(inner.origin.x + 180.0, issue_y + 32.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(claimed_run);
 
-            // PR row example
-            let pr_y = issue_y + 68.0;
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, pr_y, inner.size.width, 72.0))
-                    .with_background(theme::bg::SURFACE)
-                    .with_border(theme::border::DEFAULT, 1.0),
-            );
+                // PR row example
+                let pr_y = issue_y + 68.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(inner.origin.x, pr_y, inner.size.width, 72.0))
+                        .with_background(theme::bg::SURFACE)
+                        .with_border(theme::border::DEFAULT, 1.0),
+                );
 
-            // PR status
-            let mut pr_status = PrStatusBadge::new(PrStatus::Open);
-            pr_status.paint(Bounds::new(inner.origin.x + 8.0, pr_y + 8.0, 60.0, 22.0), cx);
+                // PR status
+                let mut pr_status = PrStatusBadge::new(PrStatus::Open);
+                pr_status.paint(
+                    Bounds::new(inner.origin.x + 8.0, pr_y + 8.0, 60.0, 22.0),
+                    cx,
+                );
 
-            // Stack layer
-            let mut stack_layer = StackLayerBadge::new(2, 4).status(StackLayerStatus::Ready);
-            stack_layer.paint(Bounds::new(inner.origin.x + 76.0, pr_y + 8.0, 80.0, 24.0), cx);
+                // Stack layer
+                let mut stack_layer = StackLayerBadge::new(2, 4).status(StackLayerStatus::Ready);
+                stack_layer.paint(
+                    Bounds::new(inner.origin.x + 76.0, pr_y + 8.0, 80.0, 24.0),
+                    cx,
+                );
 
-            // PR title
-            let pr_title = cx.text.layout(
-                "Layer 2: Wire trajectory events to relay pool",
-                Point::new(inner.origin.x + 164.0, pr_y + 10.0),
-                theme::font_size::SM,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(pr_title);
+                // PR title
+                let pr_title = cx.text.layout(
+                    "Layer 2: Wire trajectory events to relay pool",
+                    Point::new(inner.origin.x + 164.0, pr_y + 10.0),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(pr_title);
 
-            // Agent author + trajectory
-            let mut agent = AgentStatusBadge::new(AgentStatus::Busy).agent_type(AgentType::Sovereign);
-            agent.paint(Bounds::new(inner.origin.x + 8.0, pr_y + 38.0, 100.0, 24.0), cx);
+                // Agent author + trajectory
+                let mut agent =
+                    AgentStatusBadge::new(AgentStatus::Busy).agent_type(AgentType::Sovereign);
+                agent.paint(
+                    Bounds::new(inner.origin.x + 8.0, pr_y + 38.0, 100.0, 24.0),
+                    cx,
+                );
 
-            let mut traj = TrajectoryStatusBadge::new(TrajectoryStatus::Verified);
-            traj.paint(Bounds::new(inner.origin.x + 116.0, pr_y + 40.0, 80.0, 22.0), cx);
+                let mut traj = TrajectoryStatusBadge::new(TrajectoryStatus::Verified);
+                traj.paint(
+                    Bounds::new(inner.origin.x + 116.0, pr_y + 40.0, 80.0, 22.0),
+                    cx,
+                );
 
-            // "depends on layer 1" indicator
-            let depends_run = cx.text.layout(
-                "Depends on: Layer 1 (merged)",
-                Point::new(inner.origin.x + 210.0, pr_y + 44.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(depends_run);
-        });
+                // "depends on layer 1" indicator
+                let depends_run = cx.text.layout(
+                    "Depends on: Layer 1 (merged)",
+                    Point::new(inner.origin.x + 210.0, pr_y + 44.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(depends_run);
+            },
+        );
     }
 
     fn paint_sovereign_agents(&mut self, bounds: Bounds, cx: &mut PaintContext) {
@@ -4676,8 +5316,8 @@ impl Storybook {
                 cx.scene.draw_text(label_run);
 
                 // Full badge
-                let mut badge = ThresholdKeyBadge::new(*threshold, *total)
-                    .shares_available(*available);
+                let mut badge =
+                    ThresholdKeyBadge::new(*threshold, *total).shares_available(*available);
                 badge.paint(Bounds::new(tile_x, tile_y + 18.0, 120.0, 24.0), cx);
             }
         });
@@ -4688,8 +5328,16 @@ impl Storybook {
         let schedule_bounds = Bounds::new(bounds.origin.x, y, width, schedule_height);
         draw_panel("Agent Schedule Badges", schedule_bounds, cx, |inner, cx| {
             let schedules = [
-                (900, vec![TriggerType::Mention, TriggerType::DirectMessage], "15m + mentions/DMs"),
-                (3600, vec![TriggerType::Zap, TriggerType::Issue], "1h + zaps/issues"),
+                (
+                    900,
+                    vec![TriggerType::Mention, TriggerType::DirectMessage],
+                    "15m + mentions/DMs",
+                ),
+                (
+                    3600,
+                    vec![TriggerType::Zap, TriggerType::Issue],
+                    "1h + zaps/issues",
+                ),
                 (7200, vec![TriggerType::PullRequest], "2h + PRs"),
                 (300, vec![], "5m heartbeat only"),
             ];
@@ -4726,10 +5374,30 @@ impl Storybook {
         let goal_bounds = Bounds::new(bounds.origin.x, y, width, goal_height);
         draw_panel("Goal Progress Badges", goal_bounds, cx, |inner, cx| {
             let goals = [
-                (0.0, GoalStatus::NotStarted, GoalPriority::Medium, "Not started"),
-                (0.35, GoalStatus::InProgress, GoalPriority::High, "In progress"),
-                (0.65, GoalStatus::InProgress, GoalPriority::Critical, "Critical"),
-                (1.0, GoalStatus::Completed, GoalPriority::Medium, "Completed"),
+                (
+                    0.0,
+                    GoalStatus::NotStarted,
+                    GoalPriority::Medium,
+                    "Not started",
+                ),
+                (
+                    0.35,
+                    GoalStatus::InProgress,
+                    GoalPriority::High,
+                    "In progress",
+                ),
+                (
+                    0.65,
+                    GoalStatus::InProgress,
+                    GoalPriority::Critical,
+                    "Critical",
+                ),
+                (
+                    1.0,
+                    GoalStatus::Completed,
+                    GoalPriority::Medium,
+                    "Completed",
+                ),
                 (0.5, GoalStatus::Blocked, GoalPriority::High, "Blocked"),
                 (0.8, GoalStatus::Failed, GoalPriority::Critical, "Failed"),
             ];
@@ -4805,7 +5473,10 @@ impl Storybook {
             cx.scene.draw_text(res_label);
 
             let mut result = TickEventBadge::result(TickOutcome::Success).duration_ms(2300);
-            result.paint(Bounds::new(inner.origin.x + 120.0, row_y + 18.0, 130.0, 22.0), cx);
+            result.paint(
+                Bounds::new(inner.origin.x + 120.0, row_y + 18.0, 130.0, 22.0),
+                cx,
+            );
 
             // Compact versions
             let compact_y = row_y + 50.0;
@@ -4877,180 +5548,239 @@ impl Storybook {
         // ========== Panel 6: Complete Agent Dashboard ==========
         let dashboard_height = panel_height(400.0);
         let dashboard_bounds = Bounds::new(bounds.origin.x, y, width, dashboard_height);
-        draw_panel("Sovereign Agent Dashboard Preview", dashboard_bounds, cx, |inner, cx| {
-            // Header bar with agent identity
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 50.0))
+        draw_panel(
+            "Sovereign Agent Dashboard Preview",
+            dashboard_bounds,
+            cx,
+            |inner, cx| {
+                // Header bar with agent identity
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y,
+                        inner.size.width,
+                        50.0,
+                    ))
                     .with_background(theme::bg::ELEVATED)
                     .with_border(theme::accent::PRIMARY, 1.0),
-            );
+                );
 
-            // Agent icon + name
-            let agent_icon = cx.text.layout(
-                "🤖",
-                Point::new(inner.origin.x + 12.0, inner.origin.y + 14.0),
-                theme::font_size::LG,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(agent_icon);
+                // Agent icon + name
+                let agent_icon = cx.text.layout(
+                    "🤖",
+                    Point::new(inner.origin.x + 12.0, inner.origin.y + 14.0),
+                    theme::font_size::LG,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(agent_icon);
 
-            let agent_name = cx.text.layout(
-                "code-monkey-42",
-                Point::new(inner.origin.x + 40.0, inner.origin.y + 8.0),
-                theme::font_size::BASE,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(agent_name);
+                let agent_name = cx.text.layout(
+                    "code-monkey-42",
+                    Point::new(inner.origin.x + 40.0, inner.origin.y + 8.0),
+                    theme::font_size::BASE,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(agent_name);
 
-            let npub = cx.text.layout(
-                "npub1agent42xyz...",
-                Point::new(inner.origin.x + 40.0, inner.origin.y + 28.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(npub);
-
-            // Status badges on right side of header
-            let mut status = AgentStatusBadge::new(AgentStatus::Online).agent_type(AgentType::Sovereign);
-            status.paint(Bounds::new(inner.origin.x + inner.size.width - 200.0, inner.origin.y + 13.0, 100.0, 24.0), cx);
-
-            let mut threshold = ThresholdKeyBadge::new(2, 3).shares_available(2);
-            threshold.paint(Bounds::new(inner.origin.x + inner.size.width - 90.0, inner.origin.y + 13.0, 80.0, 24.0), cx);
-
-            // Schedule row
-            let sched_y = inner.origin.y + 60.0;
-            let sched_label = cx.text.layout(
-                "Schedule:",
-                Point::new(inner.origin.x + 8.0, sched_y + 4.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(sched_label);
-
-            let mut schedule = AgentScheduleBadge::new(900)
-                .triggers(vec![TriggerType::Mention, TriggerType::Zap, TriggerType::Issue]);
-            schedule.paint(Bounds::new(inner.origin.x + 70.0, sched_y, 140.0, 24.0), cx);
-
-            // Goals section
-            let goals_y = sched_y + 35.0;
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, goals_y, inner.size.width, 90.0))
-                    .with_background(theme::bg::SURFACE)
-                    .with_border(theme::border::DEFAULT, 1.0),
-            );
-
-            let goals_title = cx.text.layout(
-                "Current Goals",
-                Point::new(inner.origin.x + 8.0, goals_y + 6.0),
-                theme::font_size::SM,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(goals_title);
-
-            // Goal 1
-            let mut goal1 = GoalProgressBadge::new(0.75)
-                .status(GoalStatus::InProgress)
-                .priority(GoalPriority::High);
-            goal1.paint(Bounds::new(inner.origin.x + 8.0, goals_y + 28.0, 125.0, 22.0), cx);
-            let goal1_desc = cx.text.layout(
-                "Fix d-006 Phase 4 issues",
-                Point::new(inner.origin.x + 142.0, goals_y + 32.0),
-                theme::font_size::XS,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(goal1_desc);
-
-            // Goal 2
-            let mut goal2 = GoalProgressBadge::new(0.3)
-                .status(GoalStatus::InProgress)
-                .priority(GoalPriority::Medium);
-            goal2.paint(Bounds::new(inner.origin.x + 8.0, goals_y + 56.0, 125.0, 22.0), cx);
-            let goal2_desc = cx.text.layout(
-                "Publish trajectory events",
-                Point::new(inner.origin.x + 142.0, goals_y + 60.0),
-                theme::font_size::XS,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(goal2_desc);
-
-            // Skills section
-            let skills_y = goals_y + 100.0;
-            let skills_label = cx.text.layout(
-                "Licensed Skills:",
-                Point::new(inner.origin.x + 8.0, skills_y + 4.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(skills_label);
-
-            let mut skill1 = SkillLicenseBadge::new(SkillType::Code, LicenseStatus::Active).name("git-ops");
-            skill1.paint(Bounds::new(inner.origin.x + 100.0, skills_y, 120.0, 22.0), cx);
-
-            let mut skill2 = SkillLicenseBadge::new(SkillType::Model, LicenseStatus::Active).name("opus-4.5");
-            skill2.paint(Bounds::new(inner.origin.x + 230.0, skills_y, 130.0, 22.0), cx);
-
-            // Recent ticks section
-            let ticks_y = skills_y + 35.0;
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, ticks_y, inner.size.width, 100.0))
-                    .with_background(theme::bg::SURFACE)
-                    .with_border(theme::border::DEFAULT, 1.0),
-            );
-
-            let ticks_title = cx.text.layout(
-                "Recent Ticks",
-                Point::new(inner.origin.x + 8.0, ticks_y + 6.0),
-                theme::font_size::SM,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(ticks_title);
-
-            // Tick timeline
-            let tick_row_y = ticks_y + 30.0;
-            let times = ["2m ago", "17m ago", "32m ago", "47m ago"];
-            let outcomes = [TickOutcome::Success, TickOutcome::Success, TickOutcome::Failure, TickOutcome::Success];
-            let durations = [1200, 890, 0, 2300];
-
-            for (i, ((time, outcome), dur)) in times.iter().zip(outcomes.iter()).zip(durations.iter()).enumerate() {
-                let tick_x = inner.origin.x + 8.0 + i as f32 * 100.0;
-
-                let time_run = cx.text.layout(
-                    *time,
-                    Point::new(tick_x, tick_row_y),
+                let npub = cx.text.layout(
+                    "npub1agent42xyz...",
+                    Point::new(inner.origin.x + 40.0, inner.origin.y + 28.0),
                     theme::font_size::XS,
                     theme::text::MUTED,
                 );
-                cx.scene.draw_text(time_run);
+                cx.scene.draw_text(npub);
 
-                let mut tick = if *dur > 0 {
-                    TickEventBadge::result(*outcome).duration_ms(*dur as u64)
-                } else {
-                    TickEventBadge::result(*outcome)
-                };
-                tick.paint(Bounds::new(tick_x, tick_row_y + 16.0, 90.0, 22.0), cx);
-            }
+                // Status badges on right side of header
+                let mut status =
+                    AgentStatusBadge::new(AgentStatus::Online).agent_type(AgentType::Sovereign);
+                status.paint(
+                    Bounds::new(
+                        inner.origin.x + inner.size.width - 200.0,
+                        inner.origin.y + 13.0,
+                        100.0,
+                        24.0,
+                    ),
+                    cx,
+                );
 
-            // Trajectory hash
-            let traj_y = ticks_y + 72.0;
-            let traj_label = cx.text.layout(
-                "Current trajectory:",
-                Point::new(inner.origin.x + 8.0, traj_y + 4.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(traj_label);
+                let mut threshold = ThresholdKeyBadge::new(2, 3).shares_available(2);
+                threshold.paint(
+                    Bounds::new(
+                        inner.origin.x + inner.size.width - 90.0,
+                        inner.origin.y + 13.0,
+                        80.0,
+                        24.0,
+                    ),
+                    cx,
+                );
 
-            let mut traj = TrajectoryStatusBadge::new(TrajectoryStatus::Verified);
-            traj.paint(Bounds::new(inner.origin.x + 120.0, traj_y, 80.0, 22.0), cx);
+                // Schedule row
+                let sched_y = inner.origin.y + 60.0;
+                let sched_label = cx.text.layout(
+                    "Schedule:",
+                    Point::new(inner.origin.x + 8.0, sched_y + 4.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(sched_label);
 
-            let hash = cx.text.layout(
-                "hash: 7c6267e85a...",
-                Point::new(inner.origin.x + 210.0, traj_y + 4.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(hash);
-        });
+                let mut schedule = AgentScheduleBadge::new(900).triggers(vec![
+                    TriggerType::Mention,
+                    TriggerType::Zap,
+                    TriggerType::Issue,
+                ]);
+                schedule.paint(Bounds::new(inner.origin.x + 70.0, sched_y, 140.0, 24.0), cx);
+
+                // Goals section
+                let goals_y = sched_y + 35.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(inner.origin.x, goals_y, inner.size.width, 90.0))
+                        .with_background(theme::bg::SURFACE)
+                        .with_border(theme::border::DEFAULT, 1.0),
+                );
+
+                let goals_title = cx.text.layout(
+                    "Current Goals",
+                    Point::new(inner.origin.x + 8.0, goals_y + 6.0),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(goals_title);
+
+                // Goal 1
+                let mut goal1 = GoalProgressBadge::new(0.75)
+                    .status(GoalStatus::InProgress)
+                    .priority(GoalPriority::High);
+                goal1.paint(
+                    Bounds::new(inner.origin.x + 8.0, goals_y + 28.0, 125.0, 22.0),
+                    cx,
+                );
+                let goal1_desc = cx.text.layout(
+                    "Fix d-006 Phase 4 issues",
+                    Point::new(inner.origin.x + 142.0, goals_y + 32.0),
+                    theme::font_size::XS,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(goal1_desc);
+
+                // Goal 2
+                let mut goal2 = GoalProgressBadge::new(0.3)
+                    .status(GoalStatus::InProgress)
+                    .priority(GoalPriority::Medium);
+                goal2.paint(
+                    Bounds::new(inner.origin.x + 8.0, goals_y + 56.0, 125.0, 22.0),
+                    cx,
+                );
+                let goal2_desc = cx.text.layout(
+                    "Publish trajectory events",
+                    Point::new(inner.origin.x + 142.0, goals_y + 60.0),
+                    theme::font_size::XS,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(goal2_desc);
+
+                // Skills section
+                let skills_y = goals_y + 100.0;
+                let skills_label = cx.text.layout(
+                    "Licensed Skills:",
+                    Point::new(inner.origin.x + 8.0, skills_y + 4.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(skills_label);
+
+                let mut skill1 =
+                    SkillLicenseBadge::new(SkillType::Code, LicenseStatus::Active).name("git-ops");
+                skill1.paint(
+                    Bounds::new(inner.origin.x + 100.0, skills_y, 120.0, 22.0),
+                    cx,
+                );
+
+                let mut skill2 = SkillLicenseBadge::new(SkillType::Model, LicenseStatus::Active)
+                    .name("opus-4.5");
+                skill2.paint(
+                    Bounds::new(inner.origin.x + 230.0, skills_y, 130.0, 22.0),
+                    cx,
+                );
+
+                // Recent ticks section
+                let ticks_y = skills_y + 35.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        inner.origin.x,
+                        ticks_y,
+                        inner.size.width,
+                        100.0,
+                    ))
+                    .with_background(theme::bg::SURFACE)
+                    .with_border(theme::border::DEFAULT, 1.0),
+                );
+
+                let ticks_title = cx.text.layout(
+                    "Recent Ticks",
+                    Point::new(inner.origin.x + 8.0, ticks_y + 6.0),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(ticks_title);
+
+                // Tick timeline
+                let tick_row_y = ticks_y + 30.0;
+                let times = ["2m ago", "17m ago", "32m ago", "47m ago"];
+                let outcomes = [
+                    TickOutcome::Success,
+                    TickOutcome::Success,
+                    TickOutcome::Failure,
+                    TickOutcome::Success,
+                ];
+                let durations = [1200, 890, 0, 2300];
+
+                for (i, ((time, outcome), dur)) in times
+                    .iter()
+                    .zip(outcomes.iter())
+                    .zip(durations.iter())
+                    .enumerate()
+                {
+                    let tick_x = inner.origin.x + 8.0 + i as f32 * 100.0;
+
+                    let time_run = cx.text.layout(
+                        *time,
+                        Point::new(tick_x, tick_row_y),
+                        theme::font_size::XS,
+                        theme::text::MUTED,
+                    );
+                    cx.scene.draw_text(time_run);
+
+                    let mut tick = if *dur > 0 {
+                        TickEventBadge::result(*outcome).duration_ms(*dur as u64)
+                    } else {
+                        TickEventBadge::result(*outcome)
+                    };
+                    tick.paint(Bounds::new(tick_x, tick_row_y + 16.0, 90.0, 22.0), cx);
+                }
+
+                // Trajectory hash
+                let traj_y = ticks_y + 72.0;
+                let traj_label = cx.text.layout(
+                    "Current trajectory:",
+                    Point::new(inner.origin.x + 8.0, traj_y + 4.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(traj_label);
+
+                let mut traj = TrajectoryStatusBadge::new(TrajectoryStatus::Verified);
+                traj.paint(Bounds::new(inner.origin.x + 120.0, traj_y, 80.0, 22.0), cx);
+
+                let hash = cx.text.layout(
+                    "hash: 7c6267e85a...",
+                    Point::new(inner.origin.x + 210.0, traj_y + 4.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(hash);
+            },
+        );
     }
 
     fn paint_marketplace(&mut self, bounds: Bounds, cx: &mut PaintContext) {
@@ -5086,85 +5816,95 @@ impl Storybook {
         // ========== Panel 2: Job Status Badges ==========
         let job_height = panel_height(180.0);
         let job_bounds = Bounds::new(bounds.origin.x, y, width, job_height);
-        draw_panel("Job Status Badges (NIP-90 DVM)", job_bounds, cx, |inner, cx| {
-            let statuses = [
-                (JobStatus::Pending, None, "Pending"),
-                (JobStatus::Processing, None, "Processing"),
-                (JobStatus::Streaming, None, "Streaming"),
-                (JobStatus::Completed, Some(150), "Completed"),
-                (JobStatus::Failed, None, "Failed"),
-                (JobStatus::Cancelled, None, "Cancelled"),
-            ];
+        draw_panel(
+            "Job Status Badges (NIP-90 DVM)",
+            job_bounds,
+            cx,
+            |inner, cx| {
+                let statuses = [
+                    (JobStatus::Pending, None, "Pending"),
+                    (JobStatus::Processing, None, "Processing"),
+                    (JobStatus::Streaming, None, "Streaming"),
+                    (JobStatus::Completed, Some(150), "Completed"),
+                    (JobStatus::Failed, None, "Failed"),
+                    (JobStatus::Cancelled, None, "Cancelled"),
+                ];
 
-            let tile_w = 110.0;
-            let tile_h = 55.0;
-            let gap = 12.0;
-            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+                let tile_w = 110.0;
+                let tile_h = 55.0;
+                let gap = 12.0;
+                let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
 
-            for (idx, (status, cost, label)) in statuses.iter().enumerate() {
-                let row = idx / cols;
-                let col = idx % cols;
-                let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
-                let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
+                for (idx, (status, cost, label)) in statuses.iter().enumerate() {
+                    let row = idx / cols;
+                    let col = idx % cols;
+                    let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
+                    let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
 
-                // Label
-                let label_run = cx.text.layout(
-                    *label,
-                    Point::new(tile_x, tile_y),
-                    theme::font_size::XS,
-                    theme::text::MUTED,
-                );
-                cx.scene.draw_text(label_run);
+                    // Label
+                    let label_run = cx.text.layout(
+                        *label,
+                        Point::new(tile_x, tile_y),
+                        theme::font_size::XS,
+                        theme::text::MUTED,
+                    );
+                    cx.scene.draw_text(label_run);
 
-                // Badge
-                let mut badge = JobStatusBadge::new(*status);
-                if let Some(sats) = cost {
-                    badge = badge.cost_sats(*sats);
+                    // Badge
+                    let mut badge = JobStatusBadge::new(*status);
+                    if let Some(sats) = cost {
+                        badge = badge.cost_sats(*sats);
+                    }
+                    badge.paint(Bounds::new(tile_x, tile_y + 18.0, 100.0, 22.0), cx);
                 }
-                badge.paint(Bounds::new(tile_x, tile_y + 18.0, 100.0, 22.0), cx);
-            }
-        });
+            },
+        );
         y += job_height + SECTION_GAP;
 
         // ========== Panel 3: Reputation Badges ==========
         let rep_height = panel_height(160.0);
         let rep_bounds = Bounds::new(bounds.origin.x, y, width, rep_height);
-        draw_panel("Reputation & Trust Tier Badges", rep_bounds, cx, |inner, cx| {
-            let tiers = [
-                (TrustTier::New, None, "New provider"),
-                (TrustTier::Established, Some(0.85), "Established"),
-                (TrustTier::Trusted, Some(0.95), "Trusted"),
-                (TrustTier::Expert, Some(0.99), "Expert"),
-            ];
+        draw_panel(
+            "Reputation & Trust Tier Badges",
+            rep_bounds,
+            cx,
+            |inner, cx| {
+                let tiers = [
+                    (TrustTier::New, None, "New provider"),
+                    (TrustTier::Established, Some(0.85), "Established"),
+                    (TrustTier::Trusted, Some(0.95), "Trusted"),
+                    (TrustTier::Expert, Some(0.99), "Expert"),
+                ];
 
-            let tile_w = 130.0;
-            let tile_h = 55.0;
-            let gap = 12.0;
-            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+                let tile_w = 130.0;
+                let tile_h = 55.0;
+                let gap = 12.0;
+                let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
 
-            for (idx, (tier, rate, label)) in tiers.iter().enumerate() {
-                let row = idx / cols;
-                let col = idx % cols;
-                let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
-                let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
+                for (idx, (tier, rate, label)) in tiers.iter().enumerate() {
+                    let row = idx / cols;
+                    let col = idx % cols;
+                    let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
+                    let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
 
-                // Label
-                let label_run = cx.text.layout(
-                    *label,
-                    Point::new(tile_x, tile_y),
-                    theme::font_size::XS,
-                    theme::text::MUTED,
-                );
-                cx.scene.draw_text(label_run);
+                    // Label
+                    let label_run = cx.text.layout(
+                        *label,
+                        Point::new(tile_x, tile_y),
+                        theme::font_size::XS,
+                        theme::text::MUTED,
+                    );
+                    cx.scene.draw_text(label_run);
 
-                // Badge
-                let mut badge = ReputationBadge::new(*tier);
-                if let Some(r) = rate {
-                    badge = badge.success_rate(*r);
+                    // Badge
+                    let mut badge = ReputationBadge::new(*tier);
+                    if let Some(r) = rate {
+                        badge = badge.success_rate(*r);
+                    }
+                    badge.paint(Bounds::new(tile_x, tile_y + 18.0, 120.0, 22.0), cx);
                 }
-                badge.paint(Bounds::new(tile_x, tile_y + 18.0, 120.0, 22.0), cx);
-            }
-        });
+            },
+        );
         y += rep_height + SECTION_GAP;
 
         // ========== Panel 4: Trajectory Source Badges ==========
@@ -5172,10 +5912,26 @@ impl Storybook {
         let traj_bounds = Bounds::new(bounds.origin.x, y, width, traj_height);
         draw_panel("Trajectory Source Badges", traj_bounds, cx, |inner, cx| {
             let sources = [
-                (TrajectorySource::Claude, Some(ContributionStatus::Accepted), Some(42)),
-                (TrajectorySource::Cursor, Some(ContributionStatus::Pending), Some(15)),
-                (TrajectorySource::Codex, Some(ContributionStatus::Scanned), Some(8)),
-                (TrajectorySource::Windsurf, Some(ContributionStatus::Redacted), Some(23)),
+                (
+                    TrajectorySource::Claude,
+                    Some(ContributionStatus::Accepted),
+                    Some(42),
+                ),
+                (
+                    TrajectorySource::Cursor,
+                    Some(ContributionStatus::Pending),
+                    Some(15),
+                ),
+                (
+                    TrajectorySource::Codex,
+                    Some(ContributionStatus::Scanned),
+                    Some(8),
+                ),
+                (
+                    TrajectorySource::Windsurf,
+                    Some(ContributionStatus::Redacted),
+                    Some(23),
+                ),
                 (TrajectorySource::Custom, None, None),
             ];
 
@@ -5257,125 +6013,155 @@ impl Storybook {
         // ========== Panel 6: Complete Marketplace Dashboard ==========
         let dashboard_height = panel_height(400.0);
         let dashboard_bounds = Bounds::new(bounds.origin.x, y, width, dashboard_height);
-        draw_panel("Marketplace Dashboard Preview", dashboard_bounds, cx, |inner, cx| {
-            // Header bar
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 50.0))
+        draw_panel(
+            "Marketplace Dashboard Preview",
+            dashboard_bounds,
+            cx,
+            |inner, cx| {
+                // Header bar
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y,
+                        inner.size.width,
+                        50.0,
+                    ))
                     .with_background(theme::bg::ELEVATED)
                     .with_border(theme::accent::PRIMARY, 1.0),
-            );
+                );
 
-            // Title
-            let title = cx.text.layout(
-                "Unified Marketplace",
-                Point::new(inner.origin.x + 12.0, inner.origin.y + 8.0),
-                theme::font_size::BASE,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(title);
+                // Title
+                let title = cx.text.layout(
+                    "Unified Marketplace",
+                    Point::new(inner.origin.x + 12.0, inner.origin.y + 8.0),
+                    theme::font_size::BASE,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(title);
 
-            // Market type tabs
-            let mut x = inner.origin.x + 12.0;
-            let tab_y = inner.origin.y + 28.0;
-            for market_type in &[MarketType::Compute, MarketType::Skills, MarketType::Data, MarketType::Trajectories] {
-                let mut badge = MarketTypeBadge::new(*market_type);
-                badge.paint(Bounds::new(x, tab_y, 80.0, 20.0), cx);
-                x += 90.0;
-            }
+                // Market type tabs
+                let mut x = inner.origin.x + 12.0;
+                let tab_y = inner.origin.y + 28.0;
+                for market_type in &[
+                    MarketType::Compute,
+                    MarketType::Skills,
+                    MarketType::Data,
+                    MarketType::Trajectories,
+                ] {
+                    let mut badge = MarketTypeBadge::new(*market_type);
+                    badge.paint(Bounds::new(x, tab_y, 80.0, 20.0), cx);
+                    x += 90.0;
+                }
 
-            // Earnings summary on right
-            let mut total_earn = EarningsBadge::new(EarningsType::Total, 1_250_000).compact(true);
-            total_earn.paint(Bounds::new(inner.origin.x + inner.size.width - 90.0, inner.origin.y + 14.0, 80.0, 22.0), cx);
+                // Earnings summary on right
+                let mut total_earn =
+                    EarningsBadge::new(EarningsType::Total, 1_250_000).compact(true);
+                total_earn.paint(
+                    Bounds::new(
+                        inner.origin.x + inner.size.width - 90.0,
+                        inner.origin.y + 14.0,
+                        80.0,
+                        22.0,
+                    ),
+                    cx,
+                );
 
-            // Provider row
-            let prov_y = inner.origin.y + 62.0;
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, prov_y, inner.size.width, 56.0))
-                    .with_background(theme::bg::SURFACE)
-                    .with_border(theme::border::DEFAULT, 1.0),
-            );
+                // Provider row
+                let prov_y = inner.origin.y + 62.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(inner.origin.x, prov_y, inner.size.width, 56.0))
+                        .with_background(theme::bg::SURFACE)
+                        .with_border(theme::border::DEFAULT, 1.0),
+                );
 
-            // Provider name + reputation
-            let prov_name = cx.text.layout(
-                "compute-provider-1",
-                Point::new(inner.origin.x + 8.0, prov_y + 8.0),
-                theme::font_size::SM,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(prov_name);
+                // Provider name + reputation
+                let prov_name = cx.text.layout(
+                    "compute-provider-1",
+                    Point::new(inner.origin.x + 8.0, prov_y + 8.0),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(prov_name);
 
-            let mut rep = ReputationBadge::new(TrustTier::Trusted).success_rate(0.97);
-            rep.paint(Bounds::new(inner.origin.x + 140.0, prov_y + 6.0, 100.0, 22.0), cx);
+                let mut rep = ReputationBadge::new(TrustTier::Trusted).success_rate(0.97);
+                rep.paint(
+                    Bounds::new(inner.origin.x + 140.0, prov_y + 6.0, 100.0, 22.0),
+                    cx,
+                );
 
-            // Job in progress
-            let mut job = JobStatusBadge::new(JobStatus::Processing);
-            job.paint(Bounds::new(inner.origin.x + 8.0, prov_y + 32.0, 90.0, 22.0), cx);
+                // Job in progress
+                let mut job = JobStatusBadge::new(JobStatus::Processing);
+                job.paint(
+                    Bounds::new(inner.origin.x + 8.0, prov_y + 32.0, 90.0, 22.0),
+                    cx,
+                );
 
-            let job_info = cx.text.layout(
-                "llama3 • 1.2K tokens",
-                Point::new(inner.origin.x + 106.0, prov_y + 36.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(job_info);
+                let job_info = cx.text.layout(
+                    "llama3 • 1.2K tokens",
+                    Point::new(inner.origin.x + 106.0, prov_y + 36.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(job_info);
 
-            // Trajectory contribution section
-            let traj_y = prov_y + 68.0;
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, traj_y, inner.size.width, 100.0))
-                    .with_background(theme::bg::SURFACE)
-                    .with_border(theme::border::DEFAULT, 1.0),
-            );
+                // Trajectory contribution section
+                let traj_y = prov_y + 68.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(inner.origin.x, traj_y, inner.size.width, 100.0))
+                        .with_background(theme::bg::SURFACE)
+                        .with_border(theme::border::DEFAULT, 1.0),
+                );
 
-            let traj_title = cx.text.layout(
-                "Trajectory Contributions",
-                Point::new(inner.origin.x + 8.0, traj_y + 6.0),
-                theme::font_size::SM,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(traj_title);
+                let traj_title = cx.text.layout(
+                    "Trajectory Contributions",
+                    Point::new(inner.origin.x + 8.0, traj_y + 6.0),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(traj_title);
 
-            // Source badges row
-            let source_y = traj_y + 28.0;
-            let mut x = inner.origin.x + 8.0;
-            let sources = [
-                (TrajectorySource::Claude, ContributionStatus::Accepted, 42),
-                (TrajectorySource::Cursor, ContributionStatus::Pending, 15),
-            ];
-            for (source, status, count) in &sources {
-                let mut badge = TrajectorySourceBadge::new(*source)
-                    .status(*status)
-                    .session_count(*count);
-                badge.paint(Bounds::new(x, source_y, 170.0, 22.0), cx);
-                x += 180.0;
-            }
+                // Source badges row
+                let source_y = traj_y + 28.0;
+                let mut x = inner.origin.x + 8.0;
+                let sources = [
+                    (TrajectorySource::Claude, ContributionStatus::Accepted, 42),
+                    (TrajectorySource::Cursor, ContributionStatus::Pending, 15),
+                ];
+                for (source, status, count) in &sources {
+                    let mut badge = TrajectorySourceBadge::new(*source)
+                        .status(*status)
+                        .session_count(*count);
+                    badge.paint(Bounds::new(x, source_y, 170.0, 22.0), cx);
+                    x += 180.0;
+                }
 
-            // Earnings row
-            let earn_y = traj_y + 56.0;
-            let earn_label = cx.text.layout(
-                "Trajectory earnings:",
-                Point::new(inner.origin.x + 8.0, earn_y + 4.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(earn_label);
+                // Earnings row
+                let earn_y = traj_y + 56.0;
+                let earn_label = cx.text.layout(
+                    "Trajectory earnings:",
+                    Point::new(inner.origin.x + 8.0, earn_y + 4.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(earn_label);
 
-            let mut traj_earn = EarningsBadge::new(EarningsType::Trajectories, 150_000);
-            traj_earn.paint(Bounds::new(inner.origin.x + 120.0, earn_y, 160.0, 22.0), cx);
+                let mut traj_earn = EarningsBadge::new(EarningsType::Trajectories, 150_000);
+                traj_earn.paint(Bounds::new(inner.origin.x + 120.0, earn_y, 160.0, 22.0), cx);
 
-            // Total earnings bar at bottom
-            let total_y = traj_y + 80.0;
-            let total_label = cx.text.layout(
-                "Total today:",
-                Point::new(inner.origin.x + 8.0, total_y + 4.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(total_label);
+                // Total earnings bar at bottom
+                let total_y = traj_y + 80.0;
+                let total_label = cx.text.layout(
+                    "Total today:",
+                    Point::new(inner.origin.x + 8.0, total_y + 4.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(total_label);
 
-            let mut today_earn = EarningsBadge::new(EarningsType::Total, 25_000);
-            today_earn.paint(Bounds::new(inner.origin.x + 80.0, total_y, 150.0, 22.0), cx);
-        });
+                let mut today_earn = EarningsBadge::new(EarningsType::Total, 25_000);
+                today_earn.paint(Bounds::new(inner.origin.x + 80.0, total_y, 150.0, 22.0), cx);
+            },
+        );
     }
 
     fn paint_autopilot(&mut self, bounds: Bounds, cx: &mut PaintContext) {
@@ -5431,40 +6217,45 @@ impl Storybook {
         // ========== Panel 2: APM Gauges ==========
         let apm_height = panel_height(160.0);
         let apm_bounds = Bounds::new(bounds.origin.x, y, width, apm_height);
-        draw_panel("APM (Actions Per Minute) Gauges", apm_bounds, cx, |inner, cx| {
-            let apms = [
-                (0.0, "Idle"),
-                (5.0, "Low"),
-                (22.0, "Normal"),
-                (45.0, "High"),
-                (80.0, "Intense"),
-            ];
+        draw_panel(
+            "APM (Actions Per Minute) Gauges",
+            apm_bounds,
+            cx,
+            |inner, cx| {
+                let apms = [
+                    (0.0, "Idle"),
+                    (5.0, "Low"),
+                    (22.0, "Normal"),
+                    (45.0, "High"),
+                    (80.0, "Intense"),
+                ];
 
-            let tile_w = 160.0;
-            let tile_h = 55.0;
-            let gap = 12.0;
-            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+                let tile_w = 160.0;
+                let tile_h = 55.0;
+                let gap = 12.0;
+                let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
 
-            for (idx, (apm, label)) in apms.iter().enumerate() {
-                let row = idx / cols;
-                let col = idx % cols;
-                let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
-                let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
+                for (idx, (apm, label)) in apms.iter().enumerate() {
+                    let row = idx / cols;
+                    let col = idx % cols;
+                    let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
+                    let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
 
-                // Label
-                let label_run = cx.text.layout(
-                    *label,
-                    Point::new(tile_x, tile_y),
-                    theme::font_size::XS,
-                    theme::text::MUTED,
-                );
-                cx.scene.draw_text(label_run);
+                    // Label
+                    let label_run = cx.text.layout(
+                        *label,
+                        Point::new(tile_x, tile_y),
+                        theme::font_size::XS,
+                        theme::text::MUTED,
+                    );
+                    cx.scene.draw_text(label_run);
 
-                // Gauge
-                let mut gauge = ApmGauge::new(*apm);
-                gauge.paint(Bounds::new(tile_x, tile_y + 18.0, 150.0, 22.0), cx);
-            }
-        });
+                    // Gauge
+                    let mut gauge = ApmGauge::new(*apm);
+                    gauge.paint(Bounds::new(tile_x, tile_y + 18.0, 150.0, 22.0), cx);
+                }
+            },
+        );
         y += apm_height + SECTION_GAP;
 
         // ========== Panel 3: Resource Usage Bars ==========
@@ -5514,7 +6305,12 @@ impl Storybook {
             let statuses = [
                 (DaemonStatus::Offline, None, None, "Offline"),
                 (DaemonStatus::Starting, None, None, "Starting"),
-                (DaemonStatus::Online, Some(86400), Some(3), "Online (1d, 3 workers)"),
+                (
+                    DaemonStatus::Online,
+                    Some(86400),
+                    Some(3),
+                    "Online (1d, 3 workers)",
+                ),
                 (DaemonStatus::Restarting, None, None, "Restarting"),
                 (DaemonStatus::Error, None, None, "Error"),
                 (DaemonStatus::Stopping, None, None, "Stopping"),
@@ -5559,10 +6355,25 @@ impl Storybook {
         draw_panel("Parallel Agent Badges", parallel_bounds, cx, |inner, cx| {
             let agents = [
                 (0, ParallelAgentStatus::Idle, None, "Agent 0: Idle"),
-                (1, ParallelAgentStatus::Running, Some("Building tests"), "Agent 1: Running"),
-                (2, ParallelAgentStatus::Waiting, Some("Awaiting input"), "Agent 2: Waiting"),
+                (
+                    1,
+                    ParallelAgentStatus::Running,
+                    Some("Building tests"),
+                    "Agent 1: Running",
+                ),
+                (
+                    2,
+                    ParallelAgentStatus::Waiting,
+                    Some("Awaiting input"),
+                    "Agent 2: Waiting",
+                ),
                 (3, ParallelAgentStatus::Completed, None, "Agent 3: Done"),
-                (4, ParallelAgentStatus::Failed, Some("Build error"), "Agent 4: Failed"),
+                (
+                    4,
+                    ParallelAgentStatus::Failed,
+                    Some("Build error"),
+                    "Agent 4: Failed",
+                ),
                 (5, ParallelAgentStatus::Initializing, None, "Agent 5: Init"),
             ];
 
@@ -5599,143 +6410,188 @@ impl Storybook {
         // ========== Panel 6: Complete Autopilot Dashboard ==========
         let dashboard_height = panel_height(400.0);
         let dashboard_bounds = Bounds::new(bounds.origin.x, y, width, dashboard_height);
-        draw_panel("Autopilot Dashboard Preview", dashboard_bounds, cx, |inner, cx| {
-            // Header bar
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 50.0))
+        draw_panel(
+            "Autopilot Dashboard Preview",
+            dashboard_bounds,
+            cx,
+            |inner, cx| {
+                // Header bar
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y,
+                        inner.size.width,
+                        50.0,
+                    ))
                     .with_background(theme::bg::ELEVATED)
                     .with_border(theme::accent::PRIMARY, 1.0),
-            );
+                );
 
-            // Title
-            let title = cx.text.layout(
-                "Autopilot Control",
-                Point::new(inner.origin.x + 12.0, inner.origin.y + 8.0),
-                theme::font_size::BASE,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(title);
+                // Title
+                let title = cx.text.layout(
+                    "Autopilot Control",
+                    Point::new(inner.origin.x + 12.0, inner.origin.y + 8.0),
+                    theme::font_size::BASE,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(title);
 
-            // Daemon status on right
-            let mut daemon = DaemonStatusBadge::new(DaemonStatus::Online)
-                .uptime(86400)
-                .worker_count(3);
-            daemon.paint(Bounds::new(inner.origin.x + inner.size.width - 180.0, inner.origin.y + 10.0, 170.0, 22.0), cx);
+                // Daemon status on right
+                let mut daemon = DaemonStatusBadge::new(DaemonStatus::Online)
+                    .uptime(86400)
+                    .worker_count(3);
+                daemon.paint(
+                    Bounds::new(
+                        inner.origin.x + inner.size.width - 180.0,
+                        inner.origin.y + 10.0,
+                        170.0,
+                        22.0,
+                    ),
+                    cx,
+                );
 
-            // APM gauge
-            let mut apm = ApmGauge::new(28.5);
-            apm.paint(Bounds::new(inner.origin.x + 12.0, inner.origin.y + 32.0, 140.0, 22.0), cx);
+                // APM gauge
+                let mut apm = ApmGauge::new(28.5);
+                apm.paint(
+                    Bounds::new(inner.origin.x + 12.0, inner.origin.y + 32.0, 140.0, 22.0),
+                    cx,
+                );
 
-            // Active session row
-            let session_y = inner.origin.y + 62.0;
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, session_y, inner.size.width, 56.0))
+                // Active session row
+                let session_y = inner.origin.y + 62.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        inner.origin.x,
+                        session_y,
+                        inner.size.width,
+                        56.0,
+                    ))
                     .with_background(theme::bg::SURFACE)
                     .with_border(theme::border::DEFAULT, 1.0),
-            );
+                );
 
-            // Session info
-            let session_title = cx.text.layout(
-                "Active Session #1234",
-                Point::new(inner.origin.x + 8.0, session_y + 8.0),
-                theme::font_size::SM,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(session_title);
+                // Session info
+                let session_title = cx.text.layout(
+                    "Active Session #1234",
+                    Point::new(inner.origin.x + 8.0, session_y + 8.0),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(session_title);
 
-            let mut session = SessionStatusBadge::new(SessionStatus::Running)
-                .duration(325)
-                .task_count(12);
-            session.paint(Bounds::new(inner.origin.x + 160.0, session_y + 6.0, 200.0, 22.0), cx);
+                let mut session = SessionStatusBadge::new(SessionStatus::Running)
+                    .duration(325)
+                    .task_count(12);
+                session.paint(
+                    Bounds::new(inner.origin.x + 160.0, session_y + 6.0, 200.0, 22.0),
+                    cx,
+                );
 
-            // Task info
-            let task_info = cx.text.layout(
-                "Current: Building component tests",
-                Point::new(inner.origin.x + 8.0, session_y + 32.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(task_info);
+                // Task info
+                let task_info = cx.text.layout(
+                    "Current: Building component tests",
+                    Point::new(inner.origin.x + 8.0, session_y + 32.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(task_info);
 
-            // Parallel agents section
-            let agents_y = session_y + 68.0;
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, agents_y, inner.size.width, 100.0))
+                // Parallel agents section
+                let agents_y = session_y + 68.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        inner.origin.x,
+                        agents_y,
+                        inner.size.width,
+                        100.0,
+                    ))
                     .with_background(theme::bg::SURFACE)
                     .with_border(theme::border::DEFAULT, 1.0),
-            );
+                );
 
-            let agents_label = cx.text.layout(
-                "Parallel Agents",
-                Point::new(inner.origin.x + 8.0, agents_y + 8.0),
-                theme::font_size::SM,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(agents_label);
+                let agents_label = cx.text.layout(
+                    "Parallel Agents",
+                    Point::new(inner.origin.x + 8.0, agents_y + 8.0),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(agents_label);
 
-            // Agent badges in a row
-            let mut x = inner.origin.x + 8.0;
-            for (idx, status) in [
-                ParallelAgentStatus::Running,
-                ParallelAgentStatus::Running,
-                ParallelAgentStatus::Waiting,
-            ].iter().enumerate() {
-                let mut agent = ParallelAgentBadge::new(idx as u8, *status).compact(true);
-                agent.paint(Bounds::new(x, agents_y + 32.0, 50.0, 22.0), cx);
-                x += 60.0;
-            }
+                // Agent badges in a row
+                let mut x = inner.origin.x + 8.0;
+                for (idx, status) in [
+                    ParallelAgentStatus::Running,
+                    ParallelAgentStatus::Running,
+                    ParallelAgentStatus::Waiting,
+                ]
+                .iter()
+                .enumerate()
+                {
+                    let mut agent = ParallelAgentBadge::new(idx as u8, *status).compact(true);
+                    agent.paint(Bounds::new(x, agents_y + 32.0, 50.0, 22.0), cx);
+                    x += 60.0;
+                }
 
-            // Resource bars
-            let res_y = agents_y + 60.0;
-            let mut mem = ResourceUsageBar::new(ResourceType::Memory, 45.0)
-                .bar_width(80.0);
-            mem.paint(Bounds::new(inner.origin.x + 8.0, res_y, 160.0, 22.0), cx);
+                // Resource bars
+                let res_y = agents_y + 60.0;
+                let mut mem = ResourceUsageBar::new(ResourceType::Memory, 45.0).bar_width(80.0);
+                mem.paint(Bounds::new(inner.origin.x + 8.0, res_y, 160.0, 22.0), cx);
 
-            let mut cpu = ResourceUsageBar::new(ResourceType::Cpu, 62.0)
-                .bar_width(80.0);
-            cpu.paint(Bounds::new(inner.origin.x + 180.0, res_y, 160.0, 22.0), cx);
+                let mut cpu = ResourceUsageBar::new(ResourceType::Cpu, 62.0).bar_width(80.0);
+                cpu.paint(Bounds::new(inner.origin.x + 180.0, res_y, 160.0, 22.0), cx);
 
-            // Session history section
-            let history_y = agents_y + 112.0;
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, history_y, inner.size.width, 80.0))
+                // Session history section
+                let history_y = agents_y + 112.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        inner.origin.x,
+                        history_y,
+                        inner.size.width,
+                        80.0,
+                    ))
                     .with_background(theme::bg::SURFACE)
                     .with_border(theme::border::DEFAULT, 1.0),
-            );
+                );
 
-            let history_label = cx.text.layout(
-                "Recent Sessions",
-                Point::new(inner.origin.x + 8.0, history_y + 8.0),
-                theme::font_size::SM,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(history_label);
+                let history_label = cx.text.layout(
+                    "Recent Sessions",
+                    Point::new(inner.origin.x + 8.0, history_y + 8.0),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(history_label);
 
-            // Completed sessions
-            let mut completed1 = SessionStatusBadge::new(SessionStatus::Completed)
-                .duration(1800)
-                .task_count(45)
-                .compact(true);
-            completed1.paint(Bounds::new(inner.origin.x + 8.0, history_y + 32.0, 28.0, 22.0), cx);
-            let c1_label = cx.text.layout(
-                "#1233 - 45 tasks",
-                Point::new(inner.origin.x + 42.0, history_y + 36.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(c1_label);
+                // Completed sessions
+                let mut completed1 = SessionStatusBadge::new(SessionStatus::Completed)
+                    .duration(1800)
+                    .task_count(45)
+                    .compact(true);
+                completed1.paint(
+                    Bounds::new(inner.origin.x + 8.0, history_y + 32.0, 28.0, 22.0),
+                    cx,
+                );
+                let c1_label = cx.text.layout(
+                    "#1233 - 45 tasks",
+                    Point::new(inner.origin.x + 42.0, history_y + 36.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(c1_label);
 
-            let mut completed2 = SessionStatusBadge::new(SessionStatus::Failed)
-                .compact(true);
-            completed2.paint(Bounds::new(inner.origin.x + 8.0, history_y + 56.0, 28.0, 22.0), cx);
-            let c2_label = cx.text.layout(
-                "#1232 - Build error",
-                Point::new(inner.origin.x + 42.0, history_y + 60.0),
-                theme::font_size::XS,
-                theme::text::MUTED,
-            );
-            cx.scene.draw_text(c2_label);
-        });
+                let mut completed2 = SessionStatusBadge::new(SessionStatus::Failed).compact(true);
+                completed2.paint(
+                    Bounds::new(inner.origin.x + 8.0, history_y + 56.0, 28.0, 22.0),
+                    cx,
+                );
+                let c2_label = cx.text.layout(
+                    "#1232 - Build error",
+                    Point::new(inner.origin.x + 42.0, history_y + 60.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(c2_label);
+            },
+        );
     }
 
     fn paint_thread_components(&mut self, bounds: Bounds, cx: &mut PaintContext) {
@@ -5816,9 +6672,7 @@ impl Storybook {
                 cx.scene.draw_text(label_run);
 
                 // MessageEditor
-                let mut editor = MessageEditor::new()
-                    .mode(*mode)
-                    .streaming(*streaming);
+                let mut editor = MessageEditor::new().mode(*mode).streaming(*streaming);
                 if !placeholder.is_empty() {
                     editor = editor.placeholder(*placeholder);
                 }
@@ -5845,7 +6699,10 @@ impl Storybook {
             cx.scene.draw_text(label_run);
 
             let mut feedback1 = ThreadFeedback::new();
-            feedback1.paint(Bounds::new(inner.origin.x, inner.origin.y + 14.0, tile_w, 80.0), cx);
+            feedback1.paint(
+                Bounds::new(inner.origin.x, inner.origin.y + 14.0, tile_w, 80.0),
+                cx,
+            );
 
             // Second column - with comment shown (simulated by larger height)
             let label_run2 = cx.text.layout(
@@ -5961,15 +6818,23 @@ impl Storybook {
                 .subtitle("5 messages")
                 .show_back_button(true)
                 .show_menu_button(true);
-            header.paint(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 48.0), cx);
+            header.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 48.0),
+                cx,
+            );
 
             // Thread content area
             let content_y = inner.origin.y + 56.0;
             let content_h = inner.size.height - 56.0 - 72.0;
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(inner.origin.x, content_y, inner.size.width, content_h))
-                    .with_background(theme::bg::APP)
-                    .with_border(theme::border::DEFAULT, 1.0),
+                Quad::new(Bounds::new(
+                    inner.origin.x,
+                    content_y,
+                    inner.size.width,
+                    content_h,
+                ))
+                .with_background(theme::bg::APP)
+                .with_border(theme::border::DEFAULT, 1.0),
             );
 
             // Sample messages
@@ -5994,20 +6859,29 @@ impl Storybook {
                 .show_feedback(true)
                 .show_copy(true)
                 .show_retry(true);
-            actions.paint(Bounds::new(inner.origin.x + 12.0, content_y + 60.0, 180.0, 24.0), cx);
+            actions.paint(
+                Bounds::new(inner.origin.x + 12.0, content_y + 60.0, 180.0, 24.0),
+                cx,
+            );
 
             // Terminal header in content
             let mut terminal = TerminalHeader::new("cargo clippy")
                 .status(ToolStatus::Success)
                 .exit_code(0);
-            terminal.paint(Bounds::new(inner.origin.x + 12.0, content_y + 92.0, 300.0, 32.0), cx);
+            terminal.paint(
+                Bounds::new(inner.origin.x + 12.0, content_y + 92.0, 300.0, 32.0),
+                cx,
+            );
 
             // MessageEditor at bottom
             let editor_y = inner.origin.y + inner.size.height - 64.0;
             let mut editor = MessageEditor::new()
                 .mode(Mode::Normal)
                 .placeholder("Continue the conversation...");
-            editor.paint(Bounds::new(inner.origin.x, editor_y, inner.size.width, 64.0), cx);
+            editor.paint(
+                Bounds::new(inner.origin.x, editor_y, inner.size.width, 64.0),
+                cx,
+            );
         });
         y += layout_height + SECTION_GAP;
 
@@ -6036,7 +6910,12 @@ impl Storybook {
 
             let mut view = TrajectoryView::new().entries(entries);
             view.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, inner.size.height),
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y,
+                    inner.size.width,
+                    inner.size.height,
+                ),
                 cx,
             );
         });
@@ -6060,7 +6939,10 @@ impl Storybook {
                 .task_count(12)
                 .model("sonnet");
             let mut running = SessionCard::new(running_info);
-            running.paint(Bounds::new(inner.origin.x, inner.origin.y, card_w, 160.0), cx);
+            running.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, card_w, 160.0),
+                cx,
+            );
 
             // Completed session
             let completed_info = SessionInfo::new("sess-002", "Fix CI pipeline")
@@ -6070,7 +6952,15 @@ impl Storybook {
                 .task_count(8)
                 .model("opus");
             let mut completed = SessionCard::new(completed_info);
-            completed.paint(Bounds::new(inner.origin.x + card_w + 12.0, inner.origin.y, card_w, 160.0), cx);
+            completed.paint(
+                Bounds::new(
+                    inner.origin.x + card_w + 12.0,
+                    inner.origin.y,
+                    card_w,
+                    160.0,
+                ),
+                cx,
+            );
 
             // Failed session
             let failed_info = SessionInfo::new("sess-003", "Migrate database")
@@ -6080,7 +6970,15 @@ impl Storybook {
                 .task_count(5)
                 .model("sonnet");
             let mut failed = SessionCard::new(failed_info);
-            failed.paint(Bounds::new(inner.origin.x + (card_w + 12.0) * 2.0, inner.origin.y, card_w, 160.0), cx);
+            failed.paint(
+                Bounds::new(
+                    inner.origin.x + (card_w + 12.0) * 2.0,
+                    inner.origin.y,
+                    card_w,
+                    160.0,
+                ),
+                cx,
+            );
 
             // Second row - more states
             let row2_y = inner.origin.y + 172.0;
@@ -6101,14 +6999,25 @@ impl Storybook {
                 .task_count(3)
                 .model("haiku");
             let mut aborted = SessionCard::new(aborted_info);
-            aborted.paint(Bounds::new(inner.origin.x + card_w + 12.0, row2_y, card_w, 160.0), cx);
+            aborted.paint(
+                Bounds::new(inner.origin.x + card_w + 12.0, row2_y, card_w, 160.0),
+                cx,
+            );
 
             let pending_info = SessionInfo::new("sess-006", "Write tests")
                 .status(SessionStatus::Pending)
                 .timestamp("Queued")
                 .model("sonnet");
             let mut pending = SessionCard::new(pending_info);
-            pending.paint(Bounds::new(inner.origin.x + (card_w + 12.0) * 2.0, row2_y, card_w, 160.0), cx);
+            pending.paint(
+                Bounds::new(
+                    inner.origin.x + (card_w + 12.0) * 2.0,
+                    row2_y,
+                    card_w,
+                    160.0,
+                ),
+                cx,
+            );
         });
         y += cards_height + SECTION_GAP;
 
@@ -6117,48 +7026,88 @@ impl Storybook {
         let breadcrumb_bounds = Bounds::new(bounds.origin.x, y, width, breadcrumb_height);
         draw_panel("Session Breadcrumbs", breadcrumb_bounds, cx, |inner, cx| {
             // Simple breadcrumb
-            let mut bc1 = SessionBreadcrumb::new()
-                .items(vec![
-                    BreadcrumbItem::new("sess-001", "Main Session"),
-                    BreadcrumbItem::new("sess-002", "Fork: Auth").current(true),
-                ]);
-            bc1.paint(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 28.0), cx);
+            let mut bc1 = SessionBreadcrumb::new().items(vec![
+                BreadcrumbItem::new("sess-001", "Main Session"),
+                BreadcrumbItem::new("sess-002", "Fork: Auth").current(true),
+            ]);
+            bc1.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 28.0),
+                cx,
+            );
 
             // Deep breadcrumb
-            let mut bc2 = SessionBreadcrumb::new()
-                .items(vec![
-                    BreadcrumbItem::new("root", "Root Session"),
-                    BreadcrumbItem::new("fork-1", "API Changes"),
-                    BreadcrumbItem::new("fork-2", "Error Handling"),
-                    BreadcrumbItem::new("current", "Final Polish").current(true),
-                ]);
-            bc2.paint(Bounds::new(inner.origin.x, inner.origin.y + 36.0, inner.size.width, 28.0), cx);
+            let mut bc2 = SessionBreadcrumb::new().items(vec![
+                BreadcrumbItem::new("root", "Root Session"),
+                BreadcrumbItem::new("fork-1", "API Changes"),
+                BreadcrumbItem::new("fork-2", "Error Handling"),
+                BreadcrumbItem::new("current", "Final Polish").current(true),
+            ]);
+            bc2.paint(
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y + 36.0,
+                    inner.size.width,
+                    28.0,
+                ),
+                cx,
+            );
 
             // Single item
             let mut bc3 = SessionBreadcrumb::new()
                 .push_item(BreadcrumbItem::new("standalone", "Standalone Session").current(true));
-            bc3.paint(Bounds::new(inner.origin.x, inner.origin.y + 72.0, inner.size.width, 28.0), cx);
+            bc3.paint(
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y + 72.0,
+                    inner.size.width,
+                    28.0,
+                ),
+                cx,
+            );
         });
         y += breadcrumb_height + SECTION_GAP;
 
         // ========== Panel 3: Session Search ==========
         let search_height = panel_height(180.0);
         let search_bounds = Bounds::new(bounds.origin.x, y, width, search_height);
-        draw_panel("Session Search & Filters", search_bounds, cx, |inner, cx| {
-            // Empty search bar
-            let mut search1 = SessionSearchBar::new();
-            search1.paint(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 44.0), cx);
+        draw_panel(
+            "Session Search & Filters",
+            search_bounds,
+            cx,
+            |inner, cx| {
+                // Empty search bar
+                let mut search1 = SessionSearchBar::new();
+                search1.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 44.0),
+                    cx,
+                );
 
-            // Search bar with placeholder
-            let mut search2 = SessionSearchBar::new()
-                .placeholder("Search auth sessions...");
-            search2.paint(Bounds::new(inner.origin.x, inner.origin.y + 52.0, inner.size.width, 44.0), cx);
+                // Search bar with placeholder
+                let mut search2 = SessionSearchBar::new().placeholder("Search auth sessions...");
+                search2.paint(
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + 52.0,
+                        inner.size.width,
+                        44.0,
+                    ),
+                    cx,
+                );
 
-            // With active filter
-            let mut search3 = SessionSearchBar::new();
-            search3.set_filter(SessionStatus::Running, true);
-            search3.paint(Bounds::new(inner.origin.x, inner.origin.y + 104.0, inner.size.width, 44.0), cx);
-        });
+                // With active filter
+                let mut search3 = SessionSearchBar::new();
+                search3.set_filter(SessionStatus::Running, true);
+                search3.paint(
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + 104.0,
+                        inner.size.width,
+                        44.0,
+                    ),
+                    cx,
+                );
+            },
+        );
         y += search_height + SECTION_GAP;
 
         // ========== Panel 4: Session Actions ==========
@@ -6225,15 +7174,25 @@ impl Storybook {
         draw_panel("Complete Session List", list_bounds, cx, |inner, cx| {
             // Search bar at top
             let mut search = SessionSearchBar::new();
-            search.paint(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 44.0), cx);
+            search.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 44.0),
+                cx,
+            );
 
             // Breadcrumb showing current path
-            let mut breadcrumb = SessionBreadcrumb::new()
-                .items(vec![
-                    BreadcrumbItem::new("all", "All Sessions"),
-                    BreadcrumbItem::new("today", "Today").current(true),
-                ]);
-            breadcrumb.paint(Bounds::new(inner.origin.x, inner.origin.y + 52.0, inner.size.width, 28.0), cx);
+            let mut breadcrumb = SessionBreadcrumb::new().items(vec![
+                BreadcrumbItem::new("all", "All Sessions"),
+                BreadcrumbItem::new("today", "Today").current(true),
+            ]);
+            breadcrumb.paint(
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y + 52.0,
+                    inner.size.width,
+                    28.0,
+                ),
+                cx,
+            );
 
             // Session cards in a grid
             let cards_y = inner.origin.y + 80.0;
@@ -6359,7 +7318,12 @@ impl Storybook {
             for (i, rule) in rules.iter().enumerate() {
                 let mut row = PermissionRuleRow::new(rule.clone());
                 row.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 44.0, inner.size.width, 40.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 44.0,
+                        inner.size.width,
+                        40.0,
+                    ),
                     cx,
                 );
             }
@@ -6392,7 +7356,12 @@ impl Storybook {
             for (i, history) in histories.iter().enumerate() {
                 let mut item = PermissionHistoryItem::new(history.clone());
                 item.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 64.0, inner.size.width, 56.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 64.0,
+                        inner.size.width,
+                        56.0,
+                    ),
                     cx,
                 );
             }
@@ -6405,15 +7374,34 @@ impl Storybook {
         draw_panel("Permission Bar Variants", bar_bounds, cx, |inner, cx| {
             // Standard permission bar
             let mut bar1 = PermissionBar::new("Bash wants to execute: cargo test");
-            bar1.paint(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 48.0), cx);
+            bar1.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 48.0),
+                cx,
+            );
 
             // File write permission
             let mut bar2 = PermissionBar::new("Write wants to create: src/new_module.rs");
-            bar2.paint(Bounds::new(inner.origin.x, inner.origin.y + 56.0, inner.size.width, 48.0), cx);
+            bar2.paint(
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y + 56.0,
+                    inner.size.width,
+                    48.0,
+                ),
+                cx,
+            );
 
             // Dangerous operation
             let mut bar3 = PermissionBar::new("Bash wants to execute: git push --force");
-            bar3.paint(Bounds::new(inner.origin.x, inner.origin.y + 112.0, inner.size.width, 48.0), cx);
+            bar3.paint(
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y + 112.0,
+                    inner.size.width,
+                    48.0,
+                ),
+                cx,
+            );
         });
         y += bar_height + SECTION_GAP;
 
@@ -6461,11 +7449,7 @@ impl Storybook {
             );
             cx.scene.draw_text(rule_label);
 
-            let rule_counts = [
-                ("Global", 5),
-                ("Project", 12),
-                ("Session", 8),
-            ];
+            let rule_counts = [("Global", 5), ("Project", 12), ("Session", 8)];
 
             let mut rx = inner.origin.x + 120.0;
             for (scope, count) in rule_counts {
@@ -6567,7 +7551,12 @@ impl Storybook {
             for (i, session) in sessions.iter().enumerate() {
                 let mut row = ApmSessionRow::new(session.clone());
                 row.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 48.0, inner.size.width, 44.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 48.0,
+                        inner.size.width,
+                        44.0,
+                    ),
                     cx,
                 );
             }
@@ -6590,7 +7579,12 @@ impl Storybook {
 
             let mut card = ApmComparisonCard::new(session_a, session_b);
             card.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 220.0),
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y,
+                    inner.size.width.min(500.0),
+                    220.0,
+                ),
                 cx,
             );
         });
@@ -6631,7 +7625,12 @@ impl Storybook {
                 .title("Top Sessions This Week")
                 .entries(entries);
             leaderboard.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(600.0), 260.0),
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y,
+                    inner.size.width.min(600.0),
+                    260.0,
+                ),
                 cx,
             );
         });
@@ -6643,9 +7642,19 @@ impl Storybook {
         draw_panel("APM Trends Summary", trends_bounds, cx, |inner, cx| {
             let metrics = [
                 ("Avg APM", "72.4", "+5.2%", Hsla::new(120.0, 0.7, 0.45, 1.0)),
-                ("Peak APM", "98.5", "+12.1%", Hsla::new(120.0, 0.7, 0.45, 1.0)),
+                (
+                    "Peak APM",
+                    "98.5",
+                    "+12.1%",
+                    Hsla::new(120.0, 0.7, 0.45, 1.0),
+                ),
                 ("Sessions", "24", "+3", Hsla::new(200.0, 0.7, 0.5, 1.0)),
-                ("Tool Calls", "1,847", "-2.3%", Hsla::new(0.0, 0.7, 0.5, 1.0)),
+                (
+                    "Tool Calls",
+                    "1,847",
+                    "-2.3%",
+                    Hsla::new(0.0, 0.7, 0.5, 1.0),
+                ),
             ];
 
             let metric_w = inner.size.width / 4.0;
@@ -6702,17 +7711,25 @@ impl Storybook {
                 };
 
                 let btn_bounds = Bounds::new(x, period_y - 4.0, 48.0, 24.0);
-                cx.scene.draw_quad(
-                    Quad::new(btn_bounds)
-                        .with_background(bg)
-                        .with_border(if is_selected { theme::accent::PRIMARY } else { theme::border::DEFAULT }, 1.0),
-                );
+                cx.scene
+                    .draw_quad(Quad::new(btn_bounds).with_background(bg).with_border(
+                        if is_selected {
+                            theme::accent::PRIMARY
+                        } else {
+                            theme::border::DEFAULT
+                        },
+                        1.0,
+                    ));
 
                 let period_text = cx.text.layout(
                     period,
                     Point::new(x + 14.0, period_y),
                     theme::font_size::SM,
-                    if is_selected { theme::accent::PRIMARY } else { theme::text::MUTED },
+                    if is_selected {
+                        theme::accent::PRIMARY
+                    } else {
+                        theme::text::MUTED
+                    },
                 );
                 cx.scene.draw_text(period_text);
             }
@@ -6729,15 +7746,28 @@ impl Storybook {
         draw_panel("Mnemonic Display", mnemonic_bounds, cx, |inner, cx| {
             // Sample 12-word mnemonic
             let words = vec![
-                "abandon".to_string(), "ability".to_string(), "able".to_string(),
-                "about".to_string(), "above".to_string(), "absent".to_string(),
-                "absorb".to_string(), "abstract".to_string(), "absurd".to_string(),
-                "abuse".to_string(), "access".to_string(), "accident".to_string(),
+                "abandon".to_string(),
+                "ability".to_string(),
+                "able".to_string(),
+                "about".to_string(),
+                "above".to_string(),
+                "absent".to_string(),
+                "absorb".to_string(),
+                "abstract".to_string(),
+                "absurd".to_string(),
+                "abuse".to_string(),
+                "access".to_string(),
+                "accident".to_string(),
             ];
 
             let mut mnemonic = MnemonicDisplay::new(words).revealed(true);
             mnemonic.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 200.0),
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y,
+                    inner.size.width.min(500.0),
+                    200.0,
+                ),
                 cx,
             );
         });
@@ -6754,18 +7784,26 @@ impl Storybook {
             )
             .label("Primary Wallet");
             btc_card.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(400.0), 70.0),
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y,
+                    inner.size.width.min(400.0),
+                    70.0,
+                ),
                 cx,
             );
 
             // Lightning address
-            let mut ln_card = AddressCard::new(
-                "lnbc1500n1pj9nr6mpp5argz38...",
-                AddressType::Lightning,
-            )
-            .label("Lightning Invoice");
+            let mut ln_card =
+                AddressCard::new("lnbc1500n1pj9nr6mpp5argz38...", AddressType::Lightning)
+                    .label("Lightning Invoice");
             ln_card.paint(
-                Bounds::new(inner.origin.x, inner.origin.y + 80.0, inner.size.width.min(400.0), 70.0),
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y + 80.0,
+                    inner.size.width.min(400.0),
+                    70.0,
+                ),
                 cx,
             );
         });
@@ -6795,7 +7833,12 @@ impl Storybook {
             for (i, tx) in transactions.iter().enumerate() {
                 let mut row = TransactionRow::new(tx.clone());
                 row.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 60.0, inner.size.width, 56.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 60.0,
+                        inner.size.width,
+                        56.0,
+                    ),
                     cx,
                 );
             }
@@ -6812,7 +7855,12 @@ impl Storybook {
                 .amount(50000)
                 .fee(500);
             send_flow.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 320.0),
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y,
+                    inner.size.width.min(500.0),
+                    320.0,
+                ),
                 cx,
             );
         });
@@ -6829,7 +7877,12 @@ impl Storybook {
                 .invoice("lnbc250u1pjxxx...")
                 .expires_in(3600);
             receive_flow.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 380.0),
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y,
+                    inner.size.width.min(500.0),
+                    380.0,
+                ),
                 cx,
             );
         });
@@ -6865,7 +7918,12 @@ impl Storybook {
             for (i, repo) in repos.iter().enumerate() {
                 let mut card = RepoCard::new(repo.clone());
                 card.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 110.0, inner.size.width.min(500.0), 100.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 110.0,
+                        inner.size.width.min(500.0),
+                        100.0,
+                    ),
                     cx,
                 );
             }
@@ -6904,7 +7962,12 @@ impl Storybook {
             for (i, issue) in issues.iter().enumerate() {
                 let mut row = IssueRow::new(issue.clone());
                 row.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 90.0, inner.size.width, 80.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 90.0,
+                        inner.size.width,
+                        80.0,
+                    ),
                     cx,
                 );
             }
@@ -6935,7 +7998,12 @@ impl Storybook {
                 let is_last = i == events.len() - 1;
                 let mut item = PrTimelineItem::new(event.clone()).is_last(is_last);
                 item.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 60.0, inner.size.width.min(500.0), 60.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 60.0,
+                        inner.size.width.min(500.0),
+                        60.0,
+                    ),
                     cx,
                 );
             }
@@ -6945,91 +8013,96 @@ impl Storybook {
         // ========== Panel 4: Issue Labels & Status Variants ==========
         let labels_height = panel_height(200.0);
         let labels_bounds = Bounds::new(bounds.origin.x, y, width, labels_height);
-        draw_panel("Issue Labels & PR Events", labels_bounds, cx, |inner, cx| {
-            // Draw predefined labels
-            let labels = [
-                IssueLabel::bug(),
-                IssueLabel::enhancement(),
-                IssueLabel::good_first_issue(),
-                IssueLabel::help_wanted(),
-                IssueLabel::new("security", Hsla::new(0.0, 0.8, 0.5, 1.0)),
-                IssueLabel::new("performance", Hsla::new(280.0, 0.6, 0.5, 1.0)),
-            ];
+        draw_panel(
+            "Issue Labels & PR Events",
+            labels_bounds,
+            cx,
+            |inner, cx| {
+                // Draw predefined labels
+                let labels = [
+                    IssueLabel::bug(),
+                    IssueLabel::enhancement(),
+                    IssueLabel::good_first_issue(),
+                    IssueLabel::help_wanted(),
+                    IssueLabel::new("security", Hsla::new(0.0, 0.8, 0.5, 1.0)),
+                    IssueLabel::new("performance", Hsla::new(280.0, 0.6, 0.5, 1.0)),
+                ];
 
-            let mut label_x = inner.origin.x;
-            for label in &labels {
-                let label_w = (label.name.len() as f32 * 7.0) + 16.0;
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(label_x, inner.origin.y, label_w, 20.0))
-                        .with_background(label.color.with_alpha(0.2))
-                        .with_border(label.color, 1.0),
-                );
-                let text = cx.text.layout(
-                    &label.name,
-                    Point::new(label_x + 6.0, inner.origin.y + 4.0),
-                    theme::font_size::XS,
-                    label.color,
-                );
-                cx.scene.draw_text(text);
-                label_x += label_w + 8.0;
-            }
-
-            // Draw PR event types
-            let mut event_y = inner.origin.y + 40.0;
-            let events = [
-                PrEventType::Commit,
-                PrEventType::Review,
-                PrEventType::Comment,
-                PrEventType::StatusChange,
-                PrEventType::Merge,
-                PrEventType::Close,
-                PrEventType::Reopen,
-            ];
-
-            let mut event_x = inner.origin.x;
-            for event in &events {
-                let icon_text = format!("{} {}", event.icon(), event.label());
-                let text = cx.text.layout(
-                    &icon_text,
-                    Point::new(event_x, event_y),
-                    theme::font_size::SM,
-                    event.color(),
-                );
-                cx.scene.draw_text(text);
-                event_x += 120.0;
-                if event_x > inner.origin.x + inner.size.width - 120.0 {
-                    event_x = inner.origin.x;
-                    event_y += 24.0;
+                let mut label_x = inner.origin.x;
+                for label in &labels {
+                    let label_w = (label.name.len() as f32 * 7.0) + 16.0;
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(label_x, inner.origin.y, label_w, 20.0))
+                            .with_background(label.color.with_alpha(0.2))
+                            .with_border(label.color, 1.0),
+                    );
+                    let text = cx.text.layout(
+                        &label.name,
+                        Point::new(label_x + 6.0, inner.origin.y + 4.0),
+                        theme::font_size::XS,
+                        label.color,
+                    );
+                    cx.scene.draw_text(text);
+                    label_x += label_w + 8.0;
                 }
-            }
 
-            // Draw review states
-            let review_y = event_y + 40.0;
-            let states = [
-                ReviewState::Approved,
-                ReviewState::RequestChanges,
-                ReviewState::Commented,
-                ReviewState::Pending,
-            ];
+                // Draw PR event types
+                let mut event_y = inner.origin.y + 40.0;
+                let events = [
+                    PrEventType::Commit,
+                    PrEventType::Review,
+                    PrEventType::Comment,
+                    PrEventType::StatusChange,
+                    PrEventType::Merge,
+                    PrEventType::Close,
+                    PrEventType::Reopen,
+                ];
 
-            let mut state_x = inner.origin.x;
-            for state in &states {
-                let state_w = 120.0;
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(state_x, review_y, state_w, 24.0))
-                        .with_background(state.color().with_alpha(0.2))
-                        .with_border(state.color(), 1.0),
-                );
-                let text = cx.text.layout(
-                    state.label(),
-                    Point::new(state_x + 8.0, review_y + 5.0),
-                    theme::font_size::XS,
-                    state.color(),
-                );
-                cx.scene.draw_text(text);
-                state_x += state_w + 12.0;
-            }
-        });
+                let mut event_x = inner.origin.x;
+                for event in &events {
+                    let icon_text = format!("{} {}", event.icon(), event.label());
+                    let text = cx.text.layout(
+                        &icon_text,
+                        Point::new(event_x, event_y),
+                        theme::font_size::SM,
+                        event.color(),
+                    );
+                    cx.scene.draw_text(text);
+                    event_x += 120.0;
+                    if event_x > inner.origin.x + inner.size.width - 120.0 {
+                        event_x = inner.origin.x;
+                        event_y += 24.0;
+                    }
+                }
+
+                // Draw review states
+                let review_y = event_y + 40.0;
+                let states = [
+                    ReviewState::Approved,
+                    ReviewState::RequestChanges,
+                    ReviewState::Commented,
+                    ReviewState::Pending,
+                ];
+
+                let mut state_x = inner.origin.x;
+                for state in &states {
+                    let state_w = 120.0;
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(state_x, review_y, state_w, 24.0))
+                            .with_background(state.color().with_alpha(0.2))
+                            .with_border(state.color(), 1.0),
+                    );
+                    let text = cx.text.layout(
+                        state.label(),
+                        Point::new(state_x + 8.0, review_y + 5.0),
+                        theme::font_size::XS,
+                        state.color(),
+                    );
+                    cx.scene.draw_text(text);
+                    state_x += state_w + 12.0;
+                }
+            },
+        );
     }
 
     fn paint_marketplace_flows(&mut self, bounds: Bounds, cx: &mut PaintContext) {
@@ -7046,16 +8119,12 @@ impl Storybook {
                     "FastCompute Pro",
                     ProviderSpecs::new(32, 128, 2000).gpu("NVIDIA A100"),
                 )
-                    .status(ProviderStatus::Online)
-                    .price(15000)
-                    .rating(4.9)
-                    .jobs(1250)
-                    .location("US-East"),
-                ProviderInfo::new(
-                    "p2",
-                    "Budget Runner",
-                    ProviderSpecs::new(8, 32, 500),
-                )
+                .status(ProviderStatus::Online)
+                .price(15000)
+                .rating(4.9)
+                .jobs(1250)
+                .location("US-East"),
+                ProviderInfo::new("p2", "Budget Runner", ProviderSpecs::new(8, 32, 500))
                     .status(ProviderStatus::Busy)
                     .price(2000)
                     .rating(4.5)
@@ -7066,7 +8135,12 @@ impl Storybook {
             for (i, provider) in providers.iter().enumerate() {
                 let mut card = ProviderCard::new(provider.clone());
                 card.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 115.0, inner.size.width.min(500.0), 110.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 115.0,
+                        inner.size.width.min(500.0),
+                        110.0,
+                    ),
                     cx,
                 );
             }
@@ -7078,27 +8152,40 @@ impl Storybook {
         let skills_bounds = Bounds::new(bounds.origin.x, y, width, skills_height);
         draw_panel("Skills Marketplace", skills_bounds, cx, |inner, cx| {
             let skills = [
-                SkillInfo::new("s1", "Code Review Pro", "AI-powered code review with security analysis")
-                    .category(SkillCategory::CodeGeneration)
-                    .author("openagents")
-                    .version("2.1.0")
-                    .status(SkillInstallStatus::Installed)
-                    .downloads(45000)
-                    .rating(4.8),
-                SkillInfo::new("s2", "Data Transformer", "Transform and clean datasets automatically")
-                    .category(SkillCategory::DataAnalysis)
-                    .author("datacraft")
-                    .version("1.5.2")
-                    .status(SkillInstallStatus::Available)
-                    .price(5000)
-                    .downloads(12000)
-                    .rating(4.6),
+                SkillInfo::new(
+                    "s1",
+                    "Code Review Pro",
+                    "AI-powered code review with security analysis",
+                )
+                .category(SkillCategory::CodeGeneration)
+                .author("openagents")
+                .version("2.1.0")
+                .status(SkillInstallStatus::Installed)
+                .downloads(45000)
+                .rating(4.8),
+                SkillInfo::new(
+                    "s2",
+                    "Data Transformer",
+                    "Transform and clean datasets automatically",
+                )
+                .category(SkillCategory::DataAnalysis)
+                .author("datacraft")
+                .version("1.5.2")
+                .status(SkillInstallStatus::Available)
+                .price(5000)
+                .downloads(12000)
+                .rating(4.6),
             ];
 
             for (i, skill) in skills.iter().enumerate() {
                 let mut card = SkillCard::new(skill.clone());
                 card.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 120.0, inner.size.width.min(500.0), 110.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 120.0,
+                        inner.size.width.min(500.0),
+                        110.0,
+                    ),
                     cx,
                 );
             }
@@ -7110,29 +8197,42 @@ impl Storybook {
         let data_bounds = Bounds::new(bounds.origin.x, y, width, data_height);
         draw_panel("Data Marketplace", data_bounds, cx, |inner, cx| {
             let datasets = [
-                DatasetInfo::new("d1", "LLM Training Corpus", "High-quality text corpus for language model training")
-                    .format(DataFormat::Parquet)
-                    .license(DataLicense::OpenSource)
-                    .size(10_737_418_240) // 10 GB
-                    .rows(50_000_000)
-                    .author("opendata")
-                    .downloads(2500)
-                    .updated_at("2 days ago"),
-                DatasetInfo::new("d2", "Code Embeddings", "Pre-computed embeddings for 100+ programming languages")
-                    .format(DataFormat::Arrow)
-                    .license(DataLicense::Commercial)
-                    .size(5_368_709_120) // 5 GB
-                    .rows(25_000_000)
-                    .author("codebase")
-                    .price(25000)
-                    .downloads(850)
-                    .updated_at("1 week ago"),
+                DatasetInfo::new(
+                    "d1",
+                    "LLM Training Corpus",
+                    "High-quality text corpus for language model training",
+                )
+                .format(DataFormat::Parquet)
+                .license(DataLicense::OpenSource)
+                .size(10_737_418_240) // 10 GB
+                .rows(50_000_000)
+                .author("opendata")
+                .downloads(2500)
+                .updated_at("2 days ago"),
+                DatasetInfo::new(
+                    "d2",
+                    "Code Embeddings",
+                    "Pre-computed embeddings for 100+ programming languages",
+                )
+                .format(DataFormat::Arrow)
+                .license(DataLicense::Commercial)
+                .size(5_368_709_120) // 5 GB
+                .rows(25_000_000)
+                .author("codebase")
+                .price(25000)
+                .downloads(850)
+                .updated_at("1 week ago"),
             ];
 
             for (i, dataset) in datasets.iter().enumerate() {
                 let mut card = DatasetCard::new(dataset.clone());
                 card.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 115.0, inner.size.width.min(550.0), 105.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 115.0,
+                        inner.size.width.min(550.0),
+                        105.0,
+                    ),
                     cx,
                 );
             }
@@ -7235,9 +8335,14 @@ impl Storybook {
             for status in &install_statuses {
                 let status_w = 90.0;
                 cx.scene.draw_quad(
-                    Quad::new(Bounds::new(install_x, inner.origin.y + 90.0, status_w, 18.0))
-                        .with_background(status.color().with_alpha(0.2))
-                        .with_border(status.color(), 1.0),
+                    Quad::new(Bounds::new(
+                        install_x,
+                        inner.origin.y + 90.0,
+                        status_w,
+                        18.0,
+                    ))
+                    .with_background(status.color().with_alpha(0.2))
+                    .with_border(status.color(), 1.0),
                 );
                 let text = cx.text.layout(
                     status.label(),
@@ -7284,7 +8389,12 @@ impl Storybook {
             for (i, contact) in contacts.iter().enumerate() {
                 let mut card = ContactCard::new(contact.clone());
                 card.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 95.0, inner.size.width.min(500.0), 90.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 95.0,
+                        inner.size.width.min(500.0),
+                        90.0,
+                    ),
                     cx,
                 );
             }
@@ -7296,31 +8406,52 @@ impl Storybook {
         let dm_bounds = Bounds::new(bounds.origin.x, y, width, dm_height);
         draw_panel("Direct Messages", dm_bounds, cx, |inner, cx| {
             let messages = [
-                DmMessage::new("m1", "Hey! Just saw your PR, looks great!", DmDirection::Incoming)
-                    .sender("Alice")
-                    .timestamp("2 min ago")
-                    .encryption(EncryptionStatus::Encrypted)
-                    .read(true),
-                DmMessage::new("m2", "Thanks! Working on the review comments now.", DmDirection::Outgoing)
-                    .timestamp("1 min ago")
-                    .encryption(EncryptionStatus::Encrypted)
-                    .read(true),
-                DmMessage::new("m3", "Let me know when you push the updates. I'll review it tonight.", DmDirection::Incoming)
-                    .sender("Alice")
-                    .timestamp("Just now")
-                    .encryption(EncryptionStatus::Encrypted)
-                    .read(false),
-                DmMessage::new("m4", "[Encrypted message - decryption failed]", DmDirection::Incoming)
-                    .sender("Unknown")
-                    .timestamp("5 min ago")
-                    .encryption(EncryptionStatus::Failed)
-                    .read(false),
+                DmMessage::new(
+                    "m1",
+                    "Hey! Just saw your PR, looks great!",
+                    DmDirection::Incoming,
+                )
+                .sender("Alice")
+                .timestamp("2 min ago")
+                .encryption(EncryptionStatus::Encrypted)
+                .read(true),
+                DmMessage::new(
+                    "m2",
+                    "Thanks! Working on the review comments now.",
+                    DmDirection::Outgoing,
+                )
+                .timestamp("1 min ago")
+                .encryption(EncryptionStatus::Encrypted)
+                .read(true),
+                DmMessage::new(
+                    "m3",
+                    "Let me know when you push the updates. I'll review it tonight.",
+                    DmDirection::Incoming,
+                )
+                .sender("Alice")
+                .timestamp("Just now")
+                .encryption(EncryptionStatus::Encrypted)
+                .read(false),
+                DmMessage::new(
+                    "m4",
+                    "[Encrypted message - decryption failed]",
+                    DmDirection::Incoming,
+                )
+                .sender("Unknown")
+                .timestamp("5 min ago")
+                .encryption(EncryptionStatus::Failed)
+                .read(false),
             ];
 
             for (i, msg) in messages.iter().enumerate() {
                 let mut bubble = DmBubble::new(msg.clone());
                 bubble.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 80.0, inner.size.width.min(500.0), 75.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 80.0,
+                        inner.size.width.min(500.0),
+                        75.0,
+                    ),
                     cx,
                 );
             }
@@ -7340,14 +8471,18 @@ impl Storybook {
                     .sender_name("Bob")
                     .message("Thanks for the amazing tutorial!")
                     .timestamp("1 hour ago"),
-                ZapInfo::new("z3", 500, "npub1anon...")
-                    .timestamp("2 hours ago"),
+                ZapInfo::new("z3", 500, "npub1anon...").timestamp("2 hours ago"),
             ];
 
             for (i, zap) in zaps.iter().enumerate() {
                 let mut card = ZapCard::new(zap.clone());
                 card.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 85.0, inner.size.width.min(450.0), 80.0),
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y + i as f32 * 85.0,
+                        inner.size.width.min(450.0),
+                        80.0,
+                    ),
                     cx,
                 );
             }
@@ -7357,19 +8492,29 @@ impl Storybook {
         // ========== Panel 4: Relay Manager Organism ==========
         let relay_mgr_height = panel_height(420.0);
         let relay_mgr_bounds = Bounds::new(bounds.origin.x, y, width, relay_mgr_height);
-        draw_panel("Relay Manager (Organism)", relay_mgr_bounds, cx, |inner, cx| {
-            let relays = vec![
-                RelayInfo::new("wss://relay.damus.io").status(RelayStatus::Connected),
-                RelayInfo::new("wss://nos.lol").status(RelayStatus::Connecting),
-                RelayInfo::new("wss://relay.nostr.band").status(RelayStatus::Connected),
-                RelayInfo::new("wss://relay.snort.social").status(RelayStatus::Disconnected),
-            ];
-            let mut manager = RelayManager::new(relays);
-            manager.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 380.0),
-                cx,
-            );
-        });
+        draw_panel(
+            "Relay Manager (Organism)",
+            relay_mgr_bounds,
+            cx,
+            |inner, cx| {
+                let relays = vec![
+                    RelayInfo::new("wss://relay.damus.io").status(RelayStatus::Connected),
+                    RelayInfo::new("wss://nos.lol").status(RelayStatus::Connecting),
+                    RelayInfo::new("wss://relay.nostr.band").status(RelayStatus::Connected),
+                    RelayInfo::new("wss://relay.snort.social").status(RelayStatus::Disconnected),
+                ];
+                let mut manager = RelayManager::new(relays);
+                manager.paint(
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y,
+                        inner.size.width.min(500.0),
+                        380.0,
+                    ),
+                    cx,
+                );
+            },
+        );
         y += relay_mgr_height + SECTION_GAP;
 
         // ========== Panel 5: DM Thread Organism ==========
@@ -7377,25 +8522,42 @@ impl Storybook {
         let dm_thread_bounds = Bounds::new(bounds.origin.x, y, width, dm_thread_height);
         draw_panel("DM Thread (Organism)", dm_thread_bounds, cx, |inner, cx| {
             let messages = vec![
-                DmMessage::new("m1", "Hey! Just saw your PR, looks great!", DmDirection::Incoming)
-                    .sender("Alice")
-                    .timestamp("2 min ago")
-                    .encryption(EncryptionStatus::Encrypted)
-                    .read(true),
-                DmMessage::new("m2", "Thanks! Working on the review comments now.", DmDirection::Outgoing)
-                    .timestamp("1 min ago")
-                    .encryption(EncryptionStatus::Encrypted)
-                    .read(true),
-                DmMessage::new("m3", "Let me know when you push the updates.", DmDirection::Incoming)
-                    .sender("Alice")
-                    .timestamp("Just now")
-                    .encryption(EncryptionStatus::Encrypted)
-                    .read(false),
+                DmMessage::new(
+                    "m1",
+                    "Hey! Just saw your PR, looks great!",
+                    DmDirection::Incoming,
+                )
+                .sender("Alice")
+                .timestamp("2 min ago")
+                .encryption(EncryptionStatus::Encrypted)
+                .read(true),
+                DmMessage::new(
+                    "m2",
+                    "Thanks! Working on the review comments now.",
+                    DmDirection::Outgoing,
+                )
+                .timestamp("1 min ago")
+                .encryption(EncryptionStatus::Encrypted)
+                .read(true),
+                DmMessage::new(
+                    "m3",
+                    "Let me know when you push the updates.",
+                    DmDirection::Incoming,
+                )
+                .sender("Alice")
+                .timestamp("Just now")
+                .encryption(EncryptionStatus::Encrypted)
+                .read(false),
             ];
-            let mut thread = DmThread::new("Alice Developer", "npub1abc123xyz789")
-                .messages(messages);
+            let mut thread =
+                DmThread::new("Alice Developer", "npub1abc123xyz789").messages(messages);
             thread.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 400.0),
+                Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y,
+                    inner.size.width.min(500.0),
+                    400.0,
+                ),
                 cx,
             );
         });
@@ -7404,40 +8566,60 @@ impl Storybook {
         // ========== Panel 6: Zap Flow Organism ==========
         let zap_flow_height = panel_height(420.0);
         let zap_flow_bounds = Bounds::new(bounds.origin.x, y, width, zap_flow_height);
-        draw_panel("Zap Flow Wizard (Organism)", zap_flow_bounds, cx, |inner, cx| {
-            let mut flow = ZapFlow::new("Alice Developer", "npub1abc123xyz789...");
-            flow.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(400.0), 380.0),
-                cx,
-            );
-        });
+        draw_panel(
+            "Zap Flow Wizard (Organism)",
+            zap_flow_bounds,
+            cx,
+            |inner, cx| {
+                let mut flow = ZapFlow::new("Alice Developer", "npub1abc123xyz789...");
+                flow.paint(
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y,
+                        inner.size.width.min(400.0),
+                        380.0,
+                    ),
+                    cx,
+                );
+            },
+        );
         y += zap_flow_height + SECTION_GAP;
 
         // ========== Panel 7: Event Inspector Organism ==========
         let event_inspector_height = panel_height(400.0);
         let event_inspector_bounds = Bounds::new(bounds.origin.x, y, width, event_inspector_height);
-        draw_panel("Event Inspector (Organism)", event_inspector_bounds, cx, |inner, cx| {
-            let event_data = EventData::new(
-                "abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd",
-                "npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
-                1,
-            )
-            .content("GM! Building the future of decentralized AI. #OpenAgents #Nostr")
-            .created_at(1700000000)
-            .tags(vec![
-                TagData::new("t", vec!["OpenAgents".to_string()]),
-                TagData::new("t", vec!["Nostr".to_string()]),
-                TagData::new("p", vec!["npub1alice...".to_string()]),
-            ])
-            .sig("abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234")
-            .verified(true);
+        draw_panel(
+            "Event Inspector (Organism)",
+            event_inspector_bounds,
+            cx,
+            |inner, cx| {
+                let event_data = EventData::new(
+                    "abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd",
+                    "npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+                    1,
+                )
+                .content("GM! Building the future of decentralized AI. #OpenAgents #Nostr")
+                .created_at(1700000000)
+                .tags(vec![
+                    TagData::new("t", vec!["OpenAgents".to_string()]),
+                    TagData::new("t", vec!["Nostr".to_string()]),
+                    TagData::new("p", vec!["npub1alice...".to_string()]),
+                ])
+                .sig("abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234")
+                .verified(true);
 
-            let mut inspector = EventInspector::new(event_data);
-            inspector.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(450.0), 350.0),
-                cx,
-            );
-        });
+                let mut inspector = EventInspector::new(event_data);
+                inspector.paint(
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y,
+                        inner.size.width.min(450.0),
+                        350.0,
+                    ),
+                    cx,
+                );
+            },
+        );
         y += event_inspector_height + SECTION_GAP;
 
         // ========== Panel 8: Status Reference ==========
@@ -7484,11 +8666,15 @@ impl Storybook {
                         .with_background(enc.color().with_alpha(0.2))
                         .with_border(enc.color(), 1.0),
                 );
-                let label = format!("{} {}", enc.icon(), match enc {
-                    EncryptionStatus::Encrypted => "Encrypted",
-                    EncryptionStatus::Decrypted => "Decrypted",
-                    EncryptionStatus::Failed => "Failed",
-                });
+                let label = format!(
+                    "{} {}",
+                    enc.icon(),
+                    match enc {
+                        EncryptionStatus::Encrypted => "Encrypted",
+                        EncryptionStatus::Decrypted => "Decrypted",
+                        EncryptionStatus::Failed => "Failed",
+                    }
+                );
                 let text = cx.text.layout(
                     &label,
                     Point::new(enc_x + 6.0, inner.origin.y + 39.0),
@@ -7532,92 +8718,116 @@ impl Storybook {
         // ========== Panel 1: Agent Profiles ==========
         let profiles_height = panel_height(340.0);
         let profiles_bounds = Bounds::new(bounds.origin.x, y, width, profiles_height);
-        draw_panel("Sovereign Agent Profiles", profiles_bounds, cx, |inner, cx| {
-            let agents = [
-                AgentProfileInfo::new("agent-1", "CodeReviewer", AgentType::Sovereign)
-                    .status(AgentStatus::Busy)
-                    .npub("npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq")
-                    .description("AI-powered code review with security analysis")
-                    .capabilities(vec!["code_review".to_string(), "testing".to_string(), "security".to_string()])
-                    .created_at("2 weeks ago")
-                    .last_active("Just now"),
-                AgentProfileInfo::new("agent-2", "DataProcessor", AgentType::Custodial)
-                    .status(AgentStatus::Idle)
-                    .description("Processes and transforms data pipelines")
-                    .capabilities(vec!["data_transform".to_string(), "etl".to_string()])
-                    .created_at("1 month ago")
-                    .last_active("5 min ago"),
-                AgentProfileInfo::new("agent-3", "MarketWatch", AgentType::Sovereign)
-                    .status(AgentStatus::Online)
-                    .description("Monitors market conditions and sends alerts")
-                    .capabilities(vec!["monitoring".to_string(), "alerts".to_string()])
-                    .created_at("3 days ago"),
-            ];
+        draw_panel(
+            "Sovereign Agent Profiles",
+            profiles_bounds,
+            cx,
+            |inner, cx| {
+                let agents = [
+                    AgentProfileInfo::new("agent-1", "CodeReviewer", AgentType::Sovereign)
+                        .status(AgentStatus::Busy)
+                        .npub("npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq")
+                        .description("AI-powered code review with security analysis")
+                        .capabilities(vec![
+                            "code_review".to_string(),
+                            "testing".to_string(),
+                            "security".to_string(),
+                        ])
+                        .created_at("2 weeks ago")
+                        .last_active("Just now"),
+                    AgentProfileInfo::new("agent-2", "DataProcessor", AgentType::Custodial)
+                        .status(AgentStatus::Idle)
+                        .description("Processes and transforms data pipelines")
+                        .capabilities(vec!["data_transform".to_string(), "etl".to_string()])
+                        .created_at("1 month ago")
+                        .last_active("5 min ago"),
+                    AgentProfileInfo::new("agent-3", "MarketWatch", AgentType::Sovereign)
+                        .status(AgentStatus::Online)
+                        .description("Monitors market conditions and sends alerts")
+                        .capabilities(vec!["monitoring".to_string(), "alerts".to_string()])
+                        .created_at("3 days ago"),
+                ];
 
-            for (i, agent) in agents.iter().enumerate() {
-                let mut card = AgentProfileCard::new(agent.clone());
-                card.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 105.0, inner.size.width.min(520.0), 100.0),
-                    cx,
-                );
-            }
-        });
+                for (i, agent) in agents.iter().enumerate() {
+                    let mut card = AgentProfileCard::new(agent.clone());
+                    card.paint(
+                        Bounds::new(
+                            inner.origin.x,
+                            inner.origin.y + i as f32 * 105.0,
+                            inner.size.width.min(520.0),
+                            100.0,
+                        ),
+                        cx,
+                    );
+                }
+            },
+        );
         y += profiles_height + SECTION_GAP;
 
         // ========== Panel 2: Signing Requests (FROSTR) ==========
         let signing_height = panel_height(400.0);
         let signing_bounds = Bounds::new(bounds.origin.x, y, width, signing_height);
-        draw_panel("Threshold Signing Requests", signing_bounds, cx, |inner, cx| {
-            let requests = [
-                SigningRequestInfo::new(
-                    "sr1",
-                    SigningType::Transaction,
-                    "Send 0.05 BTC to bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-                    "Agent-CodeReviewer",
-                )
+        draw_panel(
+            "Threshold Signing Requests",
+            signing_bounds,
+            cx,
+            |inner, cx| {
+                let requests = [
+                    SigningRequestInfo::new(
+                        "sr1",
+                        SigningType::Transaction,
+                        "Send 0.05 BTC to bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+                        "Agent-CodeReviewer",
+                    )
                     .urgency(SigningUrgency::Urgent)
                     .threshold(1, 2)
                     .expires_in("5 minutes")
                     .created_at("2 min ago"),
-                SigningRequestInfo::new(
-                    "sr2",
-                    SigningType::Event,
-                    "Publish NIP-90 job result event to nostr relays",
-                    "Agent-DataProcessor",
-                )
+                    SigningRequestInfo::new(
+                        "sr2",
+                        SigningType::Event,
+                        "Publish NIP-90 job result event to nostr relays",
+                        "Agent-DataProcessor",
+                    )
                     .urgency(SigningUrgency::Normal)
                     .threshold(0, 3)
                     .expires_in("1 hour")
                     .created_at("10 min ago"),
-                SigningRequestInfo::new(
-                    "sr3",
-                    SigningType::Message,
-                    "Sign DM reply to npub1alice...",
-                    "Agent-MarketWatch",
-                )
+                    SigningRequestInfo::new(
+                        "sr3",
+                        SigningType::Message,
+                        "Sign DM reply to npub1alice...",
+                        "Agent-MarketWatch",
+                    )
                     .urgency(SigningUrgency::Normal)
                     .threshold(2, 2)
                     .created_at("1 hour ago"),
-                SigningRequestInfo::new(
-                    "sr4",
-                    SigningType::KeyRotation,
-                    "Rotate threshold key shares - quarterly rotation",
-                    "System",
-                )
+                    SigningRequestInfo::new(
+                        "sr4",
+                        SigningType::KeyRotation,
+                        "Rotate threshold key shares - quarterly rotation",
+                        "System",
+                    )
                     .urgency(SigningUrgency::Expired)
                     .threshold(1, 3)
                     .expires_in("expired")
                     .created_at("2 days ago"),
-            ];
+                ];
 
-            for (i, req) in requests.iter().enumerate() {
-                let mut card = SigningRequestCard::new(req.clone());
-                card.paint(
-                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 100.0, inner.size.width.min(550.0), 95.0),
-                    cx,
-                );
-            }
-        });
+                for (i, req) in requests.iter().enumerate() {
+                    let mut card = SigningRequestCard::new(req.clone());
+                    card.paint(
+                        Bounds::new(
+                            inner.origin.x,
+                            inner.origin.y + i as f32 * 100.0,
+                            inner.size.width.min(550.0),
+                            95.0,
+                        ),
+                        cx,
+                    );
+                }
+            },
+        );
         y += signing_height + SECTION_GAP;
 
         // ========== Panel 3: Agent Status Matrix ==========
@@ -7720,96 +8930,128 @@ impl Storybook {
         // ========== Panel 4: Agent State Inspector Organism ==========
         let inspector_height = panel_height(450.0);
         let inspector_bounds = Bounds::new(bounds.origin.x, y, width, inspector_height);
-        draw_panel("Agent State Inspector (Organism)", inspector_bounds, cx, |inner, cx| {
-            let goals = vec![
-                AgentGoal::new("g1", "Complete code review for PR #123")
-                    .progress(0.75)
-                    .status(AgentGoalStatus::Active),
-                AgentGoal::new("g2", "Run security scan on dependencies")
-                    .progress(1.0)
-                    .status(AgentGoalStatus::Completed),
-                AgentGoal::new("g3", "Waiting for API rate limit reset")
-                    .progress(0.3)
-                    .status(AgentGoalStatus::Blocked),
-            ];
-            let actions = vec![
-                AgentAction::new("Read", "Reading src/main.rs").timestamp("12:34"),
-                AgentAction::new("Edit", "Modified config.toml").timestamp("12:35"),
-                AgentAction::new("Bash", "Running tests...").timestamp("12:36").success(false),
-            ];
-            let resources = ResourceUsage {
-                tokens_used: 45000,
-                tokens_limit: 100000,
-                actions_count: 47,
-                runtime_seconds: 384,
-            };
-            let mut inspector = AgentStateInspector::new("CodeReviewer", "agent-123")
-                .goals(goals)
-                .actions(actions)
-                .memory(vec![
-                    ("current_file".to_string(), "src/main.rs".to_string()),
-                    ("branch".to_string(), "feature/auth".to_string()),
-                ])
-                .resources(resources);
-            inspector.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 400.0),
-                cx,
-            );
-        });
+        draw_panel(
+            "Agent State Inspector (Organism)",
+            inspector_bounds,
+            cx,
+            |inner, cx| {
+                let goals = vec![
+                    AgentGoal::new("g1", "Complete code review for PR #123")
+                        .progress(0.75)
+                        .status(AgentGoalStatus::Active),
+                    AgentGoal::new("g2", "Run security scan on dependencies")
+                        .progress(1.0)
+                        .status(AgentGoalStatus::Completed),
+                    AgentGoal::new("g3", "Waiting for API rate limit reset")
+                        .progress(0.3)
+                        .status(AgentGoalStatus::Blocked),
+                ];
+                let actions = vec![
+                    AgentAction::new("Read", "Reading src/main.rs").timestamp("12:34"),
+                    AgentAction::new("Edit", "Modified config.toml").timestamp("12:35"),
+                    AgentAction::new("Bash", "Running tests...")
+                        .timestamp("12:36")
+                        .success(false),
+                ];
+                let resources = ResourceUsage {
+                    tokens_used: 45000,
+                    tokens_limit: 100000,
+                    actions_count: 47,
+                    runtime_seconds: 384,
+                };
+                let mut inspector = AgentStateInspector::new("CodeReviewer", "agent-123")
+                    .goals(goals)
+                    .actions(actions)
+                    .memory(vec![
+                        ("current_file".to_string(), "src/main.rs".to_string()),
+                        ("branch".to_string(), "feature/auth".to_string()),
+                    ])
+                    .resources(resources);
+                inspector.paint(
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y,
+                        inner.size.width.min(500.0),
+                        400.0,
+                    ),
+                    cx,
+                );
+            },
+        );
         y += inspector_height + SECTION_GAP;
 
         // ========== Panel 5: Threshold Key Manager Organism ==========
         let key_mgr_height = panel_height(450.0);
         let key_mgr_bounds = Bounds::new(bounds.origin.x, y, width, key_mgr_height);
-        draw_panel("FROSTR Key Manager (Organism)", key_mgr_bounds, cx, |inner, cx| {
-            let key_share = KeyShare::new("key-001", 1, 2, 3)
-                .created_at("2024-01-15")
-                .backed_up(true);
-            let peers = vec![
-                ThresholdPeer::new("npub1alice...", "Alice (Local)", 1)
-                    .status(PeerStatus::Online)
-                    .last_seen("Now"),
-                ThresholdPeer::new("npub1bob...", "Bob (Hardware)", 2)
-                    .status(PeerStatus::Signing)
-                    .last_seen("Just now"),
-                ThresholdPeer::new("npub1carol...", "Carol (Cloud)", 3)
-                    .status(PeerStatus::Offline)
-                    .last_seen("5 min ago"),
-            ];
-            let requests = vec![
-                SigningRequest::new("req-1", "Sign Bitcoin transaction: 0.05 BTC")
-                    .requester("CodeReviewer Agent")
-                    .timestamp("2 min ago")
-                    .progress(1, 2),
-            ];
-            let mut key_manager = ThresholdKeyManager::new()
-                .key_share(key_share)
-                .peers(peers)
-                .requests(requests);
-            key_manager.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 400.0),
-                cx,
-            );
-        });
+        draw_panel(
+            "FROSTR Key Manager (Organism)",
+            key_mgr_bounds,
+            cx,
+            |inner, cx| {
+                let key_share = KeyShare::new("key-001", 1, 2, 3)
+                    .created_at("2024-01-15")
+                    .backed_up(true);
+                let peers = vec![
+                    ThresholdPeer::new("npub1alice...", "Alice (Local)", 1)
+                        .status(PeerStatus::Online)
+                        .last_seen("Now"),
+                    ThresholdPeer::new("npub1bob...", "Bob (Hardware)", 2)
+                        .status(PeerStatus::Signing)
+                        .last_seen("Just now"),
+                    ThresholdPeer::new("npub1carol...", "Carol (Cloud)", 3)
+                        .status(PeerStatus::Offline)
+                        .last_seen("5 min ago"),
+                ];
+                let requests = vec![
+                    SigningRequest::new("req-1", "Sign Bitcoin transaction: 0.05 BTC")
+                        .requester("CodeReviewer Agent")
+                        .timestamp("2 min ago")
+                        .progress(1, 2),
+                ];
+                let mut key_manager = ThresholdKeyManager::new()
+                    .key_share(key_share)
+                    .peers(peers)
+                    .requests(requests);
+                key_manager.paint(
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y,
+                        inner.size.width.min(500.0),
+                        400.0,
+                    ),
+                    cx,
+                );
+            },
+        );
         y += key_mgr_height + SECTION_GAP;
 
         // ========== Panel 6: Schedule Configuration Organism ==========
         let schedule_height = panel_height(400.0);
         let schedule_bounds = Bounds::new(bounds.origin.x, y, width, schedule_height);
-        draw_panel("Schedule Configuration (Organism)", schedule_bounds, cx, |inner, cx| {
-            let config = ScheduleData::new(ScheduleType::Continuous)
-                .heartbeat(30, IntervalUnit::Seconds)
-                .tick(5, IntervalUnit::Minutes)
-                .enabled(true)
-                .next_run(1700050000)
-                .last_run(1700000000);
+        draw_panel(
+            "Schedule Configuration (Organism)",
+            schedule_bounds,
+            cx,
+            |inner, cx| {
+                let config = ScheduleData::new(ScheduleType::Continuous)
+                    .heartbeat(30, IntervalUnit::Seconds)
+                    .tick(5, IntervalUnit::Minutes)
+                    .enabled(true)
+                    .next_run(1700050000)
+                    .last_run(1700000000);
 
-            let mut schedule = ScheduleConfig::new(config);
-            schedule.paint(
-                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(450.0), 360.0),
-                cx,
-            );
-        });
+                let mut schedule = ScheduleConfig::new(config);
+                schedule.paint(
+                    Bounds::new(
+                        inner.origin.x,
+                        inner.origin.y,
+                        inner.size.width.min(450.0),
+                        360.0,
+                    ),
+                    cx,
+                );
+            },
+        );
         y += schedule_height + SECTION_GAP;
 
         // ========== Panel 7: Type & Status Reference ==========
@@ -7818,11 +9060,7 @@ impl Storybook {
         draw_panel("Agent Types & Statuses", ref_bounds, cx, |inner, cx| {
             // Agent types
             let mut type_x = inner.origin.x;
-            let types = [
-                AgentType::Human,
-                AgentType::Sovereign,
-                AgentType::Custodial,
-            ];
+            let types = [AgentType::Human, AgentType::Sovereign, AgentType::Custodial];
 
             for agent_type in &types {
                 let type_w = (agent_type.label().len() as f32 * 7.0) + 24.0;
@@ -7961,7 +9199,12 @@ impl FocusDemo {
             .font_size(theme::font_size::XS)
             .color(theme::text::MUTED);
         hint.paint(
-            Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, hint_height),
+            Bounds::new(
+                bounds.origin.x,
+                bounds.origin.y,
+                bounds.size.width,
+                hint_height,
+            ),
             cx,
         );
 
@@ -7972,10 +9215,9 @@ impl FocusDemo {
             bounds.size.height - hint_height - 10.0,
         );
         let gap = 12.0;
-        let item_width =
-            ((items_bounds.size.width - gap * (self.items.len() as f32 - 1.0))
-                / self.items.len() as f32)
-                .max(0.0);
+        let item_width = ((items_bounds.size.width - gap * (self.items.len() as f32 - 1.0))
+            / self.items.len() as f32)
+            .max(0.0);
         let item_height = 36.0;
 
         for (index, label) in self.items.iter().enumerate() {
@@ -8030,10 +9272,9 @@ impl FocusDemo {
             bounds.size.height - hint_height - 10.0,
         );
         let gap = 12.0;
-        let item_width =
-            ((items_bounds.size.width - gap * (self.items.len() as f32 - 1.0))
-                / self.items.len() as f32)
-                .max(0.0);
+        let item_width = ((items_bounds.size.width - gap * (self.items.len() as f32 - 1.0))
+            / self.items.len() as f32)
+            .max(0.0);
         let item_height = 36.0;
 
         match event {
@@ -8073,24 +9314,21 @@ impl FocusDemo {
                     }
                 }
             }
-            InputEvent::KeyDown { key, modifiers } => {
-                match key {
-                    Key::Named(NamedKey::Tab) => {
-                        if modifiers.shift {
-                            self.focused =
-                                (self.focused + self.items.len() - 1) % self.items.len();
-                        } else {
-                            self.focused = (self.focused + 1) % self.items.len();
-                        }
-                        return true;
+            InputEvent::KeyDown { key, modifiers } => match key {
+                Key::Named(NamedKey::Tab) => {
+                    if modifiers.shift {
+                        self.focused = (self.focused + self.items.len() - 1) % self.items.len();
+                    } else {
+                        self.focused = (self.focused + 1) % self.items.len();
                     }
-                    Key::Named(NamedKey::Enter) => {
-                        self.active[self.focused] = !self.active[self.focused];
-                        return true;
-                    }
-                    _ => {}
+                    return true;
                 }
-            }
+                Key::Named(NamedKey::Enter) => {
+                    self.active[self.focused] = !self.active[self.focused];
+                    return true;
+                }
+                _ => {}
+            },
             _ => {}
         }
         false
@@ -8152,16 +9390,12 @@ struct ToolcallPane {
 
 impl ToolcallPane {
     fn new(_id: &str, title: &str, x: f32, y: f32, w: f32, h: f32) -> Self {
-        let x_anim = Animation::new(x, x, Duration::from_millis(500))
-            .easing(Easing::EaseOutCubic);
-        let y_anim = Animation::new(y, y, Duration::from_millis(500))
-            .easing(Easing::EaseOutCubic);
-        let w_anim = Animation::new(w, w, Duration::from_millis(300))
-            .easing(Easing::EaseOutCubic);
-        let h_anim = Animation::new(h, h, Duration::from_millis(300))
-            .easing(Easing::EaseOutCubic);
-        let mut alpha_anim = Animation::new(0.0, 1.0, Duration::from_millis(400))
-            .easing(Easing::EaseOut);
+        let x_anim = Animation::new(x, x, Duration::from_millis(500)).easing(Easing::EaseOutCubic);
+        let y_anim = Animation::new(y, y, Duration::from_millis(500)).easing(Easing::EaseOutCubic);
+        let w_anim = Animation::new(w, w, Duration::from_millis(300)).easing(Easing::EaseOutCubic);
+        let h_anim = Animation::new(h, h, Duration::from_millis(300)).easing(Easing::EaseOutCubic);
+        let mut alpha_anim =
+            Animation::new(0.0, 1.0, Duration::from_millis(400)).easing(Easing::EaseOut);
         alpha_anim.start();
 
         Self {
@@ -8182,7 +9416,9 @@ impl ToolcallPane {
             draw_direction: DrawDirection::CenterOut,
             state: PaneState::Creating,
             z_index: 0,
-            shake: SpringAnimation::new(0.0, 0.0).stiffness(300.0).damping(10.0),
+            shake: SpringAnimation::new(0.0, 0.0)
+                .stiffness(300.0)
+                .damping(10.0),
             shake_target: 0.0,
             shake_phase: 0,
             content_type: "generic".to_string(),
@@ -8193,10 +9429,12 @@ impl ToolcallPane {
         self.target_x = x;
         self.target_y = y;
         if animate {
-            self.x_anim = Animation::new(self.x_anim.current_value(), x, Duration::from_millis(400))
-                .easing(Easing::EaseInOutCubic);
-            self.y_anim = Animation::new(self.y_anim.current_value(), y, Duration::from_millis(400))
-                .easing(Easing::EaseInOutCubic);
+            self.x_anim =
+                Animation::new(self.x_anim.current_value(), x, Duration::from_millis(400))
+                    .easing(Easing::EaseInOutCubic);
+            self.y_anim =
+                Animation::new(self.y_anim.current_value(), y, Duration::from_millis(400))
+                    .easing(Easing::EaseInOutCubic);
             self.x_anim.start();
             self.y_anim.start();
         }
@@ -8206,10 +9444,12 @@ impl ToolcallPane {
         self.target_w = w;
         self.target_h = h;
         if animate {
-            self.w_anim = Animation::new(self.w_anim.current_value(), w, Duration::from_millis(300))
-                .easing(Easing::EaseInOutCubic);
-            self.h_anim = Animation::new(self.h_anim.current_value(), h, Duration::from_millis(300))
-                .easing(Easing::EaseInOutCubic);
+            self.w_anim =
+                Animation::new(self.w_anim.current_value(), w, Duration::from_millis(300))
+                    .easing(Easing::EaseInOutCubic);
+            self.h_anim =
+                Animation::new(self.h_anim.current_value(), h, Duration::from_millis(300))
+                    .easing(Easing::EaseInOutCubic);
             self.w_anim.start();
             self.h_anim.start();
         }
@@ -8231,15 +9471,19 @@ impl ToolcallPane {
 
     fn minimize(&mut self) {
         self.state = PaneState::Minimized;
-        self.h_anim = Animation::new(self.h_anim.current_value(), 30.0, Duration::from_millis(300))
-            .easing(Easing::EaseInOutCubic);
+        self.h_anim = Animation::new(
+            self.h_anim.current_value(),
+            30.0,
+            Duration::from_millis(300),
+        )
+        .easing(Easing::EaseInOutCubic);
         self.h_anim.start();
     }
 
     fn close(&mut self) {
         self.state = PaneState::Closing;
-        self.alpha_anim = Animation::new(1.0, 0.0, Duration::from_millis(300))
-            .easing(Easing::EaseIn);
+        self.alpha_anim =
+            Animation::new(1.0, 0.0, Duration::from_millis(300)).easing(Easing::EaseIn);
         self.alpha_anim.start();
     }
 
@@ -8275,7 +9519,11 @@ impl ToolcallPane {
     }
 
     fn current_bounds(&self) -> Bounds {
-        let shake_offset = if self.shake_phase > 0 { self.shake.current() } else { 0.0 };
+        let shake_offset = if self.shake_phase > 0 {
+            self.shake.current()
+        } else {
+            0.0
+        };
         Bounds::new(
             self.x_anim.current_value() + shake_offset,
             self.y_anim.current_value(),
@@ -8346,12 +9594,14 @@ impl ToolcallDemo {
         for pane in self.panes.values_mut() {
             pane.tick(dt);
         }
-        self.panes.retain(|_, pane| pane.is_visible() || pane.state != PaneState::Closing);
+        self.panes
+            .retain(|_, pane| pane.is_visible() || pane.state != PaneState::Closing);
     }
 
     fn paint(&self, bounds: Bounds, cx: &mut PaintContext) {
         cx.scene.push_clip(bounds);
-        cx.scene.draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
 
         let width = bounds.size.width;
         let height = bounds.size.height;
@@ -8487,9 +9737,8 @@ impl ToolcallDemo {
         let log_bounds = Bounds::new(origin.x, log_y, width, log_h);
 
         if log_bounds.size.height > 0.0 {
-            cx.scene.draw_quad(
-                Quad::new(log_bounds).with_background(Hsla::new(0.0, 0.0, 0.05, 0.95)),
-            );
+            cx.scene
+                .draw_quad(Quad::new(log_bounds).with_background(Hsla::new(0.0, 0.0, 0.05, 0.95)));
             cx.scene.draw_quad(
                 Quad::new(Bounds::new(origin.x, log_y, width, 1.0))
                     .with_background(theme::accent::PRIMARY.with_alpha(0.3)),
@@ -8537,7 +9786,9 @@ impl ToolcallDemo {
             self.scenario_index = 1;
         }
         if self.scenario_index == 1 && t >= 1.0 {
-            self.create_pane("terminal", "Terminal", 50.0, 340.0, 450.0, 180.0, "terminal");
+            self.create_pane(
+                "terminal", "Terminal", 50.0, 340.0, 450.0, 180.0, "terminal",
+            );
             self.scenario_index = 2;
         }
         if self.scenario_index == 2 && t >= 1.5 {
@@ -8545,7 +9796,15 @@ impl ToolcallDemo {
             self.scenario_index = 3;
         }
         if self.scenario_index == 3 && t >= 2.0 {
-            self.create_pane("diagnostics", "Diagnostics", 540.0, 320.0, 340.0, 200.0, "diagnostics");
+            self.create_pane(
+                "diagnostics",
+                "Diagnostics",
+                540.0,
+                320.0,
+                340.0,
+                200.0,
+                "diagnostics",
+            );
             self.scenario_index = 4;
         }
 
@@ -8561,7 +9820,10 @@ impl ToolcallDemo {
             if let Some(pane) = self.panes.get_mut("diagnostics") {
                 pane.request_attention();
             }
-            self.tool_log.add(t, "Animate { id: \"diagnostics\", animation: \"Pulse\" }".to_string());
+            self.tool_log.add(
+                t,
+                "Animate { id: \"diagnostics\", animation: \"Pulse\" }".to_string(),
+            );
             self.scenario_index = 7;
         }
 
@@ -8696,7 +9958,14 @@ impl ToolcallDemo {
             pane.set_glow(color);
         }
         let color_str = color
-            .map(|c| format!("#{:02x}{:02x}{:02x}", (c.l * 255.0) as u8, (c.s * 255.0) as u8, (c.h as u8)))
+            .map(|c| {
+                format!(
+                    "#{:02x}{:02x}{:02x}",
+                    (c.l * 255.0) as u8,
+                    (c.s * 255.0) as u8,
+                    (c.h as u8)
+                )
+            })
             .unwrap_or_else(|| "none".to_string());
         self.tool_log.add(
             self.elapsed,
@@ -8930,10 +10199,18 @@ fn draw_bitcoin_symbol(
     let bar_x1 = x + font_size * 0.15;
     let bar_x2 = x + font_size * 0.38;
 
-    scene.draw_quad(Quad::new(Bounds::new(bar_x1, y - bar_h + 2.0, bar_w, bar_h)).with_background(color));
-    scene.draw_quad(Quad::new(Bounds::new(bar_x2, y - bar_h + 2.0, bar_w, bar_h)).with_background(color));
-    scene.draw_quad(Quad::new(Bounds::new(bar_x1, y + font_size - 4.0, bar_w, bar_h)).with_background(color));
-    scene.draw_quad(Quad::new(Bounds::new(bar_x2, y + font_size - 4.0, bar_w, bar_h)).with_background(color));
+    scene.draw_quad(
+        Quad::new(Bounds::new(bar_x1, y - bar_h + 2.0, bar_w, bar_h)).with_background(color),
+    );
+    scene.draw_quad(
+        Quad::new(Bounds::new(bar_x2, y - bar_h + 2.0, bar_w, bar_h)).with_background(color),
+    );
+    scene.draw_quad(
+        Quad::new(Bounds::new(bar_x1, y + font_size - 4.0, bar_w, bar_h)).with_background(color),
+    );
+    scene.draw_quad(
+        Quad::new(Bounds::new(bar_x2, y + font_size - 4.0, bar_w, bar_h)).with_background(color),
+    );
 
     let b = text_system.layout("B", Point::new(x, y), font_size, color);
     scene.draw_text(b);
@@ -9038,15 +10315,15 @@ fn line_direction_label(direction: LineDirection) -> &'static str {
 
 fn atoms_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(140.0),  // Tool & Status Atoms
-        panel_height(160.0),  // Mode & Model Atoms
-        panel_height(180.0),  // Agent Status Badges
-        panel_height(180.0),  // Bitcoin & Payment Atoms
-        panel_height(180.0),  // Nostr Protocol Atoms
-        panel_height(180.0),  // GitAfter Atoms
-        panel_height(180.0),  // Marketplace Atoms
-        panel_height(180.0),  // Autopilot Atoms
-        panel_height(160.0),  // Interactive Atoms
+        panel_height(140.0), // Tool & Status Atoms
+        panel_height(160.0), // Mode & Model Atoms
+        panel_height(180.0), // Agent Status Badges
+        panel_height(180.0), // Bitcoin & Payment Atoms
+        panel_height(180.0), // Nostr Protocol Atoms
+        panel_height(180.0), // GitAfter Atoms
+        panel_height(180.0), // Marketplace Atoms
+        panel_height(180.0), // Autopilot Atoms
+        panel_height(160.0), // Interactive Atoms
     ];
     stacked_height(&panels)
 }
@@ -9056,13 +10333,76 @@ fn arwes_frames_height(bounds: Bounds) -> f32 {
     let permutations = FRAME_STYLES.len() * FRAME_ANIMATIONS.len() * FRAME_DIRECTIONS.len();
     let glow_palette = FRAME_STYLES.len() * FRAME_ANIMATIONS.len() * GLOW_PRESETS.len();
     let panels = [
-        panel_height(grid_metrics(available, permutations, FRAME_TILE_W, FRAME_TILE_H, FRAME_TILE_GAP).height),
-        panel_height(grid_metrics(available, FRAME_STYLES.len() * 2, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP).height),
-        panel_height(grid_metrics(available, FRAME_STYLES.len() * 2, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP).height),
-        panel_height(grid_metrics(available, glow_palette, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP).height),
-        panel_height(grid_metrics(available, 16, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP).height),
-        panel_height(grid_metrics(available, 2, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP).height),
-        panel_height(grid_metrics(available, 4, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP).height),
+        panel_height(
+            grid_metrics(
+                available,
+                permutations,
+                FRAME_TILE_W,
+                FRAME_TILE_H,
+                FRAME_TILE_GAP,
+            )
+            .height,
+        ),
+        panel_height(
+            grid_metrics(
+                available,
+                FRAME_STYLES.len() * 2,
+                FRAME_VARIANT_W,
+                FRAME_VARIANT_H,
+                FRAME_TILE_GAP,
+            )
+            .height,
+        ),
+        panel_height(
+            grid_metrics(
+                available,
+                FRAME_STYLES.len() * 2,
+                FRAME_VARIANT_W,
+                FRAME_VARIANT_H,
+                FRAME_TILE_GAP,
+            )
+            .height,
+        ),
+        panel_height(
+            grid_metrics(
+                available,
+                glow_palette,
+                FRAME_VARIANT_W,
+                FRAME_VARIANT_H,
+                FRAME_TILE_GAP,
+            )
+            .height,
+        ),
+        panel_height(
+            grid_metrics(
+                available,
+                16,
+                FRAME_VARIANT_W,
+                FRAME_VARIANT_H,
+                FRAME_TILE_GAP,
+            )
+            .height,
+        ),
+        panel_height(
+            grid_metrics(
+                available,
+                2,
+                FRAME_VARIANT_W,
+                FRAME_VARIANT_H,
+                FRAME_TILE_GAP,
+            )
+            .height,
+        ),
+        panel_height(
+            grid_metrics(
+                available,
+                4,
+                FRAME_VARIANT_W,
+                FRAME_VARIANT_H,
+                FRAME_TILE_GAP,
+            )
+            .height,
+        ),
     ];
     stacked_height(&panels)
 }
@@ -9075,7 +10415,9 @@ fn arwes_backgrounds_height(bounds: Bounds) -> f32 {
         panel_height(grid_metrics(available, dots_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height),
         panel_height(grid_metrics(available, 4, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height),
         panel_height(grid_metrics(available, 8, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height),
-        panel_height(grid_metrics(available, moving_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height),
+        panel_height(
+            grid_metrics(available, moving_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height,
+        ),
         panel_height(grid_metrics(available, 6, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height),
     ];
     stacked_height(&panels)
@@ -9093,8 +10435,26 @@ fn arwes_text_effects_height(bounds: Bounds) -> f32 {
 fn arwes_illuminator_height(bounds: Bounds) -> f32 {
     let available = (bounds.size.width - PANEL_PADDING * 2.0).max(0.0);
     let panels = [
-        panel_height(grid_metrics(available, 8, ILLUMINATOR_TILE_W, ILLUMINATOR_TILE_H, ILLUMINATOR_TILE_GAP).height),
-        panel_height(grid_metrics(available, 4, ILLUMINATOR_TILE_W, ILLUMINATOR_TILE_H, ILLUMINATOR_TILE_GAP).height),
+        panel_height(
+            grid_metrics(
+                available,
+                8,
+                ILLUMINATOR_TILE_W,
+                ILLUMINATOR_TILE_H,
+                ILLUMINATOR_TILE_GAP,
+            )
+            .height,
+        ),
+        panel_height(
+            grid_metrics(
+                available,
+                4,
+                ILLUMINATOR_TILE_W,
+                ILLUMINATOR_TILE_H,
+                ILLUMINATOR_TILE_GAP,
+            )
+            .height,
+        ),
     ];
     stacked_height(&panels)
 }
@@ -9124,201 +10484,201 @@ fn toolcall_demo_height(_bounds: Bounds) -> f32 {
 
 fn system_ui_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(180.0),  // Tooltip demos
-        panel_height(120.0),  // StatusBar demos
-        panel_height(260.0),  // Notifications demos
-        panel_height(200.0),  // ContextMenu demo
-        panel_height(240.0),  // CommandPalette demo
+        panel_height(180.0), // Tooltip demos
+        panel_height(120.0), // StatusBar demos
+        panel_height(260.0), // Notifications demos
+        panel_height(200.0), // ContextMenu demo
+        panel_height(240.0), // CommandPalette demo
     ];
     stacked_height(&panels)
 }
 
 fn chat_threads_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(480.0),  // Simple Conversation
-        panel_height(600.0),  // Multi-Tool Workflow
-        panel_height(520.0),  // Code Editing Session
-        panel_height(440.0),  // Search & Navigation
-        panel_height(320.0),  // Streaming Response
-        panel_height(800.0),  // Complex Agent Session
-        panel_height(280.0),  // Error Handling
+        panel_height(480.0), // Simple Conversation
+        panel_height(600.0), // Multi-Tool Workflow
+        panel_height(520.0), // Code Editing Session
+        panel_height(440.0), // Search & Navigation
+        panel_height(320.0), // Streaming Response
+        panel_height(800.0), // Complex Agent Session
+        panel_height(280.0), // Error Handling
     ];
     stacked_height(&panels)
 }
 
 fn bitcoin_wallet_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(200.0),  // Payment Method Icons
-        panel_height(180.0),  // Payment Status Badges
-        panel_height(160.0),  // Network Badges
-        panel_height(200.0),  // Bitcoin Amounts
-        panel_height(220.0),  // Balance Cards
-        panel_height(300.0),  // Payment Rows (Transaction History)
-        panel_height(320.0),  // Invoice Displays
-        panel_height(400.0),  // Complete Wallet Dashboard
+        panel_height(200.0), // Payment Method Icons
+        panel_height(180.0), // Payment Status Badges
+        panel_height(160.0), // Network Badges
+        panel_height(200.0), // Bitcoin Amounts
+        panel_height(220.0), // Balance Cards
+        panel_height(300.0), // Payment Rows (Transaction History)
+        panel_height(320.0), // Invoice Displays
+        panel_height(400.0), // Complete Wallet Dashboard
     ];
     stacked_height(&panels)
 }
 
 fn nostr_protocol_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(160.0),  // Relay Status Indicators
-        panel_height(280.0),  // Event Kind Badges
-        panel_height(200.0),  // Bech32 Entities
-        panel_height(300.0),  // Relay Connection List
-        panel_height(320.0),  // Complete Relay Dashboard
+        panel_height(160.0), // Relay Status Indicators
+        panel_height(280.0), // Event Kind Badges
+        panel_height(200.0), // Bech32 Entities
+        panel_height(300.0), // Relay Connection List
+        panel_height(320.0), // Complete Relay Dashboard
     ];
     stacked_height(&panels)
 }
 
 fn gitafter_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(160.0),  // Issue Status Badges
-        panel_height(180.0),  // PR Status Badges
-        panel_height(140.0),  // Bounty Badges
-        panel_height(160.0),  // Stack Layer Indicators
-        panel_height(180.0),  // Agent Status + Type Badges
-        panel_height(160.0),  // Trajectory Status Badges
-        panel_height(360.0),  // Complete GitAfter Dashboard
+        panel_height(160.0), // Issue Status Badges
+        panel_height(180.0), // PR Status Badges
+        panel_height(140.0), // Bounty Badges
+        panel_height(160.0), // Stack Layer Indicators
+        panel_height(180.0), // Agent Status + Type Badges
+        panel_height(160.0), // Trajectory Status Badges
+        panel_height(360.0), // Complete GitAfter Dashboard
     ];
     stacked_height(&panels)
 }
 
 fn sovereign_agents_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(160.0),  // Threshold Key Badges
-        panel_height(180.0),  // Agent Schedule Badges
-        panel_height(160.0),  // Goal Progress Badges
-        panel_height(180.0),  // Tick Event Badges
-        panel_height(180.0),  // Skill License Badges
-        panel_height(400.0),  // Complete Agent Dashboard Preview
+        panel_height(160.0), // Threshold Key Badges
+        panel_height(180.0), // Agent Schedule Badges
+        panel_height(160.0), // Goal Progress Badges
+        panel_height(180.0), // Tick Event Badges
+        panel_height(180.0), // Skill License Badges
+        panel_height(400.0), // Complete Agent Dashboard Preview
     ];
     stacked_height(&panels)
 }
 
 fn marketplace_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(140.0),  // Market Type Badges
-        panel_height(180.0),  // Job Status Badges
-        panel_height(160.0),  // Reputation Badges
-        panel_height(180.0),  // Trajectory Source Badges
-        panel_height(180.0),  // Earnings Badges
-        panel_height(400.0),  // Complete Marketplace Dashboard
+        panel_height(140.0), // Market Type Badges
+        panel_height(180.0), // Job Status Badges
+        panel_height(160.0), // Reputation Badges
+        panel_height(180.0), // Trajectory Source Badges
+        panel_height(180.0), // Earnings Badges
+        panel_height(400.0), // Complete Marketplace Dashboard
     ];
     stacked_height(&panels)
 }
 
 fn autopilot_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(180.0),  // Session Status Badges
-        panel_height(160.0),  // APM Gauges
-        panel_height(180.0),  // Resource Usage Bars
-        panel_height(160.0),  // Daemon Status Badges
-        panel_height(180.0),  // Parallel Agent Badges
-        panel_height(400.0),  // Complete Autopilot Dashboard
+        panel_height(180.0), // Session Status Badges
+        panel_height(160.0), // APM Gauges
+        panel_height(180.0), // Resource Usage Bars
+        panel_height(160.0), // Daemon Status Badges
+        panel_height(180.0), // Parallel Agent Badges
+        panel_height(400.0), // Complete Autopilot Dashboard
     ];
     stacked_height(&panels)
 }
 
 fn thread_components_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(160.0),  // Thread Headers
-        panel_height(180.0),  // Message Editor States
-        panel_height(200.0),  // Thread Feedback
-        panel_height(140.0),  // Entry Actions
-        panel_height(140.0),  // Terminal Headers
-        panel_height(400.0),  // Complete Thread Layout
+        panel_height(160.0), // Thread Headers
+        panel_height(180.0), // Message Editor States
+        panel_height(200.0), // Thread Feedback
+        panel_height(140.0), // Entry Actions
+        panel_height(140.0), // Terminal Headers
+        panel_height(400.0), // Complete Thread Layout
     ];
     stacked_height(&panels)
 }
 
 fn sessions_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(280.0),  // Session Cards (2 rows of 3)
-        panel_height(120.0),  // Session Breadcrumbs
-        panel_height(180.0),  // Session Search & Filters
-        panel_height(160.0),  // Session Actions
-        panel_height(320.0),  // Complete Session List
+        panel_height(280.0), // Session Cards (2 rows of 3)
+        panel_height(120.0), // Session Breadcrumbs
+        panel_height(180.0), // Session Search & Filters
+        panel_height(160.0), // Session Actions
+        panel_height(320.0), // Complete Session List
     ];
     stacked_height(&panels)
 }
 
 fn permissions_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(160.0),  // Permission Decisions
-        panel_height(240.0),  // Permission Rules
-        panel_height(280.0),  // Permission History
-        panel_height(200.0),  // Permission Bar Variants
-        panel_height(140.0),  // Permission Statistics
+        panel_height(160.0), // Permission Decisions
+        panel_height(240.0), // Permission Rules
+        panel_height(280.0), // Permission History
+        panel_height(200.0), // Permission Bar Variants
+        panel_height(140.0), // Permission Statistics
     ];
     stacked_height(&panels)
 }
 
 fn apm_metrics_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(200.0),  // APM Gauge Variations
-        panel_height(220.0),  // APM Session Rows
-        panel_height(280.0),  // Session Comparison
-        panel_height(320.0),  // APM Leaderboard
-        panel_height(200.0),  // APM Trends Summary
+        panel_height(200.0), // APM Gauge Variations
+        panel_height(220.0), // APM Session Rows
+        panel_height(280.0), // Session Comparison
+        panel_height(320.0), // APM Leaderboard
+        panel_height(200.0), // APM Trends Summary
     ];
     stacked_height(&panels)
 }
 
 fn wallet_flows_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(260.0),  // Mnemonic Display
-        panel_height(180.0),  // Address Cards
-        panel_height(280.0),  // Transaction History
-        panel_height(360.0),  // Send Flow
-        panel_height(420.0),  // Receive Flow
+        panel_height(260.0), // Mnemonic Display
+        panel_height(180.0), // Address Cards
+        panel_height(280.0), // Transaction History
+        panel_height(360.0), // Send Flow
+        panel_height(420.0), // Receive Flow
     ];
     stacked_height(&panels)
 }
 
 fn gitafter_flows_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(240.0),  // Repository Cards
-        panel_height(320.0),  // Issue List
-        panel_height(280.0),  // PR Timeline
-        panel_height(200.0),  // Issue Labels & Statuses
+        panel_height(240.0), // Repository Cards
+        panel_height(320.0), // Issue List
+        panel_height(280.0), // PR Timeline
+        panel_height(200.0), // Issue Labels & Statuses
     ];
     stacked_height(&panels)
 }
 
 fn marketplace_flows_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(260.0),  // Compute Providers
-        panel_height(280.0),  // Skills Marketplace
-        panel_height(280.0),  // Data Marketplace
-        panel_height(180.0),  // Categories & Formats Reference
+        panel_height(260.0), // Compute Providers
+        panel_height(280.0), // Skills Marketplace
+        panel_height(280.0), // Data Marketplace
+        panel_height(180.0), // Categories & Formats Reference
     ];
     stacked_height(&panels)
 }
 
 fn nostr_flows_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(320.0),  // Contact Cards
-        panel_height(380.0),  // DM Conversations
-        panel_height(280.0),  // Zaps & Lightning
-        panel_height(420.0),  // Relay Manager Organism
-        panel_height(450.0),  // DM Thread Organism
-        panel_height(420.0),  // Zap Flow Organism
-        panel_height(400.0),  // Event Inspector Organism
-        panel_height(180.0),  // Status Reference
+        panel_height(320.0), // Contact Cards
+        panel_height(380.0), // DM Conversations
+        panel_height(280.0), // Zaps & Lightning
+        panel_height(420.0), // Relay Manager Organism
+        panel_height(450.0), // DM Thread Organism
+        panel_height(420.0), // Zap Flow Organism
+        panel_height(400.0), // Event Inspector Organism
+        panel_height(180.0), // Status Reference
     ];
     stacked_height(&panels)
 }
 
 fn sovereign_agent_flows_height(_bounds: Bounds) -> f32 {
     let panels = [
-        panel_height(340.0),  // Agent Profiles
-        panel_height(400.0),  // Signing Requests
-        panel_height(280.0),  // Agent Status Matrix
-        panel_height(450.0),  // Agent State Inspector Organism
-        panel_height(450.0),  // Threshold Key Manager Organism
-        panel_height(400.0),  // Schedule Configuration Organism
-        panel_height(180.0),  // Type & Status Reference
+        panel_height(340.0), // Agent Profiles
+        panel_height(400.0), // Signing Requests
+        panel_height(280.0), // Agent Status Matrix
+        panel_height(450.0), // Agent State Inspector Organism
+        panel_height(450.0), // Threshold Key Manager Organism
+        panel_height(400.0), // Schedule Configuration Organism
+        panel_height(180.0), // Type & Status Reference
     ];
     stacked_height(&panels)
 }

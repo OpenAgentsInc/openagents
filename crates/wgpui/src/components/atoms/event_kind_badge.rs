@@ -7,8 +7,7 @@ use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, Hsla, InputEvent, Point, Quad, theme};
 
 /// Common Nostr event kinds
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EventKind {
     /// kind:0 - User metadata
     Metadata,
@@ -163,27 +162,22 @@ impl EventKind {
                 Hsla::new(210.0, 0.8, 0.55, 1.0)
             }
             // Git (orange)
-            EventKind::RepoAnnounce | EventKind::Issue | EventKind::Patch | EventKind::PullRequest => {
-                Hsla::new(30.0, 0.9, 0.55, 1.0)
-            }
+            EventKind::RepoAnnounce
+            | EventKind::Issue
+            | EventKind::Patch
+            | EventKind::PullRequest => Hsla::new(30.0, 0.9, 0.55, 1.0),
             // Agent (green)
             EventKind::AgentProfile | EventKind::TrajectorySession => {
                 Hsla::new(140.0, 0.7, 0.5, 1.0)
             }
             // DVM (yellow)
-            EventKind::DvmTextRequest | EventKind::DvmTextResult => {
-                Hsla::new(50.0, 0.9, 0.5, 1.0)
-            }
+            EventKind::DvmTextRequest | EventKind::DvmTextResult => Hsla::new(50.0, 0.9, 0.5, 1.0),
             // Payments (gold)
             EventKind::ZapReceipt => Hsla::new(45.0, 0.95, 0.55, 1.0),
             // Content (teal)
-            EventKind::LongFormContent | EventKind::FileMetadata => {
-                Hsla::new(170.0, 0.6, 0.5, 1.0)
-            }
+            EventKind::LongFormContent | EventKind::FileMetadata => Hsla::new(170.0, 0.6, 0.5, 1.0),
             // System (gray)
-            EventKind::RecommendRelay | EventKind::Deletion => {
-                Hsla::new(0.0, 0.0, 0.6, 1.0)
-            }
+            EventKind::RecommendRelay | EventKind::Deletion => Hsla::new(0.0, 0.0, 0.6, 1.0),
             // Custom (muted)
             EventKind::Custom(_) => Hsla::new(0.0, 0.0, 0.5, 1.0),
         }
@@ -213,7 +207,6 @@ impl EventKind {
         }
     }
 }
-
 
 /// Badge displaying event kind
 pub struct EventKindBadge {
@@ -296,7 +289,8 @@ impl Component for EventKindBadge {
 
             if self.show_number {
                 let kind_text = format!(":{}", self.kind.kind());
-                let kind_x = bounds.origin.x + bounds.size.width - padding - kind_text.len() as f32 * 5.5;
+                let kind_x =
+                    bounds.origin.x + bounds.size.width - padding - kind_text.len() as f32 * 5.5;
                 let kind_run = cx.text.layout(
                     &kind_text,
                     Point::new(kind_x, text_y),
@@ -308,7 +302,12 @@ impl Component for EventKindBadge {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

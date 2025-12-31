@@ -11,10 +11,10 @@ use crate::{Bounds, Hsla, InputEvent, Point, Quad, theme};
 pub enum ApmLevel {
     #[default]
     Idle,
-    Low,      // < 10 APM
-    Normal,   // 10-30 APM
-    High,     // 30-60 APM
-    Intense,  // > 60 APM
+    Low,     // < 10 APM
+    Normal,  // 10-30 APM
+    High,    // 30-60 APM
+    Intense, // > 60 APM
 }
 
 impl ApmLevel {
@@ -54,11 +54,11 @@ impl ApmLevel {
 
     pub fn color(&self) -> Hsla {
         match self {
-            ApmLevel::Idle => Hsla::new(0.0, 0.0, 0.4, 1.0),        // Dark gray
-            ApmLevel::Low => Hsla::new(200.0, 0.5, 0.5, 1.0),       // Muted blue
-            ApmLevel::Normal => Hsla::new(120.0, 0.7, 0.45, 1.0),   // Green
-            ApmLevel::High => Hsla::new(45.0, 0.8, 0.5, 1.0),       // Gold
-            ApmLevel::Intense => Hsla::new(0.0, 0.8, 0.55, 1.0),    // Red
+            ApmLevel::Idle => Hsla::new(0.0, 0.0, 0.4, 1.0), // Dark gray
+            ApmLevel::Low => Hsla::new(200.0, 0.5, 0.5, 1.0), // Muted blue
+            ApmLevel::Normal => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
+            ApmLevel::High => Hsla::new(45.0, 0.8, 0.5, 1.0), // Gold
+            ApmLevel::Intense => Hsla::new(0.0, 0.8, 0.55, 1.0), // Red
         }
     }
 }
@@ -128,26 +128,40 @@ impl Component for ApmGauge {
             // Just show bars and value
             if self.show_bars {
                 let bars = self.draw_bars();
-                let bars_run = cx.text.layout(&bars, Point::new(x, text_y), theme::font_size::SM, color);
+                let bars_run =
+                    cx.text
+                        .layout(&bars, Point::new(x, text_y), theme::font_size::SM, color);
                 cx.scene.draw_text(bars_run);
                 x += 30.0;
             }
             if self.show_value {
                 let apm_text = format!("{:.0}", self.apm);
-                let apm_run = cx.text.layout(&apm_text, Point::new(x, text_y), theme::font_size::XS, color);
+                let apm_run = cx.text.layout(
+                    &apm_text,
+                    Point::new(x, text_y),
+                    theme::font_size::XS,
+                    color,
+                );
                 cx.scene.draw_text(apm_run);
             }
         } else {
             // APM label
             let label = "APM";
-            let label_run = cx.text.layout(label, Point::new(x, text_y), theme::font_size::XS, theme::text::MUTED);
+            let label_run = cx.text.layout(
+                label,
+                Point::new(x, text_y),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
             cx.scene.draw_text(label_run);
             x += 28.0;
 
             // Bars visualization
             if self.show_bars {
                 let bars = self.draw_bars();
-                let bars_run = cx.text.layout(&bars, Point::new(x, text_y), theme::font_size::SM, color);
+                let bars_run =
+                    cx.text
+                        .layout(&bars, Point::new(x, text_y), theme::font_size::SM, color);
                 cx.scene.draw_text(bars_run);
                 x += 32.0;
             }
@@ -155,19 +169,34 @@ impl Component for ApmGauge {
             // Value
             if self.show_value {
                 let apm_text = format!("{:.1}", self.apm);
-                let apm_run = cx.text.layout(&apm_text, Point::new(x, text_y), theme::font_size::XS, theme::text::PRIMARY);
+                let apm_run = cx.text.layout(
+                    &apm_text,
+                    Point::new(x, text_y),
+                    theme::font_size::XS,
+                    theme::text::PRIMARY,
+                );
                 cx.scene.draw_text(apm_run);
                 x += apm_text.len() as f32 * 6.5 + 6.0;
             }
 
             // Level label
             let level_label = level.label();
-            let level_run = cx.text.layout(level_label, Point::new(x, text_y), theme::font_size::XS, color);
+            let level_run = cx.text.layout(
+                level_label,
+                Point::new(x, text_y),
+                theme::font_size::XS,
+                color,
+            );
             cx.scene.draw_text(level_run);
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

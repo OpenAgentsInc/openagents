@@ -32,12 +32,12 @@ impl TrajectoryStatus {
 
     pub fn color(&self) -> Hsla {
         match self {
-            TrajectoryStatus::Unknown => Hsla::new(0.0, 0.0, 0.5, 1.0),     // Gray
+            TrajectoryStatus::Unknown => Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
             TrajectoryStatus::Verified => Hsla::new(120.0, 0.8, 0.45, 1.0), // Green
-            TrajectoryStatus::Partial => Hsla::new(45.0, 0.8, 0.5, 1.0),    // Gold
+            TrajectoryStatus::Partial => Hsla::new(45.0, 0.8, 0.5, 1.0), // Gold
             TrajectoryStatus::Suspicious => Hsla::new(30.0, 0.9, 0.5, 1.0), // Orange
-            TrajectoryStatus::HasGaps => Hsla::new(45.0, 0.7, 0.5, 1.0),    // Yellow
-            TrajectoryStatus::Mismatch => Hsla::new(0.0, 0.8, 0.5, 1.0),    // Red
+            TrajectoryStatus::HasGaps => Hsla::new(45.0, 0.7, 0.5, 1.0), // Yellow
+            TrajectoryStatus::Mismatch => Hsla::new(0.0, 0.8, 0.5, 1.0), // Red
         }
     }
 
@@ -117,29 +117,28 @@ impl Component for TrajectoryStatusBadge {
             // Icon
             if self.show_icon {
                 let icon = self.status.icon();
-                let icon_run = cx.text.layout(
-                    icon,
-                    Point::new(x, text_y),
-                    theme::font_size::SM,
-                    color,
-                );
+                let icon_run =
+                    cx.text
+                        .layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
                 cx.scene.draw_text(icon_run);
                 x += 14.0;
             }
 
             // Label
             let label = self.status.label();
-            let label_run = cx.text.layout(
-                label,
-                Point::new(x, text_y),
-                theme::font_size::XS,
-                color,
-            );
+            let label_run =
+                cx.text
+                    .layout(label, Point::new(x, text_y), theme::font_size::XS, color);
             cx.scene.draw_text(label_run);
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -152,7 +151,9 @@ impl Component for TrajectoryStatusBadge {
             (Some(24.0), Some(22.0))
         } else {
             let mut width = 12.0;
-            if self.show_icon { width += 14.0; }
+            if self.show_icon {
+                width += 14.0;
+            }
             width += self.status.label().len() as f32 * 6.5;
             (Some(width), Some(22.0))
         }

@@ -155,7 +155,7 @@ impl Tooltip {
             // Prefer top, but use bottom if not enough space
             let space_above = target.origin.y;
             let space_below = viewport.size.height - (target.origin.y + target.size.height);
-            
+
             if space_above > tooltip_height + self.offset {
                 TooltipPosition::Top
             } else if space_below > tooltip_height + self.offset {
@@ -164,7 +164,7 @@ impl Tooltip {
                 // Try left/right
                 let space_left = target.origin.x;
                 let space_right = viewport.size.width - (target.origin.x + target.size.width);
-                
+
                 if space_right > tooltip_width + self.offset {
                     TooltipPosition::Right
                 } else if space_left > tooltip_width + self.offset {
@@ -223,7 +223,10 @@ impl Component for Tooltip {
         let font_size = theme::font_size::SM;
         let text_width = self.content.len() as f32 * font_size * 0.55; // Approximate
         let text_height = font_size * 1.4;
-        let text_size = Size::new(text_width.min(self.max_width - self.padding * 2.0), text_height);
+        let text_size = Size::new(
+            text_width.min(self.max_width - self.padding * 2.0),
+            text_height,
+        );
 
         let (tooltip_bounds, _arrow_dir) = self.calculate_bounds(bounds, text_size);
 
@@ -263,9 +266,8 @@ impl Component for Tooltip {
                 self.arrow_size,
             ),
         };
-        cx.scene.draw_quad(
-            Quad::new(arrow_bounds).with_background(theme::bg::ELEVATED),
-        );
+        cx.scene
+            .draw_quad(Quad::new(arrow_bounds).with_background(theme::bg::ELEVATED));
 
         // Draw text
         let text_x = tooltip_bounds.origin.x + self.padding;
@@ -279,7 +281,12 @@ impl Component for Tooltip {
         cx.scene.draw_text(text_run);
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         // Tooltip doesn't handle events directly
         // Parent component should call update_hover()
         EventResult::Ignored
@@ -308,18 +315,17 @@ mod tests {
 
     #[test]
     fn test_tooltip_position() {
-        let tooltip = Tooltip::new("Test")
-            .position(TooltipPosition::Bottom);
+        let tooltip = Tooltip::new("Test").position(TooltipPosition::Bottom);
         assert_eq!(tooltip.position, TooltipPosition::Bottom);
     }
 
     #[test]
     fn test_tooltip_visibility() {
         let mut tooltip = Tooltip::new("Test");
-        
+
         tooltip.show();
         assert!(tooltip.is_visible());
-        
+
         tooltip.hide();
         assert!(!tooltip.is_visible());
     }
@@ -327,17 +333,17 @@ mod tests {
     #[test]
     fn test_tooltip_hover_delay() {
         let mut tooltip = Tooltip::new("Test").delay(5);
-        
+
         // Simulate hovering for 4 frames
         for _ in 0..4 {
             tooltip.update_hover(true);
             assert!(!tooltip.is_visible());
         }
-        
+
         // 5th frame should show
         tooltip.update_hover(true);
         assert!(tooltip.is_visible());
-        
+
         // Stop hovering should hide
         tooltip.update_hover(false);
         assert!(!tooltip.is_visible());

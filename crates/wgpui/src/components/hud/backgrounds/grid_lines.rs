@@ -144,16 +144,7 @@ impl Component for GridLinesBackground {
             let dash = normalized_dash(&self.vertical_dash);
             for index in 0..x_length {
                 let line_x = x + x_margin / 2.0 + index as f32 * spacing;
-                draw_dashed(
-                    cx,
-                    line_x - w / 2.0,
-                    y,
-                    w,
-                    height,
-                    false,
-                    color,
-                    &dash,
-                );
+                draw_dashed(cx, line_x - w / 2.0, y, w, height, false, color, &dash);
             }
         }
 
@@ -161,16 +152,7 @@ impl Component for GridLinesBackground {
             let dash = normalized_dash(&self.horizontal_dash);
             for index in 0..y_length {
                 let line_y = y + y_margin / 2.0 + index as f32 * spacing;
-                draw_dashed(
-                    cx,
-                    x,
-                    line_y - w / 2.0,
-                    width,
-                    w,
-                    true,
-                    color,
-                    &dash,
-                );
+                draw_dashed(cx, x, line_y - w / 2.0, width, w, true, color, &dash);
             }
         }
     }

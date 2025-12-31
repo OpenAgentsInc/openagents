@@ -65,9 +65,18 @@ pub struct BleepsManagerUpdate {
 
 #[derive(Clone, Debug)]
 pub enum BleepSource {
-    Path { path: std::path::PathBuf, mime: Option<String> },
-    Url { url: String, mime: Option<String> },
-    Bytes { data: Vec<u8>, mime: Option<String> },
+    Path {
+        path: std::path::PathBuf,
+        mime: Option<String>,
+    },
+    Url {
+        url: String,
+        mime: Option<String>,
+    },
+    Bytes {
+        data: Vec<u8>,
+        mime: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -190,7 +199,8 @@ mod backend {
         }
 
         fn effective_volume(inner: &DesktopBleepInner) -> f32 {
-            if inner.props.settings.disabled || inner.props.settings.muted || inner.externally_muted {
+            if inner.props.settings.disabled || inner.props.settings.muted || inner.externally_muted
+            {
                 0.0
             } else {
                 (inner.props.settings.volume * inner.props.master_volume).clamp(0.0, 1.0)
@@ -198,7 +208,8 @@ mod backend {
         }
 
         fn start_playback(inner: &mut DesktopBleepInner) {
-            if inner.props.settings.disabled || inner.props.settings.muted || inner.externally_muted {
+            if inner.props.settings.disabled || inner.props.settings.muted || inner.externally_muted
+            {
                 return;
             }
 
@@ -339,7 +350,10 @@ mod backend {
                 } else if inner.load_state == LoadState::Unloaded {
                     trigger_load = true;
                 }
-                (inner.props.settings.async_load, inner.props.settings.max_playback_delay)
+                (
+                    inner.props.settings.async_load,
+                    inner.props.settings.max_playback_delay,
+                )
             });
 
             if should_start {
@@ -434,7 +448,10 @@ mod backend {
                 });
             } else {
                 let (sources, fetch_headers) = self.with_lock(|inner| {
-                    (inner.props.sources.clone(), inner.props.settings.fetch_headers.clone())
+                    (
+                        inner.props.sources.clone(),
+                        inner.props.settings.fetch_headers.clone(),
+                    )
                 });
                 let data = Self::load_data(&sources, fetch_headers.as_ref());
                 self.with_lock(|inner| match data {
@@ -484,12 +501,14 @@ mod backend {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use wasm_bindgen::closure::Closure;
     use wasm_bindgen::JsCast;
     use wasm_bindgen::JsValue;
-    use wasm_bindgen_futures::spawn_local;
+    use wasm_bindgen::closure::Closure;
     use wasm_bindgen_futures::JsFuture;
-    use web_sys::{AudioBuffer, AudioBufferSourceNode, AudioContext, GainNode, Headers, Request, RequestInit};
+    use wasm_bindgen_futures::spawn_local;
+    use web_sys::{
+        AudioBuffer, AudioBufferSourceNode, AudioContext, GainNode, Headers, Request, RequestInit,
+    };
 
     #[derive(Clone)]
     pub struct WebBleep {
@@ -528,7 +547,8 @@ mod backend {
         }
 
         fn effective_volume(inner: &WebBleepInner) -> f32 {
-            if inner.props.settings.disabled || inner.props.settings.muted || inner.externally_muted {
+            if inner.props.settings.disabled || inner.props.settings.muted || inner.externally_muted
+            {
                 0.0
             } else {
                 (inner.props.settings.volume * inner.props.master_volume).clamp(0.0, 1.0)
@@ -552,7 +572,10 @@ mod backend {
                 let mut inner = inner_focus.borrow_mut();
                 inner.externally_muted = false;
                 let _ = inner.context.resume();
-                let _ = inner.gain.gain().set_value(WebBleep::effective_volume(&inner));
+                let _ = inner
+                    .gain
+                    .gain()
+                    .set_value(WebBleep::effective_volume(&inner));
             }) as Box<dyn FnMut()>);
 
             let inner_blur = inner.clone();
@@ -560,11 +583,16 @@ mod backend {
                 let mut inner = inner_blur.borrow_mut();
                 inner.externally_muted = true;
                 let _ = inner.context.suspend();
-                let _ = inner.gain.gain().set_value(WebBleep::effective_volume(&inner));
+                let _ = inner
+                    .gain
+                    .gain()
+                    .set_value(WebBleep::effective_volume(&inner));
             }) as Box<dyn FnMut()>);
 
-            let _ = window.add_event_listener_with_callback("focus", on_focus.as_ref().unchecked_ref());
-            let _ = window.add_event_listener_with_callback("blur", on_blur.as_ref().unchecked_ref());
+            let _ =
+                window.add_event_listener_with_callback("focus", on_focus.as_ref().unchecked_ref());
+            let _ =
+                window.add_event_listener_with_callback("blur", on_blur.as_ref().unchecked_ref());
 
             inner.borrow_mut().focus_closures = Some((on_focus, on_blur));
         }
@@ -578,7 +606,11 @@ mod backend {
                 BleepSource::Bytes { data, .. } => {
                     let array = js_sys::Uint8Array::from(data.as_slice());
                     let buffer = array.buffer();
-                    JsFuture::from(context.decode_audio_data(&buffer)).await.ok()?.dyn_into().ok()
+                    JsFuture::from(context.decode_audio_data(&buffer))
+                        .await
+                        .ok()?
+                        .dyn_into()
+                        .ok()
                 }
                 BleepSource::Url { url, .. } => {
                     let window = web_sys::window()?;
@@ -592,13 +624,19 @@ mod backend {
                         let headers_js = JsValue::from(header_map);
                         init.set_headers(&headers_js);
                         let request = Request::new_with_str_and_init(url, &init).ok()?;
-                        JsFuture::from(window.fetch_with_request(&request)).await.ok()?
+                        JsFuture::from(window.fetch_with_request(&request))
+                            .await
+                            .ok()?
                     } else {
                         JsFuture::from(window.fetch_with_str(url)).await.ok()?
                     };
                     let response: web_sys::Response = response_value.dyn_into().ok()?;
                     let buffer = JsFuture::from(response.array_buffer().ok()?).await.ok()?;
-                    JsFuture::from(context.decode_audio_data(&buffer)).await.ok()?.dyn_into().ok()
+                    JsFuture::from(context.decode_audio_data(&buffer))
+                        .await
+                        .ok()?
+                        .dyn_into()
+                        .ok()
                 }
                 BleepSource::Path { .. } => None,
             }
@@ -727,7 +765,13 @@ mod backend {
         }
 
         fn duration(&self) -> f32 {
-            self.with_lock(|inner| inner.buffer.as_ref().map(|b| b.duration() as f32).unwrap_or(0.0))
+            self.with_lock(|inner| {
+                inner
+                    .buffer
+                    .as_ref()
+                    .map(|b| b.duration() as f32)
+                    .unwrap_or(0.0)
+            })
         }
 
         fn volume(&self) -> f32 {
@@ -1064,10 +1108,7 @@ fn resolve_bleep(
     let mut resolved = ResolvedBleepSettings::default();
 
     apply_general(&mut resolved, common);
-    let category = def
-        .category
-        .or(def.general.category)
-        .or(common.category);
+    let category = def.category.or(def.general.category).or(common.category);
     if let Some(category) = category {
         if let Some(category_props) = categories.get(&category) {
             apply_general(&mut resolved, category_props);

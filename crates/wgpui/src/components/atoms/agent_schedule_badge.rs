@@ -42,12 +42,12 @@ impl TriggerType {
 
     pub fn color(&self) -> Hsla {
         match self {
-            TriggerType::Heartbeat => Hsla::new(0.0, 0.8, 0.55, 1.0),    // Red
-            TriggerType::Mention => Hsla::new(200.0, 0.7, 0.5, 1.0),     // Blue
+            TriggerType::Heartbeat => Hsla::new(0.0, 0.8, 0.55, 1.0), // Red
+            TriggerType::Mention => Hsla::new(200.0, 0.7, 0.5, 1.0),  // Blue
             TriggerType::DirectMessage => Hsla::new(280.0, 0.6, 0.5, 1.0), // Purple
-            TriggerType::Zap => Hsla::new(45.0, 0.9, 0.5, 1.0),          // Gold
-            TriggerType::Issue => Hsla::new(120.0, 0.7, 0.45, 1.0),      // Green
-            TriggerType::PullRequest => Hsla::new(30.0, 0.8, 0.5, 1.0),  // Orange
+            TriggerType::Zap => Hsla::new(45.0, 0.9, 0.5, 1.0),       // Gold
+            TriggerType::Issue => Hsla::new(120.0, 0.7, 0.45, 1.0),   // Green
+            TriggerType::PullRequest => Hsla::new(30.0, 0.8, 0.5, 1.0), // Orange
         }
     }
 }
@@ -116,20 +116,40 @@ impl Component for AgentScheduleBadge {
             // Just heartbeat interval
             let interval = self.format_interval();
             let heartbeat_color = TriggerType::Heartbeat.color();
-            let run = cx.text.layout("♥", Point::new(x, text_y), theme::font_size::SM, heartbeat_color);
+            let run = cx.text.layout(
+                "♥",
+                Point::new(x, text_y),
+                theme::font_size::SM,
+                heartbeat_color,
+            );
             cx.scene.draw_text(run);
             x += 14.0;
-            let run = cx.text.layout(&interval, Point::new(x, text_y), theme::font_size::XS, theme::text::PRIMARY);
+            let run = cx.text.layout(
+                &interval,
+                Point::new(x, text_y),
+                theme::font_size::XS,
+                theme::text::PRIMARY,
+            );
             cx.scene.draw_text(run);
         } else {
             // Heartbeat
             let heartbeat_color = TriggerType::Heartbeat.color();
-            let run = cx.text.layout("♥", Point::new(x, text_y), theme::font_size::SM, heartbeat_color);
+            let run = cx.text.layout(
+                "♥",
+                Point::new(x, text_y),
+                theme::font_size::SM,
+                heartbeat_color,
+            );
             cx.scene.draw_text(run);
             x += 14.0;
 
             let interval = self.format_interval();
-            let run = cx.text.layout(&interval, Point::new(x, text_y), theme::font_size::XS, theme::text::PRIMARY);
+            let run = cx.text.layout(
+                &interval,
+                Point::new(x, text_y),
+                theme::font_size::XS,
+                theme::text::PRIMARY,
+            );
             cx.scene.draw_text(run);
             x += interval.len() as f32 * 7.0 + 12.0;
 
@@ -138,7 +158,9 @@ impl Component for AgentScheduleBadge {
                 if trigger != &TriggerType::Heartbeat {
                     let icon = trigger.icon();
                     let color = trigger.color();
-                    let run = cx.text.layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
+                    let run =
+                        cx.text
+                            .layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
                     cx.scene.draw_text(run);
                     x += 16.0;
                 }
@@ -146,7 +168,12 @@ impl Component for AgentScheduleBadge {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -158,9 +185,12 @@ impl Component for AgentScheduleBadge {
         if self.compact {
             (Some(50.0), Some(22.0))
         } else {
-            let trigger_width = self.triggers.iter()
+            let trigger_width = self
+                .triggers
+                .iter()
                 .filter(|t| **t != TriggerType::Heartbeat)
-                .count() as f32 * 16.0;
+                .count() as f32
+                * 16.0;
             (Some(70.0 + trigger_width), Some(24.0))
         }
     }

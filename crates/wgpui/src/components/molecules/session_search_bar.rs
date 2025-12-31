@@ -27,10 +27,22 @@ pub struct SessionSearchBar {
 impl SessionSearchBar {
     pub fn new() -> Self {
         let filters = vec![
-            StatusFilter { status: SessionStatus::Running, active: false },
-            StatusFilter { status: SessionStatus::Completed, active: false },
-            StatusFilter { status: SessionStatus::Failed, active: false },
-            StatusFilter { status: SessionStatus::Paused, active: false },
+            StatusFilter {
+                status: SessionStatus::Running,
+                active: false,
+            },
+            StatusFilter {
+                status: SessionStatus::Completed,
+                active: false,
+            },
+            StatusFilter {
+                status: SessionStatus::Failed,
+                active: false,
+            },
+            StatusFilter {
+                status: SessionStatus::Paused,
+                active: false,
+            },
         ];
 
         Self {
@@ -139,7 +151,10 @@ impl Component for SessionSearchBar {
         // Search icon
         let icon_run = cx.text.layout(
             "⌕",
-            Point::new(bounds.origin.x + padding, bounds.origin.y + (bounds.size.height - theme::font_size::SM) / 2.0),
+            Point::new(
+                bounds.origin.x + padding,
+                bounds.origin.y + (bounds.size.height - theme::font_size::SM) / 2.0,
+            ),
             theme::font_size::SM,
             theme::text::MUTED,
         );
@@ -157,7 +172,12 @@ impl Component for SessionSearchBar {
 
         // Filter chips
         let filter_bounds = self.filter_bounds(&bounds);
-        for (idx, (filter, chip_bounds)) in self.status_filters.iter().zip(filter_bounds.iter()).enumerate() {
+        for (idx, (filter, chip_bounds)) in self
+            .status_filters
+            .iter()
+            .zip(filter_bounds.iter())
+            .enumerate()
+        {
             let is_hovered = self.hovered_filter == Some(idx);
             let status_color = filter.status.color();
 
@@ -259,9 +279,10 @@ impl Component for SessionSearchBar {
 
         // Trigger search on input change
         if result == EventResult::Handled
-            && let Some(callback) = &mut self.on_search {
-                callback(self.input.get_value().to_string());
-            }
+            && let Some(callback) = &mut self.on_search
+        {
+            callback(self.input.get_value().to_string());
+        }
 
         result
     }

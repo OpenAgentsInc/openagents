@@ -274,7 +274,11 @@ impl WrappedLine {
     }
 
     /// Create a wrapped line with a single color.
-    pub fn with_color(layout: Arc<WrappedLineLayout>, text: impl Into<String>, color: Hsla) -> Self {
+    pub fn with_color(
+        layout: Arc<WrappedLineLayout>,
+        text: impl Into<String>,
+        color: Hsla,
+    ) -> Self {
         let text = text.into();
         let len = text.len() as u32;
         Self {
@@ -486,12 +490,20 @@ impl LinePaintInfo {
                         // Finish decorations that changed
                         if let Some((_, ref underline_style)) = current_underline {
                             if style_run.underline.as_ref() != Some(underline_style) {
-                                self.finish_underline(&mut current_underline, glyph_origin.x, layout);
+                                self.finish_underline(
+                                    &mut current_underline,
+                                    glyph_origin.x,
+                                    layout,
+                                );
                             }
                         }
                         if let Some((_, ref strike_style)) = current_strikethrough {
                             if style_run.strikethrough.as_ref() != Some(strike_style) {
-                                self.finish_strikethrough(&mut current_strikethrough, glyph_origin.x, layout);
+                                self.finish_strikethrough(
+                                    &mut current_strikethrough,
+                                    glyph_origin.x,
+                                    layout,
+                                );
                             }
                         }
                         if let Some((_, ref bg_color)) = current_background {
@@ -503,7 +515,9 @@ impl LinePaintInfo {
                         // Start new decorations
                         if let Some(ref underline) = style_run.underline {
                             if current_underline.is_none() {
-                                let underline_y = glyph_origin.y + self.baseline_offset.y + (layout.descent * 0.618);
+                                let underline_y = glyph_origin.y
+                                    + self.baseline_offset.y
+                                    + (layout.descent * 0.618);
                                 current_underline = Some((
                                     Point::new(glyph_origin.x, underline_y),
                                     underline.clone(),
@@ -512,16 +526,16 @@ impl LinePaintInfo {
                         }
                         if let Some(ref strike) = style_run.strikethrough {
                             if current_strikethrough.is_none() {
-                                let strike_y = glyph_origin.y + ((layout.ascent * 0.5 + self.baseline_offset.y) * 0.5);
-                                current_strikethrough = Some((
-                                    Point::new(glyph_origin.x, strike_y),
-                                    strike.clone(),
-                                ));
+                                let strike_y = glyph_origin.y
+                                    + ((layout.ascent * 0.5 + self.baseline_offset.y) * 0.5);
+                                current_strikethrough =
+                                    Some((Point::new(glyph_origin.x, strike_y), strike.clone()));
                             }
                         }
                         if let Some(bg_color) = style_run.background_color {
                             if current_background.is_none() {
-                                current_background = Some((Point::new(glyph_origin.x, glyph_origin.y), bg_color));
+                                current_background =
+                                    Some((Point::new(glyph_origin.x, glyph_origin.y), bg_color));
                             }
                         }
 

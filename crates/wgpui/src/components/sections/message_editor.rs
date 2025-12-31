@@ -186,7 +186,8 @@ impl Component for MessageEditor {
                 theme::accent::PRIMARY
             };
 
-            cx.scene.draw_quad(Quad::new(send_bounds).with_background(bg));
+            cx.scene
+                .draw_quad(Quad::new(send_bounds).with_background(bg));
 
             let arrow = "\u{2191}";
             let arrow_size = theme::font_size::LG;
@@ -242,10 +243,12 @@ impl Component for MessageEditor {
             }
             InputEvent::KeyDown { key, .. } => {
                 if let Key::Named(NamedKey::Enter) = key
-                    && self.input.is_focused() && !self.is_streaming {
-                        self.trigger_send();
-                        return EventResult::Handled;
-                    }
+                    && self.input.is_focused()
+                    && !self.is_streaming
+                {
+                    self.trigger_send();
+                    return EventResult::Handled;
+                }
             }
             _ => {}
         }

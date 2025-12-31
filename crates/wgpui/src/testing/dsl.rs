@@ -441,10 +441,7 @@ mod tests {
 
     #[test]
     fn test_builder_basic() {
-        let t = test("My Test")
-            .click("#button")
-            .wait(100)
-            .expect("#result");
+        let t = test("My Test").click("#button").wait(100).expect("#result");
 
         assert_eq!(t.name(), "My Test");
         assert_eq!(t.step_count(), 3);
@@ -550,7 +547,10 @@ mod tests {
         let runner = test("Typing").type_text("hi").build();
 
         match &runner.steps()[0] {
-            TestStep::Type { text, delay_per_char } => {
+            TestStep::Type {
+                text,
+                delay_per_char,
+            } => {
                 assert_eq!(text, "hi");
                 assert_eq!(*delay_per_char, Some(Duration::from_millis(50)));
             }
@@ -563,7 +563,9 @@ mod tests {
         let runner = test("Expect").expect("#42").build();
 
         match &runner.steps()[0] {
-            TestStep::Expect { selector: ElementSelector::Id(42) } => {}
+            TestStep::Expect {
+                selector: ElementSelector::Id(42),
+            } => {}
             _ => panic!("Expected Expect step with Id selector"),
         }
     }
@@ -573,7 +575,10 @@ mod tests {
         let runner = test("Wait").wait_for("#7").build();
 
         match &runner.steps()[0] {
-            TestStep::WaitFor { selector: ElementSelector::Id(7), timeout } => {
+            TestStep::WaitFor {
+                selector: ElementSelector::Id(7),
+                timeout,
+            } => {
                 assert_eq!(*timeout, Duration::from_secs(5));
             }
             _ => panic!("Expected WaitFor step with default timeout"),
@@ -585,7 +590,10 @@ mod tests {
         let runner = test("Wait").wait_for_timeout("#7", 1500).build();
 
         match &runner.steps()[0] {
-            TestStep::WaitFor { selector: ElementSelector::Id(7), timeout } => {
+            TestStep::WaitFor {
+                selector: ElementSelector::Id(7),
+                timeout,
+            } => {
                 assert_eq!(*timeout, Duration::from_millis(1500));
             }
             _ => panic!("Expected WaitFor step with custom timeout"),

@@ -48,11 +48,11 @@ impl TickOutcome {
 
     pub fn color(&self) -> Hsla {
         match self {
-            TickOutcome::Pending => Hsla::new(200.0, 0.7, 0.55, 1.0),   // Blue
-            TickOutcome::Success => Hsla::new(120.0, 0.7, 0.45, 1.0),   // Green
-            TickOutcome::Failure => Hsla::new(0.0, 0.8, 0.5, 1.0),      // Red
-            TickOutcome::Timeout => Hsla::new(45.0, 0.8, 0.5, 1.0),     // Gold
-            TickOutcome::Skipped => Hsla::new(0.0, 0.0, 0.5, 1.0),      // Gray
+            TickOutcome::Pending => Hsla::new(200.0, 0.7, 0.55, 1.0), // Blue
+            TickOutcome::Success => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
+            TickOutcome::Failure => Hsla::new(0.0, 0.8, 0.5, 1.0),    // Red
+            TickOutcome::Timeout => Hsla::new(45.0, 0.8, 0.5, 1.0),   // Gold
+            TickOutcome::Skipped => Hsla::new(0.0, 0.0, 0.5, 1.0),    // Gray
         }
     }
 }
@@ -133,7 +133,9 @@ impl Component for TickEventBadge {
         if self.compact {
             // Just icon
             let icon = self.outcome.icon();
-            let run = cx.text.layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
+            let run = cx
+                .text
+                .layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
             cx.scene.draw_text(run);
         } else {
             // Type indicator
@@ -152,18 +154,17 @@ impl Component for TickEventBadge {
 
             // Outcome icon
             let icon = self.outcome.icon();
-            let icon_run = cx.text.layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
+            let icon_run = cx
+                .text
+                .layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
             cx.scene.draw_text(icon_run);
             x += 14.0;
 
             // Label
             let label = self.outcome.label();
-            let label_run = cx.text.layout(
-                label,
-                Point::new(x, text_y),
-                theme::font_size::XS,
-                color,
-            );
+            let label_run =
+                cx.text
+                    .layout(label, Point::new(x, text_y), theme::font_size::XS, color);
             cx.scene.draw_text(label_run);
             x += label.len() as f32 * 6.5 + 8.0;
 
@@ -180,7 +181,12 @@ impl Component for TickEventBadge {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -193,7 +199,9 @@ impl Component for TickEventBadge {
             (Some(28.0), Some(22.0))
         } else {
             let mut width = 12.0 + 14.0 + 14.0 + self.outcome.label().len() as f32 * 6.5;
-            if self.duration_ms.is_some() { width += 45.0; }
+            if self.duration_ms.is_some() {
+                width += 45.0;
+            }
             (Some(width), Some(22.0))
         }
     }

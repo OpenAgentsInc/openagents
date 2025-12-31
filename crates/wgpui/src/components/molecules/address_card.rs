@@ -84,7 +84,11 @@ impl AddressCard {
 
     fn truncated_address(&self) -> String {
         if self.address.len() > 24 {
-            format!("{}...{}", &self.address[..12], &self.address[self.address.len() - 8..])
+            format!(
+                "{}...{}",
+                &self.address[..12],
+                &self.address[self.address.len() - 8..]
+            )
         } else {
             self.address.clone()
         }
@@ -118,8 +122,13 @@ impl Component for AddressCard {
         // Left color bar
         let bar_w = 4.0;
         cx.scene.draw_quad(
-            Quad::new(Bounds::new(bounds.origin.x, bounds.origin.y, bar_w, bounds.size.height))
-                .with_background(self.address_type.color()),
+            Quad::new(Bounds::new(
+                bounds.origin.x,
+                bounds.origin.y,
+                bar_w,
+                bounds.size.height,
+            ))
+            .with_background(self.address_type.color()),
         );
 
         let content_x = bounds.origin.x + padding + bar_w;
@@ -254,13 +263,19 @@ mod tests {
 
     #[test]
     fn test_address_card() {
-        let card = AddressCard::new("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", AddressType::Bitcoin);
+        let card = AddressCard::new(
+            "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+            AddressType::Bitcoin,
+        );
         assert_eq!(card.address_type, AddressType::Bitcoin);
     }
 
     #[test]
     fn test_truncated_address() {
-        let card = AddressCard::new("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", AddressType::Bitcoin);
+        let card = AddressCard::new(
+            "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+            AddressType::Bitcoin,
+        );
         let truncated = card.truncated_address();
         assert!(truncated.contains("..."));
     }

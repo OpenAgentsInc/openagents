@@ -160,13 +160,8 @@ impl MovingLinesBackground {
             LineDirection::Up | LineDirection::Down => (size.width, size.height),
         };
 
-        self.lines_sets = create_lines_sets(
-            &mut rng,
-            axis1_size,
-            axis2_size,
-            self.spacing,
-            self.sets,
-        );
+        self.lines_sets =
+            create_lines_sets(&mut rng, axis1_size, axis2_size, self.spacing, self.sets);
         self.last_size = Some(size);
     }
 }
@@ -215,12 +210,20 @@ impl Component for MovingLinesBackground {
                     LineDirection::Up | LineDirection::Left => {
                         let start = axis2_size - (line.axis2_initial + axis2_move);
                         let end = axis2_size - (line.axis2_initial + line.length + axis2_move);
-                        if start < end { (start, end) } else { (end, start) }
+                        if start < end {
+                            (start, end)
+                        } else {
+                            (end, start)
+                        }
                     }
                     LineDirection::Down | LineDirection::Right => {
                         let start = line.axis2_initial + axis2_move;
                         let end = line.axis2_initial + line.length + axis2_move;
-                        if start < end { (start, end) } else { (end, start) }
+                        if start < end {
+                            (start, end)
+                        } else {
+                            (end, start)
+                        }
                     }
                 };
 
@@ -235,28 +238,22 @@ impl Component for MovingLinesBackground {
                         let x = bounds.origin.x + line.axis1 - line_width / 2.0;
                         let y = bounds.origin.y + clamped_start;
                         let h = clamped_end - clamped_start;
-                        if x + line_width < bounds.origin.x
-                            || x > bounds.origin.x + axis1_size
-                        {
+                        if x + line_width < bounds.origin.x || x > bounds.origin.x + axis1_size {
                             continue;
                         }
                         cx.scene.draw_quad(
-                            Quad::new(Bounds::new(x, y, line_width, h))
-                                .with_background(line_color),
+                            Quad::new(Bounds::new(x, y, line_width, h)).with_background(line_color),
                         );
                     }
                     LineDirection::Left | LineDirection::Right => {
                         let y = bounds.origin.y + line.axis1 - line_width / 2.0;
                         let x = bounds.origin.x + clamped_start;
                         let w = clamped_end - clamped_start;
-                        if y + line_width < bounds.origin.y
-                            || y > bounds.origin.y + axis1_size
-                        {
+                        if y + line_width < bounds.origin.y || y > bounds.origin.y + axis1_size {
                             continue;
                         }
                         cx.scene.draw_quad(
-                            Quad::new(Bounds::new(x, y, w, line_width))
-                                .with_background(line_color),
+                            Quad::new(Bounds::new(x, y, w, line_width)).with_background(line_color),
                         );
                     }
                 }
@@ -370,10 +367,7 @@ impl PseudoRng {
     }
 
     fn next_u32(&mut self) -> u32 {
-        self.state = self
-            .state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1);
+        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1);
         (self.state >> 32) as u32
     }
 

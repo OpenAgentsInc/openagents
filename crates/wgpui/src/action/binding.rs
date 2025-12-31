@@ -31,10 +31,7 @@ impl KeyBinding {
     /// ```ignore
     /// let binding = KeyBinding::new("cmd-s", Save).unwrap();
     /// ```
-    pub fn new<A: super::Action>(
-        keystroke: &str,
-        action: A,
-    ) -> Result<Self, KeystrokeParseError> {
+    pub fn new<A: super::Action>(keystroke: &str, action: A) -> Result<Self, KeystrokeParseError> {
         Ok(Self {
             keystrokes: vec![Keystroke::parse(keystroke)?],
             action: Box::new(action),

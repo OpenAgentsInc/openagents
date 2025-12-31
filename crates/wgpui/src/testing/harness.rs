@@ -3,15 +3,15 @@
 //! Integrates the test runner, event injection, and input overlay into a
 //! cohesive testing experience.
 
-use crate::components::{EventContext, PaintContext};
 use crate::components::{AnyComponent, Component, ComponentId, EventResult};
+use crate::components::{EventContext, PaintContext};
 use crate::testing::assertion::AssertionResult;
 use crate::testing::context::ComponentRegistry;
-use crate::testing::injection::{generate_step_events, EventPlayer};
+use crate::testing::injection::{EventPlayer, generate_step_events};
 use crate::testing::overlay::InputOverlay;
 use crate::testing::runner::{PlaybackSpeed, RunnerState, StepResult, TestRunner};
 use crate::testing::step::{ElementSelector, TestStep};
-use crate::{theme, Bounds, InputEvent, Key, MouseButton, NamedKey, Point, Quad};
+use crate::{Bounds, InputEvent, Key, MouseButton, NamedKey, Point, Quad, theme};
 use std::time::{Duration, Instant};
 
 /// Height of the control bar.
@@ -112,7 +112,12 @@ impl TestHarness {
 
     /// Get the control bar bounds.
     fn control_bar_bounds(&self, bounds: Bounds) -> Bounds {
-        Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, CONTROL_BAR_HEIGHT)
+        Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            CONTROL_BAR_HEIGHT,
+        )
     }
 
     /// Paint the control bar.
@@ -173,7 +178,11 @@ impl TestHarness {
             x += progress.len() as f32 * 7.0 + padding * 2.0;
 
             // Play/Pause button
-            let play_text = if state == RunnerState::Running { "||" } else { ">" };
+            let play_text = if state == RunnerState::Running {
+                "||"
+            } else {
+                ">"
+            };
             let play_bounds = Bounds::new(x, y + 4.0, 28.0, 24.0);
             let play_bg = if self.play_hovered {
                 theme::bg::HOVER
@@ -243,7 +252,10 @@ impl TestHarness {
             let hints_width = hints.len() as f32 * 6.0;
             let hints_run = cx.text.layout(
                 hints,
-                Point::new(bar.origin.x + bar.size.width - hints_width - padding, y + 9.0),
+                Point::new(
+                    bar.origin.x + bar.size.width - hints_width - padding,
+                    y + 9.0,
+                ),
                 theme::font_size::XS,
                 theme::text::DISABLED,
             );
@@ -262,11 +274,7 @@ impl TestHarness {
     }
 
     /// Handle control bar interaction.
-    fn handle_control_bar_event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-    ) -> EventResult {
+    fn handle_control_bar_event(&mut self, event: &InputEvent, bounds: Bounds) -> EventResult {
         let bar = self.control_bar_bounds(bounds);
         let padding = 8.0;
 
@@ -292,7 +300,8 @@ impl TestHarness {
                     0.0
                 };
 
-                let play_x = bar.origin.x + padding + state_width + padding + progress_width + padding * 2.0;
+                let play_x =
+                    bar.origin.x + padding + state_width + padding + progress_width + padding * 2.0;
                 let step_x = play_x + 36.0;
                 let speed_x = step_x + 36.0;
 
@@ -308,11 +317,18 @@ impl TestHarness {
                 self.step_hovered = step_bounds.contains(point);
                 self.speed_hovered = speed_bounds.contains(point);
 
-                if was_play != self.play_hovered || was_step != self.step_hovered || was_speed != self.speed_hovered {
+                if was_play != self.play_hovered
+                    || was_step != self.step_hovered
+                    || was_speed != self.speed_hovered
+                {
                     return EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button: MouseButton::Left, x, y } => {
+            InputEvent::MouseDown {
+                button: MouseButton::Left,
+                x,
+                y,
+            } => {
                 let point = Point::new(*x, *y);
                 if !bar.contains(point) {
                     return EventResult::Ignored;
@@ -351,7 +367,9 @@ impl TestHarness {
                     }
                 }
             }
-            InputEvent::KeyDown { key, modifiers } if !modifiers.ctrl && !modifiers.alt && !modifiers.meta => {
+            InputEvent::KeyDown { key, modifiers }
+                if !modifiers.ctrl && !modifiers.alt && !modifiers.meta =>
+            {
                 if let Some(runner) = &mut self.runner {
                     match key {
                         Key::Character(c) if c == "p" || c == "P" => {
@@ -418,9 +436,7 @@ impl TestHarness {
 
                     // Complete the current step
                     let step_started = self.step_started.take();
-                    let duration = step_started
-                        .map(|t| t.elapsed())
-                        .unwrap_or(Duration::ZERO);
+                    let duration = step_started.map(|t| t.elapsed()).unwrap_or(Duration::ZERO);
 
                     let result = StepResult {
                         step_index: runner.current_step(),
@@ -481,7 +497,8 @@ impl TestHarness {
                         TestStep::WaitFor { selector, timeout } => {
                             // Check if element exists
                             if Self::check_selector_exists(selector, &self.registry) {
-                                let duration = self.step_started
+                                let duration = self
+                                    .step_started
                                     .map(|t| t.elapsed())
                                     .unwrap_or(Duration::ZERO);
                                 let result = StepResult {
@@ -497,7 +514,9 @@ impl TestHarness {
                                     let result = StepResult {
                                         step_index: runner.current_step(),
                                         duration: *timeout,
-                                        assertion: Some(AssertionResult::failed("Element not found within timeout")),
+                                        assertion: Some(AssertionResult::failed(
+                                            "Element not found within timeout",
+                                        )),
                                         error: None,
                                     };
                                     runner.complete_step(result);
@@ -544,7 +563,10 @@ impl TestHarness {
                             let assertion = if exists {
                                 AssertionResult::Passed
                             } else {
-                                AssertionResult::failed(format!("Element {:?} not visible", selector))
+                                AssertionResult::failed(format!(
+                                    "Element {:?} not visible",
+                                    selector
+                                ))
                             };
                             let result = StepResult {
                                 step_index: runner.current_step(),
@@ -601,12 +623,7 @@ impl Component for TestHarness {
         }
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
         // Handle control bar events
         if self.show_controls {
             let result = self.handle_control_bar_event(event, bounds);

@@ -166,7 +166,8 @@ impl<'a> DocumentBuilder<'a> {
             Tag::Item => {}
             Tag::BlockQuote(_) => {
                 self.flush_paragraph();
-                self.blockquote_stack.push(BlockquoteContext { blocks: Vec::new() });
+                self.blockquote_stack
+                    .push(BlockquoteContext { blocks: Vec::new() });
             }
             Tag::Paragraph => {}
             Tag::Table(_) => {
@@ -210,7 +211,9 @@ impl<'a> DocumentBuilder<'a> {
             TagEnd::Image => {}
             TagEnd::FootnoteDefinition => {}
             TagEnd::MetadataBlock(_) => {}
-            TagEnd::DefinitionList | TagEnd::DefinitionListTitle | TagEnd::DefinitionListDefinition => {}
+            TagEnd::DefinitionList
+            | TagEnd::DefinitionListTitle
+            | TagEnd::DefinitionListDefinition => {}
             TagEnd::HtmlBlock => {}
         }
     }
@@ -230,12 +233,16 @@ impl<'a> DocumentBuilder<'a> {
         let mut style = self.current_style().clone();
         style.monospace = true;
         style.background = Some(self.config.inline_code_background);
-        self.current_spans.push(StyledSpan::new(code.to_string(), style));
+        self.current_spans
+            .push(StyledSpan::new(code.to_string(), style));
     }
 
     fn push_soft_break(&mut self) {
         if !self.in_code_block {
-            self.current_spans.push(StyledSpan::new(" ".to_string(), self.current_style().clone()));
+            self.current_spans.push(StyledSpan::new(
+                " ".to_string(),
+                self.current_style().clone(),
+            ));
         }
     }
 
@@ -258,7 +265,8 @@ impl<'a> DocumentBuilder<'a> {
             },
             ..self.current_style().clone()
         };
-        self.current_spans.push(StyledSpan::new(marker.to_string(), style));
+        self.current_spans
+            .push(StyledSpan::new(marker.to_string(), style));
     }
 
     fn finish_code_block(&mut self) {
@@ -346,7 +354,9 @@ impl<'a> DocumentBuilder<'a> {
                 indent: 0,
             }];
             if let Some(list_ctx) = self.list_stack.last_mut() {
-                list_ctx.current_item_blocks.push(MarkdownBlock::Paragraph(lines));
+                list_ctx
+                    .current_item_blocks
+                    .push(MarkdownBlock::Paragraph(lines));
             }
         }
 
@@ -472,7 +482,9 @@ mod tests {
 
         assert_eq!(doc.blocks.len(), 1);
         match &doc.blocks[0] {
-            MarkdownBlock::CodeBlock { language, lines, .. } => {
+            MarkdownBlock::CodeBlock {
+                language, lines, ..
+            } => {
                 assert_eq!(language.as_deref(), Some("rust"));
                 assert!(!lines.is_empty());
             }

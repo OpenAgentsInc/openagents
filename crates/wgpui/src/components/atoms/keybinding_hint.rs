@@ -107,7 +107,12 @@ impl Component for KeybindingHint {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -128,10 +133,7 @@ impl Component for KeybindingHint {
             total_width += text_width + padding_h * 2.0 + self.gap;
         }
 
-        (
-            Some(total_width),
-            Some(self.font_size + padding_v * 2.0),
-        )
+        (Some(total_width), Some(self.font_size + padding_v * 2.0))
     }
 }
 

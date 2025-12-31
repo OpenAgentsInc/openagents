@@ -151,7 +151,8 @@ impl Component for Tabs {
             self.tab_height,
         );
 
-        cx.scene.draw_quad(Quad::new(tab_bar_bounds).with_background(self.background));
+        cx.scene
+            .draw_quad(Quad::new(tab_bar_bounds).with_background(self.background));
 
         cx.scene.draw_quad(
             Quad::new(Bounds::new(
@@ -180,7 +181,8 @@ impl Component for Tabs {
             };
 
             if bg.a > 0.0 {
-                cx.scene.draw_quad(Quad::new(tab_bounds).with_background(bg));
+                cx.scene
+                    .draw_quad(Quad::new(tab_bounds).with_background(bg));
             }
 
             let text_color = if is_active {
@@ -224,17 +226,13 @@ impl Component for Tabs {
         );
 
         if let Some(tab) = self.tabs.get_mut(self.active_index)
-            && let Some(content) = &mut tab.content {
-                content.paint(content_bounds, cx);
-            }
+            && let Some(content) = &mut tab.content
+        {
+            content.paint(content_bounds, cx);
+        }
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
         let tab_bar_bounds = Bounds::new(
             bounds.origin.x,
             bounds.origin.y,
@@ -257,10 +255,11 @@ impl Component for Tabs {
                 if *button == MouseButton::Left {
                     let point = Point::new(*x, *y);
                     if tab_bar_bounds.contains(point)
-                        && let Some(index) = self.tab_at_x(*x, bounds.origin.x) {
-                            self.set_active(index);
-                            return EventResult::Handled;
-                        }
+                        && let Some(index) = self.tab_at_x(*x, bounds.origin.x)
+                    {
+                        self.set_active(index);
+                        return EventResult::Handled;
+                    }
                 }
             }
 
@@ -275,9 +274,10 @@ impl Component for Tabs {
         );
 
         if let Some(tab) = self.tabs.get_mut(self.active_index)
-            && let Some(content) = &mut tab.content {
-                return content.event(event, content_bounds, cx);
-            }
+            && let Some(content) = &mut tab.content
+        {
+            return content.event(event, content_bounds, cx);
+        }
 
         EventResult::Ignored
     }
@@ -308,10 +308,7 @@ mod tests {
 
     #[test]
     fn test_tabs_new() {
-        let tabs = Tabs::new(vec![
-            Tab::new("Tab 1"),
-            Tab::new("Tab 2"),
-        ]);
+        let tabs = Tabs::new(vec![Tab::new("Tab 1"), Tab::new("Tab 2")]);
 
         assert_eq!(tabs.tab_count(), 2);
         assert_eq!(tabs.active_index(), 0);
@@ -319,14 +316,10 @@ mod tests {
 
     #[test]
     fn test_tabs_builder() {
-        let tabs = Tabs::new(vec![
-            Tab::new("A"),
-            Tab::new("B"),
-            Tab::new("C"),
-        ])
-        .with_id(42)
-        .active(1)
-        .tab_height(50.0);
+        let tabs = Tabs::new(vec![Tab::new("A"), Tab::new("B"), Tab::new("C")])
+            .with_id(42)
+            .active(1)
+            .tab_height(50.0);
 
         assert_eq!(tabs.id, Some(42));
         assert_eq!(tabs.active_index, 1);
@@ -335,10 +328,7 @@ mod tests {
 
     #[test]
     fn test_tabs_set_active() {
-        let mut tabs = Tabs::new(vec![
-            Tab::new("A"),
-            Tab::new("B"),
-        ]);
+        let mut tabs = Tabs::new(vec![Tab::new("A"), Tab::new("B")]);
 
         assert_eq!(tabs.active_index(), 0);
 

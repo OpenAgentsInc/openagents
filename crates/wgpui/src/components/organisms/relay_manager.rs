@@ -96,9 +96,11 @@ impl RelayManager {
     }
 
     fn stats_text(&self) -> String {
-        let connected = self.relays.iter().filter(|r| {
-            matches!(r.status, crate::components::atoms::RelayStatus::Connected)
-        }).count();
+        let connected = self
+            .relays
+            .iter()
+            .filter(|r| matches!(r.status, crate::components::atoms::RelayStatus::Connected))
+            .count();
         format!("{}/{} connected", connected, self.relays.len())
     }
 }
@@ -116,10 +118,8 @@ impl Component for RelayManager {
 
         // Header
         let header = self.header_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(header)
-                .with_background(theme::bg::MUTED),
-        );
+        cx.scene
+            .draw_quad(Quad::new(header).with_background(theme::bg::MUTED));
 
         // Title
         let title_run = cx.text.layout(
@@ -169,8 +169,7 @@ impl Component for RelayManager {
             // Hover highlight
             if self.hovered_relay == Some(i) {
                 cx.scene.draw_quad(
-                    Quad::new(row_bounds)
-                        .with_background(theme::bg::HOVER.with_alpha(0.3)),
+                    Quad::new(row_bounds).with_background(theme::bg::HOVER.with_alpha(0.3)),
                 );
             }
         }
@@ -188,7 +187,10 @@ impl Component for RelayManager {
 
             let hint_run = cx.text.layout(
                 "Click + Add to connect to a relay",
-                Point::new(bounds.origin.x + bounds.size.width / 2.0 - 100.0, empty_y + 24.0),
+                Point::new(
+                    bounds.origin.x + bounds.size.width / 2.0 - 100.0,
+                    empty_y + 24.0,
+                ),
                 theme::font_size::XS,
                 theme::text::DISABLED,
             );
@@ -217,7 +219,9 @@ impl Component for RelayManager {
                     }
                 }
 
-                if was_add_hovered != self.add_button_hovered || was_relay_hovered != self.hovered_relay {
+                if was_add_hovered != self.add_button_hovered
+                    || was_relay_hovered != self.hovered_relay
+                {
                     return EventResult::Handled;
                 }
             }

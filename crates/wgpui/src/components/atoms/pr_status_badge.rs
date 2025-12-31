@@ -34,12 +34,12 @@ impl PrStatus {
 
     pub fn color(&self) -> Hsla {
         match self {
-            PrStatus::Draft => Hsla::new(0.0, 0.0, 0.5, 1.0),        // Gray
-            PrStatus::Open => Hsla::new(120.0, 0.7, 0.45, 1.0),      // Green
-            PrStatus::Merged => Hsla::new(280.0, 0.7, 0.55, 1.0),    // Purple
-            PrStatus::Closed => Hsla::new(0.0, 0.7, 0.5, 1.0),       // Red
+            PrStatus::Draft => Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
+            PrStatus::Open => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
+            PrStatus::Merged => Hsla::new(280.0, 0.7, 0.55, 1.0), // Purple
+            PrStatus::Closed => Hsla::new(0.0, 0.7, 0.5, 1.0), // Red
             PrStatus::NeedsReview => Hsla::new(45.0, 0.9, 0.5, 1.0), // Gold
-            PrStatus::Approved => Hsla::new(140.0, 0.8, 0.45, 1.0),  // Bright green
+            PrStatus::Approved => Hsla::new(140.0, 0.8, 0.45, 1.0), // Bright green
             PrStatus::ChangesRequested => Hsla::new(30.0, 0.9, 0.5, 1.0), // Orange
         }
     }
@@ -109,12 +109,22 @@ impl Component for PrStatusBadge {
             let text_w = label.len() as f32 * 6.5;
             let text_x = bounds.origin.x + (bounds.size.width - text_w) / 2.0;
             let text_y = bounds.origin.y + (bounds.size.height - theme::font_size::XS) / 2.0;
-            let run = cx.text.layout(label, Point::new(text_x, text_y), theme::font_size::XS, color);
+            let run = cx.text.layout(
+                label,
+                Point::new(text_x, text_y),
+                theme::font_size::XS,
+                color,
+            );
             cx.scene.draw_text(run);
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

@@ -5,10 +5,7 @@
 use chrono::{DateTime, Local};
 use wgpui::{
     Bounds, Component, EventContext, EventResult, Hsla, InputEvent, MouseButton, PaintContext,
-    Point, Quad,
-    components::TextInput,
-    components::atoms::Model,
-    components::hud::Frame,
+    Point, Quad, components::TextInput, components::atoms::Model, components::hud::Frame,
     components::molecules::ModelSelector,
 };
 
@@ -85,8 +82,11 @@ impl SessionsPanel {
         Self {
             sessions: Vec::new(),
             hovered_index: None,
-            model_selector: ModelSelector::new(Model::ClaudeSonnet)
-                .models(vec![Model::ClaudeSonnet, Model::ClaudeOpus, Model::ClaudeHaiku]),
+            model_selector: ModelSelector::new(Model::ClaudeSonnet).models(vec![
+                Model::ClaudeSonnet,
+                Model::ClaudeOpus,
+                Model::ClaudeHaiku,
+            ]),
             is_running: false,
             new_session_hovered: false,
             interrupt_hovered: false,
@@ -147,7 +147,8 @@ impl SessionsPanel {
         let line_height = 16.0;
         let padding = 16.0;
         let x = bounds.origin.x + padding;
-        let mut y = bounds.origin.y + bounds.size.height - (hotkeys.len() as f32 * line_height) - padding;
+        let mut y =
+            bounds.origin.y + bounds.size.height - (hotkeys.len() as f32 * line_height) - padding;
 
         let text_color = Hsla::new(0.0, 0.0, 0.4, 0.9);
         let key_color = Hsla::new(180.0, 0.4, 0.4, 0.9);
@@ -157,7 +158,9 @@ impl SessionsPanel {
             let key_run = cx.text.layout(key, Point::new(x, y), font_size, key_color);
             cx.scene.draw_text(key_run);
 
-            let desc_run = cx.text.layout(desc, Point::new(x + 60.0, y), font_size, text_color);
+            let desc_run = cx
+                .text
+                .layout(desc, Point::new(x + 60.0, y), font_size, text_color);
             cx.scene.draw_text(desc_run);
 
             y += line_height;
@@ -167,11 +170,23 @@ impl SessionsPanel {
     fn paint_section_header(&self, label: &str, y: f32, bounds: Bounds, cx: &mut PaintContext) {
         let header_color = Hsla::new(0.0, 0.0, 0.5, 0.9);
         let font_size = 9.0;
-        let text = cx.text.layout(label, Point::new(bounds.origin.x + 16.0, y), font_size, header_color);
+        let text = cx.text.layout(
+            label,
+            Point::new(bounds.origin.x + 16.0, y),
+            font_size,
+            header_color,
+        );
         cx.scene.draw_text(text);
     }
 
-    fn paint_session_item(&self, session: &SessionInfo, index: usize, y: f32, bounds: Bounds, cx: &mut PaintContext) {
+    fn paint_session_item(
+        &self,
+        session: &SessionInfo,
+        index: usize,
+        y: f32,
+        bounds: Bounds,
+        cx: &mut PaintContext,
+    ) {
         let padding = 16.0;
         let x = bounds.origin.x + padding;
         let w = bounds.size.width - padding * 2.0;
@@ -182,13 +197,15 @@ impl SessionsPanel {
         // Background on hover
         if is_hovered {
             let hover_bg = Hsla::new(0.0, 0.0, 0.15, 1.0);
-            cx.scene.draw_quad(Quad::new(Bounds::new(x, y, w, item_h)).with_background(hover_bg));
+            cx.scene
+                .draw_quad(Quad::new(Bounds::new(x, y, w, item_h)).with_background(hover_bg));
         }
 
         // Current session accent bar
         if session.is_current {
             let accent = Hsla::new(180.0, 0.5, 0.5, 1.0); // cyan
-            cx.scene.draw_quad(Quad::new(Bounds::new(x, y, 3.0, item_h)).with_background(accent));
+            cx.scene
+                .draw_quad(Quad::new(Bounds::new(x, y, 3.0, item_h)).with_background(accent));
         }
 
         // Session text: "Today 14:32 (sonnet)"
@@ -209,7 +226,14 @@ impl SessionsPanel {
         cx.scene.draw_text(text);
     }
 
-    fn paint_button(&self, label: &str, y: f32, bounds: Bounds, hovered: bool, cx: &mut PaintContext) {
+    fn paint_button(
+        &self,
+        label: &str,
+        y: f32,
+        bounds: Bounds,
+        hovered: bool,
+        cx: &mut PaintContext,
+    ) {
         let padding = 16.0;
         let x = bounds.origin.x + padding;
         let w = bounds.size.width - padding * 2.0;
@@ -225,11 +249,13 @@ impl SessionsPanel {
         cx.scene.draw_quad(
             Quad::new(Bounds::new(x, y, w, h))
                 .with_background(bg)
-                .with_border(border, 1.0)
+                .with_border(border, 1.0),
         );
 
         let text_color = Hsla::new(0.0, 0.0, 0.7, 1.0);
-        let text = cx.text.layout(label, Point::new(x + 8.0, y + 5.0), 10.0, text_color);
+        let text = cx
+            .text
+            .layout(label, Point::new(x + 8.0, y + 5.0), 10.0, text_color);
         cx.scene.draw_text(text);
     }
 
@@ -238,7 +264,12 @@ impl SessionsPanel {
         let item_h = 28.0;
         let header_h = 20.0;
         let y = bounds.origin.y + padding + header_h + (index as f32 * item_h);
-        Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, item_h)
+        Bounds::new(
+            bounds.origin.x + padding,
+            y,
+            bounds.size.width - padding * 2.0,
+            item_h,
+        )
     }
 
     fn new_session_button_bounds(&self, bounds: Bounds) -> Bounds {
@@ -254,7 +285,12 @@ impl SessionsPanel {
             + header_h
             + 32.0
             + 32.0;
-        Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 24.0)
+        Bounds::new(
+            bounds.origin.x + padding,
+            y,
+            bounds.size.width - padding * 2.0,
+            24.0,
+        )
     }
 
     fn resume_header_y(&self, bounds: Bounds) -> f32 {
@@ -268,20 +304,35 @@ impl SessionsPanel {
     fn resume_input_bounds(&self, bounds: Bounds) -> Bounds {
         let padding = 16.0;
         let y = self.resume_header_y(bounds) + 20.0;
-        Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 24.0)
+        Bounds::new(
+            bounds.origin.x + padding,
+            y,
+            bounds.size.width - padding * 2.0,
+            24.0,
+        )
     }
 
     fn resume_fork_bounds(&self, bounds: Bounds) -> Bounds {
         let padding = 16.0;
         let y = self.resume_input_bounds(bounds).origin.y + 32.0;
-        Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 24.0)
+        Bounds::new(
+            bounds.origin.x + padding,
+            y,
+            bounds.size.width - padding * 2.0,
+            24.0,
+        )
     }
 
     fn model_selector_bounds(&self, bounds: Bounds) -> Bounds {
         let padding = 16.0;
         let header_h = 20.0;
         let y = self.new_session_button_bounds(bounds).origin.y + 32.0 + 8.0 + header_h;
-        Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 24.0)
+        Bounds::new(
+            bounds.origin.x + padding,
+            y,
+            bounds.size.width - padding * 2.0,
+            24.0,
+        )
     }
 
     fn interrupt_button_bounds(&self, bounds: Bounds) -> Bounds {
@@ -345,13 +396,23 @@ impl Panel for SessionsPanel {
         self.resume_at_input.paint(resume_input_bounds, cx);
         y = resume_input_bounds.origin.y + 32.0;
 
-        let fork_label = if self.fork_session { "Fork session: on" } else { "Fork session: off" };
+        let fork_label = if self.fork_session {
+            "Fork session: on"
+        } else {
+            "Fork session: off"
+        };
         self.paint_button(fork_label, y, bounds, self.fork_hovered, cx);
         y += 32.0;
 
         // New Session button
         let new_btn_bounds = self.new_session_button_bounds(bounds);
-        self.paint_button("+ New Session", new_btn_bounds.origin.y, bounds, self.new_session_hovered, cx);
+        self.paint_button(
+            "+ New Session",
+            new_btn_bounds.origin.y,
+            bounds,
+            self.new_session_hovered,
+            cx,
+        );
         y = new_btn_bounds.origin.y + 32.0;
 
         // MODEL section
@@ -360,7 +421,12 @@ impl Panel for SessionsPanel {
         y += header_h;
 
         // Model selector
-        let model_bounds = Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 24.0);
+        let model_bounds = Bounds::new(
+            bounds.origin.x + padding,
+            y,
+            bounds.size.width - padding * 2.0,
+            24.0,
+        );
         self.model_selector.paint(model_bounds, cx);
         y += 32.0;
 

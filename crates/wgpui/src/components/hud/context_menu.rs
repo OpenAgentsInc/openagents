@@ -207,7 +207,9 @@ impl ContextMenu {
             return;
         }
 
-        let selectable: Vec<usize> = self.items.iter()
+        let selectable: Vec<usize> = self
+            .items
+            .iter()
             .enumerate()
             .filter(|(_, item)| !item.is_separator && !item.disabled)
             .map(|(i, _)| i)
@@ -233,7 +235,9 @@ impl ContextMenu {
             return;
         }
 
-        let selectable: Vec<usize> = self.items.iter()
+        let selectable: Vec<usize> = self
+            .items
+            .iter()
             .enumerate()
             .filter(|(_, item)| !item.is_separator && !item.disabled)
             .map(|(i, _)| i)
@@ -244,7 +248,10 @@ impl ContextMenu {
         }
 
         let current = self.selected.unwrap_or(selectable[selectable.len() - 1]);
-        let current_pos = selectable.iter().position(|&i| i == current).unwrap_or(selectable.len() - 1);
+        let current_pos = selectable
+            .iter()
+            .position(|&i| i == current)
+            .unwrap_or(selectable.len() - 1);
         let new_pos = (current_pos + 1) % selectable.len();
         self.selected = Some(selectable[new_pos]);
     }
@@ -253,36 +260,51 @@ impl ContextMenu {
     pub fn confirm(&mut self) -> Option<String> {
         if let Some(idx) = self.selected
             && let Some(item) = self.items.get(idx)
-                && !item.disabled && !item.is_separator {
-                    if item.has_submenu() {
-                        self.open_submenu = Some(idx);
-                        return None;
-                    }
-                    let id = item.id.clone();
-                    self.last_selected = Some(id.clone());
-                    self.close();
-                    return Some(id);
-                }
+            && !item.disabled
+            && !item.is_separator
+        {
+            if item.has_submenu() {
+                self.open_submenu = Some(idx);
+                return None;
+            }
+            let id = item.id.clone();
+            self.last_selected = Some(id.clone());
+            self.close();
+            return Some(id);
+        }
         None
     }
 
     /// Calculate menu bounds
     fn calculate_bounds(&self, viewport: Bounds) -> Bounds {
         let mut width = self.min_width;
-        
+
         // Calculate width based on longest item
         for item in &self.items {
             let label_width = item.label.len() as f32 * 8.0;
-            let shortcut_width = item.shortcut.as_ref().map(|s| s.len() as f32 * 8.0 + 20.0).unwrap_or(0.0);
+            let shortcut_width = item
+                .shortcut
+                .as_ref()
+                .map(|s| s.len() as f32 * 8.0 + 20.0)
+                .unwrap_or(0.0);
             let item_width = label_width + shortcut_width + self.padding * 4.0 + 40.0;
             width = width.max(item_width);
         }
         width = width.min(self.max_width);
 
         // Calculate height
-        let height: f32 = self.items.iter()
-            .map(|item| if item.is_separator { self.separator_height } else { self.item_height })
-            .sum::<f32>() + self.padding * 2.0;
+        let height: f32 = self
+            .items
+            .iter()
+            .map(|item| {
+                if item.is_separator {
+                    self.separator_height
+                } else {
+                    self.item_height
+                }
+            })
+            .sum::<f32>()
+            + self.padding * 2.0;
 
         // Adjust position to stay within viewport
         let mut x = self.position.x;
@@ -308,11 +330,14 @@ impl ContextMenu {
 
         let mut y = menu_bounds.origin.y + self.padding;
         for (i, item) in self.items.iter().enumerate() {
-            let height = if item.is_separator { self.separator_height } else { self.item_height };
-            if point.y >= y && point.y < y + height
-                && !item.is_separator {
-                    return Some(i);
-                }
+            let height = if item.is_separator {
+                self.separator_height
+            } else {
+                self.item_height
+            };
+            if point.y >= y && point.y < y + height && !item.is_separator {
+                return Some(i);
+            }
             y += height;
         }
         None
@@ -348,7 +373,8 @@ impl Component for ContextMenu {
                         sep_y,
                         content_width,
                         1.0,
-                    )).with_background(theme::border::DEFAULT),
+                    ))
+                    .with_background(theme::border::DEFAULT),
                 );
                 y += self.separator_height;
                 continue;
@@ -364,9 +390,8 @@ impl Component for ContextMenu {
 
             // Draw selection highlight
             if is_selected && !item.disabled {
-                cx.scene.draw_quad(
-                    Quad::new(item_bounds).with_background(theme::bg::MUTED),
-                );
+                cx.scene
+                    .draw_quad(Quad::new(item_bounds).with_background(theme::bg::MUTED));
             }
 
             // Draw checkbox/radio if present
@@ -377,7 +402,11 @@ impl Component for ContextMenu {
                     check_char,
                     Point::new(text_x, y + self.item_height * 0.65),
                     theme::font_size::SM,
-                    if item.disabled { theme::text::MUTED } else { theme::accent::PRIMARY },
+                    if item.disabled {
+                        theme::text::MUTED
+                    } else {
+                        theme::accent::PRIMARY
+                    },
                 );
                 cx.scene.draw_text(check_run);
                 text_x += 20.0;
@@ -389,7 +418,11 @@ impl Component for ContextMenu {
                     icon,
                     Point::new(text_x, y + self.item_height * 0.65),
                     theme::font_size::SM,
-                    if item.disabled { theme::text::MUTED } else { theme::text::SECONDARY },
+                    if item.disabled {
+                        theme::text::MUTED
+                    } else {
+                        theme::text::SECONDARY
+                    },
                 );
                 cx.scene.draw_text(icon_run);
                 text_x += 20.0;
@@ -411,7 +444,9 @@ impl Component for ContextMenu {
 
             // Draw shortcut on right side
             if let Some(ref shortcut) = item.shortcut {
-                let shortcut_x = item_bounds.origin.x + item_bounds.size.width - 8.0 - shortcut.len() as f32 * 7.0;
+                let shortcut_x = item_bounds.origin.x + item_bounds.size.width
+                    - 8.0
+                    - shortcut.len() as f32 * 7.0;
                 let shortcut_run = cx.text.layout(
                     shortcut,
                     Point::new(shortcut_x, y + self.item_height * 0.65),
@@ -428,7 +463,11 @@ impl Component for ContextMenu {
                     "›",
                     Point::new(arrow_x, y + self.item_height * 0.65),
                     theme::font_size::SM,
-                    if item.disabled { theme::text::MUTED } else { theme::text::PRIMARY },
+                    if item.disabled {
+                        theme::text::MUTED
+                    } else {
+                        theme::text::PRIMARY
+                    },
                 );
                 cx.scene.draw_text(arrow_run);
             }
@@ -461,10 +500,11 @@ impl Component for ContextMenu {
                 }
 
                 if *button == MouseButton::Left
-                    && let Some(idx) = self.item_at_point(position, menu_bounds) {
-                        self.selected = Some(idx);
-                        self.confirm();
-                    }
+                    && let Some(idx) = self.item_at_point(position, menu_bounds)
+                {
+                    self.selected = Some(idx);
+                    self.confirm();
+                }
                 EventResult::Handled
             }
             InputEvent::KeyDown { key, .. } => {
@@ -488,9 +528,14 @@ impl Component for ContextMenu {
                     Key::Named(crate::NamedKey::ArrowRight) => {
                         // Open submenu
                         if let Some(idx) = self.selected
-                            && self.items.get(idx).map(|i| i.has_submenu()).unwrap_or(false) {
-                                self.open_submenu = Some(idx);
-                            }
+                            && self
+                                .items
+                                .get(idx)
+                                .map(|i| i.has_submenu())
+                                .unwrap_or(false)
+                        {
+                            self.open_submenu = Some(idx);
+                        }
                         EventResult::Handled
                     }
                     Key::Named(crate::NamedKey::ArrowLeft) => {
@@ -524,7 +569,7 @@ mod tests {
         let item = MenuItem::new("edit.copy", "Copy")
             .shortcut("Cmd+C")
             .icon("📋");
-        
+
         assert_eq!(item.id, "edit.copy");
         assert_eq!(item.label, "Copy");
         assert_eq!(item.shortcut, Some("Cmd+C".to_string()));
@@ -539,12 +584,11 @@ mod tests {
 
     #[test]
     fn test_submenu() {
-        let item = MenuItem::new("file", "File")
-            .submenu(vec![
-                MenuItem::new("file.new", "New"),
-                MenuItem::new("file.open", "Open"),
-            ]);
-        
+        let item = MenuItem::new("file", "File").submenu(vec![
+            MenuItem::new("file.new", "New"),
+            MenuItem::new("file.open", "Open"),
+        ]);
+
         assert!(item.has_submenu());
         assert_eq!(item.submenu.len(), 2);
     }
@@ -604,21 +648,20 @@ mod tests {
 
         menu.selected = Some(0);
         let result = menu.confirm();
-        
+
         assert_eq!(result, Some("copy".to_string()));
         assert!(!menu.is_open());
     }
 
     #[test]
     fn test_context_menu_disabled_confirm() {
-        let mut menu = ContextMenu::new().items(vec![
-            MenuItem::new("disabled", "Disabled").disabled(true),
-        ]);
+        let mut menu =
+            ContextMenu::new().items(vec![MenuItem::new("disabled", "Disabled").disabled(true)]);
         menu.open(Point::new(0.0, 0.0));
 
         menu.selected = Some(0);
         let result = menu.confirm();
-        
+
         assert_eq!(result, None);
         assert!(menu.is_open()); // Should stay open
     }
@@ -657,7 +700,8 @@ mod tests {
         menu.open(Point::new(10.0, 10.0));
         let menu_bounds = menu.calculate_bounds(viewport);
 
-        let separator_y = menu_bounds.origin.y + menu.padding + menu.item_height + menu.separator_height / 2.0;
+        let separator_y =
+            menu_bounds.origin.y + menu.padding + menu.item_height + menu.separator_height / 2.0;
         let sep_point = Point::new(menu_bounds.origin.x + menu.padding + 1.0, separator_y);
         assert!(menu.item_at_point(sep_point, menu_bounds).is_none());
 
@@ -686,7 +730,10 @@ mod tests {
         );
 
         let mut cx = EventContext::new();
-        let move_event = InputEvent::MouseMove { x: point.x, y: point.y };
+        let move_event = InputEvent::MouseMove {
+            x: point.x,
+            y: point.y,
+        };
         let result = menu.event(&move_event, viewport, &mut cx);
         assert_eq!(result, EventResult::Handled);
         assert_eq!(menu.hovered, Some(0));
@@ -725,9 +772,7 @@ mod tests {
     #[test]
     fn test_context_menu_keyboard_submenu_toggle() {
         let mut menu = ContextMenu::new().items(vec![
-            MenuItem::new("parent", "Parent").submenu(vec![
-                MenuItem::new("child", "Child"),
-            ]),
+            MenuItem::new("parent", "Parent").submenu(vec![MenuItem::new("child", "Child")]),
             MenuItem::new("solo", "Solo"),
         ]);
         let viewport = Bounds::new(0.0, 0.0, 300.0, 200.0);

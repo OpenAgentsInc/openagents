@@ -77,8 +77,8 @@ impl Component for StreamingIndicator {
             return;
         }
 
-        let total_width = self.dot_count as f32 * self.dot_size
-            + (self.dot_count - 1) as f32 * self.gap;
+        let total_width =
+            self.dot_count as f32 * self.dot_size + (self.dot_count - 1) as f32 * self.gap;
         let start_x = bounds.origin.x + (bounds.size.width - total_width) / 2.0;
         let center_y = bounds.origin.y + (bounds.size.height - self.dot_size) / 2.0;
 
@@ -95,7 +95,12 @@ impl Component for StreamingIndicator {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -104,8 +109,8 @@ impl Component for StreamingIndicator {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let total_width = self.dot_count as f32 * self.dot_size
-            + (self.dot_count - 1) as f32 * self.gap;
+        let total_width =
+            self.dot_count as f32 * self.dot_size + (self.dot_count - 1) as f32 * self.gap;
         (Some(total_width), Some(self.dot_size))
     }
 }

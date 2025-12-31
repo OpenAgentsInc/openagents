@@ -28,10 +28,10 @@ impl BountyStatus {
 
     pub fn color(&self) -> Hsla {
         match self {
-            BountyStatus::Active => Hsla::new(45.0, 0.95, 0.55, 1.0),   // Gold
-            BountyStatus::Claimed => Hsla::new(200.0, 0.7, 0.5, 1.0),  // Blue
-            BountyStatus::Paid => Hsla::new(120.0, 0.7, 0.45, 1.0),    // Green
-            BountyStatus::Expired => Hsla::new(0.0, 0.0, 0.5, 1.0),    // Gray
+            BountyStatus::Active => Hsla::new(45.0, 0.95, 0.55, 1.0), // Gold
+            BountyStatus::Claimed => Hsla::new(200.0, 0.7, 0.5, 1.0), // Blue
+            BountyStatus::Paid => Hsla::new(120.0, 0.7, 0.45, 1.0),   // Green
+            BountyStatus::Expired => Hsla::new(0.0, 0.0, 0.5, 1.0),   // Gray
         }
     }
 }
@@ -129,7 +129,12 @@ impl Component for BountyBadge {
         cx.scene.draw_text(sats_run);
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

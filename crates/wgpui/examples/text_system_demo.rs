@@ -12,19 +12,37 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use wgpui::{
-    Animation, AnimationController, Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem, theme,
-    // New text system types
-    LineWrapper, LineFragment, Boundary, TruncateFrom,
-    LineLayout, ShapedRun, ShapedGlyph, FontRun,
-    LineLayoutCache,
-    // Markdown
-    StreamingMarkdown, MarkdownRenderer,
-};
-use wgpui::components::hud::{
-    CornerConfig, DotsGrid, DotsOrigin, DotShape, Frame,
-};
+use wgpui::components::hud::{CornerConfig, DotShape, DotsGrid, DotsOrigin, Frame};
 use wgpui::renderer::Renderer;
+use wgpui::{
+    Animation,
+    AnimationController,
+    Boundary,
+    Bounds,
+    Component,
+    Easing,
+    FontRun,
+    Hsla,
+    LineFragment,
+    LineLayout,
+    LineLayoutCache,
+    // New text system types
+    LineWrapper,
+    MarkdownRenderer,
+    PaintContext,
+    Point,
+    Quad,
+    Scene,
+    ShapedGlyph,
+    ShapedRun,
+    Size,
+    // Markdown
+    StreamingMarkdown,
+    SvgQuad,
+    TextSystem,
+    TruncateFrom,
+    theme,
+};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -410,7 +428,9 @@ impl ApplicationHandler for App {
                 }
 
                 // Pass scale_factor to prepare() for logical->physical coordinate conversion
-                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
+                state
+                    .renderer
+                    .prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));
@@ -442,11 +462,13 @@ fn build_text_demo(
     let _frame_progress = demo.frame_anim.tick(delta);
 
     // Background
-    scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+    scene
+        .draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
     // Paint static dots grid as background effect (white, no animation)
     let mut cx = PaintContext::new(scene, text_system, 1.0);
-    demo.dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
+    demo.dots_grid
+        .paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
 
     let mut y = margin - demo.scroll_offset;
 
@@ -480,7 +502,14 @@ fn build_text_demo(
 
     // Full-width streaming markdown demo at the bottom
     let bottom_y = left_y.max(right_y) + 24.0;
-    demo_streaming_markdown(scene, text_system, demo, margin, width - margin * 2.0, bottom_y);
+    demo_streaming_markdown(
+        scene,
+        text_system,
+        demo,
+        margin,
+        width - margin * 2.0,
+        bottom_y,
+    );
 }
 
 fn draw_header(
@@ -510,24 +539,45 @@ fn draw_header(
     let title = "wgpui Text System Demo";
     let subtitle = format!(
         "Frame {} | Wrap: {}px | Keys: -/= wrap width, R restart markdown",
-        demo.frame_count,
-        demo.wrap_width,
+        demo.frame_count, demo.wrap_width,
     );
 
-    let title_run = text_system.layout(title, Point::new(margin + 12.0, *y + 24.0), 28.0, theme::text::PRIMARY);
+    let title_run = text_system.layout(
+        title,
+        Point::new(margin + 12.0, *y + 24.0),
+        28.0,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(title_run);
 
-    let subtitle_run = text_system.layout(&subtitle, Point::new(margin + 12.0, *y + 54.0), 12.0, theme::text::MUTED);
+    let subtitle_run = text_system.layout(
+        &subtitle,
+        Point::new(margin + 12.0, *y + 54.0),
+        12.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(subtitle_run);
 
     *y += 92.0;
 }
 
-fn draw_section_header(scene: &mut Scene, text_system: &mut TextSystem, x: f32, y: &mut f32, title: &str) {
-    let run = text_system.layout(title, Point::new(x, *y + 14.0), 16.0, theme::accent::PRIMARY);
+fn draw_section_header(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    x: f32,
+    y: &mut f32,
+    title: &str,
+) {
+    let run = text_system.layout(
+        title,
+        Point::new(x, *y + 14.0),
+        16.0,
+        theme::accent::PRIMARY,
+    );
     scene.draw_text(run);
     scene.draw_quad(
-        Quad::new(Bounds::new(x, *y + 32.0, 200.0, 1.0)).with_background(theme::accent::PRIMARY.with_alpha(0.4)),
+        Quad::new(Bounds::new(x, *y + 32.0, 200.0, 1.0))
+            .with_background(theme::accent::PRIMARY.with_alpha(0.4)),
     );
     *y += 44.0;
 }
@@ -573,9 +623,18 @@ fn demo_line_wrapping(
 
     for (i, boundary) in boundaries.iter().enumerate() {
         let line_text = &text[line_start..boundary.ix];
-        let indent = if i > 0 { boundary.next_indent as f32 * char_width } else { 0.0 };
+        let indent = if i > 0 {
+            boundary.next_indent as f32 * char_width
+        } else {
+            0.0
+        };
 
-        let run = text_system.layout(line_text.trim_start(), Point::new(x + 8.0 + indent, line_y), font_size, theme::text::PRIMARY);
+        let run = text_system.layout(
+            line_text.trim_start(),
+            Point::new(x + 8.0 + indent, line_y),
+            font_size,
+            theme::text::PRIMARY,
+        );
         scene.draw_text(run);
 
         line_start = boundary.ix;
@@ -585,13 +644,23 @@ fn demo_line_wrapping(
     // Draw remaining text
     let remaining = &text[line_start..];
     if !remaining.is_empty() {
-        let run = text_system.layout(remaining.trim_start(), Point::new(x + 8.0, line_y), font_size, theme::text::PRIMARY);
+        let run = text_system.layout(
+            remaining.trim_start(),
+            Point::new(x + 8.0, line_y),
+            font_size,
+            theme::text::PRIMARY,
+        );
         scene.draw_text(run);
     }
 
     // Label
     let label = format!("{} wrap boundaries", boundaries.len());
-    let label_run = text_system.layout(&label, Point::new(x + 8.0, *y + 180.0), 11.0, theme::text::MUTED);
+    let label_run = text_system.layout(
+        &label,
+        Point::new(x + 8.0, *y + 180.0),
+        11.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(label_run);
 
     *y += 210.0;
@@ -618,29 +687,54 @@ fn demo_text_decorations(
     let mut text_y = *y + 16.0;
 
     // Normal text
-    let run = text_system.layout("Normal text without decorations", Point::new(text_x, text_y), font_size, theme::text::PRIMARY);
+    let run = text_system.layout(
+        "Normal text without decorations",
+        Point::new(text_x, text_y),
+        font_size,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(run);
     text_y += line_height;
 
     // Underline (simulated with a line)
     let underline_text = "Underlined text example";
-    let run = text_system.layout(underline_text, Point::new(text_x, text_y), font_size, theme::text::PRIMARY);
+    let run = text_system.layout(
+        underline_text,
+        Point::new(text_x, text_y),
+        font_size,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(run);
     let underline_width = underline_text.len() as f32 * font_size * 0.6;
     scene.draw_quad(
-        Quad::new(Bounds::new(text_x, text_y + font_size + 2.0, underline_width, 1.5))
-            .with_background(theme::accent::PRIMARY),
+        Quad::new(Bounds::new(
+            text_x,
+            text_y + font_size + 2.0,
+            underline_width,
+            1.5,
+        ))
+        .with_background(theme::accent::PRIMARY),
     );
     text_y += line_height;
 
     // Strikethrough (simulated)
     let strike_text = "Strikethrough text example";
-    let run = text_system.layout(strike_text, Point::new(text_x, text_y), font_size, theme::text::MUTED);
+    let run = text_system.layout(
+        strike_text,
+        Point::new(text_x, text_y),
+        font_size,
+        theme::text::MUTED,
+    );
     scene.draw_text(run);
     let strike_width = strike_text.len() as f32 * font_size * 0.6;
     scene.draw_quad(
-        Quad::new(Bounds::new(text_x, text_y + font_size * 0.5, strike_width, 1.5))
-            .with_background(theme::accent::RED),
+        Quad::new(Bounds::new(
+            text_x,
+            text_y + font_size * 0.5,
+            strike_width,
+            1.5,
+        ))
+        .with_background(theme::accent::RED),
     );
     text_y += line_height;
 
@@ -648,10 +742,20 @@ fn demo_text_decorations(
     let highlight_text = "Highlighted text";
     let highlight_width = highlight_text.len() as f32 * font_size * 0.6;
     scene.draw_quad(
-        Quad::new(Bounds::new(text_x - 2.0, text_y - 2.0, highlight_width + 4.0, font_size + 6.0))
-            .with_background(theme::accent::PRIMARY.with_alpha(0.3)),
+        Quad::new(Bounds::new(
+            text_x - 2.0,
+            text_y - 2.0,
+            highlight_width + 4.0,
+            font_size + 6.0,
+        ))
+        .with_background(theme::accent::PRIMARY.with_alpha(0.3)),
     );
-    let run = text_system.layout(highlight_text, Point::new(text_x, text_y), font_size, theme::text::PRIMARY);
+    let run = text_system.layout(
+        highlight_text,
+        Point::new(text_x, text_y),
+        font_size,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(run);
 
     *y += 150.0;
@@ -677,7 +781,12 @@ fn demo_font_sizes(
 
     for size in sizes {
         let text = format!("{}px - The quick brown fox", size as i32);
-        let run = text_system.layout(&text, Point::new(x + 12.0, text_y), size, theme::text::PRIMARY);
+        let run = text_system.layout(
+            &text,
+            Point::new(x + 12.0, text_y),
+            size,
+            theme::text::PRIMARY,
+        );
         scene.draw_text(run);
         text_y += size * 1.3 + 4.0;
     }
@@ -714,10 +823,20 @@ fn demo_unicode_support(
     ];
 
     for (label, text) in samples {
-        let label_run = text_system.layout(label, Point::new(x + 12.0, text_y), 11.0, theme::text::MUTED);
+        let label_run = text_system.layout(
+            label,
+            Point::new(x + 12.0, text_y),
+            11.0,
+            theme::text::MUTED,
+        );
         scene.draw_text(label_run);
 
-        let text_run = text_system.layout(text, Point::new(x + 100.0, text_y), font_size, theme::text::PRIMARY);
+        let text_run = text_system.layout(
+            text,
+            Point::new(x + 100.0, text_y),
+            font_size,
+            theme::text::PRIMARY,
+        );
         scene.draw_text(text_run);
 
         text_y += line_height;
@@ -747,7 +866,12 @@ fn demo_line_wrapper_api(
     let mut text_y = *y + 12.0;
 
     // Show word character detection
-    let title_run = text_system.layout("Word Character Detection:", Point::new(x + 8.0, text_y), font_size, theme::accent::GREEN);
+    let title_run = text_system.layout(
+        "Word Character Detection:",
+        Point::new(x + 8.0, text_y),
+        font_size,
+        theme::accent::GREEN,
+    );
     scene.draw_text(title_run);
     text_y += line_height;
 
@@ -760,7 +884,12 @@ fn demo_line_wrapper_api(
             info.push_str(&format!("'{}' ", c));
         }
     }
-    let run = text_system.layout(&info, Point::new(x + 8.0, text_y), 12.0, theme::text::PRIMARY);
+    let run = text_system.layout(
+        &info,
+        Point::new(x + 8.0, text_y),
+        12.0,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(run);
     text_y += line_height;
 
@@ -771,12 +900,22 @@ fn demo_line_wrapper_api(
             info.push_str(&format!("'{}' ", display));
         }
     }
-    let run = text_system.layout(&info, Point::new(x + 8.0, text_y), 12.0, theme::text::PRIMARY);
+    let run = text_system.layout(
+        &info,
+        Point::new(x + 8.0, text_y),
+        12.0,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(run);
     text_y += line_height * 1.5;
 
     // Show wrap boundaries for a sample text
-    let title_run = text_system.layout("Wrap Boundaries Demo:", Point::new(x + 8.0, text_y), font_size, theme::accent::GREEN);
+    let title_run = text_system.layout(
+        "Wrap Boundaries Demo:",
+        Point::new(x + 8.0, text_y),
+        font_size,
+        theme::accent::GREEN,
+    );
     scene.draw_text(title_run);
     text_y += line_height;
 
@@ -787,12 +926,13 @@ fn demo_line_wrapper_api(
     let fragments = [LineFragment::text(sample)];
     let boundaries: Vec<_> = wrapper.wrap_line(&fragments, 120.0).collect();
 
-    let info = format!(
-        "  \"{}\" @ 120px = {} boundaries",
-        sample,
-        boundaries.len()
+    let info = format!("  \"{}\" @ 120px = {} boundaries", sample, boundaries.len());
+    let run = text_system.layout(
+        &info,
+        Point::new(x + 8.0, text_y),
+        11.0,
+        theme::text::PRIMARY,
     );
-    let run = text_system.layout(&info, Point::new(x + 8.0, text_y), 11.0, theme::text::PRIMARY);
     scene.draw_text(run);
     text_y += line_height;
 
@@ -830,25 +970,55 @@ fn demo_truncation(
     let mut wrapper = LineWrapper::new_monospace(0, font_size, char_width);
 
     // Original
-    let run = text_system.layout("Original:", Point::new(x + 8.0, text_y), 11.0, theme::text::MUTED);
+    let run = text_system.layout(
+        "Original:",
+        Point::new(x + 8.0, text_y),
+        11.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(run);
-    let run = text_system.layout(original, Point::new(x + 80.0, text_y), font_size, theme::text::PRIMARY);
+    let run = text_system.layout(
+        original,
+        Point::new(x + 80.0, text_y),
+        font_size,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(run);
     text_y += line_height;
 
     // Truncate from end
     let truncated_end = wrapper.truncate_line(original, 200.0, "...", TruncateFrom::End);
-    let run = text_system.layout("End:", Point::new(x + 8.0, text_y), 11.0, theme::text::MUTED);
+    let run = text_system.layout(
+        "End:",
+        Point::new(x + 8.0, text_y),
+        11.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(run);
-    let run = text_system.layout(&truncated_end, Point::new(x + 80.0, text_y), font_size, theme::text::PRIMARY);
+    let run = text_system.layout(
+        &truncated_end,
+        Point::new(x + 80.0, text_y),
+        font_size,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(run);
     text_y += line_height;
 
     // Truncate from start
     let truncated_start = wrapper.truncate_line(original, 200.0, "...", TruncateFrom::Start);
-    let run = text_system.layout("Start:", Point::new(x + 8.0, text_y), 11.0, theme::text::MUTED);
+    let run = text_system.layout(
+        "Start:",
+        Point::new(x + 8.0, text_y),
+        11.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(run);
-    let run = text_system.layout(&truncated_start, Point::new(x + 80.0, text_y), font_size, theme::text::PRIMARY);
+    let run = text_system.layout(
+        &truncated_start,
+        Point::new(x + 80.0, text_y),
+        font_size,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(run);
     text_y += line_height;
 
@@ -857,9 +1027,19 @@ fn demo_truncation(
     for w in widths {
         let t = wrapper.truncate_line(original, w, "...", TruncateFrom::End);
         let label = format!("{:.0}px:", w);
-        let run = text_system.layout(&label, Point::new(x + 8.0, text_y), 11.0, theme::text::MUTED);
+        let run = text_system.layout(
+            &label,
+            Point::new(x + 8.0, text_y),
+            11.0,
+            theme::text::MUTED,
+        );
         scene.draw_text(run);
-        let run = text_system.layout(&t, Point::new(x + 80.0, text_y), font_size, theme::text::PRIMARY);
+        let run = text_system.layout(
+            &t,
+            Point::new(x + 80.0, text_y),
+            font_size,
+            theme::text::PRIMARY,
+        );
         scene.draw_text(run);
         text_y += line_height;
     }
@@ -901,10 +1081,7 @@ fn demo_line_layout_api(
         })
         .collect();
 
-    let run = ShapedRun {
-        font_id: 0,
-        glyphs,
-    };
+    let run = ShapedRun { font_id: 0, glyphs };
 
     let layout = LineLayout {
         font_size,
@@ -916,12 +1093,13 @@ fn demo_line_layout_api(
     };
 
     // Display layout info
-    let info = format!(
-        "Text: \"{}\" ({} chars)",
-        sample_text,
-        layout.len
+    let info = format!("Text: \"{}\" ({} chars)", sample_text, layout.len);
+    let run = text_system.layout(
+        &info,
+        Point::new(x + 8.0, text_y),
+        12.0,
+        theme::text::PRIMARY,
     );
-    let run = text_system.layout(&info, Point::new(x + 8.0, text_y), 12.0, theme::text::PRIMARY);
     scene.draw_text(run);
     text_y += line_height;
 
@@ -929,13 +1107,23 @@ fn demo_line_layout_api(
         "Width: {:.1}px, Ascent: {:.1}, Descent: {:.1}",
         layout.width, layout.ascent, layout.descent
     );
-    let run = text_system.layout(&info, Point::new(x + 8.0, text_y), 12.0, theme::text::PRIMARY);
+    let run = text_system.layout(
+        &info,
+        Point::new(x + 8.0, text_y),
+        12.0,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(run);
     text_y += line_height;
 
     // Index queries
     let test_x_values = [0.0, 30.0, 60.0, 100.0];
-    let title = text_system.layout("Position queries:", Point::new(x + 8.0, text_y), 12.0, theme::accent::GREEN);
+    let title = text_system.layout(
+        "Position queries:",
+        Point::new(x + 8.0, text_y),
+        12.0,
+        theme::accent::GREEN,
+    );
     scene.draw_text(title);
     text_y += line_height;
 
@@ -972,44 +1160,76 @@ fn demo_cache_stats(
     let mut text_y = *y + 12.0;
 
     // Simulate some cache activity
-    let font_runs = vec![FontRun { len: 10, font_id: 0 }];
-    let _ = demo.layout_cache.layout_line("test text", 14.0, &font_runs, |_text, _size, _runs| {
-        LineLayout {
-            font_size: 14.0,
-            width: 100.0,
-            ascent: 12.0,
-            descent: 3.0,
-            runs: vec![],
-            len: 9,
-        }
-    });
+    let font_runs = vec![FontRun {
+        len: 10,
+        font_id: 0,
+    }];
+    let _ = demo
+        .layout_cache
+        .layout_line("test text", 14.0, &font_runs, |_text, _size, _runs| {
+            LineLayout {
+                font_size: 14.0,
+                width: 100.0,
+                ascent: 12.0,
+                descent: 3.0,
+                runs: vec![],
+                len: 9,
+            }
+        });
 
     let stats = demo.layout_cache.stats();
 
     let info = format!("Current lines: {}", stats.current_lines);
-    let run = text_system.layout(&info, Point::new(x + 8.0, text_y), font_size, theme::text::PRIMARY);
+    let run = text_system.layout(
+        &info,
+        Point::new(x + 8.0, text_y),
+        font_size,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(run);
     text_y += line_height;
 
     let info = format!("Current wrapped: {}", stats.current_wrapped_lines);
-    let run = text_system.layout(&info, Point::new(x + 8.0, text_y), font_size, theme::text::PRIMARY);
+    let run = text_system.layout(
+        &info,
+        Point::new(x + 8.0, text_y),
+        font_size,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(run);
     text_y += line_height;
 
     let info = format!("Previous lines: {}", stats.previous_lines);
-    let run = text_system.layout(&info, Point::new(x + 8.0, text_y), font_size, theme::accent::GREEN);
+    let run = text_system.layout(
+        &info,
+        Point::new(x + 8.0, text_y),
+        font_size,
+        theme::accent::GREEN,
+    );
     scene.draw_text(run);
     text_y += line_height;
 
     let info = format!("Previous wrapped: {}", stats.previous_wrapped_lines);
-    let run = text_system.layout(&info, Point::new(x + 8.0, text_y), font_size, theme::accent::GREEN);
+    let run = text_system.layout(
+        &info,
+        Point::new(x + 8.0, text_y),
+        font_size,
+        theme::accent::GREEN,
+    );
     scene.draw_text(run);
     text_y += line_height;
 
-    let total = stats.current_lines + stats.current_wrapped_lines
-              + stats.previous_lines + stats.previous_wrapped_lines;
+    let total = stats.current_lines
+        + stats.current_wrapped_lines
+        + stats.previous_lines
+        + stats.previous_wrapped_lines;
     let info = format!("Total cached: {}", total);
-    let run = text_system.layout(&info, Point::new(x + 8.0, text_y), font_size, theme::text::PRIMARY);
+    let run = text_system.layout(
+        &info,
+        Point::new(x + 8.0, text_y),
+        font_size,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(run);
 
     *y += 130.0;
@@ -1043,7 +1263,12 @@ fn demo_svg_rendering(
     let arrow_svg = b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><polygon points=\"50,10 90,90 50,70 10,90\" fill=\"rgb(33,150,243)\"/></svg>";
 
     // Title
-    let title_run = text_system.layout("SVG Icons at different sizes:", Point::new(x + 8.0, text_y), 12.0, theme::text::PRIMARY);
+    let title_run = text_system.layout(
+        "SVG Icons at different sizes:",
+        Point::new(x + 8.0, text_y),
+        12.0,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(title_run);
     text_y += line_height + 8.0;
 
@@ -1071,7 +1296,12 @@ fn demo_svg_rendering(
     text_y += 60.0;
 
     // Draw with tint colors
-    let tint_title = text_system.layout("With color tinting:", Point::new(x + 8.0, text_y), 12.0, theme::text::PRIMARY);
+    let tint_title = text_system.layout(
+        "With color tinting:",
+        Point::new(x + 8.0, text_y),
+        12.0,
+        theme::text::PRIMARY,
+    );
     scene.draw_text(tint_title);
     text_y += line_height + 8.0;
 
@@ -1092,7 +1322,12 @@ fn demo_svg_rendering(
 
     text_y += 48.0;
 
-    let info_run = text_system.layout("SVGs are rasterized to RGBA and cached by content hash + size", Point::new(x + 8.0, text_y), 10.0, theme::text::MUTED);
+    let info_run = text_system.layout(
+        "SVGs are rasterized to RGBA and cached by content hash + size",
+        Point::new(x + 8.0, text_y),
+        10.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(info_run);
 
     *y += 190.0;
@@ -1111,17 +1346,36 @@ fn demo_streaming_markdown(
     let font_size = 14.0;
 
     // Simple test: render "AAAA" with background showing measured width
-    let text_run = text_system.layout_styled("AAAA", Point::new(x, debug_y), font_size, theme::text::PRIMARY, wgpui::FontStyle::normal());
+    let text_run = text_system.layout_styled(
+        "AAAA",
+        Point::new(x, debug_y),
+        font_size,
+        theme::text::PRIMARY,
+        wgpui::FontStyle::normal(),
+    );
 
     // Draw background for expected width
     let expected_width = text_system.measure("AAAA", font_size);
-    scene.draw_quad(Quad::new(Bounds::new(x, debug_y - 2.0, expected_width, font_size + 4.0)).with_background(theme::accent::RED.with_alpha(0.3)));
+    scene.draw_quad(
+        Quad::new(Bounds::new(
+            x,
+            debug_y - 2.0,
+            expected_width,
+            font_size + 4.0,
+        ))
+        .with_background(theme::accent::RED.with_alpha(0.3)),
+    );
 
     scene.draw_text(text_run);
 
     // Also show measured width
     let debug_info = format!("AAAA measured={:.1}px", expected_width);
-    let debug_run = text_system.layout(&debug_info, Point::new(x, debug_y + 20.0), 11.0, theme::text::MUTED);
+    let debug_run = text_system.layout(
+        &debug_info,
+        Point::new(x, debug_y + 20.0),
+        11.0,
+        theme::text::MUTED,
+    );
     scene.draw_text(debug_run);
 
     // Section header
@@ -1142,7 +1396,9 @@ fn demo_streaming_markdown(
     // Get the markdown document and measure its actual height
     let document = demo.streaming_markdown.document();
     let md_width = width - 24.0;
-    let md_size = demo.markdown_renderer.measure(document, md_width, text_system);
+    let md_size = demo
+        .markdown_renderer
+        .measure(document, md_width, text_system);
 
     // Status bar height + padding + markdown content + bottom padding
     let status_height = 20.0;
@@ -1192,13 +1448,8 @@ fn demo_streaming_markdown(
     // Render the markdown document
     let md_origin = Point::new(x + 12.0, content_y + 28.0);
 
-    demo.markdown_renderer.render(
-        document,
-        md_origin,
-        md_width,
-        text_system,
-        scene,
-    );
+    demo.markdown_renderer
+        .render(document, md_origin, md_width, text_system, scene);
 
     // Streaming cursor indicator removed - the rough heuristic for cursor position
     // doesn't work well with markdown's varying line heights (headers, code blocks, etc.)

@@ -22,17 +22,16 @@
 //! - 25.1.2: Element lifecycle (layout/prepaint/paint)
 //! - 25.1.4: Styled trait for fluent builder DSL
 
+use crate::components::atoms::{
+    self, Mode, ModeBadge, Status, StatusDot, StreamingIndicator, ToolStatus, ToolStatusBadge,
+};
+use crate::components::hud::{DotShape, DotsGrid, Frame, FrameAnimation};
 use crate::components::{
-    Component, Button, ButtonVariant, TextInput, Dropdown, DropdownOption,
-    Modal, ScrollView, Tab, Tabs, VirtualList, Text,
+    Button, ButtonVariant, Component, Dropdown, DropdownOption, Modal, ScrollView, Tab, Tabs, Text,
+    TextInput, VirtualList,
 };
 use crate::components::{molecules, organisms};
-use crate::components::hud::{Frame, FrameAnimation, DotsGrid, DotShape};
-use crate::components::atoms::{
-    self, StatusDot, Status, ModeBadge, Mode, ToolStatusBadge, ToolStatus,
-    StreamingIndicator,
-};
-use crate::{Size, theme, Hsla};
+use crate::{Hsla, Size, theme};
 
 // ============================================================================
 // d-020: WGPUI Component Integration - Foundation Components
@@ -69,9 +68,7 @@ fn test_button_interactive_state_methods() {
 #[test]
 fn test_text_input_full_workflow() {
     // 20.1.2: TextInput components
-    let mut input = TextInput::new()
-        .value("initial")
-        .placeholder("Enter text");
+    let mut input = TextInput::new().value("initial").placeholder("Enter text");
 
     assert_eq!(input.get_value(), "initial");
     assert!(!input.is_focused());
@@ -348,11 +345,7 @@ fn test_tabs_with_active_index() {
 
 #[test]
 fn test_tabs_active_bounds_check() {
-    let tabs = Tabs::new(vec![
-        Tab::new("Tab 1"),
-        Tab::new("Tab 2"),
-    ])
-    .active(10); // Out of bounds
+    let tabs = Tabs::new(vec![Tab::new("Tab 1"), Tab::new("Tab 2")]).active(10); // Out of bounds
 
     // Should stay at 0 since 10 > len
     assert_eq!(tabs.active_index(), 0);
@@ -360,8 +353,7 @@ fn test_tabs_active_bounds_check() {
 
 #[test]
 fn test_tab_with_content() {
-    let tab = Tab::new("Content Tab")
-        .content(Text::new("Hello"));
+    let tab = Tab::new("Content Tab").content(Text::new("Hello"));
 
     assert_eq!(tab.label, "Content Tab");
     assert!(tab.content.is_some());
@@ -513,8 +505,7 @@ fn test_dots_grid_shapes() {
 #[test]
 fn test_dots_grid_animation() {
     // 24.4.1: DotsGrid animation support
-    let grid = DotsGrid::new()
-        .animation_progress(0.5);
+    let grid = DotsGrid::new().animation_progress(0.5);
 
     // progress() is a public method
     assert_eq!(grid.progress(), 0.5);
@@ -584,7 +575,9 @@ fn test_component_id_assignment() {
 #[test]
 fn test_component_size_hint() {
     // 25.1.2: Components provide size hints for layout
-    let button = Button::new("Test Button").font_size(14.0).padding(16.0, 8.0);
+    let button = Button::new("Test Button")
+        .font_size(14.0)
+        .padding(16.0, 8.0);
     let (width, height) = button.size_hint();
 
     assert!(width.is_some());
@@ -622,9 +615,7 @@ fn test_frame_size_hint() {
 fn test_modal_with_content() {
     // Modals can contain other components
     let button = Button::new("Confirm");
-    let _modal = Modal::new()
-        .title("Confirm Action")
-        .content(button);
+    let _modal = Modal::new().title("Confirm Action").content(button);
     // Test passes if no panic - content was set
 }
 
@@ -689,18 +680,15 @@ fn test_dots_grid_clamping() {
     // Note: clamping is tested in dots_grid.rs inline tests
     // Here we just verify the builder doesn't panic on edge values
     let _grid = DotsGrid::new()
-        .distance(2.0)  // Below minimum
-        .size(0.5)      // Below minimum
-        .opacity(1.5);  // Above maximum
+        .distance(2.0) // Below minimum
+        .size(0.5) // Below minimum
+        .opacity(1.5); // Above maximum
     // Test passes if no panic
 }
 
 #[test]
 fn test_dropdown_out_of_bounds_selection() {
-    let options = vec![
-        DropdownOption::simple("A"),
-        DropdownOption::simple("B"),
-    ];
+    let options = vec![DropdownOption::simple("A"), DropdownOption::simple("B")];
     let mut dropdown = Dropdown::new(options);
 
     // Setting out of bounds index should not panic
@@ -711,8 +699,7 @@ fn test_dropdown_out_of_bounds_selection() {
 #[test]
 fn test_virtual_list_overscan() {
     let items: Vec<String> = (0..100).map(|i| format!("Item {}", i)).collect();
-    let list = VirtualList::new(items, 30.0, |_item, _idx, _bounds, _cx| {})
-        .overscan(5);
+    let list = VirtualList::new(items, 30.0, |_item, _idx, _bounds, _cx| {}).overscan(5);
 
     // Should work with overscan
     assert_eq!(list.item_count(), 100);

@@ -265,12 +265,7 @@ impl Component for TextInput {
         }
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
         match event {
             InputEvent::MouseMove { x, y } => {
                 let was_hovered = self.hovered;

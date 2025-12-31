@@ -45,10 +45,8 @@ impl ChatApplication {
     }
 
     pub fn add_user_message(&mut self, content: impl Into<String>) {
-        self.view.push_entry(ThreadEntry::new(
-            ThreadEntryType::User,
-            Text::new(content),
-        ));
+        self.view
+            .push_entry(ThreadEntry::new(ThreadEntryType::User, Text::new(content)));
     }
 
     pub fn add_assistant_message(&mut self, content: impl Into<String>) {
@@ -60,13 +58,17 @@ impl ChatApplication {
 
     pub fn set_mode(&mut self, mode: Mode) {
         self.editor = MessageEditor::new().mode(mode);
-        self.status_bar
-            .update_item("mode", crate::components::hud::StatusItemContent::Mode(mode));
+        self.status_bar.update_item(
+            "mode",
+            crate::components::hud::StatusItemContent::Mode(mode),
+        );
     }
 
     pub fn set_model(&mut self, model: Model) {
-        self.status_bar
-            .update_item("model", crate::components::hud::StatusItemContent::Model(model));
+        self.status_bar.update_item(
+            "model",
+            crate::components::hud::StatusItemContent::Model(model),
+        );
     }
 
     pub fn show_feedback(&mut self) {
@@ -116,18 +118,10 @@ impl Component for ChatApplication {
         self.header.paint(header_bounds, cx);
 
         let view_top = bounds.origin.y + header_height;
-        let view_height = bounds.size.height
-            - header_height
-            - editor_height
-            - feedback_height
-            - status_height;
+        let view_height =
+            bounds.size.height - header_height - editor_height - feedback_height - status_height;
 
-        let view_bounds = Bounds::new(
-            bounds.origin.x,
-            view_top,
-            bounds.size.width,
-            view_height,
-        );
+        let view_bounds = Bounds::new(bounds.origin.x, view_top, bounds.size.width, view_height);
         self.view.paint(view_bounds, cx);
 
         if self.show_feedback {
@@ -145,12 +139,8 @@ impl Component for ChatApplication {
         } else {
             view_top + view_height
         };
-        let editor_bounds = Bounds::new(
-            bounds.origin.x,
-            editor_y,
-            bounds.size.width,
-            editor_height,
-        );
+        let editor_bounds =
+            Bounds::new(bounds.origin.x, editor_y, bounds.size.width, editor_height);
         self.editor.paint(editor_bounds, cx);
 
         self.status_bar.paint(bounds, cx);
@@ -185,18 +175,10 @@ impl Component for ChatApplication {
         }
 
         let view_top = bounds.origin.y + header_height;
-        let view_height = bounds.size.height
-            - header_height
-            - editor_height
-            - feedback_height
-            - status_height;
+        let view_height =
+            bounds.size.height - header_height - editor_height - feedback_height - status_height;
 
-        let view_bounds = Bounds::new(
-            bounds.origin.x,
-            view_top,
-            bounds.size.width,
-            view_height,
-        );
+        let view_bounds = Bounds::new(bounds.origin.x, view_top, bounds.size.width, view_height);
         if let result @ EventResult::Handled = self.view.event(event, view_bounds, cx) {
             return result;
         }
@@ -218,12 +200,8 @@ impl Component for ChatApplication {
         } else {
             view_top + view_height
         };
-        let editor_bounds = Bounds::new(
-            bounds.origin.x,
-            editor_y,
-            bounds.size.width,
-            editor_height,
-        );
+        let editor_bounds =
+            Bounds::new(bounds.origin.x, editor_y, bounds.size.width, editor_height);
         if let result @ EventResult::Handled = self.editor.event(event, editor_bounds, cx) {
             return result;
         }

@@ -1,6 +1,6 @@
+mod backgrounds;
 mod command_palette;
 mod context_menu;
-mod backgrounds;
 mod dots_grid;
 mod frame;
 mod frame_clips;
@@ -15,7 +15,7 @@ mod tooltip;
 pub use backgrounds::{GridLinesBackground, LineDirection, MovingLinesBackground, PuffsBackground};
 pub use command_palette::{Command, CommandPalette};
 pub use context_menu::{ContextMenu, MenuItem};
-pub use dots_grid::{DotsGrid, DotsOrigin, DotShape};
+pub use dots_grid::{DotShape, DotsGrid, DotsOrigin};
 pub use frame::{CornerConfig, DrawDirection, Frame, FrameAnimation, FrameAnimator, FrameStyle};
 pub use frame_clips::{
     CssSize, StyleFrameClipKranoxProps, StyleFrameClipOctagonProps, style_frame_clip_kranox,
@@ -143,7 +143,9 @@ mod tests {
             MenuItem::new("cut", "Cut").shortcut("Cmd+X"),
             MenuItem::separator(),
             MenuItem::new("copy", "Copy").shortcut("Cmd+C"),
-            MenuItem::new("paste", "Paste").shortcut("Cmd+V").disabled(true),
+            MenuItem::new("paste", "Paste")
+                .shortcut("Cmd+V")
+                .disabled(true),
         ]);
 
         assert!(!menu.is_open());
@@ -153,7 +155,7 @@ mod tests {
 
         menu.select_next();
         menu.select_next();
-        
+
         let selected = menu.confirm();
         assert_eq!(selected, Some("copy".to_string()));
         assert!(!menu.is_open());

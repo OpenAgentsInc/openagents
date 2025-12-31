@@ -1,8 +1,8 @@
 //! Default keybindings.
 
 use super::Keymap;
-use crate::action::standard::*;
 use crate::action::KeyBinding;
+use crate::action::standard::*;
 
 /// Create a keymap with default keybindings.
 ///
@@ -148,11 +148,8 @@ mod tests {
         let keymap = default_keymap();
         let context = KeyContext::new();
 
-        let action = keymap.match_keystroke(
-            &Key::Named(NamedKey::Tab),
-            &Modifiers::default(),
-            &context,
-        );
+        let action =
+            keymap.match_keystroke(&Key::Named(NamedKey::Tab), &Modifiers::default(), &context);
         assert_eq!(action.unwrap().name(), "FocusNext");
 
         let action = keymap.match_keystroke(

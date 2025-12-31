@@ -440,10 +440,9 @@ impl AnyWeakEntity {
         let ref_counts = ref_counts.read();
         let ref_count = ref_counts.counts.get(self.entity_id)?;
 
-        let prev = ref_count.fetch_update(SeqCst, SeqCst, |v| {
-            if v == 0 { None } else { Some(v + 1) }
-        });
-        
+        let prev =
+            ref_count.fetch_update(SeqCst, SeqCst, |v| if v == 0 { None } else { Some(v + 1) });
+
         if prev.is_err() {
             return None;
         }
@@ -586,10 +585,10 @@ mod tests {
     #[test]
     fn test_entity_map_reserve_insert() {
         let mut map = EntityMap::new();
-        
+
         let slot = map.reserve::<TestEntity>();
         let entity = map.insert(slot, TestEntity { value: 42 });
-        
+
         let read = map.read(&entity);
         assert_eq!(read.value, 42);
     }
@@ -597,16 +596,16 @@ mod tests {
     #[test]
     fn test_entity_map_lease() {
         let mut map = EntityMap::new();
-        
+
         let slot = map.reserve::<TestEntity>();
         let entity = map.insert(slot, TestEntity { value: 10 });
-        
+
         {
             let mut lease = map.lease(&entity);
             lease.value = 20;
             map.end_lease(lease);
         }
-        
+
         let read = map.read(&entity);
         assert_eq!(read.value, 20);
     }
@@ -614,18 +613,18 @@ mod tests {
     #[test]
     fn test_entity_clone_and_drop() {
         let mut map = EntityMap::new();
-        
+
         let slot = map.reserve::<TestEntity>();
         let entity1 = map.insert(slot, TestEntity { value: 1 });
         let entity2 = entity1.clone();
-        
+
         drop(entity1);
-        
+
         let read = map.read(&entity2);
         assert_eq!(read.value, 1);
-        
+
         drop(entity2);
-        
+
         let dropped = map.take_dropped();
         assert_eq!(dropped.len(), 1);
     }
@@ -633,16 +632,16 @@ mod tests {
     #[test]
     fn test_weak_entity_upgrade() {
         let mut map = EntityMap::new();
-        
+
         let slot = map.reserve::<TestEntity>();
         let entity = map.insert(slot, TestEntity { value: 99 });
         let weak = entity.downgrade();
-        
+
         assert!(weak.upgrade().is_some());
-        
+
         drop(entity);
         map.take_dropped();
-        
+
         assert!(weak.upgrade().is_none());
     }
 }

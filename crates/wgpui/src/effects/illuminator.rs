@@ -188,9 +188,8 @@ impl Component for Illuminator {
                     ring_size,
                     ring_size,
                 );
-                cx.scene.draw_quad(
-                    Quad::new(bounds).with_background(color.with_alpha(ring_alpha)),
-                );
+                cx.scene
+                    .draw_quad(Quad::new(bounds).with_background(color.with_alpha(ring_alpha)));
                 continue;
             }
 
@@ -199,9 +198,8 @@ impl Component for Illuminator {
                 let x = self.position.x + angle.cos() * ring_radius;
                 let y = self.position.y + angle.sin() * ring_radius;
                 let bounds = Bounds::new(x - half, y - half, ring_size, ring_size);
-                cx.scene.draw_quad(
-                    Quad::new(bounds).with_background(color.with_alpha(ring_alpha)),
-                );
+                cx.scene
+                    .draw_quad(Quad::new(bounds).with_background(color.with_alpha(ring_alpha)));
             }
         }
     }

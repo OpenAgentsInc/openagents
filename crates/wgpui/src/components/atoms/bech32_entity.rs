@@ -54,13 +54,13 @@ impl Bech32Type {
 
     pub fn color(&self) -> Hsla {
         match self {
-            Bech32Type::Npub => Hsla::new(280.0, 0.7, 0.6, 1.0),    // Purple
-            Bech32Type::Nsec => Hsla::new(0.0, 0.8, 0.55, 1.0),     // Red (danger)
-            Bech32Type::Note => Hsla::new(180.0, 0.7, 0.5, 1.0),    // Cyan
+            Bech32Type::Npub => Hsla::new(280.0, 0.7, 0.6, 1.0), // Purple
+            Bech32Type::Nsec => Hsla::new(0.0, 0.8, 0.55, 1.0),  // Red (danger)
+            Bech32Type::Note => Hsla::new(180.0, 0.7, 0.5, 1.0), // Cyan
             Bech32Type::Nevent => Hsla::new(200.0, 0.7, 0.55, 1.0), // Blue
             Bech32Type::Nprofile => Hsla::new(320.0, 0.7, 0.55, 1.0), // Pink
-            Bech32Type::Naddr => Hsla::new(50.0, 0.8, 0.5, 1.0),    // Gold
-            Bech32Type::Nrelay => Hsla::new(140.0, 0.6, 0.5, 1.0),  // Green
+            Bech32Type::Naddr => Hsla::new(50.0, 0.8, 0.5, 1.0), // Gold
+            Bech32Type::Nrelay => Hsla::new(140.0, 0.6, 0.5, 1.0), // Green
         }
     }
 
@@ -148,7 +148,11 @@ impl Bech32Entity {
         }
 
         if self.truncate && self.value.len() > 24 {
-            format!("{}...{}", &self.value[..12], &self.value[self.value.len()-8..])
+            format!(
+                "{}...{}",
+                &self.value[..12],
+                &self.value[self.value.len() - 8..]
+            )
         } else {
             self.value.clone()
         }

@@ -40,13 +40,16 @@ impl App {
         }
     }
 
-    pub fn new_entity<T: 'static>(&mut self, build: impl FnOnce(&mut Context<T>) -> T) -> Entity<T> {
+    pub fn new_entity<T: 'static>(
+        &mut self,
+        build: impl FnOnce(&mut Context<T>) -> T,
+    ) -> Entity<T> {
         let slot = self.entities.reserve::<T>();
         let entity: Entity<T> = (*slot).clone();
-        
+
         let mut cx = Context::new(self, entity.downgrade());
         let state = build(&mut cx);
-        
+
         self.entities.insert(slot, state)
     }
 
@@ -71,7 +74,7 @@ impl App {
         if !self.pending_notifications.contains(&entity_id) {
             self.pending_notifications.push(entity_id);
         }
-        
+
         if !self.flushing {
             self.flush_effects();
         }
@@ -123,7 +126,11 @@ impl App {
 
             let dropped = self.entities.take_dropped();
             for (entity_id, mut entity) in dropped {
-                let callbacks: Vec<_> = self.release_listeners.remove(&entity_id).into_iter().collect();
+                let callbacks: Vec<_> = self
+                    .release_listeners
+                    .remove(&entity_id)
+                    .into_iter()
+                    .collect();
                 for callback in callbacks {
                     callback(&mut *entity, self);
                 }
@@ -208,7 +215,9 @@ impl<'a, T: 'static> Context<'a, T> {
         let entity_clone = entity.clone();
         self.app.observe_internal(entity_id, move |cx| {
             if let Some(this) = this.upgrade() {
-                cx.update_entity(&this, |state, cx| on_notify(state, entity_clone.clone(), cx));
+                cx.update_entity(&this, |state, cx| {
+                    on_notify(state, entity_clone.clone(), cx)
+                });
                 true
             } else {
                 false
@@ -265,9 +274,9 @@ mod tests {
     #[test]
     fn test_new_entity() {
         let mut app = App::new();
-        
+
         let entity = app.new_entity(|_cx| Counter { value: 0 });
-        
+
         let counter = app.read_entity(&entity);
         assert_eq!(counter.value, 0);
     }
@@ -275,13 +284,13 @@ mod tests {
     #[test]
     fn test_update_entity() {
         let mut app = App::new();
-        
+
         let entity = app.new_entity(|_cx| Counter { value: 0 });
-        
+
         app.update_entity(&entity, |counter, _cx| {
             counter.value = 42;
         });
-        
+
         let counter = app.read_entity(&entity);
         assert_eq!(counter.value, 42);
     }
@@ -291,18 +300,18 @@ mod tests {
         let mut app = App::new();
         let observed_count: Rc<RefCell<i32>> = Rc::new(RefCell::new(0));
         let observed_count_clone = observed_count.clone();
-        
+
         let entity = app.new_entity(|_cx| Counter { value: 0 });
-        
+
         let _sub = app.observe(&entity, move |_entity, _app| {
             *(*observed_count_clone).borrow_mut() += 1;
         });
-        
+
         app.update_entity(&entity, |counter, cx| {
             counter.value = 1;
             cx.notify();
         });
-        
+
         assert_eq!(*(*observed_count).borrow(), 1);
     }
 

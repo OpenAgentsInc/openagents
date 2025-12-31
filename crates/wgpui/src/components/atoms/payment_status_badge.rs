@@ -107,16 +107,18 @@ impl Component for PaymentStatusBadge {
         let text_x = bounds.origin.x + 6.0;
         let text_y = bounds.origin.y + (bounds.size.height - font_size) / 2.0;
 
-        let text_run = cx.text.layout(
-            text,
-            Point::new(text_x, text_y),
-            font_size,
-            color,
-        );
+        let text_run = cx
+            .text
+            .layout(text, Point::new(text_x, text_y), font_size, color);
         cx.scene.draw_text(text_run);
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 

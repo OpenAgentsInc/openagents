@@ -1,8 +1,8 @@
+use crate::Size;
 use crate::element::{Element, ElementPaintContext, LayoutContext, PrepaintContext};
 use crate::layout::LayoutEngine;
 use crate::scene::Scene;
 use crate::text::TextSystem;
-use crate::Size;
 
 use super::dispatch::DispatchTree;
 use super::invalidator::{InvalidationFlags, Invalidator};
@@ -148,7 +148,7 @@ impl Default for Window {
 mod tests {
     use super::*;
     use crate::element::Element;
-    use crate::layout::{px, LayoutStyle};
+    use crate::layout::{LayoutStyle, px};
     use crate::{Bounds, Point};
 
     struct TestElement {
@@ -169,7 +169,10 @@ mod tests {
         type RequestLayoutState = ();
         type PrepaintState = ();
 
-        fn request_layout(&mut self, cx: &mut LayoutContext) -> (crate::layout::LayoutId, Self::RequestLayoutState) {
+        fn request_layout(
+            &mut self,
+            cx: &mut LayoutContext,
+        ) -> (crate::layout::LayoutId, Self::RequestLayoutState) {
             let style = LayoutStyle::new().width(px(80.0)).height(px(40.0));
             (cx.request_leaf(&style), ())
         }

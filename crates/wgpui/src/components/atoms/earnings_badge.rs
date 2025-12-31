@@ -40,10 +40,10 @@ impl EarningsType {
 
     pub fn color(&self) -> Hsla {
         match self {
-            EarningsType::Total => Hsla::new(45.0, 0.9, 0.55, 1.0),       // Gold
-            EarningsType::Compute => Hsla::new(200.0, 0.8, 0.55, 1.0),    // Blue
-            EarningsType::Skills => Hsla::new(280.0, 0.7, 0.55, 1.0),     // Purple
-            EarningsType::Data => Hsla::new(45.0, 0.7, 0.5, 1.0),         // Orange
+            EarningsType::Total => Hsla::new(45.0, 0.9, 0.55, 1.0), // Gold
+            EarningsType::Compute => Hsla::new(200.0, 0.8, 0.55, 1.0), // Blue
+            EarningsType::Skills => Hsla::new(280.0, 0.7, 0.55, 1.0), // Purple
+            EarningsType::Data => Hsla::new(45.0, 0.7, 0.5, 1.0),   // Orange
             EarningsType::Trajectories => Hsla::new(140.0, 0.7, 0.5, 1.0), // Green
         }
     }
@@ -114,39 +114,65 @@ impl Component for EarningsBadge {
         if self.compact {
             // Just lightning and amount
             if self.show_lightning {
-                let bolt = cx.text.layout("⚡", Point::new(x, text_y), theme::font_size::SM, color);
+                let bolt = cx
+                    .text
+                    .layout("⚡", Point::new(x, text_y), theme::font_size::SM, color);
                 cx.scene.draw_text(bolt);
                 x += 14.0;
             }
             let amount = format_sats(self.amount_sats);
-            let amount_run = cx.text.layout(&amount, Point::new(x, text_y), theme::font_size::XS, color);
+            let amount_run =
+                cx.text
+                    .layout(&amount, Point::new(x, text_y), theme::font_size::XS, color);
             cx.scene.draw_text(amount_run);
         } else {
             // Type icon
             let icon = self.earnings_type.icon();
-            let icon_run = cx.text.layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
+            let icon_run = cx
+                .text
+                .layout(icon, Point::new(x, text_y), theme::font_size::SM, color);
             cx.scene.draw_text(icon_run);
             x += 14.0;
 
             // Type label
             let label = self.earnings_type.label();
-            let label_run = cx.text.layout(label, Point::new(x, text_y), theme::font_size::XS, theme::text::MUTED);
+            let label_run = cx.text.layout(
+                label,
+                Point::new(x, text_y),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
             cx.scene.draw_text(label_run);
             x += label.len() as f32 * 6.5 + 8.0;
 
             // Amount
             let amount = format_sats(self.amount_sats);
-            let amount_run = cx.text.layout(&amount, Point::new(x, text_y), theme::font_size::XS, theme::text::PRIMARY);
+            let amount_run = cx.text.layout(
+                &amount,
+                Point::new(x, text_y),
+                theme::font_size::XS,
+                theme::text::PRIMARY,
+            );
             cx.scene.draw_text(amount_run);
             x += amount.len() as f32 * 6.5 + 4.0;
 
             // Sats label
-            let sats_run = cx.text.layout("sats", Point::new(x, text_y), theme::font_size::XS, theme::text::MUTED);
+            let sats_run = cx.text.layout(
+                "sats",
+                Point::new(x, text_y),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
             cx.scene.draw_text(sats_run);
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -161,7 +187,13 @@ impl Component for EarningsBadge {
             (Some(width), Some(22.0))
         } else {
             let amount_len = format_sats(self.amount_sats).len();
-            let width = 12.0 + 14.0 + self.earnings_type.label().len() as f32 * 6.5 + 8.0 + amount_len as f32 * 6.5 + 4.0 + 4.0 * 6.5;
+            let width = 12.0
+                + 14.0
+                + self.earnings_type.label().len() as f32 * 6.5
+                + 8.0
+                + amount_len as f32 * 6.5
+                + 4.0
+                + 4.0 * 6.5;
             (Some(width), Some(22.0))
         }
     }

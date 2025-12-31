@@ -121,19 +121,28 @@ impl Component for DmThread {
 
         // Header
         let header = self.header_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(header)
-                .with_background(theme::bg::MUTED),
-        );
+        cx.scene
+            .draw_quad(Quad::new(header).with_background(theme::bg::MUTED));
 
         // Contact avatar placeholder
-        let avatar_bounds = Bounds::new(header.origin.x + padding, header.origin.y + 10.0, 36.0, 36.0);
+        let avatar_bounds = Bounds::new(
+            header.origin.x + padding,
+            header.origin.y + 10.0,
+            36.0,
+            36.0,
+        );
         cx.scene.draw_quad(
             Quad::new(avatar_bounds)
                 .with_background(theme::accent::PRIMARY.with_alpha(0.3))
                 .with_border(theme::accent::PRIMARY, 1.0),
         );
-        let initial = self.contact_name.chars().next().unwrap_or('?').to_uppercase().to_string();
+        let initial = self
+            .contact_name
+            .chars()
+            .next()
+            .unwrap_or('?')
+            .to_uppercase()
+            .to_string();
         let initial_run = cx.text.layout(
             &initial,
             Point::new(avatar_bounds.origin.x + 12.0, avatar_bounds.origin.y + 10.0),
@@ -163,7 +172,10 @@ impl Component for DmThread {
         // Encryption indicator
         let enc_run = cx.text.layout(
             "\u{1F512} Encrypted",
-            Point::new(header.origin.x + header.size.width - padding - 80.0, header.origin.y + 20.0),
+            Point::new(
+                header.origin.x + header.size.width - padding - 80.0,
+                header.origin.y + 20.0,
+            ),
             theme::font_size::XS,
             Hsla::new(120.0, 0.6, 0.45, 1.0),
         );
@@ -178,7 +190,10 @@ impl Component for DmThread {
             let empty_y = messages_area.origin.y + messages_area.size.height / 2.0 - 20.0;
             let empty_run = cx.text.layout(
                 "No messages yet",
-                Point::new(messages_area.origin.x + messages_area.size.width / 2.0 - 60.0, empty_y),
+                Point::new(
+                    messages_area.origin.x + messages_area.size.width / 2.0 - 60.0,
+                    empty_y,
+                ),
                 theme::font_size::SM,
                 theme::text::MUTED,
             );
@@ -186,7 +201,10 @@ impl Component for DmThread {
 
             let hint_run = cx.text.layout(
                 "Send a message to start the conversation",
-                Point::new(messages_area.origin.x + messages_area.size.width / 2.0 - 130.0, empty_y + 24.0),
+                Point::new(
+                    messages_area.origin.x + messages_area.size.width / 2.0 - 130.0,
+                    empty_y + 24.0,
+                ),
                 theme::font_size::XS,
                 theme::text::DISABLED,
             );
@@ -196,10 +214,17 @@ impl Component for DmThread {
             let mut y = messages_area.origin.y + padding - self.scroll_offset;
             for msg in &self.messages {
                 let msg_height = 75.0;
-                if y + msg_height > messages_area.origin.y && y < messages_area.origin.y + messages_area.size.height {
+                if y + msg_height > messages_area.origin.y
+                    && y < messages_area.origin.y + messages_area.size.height
+                {
                     let mut bubble = DmBubble::new(msg.clone());
                     bubble.paint(
-                        Bounds::new(messages_area.origin.x, y, messages_area.size.width, msg_height),
+                        Bounds::new(
+                            messages_area.origin.x,
+                            y,
+                            messages_area.size.width,
+                            msg_height,
+                        ),
                         cx,
                     );
                 }
@@ -211,10 +236,8 @@ impl Component for DmThread {
 
         // Input area
         let input_area = self.input_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(input_area)
-                .with_background(theme::bg::MUTED),
-        );
+        cx.scene
+            .draw_quad(Quad::new(input_area).with_background(theme::bg::MUTED));
 
         // Input field
         let input_field = Bounds::new(
@@ -349,11 +372,10 @@ mod tests {
 
     #[test]
     fn test_dm_thread() {
-        let thread = DmThread::new("Alice", "npub1abc...")
-            .messages(vec![
-                DmMessage::new("1", "Hello!", DmDirection::Incoming)
-                    .encryption(EncryptionStatus::Encrypted),
-            ]);
+        let thread = DmThread::new("Alice", "npub1abc...").messages(vec![
+            DmMessage::new("1", "Hello!", DmDirection::Incoming)
+                .encryption(EncryptionStatus::Encrypted),
+        ]);
         assert_eq!(thread.contact_name, "Alice");
         assert_eq!(thread.messages.len(), 1);
     }

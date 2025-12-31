@@ -175,10 +175,7 @@ impl Component for CodePane {
         let line_x = content_bounds.origin.x + 10.0;
 
         for diff in &self.diffs {
-            let header = format!(
-                "{} (+{}, -{})",
-                diff.path, diff.additions, diff.deletions
-            );
+            let header = format!("{} (+{}, -{})", diff.path, diff.additions, diff.deletions);
             let header_run = cx.text.layout(
                 &header,
                 Point::new(line_x, y + 4.0),

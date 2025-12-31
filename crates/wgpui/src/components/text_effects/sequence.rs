@@ -26,7 +26,11 @@ impl TextSequence {
     pub fn new(text: impl Into<String>) -> Self {
         let text = text.into();
         let mut animator = TextEffectAnimator::new();
-        let frame = animator.update_with_delta(AnimatorState::Entered, text.chars().count(), Duration::ZERO);
+        let frame = animator.update_with_delta(
+            AnimatorState::Entered,
+            text.chars().count(),
+            Duration::ZERO,
+        );
         Self {
             id: None,
             text,
@@ -99,13 +103,17 @@ impl TextSequence {
 
     pub fn timing(mut self, timing: TextEffectTiming) -> Self {
         self.animator.set_timing(timing);
-        self.frame = self.animator.update_with_delta(self.state, self.text_len(), Duration::ZERO);
+        self.frame = self
+            .animator
+            .update_with_delta(self.state, self.text_len(), Duration::ZERO);
         self
     }
 
     pub fn set_timing(&mut self, timing: TextEffectTiming) {
         self.animator.set_timing(timing);
-        self.frame = self.animator.update_with_delta(self.state, self.text_len(), Duration::ZERO);
+        self.frame = self
+            .animator
+            .update_with_delta(self.state, self.text_len(), Duration::ZERO);
     }
 
     pub fn easing(mut self, easing: crate::animation::Easing) -> Self {
@@ -122,8 +130,11 @@ impl TextSequence {
     }
 
     pub fn set_state(&mut self, state: AnimatorState) {
-        self.frame = self.animator.update_with_delta(state, self.text_len(), Duration::ZERO);
-        self.cursor_blink.update(Duration::ZERO, state, self.show_cursor);
+        self.frame = self
+            .animator
+            .update_with_delta(state, self.text_len(), Duration::ZERO);
+        self.cursor_blink
+            .update(Duration::ZERO, state, self.show_cursor);
         self.state = state;
     }
 
@@ -145,7 +156,9 @@ impl TextSequence {
     }
 
     pub fn update_with_delta(&mut self, state: AnimatorState, delta: Duration) -> TextEffectFrame {
-        let frame = self.animator.update_with_delta(state, self.text_len(), delta);
+        let frame = self
+            .animator
+            .update_with_delta(state, self.text_len(), delta);
         self.cursor_blink.update(delta, state, self.show_cursor);
         self.state = state;
         self.frame = frame;
@@ -154,7 +167,9 @@ impl TextSequence {
 
     pub fn set_text(&mut self, text: impl Into<String>) {
         self.text = text.into();
-        self.frame = self.animator.update_with_delta(self.state, self.text_len(), Duration::ZERO);
+        self.frame = self
+            .animator
+            .update_with_delta(self.state, self.text_len(), Duration::ZERO);
     }
 
     pub fn text_value(&self) -> &str {

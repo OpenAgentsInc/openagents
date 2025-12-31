@@ -149,7 +149,8 @@ impl Component for Modal {
             return;
         }
 
-        cx.scene.draw_quad(Quad::new(bounds).with_background(self.backdrop_color));
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(self.backdrop_color));
 
         let modal_bounds = self.modal_bounds(bounds);
 
@@ -192,10 +193,7 @@ impl Component for Modal {
                 .font_size(theme::font_size::SM)
                 .color(theme::text::MUTED);
 
-            close_text.paint(
-                Bounds::new(close_x, close_y, close_size, close_size),
-                cx,
-            );
+            close_text.paint(Bounds::new(close_x, close_y, close_size, close_size), cx);
         }
 
         if let Some(content) = &mut self.content {
@@ -209,12 +207,7 @@ impl Component for Modal {
         }
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
         if !self.open {
             return EventResult::Ignored;
         }
@@ -222,10 +215,11 @@ impl Component for Modal {
         match event {
             InputEvent::KeyDown { key, .. } => {
                 if let Key::Named(NamedKey::Escape) = key
-                    && self.close_on_escape {
-                        self.close();
-                        return EventResult::Handled;
-                    }
+                    && self.close_on_escape
+                {
+                    self.close();
+                    return EventResult::Handled;
+                }
             }
 
             InputEvent::MouseDown { button, x, y } => {

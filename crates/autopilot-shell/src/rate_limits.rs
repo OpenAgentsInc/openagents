@@ -21,11 +21,11 @@ const API_URL: &str = "https://api.anthropic.com/v1/messages";
 /// Rate limit type from API
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RateLimitType {
-    SevenDay,      // 7d - weekly limit
-    FiveHour,      // 5h - session limit
+    SevenDay,       // 7d - weekly limit
+    FiveHour,       // 5h - session limit
     SevenDaySonnet, // 7ds - Sonnet specific
     SevenDayOpus,   // 7do - Opus specific
-    Overage,       // extra usage
+    Overage,        // extra usage
     Unknown,
 }
 
@@ -174,10 +174,10 @@ pub fn parse_rate_limits(headers: &HeaderMap) -> RateLimitSnapshot {
 
 /// Claim abbreviations to check for rate limits (in order of priority)
 const RATE_LIMIT_CLAIMS: &[(&str, RateLimitType, i64)] = &[
-    ("7d", RateLimitType::SevenDay, 10080),      // weekly - 7 days in minutes
+    ("7d", RateLimitType::SevenDay, 10080), // weekly - 7 days in minutes
     ("7ds", RateLimitType::SevenDaySonnet, 10080), // sonnet weekly
-    ("7do", RateLimitType::SevenDayOpus, 10080),   // opus weekly
-    ("5h", RateLimitType::FiveHour, 300),         // session - 5 hours in minutes
+    ("7do", RateLimitType::SevenDayOpus, 10080), // opus weekly
+    ("5h", RateLimitType::FiveHour, 300),   // session - 5 hours in minutes
 ];
 
 /// Parse unified rate limit headers from current Claude Code
@@ -187,7 +187,8 @@ fn parse_unified_rate_limit(headers: &HeaderMap) -> Option<RateLimitWindow> {
     let status = parse_header_str(headers, "anthropic-ratelimit-unified-status");
 
     // Get the representative claim if specified
-    let representative = parse_header_str(headers, "anthropic-ratelimit-unified-representative-claim");
+    let representative =
+        parse_header_str(headers, "anthropic-ratelimit-unified-representative-claim");
 
     // Try each claim type to find utilization data
     for (claim, limit_type, window_minutes) in RATE_LIMIT_CLAIMS {
@@ -199,8 +200,8 @@ fn parse_unified_rate_limit(headers: &HeaderMap) -> Option<RateLimitWindow> {
             let utilization = utilization_str.parse::<f64>().ok()?;
             let used_percent = utilization * 100.0;
 
-            let resets_at = parse_header_str(headers, &reset_header)
-                .and_then(|s| s.parse::<i64>().ok());
+            let resets_at =
+                parse_header_str(headers, &reset_header).and_then(|s| s.parse::<i64>().ok());
 
             debug!(
                 "Found rate limit from claim {}: {:.1}% used, resets {:?}",
@@ -228,7 +229,11 @@ fn parse_unified_rate_limit(headers: &HeaderMap) -> Option<RateLimitWindow> {
         if parts.len() == 2 {
             let used = parts[0].parse::<f64>().ok()?;
             let limit = parts[1].parse::<f64>().ok()?;
-            if limit > 0.0 { (used / limit) * 100.0 } else { 0.0 }
+            if limit > 0.0 {
+                (used / limit) * 100.0
+            } else {
+                0.0
+            }
         } else {
             return None;
         }
@@ -240,8 +245,11 @@ fn parse_unified_rate_limit(headers: &HeaderMap) -> Option<RateLimitWindow> {
     // Parse reset time from generic reset header
     let reset_str = parse_header_str(headers, "anthropic-ratelimit-unified-reset");
     let resets_at = reset_str.and_then(|s| {
-        s.parse::<i64>().ok()
-            .or_else(|| chrono::DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.timestamp()))
+        s.parse::<i64>().ok().or_else(|| {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .ok()
+                .map(|dt| dt.timestamp())
+        })
     });
 
     Some(RateLimitWindow {
@@ -270,14 +278,19 @@ fn parse_standard_rate_limit(headers: &HeaderMap) -> Option<RateLimitWindow> {
     let resets_at = reset_str.and_then(|s| {
         // Try parsing as duration first (e.g., "60s", "5m")
         if s.ends_with('s') {
-            s.trim_end_matches('s').parse::<i64>().ok()
+            s.trim_end_matches('s')
+                .parse::<i64>()
+                .ok()
                 .map(|secs| chrono::Utc::now().timestamp() + secs)
         } else if s.ends_with('m') {
-            s.trim_end_matches('m').parse::<i64>().ok()
+            s.trim_end_matches('m')
+                .parse::<i64>()
+                .ok()
                 .map(|mins| chrono::Utc::now().timestamp() + mins * 60)
         } else {
             // Try parsing as ISO timestamp
-            chrono::DateTime::parse_from_rfc3339(s).ok()
+            chrono::DateTime::parse_from_rfc3339(s)
+                .ok()
                 .map(|dt| dt.timestamp())
         }
     });
@@ -309,9 +322,8 @@ fn parse_rate_limit_window(
     };
 
     // Only return if we have meaningful data
-    let has_data = used_percent != 0.0
-        || window_minutes.is_some_and(|m| m != 0)
-        || resets_at.is_some();
+    let has_data =
+        used_percent != 0.0 || window_minutes.is_some_and(|m| m != 0) || resets_at.is_some();
 
     has_data.then_some(RateLimitWindow {
         used_percent,
@@ -407,8 +419,10 @@ fn load_from_keychain() -> Option<ClaudeCredentials> {
         let output = std::process::Command::new("security")
             .args([
                 "find-generic-password",
-                "-s", "Claude Code-credentials",
-                "-a", &username,
+                "-s",
+                "Claude Code-credentials",
+                "-a",
+                &username,
                 "-w",
             ])
             .output()
@@ -441,19 +455,23 @@ fn parse_credentials_json(json_str: &str, source: &str) -> Option<ClaudeCredenti
 
     let oauth = json.get("claudeAiOauth")?;
 
-    let access_token = oauth.get("accessToken")
+    let access_token = oauth
+        .get("accessToken")
         .and_then(|v| v.as_str())
         .map(String::from)?;
 
-    let refresh_token = oauth.get("refreshToken")
+    let refresh_token = oauth
+        .get("refreshToken")
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    let subscription_type = oauth.get("subscriptionType")
+    let subscription_type = oauth
+        .get("subscriptionType")
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    let rate_limit_tier = oauth.get("rateLimitTier")
+    let rate_limit_tier = oauth
+        .get("rateLimitTier")
         .and_then(|v| v.as_str())
         .map(String::from);
 
@@ -559,7 +577,9 @@ impl RateLimitFetcher {
         let request = request.body(body.to_string());
 
         // Send request
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
         // Parse rate limits from headers
@@ -599,8 +619,12 @@ impl RateLimitFetcher {
         if snapshot.primary.is_some() || snapshot.secondary.is_some() {
             info!("Updating rate limits from API response");
             if let Some(ref primary) = snapshot.primary {
-                info!("Rate limit: {:.1}% of {} used, resets {}",
-                    primary.used_percent, primary.limit_type.display_name(), primary.format_reset());
+                info!(
+                    "Rate limit: {:.1}% of {} used, resets {}",
+                    primary.used_percent,
+                    primary.limit_type.display_name(),
+                    primary.format_reset()
+                );
             }
             *self.latest.write().await = Some(snapshot);
         }

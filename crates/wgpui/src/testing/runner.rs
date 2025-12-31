@@ -264,9 +264,10 @@ impl TestRunner {
     pub fn complete_step(&mut self, result: StepResult) {
         // If step failed, transition to failed state
         if !result.is_success() {
-            self.error = result.error.clone().or_else(|| {
-                result.assertion.as_ref().map(|a| format!("{}", a))
-            });
+            self.error = result
+                .error
+                .clone()
+                .or_else(|| result.assertion.as_ref().map(|a| format!("{}", a)));
             self.state = RunnerState::Failed;
         }
 
@@ -307,8 +308,8 @@ impl TestRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::step::{ClickTarget, ElementSelector};
     use crate::MouseButton;
+    use crate::testing::step::{ClickTarget, ElementSelector};
 
     fn test_steps() -> Vec<TestStep> {
         vec![
@@ -398,9 +399,12 @@ mod tests {
 
     #[test]
     fn test_runner_passes_on_completion() {
-        let mut runner = TestRunner::new("Test", vec![TestStep::Wait {
-            duration: Duration::from_millis(10),
-        }]);
+        let mut runner = TestRunner::new(
+            "Test",
+            vec![TestStep::Wait {
+                duration: Duration::from_millis(10),
+            }],
+        );
         runner.start();
 
         let result = StepResult {
@@ -434,14 +438,8 @@ mod tests {
     #[test]
     fn test_playback_speed_scale() {
         let duration = Duration::from_secs(2);
-        assert_eq!(
-            PlaybackSpeed::FAST.scale(duration),
-            Duration::from_secs(1)
-        );
-        assert_eq!(
-            PlaybackSpeed::SLOW.scale(duration),
-            Duration::from_secs(4)
-        );
+        assert_eq!(PlaybackSpeed::FAST.scale(duration), Duration::from_secs(1));
+        assert_eq!(PlaybackSpeed::SLOW.scale(duration), Duration::from_secs(4));
     }
 
     #[test]

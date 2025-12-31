@@ -78,7 +78,12 @@ impl Component for PermissionBar {
 
             let mut btn = PermissionButton::new(*action);
             btn.paint(
-                Bounds::new(x, bounds.origin.y + 4.0, btn_width, bounds.size.height - 8.0),
+                Bounds::new(
+                    x,
+                    bounds.origin.y + 4.0,
+                    btn_width,
+                    bounds.size.height - 8.0,
+                ),
                 cx,
             );
             x -= theme::spacing::SM;
@@ -96,7 +101,12 @@ impl Component for PermissionBar {
             let btn_width = btn_w.unwrap_or(80.0);
             x -= btn_width;
 
-            let btn_bounds = Bounds::new(x, bounds.origin.y + 4.0, btn_width, bounds.size.height - 8.0);
+            let btn_bounds = Bounds::new(
+                x,
+                bounds.origin.y + 4.0,
+                btn_width,
+                bounds.size.height - 8.0,
+            );
 
             let mut btn = PermissionButton::new(*action);
             let result = btn.event(event, btn_bounds, cx);

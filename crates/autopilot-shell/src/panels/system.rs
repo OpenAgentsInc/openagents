@@ -1,8 +1,8 @@
 //! System panel for the right sidebar
 
-use wgpui::{Bounds, Component, EventContext, EventResult, InputEvent, PaintContext};
-use crate::dock::{DockPosition, Panel};
 use super::{ClaudeUsage, SessionUsage, UsageLimit};
+use crate::dock::{DockPosition, Panel};
+use wgpui::{Bounds, Component, EventContext, EventResult, InputEvent, PaintContext};
 
 /// Right sidebar panel with Claude usage stats
 pub struct SystemPanel {
@@ -34,7 +34,8 @@ impl SystemPanel {
 
     /// Add tokens to session
     pub fn add_tokens(&mut self, input: u64, output: u64, cache_read: u64, cache_create: u64) {
-        self.claude_usage.add_tokens(input, output, cache_read, cache_create);
+        self.claude_usage
+            .add_tokens(input, output, cache_read, cache_create);
     }
 
     /// Update session IDs for display
@@ -85,7 +86,12 @@ impl Panel for SystemPanel {
         self.claude_usage.paint(usage_bounds, cx);
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 }

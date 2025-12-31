@@ -75,8 +75,14 @@ pub fn flicker(duration: Duration) -> Transition<f32> {
     ];
 
     Transition {
-        entering: TransitionAnimation::Keyframes(KeyframeAnimation::new(entering_keyframes, duration)),
-        exiting: TransitionAnimation::Keyframes(KeyframeAnimation::new(exiting_keyframes, duration)),
+        entering: TransitionAnimation::Keyframes(KeyframeAnimation::new(
+            entering_keyframes,
+            duration,
+        )),
+        exiting: TransitionAnimation::Keyframes(KeyframeAnimation::new(
+            exiting_keyframes,
+            duration,
+        )),
     }
 }
 
@@ -86,12 +92,8 @@ pub fn draw(path_length: f32, duration: Duration, easing: Option<Easing>) -> Tra
     let easing = easing.unwrap_or(Easing::EaseInOut);
 
     Transition {
-        entering: TransitionAnimation::Tween(
-            Animation::new(length, 0.0, duration).easing(easing),
-        ),
-        exiting: TransitionAnimation::Tween(
-            Animation::new(0.0, length, duration).easing(easing),
-        ),
+        entering: TransitionAnimation::Tween(Animation::new(length, 0.0, duration).easing(easing)),
+        exiting: TransitionAnimation::Tween(Animation::new(0.0, length, duration).easing(easing)),
     }
 }
 
@@ -106,6 +108,8 @@ pub fn transition<T: Animatable>(
     let exit_target = back.unwrap_or(from);
     Transition {
         entering: TransitionAnimation::Tween(Animation::new(from, to, duration).easing(easing)),
-        exiting: TransitionAnimation::Tween(Animation::new(to, exit_target, duration).easing(easing)),
+        exiting: TransitionAnimation::Tween(
+            Animation::new(to, exit_target, duration).easing(easing),
+        ),
     }
 }

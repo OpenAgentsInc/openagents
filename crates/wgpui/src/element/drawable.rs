@@ -94,7 +94,10 @@ mod tests {
         type RequestLayoutState = ();
         type PrepaintState = ();
 
-        fn request_layout(&mut self, cx: &mut LayoutContext) -> (LayoutId, Self::RequestLayoutState) {
+        fn request_layout(
+            &mut self,
+            cx: &mut LayoutContext,
+        ) -> (LayoutId, Self::RequestLayoutState) {
             self.calls.borrow_mut().push("request_layout");
             let layout_id = cx.request_leaf(&Default::default());
             (layout_id, ())
@@ -124,7 +127,9 @@ mod tests {
     #[test]
     fn test_drawable_lifecycle() {
         let calls = Rc::new(RefCell::new(Vec::new()));
-        let tracker = Tracker { calls: calls.clone() };
+        let tracker = Tracker {
+            calls: calls.clone(),
+        };
 
         let mut drawable = Drawable::new(tracker);
         let mut layout = LayoutEngine::new();

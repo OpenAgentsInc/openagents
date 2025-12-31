@@ -1,5 +1,5 @@
-use crate::layout::LayoutId;
 use crate::Bounds;
+use crate::layout::LayoutId;
 
 use super::drawable::{Drawable, ElementObject};
 use super::element::{Element, ElementPaintContext, LayoutContext, PrepaintContext};
@@ -53,7 +53,6 @@ impl Element for AnyElement {
         cx: &mut PrepaintContext,
     ) -> Self::PrepaintState {
         self.prepaint(bounds, cx);
-        
     }
 
     fn paint(

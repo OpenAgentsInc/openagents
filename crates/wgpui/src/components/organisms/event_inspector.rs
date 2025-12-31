@@ -162,7 +162,7 @@ impl EventData {
 
     pub fn truncated_id(&self) -> String {
         if self.id.len() > 16 {
-            format!("{}...{}", &self.id[..8], &self.id[self.id.len()-8..])
+            format!("{}...{}", &self.id[..8], &self.id[self.id.len() - 8..])
         } else {
             self.id.clone()
         }
@@ -170,7 +170,11 @@ impl EventData {
 
     pub fn truncated_pubkey(&self) -> String {
         if self.pubkey.len() > 16 {
-            format!("{}...{}", &self.pubkey[..8], &self.pubkey[self.pubkey.len()-8..])
+            format!(
+                "{}...{}",
+                &self.pubkey[..8],
+                &self.pubkey[self.pubkey.len() - 8..]
+            )
         } else {
             self.pubkey.clone()
         }
@@ -234,7 +238,12 @@ impl EventInspector {
     }
 
     fn tabs_bounds(&self, bounds: &Bounds) -> Bounds {
-        Bounds::new(bounds.origin.x, bounds.origin.y + 50.0, bounds.size.width, 36.0)
+        Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y + 50.0,
+            bounds.size.width,
+            36.0,
+        )
     }
 
     fn content_bounds(&self, bounds: &Bounds) -> Bounds {
@@ -300,10 +309,8 @@ impl Component for EventInspector {
 
         // Header
         let header = self.header_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(header)
-                .with_background(theme::bg::MUTED),
-        );
+        cx.scene
+            .draw_quad(Quad::new(header).with_background(theme::bg::MUTED));
 
         // Category badge
         let category = self.event.category();
@@ -339,7 +346,10 @@ impl Component for EventInspector {
         let id_text = format!("ID: {}", self.event.truncated_id());
         let id_run = cx.text.layout(
             &id_text,
-            Point::new(badge_bounds.origin.x + badge_bounds.size.width + 12.0, bounds.origin.y + 18.0),
+            Point::new(
+                badge_bounds.origin.x + badge_bounds.size.width + 12.0,
+                bounds.origin.y + 18.0,
+            ),
             theme::font_size::XS,
             theme::text::MUTED,
         );
@@ -349,7 +359,10 @@ impl Component for EventInspector {
         if self.event.verified {
             let check_run = cx.text.layout(
                 "✓",
-                Point::new(bounds.origin.x + bounds.size.width - 100.0, bounds.origin.y + 16.0),
+                Point::new(
+                    bounds.origin.x + bounds.size.width - 100.0,
+                    bounds.origin.y + 16.0,
+                ),
                 theme::font_size::SM,
                 theme::status::SUCCESS,
             );
@@ -378,10 +391,8 @@ impl Component for EventInspector {
 
         // Tabs
         let tabs = self.tabs_bounds(&bounds);
-        cx.scene.draw_quad(
-            Quad::new(tabs)
-                .with_background(theme::bg::APP),
-        );
+        cx.scene
+            .draw_quad(Quad::new(tabs).with_background(theme::bg::APP));
 
         for (i, view) in Self::tab_views().iter().enumerate() {
             let tab = self.tab_bounds(&bounds, i);
@@ -396,10 +407,7 @@ impl Component for EventInspector {
                 theme::bg::MUTED
             };
 
-            cx.scene.draw_quad(
-                Quad::new(tab)
-                    .with_background(bg),
-            );
+            cx.scene.draw_quad(Quad::new(tab).with_background(bg));
 
             let text_color = if is_active {
                 theme::accent::PRIMARY
@@ -713,8 +721,7 @@ mod tests {
     #[test]
     fn test_event_inspector() {
         let event = EventData::new("test_id", "test_pubkey", 1);
-        let inspector = EventInspector::new(event)
-            .view(InspectorView::Tags);
+        let inspector = EventInspector::new(event).view(InspectorView::Tags);
 
         assert_eq!(inspector.view, InspectorView::Tags);
     }

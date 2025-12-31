@@ -130,9 +130,11 @@ fn test_streaming_markdown_code_block_incremental() {
     stream.complete();
 
     // Should have parsed code block
-    let has_code = stream.document().blocks.iter().any(|b| {
-        matches!(b, MarkdownBlock::CodeBlock { .. })
-    });
+    let has_code = stream
+        .document()
+        .blocks
+        .iter()
+        .any(|b| matches!(b, MarkdownBlock::CodeBlock { .. }));
     assert!(has_code);
 }
 
@@ -185,7 +187,9 @@ fn test_message_ordering_preserved() {
         entries: Vec<&'static str>,
     }
 
-    let mut chat = MockChat { entries: Vec::new() };
+    let mut chat = MockChat {
+        entries: Vec::new(),
+    };
 
     // User message
     chat.entries.push("user: Hello");

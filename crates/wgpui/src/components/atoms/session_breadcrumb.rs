@@ -115,10 +115,8 @@ impl Component for SessionBreadcrumb {
             // Draw item background on hover (except current)
             let is_hovered = self.hovered_index == Some(idx);
             if is_hovered && !item.is_current {
-                cx.scene.draw_quad(
-                    Quad::new(*item_bounds)
-                        .with_background(theme::bg::HOVER),
-                );
+                cx.scene
+                    .draw_quad(Quad::new(*item_bounds).with_background(theme::bg::HOVER));
             }
 
             // Draw item text
@@ -194,8 +192,7 @@ mod tests {
 
     #[test]
     fn test_breadcrumb_item() {
-        let item = BreadcrumbItem::new("sess-123", "Session #123")
-            .current(true);
+        let item = BreadcrumbItem::new("sess-123", "Session #123").current(true);
         assert_eq!(item.id, "sess-123");
         assert!(item.is_current);
     }

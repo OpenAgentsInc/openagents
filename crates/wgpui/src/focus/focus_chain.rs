@@ -116,20 +116,15 @@ impl FocusChain {
             .filter(|entry| entry.tab_index >= 0)
             .collect();
 
-        focusable.sort_by(|a, b| {
-            match a.tab_index.cmp(&b.tab_index) {
-                Ordering::Equal => {
-                    match compare_f32(a.bounds.origin.y, b.bounds.origin.y) {
-                        Ordering::Equal => match compare_f32(a.bounds.origin.x, b.bounds.origin.x)
-                        {
-                            Ordering::Equal => a.order.cmp(&b.order),
-                            other => other,
-                        },
-                        other => other,
-                    }
-                }
+        focusable.sort_by(|a, b| match a.tab_index.cmp(&b.tab_index) {
+            Ordering::Equal => match compare_f32(a.bounds.origin.y, b.bounds.origin.y) {
+                Ordering::Equal => match compare_f32(a.bounds.origin.x, b.bounds.origin.x) {
+                    Ordering::Equal => a.order.cmp(&b.order),
+                    other => other,
+                },
                 other => other,
-            }
+            },
+            other => other,
         });
 
         self.order = focusable.into_iter().map(|entry| entry.id).collect();

@@ -128,7 +128,8 @@ impl ToolCallCard {
     /// Scroll to show the most recent (bottom) child
     pub fn scroll_to_bottom(&mut self) {
         let total_children_height = self.child_tools.len() as f32 * Self::HEADER_HEIGHT;
-        let visible_height = (Self::MAX_VISIBLE_CHILDREN as f32 * Self::HEADER_HEIGHT).min(total_children_height);
+        let visible_height =
+            (Self::MAX_VISIBLE_CHILDREN as f32 * Self::HEADER_HEIGHT).min(total_children_height);
         let max_scroll = (total_children_height - visible_height).max(0.0);
         self.child_scroll = max_scroll;
     }
@@ -183,8 +184,13 @@ impl Component for ToolCallCard {
         // Hover background
         if self.hovered {
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, Self::HEADER_HEIGHT))
-                    .with_background(theme::bg::MUTED.with_alpha(0.3)),
+                Quad::new(Bounds::new(
+                    bounds.origin.x,
+                    bounds.origin.y,
+                    bounds.size.width,
+                    Self::HEADER_HEIGHT,
+                ))
+                .with_background(theme::bg::MUTED.with_alpha(0.3)),
             );
         }
 
@@ -196,12 +202,22 @@ impl Component for ToolCallCard {
             Quad::new(Bounds::new(x, bounds.origin.y + 4.0, icon_size, icon_size))
                 .with_background(icon_color.with_alpha(0.2)),
         );
-        let icon_run = cx.text.layout(icon_char, Point::new(x + 3.0, y), Self::FONT_SIZE, icon_color);
+        let icon_run = cx.text.layout(
+            icon_char,
+            Point::new(x + 3.0, y),
+            Self::FONT_SIZE,
+            icon_color,
+        );
         cx.scene.draw_text(icon_run);
 
         // Tool name
         let name_x = x + icon_size + 6.0;
-        let name_run = cx.text.layout(&self.tool_name, Point::new(name_x, y), Self::FONT_SIZE, theme::text::PRIMARY);
+        let name_run = cx.text.layout(
+            &self.tool_name,
+            Point::new(name_x, y),
+            Self::FONT_SIZE,
+            theme::text::PRIMARY,
+        );
         cx.scene.draw_text(name_run);
 
         // Truncated input inline (when collapsed, show first part of input)
@@ -212,7 +228,12 @@ impl Component for ToolCallCard {
         if let Some(input) = &self.input {
             if available_width > 50.0 {
                 let truncated = Self::truncate_text(input, available_width, Self::DETAIL_FONT_SIZE);
-                let input_run = cx.text.layout(&truncated, Point::new(input_x, y), Self::DETAIL_FONT_SIZE, theme::text::MUTED);
+                let input_run = cx.text.layout(
+                    &truncated,
+                    Point::new(input_x, y),
+                    Self::DETAIL_FONT_SIZE,
+                    theme::text::MUTED,
+                );
                 cx.scene.draw_text(input_run);
             }
         }
@@ -232,14 +253,25 @@ impl Component for ToolCallCard {
             ToolStatus::Error => ("error".to_string(), theme::status::ERROR),
             ToolStatus::Cancelled => ("cancelled".to_string(), theme::text::MUTED),
         };
-        let status_run = cx.text.layout(status_text.as_str(), Point::new(status_x, y), Self::DETAIL_FONT_SIZE, status_color);
+        let status_run = cx.text.layout(
+            status_text.as_str(),
+            Point::new(status_x, y),
+            Self::DETAIL_FONT_SIZE,
+            status_color,
+        );
         cx.scene.draw_text(status_run);
 
         // Expand/collapse arrow
         let arrow = if self.expanded { "v" } else { ">" };
         let arrow_x = bounds.origin.x + bounds.size.width - 16.0;
-        let arrow_color = if self.hovered { theme::text::PRIMARY } else { theme::text::MUTED };
-        let arrow_run = cx.text.layout(arrow, Point::new(arrow_x, y), Self::FONT_SIZE, arrow_color);
+        let arrow_color = if self.hovered {
+            theme::text::PRIMARY
+        } else {
+            theme::text::MUTED
+        };
+        let arrow_run = cx
+            .text
+            .layout(arrow, Point::new(arrow_x, y), Self::FONT_SIZE, arrow_color);
         cx.scene.draw_text(arrow_run);
 
         // No bottom border - dense layout
@@ -250,7 +282,12 @@ impl Component for ToolCallCard {
             let mut detail_y = bounds.origin.y + Self::HEADER_HEIGHT + 2.0;
 
             if let Some(input) = &self.input {
-                let input_run = cx.text.layout(input, Point::new(x + indent, detail_y), Self::DETAIL_FONT_SIZE, theme::text::SECONDARY);
+                let input_run = cx.text.layout(
+                    input,
+                    Point::new(x + indent, detail_y),
+                    Self::DETAIL_FONT_SIZE,
+                    theme::text::SECONDARY,
+                );
                 cx.scene.draw_text(input_run);
                 detail_y += Self::LINE_HEIGHT;
             }
@@ -261,7 +298,12 @@ impl Component for ToolCallCard {
                 } else {
                     output.clone()
                 };
-                let output_run = cx.text.layout(&output_preview, Point::new(x + indent, detail_y), Self::DETAIL_FONT_SIZE, theme::text::MUTED);
+                let output_run = cx.text.layout(
+                    &output_preview,
+                    Point::new(x + indent, detail_y),
+                    Self::DETAIL_FONT_SIZE,
+                    theme::text::MUTED,
+                );
                 cx.scene.draw_text(output_run);
             }
         }
@@ -281,8 +323,7 @@ impl Component for ToolCallCard {
                 visible_height,
             );
             cx.scene.draw_quad(
-                Quad::new(container_bounds)
-                    .with_background(theme::bg::MUTED.with_alpha(0.3)),
+                Quad::new(container_bounds).with_background(theme::bg::MUTED.with_alpha(0.3)),
             );
 
             // Clip to container bounds
@@ -301,27 +342,49 @@ impl Component for ToolCallCard {
                     let child_x = container_bounds.origin.x + 4.0;
                     let icon_char = child.tool_type.icon();
                     let icon_color = child.tool_type.color();
-                    let child_text_y = child_y + (Self::HEADER_HEIGHT - Self::DETAIL_FONT_SIZE) / 2.0;
+                    let child_text_y =
+                        child_y + (Self::HEADER_HEIGHT - Self::DETAIL_FONT_SIZE) / 2.0;
 
                     cx.scene.draw_quad(
                         Quad::new(Bounds::new(child_x, child_y + 4.0, 12.0, 12.0))
                             .with_background(icon_color.with_alpha(0.2)),
                     );
-                    let icon_run = cx.text.layout(icon_char, Point::new(child_x + 2.0, child_text_y), Self::DETAIL_FONT_SIZE, icon_color);
+                    let icon_run = cx.text.layout(
+                        icon_char,
+                        Point::new(child_x + 2.0, child_text_y),
+                        Self::DETAIL_FONT_SIZE,
+                        icon_color,
+                    );
                     cx.scene.draw_text(icon_run);
 
                     // Child name
                     let name_x = child_x + 16.0;
                     let child_display = format!("{}", child.name);
-                    let name_run = cx.text.layout(&child_display, Point::new(name_x, child_text_y), Self::DETAIL_FONT_SIZE, theme::text::SECONDARY);
+                    let name_run = cx.text.layout(
+                        &child_display,
+                        Point::new(name_x, child_text_y),
+                        Self::DETAIL_FONT_SIZE,
+                        theme::text::SECONDARY,
+                    );
                     cx.scene.draw_text(name_run);
 
                     // Child params (truncated)
-                    let params_x = name_x + child.name.len() as f32 * Self::DETAIL_FONT_SIZE * 0.6 + 6.0;
-                    let params_available = container_bounds.size.width - (params_x - container_bounds.origin.x) - 60.0;
+                    let params_x =
+                        name_x + child.name.len() as f32 * Self::DETAIL_FONT_SIZE * 0.6 + 6.0;
+                    let params_available =
+                        container_bounds.size.width - (params_x - container_bounds.origin.x) - 60.0;
                     if params_available > 30.0 {
-                        let params_truncated = Self::truncate_text(&child.params, params_available, Self::DETAIL_FONT_SIZE);
-                        let params_run = cx.text.layout(&params_truncated, Point::new(params_x, child_text_y), Self::DETAIL_FONT_SIZE, theme::text::MUTED);
+                        let params_truncated = Self::truncate_text(
+                            &child.params,
+                            params_available,
+                            Self::DETAIL_FONT_SIZE,
+                        );
+                        let params_run = cx.text.layout(
+                            &params_truncated,
+                            Point::new(params_x, child_text_y),
+                            Self::DETAIL_FONT_SIZE,
+                            theme::text::MUTED,
+                        );
                         cx.scene.draw_text(params_run);
                     }
 
@@ -340,7 +403,12 @@ impl Component for ToolCallCard {
                         ToolStatus::Error => ("✗".to_string(), theme::status::ERROR),
                         ToolStatus::Cancelled => ("—".to_string(), theme::text::MUTED),
                     };
-                    let status_run = cx.text.layout(status_text.as_str(), Point::new(status_x, child_text_y), Self::DETAIL_FONT_SIZE, status_color);
+                    let status_run = cx.text.layout(
+                        status_text.as_str(),
+                        Point::new(status_x, child_text_y),
+                        Self::DETAIL_FONT_SIZE,
+                        status_color,
+                    );
                     cx.scene.draw_text(status_run);
                 }
                 child_y += Self::HEADER_HEIGHT;
@@ -351,7 +419,8 @@ impl Component for ToolCallCard {
             // Scrollbar if needed
             if total_children_height > visible_height {
                 let scrollbar_height = visible_height * (visible_height / total_children_height);
-                let scrollbar_y = children_start_y + (scroll / total_children_height) * visible_height;
+                let scrollbar_y =
+                    children_start_y + (scroll / total_children_height) * visible_height;
                 cx.scene.draw_quad(
                     Quad::new(Bounds::new(
                         bounds.origin.x + bounds.size.width - 6.0,
@@ -366,7 +435,12 @@ impl Component for ToolCallCard {
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
-        let header_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, Self::HEADER_HEIGHT);
+        let header_bounds = Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            Self::HEADER_HEIGHT,
+        );
 
         // Child tools scroll area bounds
         let children_start_y = bounds.origin.y + Self::HEADER_HEIGHT;

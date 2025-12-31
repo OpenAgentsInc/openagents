@@ -19,10 +19,10 @@ pub enum KeyShareStatus {
 impl KeyShareStatus {
     pub fn color(&self) -> Hsla {
         match self {
-            KeyShareStatus::Unknown => Hsla::new(0.0, 0.0, 0.5, 1.0),     // Gray
+            KeyShareStatus::Unknown => Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
             KeyShareStatus::Available => Hsla::new(120.0, 0.7, 0.45, 1.0), // Green
-            KeyShareStatus::Unavailable => Hsla::new(0.0, 0.8, 0.5, 1.0),  // Red
-            KeyShareStatus::Signing => Hsla::new(200.0, 0.8, 0.55, 1.0),   // Blue
+            KeyShareStatus::Unavailable => Hsla::new(0.0, 0.8, 0.5, 1.0), // Red
+            KeyShareStatus::Signing => Hsla::new(200.0, 0.8, 0.55, 1.0), // Blue
         }
     }
 }
@@ -91,13 +91,23 @@ impl Component for ThresholdKeyBadge {
             // Show just "2/3"
             let text = format!("{}/{}", self.threshold, self.total);
             let text_x = bounds.origin.x + (bounds.size.width - text.len() as f32 * 6.0) / 2.0;
-            let run = cx.text.layout(&text, Point::new(text_x, text_y), theme::font_size::XS, color);
+            let run = cx.text.layout(
+                &text,
+                Point::new(text_x, text_y),
+                theme::font_size::XS,
+                color,
+            );
             cx.scene.draw_text(run);
         } else {
             let mut x = bounds.origin.x + padding;
 
             // Key icon
-            let icon_run = cx.text.layout("🔐", Point::new(x, text_y - 1.0), theme::font_size::SM, color);
+            let icon_run = cx.text.layout(
+                "🔐",
+                Point::new(x, text_y - 1.0),
+                theme::font_size::SM,
+                color,
+            );
             cx.scene.draw_text(icon_run);
             x += 18.0;
 
@@ -126,7 +136,12 @@ impl Component for ThresholdKeyBadge {
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -139,7 +154,9 @@ impl Component for ThresholdKeyBadge {
             (Some(36.0), Some(22.0))
         } else {
             let mut width = 90.0;
-            if self.shares_available > 0 { width += 60.0; }
+            if self.shares_available > 0 {
+                width += 60.0;
+            }
             (Some(width), Some(24.0))
         }
     }

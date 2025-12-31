@@ -5,9 +5,9 @@ mod renderer;
 mod streaming;
 mod types;
 
-pub use highlighter::{SyntaxHighlighter, SUPPORTED_LANGUAGES};
+pub use highlighter::{SUPPORTED_LANGUAGES, SyntaxHighlighter};
 pub use parser::MarkdownParser;
-pub use renderer::{render_markdown, MarkdownRenderer};
+pub use renderer::{MarkdownRenderer, render_markdown};
 pub use streaming::{FadeState, StreamingConfig, StreamingMarkdown};
 pub use types::{
     MarkdownBlock, MarkdownConfig, MarkdownDocument, StyledLine, StyledSpan, TextStyle,
@@ -32,7 +32,10 @@ mod tests {
         let doc = parser.parse("# Hello\n\nThis is **bold** text.");
 
         assert_eq!(doc.blocks.len(), 2);
-        assert!(matches!(doc.blocks[0], MarkdownBlock::Header { level: 1, .. }));
+        assert!(matches!(
+            doc.blocks[0],
+            MarkdownBlock::Header { level: 1, .. }
+        ));
         assert!(matches!(doc.blocks[1], MarkdownBlock::Paragraph(_)));
     }
 

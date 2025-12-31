@@ -65,7 +65,8 @@ impl Component for UserMessage {
         );
 
         let content_y = bounds.origin.y + padding + header_height + theme::spacing::SM;
-        let content_height = bounds.size.height - padding * 2.0 - header_height - theme::spacing::SM;
+        let content_height =
+            bounds.size.height - padding * 2.0 - header_height - theme::spacing::SM;
 
         let mut text = Text::new(&self.content)
             .font_size(theme::font_size::BASE)
@@ -81,7 +82,12 @@ impl Component for UserMessage {
         );
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -106,9 +112,7 @@ mod tests {
 
     #[test]
     fn test_user_message_builder() {
-        let msg = UserMessage::new("Test")
-            .with_id(1)
-            .timestamp("12:30 PM");
+        let msg = UserMessage::new("Test").with_id(1).timestamp("12:30 PM");
 
         assert_eq!(msg.id, Some(1));
         assert_eq!(msg.timestamp, Some("12:30 PM".to_string()));

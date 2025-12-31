@@ -174,8 +174,14 @@ pub fn style_frame_clip_kranox(props: StyleFrameClipKranoxProps) -> String {
 
     let points = vec![
         // Left-bottom.
-        (format!("{so} + {p} + calc({ss} * 2)"), format!("100% - calc({so} + {p})")),
-        (format!("{so} + {p} + {ss}"), format!("100% - calc({so} + {p} + {ss})")),
+        (
+            format!("{so} + {p} + calc({ss} * 2)"),
+            format!("100% - calc({so} + {p})"),
+        ),
+        (
+            format!("{so} + {p} + {ss}"),
+            format!("100% - calc({so} + {p} + {ss})"),
+        ),
         // Left.
         (
             format!("{so} + {p} + {ss}"),
@@ -195,7 +201,10 @@ pub fn style_frame_clip_kranox(props: StyleFrameClipKranoxProps) -> String {
         ),
         // Left-top.
         (format!("{so} + {p} + {ss}"), format!("{so} + {p} + {ss}")),
-        (format!("{so} + {p} + calc({ss} * 2)"), format!("{so} + {p}")),
+        (
+            format!("{so} + {p} + calc({ss} * 2)"),
+            format!("{so} + {p}"),
+        ),
         // Right-top.
         (
             format!("100% - calc({so} + {p} + calc({ss} * 2))"),
