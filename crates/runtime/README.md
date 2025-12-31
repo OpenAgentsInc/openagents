@@ -52,6 +52,11 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 │   ├── run             # write request, read response
 │   ├── providers/      # available AI providers
 │   └── usage           # budget tracking
+├── containers/
+│   ├── new             # spawn container, read session_id
+│   ├── providers/      # local, cloudflare, daytona, dvm
+│   ├── sessions/       # per-session status, output, files
+│   └── auth/           # OpenAgents API authentication
 ├── deadletter/         # overflow envelopes (when inbox full)
 ├── logs/
 │   ├── trace           # streaming trace
@@ -105,6 +110,7 @@ This is not a generic actor framework. It's purpose-built for AI agents:
 | [PLAN9.md](docs/PLAN9.md) | Plan 9 inspirations (filesystem, namespaces, plumber) |
 | [FILESYSTEM.md](docs/FILESYSTEM.md) | FileService trait and implementations |
 | [COMPUTE.md](docs/COMPUTE.md) | AI compute abstraction (providers, budgets, streaming) |
+| [CONTAINERS.md](docs/CONTAINERS.md) | Container spawning (Local, Cloudflare, Daytona, DVMs) |
 | [PRIOR-ART.md](docs/PRIOR-ART.md) | Related work (Plan 9, WANIX, OANIX) |
 
 ## Quick Example
