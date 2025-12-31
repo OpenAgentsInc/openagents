@@ -404,9 +404,9 @@ pub async fn get_settings(
 
 /// Live HUD configuration for landing page.
 pub async fn live_hud(env: Env) -> Result<Response> {
-    let repo = match env.var("LIVE_HUD_REPO") {
-        Ok(value) => value.to_string(),
-        Err(_) => {
+    let repo = match env_var_non_empty(&env, "LIVE_HUD_REPO") {
+        Some(value) => value,
+        None => {
             return Response::from_json(&LiveHudResponse {
                 enabled: false,
                 hud_context: None,
@@ -426,20 +426,22 @@ pub async fn live_hud(env: Env) -> Result<Response> {
 
     let username = parts[0].to_string();
     let repo_name = parts[1..].join("/");
-    let agent_id = env.var("LIVE_HUD_AGENT_ID").ok().map(|v| v.to_string());
-    let stream_url = env.var("LIVE_HUD_STREAM_URL").ok().map(|v| v.to_string());
-    let status = env
-        .var("LIVE_HUD_STATUS")
-        .ok()
-        .map(|v| v.to_string())
+    let agent_id = env_var_non_empty(&env, "LIVE_HUD_AGENT_ID");
+    let stream_url = env_var_non_empty(&env, "LIVE_HUD_STREAM_URL");
+    if agent_id.is_none() && stream_url.is_none() {
+        return Response::from_json(&LiveHudResponse {
+            enabled: false,
+            hud_context: None,
+            issue: None,
+        });
+    }
+
+    let status = env_var_non_empty(&env, "LIVE_HUD_STATUS")
         .unwrap_or_else(|| "live".to_string());
 
-    let issue_url = env.var("LIVE_HUD_ISSUE_URL").ok().map(|v| v.to_string());
-    let issue_title = env
-        .var("LIVE_HUD_ISSUE_TITLE")
-        .ok()
-        .map(|v| v.to_string());
-    let issue_label = env.var("LIVE_HUD_ISSUE_LABEL").ok().map(|v| v.to_string()).or_else(|| {
+    let issue_url = env_var_non_empty(&env, "LIVE_HUD_ISSUE_URL");
+    let issue_title = env_var_non_empty(&env, "LIVE_HUD_ISSUE_TITLE");
+    let issue_label = env_var_non_empty(&env, "LIVE_HUD_ISSUE_LABEL").or_else(|| {
         issue_url.as_ref().and_then(|url| {
             let trimmed = url.trim_end_matches('/');
             let last = trimmed.rsplit('/').next()?;
@@ -478,6 +480,13 @@ pub async fn live_hud(env: Env) -> Result<Response> {
         hud_context: Some(context),
         issue,
     })
+}
+
+fn env_var_non_empty(env: &Env, key: &str) -> Option<String> {
+    env.var(key)
+        .ok()
+        .map(|value| value.to_string())
+        .filter(|value| !value.trim().is_empty())
 }
 
 /// Serve the HUD HTML page with context
