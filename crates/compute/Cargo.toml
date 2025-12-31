@@ -60,6 +60,7 @@ log = "0.4"
 dirs = "5.0"
 env_logger = "0.11.8"
 rpassword = "7.4.0"
+sha2.workspace = true
 
 [features]
 default = []

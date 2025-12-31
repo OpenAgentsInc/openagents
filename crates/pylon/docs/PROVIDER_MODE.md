@@ -46,11 +46,20 @@ Customer                    Nostr Relays                    Provider (Pylon)
 
 ### Supported Job Kinds
 
+**Inference Jobs:**
+
 | Kind | Description | Backend |
 |------|-------------|---------|
-| 5100 | Text generation | Ollama, llama.cpp |
-| 5101 | Chat completion | Ollama, llama.cpp |
-| 5102 | Text embedding | Ollama |
+| 5050 | Text generation | Ollama, llama.cpp, Apple FM |
+
+**Bazaar Jobs (Agent Backends):**
+
+| Kind | Description | Backend |
+|------|-------------|---------|
+| 5930 | SandboxRun | Claude Code |
+| 5931 | RepoIndex | Claude Code |
+| 5932 | PatchGen | Claude Code |
+| 5933 | CodeReview | Claude Code |
 
 ## Inference Backends
 
@@ -91,6 +100,67 @@ Direct llama.cpp server or compatible API.
 macOS-only, uses Apple Silicon Neural Engine.
 
 **Detection**: Pylon checks `http://localhost:11435/health` (requires separate server)
+
+## Agent Backends (Bazaar Jobs)
+
+Agent backends handle complex, multi-step tasks that require tool execution, repository access, and sandboxed environments.
+
+### Claude Code
+
+Primary agent backend for Bazaar jobs. Uses Claude with sandbox isolation.
+
+**Detection**: Pylon checks for:
+- `ANTHROPIC_API_KEY` environment variable, OR
+- `claude` CLI in PATH
+
+**Capabilities:**
+- PatchGen (kind 5932): Generate patches from issues/requirements
+- CodeReview (kind 5933): Structured code review with issues
+- SandboxRun (kind 5930): Execute code in isolated sandbox
+
+**Configuration:**
+
+```toml
+# ~/.config/pylon/config.toml
+
+[claude]
+enabled = true
+max_workers = 3
+isolation = "container"  # local | container | gvisor
+model_pattern = "claude-sonnet-4-*"
+default_time_limit = 900
+
+[claude.pricing]
+patch_gen_base_msats = 10000
+patch_gen_per_1k_tokens = 100
+code_review_base_msats = 5000
+```
+
+**Isolation Modes:**
+- `local`: Run Claude in current environment (development only)
+- `container`: Run in Docker container (recommended)
+- `gvisor`: Run in gVisor sandbox (most secure)
+
+### Job Flow for Bazaar
+
+```
+1. BUYER publishes kind:5932 job request to Nostr
+2. PYLON DvmService receives job
+   → Validates kind supported
+   → Routes to AgentRegistry
+3. ClaudeCodeBackend executes:
+   a. Clone repo (filtered paths)
+   b. Start sandbox
+   c. Run Claude with system prompt
+   d. Extract result (patch/review)
+   e. Verify: apply patch, run tests
+4. DvmService creates Lightning invoice
+5. DvmService publishes kind:6932 result
+   → content = patch diff / review
+   → tags = hashes, verification, invoice
+6. BUYER verifies locally, pays if valid
+7. PYLON records earnings
+```
 
 ## Configuration
 
@@ -302,8 +372,12 @@ pylon status
 #   Jobs completed: 42
 #   Earnings: 1234 sats (1234000 msats)
 #
-# Backends:
+# Inference Backends:
 #   Available: ollama (default)
+#
+# Agent Backends:
+#   Available: claude_code
+#   Supported Bazaar Kinds: 5930, 5932, 5933
 #
 # Relays:
 #   wss://relay.damus.io

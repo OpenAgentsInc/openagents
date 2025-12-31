@@ -388,6 +388,29 @@ const SPEECH_TO_TEXT: u16 = 5250;       // Transcription
 assert_eq!(get_result_kind(5050), Some(6050));
 ```
 
+### Bazaar Job Kinds (OpenAgents)
+
+```rust
+use nostr::nip90::*;
+
+// Agentic compute jobs for complex, multi-step tasks
+const SANDBOX_RUN: u16 = KIND_JOB_SANDBOX_RUN;    // 5930 - Execute code in sandbox
+const REPO_INDEX: u16 = KIND_JOB_REPO_INDEX;      // 5931 - Index/analyze repository
+const PATCH_GEN: u16 = KIND_JOB_PATCH_GEN;        // 5932 - Generate patch from issue
+const CODE_REVIEW: u16 = KIND_JOB_CODE_REVIEW;    // 5933 - Review code with feedback
+
+// Results follow NIP-90 pattern (kind + 1000)
+// 5932 → 6932 (PatchGen result)
+// 5933 → 6933 (CodeReview result)
+```
+
+**Key differences from inference jobs:**
+- Pay-after-verify semantics (buyer verifies result before paying)
+- Structured request/result schemas
+- Repository and file access required
+- Multi-turn reasoning with tool use
+- Sandbox execution environment
+
 ## NIP-77: Negentropy Protocol
 
 Efficient range-based set reconciliation for syncing Nostr events between clients and relays.
