@@ -1023,10 +1023,19 @@ impl GlobalFeedState {
     }
 
     /// Add a note, keeping sorted by timestamp (most recent first), capped at max_notes
-    /// Skips replies (notes with is_reply=true)
+    /// Skips replies (notes with is_reply=true) and spam content
     pub(crate) fn add_note(&mut self, note: TextNote, max_notes: usize) {
         // Skip replies
         if note.is_reply {
+            return;
+        }
+
+        // Skip spam content (case-insensitive check)
+        let content_lower = note.content.to_lowercase();
+        if content_lower.contains("airdrop")
+            || content_lower.contains("reward")
+            || content_lower.contains("$zaps")
+        {
             return;
         }
 
