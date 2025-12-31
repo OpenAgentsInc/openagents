@@ -1,7 +1,7 @@
 // Database layer for web platform
 
-use rusqlite::Connection;
 use anyhow::Result;
+use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
 #[allow(dead_code)]

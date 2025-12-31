@@ -1,14 +1,14 @@
 // GitHub OAuth integration
 
-use actix_web::{web, HttpResponse, Result};
-use oauth2::{
-    AuthorizationCode, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope,
-    TokenResponse, TokenUrl,
-};
+use actix_web::{HttpResponse, Result, web};
 use oauth2::basic::BasicClient;
 use oauth2::reqwest::async_http_client;
+use oauth2::{
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope,
+    TokenResponse, TokenUrl,
+};
 use serde::{Deserialize, Serialize};
-use tracing::{info, error};
+use tracing::{error, info};
 
 #[allow(dead_code)]
 #[derive(Debug, Serialize)]
@@ -18,10 +18,9 @@ struct OAuthState {
 
 pub async fn start_oauth() -> Result<HttpResponse> {
     // Get GitHub OAuth credentials from environment
-    let client_id = std::env::var("GITHUB_CLIENT_ID")
-        .expect("GITHUB_CLIENT_ID must be set");
-    let client_secret = std::env::var("GITHUB_CLIENT_SECRET")
-        .expect("GITHUB_CLIENT_SECRET must be set");
+    let client_id = std::env::var("GITHUB_CLIENT_ID").expect("GITHUB_CLIENT_ID must be set");
+    let client_secret =
+        std::env::var("GITHUB_CLIENT_SECRET").expect("GITHUB_CLIENT_SECRET must be set");
     let redirect_url = std::env::var("GITHUB_REDIRECT_URL")
         .unwrap_or_else(|_| "http://localhost:8080/auth/github/callback".to_string());
 
@@ -36,9 +35,7 @@ pub async fn start_oauth() -> Result<HttpResponse> {
                 .expect("Invalid token endpoint URL"),
         ),
     )
-    .set_redirect_uri(
-        RedirectUrl::new(redirect_url).expect("Invalid redirect URL"),
-    );
+    .set_redirect_uri(RedirectUrl::new(redirect_url).expect("Invalid redirect URL"));
 
     // Generate the authorization URL
     let (authorize_url, csrf_state) = client
@@ -71,15 +68,12 @@ pub struct GitHubUser {
     pub name: Option<String>,
 }
 
-pub async fn oauth_callback(
-    query: web::Query<OAuthCallback>,
-) -> Result<HttpResponse> {
+pub async fn oauth_callback(query: web::Query<OAuthCallback>) -> Result<HttpResponse> {
     info!("Received OAuth callback with code");
 
-    let client_id = std::env::var("GITHUB_CLIENT_ID")
-        .expect("GITHUB_CLIENT_ID must be set");
-    let client_secret = std::env::var("GITHUB_CLIENT_SECRET")
-        .expect("GITHUB_CLIENT_SECRET must be set");
+    let client_id = std::env::var("GITHUB_CLIENT_ID").expect("GITHUB_CLIENT_ID must be set");
+    let client_secret =
+        std::env::var("GITHUB_CLIENT_SECRET").expect("GITHUB_CLIENT_SECRET must be set");
     let redirect_url = std::env::var("GITHUB_REDIRECT_URL")
         .unwrap_or_else(|_| "http://localhost:8080/auth/github/callback".to_string());
 
@@ -93,9 +87,7 @@ pub async fn oauth_callback(
                 .expect("Invalid token endpoint URL"),
         ),
     )
-    .set_redirect_uri(
-        RedirectUrl::new(redirect_url).expect("Invalid redirect URL"),
-    );
+    .set_redirect_uri(RedirectUrl::new(redirect_url).expect("Invalid redirect URL"));
 
     // Exchange code for token
     let token_result = client
@@ -120,11 +112,10 @@ pub async fn oauth_callback(
             match user_result {
                 Ok(response) => {
                     if response.status().is_success() {
-                        let user: GitHubUser = response.json().await
-                            .map_err(|e| {
-                                error!("Failed to parse GitHub user response: {}", e);
-                                actix_web::error::ErrorInternalServerError(e)
-                            })?;
+                        let user: GitHubUser = response.json().await.map_err(|e| {
+                            error!("Failed to parse GitHub user response: {}", e);
+                            actix_web::error::ErrorInternalServerError(e)
+                        })?;
 
                         info!("Authenticated GitHub user: {}", user.login);
 
