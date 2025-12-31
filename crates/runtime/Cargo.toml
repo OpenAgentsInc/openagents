@@ -31,6 +31,8 @@ clap = { workspace = true }
 reqwest = { workspace = true }
 uuid = { workspace = true }
 compute = { path = "../compute" }
+urlencoding = "2.1.3"
+tempfile = { workspace = true }
 
 # Crypto
 # TODO: Add when implementing identity

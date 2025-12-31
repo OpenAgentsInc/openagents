@@ -5,6 +5,11 @@ use crate::compute::{
     ComputeRequest, ComputeResponse, ComputeRouter, JobState, ModelInfo, ProviderInfo,
     ProviderLatency, ProviderStatus,
 };
+use crate::containers::{
+    ContainerCapabilities, ContainerError, ContainerFs, ContainerKind, ContainerPolicy,
+    ContainerProvider, ContainerProviderInfo, ContainerRequest, ContainerResponse, ContainerRouter,
+    ContainerUsage, ExecState, OutputChunk, OutputStream, SessionState,
+};
 use crate::engine::{manual_trigger, TickEngine};
 use crate::fs::{AccessLevel, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat};
 use crate::idempotency::{IdempotencyJournal, MemoryJournal};
@@ -439,6 +444,217 @@ fn test_compute_stream_watch() {
     );
 }
 
+#[test]
+fn test_container_new_usage_and_idempotency() {
+    let mut router = ContainerRouter::new();
+    router.register(Arc::new(TestContainerProvider::new()));
+    let policy = ContainerPolicy {
+        require_idempotency: true,
+        require_max_cost: true,
+        ..ContainerPolicy::default()
+    };
+    let budget = BudgetPolicy {
+        per_tick_usd: 10,
+        per_day_usd: 10,
+        approval_threshold_usd: 0,
+        approvers: Vec::new(),
+    };
+    let journal = Arc::new(MemoryJournal::new());
+    let containers = ContainerFs::new(
+        AgentId::from("agent-containers"),
+        router,
+        policy,
+        budget,
+        journal,
+    );
+
+    let request = ContainerRequest {
+        kind: ContainerKind::Ephemeral,
+        image: Some("test-image".to_string()),
+        repo: None,
+        commands: vec!["echo ok".to_string()],
+        workdir: None,
+        env: HashMap::new(),
+        limits: crate::containers::ResourceLimits::basic(),
+        max_cost_usd: Some(5),
+        idempotency_key: Some("req-1".to_string()),
+        timeout_ms: None,
+    };
+
+    let response = submit_container(&containers, &request);
+    let session_id = response["session_id"].as_str().expect("session_id").to_string();
+
+    let result_bytes = read_handle(
+        containers
+            .open(&format!("sessions/{}/result", session_id), OpenFlags::read())
+            .unwrap(),
+    );
+    let result: ContainerResponse = serde_json::from_slice(&result_bytes).expect("result");
+    assert_eq!(result.provider_id, "test");
+    assert_eq!(result.cost_usd, 3);
+
+    let usage_bytes = read_handle(containers.open("usage", OpenFlags::read()).unwrap());
+    let usage: serde_json::Value = serde_json::from_slice(&usage_bytes).expect("usage");
+    assert_eq!(usage["tick"]["spent_usd"].as_u64(), Some(3));
+    assert_eq!(usage["tick"]["reserved_usd"].as_u64(), Some(0));
+
+    let response_again = submit_container(&containers, &request);
+    let session_id_again = response_again["session_id"].as_str().expect("session_id");
+    assert_eq!(session_id_again, session_id);
+}
+
+#[test]
+fn test_container_output_watch() {
+    let mut router = ContainerRouter::new();
+    router.register(Arc::new(TestContainerProvider::new()));
+    let policy = ContainerPolicy::default();
+    let budget = BudgetPolicy {
+        per_tick_usd: 10,
+        per_day_usd: 10,
+        approval_threshold_usd: 0,
+        approvers: Vec::new(),
+    };
+    let journal = Arc::new(MemoryJournal::new());
+    let containers = ContainerFs::new(
+        AgentId::from("agent-containers-watch"),
+        router,
+        policy,
+        budget,
+        journal,
+    );
+
+    let request = ContainerRequest {
+        kind: ContainerKind::Ephemeral,
+        image: Some("test-image".to_string()),
+        repo: None,
+        commands: vec!["echo ok".to_string()],
+        workdir: None,
+        env: HashMap::new(),
+        limits: crate::containers::ResourceLimits::basic(),
+        max_cost_usd: Some(5),
+        idempotency_key: Some("req-watch".to_string()),
+        timeout_ms: None,
+    };
+
+    let response = submit_container(&containers, &request);
+    let session_id = response["session_id"].as_str().expect("session_id").to_string();
+    let mut watch = containers
+        .watch(&format!("sessions/{}/output", session_id))
+        .expect("watch")
+        .expect("handle");
+
+    let first = watch.next(Some(Duration::from_millis(100))).expect("first");
+    let first_data = match first {
+        Some(WatchEvent::Data(data)) => data,
+        _ => panic!("no data"),
+    };
+    let first_chunk: OutputChunk = serde_json::from_slice(&first_data).expect("chunk");
+    assert_eq!(first_chunk.stream, OutputStream::Stdout);
+    assert_eq!(first_chunk.data, "hello");
+
+    let second = watch.next(Some(Duration::from_millis(100))).expect("second");
+    let second_data = match second {
+        Some(WatchEvent::Data(data)) => data,
+        _ => panic!("no data"),
+    };
+    let second_chunk: OutputChunk = serde_json::from_slice(&second_data).expect("chunk");
+    assert_eq!(second_chunk.stream, OutputStream::Stderr);
+    assert_eq!(second_chunk.data, "error");
+
+    let done = watch.next(Some(Duration::from_millis(50))).expect("done");
+    assert!(done.is_none());
+}
+
+#[test]
+fn test_container_exec_and_files() {
+    let mut router = ContainerRouter::new();
+    router.register(Arc::new(TestContainerProvider::new()));
+    let policy = ContainerPolicy::default();
+    let budget = BudgetPolicy {
+        per_tick_usd: 10,
+        per_day_usd: 10,
+        approval_threshold_usd: 0,
+        approvers: Vec::new(),
+    };
+    let journal = Arc::new(MemoryJournal::new());
+    let containers = ContainerFs::new(
+        AgentId::from("agent-containers-exec"),
+        router,
+        policy,
+        budget,
+        journal,
+    );
+
+    let request = ContainerRequest {
+        kind: ContainerKind::Interactive,
+        image: Some("test-image".to_string()),
+        repo: None,
+        commands: Vec::new(),
+        workdir: None,
+        env: HashMap::new(),
+        limits: crate::containers::ResourceLimits::basic(),
+        max_cost_usd: Some(5),
+        idempotency_key: Some("req-exec".to_string()),
+        timeout_ms: None,
+    };
+
+    let response = submit_container(&containers, &request);
+    let session_id = response["session_id"].as_str().expect("session_id").to_string();
+
+    let mut exec_handle = containers
+        .open(&format!("sessions/{}/exec/new", session_id), OpenFlags::write())
+        .expect("exec new");
+    exec_handle.write(b"ls -la").expect("write exec");
+    exec_handle.flush().expect("flush exec");
+    let exec_response: serde_json::Value = serde_json::from_slice(&read_handle(exec_handle))
+        .expect("exec response");
+    let exec_id = exec_response["exec_id"].as_str().expect("exec_id").to_string();
+
+    let mut exec_watch = containers
+        .watch(&format!("sessions/{}/exec/{}/output", session_id, exec_id))
+        .expect("watch")
+        .expect("handle");
+    let first = exec_watch.next(Some(Duration::from_millis(100))).expect("first");
+    let first_data = match first {
+        Some(WatchEvent::Data(data)) => data,
+        _ => panic!("no data"),
+    };
+    let first_chunk: OutputChunk = serde_json::from_slice(&first_data).expect("chunk");
+    assert_eq!(first_chunk.exec_id.as_deref(), Some(exec_id.as_str()));
+
+    let result_bytes = read_handle(
+        containers
+            .open(
+                &format!("sessions/{}/exec/{}/result", session_id, exec_id),
+                OpenFlags::read(),
+            )
+            .unwrap(),
+    );
+    let result: crate::containers::CommandResult =
+        serde_json::from_slice(&result_bytes).expect("result");
+    assert_eq!(result.exit_code, 0);
+
+    let file_path = "src%2Fmain.rs";
+    let mut file_handle = containers
+        .open(&format!("sessions/{}/files/{}", session_id, file_path), OpenFlags::write())
+        .expect("file write");
+    file_handle.write(b"hello").expect("write");
+    file_handle.flush().expect("flush");
+
+    let chunk_bytes = read_handle(
+        containers
+            .open(
+                &format!(
+                    "sessions/{}/files/{}/chunks/0",
+                    session_id, file_path
+                ),
+                OpenFlags::read(),
+            )
+            .unwrap(),
+    );
+    assert_eq!(chunk_bytes, b"hello");
+}
+
 #[tokio::test]
 async fn test_control_plane_http() {
     let storage = Arc::new(InMemoryStorage::new());
@@ -644,7 +860,18 @@ fn submit_compute(fs: &ComputeFs, request: &ComputeRequest) -> serde_json::Value
     serde_json::from_slice(&response).expect("response json")
 }
 
+fn submit_container(fs: &ContainerFs, request: &ContainerRequest) -> serde_json::Value {
+    let mut handle = fs.open("new", OpenFlags::write()).expect("open");
+    let bytes = serde_json::to_vec(request).expect("serialize");
+    handle.write(&bytes).expect("write");
+    handle.flush().expect("flush");
+    let response = read_handle(handle);
+    serde_json::from_slice(&response).expect("response json")
+}
+
 static JOB_COUNTER: AtomicUsize = AtomicUsize::new(1);
+static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(1);
+static EXEC_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 #[derive(Clone)]
 struct TestProvider {
@@ -840,5 +1067,266 @@ impl ComputeProvider for TestProvider {
             at: Timestamp::now(),
         });
         Ok(())
+    }
+}
+
+#[derive(Clone)]
+struct TestContainerProvider {
+    sessions: Arc<RwLock<HashMap<String, SessionState>>>,
+    session_outputs: Arc<std::sync::Mutex<HashMap<String, VecDeque<OutputChunk>>>>,
+    execs: Arc<RwLock<HashMap<String, ExecState>>>,
+    exec_outputs: Arc<std::sync::Mutex<HashMap<String, VecDeque<OutputChunk>>>>,
+    files: Arc<std::sync::Mutex<HashMap<(String, String), Vec<u8>>>>,
+}
+
+impl TestContainerProvider {
+    fn new() -> Self {
+        Self {
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            session_outputs: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            execs: Arc::new(RwLock::new(HashMap::new())),
+            exec_outputs: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            files: Arc::new(std::sync::Mutex::new(HashMap::new())),
+        }
+    }
+}
+
+impl ContainerProvider for TestContainerProvider {
+    fn id(&self) -> &str {
+        "test"
+    }
+
+    fn info(&self) -> ContainerProviderInfo {
+        ContainerProviderInfo {
+            id: "test".to_string(),
+            name: "Test Containers".to_string(),
+            available_images: vec!["test-image".to_string()],
+            capabilities: ContainerCapabilities {
+                git_clone: false,
+                file_access: true,
+                interactive: true,
+                artifacts: false,
+                streaming: true,
+            },
+            pricing: None,
+            latency: crate::containers::ContainerLatency {
+                startup_ms: 1,
+                measured: true,
+            },
+            limits: crate::containers::ContainerLimits {
+                max_memory_mb: 1024,
+                max_cpu_cores: 1.0,
+                max_disk_mb: 512,
+                max_time_secs: 300,
+                network_allowed: false,
+            },
+            status: crate::containers::ProviderStatus::Available,
+        }
+    }
+
+    fn is_available(&self) -> bool {
+        true
+    }
+
+    fn submit(&self, request: ContainerRequest) -> std::result::Result<String, ContainerError> {
+        let session_id = format!(
+            "session-{}",
+            SESSION_COUNTER.fetch_add(1, Ordering::SeqCst)
+        );
+        let response = ContainerResponse {
+            session_id: session_id.clone(),
+            exit_code: Some(0),
+            stdout: "ok".to_string(),
+            stderr: String::new(),
+            command_results: request
+                .commands
+                .iter()
+                .map(|cmd| crate::containers::CommandResult {
+                    command: cmd.clone(),
+                    exit_code: 0,
+                    stdout: "ok".to_string(),
+                    stderr: String::new(),
+                    duration_ms: 1,
+                })
+                .collect(),
+            artifacts: Vec::new(),
+            usage: ContainerUsage::zero(),
+            cost_usd: 3,
+            reserved_usd: request.max_cost_usd.unwrap_or(0),
+            duration_ms: 1,
+            provider_id: "test".to_string(),
+        };
+
+        let state = if matches!(request.kind, ContainerKind::Interactive) {
+            SessionState::Running {
+                started_at: Timestamp::now(),
+                commands_completed: 0,
+            }
+        } else {
+            SessionState::Complete(response)
+        };
+        self.sessions
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(session_id.clone(), state);
+        self.session_outputs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                session_id.clone(),
+                VecDeque::from(vec![
+                    OutputChunk {
+                        session_id: session_id.clone(),
+                        exec_id: None,
+                        stream: OutputStream::Stdout,
+                        data: "hello".to_string(),
+                    },
+                    OutputChunk {
+                        session_id: session_id.clone(),
+                        exec_id: None,
+                        stream: OutputStream::Stderr,
+                        data: "error".to_string(),
+                    },
+                ]),
+            );
+        Ok(session_id)
+    }
+
+    fn get_session(&self, session_id: &str) -> Option<SessionState> {
+        self.sessions
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(session_id)
+            .cloned()
+    }
+
+    fn submit_exec(
+        &self,
+        session_id: &str,
+        command: &str,
+    ) -> std::result::Result<String, ContainerError> {
+        let exec_id = format!("exec-{}", EXEC_COUNTER.fetch_add(1, Ordering::SeqCst));
+        self.execs
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                exec_id.clone(),
+                ExecState::Complete(crate::containers::CommandResult {
+                    command: command.to_string(),
+                    exit_code: 0,
+                    stdout: "ok".to_string(),
+                    stderr: String::new(),
+                    duration_ms: 1,
+                }),
+            );
+        self.exec_outputs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                exec_id.clone(),
+                VecDeque::from(vec![OutputChunk {
+                    session_id: session_id.to_string(),
+                    exec_id: Some(exec_id.clone()),
+                    stream: OutputStream::Stdout,
+                    data: "exec".to_string(),
+                }]),
+            );
+        Ok(exec_id)
+    }
+
+    fn get_exec(&self, exec_id: &str) -> Option<ExecState> {
+        self.execs
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(exec_id)
+            .cloned()
+    }
+
+    fn poll_exec_output(
+        &self,
+        exec_id: &str,
+    ) -> std::result::Result<Option<OutputChunk>, ContainerError> {
+        let mut outputs = self.exec_outputs.lock().unwrap_or_else(|e| e.into_inner());
+        let queue = outputs
+            .get_mut(exec_id)
+            .ok_or(ContainerError::ExecNotFound)?;
+        Ok(queue.pop_front())
+    }
+
+    fn cancel_exec(&self, exec_id: &str) -> std::result::Result<(), ContainerError> {
+        let mut execs = self.execs.write().unwrap_or_else(|e| e.into_inner());
+        let exec = execs.get_mut(exec_id).ok_or(ContainerError::ExecNotFound)?;
+        exec.clone_from(&ExecState::Failed {
+            error: "cancelled".to_string(),
+            at: Timestamp::now(),
+        });
+        Ok(())
+    }
+
+    fn read_file(
+        &self,
+        session_id: &str,
+        path: &str,
+        offset: u64,
+        len: u64,
+    ) -> std::result::Result<Vec<u8>, ContainerError> {
+        let key = (session_id.to_string(), path.to_string());
+        let data = self
+            .files
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&key)
+            .cloned()
+            .unwrap_or_default();
+        let start = offset.min(data.len() as u64) as usize;
+        let end = (offset.saturating_add(len)).min(data.len() as u64) as usize;
+        Ok(data[start..end].to_vec())
+    }
+
+    fn write_file(
+        &self,
+        session_id: &str,
+        path: &str,
+        offset: u64,
+        data: &[u8],
+    ) -> std::result::Result<(), ContainerError> {
+        let key = (session_id.to_string(), path.to_string());
+        let mut files = self.files.lock().unwrap_or_else(|e| e.into_inner());
+        let entry = files.entry(key).or_default();
+        let offset = offset as usize;
+        if offset > entry.len() {
+            entry.resize(offset, 0);
+        }
+        let end = offset + data.len();
+        if end > entry.len() {
+            entry.resize(end, 0);
+        }
+        entry[offset..end].copy_from_slice(data);
+        Ok(())
+    }
+
+    fn stop(&self, session_id: &str) -> std::result::Result<(), ContainerError> {
+        self.sessions
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                session_id.to_string(),
+                SessionState::Expired { at: Timestamp::now() },
+            );
+        Ok(())
+    }
+
+    fn poll_output(
+        &self,
+        session_id: &str,
+    ) -> std::result::Result<Option<OutputChunk>, ContainerError> {
+        let mut outputs = self
+            .session_outputs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let queue = outputs
+            .get_mut(session_id)
+            .ok_or(ContainerError::SessionNotFound)?;
+        Ok(queue.pop_front())
     }
 }
