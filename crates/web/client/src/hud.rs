@@ -150,8 +150,10 @@ pub(crate) struct HudUi {
     pub(crate) share_panel_open: bool,
     pub(crate) share_url_copied: bool,
     pub(crate) embed_code_copied: bool,
+    pub(crate) share_notice: Option<String>,
     pub(crate) share_url_timer: Option<i32>,
     pub(crate) embed_code_timer: Option<i32>,
+    pub(crate) share_notice_timer: Option<i32>,
     pub(crate) event_ctx: EventContext,
     actions: Rc<RefCell<Vec<HudAction>>>,
 }
@@ -226,8 +228,10 @@ impl HudUi {
             share_panel_open: false,
             share_url_copied: false,
             embed_code_copied: false,
+            share_notice: None,
             share_url_timer: None,
             embed_code_timer: None,
+            share_notice_timer: None,
             event_ctx: EventContext::new(),
             actions,
         }
@@ -777,14 +781,14 @@ pub(crate) fn init_hud_runtime(state: Rc<RefCell<AppState>>) {
     }
 }
 
-fn apply_hud_session(state: &mut AppState, repo: &str, session: HudSessionResponse) -> bool {
+fn apply_hud_session(state: &mut AppState, repo: &str, session: HudSessionResponse) -> Option<bool> {
     let matches_repo = state
         .hud_context
         .as_ref()
         .map(|ctx| format!("{}/{}", ctx.username, ctx.repo) == repo)
         .unwrap_or(false);
     if !matches_repo {
-        return false;
+        return None;
     }
 
     if let Some(ctx) = state.hud_context.as_mut() {
@@ -797,7 +801,18 @@ fn apply_hud_session(state: &mut AppState, repo: &str, session: HudSessionRespon
     if let Some(handle) = state.hud_stream.take() {
         handle.close();
     }
-    true
+    let can_share = state
+        .hud_context
+        .as_ref()
+        .map(|ctx| ctx.is_owner && ctx.is_public)
+        .unwrap_or(false);
+    let share_prompt = state.open_share_after_start && can_share;
+    if share_prompt {
+        state.hud_ui.share_panel_open = true;
+    }
+    state.open_share_after_start = false;
+
+    Some(share_prompt)
 }
 
 pub(crate) async fn ensure_hud_session(state: Rc<RefCell<AppState>>, repo: String) {
@@ -817,12 +832,15 @@ pub(crate) async fn ensure_hud_session(state: Rc<RefCell<AppState>>, repo: Strin
         return;
     };
 
-    let matches_repo = {
+    let share_prompt = {
         let mut guard = state.borrow_mut();
         apply_hud_session(&mut guard, &repo, session)
     };
-    if !matches_repo {
+    let Some(share_prompt) = share_prompt else {
         return;
+    };
+    if share_prompt {
+        set_share_prompt_notice(state.clone());
     }
     init_hud_runtime(state);
 }
@@ -979,13 +997,17 @@ fn queue_hud_actions(state: Rc<RefCell<AppState>>, actions: Vec<HudAction>) {
                 wasm_bindgen_futures::spawn_local(async move {
                     match start_hud_session(&repo, &prompt).await {
                         Ok(session) => {
-                            let matches_repo = {
+                            let share_prompt = {
                                 let mut guard = state_clone.borrow_mut();
                                 apply_hud_session(&mut guard, &repo, session)
                             };
-                            if matches_repo {
-                                init_hud_runtime(state_clone);
+                            let Some(share_prompt) = share_prompt else {
+                                return;
+                            };
+                            if share_prompt {
+                                set_share_prompt_notice(state_clone.clone());
                             }
+                            init_hud_runtime(state_clone);
                         }
                         Err(_) => {
                             let mut guard = state_clone.borrow_mut();
@@ -1000,6 +1022,12 @@ fn queue_hud_actions(state: Rc<RefCell<AppState>>, actions: Vec<HudAction>) {
                 if !guard.hud_ui.share_panel_open {
                     guard.hud_ui.share_url_copied = false;
                     guard.hud_ui.embed_code_copied = false;
+                    guard.hud_ui.share_notice = None;
+                    if let Some(window) = web_sys::window() {
+                        if let Some(id) = guard.hud_ui.share_notice_timer.take() {
+                            window.clear_timeout_with_handle(id);
+                        }
+                    }
                 }
             }
             HudAction::CopyShareUrl => {
@@ -1102,6 +1130,36 @@ fn set_share_notice(state: Rc<RefCell<AppState>>, notice: ShareNotice) {
             ShareNotice::Url => guard.hud_ui.share_url_timer = Some(id),
             ShareNotice::Embed => guard.hud_ui.embed_code_timer = Some(id),
         }
+    }
+    cb.forget();
+}
+
+fn set_share_prompt_notice(state: Rc<RefCell<AppState>>) {
+    let window = match web_sys::window() {
+        Some(window) => window,
+        None => return,
+    };
+    {
+        let mut guard = state.borrow_mut();
+        guard.hud_ui.share_notice =
+            Some("Your Autopilot is live! Share this URL:".to_string());
+        if let Some(id) = guard.hud_ui.share_notice_timer.take() {
+            window.clear_timeout_with_handle(id);
+        }
+    }
+
+    let state_clone = state.clone();
+    let cb = Closure::once(move || {
+        let mut guard = state_clone.borrow_mut();
+        guard.hud_ui.share_notice = None;
+        guard.hud_ui.share_notice_timer = None;
+    });
+    if let Ok(id) = window.set_timeout_with_callback_and_timeout_and_arguments_0(
+        cb.as_ref().unchecked_ref(),
+        4000,
+    ) {
+        let mut guard = state.borrow_mut();
+        guard.hud_ui.share_notice_timer = Some(id);
     }
     cb.forget();
 }
@@ -1514,7 +1572,11 @@ pub(crate) fn draw_hud_view(
 
         if state.hud_ui.share_panel_open {
             let panel_w = 340.0;
-            let panel_h = 128.0;
+            let panel_h = if state.hud_ui.share_notice.is_some() {
+                144.0
+            } else {
+                128.0
+            };
             let panel_x = (layout.status_bounds.origin.x + layout.status_bounds.size.width - panel_w - 6.0)
                 .max(6.0);
             let panel_y = (layout.status_bounds.origin.y - panel_h - 6.0).max(6.0);
@@ -1676,19 +1738,28 @@ fn share_panel_layout(hud_ui: &HudUi, bounds: Bounds) -> (Bounds, Bounds) {
     let button_h = url_h
         .unwrap_or(20.0)
         .max(embed_h.unwrap_or(20.0));
+    let offset = share_notice_offset(hud_ui);
     let copy_url_bounds = Bounds::new(
         bounds.origin.x + bounds.size.width - padding - button_w,
-        bounds.origin.y + 44.0,
+        bounds.origin.y + 44.0 + offset,
         button_w,
         button_h,
     );
     let copy_embed_bounds = Bounds::new(
         bounds.origin.x + bounds.size.width - padding - button_w,
-        bounds.origin.y + 76.0,
+        bounds.origin.y + 76.0 + offset,
         button_w,
         button_h,
     );
     (copy_url_bounds, copy_embed_bounds)
+}
+
+fn share_notice_offset(hud_ui: &HudUi) -> f32 {
+    if hud_ui.share_notice.is_some() {
+        12.0
+    } else {
+        0.0
+    }
 }
 
 fn draw_share_panel(
@@ -1714,9 +1785,20 @@ fn draw_share_panel(
     );
     cx.scene.draw_text(title);
 
+    if let Some(notice) = hud_ui.share_notice.as_deref() {
+        let notice_run = cx.text.layout(
+            notice,
+            Point::new(bounds.origin.x + 10.0, bounds.origin.y + 20.0),
+            9.0,
+            theme::accent::PRIMARY,
+        );
+        cx.scene.draw_text(notice_run);
+    }
+
+    let offset = share_notice_offset(hud_ui);
     let url_label = cx.text.layout(
         "URL",
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 32.0),
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 32.0 + offset),
         9.0,
         theme::text::MUTED,
     );
@@ -1724,7 +1806,7 @@ fn draw_share_panel(
 
     let url_text = cx.text.layout(
         share_url,
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 44.0),
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 44.0 + offset),
         10.0,
         theme::text::PRIMARY,
     );
@@ -1732,7 +1814,7 @@ fn draw_share_panel(
 
     let embed_label = cx.text.layout(
         "Embed",
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 64.0),
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 64.0 + offset),
         9.0,
         theme::text::MUTED,
     );
@@ -1740,7 +1822,7 @@ fn draw_share_panel(
 
     let embed_text = cx.text.layout(
         embed_code,
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 76.0),
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 76.0 + offset),
         10.0,
         theme::text::PRIMARY,
     );

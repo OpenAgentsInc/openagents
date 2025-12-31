@@ -164,6 +164,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         status: "starting".to_string(),
                     });
                     state.hud_ui.status_text = "starting".to_string();
+                    state.open_share_after_start = true;
                     state.view = AppView::RepoView;
                     state.hud_settings_loaded = false;
                     state.landing_live = None;
