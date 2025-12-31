@@ -215,7 +215,63 @@ Demo agent can:
 
 ---
 
-## Milestone 7 — Nostr Transport + Driver
+## Milestone 7 — HUD (Web Interface)
+
+**Goal:** Pure viewer over agent filesystem. "Watch files → render panes."
+
+**Implementation:** `crates/web/` using WGPUI components from `crates/wgpui`.
+
+### Tasks
+
+- Implement HUD WebSocket/SSE client connecting to `/agents/<id>/hud/stream`
+- Implement WGPUI pane components:
+  - **ThreadView** — Render streaming events (tool_start, tool_done, chunk, error)
+  - **CodePane** — Live file diffs with syntax highlighting
+  - **TerminalPane** — Container stdout/stderr output
+  - **MetricsPane** — APM gauge, queue depth, cost ticker
+  - **StatusBar** — Agent state, session info, verification status
+- Implement redacted public HUD mode (watch `/hud/stream` not `/logs/trace`)
+- Implement replay mode for trajectory timelapse
+- Add `/hud/settings` UI (public/private toggle, embed_allowed)
+
+### Filesystem Dependencies
+
+| Path | Usage |
+|------|-------|
+| `/agents/<id>/status` | Header: "Live: working on issue #847" |
+| `/agents/<id>/hud/stream` | Main event stream (redacted for public) |
+| `/agents/<id>/logs/trace` | Full event stream (owner only) |
+| `/agents/<id>/logs/trajectory` | Replay source |
+| `/agents/<id>/metrics/apm` | APM gauge |
+| `/agents/<id>/metrics/queue` | Issue queue depth |
+| `/agents/<id>/goals` | Active goals sidebar |
+
+### Exit Criteria
+
+- HUD renders live streaming events from `/hud/stream`
+- Public HUD URL works: `openagents.com/repo/@username/repo`
+- Embed works: `<iframe src="openagents.com/repo/@username/repo/embed">`
+- Timelapse replay at 20x speed
+- Screenshot-worthy: panes opening, code streaming, tools firing
+
+### GTM Requirements
+
+The HUD is the product's signature moment. Must deliver:
+- **Live fishbowl** — Real session, not demo mode
+- **< 10s ah-ha moment** — Visible autonomous action immediately
+- **Shareable** — Public by default, embeddable
+- **Verifiable** — Links to real GitHub issues/PRs/commits
+
+### References
+
+- [HUD.md](HUD.md) — Full spec (event contract, redaction, ACL)
+- [CONTROL-PLANE.md](CONTROL-PLANE.md) — SSE/WebSocket streaming
+- `crates/wgpui/` — GPU-rendered UI components
+- `crates/web/` — Web application
+
+---
+
+## Milestone 8 — Nostr Transport + Driver
 
 **Goal:** Real agent identity + encrypted comms.
 
@@ -240,7 +296,7 @@ Agent can receive a Nostr DM → tick → reply.
 
 ---
 
-## Milestone 8 — Cloudflare Backend (DO Runtime + Compute Provider)
+## Milestone 9 — Cloudflare Backend (DO Runtime + Compute Provider)
 
 **Goal:** The tick model works on Durable Objects.
 
@@ -264,7 +320,7 @@ An agent runs on DO, takes HTTP triggers, can do `/compute/new`.
 
 ---
 
-## Milestone 9 — Cloud Containers + Daytona
+## Milestone 10 — Cloud Containers + Daytona
 
 **Goal:** Remote sandboxes via `/containers`.
 
@@ -284,7 +340,7 @@ Same container request can run locally or via cloud provider based on policy.
 
 ---
 
-## Milestone 10 — DVM Providers
+## Milestone 11 — DVM Providers
 
 **Goal:** Permissionless decentralized execution.
 
@@ -305,7 +361,7 @@ Agent can buy compute from DVM within reserved max cost.
 
 ---
 
-## Milestone 11 — Browser Backend (WASM)
+## Milestone 12 — Browser Backend (WASM)
 
 **Goal:** Same agent binary runs in browser.
 
@@ -336,20 +392,21 @@ Demo: browser agent with `/compute` + `/containers` via cloud.
 | M4 | Budgets | Budget + idempotency foundation |
 | M5 | /compute | AI models via filesystem |
 | M6 | /containers | Code execution via filesystem |
-| M7 | Nostr | Real identity + messaging |
-| M8 | Cloudflare | DO backend + Workers AI |
-| M9 | Cloud containers | Remote sandboxes |
-| M10 | DVM | Decentralized compute/containers |
-| M11 | Browser | WASM runtime |
+| M7 | **HUD** | **Web UI via WGPUI (`crates/web/`)** |
+| M8 | Nostr | Real identity + messaging |
+| M9 | Cloudflare | DO backend + Workers AI |
+| M10 | Cloud containers | Remote sandboxes |
+| M11 | DVM | Decentralized compute/containers |
+| M12 | Browser | WASM runtime |
 
 ---
 
 ## Critical Path
 
-For the fastest path to a usable system:
+For the fastest path to a **launchable** system:
 
 ```
-M1 → M2 → M3 → M4 → M5 → M6
+M1 → M2 → M3 → M4 → M5 → M6 → M7
 ```
 
 This gives you:
@@ -359,5 +416,8 @@ This gives you:
 - Budget enforcement
 - AI compute (`/compute`)
 - Code execution (`/containers`)
+- **HUD** — The product's signature moment
+
+**M7 (HUD) is GTM-critical.** The live fishbowl, shareable URLs, and "demo is the product" strategy all depend on it. Without the HUD, there's no viral loop.
 
 The full abstraction is validated before adding Cloudflare/browser/DVM complexity.

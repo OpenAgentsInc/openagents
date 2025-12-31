@@ -111,6 +111,7 @@ This is not a generic actor framework. It's purpose-built for AI agents:
 | [FILESYSTEM.md](docs/FILESYSTEM.md) | FileService trait and implementations |
 | [COMPUTE.md](docs/COMPUTE.md) | AI compute abstraction (providers, budgets, streaming) |
 | [CONTAINERS.md](docs/CONTAINERS.md) | Container spawning (Local, Cloudflare, Daytona, DVMs) |
+| [HUD.md](docs/HUD.md) | HUD integration (events, redaction, public access) |
 | [ROADMAP.md](docs/ROADMAP.md) | Implementation roadmap (build order, milestones) |
 | [PRIOR-ART.md](docs/PRIOR-ART.md) | Related work (Plan 9, WANIX, OANIX) |
 
