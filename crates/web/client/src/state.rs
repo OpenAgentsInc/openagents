@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
 
 use wgpui::{
-    Bounds, Cursor, EventContext, EventResult, InputEvent, MarkdownDocument, MarkdownView, Point,
-    StreamingMarkdown,
+    Bounds, Component, Cursor, EventContext, EventResult, InputEvent, MarkdownDocument,
+    MarkdownView, Point, StreamingMarkdown,
 };
 use wgpui::components::hud::{DotsGrid, FrameAnimator};
 
