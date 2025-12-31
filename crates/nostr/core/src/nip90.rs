@@ -158,11 +158,15 @@ pub const KIND_JOB_IMAGE_GENERATION: u16 = 5100;
 /// Speech to text
 pub const KIND_JOB_SPEECH_TO_TEXT: u16 = 5250;
 
-// OpenAgents compute job kinds
+// OpenAgents compute job kinds (Bazaar)
 /// Sandbox run - execute commands in isolated container
 pub const KIND_JOB_SANDBOX_RUN: u16 = 5930;
 /// Repository index - generate embeddings/symbols for a git repo
 pub const KIND_JOB_REPO_INDEX: u16 = 5931;
+/// Patch generation - generate code patches from issue descriptions
+pub const KIND_JOB_PATCH_GEN: u16 = 5932;
+/// Code review - review code changes and provide feedback
+pub const KIND_JOB_CODE_REVIEW: u16 = 5933;
 
 /// Errors that can occur during NIP-90 operations.
 #[derive(Debug, Error)]

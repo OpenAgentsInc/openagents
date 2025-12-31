@@ -3,7 +3,7 @@
 //! Handles job requests from Nostr relays and processes them using available backends.
 //! Supports optional Spark wallet integration for paid jobs.
 
-use crate::backends::{BackendRegistry, CompletionRequest};
+use crate::backends::{AgentBackend, AgentRegistry, BackendRegistry, CompletionRequest};
 use crate::domain::{DomainEvent, Job, UnifiedIdentity};
 use crate::services::RelayService;
 use chrono::Utc;
@@ -11,15 +11,35 @@ use nostr::{
     finalize_event, EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, JobInput,
     JobResult, PricingInfo, KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION,
 };
+use nostr::nip90::{
+    KIND_JOB_CODE_REVIEW, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX, KIND_JOB_SANDBOX_RUN,
+};
 use spark::{PaymentDetails, PaymentStatus, SparkWallet};
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::{broadcast, RwLock};
 
-/// Supported NIP-90 job kinds
+/// Supported NIP-90 job kinds - inference
+pub const INFERENCE_KINDS: &[u16] = &[
+    KIND_JOB_TEXT_GENERATION, // 5050
+];
+
+/// Supported NIP-90 job kinds - agent (Bazaar)
+pub const AGENT_KINDS: &[u16] = &[
+    KIND_JOB_SANDBOX_RUN,  // 5930
+    KIND_JOB_REPO_INDEX,   // 5931
+    KIND_JOB_PATCH_GEN,    // 5932
+    KIND_JOB_CODE_REVIEW,  // 5933
+];
+
+/// All supported NIP-90 job kinds
 pub const SUPPORTED_KINDS: &[u16] = &[
     KIND_JOB_TEXT_GENERATION, // 5050
+    KIND_JOB_SANDBOX_RUN,     // 5930
+    KIND_JOB_REPO_INDEX,      // 5931
+    KIND_JOB_PATCH_GEN,       // 5932
+    KIND_JOB_CODE_REVIEW,     // 5933
 ];
 
 /// Errors from the DVM service
@@ -33,6 +53,12 @@ pub enum DvmError {
 
     #[error("inference failed: {0}")]
     InferenceFailed(String),
+
+    #[error("agent job failed: {0}")]
+    AgentFailed(String),
+
+    #[error("no agent backend available for kind: {0}")]
+    NoAgentBackend(u16),
 
     #[error("relay error: {0}")]
     RelayError(String),
@@ -88,6 +114,8 @@ pub struct DvmService {
     relay_service: Arc<RelayService>,
     /// Backend registry for inference (Ollama, Apple FM, Llama.cpp)
     backend_registry: Arc<RwLock<BackendRegistry>>,
+    /// Agent registry for Bazaar jobs (Claude Code, etc.)
+    agent_registry: Arc<RwLock<AgentRegistry>>,
     /// Optional Spark wallet for payments
     wallet: Arc<RwLock<Option<Arc<SparkWallet>>>>,
     /// Service configuration
@@ -113,6 +141,7 @@ impl DvmService {
             identity: Arc::new(RwLock::new(None)),
             relay_service,
             backend_registry,
+            agent_registry: Arc::new(RwLock::new(AgentRegistry::new())),
             wallet: Arc::new(RwLock::new(None)),
             config: DvmConfig::default(),
             event_tx,
@@ -120,6 +149,42 @@ impl DvmService {
             pending_invoices: Arc::new(RwLock::new(HashMap::new())),
             running: Arc::new(RwLock::new(false)),
         }
+    }
+
+    /// Create a new DVM service with agent registry
+    pub fn with_agent_registry(
+        relay_service: Arc<RelayService>,
+        backend_registry: Arc<RwLock<BackendRegistry>>,
+        agent_registry: Arc<RwLock<AgentRegistry>>,
+        event_tx: broadcast::Sender<DomainEvent>,
+    ) -> Self {
+        Self {
+            identity: Arc::new(RwLock::new(None)),
+            relay_service,
+            backend_registry,
+            agent_registry,
+            wallet: Arc::new(RwLock::new(None)),
+            config: DvmConfig::default(),
+            event_tx,
+            active_jobs: Arc::new(RwLock::new(HashMap::new())),
+            pending_invoices: Arc::new(RwLock::new(HashMap::new())),
+            running: Arc::new(RwLock::new(false)),
+        }
+    }
+
+    /// Set the agent registry
+    pub async fn set_agent_registry(&self, registry: AgentRegistry) {
+        *self.agent_registry.write().await = registry;
+    }
+
+    /// Get the agent registry
+    pub fn agent_registry(&self) -> Arc<RwLock<AgentRegistry>> {
+        self.agent_registry.clone()
+    }
+
+    /// Check if an agent backend is available for the given kind
+    pub async fn has_agent_for_kind(&self, kind: u16) -> bool {
+        self.agent_registry.read().await.find_for_kind(kind).await.is_some()
     }
 
     /// Set the DVM configuration

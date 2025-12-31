@@ -1,15 +1,29 @@
-//! Inference backends for the compute provider
+//! Backends for the compute provider
 //!
-//! All local inference backends consolidated here:
+//! Two categories of backends:
+//!
+//! ## Inference Backends
+//! Simple prompt → completion for NIP-90 text generation:
 //! - Ollama (localhost:11434)
 //! - Apple Foundation Models (localhost:11435)
 //! - Llama.cpp / GPT-OSS (localhost:8080)
+//!
+//! ## Agent Backends
+//! Complex agentic tasks for Bazaar jobs (NIP-90 kinds 5930-5933):
+//! - Claude Code (via `claude` CLI or API)
+//! - Future: SWE-agent, Aider, etc.
 
+pub mod agent;
 mod apple_fm;
+pub mod claude_code;
 mod llamacpp;
 mod ollama;
 
+pub use agent::{
+    AgentBackend, AgentCapabilities, AgentError, AgentRegistry, AgentBackendStatus, JobProgress,
+};
 pub use apple_fm::AppleFmBackend;
+pub use claude_code::{ClaudeCodeBackend, ClaudeCodeConfig, IsolationMode};
 pub use llamacpp::LlamaCppBackend;
 pub use ollama::OllamaBackend;
 

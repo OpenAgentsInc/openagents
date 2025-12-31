@@ -21,40 +21,52 @@ The compute crate implements a NIP-90 DVM provider that allows users to monetize
 
 ### Supported Job Kinds
 
-- **5050**: Text generation (AI inference via Ollama)
+**Inference Jobs** (simple request/response):
+- **5050**: Text generation (AI inference via Ollama, llama.cpp, Apple FM)
 
-More job kinds coming soon (image generation, translation, etc.).
+**Bazaar Jobs** (agentic, multi-step tasks):
+- **5930**: SandboxRun - Execute code in isolated sandbox
+- **5931**: RepoIndex - Index and analyze repositories
+- **5932**: PatchGen - Generate patches from issues/requirements
+- **5933**: CodeReview - Review code with structured feedback
+
+Bazaar jobs require an **agent backend** (e.g., Claude Code) and support pay-after-verify semantics.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│   Compute Provider (this crate)         │
-│                                          │
-│  ┌────────────────────────────────────┐ │
-│  │  UnifiedIdentity                   │ │
-│  │  - BIP39 seed phrase (12/24 words) │ │
-│  │  - Nostr keypair (NIP-06)          │ │
-│  │  - Spark wallet (TODO)             │ │
-│  └────────────────────────────────────┘ │
-│                                          │
-│  ┌────────────────────────────────────┐ │
-│  │  DvmService                        │ │
-│  │  - Listens for job requests        │ │
-│  │  - Processes jobs via Ollama       │ │
-│  │  - Publishes results to Nostr      │ │
-│  │  - Tracks earnings                 │ │
-│  └────────────────────────────────────┘ │
-│           ↓              ↑               │
-│  ┌─────────────┐  ┌─────────────────┐  │
-│  │ RelayService│  │ OllamaService   │  │
-│  │ (Nostr)     │  │ (Inference)     │  │
-│  └─────────────┘  └─────────────────┘  │
-└─────────────────────────────────────────┘
-           ↓                    ↓
-    ┌──────────────┐    ┌─────────────┐
-    │ Nostr Relays │    │   Ollama    │
-    └──────────────┘    └─────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│   Compute Provider (this crate)                               │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │  UnifiedIdentity                                         │ │
+│  │  - BIP39 seed phrase (12/24 words)                       │ │
+│  │  - Nostr keypair (NIP-06)                                │ │
+│  │  - Spark wallet signer                                   │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │  DvmService                                              │ │
+│  │  - Listens for job requests (5050, 5930-5933)            │ │
+│  │  - Routes to inference or agent backends                 │ │
+│  │  - Publishes results to Nostr                            │ │
+│  │  - Tracks earnings                                       │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│           │                    │                              │
+│           ▼                    ▼                              │
+│  ┌─────────────────┐  ┌─────────────────────────────────┐   │
+│  │ BackendRegistry │  │ AgentRegistry                    │   │
+│  │ (Inference)     │  │ (Bazaar Jobs)                    │   │
+│  │ - Ollama        │  │ - ClaudeCodeBackend              │   │
+│  │ - llama.cpp     │  │   └── PatchGen, CodeReview       │   │
+│  │ - Apple FM      │  │   └── SandboxRun, RepoIndex      │   │
+│  └─────────────────┘  └─────────────────────────────────┘   │
+│           │                    │                              │
+│  ┌─────────────────┐  ┌─────────────────────────────────┐   │
+│  │ RelayService    │  │ Sandbox (container/gvisor)      │   │
+│  │ (Nostr)         │  │                                  │   │
+│  └─────────────────┘  └─────────────────────────────────┘   │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ### Key Components
@@ -62,24 +74,32 @@ More job kinds coming soon (image generation, translation, etc.).
 1. **UnifiedIdentity** (`domain/identity.rs`):
    - Manages BIP39 seed phrase (12 or 24 words)
    - Derives Nostr keypair via NIP-06 (m/44'/1237'/0'/0/0)
-   - Will derive Spark wallet signer (TODO)
+   - Derives Spark wallet signer for payments
 
 2. **DvmService** (`services/dvm_service.rs`):
    - Subscribes to NIP-90 job requests on Nostr relays
-   - Processes jobs using local Ollama instance
+   - Routes inference jobs (5050) to BackendRegistry
+   - Routes Bazaar jobs (5930-5933) to AgentRegistry
    - Publishes NIP-89 handler info (announces capabilities)
    - Publishes job results to Nostr
 
-3. **SecureStore** (`storage/secure_store.rs`):
+3. **BackendRegistry** (`backends/registry.rs`):
+   - Auto-detects inference backends (Ollama, llama.cpp, Apple FM)
+   - Routes inference requests to appropriate backend
+
+4. **AgentRegistry** (`backends/agent.rs`):
+   - Manages agent backends for complex, multi-step tasks
+   - Routes Bazaar jobs to appropriate agent (e.g., Claude Code)
+
+5. **ClaudeCodeBackend** (`backends/claude_code.rs`):
+   - Executes Claude in sandboxed environment
+   - Supports PatchGen, CodeReview, SandboxRun jobs
+   - Isolation modes: local, container, gvisor
+
+6. **SecureStore** (`storage/secure_store.rs`):
    - Encrypts seed phrase using AES-256-GCM
    - Derives encryption key from password using Argon2
    - Stores encrypted data in `~/.config/openagents/compute/identity.enc`
-
-4. **Job Processing**:
-   - Receives job request from Nostr
-   - Validates job kind and inputs
-   - Executes inference via Ollama
-   - Publishes result event
 
 ## Quick Start
 
@@ -539,6 +559,109 @@ cargo doc --open --features ui
 
 See the main OpenAgents repository for contribution guidelines.
 
+## Bazaar Jobs (Agent Backends)
+
+### AgentBackend Trait
+
+Agent backends handle complex, multi-step tasks that require:
+- Repository checkout and file access
+- Tool execution (shell commands, file edits)
+- Multi-turn reasoning
+- Sandboxed execution environments
+
+```rust
+use compute::backends::{AgentBackend, AgentCapabilities, JobProgress};
+
+#[async_trait]
+pub trait AgentBackend: Send + Sync {
+    fn id(&self) -> &str;
+    async fn is_ready(&self) -> bool;
+    fn capabilities(&self) -> AgentCapabilities;
+
+    async fn patch_gen(&self, req: PatchGenRequest, progress: Option<Sender<JobProgress>>) -> Result<PatchGenResult>;
+    async fn code_review(&self, req: CodeReviewRequest, progress: Option<Sender<JobProgress>>) -> Result<CodeReviewResult>;
+    async fn sandbox_run(&self, req: SandboxRunRequest, progress: Option<Sender<JobProgress>>) -> Result<SandboxRunResult>;
+    async fn repo_index(&self, req: RepoIndexRequest, progress: Option<Sender<JobProgress>>) -> Result<RepoIndexResult>;
+    async fn cancel(&self, job_id: &str) -> Result<()>;
+}
+```
+
+### ClaudeCodeBackend
+
+The primary agent backend, using Claude with sandbox isolation:
+
+```rust
+use compute::backends::{ClaudeCodeBackend, ClaudeCodeConfig, IsolationMode};
+
+// Auto-detect Claude Code availability
+if let Some(claude) = ClaudeCodeBackend::detect().await {
+    println!("Claude Code available!");
+    println!("Supported kinds: {:?}", claude.capabilities().supported_kinds());
+}
+
+// Manual configuration
+let config = ClaudeCodeConfig {
+    isolation_mode: IsolationMode::Container,
+    max_workers: 3,
+    model: "claude-sonnet-4".to_string(),
+    default_time_limit_secs: 900,
+    ..Default::default()
+};
+let backend = ClaudeCodeBackend::with_config(config).await?;
+```
+
+**Detection Requirements:**
+- `ANTHROPIC_API_KEY` environment variable, OR
+- `claude` CLI in PATH
+
+### PatchGen Jobs (kind 5932)
+
+Generate patches from issues or requirements:
+
+```rust
+use compute::domain::{PatchGenRequest, PatchGenResult, PathFilter};
+
+let request = PatchGenRequest {
+    repo_url: "https://github.com/owner/repo".to_string(),
+    git_ref: Some("main".to_string()),
+    issue: "Add dark mode support".to_string(),
+    path_filter: Some(PathFilter {
+        include: vec!["src/**/*.rs".to_string()],
+        exclude: vec!["src/tests/**".to_string()],
+    }),
+    max_time_secs: Some(600),
+    model: Some("claude-sonnet-4".to_string()),
+};
+
+// Result includes patch and verification
+let result: PatchGenResult = backend.patch_gen(request, None).await?;
+println!("Patch:\n{}", result.patch);
+println!("Verified: {:?}", result.verification);
+```
+
+### CodeReview Jobs (kind 5933)
+
+Review code with structured feedback:
+
+```rust
+use compute::domain::{CodeReviewRequest, CodeReviewResult, ReviewInput};
+
+let request = CodeReviewRequest {
+    repo_url: "https://github.com/owner/repo".to_string(),
+    git_ref: Some("feature-branch".to_string()),
+    input: ReviewInput::Diff("--- a/file.rs\n+++ b/file.rs\n...".to_string()),
+    review_focus: vec!["security".to_string(), "performance".to_string()],
+    model: Some("claude-sonnet-4".to_string()),
+    ..Default::default()
+};
+
+let result: CodeReviewResult = backend.code_review(request, None).await?;
+println!("Approval: {:?}", result.approval);
+for issue in result.issues {
+    println!("[{}] {}: {}", issue.severity, issue.category, issue.message);
+}
+```
+
 ## Roadmap
 
 - [x] BIP39 seed phrase generation
@@ -548,10 +671,14 @@ See the main OpenAgents repository for contribution guidelines.
 - [x] NIP-89 handler info publishing
 - [x] Ollama integration
 - [x] Nostr relay integration
-- [ ] Spark wallet integration
+- [x] Spark wallet integration
+- [x] Agent backend abstraction (AgentBackend trait)
+- [x] Claude Code backend (PatchGen, CodeReview, SandboxRun)
+- [x] Bazaar job kinds (5930-5933)
 - [ ] Lightning invoice generation
 - [ ] Payment verification
-- [ ] More job kinds (5100, 5200, etc.)
+- [ ] Container isolation (Docker/gvisor)
+- [ ] RepoIndex backend
 - [ ] Job queue persistence
 - [ ] Reputation system
 - [ ] Multi-relay load balancing

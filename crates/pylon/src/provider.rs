@@ -2,7 +2,9 @@
 
 use crate::config::PylonConfig;
 use crate::neobank_service::{NeobankConfig, NeobankService, TreasuryStatus};
-use compute::backends::BackendRegistry;
+use compute::backends::{
+    AgentBackend, AgentRegistry, BackendRegistry, ClaudeCodeBackend,
+};
 use compute::domain::{DomainEvent, UnifiedIdentity};
 use compute::services::{DvmService, RelayService};
 use neobank::Currency;
@@ -46,10 +48,14 @@ pub struct ProviderStatus {
     pub running: bool,
     /// Connected relays
     pub relays: Vec<String>,
-    /// Available backends
+    /// Available inference backends
     pub backends: Vec<String>,
-    /// Default backend
+    /// Default inference backend
     pub default_backend: Option<String>,
+    /// Available agent backends (for Bazaar jobs)
+    pub agent_backends: Vec<String>,
+    /// Supported Bazaar job kinds
+    pub supported_bazaar_kinds: Vec<u16>,
     /// Total jobs processed
     pub jobs_processed: u64,
     /// Total earnings in millisats
@@ -63,6 +69,8 @@ impl Default for ProviderStatus {
             relays: Vec::new(),
             backends: Vec::new(),
             default_backend: None,
+            agent_backends: Vec::new(),
+            supported_bazaar_kinds: Vec::new(),
             jobs_processed: 0,
             total_earnings_msats: 0,
         }
@@ -90,8 +98,10 @@ pub struct PylonProvider {
     config: PylonConfig,
     /// User identity
     identity: Option<Arc<UnifiedIdentity>>,
-    /// Backend registry
+    /// Backend registry (inference)
     backend_registry: Arc<RwLock<BackendRegistry>>,
+    /// Agent registry (Bazaar jobs)
+    agent_registry: Arc<RwLock<AgentRegistry>>,
     /// Relay service
     relay_service: Arc<RelayService>,
     /// DVM service
@@ -113,14 +123,28 @@ pub struct PylonProvider {
 impl PylonProvider {
     /// Create a new provider with the given config
     pub async fn new(config: PylonConfig) -> Result<Self, ProviderError> {
-        // Auto-detect backends
+        // Auto-detect inference backends
         let registry = BackendRegistry::detect().await;
 
         if !registry.has_backends() {
             tracing::warn!("No inference backends detected");
         } else {
             let backends = registry.available_backends();
-            tracing::info!("Detected backends: {}", backends.join(", "));
+            tracing::info!("Detected inference backends: {}", backends.join(", "));
+        }
+
+        // Auto-detect agent backends (Claude Code, etc.)
+        let mut agent_registry = AgentRegistry::new();
+
+        if let Some(claude) = ClaudeCodeBackend::detect().await {
+            let caps = claude.capabilities();
+            tracing::info!(
+                "Detected Claude Code backend (supports kinds: {:?})",
+                caps.supported_kinds()
+            );
+            agent_registry.register("claude_code", Arc::new(RwLock::new(claude)));
+        } else {
+            tracing::info!("Claude Code not available (no API key or CLI)");
         }
 
         // Create relay service
@@ -133,6 +157,7 @@ impl PylonProvider {
             config,
             identity: None,
             backend_registry: Arc::new(RwLock::new(registry)),
+            agent_registry: Arc::new(RwLock::new(agent_registry)),
             relay_service,
             dvm_service: None,
             wallet: None,
@@ -162,10 +187,11 @@ impl PylonProvider {
             .clone()
             .ok_or(ProviderError::NotInitialized)?;
 
-        // Create DVM service
-        let mut dvm_service = DvmService::new(
+        // Create DVM service with both inference and agent registries
+        let mut dvm_service = DvmService::with_agent_registry(
             self.relay_service.clone(),
             self.backend_registry.clone(),
+            self.agent_registry.clone(),
             self.event_tx.clone(),
         );
 
@@ -279,6 +305,7 @@ impl PylonProvider {
 
     /// Get provider status
     pub async fn status(&self) -> ProviderStatus {
+        // Get inference backends
         let registry = self.backend_registry.read().await;
         let backends: Vec<String> = registry
             .available_backends()
@@ -287,6 +314,17 @@ impl PylonProvider {
             .collect();
         let default_backend = registry.default_id().map(String::from);
         drop(registry);
+
+        // Get agent backends and capabilities
+        let agent_registry = self.agent_registry.read().await;
+        let agent_backends: Vec<String> = agent_registry
+            .available_backends()
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let caps = agent_registry.aggregated_capabilities().await;
+        let supported_bazaar_kinds = caps.supported_kinds();
+        drop(agent_registry);
 
         let relays = if self.dvm_service.is_some() && self.running {
             self.relay_service.connected_relays().await
@@ -299,6 +337,8 @@ impl PylonProvider {
             relays,
             backends,
             default_backend,
+            agent_backends,
+            supported_bazaar_kinds,
             jobs_processed: self.jobs_processed,
             total_earnings_msats: self.total_earnings_msats,
         }
