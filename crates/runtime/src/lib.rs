@@ -106,12 +106,15 @@
 #![warn(rustdoc::missing_crate_level_docs)]
 
 pub mod agent;
+pub mod budget;
+pub mod compute;
 pub mod control_plane;
 pub mod env;
 pub mod engine;
 pub mod envelope;
 pub mod error;
 pub mod fs;
+pub mod idempotency;
 pub mod identity;
 pub mod namespace;
 pub mod services;
@@ -121,12 +124,21 @@ pub mod trigger;
 pub mod types;
 
 pub use agent::{Agent, AgentConfig, AgentContext, AgentState};
+pub use budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetState, BudgetTracker};
+pub use compute::{
+    ComputeChunk, ComputeError, ComputeFs, ComputeKind, ComputePolicy, ComputeProvider,
+    ComputeRequest, ComputeResponse, ComputeRouter, JobState, LocalProvider, ModelInfo, Prefer,
+    ProviderInfo, ProviderLatency, ProviderPricing, ProviderStatus, TokenUsage,
+};
 pub use control_plane::{ControlPlane, LocalRuntime};
 pub use env::AgentEnv;
 pub use engine::{manual_trigger, TickEngine};
 pub use envelope::Envelope;
 pub use error::{AgentError, Result};
-pub use fs::{AccessLevel, BudgetPolicy, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat, WatchEvent, WatchHandle};
+pub use fs::{AccessLevel, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat, WatchEvent, WatchHandle};
+pub use idempotency::{IdempotencyJournal, JournalEntry, JournalError, MemoryJournal};
+#[cfg(feature = "local")]
+pub use idempotency::SqliteJournal;
 pub use identity::{InMemorySigner, PublicKey, Signature, SigningService};
 pub use namespace::Namespace;
 pub use services::{DeadletterFs, GoalsFs, IdentityFs, InboxFs, LogsFs, StatusFs, StatusSnapshot, TraceEvent};

@@ -30,6 +30,7 @@ tokio-stream = "0.1"
 clap = { workspace = true }
 reqwest = { workspace = true }
 uuid = { workspace = true }
+compute = { path = "../compute" }
 
 # Crypto
 # TODO: Add when implementing identity

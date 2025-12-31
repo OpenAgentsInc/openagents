@@ -7605,6 +7605,7 @@ dependencies = [
  "async-trait",
  "axum 0.7.9",
  "clap",
+ "compute",
  "futures",
  "hex",
  "metrics",

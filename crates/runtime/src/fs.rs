@@ -1,6 +1,6 @@
 //! Core filesystem traits and types.
 
-use crate::identity::PublicKey;
+use crate::budget::BudgetPolicy;
 use crate::types::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -300,19 +300,6 @@ pub trait FileService: Send + Sync {
 
     /// Service name for debugging.
     fn name(&self) -> &str;
-}
-
-/// Static budget policy for budgeted mounts (micro-USD).
-#[derive(Clone, Debug)]
-pub struct BudgetPolicy {
-    /// Maximum spend per tick (micro-USD).
-    pub per_tick_usd: u64,
-    /// Maximum spend per day (micro-USD).
-    pub per_day_usd: u64,
-    /// Approval required above this amount (micro-USD).
-    pub approval_threshold_usd: u64,
-    /// Approvers allowed to authorize.
-    pub approvers: Vec<PublicKey>,
 }
 
 /// Access level for mounted services.

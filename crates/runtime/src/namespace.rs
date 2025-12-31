@@ -42,14 +42,22 @@ impl Namespace {
     }
 
     /// Resolve a path to its service and relative path.
-    pub fn resolve<'a>(&self, path: &'a str) -> Option<(Arc<dyn FileService>, &'a str, AccessLevel)> {
+    pub fn resolve<'a>(
+        &self,
+        path: &'a str,
+    ) -> Option<(Arc<dyn FileService>, &'a str, AccessLevel, String)> {
         for mount in &self.mounts {
             if path == mount.path || path.starts_with(&format!("{}/", mount.path)) {
                 let mut relative = &path[mount.path.len()..];
                 if relative.starts_with('/') {
                     relative = &relative[1..];
                 }
-                return Some((mount.service.clone(), relative, mount.access.clone()));
+                return Some((
+                    mount.service.clone(),
+                    relative,
+                    mount.access.clone(),
+                    mount.path.clone(),
+                ));
             }
         }
         None
