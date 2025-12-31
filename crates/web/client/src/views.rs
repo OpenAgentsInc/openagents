@@ -23,7 +23,7 @@ pub(crate) fn build_landing_page(
     let pad = 24.0;
 
     // === HEADER ===
-    let title = "THE BAZAAR";
+    let title = "OpenAgents";
     let title_run = text_system.layout(
         title,
         Point::new(pad, pad),
@@ -32,17 +32,8 @@ pub(crate) fn build_landing_page(
     );
     scene.draw_text(title_run);
 
-    let tagline = "An open market for agent work";
-    let tagline_run = text_system.layout(
-        tagline,
-        Point::new(pad, pad + 36.0),
-        14.0,
-        theme::text::MUTED,
-    );
-    scene.draw_text(tagline_run);
-
     // === LIVE MARKET FEED ===
-    let feed_y = pad + 80.0;
+    let feed_y = pad + 56.0;
     let feed_w = width - pad * 2.0;
     let row_h = 28.0;
 
