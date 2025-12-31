@@ -491,11 +491,11 @@ impl FileService for WalletFs {
             "balance" => {
                 let balance = self.wallet.balance()?;
                 let json = serde_json::json!({
-                    "sats": balance,
+                    "balance_usd": balance,  // micro-USD
                     "budget": {
-                        "daily_limit": self.budget.daily_limit,
-                        "daily_spent": self.budget.daily_spent,
-                        "remaining": self.budget.daily_limit - self.budget.daily_spent,
+                        "daily_limit_usd": self.budget.daily_limit,
+                        "daily_spent_usd": self.budget.daily_spent,
+                        "remaining_usd": self.budget.daily_limit - self.budget.daily_spent,
                     }
                 });
                 Ok(Box::new(StringHandle::new(json.to_string())))

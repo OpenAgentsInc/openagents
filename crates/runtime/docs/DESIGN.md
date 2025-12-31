@@ -447,7 +447,7 @@ Agents consume resources. Without limits:
 | **Daily Compute** | Seconds per day | Runtime refuses ticks |
 | **Storage** | Bytes | Runtime rejects writes |
 | **API Calls** | Count per day | Agent-level tracking |
-| **Economic** | Sats per day | Wallet-level enforcement |
+| **Economic** | Micro-USD per day | Wallet-level enforcement |
 
 ### Budget Configuration
 
@@ -459,7 +459,7 @@ Agents consume resources. Without limits:
 │  max_daily_compute: Duration        (e.g., 1h)         │
 │  max_storage_bytes: u64             (e.g., 100MB)      │
 │  max_daily_api_calls: u64           (e.g., 1000)       │
-│  max_daily_spend_sats: u64          (e.g., 10000)      │
+│  max_daily_spend_usd: u64           (e.g., 500_000)    │
 │  warning_threshold: f32             (e.g., 0.8)        │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -552,7 +552,7 @@ Containers are accessed like any other capability—as a filesystem:
 ├── providers/          # Available providers (local, cloudflare, daytona, dvm)
 ├── new                 # Write request → read session_id (always async)
 ├── policy              # Allowed images, resource limits, cost caps
-├── usage               # Budget tracking (sats)
+├── usage               # Budget tracking (micro-USD)
 ├── auth/               # OpenAgents API authentication
 │   ├── status          # Auth state
 │   ├── token           # API key (write)
@@ -563,7 +563,7 @@ Containers are accessed like any other capability—as a filesystem:
         ├── status      # provisioning|cloning|running|complete|failed
         ├── output      # Watch for streaming stdout/stderr
         ├── result      # Final result (when complete)
-        ├── exec        # Interactive command execution
+        ├── exec/       # Job-based command execution (non-blocking)
         ├── files/      # Read/write files in container
         └── ctl         # Control: "stop"
 ```

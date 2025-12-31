@@ -357,8 +357,8 @@ pub struct AgentReputation {
     /// Average quality score
     pub quality_score: f32,
 
-    /// Total value of completed work (sats)
-    pub total_value_sats: u64,
+    /// Total value of completed work (micro-USD)
+    pub total_value_usd: u64,
 
     /// Endorsements from other agents
     pub endorsements: Vec<Endorsement>,
@@ -519,11 +519,11 @@ pub enum AccessLevel {
 ### Example: High-Risk Action Flow
 
 ```
-Agent wants to: pay 10,000 sats
+Agent wants to: pay $1.00 (1,000,000 micro-USD)
 
 1. Agent calls: ctx.write("/wallet/pay", invoice)
-2. Namespace resolves: /wallet → WalletFs with Budgeted(1000, 50000, 5000)
-3. WalletFs checks: 10,000 > approval_threshold (5000)
+2. Namespace resolves: /wallet → WalletFs with Budgeted(100_000, 5_000_000, 500_000)
+3. WalletFs checks: 1_000_000 > approval_threshold (500_000 micro-USD)
 4. WalletFs returns: Error::ApprovalRequired
 5. Agent receives error, can request approval or abort
 6. If approved by human, mount temporarily elevated
