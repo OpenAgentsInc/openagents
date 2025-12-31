@@ -1,5 +1,5 @@
 use crate::color::Hsla;
-use crate::geometry::Bounds;
+use crate::geometry::{Bounds, Size};
 use crate::theme;
 
 #[derive(Clone, Debug)]
@@ -208,6 +208,22 @@ pub struct MarkdownConfig {
     pub header_color: Hsla,
     pub blockquote_color: Hsla,
     pub max_width: Option<f32>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CodeBlockLayout {
+    pub bounds: Bounds,
+    pub header_bounds: Bounds,
+    pub content_bounds: Bounds,
+    pub language: Option<String>,
+    pub code: String,
+    pub copy_bounds: Option<Bounds>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct MarkdownLayout {
+    pub size: Size,
+    pub code_blocks: Vec<CodeBlockLayout>,
 }
 
 impl Default for MarkdownConfig {

@@ -88,9 +88,9 @@ pub use components::hud::{
 };
 pub use components::{
     AnyComponent, Button, ButtonVariant, Component, ComponentId, Div, Dropdown, DropdownOption,
-    EventContext, EventResult, Modal, PaintContext, ScrollView, Tab, Tabs, Text, TextDecipher,
-    TextDurationOptions, TextEffectAnimator, TextEffectFrame, TextEffectTiming, TextInput,
-    TextSequence, VirtualList, animation_text_duration,
+    EventContext, EventResult, MarkdownView, Modal, PaintContext, ScrollView, Tab, Tabs, Text,
+    TextDecipher, TextDurationOptions, TextEffectAnimator, TextEffectFrame, TextEffectTiming,
+    TextInput, TextSequence, VirtualList, animation_text_duration,
 };
 pub use effects::{Illuminator, IlluminatorSvg};
 pub use element::{
@@ -107,9 +107,9 @@ pub use layout::{
     LayoutEngine, LayoutId, LayoutStyle, auto, length, length_auto, pct, px, relative, zero,
 };
 pub use markdown::{
-    FadeState, MarkdownBlock, MarkdownConfig, MarkdownDocument, MarkdownParser, MarkdownRenderer,
-    SUPPORTED_LANGUAGES, StreamingConfig, StreamingMarkdown, StyledLine, StyledSpan,
-    SyntaxHighlighter, TextStyle, render_markdown,
+    CodeBlockLayout, FadeState, MarkdownBlock, MarkdownConfig, MarkdownDocument, MarkdownLayout,
+    MarkdownParser, MarkdownRenderer, SUPPORTED_LANGUAGES, StreamingConfig, StreamingMarkdown,
+    StyledLine, StyledSpan, SyntaxHighlighter, TextStyle, render_markdown,
 };
 pub use platform::Platform;
 pub use scene::{GlyphInstance, GpuImageQuad, GpuQuad, GpuTextQuad, Quad, Scene, SvgQuad, TextRun};

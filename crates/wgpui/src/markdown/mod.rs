@@ -10,7 +10,8 @@ pub use parser::MarkdownParser;
 pub use renderer::{MarkdownRenderer, render_markdown};
 pub use streaming::{FadeState, StreamingConfig, StreamingMarkdown};
 pub use types::{
-    MarkdownBlock, MarkdownConfig, MarkdownDocument, StyledLine, StyledSpan, TextStyle,
+    CodeBlockLayout, MarkdownBlock, MarkdownConfig, MarkdownDocument, MarkdownLayout, StyledLine,
+    StyledSpan, TextStyle,
 };
 
 #[cfg(test)]
