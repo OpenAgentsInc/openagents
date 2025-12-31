@@ -215,6 +215,17 @@ mounts:
       repo_filter: strict        # apply denylist
 ```
 
+### Containerized CLI Configuration
+
+To run the Claude Agent SDK inside a container, set the following environment variables on the runtime host:
+
+- `OPENAGENTS_CLAUDE_CONTAINER_IMAGE` (required): OCI image that includes the `claude` CLI.
+- `OPENAGENTS_CLAUDE_CONTAINER_RUNTIME` (optional): `apple`, `docker`, or `auto` (default). `apple` requires macOS 26+ and the `apple-container` feature.
+- `OPENAGENTS_CLAUDE_CONTAINER_COMMAND` (optional): command inside the image (default: `claude`).
+- `OPENAGENTS_CLAUDE_PROXY_URL` (optional): HTTP proxy URL; sets `HTTP_PROXY`, `HTTPS_PROXY`, and `NODE_USE_ENV_PROXY=1`.
+
+Container isolation is applied to the `local` and `cloud` providers when `policy.isolation_mode = container`. `network_mode = none` disables networking with `--network none`. `proxy_only` uses the proxy env vars if provided but does not yet hard-block egress on its own.
+
 ### Multi-Instance Worker Pool
 
 For production, run a pool of Claude workers:
