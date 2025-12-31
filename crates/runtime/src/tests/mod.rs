@@ -1,8 +1,8 @@
 use crate::agent::{Agent, AgentContext, AgentState};
 use crate::engine::{manual_trigger, TickEngine};
 use crate::storage::{AgentStorage, InMemoryStorage, StoredState};
-use crate::types::{AgentId, EnvelopeId};
-use crate::{Result, TickResult};
+use crate::types::{AgentId, EnvelopeId, Timestamp};
+use crate::{AgentEnv, Envelope, Result, TickResult, WatchEvent};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -204,5 +204,61 @@ async fn test_hibernation_state_persists() {
 
         let state: CountState = load_state(storage.as_ref(), &agent_id).await;
         assert_eq!(state.count, 2);
+    }
+}
+
+#[test]
+fn test_env_status_read() {
+    let storage = Arc::new(InMemoryStorage::new());
+    let agent_id = AgentId::from("agent-env-status");
+    let env = AgentEnv::new(agent_id.clone(), storage);
+
+    let data = env.read("/status").expect("status read");
+    let value: serde_json::Value = serde_json::from_slice(&data).expect("status json");
+    assert_eq!(value["agent_id"], agent_id.as_str());
+}
+
+#[test]
+fn test_env_inbox_write() {
+    let storage = Arc::new(InMemoryStorage::new());
+    let agent_id = AgentId::from("agent-env-inbox");
+    let env = AgentEnv::new(agent_id, storage);
+    let envelope = Envelope {
+        id: EnvelopeId::from("env-1"),
+        timestamp: Timestamp::now(),
+        payload: serde_json::json!({ "message": "hello" }),
+    };
+
+    let data = serde_json::to_vec(&envelope).expect("envelope json");
+    env.write("/inbox", &data).expect("write inbox");
+
+    let inbox_bytes = env.read("/inbox").expect("read inbox");
+    let items: Vec<Envelope> = serde_json::from_slice(&inbox_bytes).expect("inbox json");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id.as_str(), "env-1");
+}
+
+#[test]
+fn test_env_logs_watch() {
+    let storage = Arc::new(InMemoryStorage::new());
+    let agent_id = AgentId::from("agent-env-logs");
+    let env = AgentEnv::new(agent_id, storage);
+    let logs = env.logs.clone();
+    let mut handle = env
+        .watch("/logs/trace")
+        .expect("watch logs")
+        .expect("trace handle");
+
+    std::thread::spawn(move || {
+        logs.emit_trace("trace-event");
+    });
+
+    let event = handle
+        .next(Some(Duration::from_secs(1)))
+        .expect("watch next");
+
+    match event {
+        Some(WatchEvent::Data(data)) => assert_eq!(data, b"trace-event"),
+        other => panic!("unexpected watch event: {:?}", other),
     }
 }
