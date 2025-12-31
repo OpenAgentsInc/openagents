@@ -415,10 +415,7 @@ mod tests {
 
     #[test]
     fn test_get_d_tag() {
-        let event = create_test_event(
-            30023,
-            vec![vec!["d".to_string(), "my-article".to_string()]],
-        );
+        let event = create_test_event(30023, vec![vec!["d".to_string(), "my-article".to_string()]]);
         assert_eq!(get_d_tag(&event), Some("my-article".to_string()));
     }
 
@@ -495,10 +492,7 @@ mod tests {
 
     #[test]
     fn test_get_event_address() {
-        let event = create_test_event(
-            30023,
-            vec![vec!["d".to_string(), "my-article".to_string()]],
-        );
+        let event = create_test_event(30023, vec![vec!["d".to_string(), "my-article".to_string()]]);
 
         let address = get_event_address(&event).unwrap();
         assert_eq!(
@@ -600,22 +594,23 @@ mod tests {
 
         let addresses = get_a_tags(&event);
         assert_eq!(addresses.len(), 2);
-        assert!(addresses.contains(
-            &"30023:3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d:article1"
-                .to_string()
-        ));
-        assert!(addresses.contains(
-            &"30023:3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d:article2"
-                .to_string()
-        ));
+        assert!(
+            addresses.contains(
+                &"30023:3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d:article1"
+                    .to_string()
+            )
+        );
+        assert!(
+            addresses.contains(
+                &"30023:3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d:article2"
+                    .to_string()
+            )
+        );
     }
 
     #[test]
     fn test_validate_addressable_event_valid() {
-        let event = create_test_event(
-            30023,
-            vec![vec!["d".to_string(), "my-article".to_string()]],
-        );
+        let event = create_test_event(30023, vec![vec!["d".to_string(), "my-article".to_string()]]);
         assert!(validate_addressable_event(&event).is_ok());
     }
 

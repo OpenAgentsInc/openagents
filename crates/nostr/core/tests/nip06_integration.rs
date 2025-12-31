@@ -2,7 +2,8 @@
 
 use nostr::derive_keypair_full;
 
-const TEST_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const TEST_MNEMONIC: &str =
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
 #[test]
 fn test_derive_keypair_basic() {
@@ -153,7 +154,8 @@ fn test_case_sensitive_passphrase() {
 
 #[test]
 fn test_unicode_passphrase() {
-    let keypair = derive_keypair_full(TEST_MNEMONIC, "пароль🔐", 0).expect("Should derive with unicode");
+    let keypair =
+        derive_keypair_full(TEST_MNEMONIC, "пароль🔐", 0).expect("Should derive with unicode");
 
     assert_eq!(keypair.private_key.len(), 32);
     assert_eq!(keypair.public_key.len(), 32);

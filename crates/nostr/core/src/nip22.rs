@@ -356,9 +356,7 @@ mod tests {
 
     #[test]
     fn test_get_root_kind() {
-        let event = create_test_event(1111, vec![
-            vec!["K".to_string(), "30023".to_string()],
-        ]);
+        let event = create_test_event(1111, vec![vec!["K".to_string(), "30023".to_string()]]);
         assert_eq!(get_root_kind(&event), Some(30023));
     }
 
@@ -370,75 +368,88 @@ mod tests {
 
     #[test]
     fn test_get_parent_kind() {
-        let event = create_test_event(1111, vec![
-            vec!["k".to_string(), "1111".to_string()],
-        ]);
+        let event = create_test_event(1111, vec![vec!["k".to_string(), "1111".to_string()]]);
         assert_eq!(get_parent_kind(&event), Some(1111));
     }
 
     #[test]
     fn test_get_root_event_id() {
-        let event = create_test_event(1111, vec![
-            vec!["E".to_string(), "root-event-id".to_string()],
-        ]);
+        let event = create_test_event(
+            1111,
+            vec![vec!["E".to_string(), "root-event-id".to_string()]],
+        );
         assert_eq!(get_root_event_id(&event), Some("root-event-id".to_string()));
     }
 
     #[test]
     fn test_get_parent_event_id() {
-        let event = create_test_event(1111, vec![
-            vec!["e".to_string(), "parent-event-id".to_string()],
-        ]);
-        assert_eq!(get_parent_event_id(&event), Some("parent-event-id".to_string()));
+        let event = create_test_event(
+            1111,
+            vec![vec!["e".to_string(), "parent-event-id".to_string()]],
+        );
+        assert_eq!(
+            get_parent_event_id(&event),
+            Some("parent-event-id".to_string())
+        );
     }
 
     #[test]
     fn test_get_root_address() {
-        let event = create_test_event(1111, vec![
-            vec!["A".to_string(), "30023:pubkey:article".to_string()],
-        ]);
-        assert_eq!(get_root_address(&event), Some("30023:pubkey:article".to_string()));
+        let event = create_test_event(
+            1111,
+            vec![vec!["A".to_string(), "30023:pubkey:article".to_string()]],
+        );
+        assert_eq!(
+            get_root_address(&event),
+            Some("30023:pubkey:article".to_string())
+        );
     }
 
     #[test]
     fn test_get_parent_address() {
-        let event = create_test_event(1111, vec![
-            vec!["a".to_string(), "1111:pubkey:comment".to_string()],
-        ]);
-        assert_eq!(get_parent_address(&event), Some("1111:pubkey:comment".to_string()));
+        let event = create_test_event(
+            1111,
+            vec![vec!["a".to_string(), "1111:pubkey:comment".to_string()]],
+        );
+        assert_eq!(
+            get_parent_address(&event),
+            Some("1111:pubkey:comment".to_string())
+        );
     }
 
     #[test]
     fn test_validate_comment_valid() {
-        let event = create_test_event(1111, vec![
-            vec!["K".to_string(), "30023".to_string()],
-            vec!["k".to_string(), "1111".to_string()],
-        ]);
+        let event = create_test_event(
+            1111,
+            vec![
+                vec!["K".to_string(), "30023".to_string()],
+                vec!["k".to_string(), "1111".to_string()],
+            ],
+        );
         assert!(validate_comment(&event).is_ok());
     }
 
     #[test]
     fn test_validate_comment_missing_k_tag() {
-        let event = create_test_event(1111, vec![
-            vec!["K".to_string(), "30023".to_string()],
-        ]);
+        let event = create_test_event(1111, vec![vec!["K".to_string(), "30023".to_string()]]);
         assert!(validate_comment(&event).is_err());
     }
 
     #[test]
     fn test_validate_comment_missing_capital_k_tag() {
-        let event = create_test_event(1111, vec![
-            vec!["k".to_string(), "1111".to_string()],
-        ]);
+        let event = create_test_event(1111, vec![vec!["k".to_string(), "1111".to_string()]]);
         assert!(validate_comment(&event).is_err());
     }
 
     #[test]
     fn test_validate_comment_kind_1_root() {
-        let event = create_test_event(1111, vec![
-            vec!["K".to_string(), "1".to_string()],
-            vec!["k".to_string(), "1111".to_string()],
-        ]);
+        let event = create_test_event(
+            1111,
+            vec![
+                vec!["K".to_string(), "1".to_string()],
+                vec!["k".to_string(), "1111".to_string()],
+            ],
+        );
         let result = validate_comment(&event);
         assert!(result.is_err());
         match result.unwrap_err() {
@@ -455,14 +466,7 @@ mod tests {
 
     #[test]
     fn test_create_comment_tags() {
-        let tags = create_comment_tags(
-            30023,
-            Some("root-id"),
-            None,
-            1111,
-            Some("parent-id"),
-            None
-        );
+        let tags = create_comment_tags(30023, Some("root-id"), None, 1111, Some("parent-id"), None);
 
         assert_eq!(tags.len(), 4);
         assert_eq!(tags[0], vec!["K", "30023"]);
@@ -479,7 +483,7 @@ mod tests {
             Some("30023:pk:article"),
             1111,
             None,
-            Some("1111:pk:comment")
+            Some("1111:pk:comment"),
         );
 
         assert_eq!(tags.len(), 4);

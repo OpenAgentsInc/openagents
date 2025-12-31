@@ -150,7 +150,12 @@ pub struct NutzapProof {
 
 impl NutzapProof {
     pub fn new(amount: u64, c: String, id: String, secret: String) -> Self {
-        Self { amount, c, id, secret }
+        Self {
+            amount,
+            c,
+            id,
+            secret,
+        }
     }
 }
 
@@ -214,7 +219,8 @@ impl Nutzap {
             }
         }
 
-        let mint_url = mint_url.ok_or_else(|| Nip61Error::MissingField("u (mint url)".to_string()))?;
+        let mint_url =
+            mint_url.ok_or_else(|| Nip61Error::MissingField("u (mint url)".to_string()))?;
         let recipient_pubkey = recipient_pubkey
             .ok_or_else(|| Nip61Error::MissingField("p (recipient pubkey)".to_string()))?;
 

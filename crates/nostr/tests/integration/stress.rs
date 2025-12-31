@@ -8,12 +8,12 @@
 //! - Memory leak detection
 
 use super::*;
-use nostr::{finalize_event, generate_secret_key, EventTemplate, KIND_SHORT_TEXT_NOTE};
+use nostr::{EventTemplate, KIND_SHORT_TEXT_NOTE, finalize_event, generate_secret_key};
 use nostr_client::RelayConnection;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 // =============================================================================
 // Concurrent Connection Stress Tests
@@ -64,8 +64,14 @@ async fn test_1000_concurrent_connections() {
 
     let elapsed = start.elapsed();
 
-    println!("Connected {}/{} clients in {:?}", successful, num_clients, elapsed);
-    println!("Connection rate: {:.2} conn/sec", successful as f64 / elapsed.as_secs_f64());
+    println!(
+        "Connected {}/{} clients in {:?}",
+        successful, num_clients, elapsed
+    );
+    println!(
+        "Connection rate: {:.2} conn/sec",
+        successful as f64 / elapsed.as_secs_f64()
+    );
 
     // At least 95% should succeed
     assert!(
@@ -159,8 +165,11 @@ async fn test_rapid_event_publishing_single_client() {
         };
         let event = finalize_event(&template, &secret_key).unwrap();
 
-        match timeout(Duration::from_secs(2), relay.publish_event(&event, Duration::from_secs(5)))
-            .await
+        match timeout(
+            Duration::from_secs(2),
+            relay.publish_event(&event, Duration::from_secs(5)),
+        )
+        .await
         {
             Ok(Ok(confirmation)) if confirmation.accepted => {
                 successful += 1;
@@ -319,7 +328,9 @@ async fn test_100_clients_with_10_subscriptions_each() {
                     "limit": 10
                 })];
 
-                if let Ok(Ok(_)) = timeout(Duration::from_secs(2), relay.subscribe(&sub_id, &filters)).await {
+                if let Ok(Ok(_)) =
+                    timeout(Duration::from_secs(2), relay.subscribe(&sub_id, &filters)).await
+                {
                     successful_subs += 1;
                 }
             }
@@ -375,7 +386,10 @@ async fn test_broadcast_to_100_subscribers() {
         relay.connect().await.unwrap();
 
         let filters = vec![serde_json::json!({"kinds": [1]})];
-        relay.subscribe(&format!("sub-{}", i), &filters).await.unwrap();
+        relay
+            .subscribe(&format!("sub-{}", i), &filters)
+            .await
+            .unwrap();
 
         subscribers.push(relay);
     }
@@ -401,7 +415,10 @@ async fn test_broadcast_to_100_subscribers() {
                 .as_secs(),
         };
         let event = finalize_event(&template, &secret_key).unwrap();
-        publisher.publish_event(&event, Duration::from_secs(5)).await.ok();
+        publisher
+            .publish_event(&event, Duration::from_secs(5))
+            .await
+            .ok();
 
         sleep(Duration::from_millis(50)).await;
     }

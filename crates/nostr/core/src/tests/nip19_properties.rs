@@ -4,8 +4,8 @@
 //! satisfy fundamental properties for all possible inputs.
 
 use crate::nip19::{
-    decode, encode_naddr, encode_nevent, encode_note, encode_npub, encode_nprofile, encode_nsec,
-    AddressPointer, EventPointer, Nip19Entity, ProfilePointer,
+    AddressPointer, EventPointer, Nip19Entity, ProfilePointer, decode, encode_naddr, encode_nevent,
+    encode_note, encode_nprofile, encode_npub, encode_nsec,
 };
 use quickcheck::{Arbitrary, Gen};
 

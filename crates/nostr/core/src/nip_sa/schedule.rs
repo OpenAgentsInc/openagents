@@ -85,11 +85,10 @@ impl TriggerType {
             "mention" => Some(TriggerType::Mention),
             "dm" => Some(TriggerType::Dm),
             "zap" => Some(TriggerType::Zap),
-            s if s.starts_with("custom:") => {
-                s.strip_prefix("custom:")
-                    .and_then(|kind_str| kind_str.parse::<u32>().ok())
-                    .map(TriggerType::Custom)
-            }
+            s if s.starts_with("custom:") => s
+                .strip_prefix("custom:")
+                .and_then(|kind_str| kind_str.parse::<u32>().ok())
+                .map(TriggerType::Custom),
             _ => None,
         }
     }
@@ -303,10 +302,7 @@ impl AgentSchedule {
     /// Build tags for the event
     pub fn build_tags(&self) -> Vec<Vec<String>> {
         let mut tags = vec![vec!["d".to_string(), "schedule".to_string()]];
-        tags.push(vec![
-            "active".to_string(),
-            self.active.to_string(),
-        ]);
+        tags.push(vec!["active".to_string(), self.active.to_string()]);
 
         // Add heartbeat tag if present
         if let Some(seconds) = self.heartbeat_seconds {
@@ -319,10 +315,7 @@ impl AgentSchedule {
         }
 
         if let Some(hours) = &self.business_hours {
-            tags.push(vec![
-                "business_hours".to_string(),
-                hours.to_tag_value(),
-            ]);
+            tags.push(vec!["business_hours".to_string(), hours.to_tag_value()]);
         }
 
         tags
@@ -435,9 +428,10 @@ mod tests {
         let schedule = AgentSchedule::new().with_business_hours(hours);
         let tags = schedule.build_tags();
 
-        assert!(tags.iter().any(|t| {
-            t[0] == "business_hours" && t[1] == "mon,tue 09:00-17:00"
-        }));
+        assert!(
+            tags.iter()
+                .any(|t| { t[0] == "business_hours" && t[1] == "mon,tue 09:00-17:00" })
+        );
     }
 
     #[test]

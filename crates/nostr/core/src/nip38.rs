@@ -101,11 +101,17 @@ pub enum StatusLink {
     /// URL reference
     Url(String),
     /// Profile reference
-    Profile { pubkey: String, relay: Option<String> },
+    Profile {
+        pubkey: String,
+        relay: Option<String>,
+    },
     /// Event reference
     Event { id: String, relay: Option<String> },
     /// Addressable event reference
-    Address { address: String, relay: Option<String> },
+    Address {
+        address: String,
+        relay: Option<String>,
+    },
 }
 
 impl StatusLink {
@@ -268,7 +274,9 @@ impl UserStatus {
 
     /// Check if this status has expired.
     pub fn is_expired(&self, current_time: u64) -> bool {
-        self.expiration.map(|exp| current_time > exp).unwrap_or(false)
+        self.expiration
+            .map(|exp| current_time > exp)
+            .unwrap_or(false)
     }
 
     /// Validate the status.
@@ -399,10 +407,7 @@ mod tests {
     #[test]
     fn test_user_status_custom() {
         let status = UserStatus::custom("gaming", "Playing chess");
-        assert_eq!(
-            status.status_type,
-            StatusType::Custom("gaming".to_string())
-        );
+        assert_eq!(status.status_type, StatusType::Custom("gaming".to_string()));
         assert_eq!(status.content, "Playing chess");
     }
 
@@ -414,8 +419,7 @@ mod tests {
 
     #[test]
     fn test_user_status_with_link() {
-        let status = UserStatus::general("Check this out")
-            .with_link("https://example.com");
+        let status = UserStatus::general("Check this out").with_link("https://example.com");
 
         assert!(status.link.is_some());
         match status.link.unwrap() {
@@ -426,8 +430,7 @@ mod tests {
 
     #[test]
     fn test_user_status_with_expiration() {
-        let status = UserStatus::music("Song Title")
-            .with_expiration(1692845589);
+        let status = UserStatus::music("Song Title").with_expiration(1692845589);
 
         assert_eq!(status.expiration, Some(1692845589));
     }
@@ -475,9 +478,10 @@ mod tests {
 
         let tags = status.to_tags();
 
-        assert!(tags
-            .iter()
-            .any(|tag| tag[0] == "r" && tag[1].starts_with("spotify:")));
+        assert!(
+            tags.iter()
+                .any(|tag| tag[0] == "r" && tag[1].starts_with("spotify:"))
+        );
         assert!(tags.iter().any(|tag| tag[0] == "expiration"));
     }
 
@@ -499,7 +503,10 @@ mod tests {
         let status = UserStatus::general("Talking with Alice").with_status_link(link);
 
         let tags = status.to_tags();
-        assert!(tags.iter().any(|tag| tag[0] == "p" && tag[1] == "pubkey123"));
+        assert!(
+            tags.iter()
+                .any(|tag| tag[0] == "p" && tag[1] == "pubkey123")
+        );
     }
 
     #[test]
@@ -542,8 +549,9 @@ mod tests {
         let status = UserStatus::music("Listening to Podcast Episode 1").with_status_link(link);
 
         let tags = status.to_tags();
-        assert!(tags
-            .iter()
-            .any(|tag| tag[0] == "a" && tag[1].contains("podcast")));
+        assert!(
+            tags.iter()
+                .any(|tag| tag[0] == "a" && tag[1].contains("podcast"))
+        );
     }
 }

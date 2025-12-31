@@ -76,11 +76,15 @@ impl InferenceParams {
     /// Create new inference parameters with validation
     pub fn new(max_tokens: u32, temperature: f32) -> Result<Self, ComputeJobError> {
         if max_tokens == 0 {
-            return Err(ComputeJobError::InvalidParams("max_tokens must be greater than 0".to_string()));
+            return Err(ComputeJobError::InvalidParams(
+                "max_tokens must be greater than 0".to_string(),
+            ));
         }
 
         if !(0.0..=2.0).contains(&temperature) {
-            return Err(ComputeJobError::InvalidParams("temperature must be between 0.0 and 2.0".to_string()));
+            return Err(ComputeJobError::InvalidParams(
+                "temperature must be between 0.0 and 2.0".to_string(),
+            ));
         }
 
         Ok(Self {
@@ -94,7 +98,9 @@ impl InferenceParams {
     /// Set top-p sampling parameter
     pub fn with_top_p(mut self, top_p: f32) -> Result<Self, ComputeJobError> {
         if !(0.0..=1.0).contains(&top_p) {
-            return Err(ComputeJobError::InvalidParams("top_p must be between 0.0 and 1.0".to_string()));
+            return Err(ComputeJobError::InvalidParams(
+                "top_p must be between 0.0 and 1.0".to_string(),
+            ));
         }
         self.top_p = Some(top_p);
         Ok(self)
@@ -496,7 +502,9 @@ pub fn select_provider(
             candidates.sort_by(|a, b| {
                 let score_a = calculate_value_score(a, request);
                 let score_b = calculate_value_score(b, request);
-                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                score_b
+                    .partial_cmp(&score_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             });
             candidates.first().map(|&p| p.clone())
         }
@@ -504,7 +512,9 @@ pub fn select_provider(
         SelectionMode::TopK(_k) => {
             // Return highest reputation provider from top K
             candidates.sort_by(|a, b| {
-                b.reputation.success_rate.partial_cmp(&a.reputation.success_rate)
+                b.reputation
+                    .success_rate
+                    .partial_cmp(&a.reputation.success_rate)
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
             candidates.first().map(|&p| p.clone())
@@ -542,11 +552,8 @@ mod tests {
     ) -> ComputeProvider {
         let pubkey = "a".repeat(64);
         let identity = NostrIdentity::new(&pubkey).unwrap();
-        let capabilities = ComputeCapabilities::new(
-            vec!["llama-70b".to_string()],
-            8192,
-            2048,
-        ).unwrap();
+        let capabilities =
+            ComputeCapabilities::new(vec!["llama-70b".to_string()], 8192, 2048).unwrap();
 
         let mut provider = ComputeProvider::new(
             identity,
@@ -554,7 +561,8 @@ mod tests {
             region,
             pricing,
             capabilities,
-        ).unwrap();
+        )
+        .unwrap();
 
         provider.set_online(true);
         provider.reputation = ProviderReputation {
@@ -614,13 +622,7 @@ mod tests {
     #[test]
     fn test_compute_job_request() {
         let params = InferenceParams::default();
-        let request = ComputeJobRequest::new(
-            "job_123",
-            "llama-70b",
-            "Hello, world!",
-            params,
-            1000,
-        );
+        let request = ComputeJobRequest::new("job_123", "llama-70b", "Hello, world!", params, 1000);
 
         assert_eq!(request.id, "job_123");
         assert_eq!(request.model, "llama-70b");
@@ -648,14 +650,8 @@ mod tests {
     #[test]
     fn test_compute_job_result() {
         let usage = TokenUsage::new(100, 50);
-        let result = ComputeJobResult::success(
-            "job_123",
-            "provider_1",
-            "Output text",
-            usage,
-            200,
-            350,
-        );
+        let result =
+            ComputeJobResult::success("job_123", "provider_1", "Output text", usage, 200, 350);
 
         assert_eq!(result.status, JobStatus::Completed);
         assert!(result.output.is_some());
@@ -675,13 +671,7 @@ mod tests {
         let provider2 = create_test_provider(Region::UsWest, expensive_pricing, 300, 0.99);
 
         let params = InferenceParams::default();
-        let request = ComputeJobRequest::new(
-            "job_123",
-            "llama-70b",
-            "Test prompt",
-            params,
-            10000,
-        );
+        let request = ComputeJobRequest::new("job_123", "llama-70b", "Test prompt", params, 10000);
 
         let providers = vec![provider1, provider2];
         let selected = select_provider(&request, &providers, SelectionMode::Cheapest).unwrap();
@@ -697,13 +687,7 @@ mod tests {
         let slow_provider = create_test_provider(Region::UsWest, pricing, 800, 0.99);
 
         let params = InferenceParams::default();
-        let request = ComputeJobRequest::new(
-            "job_123",
-            "llama-70b",
-            "Test prompt",
-            params,
-            10000,
-        );
+        let request = ComputeJobRequest::new("job_123", "llama-70b", "Test prompt", params, 10000);
 
         let providers = vec![slow_provider, fast_provider];
         let selected = select_provider(&request, &providers, SelectionMode::Fastest).unwrap();
@@ -718,13 +702,7 @@ mod tests {
         provider.set_online(false); // Offline
 
         let params = InferenceParams::default();
-        let request = ComputeJobRequest::new(
-            "job_123",
-            "llama-70b",
-            "Test prompt",
-            params,
-            10000,
-        );
+        let request = ComputeJobRequest::new("job_123", "llama-70b", "Test prompt", params, 10000);
 
         let providers = vec![provider];
         let selected = select_provider(&request, &providers, SelectionMode::BestValue);

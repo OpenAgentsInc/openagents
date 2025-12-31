@@ -3,10 +3,10 @@
 //! Provides circuit breaker pattern, exponential backoff with jitter, health checks,
 //! and graceful degradation for robust production deployments.
 
+use rand::Rng;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use rand::Rng;
 
 /// Circuit breaker state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -290,7 +290,8 @@ impl HealthMetrics {
     /// Healthy = success rate > 80% AND (last ping < 60s OR no pings yet)
     pub fn is_healthy(&self) -> bool {
         let rate_ok = self.success_rate() > 0.8;
-        let ping_ok = self.last_ping
+        let ping_ok = self
+            .last_ping
             .map(|t| t.elapsed() < Duration::from_secs(60))
             .unwrap_or(true); // No ping yet is OK
 
@@ -386,11 +387,8 @@ mod tests {
 
     #[test]
     fn test_exponential_backoff_progression() {
-        let mut backoff = ExponentialBackoff::new(
-            Duration::from_millis(100),
-            Duration::from_secs(10),
-            0,
-        );
+        let mut backoff =
+            ExponentialBackoff::new(Duration::from_millis(100), Duration::from_secs(10), 0);
 
         // First delay should be in range [0, 100ms]
         let delay1 = backoff.next_delay().unwrap();
@@ -437,11 +435,8 @@ mod tests {
 
     #[test]
     fn test_exponential_backoff_reset() {
-        let mut backoff = ExponentialBackoff::new(
-            Duration::from_millis(100),
-            Duration::from_secs(10),
-            0,
-        );
+        let mut backoff =
+            ExponentialBackoff::new(Duration::from_millis(100), Duration::from_secs(10), 0);
 
         backoff.next_delay();
         backoff.next_delay();

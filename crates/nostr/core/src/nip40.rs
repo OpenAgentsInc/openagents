@@ -266,7 +266,10 @@ mod tests {
 
     #[test]
     fn test_get_expiration_with_tag() {
-        let event = create_test_event(vec![vec!["expiration".to_string(), "1600000000".to_string()]]);
+        let event = create_test_event(vec![vec![
+            "expiration".to_string(),
+            "1600000000".to_string(),
+        ]]);
         assert_eq!(get_expiration(&event), Some(1600000000));
     }
 
@@ -359,7 +362,10 @@ mod tests {
 
     #[test]
     fn test_has_expiration_true() {
-        let event = create_test_event(vec![vec!["expiration".to_string(), "1600000000".to_string()]]);
+        let event = create_test_event(vec![vec![
+            "expiration".to_string(),
+            "1600000000".to_string(),
+        ]]);
         assert!(has_expiration(&event));
     }
 
@@ -392,7 +398,10 @@ mod tests {
 
     #[test]
     fn test_invalid_expiration_value() {
-        let event = create_test_event(vec![vec!["expiration".to_string(), "not_a_number".to_string()]]);
+        let event = create_test_event(vec![vec![
+            "expiration".to_string(),
+            "not_a_number".to_string(),
+        ]]);
         assert_eq!(get_expiration(&event), None);
         assert!(!is_expired(&event, Some(2000000)));
     }

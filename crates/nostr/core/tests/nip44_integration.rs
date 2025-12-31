@@ -5,9 +5,9 @@
 
 use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
 // NIP-44 encrypt/decrypt are re-exported as encrypt_v2/decrypt_v2
-use nostr::{encrypt_v2, decrypt_v2};
+use nostr::{decrypt_v2, encrypt_v2};
 // Alias for vector tests which use the standard names
-use nostr::{encrypt_v2 as encrypt, decrypt_v2 as decrypt};
+use nostr::{decrypt_v2 as decrypt, encrypt_v2 as encrypt};
 
 /// Helper to convert x-only pubkey (32 bytes) to compressed pubkey (33 bytes)
 #[allow(dead_code)]
@@ -42,12 +42,12 @@ fn test_encrypt_decrypt_roundtrip() {
     let plaintext = "Hello, Nostr! This is a test message for NIP-44 encryption.";
 
     // Encrypt from sender to recipient
-    let ciphertext = encrypt_v2(&sender_key, &recipient_pubkey, plaintext)
-        .expect("encryption should succeed");
+    let ciphertext =
+        encrypt_v2(&sender_key, &recipient_pubkey, plaintext).expect("encryption should succeed");
 
     // Decrypt at recipient
-    let decrypted = decrypt_v2(&recipient_key, &sender_pubkey, &ciphertext)
-        .expect("decryption should succeed");
+    let decrypted =
+        decrypt_v2(&recipient_key, &sender_pubkey, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -65,11 +65,11 @@ fn test_encrypt_decrypt_short_message() {
 
     let plaintext = "x"; // Single character (minimum length)
 
-    let ciphertext = encrypt_v2(&sender_key, &recipient_pubkey, plaintext)
-        .expect("encryption should succeed");
+    let ciphertext =
+        encrypt_v2(&sender_key, &recipient_pubkey, plaintext).expect("encryption should succeed");
 
-    let decrypted = decrypt_v2(&recipient_key, &sender_pubkey, &ciphertext)
-        .expect("decryption should succeed");
+    let decrypted =
+        decrypt_v2(&recipient_key, &sender_pubkey, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -88,11 +88,11 @@ fn test_encrypt_decrypt_long_message() {
     // Long message (1000 characters)
     let plaintext = "a".repeat(1000);
 
-    let ciphertext = encrypt_v2(&sender_key, &recipient_pubkey, &plaintext)
-        .expect("encryption should succeed");
+    let ciphertext =
+        encrypt_v2(&sender_key, &recipient_pubkey, &plaintext).expect("encryption should succeed");
 
-    let decrypted = decrypt_v2(&recipient_key, &sender_pubkey, &ciphertext)
-        .expect("decryption should succeed");
+    let decrypted =
+        decrypt_v2(&recipient_key, &sender_pubkey, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -110,11 +110,11 @@ fn test_encrypt_decrypt_unicode() {
 
     let plaintext = "Hello 世界! 🌍 Émojis and spëcial çharacters";
 
-    let ciphertext = encrypt_v2(&sender_key, &recipient_pubkey, plaintext)
-        .expect("encryption should succeed");
+    let ciphertext =
+        encrypt_v2(&sender_key, &recipient_pubkey, plaintext).expect("encryption should succeed");
 
-    let decrypted = decrypt_v2(&recipient_key, &sender_pubkey, &ciphertext)
-        .expect("decryption should succeed");
+    let decrypted =
+        decrypt_v2(&recipient_key, &sender_pubkey, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -135,8 +135,8 @@ fn test_decrypt_wrong_key_fails() {
     let plaintext = "Secret message";
 
     // Encrypt to recipient
-    let ciphertext = encrypt_v2(&sender_key, &recipient_pubkey, plaintext)
-        .expect("encryption should succeed");
+    let ciphertext =
+        encrypt_v2(&sender_key, &recipient_pubkey, plaintext).expect("encryption should succeed");
 
     // Try to decrypt with wrong key
     let result = decrypt_v2(&wrong_key, &sender_pubkey, &ciphertext);
@@ -158,8 +158,8 @@ fn test_decrypt_tampered_ciphertext_fails() {
 
     let plaintext = "Original message";
 
-    let ciphertext = encrypt_v2(&sender_key, &recipient_pubkey, plaintext)
-        .expect("encryption should succeed");
+    let ciphertext =
+        encrypt_v2(&sender_key, &recipient_pubkey, plaintext).expect("encryption should succeed");
 
     // Tamper with ciphertext by changing a character in the middle
     let mut tampered = ciphertext.chars().collect::<Vec<_>>();
@@ -173,7 +173,10 @@ fn test_decrypt_tampered_ciphertext_fails() {
     let result = decrypt_v2(&recipient_key, &sender_pubkey, &tampered_ciphertext);
 
     // Should fail (either base64 decode or MAC verification)
-    assert!(result.is_err(), "decryption of tampered ciphertext should fail");
+    assert!(
+        result.is_err(),
+        "decryption of tampered ciphertext should fail"
+    );
 }
 
 #[test]
@@ -212,7 +215,10 @@ fn test_different_nonces_produce_different_ciphertexts() {
         .expect("second encryption should succeed");
 
     // Ciphertexts should be different (due to random nonce)
-    assert_ne!(ciphertext1, ciphertext2, "same message should produce different ciphertexts");
+    assert_ne!(
+        ciphertext1, ciphertext2,
+        "same message should produce different ciphertexts"
+    );
 }
 
 // ============================================================================
@@ -252,7 +258,8 @@ fn derive_pubkey_compressed(secret_key: &[u8]) -> [u8; 33] {
 fn test_vector_get_conversation_key_1() {
     // Vector: sec1=315e59ff... pub2=c2f9d994... conversation_key=3dfef0ce...
     let sec1 = hex_to_bytes("315e59ff51cb9209768cf7da80791ddcaae56ac9775eb25b6dee1234bc5d2268");
-    let pub2_xonly = hex_to_bytes("c2f9d9948dc8c7c38321e4b85c8558872eafa0641cd269db76848a6073e69133");
+    let pub2_xonly =
+        hex_to_bytes("c2f9d9948dc8c7c38321e4b85c8558872eafa0641cd269db76848a6073e69133");
     // Expected conversation_key: 3dfef0ce2a4d80a25e7a328accf73448ef67096f65f79588e358d9a0eb9013f1
 
     // Get conversation key by encrypting and decrypting
@@ -272,7 +279,8 @@ fn test_vector_get_conversation_key_1() {
 fn test_vector_get_conversation_key_edge_case_n_minus_2() {
     // Vector: sec1 = n-2 (curve order - 2)
     let sec1 = hex_to_bytes("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364139");
-    let pub2_xonly = hex_to_bytes("0000000000000000000000000000000000000000000000000000000000000002");
+    let pub2_xonly =
+        hex_to_bytes("0000000000000000000000000000000000000000000000000000000000000002");
     // Expected conversation_key: 8b6392dbf2ec6a2b2d5b1477fc2be84d63ef254b667cadd31bd3f444c44ae6ba
 
     let mut compressed_pub = vec![0x02];
@@ -289,7 +297,8 @@ fn test_vector_get_conversation_key_edge_case_n_minus_2() {
 fn test_vector_get_conversation_key_sec1_equals_2() {
     // Vector: sec1 = 2
     let sec1 = hex_to_bytes("0000000000000000000000000000000000000000000000000000000000000002");
-    let pub2_xonly = hex_to_bytes("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdeb");
+    let pub2_xonly =
+        hex_to_bytes("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdeb");
     // Expected conversation_key: be234f46f60a250bef52a5ee34c758800c4ca8e5030bf4cc1a31d37ba2104d43
 
     let mut compressed_pub = vec![0x02];
@@ -322,10 +331,8 @@ fn test_vector_encrypt_decrypt_single_char() {
     let pub2 = derive_pubkey_compressed(&sec2_array);
 
     // Encrypt and decrypt
-    let ciphertext = encrypt(&sec1_array, &pub2, plaintext)
-        .expect("encryption should succeed");
-    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext)
-        .expect("decryption should succeed");
+    let ciphertext = encrypt(&sec1_array, &pub2, plaintext).expect("encryption should succeed");
+    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -343,10 +350,8 @@ fn test_vector_encrypt_decrypt_emoji() {
     let pub1 = derive_pubkey_compressed(&sec1_array);
     let pub2 = derive_pubkey_compressed(&sec2_array);
 
-    let ciphertext = encrypt(&sec1_array, &pub2, plaintext)
-        .expect("encryption should succeed");
-    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext)
-        .expect("decryption should succeed");
+    let ciphertext = encrypt(&sec1_array, &pub2, plaintext).expect("encryption should succeed");
+    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -364,10 +369,8 @@ fn test_vector_encrypt_decrypt_japanese() {
     let pub1 = derive_pubkey_compressed(&sec1_array);
     let pub2 = derive_pubkey_compressed(&sec2_array);
 
-    let ciphertext = encrypt(&sec1_array, &pub2, plaintext)
-        .expect("encryption should succeed");
-    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext)
-        .expect("decryption should succeed");
+    let ciphertext = encrypt(&sec1_array, &pub2, plaintext).expect("encryption should succeed");
+    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -385,10 +388,8 @@ fn test_vector_encrypt_decrypt_ability_emoji() {
     let pub1 = derive_pubkey_compressed(&sec1_array);
     let pub2 = derive_pubkey_compressed(&sec2_array);
 
-    let ciphertext = encrypt(&sec1_array, &pub2, plaintext)
-        .expect("encryption should succeed");
-    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext)
-        .expect("decryption should succeed");
+    let ciphertext = encrypt(&sec1_array, &pub2, plaintext).expect("encryption should succeed");
+    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -406,10 +407,8 @@ fn test_vector_encrypt_decrypt_pepper_emoji() {
     let pub1 = derive_pubkey_compressed(&sec1_array);
     let pub2 = derive_pubkey_compressed(&sec2_array);
 
-    let ciphertext = encrypt(&sec1_array, &pub2, plaintext)
-        .expect("encryption should succeed");
-    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext)
-        .expect("decryption should succeed");
+    let ciphertext = encrypt(&sec1_array, &pub2, plaintext).expect("encryption should succeed");
+    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -427,10 +426,8 @@ fn test_vector_encrypt_decrypt_lenny_face() {
     let pub1 = derive_pubkey_compressed(&sec1_array);
     let pub2 = derive_pubkey_compressed(&sec2_array);
 
-    let ciphertext = encrypt(&sec1_array, &pub2, plaintext)
-        .expect("encryption should succeed");
-    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext)
-        .expect("decryption should succeed");
+    let ciphertext = encrypt(&sec1_array, &pub2, plaintext).expect("encryption should succeed");
+    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -448,10 +445,8 @@ fn test_vector_encrypt_decrypt_arabic() {
     let pub1 = derive_pubkey_compressed(&sec1_array);
     let pub2 = derive_pubkey_compressed(&sec2_array);
 
-    let ciphertext = encrypt(&sec1_array, &pub2, plaintext)
-        .expect("encryption should succeed");
-    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext)
-        .expect("decryption should succeed");
+    let ciphertext = encrypt(&sec1_array, &pub2, plaintext).expect("encryption should succeed");
+    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -469,10 +464,8 @@ fn test_vector_encrypt_decrypt_arabic_short() {
     let pub1 = derive_pubkey_compressed(&sec1_array);
     let pub2 = derive_pubkey_compressed(&sec2_array);
 
-    let ciphertext = encrypt(&sec1_array, &pub2, plaintext)
-        .expect("encryption should succeed");
-    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext)
-        .expect("decryption should succeed");
+    let ciphertext = encrypt(&sec1_array, &pub2, plaintext).expect("encryption should succeed");
+    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -490,10 +483,8 @@ fn test_vector_encrypt_decrypt_chinese() {
     let pub1 = derive_pubkey_compressed(&sec1_array);
     let pub2 = derive_pubkey_compressed(&sec2_array);
 
-    let ciphertext = encrypt(&sec1_array, &pub2, plaintext)
-        .expect("encryption should succeed");
-    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext)
-        .expect("decryption should succeed");
+    let ciphertext = encrypt(&sec1_array, &pub2, plaintext).expect("encryption should succeed");
+    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -511,10 +502,8 @@ fn test_vector_encrypt_decrypt_emoji_power() {
     let pub1 = derive_pubkey_compressed(&sec1_array);
     let pub2 = derive_pubkey_compressed(&sec2_array);
 
-    let ciphertext = encrypt(&sec1_array, &pub2, plaintext)
-        .expect("encryption should succeed");
-    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext)
-        .expect("decryption should succeed");
+    let ciphertext = encrypt(&sec1_array, &pub2, plaintext).expect("encryption should succeed");
+    let decrypted = decrypt(&sec2_array, &pub1, &ciphertext).expect("decryption should succeed");
 
     assert_eq!(decrypted, plaintext);
 }
@@ -528,7 +517,8 @@ fn test_vector_encrypt_decrypt_emoji_power() {
 fn test_vector_invalid_sec1_all_ff() {
     // Vector: sec1 higher than curve.n (all 0xFF)
     let sec1 = hex_to_bytes("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-    let pub2_xonly = hex_to_bytes("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
+    let pub2_xonly =
+        hex_to_bytes("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
 
     let mut compressed_pub = vec![0x02];
     compressed_pub.extend_from_slice(&pub2_xonly);
@@ -537,14 +527,18 @@ fn test_vector_invalid_sec1_all_ff() {
 
     // Should fail because sec1 is invalid
     let result = encrypt(&sec1_array, &compressed_pub, "test");
-    assert!(result.is_err(), "encryption with sec1 > curve.n should fail");
+    assert!(
+        result.is_err(),
+        "encryption with sec1 > curve.n should fail"
+    );
 }
 
 #[test]
 fn test_vector_invalid_sec1_zero() {
     // Vector: sec1 = 0
     let sec1 = hex_to_bytes("0000000000000000000000000000000000000000000000000000000000000000");
-    let pub2_xonly = hex_to_bytes("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
+    let pub2_xonly =
+        hex_to_bytes("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
 
     let mut compressed_pub = vec![0x02];
     compressed_pub.extend_from_slice(&pub2_xonly);
@@ -560,7 +554,8 @@ fn test_vector_invalid_sec1_zero() {
 fn test_vector_invalid_pub2_all_ff() {
     // Vector: pub2 is invalid (all 0xFF)
     let sec1 = hex_to_bytes("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364139");
-    let pub2_xonly = hex_to_bytes("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+    let pub2_xonly =
+        hex_to_bytes("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 
     let mut compressed_pub = vec![0x02];
     compressed_pub.extend_from_slice(&pub2_xonly);
@@ -576,7 +571,8 @@ fn test_vector_invalid_pub2_all_ff() {
 fn test_vector_invalid_pub2_zero() {
     // Vector: pub2 = point of order 3 on twist (all zeros)
     let sec1 = hex_to_bytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
-    let pub2_xonly = hex_to_bytes("0000000000000000000000000000000000000000000000000000000000000000");
+    let pub2_xonly =
+        hex_to_bytes("0000000000000000000000000000000000000000000000000000000000000000");
 
     let mut compressed_pub = vec![0x02];
     compressed_pub.extend_from_slice(&pub2_xonly);
@@ -597,7 +593,8 @@ fn test_vector_invalid_pub2_zero() {
 fn test_vector_invalid_decrypt_unknown_version() {
     // Vector: unknown encryption version (starts with '#' instead of base64 'A')
     let sec1 = hex_to_bytes("ca2527a037347b91bea0c8a30fc8d9600ffd81ec00038671e3a0f0cb0fc9f642");
-    let pub2_xonly = hex_to_bytes("daaea5ca345b268e5b62060ca72c870c48f713bc1e00ff3fc0ddb78e826f10db");
+    let pub2_xonly =
+        hex_to_bytes("daaea5ca345b268e5b62060ca72c870c48f713bc1e00ff3fc0ddb78e826f10db");
 
     let mut compressed_pub = vec![0x02];
     compressed_pub.extend_from_slice(&pub2_xonly);
@@ -606,14 +603,18 @@ fn test_vector_invalid_decrypt_unknown_version() {
     let invalid_payload = "#Atqupco0WyaOW2IGDKcshwxI9xO8HgD/P8Ddt46CbxDbrhdG8VmJdU0MIDf06CUvEvdnr1cp1fiMtlM/GrE92xAc1K5odTpCzUB+mjXgbaqtntBUbTToSUoT0ovrlPwzGjyp";
 
     let result = decrypt(&sec1_array, &compressed_pub, invalid_payload);
-    assert!(result.is_err(), "decryption with unknown version should fail");
+    assert!(
+        result.is_err(),
+        "decryption with unknown version should fail"
+    );
 }
 
 #[test]
 fn test_vector_invalid_decrypt_version_0() {
     // Vector: unknown encryption version 0 (starts with 'AK1A...')
     let sec1 = hex_to_bytes("36f04e558af246352dcf73b692fbd3646a2207bd8abd4b1cd26b234db84d9481");
-    let pub2_xonly = hex_to_bytes("ad408d4be8616dc84bb0bf046454a2a102edac937c35209c43cd7964c5feb781");
+    let pub2_xonly =
+        hex_to_bytes("ad408d4be8616dc84bb0bf046454a2a102edac937c35209c43cd7964c5feb781");
 
     let mut compressed_pub = vec![0x02];
     compressed_pub.extend_from_slice(&pub2_xonly);
@@ -629,7 +630,8 @@ fn test_vector_invalid_decrypt_version_0() {
 fn test_vector_invalid_decrypt_invalid_base64() {
     // Vector: invalid base64 (contains Cyrillic 'ф')
     let sec1 = hex_to_bytes("ca2527a037347b91bea0c8a30fc8d9600ffd81ec00038671e3a0f0cb0fc9f642");
-    let pub2_xonly = hex_to_bytes("daaea5ca345b268e5b62060ca72c870c48f713bc1e00ff3fc0ddb78e826f10db");
+    let pub2_xonly =
+        hex_to_bytes("daaea5ca345b268e5b62060ca72c870c48f713bc1e00ff3fc0ddb78e826f10db");
 
     let mut compressed_pub = vec![0x02];
     compressed_pub.extend_from_slice(&pub2_xonly);
@@ -638,14 +640,18 @@ fn test_vector_invalid_decrypt_invalid_base64() {
     let invalid_payload = "Atфupco0WyaOW2IGDKcshwxI9xO8HgD/P8Ddt46CbxDbrhdG8VmJZE0UICD06CUvEvdnr1cp1fiMtlM/GrE92xAc1EwsVCQEgWEu2gsHUVf4JAa3TpgkmFc3TWsax0v6n/Wq";
 
     let result = decrypt(&sec1_array, &compressed_pub, invalid_payload);
-    assert!(result.is_err(), "decryption with invalid base64 should fail");
+    assert!(
+        result.is_err(),
+        "decryption with invalid base64 should fail"
+    );
 }
 
 #[test]
 fn test_vector_invalid_decrypt_invalid_mac() {
     // Vector: invalid MAC (message corrupted)
     let sec1 = hex_to_bytes("cff7bd6a3e29a450fd27f6c125d5edeb0987c475fd1e8d97591e0d4d8a89763c");
-    let pub2_xonly = hex_to_bytes("09ff97750b084012e15ecb84614ce88180d7b8ec0d468508a86b6d70c0361a25");
+    let pub2_xonly =
+        hex_to_bytes("09ff97750b084012e15ecb84614ce88180d7b8ec0d468508a86b6d70c0361a25");
 
     let mut compressed_pub = vec![0x02];
     compressed_pub.extend_from_slice(&pub2_xonly);
@@ -662,7 +668,8 @@ fn test_vector_invalid_decrypt_invalid_mac() {
 fn test_vector_invalid_decrypt_invalid_padding() {
     // Vector: invalid padding
     let sec1 = hex_to_bytes("5254827d29177622d40a7b67cad014fe7137700c3c523903ebbe3e1b74d40214");
-    let pub2_xonly = hex_to_bytes("7ab65dbb8bbc2b8e35cafb5745314e1f050325a864d11d0475ef75b3660d91c1");
+    let pub2_xonly =
+        hex_to_bytes("7ab65dbb8bbc2b8e35cafb5745314e1f050325a864d11d0475ef75b3660d91c1");
 
     let mut compressed_pub = vec![0x02];
     compressed_pub.extend_from_slice(&pub2_xonly);
@@ -671,7 +678,10 @@ fn test_vector_invalid_decrypt_invalid_padding() {
     let invalid_payload = "Anq2XbuLvCuONcr7V0UxTh8FAyWoZNEdBHXvdbNmDZHB573MI7R7rrTYftpqmvUpahmBC2sngmI14/L0HjOZ7lWGJlzdh6luiOnGPc46cGxf08MRC4CIuxx3i2Lm0KqgJ7vA";
 
     let result = decrypt(&sec1_array, &compressed_pub, invalid_payload);
-    assert!(result.is_err(), "decryption with invalid padding should fail");
+    assert!(
+        result.is_err(),
+        "decryption with invalid padding should fail"
+    );
 }
 
 // ============================================================================
@@ -745,5 +755,8 @@ fn test_encrypt_over_max_length_fails() {
     let plaintext = "a".repeat(65536);
 
     let result = encrypt(&sender_key, &recipient_pubkey, &plaintext);
-    assert!(result.is_err(), "encryption of message > 65535 bytes should fail");
+    assert!(
+        result.is_err(),
+        "encryption of message > 65535 bytes should fail"
+    );
 }

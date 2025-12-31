@@ -27,7 +27,6 @@ use serde_with::serde_as;
 #[serde(tag = "type")]
 pub enum BifrostMessage {
     // === FROST Two-Phase Signing Protocol ===
-
     /// Round 1: Request commitments from participants (coordinator → peers)
     #[serde(rename = "/sign/commit/req")]
     CommitmentRequest(CommitmentRequest),
@@ -53,7 +52,6 @@ pub enum BifrostMessage {
     SignError(SignError),
 
     // === ECDH Protocol ===
-
     /// Request threshold ECDH computation
     #[serde(rename = "/ecdh/req")]
     EcdhRequest(EcdhRequest),
@@ -71,7 +69,6 @@ pub enum BifrostMessage {
     EcdhError(EcdhError),
 
     // === Utility ===
-
     /// Ping request to check peer connectivity
     #[serde(rename = "/ping")]
     Ping(Ping),
@@ -514,12 +511,10 @@ mod tests {
             BifrostMessage::SigningPackage(SigningPackageMessage {
                 event_hash: [1; 32],
                 session_id: "s1".into(),
-                commitments: vec![
-                    ParticipantCommitment {
-                        participant_id: 1,
-                        commitment: [2; 66],
-                    },
-                ],
+                commitments: vec![ParticipantCommitment {
+                    participant_id: 1,
+                    commitment: [2; 66],
+                }],
                 participants: vec![1, 2],
             }),
             BifrostMessage::PartialSignature(PartialSignature {

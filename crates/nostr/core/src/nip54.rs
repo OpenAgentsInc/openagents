@@ -441,11 +441,20 @@ mod tests {
         let tags = article.to_tags();
         assert!(tags.contains(&vec!["d".to_string(), "rust".to_string()]));
         assert!(tags.contains(&vec!["title".to_string(), "Rust Programming".to_string()]));
-        assert!(tags.contains(&vec!["summary".to_string(), "A systems language".to_string()]));
+        assert!(tags.contains(&vec![
+            "summary".to_string(),
+            "A systems language".to_string()
+        ]));
 
         // Check for fork tags
-        assert!(tags.iter().any(|t| t[0] == "a" && t.last() == Some(&"fork".to_string())));
-        assert!(tags.iter().any(|t| t[0] == "e" && t.last() == Some(&"fork".to_string())));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "a" && t.last() == Some(&"fork".to_string()))
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "e" && t.last() == Some(&"fork".to_string()))
+        );
     }
 
     #[test]
@@ -453,7 +462,7 @@ mod tests {
         let request = WikiMergeRequest::new(
             "30818:dest-pubkey:article",
             "dest-pubkey",
-            "source-event-id"
+            "source-event-id",
         );
 
         assert_eq!(request.target_address, "30818:dest-pubkey:article");
@@ -463,11 +472,7 @@ mod tests {
 
     #[test]
     fn test_wiki_merge_request_validate() {
-        let request = WikiMergeRequest::new(
-            "30818:dest:article",
-            "dest-pubkey",
-            "source-id"
-        );
+        let request = WikiMergeRequest::new("30818:dest:article", "dest-pubkey", "source-id");
         assert!(request.validate().is_ok());
 
         let invalid = WikiMergeRequest::new("", "dest", "source");
@@ -476,21 +481,23 @@ mod tests {
 
     #[test]
     fn test_wiki_merge_request_to_tags() {
-        let request = WikiMergeRequest::new(
-            "30818:dest:article",
-            "dest-pubkey",
-            "source-id"
-        ).with_base_version("base-id");
+        let request = WikiMergeRequest::new("30818:dest:article", "dest-pubkey", "source-id")
+            .with_base_version("base-id");
 
         let tags = request.to_tags();
         assert!(tags.contains(&vec!["a".to_string(), "30818:dest:article".to_string()]));
         assert!(tags.contains(&vec!["p".to_string(), "dest-pubkey".to_string()]));
 
         // Check for source tag with marker
-        assert!(tags.iter().any(|t| t[0] == "e" && t[1] == "source-id" && t.last() == Some(&"source".to_string())));
+        assert!(tags.iter().any(|t| t[0] == "e"
+            && t[1] == "source-id"
+            && t.last() == Some(&"source".to_string())));
 
         // Check for base version
-        assert!(tags.iter().any(|t| t[0] == "e" && t[1] == "base-id" && t.len() == 2));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "e" && t[1] == "base-id" && t.len() == 2)
+        );
     }
 
     #[test]

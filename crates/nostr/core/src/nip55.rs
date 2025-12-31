@@ -470,8 +470,7 @@ mod tests {
             Permission::new("nip04_decrypt".to_string()),
         ];
 
-        let request =
-            SignerRequest::new(SignerRequestType::GetPublicKey).with_permissions(perms);
+        let request = SignerRequest::new(SignerRequestType::GetPublicKey).with_permissions(perms);
 
         let extras = request.to_intent_extras();
         assert!(extras.contains_key("permissions"));

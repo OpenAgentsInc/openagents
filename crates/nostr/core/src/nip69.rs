@@ -258,17 +258,24 @@ impl P2POrder {
             }
         }
 
-        let order_id = order_id.ok_or_else(|| Nip69Error::MissingField("d (order_id)".to_string()))?;
-        let order_type = order_type.ok_or_else(|| Nip69Error::MissingField("k (order_type)".to_string()))?;
-        let currency = currency.ok_or_else(|| Nip69Error::MissingField("f (currency)".to_string()))?;
+        let order_id =
+            order_id.ok_or_else(|| Nip69Error::MissingField("d (order_id)".to_string()))?;
+        let order_type =
+            order_type.ok_or_else(|| Nip69Error::MissingField("k (order_type)".to_string()))?;
+        let currency =
+            currency.ok_or_else(|| Nip69Error::MissingField("f (currency)".to_string()))?;
         let status = status.ok_or_else(|| Nip69Error::MissingField("s (status)".to_string()))?;
-        let amount_sats = amount_sats.ok_or_else(|| Nip69Error::MissingField("amt (amount)".to_string()))?;
+        let amount_sats =
+            amount_sats.ok_or_else(|| Nip69Error::MissingField("amt (amount)".to_string()))?;
         let premium = premium.ok_or_else(|| Nip69Error::MissingField("premium".to_string()))?;
         let network = network.ok_or_else(|| Nip69Error::MissingField("network".to_string()))?;
         let layer = layer.ok_or_else(|| Nip69Error::MissingField("layer".to_string()))?;
-        let expires_at = expires_at.ok_or_else(|| Nip69Error::MissingField("expires_at".to_string()))?;
-        let expiration = expiration.ok_or_else(|| Nip69Error::MissingField("expiration".to_string()))?;
-        let platform = platform.ok_or_else(|| Nip69Error::MissingField("y (platform)".to_string()))?;
+        let expires_at =
+            expires_at.ok_or_else(|| Nip69Error::MissingField("expires_at".to_string()))?;
+        let expiration =
+            expiration.ok_or_else(|| Nip69Error::MissingField("expiration".to_string()))?;
+        let platform =
+            platform.ok_or_else(|| Nip69Error::MissingField("y (platform)".to_string()))?;
 
         if fiat_amount.is_empty() {
             return Err(Nip69Error::MissingField("fa (fiat_amount)".to_string()));
@@ -492,8 +499,8 @@ impl P2POrderBuilder {
             premium: 0.0,
             network: "mainnet".to_string(),
             layer: BitcoinLayer::Lightning,
-            expires_at: now + 3600,      // 1 hour default
-            expiration: now + 86400,     // 24 hours default
+            expires_at: now + 3600,  // 1 hour default
+            expiration: now + 86400, // 24 hours default
             platform: "openagents".to_string(),
             source: None,
             name: None,
@@ -695,7 +702,11 @@ mod tests {
             vec!["s".to_string(), "pending".to_string()],
             vec!["amt".to_string(), "10000".to_string()],
             vec!["fa".to_string(), "100".to_string()],
-            vec!["pm".to_string(), "face to face".to_string(), "bank transfer".to_string()],
+            vec![
+                "pm".to_string(),
+                "face to face".to_string(),
+                "bank transfer".to_string(),
+            ],
             vec!["premium".to_string(), "1.5".to_string()],
             vec!["network".to_string(), "mainnet".to_string()],
             vec!["layer".to_string(), "lightning".to_string()],
@@ -840,17 +851,50 @@ mod tests {
         let tags = builder.build_tags();
 
         // Verify key tags
-        assert!(tags.iter().any(|t| t.len() >= 2 && t[0] == "d" && t[1] == "order-789"));
-        assert!(tags.iter().any(|t| t.len() >= 2 && t[0] == "k" && t[1] == "sell"));
-        assert!(tags.iter().any(|t| t.len() >= 2 && t[0] == "f" && t[1] == "USD"));
-        assert!(tags.iter().any(|t| t.len() >= 2 && t[0] == "s" && t[1] == "pending"));
-        assert!(tags.iter().any(|t| t.len() >= 2 && t[0] == "amt" && t[1] == "10000"));
-        assert!(tags.iter().any(|t| t.len() >= 2 && t[0] == "fa" && t[1] == "100"));
-        assert!(tags.iter().any(|t| t.len() >= 3 && t[0] == "pm" && t[1] == "cashu" && t[2] == "lightning"));
-        assert!(tags.iter().any(|t| t.len() >= 2 && t[0] == "premium" && t[1] == "0.5"));
-        assert!(tags.iter().any(|t| t.len() >= 2 && t[0] == "name" && t[1] == "Treasury Agent"));
-        assert!(tags.iter().any(|t| t.len() >= 2 && t[0] == "y" && t[1] == "openagents"));
-        assert!(tags.iter().any(|t| t.len() >= 2 && t[0] == "z" && t[1] == "order"));
+        assert!(
+            tags.iter()
+                .any(|t| t.len() >= 2 && t[0] == "d" && t[1] == "order-789")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t.len() >= 2 && t[0] == "k" && t[1] == "sell")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t.len() >= 2 && t[0] == "f" && t[1] == "USD")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t.len() >= 2 && t[0] == "s" && t[1] == "pending")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t.len() >= 2 && t[0] == "amt" && t[1] == "10000")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t.len() >= 2 && t[0] == "fa" && t[1] == "100")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t.len() >= 3 && t[0] == "pm" && t[1] == "cashu" && t[2] == "lightning")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t.len() >= 2 && t[0] == "premium" && t[1] == "0.5")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t.len() >= 2 && t[0] == "name" && t[1] == "Treasury Agent")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t.len() >= 2 && t[0] == "y" && t[1] == "openagents")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t.len() >= 2 && t[0] == "z" && t[1] == "order")
+        );
     }
 
     #[test]
@@ -862,7 +906,10 @@ mod tests {
         let tags = builder.build_tags();
 
         // Verify range fiat amount
-        assert!(tags.iter().any(|t| t.len() >= 3 && t[0] == "fa" && t[1] == "50" && t[2] == "200"));
+        assert!(
+            tags.iter()
+                .any(|t| t.len() >= 3 && t[0] == "fa" && t[1] == "50" && t[2] == "200")
+        );
     }
 
     #[test]

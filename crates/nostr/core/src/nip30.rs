@@ -144,9 +144,7 @@ pub fn add_emoji_tag(tags: &mut Vec<Vec<String>>, emoji: &CustomEmoji) {
 
 /// Remove all emoji tags with the given shortcode
 pub fn remove_emoji_tag(tags: &mut Vec<Vec<String>>, shortcode: &str) {
-    tags.retain(|tag| {
-        !(tag.len() >= 3 && tag[0] == EMOJI_TAG && tag[1] == shortcode)
-    });
+    tags.retain(|tag| !(tag.len() >= 3 && tag[0] == EMOJI_TAG && tag[1] == shortcode));
 }
 
 /// Remove all emoji tags
@@ -253,7 +251,10 @@ mod tests {
     fn test_custom_emoji_to_tag() {
         let emoji = CustomEmoji::new("soapbox", "https://example.com/soapbox.png");
         let tag = emoji.to_tag();
-        assert_eq!(tag, vec!["emoji", "soapbox", "https://example.com/soapbox.png"]);
+        assert_eq!(
+            tag,
+            vec!["emoji", "soapbox", "https://example.com/soapbox.png"]
+        );
     }
 
     #[test]
@@ -280,9 +281,17 @@ mod tests {
     #[test]
     fn test_get_emoji_tags() {
         let tags = vec![
-            vec!["emoji".to_string(), "soapbox".to_string(), "https://example.com/soapbox.png".to_string()],
+            vec![
+                "emoji".to_string(),
+                "soapbox".to_string(),
+                "https://example.com/soapbox.png".to_string(),
+            ],
             vec!["p".to_string(), "pubkey".to_string()],
-            vec!["emoji".to_string(), "rocket".to_string(), "https://example.com/rocket.png".to_string()],
+            vec![
+                "emoji".to_string(),
+                "rocket".to_string(),
+                "https://example.com/rocket.png".to_string(),
+            ],
         ];
 
         let emojis = get_emoji_tags(&tags);
@@ -294,8 +303,16 @@ mod tests {
     #[test]
     fn test_get_emoji() {
         let tags = vec![
-            vec!["emoji".to_string(), "soapbox".to_string(), "https://example.com/soapbox.png".to_string()],
-            vec!["emoji".to_string(), "rocket".to_string(), "https://example.com/rocket.png".to_string()],
+            vec![
+                "emoji".to_string(),
+                "soapbox".to_string(),
+                "https://example.com/soapbox.png".to_string(),
+            ],
+            vec![
+                "emoji".to_string(),
+                "rocket".to_string(),
+                "https://example.com/rocket.png".to_string(),
+            ],
         ];
 
         let emoji = get_emoji(&tags, "rocket").unwrap();
@@ -306,9 +323,11 @@ mod tests {
 
     #[test]
     fn test_has_emoji() {
-        let tags = vec![
-            vec!["emoji".to_string(), "soapbox".to_string(), "https://example.com/soapbox.png".to_string()],
-        ];
+        let tags = vec![vec![
+            "emoji".to_string(),
+            "soapbox".to_string(),
+            "https://example.com/soapbox.png".to_string(),
+        ]];
 
         assert!(has_emoji(&tags, "soapbox"));
         assert!(!has_emoji(&tags, "notfound"));
@@ -328,8 +347,16 @@ mod tests {
     #[test]
     fn test_remove_emoji_tag() {
         let mut tags = vec![
-            vec!["emoji".to_string(), "soapbox".to_string(), "url1".to_string()],
-            vec!["emoji".to_string(), "rocket".to_string(), "url2".to_string()],
+            vec![
+                "emoji".to_string(),
+                "soapbox".to_string(),
+                "url1".to_string(),
+            ],
+            vec![
+                "emoji".to_string(),
+                "rocket".to_string(),
+                "url2".to_string(),
+            ],
             vec!["p".to_string(), "pubkey".to_string()],
         ];
 
@@ -342,8 +369,16 @@ mod tests {
     #[test]
     fn test_remove_all_emoji_tags() {
         let mut tags = vec![
-            vec!["emoji".to_string(), "soapbox".to_string(), "url1".to_string()],
-            vec!["emoji".to_string(), "rocket".to_string(), "url2".to_string()],
+            vec![
+                "emoji".to_string(),
+                "soapbox".to_string(),
+                "url1".to_string(),
+            ],
+            vec![
+                "emoji".to_string(),
+                "rocket".to_string(),
+                "url2".to_string(),
+            ],
             vec!["p".to_string(), "pubkey".to_string()],
         ];
 
@@ -404,7 +439,10 @@ mod tests {
 
     #[test]
     fn test_emojify_no_match() {
-        let emojis = vec![CustomEmoji::new("soapbox", "https://example.com/soapbox.png")];
+        let emojis = vec![CustomEmoji::new(
+            "soapbox",
+            "https://example.com/soapbox.png",
+        )];
 
         let text = "Hello :rocket: world";
         let result = emojify(text, &emojis);
@@ -414,7 +452,10 @@ mod tests {
 
     #[test]
     fn test_emojify_with() {
-        let emojis = vec![CustomEmoji::new("soapbox", "https://example.com/soapbox.png")];
+        let emojis = vec![CustomEmoji::new(
+            "soapbox",
+            "https://example.com/soapbox.png",
+        )];
 
         let text = "Hello :soapbox: world";
         let result = emojify_with(text, &emojis, |e| format!("[{}]", e.shortcode));
@@ -436,7 +477,9 @@ mod tests {
         let text = ":smile: Hello :smile: world :smile:";
         let result = emojify(text, &emojis);
 
-        let count = result.matches(r#"<img src="https://example.com/smile.png""#).count();
+        let count = result
+            .matches(r#"<img src="https://example.com/smile.png""#)
+            .count();
         assert_eq!(count, 3);
     }
 

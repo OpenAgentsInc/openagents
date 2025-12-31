@@ -298,11 +298,10 @@ impl ZapReceipt {
         let recipient_pubkey = recipient_pubkey
             .ok_or_else(|| Nip57Error::MissingTag("p tag (recipient pubkey)".to_string()))?;
 
-        let bolt11 =
-            bolt11.ok_or_else(|| Nip57Error::MissingTag("bolt11 tag".to_string()))?;
+        let bolt11 = bolt11.ok_or_else(|| Nip57Error::MissingTag("bolt11 tag".to_string()))?;
 
-        let description = description
-            .ok_or_else(|| Nip57Error::MissingTag("description tag".to_string()))?;
+        let description =
+            description.ok_or_else(|| Nip57Error::MissingTag("description tag".to_string()))?;
 
         Ok(Self {
             event,

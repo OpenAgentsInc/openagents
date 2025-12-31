@@ -15,9 +15,9 @@ use aes::Aes256;
 #[cfg(feature = "full")]
 use bitcoin::secp256k1::{PublicKey, SecretKey, ecdh::SharedSecret};
 #[cfg(feature = "full")]
-use cbc::{Decryptor, Encryptor};
-#[cfg(feature = "full")]
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
+#[cfg(feature = "full")]
+use cbc::{Decryptor, Encryptor};
 #[cfg(feature = "full")]
 use rand::RngCore;
 use thiserror::Error;
@@ -77,8 +77,8 @@ pub fn encrypt(
     plaintext: &str,
 ) -> Result<String, Nip04Error> {
     // Parse keys
-    let secret_key = SecretKey::from_slice(sender_privkey)
-        .map_err(|e| Nip04Error::InvalidKey(e.to_string()))?;
+    let secret_key =
+        SecretKey::from_slice(sender_privkey).map_err(|e| Nip04Error::InvalidKey(e.to_string()))?;
 
     let public_key = PublicKey::from_slice(recipient_pubkey)
         .map_err(|e| Nip04Error::InvalidKey(e.to_string()))?;
@@ -100,7 +100,8 @@ pub fn encrypt(
 
     // Encrypt using AES-256-CBC
     let cipher = Aes256CbcEnc::new(shared_x.into(), &iv.into());
-    let ciphertext = cipher.encrypt_padded_vec_mut::<cbc::cipher::block_padding::NoPadding>(&padded);
+    let ciphertext =
+        cipher.encrypt_padded_vec_mut::<cbc::cipher::block_padding::NoPadding>(&padded);
 
     // Encode to base64
     let encrypted_b64 = base64::engine::general_purpose::STANDARD.encode(&ciphertext);
@@ -142,9 +143,11 @@ pub fn decrypt(
     let iv_b64 = parts[1];
 
     // Decode base64
-    let encrypted_bytes = base64::engine::general_purpose::STANDARD.decode(encrypted_b64)
+    let encrypted_bytes = base64::engine::general_purpose::STANDARD
+        .decode(encrypted_b64)
         .map_err(|e| Nip04Error::Base64Decode(e.to_string()))?;
-    let iv = base64::engine::general_purpose::STANDARD.decode(iv_b64)
+    let iv = base64::engine::general_purpose::STANDARD
+        .decode(iv_b64)
         .map_err(|e| Nip04Error::Base64Decode(e.to_string()))?;
 
     if iv.len() != 16 {
@@ -158,8 +161,8 @@ pub fn decrypt(
     let secret_key = SecretKey::from_slice(recipient_privkey)
         .map_err(|e| Nip04Error::InvalidKey(e.to_string()))?;
 
-    let public_key = PublicKey::from_slice(sender_pubkey)
-        .map_err(|e| Nip04Error::InvalidKey(e.to_string()))?;
+    let public_key =
+        PublicKey::from_slice(sender_pubkey).map_err(|e| Nip04Error::InvalidKey(e.to_string()))?;
 
     // Generate shared secret using ECDH (same as encryption)
     let shared_secret = SharedSecret::new(&public_key, &secret_key);
@@ -171,7 +174,8 @@ pub fn decrypt(
 
     let cipher = Aes256CbcDec::new(shared_x.into(), &iv_array.into());
     let mut buffer = encrypted_bytes;
-    let decrypted = cipher.decrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buffer)
+    let decrypted = cipher
+        .decrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buffer)
         .map_err(|e| Nip04Error::Decryption(e.to_string()))?;
 
     // Remove PKCS#7 padding
@@ -181,7 +185,10 @@ pub fn decrypt(
 
     let padding_len = decrypted[decrypted.len() - 1] as usize;
     if padding_len == 0 || padding_len > 16 || padding_len > decrypted.len() {
-        return Err(Nip04Error::Padding(format!("invalid padding length: {}", padding_len)));
+        return Err(Nip04Error::Padding(format!(
+            "invalid padding length: {}",
+            padding_len
+        )));
     }
 
     // Verify padding
@@ -201,7 +208,7 @@ pub fn decrypt(
 #[cfg(all(test, feature = "full"))]
 mod tests {
     use super::*;
-    use bitcoin::secp256k1::{Secp256k1, SecretKey, PublicKey};
+    use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
 
     #[test]
     fn test_encrypt_decrypt_roundtrip() {
@@ -222,7 +229,8 @@ mod tests {
             &sender_sk.secret_bytes(),
             &recipient_pk.serialize(),
             message,
-        ).expect("encryption should succeed");
+        )
+        .expect("encryption should succeed");
 
         // Verify format
         assert!(encrypted.contains("?iv="));
@@ -232,7 +240,8 @@ mod tests {
             &recipient_sk.secret_bytes(),
             &sender_pk.serialize(),
             &encrypted,
-        ).expect("decryption should succeed");
+        )
+        .expect("decryption should succeed");
 
         assert_eq!(decrypted, message);
     }
@@ -253,13 +262,15 @@ mod tests {
             &sender_sk.secret_bytes(),
             &recipient_pk.serialize(),
             message,
-        ).expect("encryption should succeed");
+        )
+        .expect("encryption should succeed");
 
         let decrypted = decrypt(
             &recipient_sk.secret_bytes(),
             &sender_pk.serialize(),
             &encrypted,
-        ).expect("decryption should succeed");
+        )
+        .expect("decryption should succeed");
 
         assert_eq!(decrypted, message);
     }
@@ -280,13 +291,15 @@ mod tests {
             &sender_sk.secret_bytes(),
             &recipient_pk.serialize(),
             message,
-        ).expect("encryption should succeed");
+        )
+        .expect("encryption should succeed");
 
         let decrypted = decrypt(
             &recipient_sk.secret_bytes(),
             &sender_pk.serialize(),
             &encrypted,
-        ).expect("decryption should succeed");
+        )
+        .expect("decryption should succeed");
 
         assert_eq!(decrypted, message);
     }
@@ -342,13 +355,15 @@ mod tests {
             &sender1_sk.secret_bytes(),
             &recipient1_pk.serialize(),
             message,
-        ).unwrap();
+        )
+        .unwrap();
 
         let encrypted2 = encrypt(
             &sender2_sk.secret_bytes(),
             &recipient2_pk.serialize(),
             message,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Different key pairs should produce different ciphertexts
         assert_ne!(encrypted1, encrypted2);
@@ -358,13 +373,15 @@ mod tests {
             &recipient1_sk.secret_bytes(),
             &sender1_pk.serialize(),
             &encrypted1,
-        ).unwrap();
+        )
+        .unwrap();
 
         let decrypted2 = decrypt(
             &recipient2_sk.secret_bytes(),
             &sender2_pk.serialize(),
             &encrypted2,
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(decrypted1, message);
         assert_eq!(decrypted2, message);

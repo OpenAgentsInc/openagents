@@ -48,7 +48,9 @@ pub fn add_subject(event: &mut Event, subject: impl Into<String>) {
     let subject = subject.into();
 
     // Remove existing subject tag if present
-    event.tags.retain(|tag| !(tag.len() >= 1 && tag[0] == SUBJECT_TAG));
+    event
+        .tags
+        .retain(|tag| !(tag.len() >= 1 && tag[0] == SUBJECT_TAG));
 
     // Add new subject tag
     event.tags.push(vec![SUBJECT_TAG.to_string(), subject]);

@@ -16,7 +16,10 @@ pub struct BroadcastEvent {
 }
 
 /// Creates a new broadcast channel for events
-pub fn create_broadcast_channel() -> (broadcast::Sender<BroadcastEvent>, broadcast::Receiver<BroadcastEvent>) {
+pub fn create_broadcast_channel() -> (
+    broadcast::Sender<BroadcastEvent>,
+    broadcast::Receiver<BroadcastEvent>,
+) {
     broadcast::channel(BROADCAST_CAPACITY)
 }
 

@@ -229,7 +229,10 @@ pub fn create_poll_tags(
     }
 
     // Add polltype tag
-    tags.push(vec![POLL_TYPE_TAG.to_string(), poll_type.as_str().to_string()]);
+    tags.push(vec![
+        POLL_TYPE_TAG.to_string(),
+        poll_type.as_str().to_string(),
+    ]);
 
     // Add endsAt tag if specified
     if let Some(end_time) = ends_at {
@@ -651,7 +654,10 @@ mod tests {
 
     #[test]
     fn test_parse_poll_options_no_options() {
-        let tags = vec![vec!["relay".to_string(), "wss://relay.example.com".to_string()]];
+        let tags = vec![vec![
+            "relay".to_string(),
+            "wss://relay.example.com".to_string(),
+        ]];
 
         assert!(matches!(
             parse_poll_options(&tags),
@@ -683,7 +689,10 @@ mod tests {
 
     #[test]
     fn test_parse_poll_type_default() {
-        let tags = vec![vec!["relay".to_string(), "wss://relay.example.com".to_string()]];
+        let tags = vec![vec![
+            "relay".to_string(),
+            "wss://relay.example.com".to_string(),
+        ]];
 
         let poll_type = parse_poll_type(&tags).unwrap();
         assert_eq!(poll_type, PollType::SingleChoice);
@@ -717,7 +726,11 @@ mod tests {
 
     #[test]
     fn test_parse_poll_wrong_kind() {
-        let tags = vec![vec!["option".to_string(), "yes".to_string(), "Yes".to_string()]];
+        let tags = vec![vec![
+            "option".to_string(),
+            "yes".to_string(),
+            "Yes".to_string(),
+        ]];
 
         assert!(matches!(
             parse_poll(1, &tags, "Question?"),
@@ -727,7 +740,11 @@ mod tests {
 
     #[test]
     fn test_parse_poll_empty_content() {
-        let tags = vec![vec!["option".to_string(), "yes".to_string(), "Yes".to_string()]];
+        let tags = vec![vec![
+            "option".to_string(),
+            "yes".to_string(),
+            "Yes".to_string(),
+        ]];
 
         assert!(matches!(
             parse_poll(KIND_POLL, &tags, ""),

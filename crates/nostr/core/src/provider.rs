@@ -105,9 +105,15 @@ pub struct ComputePricing {
 
 impl ComputePricing {
     /// Create a new pricing structure
-    pub fn new(per_1k_input_sats: u64, per_1k_output_sats: u64, minimum_sats: u64) -> Result<Self, ProviderError> {
+    pub fn new(
+        per_1k_input_sats: u64,
+        per_1k_output_sats: u64,
+        minimum_sats: u64,
+    ) -> Result<Self, ProviderError> {
         if per_1k_input_sats == 0 && per_1k_output_sats == 0 {
-            return Err(ProviderError::InvalidPricing("at least one rate must be non-zero".to_string()));
+            return Err(ProviderError::InvalidPricing(
+                "at least one rate must be non-zero".to_string(),
+            ));
         }
 
         Ok(Self {
@@ -163,17 +169,27 @@ pub struct ComputeCapabilities {
 
 impl ComputeCapabilities {
     /// Create new capabilities
-    pub fn new(models: Vec<String>, max_context: u32, max_output: u32) -> Result<Self, ProviderError> {
+    pub fn new(
+        models: Vec<String>,
+        max_context: u32,
+        max_output: u32,
+    ) -> Result<Self, ProviderError> {
         if models.is_empty() {
-            return Err(ProviderError::InvalidCapabilities("must support at least one model".to_string()));
+            return Err(ProviderError::InvalidCapabilities(
+                "must support at least one model".to_string(),
+            ));
         }
 
         if max_context == 0 {
-            return Err(ProviderError::InvalidCapabilities("max_context must be greater than 0".to_string()));
+            return Err(ProviderError::InvalidCapabilities(
+                "max_context must be greater than 0".to_string(),
+            ));
         }
 
         if max_output == 0 {
-            return Err(ProviderError::InvalidCapabilities("max_output must be greater than 0".to_string()));
+            return Err(ProviderError::InvalidCapabilities(
+                "max_output must be greater than 0".to_string(),
+            ));
         }
 
         Ok(Self {
@@ -456,7 +472,8 @@ mod tests {
             vec!["llama-70b".to_string(), "mistral-7b".to_string()],
             8192,
             2048,
-        ).unwrap();
+        )
+        .unwrap();
 
         assert!(caps.supports_model("llama-70b"));
         assert!(caps.supports_model("mistral-7b"));
@@ -528,11 +545,8 @@ mod tests {
         let identity = NostrIdentity::new(&pubkey).unwrap();
 
         let pricing = ComputePricing::new(10, 20, 100).unwrap();
-        let capabilities = ComputeCapabilities::new(
-            vec!["llama-70b".to_string()],
-            8192,
-            2048,
-        ).unwrap();
+        let capabilities =
+            ComputeCapabilities::new(vec!["llama-70b".to_string()], 8192, 2048).unwrap();
 
         let provider = ComputeProvider::new(
             identity,
@@ -540,7 +554,8 @@ mod tests {
             Region::UsWest,
             pricing,
             capabilities,
-        ).unwrap()
+        )
+        .unwrap()
         .with_name("Test Provider")
         .with_description("A test provider");
 
@@ -561,12 +576,9 @@ mod tests {
         let pricing = ComputePricing::new(10, 20, 100).unwrap();
         let capabilities = ComputeCapabilities::new(vec!["model".to_string()], 8192, 2048).unwrap();
 
-        assert!(ComputeProvider::new(
-            identity,
-            "invalid",
-            Region::UsWest,
-            pricing,
-            capabilities,
-        ).is_err());
+        assert!(
+            ComputeProvider::new(identity, "invalid", Region::UsWest, pricing, capabilities,)
+                .is_err()
+        );
     }
 }

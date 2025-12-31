@@ -5,9 +5,8 @@
 //! Run: cargo test -p nostr-client --test agent_chat_e2e -- --ignored --nocapture
 
 use nostr::{
-    finalize_event, derive_keypair, Keypair, EventTemplate, Event,
-    ChannelMessageEvent, ChannelMetadata,
-    KIND_CHANNEL_CREATION, KIND_CHANNEL_MESSAGE, KIND_JOB_TEXT_GENERATION,
+    ChannelMessageEvent, ChannelMetadata, Event, EventTemplate, KIND_CHANNEL_CREATION,
+    KIND_CHANNEL_MESSAGE, KIND_JOB_TEXT_GENERATION, Keypair, derive_keypair, finalize_event,
 };
 use nostr_client::RelayConnection;
 use openagents_spark::{Network, SparkSigner, SparkWallet, WalletConfig};
@@ -21,8 +20,7 @@ const RELAY: &str = "wss://relay.damus.io";
 // Fixed mnemonics for reproducibility
 const PROVIDER_MNEMONIC: &str =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-const CUSTOMER_MNEMONIC: &str =
-    "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
+const CUSTOMER_MNEMONIC: &str = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
 
 /// Get current unix timestamp
 fn now() -> u64 {
@@ -82,9 +80,7 @@ async fn create_channel(relay: &RelayConnection, keypair: &Keypair) -> Result<St
     let event = finalize_event(&template, &keypair.private_key)?;
     let event_id = event.id.clone();
 
-    relay
-        .publish_event(&event, Duration::from_secs(10))
-        .await?;
+    relay.publish_event(&event, Duration::from_secs(10)).await?;
 
     Ok(event_id)
 }
@@ -108,9 +104,7 @@ async fn send_channel_message(
     };
 
     let event = finalize_event(&template, &keypair.private_key)?;
-    relay
-        .publish_event(&event, Duration::from_secs(10))
-        .await?;
+    relay.publish_event(&event, Duration::from_secs(10)).await?;
 
     Ok(())
 }
@@ -240,7 +234,9 @@ async fn run_customer(
         };
 
         match msg {
-            AgentMessage::ServiceAnnouncement { kind, price_msats, .. } => {
+            AgentMessage::ServiceAnnouncement {
+                kind, price_msats, ..
+            } => {
                 log_tx
                     .send(format!(
                         "[CUSTOMER] Found provider: kind={}, price={} msats",
@@ -281,7 +277,10 @@ async fn run_customer(
                     .ok();
 
                 // Confirm payment (use payment ID as proof)
-                let confirm = AgentMessage::PaymentSent { job_id, preimage: payment_id };
+                let confirm = AgentMessage::PaymentSent {
+                    job_id,
+                    preimage: payment_id,
+                };
                 send_channel_message(&relay, &channel_id, &keypair, &confirm).await?;
             }
             AgentMessage::JobResult { result, job_id } => {
@@ -338,8 +337,7 @@ async fn test_create_channel() {
 #[tokio::test]
 #[ignore]
 async fn test_spark_wallet_connect() {
-    let signer =
-        SparkSigner::from_mnemonic(CUSTOMER_MNEMONIC, "").expect("should create signer");
+    let signer = SparkSigner::from_mnemonic(CUSTOMER_MNEMONIC, "").expect("should create signer");
 
     let config = WalletConfig {
         network: Network::Regtest,

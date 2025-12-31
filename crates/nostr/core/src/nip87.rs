@@ -624,7 +624,10 @@ mod tests {
         assert_eq!(tags[0], vec!["k", "38172"]);
         assert_eq!(tags[1], vec!["d", "mint_pubkey"]);
         assert_eq!(tags[2], vec!["u", "https://mint.example.com"]);
-        assert_eq!(tags[3], vec!["a", "38172:pubkey:mint_pubkey", "wss://relay"]);
+        assert_eq!(
+            tags[3],
+            vec!["a", "38172:pubkey:mint_pubkey", "wss://relay"]
+        );
     }
 
     #[test]
@@ -650,10 +653,7 @@ mod tests {
             vec!["d".to_string(), "fed_id".to_string()],
             vec!["u".to_string(), "fed11abc".to_string()],
             vec!["u".to_string(), "fed11xyz".to_string()],
-            vec![
-                "modules".to_string(),
-                "lightning,wallet,mint".to_string(),
-            ],
+            vec!["modules".to_string(), "lightning,wallet,mint".to_string()],
             vec!["n".to_string(), "signet".to_string()],
         ];
 

@@ -54,7 +54,13 @@ pub enum InvoiceStatus {
 impl InvoiceStatus {
     /// Check if this is a final status (no further changes)
     pub fn is_final(&self) -> bool {
-        matches!(self, InvoiceStatus::Settled | InvoiceStatus::Expired | InvoiceStatus::Failed | InvoiceStatus::Refunded)
+        matches!(
+            self,
+            InvoiceStatus::Settled
+                | InvoiceStatus::Expired
+                | InvoiceStatus::Failed
+                | InvoiceStatus::Refunded
+        )
     }
 
     /// Check if payment was successful
@@ -185,7 +191,10 @@ impl PaymentDestination {
 
         // Basic validation - should be 66 hex chars (33 bytes)
         if pubkey.len() != 66 || !pubkey.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(PaymentError::InvalidDestination(format!("invalid pubkey: {}", pubkey)));
+            return Err(PaymentError::InvalidDestination(format!(
+                "invalid pubkey: {}",
+                pubkey
+            )));
         }
 
         Ok(Self::Keysend { pubkey })
@@ -213,7 +222,9 @@ impl PaymentRequest {
         max_fee_sats: u64,
     ) -> Result<Self, PaymentError> {
         if amount_sats == 0 {
-            return Err(PaymentError::InvalidAmount("amount must be greater than 0".to_string()));
+            return Err(PaymentError::InvalidAmount(
+                "amount must be greater than 0".to_string(),
+            ));
         }
 
         Ok(Self {
@@ -331,7 +342,10 @@ impl CoalitionPayment {
 
     /// Get splits for a specific purpose
     pub fn splits_for_purpose(&self, purpose: &str) -> Vec<&PaymentSplit> {
-        self.splits.iter().filter(|s| s.purpose == purpose).collect()
+        self.splits
+            .iter()
+            .filter(|s| s.purpose == purpose)
+            .collect()
     }
 
     /// Calculate percentage for a specific purpose
@@ -340,7 +354,8 @@ impl CoalitionPayment {
             return 0.0;
         }
 
-        let purpose_total: u64 = self.splits_for_purpose(purpose)
+        let purpose_total: u64 = self
+            .splits_for_purpose(purpose)
             .iter()
             .map(|s| s.amount_sats)
             .sum();
@@ -367,13 +382,8 @@ mod tests {
     #[test]
     fn test_lightning_invoice() {
         let expires = Utc::now() + Duration::hours(1);
-        let mut invoice = LightningInvoice::new(
-            "inv_123",
-            "lnbc1...",
-            1000,
-            "Test payment",
-            expires,
-        );
+        let mut invoice =
+            LightningInvoice::new("inv_123", "lnbc1...", 1000, "Test payment", expires);
 
         assert_eq!(invoice.status, InvoiceStatus::Pending);
         assert!(!invoice.is_expired());
@@ -470,7 +480,9 @@ mod tests {
         let mut payment = CoalitionPayment::new(800, splits).unwrap();
 
         let dest2 = PaymentDestination::lightning_address("platform@domain.com").unwrap();
-        payment.add_split(PaymentSplit::new(dest2, 200, "platform")).unwrap();
+        payment
+            .add_split(PaymentSplit::new(dest2, 200, "platform"))
+            .unwrap();
 
         assert_eq!(payment.total_sats, 1000);
         assert_eq!(payment.splits.len(), 2);

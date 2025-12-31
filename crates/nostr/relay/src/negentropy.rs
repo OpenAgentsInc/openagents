@@ -106,7 +106,8 @@ impl NegentropySessionManager {
     pub fn cleanup_expired(&mut self) -> usize {
         let timeout = self.timeout;
         let before_count = self.sessions.len();
-        self.sessions.retain(|_, session| !session.is_expired(timeout));
+        self.sessions
+            .retain(|_, session| !session.is_expired(timeout));
         before_count - self.sessions.len()
     }
 
@@ -155,9 +156,18 @@ mod tests {
     fn test_connection_removal() {
         let mut manager = NegentropySessionManager::new();
 
-        manager.create_session(SessionId::new("conn1".to_string(), "sub1".to_string()), vec![]);
-        manager.create_session(SessionId::new("conn1".to_string(), "sub2".to_string()), vec![]);
-        manager.create_session(SessionId::new("conn2".to_string(), "sub3".to_string()), vec![]);
+        manager.create_session(
+            SessionId::new("conn1".to_string(), "sub1".to_string()),
+            vec![],
+        );
+        manager.create_session(
+            SessionId::new("conn1".to_string(), "sub2".to_string()),
+            vec![],
+        );
+        manager.create_session(
+            SessionId::new("conn2".to_string(), "sub3".to_string()),
+            vec![],
+        );
         assert_eq!(manager.session_count(), 3);
 
         manager.remove_connection("conn1");

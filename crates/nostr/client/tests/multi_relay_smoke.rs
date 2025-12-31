@@ -4,8 +4,8 @@
 //! cargo test -p nostr-client --test multi_relay_smoke -- --ignored --nocapture
 
 use nostr::{
-    decrypt_v2, derive_keypair, encrypt_v2, finalize_event, ChannelMessageEvent,
-    ChannelMetadata, Event, EventTemplate, KIND_CHANNEL_CREATION, KIND_CHANNEL_MESSAGE,
+    ChannelMessageEvent, ChannelMetadata, Event, EventTemplate, KIND_CHANNEL_CREATION,
+    KIND_CHANNEL_MESSAGE, decrypt_v2, derive_keypair, encrypt_v2, finalize_event,
 };
 use nostr_client::{PoolConfig, RelayPool};
 use rand::random;
@@ -16,8 +16,7 @@ const RELAYS: [&str; 2] = ["wss://relay.damus.io", "wss://nos.lol"];
 
 const PROVIDER_MNEMONIC: &str =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-const CUSTOMER_MNEMONIC: &str =
-    "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
+const CUSTOMER_MNEMONIC: &str = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
 
 fn now() -> u64 {
     SystemTime::now()
@@ -98,11 +97,7 @@ async fn multi_relay_dm_and_channel_smoke() -> Result<(), Box<dyn std::error::Er
 
     let dm_received = dm_received.ok_or("Did not receive DM over relays")?;
     let sender_pubkey = xonly_to_compressed(&sender.public_key);
-    let dm_decrypted = decrypt_v2(
-        &recipient.private_key,
-        &sender_pubkey,
-        &dm_received.content,
-    )?;
+    let dm_decrypted = decrypt_v2(&recipient.private_key, &sender_pubkey, &dm_received.content)?;
     assert_eq!(dm_decrypted, dm_plaintext);
 
     let channel_metadata = ChannelMetadata::new(
@@ -147,14 +142,8 @@ async fn multi_relay_dm_and_channel_smoke() -> Result<(), Box<dyn std::error::Er
     let mut channel_received: Option<Event> = None;
     let channel_deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     while tokio::time::Instant::now() < channel_deadline {
-        let remaining =
-            channel_deadline.saturating_duration_since(tokio::time::Instant::now());
-        match timeout(
-            remaining.max(Duration::from_millis(100)),
-            channel_rx.recv(),
-        )
-        .await
-        {
+        let remaining = channel_deadline.saturating_duration_since(tokio::time::Instant::now());
+        match timeout(remaining.max(Duration::from_millis(100)), channel_rx.recv()).await {
             Ok(Some(event)) => {
                 if event.id == channel_message_id {
                     channel_received = Some(event);

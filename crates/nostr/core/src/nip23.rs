@@ -174,7 +174,10 @@ impl Article {
 
     /// Construct the addressable event coordinate (kind:pubkey:d-tag)
     pub fn get_coordinate(&self) -> String {
-        format!("{}:{}:{}", self.event.kind, self.event.pubkey, self.identifier)
+        format!(
+            "{}:{}:{}",
+            self.event.kind, self.event.pubkey, self.identifier
+        )
     }
 
     /// Validate the article structure
@@ -236,13 +239,21 @@ mod tests {
 
     #[test]
     fn test_article_from_event_minimal() {
-        let event = create_test_article_event("my-first-article", None, None, "# Hello World\n\nThis is my first article.");
+        let event = create_test_article_event(
+            "my-first-article",
+            None,
+            None,
+            "# Hello World\n\nThis is my first article.",
+        );
         let article = Article::from_event(event).unwrap();
 
         assert_eq!(article.get_identifier(), "my-first-article");
         assert!(article.get_title().is_none());
         assert!(article.get_published_at().is_none());
-        assert_eq!(article.get_content(), "# Hello World\n\nThis is my first article.");
+        assert_eq!(
+            article.get_content(),
+            "# Hello World\n\nThis is my first article."
+        );
         assert!(article.is_published());
         assert!(!article.is_draft());
     }
@@ -282,9 +293,13 @@ mod tests {
     #[test]
     fn test_article_with_hashtags() {
         let mut event = create_test_article_event("slug", Some("Title"), None, "Content");
-        event.tags.push(vec!["t".to_string(), "bitcoin".to_string()]);
+        event
+            .tags
+            .push(vec!["t".to_string(), "bitcoin".to_string()]);
         event.tags.push(vec!["t".to_string(), "nostr".to_string()]);
-        event.tags.push(vec!["t".to_string(), "technology".to_string()]);
+        event
+            .tags
+            .push(vec!["t".to_string(), "technology".to_string()]);
 
         let article = Article::from_event(event).unwrap();
         let hashtags = article.get_hashtags();
@@ -303,7 +318,8 @@ mod tests {
 
     #[test]
     fn test_article_draft() {
-        let mut event = create_test_article_event("draft-slug", Some("Draft Title"), None, "Draft content");
+        let mut event =
+            create_test_article_event("draft-slug", Some("Draft Title"), None, "Draft content");
         event.kind = DRAFT_ARTICLE_KIND;
 
         let article = Article::from_event(event).unwrap();

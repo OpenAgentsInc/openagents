@@ -461,11 +461,7 @@ impl ExternalIdentity {
     ///
     /// Returns: `["i", "platform:identity", "proof"]`
     pub fn to_tag(&self) -> Vec<String> {
-        vec![
-            "i".to_string(),
-            self.platform_identity(),
-            self.proof(),
-        ]
+        vec!["i".to_string(), self.platform_identity(), self.proof()]
     }
 
     /// Parse from tag format.
@@ -529,11 +525,7 @@ mod tests {
 
     #[test]
     fn test_mastodon_identity() {
-        let identity = MastodonIdentity::new(
-            "bitcoinhackers.org",
-            "semisol",
-            "109775066355589974",
-        );
+        let identity = MastodonIdentity::new("bitcoinhackers.org", "semisol", "109775066355589974");
         assert_eq!(identity.instance, "bitcoinhackers.org");
         assert_eq!(identity.username, "semisol");
         assert_eq!(identity.post_id, "109775066355589974");
@@ -572,8 +564,8 @@ mod tests {
 
     #[test]
     fn test_external_identity_parse_github() {
-        let identity = ExternalIdentity::parse("github:semisol", "9721ce4ee4fceb91c9711ca2a6c9a5ab")
-            .unwrap();
+        let identity =
+            ExternalIdentity::parse("github:semisol", "9721ce4ee4fceb91c9711ca2a6c9a5ab").unwrap();
 
         match identity {
             ExternalIdentity::GitHub(id) => {
@@ -600,11 +592,9 @@ mod tests {
 
     #[test]
     fn test_external_identity_parse_mastodon() {
-        let identity = ExternalIdentity::parse(
-            "mastodon:bitcoinhackers.org/@semisol",
-            "109775066355589974",
-        )
-        .unwrap();
+        let identity =
+            ExternalIdentity::parse("mastodon:bitcoinhackers.org/@semisol", "109775066355589974")
+                .unwrap();
 
         match identity {
             ExternalIdentity::Mastodon(id) => {
@@ -647,8 +637,7 @@ mod tests {
 
     #[test]
     fn test_external_identity_platform_identity() {
-        let identity =
-            ExternalIdentity::GitHub(GitHubIdentity::new("semisol", "gist123"));
+        let identity = ExternalIdentity::GitHub(GitHubIdentity::new("semisol", "gist123"));
         assert_eq!(identity.platform_identity(), "github:semisol");
 
         let identity =
@@ -658,19 +647,19 @@ mod tests {
 
     #[test]
     fn test_external_identity_proof() {
-        let identity =
-            ExternalIdentity::GitHub(GitHubIdentity::new("semisol", "gist123"));
+        let identity = ExternalIdentity::GitHub(GitHubIdentity::new("semisol", "gist123"));
         assert_eq!(identity.proof(), "gist123");
 
-        let identity =
-            ExternalIdentity::Telegram(TelegramIdentity::new("123", "channel", "456"));
+        let identity = ExternalIdentity::Telegram(TelegramIdentity::new("123", "channel", "456"));
         assert_eq!(identity.proof(), "channel/456");
     }
 
     #[test]
     fn test_external_identity_to_tag() {
-        let identity =
-            ExternalIdentity::GitHub(GitHubIdentity::new("semisol", "9721ce4ee4fceb91c9711ca2a6c9a5ab"));
+        let identity = ExternalIdentity::GitHub(GitHubIdentity::new(
+            "semisol",
+            "9721ce4ee4fceb91c9711ca2a6c9a5ab",
+        ));
         let tag = identity.to_tag();
         assert_eq!(
             tag,
@@ -698,8 +687,7 @@ mod tests {
 
     #[test]
     fn test_external_identity_validate() {
-        let identity =
-            ExternalIdentity::GitHub(GitHubIdentity::new("semisol", "gist123"));
+        let identity = ExternalIdentity::GitHub(GitHubIdentity::new("semisol", "gist123"));
         assert!(identity.validate().is_ok());
 
         let identity = ExternalIdentity::GitHub(GitHubIdentity::new("", "gist123"));

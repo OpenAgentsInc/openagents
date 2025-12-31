@@ -10,14 +10,14 @@ use crate::recovery::{CircuitBreaker, ExponentialBackoff, HealthMetrics};
 use crate::subscription::Subscription;
 use futures::{SinkExt, StreamExt};
 use nostr::Event;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc, oneshot};
 use tokio::time::timeout;
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 use tracing::{debug, info, warn};
 use url::Url;
 
@@ -163,9 +163,9 @@ impl RelayConnection {
 
         // Create circuit breaker with relay-appropriate thresholds
         let circuit_breaker = Arc::new(CircuitBreaker::new(
-            5,                              // 5 failures before opening
-            2,                              // 2 successes to close when half-open
-            Duration::from_secs(30),        // 30s timeout before half-open
+            5,                       // 5 failures before opening
+            2,                       // 2 successes to close when half-open
+            Duration::from_secs(30), // 30s timeout before half-open
         ));
 
         // Create exponential backoff matching relay config
@@ -269,7 +269,11 @@ impl RelayConnection {
         metrics.backoff_attempt = 0;
         metrics.last_error = None;
 
-        info!("Connected to relay: {} (took {:?})", self.url, connect_start.elapsed());
+        info!(
+            "Connected to relay: {} (took {:?})",
+            self.url,
+            connect_start.elapsed()
+        );
 
         // Process any queued messages
         if let Err(e) = self.process_queue().await {
@@ -304,13 +308,9 @@ impl RelayConnection {
                 let msg = {
                     let mut ws_guard = ws.lock().await;
                     if let Some(stream) = ws_guard.as_mut() {
-                        match tokio::time::timeout(
-                            Duration::from_millis(100),
-                            stream.next(),
-                        ).await {
-                            Ok(Some(Ok(Message::Text(text)))) => {
-                                Some(text)
-                            }
+                        match tokio::time::timeout(Duration::from_millis(100), stream.next()).await
+                        {
+                            Ok(Some(Ok(Message::Text(text)))) => Some(text),
                             Ok(Some(Ok(Message::Ping(data)))) => {
                                 // Respond to ping
                                 let _ = stream.send(Message::Pong(data)).await;
@@ -340,49 +340,52 @@ impl RelayConnection {
                 if let Some(text) = msg
                     && let Ok(Some(relay_msg)) = Self::parse_relay_message(&text)
                 {
-                        // Handle OK messages for pending confirmations
-                        if let RelayMessage::Ok(event_id, accepted, message) = &relay_msg {
-                            let mut confirmations = pending_confirmations.lock().await;
-                            if let Some(tx) = confirmations.remove(event_id) {
-                                let confirmation = PublishConfirmation {
-                                    event_id: event_id.clone(),
-                                    accepted: *accepted,
-                                    message: message.clone(),
-                                };
-                                let _ = tx.send(confirmation);
-                            }
+                    // Handle OK messages for pending confirmations
+                    if let RelayMessage::Ok(event_id, accepted, message) = &relay_msg {
+                        let mut confirmations = pending_confirmations.lock().await;
+                        if let Some(tx) = confirmations.remove(event_id) {
+                            let confirmation = PublishConfirmation {
+                                event_id: event_id.clone(),
+                                accepted: *accepted,
+                                message: message.clone(),
+                            };
+                            let _ = tx.send(confirmation);
                         }
+                    }
 
-                        // Route EVENT messages to subscriptions
-                        if let RelayMessage::Event(sub_id, event) = &relay_msg {
-                            let mut should_remove = false;
-                            {
-                                let subs = subscriptions.lock().await;
-                                if let Some(subscription) = subs.get(sub_id) {
-                                    if let Err(e) = subscription.handle_event(event.clone()) {
-                                        let err_str = e.to_string();
-                                        // Only warn once if channel closed, then remove subscription
-                                        if err_str.contains("channel closed") {
-                                            debug!("Subscription {} channel closed, removing", sub_id);
-                                            should_remove = true;
-                                        } else {
-                                            warn!("Error handling event for subscription {}: {}", sub_id, e);
-                                        }
+                    // Route EVENT messages to subscriptions
+                    if let RelayMessage::Event(sub_id, event) = &relay_msg {
+                        let mut should_remove = false;
+                        {
+                            let subs = subscriptions.lock().await;
+                            if let Some(subscription) = subs.get(sub_id) {
+                                if let Err(e) = subscription.handle_event(event.clone()) {
+                                    let err_str = e.to_string();
+                                    // Only warn once if channel closed, then remove subscription
+                                    if err_str.contains("channel closed") {
+                                        debug!("Subscription {} channel closed, removing", sub_id);
+                                        should_remove = true;
+                                    } else {
+                                        warn!(
+                                            "Error handling event for subscription {}: {}",
+                                            sub_id, e
+                                        );
                                     }
                                 }
                             }
-                            if should_remove {
-                                subscriptions.lock().await.remove(sub_id);
-                            }
                         }
+                        if should_remove {
+                            subscriptions.lock().await.remove(sub_id);
+                        }
+                    }
 
-                        // Handle EOSE messages for subscriptions
-                        if let RelayMessage::Eose(sub_id) = &relay_msg {
-                            let subs = subscriptions.lock().await;
-                            if let Some(subscription) = subs.get(sub_id) {
-                                subscription.mark_eose();
-                            }
+                    // Handle EOSE messages for subscriptions
+                    if let RelayMessage::Eose(sub_id) = &relay_msg {
+                        let subs = subscriptions.lock().await;
+                        if let Some(subscription) = subs.get(sub_id) {
+                            subscription.mark_eose();
                         }
+                    }
                 }
             }
         });
@@ -469,10 +472,12 @@ impl RelayConnection {
             if matches!(e, ClientError::NotConnected)
                 && let Some(ref queue) = self.queue
             {
-                queue.enqueue(event, self.url.as_str()).map_err(|queue_err| {
-                    warn!("Failed to queue event for retry: {}", queue_err);
-                    queue_err
-                })?;
+                queue
+                    .enqueue(event, self.url.as_str())
+                    .map_err(|queue_err| {
+                        warn!("Failed to queue event for retry: {}", queue_err);
+                        queue_err
+                    })?;
                 info!("Event queued for retry: {}", event_id);
                 // Return success since event is queued
                 return Ok(PublishConfirmation {
@@ -521,11 +526,8 @@ impl RelayConnection {
         callback: crate::subscription::EventCallback,
     ) -> Result<()> {
         // Create subscription
-        let subscription = Subscription::with_callback(
-            subscription_id.to_string(),
-            filters.to_vec(),
-            callback,
-        );
+        let subscription =
+            Subscription::with_callback(subscription_id.to_string(), filters.to_vec(), callback);
 
         // Store subscription
         {
@@ -544,10 +546,8 @@ impl RelayConnection {
         filters: &[Value],
     ) -> Result<mpsc::Receiver<Event>> {
         // Create subscription with channel
-        let (subscription, rx) = Subscription::with_channel(
-            subscription_id.to_string(),
-            filters.to_vec(),
-        );
+        let (subscription, rx) =
+            Subscription::with_channel(subscription_id.to_string(), filters.to_vec());
 
         // Store subscription
         {
@@ -666,7 +666,10 @@ impl RelayConnection {
                                         debug!("Subscription {} channel closed, removing", sub_id);
                                         should_remove = true;
                                     } else {
-                                        warn!("Error handling event for subscription {}: {}", sub_id, e);
+                                        warn!(
+                                            "Error handling event for subscription {}: {}",
+                                            sub_id, e
+                                        );
                                     }
                                 }
                             }
@@ -729,63 +732,83 @@ impl RelayConnection {
                 if arr.len() >= 3 {
                     let sub_id = arr[1]
                         .as_str()
-                        .ok_or_else(|| ClientError::Protocol("EVENT subscription_id must be a string".into()))?
+                        .ok_or_else(|| {
+                            ClientError::Protocol("EVENT subscription_id must be a string".into())
+                        })?
                         .to_string();
                     let event: Event = serde_json::from_value(arr[2].clone())?;
                     Ok(Some(RelayMessage::Event(sub_id, event)))
                 } else {
-                    Err(ClientError::Protocol("EVENT message requires at least 3 elements".into()))
+                    Err(ClientError::Protocol(
+                        "EVENT message requires at least 3 elements".into(),
+                    ))
                 }
             }
             "OK" => {
                 if arr.len() >= 4 {
                     let event_id = arr[1]
                         .as_str()
-                        .ok_or_else(|| ClientError::Protocol("OK event_id must be a string".into()))?
+                        .ok_or_else(|| {
+                            ClientError::Protocol("OK event_id must be a string".into())
+                        })?
                         .to_string();
-                    let success = arr[2]
-                        .as_bool()
-                        .ok_or_else(|| ClientError::Protocol("OK accepted field must be a boolean".into()))?;
+                    let success = arr[2].as_bool().ok_or_else(|| {
+                        ClientError::Protocol("OK accepted field must be a boolean".into())
+                    })?;
                     let message = arr[3]
                         .as_str()
                         .ok_or_else(|| ClientError::Protocol("OK message must be a string".into()))?
                         .to_string();
                     Ok(Some(RelayMessage::Ok(event_id, success, message)))
                 } else {
-                    Err(ClientError::Protocol("OK message requires at least 4 elements".into()))
+                    Err(ClientError::Protocol(
+                        "OK message requires at least 4 elements".into(),
+                    ))
                 }
             }
             "EOSE" => {
                 if arr.len() >= 2 {
                     let sub_id = arr[1]
                         .as_str()
-                        .ok_or_else(|| ClientError::Protocol("EOSE subscription_id must be a string".into()))?
+                        .ok_or_else(|| {
+                            ClientError::Protocol("EOSE subscription_id must be a string".into())
+                        })?
                         .to_string();
                     Ok(Some(RelayMessage::Eose(sub_id)))
                 } else {
-                    Err(ClientError::Protocol("EOSE message requires at least 2 elements".into()))
+                    Err(ClientError::Protocol(
+                        "EOSE message requires at least 2 elements".into(),
+                    ))
                 }
             }
             "NOTICE" => {
                 if arr.len() >= 2 {
                     let message = arr[1]
                         .as_str()
-                        .ok_or_else(|| ClientError::Protocol("NOTICE message must be a string".into()))?
+                        .ok_or_else(|| {
+                            ClientError::Protocol("NOTICE message must be a string".into())
+                        })?
                         .to_string();
                     Ok(Some(RelayMessage::Notice(message)))
                 } else {
-                    Err(ClientError::Protocol("NOTICE message requires at least 2 elements".into()))
+                    Err(ClientError::Protocol(
+                        "NOTICE message requires at least 2 elements".into(),
+                    ))
                 }
             }
             "AUTH" => {
                 if arr.len() >= 2 {
                     let challenge = arr[1]
                         .as_str()
-                        .ok_or_else(|| ClientError::Protocol("AUTH challenge must be a string".into()))?
+                        .ok_or_else(|| {
+                            ClientError::Protocol("AUTH challenge must be a string".into())
+                        })?
                         .to_string();
                     Ok(Some(RelayMessage::Auth(challenge)))
                 } else {
-                    Err(ClientError::Protocol("AUTH message requires at least 2 elements".into()))
+                    Err(ClientError::Protocol(
+                        "AUTH message requires at least 2 elements".into(),
+                    ))
                 }
             }
             _ => {
@@ -851,7 +874,10 @@ impl RelayConnection {
             return Ok(None);
         };
 
-        info!("Waiting {:?} before reconnecting to {}", wait_duration, self.url);
+        info!(
+            "Waiting {:?} before reconnecting to {}",
+            wait_duration, self.url
+        );
         tokio::time::sleep(wait_duration).await;
 
         // Attempt connection
@@ -881,10 +907,8 @@ impl RelayConnection {
                 Ok(e) => e,
                 Err(parse_err) => {
                     warn!("Failed to parse queued event JSON: {}", parse_err);
-                    queue.mark_failed(
-                        queued_msg.id,
-                        &format!("JSON parse error: {}", parse_err),
-                    )?;
+                    queue
+                        .mark_failed(queued_msg.id, &format!("JSON parse error: {}", parse_err))?;
                     continue;
                 }
             };
@@ -896,10 +920,7 @@ impl RelayConnection {
                     queue.mark_sent(queued_msg.id)?;
                 }
                 Err(e) => {
-                    warn!(
-                        "Failed to send queued event {}: {}",
-                        event.id, e
-                    );
+                    warn!("Failed to send queued event {}: {}", event.id, e);
                     queue.mark_failed(queued_msg.id, &e.to_string())?;
                 }
             }
@@ -966,10 +987,9 @@ impl RelayConnection {
                         Ok(text) => text,
                         Err(e) => {
                             warn!("Failed to serialize event: {}", e);
-                            if let Err(e) = queue.mark_failed(
-                                queued_msg.id,
-                                &format!("Serialization error: {}", e),
-                            ) {
+                            if let Err(e) = queue
+                                .mark_failed(queued_msg.id, &format!("Serialization error: {}", e))
+                            {
                                 warn!("Failed to mark queued message as failed: {}", e);
                             }
                             continue;
@@ -1144,12 +1164,16 @@ mod tests {
 
     #[test]
     fn test_parse_ok_message_accepted() {
-        let text = r#"["OK","5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36",true,""]"#;
+        let text =
+            r#"["OK","5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36",true,""]"#;
         let msg = RelayConnection::parse_relay_message(text).unwrap();
         assert!(msg.is_some());
         match msg.unwrap() {
             RelayMessage::Ok(id, success, message) => {
-                assert_eq!(id, "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36");
+                assert_eq!(
+                    id,
+                    "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36"
+                );
                 assert!(success);
                 assert_eq!(message, "");
             }
@@ -1164,7 +1188,10 @@ mod tests {
         assert!(msg.is_some());
         match msg.unwrap() {
             RelayMessage::Ok(id, success, message) => {
-                assert_eq!(id, "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36");
+                assert_eq!(
+                    id,
+                    "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36"
+                );
                 assert!(!success);
                 assert_eq!(message, "duplicate: already have this event");
             }
@@ -1262,14 +1289,10 @@ mod tests {
 
         // Add multiple subscriptions
         {
-            let sub1 = Subscription::new(
-                "sub1".to_string(),
-                vec![serde_json::json!({"kinds": [1]})],
-            );
-            let sub2 = Subscription::new(
-                "sub2".to_string(),
-                vec![serde_json::json!({"kinds": [3]})],
-            );
+            let sub1 =
+                Subscription::new("sub1".to_string(), vec![serde_json::json!({"kinds": [1]})]);
+            let sub2 =
+                Subscription::new("sub2".to_string(), vec![serde_json::json!({"kinds": [3]})]);
             let mut subs = relay.subscriptions.lock().await;
             subs.insert("sub1".to_string(), sub1);
             subs.insert("sub2".to_string(), sub2);

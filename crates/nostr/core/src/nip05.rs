@@ -63,10 +63,9 @@ impl Nip05Identifier {
         let domain = parts[1].to_lowercase();
 
         // Validate local part: only a-z0-9-_.
-        if !local
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_' || c == '.')
-        {
+        if !local.chars().all(|c| {
+            c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_' || c == '.'
+        }) {
             return Err(Nip05Error::InvalidLocalPart(format!(
                 "local part must only contain a-z0-9-_., got: {}",
                 local
@@ -150,9 +149,7 @@ impl Nip05Response {
             .ok_or_else(|| Nip05Error::PubkeyNotFound(identifier.to_string()))?;
 
         // Validate pubkey format (64-char hex)
-        if actual_pubkey.len() != 64
-            || !actual_pubkey.chars().all(|c| c.is_ascii_hexdigit())
-        {
+        if actual_pubkey.len() != 64 || !actual_pubkey.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(Nip05Error::InvalidPubkey(actual_pubkey.clone()));
         }
 
@@ -286,12 +283,14 @@ mod tests {
         let response = Nip05Response::from_json(json).unwrap();
         let id = Nip05Identifier::parse("alice@example.com").unwrap();
 
-        assert!(response
-            .verify(
-                &id,
-                "b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9"
-            )
-            .is_ok());
+        assert!(
+            response
+                .verify(
+                    &id,
+                    "b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9"
+                )
+                .is_ok()
+        );
     }
 
     #[test]
@@ -310,7 +309,10 @@ mod tests {
             "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
         );
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Nip05Error::PubkeyMismatch { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            Nip05Error::PubkeyMismatch { .. }
+        ));
     }
 
     #[test]

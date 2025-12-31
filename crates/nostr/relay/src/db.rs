@@ -11,7 +11,7 @@ use crate::error::{RelayError, Result};
 use nostr::Event;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::path::PathBuf;
 use tracing::{debug, info};
 
@@ -215,9 +215,7 @@ impl Database {
     pub fn get_event(&self, event_id: &str) -> Result<Option<Event>> {
         let conn = self.pool.reader()?;
 
-        let mut stmt = conn.prepare(
-            "SELECT raw_event FROM events WHERE id = ?1"
-        )?;
+        let mut stmt = conn.prepare("SELECT raw_event FROM events WHERE id = ?1")?;
 
         let result = stmt.query_row(params![event_id], |row| {
             let raw_event: String = row.get(0)?;
@@ -239,7 +237,7 @@ impl Database {
         let conn = self.pool.reader()?;
 
         let mut stmt = conn.prepare(
-            "SELECT raw_event FROM events WHERE pubkey = ?1 ORDER BY created_at DESC LIMIT ?2"
+            "SELECT raw_event FROM events WHERE pubkey = ?1 ORDER BY created_at DESC LIMIT ?2",
         )?;
 
         let rows = stmt.query_map(params![pubkey, limit as i64], |row| {
@@ -262,7 +260,7 @@ impl Database {
         let conn = self.pool.reader()?;
 
         let mut stmt = conn.prepare(
-            "SELECT raw_event FROM events WHERE kind = ?1 ORDER BY created_at DESC LIMIT ?2"
+            "SELECT raw_event FROM events WHERE kind = ?1 ORDER BY created_at DESC LIMIT ?2",
         )?;
 
         let rows = stmt.query_map(params![kind, limit as i64], |row| {
@@ -284,11 +282,7 @@ impl Database {
     pub fn count_events(&self) -> Result<i64> {
         let conn = self.pool.metadata()?;
 
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM events",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))?;
 
         Ok(count)
     }
@@ -297,10 +291,7 @@ impl Database {
     pub fn delete_event(&self, event_id: &str) -> Result<bool> {
         let conn = self.pool.writer()?;
 
-        let rows_affected = conn.execute(
-            "DELETE FROM events WHERE id = ?1",
-            params![event_id],
-        )?;
+        let rows_affected = conn.execute("DELETE FROM events WHERE id = ?1", params![event_id])?;
 
         Ok(rows_affected > 0)
     }
@@ -315,46 +306,57 @@ impl Database {
 
         // Filter by IDs (exact match for full IDs, prefix matching for partial)
         if let Some(ref ids) = filter.ids
-            && !ids.is_empty() {
-                let placeholders = ids.iter().map(|id| {
+            && !ids.is_empty()
+        {
+            let placeholders = ids
+                .iter()
+                .map(|id| {
                     // Use exact match for full 64-char hex IDs, prefix match for partial
                     if id.len() == 64 && id.chars().all(|c| c.is_ascii_hexdigit()) {
                         "id = ?"
                     } else {
                         "id LIKE ?"
                     }
-                }).collect::<Vec<_>>().join(" OR ");
-                sql.push_str(&format!(" AND ({})", placeholders));
-                for id in ids {
-                    if id.len() == 64 && id.chars().all(|c| c.is_ascii_hexdigit()) {
-                        // Exact match
-                        params_vec.push(Box::new(id.to_string()));
-                    } else {
-                        // Prefix match
-                        params_vec.push(Box::new(format!("{}%", id)));
-                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" OR ");
+            sql.push_str(&format!(" AND ({})", placeholders));
+            for id in ids {
+                if id.len() == 64 && id.chars().all(|c| c.is_ascii_hexdigit()) {
+                    // Exact match
+                    params_vec.push(Box::new(id.to_string()));
+                } else {
+                    // Prefix match
+                    params_vec.push(Box::new(format!("{}%", id)));
                 }
             }
+        }
 
         // Filter by authors (using prefix matching)
         if let Some(ref authors) = filter.authors
-            && !authors.is_empty() {
-                let placeholders = authors.iter().map(|_| "pubkey LIKE ?").collect::<Vec<_>>().join(" OR ");
-                sql.push_str(&format!(" AND ({})", placeholders));
-                for author in authors {
-                    params_vec.push(Box::new(format!("{}%", author)));
-                }
+            && !authors.is_empty()
+        {
+            let placeholders = authors
+                .iter()
+                .map(|_| "pubkey LIKE ?")
+                .collect::<Vec<_>>()
+                .join(" OR ");
+            sql.push_str(&format!(" AND ({})", placeholders));
+            for author in authors {
+                params_vec.push(Box::new(format!("{}%", author)));
             }
+        }
 
         // Filter by kinds
         if let Some(ref kinds) = filter.kinds
-            && !kinds.is_empty() {
-                let placeholders = kinds.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-                sql.push_str(&format!(" AND kind IN ({})", placeholders));
-                for kind in kinds {
-                    params_vec.push(Box::new(*kind));
-                }
+            && !kinds.is_empty()
+        {
+            let placeholders = kinds.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            sql.push_str(&format!(" AND kind IN ({})", placeholders));
+            for kind in kinds {
+                params_vec.push(Box::new(*kind));
             }
+        }
 
         // Filter by since timestamp
         if let Some(since) = filter.since {
@@ -378,7 +380,8 @@ impl Database {
 
         // Execute query
         let mut stmt = conn.prepare(&sql)?;
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
 
         let rows = stmt.query_map(params_refs.as_slice(), |row| {
             let raw_event: String = row.get(0)?;

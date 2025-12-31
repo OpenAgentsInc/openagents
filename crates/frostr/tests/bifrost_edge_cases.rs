@@ -9,9 +9,8 @@
 //! - Invalid threshold configurations
 
 use frostr::bifrost::{
-    BifrostConfig, BifrostNode, TimeoutConfig,
-    CommitmentRequest, CommitmentResponse, PartialSignature,
-    BifrostMessage, SigningPackageMessage, ParticipantCommitment,
+    BifrostConfig, BifrostMessage, BifrostNode, CommitmentRequest, CommitmentResponse,
+    PartialSignature, ParticipantCommitment, SigningPackageMessage, TimeoutConfig,
 };
 use frostr::keygen::generate_key_shares;
 

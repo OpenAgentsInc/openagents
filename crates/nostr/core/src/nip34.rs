@@ -641,13 +641,23 @@ impl StatusUpdate {
     /// Build the event tags
     pub fn build_tags(&self) -> Vec<Vec<String>> {
         let mut tags = vec![
-            vec!["e".to_string(), self.root_event_id.clone(), "".to_string(), "root".to_string()],
+            vec![
+                "e".to_string(),
+                self.root_event_id.clone(),
+                "".to_string(),
+                "root".to_string(),
+            ],
             vec!["p".to_string(), self.repository_owner.clone()],
             vec!["p".to_string(), self.root_author.clone()],
         ];
 
         if let Some(revision_id) = &self.accepted_revision {
-            tags.push(vec!["e".to_string(), revision_id.clone(), "".to_string(), "reply".to_string()]);
+            tags.push(vec![
+                "e".to_string(),
+                revision_id.clone(),
+                "".to_string(),
+                "reply".to_string(),
+            ]);
         }
 
         if let Some(revision_author) = &self.revision_author {
@@ -702,7 +712,10 @@ mod tests {
         let tags = repo.build_tags();
         assert!(tags.iter().any(|t| t[0] == "d" && t[1] == "my-repo"));
         assert!(tags.iter().any(|t| t[0] == "name" && t[1] == "My Repo"));
-        assert!(tags.iter().any(|t| t[0] == "r" && t.get(2) == Some(&"euc".to_string())));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "r" && t.get(2) == Some(&"euc".to_string()))
+        );
     }
 
     #[test]
@@ -714,19 +727,18 @@ mod tests {
 
         let tags = state.build_tags();
         assert!(tags.iter().any(|t| t[0] == "d" && t[1] == "my-repo"));
-        assert!(tags.iter().any(|t| t[0] == "refs/heads/main" && t[1] == "def456"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "refs/heads/main" && t[1] == "def456")
+        );
         assert!(tags.iter().any(|t| t[0] == "HEAD"));
     }
 
     #[test]
     fn test_patch() {
-        let patch = Patch::new(
-            "diff --git a/file.rs",
-            "30617:pubkey:repo-id",
-            "npub1owner",
-        )
-        .as_root()
-        .with_commit_id("commit123");
+        let patch = Patch::new("diff --git a/file.rs", "30617:pubkey:repo-id", "npub1owner")
+            .as_root()
+            .with_commit_id("commit123");
 
         let tags = patch.build_tags();
         assert!(tags.iter().any(|t| t[0] == "a"));
@@ -761,7 +773,10 @@ mod tests {
             .with_label("priority-high");
 
         let tags = issue.build_tags();
-        assert!(tags.iter().any(|t| t[0] == "subject" && t[1] == "App crashes"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "subject" && t[1] == "App crashes")
+        );
         assert_eq!(tags.iter().filter(|t| t[0] == "t").count(), 2);
     }
 
@@ -781,7 +796,10 @@ mod tests {
 
         let tags = status.build_tags();
         assert!(tags.iter().any(|t| t[0] == "e" && t[1] == "event123"));
-        assert!(tags.iter().any(|t| t[0] == "merge-commit" && t[1] == "merge456"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "merge-commit" && t[1] == "merge456")
+        );
     }
 
     #[test]

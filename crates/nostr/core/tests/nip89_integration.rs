@@ -1,8 +1,8 @@
 //! Integration tests for NIP-89 handler information and recommendations
 
 use nostr::{
-    HandlerInfo, HandlerMetadata, HandlerRecommendation, HandlerType, PricingInfo,
-    SocialTrustScore, KIND_HANDLER_INFO, KIND_HANDLER_RECOMMENDATION,
+    HandlerInfo, HandlerMetadata, HandlerRecommendation, HandlerType, KIND_HANDLER_INFO,
+    KIND_HANDLER_RECOMMENDATION, PricingInfo, SocialTrustScore,
 };
 
 // =========================================================================
@@ -65,8 +65,8 @@ fn test_handler_metadata_minimal() {
 
 #[test]
 fn test_handler_metadata_with_icon() {
-    let metadata = HandlerMetadata::new("Handler", "Description")
-        .with_icon("https://example.com/icon.png");
+    let metadata =
+        HandlerMetadata::new("Handler", "Description").with_icon("https://example.com/icon.png");
 
     assert_eq!(
         metadata.icon_url,
@@ -228,15 +228,18 @@ fn test_handler_info_to_tags_with_capabilities() {
     assert!(tags.iter().any(|t| t[0] == "handler" && t[1] == "agent"));
 
     // Check capability tags
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "capability" && t[1] == "capability1"));
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "capability" && t[1] == "capability2"));
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "capability" && t[1] == "capability3"));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "capability" && t[1] == "capability1")
+    );
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "capability" && t[1] == "capability2")
+    );
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "capability" && t[1] == "capability3")
+    );
 }
 
 #[test]
@@ -389,9 +392,10 @@ fn test_handler_recommendation_to_tags_all_ratings() {
             .with_rating(rating)
             .unwrap();
         let tags = rec.to_tags();
-        assert!(tags
-            .iter()
-            .any(|t| t[0] == "rating" && t[1] == rating.to_string()));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "rating" && t[1] == rating.to_string())
+        );
     }
 }
 
@@ -582,9 +586,10 @@ fn test_compute_provider_advertisement_workflow() {
     // Verify tags can be generated
     let tags = handler_info.to_tags();
     assert!(!tags.is_empty());
-    assert!(tags
-        .iter()
-        .any(|t| t[0] == "handler" && t[1] == "compute_provider"));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "handler" && t[1] == "compute_provider")
+    );
 }
 
 #[test]

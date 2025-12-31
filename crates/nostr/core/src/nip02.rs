@@ -57,7 +57,11 @@ impl Contact {
         let relay_url = relay_url.into();
         Self {
             pubkey: pubkey.into(),
-            relay_url: if relay_url.is_empty() { None } else { Some(relay_url) },
+            relay_url: if relay_url.is_empty() {
+                None
+            } else {
+                Some(relay_url)
+            },
             petname: None,
         }
     }
@@ -72,8 +76,16 @@ impl Contact {
         let petname = petname.into();
         Self {
             pubkey: pubkey.into(),
-            relay_url: if relay_url.is_empty() { None } else { Some(relay_url) },
-            petname: if petname.is_empty() { None } else { Some(petname) },
+            relay_url: if relay_url.is_empty() {
+                None
+            } else {
+                Some(relay_url)
+            },
+            petname: if petname.is_empty() {
+                None
+            } else {
+                Some(petname)
+            },
         }
     }
 
@@ -241,8 +253,7 @@ impl ContactList {
         // Validate all contacts
         for contact in &self.contacts {
             // Pubkey should be 64-character hex
-            if contact.pubkey.len() != 64
-                || !contact.pubkey.chars().all(|c| c.is_ascii_hexdigit())
+            if contact.pubkey.len() != 64 || !contact.pubkey.chars().all(|c| c.is_ascii_hexdigit())
             {
                 return Err(Nip02Error::InvalidPublicKey(contact.pubkey.clone()));
             }
@@ -281,7 +292,10 @@ mod tests {
         let pubkey = "91cf9a3a3e5ca".to_string() + &"0".repeat(51);
         let contact = Contact::with_relay(&pubkey, "wss://relay.example.com");
         assert_eq!(contact.pubkey, pubkey);
-        assert_eq!(contact.relay_url, Some("wss://relay.example.com".to_string()));
+        assert_eq!(
+            contact.relay_url,
+            Some("wss://relay.example.com".to_string())
+        );
         assert!(contact.petname.is_none());
     }
 
@@ -290,7 +304,10 @@ mod tests {
         let pubkey = "91cf9a3a3e5ca".to_string() + &"0".repeat(51);
         let contact = Contact::with_relay_and_petname(&pubkey, "wss://relay.example.com", "alice");
         assert_eq!(contact.pubkey, pubkey);
-        assert_eq!(contact.relay_url, Some("wss://relay.example.com".to_string()));
+        assert_eq!(
+            contact.relay_url,
+            Some("wss://relay.example.com".to_string())
+        );
         assert_eq!(contact.petname, Some("alice".to_string()));
     }
 

@@ -225,12 +225,7 @@ impl OkMessage {
     /// // ["OK", "event-id", true, ""]
     /// ```
     pub fn to_json(&self) -> Result<String, Nip20Error> {
-        let array = serde_json::json!([
-            "OK",
-            self.event_id,
-            self.accepted,
-            self.message
-        ]);
+        let array = serde_json::json!(["OK", self.event_id, self.accepted, self.message]);
         Ok(serde_json::to_string(&array)?)
     }
 }

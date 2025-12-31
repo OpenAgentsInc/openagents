@@ -139,8 +139,7 @@ impl MessageQueue {
 
     /// Enqueue an event for delivery
     pub fn enqueue(&self, event: &Event, relay_url: &str) -> Result<i64> {
-        let event_json = serde_json::to_string(event)
-            .map_err(ClientError::Serialization)?;
+        let event_json = serde_json::to_string(event).map_err(ClientError::Serialization)?;
 
         let now_millis = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -279,13 +278,7 @@ impl MessageQueue {
             "UPDATE message_queue
              SET retry_count = ?1, last_retry = ?2, status = ?3, error = ?4
              WHERE id = ?5",
-            rusqlite::params![
-                new_retry_count as i64,
-                now,
-                status.to_str(),
-                error,
-                id
-            ],
+            rusqlite::params![new_retry_count as i64, now, status.to_str(), error, id],
         )
         .map_err(|e| ClientError::Internal(format!("Failed to mark message as failed: {}", e)))?;
 
@@ -405,10 +398,7 @@ impl MessageQueue {
         })?;
 
         let count = db
-            .execute(
-                "DELETE FROM message_queue WHERE status = 'sent'",
-                [],
-            )
+            .execute("DELETE FROM message_queue WHERE status = 'sent'", [])
             .map_err(|e| ClientError::Internal(format!("Failed to clear sent messages: {}", e)))?;
 
         Ok(count)
@@ -553,8 +543,12 @@ mod tests {
     fn test_get_pending() {
         let queue = create_test_queue();
 
-        queue.enqueue(&create_test_event("event1"), "wss://relay1.com").unwrap();
-        queue.enqueue(&create_test_event("event2"), "wss://relay2.com").unwrap();
+        queue
+            .enqueue(&create_test_event("event1"), "wss://relay1.com")
+            .unwrap();
+        queue
+            .enqueue(&create_test_event("event2"), "wss://relay2.com")
+            .unwrap();
 
         let pending = queue.get_pending().unwrap();
         assert_eq!(pending.len(), 2);
@@ -568,10 +562,14 @@ mod tests {
 
         assert_eq!(queue.size().unwrap(), 0);
 
-        queue.enqueue(&create_test_event("event1"), "wss://relay.com").unwrap();
+        queue
+            .enqueue(&create_test_event("event1"), "wss://relay.com")
+            .unwrap();
         assert_eq!(queue.size().unwrap(), 1);
 
-        queue.enqueue(&create_test_event("event2"), "wss://relay.com").unwrap();
+        queue
+            .enqueue(&create_test_event("event2"), "wss://relay.com")
+            .unwrap();
         assert_eq!(queue.size().unwrap(), 2);
     }
 
@@ -579,8 +577,12 @@ mod tests {
     fn test_clear() {
         let queue = create_test_queue();
 
-        queue.enqueue(&create_test_event("event1"), "wss://relay.com").unwrap();
-        queue.enqueue(&create_test_event("event2"), "wss://relay.com").unwrap();
+        queue
+            .enqueue(&create_test_event("event1"), "wss://relay.com")
+            .unwrap();
+        queue
+            .enqueue(&create_test_event("event2"), "wss://relay.com")
+            .unwrap();
 
         assert_eq!(queue.size().unwrap(), 2);
         queue.clear().unwrap();
@@ -591,8 +593,12 @@ mod tests {
     fn test_clear_sent() {
         let queue = create_test_queue();
 
-        let id1 = queue.enqueue(&create_test_event("event1"), "wss://relay.com").unwrap();
-        queue.enqueue(&create_test_event("event2"), "wss://relay.com").unwrap();
+        let id1 = queue
+            .enqueue(&create_test_event("event1"), "wss://relay.com")
+            .unwrap();
+        queue
+            .enqueue(&create_test_event("event2"), "wss://relay.com")
+            .unwrap();
 
         queue.mark_sent(id1).unwrap();
 
@@ -654,8 +660,12 @@ mod tests {
     fn test_retry_all() {
         let queue = create_test_queue();
 
-        let id1 = queue.enqueue(&create_test_event("event1"), "wss://relay.com").unwrap();
-        let id2 = queue.enqueue(&create_test_event("event2"), "wss://relay.com").unwrap();
+        let id1 = queue
+            .enqueue(&create_test_event("event1"), "wss://relay.com")
+            .unwrap();
+        let id2 = queue
+            .enqueue(&create_test_event("event2"), "wss://relay.com")
+            .unwrap();
 
         queue.mark_failed(id1, "Error 1").unwrap();
         queue.mark_failed(id2, "Error 2").unwrap();

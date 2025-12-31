@@ -11,11 +11,7 @@
 //! - **Identifier**: 32 bytes (scalar) - uses frost-secp256k1's native serialization
 
 use crate::{Error, Result};
-use frost_secp256k1::{
-    round1::SigningCommitments,
-    round2::SignatureShare,
-    Identifier,
-};
+use frost_secp256k1::{Identifier, round1::SigningCommitments, round2::SignatureShare};
 
 /// Commitment wire format: hiding nonce (33 bytes) + binding nonce (33 bytes)
 pub const COMMITMENT_SIZE: usize = 66;
@@ -45,9 +41,13 @@ pub fn serialize_commitments(commitments: &SigningCommitments) -> [u8; COMMITMEN
     // Get the hiding and binding nonces as compressed points
     // These serialize() calls return Result<Vec<u8>, Error> but should always succeed
     // for valid commitments created by round1_commit()
-    let hiding_bytes = commitments.hiding().serialize()
+    let hiding_bytes = commitments
+        .hiding()
+        .serialize()
         .expect("Valid commitment should serialize");
-    let binding_bytes = commitments.binding().serialize()
+    let binding_bytes = commitments
+        .binding()
+        .serialize()
         .expect("Valid commitment should serialize");
 
     // Copy into fixed-size array
@@ -147,9 +147,11 @@ impl CommitmentBundle {
 
     /// Deserialize from wire format
     pub fn from_bytes(bytes: &[u8; 98]) -> Result<Self> {
-        let id_bytes: [u8; 32] = bytes[..32].try_into()
+        let id_bytes: [u8; 32] = bytes[..32]
+            .try_into()
             .map_err(|_| Error::Encoding("Invalid bundle length".to_string()))?;
-        let commitment_bytes: [u8; 66] = bytes[32..98].try_into()
+        let commitment_bytes: [u8; 66] = bytes[32..98]
+            .try_into()
             .map_err(|_| Error::Encoding("Invalid bundle length".to_string()))?;
 
         let identifier = deserialize_identifier(&id_bytes)?;
@@ -194,9 +196,11 @@ impl SignatureBundle {
 
     /// Deserialize from wire format
     pub fn from_bytes(bytes: &[u8; 64]) -> Result<Self> {
-        let id_bytes: [u8; 32] = bytes[..32].try_into()
+        let id_bytes: [u8; 32] = bytes[..32]
+            .try_into()
             .map_err(|_| Error::Encoding("Invalid bundle length".to_string()))?;
-        let sig_share_bytes: [u8; 32] = bytes[32..64].try_into()
+        let sig_share_bytes: [u8; 32] = bytes[32..64]
+            .try_into()
             .map_err(|_| Error::Encoding("Invalid bundle length".to_string()))?;
 
         let identifier = deserialize_identifier(&id_bytes)?;

@@ -12,13 +12,13 @@
 use bech32::{Bech32, Hrp};
 #[cfg(feature = "full")]
 use chacha20poly1305::{
-    aead::{Aead, KeyInit, Payload},
     XChaCha20Poly1305,
+    aead::{Aead, KeyInit, Payload},
 };
 #[cfg(feature = "full")]
 use rand::RngCore;
 #[cfg(feature = "full")]
-use scrypt::{scrypt, Params};
+use scrypt::{Params, scrypt};
 use thiserror::Error;
 #[cfg(feature = "full")]
 use unicode_normalization::UnicodeNormalization;
@@ -122,7 +122,11 @@ pub fn normalize_password(password: &str) -> String {
 /// # Returns
 /// 32-byte symmetric key
 #[cfg(feature = "full")]
-pub fn derive_key(password: &str, salt: &[u8; SALT_SIZE], log_n: u8) -> Result<[u8; 32], Nip49Error> {
+pub fn derive_key(
+    password: &str,
+    salt: &[u8; SALT_SIZE],
+    log_n: u8,
+) -> Result<[u8; 32], Nip49Error> {
     // Normalize password to NFKC
     let normalized = normalize_password(password);
 
@@ -213,10 +217,13 @@ pub fn encrypt(
 /// # Returns
 /// Tuple of (32-byte private key, log_n used, key security indicator)
 #[cfg(feature = "full")]
-pub fn decrypt(encrypted: &str, password: &str) -> Result<([u8; PRIVATE_KEY_SIZE], u8, KeySecurity), Nip49Error> {
+pub fn decrypt(
+    encrypted: &str,
+    password: &str,
+) -> Result<([u8; PRIVATE_KEY_SIZE], u8, KeySecurity), Nip49Error> {
     // Decode bech32
-    let (hrp, data) = bech32::decode(encrypted)
-        .map_err(|e| Nip49Error::Bech32Decode(e.to_string()))?;
+    let (hrp, data) =
+        bech32::decode(encrypted).map_err(|e| Nip49Error::Bech32Decode(e.to_string()))?;
 
     // Verify HRP
     if hrp.to_string() != "ncryptsec" {
@@ -336,7 +343,8 @@ mod tests {
         // Verify it starts with ncryptsec
         assert!(encrypted.starts_with("ncryptsec1"));
 
-        let (decrypted, recovered_log_n, recovered_security) = decrypt(&encrypted, password).unwrap();
+        let (decrypted, recovered_log_n, recovered_security) =
+            decrypt(&encrypted, password).unwrap();
 
         assert_eq!(decrypted, private_key);
         assert_eq!(recovered_log_n, log_n);
@@ -377,7 +385,11 @@ mod tests {
         let password = "password";
         let log_n = 16;
 
-        for &security in &[KeySecurity::Insecure, KeySecurity::Secure, KeySecurity::Unknown] {
+        for &security in &[
+            KeySecurity::Insecure,
+            KeySecurity::Secure,
+            KeySecurity::Unknown,
+        ] {
             let encrypted = encrypt(&private_key, password, log_n, security).unwrap();
             let (_, _, recovered_security) = decrypt(&encrypted, password).unwrap();
             assert_eq!(recovered_security, security);

@@ -7,11 +7,11 @@
 //! - Job result creation
 //! - Event validation
 
+use crate::nip01::{EventTemplate, finalize_event, generate_secret_key, verify_event};
 use crate::nip90::{
-    JobInput, JobParam, JobRequest, JobResult, JobStatus, InputType,
-    KIND_JOB_TEXT_GENERATION, is_job_request_kind, is_job_result_kind,
+    InputType, JobInput, JobParam, JobRequest, JobResult, JobStatus, KIND_JOB_TEXT_GENERATION,
+    is_job_request_kind, is_job_result_kind,
 };
-use crate::nip01::{EventTemplate, finalize_event, verify_event, generate_secret_key};
 
 #[test]
 fn test_job_request_creation() {
@@ -44,9 +44,18 @@ fn test_job_request_to_event() {
     let tags = request.to_tags();
 
     // Verify tags contain expected elements
-    assert!(tags.iter().any(|tag| tag[0] == "i" && tag[1] == "Test prompt"));
-    assert!(tags.iter().any(|tag| tag[0] == "param" && tag[1] == "model"));
-    assert!(tags.iter().any(|tag| tag[0] == "output" && tag[1] == "text/plain"));
+    assert!(
+        tags.iter()
+            .any(|tag| tag[0] == "i" && tag[1] == "Test prompt")
+    );
+    assert!(
+        tags.iter()
+            .any(|tag| tag[0] == "param" && tag[1] == "model")
+    );
+    assert!(
+        tags.iter()
+            .any(|tag| tag[0] == "output" && tag[1] == "text/plain")
+    );
 
     // Create event template
     let template = EventTemplate {
@@ -130,8 +139,8 @@ fn test_job_input_with_marker() {
 
 #[test]
 fn test_job_input_tag_conversion() {
-    let input = JobInput::event("abc123", Some("wss://relay.com".to_string()))
-        .with_marker("source");
+    let input =
+        JobInput::event("abc123", Some("wss://relay.com".to_string())).with_marker("source");
 
     let tag = input.to_tag();
     let parsed = JobInput::from_tag(&tag).unwrap();
@@ -187,15 +196,23 @@ fn test_job_result_creation() {
 
 #[test]
 fn test_job_result_to_event() {
-    let result = JobResult::new(5050, "req123".to_string(), "customer".to_string(), "Result data")
-        .unwrap();
+    let result = JobResult::new(
+        5050,
+        "req123".to_string(),
+        "customer".to_string(),
+        "Result data",
+    )
+    .unwrap();
 
     let tags = result.to_tags();
 
     // Verify required tags
     assert!(tags.iter().any(|tag| tag[0] == "e" && tag[1] == "req123"));
     assert!(tags.iter().any(|tag| tag[0] == "p" && tag[1] == "customer"));
-    assert!(tags.iter().any(|tag| tag[0] == "status" && tag[1] == "success"));
+    assert!(
+        tags.iter()
+            .any(|tag| tag[0] == "status" && tag[1] == "success")
+    );
 
     // Create and sign event
     let template = EventTemplate {
@@ -221,17 +238,26 @@ fn test_job_result_with_payment() {
 
     let tags = result.to_tags();
 
-    assert!(tags.iter().any(|tag| tag[0] == "amount" && tag[1] == "5000"));
-    assert!(tags.iter().any(|tag| {
-        tag[0] == "amount" && tag.len() == 3 && tag[2] == "lnbc5000n1..."
-    }));
+    assert!(
+        tags.iter()
+            .any(|tag| tag[0] == "amount" && tag[1] == "5000")
+    );
+    assert!(
+        tags.iter()
+            .any(|tag| { tag[0] == "amount" && tag.len() == 3 && tag[2] == "lnbc5000n1..." })
+    );
 }
 
 #[test]
 fn test_job_result_round_trip() {
-    let original = JobResult::new(5050, "request123".to_string(), "customer456".to_string(), "Result content")
-        .unwrap()
-        .with_amount(3000, Some("lnbc3000n...".to_string()));
+    let original = JobResult::new(
+        5050,
+        "request123".to_string(),
+        "customer456".to_string(),
+        "Result content",
+    )
+    .unwrap()
+    .with_amount(3000, Some("lnbc3000n...".to_string()));
 
     // Convert to event
     let tags = original.to_tags();
@@ -323,7 +349,10 @@ fn test_multiple_inputs_request() {
         .unwrap()
         .add_input(JobInput::text("Primary prompt").with_marker("main"))
         .add_input(JobInput::url("https://example.com/context.txt"))
-        .add_input(JobInput::event("event789", Some("wss://relay.com".to_string())));
+        .add_input(JobInput::event(
+            "event789",
+            Some("wss://relay.com".to_string()),
+        ));
 
     assert_eq!(request.inputs.len(), 3);
     assert_eq!(request.inputs[0].marker, Some("main".to_string()));
@@ -417,7 +446,10 @@ fn test_complete_job_lifecycle() {
 
     // 5. Verify result references original request
     assert_eq!(result.kind, request.kind + 1000);
-    assert!(result_event.tags.iter().any(|tag| {
-        tag.len() >= 2 && tag[0] == "e" && tag[1] == request_event.id
-    }));
+    assert!(
+        result_event
+            .tags
+            .iter()
+            .any(|tag| { tag.len() >= 2 && tag[0] == "e" && tag[1] == request_event.id })
+    );
 }

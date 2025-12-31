@@ -239,9 +239,8 @@ pub fn validate_auth_event(
     }
 
     // Check relay tag
-    let relay_url = get_relay_url(event).ok_or_else(|| {
-        Nip42Error::MissingTag(format!("{} tag is required", RELAY_TAG))
-    })?;
+    let relay_url = get_relay_url(event)
+        .ok_or_else(|| Nip42Error::MissingTag(format!("{} tag is required", RELAY_TAG)))?;
 
     // Normalize URLs for comparison (remove trailing slashes)
     let expected_normalized = expected_relay_url.trim_end_matches('/');
@@ -255,9 +254,8 @@ pub fn validate_auth_event(
     }
 
     // Check challenge tag
-    let challenge = get_challenge(event).ok_or_else(|| {
-        Nip42Error::MissingTag(format!("{} tag is required", CHALLENGE_TAG))
-    })?;
+    let challenge = get_challenge(event)
+        .ok_or_else(|| Nip42Error::MissingTag(format!("{} tag is required", CHALLENGE_TAG)))?;
 
     if challenge != expected_challenge {
         return Err(Nip42Error::ChallengeMismatch {
@@ -419,10 +417,7 @@ mod tests {
     fn test_get_challenge() {
         let event = create_test_event(
             22242,
-            vec![vec![
-                "challenge".to_string(),
-                "test-challenge".to_string(),
-            ]],
+            vec![vec!["challenge".to_string(), "test-challenge".to_string()]],
             current_time(),
         );
         assert_eq!(get_challenge(&event), Some("test-challenge".to_string()));
@@ -449,7 +444,12 @@ mod tests {
         let tags = create_auth_event_tags("wss://relay.example.com/", "challenge-123");
         let event = create_test_event(22242, tags, now);
 
-        let result = validate_auth_event(&event, "wss://relay.example.com/", "challenge-123", Some(now));
+        let result = validate_auth_event(
+            &event,
+            "wss://relay.example.com/",
+            "challenge-123",
+            Some(now),
+        );
         assert!(result.is_ok());
     }
 
@@ -459,7 +459,12 @@ mod tests {
         let tags = create_auth_event_tags("wss://relay.example.com/", "challenge-123");
         let event = create_test_event(1, tags, now);
 
-        let result = validate_auth_event(&event, "wss://relay.example.com/", "challenge-123", Some(now));
+        let result = validate_auth_event(
+            &event,
+            "wss://relay.example.com/",
+            "challenge-123",
+            Some(now),
+        );
         assert!(result.is_err());
         match result.unwrap_err() {
             Nip42Error::InvalidKind(kind) => assert_eq!(kind, 1),
@@ -476,7 +481,12 @@ mod tests {
             now,
         );
 
-        let result = validate_auth_event(&event, "wss://relay.example.com/", "challenge-123", Some(now));
+        let result = validate_auth_event(
+            &event,
+            "wss://relay.example.com/",
+            "challenge-123",
+            Some(now),
+        );
         assert!(result.is_err());
     }
 
@@ -492,7 +502,12 @@ mod tests {
             now,
         );
 
-        let result = validate_auth_event(&event, "wss://relay.example.com/", "challenge-123", Some(now));
+        let result = validate_auth_event(
+            &event,
+            "wss://relay.example.com/",
+            "challenge-123",
+            Some(now),
+        );
         assert!(result.is_err());
     }
 
@@ -502,7 +517,12 @@ mod tests {
         let tags = create_auth_event_tags("wss://relay.example.com/", "wrong-challenge");
         let event = create_test_event(22242, tags, now);
 
-        let result = validate_auth_event(&event, "wss://relay.example.com/", "challenge-123", Some(now));
+        let result = validate_auth_event(
+            &event,
+            "wss://relay.example.com/",
+            "challenge-123",
+            Some(now),
+        );
         assert!(result.is_err());
         match result.unwrap_err() {
             Nip42Error::ChallengeMismatch { expected, actual } => {
@@ -519,7 +539,12 @@ mod tests {
         let tags = create_auth_event_tags("wss://wrong-relay.com/", "challenge-123");
         let event = create_test_event(22242, tags, now);
 
-        let result = validate_auth_event(&event, "wss://relay.example.com/", "challenge-123", Some(now));
+        let result = validate_auth_event(
+            &event,
+            "wss://relay.example.com/",
+            "challenge-123",
+            Some(now),
+        );
         assert!(result.is_err());
     }
 
@@ -531,7 +556,12 @@ mod tests {
         let event = create_test_event(22242, tags, now);
 
         // Expected URL without trailing slash should still match
-        let result = validate_auth_event(&event, "wss://relay.example.com", "challenge-123", Some(now));
+        let result = validate_auth_event(
+            &event,
+            "wss://relay.example.com",
+            "challenge-123",
+            Some(now),
+        );
         assert!(result.is_ok());
     }
 
@@ -542,7 +572,12 @@ mod tests {
         let tags = create_auth_event_tags("wss://relay.example.com/", "challenge-123");
         let event = create_test_event(22242, tags, old_time);
 
-        let result = validate_auth_event(&event, "wss://relay.example.com/", "challenge-123", Some(now));
+        let result = validate_auth_event(
+            &event,
+            "wss://relay.example.com/",
+            "challenge-123",
+            Some(now),
+        );
         assert!(result.is_err());
         match result.unwrap_err() {
             Nip42Error::InvalidTimestamp => {}
@@ -557,7 +592,12 @@ mod tests {
         let tags = create_auth_event_tags("wss://relay.example.com/", "challenge-123");
         let event = create_test_event(22242, tags, future_time);
 
-        let result = validate_auth_event(&event, "wss://relay.example.com/", "challenge-123", Some(now));
+        let result = validate_auth_event(
+            &event,
+            "wss://relay.example.com/",
+            "challenge-123",
+            Some(now),
+        );
         assert!(result.is_err());
     }
 
@@ -568,7 +608,12 @@ mod tests {
         let tags = create_auth_event_tags("wss://relay.example.com/", "challenge-123");
         let event = create_test_event(22242, tags, acceptable_time);
 
-        let result = validate_auth_event(&event, "wss://relay.example.com/", "challenge-123", Some(now));
+        let result = validate_auth_event(
+            &event,
+            "wss://relay.example.com/",
+            "challenge-123",
+            Some(now),
+        );
         assert!(result.is_ok());
     }
 
@@ -604,7 +649,9 @@ mod tests {
     fn test_is_auth_required_error() {
         assert!(is_auth_required_error("auth-required: please authenticate"));
         assert!(is_auth_required_error("auth-required: "));
-        assert!(!is_auth_required_error("restricted: insufficient permissions"));
+        assert!(!is_auth_required_error(
+            "restricted: insufficient permissions"
+        ));
         assert!(!is_auth_required_error("other error"));
     }
 

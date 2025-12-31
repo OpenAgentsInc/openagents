@@ -93,7 +93,7 @@ impl FileContent {
     /// Decode base64 content to bytes
     #[cfg(feature = "full")]
     pub fn decode(&self) -> Result<Vec<u8>, Nip95Error> {
-        use base64::{engine::general_purpose::STANDARD, Engine};
+        use base64::{Engine, engine::general_purpose::STANDARD};
         STANDARD
             .decode(&self.content_base64)
             .map_err(|e| Nip95Error::Base64Error(e.to_string()))
@@ -509,11 +509,7 @@ mod tests {
 
     #[test]
     fn test_get_size() {
-        let event = create_test_event(
-            1065,
-            "",
-            vec![vec!["size".to_string(), "4096".to_string()]],
-        );
+        let event = create_test_event(1065, "", vec![vec!["size".to_string(), "4096".to_string()]]);
         assert_eq!(get_size(&event).unwrap(), 4096);
     }
 

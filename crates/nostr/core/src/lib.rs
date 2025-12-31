@@ -290,11 +290,11 @@ mod nip92;
 mod nip94;
 mod nip95;
 mod nip96;
-mod nip99;
 #[cfg(feature = "full")]
 mod nip98;
-mod nipc7;
+mod nip99;
 pub mod nip_sa;
+mod nipc7;
 #[cfg(feature = "full")]
 mod payments;
 mod provider;
@@ -324,10 +324,9 @@ pub use nip02::{CONTACT_LIST_KIND, Contact, ContactList, Nip02Error};
 
 // NIP-03: OpenTimestamps Attestations for Events
 pub use nip03::{
-    KIND_OTS_ATTESTATION, Nip03Error, OpenTimestampsAttestation, TARGET_EVENT_TAG,
-    TARGET_KIND_TAG, create_attestation_tags, decode_ots_content, encode_ots_content,
-    get_target_event_id, get_target_event_kind, get_target_relay_url, is_ots_attestation,
-    parse_attestation,
+    KIND_OTS_ATTESTATION, Nip03Error, OpenTimestampsAttestation, TARGET_EVENT_TAG, TARGET_KIND_TAG,
+    create_attestation_tags, decode_ots_content, encode_ots_content, get_target_event_id,
+    get_target_event_kind, get_target_relay_url, is_ots_attestation, parse_attestation,
 };
 
 // NIP-04: Encrypted Direct Messages (requires full feature)
@@ -365,9 +364,7 @@ pub use nip09::{
 };
 
 // NIP-10: Text Notes and Threads
-pub use nip10::{
-    ETagMarker, EventReference, Nip10Error, TEXT_NOTE_KIND, TextNote,
-};
+pub use nip10::{ETagMarker, EventReference, Nip10Error, TEXT_NOTE_KIND, TextNote};
 
 // NIP-11: Relay Information Document
 pub use nip11::{
@@ -432,9 +429,7 @@ pub use nip22::{
 };
 
 // NIP-23: Long-form Content
-pub use nip23::{
-    ARTICLE_KIND, Article, DRAFT_ARTICLE_KIND, Nip23Error, is_article_kind,
-};
+pub use nip23::{ARTICLE_KIND, Article, DRAFT_ARTICLE_KIND, Nip23Error, is_article_kind};
 
 // NIP-24: Extra Metadata Fields and Tags
 pub use nip24::{
@@ -482,63 +477,59 @@ pub use nip29::{
 
 // NIP-30: Custom Emoji
 pub use nip30::{
-    CustomEmoji, EMOJI_TAG, Nip30Error, add_emoji_tag, contains_shortcodes, emojify,
-    emojify_with, extract_shortcodes, get_emoji, get_emoji_tags, has_emoji,
-    remove_all_emoji_tags, remove_emoji_tag, validate_shortcode,
+    CustomEmoji, EMOJI_TAG, Nip30Error, add_emoji_tag, contains_shortcodes, emojify, emojify_with,
+    extract_shortcodes, get_emoji, get_emoji_tags, has_emoji, remove_all_emoji_tags,
+    remove_emoji_tag, validate_shortcode,
 };
 
 // NIP-31: Alt Tag for Unknown Events
 pub use nip31::{
-    ALT_TAG, Nip31Error, add_alt_tag, create_default_alt, get_alt_tag, has_alt_tag,
-    remove_alt_tag, set_alt_tag, validate_alt_summary,
+    ALT_TAG, Nip31Error, add_alt_tag, create_default_alt, get_alt_tag, has_alt_tag, remove_alt_tag,
+    set_alt_tag, validate_alt_summary,
 };
 
 // NIP-32: Labeling
 pub use nip32::{
-    KIND_LABEL, Label, LabelEvent, LabelTarget, Nip32Error, SelfLabel, UGC_NAMESPACE,
-    is_label_kind,
+    KIND_LABEL, Label, LabelEvent, LabelTarget, Nip32Error, SelfLabel, UGC_NAMESPACE, is_label_kind,
 };
 
 // NIP-34: Git Stuff
 pub use nip34::{
-    CommitterInfo, Issue, Patch, PullRequest, RefState, RepositoryAnnouncement, RepositoryState,
-    Status, StatusUpdate, KIND_ISSUE, KIND_PATCH, KIND_PULL_REQUEST, KIND_PULL_REQUEST_UPDATE,
+    CommitterInfo, Issue, KIND_ISSUE, KIND_PATCH, KIND_PULL_REQUEST, KIND_PULL_REQUEST_UPDATE,
     KIND_REPOSITORY_ANNOUNCEMENT, KIND_REPOSITORY_STATE, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED,
-    KIND_STATUS_DRAFT, KIND_STATUS_OPEN, KIND_USER_GRASP_LIST,
+    KIND_STATUS_DRAFT, KIND_STATUS_OPEN, KIND_USER_GRASP_LIST, Patch, PullRequest, RefState,
+    RepositoryAnnouncement, RepositoryState, Status, StatusUpdate,
 };
 
 // NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
 pub use nip33::{
     ADDRESSABLE_KIND_MAX, ADDRESSABLE_KIND_MIN, D_TAG, Nip33Error, create_a_tag, create_address,
-    get_a_tags, get_d_tag, get_event_address, parse_address, set_d_tag,
-    validate_addressable_event,
+    get_a_tags, get_d_tag, get_event_address, parse_address, set_d_tag, validate_addressable_event,
 };
 
 // NIP-35: Torrents
 pub use nip35::{
     FILE_TAG, INFO_HASH_TAG, Nip35Error, TITLE_TAG, TORRENT_COMMENT_KIND, TORRENT_KIND,
-    TRACKER_TAG, Torrent, TorrentFile, create_info_hash_tag, create_title_tag,
-    create_tracker_tag, get_external_ids, is_nip35_kind, is_torrent_comment_kind,
-    is_torrent_kind,
+    TRACKER_TAG, Torrent, TorrentFile, create_info_hash_tag, create_title_tag, create_tracker_tag,
+    get_external_ids, is_nip35_kind, is_torrent_comment_kind, is_torrent_kind,
 };
 
 // NIP-36: Sensitive Content / Content Warning
 pub use nip36::{
-    CONTENT_WARNING_TAG, Nip36Error, add_content_warning, get_content_warning,
-    has_content_warning, reasons, remove_content_warning,
+    CONTENT_WARNING_TAG, Nip36Error, add_content_warning, get_content_warning, has_content_warning,
+    reasons, remove_content_warning,
 };
 
 // NIP-37: Draft Wraps
 pub use nip37::{
     DRAFT_WRAP_KIND, DraftWrap, Nip37Error, PRIVATE_CONTENT_RELAY_LIST_KIND,
-    PrivateContentRelayList, is_draft_wrap_kind, is_nip37_kind,
-    is_private_content_relay_list_kind,
+    PrivateContentRelayList, is_draft_wrap_kind, is_nip37_kind, is_private_content_relay_list_kind,
 };
 
 // NIP-38: User Statuses
 pub use nip38::{
-    KIND_USER_STATUS, Nip38Error, STATUS_GENERAL, STATUS_MUSIC, StatusLink, StatusType,
-    UserStatus, is_user_status_kind,
+    KIND_USER_STATUS, Nip38Error, STATUS_GENERAL, STATUS_MUSIC, StatusLink, StatusType, UserStatus,
+    is_user_status_kind,
 };
 
 // NIP-39: External Identities in Profiles
@@ -557,25 +548,25 @@ pub use nip40::{
 pub use nip42::{
     AUTH_KIND, AUTH_REQUIRED_PREFIX, CHALLENGE_TAG, MAX_TIME_DIFF, Nip42Error, RELAY_TAG,
     RESTRICTED_PREFIX, create_auth_event_tags, create_auth_required_message,
-    create_restricted_message, get_challenge, get_relay_url, is_auth_event,
-    is_auth_required_error, is_restricted_error, normalize_relay_url, validate_auth_event,
+    create_restricted_message, get_challenge, get_relay_url, is_auth_event, is_auth_required_error,
+    is_restricted_error, normalize_relay_url, validate_auth_event,
 };
 
 // NIP-43: Relay Access Metadata and Requests
 pub use nip43::{
     ADD_USER_KIND, AddUserEvent, CLAIM_TAG, INVITE_REQUEST_KIND, InviteRequestEvent,
     JOIN_REQUEST_KIND, JoinRequestEvent, LEAVE_REQUEST_KIND, LeaveRequestEvent, MEMBER_TAG,
-    MEMBERSHIP_LIST_KIND, MembershipListEvent, Nip43Error, REMOVE_USER_KIND,
-    RemoveUserEvent, validate_add_user, validate_join_request, validate_leave_request,
-    validate_membership_list, validate_remove_user,
+    MEMBERSHIP_LIST_KIND, MembershipListEvent, Nip43Error, REMOVE_USER_KIND, RemoveUserEvent,
+    validate_add_user, validate_join_request, validate_leave_request, validate_membership_list,
+    validate_remove_user,
 };
 
 // NIP-44: Versioned Encryption (requires full feature)
 #[cfg(feature = "full")]
 pub use nip44::{
-    CHACHA_KEY_SIZE, CHACHA_NONCE_SIZE, HMAC_KEY_SIZE, MAC_SIZE, MAX_PLAINTEXT_LEN,
-    MIN_PADDED_LEN, MIN_PLAINTEXT_LEN, NONCE_SIZE, Nip44Error, VERSION,
-    decrypt as decrypt_v2, encrypt as encrypt_v2,
+    CHACHA_KEY_SIZE, CHACHA_NONCE_SIZE, HMAC_KEY_SIZE, MAC_SIZE, MAX_PLAINTEXT_LEN, MIN_PADDED_LEN,
+    MIN_PLAINTEXT_LEN, NONCE_SIZE, Nip44Error, VERSION, decrypt as decrypt_v2,
+    encrypt as encrypt_v2,
 };
 
 // NIP-45: Event Counts
@@ -591,40 +582,37 @@ pub use nip46::{
 };
 #[cfg(feature = "full")]
 pub use nip47::{
-    BalanceResult, ErrorCode, ErrorResponse, GetBalanceParams, GetInfoParams, InfoResult,
-    Invoice, InvoiceState, ListTransactionsParams, ListTransactionsResult, LookupInvoiceParams,
-    MakeInvoiceParams, Method, MultiPayInvoiceItem, MultiPayInvoiceParams, MultiPayKeysendItem,
-    MultiPayKeysendParams, Network, Nip47Error, NostrWalletConnectUrl, Notification, NotificationType,
-    PayInvoiceParams, PayInvoiceResult, PayKeysendParams, Request, RequestParams, Response,
-    ResponseResult, TlvRecord, Transaction, TransactionType, INFO_EVENT_KIND,
-    NOTIFICATION_KIND_NIP04, NOTIFICATION_KIND_NIP44, REQUEST_KIND, RESPONSE_KIND,
+    BalanceResult, ErrorCode, ErrorResponse, GetBalanceParams, GetInfoParams, INFO_EVENT_KIND,
+    InfoResult, Invoice, InvoiceState, ListTransactionsParams, ListTransactionsResult,
+    LookupInvoiceParams, MakeInvoiceParams, Method, MultiPayInvoiceItem, MultiPayInvoiceParams,
+    MultiPayKeysendItem, MultiPayKeysendParams, NOTIFICATION_KIND_NIP04, NOTIFICATION_KIND_NIP44,
+    Network, Nip47Error, NostrWalletConnectUrl, Notification, NotificationType, PayInvoiceParams,
+    PayInvoiceResult, PayKeysendParams, REQUEST_KIND, RESPONSE_KIND, Request, RequestParams,
+    Response, ResponseResult, TlvRecord, Transaction, TransactionType,
 };
 
 // NIP-48: Proxy Tags
 pub use nip48::{
-    Nip48Error, PROXY_TAG, ProxyProtocol, ProxyTag, add_proxy_tag, get_proxy_tag,
-    get_proxy_tags, has_proxy_tag, is_bridged_event,
+    Nip48Error, PROXY_TAG, ProxyProtocol, ProxyTag, add_proxy_tag, get_proxy_tag, get_proxy_tags,
+    has_proxy_tag, is_bridged_event,
 };
 
 // NIP-49: Private Key Encryption (requires full feature)
 #[cfg(feature = "full")]
 pub use nip49::{
-    KeySecurity, Nip49Error, ENCRYPTED_SIZE, PRIVATE_KEY_SIZE, SALT_SIZE, TAG_SIZE,
-    decrypt as nip49_decrypt, derive_key as nip49_derive_key, encrypt as nip49_encrypt,
-    normalize_password,
-    NONCE_SIZE as NIP49_NONCE_SIZE, VERSION as NIP49_VERSION,
+    ENCRYPTED_SIZE, KeySecurity, NONCE_SIZE as NIP49_NONCE_SIZE, Nip49Error, PRIVATE_KEY_SIZE,
+    SALT_SIZE, TAG_SIZE, VERSION as NIP49_VERSION, decrypt as nip49_decrypt,
+    derive_key as nip49_derive_key, encrypt as nip49_encrypt, normalize_password,
 };
 
 // NIP-50: Search Capability
-pub use nip50::{
-    Nip50Error, SearchExtensions, SearchQuery, Sentiment, validate_query,
-};
+pub use nip50::{Nip50Error, SearchExtensions, SearchQuery, Sentiment, validate_query};
 
 // NIP-51: Lists
 pub use nip51::{
     KIND_APP_CURATION, KIND_BLOCKED_RELAYS, KIND_BOOKMARK_SETS, KIND_BOOKMARKS, KIND_CALENDAR,
     KIND_COMMUNITIES, KIND_CURATION_SETS, KIND_DM_RELAYS, KIND_EMOJI_SETS, KIND_EMOJIS,
-    KIND_FOLLOW_LIST, KIND_FOLLOW_SETS, KIND_INTERESTS, KIND_INTEREST_SETS, KIND_KIND_MUTE_SETS,
+    KIND_FOLLOW_LIST, KIND_FOLLOW_SETS, KIND_INTEREST_SETS, KIND_INTERESTS, KIND_KIND_MUTE_SETS,
     KIND_MEDIA_FOLLOWS, KIND_MEDIA_STARTER_PACKS, KIND_MUTE_LIST, KIND_PINNED_NOTES,
     KIND_PUBLIC_CHATS, KIND_RELAY_FEEDS, KIND_RELAY_LIST, KIND_RELAY_SETS, KIND_RELEASE_ARTIFACTS,
     KIND_SEARCH_RELAYS, KIND_SIMPLE_GROUPS, KIND_STARTER_PACKS, KIND_VIDEO_CURATION,
@@ -636,9 +624,9 @@ pub use nip51::{
 // NIP-52: Calendar Events
 pub use nip52::{
     Calendar, CalendarEventRef, CalendarEventRsvp, DateBasedCalendarEvent, FreeBusyStatus,
-    KIND_CALENDAR_EVENT_RSVP, KIND_DATE_BASED_CALENDAR_EVENT,
-    KIND_TIME_BASED_CALENDAR_EVENT, Nip52Error, Participant, RsvpStatus, TimeBasedCalendarEvent,
-    is_calendar_event_kind, is_nip52_kind,
+    KIND_CALENDAR_EVENT_RSVP, KIND_DATE_BASED_CALENDAR_EVENT, KIND_TIME_BASED_CALENDAR_EVENT,
+    Nip52Error, Participant, RsvpStatus, TimeBasedCalendarEvent, is_calendar_event_kind,
+    is_nip52_kind,
 };
 // Note: KIND_CALENDAR (31924) is already exported from nip51
 
@@ -657,27 +645,25 @@ pub use nip54::{
 
 // NIP-55: Android Signer Application
 pub use nip55::{
-    CompressionType, ContentResolverUri, Nip55Error, Permission, ReturnType, SignerRequest,
-    SignerRequestType, SignerResponse, WebSignerRequest, NOSTRSIGNER_SCHEME,
+    CompressionType, ContentResolverUri, NOSTRSIGNER_SCHEME, Nip55Error, Permission, ReturnType,
+    SignerRequest, SignerRequestType, SignerResponse, WebSignerRequest,
 };
 
 // NIP-56: Reporting
-pub use nip56::{
-    Nip56Error, Report, ReportTarget, ReportType, REPORT_KIND, is_report_kind,
-};
+pub use nip56::{Nip56Error, REPORT_KIND, Report, ReportTarget, ReportType, is_report_kind};
 
 // NIP-57: Lightning Zaps
 pub use nip57::{
-    count_zaps_for_event, Nip57Error, ZapReceipt, ZapRequest, ZapSettings, ZAP_RECEIPT_KIND,
-    ZAP_REQUEST_KIND,
+    Nip57Error, ZAP_RECEIPT_KIND, ZAP_REQUEST_KIND, ZapReceipt, ZapRequest, ZapSettings,
+    count_zaps_for_event,
 };
 
 // NIP-58: Badges
 pub use nip58::{
     BadgeAward, BadgeDefinition, BadgeThumbnail, ImageDimensions, KIND_BADGE_AWARD,
-    KIND_BADGE_DEFINITION, KIND_PROFILE_BADGES, Nip58Error, PROFILE_BADGES_D_TAG,
-    ProfileBadgePair, ProfileBadges, is_badge_award_kind, is_badge_definition_kind,
-    is_nip58_kind, is_profile_badges_kind,
+    KIND_BADGE_DEFINITION, KIND_PROFILE_BADGES, Nip58Error, PROFILE_BADGES_D_TAG, ProfileBadgePair,
+    ProfileBadges, is_badge_award_kind, is_badge_definition_kind, is_nip58_kind,
+    is_profile_badges_kind,
 };
 
 // NIP-59: Gift Wrap (requires full feature)
@@ -689,24 +675,23 @@ pub use nip59::{
 
 // NIP-60: Cashu Wallets
 pub use nip60::{
-    CashuProof, EventMarker, Nip60Error, QuoteEvent, SpendingHistoryEvent, TokenContent,
-    TokenEvent, TransactionDirection, WalletEvent, QUOTE_KIND, SPENDING_HISTORY_KIND, TOKEN_KIND,
-    WALLET_KIND, is_nip60_kind, is_quote_kind, is_spending_history_kind, is_token_kind,
+    CashuProof, EventMarker, Nip60Error, QUOTE_KIND, QuoteEvent, SPENDING_HISTORY_KIND,
+    SpendingHistoryEvent, TOKEN_KIND, TokenContent, TokenEvent, TransactionDirection, WALLET_KIND,
+    WalletEvent, is_nip60_kind, is_quote_kind, is_spending_history_kind, is_token_kind,
     is_wallet_kind,
 };
 
 // NIP-61: Nutzaps
 pub use nip61::{
-    MintInfo, Nip61Error, Nutzap, NutzapInfo, NutzapProof, NUTZAP_INFO_KIND, NUTZAP_KIND,
+    MintInfo, NUTZAP_INFO_KIND, NUTZAP_KIND, Nip61Error, Nutzap, NutzapInfo, NutzapProof,
     create_mint_tag, create_proof_tag, create_pubkey_tag, create_relay_tag, create_u_tag,
     create_unit_tag, is_nip61_kind, is_nutzap_info_kind, is_nutzap_kind,
 };
 
 // NIP-62: Request to Vanish
 pub use nip62::{
-    ALL_RELAYS, Nip62Error, REQUEST_TO_VANISH_KIND, RELAY_TAG as NIP62_RELAY_TAG,
-    RequestToVanish, get_target_relays, is_global_request, is_request_to_vanish,
-    validate_request_to_vanish,
+    ALL_RELAYS, Nip62Error, RELAY_TAG as NIP62_RELAY_TAG, REQUEST_TO_VANISH_KIND, RequestToVanish,
+    get_target_relays, is_global_request, is_request_to_vanish, validate_request_to_vanish,
 };
 
 // NIP-64: Chess (Portable Game Notation)
@@ -724,8 +709,8 @@ pub use nip65::{
 // NIP-66: Relay Discovery and Liveness Monitoring
 pub use nip66::{
     CHECK_TYPE_TAG, CheckTimeout, FREQUENCY_TAG, GEOHASH_TAG as NIP66_GEOHASH_TAG,
-    KIND_TAG as NIP66_KIND_TAG, KindPolicy, NETWORK_TYPE_TAG, NIP_SUPPORT_TAG, Nip66Error,
-    NetworkType, RELAY_DISCOVERY_KIND, RELAY_MONITOR_ANNOUNCEMENT_KIND, RELAY_TYPE_TAG,
+    KIND_TAG as NIP66_KIND_TAG, KindPolicy, NETWORK_TYPE_TAG, NIP_SUPPORT_TAG, NetworkType,
+    Nip66Error, RELAY_DISCOVERY_KIND, RELAY_MONITOR_ANNOUNCEMENT_KIND, RELAY_TYPE_TAG,
     REQUIREMENT_TAG, RTT_OPEN_TAG, RTT_READ_TAG, RTT_WRITE_TAG, RelayDiscovery,
     RelayMonitorAnnouncement, Requirement, RttMetrics, TIMEOUT_TAG, TOPIC_TAG as NIP66_TOPIC_TAG,
     is_relay_discovery, is_relay_monitor_announcement, validate_relay_discovery,
@@ -741,8 +726,8 @@ pub use nip68::{
 
 // NIP-69: Peer-to-peer Order Events
 pub use nip69::{
-    BitcoinLayer, Nip69Error, OrderStatus, OrderType, P2POrder, P2P_ORDER_KIND, Rating,
-    DOCUMENT_TYPE, is_p2p_order_kind,
+    BitcoinLayer, DOCUMENT_TYPE, Nip69Error, OrderStatus, OrderType, P2P_ORDER_KIND, P2POrder,
+    Rating, is_p2p_order_kind,
 };
 
 // NIP-17: Private Direct Messages (requires full feature)
@@ -775,8 +760,8 @@ pub use nip72::{
 // NIP-73: External Content IDs
 pub use nip73::{
     EXTERNAL_ID_TAG, EXTERNAL_KIND_TAG, ExternalContent, ExternalContentType, Nip73Error,
-    add_external_content, bitcoin_address, bitcoin_tx, doi, ethereum_address, ethereum_tx,
-    geohash, get_external_content_refs, hashtag, isan, isbn, podcast_episode, podcast_feed,
+    add_external_content, bitcoin_address, bitcoin_tx, doi, ethereum_address, ethereum_tx, geohash,
+    get_external_content_refs, hashtag, isan, isbn, podcast_episode, podcast_feed,
     podcast_publisher, web,
 };
 
@@ -784,8 +769,7 @@ pub use nip73::{
 pub use nip75::{
     AMOUNT_TAG, CLOSED_AT_TAG, GOAL_TAG, IMAGE_TAG, Nip75Error, RELAYS_TAG, SUMMARY_TAG,
     ZAP_GOAL_KIND, ZapGoal, add_goal_tag, create_amount_tag, create_closed_at_tag,
-    create_image_tag, create_relays_tag, create_summary_tag, get_goal_reference,
-    is_zap_goal_kind,
+    create_image_tag, create_relays_tag, create_summary_tag, get_goal_reference, is_zap_goal_kind,
 };
 
 // NIP-77: Negentropy Syncing
@@ -805,8 +789,8 @@ pub use nip84::{
 
 // NIP-86: Relay Management API
 pub use nip86::{
-    EventEntry, IpEntry, Nip86Error, PubkeyEntry,
-    Method as RelayManagementMethod, Request as RelayManagementRequest,
+    CONTENT_TYPE as RELAY_MANAGEMENT_CONTENT_TYPE, EventEntry, IpEntry,
+    Method as RelayManagementMethod, Nip86Error, PubkeyEntry, Request as RelayManagementRequest,
     Response as RelayManagementResponse, create_allow_event_request, create_allow_kind_request,
     create_allow_pubkey_request, create_ban_event_request, create_ban_pubkey_request,
     create_block_ip_request, create_change_relay_description_request,
@@ -815,15 +799,15 @@ pub use nip86::{
     create_list_allowed_pubkeys_request, create_list_banned_events_request,
     create_list_banned_pubkeys_request, create_list_blocked_ips_request,
     create_list_events_needing_moderation_request, create_supported_methods_request,
-    create_unblock_ip_request, CONTENT_TYPE as RELAY_MANAGEMENT_CONTENT_TYPE,
+    create_unblock_ip_request,
 };
 
 // NIP-87: Ecash Mint Discoverability
 pub use nip87::{
-    D_TAG as NIP87_D_TAG, EVENT_REF_TAG as NIP87_EVENT_REF_TAG, CashuMintInfo, FedimintInfo,
+    CashuMintInfo, D_TAG as NIP87_D_TAG, EVENT_REF_TAG as NIP87_EVENT_REF_TAG, FedimintInfo,
     KIND_CASHU_MINT, KIND_FEDIMINT, KIND_MINT_RECOMMENDATION, KIND_TAG as NIP87_KIND_TAG,
-    MODULES_TAG, MintNetwork, MintRecommendation, NETWORK_TAG as NIP87_NETWORK_TAG, Nip87Error,
-    NUTS_TAG, URL_TAG as NIP87_URL_TAG, create_cashu_mint_tags, create_fedimint_tags,
+    MODULES_TAG, MintNetwork, MintRecommendation, NETWORK_TAG as NIP87_NETWORK_TAG, NUTS_TAG,
+    Nip87Error, URL_TAG as NIP87_URL_TAG, create_cashu_mint_tags, create_fedimint_tags,
     create_recommendation_tags, is_cashu_mint, is_fedimint, is_mint_recommendation, is_nip87_kind,
     parse_cashu_mint, parse_fedimint, parse_recommendation,
 };
@@ -841,8 +825,8 @@ pub use nip88::{
 // NIP-89: Application Handlers
 pub use nip89::{
     HandlerInfo, HandlerMetadata, HandlerRecommendation, HandlerType, KIND_HANDLER_INFO,
-    KIND_HANDLER_RECOMMENDATION, Nip89Error, PricingInfo, SocialTrustScore,
-    is_handler_info_kind, is_handler_recommendation_kind, is_nip89_kind,
+    KIND_HANDLER_RECOMMENDATION, Nip89Error, PricingInfo, SocialTrustScore, is_handler_info_kind,
+    is_handler_recommendation_kind, is_nip89_kind,
 };
 
 // NIP-90: Data Vending Machine
@@ -851,9 +835,8 @@ pub use nip90::{
     JOB_RESULT_KIND_MIN, JobFeedback, JobInput, JobParam, JobRequest, JobResult, JobStatus,
     KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
     KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, Nip90Error,
-    create_job_feedback_event, create_job_request_event, create_job_result_event,
-    get_request_kind, get_result_kind, is_dvm_kind, is_job_feedback_kind, is_job_request_kind,
-    is_job_result_kind,
+    create_job_feedback_event, create_job_request_event, create_job_result_event, get_request_kind,
+    get_result_kind, is_dvm_kind, is_job_feedback_kind, is_job_request_kind, is_job_result_kind,
 };
 
 // NIP-92: Media Attachments
@@ -864,30 +847,30 @@ pub use nip92::{
 
 // NIP-94: File Metadata
 pub use nip94::{
-    create_file_metadata_event, Dimensions, FileImage, FileMetadata, FILE_METADATA_KIND,
-    Nip94Error, is_file_metadata_kind,
+    Dimensions, FILE_METADATA_KIND, FileImage, FileMetadata, Nip94Error,
+    create_file_metadata_event, is_file_metadata_kind,
 };
 
 // NIP-95: File Storage on Relays
 pub use nip95::{
-    FILE_CONTENT_KIND, FILE_HEADER_KIND, FileContent, FileHeader, Nip95Error,
-    get_alt, get_block_size, get_content_events, get_hash, get_mime_type, get_size, get_summary,
+    FILE_CONTENT_KIND, FILE_HEADER_KIND, FileContent, FileHeader, Nip95Error, get_alt,
+    get_block_size, get_content_events, get_hash, get_mime_type, get_size, get_summary,
     is_file_content_kind, is_file_header_kind, is_nip95_kind,
 };
 
 // NIP-96: HTTP File Storage Integration
 pub use nip96::{
     DeleteResponse, FILE_SERVER_PREFERENCE_KIND, FileMetadata as Nip96FileMetadata,
-    ListFilesResponse, MediaType, Nip94Event, Nip96Error, ProcessingStatus, ServerInfo,
-    ServerPlan, UploadRequest, UploadResponse, UploadStatus, WELL_KNOWN_PATH,
-    construct_delete_url, construct_download_url,
+    ListFilesResponse, MediaType, Nip94Event, Nip96Error, ProcessingStatus, ServerInfo, ServerPlan,
+    UploadRequest, UploadResponse, UploadStatus, WELL_KNOWN_PATH, construct_delete_url,
+    construct_download_url,
 };
 
 // NIP-99: Classified Listings
 pub use nip99::{
-    ClassifiedListing, DraftListing, ListingImage, ListingStatus, Nip99Error, Price,
-    KIND_CLASSIFIED_LISTING, KIND_DRAFT_LISTING, is_classified_listing_kind,
-    is_draft_listing_kind, is_nip99_kind,
+    ClassifiedListing, DraftListing, KIND_CLASSIFIED_LISTING, KIND_DRAFT_LISTING, ListingImage,
+    ListingStatus, Nip99Error, Price, is_classified_listing_kind, is_draft_listing_kind,
+    is_nip99_kind,
 };
 
 // NIP-C7: Chats
@@ -907,25 +890,59 @@ pub use nip98::{
 // NIP-SA: Sovereign Agents
 pub use nip_sa::{
     // Profile (kind:39200)
-    AgentProfile, AgentProfileContent, AutonomyLevel, ProfileError, ThresholdConfig,
-    KIND_AGENT_PROFILE,
-    // State (kind:39201)
-    AgentState, AgentStateContent, Goal, GoalStatus, MemoryEntry, StateError, KIND_AGENT_STATE,
-    STATE_VERSION,
+    AgentProfile,
+    AgentProfileContent,
     // Schedule (kind:39202)
-    AgentSchedule, ScheduleError, TriggerType, KIND_AGENT_SCHEDULE,
-    // Goals (kind:39203)
-    PublicGoals, PublicGoalsContent, PublicGoalsError, KIND_PUBLIC_GOALS,
-    // Tick (kinds:39210, 39211)
-    TickAction, TickError, TickRequest, TickResult, TickResultContent, TickStatus, TickTrigger,
-    KIND_TICK_REQUEST, KIND_TICK_RESULT,
-    // Trajectory (kinds:39230, 39231)
-    StepType, TrajectoryError, TrajectoryEvent, TrajectoryEventContent, TrajectorySession,
-    TrajectorySessionContent, TrajectoryVisibility, KIND_TRAJECTORY_EVENT,
+    AgentSchedule,
+    // State (kind:39201)
+    AgentState,
+    AgentStateContent,
+    AutonomyLevel,
+    Goal,
+    GoalStatus,
+    KIND_AGENT_PROFILE,
+    KIND_AGENT_SCHEDULE,
+    KIND_AGENT_STATE,
+    KIND_PUBLIC_GOALS,
+    KIND_SKILL_DELIVERY,
+    KIND_SKILL_LICENSE,
+    KIND_TICK_REQUEST,
+    KIND_TICK_RESULT,
+    KIND_TRAJECTORY_EVENT,
     KIND_TRAJECTORY_SESSION,
+    MemoryEntry,
+    ProfileError,
+    // Goals (kind:39203)
+    PublicGoals,
+    PublicGoalsContent,
+    PublicGoalsError,
+    STATE_VERSION,
+    ScheduleError,
     // Skill (kinds:39220, 39221)
-    SkillDelivery, SkillDeliveryContent, SkillError, SkillLicense, SkillLicenseContent,
-    KIND_SKILL_DELIVERY, KIND_SKILL_LICENSE,
+    SkillDelivery,
+    SkillDeliveryContent,
+    SkillError,
+    SkillLicense,
+    SkillLicenseContent,
+    StateError,
+    // Trajectory (kinds:39230, 39231)
+    StepType,
+    ThresholdConfig,
+    // Tick (kinds:39210, 39211)
+    TickAction,
+    TickError,
+    TickRequest,
+    TickResult,
+    TickResultContent,
+    TickStatus,
+    TickTrigger,
+    TrajectoryError,
+    TrajectoryEvent,
+    TrajectoryEventContent,
+    TrajectorySession,
+    TrajectorySessionContent,
+    TrajectoryVisibility,
+    TriggerType,
 };
 
 // Identity types for marketplace (base types always available)

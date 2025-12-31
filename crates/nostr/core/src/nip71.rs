@@ -168,11 +168,7 @@ pub struct VideoSegment {
 
 impl VideoSegment {
     /// Create a new video segment
-    pub fn new(
-        start: impl Into<String>,
-        end: impl Into<String>,
-        title: impl Into<String>,
-    ) -> Self {
+    pub fn new(start: impl Into<String>, end: impl Into<String>, title: impl Into<String>) -> Self {
         Self {
             start: start.into(),
             end: end.into(),
@@ -233,7 +229,11 @@ impl TextTrack {
 
     /// Convert to tag
     pub fn to_tag(&self) -> Vec<String> {
-        let mut tag = vec!["text-track".to_string(), self.url.clone(), self.track_type.clone()];
+        let mut tag = vec![
+            "text-track".to_string(),
+            self.url.clone(),
+            self.track_type.clone(),
+        ];
 
         if let Some(language) = &self.language {
             tag.push(language.clone());
@@ -333,7 +333,9 @@ impl VideoEvent {
             return Err(Nip71Error::MissingField("title".to_string()));
         }
         if self.kind != KIND_VIDEO && self.kind != KIND_SHORT_VIDEO {
-            return Err(Nip71Error::MissingField("kind must be 21 or 22".to_string()));
+            return Err(Nip71Error::MissingField(
+                "kind must be 21 or 22".to_string(),
+            ));
         }
         Ok(())
     }
@@ -441,8 +443,8 @@ mod tests {
 
     #[test]
     fn test_text_track() {
-        let track = TextTrack::new("https://example.com/captions.vtt", "captions")
-            .with_language("en");
+        let track =
+            TextTrack::new("https://example.com/captions.vtt", "captions").with_language("en");
 
         let tag = track.to_tag();
         assert_eq!(tag[0], "text-track");
@@ -483,8 +485,9 @@ mod tests {
         let mut video = VideoEvent::new_normal("Test Video");
         video.published_at = Some(1686840000);
         video.alt = Some("A test video".to_string());
-        video.add_variant(VideoVariant::new("https://example.com/video.mp4")
-            .with_dimensions("1920x1080"));
+        video.add_variant(
+            VideoVariant::new("https://example.com/video.mp4").with_dimensions("1920x1080"),
+        );
         video.add_text_track(TextTrack::new("https://example.com/subs.vtt", "subtitles"));
         video.add_segment(VideoSegment::new("00:00:00", "00:01:00", "Intro"));
         video.hashtags.push("test".to_string());
@@ -520,9 +523,15 @@ mod tests {
     #[test]
     fn test_video_variant_with_images_and_fallbacks() {
         let mut variant = VideoVariant::new("https://example.com/video.mp4");
-        variant.images.push("https://example.com/thumb1.jpg".to_string());
-        variant.images.push("https://example.com/thumb2.jpg".to_string());
-        variant.fallbacks.push("https://backup.example.com/video.mp4".to_string());
+        variant
+            .images
+            .push("https://example.com/thumb1.jpg".to_string());
+        variant
+            .images
+            .push("https://example.com/thumb2.jpg".to_string());
+        variant
+            .fallbacks
+            .push("https://backup.example.com/video.mp4".to_string());
         variant.service = Some("nip96".to_string());
 
         let tag = variant.to_imeta_tag();
@@ -538,6 +547,9 @@ mod tests {
         video.content_warning = Some("adult content".to_string());
 
         let tags = video.to_tags();
-        assert!(tags.contains(&vec!["content-warning".to_string(), "adult content".to_string()]));
+        assert!(tags.contains(&vec![
+            "content-warning".to_string(),
+            "adult content".to_string()
+        ]));
     }
 }

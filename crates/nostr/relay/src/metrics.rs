@@ -122,17 +122,20 @@ impl RelayMetrics {
 
     /// Record an event rejected (validation)
     pub fn event_rejected_validation(&self) {
-        self.events_rejected_validation.fetch_add(1, Ordering::Relaxed);
+        self.events_rejected_validation
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record an event rejected (rate limit)
     pub fn event_rejected_rate_limit(&self) {
-        self.events_rejected_rate_limit.fetch_add(1, Ordering::Relaxed);
+        self.events_rejected_rate_limit
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record an event rejected (signature)
     pub fn event_rejected_signature(&self) {
-        self.events_rejected_signature.fetch_add(1, Ordering::Relaxed);
+        self.events_rejected_signature
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Increment active subscriptions
@@ -169,12 +172,14 @@ impl RelayMetrics {
 
     /// Record connection blocked (banned IP)
     pub fn connection_blocked_banned(&self) {
-        self.connections_blocked_banned.fetch_add(1, Ordering::Relaxed);
+        self.connections_blocked_banned
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record connection blocked (rate limit)
     pub fn connection_blocked_rate_limit(&self) {
-        self.connections_blocked_rate_limit.fetch_add(1, Ordering::Relaxed);
+        self.connections_blocked_rate_limit
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record database query
@@ -208,7 +213,9 @@ impl RelayMetrics {
             bytes_sent: self.bytes_sent.load(Ordering::Relaxed),
             banned_ips: self.banned_ips.load(Ordering::Relaxed),
             connections_blocked_banned: self.connections_blocked_banned.load(Ordering::Relaxed),
-            connections_blocked_rate_limit: self.connections_blocked_rate_limit.load(Ordering::Relaxed),
+            connections_blocked_rate_limit: self
+                .connections_blocked_rate_limit
+                .load(Ordering::Relaxed),
             db_queries: self.db_queries.load(Ordering::Relaxed),
             db_errors: self.db_errors.load(Ordering::Relaxed),
         }
@@ -402,7 +409,10 @@ mod tests {
         assert_eq!(metrics.events_stored.load(Ordering::Relaxed), 1);
 
         metrics.event_rejected_rate_limit();
-        assert_eq!(metrics.events_rejected_rate_limit.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            metrics.events_rejected_rate_limit.load(Ordering::Relaxed),
+            1
+        );
     }
 
     #[test]

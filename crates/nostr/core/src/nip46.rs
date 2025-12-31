@@ -157,7 +157,10 @@ impl NostrConnectRequest {
     }
 
     /// Create a nip04_encrypt request.
-    pub fn nip04_encrypt(third_party_pubkey: impl Into<String>, plaintext: impl Into<String>) -> Self {
+    pub fn nip04_encrypt(
+        third_party_pubkey: impl Into<String>,
+        plaintext: impl Into<String>,
+    ) -> Self {
         Self::new(
             NostrConnectMethod::Nip04Encrypt,
             vec![third_party_pubkey.into(), plaintext.into()],
@@ -165,7 +168,10 @@ impl NostrConnectRequest {
     }
 
     /// Create a nip04_decrypt request.
-    pub fn nip04_decrypt(third_party_pubkey: impl Into<String>, ciphertext: impl Into<String>) -> Self {
+    pub fn nip04_decrypt(
+        third_party_pubkey: impl Into<String>,
+        ciphertext: impl Into<String>,
+    ) -> Self {
         Self::new(
             NostrConnectMethod::Nip04Decrypt,
             vec![third_party_pubkey.into(), ciphertext.into()],
@@ -173,7 +179,10 @@ impl NostrConnectRequest {
     }
 
     /// Create a nip44_encrypt request.
-    pub fn nip44_encrypt(third_party_pubkey: impl Into<String>, plaintext: impl Into<String>) -> Self {
+    pub fn nip44_encrypt(
+        third_party_pubkey: impl Into<String>,
+        plaintext: impl Into<String>,
+    ) -> Self {
         Self::new(
             NostrConnectMethod::Nip44Encrypt,
             vec![third_party_pubkey.into(), plaintext.into()],
@@ -181,7 +190,10 @@ impl NostrConnectRequest {
     }
 
     /// Create a nip44_decrypt request.
-    pub fn nip44_decrypt(third_party_pubkey: impl Into<String>, ciphertext: impl Into<String>) -> Self {
+    pub fn nip44_decrypt(
+        third_party_pubkey: impl Into<String>,
+        ciphertext: impl Into<String>,
+    ) -> Self {
         Self::new(
             NostrConnectMethod::Nip44Decrypt,
             vec![third_party_pubkey.into(), ciphertext.into()],
@@ -298,9 +310,11 @@ impl BunkerUrl {
                 let kv: Vec<&str> = param.splitn(2, '=').collect();
                 if kv.len() == 2 {
                     match kv[0] {
-                        "relay" => relays.push(urlencoding::decode(kv[1])
-                            .map_err(|e| Nip46Error::InvalidConnectionUrl(e.to_string()))?
-                            .to_string()),
+                        "relay" => relays.push(
+                            urlencoding::decode(kv[1])
+                                .map_err(|e| Nip46Error::InvalidConnectionUrl(e.to_string()))?
+                                .to_string(),
+                        ),
                         "secret" => secret = Some(kv[1].to_string()),
                         _ => {}
                     }

@@ -370,8 +370,7 @@ mod tests {
             kind: 1,
             tags: vec![vec![
                 "proxy".to_string(),
-                "https://gleasonator.com/objects/8f6fac53-4f66-4c6e-ac7d-92e5e78c3e79"
-                    .to_string(),
+                "https://gleasonator.com/objects/8f6fac53-4f66-4c6e-ac7d-92e5e78c3e79".to_string(),
                 "activitypub".to_string(),
             ]],
             content: "I'm vegan btw".to_string(),

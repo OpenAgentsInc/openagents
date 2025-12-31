@@ -564,10 +564,7 @@ impl AgentState {
 /// Determine which state event IDs should be deleted to compact history.
 ///
 /// Returns all but the most recent state event for the given pubkey.
-pub fn state_event_ids_for_compaction(
-    events: &[crate::Event],
-    pubkey: &str,
-) -> Vec<String> {
+pub fn state_event_ids_for_compaction(events: &[crate::Event], pubkey: &str) -> Vec<String> {
     let mut state_events: Vec<&crate::Event> = events
         .iter()
         .filter(|event| {
@@ -595,10 +592,7 @@ pub fn state_event_ids_for_compaction(
 }
 
 /// Build deletion request tags to compact old state events.
-pub fn build_state_compaction_tags(
-    events: &[crate::Event],
-    pubkey: &str,
-) -> Vec<Vec<String>> {
+pub fn build_state_compaction_tags(events: &[crate::Event], pubkey: &str) -> Vec<Vec<String>> {
     let event_ids = state_event_ids_for_compaction(events, pubkey);
     if event_ids.is_empty() {
         return Vec::new();
@@ -738,7 +732,11 @@ mod tests {
     fn test_agent_state_content_serialization() {
         let mut state = AgentStateContent::new();
         state.add_goal(Goal::new("goal-1", "Test goal", 1));
-        state.add_memory(MemoryEntry::with_timestamp("observation", "Test memory", 1703000000));
+        state.add_memory(MemoryEntry::with_timestamp(
+            "observation",
+            "Test memory",
+            1703000000,
+        ));
         state.update_balance(1000);
 
         let json = state.to_json().unwrap();
@@ -761,9 +759,10 @@ mod tests {
         ));
         state.pending_tasks.push("task-1".to_string());
         state.pending_tasks.push("task-2".to_string());
-        state
-            .beliefs
-            .insert("theme".to_string(), serde_json::Value::String("nostr".to_string()));
+        state.beliefs.insert(
+            "theme".to_string(),
+            serde_json::Value::String("nostr".to_string()),
+        );
         state.tick_count = 7;
         state.last_tick = 1703002000;
 
@@ -785,9 +784,10 @@ mod tests {
         state.add_goal(Goal::new("goal-1", "Test goal", 1));
         state.add_memory(MemoryEntry::new("observation", "Test memory"));
         state.pending_tasks.push("task-1".to_string());
-        state
-            .beliefs
-            .insert("market".to_string(), serde_json::Value::String("bull".to_string()));
+        state.beliefs.insert(
+            "market".to_string(),
+            serde_json::Value::String("bull".to_string()),
+        );
         state.tick_count = 3;
         state.last_tick = 1703002000;
 
@@ -804,9 +804,10 @@ mod tests {
         content.add_goal(Goal::new("goal-1", "Test goal", 1));
         content.add_memory(MemoryEntry::new("observation", "Test memory"));
         content.pending_tasks.push("task-1".to_string());
-        content
-            .beliefs
-            .insert("theme".to_string(), serde_json::Value::String("nostr".to_string()));
+        content.beliefs.insert(
+            "theme".to_string(),
+            serde_json::Value::String("nostr".to_string()),
+        );
         content.tick_count = 3;
         content.last_tick = 1703002000;
         let state = AgentState::new(content);
@@ -836,7 +837,13 @@ mod tests {
             mock_event("id-1", pubkey, 100, KIND_AGENT_STATE, Some(STATE_D_TAG)),
             mock_event("id-2", pubkey, 200, KIND_AGENT_STATE, Some(STATE_D_TAG)),
             mock_event("id-3", pubkey, 150, KIND_AGENT_STATE, Some(STATE_D_TAG)),
-            mock_event("id-4", "other_pubkey", 300, KIND_AGENT_STATE, Some(STATE_D_TAG)),
+            mock_event(
+                "id-4",
+                "other_pubkey",
+                300,
+                KIND_AGENT_STATE,
+                Some(STATE_D_TAG),
+            ),
             mock_event("id-5", pubkey, 250, 1, Some(STATE_D_TAG)),
             mock_event("id-6", pubkey, 120, KIND_AGENT_STATE, Some("not-state")),
         ];
@@ -862,15 +869,21 @@ mod tests {
 
         assert_eq!(template.kind, crate::nip09::DELETION_REQUEST_KIND);
         assert_eq!(template.content, "compact state");
-        assert!(template
-            .tags
-            .contains(&vec!["e".to_string(), "id-1".to_string()]));
-        assert!(!template
-            .tags
-            .contains(&vec!["e".to_string(), "id-2".to_string()]));
-        assert!(template
-            .tags
-            .contains(&vec!["k".to_string(), KIND_AGENT_STATE.to_string()]));
+        assert!(
+            template
+                .tags
+                .contains(&vec!["e".to_string(), "id-1".to_string()])
+        );
+        assert!(
+            !template
+                .tags
+                .contains(&vec!["e".to_string(), "id-2".to_string()])
+        );
+        assert!(
+            template
+                .tags
+                .contains(&vec!["k".to_string(), KIND_AGENT_STATE.to_string()])
+        );
     }
 
     #[cfg(feature = "full")]

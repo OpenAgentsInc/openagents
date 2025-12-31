@@ -5,7 +5,7 @@
 //! boundary values for since/until timestamps, and large arrays of kinds/authors/tags.
 
 use crate::subscription::Filter;
-use nostr::{EventTemplate, finalize_event, generate_secret_key, Event};
+use nostr::{Event, EventTemplate, finalize_event, generate_secret_key};
 use proptest::prelude::*;
 use std::collections::HashMap;
 
@@ -158,7 +158,10 @@ fn prop_multiple_authors_or_condition() {
     let event2 = create_event_with_fields(1, "test2", vec![], 1234567891);
 
     let mut filter = Filter::new();
-    filter.authors = Some(vec![event1.pubkey[..8].to_string(), event2.pubkey[..8].to_string()]);
+    filter.authors = Some(vec![
+        event1.pubkey[..8].to_string(),
+        event2.pubkey[..8].to_string(),
+    ]);
 
     assert!(filter.matches(&event1));
     assert!(filter.matches(&event2));
@@ -527,12 +530,7 @@ mod boundary_tests {
 
     #[test]
     fn test_filter_with_tag_no_value() {
-        let event = create_event_with_fields(
-            1,
-            "test",
-            vec![vec!["e".to_string()]],
-            1234567890,
-        );
+        let event = create_event_with_fields(1, "test", vec![vec!["e".to_string()]], 1234567890);
 
         let mut filter = Filter::new();
         let mut tag_filters = HashMap::new();

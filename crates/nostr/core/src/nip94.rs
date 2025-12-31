@@ -539,7 +539,10 @@ mod tests {
 
         let tags = metadata.to_tags();
 
-        assert!(tags.contains(&vec!["url".to_string(), "https://example.com/file.pdf".to_string()]));
+        assert!(tags.contains(&vec![
+            "url".to_string(),
+            "https://example.com/file.pdf".to_string()
+        ]));
         assert!(tags.contains(&vec!["m".to_string(), "application/pdf".to_string()]));
         assert!(tags.contains(&vec!["x".to_string(), "abc123".to_string()]));
         assert!(tags.contains(&vec!["ox".to_string(), "def456".to_string()]));
@@ -549,7 +552,10 @@ mod tests {
     #[test]
     fn test_file_metadata_from_tags() {
         let tags = vec![
-            vec!["url".to_string(), "https://example.com/file.pdf".to_string()],
+            vec![
+                "url".to_string(),
+                "https://example.com/file.pdf".to_string(),
+            ],
             vec!["m".to_string(), "application/pdf".to_string()],
             vec!["x".to_string(), "abc123".to_string()],
             vec!["size".to_string(), "500000".to_string()],
@@ -569,7 +575,10 @@ mod tests {
     #[test]
     fn test_file_metadata_from_tags_missing_required() {
         let tags = vec![
-            vec!["url".to_string(), "https://example.com/file.pdf".to_string()],
+            vec![
+                "url".to_string(),
+                "https://example.com/file.pdf".to_string(),
+            ],
             vec!["m".to_string(), "application/pdf".to_string()],
             // Missing 'x' tag
         ];
@@ -588,7 +597,10 @@ mod tests {
         .with_content("Cool video".to_string())
         .with_size(10485760)
         .with_dimensions(1280, 720)
-        .with_thumbnail("https://example.com/thumb.jpg".to_string(), Some("thumbhash".to_string()))
+        .with_thumbnail(
+            "https://example.com/thumb.jpg".to_string(),
+            Some("thumbhash".to_string()),
+        )
         .add_fallback("https://cdn.example.com/video.mp4".to_string());
 
         let tags = original.to_tags();

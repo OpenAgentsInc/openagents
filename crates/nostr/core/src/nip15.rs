@@ -177,7 +177,11 @@ pub struct MerchantStall {
 
 impl MerchantStall {
     /// Create a new merchant stall
-    pub fn new(id: impl Into<String>, name: impl Into<String>, currency: impl Into<String>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        currency: impl Into<String>,
+    ) -> Self {
         Self {
             id: id.into(),
             name: name.into(),
@@ -841,7 +845,10 @@ mod tests {
     fn test_bid_confirmation_pending() {
         let confirmation = BidConfirmation::pending("Awaiting verification");
         assert_eq!(confirmation.status, BidStatus::Pending);
-        assert_eq!(confirmation.message, Some("Awaiting verification".to_string()));
+        assert_eq!(
+            confirmation.message,
+            Some("Awaiting verification".to_string())
+        );
     }
 
     #[test]
@@ -867,8 +874,7 @@ mod tests {
 
     #[test]
     fn test_product_unlimited_quantity() {
-        let product = Product::new("digital1", "stall1", "Ebook", "USD", 9.99)
-            .with_quantity(None);
+        let product = Product::new("digital1", "stall1", "Ebook", "USD", 9.99).with_quantity(None);
         assert_eq!(product.quantity, None);
         assert!(product.validate().is_ok());
     }

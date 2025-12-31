@@ -3,19 +3,19 @@
 //! These tests verify that the nostr-client and nostr-relay crates work together correctly.
 
 pub mod client_relay;
-pub mod subscriptions;
-pub mod filters;
 pub mod error_handling;
+pub mod filters;
 pub mod nip01_protocol_messages;
-pub mod pool;
-pub mod stress;
 pub mod nip_sa;
+pub mod pool;
 pub mod public_relays;
+pub mod stress;
+pub mod subscriptions;
 
 use nostr_relay::{Database, DatabaseConfig, RelayConfig, RelayServer};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 /// Test relay configuration
 pub fn test_relay_config(port: u16) -> RelayConfig {

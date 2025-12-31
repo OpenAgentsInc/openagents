@@ -188,11 +188,7 @@ impl EventCache {
 
         self.by_kind
             .get(&kind)
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(|id| self.events.get(id))
-                    .collect()
-            })
+            .map(|ids| ids.iter().filter_map(|id| self.events.get(id)).collect())
             .unwrap_or_default()
     }
 
@@ -204,11 +200,7 @@ impl EventCache {
 
         self.by_author
             .get(pubkey)
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(|id| self.events.get(id))
-                    .collect()
-            })
+            .map(|ids| ids.iter().filter_map(|id| self.events.get(id)).collect())
             .unwrap_or_default()
     }
 
@@ -221,11 +213,7 @@ impl EventCache {
         self.by_tag
             .get(tag_name)
             .and_then(|values| values.get(tag_value))
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(|id| self.events.get(id))
-                    .collect()
-            })
+            .map(|ids| ids.iter().filter_map(|id| self.events.get(id)).collect())
             .unwrap_or_default()
     }
 
@@ -352,7 +340,13 @@ mod tests {
         }
     }
 
-    fn create_event_with_tag(id: &str, pubkey: &str, kind: u16, tag_name: &str, tag_value: &str) -> Event {
+    fn create_event_with_tag(
+        id: &str,
+        pubkey: &str,
+        kind: u16,
+        tag_name: &str,
+        tag_value: &str,
+    ) -> Event {
         Event {
             id: id.to_string(),
             pubkey: pubkey.to_string(),
@@ -379,9 +373,15 @@ mod tests {
     #[test]
     fn test_cache_get_by_kind() {
         let mut cache = EventCache::new();
-        cache.insert(create_test_event("id1", "pubkey1", 1, 1234567890)).unwrap();
-        cache.insert(create_test_event("id2", "pubkey2", 1, 1234567891)).unwrap();
-        cache.insert(create_test_event("id3", "pubkey3", 3, 1234567892)).unwrap();
+        cache
+            .insert(create_test_event("id1", "pubkey1", 1, 1234567890))
+            .unwrap();
+        cache
+            .insert(create_test_event("id2", "pubkey2", 1, 1234567891))
+            .unwrap();
+        cache
+            .insert(create_test_event("id3", "pubkey3", 3, 1234567892))
+            .unwrap();
 
         let kind1_events = cache.get_by_kind(1);
         assert_eq!(kind1_events.len(), 2);
@@ -393,9 +393,15 @@ mod tests {
     #[test]
     fn test_cache_get_by_author() {
         let mut cache = EventCache::new();
-        cache.insert(create_test_event("id1", "pubkey1", 1, 1234567890)).unwrap();
-        cache.insert(create_test_event("id2", "pubkey1", 3, 1234567891)).unwrap();
-        cache.insert(create_test_event("id3", "pubkey2", 1, 1234567892)).unwrap();
+        cache
+            .insert(create_test_event("id1", "pubkey1", 1, 1234567890))
+            .unwrap();
+        cache
+            .insert(create_test_event("id2", "pubkey1", 3, 1234567891))
+            .unwrap();
+        cache
+            .insert(create_test_event("id3", "pubkey2", 1, 1234567892))
+            .unwrap();
 
         let pubkey1_events = cache.get_by_author("pubkey1");
         assert_eq!(pubkey1_events.len(), 2);
@@ -407,9 +413,15 @@ mod tests {
     #[test]
     fn test_cache_get_by_tag() {
         let mut cache = EventCache::new();
-        cache.insert(create_event_with_tag("id1", "pubkey1", 1, "e", "event123")).unwrap();
-        cache.insert(create_event_with_tag("id2", "pubkey2", 1, "e", "event123")).unwrap();
-        cache.insert(create_event_with_tag("id3", "pubkey3", 1, "p", "pubkey456")).unwrap();
+        cache
+            .insert(create_event_with_tag("id1", "pubkey1", 1, "e", "event123"))
+            .unwrap();
+        cache
+            .insert(create_event_with_tag("id2", "pubkey2", 1, "e", "event123"))
+            .unwrap();
+        cache
+            .insert(create_event_with_tag("id3", "pubkey3", 1, "p", "pubkey456"))
+            .unwrap();
 
         let e_events = cache.get_by_tag("e", "event123");
         assert_eq!(e_events.len(), 2);
@@ -435,8 +447,12 @@ mod tests {
     #[test]
     fn test_cache_clear() {
         let mut cache = EventCache::new();
-        cache.insert(create_test_event("id1", "pubkey1", 1, 1234567890)).unwrap();
-        cache.insert(create_test_event("id2", "pubkey2", 3, 1234567891)).unwrap();
+        cache
+            .insert(create_test_event("id1", "pubkey1", 1, 1234567890))
+            .unwrap();
+        cache
+            .insert(create_test_event("id2", "pubkey2", 3, 1234567891))
+            .unwrap();
 
         assert_eq!(cache.len(), 2);
         cache.clear();
@@ -452,13 +468,21 @@ mod tests {
         };
         let mut cache = EventCache::with_config(config);
 
-        cache.insert(create_test_event("id1", "pubkey1", 1, 1234567890)).unwrap();
-        cache.insert(create_test_event("id2", "pubkey2", 1, 1234567891)).unwrap();
-        cache.insert(create_test_event("id3", "pubkey3", 1, 1234567892)).unwrap();
+        cache
+            .insert(create_test_event("id1", "pubkey1", 1, 1234567890))
+            .unwrap();
+        cache
+            .insert(create_test_event("id2", "pubkey2", 1, 1234567891))
+            .unwrap();
+        cache
+            .insert(create_test_event("id3", "pubkey3", 1, 1234567892))
+            .unwrap();
         assert_eq!(cache.len(), 3);
 
         // Insert 4th event, should evict oldest (id1)
-        cache.insert(create_test_event("id4", "pubkey4", 1, 1234567893)).unwrap();
+        cache
+            .insert(create_test_event("id4", "pubkey4", 1, 1234567893))
+            .unwrap();
         assert_eq!(cache.len(), 3);
         assert!(cache.get("id1").is_none());
         assert!(cache.get("id2").is_some());
@@ -538,7 +562,9 @@ mod tests {
         };
         let mut cache = EventCache::with_config(config);
 
-        cache.insert(create_test_event("id1", "pubkey1", 1, 1234567890)).unwrap();
+        cache
+            .insert(create_test_event("id1", "pubkey1", 1, 1234567890))
+            .unwrap();
         assert_eq!(cache.len(), 0);
         assert!(cache.get("id1").is_none());
     }

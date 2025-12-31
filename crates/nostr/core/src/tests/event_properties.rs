@@ -7,8 +7,8 @@
 //! 4. Event ID computation is deterministic
 //! 5. Schnorr signature properties hold for all valid events
 
-use crate::{finalize_event, generate_secret_key, verify_event, EventTemplate};
-use quickcheck::{quickcheck, Arbitrary, Gen};
+use crate::{EventTemplate, finalize_event, generate_secret_key, verify_event};
+use quickcheck::{Arbitrary, Gen, quickcheck};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Arbitrary event content for property testing

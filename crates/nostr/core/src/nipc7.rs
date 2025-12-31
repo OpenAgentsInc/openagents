@@ -89,11 +89,7 @@ impl ChatMessage {
 
 impl QuoteReference {
     /// Create a new quote reference
-    pub fn new(
-        event_id: String,
-        relay_url: Option<String>,
-        pubkey: Option<String>,
-    ) -> Self {
+    pub fn new(event_id: String, relay_url: Option<String>, pubkey: Option<String>) -> Self {
         Self {
             event_id,
             relay_url,
@@ -393,11 +389,7 @@ mod tests {
 
     #[test]
     fn test_create_quote_tag_pubkey_no_relay() {
-        let quote = QuoteReference::new(
-            "abc123".to_string(),
-            None,
-            Some("pubkey456".to_string()),
-        );
+        let quote = QuoteReference::new("abc123".to_string(), None, Some("pubkey456".to_string()));
         let tag = create_quote_tag(&quote);
 
         assert_eq!(
@@ -413,11 +405,8 @@ mod tests {
 
     #[test]
     fn test_has_quote_tag() {
-        let event_with_quote = create_test_event(
-            9,
-            "test",
-            vec![vec!["q".to_string(), "abc123".to_string()]],
-        );
+        let event_with_quote =
+            create_test_event(9, "test", vec![vec!["q".to_string(), "abc123".to_string()]]);
         assert!(has_quote_tag(&event_with_quote));
 
         let event_without_quote = create_test_event(9, "test", vec![]);

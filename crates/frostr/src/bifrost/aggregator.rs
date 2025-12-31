@@ -178,6 +178,11 @@ mod tests {
         // Try to aggregate without any responses
         let result = agg.aggregate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Not enough responses"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Not enough responses")
+        );
     }
 }

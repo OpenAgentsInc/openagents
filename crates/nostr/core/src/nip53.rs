@@ -261,7 +261,10 @@ impl LiveStreamingEvent {
         tags.push(vec!["status".to_string(), self.status.as_str().to_string()]);
 
         if let Some(current) = self.current_participants {
-            tags.push(vec!["current_participants".to_string(), current.to_string()]);
+            tags.push(vec![
+                "current_participants".to_string(),
+                current.to_string(),
+            ]);
         }
 
         if let Some(total) = self.total_participants {
@@ -409,7 +412,9 @@ impl MeetingSpace {
             return Err(Nip53Error::MissingField("service_url".to_string()));
         }
         if self.participants.is_empty() {
-            return Err(Nip53Error::MissingField("participants (at least one)".to_string()));
+            return Err(Nip53Error::MissingField(
+                "participants (at least one)".to_string(),
+            ));
         }
         Ok(())
     }
@@ -564,7 +569,10 @@ impl MeetingRoomEvent {
         }
 
         if let Some(current) = self.current_participants {
-            tags.push(vec!["current_participants".to_string(), current.to_string()]);
+            tags.push(vec![
+                "current_participants".to_string(),
+                current.to_string(),
+            ]);
         }
 
         for participant in &self.participants {
@@ -658,7 +666,10 @@ mod tests {
         assert_eq!(LiveStatus::Live.as_str(), "live");
         assert_eq!(LiveStatus::Ended.as_str(), "ended");
 
-        assert_eq!(LiveStatus::from_str("planned").unwrap(), LiveStatus::Planned);
+        assert_eq!(
+            LiveStatus::from_str("planned").unwrap(),
+            LiveStatus::Planned
+        );
         assert_eq!(LiveStatus::from_str("live").unwrap(), LiveStatus::Live);
         assert_eq!(LiveStatus::from_str("ended").unwrap(), LiveStatus::Ended);
         assert!(LiveStatus::from_str("invalid").is_err());
@@ -671,8 +682,14 @@ mod tests {
         assert_eq!(SpaceStatus::Closed.as_str(), "closed");
 
         assert_eq!(SpaceStatus::from_str("open").unwrap(), SpaceStatus::Open);
-        assert_eq!(SpaceStatus::from_str("private").unwrap(), SpaceStatus::Private);
-        assert_eq!(SpaceStatus::from_str("closed").unwrap(), SpaceStatus::Closed);
+        assert_eq!(
+            SpaceStatus::from_str("private").unwrap(),
+            SpaceStatus::Private
+        );
+        assert_eq!(
+            SpaceStatus::from_str("closed").unwrap(),
+            SpaceStatus::Closed
+        );
         assert!(SpaceStatus::from_str("invalid").is_err());
     }
 
@@ -684,7 +701,10 @@ mod tests {
 
         assert_eq!(participant.pubkey, "pubkey123");
         assert_eq!(participant.role, "Host");
-        assert_eq!(participant.relay, Some("wss://relay.example.com".to_string()));
+        assert_eq!(
+            participant.relay,
+            Some("wss://relay.example.com".to_string())
+        );
         assert_eq!(participant.proof, Some("proof123".to_string()));
     }
 
@@ -716,7 +736,10 @@ mod tests {
         assert!(tags.contains(&vec!["d".to_string(), "stream-1".to_string()]));
         assert!(tags.contains(&vec!["title".to_string(), "My Stream".to_string()]));
         assert!(tags.contains(&vec!["status".to_string(), "live".to_string()]));
-        assert!(tags.contains(&vec!["streaming".to_string(), "https://example.com/stream.m3u8".to_string()]));
+        assert!(tags.contains(&vec![
+            "streaming".to_string(),
+            "https://example.com/stream.m3u8".to_string()
+        ]));
     }
 
     #[test]
@@ -760,7 +783,10 @@ mod tests {
         let tags = space.to_tags();
         assert!(tags.contains(&vec!["d".to_string(), "room-1".to_string()]));
         assert!(tags.contains(&vec!["room".to_string(), "Conference Room".to_string()]));
-        assert!(tags.contains(&vec!["service".to_string(), "https://meet.example.com".to_string()]));
+        assert!(tags.contains(&vec![
+            "service".to_string(),
+            "https://meet.example.com".to_string()
+        ]));
         assert!(tags.contains(&vec!["status".to_string(), "open".to_string()]));
     }
 

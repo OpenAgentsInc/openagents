@@ -10,9 +10,8 @@
 //! - Unauthorized participants
 
 use frostr::bifrost::{
-    BifrostConfig, BifrostNode,
-    CommitmentRequest, CommitmentResponse, PartialSignature,
-    BifrostMessage, SigningPackageMessage, ParticipantCommitment,
+    BifrostConfig, BifrostMessage, BifrostNode, CommitmentRequest, CommitmentResponse,
+    PartialSignature, ParticipantCommitment, SigningPackageMessage,
 };
 use frostr::keygen::generate_key_shares;
 use nostr::get_public_key;
@@ -63,7 +62,7 @@ fn test_invalid_participant_id_too_large() {
     // Create a CommitmentResponse with invalid participant_id (255, when only 1-3 exist)
     let invalid_response = BifrostMessage::CommitmentResponse(CommitmentResponse {
         session_id: "test-session".to_string(),
-        participant_id: 255, // Invalid - participants are 1, 2, 3
+        participant_id: 255,          // Invalid - participants are 1, 2, 3
         nonce_commitment: [0x02; 66], // Mock commitment
     });
 
@@ -189,10 +188,10 @@ fn test_malformed_json_message() {
         r#"{"type":"/sign/commit/res","session_id":"test"}"#, // Missing fields
         r#"{"type":"/sign/commit/res","session_id":"test","participant_id":"not_a_number"}"#, // Wrong type
         r#"{"type":"/unknown/type"}"#, // Unknown message type
-        r#"{invalid json"#, // Invalid JSON syntax
-        r#""#, // Empty string
-        r#"null"#, // Null
-        r#"[]"#, // Array instead of object
+        r#"{invalid json"#,            // Invalid JSON syntax
+        r#""#,                         // Empty string
+        r#"null"#,                     // Null
+        r#"[]"#,                       // Array instead of object
     ];
 
     for json in malformed_jsons {
@@ -303,7 +302,10 @@ fn test_commitment_wrong_length() {
     // However, malformed JSON with wrong array length should fail
     let wrong_length_json = r#"{"type":"/sign/commit/res","session_id":"test","participant_id":1,"nonce_commitment":[2,2,2]}"#;
     let result: Result<BifrostMessage, _> = serde_json::from_str(wrong_length_json);
-    assert!(result.is_err(), "Should reject commitment with wrong length");
+    assert!(
+        result.is_err(),
+        "Should reject commitment with wrong length"
+    );
 }
 
 // ============================================================================
@@ -365,7 +367,10 @@ fn test_signing_package_duplicate_commitments() {
         // Both commitments are present
         assert_eq!(pkg.commitments.len(), 2);
         // Both have same participant_id
-        assert_eq!(pkg.commitments[0].participant_id, pkg.commitments[1].participant_id);
+        assert_eq!(
+            pkg.commitments[0].participant_id,
+            pkg.commitments[1].participant_id
+        );
     }
 }
 
@@ -385,7 +390,10 @@ fn test_public_key_derivation_consistency() {
     let pubkey1 = get_public_key(&secret_key).expect("failed to derive pubkey");
     let pubkey2 = get_public_key(&secret_key).expect("failed to derive pubkey");
 
-    assert_eq!(pubkey1, pubkey2, "Public key derivation should be deterministic");
+    assert_eq!(
+        pubkey1, pubkey2,
+        "Public key derivation should be deterministic"
+    );
 }
 
 #[test]
@@ -404,7 +412,10 @@ fn test_different_secrets_produce_different_pubkeys() {
     let pubkey1 = get_public_key(&secret_key1).expect("failed to derive pubkey 1");
     let pubkey2 = get_public_key(&secret_key2).expect("failed to derive pubkey 2");
 
-    assert_ne!(pubkey1, pubkey2, "Different secrets should produce different pubkeys");
+    assert_ne!(
+        pubkey1, pubkey2,
+        "Different secrets should produce different pubkeys"
+    );
 }
 
 // ============================================================================

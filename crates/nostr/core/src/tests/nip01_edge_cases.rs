@@ -5,7 +5,9 @@
 //! malformed tags, and boundary conditions.
 
 #[cfg(feature = "full")]
-use crate::nip01::{finalize_event, generate_secret_key, validate_unsigned_event, EventTemplate, UnsignedEvent};
+use crate::nip01::{
+    EventTemplate, UnsignedEvent, finalize_event, generate_secret_key, validate_unsigned_event,
+};
 use proptest::prelude::*;
 
 // =============================================================================

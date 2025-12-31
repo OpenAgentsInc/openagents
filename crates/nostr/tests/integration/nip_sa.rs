@@ -8,23 +8,47 @@
 use super::{start_test_relay, test_relay_url};
 use neobank::{ExchangeClient, OrderParams, OrderSide, TradeOutcome};
 use nostr::{
-    finalize_event, generate_secret_key, get_public_key, get_public_key_hex, EventTemplate,
     // NIP-SA Profile types
-    AgentProfile, AgentProfileContent, AutonomyLevel, ThresholdConfig, KIND_AGENT_PROFILE,
+    AgentProfile,
+    AgentProfileContent,
     // NIP-SA Schedule types
-    AgentSchedule, TriggerType, KIND_AGENT_SCHEDULE,
+    AgentSchedule,
     // NIP-SA State types
-    AgentState, AgentStateContent, Goal, MemoryEntry, KIND_AGENT_STATE,
+    AgentState,
+    AgentStateContent,
+    AutonomyLevel,
+    EventTemplate,
+    Goal,
+    KIND_AGENT_PROFILE,
+    KIND_AGENT_SCHEDULE,
+    KIND_AGENT_STATE,
+    KIND_TICK_REQUEST,
+    KIND_TICK_RESULT,
+    KIND_TRAJECTORY_EVENT,
+    KIND_TRAJECTORY_SESSION,
+    MemoryEntry,
+    StepType,
+    ThresholdConfig,
     // NIP-SA Tick types
-    TickRequest, TickResult, TickResultContent, TickStatus, TickTrigger,
-    KIND_TICK_REQUEST, KIND_TICK_RESULT,
+    TickRequest,
+    TickResult,
+    TickResultContent,
+    TickStatus,
+    TickTrigger,
+    TrajectoryEvent,
+    TrajectoryEventContent,
     // NIP-SA Trajectory types
-    TrajectorySession, TrajectorySessionContent, TrajectoryVisibility,
-    TrajectoryEvent, TrajectoryEventContent, StepType,
-    KIND_TRAJECTORY_EVENT, KIND_TRAJECTORY_SESSION,
+    TrajectorySession,
+    TrajectorySessionContent,
+    TrajectoryVisibility,
+    TriggerType,
+    finalize_event,
+    generate_secret_key,
+    get_public_key,
+    get_public_key_hex,
 };
 use nostr_client::RelayConnection;
-use tokio::time::{sleep, timeout, Duration};
+use tokio::time::{Duration, sleep, timeout};
 
 fn to_compressed_pubkey(xonly: &[u8; 32]) -> [u8; 33] {
     let mut compressed = [0u8; 33];
@@ -59,8 +83,8 @@ async fn test_agent_profile_publish_and_fetch() {
     let marketplace_signer = "0".repeat(64); // 32 bytes hex-encoded
     let operator = "1".repeat(64);
 
-    let threshold = ThresholdConfig::new(2, 3, &marketplace_signer)
-        .expect("valid threshold config");
+    let threshold =
+        ThresholdConfig::new(2, 3, &marketplace_signer).expect("valid threshold config");
     let profile = AgentProfile::new(content.clone(), threshold.clone(), &operator)
         .with_lud16("researchbot@getalby.com");
 
@@ -68,7 +92,10 @@ async fn test_agent_profile_publish_and_fetch() {
     profile.validate().expect("profile should be valid");
 
     // 5. Build event content and tags
-    let content_json = profile.content.to_json().expect("serialization should work");
+    let content_json = profile
+        .content
+        .to_json()
+        .expect("serialization should work");
     let tags = profile.build_tags();
 
     let profile_event = finalize_event(
@@ -106,26 +133,36 @@ async fn test_agent_profile_publish_and_fetch() {
         .expect("profile event should be delivered");
 
     // 6. Verify profile content can be parsed back
-    let parsed_content = AgentProfileContent::from_json(&content_json)
-        .expect("should parse back");
+    let parsed_content = AgentProfileContent::from_json(&content_json).expect("should parse back");
     assert_eq!(parsed_content.name, "ResearchBot");
     assert_eq!(parsed_content.capabilities.len(), 2);
     assert_eq!(parsed_content.autonomy_level, AutonomyLevel::Bounded);
 
     // 7. Verify tags are correct
     assert!(tags.iter().any(|t| t[0] == "d" && t[1] == "profile"));
-    assert!(tags.iter().any(|t| t[0] == "threshold" && t[1] == "2" && t[2] == "3"));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "threshold" && t[1] == "2" && t[2] == "3")
+    );
     assert!(tags.iter().any(|t| t[0] == "operator"));
     assert!(tags.iter().any(|t| t[0] == "signer"));
-    assert!(tags.iter().any(|t| t[0] == "lud16" && t[1] == "researchbot@getalby.com"));
+    assert!(
+        tags.iter()
+            .any(|t| t[0] == "lud16" && t[1] == "researchbot@getalby.com")
+    );
 
     assert_eq!(fetched.id, profile_event.id);
     assert_eq!(fetched.pubkey, pubkey_hex);
     assert!(fetched.tags.iter().any(|t| t[0] == "threshold"));
-    assert!(fetched.tags.iter().any(|t| t[0] == "operator" && t[1] == operator));
+    assert!(
+        fetched
+            .tags
+            .iter()
+            .any(|t| t[0] == "operator" && t[1] == operator)
+    );
 
-    let fetched_content = AgentProfileContent::from_json(&fetched.content)
-        .expect("should parse fetched content");
+    let fetched_content =
+        AgentProfileContent::from_json(&fetched.content).expect("should parse fetched content");
     assert_eq!(fetched_content.name, "ResearchBot");
 
     // 8. Publish a profile update and verify we can fetch it
@@ -178,8 +215,8 @@ async fn test_agent_profile_publish_and_fetch() {
         .expect("should receive updated profile")
         .expect("updated profile should be delivered");
 
-    let updated_parsed = AgentProfileContent::from_json(&updated.content)
-        .expect("should parse updated content");
+    let updated_parsed =
+        AgentProfileContent::from_json(&updated.content).expect("should parse updated content");
     assert_eq!(updated_parsed.name, "ResearchBot v2");
     assert_eq!(updated.id, updated_event.id);
 
@@ -198,7 +235,8 @@ async fn test_agent_schedule_replaceable_semantics() {
 
     // 2. Create schedule configuration
     let schedule = AgentSchedule::new()
-        .with_heartbeat(60).expect("valid heartbeat") // 60 second heartbeat
+        .with_heartbeat(60)
+        .expect("valid heartbeat") // 60 second heartbeat
         .add_trigger(TriggerType::Mention)
         .add_trigger(TriggerType::Dm);
 
@@ -341,10 +379,18 @@ async fn test_tick_request_result_flow() {
     let request_tags = tick_request.build_tags();
 
     // Verify runner pubkey tag
-    assert!(request_tags.iter().any(|t| t[0] == "runner" && t[1] == runner_pubkey));
+    assert!(
+        request_tags
+            .iter()
+            .any(|t| t[0] == "runner" && t[1] == runner_pubkey)
+    );
 
     // Verify trigger tag
-    assert!(request_tags.iter().any(|t| t[0] == "trigger" && t[1] == "heartbeat"));
+    assert!(
+        request_tags
+            .iter()
+            .any(|t| t[0] == "trigger" && t[1] == "heartbeat")
+    );
 
     let request_event = finalize_event(
         &EventTemplate {
@@ -364,10 +410,10 @@ async fn test_tick_request_result_flow() {
 
     // 5. Create tick result content
     let content = TickResultContent::new(
-        1000,  // tokens_in
-        500,   // tokens_out
-        0.05,  // cost_usd
-        2,     // goals_updated
+        1000, // tokens_in
+        500,  // tokens_out
+        0.05, // cost_usd
+        2,    // goals_updated
     );
 
     // 6. Create tick result
@@ -376,7 +422,7 @@ async fn test_tick_request_result_flow() {
         &request_id,
         &runner_pubkey,
         TickStatus::Success,
-        1234,  // duration_ms
+        1234, // duration_ms
         content,
     );
 
@@ -388,13 +434,25 @@ async fn test_tick_request_result_flow() {
     let result_tags = tick_result.build_tags();
 
     // Verify request tag
-    assert!(result_tags.iter().any(|t| t[0] == "request" && t[1] == request_id));
+    assert!(
+        result_tags
+            .iter()
+            .any(|t| t[0] == "request" && t[1] == request_id)
+    );
 
     // Verify status tag
-    assert!(result_tags.iter().any(|t| t[0] == "status" && t[1] == "success"));
+    assert!(
+        result_tags
+            .iter()
+            .any(|t| t[0] == "status" && t[1] == "success")
+    );
 
     // Verify duration tag
-    assert!(result_tags.iter().any(|t| t[0] == "duration_ms" && t[1] == "1234"));
+    assert!(
+        result_tags
+            .iter()
+            .any(|t| t[0] == "duration_ms" && t[1] == "1234")
+    );
 
     let result_event = finalize_event(
         &EventTemplate {
@@ -434,10 +492,12 @@ async fn test_tick_request_result_flow() {
     assert_eq!(received_request.id, request_event.id);
     assert_eq!(received_result.id, result_event.id);
 
-    assert!(received_result
-        .tags
-        .iter()
-        .any(|t| t[0] == "request" && t[1] == request_id));
+    assert!(
+        received_result
+            .tags
+            .iter()
+            .any(|t| t[0] == "request" && t[1] == request_id)
+    );
 
     relay.disconnect().await.ok();
 
@@ -462,7 +522,7 @@ async fn test_trajectory_session_and_events() {
     // 2. Create trajectory session content
     let session_content = TrajectorySessionContent::new(
         "traj_session_456",
-        1703000000,  // started_at
+        1703000000, // started_at
         "claude-sonnet-4.5",
     )
     .with_total_events(2);
@@ -493,7 +553,10 @@ async fn test_trajectory_session_and_events() {
 
     // 3. Create trajectory event content (tool use)
     let mut tool_use_data = serde_json::Map::new();
-    tool_use_data.insert("tool".to_string(), serde_json::Value::String("Read".to_string()));
+    tool_use_data.insert(
+        "tool".to_string(),
+        serde_json::Value::String("Read".to_string()),
+    );
     tool_use_data.insert(
         "input".to_string(),
         serde_json::json!({"file_path": "/path/to/file"}),
@@ -523,9 +586,15 @@ async fn test_trajectory_session_and_events() {
 
     // 4. Create trajectory event content (tool result)
     let mut tool_result_data = serde_json::Map::new();
-    tool_result_data.insert("tool".to_string(), serde_json::Value::String("Read".to_string()));
+    tool_result_data.insert(
+        "tool".to_string(),
+        serde_json::Value::String("Read".to_string()),
+    );
     tool_result_data.insert("success".to_string(), serde_json::Value::Bool(true));
-    tool_result_data.insert("output".to_string(), serde_json::Value::String("file contents...".to_string()));
+    tool_result_data.insert(
+        "output".to_string(),
+        serde_json::Value::String("file contents...".to_string()),
+    );
 
     let tool_result_event = TrajectoryEventContent {
         step_type: StepType::ToolResult,
@@ -534,7 +603,8 @@ async fn test_trajectory_session_and_events() {
 
     assert_eq!(tool_result_event.step_type, StepType::ToolResult);
 
-    let tool_result = TrajectoryEvent::new(tool_result_event.clone(), "traj_session_456", "tick-123", 2);
+    let tool_result =
+        TrajectoryEvent::new(tool_result_event.clone(), "traj_session_456", "tick-123", 2);
     let tool_result_event = finalize_event(
         &EventTemplate {
             kind: KIND_TRAJECTORY_EVENT,
@@ -592,21 +662,25 @@ async fn test_trajectory_session_and_events() {
 
     let received_session = got_session.expect("session event should arrive");
     assert_eq!(received_session.id, session_event.id);
-    assert!(received_session
-        .tags
-        .iter()
-        .any(|t| t[0] == "tick" && t[1] == "tick-123"));
+    assert!(
+        received_session
+            .tags
+            .iter()
+            .any(|t| t[0] == "tick" && t[1] == "tick-123")
+    );
 
     assert_eq!(got_events.len(), 2);
     for evt in &got_events {
-        assert!(evt
-            .tags
-            .iter()
-            .any(|t| t[0] == "session" && t[1] == "traj_session_456"));
-        assert!(evt
-            .tags
-            .iter()
-            .any(|t| t[0] == "tick" && t[1] == "tick-123"));
+        assert!(
+            evt.tags
+                .iter()
+                .any(|t| t[0] == "session" && t[1] == "traj_session_456")
+        );
+        assert!(
+            evt.tags
+                .iter()
+                .any(|t| t[0] == "tick" && t[1] == "tick-123")
+        );
         assert!(evt.tags.iter().any(|t| t[0] == "seq"));
     }
 
@@ -698,7 +772,8 @@ async fn test_step_types() {
         };
 
         let json = serde_json::to_string(&event).expect("serialization should work");
-        let parsed: TrajectoryEventContent = serde_json::from_str(&json).expect("parsing should work");
+        let parsed: TrajectoryEventContent =
+            serde_json::from_str(&json).expect("parsing should work");
         assert_eq!(parsed.step_type, step_type);
     }
 }
@@ -762,9 +837,13 @@ async fn test_sovereign_agent_exchange_flow() {
     )
     .with_capabilities(vec!["treasury".to_string(), "market-making".to_string()]);
 
-    let treasury_threshold = ThresholdConfig::new(2, 3, &marketplace_signer)
-        .expect("valid threshold config");
-    let treasury_profile = AgentProfile::new(treasury_content.clone(), treasury_threshold.clone(), &treasury_pubkey_hex);
+    let treasury_threshold =
+        ThresholdConfig::new(2, 3, &marketplace_signer).expect("valid threshold config");
+    let treasury_profile = AgentProfile::new(
+        treasury_content.clone(),
+        treasury_threshold.clone(),
+        &treasury_pubkey_hex,
+    );
 
     let treasury_profile_event = finalize_event(
         &EventTemplate {
@@ -792,9 +871,13 @@ async fn test_sovereign_agent_exchange_flow() {
     )
     .with_capabilities(vec!["compute".to_string(), "research".to_string()]);
 
-    let regular_threshold = ThresholdConfig::new(2, 3, &marketplace_signer)
-        .expect("valid threshold config");
-    let regular_profile = AgentProfile::new(regular_content.clone(), regular_threshold.clone(), &regular_pubkey_hex);
+    let regular_threshold =
+        ThresholdConfig::new(2, 3, &marketplace_signer).expect("valid threshold config");
+    let regular_profile = AgentProfile::new(
+        regular_content.clone(),
+        regular_threshold.clone(),
+        &regular_pubkey_hex,
+    );
 
     let regular_profile_event = finalize_event(
         &EventTemplate {
@@ -848,7 +931,10 @@ async fn test_sovereign_agent_exchange_flow() {
         .publish_event(&order_event, Duration::from_secs(5))
         .await
         .unwrap();
-    println!("\n[3] Treasury Agent sell order published: {} sats @ $1.00", order_params.amount_sats);
+    println!(
+        "\n[3] Treasury Agent sell order published: {} sats @ $1.00",
+        order_params.amount_sats
+    );
 
     // 5. Regular Agent fetches and accepts order
     let regular_exchange = ExchangeClient::new_mock(&regular_pubkey_hex);
@@ -872,11 +958,11 @@ async fn test_sovereign_agent_exchange_flow() {
     println!("[5] Regular Agent accepted order -> trade created");
 
     // 6. Settlement executes
-    let receipt = regular_exchange
-        .settle(&trade)
-        .await
-        .expect("settlement");
-    println!("[6] Settlement complete: {:?} in {:?}", receipt.method, receipt.duration);
+    let receipt = regular_exchange.settle(&trade).await.expect("settlement");
+    println!(
+        "[6] Settlement complete: {:?} in {:?}",
+        receipt.method, receipt.duration
+    );
 
     // 7. Both agents publish attestations (NIP-32)
     let settlement_ms = receipt.duration.as_millis() as u64;
@@ -885,11 +971,8 @@ async fn test_sovereign_agent_exchange_flow() {
     let trade_copy = regular_exchange.get_trade(&order_id).unwrap().unwrap();
     treasury_exchange.inject_trade(trade_copy.clone()).unwrap();
 
-    let treasury_attest_tags = treasury_exchange.build_attestation_tags(
-        &trade_copy,
-        TradeOutcome::Success,
-        settlement_ms,
-    );
+    let treasury_attest_tags =
+        treasury_exchange.build_attestation_tags(&trade_copy, TradeOutcome::Success, settlement_ms);
 
     let treasury_attest_event = finalize_event(
         &EventTemplate {
@@ -908,11 +991,8 @@ async fn test_sovereign_agent_exchange_flow() {
         .unwrap();
 
     // Regular attestation
-    let regular_attest_tags = regular_exchange.build_attestation_tags(
-        &trade,
-        TradeOutcome::Success,
-        settlement_ms,
-    );
+    let regular_attest_tags =
+        regular_exchange.build_attestation_tags(&trade, TradeOutcome::Success, settlement_ms);
 
     let regular_attest_event = finalize_event(
         &EventTemplate {
@@ -937,7 +1017,10 @@ async fn test_sovereign_agent_exchange_flow() {
     treasury_state_content.update_balance(990_000); // Started with 1M, sold 10k
     treasury_state_content.add_memory(MemoryEntry::new(
         "trade",
-        &format!("Sold 10000 sats to {} for $1.00 USD", &regular_pubkey_hex[..16]),
+        &format!(
+            "Sold 10000 sats to {} for $1.00 USD",
+            &regular_pubkey_hex[..16]
+        ),
     ));
 
     let treasury_state = AgentState::new(treasury_state_content);
@@ -966,7 +1049,10 @@ async fn test_sovereign_agent_exchange_flow() {
     regular_state_content.update_balance(10_000); // Gained 10k sats
     regular_state_content.add_memory(MemoryEntry::new(
         "trade",
-        &format!("Bought 10000 sats from {} for $1.00 USD", &treasury_pubkey_hex[..16]),
+        &format!(
+            "Bought 10000 sats from {} for $1.00 USD",
+            &treasury_pubkey_hex[..16]
+        ),
     ));
 
     let regular_state = AgentState::new(regular_state_content);
@@ -1007,12 +1093,8 @@ async fn test_sovereign_agent_exchange_flow() {
         data: treasury_traj_data,
     };
 
-    let treasury_traj = TrajectoryEvent::new(
-        treasury_traj_content,
-        session_id,
-        "tick-exchange-1",
-        1,
-    );
+    let treasury_traj =
+        TrajectoryEvent::new(treasury_traj_content, session_id, "tick-exchange-1", 1);
 
     let treasury_traj_event = finalize_event(
         &EventTemplate {
@@ -1035,19 +1117,17 @@ async fn test_sovereign_agent_exchange_flow() {
     regular_traj_data.insert("action".to_string(), serde_json::json!("accept_order"));
     regular_traj_data.insert("order_id".to_string(), serde_json::json!(order_id));
     regular_traj_data.insert("settlement_method".to_string(), serde_json::json!("mock"));
-    regular_traj_data.insert("settlement_ms".to_string(), serde_json::json!(settlement_ms));
+    regular_traj_data.insert(
+        "settlement_ms".to_string(),
+        serde_json::json!(settlement_ms),
+    );
 
     let regular_traj_content = TrajectoryEventContent {
         step_type: StepType::ToolUse,
         data: regular_traj_data,
     };
 
-    let regular_traj = TrajectoryEvent::new(
-        regular_traj_content,
-        session_id,
-        "tick-exchange-1",
-        2,
-    );
+    let regular_traj = TrajectoryEvent::new(regular_traj_content, session_id, "tick-exchange-1", 2);
 
     let regular_traj_event = finalize_event(
         &EventTemplate {
@@ -1085,7 +1165,12 @@ async fn test_sovereign_agent_exchange_flow() {
     let mut traj_count = 0;
 
     timeout(Duration::from_secs(2), async {
-        while profile_count < 2 || order_count < 1 || label_count < 2 || state_count < 2 || traj_count < 2 {
+        while profile_count < 2
+            || order_count < 1
+            || label_count < 2
+            || state_count < 2
+            || traj_count < 2
+        {
             if let Some(evt) = all_rx.recv().await {
                 match evt.kind {
                     KIND_AGENT_PROFILE => profile_count += 1,

@@ -33,33 +33,35 @@
 //!        └─────────────────┘
 //! ```
 
-mod db;
-mod server;
-mod error;
-mod subscription;
+mod admin;
 mod broadcast;
+mod db;
+mod error;
+mod metrics;
+mod negentropy;
 mod rate_limit;
 mod relay_info;
-mod metrics;
-mod admin;
+mod server;
+mod subscription;
 mod validation;
-mod negentropy;
 
 #[cfg(test)]
 mod tests;
 
-pub use db::{Database, DatabaseConfig, ConnectionPool};
-pub use server::{RelayServer, RelayConfig};
-pub use error::{RelayError, Result};
-pub use subscription::{Filter, Subscription, SubscriptionManager};
+pub use admin::{AdminConfig, HealthResponse, StatsResponse, start_admin_server};
 pub use broadcast::{BroadcastEvent, create_broadcast_channel};
-pub use rate_limit::{RateLimiter, RateLimitConfig};
-pub use relay_info::{RelayInformation, Limitation, RetentionPolicy, Fees, FeeSchedule, KindOrRange};
-pub use metrics::{RelayMetrics, MetricsSnapshot};
-pub use admin::{AdminConfig, start_admin_server, HealthResponse, StatsResponse};
-pub use validation::{
-    validate_event, validate_event_structure, validate_filter, validate_subscription_id,
-    validate_event_message, validate_req_message, validate_close_message, ValidationError,
-    MAX_EVENT_SIZE, MAX_SUBSCRIPTION_ID_LENGTH, MAX_CONTENT_LENGTH, MAX_TAGS, MAX_TAG_LENGTH,
+pub use db::{ConnectionPool, Database, DatabaseConfig};
+pub use error::{RelayError, Result};
+pub use metrics::{MetricsSnapshot, RelayMetrics};
+pub use negentropy::{NegentropySession, NegentropySessionManager, SessionId};
+pub use rate_limit::{RateLimitConfig, RateLimiter};
+pub use relay_info::{
+    FeeSchedule, Fees, KindOrRange, Limitation, RelayInformation, RetentionPolicy,
 };
-pub use negentropy::{NegentropySessionManager, NegentropySession, SessionId};
+pub use server::{RelayConfig, RelayServer};
+pub use subscription::{Filter, Subscription, SubscriptionManager};
+pub use validation::{
+    MAX_CONTENT_LENGTH, MAX_EVENT_SIZE, MAX_SUBSCRIPTION_ID_LENGTH, MAX_TAG_LENGTH, MAX_TAGS,
+    ValidationError, validate_close_message, validate_event, validate_event_message,
+    validate_event_structure, validate_filter, validate_req_message, validate_subscription_id,
+};

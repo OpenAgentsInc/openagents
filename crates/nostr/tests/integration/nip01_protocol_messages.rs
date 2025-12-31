@@ -7,10 +7,10 @@
 //! Validates message structure, formats, and error handling
 
 use super::*;
-use nostr::{finalize_event, generate_secret_key, EventTemplate, KIND_SHORT_TEXT_NOTE};
+use nostr::{EventTemplate, KIND_SHORT_TEXT_NOTE, finalize_event, generate_secret_key};
 use nostr_client::{RelayConnection, RelayMessage};
 use serde_json::json;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 // =============================================================================
 // CLIENT -> RELAY Message Tests
@@ -75,10 +75,7 @@ async fn test_req_with_multiple_filters() {
     let filters = vec![json!({"kinds": [1]}), json!({"kinds": [2]})];
 
     let result = relay.subscribe("multi-filter", &filters).await;
-    assert!(
-        result.is_ok(),
-        "REQ with multiple filters should succeed"
-    );
+    assert!(result.is_ok(), "REQ with multiple filters should succeed");
 
     relay.disconnect().await.ok();
 }
@@ -172,7 +169,10 @@ async fn test_ok_message_rejection() {
     // Should either error or return not accepted
     if let Ok(confirmation) = result {
         assert!(!confirmation.accepted, "Invalid event should be rejected");
-        assert!(!confirmation.message.is_empty(), "Should have error message");
+        assert!(
+            !confirmation.message.is_empty(),
+            "Should have error message"
+        );
     }
 
     relay.disconnect().await.ok();
@@ -195,15 +195,20 @@ async fn test_eose_message_received() {
     let result = timeout(Duration::from_secs(2), async {
         loop {
             if let Ok(Some(msg)) = relay.recv().await
-                && let RelayMessage::Eose(sub_id) = msg {
-                    return sub_id;
-                }
+                && let RelayMessage::Eose(sub_id) = msg
+            {
+                return sub_id;
+            }
         }
     })
     .await;
 
     assert!(result.is_ok(), "Should receive EOSE message");
-    assert_eq!(result.unwrap(), "eose-test", "EOSE should have correct sub ID");
+    assert_eq!(
+        result.unwrap(),
+        "eose-test",
+        "EOSE should have correct sub ID"
+    );
 
     relay.disconnect().await.ok();
 }
@@ -240,23 +245,30 @@ async fn test_event_message_with_subscription_id() {
     let event = finalize_event(&template, &secret_key).unwrap();
     let event_id = event.id.clone();
 
-    relay2.publish_event(&event, Duration::from_secs(5)).await.unwrap();
+    relay2
+        .publish_event(&event, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     // Receive on relay1 - should have subscription ID
     let result = timeout(Duration::from_secs(2), async {
         loop {
             if let Ok(Some(msg)) = relay1.recv().await
                 && let RelayMessage::Event(sub_id, evt) = msg
-                    && evt.id == event_id {
-                        return Some((sub_id, evt));
-                    }
+                && evt.id == event_id
+            {
+                return Some((sub_id, evt));
+            }
         }
     })
     .await;
 
     assert!(result.is_ok(), "Should receive EVENT message");
     let (sub_id, _) = result.unwrap().unwrap();
-    assert_eq!(sub_id, "my-sub", "EVENT should have correct subscription ID");
+    assert_eq!(
+        sub_id, "my-sub",
+        "EVENT should have correct subscription ID"
+    );
 
     relay1.disconnect().await.ok();
     relay2.disconnect().await.ok();
@@ -444,21 +456,12 @@ async fn test_subscription_id_special_characters() {
     relay.connect().await.unwrap();
 
     // Subscription IDs can contain various characters
-    let sub_ids = vec![
-        "test-sub-123",
-        "test_sub_456",
-        "test.sub.789",
-        "TestSub",
-    ];
+    let sub_ids = vec!["test-sub-123", "test_sub_456", "test.sub.789", "TestSub"];
 
     for sub_id in sub_ids {
         let filters = vec![json!({"kinds": [1]})];
         let result = relay.subscribe(sub_id, &filters).await;
-        assert!(
-            result.is_ok(),
-            "Subscription ID '{}' should work",
-            sub_id
-        );
+        assert!(result.is_ok(), "Subscription ID '{}' should work", sub_id);
     }
 
     relay.disconnect().await.ok();
@@ -489,10 +492,11 @@ async fn test_eose_before_new_events() {
     timeout(Duration::from_secs(2), async {
         while !received_eose {
             if let Ok(Some(msg)) = relay1.recv().await
-                && let RelayMessage::Eose(_) = msg {
-                    received_eose = true;
-                    break;
-                }
+                && let RelayMessage::Eose(_) = msg
+            {
+                received_eose = true;
+                break;
+            }
         }
     })
     .await
@@ -512,15 +516,19 @@ async fn test_eose_before_new_events() {
             .as_secs(),
     };
     let event = finalize_event(&template, &secret_key).unwrap();
-    relay2.publish_event(&event, Duration::from_secs(5)).await.unwrap();
+    relay2
+        .publish_event(&event, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     // Should receive event after EOSE
     let result = timeout(Duration::from_secs(2), async {
         loop {
             if let Ok(Some(msg)) = relay1.recv().await
-                && let RelayMessage::Event(_, evt) = msg {
-                    return Some(evt);
-                }
+                && let RelayMessage::Event(_, evt) = msg
+            {
+                return Some(evt);
+            }
         }
     })
     .await;
@@ -561,7 +569,10 @@ async fn test_duplicate_event_handling() {
     assert!(result1.accepted, "First publish should be accepted");
 
     // Second publish (duplicate)
-    let result2 = relay.publish_event(&event, Duration::from_secs(5)).await.unwrap();
+    let result2 = relay
+        .publish_event(&event, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     // Should either be accepted (idempotent) or provide duplicate message
     // Both behaviors are acceptable per NIP-01

@@ -150,8 +150,7 @@ pub fn is_available() -> bool {
     use web_sys::window;
 
     if let Some(win) = window() {
-        js_sys::Reflect::has(&win, &JsValue::from_str("nostr"))
-            .unwrap_or(false)
+        js_sys::Reflect::has(&win, &JsValue::from_str("nostr")).unwrap_or(false)
     } else {
         false
     }
@@ -194,7 +193,9 @@ mod tests {
             content: "Hello, world!".to_string(),
         };
 
-        let unsigned = template.clone().to_unsigned_event("test_pubkey".to_string());
+        let unsigned = template
+            .clone()
+            .to_unsigned_event("test_pubkey".to_string());
 
         assert_eq!(unsigned.created_at, template.created_at);
         assert_eq!(unsigned.kind, template.kind);

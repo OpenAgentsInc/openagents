@@ -222,7 +222,7 @@ pub fn get_mentioned_event_ids(content: &str) -> Vec<[u8; 32]> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::nip19::{encode_note, encode_npub, encode_nprofile, ProfilePointer};
+    use crate::nip19::{ProfilePointer, encode_note, encode_nprofile, encode_npub};
 
     #[test]
     fn test_extract_single_npub() {

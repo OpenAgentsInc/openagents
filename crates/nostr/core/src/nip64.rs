@@ -248,7 +248,12 @@ pub fn is_chess_game_kind(kind: u16) -> bool {
 }
 
 /// Extract the alt tag description for a chess game
-pub fn create_alt_description(white: &str, black: &str, event: Option<&str>, date: Option<&str>) -> String {
+pub fn create_alt_description(
+    white: &str,
+    black: &str,
+    event: Option<&str>,
+    date: Option<&str>,
+) -> String {
     let mut parts = vec![white, "vs.", black];
 
     if let Some(event_name) = event {
@@ -467,12 +472,7 @@ mod tests {
         let alt = create_alt_description("Fischer", "Spassky", None, None);
         assert_eq!(alt, "Fischer vs. Spassky");
 
-        let alt = create_alt_description(
-            "Fischer",
-            "Spassky",
-            Some("World Championship"),
-            None,
-        );
+        let alt = create_alt_description("Fischer", "Spassky", Some("World Championship"), None);
         assert_eq!(alt, "Fischer vs. Spassky in World Championship");
 
         let alt = create_alt_description(

@@ -283,10 +283,7 @@ mod tests {
         image: Option<String>,
         summary: Option<String>,
     ) -> Event {
-        let mut tags = vec![
-            create_amount_tag(amount),
-            create_relays_tag(relays),
-        ];
+        let mut tags = vec![create_amount_tag(amount), create_relays_tag(relays)];
 
         if let Some(ts) = closed_at {
             tags.push(create_closed_at_tag(ts));
@@ -364,7 +361,9 @@ mod tests {
             pubkey: "author_pubkey".to_string(),
             created_at: 1675642635,
             kind: ZAP_GOAL_KIND,
-            tags: vec![create_relays_tag(vec!["wss://relay.example.com".to_string()])],
+            tags: vec![create_relays_tag(vec![
+                "wss://relay.example.com".to_string(),
+            ])],
             content: "Description".to_string(),
             sig: "test_sig".to_string(),
         };

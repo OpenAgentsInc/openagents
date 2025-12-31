@@ -292,10 +292,12 @@ mod tests {
         assert!(validate_protected_event(&event, Some("wrong_pubkey")).is_err());
 
         // With correct auth, should succeed
-        assert!(validate_protected_event(
-            &event,
-            Some("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
-        )
-        .is_ok());
+        assert!(
+            validate_protected_event(
+                &event,
+                Some("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
+            )
+            .is_ok()
+        );
     }
 }

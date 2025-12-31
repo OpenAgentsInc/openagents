@@ -20,7 +20,7 @@
 //! and gift-wrapped (kind 1059) to each recipient.
 
 use crate::nip01::{Event, UnsignedEvent};
-use crate::nip59::{gift_wrap, unwrap_gift_wrap_full, Rumor};
+use crate::nip59::{Rumor, gift_wrap, unwrap_gift_wrap_full};
 use thiserror::Error;
 
 /// Kind for chat messages
@@ -96,11 +96,7 @@ impl ChatMessage {
     }
 
     /// Add a recipient.
-    pub fn add_recipient(
-        mut self,
-        pubkey: impl Into<String>,
-        relay: Option<String>,
-    ) -> Self {
+    pub fn add_recipient(mut self, pubkey: impl Into<String>, relay: Option<String>) -> Self {
         self.recipients.push(pubkey.into());
         self.recipient_relays.push(relay);
         self
@@ -281,11 +277,7 @@ impl FileMessage {
     }
 
     /// Add a recipient.
-    pub fn add_recipient(
-        mut self,
-        pubkey: impl Into<String>,
-        relay: Option<String>,
-    ) -> Self {
+    pub fn add_recipient(mut self, pubkey: impl Into<String>, relay: Option<String>) -> Self {
         self.recipients.push(pubkey.into());
         self.recipient_relays.push(relay);
         self
@@ -524,9 +516,7 @@ pub struct DmRelayList {
 impl DmRelayList {
     /// Create a new DM relay list.
     pub fn new() -> Self {
-        Self {
-            relays: Vec::new(),
-        }
+        Self { relays: Vec::new() }
     }
 
     /// Add a relay.
@@ -681,9 +671,24 @@ mod tests {
 
         assert_eq!(unsigned.kind, KIND_CHAT_MESSAGE);
         assert_eq!(unsigned.content, "Test message");
-        assert!(unsigned.tags.iter().any(|t| t[0] == "p" && t[1] == "pubkey1"));
-        assert!(unsigned.tags.iter().any(|t| t[0] == "e" && t[1] == "parent_event_id"));
-        assert!(unsigned.tags.iter().any(|t| t[0] == "subject" && t[1] == "Chat"));
+        assert!(
+            unsigned
+                .tags
+                .iter()
+                .any(|t| t[0] == "p" && t[1] == "pubkey1")
+        );
+        assert!(
+            unsigned
+                .tags
+                .iter()
+                .any(|t| t[0] == "e" && t[1] == "parent_event_id")
+        );
+        assert!(
+            unsigned
+                .tags
+                .iter()
+                .any(|t| t[0] == "subject" && t[1] == "Chat")
+        );
     }
 
     #[test]
@@ -723,8 +728,18 @@ mod tests {
 
         assert_eq!(unsigned.kind, KIND_FILE_MESSAGE);
         assert_eq!(unsigned.content, "https://example.com/file.jpg");
-        assert!(unsigned.tags.iter().any(|t| t[0] == "file-type" && t[1] == "image/jpeg"));
-        assert!(unsigned.tags.iter().any(|t| t[0] == "encryption-algorithm" && t[1] == "aes-gcm"));
+        assert!(
+            unsigned
+                .tags
+                .iter()
+                .any(|t| t[0] == "file-type" && t[1] == "image/jpeg")
+        );
+        assert!(
+            unsigned
+                .tags
+                .iter()
+                .any(|t| t[0] == "encryption-algorithm" && t[1] == "aes-gcm")
+        );
         assert!(unsigned.tags.iter().any(|t| t[0] == "x" && t[1] == "hash"));
     }
 
@@ -799,12 +814,11 @@ mod tests {
 
     #[test]
     fn test_quoted_event() {
-        let message = ChatMessage::new("Replying to this:")
-            .quote_event(QuotedEvent {
-                id_or_address: "event123".to_string(),
-                relay: Some("wss://relay.com".to_string()),
-                pubkey: Some("author_pk".to_string()),
-            });
+        let message = ChatMessage::new("Replying to this:").quote_event(QuotedEvent {
+            id_or_address: "event123".to_string(),
+            relay: Some("wss://relay.com".to_string()),
+            pubkey: Some("author_pk".to_string()),
+        });
 
         assert_eq!(message.quoted_events.len(), 1);
 

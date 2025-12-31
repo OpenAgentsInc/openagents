@@ -239,13 +239,19 @@ mod tests {
 
     #[test]
     fn test_has_content_warning_with_reason() {
-        let event = create_test_event(vec![vec!["content-warning".to_string(), "nudity".to_string()]]);
+        let event = create_test_event(vec![vec![
+            "content-warning".to_string(),
+            "nudity".to_string(),
+        ]]);
         assert!(has_content_warning(&event));
     }
 
     #[test]
     fn test_get_content_warning_with_reason() {
-        let event = create_test_event(vec![vec!["content-warning".to_string(), "violence".to_string()]]);
+        let event = create_test_event(vec![vec![
+            "content-warning".to_string(),
+            "violence".to_string(),
+        ]]);
         assert_eq!(get_content_warning(&event), Some("violence".to_string()));
     }
 
@@ -335,7 +341,10 @@ mod tests {
         add_content_warning(&mut tags, Some("custom warning reason"));
 
         let event = create_test_event(tags);
-        assert_eq!(get_content_warning(&event), Some("custom warning reason".to_string()));
+        assert_eq!(
+            get_content_warning(&event),
+            Some("custom warning reason".to_string())
+        );
     }
 
     #[test]

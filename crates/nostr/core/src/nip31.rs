@@ -356,7 +356,10 @@ mod tests {
         set_alt_tag(&mut tags, "New");
 
         // Should have only one alt tag
-        let alt_count = tags.iter().filter(|t| !t.is_empty() && t[0] == "alt").count();
+        let alt_count = tags
+            .iter()
+            .filter(|t| !t.is_empty() && t[0] == "alt")
+            .count();
         assert_eq!(alt_count, 1);
         assert_eq!(get_alt_tag(&tags), Some("New"));
     }

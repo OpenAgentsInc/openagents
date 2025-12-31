@@ -12,14 +12,14 @@ use crate::db::Database;
 use crate::error::{RelayError, Result};
 use crate::metrics::RelayMetrics;
 use crate::negentropy::{NegentropySessionManager, SessionId};
-use crate::rate_limit::{RateLimiter, RateLimitConfig};
+use crate::rate_limit::{RateLimitConfig, RateLimiter};
 use crate::relay_info::RelayInformation;
 use crate::subscription::{Filter, SubscriptionManager};
 use crate::validation;
 use futures::{SinkExt, StreamExt};
 use nostr::Event;
 use nostr::nip77::{NegentropyMessage, Record};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
@@ -126,7 +126,16 @@ impl RelayServer {
 
                     let max_message_size = self.config.max_message_size;
                     tokio::spawn(async move {
-                        let result = handle_connection(stream, addr, db, broadcast_tx, rate_limiter.clone(), metrics.clone(), max_message_size).await;
+                        let result = handle_connection(
+                            stream,
+                            addr,
+                            db,
+                            broadcast_tx,
+                            rate_limiter.clone(),
+                            metrics.clone(),
+                            max_message_size,
+                        )
+                        .await;
 
                         // Unregister connection
                         rate_limiter.unregister_connection(ip).await;
@@ -160,9 +169,7 @@ impl RelayServer {
         let info_route = warp::path::end()
             .and(warp::header::exact("accept", "application/nostr+json"))
             .and(warp::any().map(move || relay_info.clone()))
-            .map(|info: RelayInformation| {
-                warp::reply::json(&info)
-            })
+            .map(|info: RelayInformation| warp::reply::json(&info))
             .with(warp::reply::with::header(
                 "Access-Control-Allow-Origin",
                 "*",
@@ -177,7 +184,10 @@ impl RelayServer {
             ));
 
         info!("NIP-11 relay info server listening on http://{}", http_addr);
-        info!("Query with: curl -H 'Accept: application/nostr+json' http://{}", http_addr);
+        info!(
+            "Query with: curl -H 'Accept: application/nostr+json' http://{}",
+            http_addr
+        );
 
         warp::serve(info_route).run(http_addr).await;
         Ok(())
@@ -362,7 +372,10 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
         "EVENT" => {
             // ["EVENT", <event JSON>]
             if msg_array.len() < 2 {
-                responses.push(json!(["NOTICE", "invalid: EVENT message must have 2 elements"]));
+                responses.push(json!([
+                    "NOTICE",
+                    "invalid: EVENT message must have 2 elements"
+                ]));
                 return responses;
             }
 
@@ -381,7 +394,10 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
                 Err(e) => {
                     warn!("Failed to parse event: {}", e);
                     ctx.metrics.event_rejected_validation();
-                    responses.push(json!(["NOTICE", format!("invalid: failed to parse event: {}", e)]));
+                    responses.push(json!([
+                        "NOTICE",
+                        format!("invalid: failed to parse event: {}", e)
+                    ]));
                     return responses;
                 }
             };
@@ -420,7 +436,10 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
         "REQ" => {
             // ["REQ", <subscription_id>, <filters JSON>...]
             if msg_array.len() < 3 {
-                responses.push(json!(["NOTICE", "invalid: REQ message must have at least 3 elements"]));
+                responses.push(json!([
+                    "NOTICE",
+                    "invalid: REQ message must have at least 3 elements"
+                ]));
                 return responses;
             }
 
@@ -444,7 +463,11 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
                 let filter: Filter = match serde_json::from_value(filter_value.clone()) {
                     Ok(f) => f,
                     Err(e) => {
-                        responses.push(json!(["CLOSED", sub_id, format!("invalid: failed to parse filter: {}", e)]));
+                        responses.push(json!([
+                            "CLOSED",
+                            sub_id,
+                            format!("invalid: failed to parse filter: {}", e)
+                        ]));
                         return responses;
                     }
                 };
@@ -457,19 +480,30 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
                 filters.push(filter);
             }
 
-            debug!("Subscription requested: {} with {} filters", sub_id, filters.len());
+            debug!(
+                "Subscription requested: {} with {} filters",
+                sub_id,
+                filters.len()
+            );
 
             // Check subscription limit
-            if !ctx.rate_limiter.check_subscription_allowed(ctx.subscriptions.len()) {
-                responses.push(json!(["NOTICE", format!(
-                    "rate limit: max {} ctx.subscriptions per connection",
-                    ctx.rate_limiter.max_subscriptions()
-                )]));
+            if !ctx
+                .rate_limiter
+                .check_subscription_allowed(ctx.subscriptions.len())
+            {
+                responses.push(json!([
+                    "NOTICE",
+                    format!(
+                        "rate limit: max {} ctx.subscriptions per connection",
+                        ctx.rate_limiter.max_subscriptions()
+                    )
+                ]));
                 return responses;
             }
 
             // Store subscription
-            let subscription = crate::subscription::Subscription::new(sub_id.to_string(), filters.clone());
+            let subscription =
+                crate::subscription::Subscription::new(sub_id.to_string(), filters.clone());
             ctx.subscriptions.add(subscription);
             ctx.metrics.subscription_opened();
 
@@ -478,7 +512,11 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
                 ctx.metrics.db_query();
                 match ctx.db.query_events(filter) {
                     Ok(events) => {
-                        debug!("Found {} matching events for subscription {}", events.len(), sub_id);
+                        debug!(
+                            "Found {} matching events for subscription {}",
+                            events.len(),
+                            sub_id
+                        );
                         for event in events {
                             // Send EVENT message: ["EVENT", <subscription_id>, <event JSON>]
                             responses.push(json!(["EVENT", sub_id, event]));
@@ -498,7 +536,10 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
         "CLOSE" => {
             // ["CLOSE", <subscription_id>]
             if msg_array.len() != 2 {
-                responses.push(json!(["NOTICE", "invalid: CLOSE message must have 2 elements"]));
+                responses.push(json!([
+                    "NOTICE",
+                    "invalid: CLOSE message must have 2 elements"
+                ]));
                 return responses;
             }
 
@@ -527,14 +568,22 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
         "NEG-OPEN" => {
             // ["NEG-OPEN", <subscription_id>, <filter>, <initial_message>]
             if msg_array.len() != 4 {
-                responses.push(json!(["NEG-ERR", "", "invalid: NEG-OPEN must have 4 elements"]));
+                responses.push(json!([
+                    "NEG-ERR",
+                    "",
+                    "invalid: NEG-OPEN must have 4 elements"
+                ]));
                 return responses;
             }
 
             let sub_id = match msg_array[1].as_str() {
                 Some(id) => id,
                 None => {
-                    responses.push(json!(["NEG-ERR", "", "invalid: subscription ID must be string"]));
+                    responses.push(json!([
+                        "NEG-ERR",
+                        "",
+                        "invalid: subscription ID must be string"
+                    ]));
                     return responses;
                 }
             };
@@ -549,7 +598,11 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
             let filter: Filter = match serde_json::from_value(msg_array[2].clone()) {
                 Ok(f) => f,
                 Err(e) => {
-                    responses.push(json!(["NEG-ERR", sub_id, format!("invalid: failed to parse filter: {}", e)]));
+                    responses.push(json!([
+                        "NEG-ERR",
+                        sub_id,
+                        format!("invalid: failed to parse filter: {}", e)
+                    ]));
                     return responses;
                 }
             };
@@ -563,7 +616,11 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
             let initial_message_hex = match msg_array[3].as_str() {
                 Some(hex) => hex,
                 None => {
-                    responses.push(json!(["NEG-ERR", sub_id, "invalid: initial message must be hex string"]));
+                    responses.push(json!([
+                        "NEG-ERR",
+                        sub_id,
+                        "invalid: initial message must be hex string"
+                    ]));
                     return responses;
                 }
             };
@@ -571,7 +628,11 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
             let client_message = match NegentropyMessage::decode_hex(initial_message_hex) {
                 Ok(msg) => msg,
                 Err(e) => {
-                    responses.push(json!(["NEG-ERR", sub_id, format!("invalid: failed to decode message: {}", e)]));
+                    responses.push(json!([
+                        "NEG-ERR",
+                        sub_id,
+                        format!("invalid: failed to decode message: {}", e)
+                    ]));
                     return responses;
                 }
             };
@@ -581,7 +642,11 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
             let events = match ctx.db.query_events(&filter) {
                 Ok(events) => events,
                 Err(e) => {
-                    responses.push(json!(["NEG-ERR", sub_id, format!("error: failed to query events: {}", e)]));
+                    responses.push(json!([
+                        "NEG-ERR",
+                        sub_id,
+                        format!("error: failed to query events: {}", e)
+                    ]));
                     ctx.metrics.db_error();
                     return responses;
                 }
@@ -598,26 +663,33 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
                 })
                 .collect();
 
-            debug!("NEG-OPEN: {} events for subscription {}", records.len(), sub_id);
+            debug!(
+                "NEG-OPEN: {} events for subscription {}",
+                records.len(),
+                sub_id
+            );
 
             // Create session
             let session_id = SessionId::new(ctx.connection_id.to_string(), sub_id.to_string());
-            ctx.negentropy_sessions.create_session(session_id.clone(), records);
+            ctx.negentropy_sessions
+                .create_session(session_id.clone(), records);
 
             // Process initial message
             if let Some(session) = ctx.negentropy_sessions.get_session_mut(&session_id) {
                 match session.state.process_message(&client_message) {
-                    Ok(response_message) => {
-                        match response_message.encode_hex() {
-                            Ok(hex) => {
-                                responses.push(json!(["NEG-MSG", sub_id, hex]));
-                            }
-                            Err(e) => {
-                                responses.push(json!(["NEG-ERR", sub_id, format!("error: failed to encode response: {}", e)]));
-                                ctx.negentropy_sessions.remove_session(&session_id);
-                            }
+                    Ok(response_message) => match response_message.encode_hex() {
+                        Ok(hex) => {
+                            responses.push(json!(["NEG-MSG", sub_id, hex]));
                         }
-                    }
+                        Err(e) => {
+                            responses.push(json!([
+                                "NEG-ERR",
+                                sub_id,
+                                format!("error: failed to encode response: {}", e)
+                            ]));
+                            ctx.negentropy_sessions.remove_session(&session_id);
+                        }
+                    },
                     Err(e) => {
                         responses.push(json!(["NEG-ERR", sub_id, format!("error: {}", e)]));
                         ctx.negentropy_sessions.remove_session(&session_id);
@@ -628,14 +700,22 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
         "NEG-MSG" => {
             // ["NEG-MSG", <subscription_id>, <message>]
             if msg_array.len() != 3 {
-                responses.push(json!(["NEG-ERR", "", "invalid: NEG-MSG must have 3 elements"]));
+                responses.push(json!([
+                    "NEG-ERR",
+                    "",
+                    "invalid: NEG-MSG must have 3 elements"
+                ]));
                 return responses;
             }
 
             let sub_id = match msg_array[1].as_str() {
                 Some(id) => id,
                 None => {
-                    responses.push(json!(["NEG-ERR", "", "invalid: subscription ID must be string"]));
+                    responses.push(json!([
+                        "NEG-ERR",
+                        "",
+                        "invalid: subscription ID must be string"
+                    ]));
                     return responses;
                 }
             };
@@ -644,7 +724,11 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
             let message_hex = match msg_array[2].as_str() {
                 Some(hex) => hex,
                 None => {
-                    responses.push(json!(["NEG-ERR", sub_id, "invalid: message must be hex string"]));
+                    responses.push(json!([
+                        "NEG-ERR",
+                        sub_id,
+                        "invalid: message must be hex string"
+                    ]));
                     return responses;
                 }
             };
@@ -652,7 +736,11 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
             let client_message = match NegentropyMessage::decode_hex(message_hex) {
                 Ok(msg) => msg,
                 Err(e) => {
-                    responses.push(json!(["NEG-ERR", sub_id, format!("invalid: failed to decode message: {}", e)]));
+                    responses.push(json!([
+                        "NEG-ERR",
+                        sub_id,
+                        format!("invalid: failed to decode message: {}", e)
+                    ]));
                     return responses;
                 }
             };
@@ -679,7 +767,11 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
                                     responses.push(json!(["NEG-MSG", sub_id, hex]));
                                 }
                                 Err(e) => {
-                                    responses.push(json!(["NEG-ERR", sub_id, format!("error: failed to encode response: {}", e)]));
+                                    responses.push(json!([
+                                        "NEG-ERR",
+                                        sub_id,
+                                        format!("error: failed to encode response: {}", e)
+                                    ]));
                                     ctx.negentropy_sessions.remove_session(&session_id);
                                 }
                             }
@@ -711,7 +803,11 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
 
             // Remove session
             let session_id = SessionId::new(ctx.connection_id.to_string(), sub_id.to_string());
-            if ctx.negentropy_sessions.remove_session(&session_id).is_some() {
+            if ctx
+                .negentropy_sessions
+                .remove_session(&session_id)
+                .is_some()
+            {
                 debug!("NEG-CLOSE: Session closed for {}", sub_id);
             } else {
                 debug!("NEG-CLOSE: No active session for {}", sub_id);
@@ -720,7 +816,10 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
         }
         _ => {
             warn!("Unknown message type: {}", msg_type);
-            responses.push(json!(["NOTICE", format!("Unknown message type: {}", msg_type)]));
+            responses.push(json!([
+                "NOTICE",
+                format!("Unknown message type: {}", msg_type)
+            ]));
         }
     }
 
