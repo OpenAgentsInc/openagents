@@ -619,8 +619,8 @@ impl<T: Animatable> KeyframeAnimation<T> {
 /// Animation controller that manages multiple animations
 #[derive(Debug, Default)]
 pub struct AnimationController {
-    /// Timestamp of last tick
-    last_tick: Option<std::time::Instant>,
+    /// Timestamp of last tick (uses web_time for cross-platform WASM support)
+    last_tick: Option<web_time::Instant>,
 }
 
 impl AnimationController {
@@ -631,7 +631,7 @@ impl AnimationController {
 
     /// Get delta time since last tick
     pub fn delta(&mut self) -> Duration {
-        let now = std::time::Instant::now();
+        let now = web_time::Instant::now();
         let delta = self.last_tick.map(|t| now - t).unwrap_or(Duration::ZERO);
         self.last_tick = Some(now);
         delta

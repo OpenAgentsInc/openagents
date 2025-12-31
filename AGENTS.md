@@ -70,6 +70,30 @@ Issues are NOT done unless:
 2. Code actually works (tested)
 3. SDK integrations are real, not stubbed
 
+## crates/web Deployment
+
+**ALWAYS use Cloudflare Workers, NEVER Cloudflare Pages.**
+
+```bash
+cd crates/web
+bun run deploy          # Production deploy to Workers
+bun run deploy:preview  # Preview environment
+```
+
+This runs `bun run build && bun run build:worker && npx wrangler deploy`. Check `package.json` for scripts.
+
+**NEVER run:**
+- `npx wrangler pages deploy` - WRONG, we use Workers not Pages
+- `npx wrangler deploy` directly without build steps
+
+## WASM Compatibility
+
+**NEVER use `std::time::Instant` in wgpui or web client code** - it doesn't work in WASM.
+
+Use `web_time::Instant` instead (from the `web-time` crate). This provides cross-platform time that works on both native and WASM.
+
+Example: `wgpui::animation::AnimationController` uses `web_time::Instant` for delta time calculations.
+
 ## Rules
 
 - **No placeholder data** - Connect to real sources or show empty state

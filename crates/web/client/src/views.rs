@@ -1,4 +1,8 @@
-use wgpui::{Bounds, Point, Quad, Scene, TextSystem, theme};
+use wgpui::{Bounds, Hsla, Point, Quad, Scene, TextSystem, theme};
+use wgpui::animation::AnimatorState;
+use wgpui::components::Component;
+use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame};
+use wgpui::PaintContext;
 
 use crate::hud::draw_hud_view;
 use crate::nostr::{BazaarJobType, DvmJob, DvmView, JobType, Nip90EventType, RelayStatus, VerificationStatus};
@@ -13,12 +17,24 @@ pub(crate) fn build_landing_page(
     state: &mut AppState,
     width: f32,
     height: f32,
-    _scale_factor: f32,
+    scale_factor: f32,
 ) {
     // Background
     scene.draw_quad(
         Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP),
     );
+
+    // Dots grid background with animation
+    let mut cx = PaintContext::new(scene, text_system, scale_factor);
+    state.dots_grid = DotsGrid::new()
+        .color(Hsla::new(0.0, 0.0, 1.0, 0.15)) // Faint white dots
+        .distance(24.0)
+        .size(1.0)
+        .origin(DotsOrigin::Center);
+    state.dots_grid.update(AnimatorState::Entering);
+    state.dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
+    let scene = cx.scene;
+    let text_system = cx.text;
 
     let pad = 24.0;
 
@@ -32,9 +48,107 @@ pub(crate) fn build_landing_page(
     );
     scene.draw_text(title_run);
 
-    // === LIVE MARKET FEED ===
-    let feed_y = pad + 56.0;
+    // === DUAL CTA CARDS (with Kranox frames) ===
+    let cards_y = pad + 48.0;
+    let card_gap = 16.0;
     let feed_w = width - pad * 2.0;
+    let card_w = (feed_w - card_gap) / 2.0;
+    let card_h = 140.0;
+
+    // Update frame animators (web_time provides cross-platform Instant for WASM)
+    if !state.cta_frames_started {
+        state.cta_frames_started = true;
+    }
+    let anim_state = if state.cta_frames_started {
+        AnimatorState::Entering
+    } else {
+        AnimatorState::Exited
+    };
+    let left_progress = state.left_cta_animator.update(anim_state);
+    let right_progress = state.right_cta_animator.update(anim_state);
+
+    // Create PaintContext for Frame component
+    let mut cx = PaintContext::new(scene, text_system, scale_factor);
+
+    // Left CTA card - "GET WORK DONE"
+    let left_x = pad;
+    state.left_cta_bounds = Bounds::new(left_x, cards_y, card_w, card_h);
+
+    let mut left_frame = Frame::kranox()
+        .line_color(theme::accent::PRIMARY)
+        .bg_color(theme::bg::SURFACE.with_alpha(0.0))
+        .glow_color(theme::accent::PRIMARY.with_alpha(0.3))
+        .stroke_width(1.0)
+        .square_size(10.0)
+        .small_line_length(14.0)
+        .large_line_length(40.0)
+        .animation_progress(left_progress);
+
+    left_frame.paint(state.left_cta_bounds, &mut cx);
+
+    // Left card content
+    let left_title_run = cx.text.layout("GET WORK DONE", Point::new(left_x + 24.0, cards_y + 20.0), 16.0, theme::text::PRIMARY);
+    cx.scene.draw_text(left_title_run);
+    let left_l1 = cx.text.layout("Point Autopilot at your issue backlog.", Point::new(left_x + 24.0, cards_y + 48.0), 12.0, theme::text::MUTED);
+    cx.scene.draw_text(left_l1);
+    let left_l2 = cx.text.layout("Wake up to PRs.", Point::new(left_x + 24.0, cards_y + 64.0), 12.0, theme::text::MUTED);
+    cx.scene.draw_text(left_l2);
+
+    // Left button
+    let left_btn_text = if state.loading { "Connecting..." } else { "Connect GitHub" };
+    let left_btn_y = cards_y + card_h - 48.0;
+    let left_btn_bg = if state.left_cta_hovered && !state.loading { theme::accent::PRIMARY } else { theme::accent::PRIMARY.with_alpha(0.85) };
+    cx.scene.draw_quad(Quad::new(Bounds::new(left_x + 24.0, left_btn_y, 140.0, 32.0)).with_background(left_btn_bg));
+    let left_btn_run = cx.text.layout(left_btn_text, Point::new(left_x + 40.0, left_btn_y + 8.0), 13.0, theme::bg::APP);
+    cx.scene.draw_text(left_btn_run);
+
+    // Right CTA card - "DO WORK FOR BITCOIN"
+    let right_x = pad + card_w + card_gap;
+    state.right_cta_bounds = Bounds::new(right_x, cards_y, card_w, card_h);
+
+    let mut right_frame = Frame::kranox()
+        .line_color(theme::status::SUCCESS)
+        .bg_color(theme::bg::SURFACE.with_alpha(0.0))
+        .glow_color(theme::status::SUCCESS.with_alpha(0.3))
+        .stroke_width(1.0)
+        .square_size(10.0)
+        .small_line_length(14.0)
+        .large_line_length(40.0)
+        .animation_progress(right_progress);
+
+    right_frame.paint(state.right_cta_bounds, &mut cx);
+
+    // Right card content
+    let right_title_run = cx.text.layout("DO WORK FOR BITCOIN", Point::new(right_x + 24.0, cards_y + 20.0), 16.0, theme::text::PRIMARY);
+    cx.scene.draw_text(right_title_run);
+    let right_l1 = cx.text.layout("Bring your coding agent. Accept jobs.", Point::new(right_x + 24.0, cards_y + 48.0), 12.0, theme::text::MUTED);
+    cx.scene.draw_text(right_l1);
+    let right_l2 = cx.text.layout("Average: 47,000 sats/day", Point::new(right_x + 24.0, cards_y + 68.0), 11.0, theme::status::SUCCESS);
+    cx.scene.draw_text(right_l2);
+
+    // Right button
+    let right_btn_y = cards_y + card_h - 48.0;
+    let right_btn_bg = if state.right_cta_hovered { theme::status::SUCCESS } else { theme::status::SUCCESS.with_alpha(0.85) };
+    cx.scene.draw_quad(Quad::new(Bounds::new(right_x + 24.0, right_btn_y, 120.0, 32.0)).with_background(right_btn_bg));
+    let right_btn_run = cx.text.layout("Start Earning", Point::new(right_x + 40.0, right_btn_y + 8.0), 13.0, theme::bg::APP);
+    cx.scene.draw_text(right_btn_run);
+
+    // Set button_bounds for main CTA
+    if !state.loading {
+        state.button_bounds = Bounds::new(left_x + 24.0, left_btn_y, 140.0, 32.0);
+    } else {
+        state.button_bounds = Bounds::ZERO;
+    }
+
+    state.landing_issue_bounds = Bounds::ZERO;
+    state.landing_issue_url = None;
+
+    // Release the PaintContext borrow
+    let scene = cx.scene;
+    let text_system = cx.text;
+
+    // === LIVE MARKET FEED ===
+    let feed_y = cards_y + card_h + 16.0;
     let row_h = 28.0;
 
     // Use real Bazaar jobs if available, otherwise fall back to dummy data
@@ -587,71 +701,8 @@ pub(crate) fn build_landing_page(
         }
     }
 
-    // === DUAL CTA CARDS ===
-    let cards_y = dvm_y + dvm_h + 16.0;
-    let card_gap = 16.0;
-    let card_w = (feed_w - card_gap) / 2.0;
-    let card_h = 140.0;
-
-    // Left card
-    let left_x = pad;
-    state.left_cta_bounds = Bounds::new(left_x, cards_y, card_w, card_h);
-    scene.draw_quad(
-        Quad::new(state.left_cta_bounds)
-            .with_background(theme::bg::SURFACE)
-            .with_border(theme::border::DEFAULT, 1.0),
-    );
-
-    let left_title_run = text_system.layout("GET WORK DONE", Point::new(left_x + 16.0, cards_y + 16.0), 16.0, theme::text::PRIMARY);
-    scene.draw_text(left_title_run);
-    let left_l1 = text_system.layout("Point Autopilot at your issue backlog.", Point::new(left_x + 16.0, cards_y + 44.0), 12.0, theme::text::MUTED);
-    scene.draw_text(left_l1);
-    let left_l2 = text_system.layout("Wake up to PRs.", Point::new(left_x + 16.0, cards_y + 60.0), 12.0, theme::text::MUTED);
-    scene.draw_text(left_l2);
-
-    // Left button
-    let left_btn_text = if state.loading { "Connecting..." } else { "Connect GitHub" };
-    let left_btn_y = cards_y + card_h - 48.0;
-    let left_btn_bg = if state.left_cta_hovered && !state.loading { theme::accent::PRIMARY } else { theme::accent::PRIMARY.with_alpha(0.85) };
-    scene.draw_quad(Quad::new(Bounds::new(left_x + 16.0, left_btn_y, 140.0, 32.0)).with_background(left_btn_bg).with_border(theme::border::DEFAULT, 1.0));
-    let left_btn_run = text_system.layout(left_btn_text, Point::new(left_x + 32.0, left_btn_y + 8.0), 13.0, theme::bg::APP);
-    scene.draw_text(left_btn_run);
-
-    // Right card
-    let right_x = pad + card_w + card_gap;
-    state.right_cta_bounds = Bounds::new(right_x, cards_y, card_w, card_h);
-    scene.draw_quad(
-        Quad::new(state.right_cta_bounds)
-            .with_background(theme::bg::SURFACE)
-            .with_border(theme::border::DEFAULT, 1.0),
-    );
-
-    let right_title_run = text_system.layout("DO WORK FOR BITCOIN", Point::new(right_x + 16.0, cards_y + 16.0), 16.0, theme::text::PRIMARY);
-    scene.draw_text(right_title_run);
-    let right_l1 = text_system.layout("Bring your coding agent. Accept jobs.", Point::new(right_x + 16.0, cards_y + 44.0), 12.0, theme::text::MUTED);
-    scene.draw_text(right_l1);
-    let right_l2 = text_system.layout("Average: 47,000 sats/day", Point::new(right_x + 16.0, cards_y + 64.0), 11.0, theme::status::SUCCESS);
-    scene.draw_text(right_l2);
-
-    // Right button
-    let right_btn_y = cards_y + card_h - 48.0;
-    let right_btn_bg = if state.right_cta_hovered { theme::status::SUCCESS } else { theme::status::SUCCESS.with_alpha(0.85) };
-    scene.draw_quad(Quad::new(Bounds::new(right_x + 16.0, right_btn_y, 120.0, 32.0)).with_background(right_btn_bg).with_border(theme::border::DEFAULT, 1.0));
-    let right_btn_run = text_system.layout("Start Earning", Point::new(right_x + 32.0, right_btn_y + 8.0), 13.0, theme::bg::APP);
-    scene.draw_text(right_btn_run);
-
-    // Set button_bounds for main CTA
-    if !state.loading {
-        state.button_bounds = Bounds::new(left_x + 16.0, left_btn_y, 140.0, 32.0);
-    } else {
-        state.button_bounds = Bounds::ZERO;
-    }
-
-    state.landing_issue_bounds = Bounds::ZERO;
-    state.landing_issue_url = None;
-
     // === GLOBAL NOTES FEED ===
-    let global_y = cards_y + card_h + 16.0;
+    let global_y = dvm_y + dvm_h + 16.0;
     let global_row_h = 26.0;
     let max_global_rows = 6; // Fixed visible height
     let global_h = 48.0 + (max_global_rows as f32 * global_row_h);
