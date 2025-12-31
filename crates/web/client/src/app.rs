@@ -13,6 +13,7 @@ use crate::hud::{
     dispatch_hud_event, ensure_hud_session, fetch_live_hud, get_hud_context, init_hud_runtime,
     stop_metrics_poll, update_hud_settings, HudContext,
 };
+use crate::nostr::{connect_to_relay, DEFAULT_RELAYS};
 use crate::state::{AppState, AppView, RepoInfo, UserInfo};
 use crate::views::{build_landing_page, build_repo_selector, build_repo_view};
 use crate::utils::track_funnel_event;
@@ -87,6 +88,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 state.repos_loading = false;
             } else if state_clone.borrow().hud_context.is_some() {
                 init_hud_runtime(state_clone.clone());
+            }
+
+            // Connect to Nostr relay for NIP-90 events on landing page
+            if state_clone.borrow().view == AppView::Landing {
+                connect_nostr_relay(state_clone.clone());
             }
         });
     }
@@ -246,6 +252,53 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             }
 
+            // Handle DVM marketplace clicks on Landing page
+            if state.view == AppView::Landing {
+                // Feed tab
+                if state.dvm_tab_bounds[0].contains(click_pos) {
+                    state.dvm_directory.current_view = crate::nostr::DvmView::Feed;
+                    state.nip90.scroll_offset = 0.0; // Reset scroll when switching tabs
+                    return;
+                }
+                // DVMs tab
+                if state.dvm_tab_bounds[1].contains(click_pos) {
+                    state.dvm_directory.current_view = crate::nostr::DvmView::Directory;
+                    state.dvm_directory.scroll_offset = 0.0; // Reset scroll when switching tabs
+                    return;
+                }
+
+                // Handle clicks within DVM marketplace content
+                match &state.dvm_directory.current_view {
+                    crate::nostr::DvmView::Feed => {
+                        // Check if click is on any event row - navigate to job detail
+                        for (i, bounds) in state.nip90_event_bounds.iter().enumerate() {
+                            if bounds.contains(click_pos) {
+                                // Get the event at this index
+                                if let Some(event) = state.nip90.events.get(i) {
+                                    // Only navigate if it's a job request
+                                    if matches!(event.event_type, crate::nostr::Nip90EventType::JobRequest { .. }) {
+                                        state.dvm_directory.current_view = crate::nostr::DvmView::JobDetail(event.id.clone());
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    crate::nostr::DvmView::JobDetail(_) => {
+                        // Check if back button was clicked (first element in nip90_event_bounds)
+                        if let Some(back_bounds) = state.nip90_event_bounds.first() {
+                            if back_bounds.contains(click_pos) {
+                                state.dvm_directory.current_view = crate::nostr::DvmView::Feed;
+                                return;
+                            }
+                        }
+                    }
+                    crate::nostr::DvmView::Directory => {
+                        // Could add DVM click handling here later
+                    }
+                }
+            }
+
             // Handle right CTA click (Start Earning) on Landing page
             if state.view == AppView::Landing && state.right_cta_bounds.contains(click_pos) {
                 if let Some(window) = web_sys::window() {
@@ -324,6 +377,37 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 return;
             }
 
+            // Handle scrolling for DVM marketplace on Landing page
+            if state.view == AppView::Landing {
+                let point = Point::new(event.offset_x() as f32, event.offset_y() as f32);
+                let delta = event.delta_y() as f32 * 0.5;
+
+                // Check global feed area first
+                if state.global_feed_bounds.contains(point) {
+                    state.global_feed.scroll_offset += delta;
+                    state.global_feed.scroll_offset = state.global_feed.scroll_offset.max(0.0);
+                    return;
+                }
+
+                // Check DVM marketplace area
+                if state.dvm_content_bounds.contains(point) {
+                    match state.dvm_directory.current_view {
+                        crate::nostr::DvmView::Feed => {
+                            state.nip90.scroll_offset += delta;
+                            state.nip90.scroll_offset = state.nip90.scroll_offset.max(0.0);
+                        }
+                        crate::nostr::DvmView::Directory => {
+                            state.dvm_directory.scroll_offset += delta;
+                            state.dvm_directory.scroll_offset = state.dvm_directory.scroll_offset.max(0.0);
+                        }
+                        crate::nostr::DvmView::JobDetail(_) => {
+                            // Could add scroll for job detail if needed
+                        }
+                    }
+                    return;
+                }
+            }
+
             if state.view == AppView::RepoView {
                 let point = Point::new(event.offset_x() as f32, event.offset_y() as f32);
                 let scroll = InputEvent::Scroll {
@@ -385,6 +469,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 state.view == AppView::Landing && state.landing_issue_bounds.contains(state.mouse_pos);
             let bazaar_cta_hover =
                 state.view == AppView::Landing && (state.left_cta_hovered || state.right_cta_hovered);
+            let dvm_tab_hover = state.view == AppView::Landing
+                && (state.dvm_tab_bounds[0].contains(state.mouse_pos)
+                    || state.dvm_tab_bounds[1].contains(state.mouse_pos));
+            let dvm_content_hover = state.view == AppView::Landing
+                && state.nip90_event_bounds.iter().any(|b| b.contains(state.mouse_pos));
             let cursor = if state.button_hovered
                 || state.hovered_repo_idx.is_some()
                 || hud_hover
@@ -392,6 +481,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 || start_hover
                 || landing_hover
                 || bazaar_cta_hover
+                || dvm_tab_hover
+                || dvm_content_hover
             {
                 "pointer"
             } else {
@@ -600,4 +691,62 @@ async fn fetch_repos() -> Vec<RepoInfo> {
     }
 
     repos
+}
+
+fn connect_nostr_relay(state: Rc<RefCell<AppState>>) {
+    // Use the first default relay
+    let relay_url = DEFAULT_RELAYS[0];
+
+    // Update state with relay URL and connecting status
+    {
+        let mut s = state.borrow_mut();
+        s.nip90.relay_url = relay_url.to_string();
+        s.nip90.relay_status = crate::nostr::RelayStatus::Connecting;
+    }
+
+    let state_for_event = state.clone();
+    let state_for_dvm = state.clone();
+    let state_for_note = state.clone();
+    let state_for_author = state.clone();
+    let state_for_status = state.clone();
+
+    let handle = connect_to_relay(
+        relay_url,
+        // NIP-90 job events callback
+        move |event| {
+            if let Ok(mut s) = state_for_event.try_borrow_mut() {
+                s.nip90.add_event(event, 30);
+            }
+        },
+        // NIP-89 DVM announcement callback
+        move |dvm| {
+            if let Ok(mut s) = state_for_dvm.try_borrow_mut() {
+                s.dvm_directory.add_dvm(dvm);
+            }
+        },
+        // NIP-01 text note callback
+        move |note| {
+            if let Ok(mut s) = state_for_note.try_borrow_mut() {
+                s.global_feed.add_note(note, 50);
+            }
+        },
+        // Author metadata callback
+        move |author| {
+            if let Ok(mut s) = state_for_author.try_borrow_mut() {
+                s.global_feed.add_author(author);
+            }
+        },
+        // Status callback
+        move |status| {
+            if let Ok(mut s) = state_for_status.try_borrow_mut() {
+                s.nip90.relay_status = status;
+            }
+        },
+    );
+
+    if let Some(h) = handle {
+        if let Ok(mut s) = state.try_borrow_mut() {
+            s.nip90_relay_handle = Some(h);
+        }
+    }
 }

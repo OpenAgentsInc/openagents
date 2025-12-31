@@ -1,6 +1,7 @@
 use wgpui::{Bounds, Point};
 
 use crate::hud::{HudContext, HudLayout, HudStreamHandle, HudUi, LandingLive};
+use crate::nostr::{DvmDirectoryState, GlobalFeedState, Nip90State, NostrRelayHandle};
 use crate::wallet::WalletUi;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -101,6 +102,18 @@ pub(crate) struct AppState {
     pub(crate) right_cta_hovered: bool,
     pub(crate) hovered_job_idx: Option<usize>,
     pub(crate) job_bounds: Vec<Bounds>,
+    // NIP-90 events pane
+    pub(crate) nip90: Nip90State,
+    pub(crate) nip90_relay_handle: Option<NostrRelayHandle>,
+    pub(crate) nip90_event_bounds: Vec<Bounds>,
+    // DVM directory (NIP-89)
+    pub(crate) dvm_directory: DvmDirectoryState,
+    pub(crate) dvm_tab_bounds: [Bounds; 2], // [Feed, DVMs] tab bounds
+    pub(crate) dvm_content_bounds: Bounds,  // Scrollable content area for DVM marketplace
+    // Global notes feed (NIP-01)
+    pub(crate) global_feed: GlobalFeedState,
+    pub(crate) global_feed_bounds: Bounds,           // Scrollable content area
+    pub(crate) global_feed_note_bounds: Vec<Bounds>, // Per-note bounds for click detection
 }
 
 impl Default for AppState {
@@ -139,6 +152,15 @@ impl Default for AppState {
             right_cta_hovered: false,
             hovered_job_idx: None,
             job_bounds: Vec::new(),
+            nip90: Nip90State::new(),
+            nip90_relay_handle: None,
+            nip90_event_bounds: Vec::new(),
+            dvm_directory: DvmDirectoryState::new(),
+            dvm_tab_bounds: [Bounds::ZERO; 2],
+            dvm_content_bounds: Bounds::ZERO,
+            global_feed: GlobalFeedState::new(),
+            global_feed_bounds: Bounds::ZERO,
+            global_feed_note_bounds: Vec::new(),
         }
     }
 }

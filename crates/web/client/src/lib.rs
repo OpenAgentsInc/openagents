@@ -1,5 +1,6 @@
 mod app;
 mod hud;
+mod nostr;
 mod state;
 mod utils;
 mod views;
