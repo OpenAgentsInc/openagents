@@ -34,21 +34,23 @@ Shown when user is not logged in.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
+│ LIVE  Autopilot is working on issue #847                         │
+│ @openagents/openagents                                           │
 │                                                                  │
+│   [live HUD panes streaming in the background]                   │
 │                                                                  │
-│                          OpenAgents                              │
-│                                                                  │
-│                    ┌────────────────────────┐                   │
-│                    │  Login with GitHub     │                   │
-│                    └────────────────────────┘                   │
-│                                                                  │
-│                                                                  │
+│ ┌─────────────────────────────────────────────────────────────┐  │
+│ │ Autopilot for code                                           │  │
+│ │ Watch it work. Connect GitHub to get your own HUD in <30 sec. │  │
+│ │ [Connect GitHub → Get Your Own Autopilot]                     │  │
+│ └─────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-- **Center title:** "OpenAgents" (48px)
-- **Login button:** Navigates to `/api/auth/github/start`
-- **Loading state:** Shows "Loading..." while checking auth
+- **Live fishbowl:** Renders the real HUD in the background when `/api/hud/live` is enabled.
+- **Issue banner:** Clickable when `LIVE_HUD_ISSUE_URL` is set.
+- **CTA button:** Navigates to `/api/auth/github/start`
+- **Empty state:** If no live config is present, shows a "No live session" message.
 
 ### 2. Repo Selector View (`AppView::RepoSelector`)
 

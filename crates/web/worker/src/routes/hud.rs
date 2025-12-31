@@ -2,7 +2,7 @@
 
 use crate::db::users;
 use crate::middleware::auth::AuthenticatedUser;
-use crate::routes::container::{ContainerSession, StartContainerRequest, StartContainerResponse};
+use crate::routes::container::{ContainerSession, StartContainerResponse};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 use worker::*;
@@ -20,6 +20,20 @@ struct HudContext {
     session_id: Option<String>,
     ws_url: Option<String>,
     status: String, // "idle", "starting", "running", "completed", "failed"
+}
+
+#[derive(Serialize)]
+struct LiveIssue {
+    label: String,
+    url: String,
+    title: Option<String>,
+}
+
+#[derive(Serialize)]
+struct LiveHudResponse {
+    enabled: bool,
+    hud_context: Option<HudContext>,
+    issue: Option<LiveIssue>,
 }
 
 /// Response for session query
@@ -55,24 +69,47 @@ pub async fn view_hud(
     agent_id: Option<String>,
     stream_override: Option<String>,
 ) -> Result<Response> {
+    let db = env.d1("DB")?;
+    let owner = users::get_by_github_username(&db, &username).await?;
+    let owner = match owner {
+        Some(u) => u,
+        None => return Response::error("User not found", 404),
+    };
+
     // Check if current user is the owner (by matching github username)
     let is_owner = maybe_user
         .as_ref()
         .map(|u| u.github_username.eq_ignore_ascii_case(&username))
         .unwrap_or(false);
 
-    // Check for active session if user is authenticated
-    let (session_id, ws_url, status) = if let Some(ref user) = maybe_user {
-        let full_repo = format!("{}/{}", username, repo);
-        match get_active_session(&env, &user.user_id, &full_repo).await {
-            Ok(Some(session)) => {
-                let ws = format!("/api/container/ws/{}", session.session_id);
-                (Some(session.session_id), Some(ws), "running".to_string())
-            }
-            _ => (None, None, "idle".to_string()),
+    let full_repo = format!("{}/{}", username, repo);
+    let settings = db
+        .prepare(
+            "SELECT is_public, embed_allowed FROM hud_settings
+             WHERE user_id = ? AND repo = ?",
+        )
+        .bind(&[owner.user_id.clone().into(), full_repo.clone().into()])?
+        .first::<serde_json::Value>(None)
+        .await?;
+
+    let is_public = settings
+        .as_ref()
+        .and_then(|s| s.get("is_public"))
+        .and_then(|v| v.as_i64())
+        .map(|v| v == 1)
+        .unwrap_or(true);
+
+    if !is_owner && !is_public {
+        return Response::error("This HUD is private", 403);
+    }
+
+    // Check for active session for owner or public viewers.
+    let (session_id, ws_url, status) = match get_active_session(&env, &owner.user_id, &full_repo).await {
+        Ok(Some(session)) => {
+            let ws = format!("/api/container/ws/{}", session.session_id);
+            (Some(session.session_id), Some(ws), "running".to_string())
         }
-    } else {
-        (None, None, "idle".to_string())
+        _ => (None, None, "idle".to_string()),
     };
 
     // Return HUD page
@@ -86,7 +123,7 @@ pub async fn view_hud(
         username: username.clone(),
         repo: repo.clone(),
         is_owner,
-        is_public: true, // Default public for now
+        is_public,
         embed_mode: false,
         agent_id,
         stream_url,
@@ -221,13 +258,15 @@ pub async fn embed_hud(
         None => return Response::error("User not found", 404),
     };
 
+    let full_repo = format!("{}/{}", username, repo);
+
     // Check HUD settings
     let settings = db
         .prepare(
             "SELECT is_public, embed_allowed FROM hud_settings
              WHERE user_id = ? AND repo = ?",
         )
-        .bind(&[owner.user_id.clone().into(), repo.clone().into()])?
+        .bind(&[owner.user_id.clone().into(), full_repo.clone().into()])?
         .first::<serde_json::Value>(None)
         .await?;
 
@@ -253,6 +292,14 @@ pub async fn embed_hud(
         return Response::error("Embedding is disabled for this HUD", 403);
     }
 
+    let (session_id, ws_url, status) = match get_active_session(&env, &owner.user_id, &full_repo).await {
+        Ok(Some(session)) => {
+            let ws = format!("/api/container/ws/{}", session.session_id);
+            (Some(session.session_id), Some(ws), "running".to_string())
+        }
+        _ => (None, None, "idle".to_string()),
+    };
+
     let stream_url = stream_override.or_else(|| {
         agent_id
             .as_ref()
@@ -263,13 +310,13 @@ pub async fn embed_hud(
         username,
         repo,
         is_owner: false,
-        is_public: true,
+        is_public,
         embed_mode: true,
         agent_id,
         stream_url,
-        session_id: None, // Embeds don't start sessions
-        ws_url: None,
-        status: "idle".to_string(),
+        session_id,
+        ws_url,
+        status,
     };
 
     serve_hud_html(&env, &context).await
@@ -301,8 +348,14 @@ pub async fn update_settings(
         update.is_public.map(|b| if b { 1i64 } else { 0 }).unwrap_or(1).into(),
         update.embed_allowed.map(|b| if b { 1i64 } else { 0 }).unwrap_or(1).into(),
         now.into(),
-        update.is_public.map(|b| if b { 1i64 } else { 0 }.into()).unwrap_or(JsValue::NULL),
-        update.embed_allowed.map(|b| if b { 1i64 } else { 0 }.into()).unwrap_or(JsValue::NULL),
+        update
+            .is_public
+            .map(|b| JsValue::from(if b { 1i64 } else { 0 }))
+            .unwrap_or(JsValue::NULL),
+        update
+            .embed_allowed
+            .map(|b| JsValue::from(if b { 1i64 } else { 0 }))
+            .unwrap_or(JsValue::NULL),
     ])?
     .run()
     .await?;
@@ -313,10 +366,123 @@ pub async fn update_settings(
     }))
 }
 
+/// Get HUD settings for a repo (owner only).
+pub async fn get_settings(
+    user: AuthenticatedUser,
+    env: Env,
+    repo: String,
+) -> Result<Response> {
+    let db = env.d1("DB")?;
+    let settings = db
+        .prepare(
+            "SELECT is_public, embed_allowed FROM hud_settings
+             WHERE user_id = ? AND repo = ?",
+        )
+        .bind(&[user.user_id.into(), repo.clone().into()])?
+        .first::<serde_json::Value>(None)
+        .await?;
+
+    let is_public = settings
+        .as_ref()
+        .and_then(|s| s.get("is_public"))
+        .and_then(|v| v.as_i64())
+        .map(|v| v == 1)
+        .unwrap_or(true);
+    let embed_allowed = settings
+        .as_ref()
+        .and_then(|s| s.get("embed_allowed"))
+        .and_then(|v| v.as_i64())
+        .map(|v| v == 1)
+        .unwrap_or(true);
+
+    Response::from_json(&serde_json::json!({
+        "repo": repo,
+        "is_public": is_public,
+        "embed_allowed": embed_allowed
+    }))
+}
+
+/// Live HUD configuration for landing page.
+pub async fn live_hud(env: Env) -> Result<Response> {
+    let repo = match env.var("LIVE_HUD_REPO") {
+        Ok(value) => value.to_string(),
+        Err(_) => {
+            return Response::from_json(&LiveHudResponse {
+                enabled: false,
+                hud_context: None,
+                issue: None,
+            })
+        }
+    };
+
+    let parts: Vec<&str> = repo.split('/').collect();
+    if parts.len() < 2 {
+        return Response::from_json(&LiveHudResponse {
+            enabled: false,
+            hud_context: None,
+            issue: None,
+        });
+    }
+
+    let username = parts[0].to_string();
+    let repo_name = parts[1..].join("/");
+    let agent_id = env.var("LIVE_HUD_AGENT_ID").ok().map(|v| v.to_string());
+    let stream_url = env.var("LIVE_HUD_STREAM_URL").ok().map(|v| v.to_string());
+    let status = env
+        .var("LIVE_HUD_STATUS")
+        .ok()
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "live".to_string());
+
+    let issue_url = env.var("LIVE_HUD_ISSUE_URL").ok().map(|v| v.to_string());
+    let issue_title = env
+        .var("LIVE_HUD_ISSUE_TITLE")
+        .ok()
+        .map(|v| v.to_string());
+    let issue_label = env.var("LIVE_HUD_ISSUE_LABEL").ok().map(|v| v.to_string()).or_else(|| {
+        issue_url.as_ref().and_then(|url| {
+            let trimmed = url.trim_end_matches('/');
+            let last = trimmed.rsplit('/').next()?;
+            if last.chars().all(|c| c.is_ascii_digit()) {
+                Some(format!("issue #{}", last))
+            } else {
+                None
+            }
+        })
+    });
+
+    let issue = match (issue_label, issue_url) {
+        (Some(label), Some(url)) => Some(LiveIssue {
+            label,
+            url,
+            title: issue_title,
+        }),
+        _ => None,
+    };
+
+    let context = HudContext {
+        username,
+        repo: repo_name,
+        is_owner: false,
+        is_public: true,
+        embed_mode: false,
+        agent_id,
+        stream_url,
+        session_id: None,
+        ws_url: None,
+        status,
+    };
+
+    Response::from_json(&LiveHudResponse {
+        enabled: true,
+        hud_context: Some(context),
+        issue,
+    })
+}
+
 /// Serve the HUD HTML page with context
 async fn serve_hud_html(_env: &Env, context: &HudContext) -> Result<Response> {
-    // In a full implementation, we'd inject the context into the HTML
-    // For now, we serve a simple HTML that fetches context via API
+    // Inject the HUD context for the WASM client.
 
     let html = format!(
         r#"<!DOCTYPE html>

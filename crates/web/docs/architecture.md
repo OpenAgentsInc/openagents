@@ -109,8 +109,8 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             with_auth(&req, &env, |user| routes::account::get_settings(user, env.clone())).await
         }
 
-        // HUD (dynamic paths)
-        (Method::Get, path) if path.starts_with("/hud/") => {
+        // HUD (shareable paths)
+        (Method::Get, path) if path.starts_with("/hud/") || path.starts_with("/repo/") => {
             routes::hud::view_hud(env, parse_hud_path(path)).await
         }
 
@@ -516,7 +516,7 @@ Physical = Logical × scale_factor
 ### HUD Page Flow
 
 ```
-GET /hud/username/repo
+GET /hud/@username/repo (alias: /repo/:username/:repo)
         │
         ▼
 ┌───────────────────┐
