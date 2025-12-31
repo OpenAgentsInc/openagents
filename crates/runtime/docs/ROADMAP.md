@@ -262,6 +262,13 @@ Demo agent can:
 - Timelapse replay at 20x speed
 - Screenshot-worthy: panes opening, code streaming, tools firing
 
+### Implementation Notes (completed)
+
+- Added `/hud` and `/metrics` filesystem services (redacted stream, settings persistence, metric snapshots) plus `/logs/trajectory` replay output in `crates/runtime/src/services/`.
+- Mounted `/hud` and `/metrics` in `AgentEnv`, added runtime tests for settings redaction, metrics read/write, and trajectory output.
+- Implemented HUD panes (`CodePane`, `TerminalPane`, `MetricsPane`) in `crates/wgpui/src/components/sections/` and wired the HUD layout/rendering flow in `crates/web/client/src/lib.rs`.
+- Added HUD SSE client, replay mode, and settings toggles in the web client; updated the worker HUD context to pass `agent_id` and `stream_url`.
+
 ### GTM Requirements
 
 The HUD is the product's signature moment. Must deliver:
@@ -296,6 +303,12 @@ The HUD is the product's signature moment. Must deliver:
 ### Exit Criteria
 
 Agent can receive a Nostr DM → tick → reply.
+
+### Implementation Notes (completed)
+
+- Added `NostrSigner` with real Schnorr signing + NIP-44 encryption in `crates/runtime/src/identity.rs` and made it the default signer in `AgentEnv`.
+- Implemented driver infrastructure plus `NostrDriver` relay subscriptions and publishing in `crates/runtime/src/drivers/`.
+- Added `LocalRuntime::driver_sink` to route `RoutedEnvelope` into agent inboxes and runtime tests for signing, encryption, driver routing, and sink delivery.
 
 ### References
 

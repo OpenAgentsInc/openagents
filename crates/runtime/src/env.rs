@@ -2,9 +2,12 @@
 
 use crate::budget::BudgetTracker;
 use crate::fs::{AccessLevel, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat, WatchHandle};
-use crate::identity::{InMemorySigner, SigningService};
+use crate::identity::{NostrSigner, SigningService};
 use crate::namespace::Namespace;
-use crate::services::{DeadletterFs, GoalsFs, IdentityFs, InboxFs, LogsFs, StatusFs, StatusSnapshot};
+use crate::services::{
+    DeadletterFs, GoalsFs, HudFs, IdentityFs, InboxFs, LogsFs, MetricsFs, StatusFs,
+    StatusSnapshot,
+};
 use crate::storage::AgentStorage;
 use crate::types::AgentId;
 use std::collections::HashMap;
@@ -31,13 +34,17 @@ pub struct AgentEnv {
     pub identity: Arc<IdentityFs>,
     /// Logs service.
     pub logs: Arc<LogsFs>,
+    /// HUD service.
+    pub hud: Arc<HudFs>,
+    /// Metrics service.
+    pub metrics: Arc<MetricsFs>,
     budgets: Arc<Mutex<HashMap<String, BudgetTracker>>>,
 }
 
 impl AgentEnv {
     /// Create an environment with default services and a stub signer.
     pub fn new(agent_id: AgentId, storage: Arc<dyn AgentStorage>) -> Self {
-        let signer = Arc::new(InMemorySigner::new());
+        let signer = Arc::new(NostrSigner::new());
         Self::with_signer(agent_id, storage, signer)
     }
 
@@ -51,9 +58,11 @@ impl AgentEnv {
         let status = Arc::new(StatusFs::new(snapshot));
         let inbox = Arc::new(InboxFs::with_capacity(DEFAULT_INBOX_CAPACITY));
         let deadletter = Arc::new(DeadletterFs::new(inbox.deadletter()));
-        let goals = Arc::new(GoalsFs::new(agent_id.clone(), storage));
+        let goals = Arc::new(GoalsFs::new(agent_id.clone(), storage.clone()));
         let identity = Arc::new(IdentityFs::new(agent_id.clone(), signer));
         let logs = Arc::new(LogsFs::new());
+        let metrics = Arc::new(MetricsFs::new());
+        let hud = Arc::new(HudFs::new(agent_id.clone(), storage.clone(), logs.clone()));
 
         let namespace = Namespace::new();
         let budgets = Arc::new(Mutex::new(HashMap::new()));
@@ -66,6 +75,8 @@ impl AgentEnv {
             goals,
             identity,
             logs,
+            hud,
+            metrics,
             budgets,
         };
 
@@ -75,6 +86,8 @@ impl AgentEnv {
         env.mount("/goals", env.goals.clone(), AccessLevel::ReadWrite);
         env.mount("/identity", env.identity.clone(), AccessLevel::SignOnly);
         env.mount("/logs", env.logs.clone(), AccessLevel::ReadOnly);
+        env.mount("/hud", env.hud.clone(), AccessLevel::ReadWrite);
+        env.mount("/metrics", env.metrics.clone(), AccessLevel::ReadOnly);
 
         env
     }

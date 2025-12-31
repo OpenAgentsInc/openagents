@@ -2,8 +2,14 @@
 
 use crate::error::Result;
 use crate::types::AgentId;
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
+use bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey, XOnlyPublicKey, schnorr};
+use nostr::{decrypt as decrypt_v1, decrypt_v2, encrypt_v2, get_public_key};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
 /// Public key wrapper.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -131,5 +137,105 @@ impl SigningService for InMemorySigner {
         let receiver_pubkey = Self::derive_pubkey(agent_id);
         let key = Self::shared_key(&receiver_pubkey, sender);
         Ok(Self::xor(ciphertext, &key))
+    }
+}
+
+/// Real signing service backed by Nostr-compatible keys (in-memory for local dev).
+#[derive(Default)]
+pub struct NostrSigner {
+    keys: Arc<RwLock<HashMap<AgentId, [u8; 32]>>>,
+}
+
+impl NostrSigner {
+    /// Create a new signer with empty key cache.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn secret_for(&self, agent_id: &AgentId) -> Result<[u8; 32]> {
+        let mut guard = self.keys.write().unwrap_or_else(|e| e.into_inner());
+        let entry = guard
+            .entry(agent_id.clone())
+            .or_insert_with(nostr::generate_secret_key);
+        Ok(*entry)
+    }
+
+    fn digest(data: &[u8]) -> [u8; 32] {
+        if data.len() == 32 {
+            let mut out = [0u8; 32];
+            out.copy_from_slice(data);
+            return out;
+        }
+        let hash = Sha256::digest(data);
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&hash);
+        out
+    }
+
+    fn compressed_pubkey(pubkey: &PublicKey) -> Result<[u8; 33]> {
+        let bytes = pubkey.as_bytes();
+        if bytes.len() != 32 {
+            return Err("nostr pubkey must be 32 bytes".into());
+        }
+        let mut out = [0u8; 33];
+        out[0] = 0x02;
+        out[1..].copy_from_slice(bytes);
+        Ok(out)
+    }
+}
+
+impl SigningService for NostrSigner {
+    fn pubkey(&self, agent_id: &AgentId) -> Result<PublicKey> {
+        let secret = self.secret_for(agent_id)?;
+        let pubkey = get_public_key(&secret).map_err(|err| err.to_string())?;
+        Ok(PublicKey::new(pubkey.to_vec()))
+    }
+
+    fn sign(&self, agent_id: &AgentId, data: &[u8]) -> Result<Signature> {
+        let digest = Self::digest(data);
+        let message = Message::from_digest_slice(&digest).map_err(|err| err.to_string())?;
+        let secret = self.secret_for(agent_id)?;
+        let sk = SecretKey::from_slice(&secret).map_err(|err| err.to_string())?;
+        let secp = Secp256k1::new();
+        let keypair = Keypair::from_secret_key(&secp, &sk);
+        let sig = secp.sign_schnorr_no_aux_rand(&message, &keypair);
+        Ok(Signature::new(sig.serialize().to_vec()))
+    }
+
+    fn verify(&self, pubkey: &PublicKey, data: &[u8], sig: &Signature) -> bool {
+        let digest = Self::digest(data);
+        let message = match Message::from_digest_slice(&digest) {
+            Ok(message) => message,
+            Err(_) => return false,
+        };
+        let xonly = match XOnlyPublicKey::from_slice(pubkey.as_bytes()) {
+            Ok(key) => key,
+            Err(_) => return false,
+        };
+        let signature = match schnorr::Signature::from_slice(sig.as_bytes()) {
+            Ok(signature) => signature,
+            Err(_) => return false,
+        };
+        let secp = Secp256k1::verification_only();
+        secp.verify_schnorr(&signature, &message, &xonly).is_ok()
+    }
+
+    fn encrypt(&self, agent_id: &AgentId, recipient: &PublicKey, plaintext: &[u8]) -> Result<Vec<u8>> {
+        let secret = self.secret_for(agent_id)?;
+        let recipient = Self::compressed_pubkey(recipient)?;
+        let encoded = STANDARD.encode(plaintext);
+        let encrypted = encrypt_v2(&secret, &recipient, &encoded).map_err(|err| err.to_string())?;
+        Ok(encrypted.into_bytes())
+    }
+
+    fn decrypt(&self, agent_id: &AgentId, sender: &PublicKey, ciphertext: &[u8]) -> Result<Vec<u8>> {
+        let secret = self.secret_for(agent_id)?;
+        let sender = Self::compressed_pubkey(sender)?;
+        let cipher_str = std::str::from_utf8(ciphertext).map_err(|err| err.to_string())?;
+        let decrypted = decrypt_v2(&secret, &sender, cipher_str)
+            .or_else(|_| decrypt_v1(&secret, &sender, cipher_str))
+            .map_err(|err| err.to_string())?;
+        let decoded = STANDARD.decode(decrypted.as_bytes());
+        Ok(decoded.unwrap_or_else(|_| decrypted.into_bytes()))
     }
 }

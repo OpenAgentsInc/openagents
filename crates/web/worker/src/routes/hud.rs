@@ -14,6 +14,8 @@ struct HudContext {
     is_owner: bool,
     is_public: bool,
     embed_mode: bool,
+    agent_id: Option<String>,
+    stream_url: Option<String>,
     // Session info for WebSocket connection
     session_id: Option<String>,
     ws_url: Option<String>,
@@ -50,6 +52,8 @@ pub async fn view_hud(
     username: String,
     repo: String,
     maybe_user: Option<AuthenticatedUser>,
+    agent_id: Option<String>,
+    stream_override: Option<String>,
 ) -> Result<Response> {
     // Check if current user is the owner (by matching github username)
     let is_owner = maybe_user
@@ -72,12 +76,20 @@ pub async fn view_hud(
     };
 
     // Return HUD page
+    let stream_url = stream_override.or_else(|| {
+        agent_id
+            .as_ref()
+            .map(|id| format!("/agents/{}/hud/stream?watch=1", id))
+    });
+
     let context = HudContext {
         username: username.clone(),
         repo: repo.clone(),
         is_owner,
         is_public: true, // Default public for now
         embed_mode: false,
+        agent_id,
+        stream_url,
         session_id,
         ws_url,
         status,
@@ -192,7 +204,13 @@ pub async fn start_session(
 }
 
 /// Embeddable HUD view: /repo/:username/:repo/embed
-pub async fn embed_hud(env: Env, username: String, repo: String) -> Result<Response> {
+pub async fn embed_hud(
+    env: Env,
+    username: String,
+    repo: String,
+    agent_id: Option<String>,
+    stream_override: Option<String>,
+) -> Result<Response> {
     let db = env.d1("DB")?;
 
     // Look up the HUD owner
@@ -235,12 +253,20 @@ pub async fn embed_hud(env: Env, username: String, repo: String) -> Result<Respo
         return Response::error("Embedding is disabled for this HUD", 403);
     }
 
+    let stream_url = stream_override.or_else(|| {
+        agent_id
+            .as_ref()
+            .map(|id| format!("/agents/{}/hud/stream?watch=1", id))
+    });
+
     let context = HudContext {
         username,
         repo,
         is_owner: false,
         is_public: true,
         embed_mode: true,
+        agent_id,
+        stream_url,
         session_id: None, // Embeds don't start sessions
         ws_url: None,
         status: "idle".to_string(),
