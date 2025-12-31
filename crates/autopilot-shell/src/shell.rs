@@ -1239,36 +1239,40 @@ impl AutopilotShell {
                 }
 
                 // Stream messages from session
-                while let Some(msg_result) = session.receive().next().await {
+                loop {
+                    if let Some(current_id) = session.session_id().map(|id| id.to_string()) {
+                        if last_session_id.as_deref() != Some(current_id.as_str()) {
+                            let _ = tx.send(SdkMessageEvent::SessionId(current_id.clone()));
+                            last_session_id = Some(current_id);
+                        }
+                    }
+
+                    let msg_result = session.receive().next().await;
+                    let Some(msg_result) = msg_result else {
+                        break;
+                    };
+
                     match msg_result {
-                        Ok(msg) => {
-                            if let Some(current_id) = session.session_id().map(|id| id.to_string()) {
-                                if last_session_id.as_deref() != Some(current_id.as_str()) {
-                                    let _ = tx.send(SdkMessageEvent::SessionId(current_id.clone()));
-                                    last_session_id = Some(current_id);
-                                }
-                            }
-                            match msg {
-                                SdkMessage::Assistant(a) => {
-                                    // Extract text content from assistant message (message is serde_json::Value)
-                                    if let Some(content) = a.message.get("content").and_then(|c| c.as_array()) {
-                                        for block in content {
-                                            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                                let _ = tx.send(SdkMessageEvent::AssistantText(text.to_string()));
-                                            }
-                                            if let Some(name) = block.get("name").and_then(|n| n.as_str()) {
-                                                let _ = tx.send(SdkMessageEvent::ToolUse { name: name.to_string() });
-                                            }
+                        Ok(msg) => match msg {
+                            SdkMessage::Assistant(a) => {
+                                // Extract text content from assistant message (message is serde_json::Value)
+                                if let Some(content) = a.message.get("content").and_then(|c| c.as_array()) {
+                                    for block in content {
+                                        if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                            let _ = tx.send(SdkMessageEvent::AssistantText(text.to_string()));
+                                        }
+                                        if let Some(name) = block.get("name").and_then(|n| n.as_str()) {
+                                            let _ = tx.send(SdkMessageEvent::ToolUse { name: name.to_string() });
                                         }
                                     }
                                 }
-                                SdkMessage::Result(_) => {
-                                    let _ = tx.send(SdkMessageEvent::Completed);
-                                    break;
-                                }
-                                _ => {}
                             }
-                        }
+                            SdkMessage::Result(_) => {
+                                let _ = tx.send(SdkMessageEvent::Completed);
+                                break;
+                            }
+                            _ => {}
+                        },
                         Err(e) => {
                             let _ = tx.send(SdkMessageEvent::Error(format!("Stream error: {}", e)));
                             break;

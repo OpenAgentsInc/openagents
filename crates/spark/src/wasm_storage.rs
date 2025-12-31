@@ -69,7 +69,7 @@ impl MemoryStorage {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Storage for MemoryStorage {
     async fn delete_cached_item(&self, key: String) -> Result<(), StorageError> {
         let mut cache = self.cache.lock().map_err(|e| {
