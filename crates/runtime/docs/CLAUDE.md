@@ -83,6 +83,173 @@ Claude (Anthropic API or local model)
 
 ---
 
+## Security Model
+
+The `/claude` mount implements defense-in-depth security. The core principle: **put sensitive stuff outside the boundary where the agent runs**.
+
+### Network Isolation Pattern
+
+For maximum security, Claude workers run with **no direct network access**:
+
+```
+Container (--network none)
+├── Claude Agent SDK process
+├── Read-only repo (filtered)
+├── tmpfs workspace
+└── Unix socket mount (/var/run/anthropic-proxy.sock)
+         │
+         ▼
+Host Proxy (outside container)
+├── Domain allowlist (api.anthropic.com only)
+├── Request logging (redacted)
+├── Credential injection
+└── Rate limiting
+```
+
+The container physically cannot exfiltrate data—even if prompt injection convinces Claude to try.
+
+**Container configuration:**
+
+```bash
+docker run \
+  --network none \
+  --cap-drop ALL \
+  --read-only \
+  --tmpfs /workspace:rw,noexec,nosuid \
+  --pids-limit 100 \
+  --memory 4g \
+  -v /var/run/anthropic-proxy.sock:/var/run/anthropic-proxy.sock:ro \
+  -v /filtered-repo:/repo:ro \
+  claude-worker
+```
+
+**Inside container, Claude uses the proxy:**
+
+```bash
+# Configure Claude to use Unix socket proxy
+export ANTHROPIC_BASE_URL="http://unix:/var/run/anthropic-proxy.sock"
+# Or via HTTP proxy
+export HTTPS_PROXY="http://localhost:8080"
+```
+
+### Credential Injection via Proxy
+
+Credentials never enter the container. The proxy injects them:
+
+```
+Claude Request (from container)     Host Proxy                    Anthropic API
+        │                               │                              │
+        │ POST /v1/messages             │                              │
+        │ (no auth header)              │                              │
+        ├──────────────────────────────►│                              │
+        │                               │ + Authorization: Bearer sk-  │
+        │                               ├─────────────────────────────►│
+        │                               │                              │
+        │                               │◄─────────────────────────────┤
+        │◄──────────────────────────────┤                              │
+```
+
+This matches the pattern from Claude's secure deployment guide: "inject via proxy/tools, don't expose."
+
+### Policy is Admin-Only
+
+**Critical security rule:** Agents can READ policies but NEVER write them.
+
+| Path | Agent Access | Admin Access |
+|------|--------------|--------------|
+| `/claude/policy` | Read | Read/Write |
+| `/claude/auth/tunnels` | Read (summary only) | Read/Write |
+| `/compute/policy` | Read | Read/Write |
+| `/containers/policy` | Read | Read/Write |
+
+This prevents prompt injection from reconfiguring security boundaries.
+
+### Repo Exposure Filtering
+
+Even read-only mounts can leak secrets. Filter before mounting:
+
+```rust
+/// Files to exclude from repo mount
+const REPO_DENYLIST: &[&str] = &[
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "**/credentials.json",
+    "**/secrets.yaml",
+    "**/.git/config",  // May contain tokens
+];
+
+/// Create filtered repo snapshot for container
+fn create_filtered_repo(repo_path: &Path, denylist: &[&str]) -> Result<PathBuf> {
+    let filtered = tempdir()?;
+    // Copy repo excluding denylist patterns
+    // ...
+}
+```
+
+### Worker Isolation Modes
+
+| Mode | Isolation | Network | Use Case |
+|------|-----------|---------|----------|
+| `local` | Process | Host network | Dev, trusted agents |
+| `container` | Docker | None (proxy socket) | Production, untrusted |
+| `gvisor` | gVisor sandbox | None (proxy socket) | High security |
+| `firecracker` | microVM | None (proxy socket) | Maximum isolation |
+
+Configure per-agent:
+
+```yaml
+mounts:
+  /claude:
+    type: claude
+    policy:
+      isolation_mode: container  # or gvisor, firecracker
+      network_mode: proxy_only   # no direct egress
+      repo_filter: strict        # apply denylist
+```
+
+### Multi-Instance Worker Pool
+
+For production, run a pool of Claude workers:
+
+```
+/claude/
+├── workers/
+│   ├── <worker_id>/
+│   │   ├── status      # idle|busy|unhealthy
+│   │   ├── isolation   # local|container|gvisor|firecracker
+│   │   ├── sessions    # active session count
+│   │   └── metrics     # requests, latency, errors
+│   └── ...
+├── pool/
+│   ├── config          # min/max workers, scaling policy
+│   ├── status          # pool health, capacity
+│   └── metrics         # aggregate stats
+```
+
+The runtime scheduler routes requests to available workers based on:
+- Worker health and load
+- Requested isolation level
+- Agent identity (can pin agents to specific workers)
+
+### Defense in Depth Summary
+
+| Layer | Protection |
+|-------|------------|
+| **Mount table** | Least privilege, capability allowlist |
+| **AccessLevel** | Budget enforcement at boundary |
+| **Container isolation** | Code runs in sandbox, not host |
+| **Network none** | No direct egress possible |
+| **Proxy** | Domain allowlist, credential injection, logging |
+| **Repo filtering** | Secrets stripped before mount |
+| **Policy isolation** | Agents can't reconfigure security |
+| **Trajectories** | Full audit trail of all actions |
+
+This makes prompt injection attacks significantly harder—even if Claude is tricked, the sandbox prevents escalation.
+
+---
+
 ## Filesystem Layout
 
 ```
@@ -100,11 +267,25 @@ Claude (Anthropic API or local model)
 │       ├── info
 │       ├── models
 │       └── health
+├── workers/            # Claude worker pool (admin-managed)
+│   └── <worker_id>/
+│       ├── status      # Read: idle|busy|unhealthy
+│       ├── isolation   # Read: local|container|gvisor|firecracker
+│       ├── sessions    # Read: active session count
+│       └── metrics     # Read: requests, latency, errors
+├── pool/               # Worker pool management (admin-only)
+│   ├── config          # Read/Write (admin): min/max workers, scaling
+│   ├── status          # Read: pool health, capacity
+│   └── metrics         # Read: aggregate stats
 ├── new                  # Call (write+read same handle) → session_id (always async)
 ├── policy               # Read-only to agents (control plane updates)
 ├── usage                # Read: current tick/day usage (reserved/spent USD)
+├── proxy/              # Host proxy status (for network-none containers)
+│   ├── status          # Read: proxy health
+│   ├── allowlist       # Read (admin-only write): allowed domains
+│   └── metrics         # Read: request counts, blocked attempts
 ├── auth/               # Tunnel authentication
-│   ├── tunnels         # Read/Write: configured tunnel endpoints
+│   ├── tunnels         # Read (agents) / Write (admin): configured endpoints
 │   ├── status          # Read: auth state per tunnel
 │   └── challenge       # Read: Nostr auth challenge, Write: signed response
 └── sessions/
@@ -391,6 +572,67 @@ pub struct ClaudePolicy {
     /// Allowed tunnel endpoints (empty = all configured)
     #[serde(default)]
     pub allowed_tunnels: Vec<String>,
+
+    // --- Security settings (admin-controlled) ---
+
+    /// Worker isolation mode
+    #[serde(default)]
+    pub isolation_mode: IsolationMode,
+
+    /// Network access mode
+    #[serde(default)]
+    pub network_mode: NetworkMode,
+
+    /// Repo filtering mode
+    #[serde(default)]
+    pub repo_filter: RepoFilterMode,
+
+    /// Proxy domain allowlist (for network_mode: proxy_only)
+    #[serde(default)]
+    pub proxy_allowlist: Vec<String>,
+}
+
+/// Worker isolation mode
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IsolationMode {
+    /// Process on host (dev only)
+    Local,
+    /// Docker container with hardening
+    #[default]
+    Container,
+    /// gVisor sandbox (stronger)
+    Gvisor,
+    /// Firecracker microVM (strongest)
+    Firecracker,
+}
+
+/// Network access mode
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NetworkMode {
+    /// No network restrictions (dev only, dangerous)
+    Host,
+    /// Network disabled, only proxy socket (secure)
+    #[default]
+    ProxyOnly,
+    /// Completely air-gapped (no external access)
+    None,
+}
+
+/// Repo filtering mode
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepoFilterMode {
+    /// No filtering (dangerous)
+    None,
+    /// Standard denylist (.env, *.pem, etc.)
+    #[default]
+    Standard,
+    /// Strict denylist + allowlist
+    Strict,
+    /// Custom filter rules
+    Custom { denylist: Vec<String>, allowlist: Vec<String> },
 }
 
 fn default_max_concurrent() -> u32 { 3 }
@@ -408,20 +650,41 @@ mounts:
       per_day_usd: 100000000      # $100/day (in micro-USD)
       approval_threshold_usd: 10000000  # $10 requires approval
     policy:
+      # Provider and model restrictions
       allowed_providers: ["tunnel", "cloud"]
       allowed_models: ["claude-sonnet-4-*", "claude-haiku-*"]
       blocked_models: ["claude-opus-*"]  # Opus too expensive for auto
+
+      # Tool permissions
       allowed_tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
       blocked_tools: ["WebFetch"]  # No external network
       approval_required_tools: ["Bash"]  # Bash needs approval
+
+      # Limits
       max_concurrent: 3
       max_context_tokens: 200000
       default_autonomy: supervised
       require_max_cost: true
+
+      # Security (admin-controlled, agents can't modify)
+      isolation_mode: container        # container|gvisor|firecracker|local
+      network_mode: proxy_only         # proxy_only|none|host
+      repo_filter: standard            # standard|strict|none
+      proxy_allowlist:
+        - api.anthropic.com
+        - api.openai.com  # If using OpenRouter
+
     tunnels:
       - id: local-proxy
         url: wss://my-tunnel.ngrok.io/claude
         auth: nostr
+
+    # Worker pool configuration (optional)
+    pool:
+      min_workers: 1
+      max_workers: 5
+      idle_timeout_secs: 300
+      scale_up_threshold: 0.8  # 80% utilization
 ```
 
 ---
