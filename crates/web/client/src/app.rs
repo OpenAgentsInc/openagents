@@ -106,8 +106,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let x = event.offset_x() as f32;
             let y = event.offset_y() as f32;
 
-            {
-                let mut state = state_clone.borrow_mut();
+            // Use try_borrow_mut to avoid panic if animation loop holds borrow
+            if let Ok(mut state) = state_clone.try_borrow_mut() {
                 state.mouse_pos = Point::new(x, y);
                 state.button_hovered = state.button_bounds.contains(state.mouse_pos);
 
@@ -137,7 +137,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         let state_clone = state.clone();
         let canvas = platform.borrow().canvas().clone();
         let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
-            let mut state = state_clone.borrow_mut();
+            // Use try_borrow_mut to avoid panic if animation loop holds borrow
+            let Ok(mut state) = state_clone.try_borrow_mut() else {
+                return;
+            };
             let click_pos = Point::new(event.offset_x() as f32, event.offset_y() as f32);
 
             if state.view == AppView::Landing
@@ -294,7 +297,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         let state_clone = state.clone();
         let canvas = platform.borrow().canvas().clone();
         let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::WheelEvent| {
-            let mut state = state_clone.borrow_mut();
+            // Use try_borrow_mut to avoid panic if animation loop holds borrow
+            let Ok(mut state) = state_clone.try_borrow_mut() else {
+                return;
+            };
             if state.view == AppView::RepoSelector {
                 state.scroll_offset += event.delta_y() as f32 * 0.5;
                 state.scroll_offset = state.scroll_offset.max(0.0);
@@ -344,7 +350,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         let canvas = platform.borrow().canvas().clone();
         let canvas2 = canvas.clone();
         let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
-            let state = state_clone.borrow();
+            // Use try_borrow to avoid panic if animation loop holds borrow
+            let Ok(state) = state_clone.try_borrow() else {
+                return;
+            };
             let hud_hover = state.view == AppView::RepoView
                 && (state.hud_layout.settings_public_bounds.contains(state.mouse_pos)
                     || state.hud_layout.settings_embed_bounds.contains(state.mouse_pos));

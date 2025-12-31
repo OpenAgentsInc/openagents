@@ -312,39 +312,43 @@ async fn ensure_identity(
         row.nostr_private_key_encrypted.as_ref(),
         row.bitcoin_xpriv_encrypted.as_ref(),
     ) {
-        let identity_material =
-            identity::decrypt_identity(session_secret, nostr_priv, bitcoin_xpriv)?;
+        // Try to decrypt existing identity; if it fails (e.g., SESSION_SECRET changed),
+        // fall through to regenerate identity below
+        if let Ok(identity_material) =
+            identity::decrypt_identity(session_secret, nostr_priv, bitcoin_xpriv)
+        {
+            if row.nostr_public_key.is_none() || row.nostr_npub.is_none() {
+                let public_key = identity::nostr_public_key_from_private(
+                    &identity_material.nostr_private_key,
+                )?;
+                let public_key_hex = hex::encode(public_key);
+                let npub =
+                    identity::nostr_npub_from_private(&identity_material.nostr_private_key)?;
+                let now = chrono::Utc::now().to_rfc3339();
 
-        if row.nostr_public_key.is_none() || row.nostr_npub.is_none() {
-            let public_key = identity::nostr_public_key_from_private(
-                &identity_material.nostr_private_key,
-            )?;
-            let public_key_hex = hex::encode(public_key);
-            let npub = identity::nostr_npub_from_private(
-                &identity_material.nostr_private_key,
-            )?;
-            let now = chrono::Utc::now().to_rfc3339();
+                db.prepare(
+                    "UPDATE users SET
+                        nostr_public_key = ?,
+                        nostr_npub = ?,
+                        updated_at = ?
+                     WHERE user_id = ?",
+                )
+                .bind(&[
+                    public_key_hex.into(),
+                    npub.into(),
+                    now.into(),
+                    user_id.into(),
+                ])?
+                .run()
+                .await?;
+            }
 
-            db.prepare(
-                "UPDATE users SET
-                    nostr_public_key = ?,
-                    nostr_npub = ?,
-                    updated_at = ?
-                 WHERE user_id = ?",
-            )
-            .bind(&[
-                public_key_hex.into(),
-                npub.into(),
-                now.into(),
-                user_id.into(),
-            ])?
-            .run()
-            .await?;
+            return Ok(identity_material);
         }
-
-        return Ok(identity_material);
+        // Decryption failed - fall through to regenerate identity
     }
 
+    // Generate new identity (either no existing identity or decryption failed)
     let (stored_identity, identity_material) =
         identity::generate_identity_bundle(session_secret)?;
     let now = chrono::Utc::now().to_rfc3339();

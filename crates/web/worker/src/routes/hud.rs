@@ -91,10 +91,6 @@ pub async fn view_hud(
 ) -> Result<Response> {
     let db = env.d1("DB")?;
     let owner = users::get_by_github_username(&db, &username).await?;
-    let owner = match owner {
-        Some(u) => u,
-        None => return Response::error("User not found", 404),
-    };
 
     // Check if current user is the owner (by matching github username)
     let is_owner = maybe_user
@@ -103,33 +99,46 @@ pub async fn view_hud(
         .unwrap_or(false);
 
     let full_repo = format!("{}/{}", username, repo);
-    let settings = db
-        .prepare(
-            "SELECT is_public, embed_allowed FROM hud_settings
-             WHERE user_id = ? AND repo = ?",
-        )
-        .bind(&[owner.user_id.clone().into(), full_repo.clone().into()])?
-        .first::<serde_json::Value>(None)
-        .await?;
 
-    let is_public = settings
-        .as_ref()
-        .and_then(|s| s.get("is_public"))
-        .and_then(|v| v.as_i64())
-        .map(|v| v == 1)
-        .unwrap_or(true);
+    // Look up settings if owner exists, otherwise use defaults
+    let (is_public, owner_user_id) = if let Some(ref owner) = owner {
+        let settings = db
+            .prepare(
+                "SELECT is_public, embed_allowed FROM hud_settings
+                 WHERE user_id = ? AND repo = ?",
+            )
+            .bind(&[owner.user_id.clone().into(), full_repo.clone().into()])?
+            .first::<serde_json::Value>(None)
+            .await?;
+
+        let is_public = settings
+            .as_ref()
+            .and_then(|s| s.get("is_public"))
+            .and_then(|v| v.as_i64())
+            .map(|v| v == 1)
+            .unwrap_or(true);
+
+        (is_public, Some(owner.user_id.clone()))
+    } else {
+        // No registered owner - default to public
+        (true, None)
+    };
 
     if !is_owner && !is_public {
         return Response::error("This HUD is private", 403);
     }
 
-    // Check for active session for owner or public viewers.
-    let (session_id, ws_url, status) = match get_active_session(&env, &owner.user_id, &full_repo).await {
-        Ok(Some(session)) => {
-            let ws = format!("/api/container/ws/{}", session.session_id);
-            (Some(session.session_id), Some(ws), "running".to_string())
+    // Check for active session if we have an owner
+    let (session_id, ws_url, status) = if let Some(ref user_id) = owner_user_id {
+        match get_active_session(&env, user_id, &full_repo).await {
+            Ok(Some(session)) => {
+                let ws = format!("/api/container/ws/{}", session.session_id);
+                (Some(session.session_id), Some(ws), "running".to_string())
+            }
+            _ => (None, None, "idle".to_string()),
         }
-        _ => (None, None, "idle".to_string()),
+    } else {
+        (None, None, "idle".to_string())
     };
 
     // Return HUD page

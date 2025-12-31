@@ -46,6 +46,11 @@ new_sqlite_classes = ["AgentDo"]
 # image = "../autopilot-container/Dockerfile"
 # max_instances = 10
 
+# Service binding to wallet worker (for /api/wallet/* routes)
+[[services]]
+binding = "WALLET"
+service = "openagents-wallet"
+
 # Environment variables (non-secret)
 [vars]
 GITHUB_CLIENT_ID = "Ov23lirHI1DWTzZ1zT1u"

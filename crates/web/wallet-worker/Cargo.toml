@@ -1,8 +1,8 @@
 [package]
-name = "openagents-web-worker"
+name = "openagents-wallet-worker"
 version = "0.1.0"
 edition = "2024"
-description = "OpenAgents web worker - Axum API on Cloudflare Workers"
+description = "OpenAgents wallet worker - Spark Lightning payments on Cloudflare Workers"
 publish = false
 
 # Exclude from parent workspace - worker-build has its own process
@@ -15,44 +15,30 @@ crate-type = ["cdylib"]
 # Cloudflare Workers
 worker = { version = "0.7", features = ["http", "d1"] }
 
-# Axum (minimal features for workers)
-axum = { version = "0.7", default-features = false, features = ["json", "query"] }
-
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Utilities
-uuid = { version = "1", features = ["v4", "serde", "js"] }
 chrono = { version = "0.4", default-features = false, features = ["serde", "wasmbind", "clock"] }
 base64 = "0.22"
 wasm-bindgen = "0.2"
-js-sys = "0.3"
-hmac = "0.12"
-sha2 = "0.10"
 hex = "0.4"
 bech32 = "0.11.0"
 rand = { version = "0.8", features = ["getrandom"] }
 getrandom = { version = "0.2", features = ["js"] }
 chacha20poly1305 = "0.10"
 k256 = "0.13"
-# spark = { package = "openagents-spark", path = "../../spark" }
-# NOTE: spark/wallet moved to separate worker to get under 3MB CF limit
+sha2 = "0.10"
 
-# URL encoding
-urlencoding = "2"
-
-# Error handling
-thiserror = "1"
-
-# Async
-futures = "0.3"
+# Spark wallet (the heavy dependency)
+spark = { package = "openagents-spark", path = "../../spark" }
 
 # Error handling
 console_error_panic_hook = "0.1"
 
 [profile.release]
-opt-level = "z"      # Maximum size optimization (was "s")
+opt-level = "z"      # Maximum size optimization
 lto = true
 strip = true         # Strip symbols
 codegen-units = 1    # Better optimization at cost of compile time
