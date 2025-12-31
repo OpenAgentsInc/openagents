@@ -362,9 +362,9 @@ impl RuntimeBackend for LocalBackend {
 
 ---
 
-## Docker Container Backend
+## Server Deployment Mode: Docker
 
-Agents run in isolated containers, orchestrated by Docker Compose or Swarm.
+The Server backend can be deployed using Docker containers, orchestrated by Docker Compose or Swarm.
 
 ### Architecture
 
@@ -416,9 +416,11 @@ Agents run in isolated containers, orchestrated by Docker Compose or Swarm.
 
 ---
 
-## Kubernetes Backend
+## Server Deployment Mode: Kubernetes
 
-Agents run as StatefulSet pods with persistent volumes.
+The Server backend can be deployed on Kubernetes, with agents as StatefulSet pods with persistent volumes.
+
+**Critical:** To maintain the "no parallel ticks ever" guarantee in a multi-node cluster, agents must be pinned/sharded to a single worker (consistent hash by AgentId) OR guarded by a distributed lock keyed by AgentId.
 
 ### Architecture
 
@@ -597,8 +599,8 @@ fn main() {
     #[cfg(feature = "local")]
     let backend = LocalBackend::new("~/.openagents");
 
-    #[cfg(feature = "kubernetes")]
-    let backend = KubernetesBackend::new();
+    #[cfg(feature = "server")]
+    let backend = ServerBackend::new();  // Deployment mode (Docker/K8s) configured separately
 
     // Same agent, any backend
     backend.register::<MyAgent>("my-agent");

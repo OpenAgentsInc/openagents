@@ -287,25 +287,25 @@ GET /agents/{id}/stream
 Accept: text/event-stream
 ```
 
-Events:
+Events (all include `envelope_id` for correlation):
 ```
 event: tick_start
-data: {"tick_id": "t_123", "cause": "alarm", "timestamp": "..."}
+data: {"envelope_id": "env_abc", "tick_id": "t_123", "cause": "alarm", "timestamp": "..."}
 
 event: tool_call
-data: {"tick_id": "t_123", "tool": "read_file", "params": {...}}
+data: {"envelope_id": "env_abc", "tick_id": "t_123", "tool": "read_file", "params": {...}}
 
 event: tool_result
-data: {"tick_id": "t_123", "tool": "read_file", "success": true}
+data: {"envelope_id": "env_abc", "tick_id": "t_123", "tool": "read_file", "success": true}
 
 event: message_sent
-data: {"tick_id": "t_123", "to": "npub1...", "type": "dm"}
+data: {"envelope_id": "env_abc", "tick_id": "t_123", "to": "npub1...", "type": "dm"}
 
 event: tick_end
-data: {"tick_id": "t_123", "duration_ms": 1234, "success": true}
+data: {"envelope_id": "env_abc", "tick_id": "t_123", "duration_ms": 1234, "success": true}
 
 event: state_change
-data: {"field": "goals", "operation": "add", "value": {...}}
+data: {"envelope_id": "env_abc", "field": "goals", "operation": "add", "value": {...}}
 ```
 
 ---
@@ -372,11 +372,31 @@ Authorization: Bearer <api-key>
 
 ### Signed Requests (Agent-to-Agent)
 
+For replay safety, signatures cover the full request context:
+
 ```http
 POST /agents/{id}/send
 X-Agent-Pubkey: npub1...
-X-Agent-Signature: <signature of request body>
+X-Agent-Timestamp: 1704067200
+X-Agent-Nonce: <random 16 bytes, hex>
+X-Agent-Signature: <signature>
 ```
+
+**Signed payload** (concatenated, then Schnorr-signed):
+```
+<method>:<path>:<timestamp>:<nonce>:<sha256(body)>
+```
+
+Example:
+```
+POST:/agents/abc123/send:1704067200:a1b2c3d4...:e5f6...
+```
+
+**Server validation:**
+1. Timestamp within ±60 seconds of server time
+2. Nonce not seen before (bounded cache, 5-minute TTL)
+3. Signature valid for pubkey
+4. Pubkey authorized to send to target agent
 
 ### User Session
 
