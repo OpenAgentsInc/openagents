@@ -13,7 +13,7 @@ use crate::hud::{
     dispatch_hud_event, ensure_hud_session, fetch_live_hud, get_hud_context, init_hud_runtime,
     stop_metrics_poll, update_hud_settings, HudContext,
 };
-use crate::nostr::{connect_to_relay, DEFAULT_RELAYS};
+use crate::nostr::{connect_to_relay, BazaarJob, DEFAULT_RELAYS};
 use crate::state::{AppState, AppView, RepoInfo, UserInfo};
 use crate::views::{build_landing_page, build_repo_selector, build_repo_view};
 use crate::utils::track_funnel_event;
@@ -708,6 +708,7 @@ fn connect_nostr_relay(state: Rc<RefCell<AppState>>) {
     let state_for_dvm = state.clone();
     let state_for_note = state.clone();
     let state_for_author = state.clone();
+    let state_for_bazaar = state.clone();
     let state_for_status = state.clone();
 
     let handle = connect_to_relay(
@@ -734,6 +735,12 @@ fn connect_nostr_relay(state: Rc<RefCell<AppState>>) {
         move |author| {
             if let Ok(mut s) = state_for_author.try_borrow_mut() {
                 s.global_feed.add_author(author);
+            }
+        },
+        // Bazaar job callback (NIP-90 kinds 5930-5933)
+        move |job: BazaarJob| {
+            if let Ok(mut s) = state_for_bazaar.try_borrow_mut() {
+                s.bazaar.add_job(job, 30);
             }
         },
         // Status callback

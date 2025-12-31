@@ -1,7 +1,7 @@
 use wgpui::{Bounds, Point};
 
 use crate::hud::{HudContext, HudLayout, HudStreamHandle, HudUi, LandingLive};
-use crate::nostr::{DvmDirectoryState, GlobalFeedState, Nip90State, NostrRelayHandle};
+use crate::nostr::{BazaarState, DvmDirectoryState, GlobalFeedState, Nip90State, NostrRelayHandle};
 use crate::wallet::WalletUi;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -114,6 +114,10 @@ pub(crate) struct AppState {
     pub(crate) global_feed: GlobalFeedState,
     pub(crate) global_feed_bounds: Bounds,           // Scrollable content area
     pub(crate) global_feed_note_bounds: Vec<Bounds>, // Per-note bounds for click detection
+    // Bazaar real jobs (NIP-90 kinds 5930-5933)
+    pub(crate) bazaar: BazaarState,
+    pub(crate) bazaar_job_bounds: Vec<Bounds>,
+    pub(crate) bazaar_scroll_bounds: Bounds,
 }
 
 impl Default for AppState {
@@ -161,6 +165,9 @@ impl Default for AppState {
             global_feed: GlobalFeedState::new(),
             global_feed_bounds: Bounds::ZERO,
             global_feed_note_bounds: Vec::new(),
+            bazaar: BazaarState::new(),
+            bazaar_job_bounds: Vec::new(),
+            bazaar_scroll_bounds: Bounds::ZERO,
         }
     }
 }

@@ -93,16 +93,14 @@ pub mod web {
                 .join(", ");
             web_sys::console::log_1(&format!("Available formats: {}", formats_str).into());
 
-            // Prefer sRGB format for correct color rendering
+            // Prefer non-sRGB format - our colors are already in sRGB space
+            // Using sRGB surface would double-encode and wash out colors
             let surface_format = surface_caps
                 .formats
                 .iter()
-                .find(|f| f.is_srgb())
+                .find(|f| !f.is_srgb())
                 .copied()
-                .unwrap_or_else(|| {
-                    web_sys::console::log_1(&"No sRGB format available, colors may appear washed out".into());
-                    surface_caps.formats[0]
-                });
+                .unwrap_or(surface_caps.formats[0]);
 
             web_sys::console::log_1(&format!("Using surface format: {:?}", surface_format).into());
 
