@@ -143,6 +143,13 @@ Conformance tests pass:
 - `test_budget_enforcement` (mount-level)
 - `test_idempotent_effects` (journal semantics)
 
+### Implementation Notes (completed)
+
+- Added budget primitives in `crates/runtime/src/budget.rs` (policy/state tracker, reserve/reconcile).
+- Wired mount-level budget charging for write operations in `crates/runtime/src/env.rs` using `AccessLevel::Budgeted`.
+- Implemented idempotency journals in `crates/runtime/src/idempotency.rs` with memory + SQLite backends and TTL cleanup.
+- Added conformance tests for budget enforcement and idempotency in `crates/runtime/src/tests/mod.rs`.
+
 ### References
 
 - [TRAITS.md](TRAITS.md) — BudgetPolicy
@@ -169,6 +176,14 @@ Demo agent can:
 - Submit a chat job
 - Stream output via watch
 - Budgets reserve/reconcile correctly
+
+### Implementation Notes (completed)
+
+- Added compute core types, provider routing, and `/compute` filesystem in `crates/runtime/src/compute.rs`.
+- Implemented `LocalProvider` backed by `crates/compute` registry with async execution and streaming.
+- Wired budget reservation/reconcile and idempotency response caching in `/compute/new` handling.
+- Added compute conformance tests for submit/usage/idempotency and streaming watch in `crates/runtime/src/tests/mod.rs`.
+- Skipped env auto-charge for `/compute` to avoid double-charging (compute handles budgets internally).
 
 ### References
 
