@@ -1,18 +1,24 @@
 use crate::agent::{Agent, AgentContext, AgentState};
+use async_trait::async_trait;
 use crate::budget::BudgetPolicy;
 use crate::compute::{
     ComputeChunk, ComputeError, ComputeFs, ComputeKind, ComputePolicy, ComputeProvider,
-    ComputeRequest, ComputeResponse, ComputeRouter, JobState, ModelInfo, ProviderInfo,
+    ComputeRequest, ComputeResponse, ComputeRouter, DvmProvider, JobState, ModelInfo, ProviderInfo,
     ProviderLatency, ProviderStatus,
 };
 use crate::containers::{
-    ContainerCapabilities, ContainerError, ContainerFs, ContainerKind, ContainerPolicy,
-    ContainerProvider, ContainerProviderInfo, ContainerRequest, ContainerResponse, ContainerRouter,
-    ContainerUsage, ExecState, OutputChunk, OutputStream, SessionState,
+    ApiAuthState, AuthMethod, ContainerCapabilities, ContainerError, ContainerFs, ContainerKind,
+    ContainerPolicy, ContainerProvider, ContainerProviderInfo, ContainerRequest, ContainerResponse,
+    ContainerRouter, ContainerUsage, DvmContainerProvider, ExecState, OpenAgentsApiClient,
+    OpenAgentsAuth, OutputChunk, OutputStream, RepoConfig, SessionState,
 };
+use crate::dvm::DvmTransport;
 use crate::engine::{manual_trigger, TickEngine};
+use crate::fx::{FxRateSnapshot, FxSource};
 use crate::fs::{AccessLevel, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat};
 use crate::idempotency::{IdempotencyJournal, MemoryJournal};
+use crate::wallet::{WalletError, WalletPayment, WalletService};
+use compute::domain::sandbox_run::{CommandResult as SandboxCommandResult, SandboxRunResult};
 use crate::storage::{AgentStorage, InMemoryStorage, StoredState};
 use crate::types::{AgentId, EnvelopeId, Timestamp};
 use crate::{
@@ -20,13 +26,18 @@ use crate::{
     NostrSigner, Result, RoutedEnvelope, TickResult, TraceEvent, WatchEvent,
 };
 use crate::identity::SigningService;
-use nostr::{Event, ENCRYPTED_DM_KIND, KIND_SHORT_TEXT_NOTE};
+use nostr::{
+    Event, JobResult, ENCRYPTED_DM_KIND, KIND_JOB_FEEDBACK, KIND_JOB_TEXT_GENERATION,
+    KIND_SHORT_TEXT_NOTE,
+};
+use nostr::nip90::KIND_JOB_SANDBOX_RUN;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
+use tokio::sync::mpsc;
 
 #[derive(Default, Serialize, Deserialize)]
 struct DedupState {
@@ -465,12 +476,16 @@ fn test_container_new_usage_and_idempotency() {
         approvers: Vec::new(),
     };
     let journal = Arc::new(MemoryJournal::new());
+    let storage = Arc::new(InMemoryStorage::new());
+    let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
     let containers = ContainerFs::new(
         AgentId::from("agent-containers"),
         router,
         policy,
         budget,
         journal,
+        storage,
+        signer,
     );
 
     let request = ContainerRequest {
@@ -520,12 +535,16 @@ fn test_container_output_watch() {
         approvers: Vec::new(),
     };
     let journal = Arc::new(MemoryJournal::new());
+    let storage = Arc::new(InMemoryStorage::new());
+    let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
     let containers = ContainerFs::new(
         AgentId::from("agent-containers-watch"),
         router,
         policy,
         budget,
         journal,
+        storage,
+        signer,
     );
 
     let request = ContainerRequest {
@@ -582,12 +601,16 @@ fn test_container_exec_and_files() {
         approvers: Vec::new(),
     };
     let journal = Arc::new(MemoryJournal::new());
+    let storage = Arc::new(InMemoryStorage::new());
+    let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
     let containers = ContainerFs::new(
         AgentId::from("agent-containers-exec"),
         router,
         policy,
         budget,
         journal,
+        storage,
+        signer,
     );
 
     let request = ContainerRequest {
@@ -658,6 +681,76 @@ fn test_container_exec_and_files() {
             .unwrap(),
     );
     assert_eq!(chunk_bytes, b"hello");
+}
+
+#[test]
+fn test_container_auth_token_credits_reconcile() {
+    let mut router = ContainerRouter::new();
+    router.register(Arc::new(TestContainerProvider::with_id("cloudflare")));
+    let policy = ContainerPolicy {
+        require_max_cost: true,
+        ..ContainerPolicy::default()
+    };
+    let budget = BudgetPolicy {
+        per_tick_usd: 20,
+        per_day_usd: 20,
+        approval_threshold_usd: 0,
+        approvers: Vec::new(),
+    };
+    let journal = Arc::new(MemoryJournal::new());
+    let storage = Arc::new(InMemoryStorage::new());
+    let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
+    let api = Arc::new(TestOpenAgentsApi::new(10));
+    let auth = Arc::new(OpenAgentsAuth::new(
+        AgentId::from("agent-containers-auth"),
+        storage.clone(),
+        signer.clone(),
+        Some(api),
+    ));
+    let containers = ContainerFs::with_auth(
+        AgentId::from("agent-containers-auth"),
+        router,
+        policy,
+        budget,
+        journal,
+        auth,
+    );
+
+    let mut token_handle = containers.open("auth/token", OpenFlags::write()).unwrap();
+    token_handle.write(b"oa_test_token").unwrap();
+    token_handle.flush().unwrap();
+
+    let status_bytes = read_handle(containers.open("auth/status", OpenFlags::read()).unwrap());
+    let status: ApiAuthState = serde_json::from_slice(&status_bytes).expect("status");
+    assert!(status.authenticated);
+    assert_eq!(status.method, Some(AuthMethod::ApiKey));
+    assert_eq!(status.credits_usd, 10);
+
+    let request = ContainerRequest {
+        kind: ContainerKind::Ephemeral,
+        image: Some("test-image".to_string()),
+        repo: None,
+        commands: vec!["echo ok".to_string()],
+        workdir: None,
+        env: HashMap::new(),
+        limits: crate::containers::ResourceLimits::basic(),
+        max_cost_usd: Some(5),
+        idempotency_key: Some("credits-1".to_string()),
+        timeout_ms: None,
+    };
+
+    let response = submit_container(&containers, &request);
+    let session_id = response["session_id"].as_str().expect("session_id");
+
+    let _result_bytes = read_handle(
+        containers
+            .open(&format!("sessions/{}/result", session_id), OpenFlags::read())
+            .unwrap(),
+    );
+
+    let credits_bytes = read_handle(containers.open("auth/credits", OpenFlags::read()).unwrap());
+    let credits: serde_json::Value = serde_json::from_slice(&credits_bytes).expect("credits");
+    assert_eq!(credits["credits_usd"].as_u64(), Some(7));
 }
 
 #[test]
@@ -1287,6 +1380,7 @@ impl ComputeProvider for TestProvider {
 
 #[derive(Clone)]
 struct TestContainerProvider {
+    id: String,
     sessions: Arc<RwLock<HashMap<String, SessionState>>>,
     session_outputs: Arc<std::sync::Mutex<HashMap<String, VecDeque<OutputChunk>>>>,
     execs: Arc<RwLock<HashMap<String, ExecState>>>,
@@ -1296,7 +1390,12 @@ struct TestContainerProvider {
 
 impl TestContainerProvider {
     fn new() -> Self {
+        Self::with_id("test")
+    }
+
+    fn with_id(id: &str) -> Self {
         Self {
+            id: id.to_string(),
             sessions: Arc::new(RwLock::new(HashMap::new())),
             session_outputs: Arc::new(std::sync::Mutex::new(HashMap::new())),
             execs: Arc::new(RwLock::new(HashMap::new())),
@@ -1306,15 +1405,163 @@ impl TestContainerProvider {
     }
 }
 
+struct TestOpenAgentsApi {
+    credits_usd: u64,
+}
+
+type ContainerResult<T> = std::result::Result<T, ContainerError>;
+
+impl TestOpenAgentsApi {
+    fn new(credits_usd: u64) -> Self {
+        Self { credits_usd }
+    }
+
+    fn auth_state(&self, method: AuthMethod) -> ApiAuthState {
+        let mut state = ApiAuthState::default();
+        state.authenticated = true;
+        state.method = Some(method);
+        state.token_set = true;
+        state.credits_usd = self.credits_usd;
+        state
+    }
+}
+
+impl OpenAgentsApiClient for TestOpenAgentsApi {
+    fn authenticate_token(&self, _token: &str) -> ContainerResult<crate::containers::ApiAuthResponse> {
+        Ok(crate::containers::ApiAuthResponse {
+            state: self.auth_state(AuthMethod::ApiKey),
+            access_token: None,
+        })
+    }
+
+    fn authenticate_nostr(
+        &self,
+        _response: &crate::containers::NostrAuthResponse,
+    ) -> ContainerResult<crate::containers::ApiAuthResponse> {
+        Ok(crate::containers::ApiAuthResponse {
+            state: self.auth_state(AuthMethod::Nostr),
+            access_token: None,
+        })
+    }
+
+    fn provider_info(
+        &self,
+        _provider_id: &str,
+        _token: Option<&str>,
+    ) -> ContainerResult<ContainerProviderInfo> {
+        Err(ContainerError::NotSupported {
+            capability: "provider_info".to_string(),
+            provider: "test_openagents".to_string(),
+        })
+    }
+
+    fn submit_container(
+        &self,
+        _provider_id: &str,
+        _request: &ContainerRequest,
+        _token: &str,
+    ) -> ContainerResult<String> {
+        Err(ContainerError::NotSupported {
+            capability: "submit".to_string(),
+            provider: "test_openagents".to_string(),
+        })
+    }
+
+    fn session_state(&self, _session_id: &str, _token: &str) -> ContainerResult<SessionState> {
+        Err(ContainerError::NotSupported {
+            capability: "session_state".to_string(),
+            provider: "test_openagents".to_string(),
+        })
+    }
+
+    fn submit_exec(
+        &self,
+        _session_id: &str,
+        _command: &str,
+        _token: &str,
+    ) -> ContainerResult<String> {
+        Err(ContainerError::NotSupported {
+            capability: "submit_exec".to_string(),
+            provider: "test_openagents".to_string(),
+        })
+    }
+
+    fn exec_state(&self, _exec_id: &str, _token: &str) -> ContainerResult<ExecState> {
+        Err(ContainerError::NotSupported {
+            capability: "exec_state".to_string(),
+            provider: "test_openagents".to_string(),
+        })
+    }
+
+    fn poll_output(
+        &self,
+        _session_id: &str,
+        _cursor: Option<&str>,
+        _token: &str,
+    ) -> ContainerResult<(Option<OutputChunk>, Option<String>)> {
+        Err(ContainerError::NotSupported {
+            capability: "poll_output".to_string(),
+            provider: "test_openagents".to_string(),
+        })
+    }
+
+    fn poll_exec_output(
+        &self,
+        _exec_id: &str,
+        _cursor: Option<&str>,
+        _token: &str,
+    ) -> ContainerResult<(Option<OutputChunk>, Option<String>)> {
+        Err(ContainerError::NotSupported {
+            capability: "poll_exec_output".to_string(),
+            provider: "test_openagents".to_string(),
+        })
+    }
+
+    fn read_file(
+        &self,
+        _session_id: &str,
+        _path: &str,
+        _offset: u64,
+        _len: u64,
+        _token: &str,
+    ) -> ContainerResult<Vec<u8>> {
+        Err(ContainerError::NotSupported {
+            capability: "read_file".to_string(),
+            provider: "test_openagents".to_string(),
+        })
+    }
+
+    fn write_file(
+        &self,
+        _session_id: &str,
+        _path: &str,
+        _offset: u64,
+        _data: &[u8],
+        _token: &str,
+    ) -> ContainerResult<()> {
+        Err(ContainerError::NotSupported {
+            capability: "write_file".to_string(),
+            provider: "test_openagents".to_string(),
+        })
+    }
+
+    fn stop(&self, _session_id: &str, _token: &str) -> ContainerResult<()> {
+        Err(ContainerError::NotSupported {
+            capability: "stop".to_string(),
+            provider: "test_openagents".to_string(),
+        })
+    }
+}
+
 impl ContainerProvider for TestContainerProvider {
     fn id(&self) -> &str {
-        "test"
+        &self.id
     }
 
     fn info(&self) -> ContainerProviderInfo {
         ContainerProviderInfo {
-            id: "test".to_string(),
-            name: "Test Containers".to_string(),
+            id: self.id.clone(),
+            name: format!("Test Containers ({})", self.id),
             available_images: vec!["test-image".to_string()],
             capabilities: ContainerCapabilities {
                 git_clone: false,
@@ -1369,7 +1616,7 @@ impl ContainerProvider for TestContainerProvider {
             cost_usd: 3,
             reserved_usd: request.max_cost_usd.unwrap_or(0),
             duration_ms: 1,
-            provider_id: "test".to_string(),
+            provider_id: self.id.clone(),
         };
 
         let state = if matches!(request.kind, ContainerKind::Interactive) {
@@ -1544,4 +1791,318 @@ impl ContainerProvider for TestContainerProvider {
             .ok_or(ContainerError::SessionNotFound)?;
         Ok(queue.pop_front())
     }
+}
+
+#[derive(Clone)]
+struct TestDvmTransport {
+    published: Arc<Mutex<Vec<Event>>>,
+    subscribers: Arc<Mutex<HashMap<String, mpsc::Sender<Event>>>>,
+}
+
+impl TestDvmTransport {
+    fn new() -> Self {
+        Self {
+            published: Arc::new(Mutex::new(Vec::new())),
+            subscribers: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    fn published_events(&self) -> Vec<Event> {
+        self.published.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    fn emit(&self, event: Event) {
+        let subscribers = self.subscribers.lock().unwrap_or_else(|e| e.into_inner());
+        for sender in subscribers.values() {
+            let _ = sender.try_send(event.clone());
+        }
+    }
+}
+
+#[async_trait]
+impl DvmTransport for TestDvmTransport {
+    async fn connect(&self) -> std::result::Result<(), String> {
+        Ok(())
+    }
+
+    async fn publish(&self, event: Event) -> std::result::Result<(), String> {
+        self.published
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(event);
+        Ok(())
+    }
+
+    async fn subscribe(
+        &self,
+        subscription_id: &str,
+        _filters: &[serde_json::Value],
+    ) -> std::result::Result<mpsc::Receiver<Event>, String> {
+        let (tx, rx) = mpsc::channel(64);
+        self.subscribers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(subscription_id.to_string(), tx);
+        Ok(rx)
+    }
+
+    async fn unsubscribe(&self, subscription_id: &str) -> std::result::Result<(), String> {
+        self.subscribers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(subscription_id);
+        Ok(())
+    }
+
+    async fn query(
+        &self,
+        _filters: &[serde_json::Value],
+        _timeout: Duration,
+    ) -> std::result::Result<Vec<Event>, String> {
+        Ok(Vec::new())
+    }
+
+    fn relays(&self) -> Vec<String> {
+        vec!["wss://test".to_string()]
+    }
+}
+
+struct TestWallet {
+    balance_sats: u64,
+    fx: FxRateSnapshot,
+    payments: Arc<Mutex<Vec<WalletPayment>>>,
+}
+
+impl TestWallet {
+    fn new(balance_sats: u64, fx: FxRateSnapshot) -> Self {
+        Self {
+            balance_sats,
+            fx,
+            payments: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    fn payments(&self) -> Vec<WalletPayment> {
+        self.payments.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+}
+
+impl WalletService for TestWallet {
+    fn balance_sats(&self) -> std::result::Result<u64, WalletError> {
+        Ok(self.balance_sats)
+    }
+
+    fn pay_invoice(
+        &self,
+        _invoice: &str,
+        amount_sats: Option<u64>,
+    ) -> std::result::Result<WalletPayment, WalletError> {
+        let amount_sats = amount_sats.unwrap_or(0);
+        let payment = WalletPayment {
+            payment_id: format!("pay-{}", amount_sats),
+            amount_sats,
+        };
+        self.payments
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(payment.clone());
+        Ok(payment)
+    }
+
+    fn fx_rate(&self) -> std::result::Result<FxRateSnapshot, WalletError> {
+        Ok(self.fx.clone())
+    }
+}
+
+fn dummy_event(kind: u16, tags: Vec<Vec<String>>, content: &str) -> Event {
+    Event {
+        id: uuid::Uuid::new_v4().to_string(),
+        pubkey: "pubkey".to_string(),
+        created_at: 0,
+        kind,
+        tags,
+        content: content.to_string(),
+        sig: "sig".to_string(),
+    }
+}
+
+#[test]
+fn test_dvm_compute_payment_flow() {
+    let transport = Arc::new(TestDvmTransport::new());
+    let fx = FxRateSnapshot {
+        sats_per_usd: 100_000,
+        updated_at: Timestamp::now(),
+    };
+    let wallet = Arc::new(TestWallet::new(1_000_000, fx.clone()));
+    let signer = Arc::new(NostrSigner::new());
+    let provider = DvmProvider::with_transport(
+        AgentId::from("agent-dvm"),
+        transport.clone(),
+        signer,
+        Some(wallet.clone()),
+        FxSource::Fixed {
+            sats_per_usd: fx.sats_per_usd,
+        },
+        60,
+    )
+    .unwrap();
+
+    let request = ComputeRequest {
+        model: "test-model".to_string(),
+        kind: ComputeKind::Complete,
+        input: json!({ "prompt": "hello" }),
+        stream: true,
+        timeout_ms: None,
+        idempotency_key: None,
+        max_cost_usd: Some(100_000),
+    };
+    let job_id = provider.submit(request).unwrap();
+    let request_event_id = transport
+        .published_events()
+        .iter()
+        .find(|event| event.kind == KIND_JOB_TEXT_GENERATION)
+        .map(|event| event.id.clone())
+        .unwrap();
+
+    let partial_event = dummy_event(
+        KIND_JOB_FEEDBACK,
+        vec![
+            vec!["status".to_string(), "partial".to_string()],
+            vec!["e".to_string(), request_event_id.clone()],
+        ],
+        "chunk-1",
+    );
+    transport.emit(partial_event);
+    std::thread::sleep(Duration::from_millis(50));
+    let chunk = provider.poll_stream(&job_id).unwrap().unwrap();
+    assert_eq!(chunk.delta["text"], "chunk-1");
+
+    let payment_event = dummy_event(
+        KIND_JOB_FEEDBACK,
+        vec![
+            vec!["status".to_string(), "payment-required".to_string()],
+            vec!["e".to_string(), request_event_id.clone()],
+            vec![
+                "amount".to_string(),
+                "1000".to_string(),
+                "lnbc1test".to_string(),
+            ],
+        ],
+        "",
+    );
+    transport.emit(payment_event);
+    std::thread::sleep(Duration::from_millis(50));
+
+    let job_result = JobResult::new(
+        KIND_JOB_TEXT_GENERATION,
+        request_event_id.clone(),
+        "customer",
+        "done",
+    )
+    .unwrap()
+    .with_amount(1000, Some("lnbc1test".to_string()));
+    let result_event = dummy_event(job_result.kind, job_result.to_tags(), &job_result.content);
+    transport.emit(result_event);
+    std::thread::sleep(Duration::from_millis(100));
+
+    let state = provider.get_job(&job_id).unwrap();
+    match state {
+        JobState::Complete(response) => {
+            assert_eq!(response.cost_usd, 10);
+        }
+        other => panic!("unexpected state: {:?}", other),
+    }
+
+    assert_eq!(wallet.payments().len(), 1);
+}
+
+#[test]
+fn test_dvm_container_payment_flow() {
+    let transport = Arc::new(TestDvmTransport::new());
+    let fx = FxRateSnapshot {
+        sats_per_usd: 100_000,
+        updated_at: Timestamp::now(),
+    };
+    let wallet = Arc::new(TestWallet::new(1_000_000, fx.clone()));
+    let signer = Arc::new(NostrSigner::new());
+    let provider = DvmContainerProvider::with_transport(
+        AgentId::from("agent-dvm"),
+        transport.clone(),
+        signer,
+        Some(wallet.clone()),
+        FxSource::Fixed {
+            sats_per_usd: fx.sats_per_usd,
+        },
+        60,
+    )
+    .unwrap();
+
+    let request = ContainerRequest {
+        kind: ContainerKind::Build,
+        image: None,
+        repo: Some(RepoConfig {
+            url: "https://example.com/repo.git".to_string(),
+            git_ref: "main".to_string(),
+            subdir: None,
+            auth: None,
+        }),
+        commands: vec!["echo hello".to_string()],
+        workdir: None,
+        env: HashMap::new(),
+        limits: crate::containers::ResourceLimits::basic(),
+        max_cost_usd: Some(100_000),
+        idempotency_key: None,
+        timeout_ms: None,
+    };
+
+    let session_id = provider.submit(request).unwrap();
+    let request_event_id = transport
+        .published_events()
+        .iter()
+        .find(|event| event.kind == KIND_JOB_SANDBOX_RUN)
+        .map(|event| event.id.clone())
+        .unwrap();
+
+    let partial_event = dummy_event(
+        KIND_JOB_FEEDBACK,
+        vec![
+            vec!["status".to_string(), "partial".to_string()],
+            vec!["e".to_string(), request_event_id.clone()],
+        ],
+        "log-1",
+    );
+    transport.emit(partial_event);
+    std::thread::sleep(Duration::from_millis(50));
+    let chunk = provider.poll_output(&session_id).unwrap().unwrap();
+    assert_eq!(chunk.data, "log-1");
+
+    let run = SandboxRunResult::new(0).add_command_result(SandboxCommandResult {
+        command: "echo hello".to_string(),
+        exit_code: 0,
+        stdout: "hello".to_string(),
+        stderr: String::new(),
+        duration_ms: 10,
+    });
+    let content = serde_json::to_string(&run).unwrap();
+    let job_result = JobResult::new(
+        KIND_JOB_SANDBOX_RUN,
+        request_event_id.clone(),
+        "customer",
+        content,
+    )
+    .unwrap()
+    .with_amount(1000, Some("lnbc1test".to_string()));
+    let result_event = dummy_event(job_result.kind, job_result.to_tags(), &job_result.content);
+    transport.emit(result_event);
+    std::thread::sleep(Duration::from_millis(100));
+
+    let state = provider.get_session(&session_id).unwrap();
+    match state {
+        SessionState::Complete(response) => {
+            assert_eq!(response.exit_code, Some(0));
+            assert_eq!(response.cost_usd, 10);
+        }
+        other => panic!("unexpected state: {:?}", other),
+    }
+    assert_eq!(wallet.payments().len(), 1);
 }

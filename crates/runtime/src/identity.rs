@@ -2,9 +2,13 @@
 
 use crate::error::Result;
 use crate::types::AgentId;
+#[cfg(not(target_arch = "wasm32"))]
 use base64::engine::general_purpose::STANDARD;
+#[cfg(not(target_arch = "wasm32"))]
 use base64::Engine;
+#[cfg(not(target_arch = "wasm32"))]
 use bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey, XOnlyPublicKey, schnorr};
+#[cfg(not(target_arch = "wasm32"))]
 use nostr::{decrypt as decrypt_v1, decrypt_v2, encrypt_v2, get_public_key};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -141,11 +145,13 @@ impl SigningService for InMemorySigner {
 }
 
 /// Real signing service backed by Nostr-compatible keys (in-memory for local dev).
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Default)]
 pub struct NostrSigner {
     keys: Arc<RwLock<HashMap<AgentId, [u8; 32]>>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl NostrSigner {
     /// Create a new signer with empty key cache.
     pub fn new() -> Self {
@@ -184,6 +190,7 @@ impl NostrSigner {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl SigningService for NostrSigner {
     fn pubkey(&self, agent_id: &AgentId) -> Result<PublicKey> {
         let secret = self.secret_for(agent_id)?;

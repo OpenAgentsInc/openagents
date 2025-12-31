@@ -109,14 +109,21 @@ pub mod agent;
 pub mod budget;
 pub mod compute;
 pub mod containers;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod control_plane;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod dvm;
 #[cfg(feature = "cloudflare")]
 pub mod cloudflare;
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+pub mod browser;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod drivers;
 pub mod env;
 pub mod engine;
 pub mod envelope;
 pub mod error;
+pub mod fx;
 pub mod fs;
 pub mod idempotency;
 pub mod identity;
@@ -126,31 +133,48 @@ pub mod storage;
 pub mod tick;
 pub mod trigger;
 pub mod types;
+pub mod wallet;
+#[cfg(target_arch = "wasm32")]
+pub(crate) mod wasm_http;
 
 pub use agent::{Agent, AgentConfig, AgentContext, AgentState};
 pub use budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetState, BudgetTracker};
 pub use compute::{
     ComputeChunk, ComputeError, ComputeFs, ComputeKind, ComputePolicy, ComputeProvider,
-    ComputeRequest, ComputeResponse, ComputeRouter, JobState, LocalProvider, ModelInfo, Prefer,
-    ProviderInfo, ProviderLatency, ProviderPricing, ProviderStatus, TokenUsage,
+    ComputeRequest, ComputeResponse, ComputeRouter, JobState, ModelInfo, Prefer, ProviderInfo,
+    ProviderLatency, ProviderPricing, ProviderStatus, TokenUsage,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use compute::{DvmProvider, LocalProvider};
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+pub use compute::OpenAgentsComputeProvider;
 #[cfg(feature = "cloudflare")]
 pub use compute::CloudflareProvider;
 #[cfg(feature = "cloudflare")]
 pub use cloudflare::{set_cloudflare_agent_factory, CloudflareAgent};
 pub use containers::{
-    ArtifactInfo, CommandResult, ContainerCapabilities, ContainerError, ContainerFs, ContainerKind,
-    ContainerLatency, ContainerLimits, ContainerPolicy, ContainerPricing, ContainerProvider,
-    ContainerProviderInfo, ContainerRequest, ContainerResponse, ContainerRouter, ContainerStatus,
-    ContainerUsage, ExecState, LocalContainerProvider, OutputChunk, OutputStream, RepoAuth,
-    RepoConfig, SessionState,
+    ApiAuthResponse, ApiAuthState, ArtifactInfo, AuthMethod, CommandResult, ContainerCapabilities,
+    ContainerError, ContainerFs, ContainerKind, ContainerLatency, ContainerLimits, ContainerPolicy,
+    ContainerPricing, ContainerProvider, ContainerProviderInfo, ContainerRequest, ContainerResponse,
+    ContainerRouter, ContainerStatus, ContainerUsage, ExecState,
+    NostrAuthChallenge, NostrAuthResponse, OpenAgentsApiClient, OpenAgentsAuth,
+    OpenAgentsContainerProvider, OutputChunk, OutputStream, RateLimitStatus, RepoAuth, RepoConfig,
+    SessionState,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use containers::{DvmContainerProvider, LocalContainerProvider};
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+pub use containers::WasmOpenAgentsContainerProvider;
 pub use containers::ProviderStatus as ContainerProviderStatus;
+#[cfg(not(target_arch = "wasm32"))]
 pub use control_plane::{ControlPlane, LocalRuntime};
+#[cfg(not(target_arch = "wasm32"))]
 pub use drivers::{
     Driver, DriverHandle, EnvelopeSink, NostrDriver, NostrDriverConfig, NostrPublishRequest,
     RoutedEnvelope,
 };
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+pub use browser::{BrowserRuntime, BrowserRuntimeConfig};
 pub use env::AgentEnv;
 pub use engine::{manual_trigger, TickEngine};
 pub use envelope::Envelope;
@@ -161,11 +185,17 @@ pub use idempotency::{IdempotencyJournal, JournalEntry, JournalError, MemoryJour
 pub use idempotency::DoJournal;
 #[cfg(feature = "local")]
 pub use idempotency::SqliteJournal;
-pub use identity::{InMemorySigner, NostrSigner, PublicKey, Signature, SigningService};
+pub use identity::{InMemorySigner, PublicKey, Signature, SigningService};
+#[cfg(not(target_arch = "wasm32"))]
+pub use identity::NostrSigner;
 pub use namespace::Namespace;
+pub use fx::{FxError, FxRateProvider, FxRateSnapshot, FxSource};
+#[cfg(not(target_arch = "wasm32"))]
+pub use fx::FxRateCache;
 pub use services::{
     ApmMetric, DeadletterFs, GoalsFs, HudFs, HudSettings, IdentityFs, InboxFs, LastPrMetric,
     LogsFs, MetricsFs, MetricsSnapshot, QueueMetric, StatusFs, StatusSnapshot, TraceEvent,
+    WalletFs,
 };
 pub use storage::{AgentStorage, InMemoryStorage, StorageOp};
 #[cfg(feature = "cloudflare")]
@@ -173,6 +203,7 @@ pub use storage::CloudflareStorage;
 pub use tick::{ResourceUsage, TickResult};
 pub use trigger::{AlarmTrigger, EventTrigger, InitializeTrigger, ManualTrigger, MessageTrigger, Trigger, TriggerMeta};
 pub use types::{AgentId, EnvelopeId, Timestamp};
+pub use wallet::{WalletError, WalletFxProvider, WalletPayment, WalletService};
 
 #[cfg(test)]
 mod tests;

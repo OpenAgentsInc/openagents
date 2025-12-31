@@ -1,26 +1,60 @@
 //! Container filesystem service and providers.
 
 use crate::budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetTracker};
-use crate::compute::Prefer;
+use crate::compute::{ApiTokenProvider, Prefer};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::dvm::{msats_to_sats, parse_feedback_event, DvmFeedbackStatus, DvmTransport, RelayPoolTransport};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::fx::{FxRateCache, FxRateProvider, FxSource};
 use crate::fs::{
     BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Permissions,
     SeekFrom, Stat, WatchEvent, WatchHandle,
 };
 use crate::idempotency::{IdempotencyJournal, JournalError};
+use crate::identity::{PublicKey, Signature, SigningService};
+use crate::storage::AgentStorage;
 use crate::types::{AgentId, Timestamp};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::wallet::{WalletFxProvider, WalletService};
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+use crate::wasm_http;
+#[cfg(not(target_arch = "wasm32"))]
+use compute::domain::sandbox_run::{
+    ResourceLimits as SandboxResourceLimits, SandboxRunRequest, SandboxRunResult,
+};
+#[cfg(not(target_arch = "wasm32"))]
+use nostr::{
+    create_deletion_tags, get_event_hash, JobRequest, JobResult, JobStatus, UnsignedEvent,
+    DELETION_REQUEST_KIND, KIND_JOB_FEEDBACK,
+};
+#[cfg(not(target_arch = "wasm32"))]
+use nostr::nip90::KIND_JOB_SANDBOX_RUN;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::{Read, Write};
+#[cfg(not(target_arch = "wasm32"))]
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, RwLock};
+#[cfg(not(target_arch = "wasm32"))]
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::sync::mpsc;
-use urlencoding::decode;
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+use wasm_bindgen_futures::spawn_local;
+use urlencoding::{decode, encode};
+use bech32::{Bech32, Hrp};
 
 const IDEMPOTENCY_TTL: Duration = Duration::from_secs(3600);
 const CHUNK_SIZE: u64 = 1_048_576;
 const MAX_PATH_LEN: usize = 4096;
+const AUTH_STATE_KEY: &str = "containers:auth:state";
+const AUTH_TOKEN_KEY: &str = "containers:auth:token";
+const AUTH_CHALLENGE_KEY: &str = "containers:auth:challenge";
+const AUTH_CHALLENGE_TTL: Duration = Duration::from_secs(300);
+const OPENAGENTS_API_URL_ENV: &str = "OPENAGENTS_API_URL";
 
 /// Kind of container operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -248,6 +282,101 @@ pub enum ContainerStatus {
     Expired,
 }
 
+/// Nostr authentication challenge.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrAuthChallenge {
+    /// Random challenge string.
+    pub challenge: String,
+    /// Challenge expiry.
+    pub expires_at: Timestamp,
+    /// Expected pubkey (agent's npub).
+    pub pubkey: String,
+}
+
+/// Nostr authentication response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrAuthResponse {
+    /// The challenge that was signed.
+    pub challenge: String,
+    /// Schnorr signature over challenge (hex).
+    pub signature: String,
+    /// Agent's pubkey (npub or hex).
+    pub pubkey: String,
+}
+
+/// OpenAgents API authentication state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ApiAuthState {
+    /// Whether agent is authenticated.
+    pub authenticated: bool,
+    /// Authentication method used.
+    pub method: Option<AuthMethod>,
+    /// Agent's npub (if Nostr auth).
+    pub agent_pubkey: Option<String>,
+    /// Whether API token is set (token itself is never exposed).
+    pub token_set: bool,
+    /// Token expiry timestamp.
+    pub expires_at: Option<Timestamp>,
+    /// Credit balance in micro-USD.
+    pub credits_usd: u64,
+    /// Rate limit status.
+    pub rate_limit: RateLimitStatus,
+}
+
+impl Default for ApiAuthState {
+    fn default() -> Self {
+        Self {
+            authenticated: false,
+            method: None,
+            agent_pubkey: None,
+            token_set: false,
+            expires_at: None,
+            credits_usd: 0,
+            rate_limit: RateLimitStatus::default(),
+        }
+    }
+}
+
+/// Authentication method.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthMethod {
+    Nostr,
+    ApiKey,
+}
+
+/// Rate limit status for OpenAgents API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RateLimitStatus {
+    /// Requests remaining this window.
+    pub remaining: u32,
+    /// Window reset timestamp.
+    pub resets_at: Timestamp,
+    /// Per-minute limit (user).
+    pub user_limit_per_minute: u32,
+    /// Per-minute limit (IP).
+    pub ip_limit_per_minute: u32,
+}
+
+impl RateLimitStatus {
+    fn is_limited(&self) -> bool {
+        self.user_limit_per_minute > 0 || self.ip_limit_per_minute > 0
+    }
+}
+
+impl Default for RateLimitStatus {
+    fn default() -> Self {
+        Self {
+            remaining: 0,
+            resets_at: Timestamp::from_millis(0),
+            user_limit_per_minute: 0,
+            ip_limit_per_minute: 0,
+        }
+    }
+}
+
 /// Policy for container operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContainerPolicy {
@@ -438,6 +567,26 @@ pub enum ContainerError {
     /// Provider is unavailable.
     #[error("provider unavailable: {0}")]
     Unavailable(String),
+    /// Authentication required for provider.
+    #[error("auth required: {provider} ({message})")]
+    AuthRequired {
+        /// Provider id.
+        provider: String,
+        /// Message describing requirement.
+        message: String,
+    },
+    /// Rate limit reached.
+    #[error("rate limited until {resets_at}")]
+    RateLimited {
+        /// Rate limit reset timestamp.
+        resets_at: Timestamp,
+    },
+    /// Insufficient credits for request.
+    #[error("insufficient credits (required {required_usd}, available {available_usd})")]
+    InsufficientCredits {
+        required_usd: u64,
+        available_usd: u64,
+    },
     /// Unsupported capability.
     #[error("not supported: {capability} ({provider})")]
     NotSupported {
@@ -750,11 +899,919 @@ impl ContainerRouter {
     }
 }
 
+/// OpenAgents API auth response payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiAuthResponse {
+    #[serde(flatten, default)]
+    pub state: ApiAuthState,
+    #[serde(default)]
+    pub access_token: Option<String>,
+}
+
+/// OpenAgents API client interface for auth and container calls.
+pub trait OpenAgentsApiClient: Send + Sync {
+    fn authenticate_token(&self, token: &str) -> Result<ApiAuthResponse, ContainerError>;
+    fn authenticate_nostr(&self, response: &NostrAuthResponse) -> Result<ApiAuthResponse, ContainerError>;
+    fn provider_info(
+        &self,
+        provider_id: &str,
+        token: Option<&str>,
+    ) -> Result<ContainerProviderInfo, ContainerError>;
+    fn submit_container(
+        &self,
+        provider_id: &str,
+        request: &ContainerRequest,
+        token: &str,
+    ) -> Result<String, ContainerError>;
+    fn session_state(&self, session_id: &str, token: &str) -> Result<SessionState, ContainerError>;
+    fn submit_exec(&self, session_id: &str, command: &str, token: &str) -> Result<String, ContainerError>;
+    fn exec_state(&self, exec_id: &str, token: &str) -> Result<ExecState, ContainerError>;
+    fn poll_output(
+        &self,
+        session_id: &str,
+        cursor: Option<&str>,
+        token: &str,
+    ) -> Result<(Option<OutputChunk>, Option<String>), ContainerError>;
+    fn poll_exec_output(
+        &self,
+        exec_id: &str,
+        cursor: Option<&str>,
+        token: &str,
+    ) -> Result<(Option<OutputChunk>, Option<String>), ContainerError>;
+    fn read_file(
+        &self,
+        session_id: &str,
+        path: &str,
+        offset: u64,
+        len: u64,
+        token: &str,
+    ) -> Result<Vec<u8>, ContainerError>;
+    fn write_file(
+        &self,
+        session_id: &str,
+        path: &str,
+        offset: u64,
+        data: &[u8],
+        token: &str,
+    ) -> Result<(), ContainerError>;
+    fn stop(&self, session_id: &str, token: &str) -> Result<(), ContainerError>;
+}
+
+fn openagents_api_from_env() -> Option<Arc<dyn OpenAgentsApiClient>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        return HttpOpenAgentsApiClient::from_env();
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        None
+    }
+}
+
+/// OpenAgents API auth + credits manager.
+#[derive(Clone)]
+pub struct OpenAgentsAuth {
+    agent_id: AgentId,
+    storage: Arc<dyn AgentStorage>,
+    signer: Arc<dyn SigningService>,
+    api: Option<Arc<dyn OpenAgentsApiClient>>,
+    api_base_url: Option<String>,
+    state: Arc<RwLock<ApiAuthState>>,
+    token_cache: Arc<Mutex<Option<String>>>,
+    challenge: Arc<RwLock<Option<NostrAuthChallenge>>>,
+}
+
+impl OpenAgentsAuth {
+    pub fn new(
+        agent_id: AgentId,
+        storage: Arc<dyn AgentStorage>,
+        signer: Arc<dyn SigningService>,
+        api: Option<Arc<dyn OpenAgentsApiClient>>,
+    ) -> Self {
+        let mut state = Self::load_state(&storage, &agent_id);
+        let token = Self::load_token(&storage, &agent_id);
+        state.token_set = token.is_some();
+        if state.agent_pubkey.is_none() {
+            if let Ok(npub) = Self::agent_npub_static(&signer, &agent_id) {
+                state.agent_pubkey = Some(npub);
+            }
+        }
+        let challenge = Self::load_challenge(&storage, &agent_id);
+        Self {
+            agent_id,
+            storage,
+            signer,
+            api,
+            api_base_url: None,
+            state: Arc::new(RwLock::new(state)),
+            token_cache: Arc::new(Mutex::new(token)),
+            challenge: Arc::new(RwLock::new(challenge)),
+        }
+    }
+
+    pub fn from_env(
+        agent_id: AgentId,
+        storage: Arc<dyn AgentStorage>,
+        signer: Arc<dyn SigningService>,
+    ) -> Self {
+        let api = openagents_api_from_env();
+        Self::new(agent_id, storage, signer, api)
+    }
+
+    /// Create auth state with an explicit OpenAgents API base URL (browser usage).
+    pub fn with_base_url(
+        agent_id: AgentId,
+        storage: Arc<dyn AgentStorage>,
+        signer: Arc<dyn SigningService>,
+        base_url: impl Into<String>,
+    ) -> Self {
+        let mut auth = Self::new(agent_id, storage, signer, None);
+        auth.api_base_url = Some(base_url.into());
+        auth
+    }
+
+    pub fn status(&self) -> ApiAuthState {
+        self.state.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn status_json(&self) -> FsResult<Vec<u8>> {
+        serde_json::to_vec_pretty(&self.status()).map_err(|err| FsError::Other(err.to_string()))
+    }
+
+    pub fn credits_json(&self) -> FsResult<Vec<u8>> {
+        let state = self.status();
+        let json = serde_json::json!({ "credits_usd": state.credits_usd });
+        serde_json::to_vec(&json).map_err(|err| FsError::Other(err.to_string()))
+    }
+
+    pub fn challenge_json(&self) -> FsResult<Vec<u8>> {
+        let challenge = self.issue_challenge().map_err(|err| FsError::Other(err.to_string()))?;
+        serde_json::to_vec_pretty(&challenge).map_err(|err| FsError::Other(err.to_string()))
+    }
+
+    pub fn token(&self) -> Option<String> {
+        let mut cache = self.token_cache.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(token) = cache.as_ref() {
+            return Some(token.clone());
+        }
+        let token = Self::load_token(&self.storage, &self.agent_id);
+        *cache = token.clone();
+        token
+    }
+
+    pub fn set_token(&self, token: &str) -> Result<(), ContainerError> {
+        Self::store_token(&self.storage, &self.agent_id, token)?;
+        {
+            let mut cache = self.token_cache.lock().unwrap_or_else(|e| e.into_inner());
+            *cache = Some(token.to_string());
+        }
+        let mut state = self.status();
+        state.method = Some(AuthMethod::ApiKey);
+        state.token_set = true;
+        state.authenticated = false;
+        state.expires_at = None;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Some(api) = &self.api {
+                if let Ok(response) = api.authenticate_token(token) {
+                    state = self.apply_auth_response(state, response, AuthMethod::ApiKey, None)?;
+                }
+            }
+        }
+        #[cfg(all(feature = "browser", target_arch = "wasm32"))]
+        {
+            if let Some(base_url) = self.api_base_url.clone() {
+                let auth = self.clone();
+                let token = token.trim().to_string();
+                spawn_local(async move {
+                    auth.validate_token_async(base_url, token).await;
+                });
+            }
+        }
+        self.save_state(&state)?;
+        Ok(())
+    }
+
+    pub fn issue_challenge(&self) -> Result<NostrAuthChallenge, ContainerError> {
+        let mut guard = self.challenge.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(challenge) = guard.as_ref() {
+            if challenge.expires_at.as_millis() > Timestamp::now().as_millis() {
+                return Ok(challenge.clone());
+            }
+        }
+        let challenge = NostrAuthChallenge {
+            challenge: uuid::Uuid::new_v4().to_string(),
+            expires_at: Timestamp::from_millis(
+                Timestamp::now()
+                    .as_millis()
+                    .saturating_add(AUTH_CHALLENGE_TTL.as_millis() as u64),
+            ),
+            pubkey: self.agent_npub()?,
+        };
+        Self::store_challenge(&self.storage, &self.agent_id, &challenge)?;
+        *guard = Some(challenge.clone());
+        Ok(challenge)
+    }
+
+    pub fn submit_challenge(&self, response: NostrAuthResponse) -> Result<(), ContainerError> {
+        let challenge = self
+            .load_current_challenge()
+            .ok_or_else(|| ContainerError::InvalidRequest("no auth challenge".to_string()))?;
+        if challenge.challenge != response.challenge {
+            return Err(ContainerError::InvalidRequest("challenge mismatch".to_string()));
+        }
+        if challenge.expires_at.as_millis() <= Timestamp::now().as_millis() {
+            return Err(ContainerError::InvalidRequest("challenge expired".to_string()));
+        }
+        let pubkey = Self::parse_pubkey(&response.pubkey)?;
+        let signature_bytes = hex::decode(&response.signature)
+            .map_err(|_| ContainerError::InvalidRequest("invalid signature".to_string()))?;
+        let signature = Signature::new(signature_bytes);
+        if !self.signer.verify(&pubkey, response.challenge.as_bytes(), &signature) {
+            return Err(ContainerError::InvalidRequest("signature verification failed".to_string()));
+        }
+        let expected_pubkey = self
+            .signer
+            .pubkey(&self.agent_id)
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        if expected_pubkey.as_bytes() != pubkey.as_bytes() {
+            return Err(ContainerError::InvalidRequest("pubkey mismatch".to_string()));
+        }
+
+        let mut state = self.status();
+        state.method = Some(AuthMethod::Nostr);
+        state.agent_pubkey = Some(challenge.pubkey.clone());
+        state.authenticated = true;
+        state.expires_at = None;
+        state.rate_limit = RateLimitStatus::default();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Some(api) = &self.api {
+                if let Ok(response) = api.authenticate_nostr(&response) {
+                    state = self.apply_auth_response(
+                        state,
+                        response,
+                        AuthMethod::Nostr,
+                        Some(challenge.pubkey.clone()),
+                    )?;
+                }
+            }
+        }
+        #[cfg(all(feature = "browser", target_arch = "wasm32"))]
+        {
+            if let Some(base_url) = self.api_base_url.clone() {
+                let auth = self.clone();
+                spawn_local(async move {
+                    auth.validate_nostr_async(base_url, response).await;
+                });
+            }
+        }
+        self.save_state(&state)?;
+        Self::clear_challenge(&self.storage, &self.agent_id)?;
+        let mut guard = self.challenge.write().unwrap_or_else(|e| e.into_inner());
+        *guard = None;
+        Ok(())
+    }
+
+    fn apply_auth_response(
+        &self,
+        mut state: ApiAuthState,
+        response: ApiAuthResponse,
+        default_method: AuthMethod,
+        default_pubkey: Option<String>,
+    ) -> Result<ApiAuthState, ContainerError> {
+        state = response.state;
+        if state.method.is_none() {
+            state.method = Some(default_method);
+        }
+        if state.agent_pubkey.is_none() {
+            state.agent_pubkey = default_pubkey;
+        }
+        if let Some(access_token) = response.access_token {
+            Self::store_token(&self.storage, &self.agent_id, &access_token)?;
+            let mut cache = self.token_cache.lock().unwrap_or_else(|e| e.into_inner());
+            *cache = Some(access_token);
+        }
+        state.token_set = self.token().is_some();
+        Ok(state)
+    }
+
+    #[cfg(all(feature = "browser", target_arch = "wasm32"))]
+    async fn validate_token_async(&self, base_url: String, token: String) {
+        let url = format!(
+            "{}/containers/auth/token",
+            base_url.trim_end_matches('/')
+        );
+        let body = match serde_json::to_string(&serde_json::json!({ "token": token })) {
+            Ok(body) => body,
+            Err(_) => return,
+        };
+        let response = wasm_http::request_bytes("POST", &url, None, Some(body)).await;
+        let Ok((status, bytes)) = response else {
+            return;
+        };
+        if !(200..300).contains(&status) {
+            return;
+        }
+        let Ok(payload) = serde_json::from_slice::<ApiAuthResponse>(&bytes) else {
+            return;
+        };
+        let state = match self.apply_auth_response(
+            self.status(),
+            payload,
+            AuthMethod::ApiKey,
+            None,
+        ) {
+            Ok(state) => state,
+            Err(_) => return,
+        };
+        let _ = self.save_state(&state);
+    }
+
+    #[cfg(all(feature = "browser", target_arch = "wasm32"))]
+    async fn validate_nostr_async(&self, base_url: String, response: NostrAuthResponse) {
+        let url = format!(
+            "{}/containers/auth/nostr",
+            base_url.trim_end_matches('/')
+        );
+        let body = match serde_json::to_string(&response) {
+            Ok(body) => body,
+            Err(_) => return,
+        };
+        let resp = wasm_http::request_bytes("POST", &url, None, Some(body)).await;
+        let Ok((status, bytes)) = resp else {
+            return;
+        };
+        if !(200..300).contains(&status) {
+            return;
+        }
+        let Ok(payload) = serde_json::from_slice::<ApiAuthResponse>(&bytes) else {
+            return;
+        };
+        let state = match self.apply_auth_response(
+            self.status(),
+            payload,
+            AuthMethod::Nostr,
+            Some(response.pubkey.clone()),
+        ) {
+            Ok(state) => state,
+            Err(_) => return,
+        };
+        let _ = self.save_state(&state);
+    }
+
+    pub fn check_auth(&self, provider_id: &str, policy: &ContainerPolicy) -> Result<(), ContainerError> {
+        let state = self.status();
+        if provider_id == "local" {
+            return Ok(());
+        }
+        if !policy.require_api_auth && !provider_requires_credits(provider_id) {
+            return Ok(());
+        }
+        if !state.authenticated {
+            return Err(ContainerError::AuthRequired {
+                provider: provider_id.to_string(),
+                message: "OpenAgents API authentication required".to_string(),
+            });
+        }
+        if provider_id != "local" && !state.token_set {
+            return Err(ContainerError::AuthRequired {
+                provider: provider_id.to_string(),
+                message: "OpenAgents API token required".to_string(),
+            });
+        }
+        if state.rate_limit.is_limited() && state.rate_limit.remaining == 0 {
+            return Err(ContainerError::RateLimited {
+                resets_at: state.rate_limit.resets_at,
+            });
+        }
+        Ok(())
+    }
+
+    pub fn check_credits(&self, estimated_cost_usd: u64) -> Result<(), ContainerError> {
+        let state = self.status();
+        if state.credits_usd < estimated_cost_usd {
+            return Err(ContainerError::InsufficientCredits {
+                required_usd: estimated_cost_usd,
+                available_usd: state.credits_usd,
+            });
+        }
+        Ok(())
+    }
+
+    pub fn reserve_credits(&self, amount: u64) -> Result<u64, ContainerError> {
+        if amount == 0 {
+            return Ok(0);
+        }
+        let mut state = self.status();
+        if state.credits_usd < amount {
+            return Err(ContainerError::InsufficientCredits {
+                required_usd: amount,
+                available_usd: state.credits_usd,
+            });
+        }
+        state.credits_usd = state.credits_usd.saturating_sub(amount);
+        self.save_state(&state)?;
+        Ok(amount)
+    }
+
+    pub fn release_credits(&self, amount: u64) -> Result<(), ContainerError> {
+        if amount == 0 {
+            return Ok(());
+        }
+        let mut state = self.status();
+        state.credits_usd = state.credits_usd.saturating_add(amount);
+        self.save_state(&state)?;
+        Ok(())
+    }
+
+    pub fn reconcile_credits(&self, reserved: u64, actual: u64) -> Result<(), ContainerError> {
+        if reserved == 0 {
+            return Ok(());
+        }
+        let mut state = self.status();
+        if actual <= reserved {
+            state.credits_usd = state.credits_usd.saturating_add(reserved - actual);
+        } else {
+            let extra = actual - reserved;
+            state.credits_usd = state.credits_usd.saturating_sub(extra);
+        }
+        self.save_state(&state)?;
+        Ok(())
+    }
+
+    fn agent_npub(&self) -> Result<String, ContainerError> {
+        Self::agent_npub_static(&self.signer, &self.agent_id)
+    }
+
+    fn agent_npub_static(
+        signer: &Arc<dyn SigningService>,
+        agent_id: &AgentId,
+    ) -> Result<String, ContainerError> {
+        let pubkey = signer
+            .pubkey(agent_id)
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        let bytes = pubkey.as_bytes();
+        if bytes.len() != 32 {
+            return Err(ContainerError::InvalidRequest(
+                "nostr pubkey must be 32 bytes".to_string(),
+            ));
+        }
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(bytes);
+        public_key_to_npub(&arr)
+    }
+
+    fn parse_pubkey(value: &str) -> Result<PublicKey, ContainerError> {
+        if value.starts_with("npub1") {
+            let bytes = npub_to_public_key(value)?;
+            return Ok(PublicKey::new(bytes.to_vec()));
+        }
+        let bytes =
+            hex::decode(value).map_err(|_| ContainerError::InvalidRequest("invalid pubkey".to_string()))?;
+        if bytes.len() != 32 {
+            return Err(ContainerError::InvalidRequest(
+                "nostr pubkey must be 32 bytes".to_string(),
+            ));
+        }
+        Ok(PublicKey::new(bytes))
+    }
+
+    fn load_state(storage: &Arc<dyn AgentStorage>, agent_id: &AgentId) -> ApiAuthState {
+        let data = futures::executor::block_on(storage.get(agent_id, AUTH_STATE_KEY)).ok().flatten();
+        data.and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default()
+    }
+
+    fn save_state(&self, state: &ApiAuthState) -> Result<(), ContainerError> {
+        let data = serde_json::to_vec_pretty(state)
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        futures::executor::block_on(self.storage.set(&self.agent_id, AUTH_STATE_KEY, &data))
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        let mut guard = self.state.write().unwrap_or_else(|e| e.into_inner());
+        *guard = state.clone();
+        Ok(())
+    }
+
+    fn load_token(storage: &Arc<dyn AgentStorage>, agent_id: &AgentId) -> Option<String> {
+        let data = futures::executor::block_on(storage.get(agent_id, AUTH_TOKEN_KEY)).ok().flatten()?;
+        String::from_utf8(data).ok()
+    }
+
+    fn store_token(
+        storage: &Arc<dyn AgentStorage>,
+        agent_id: &AgentId,
+        token: &str,
+    ) -> Result<(), ContainerError> {
+        futures::executor::block_on(storage.set(agent_id, AUTH_TOKEN_KEY, token.as_bytes()))
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))
+    }
+
+    fn load_challenge(
+        storage: &Arc<dyn AgentStorage>,
+        agent_id: &AgentId,
+    ) -> Option<NostrAuthChallenge> {
+        let data =
+            futures::executor::block_on(storage.get(agent_id, AUTH_CHALLENGE_KEY)).ok().flatten()?;
+        serde_json::from_slice(&data).ok()
+    }
+
+    fn store_challenge(
+        storage: &Arc<dyn AgentStorage>,
+        agent_id: &AgentId,
+        challenge: &NostrAuthChallenge,
+    ) -> Result<(), ContainerError> {
+        let data = serde_json::to_vec(challenge)
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        futures::executor::block_on(storage.set(agent_id, AUTH_CHALLENGE_KEY, &data))
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))
+    }
+
+    fn clear_challenge(
+        storage: &Arc<dyn AgentStorage>,
+        agent_id: &AgentId,
+    ) -> Result<(), ContainerError> {
+        futures::executor::block_on(storage.delete(agent_id, AUTH_CHALLENGE_KEY))
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))
+    }
+
+    fn load_current_challenge(&self) -> Option<NostrAuthChallenge> {
+        let guard = self.challenge.read().unwrap_or_else(|e| e.into_inner());
+        if guard.as_ref().is_some() {
+            return guard.clone();
+        }
+        drop(guard);
+        let challenge = Self::load_challenge(&self.storage, &self.agent_id);
+        let mut guard = self.challenge.write().unwrap_or_else(|e| e.into_inner());
+        *guard = challenge.clone();
+        challenge
+    }
+}
+
+fn npub_to_public_key(value: &str) -> Result<[u8; 32], ContainerError> {
+    let (hrp, data) =
+        bech32::decode(value).map_err(|_| ContainerError::InvalidRequest("invalid npub".to_string()))?;
+    if hrp.as_str() != "npub" {
+        return Err(ContainerError::InvalidRequest("invalid npub prefix".to_string()));
+    }
+    if data.len() != 32 {
+        return Err(ContainerError::InvalidRequest(
+            "nostr pubkey must be 32 bytes".to_string(),
+        ));
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&data);
+    Ok(out)
+}
+
+fn public_key_to_npub(public_key: &[u8; 32]) -> Result<String, ContainerError> {
+    let hrp = Hrp::parse("npub").map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+    bech32::encode::<Bech32>(hrp, public_key)
+        .map_err(|err| ContainerError::ProviderError(err.to_string()))
+}
+
+impl ApiTokenProvider for OpenAgentsAuth {
+    fn api_token(&self) -> Option<String> {
+        self.token()
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct HttpOpenAgentsApiClient {
+    base_url: String,
+    client: reqwest::Client,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl HttpOpenAgentsApiClient {
+    fn from_env() -> Option<Arc<dyn OpenAgentsApiClient>> {
+        let base_url = std::env::var(OPENAGENTS_API_URL_ENV).ok()?;
+        if base_url.trim().is_empty() {
+            return None;
+        }
+        Self::new(base_url).ok().map(|client| Arc::new(client) as Arc<dyn OpenAgentsApiClient>)
+    }
+
+    fn new(base_url: impl Into<String>) -> Result<Self, ContainerError> {
+        let client = reqwest::Client::builder()
+            .build()
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        Ok(Self {
+            base_url: base_url.into(),
+            client,
+        })
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!(
+            "{}/{}",
+            self.base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        )
+    }
+
+    fn build_request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        token: Option<&str>,
+    ) -> reqwest::RequestBuilder {
+        let mut builder = self.client.request(method, self.url(path));
+        if let Some(token) = token {
+            builder = builder.bearer_auth(token);
+        }
+        builder
+    }
+
+    fn execute<F, T>(&self, fut: F) -> Result<T, ContainerError>
+    where
+        F: std::future::Future<Output = Result<T, ContainerError>>,
+    {
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            return tokio::task::block_in_place(|| handle.block_on(fut));
+        }
+        let runtime = tokio::runtime::Runtime::new()
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        runtime.block_on(fut)
+    }
+
+    fn send_request(
+        &self,
+        builder: reqwest::RequestBuilder,
+    ) -> Result<(reqwest::StatusCode, Vec<u8>), ContainerError> {
+        self.execute(async {
+            let response = builder
+                .send()
+                .await
+                .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+            let status = response.status();
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|err| ContainerError::ProviderError(err.to_string()))?
+                .to_vec();
+            Ok((status, bytes))
+        })
+    }
+
+    fn request_json<R: DeserializeOwned>(
+        &self,
+        builder: reqwest::RequestBuilder,
+    ) -> Result<R, ContainerError> {
+        let (status, bytes) = self.send_request(builder)?;
+        if !status.is_success() {
+            let body = String::from_utf8_lossy(&bytes);
+            return Err(ContainerError::ProviderError(format!(
+                "openagents api {}: {}",
+                status, body
+            )));
+        }
+        serde_json::from_slice(&bytes).map_err(|err| ContainerError::ProviderError(err.to_string()))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl OpenAgentsApiClient for HttpOpenAgentsApiClient {
+    fn authenticate_token(&self, token: &str) -> Result<ApiAuthResponse, ContainerError> {
+        let body = serde_json::json!({ "token": token });
+        let builder = self
+            .build_request(reqwest::Method::POST, "containers/auth/token", None)
+            .json(&body);
+        self.request_json(builder)
+    }
+
+    fn authenticate_nostr(&self, response: &NostrAuthResponse) -> Result<ApiAuthResponse, ContainerError> {
+        let builder = self
+            .build_request(reqwest::Method::POST, "containers/auth/nostr", None)
+            .json(response);
+        self.request_json(builder)
+    }
+
+    fn provider_info(
+        &self,
+        provider_id: &str,
+        token: Option<&str>,
+    ) -> Result<ContainerProviderInfo, ContainerError> {
+        let path = format!("containers/providers/{}/info", provider_id);
+        let builder = self.build_request(reqwest::Method::GET, &path, token);
+        self.request_json(builder)
+    }
+
+    fn submit_container(
+        &self,
+        provider_id: &str,
+        request: &ContainerRequest,
+        token: &str,
+    ) -> Result<String, ContainerError> {
+        #[derive(Deserialize)]
+        struct SessionResponse {
+            session_id: String,
+        }
+        let path = format!("containers/providers/{}/sessions", provider_id);
+        let body = serde_json::to_value(request)
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        let builder = self
+            .build_request(reqwest::Method::POST, &path, Some(token))
+            .json(&body);
+        let response: SessionResponse = self.request_json(builder)?;
+        Ok(response.session_id)
+    }
+
+    fn session_state(&self, session_id: &str, token: &str) -> Result<SessionState, ContainerError> {
+        let path = format!("containers/sessions/{}", session_id);
+        let builder = self.build_request(reqwest::Method::GET, &path, Some(token));
+        let (status, bytes) = self.send_request(builder)?;
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(ContainerError::SessionNotFound);
+        }
+        if !status.is_success() {
+            let body = String::from_utf8_lossy(&bytes);
+            return Err(ContainerError::ProviderError(format!(
+                "openagents api {}: {}",
+                status, body
+            )));
+        }
+        serde_json::from_slice(&bytes).map_err(|err| ContainerError::ProviderError(err.to_string()))
+    }
+
+    fn submit_exec(&self, session_id: &str, command: &str, token: &str) -> Result<String, ContainerError> {
+        #[derive(Deserialize)]
+        struct ExecResponse {
+            exec_id: String,
+        }
+        let path = format!("containers/sessions/{}/exec", session_id);
+        let body = serde_json::json!({ "command": command });
+        let builder = self
+            .build_request(reqwest::Method::POST, &path, Some(token))
+            .json(&body);
+        let response: ExecResponse = self.request_json(builder)?;
+        Ok(response.exec_id)
+    }
+
+    fn exec_state(&self, exec_id: &str, token: &str) -> Result<ExecState, ContainerError> {
+        let path = format!("containers/exec/{}", exec_id);
+        let builder = self.build_request(reqwest::Method::GET, &path, Some(token));
+        let (status, bytes) = self.send_request(builder)?;
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(ContainerError::ExecNotFound);
+        }
+        if !status.is_success() {
+            let body = String::from_utf8_lossy(&bytes);
+            return Err(ContainerError::ProviderError(format!(
+                "openagents api {}: {}",
+                status, body
+            )));
+        }
+        serde_json::from_slice(&bytes).map_err(|err| ContainerError::ProviderError(err.to_string()))
+    }
+
+    fn poll_output(
+        &self,
+        session_id: &str,
+        cursor: Option<&str>,
+        token: &str,
+    ) -> Result<(Option<OutputChunk>, Option<String>), ContainerError> {
+        #[derive(Deserialize)]
+        struct OutputResponse {
+            chunk: Option<OutputChunk>,
+            cursor: Option<String>,
+        }
+        let mut path = format!("containers/sessions/{}/output", session_id);
+        if let Some(cursor) = cursor {
+            path = format!("{}?cursor={}", path, cursor);
+        }
+        let builder = self.build_request(reqwest::Method::GET, &path, Some(token));
+        let (status, bytes) = self.send_request(builder)?;
+        if status == reqwest::StatusCode::NO_CONTENT || bytes.is_empty() {
+            return Ok((None, cursor.map(|c| c.to_string())));
+        }
+        if !status.is_success() {
+            let body = String::from_utf8_lossy(&bytes);
+            return Err(ContainerError::ProviderError(format!(
+                "openagents api {}: {}",
+                status, body
+            )));
+        }
+        if let Ok(payload) = serde_json::from_slice::<OutputResponse>(&bytes) {
+            return Ok((payload.chunk, payload.cursor));
+        }
+        let chunk: OutputChunk =
+            serde_json::from_slice(&bytes).map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        Ok((Some(chunk), None))
+    }
+
+    fn poll_exec_output(
+        &self,
+        exec_id: &str,
+        cursor: Option<&str>,
+        token: &str,
+    ) -> Result<(Option<OutputChunk>, Option<String>), ContainerError> {
+        #[derive(Deserialize)]
+        struct OutputResponse {
+            chunk: Option<OutputChunk>,
+            cursor: Option<String>,
+        }
+        let mut path = format!("containers/exec/{}/output", exec_id);
+        if let Some(cursor) = cursor {
+            path = format!("{}?cursor={}", path, cursor);
+        }
+        let builder = self.build_request(reqwest::Method::GET, &path, Some(token));
+        let (status, bytes) = self.send_request(builder)?;
+        if status == reqwest::StatusCode::NO_CONTENT || bytes.is_empty() {
+            return Ok((None, cursor.map(|c| c.to_string())));
+        }
+        if !status.is_success() {
+            let body = String::from_utf8_lossy(&bytes);
+            return Err(ContainerError::ProviderError(format!(
+                "openagents api {}: {}",
+                status, body
+            )));
+        }
+        if let Ok(payload) = serde_json::from_slice::<OutputResponse>(&bytes) {
+            return Ok((payload.chunk, payload.cursor));
+        }
+        let chunk: OutputChunk =
+            serde_json::from_slice(&bytes).map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        Ok((Some(chunk), None))
+    }
+
+    fn read_file(
+        &self,
+        session_id: &str,
+        path: &str,
+        offset: u64,
+        len: u64,
+        token: &str,
+    ) -> Result<Vec<u8>, ContainerError> {
+        let encoded = encode(path);
+        let path = format!(
+            "containers/sessions/{}/files/{}?offset={}&len={}",
+            session_id, encoded, offset, len
+        );
+        let builder = self.build_request(reqwest::Method::GET, &path, Some(token));
+        let (status, bytes) = self.send_request(builder)?;
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(ContainerError::SessionNotFound);
+        }
+        if !status.is_success() {
+            let body = String::from_utf8_lossy(&bytes);
+            return Err(ContainerError::ProviderError(format!(
+                "openagents api {}: {}",
+                status, body
+            )));
+        }
+        Ok(bytes)
+    }
+
+    fn write_file(
+        &self,
+        session_id: &str,
+        path: &str,
+        offset: u64,
+        data: &[u8],
+        token: &str,
+    ) -> Result<(), ContainerError> {
+        let encoded = encode(path);
+        let path = format!(
+            "containers/sessions/{}/files/{}?offset={}",
+            session_id, encoded, offset
+        );
+        let builder = self
+            .build_request(reqwest::Method::PUT, &path, Some(token))
+            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+            .body(data.to_vec());
+        let (status, bytes) = self.send_request(builder)?;
+        if !status.is_success() {
+            let body = String::from_utf8_lossy(&bytes);
+            return Err(ContainerError::ProviderError(format!(
+                "openagents api {}: {}",
+                status, body
+            )));
+        }
+        Ok(())
+    }
+
+    fn stop(&self, session_id: &str, token: &str) -> Result<(), ContainerError> {
+        let path = format!("containers/sessions/{}/stop", session_id);
+        let builder = self.build_request(reqwest::Method::POST, &path, Some(token));
+        let (status, bytes) = self.send_request(builder)?;
+        if !status.is_success() {
+            let body = String::from_utf8_lossy(&bytes);
+            return Err(ContainerError::ProviderError(format!(
+                "openagents api {}: {}",
+                status, body
+            )));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone)]
 struct SessionRecord {
     provider_id: String,
     reservation: BudgetReservation,
     reconciled: bool,
+    credits_reserved: u64,
 }
 
 #[derive(Clone)]
@@ -768,6 +1825,7 @@ pub struct ContainerFs {
     agent_id: AgentId,
     router: Arc<RwLock<ContainerRouter>>,
     policy: Arc<RwLock<ContainerPolicy>>,
+    auth: Arc<OpenAgentsAuth>,
     budget: Arc<Mutex<BudgetTracker>>,
     journal: Arc<dyn IdempotencyJournal>,
     sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
@@ -782,11 +1840,31 @@ impl ContainerFs {
         policy: ContainerPolicy,
         budget_policy: BudgetPolicy,
         journal: Arc<dyn IdempotencyJournal>,
+        storage: Arc<dyn AgentStorage>,
+        signer: Arc<dyn SigningService>,
+    ) -> Self {
+        let auth = Arc::new(OpenAgentsAuth::from_env(
+            agent_id.clone(),
+            storage,
+            signer,
+        ));
+        Self::with_auth(agent_id, router, policy, budget_policy, journal, auth)
+    }
+
+    /// Create a container filesystem with a preconfigured auth manager.
+    pub fn with_auth(
+        agent_id: AgentId,
+        router: ContainerRouter,
+        policy: ContainerPolicy,
+        budget_policy: BudgetPolicy,
+        journal: Arc<dyn IdempotencyJournal>,
+        auth: Arc<OpenAgentsAuth>,
     ) -> Self {
         Self {
             agent_id,
             router: Arc::new(RwLock::new(router)),
             policy: Arc::new(RwLock::new(policy)),
+            auth,
             budget: Arc::new(Mutex::new(BudgetTracker::new(budget_policy))),
             journal,
             sessions: Arc::new(RwLock::new(HashMap::new())),
@@ -830,9 +1908,19 @@ impl ContainerFs {
                 tracker
                     .reconcile(record.reservation, response.cost_usd)
                     .map_err(|_| FsError::BudgetExceeded)?;
+                if record.credits_reserved > 0 {
+                    self.auth
+                        .reconcile_credits(record.credits_reserved, response.cost_usd)
+                        .map_err(|err| FsError::Other(err.to_string()))?;
+                }
             }
             SessionState::Failed { .. } | SessionState::Expired { .. } => {
                 tracker.release(record.reservation);
+                if record.credits_reserved > 0 {
+                    self.auth
+                        .release_credits(record.credits_reserved)
+                        .map_err(|err| FsError::Other(err.to_string()))?;
+                }
             }
             _ => return Ok(()),
         }
@@ -871,6 +1959,7 @@ impl FileService for ContainerFs {
                 self.agent_id.clone(),
                 self.router.clone(),
                 self.policy.clone(),
+                self.auth.clone(),
                 self.budget.clone(),
                 self.sessions.clone(),
                 self.journal.clone(),
@@ -886,6 +1975,22 @@ impl FileService for ContainerFs {
                 }
             }
             ["usage"] => Ok(Box::new(BytesHandle::new(self.usage_json()?))),
+            ["auth", "status"] => Ok(Box::new(BytesHandle::new(self.auth.status_json()?))),
+            ["auth", "credits"] => Ok(Box::new(BytesHandle::new(self.auth.credits_json()?))),
+            ["auth", "token"] => {
+                if flags.write {
+                    Ok(Box::new(AuthTokenHandle::new(self.auth.clone())))
+                } else {
+                    Err(FsError::PermissionDenied)
+                }
+            }
+            ["auth", "challenge"] => {
+                if flags.write {
+                    Ok(Box::new(AuthChallengeWriteHandle::new(self.auth.clone())))
+                } else {
+                    Ok(Box::new(BytesHandle::new(self.auth.challenge_json()?)))
+                }
+            }
             ["providers"] => {
                 let router = self.router.read().unwrap_or_else(|e| e.into_inner());
                 let providers = router.list_providers();
@@ -1111,7 +2216,14 @@ impl FileService for ContainerFs {
                 DirEntry::file("new", 0),
                 DirEntry::file("policy", 0),
                 DirEntry::file("usage", 0),
+                DirEntry::dir("auth"),
                 DirEntry::dir("sessions"),
+            ]),
+            "auth" => Ok(vec![
+                DirEntry::file("status", 0),
+                DirEntry::file("token", 0),
+                DirEntry::file("challenge", 0),
+                DirEntry::file("credits", 0),
             ]),
             "providers" => {
                 let router = self.router.read().unwrap_or_else(|e| e.into_inner());
@@ -1134,7 +2246,7 @@ impl FileService for ContainerFs {
         let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
         match parts.as_slice() {
             [] => Ok(Stat::dir()),
-            ["providers"] | ["sessions"] => Ok(Stat::dir()),
+            ["providers"] | ["sessions"] | ["auth"] => Ok(Stat::dir()),
             ["new"] | ["policy"] => Ok(Stat {
                 size: 0,
                 is_dir: false,
@@ -1143,6 +2255,25 @@ impl FileService for ContainerFs {
                 permissions: Permissions::read_write(),
             }),
             ["usage"] => Ok(Stat::file(0)),
+            ["auth", "status"] | ["auth", "credits"] => Ok(Stat::file(0)),
+            ["auth", "challenge"] => Ok(Stat {
+                size: 0,
+                is_dir: false,
+                created: None,
+                modified: None,
+                permissions: Permissions::read_write(),
+            }),
+            ["auth", "token"] => Ok(Stat {
+                size: 0,
+                is_dir: false,
+                created: None,
+                modified: None,
+                permissions: Permissions {
+                    read: false,
+                    write: true,
+                    execute: false,
+                },
+            }),
             ["providers", id] => {
                 let router = self.router.read().unwrap_or_else(|e| e.into_inner());
                 if router.list_providers().iter().any(|p| p.id == *id) {
@@ -1258,6 +2389,7 @@ impl FileService for ContainerFs {
                 provider,
                 self.sessions.clone(),
                 self.budget.clone(),
+                self.auth.clone(),
             ))));
         }
         if let ["sessions", session_id, "exec", exec_id, "output"] = parts.as_slice() {
@@ -1282,6 +2414,7 @@ struct ContainerNewHandle {
     agent_id: AgentId,
     router: Arc<RwLock<ContainerRouter>>,
     policy: Arc<RwLock<ContainerPolicy>>,
+    auth: Arc<OpenAgentsAuth>,
     budget: Arc<Mutex<BudgetTracker>>,
     sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
     journal: Arc<dyn IdempotencyJournal>,
@@ -1295,6 +2428,7 @@ impl ContainerNewHandle {
         agent_id: AgentId,
         router: Arc<RwLock<ContainerRouter>>,
         policy: Arc<RwLock<ContainerPolicy>>,
+        auth: Arc<OpenAgentsAuth>,
         budget: Arc<Mutex<BudgetTracker>>,
         sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
         journal: Arc<dyn IdempotencyJournal>,
@@ -1303,6 +2437,7 @@ impl ContainerNewHandle {
             agent_id,
             router,
             policy,
+            auth,
             budget,
             sessions,
             journal,
@@ -1373,6 +2508,11 @@ impl ContainerNewHandle {
             .map_err(|err| FsError::Other(err.to_string()))?;
         let provider_id = provider.id().to_string();
 
+        self.auth
+            .check_auth(&provider_id, &policy)
+            .map_err(|err| FsError::Other(err.to_string()))?;
+        let requires_credits = provider_requires_credits(&provider_id);
+
         let scoped_key = request.idempotency_key.as_ref().map(|key| {
             format!("{}:{}:{}", self.agent_id.as_str(), provider_id, key)
         });
@@ -1393,12 +2533,19 @@ impl ContainerNewHandle {
                                 provider_id: provider_id.clone(),
                                 reservation: BudgetReservation { amount_usd: 0 },
                                 reconciled: true,
+                                credits_reserved: 0,
                             });
                     }
                 }
                 self.response = Some(cached);
                 return Ok(());
             }
+        }
+
+        if requires_credits {
+            self.auth
+                .check_credits(max_cost_usd)
+                .map_err(|err| FsError::Other(err.to_string()))?;
         }
 
         let reservation = {
@@ -1420,11 +2567,27 @@ impl ContainerNewHandle {
             reservation
         };
 
+        let credits_reserved = if requires_credits {
+            match self.auth.reserve_credits(max_cost_usd) {
+                Ok(reserved) => reserved,
+                Err(err) => {
+                    let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
+                    tracker.release(reservation);
+                    return Err(FsError::Other(err.to_string()));
+                }
+            }
+        } else {
+            0
+        };
+
         let session_id = match provider.submit(request.clone()) {
             Ok(session_id) => session_id,
             Err(err) => {
                 let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
                 tracker.release(reservation);
+                if credits_reserved > 0 {
+                    let _ = self.auth.release_credits(credits_reserved);
+                }
                 return Err(FsError::Other(err.to_string()));
             }
         };
@@ -1438,6 +2601,7 @@ impl ContainerNewHandle {
                     provider_id,
                     reservation,
                     reconciled: false,
+                    credits_reserved,
                 },
             );
 
@@ -1557,6 +2721,109 @@ impl FileHandle for PolicyWriteHandle {
             .map_err(|err| FsError::Other(err.to_string()))?;
         let mut guard = self.policy.write().unwrap_or_else(|e| e.into_inner());
         *guard = policy;
+        self.buffer.clear();
+        Ok(())
+    }
+
+    fn close(&mut self) -> FsResult<()> {
+        self.flush()
+    }
+}
+
+struct AuthTokenHandle {
+    auth: Arc<OpenAgentsAuth>,
+    buffer: Vec<u8>,
+}
+
+impl AuthTokenHandle {
+    fn new(auth: Arc<OpenAgentsAuth>) -> Self {
+        Self {
+            auth,
+            buffer: Vec::new(),
+        }
+    }
+}
+
+impl FileHandle for AuthTokenHandle {
+    fn read(&mut self, _buf: &mut [u8]) -> FsResult<usize> {
+        Err(FsError::PermissionDenied)
+    }
+
+    fn write(&mut self, buf: &[u8]) -> FsResult<usize> {
+        self.buffer.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn seek(&mut self, _pos: SeekFrom) -> FsResult<u64> {
+        Err(FsError::InvalidPath)
+    }
+
+    fn position(&self) -> u64 {
+        self.buffer.len() as u64
+    }
+
+    fn flush(&mut self) -> FsResult<()> {
+        if self.buffer.is_empty() {
+            return Ok(());
+        }
+        let token = String::from_utf8(self.buffer.clone())
+            .map_err(|_| FsError::Other("invalid token utf-8".to_string()))?;
+        if token.trim().is_empty() {
+            return Err(FsError::Other("token required".to_string()));
+        }
+        self.auth
+            .set_token(token.trim())
+            .map_err(|err| FsError::Other(err.to_string()))?;
+        self.buffer.clear();
+        Ok(())
+    }
+
+    fn close(&mut self) -> FsResult<()> {
+        self.flush()
+    }
+}
+
+struct AuthChallengeWriteHandle {
+    auth: Arc<OpenAgentsAuth>,
+    buffer: Vec<u8>,
+}
+
+impl AuthChallengeWriteHandle {
+    fn new(auth: Arc<OpenAgentsAuth>) -> Self {
+        Self {
+            auth,
+            buffer: Vec::new(),
+        }
+    }
+}
+
+impl FileHandle for AuthChallengeWriteHandle {
+    fn read(&mut self, _buf: &mut [u8]) -> FsResult<usize> {
+        Err(FsError::PermissionDenied)
+    }
+
+    fn write(&mut self, buf: &[u8]) -> FsResult<usize> {
+        self.buffer.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn seek(&mut self, _pos: SeekFrom) -> FsResult<u64> {
+        Err(FsError::InvalidPath)
+    }
+
+    fn position(&self) -> u64 {
+        self.buffer.len() as u64
+    }
+
+    fn flush(&mut self) -> FsResult<()> {
+        if self.buffer.is_empty() {
+            return Ok(());
+        }
+        let response: NostrAuthResponse = serde_json::from_slice(&self.buffer)
+            .map_err(|err| FsError::Other(err.to_string()))?;
+        self.auth
+            .submit_challenge(response)
+            .map_err(|err| FsError::Other(err.to_string()))?;
         self.buffer.clear();
         Ok(())
     }
@@ -1754,6 +3021,7 @@ struct SessionWatchHandle {
     provider: Arc<dyn ContainerProvider>,
     sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
     budget: Arc<Mutex<BudgetTracker>>,
+    auth: Arc<OpenAgentsAuth>,
 }
 
 impl SessionWatchHandle {
@@ -1762,12 +3030,14 @@ impl SessionWatchHandle {
         provider: Arc<dyn ContainerProvider>,
         sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
         budget: Arc<Mutex<BudgetTracker>>,
+        auth: Arc<OpenAgentsAuth>,
     ) -> Self {
         Self {
             session_id,
             provider,
             sessions,
             budget,
+            auth,
         }
     }
 
@@ -1786,9 +3056,19 @@ impl SessionWatchHandle {
                 tracker
                     .reconcile(record.reservation, response.cost_usd)
                     .map_err(|_| FsError::BudgetExceeded)?;
+                if record.credits_reserved > 0 {
+                    self.auth
+                        .reconcile_credits(record.credits_reserved, response.cost_usd)
+                        .map_err(|err| FsError::Other(err.to_string()))?;
+                }
             }
             SessionState::Failed { .. } | SessionState::Expired { .. } => {
                 tracker.release(record.reservation);
+                if record.credits_reserved > 0 {
+                    self.auth
+                        .release_credits(record.credits_reserved)
+                        .map_err(|err| FsError::Other(err.to_string()))?;
+                }
             }
             _ => return Ok(()),
         }
@@ -1823,12 +3103,9 @@ impl WatchHandle for SessionWatchHandle {
                 }
                 Err(err) => return Err(FsError::Other(err.to_string())),
             }
-            if let Some(deadline) = deadline {
-                if Instant::now() >= deadline {
-                    return Ok(None);
-                }
+            if !wait_for_output(deadline)? {
+                return Ok(None);
             }
-            thread::sleep(Duration::from_millis(25));
         }
     }
 
@@ -1867,12 +3144,9 @@ impl WatchHandle for ExecWatchHandle {
                 }
                 Err(err) => return Err(FsError::Other(err.to_string())),
             }
-            if let Some(deadline) = deadline {
-                if Instant::now() >= deadline {
-                    return Ok(None);
-                }
+            if !wait_for_output(deadline)? {
+                return Ok(None);
             }
-            thread::sleep(Duration::from_millis(25));
         }
     }
 
@@ -1889,6 +3163,24 @@ struct FileWriteHandle {
     buffer: Vec<u8>,
     max_size: u64,
     is_chunk: bool,
+}
+
+fn wait_for_output(deadline: Option<Instant>) -> FsResult<bool> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = deadline;
+        return Ok(false);
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if let Some(deadline) = deadline {
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+        }
+        thread::sleep(Duration::from_millis(25));
+        Ok(true)
+    }
 }
 
 impl FileWriteHandle {
@@ -2014,6 +3306,10 @@ fn validate_limits(policy: &ContainerPolicy, limits: &ResourceLimits) -> FsResul
     Ok(())
 }
 
+fn provider_requires_credits(provider_id: &str) -> bool {
+    matches!(provider_id, "cloudflare" | "daytona")
+}
+
 fn count_active_sessions(
     router: &Arc<RwLock<ContainerRouter>>,
     sessions: &Arc<RwLock<HashMap<String, SessionRecord>>>,
@@ -2070,12 +3366,1901 @@ fn pattern_matches(pattern: &str, value: &str) -> bool {
     true
 }
 
+fn unavailable_provider_info(id: &str, name: &str, reason: String) -> ContainerProviderInfo {
+    ContainerProviderInfo {
+        id: id.to_string(),
+        name: name.to_string(),
+        available_images: Vec::new(),
+        capabilities: ContainerCapabilities {
+            git_clone: false,
+            file_access: false,
+            interactive: false,
+            artifacts: false,
+            streaming: false,
+        },
+        pricing: None,
+        latency: ContainerLatency {
+            startup_ms: 0,
+            measured: false,
+        },
+        limits: ContainerLimits {
+            max_memory_mb: 0,
+            max_cpu_cores: 0.0,
+            max_disk_mb: 0,
+            max_time_secs: 0,
+            network_allowed: false,
+        },
+        status: ProviderStatus::Unavailable { reason },
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+const DVM_QUOTE_WINDOW: Duration = Duration::from_secs(5);
+
+/// NIP-90 DVM container provider.
+#[cfg(not(target_arch = "wasm32"))]
+pub struct DvmContainerProvider {
+    agent_id: AgentId,
+    transport: Arc<dyn DvmTransport>,
+    signer: Arc<dyn SigningService>,
+    wallet: Option<Arc<dyn WalletService>>,
+    fx: Arc<FxRateCache>,
+    executor: DvmExecutor,
+    sessions: Arc<RwLock<HashMap<String, DvmContainerSession>>>,
+    execs: Arc<RwLock<HashMap<String, ExecState>>>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone)]
+struct DvmContainerQuote {
+    provider_pubkey: String,
+    price_sats: u64,
+    price_usd: u64,
+    event_id: String,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone)]
+enum DvmContainerLifecycle {
+    AwaitingQuotes {
+        since: Timestamp,
+        timeout_at: Timestamp,
+    },
+    Processing {
+        accepted_at: Timestamp,
+        provider: String,
+    },
+    PendingSettlement {
+        result_at: Timestamp,
+        invoice: Option<String>,
+    },
+    Settled {
+        settled_at: Timestamp,
+    },
+    Failed {
+        error: String,
+        at: Timestamp,
+    },
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone)]
+struct DvmContainerSession {
+    session_id: String,
+    request_event_id: String,
+    request: ContainerRequest,
+    submitted_at: Timestamp,
+    lifecycle: DvmContainerLifecycle,
+    quotes: Vec<DvmContainerQuote>,
+    accepted_quote: Option<DvmContainerQuote>,
+    result: Option<ContainerResponse>,
+    output: VecDeque<OutputChunk>,
+    payment_made: bool,
+    paid_amount_sats: Option<u64>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl DvmContainerProvider {
+    /// Create a new DVM container provider.
+    pub fn new(
+        agent_id: AgentId,
+        relays: Vec<String>,
+        signer: Arc<dyn SigningService>,
+        wallet: Option<Arc<dyn WalletService>>,
+        fx_source: FxSource,
+        fx_cache_secs: u64,
+    ) -> Result<Self, ContainerError> {
+        let transport = Arc::new(RelayPoolTransport::new(relays));
+        Self::with_transport(agent_id, transport, signer, wallet, fx_source, fx_cache_secs)
+    }
+
+    /// Create a DVM provider with custom transport (tests).
+    pub(crate) fn with_transport(
+        agent_id: AgentId,
+        transport: Arc<dyn DvmTransport>,
+        signer: Arc<dyn SigningService>,
+        wallet: Option<Arc<dyn WalletService>>,
+        fx_source: FxSource,
+        fx_cache_secs: u64,
+    ) -> Result<Self, ContainerError> {
+        let executor = DvmExecutor::new()?;
+        let runtime = executor.runtime();
+        executor
+            .block_on(transport.connect())
+            .map_err(ContainerError::ProviderError)?;
+        let wallet_fx = wallet.as_ref().map(|wallet| {
+            Arc::new(WalletFxProvider::new(wallet.clone())) as Arc<dyn FxRateProvider>
+        });
+        let fx = Arc::new(FxRateCache::new(
+            fx_source,
+            fx_cache_secs,
+            wallet_fx,
+            runtime,
+        ));
+        Ok(Self {
+            agent_id,
+            transport,
+            signer,
+            wallet,
+            fx,
+            executor,
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            execs: Arc::new(RwLock::new(HashMap::new())),
+        })
+    }
+
+    fn build_job_request(&self, request: &ContainerRequest) -> Result<JobRequest, ContainerError> {
+        let repo = request
+            .repo
+            .as_ref()
+            .ok_or_else(|| ContainerError::InvalidRequest("repo required for dvm".to_string()))?;
+
+        let mut sandbox = SandboxRunRequest::new(repo.url.clone(), repo.git_ref.clone());
+        for command in &request.commands {
+            sandbox = sandbox.add_command(command.clone());
+        }
+
+        let workdir = join_workdir(&repo.subdir, &request.workdir);
+        if let Some(workdir) = workdir {
+            sandbox = sandbox.with_workdir(workdir);
+        }
+
+        for (key, value) in &request.env {
+            sandbox = sandbox.add_env(key.clone(), value.clone());
+        }
+
+        let limits = SandboxResourceLimits {
+            max_time_secs: request.limits.max_time_secs,
+            max_memory_mb: request.limits.max_memory_mb,
+            max_disk_mb: request.limits.max_disk_mb,
+            max_cpu_cores: request.limits.max_cpu_cores,
+            allow_network: request.limits.allow_network,
+        };
+        sandbox = sandbox.with_limits(limits);
+
+        let mut job = sandbox
+            .to_job_request()
+            .map_err(|err| ContainerError::InvalidRequest(err.to_string()))?;
+        for relay in self.transport.relays() {
+            job = job.add_relay(relay);
+        }
+
+        let max_cost_usd = request.max_cost_usd.unwrap_or(100_000);
+        let max_cost_sats = self
+            .fx
+            .usd_to_sats(max_cost_usd)
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        let bid_msats = u128::from(max_cost_sats) * 1000;
+        let bid_msats = u64::try_from(bid_msats)
+            .map_err(|_| ContainerError::ProviderError("bid overflow".to_string()))?;
+        job = job.with_bid(bid_msats);
+        Ok(job)
+    }
+
+    fn sign_event(
+        &self,
+        kind: u16,
+        tags: Vec<Vec<String>>,
+        content: String,
+    ) -> Result<nostr::Event, ContainerError> {
+        let created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let pubkey = self
+            .signer
+            .pubkey(&self.agent_id)
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        let pubkey_hex = pubkey.to_hex();
+        let unsigned = UnsignedEvent {
+            pubkey: pubkey_hex.clone(),
+            created_at,
+            kind,
+            tags,
+            content,
+        };
+        let id = get_event_hash(&unsigned).map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        let id_bytes = hex::decode(&id).map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        let sig = self
+            .signer
+            .sign(&self.agent_id, &id_bytes)
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+
+        Ok(nostr::Event {
+            id,
+            pubkey: pubkey_hex,
+            created_at,
+            kind,
+            tags: unsigned.tags,
+            content: unsigned.content,
+            sig: sig.to_hex(),
+        })
+    }
+
+    fn spawn_quote_manager(&self, session_id: String) {
+        let sessions = self.sessions.clone();
+        let transport = self.transport.clone();
+        let signer = self.signer.clone();
+        let agent_id = self.agent_id.clone();
+        let executor = self.executor.clone();
+
+        executor.spawn(async move {
+            tokio::time::sleep(DVM_QUOTE_WINDOW).await;
+
+            let (request_event_id, quote) = {
+                let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+                let session = match guard.get_mut(&session_id) {
+                    Some(session) => session,
+                    None => return,
+                };
+                if !matches!(session.lifecycle, DvmContainerLifecycle::AwaitingQuotes { .. }) {
+                    return;
+                }
+                let best = match session
+                    .quotes
+                    .iter()
+                    .min_by_key(|quote| quote.price_usd)
+                    .cloned()
+                {
+                    Some(best) => best,
+                    None => {
+                        session.lifecycle = DvmContainerLifecycle::Failed {
+                            error: "no quotes received".to_string(),
+                            at: Timestamp::now(),
+                        };
+                        return;
+                    }
+                };
+                session.accepted_quote = Some(best.clone());
+                session.lifecycle = DvmContainerLifecycle::Processing {
+                    accepted_at: Timestamp::now(),
+                    provider: best.provider_pubkey.clone(),
+                };
+                (session.request_event_id.clone(), best)
+            };
+
+            let tags = vec![
+                vec!["e".to_string(), request_event_id],
+                vec!["e".to_string(), quote.event_id.clone()],
+                vec!["p".to_string(), quote.provider_pubkey.clone()],
+                vec!["status".to_string(), "processing".to_string()],
+            ];
+
+            let created_at = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let pubkey = match signer.pubkey(&agent_id) {
+                Ok(pubkey) => pubkey,
+                Err(_) => return,
+            };
+            let pubkey_hex = pubkey.to_hex();
+            let unsigned = UnsignedEvent {
+                pubkey: pubkey_hex.clone(),
+                created_at,
+                kind: KIND_JOB_FEEDBACK,
+                tags,
+                content: String::new(),
+            };
+            let id = match get_event_hash(&unsigned) {
+                Ok(id) => id,
+                Err(_) => return,
+            };
+            let id_bytes = match hex::decode(&id) {
+                Ok(bytes) => bytes,
+                Err(_) => return,
+            };
+            let sig = match signer.sign(&agent_id, &id_bytes) {
+                Ok(sig) => sig,
+                Err(_) => return,
+            };
+            let event = nostr::Event {
+                id,
+                pubkey: pubkey_hex,
+                created_at,
+                kind: KIND_JOB_FEEDBACK,
+                tags: unsigned.tags,
+                content: unsigned.content,
+                sig: sig.to_hex(),
+            };
+            let _ = transport.publish(event).await;
+        });
+    }
+
+    fn subscribe_session_events(
+        &self,
+        session_id: String,
+        request_event_id: String,
+    ) -> Result<(), ContainerError> {
+        let result_kind = KIND_JOB_SANDBOX_RUN + 1000;
+        let filters = vec![
+            serde_json::json!({
+                "kinds": [result_kind],
+                "#e": [request_event_id],
+            }),
+            serde_json::json!({
+                "kinds": [KIND_JOB_FEEDBACK],
+                "#e": [request_event_id],
+            }),
+        ];
+        let subscription_id = format!("dvm-session-{}", request_event_id);
+        let mut rx = self
+            .executor
+            .block_on(self.transport.subscribe(&subscription_id, &filters))
+            .map_err(ContainerError::ProviderError)?;
+
+        let sessions = self.sessions.clone();
+        let fx = self.fx.clone();
+        let wallet = self.wallet.clone();
+
+        self.executor.spawn(async move {
+            while let Some(event) = rx.recv().await {
+                if event.kind == result_kind {
+                    handle_dvm_container_result(&session_id, &event, &sessions, &fx, &wallet);
+                } else if event.kind == KIND_JOB_FEEDBACK {
+                    if let Some(feedback) = parse_feedback_event(&event) {
+                        handle_dvm_container_feedback(&session_id, feedback, &sessions, &fx, &wallet);
+                    }
+                }
+            }
+        });
+
+        Ok(())
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl ContainerProvider for DvmContainerProvider {
+    fn id(&self) -> &str {
+        "dvm"
+    }
+
+    fn info(&self) -> ContainerProviderInfo {
+        ContainerProviderInfo {
+            id: "dvm".to_string(),
+            name: "NIP-90 DVM Network".to_string(),
+            available_images: Vec::new(),
+            capabilities: ContainerCapabilities {
+                git_clone: true,
+                file_access: false,
+                interactive: false,
+                artifacts: false,
+                streaming: true,
+            },
+            pricing: None,
+            latency: ContainerLatency {
+                startup_ms: 10_000,
+                measured: false,
+            },
+            limits: ContainerLimits {
+                max_memory_mb: 8192,
+                max_cpu_cores: 4.0,
+                max_disk_mb: 10_240,
+                max_time_secs: 1800,
+                network_allowed: true,
+            },
+            status: if self.wallet.is_none() {
+                ProviderStatus::Unavailable {
+                    reason: "wallet not configured".to_string(),
+                }
+            } else if self.transport.relays().is_empty() {
+                ProviderStatus::Unavailable {
+                    reason: "no relays configured".to_string(),
+                }
+            } else {
+                ProviderStatus::Available
+            },
+        }
+    }
+
+    fn is_available(&self) -> bool {
+        self.wallet.is_some() && !self.transport.relays().is_empty()
+    }
+
+    fn submit(&self, request: ContainerRequest) -> Result<String, ContainerError> {
+        if self.wallet.is_none() {
+            return Err(ContainerError::ProviderError(
+                "wallet not configured".to_string(),
+            ));
+        }
+        let job_request = self.build_job_request(&request)?;
+        let event = self.sign_event(
+            job_request.kind,
+            job_request.to_tags(),
+            job_request.content.clone(),
+        )?;
+        let event_id = event.id.clone();
+
+        self.executor
+            .block_on(self.transport.publish(event))
+            .map_err(ContainerError::ProviderError)?;
+
+        let session_id = uuid::Uuid::new_v4().to_string();
+        let now = Timestamp::now();
+        self.sessions
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                session_id.clone(),
+                DvmContainerSession {
+                    session_id: session_id.clone(),
+                    request_event_id: event_id.clone(),
+                    request: request.clone(),
+                    submitted_at: now,
+                    lifecycle: DvmContainerLifecycle::AwaitingQuotes {
+                        since: now,
+                        timeout_at: Timestamp::from_millis(
+                            now.as_millis() + DVM_QUOTE_WINDOW.as_millis() as u64,
+                        ),
+                    },
+                    quotes: Vec::new(),
+                    accepted_quote: None,
+                    result: None,
+                    output: VecDeque::new(),
+                    payment_made: false,
+                    paid_amount_sats: None,
+                },
+            );
+
+        self.subscribe_session_events(session_id.clone(), event_id)?;
+        self.spawn_quote_manager(session_id.clone());
+        Ok(session_id)
+    }
+
+    fn get_session(&self, session_id: &str) -> Option<SessionState> {
+        let guard = self.sessions.read().unwrap_or_else(|e| e.into_inner());
+        let session = guard.get(session_id)?;
+        Some(match &session.lifecycle {
+            DvmContainerLifecycle::AwaitingQuotes { .. } => SessionState::Provisioning {
+                started_at: session.submitted_at,
+            },
+            DvmContainerLifecycle::Processing { accepted_at, .. } => SessionState::Running {
+                started_at: *accepted_at,
+                commands_completed: 0,
+            },
+            DvmContainerLifecycle::PendingSettlement { .. } => SessionState::Running {
+                started_at: session.submitted_at,
+                commands_completed: 0,
+            },
+            DvmContainerLifecycle::Settled { .. } => session
+                .result
+                .clone()
+                .map(SessionState::Complete)
+                .unwrap_or(SessionState::Running {
+                    started_at: session.submitted_at,
+                    commands_completed: 0,
+                }),
+            DvmContainerLifecycle::Failed { error, at } => SessionState::Failed {
+                error: error.clone(),
+                at: *at,
+            },
+        })
+    }
+
+    fn submit_exec(&self, _session_id: &str, _command: &str) -> Result<String, ContainerError> {
+        Err(ContainerError::NotSupported {
+            capability: "interactive".to_string(),
+            provider: "dvm".to_string(),
+        })
+    }
+
+    fn get_exec(&self, exec_id: &str) -> Option<ExecState> {
+        self.execs
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(exec_id)
+            .cloned()
+    }
+
+    fn poll_exec_output(&self, _exec_id: &str) -> Result<Option<OutputChunk>, ContainerError> {
+        Err(ContainerError::NotSupported {
+            capability: "interactive".to_string(),
+            provider: "dvm".to_string(),
+        })
+    }
+
+    fn cancel_exec(&self, _exec_id: &str) -> Result<(), ContainerError> {
+        Err(ContainerError::NotSupported {
+            capability: "interactive".to_string(),
+            provider: "dvm".to_string(),
+        })
+    }
+
+    fn read_file(
+        &self,
+        _session_id: &str,
+        _path: &str,
+        _offset: u64,
+        _len: u64,
+    ) -> Result<Vec<u8>, ContainerError> {
+        Err(ContainerError::NotSupported {
+            capability: "file_access".to_string(),
+            provider: "dvm".to_string(),
+        })
+    }
+
+    fn write_file(
+        &self,
+        _session_id: &str,
+        _path: &str,
+        _offset: u64,
+        _data: &[u8],
+    ) -> Result<(), ContainerError> {
+        Err(ContainerError::NotSupported {
+            capability: "file_access".to_string(),
+            provider: "dvm".to_string(),
+        })
+    }
+
+    fn stop(&self, session_id: &str) -> Result<(), ContainerError> {
+        let request_event_id = {
+            let mut guard = self.sessions.write().unwrap_or_else(|e| e.into_inner());
+            let session = guard.get_mut(session_id).ok_or(ContainerError::SessionNotFound)?;
+            session.lifecycle = DvmContainerLifecycle::Failed {
+                error: "cancelled".to_string(),
+                at: Timestamp::now(),
+            };
+            session.request_event_id.clone()
+        };
+
+        let tags = create_deletion_tags(&[request_event_id.as_str()], Some(KIND_JOB_SANDBOX_RUN));
+        let event = self.sign_event(DELETION_REQUEST_KIND, tags, String::new())?;
+        self.executor
+            .block_on(self.transport.publish(event))
+            .map_err(ContainerError::ProviderError)?;
+        Ok(())
+    }
+
+    fn poll_output(&self, session_id: &str) -> Result<Option<OutputChunk>, ContainerError> {
+        let mut guard = self.sessions.write().unwrap_or_else(|e| e.into_inner());
+        let session = guard.get_mut(session_id).ok_or(ContainerError::SessionNotFound)?;
+        Ok(session.output.pop_front())
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn handle_dvm_container_feedback(
+    session_id: &str,
+    feedback: crate::dvm::DvmFeedback,
+    sessions: &Arc<RwLock<HashMap<String, DvmContainerSession>>>,
+    fx: &Arc<FxRateCache>,
+    wallet: &Option<Arc<dyn WalletService>>,
+) {
+    let mut payment_request = None;
+
+    {
+        let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+        let Some(session) = guard.get_mut(session_id) else {
+            return;
+        };
+        if matches!(
+            session.lifecycle,
+            DvmContainerLifecycle::Failed { .. } | DvmContainerLifecycle::Settled { .. }
+        ) {
+            return;
+        }
+
+        match feedback.status {
+            DvmFeedbackStatus::Quote => {
+                if let Some(amount_msats) = feedback.amount_msats {
+                    let price_sats = msats_to_sats(amount_msats);
+                    let price_usd = match fx.sats_to_usd(price_sats) {
+                        Ok(price_usd) => price_usd,
+                        Err(err) => {
+                            session.lifecycle = DvmContainerLifecycle::Failed {
+                                error: err.to_string(),
+                                at: Timestamp::now(),
+                            };
+                            return;
+                        }
+                    };
+                    let quote = DvmContainerQuote {
+                        provider_pubkey: feedback.provider_pubkey.clone(),
+                        price_sats,
+                        price_usd,
+                        event_id: feedback.event_id.clone(),
+                    };
+                    if let Some(existing) = session
+                        .quotes
+                        .iter_mut()
+                        .find(|q| q.provider_pubkey == quote.provider_pubkey)
+                    {
+                        if quote.price_usd < existing.price_usd {
+                            *existing = quote;
+                        }
+                    } else {
+                        session.quotes.push(quote);
+                    }
+                }
+            }
+            DvmFeedbackStatus::Job(JobStatus::Partial) => {
+                session.output.push_back(OutputChunk {
+                    session_id: session_id.to_string(),
+                    exec_id: None,
+                    stream: OutputStream::Stdout,
+                    data: feedback.content,
+                });
+            }
+            DvmFeedbackStatus::Job(JobStatus::Processing) => {
+                session.lifecycle = DvmContainerLifecycle::Processing {
+                    accepted_at: Timestamp::now(),
+                    provider: feedback.provider_pubkey.clone(),
+                };
+            }
+            DvmFeedbackStatus::Job(JobStatus::PaymentRequired) => {
+                if session.payment_made {
+                    return;
+                }
+                let invoice = feedback
+                    .bolt11
+                    .clone()
+                    .or_else(|| {
+                        let trimmed = feedback.content.trim();
+                        if trimmed.starts_with("ln") {
+                            Some(trimmed.to_string())
+                        } else {
+                            None
+                        }
+                    });
+                if let Some(invoice) = invoice {
+                    payment_request = Some((invoice, feedback.amount_msats, feedback.provider_pubkey));
+                } else {
+                    session.lifecycle = DvmContainerLifecycle::Failed {
+                        error: "payment required but invoice missing".to_string(),
+                        at: Timestamp::now(),
+                    };
+                }
+            }
+            DvmFeedbackStatus::Job(JobStatus::Error) => {
+                session.lifecycle = DvmContainerLifecycle::Failed {
+                    error: feedback.status_extra.unwrap_or_else(|| "provider error".to_string()),
+                    at: Timestamp::now(),
+                };
+            }
+            _ => {}
+        }
+    }
+
+    let Some((invoice, amount_msats, provider_pubkey)) = payment_request else {
+        return;
+    };
+    let Some(wallet) = wallet.as_ref() else {
+        let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(session) = guard.get_mut(session_id) {
+            session.lifecycle = DvmContainerLifecycle::Failed {
+                error: "wallet not configured".to_string(),
+                at: Timestamp::now(),
+            };
+        }
+        return;
+    };
+    let amount_sats = amount_msats.map(msats_to_sats);
+    let payment = tokio::task::block_in_place(|| wallet.pay_invoice(&invoice, amount_sats));
+    match payment {
+        Ok(payment) => {
+            let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(session) = guard.get_mut(session_id) {
+                session.payment_made = true;
+                session.paid_amount_sats = Some(payment.amount_sats);
+                session.lifecycle = DvmContainerLifecycle::Processing {
+                    accepted_at: Timestamp::now(),
+                    provider: provider_pubkey,
+                };
+            }
+        }
+        Err(err) => {
+            let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(session) = guard.get_mut(session_id) {
+                session.lifecycle = DvmContainerLifecycle::Failed {
+                    error: err.to_string(),
+                    at: Timestamp::now(),
+                };
+            }
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn handle_dvm_container_result(
+    session_id: &str,
+    event: &nostr::Event,
+    sessions: &Arc<RwLock<HashMap<String, DvmContainerSession>>>,
+    fx: &Arc<FxRateCache>,
+    wallet: &Option<Arc<dyn WalletService>>,
+) {
+    let result_event = match JobResult::from_event(event) {
+        Ok(result) => result,
+        Err(_) => return,
+    };
+    let invoice = result_event.bolt11.clone();
+    let amount_sats = result_event.amount.map(msats_to_sats);
+
+    let (response, already_paid) = {
+        let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+        let Some(session) = guard.get_mut(session_id) else {
+            return;
+        };
+        if matches!(session.lifecycle, DvmContainerLifecycle::Failed { .. }) {
+            return;
+        }
+        let run = match SandboxRunResult::from_job_result(&result_event) {
+            Ok(run) => run,
+            Err(err) => {
+                session.lifecycle = DvmContainerLifecycle::Failed {
+                    error: err.to_string(),
+                    at: Timestamp::now(),
+                };
+                return;
+            }
+        };
+
+        let cost_sats = amount_sats
+            .or(session.paid_amount_sats)
+            .or_else(|| session.accepted_quote.as_ref().map(|quote| quote.price_sats))
+            .unwrap_or(0);
+        let cost_usd = match fx.sats_to_usd(cost_sats) {
+            Ok(cost_usd) => cost_usd,
+            Err(err) => {
+                session.lifecycle = DvmContainerLifecycle::Failed {
+                    error: err.to_string(),
+                    at: Timestamp::now(),
+                };
+                return;
+            }
+        };
+
+        let duration_ms = Timestamp::now()
+            .as_millis()
+            .saturating_sub(session.submitted_at.as_millis()) as u64;
+        let command_results = run
+            .command_results
+            .into_iter()
+            .map(|cmd| CommandResult {
+                command: cmd.command,
+                exit_code: cmd.exit_code,
+                stdout: cmd.stdout,
+                stderr: cmd.stderr,
+                duration_ms: cmd.duration_ms,
+            })
+            .collect::<Vec<_>>();
+        let artifacts = run
+            .artifacts
+            .into_iter()
+            .map(|artifact| ArtifactInfo {
+                path: artifact.path,
+                size_bytes: artifact.size,
+                sha256: artifact.sha256,
+            })
+            .collect::<Vec<_>>();
+        let usage = ContainerUsage {
+            cpu_time_ms: run.usage.cpu_time_ms,
+            peak_memory_bytes: run.usage.peak_memory_bytes,
+            disk_writes_bytes: run.usage.disk_writes_bytes,
+            network_bytes: run.usage.network_bytes,
+        };
+
+        let response = ContainerResponse {
+            session_id: session_id.to_string(),
+            exit_code: Some(run.exit_code),
+            stdout: run.stdout,
+            stderr: run.stderr,
+            command_results,
+            artifacts,
+            usage,
+            cost_usd,
+            reserved_usd: session.request.max_cost_usd.unwrap_or(0),
+            duration_ms,
+            provider_id: "dvm".to_string(),
+        };
+        session.result = Some(response.clone());
+        if invoice.is_some() {
+            session.lifecycle = DvmContainerLifecycle::PendingSettlement {
+                result_at: Timestamp::now(),
+                invoice: invoice.clone(),
+            };
+        } else {
+            session.lifecycle = DvmContainerLifecycle::Settled {
+                settled_at: Timestamp::now(),
+            };
+        }
+        (response, session.payment_made)
+    };
+
+    if invoice.is_none() || already_paid {
+        if already_paid {
+            let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(session) = guard.get_mut(session_id) {
+                session.lifecycle = DvmContainerLifecycle::Settled {
+                    settled_at: Timestamp::now(),
+                };
+            }
+        }
+        return;
+    }
+
+    let Some(wallet) = wallet.as_ref() else {
+        let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(session) = guard.get_mut(session_id) {
+            session.lifecycle = DvmContainerLifecycle::Failed {
+                error: "wallet not configured".to_string(),
+                at: Timestamp::now(),
+            };
+        }
+        return;
+    };
+    let invoice = invoice.unwrap();
+    let payment = tokio::task::block_in_place(|| wallet.pay_invoice(&invoice, amount_sats));
+    match payment {
+        Ok(payment) => {
+            let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(session) = guard.get_mut(session_id) {
+                session.payment_made = true;
+                session.paid_amount_sats = Some(payment.amount_sats);
+                session.result = Some(response);
+                session.lifecycle = DvmContainerLifecycle::Settled {
+                    settled_at: Timestamp::now(),
+                };
+            }
+        }
+        Err(err) => {
+            let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(session) = guard.get_mut(session_id) {
+                session.lifecycle = DvmContainerLifecycle::Failed {
+                    error: err.to_string(),
+                    at: Timestamp::now(),
+                };
+            }
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn join_workdir(repo_subdir: &Option<String>, workdir: &Option<String>) -> Option<String> {
+    match (repo_subdir.as_ref(), workdir.as_ref()) {
+        (Some(base), Some(extra)) => Some(format!(
+            "{}/{}",
+            base.trim_end_matches('/'),
+            extra.trim_start_matches('/')
+        )),
+        (Some(base), None) => Some(base.clone()),
+        (None, Some(extra)) => Some(extra.clone()),
+        (None, None) => None,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone)]
+struct DvmExecutor {
+    runtime: Arc<tokio::runtime::Runtime>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl DvmExecutor {
+    fn new() -> Result<Self, ContainerError> {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
+        Ok(Self {
+            runtime: Arc::new(runtime),
+        })
+    }
+
+    fn runtime(&self) -> Arc<tokio::runtime::Runtime> {
+        self.runtime.clone()
+    }
+
+    fn block_on<F: std::future::Future>(&self, fut: F) -> F::Output {
+        self.runtime.block_on(fut)
+    }
+
+    fn spawn<F>(&self, fut: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        self.runtime.spawn(fut);
+    }
+}
+
+/// OpenAgents API-backed container provider (cloudflare/daytona).
+pub struct OpenAgentsContainerProvider {
+    provider_id: String,
+    name: String,
+    api: Arc<dyn OpenAgentsApiClient>,
+    auth: Arc<OpenAgentsAuth>,
+    session_cursors: Arc<Mutex<HashMap<String, String>>>,
+    exec_cursors: Arc<Mutex<HashMap<String, String>>>,
+}
+
+impl OpenAgentsContainerProvider {
+    pub fn new(
+        provider_id: impl Into<String>,
+        name: impl Into<String>,
+        api: Arc<dyn OpenAgentsApiClient>,
+        auth: Arc<OpenAgentsAuth>,
+    ) -> Self {
+        Self {
+            provider_id: provider_id.into(),
+            name: name.into(),
+            api,
+            auth,
+            session_cursors: Arc::new(Mutex::new(HashMap::new())),
+            exec_cursors: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub fn cloudflare(api: Arc<dyn OpenAgentsApiClient>, auth: Arc<OpenAgentsAuth>) -> Self {
+        Self::new("cloudflare", "Cloudflare Containers", api, auth)
+    }
+
+    pub fn daytona(api: Arc<dyn OpenAgentsApiClient>, auth: Arc<OpenAgentsAuth>) -> Self {
+        Self::new("daytona", "Daytona Cloud Sandbox", api, auth)
+    }
+
+    fn require_token(&self) -> Result<String, ContainerError> {
+        self.auth.token().ok_or(ContainerError::AuthRequired {
+            provider: self.provider_id.clone(),
+            message: "OpenAgents API token required".to_string(),
+        })
+    }
+}
+
+impl ContainerProvider for OpenAgentsContainerProvider {
+    fn id(&self) -> &str {
+        &self.provider_id
+    }
+
+    fn info(&self) -> ContainerProviderInfo {
+        let token = self.auth.token();
+        match self.api.provider_info(&self.provider_id, token.as_deref()) {
+            Ok(info) => info,
+            Err(err) => unavailable_provider_info(
+                &self.provider_id,
+                &self.name,
+                format!("OpenAgents API error: {}", err),
+            ),
+        }
+    }
+
+    fn is_available(&self) -> bool {
+        matches!(
+            self.info().status,
+            ProviderStatus::Available | ProviderStatus::Degraded { .. }
+        )
+    }
+
+    fn submit(&self, request: ContainerRequest) -> Result<String, ContainerError> {
+        let token = self.require_token()?;
+        self.api.submit_container(&self.provider_id, &request, &token)
+    }
+
+    fn get_session(&self, session_id: &str) -> Option<SessionState> {
+        let token = self.require_token().ok()?;
+        match self.api.session_state(session_id, &token) {
+            Ok(state) => Some(state),
+            Err(ContainerError::SessionNotFound) => None,
+            Err(err) => Some(SessionState::Failed {
+                error: err.to_string(),
+                at: Timestamp::now(),
+            }),
+        }
+    }
+
+    fn submit_exec(&self, session_id: &str, command: &str) -> Result<String, ContainerError> {
+        let token = self.require_token()?;
+        self.api.submit_exec(session_id, command, &token)
+    }
+
+    fn get_exec(&self, exec_id: &str) -> Option<ExecState> {
+        let token = self.require_token().ok()?;
+        match self.api.exec_state(exec_id, &token) {
+            Ok(state) => Some(state),
+            Err(ContainerError::ExecNotFound) => None,
+            Err(err) => Some(ExecState::Failed {
+                error: err.to_string(),
+                at: Timestamp::now(),
+            }),
+        }
+    }
+
+    fn poll_exec_output(&self, exec_id: &str) -> Result<Option<OutputChunk>, ContainerError> {
+        let token = self.require_token()?;
+        let cursor = {
+            let guard = self.exec_cursors.lock().unwrap_or_else(|e| e.into_inner());
+            guard.get(exec_id).cloned()
+        };
+        let (chunk, next) = self
+            .api
+            .poll_exec_output(exec_id, cursor.as_deref(), &token)?;
+        if let Some(next) = next {
+            let mut guard = self.exec_cursors.lock().unwrap_or_else(|e| e.into_inner());
+            guard.insert(exec_id.to_string(), next);
+        }
+        Ok(chunk)
+    }
+
+    fn cancel_exec(&self, _exec_id: &str) -> Result<(), ContainerError> {
+        Err(ContainerError::NotSupported {
+            capability: "cancel_exec".to_string(),
+            provider: self.provider_id.clone(),
+        })
+    }
+
+    fn read_file(
+        &self,
+        session_id: &str,
+        path: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, ContainerError> {
+        let token = self.require_token()?;
+        self.api.read_file(session_id, path, offset, len, &token)
+    }
+
+    fn write_file(
+        &self,
+        session_id: &str,
+        path: &str,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<(), ContainerError> {
+        let token = self.require_token()?;
+        self.api.write_file(session_id, path, offset, data, &token)
+    }
+
+    fn stop(&self, session_id: &str) -> Result<(), ContainerError> {
+        let token = self.require_token()?;
+        self.api.stop(session_id, &token)
+    }
+
+    fn poll_output(&self, session_id: &str) -> Result<Option<OutputChunk>, ContainerError> {
+        let token = self.require_token()?;
+        let cursor = {
+            let guard = self.session_cursors.lock().unwrap_or_else(|e| e.into_inner());
+            guard.get(session_id).cloned()
+        };
+        let (chunk, next) = self
+            .api
+            .poll_output(session_id, cursor.as_deref(), &token)?;
+        if let Some(next) = next {
+            let mut guard = self.session_cursors.lock().unwrap_or_else(|e| e.into_inner());
+            guard.insert(session_id.to_string(), next);
+        }
+        Ok(chunk)
+    }
+}
+
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+#[derive(Default)]
+struct RemoteSessionState {
+    remote_id: Option<String>,
+    cursor: Option<String>,
+    queue: VecDeque<OutputChunk>,
+    refreshing: bool,
+    streaming: bool,
+}
+
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+#[derive(Default)]
+struct RemoteExecState {
+    remote_id: Option<String>,
+    cursor: Option<String>,
+    queue: VecDeque<OutputChunk>,
+    session_id: String,
+    refreshing: bool,
+    streaming: bool,
+}
+
+/// OpenAgents API-backed container provider for browser targets.
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+pub struct WasmOpenAgentsContainerProvider {
+    provider_id: String,
+    name: String,
+    base_url: String,
+    auth: Arc<OpenAgentsAuth>,
+    info: Arc<RwLock<ContainerProviderInfo>>,
+    sessions: Arc<RwLock<HashMap<String, SessionState>>>,
+    execs: Arc<RwLock<HashMap<String, ExecState>>>,
+    remote_sessions: Arc<Mutex<HashMap<String, RemoteSessionState>>>,
+    remote_execs: Arc<Mutex<HashMap<String, RemoteExecState>>>,
+}
+
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+impl WasmOpenAgentsContainerProvider {
+    /// Create a new OpenAgents API-backed provider (browser).
+    pub fn new(
+        provider_id: impl Into<String>,
+        name: impl Into<String>,
+        base_url: impl Into<String>,
+        auth: Arc<OpenAgentsAuth>,
+    ) -> Self {
+        let provider_id = provider_id.into();
+        let name = name.into();
+        let info = ContainerProviderInfo {
+            id: provider_id.clone(),
+            name: name.clone(),
+            available_images: Vec::new(),
+            capabilities: ContainerCapabilities {
+                git_clone: true,
+                file_access: false,
+                interactive: false,
+                artifacts: false,
+                streaming: true,
+            },
+            pricing: None,
+            latency: ContainerLatency {
+                startup_ms: 0,
+                measured: false,
+            },
+            limits: ContainerLimits {
+                max_memory_mb: 8192,
+                max_cpu_cores: 4.0,
+                max_disk_mb: 10240,
+                max_time_secs: 3600,
+                network_allowed: true,
+            },
+            status: ProviderStatus::Degraded {
+                reason: "loading provider info".to_string(),
+            },
+        };
+        let provider = Self {
+            provider_id,
+            name,
+            base_url: base_url.into(),
+            auth,
+            info: Arc::new(RwLock::new(info)),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            execs: Arc::new(RwLock::new(HashMap::new())),
+            remote_sessions: Arc::new(Mutex::new(HashMap::new())),
+            remote_execs: Arc::new(Mutex::new(HashMap::new())),
+        };
+        provider.spawn_info_refresh();
+        provider
+    }
+
+    pub fn cloudflare(base_url: impl Into<String>, auth: Arc<OpenAgentsAuth>) -> Self {
+        Self::new(
+            "cloudflare",
+            "Cloudflare Containers",
+            base_url,
+            auth,
+        )
+    }
+
+    pub fn daytona(base_url: impl Into<String>, auth: Arc<OpenAgentsAuth>) -> Self {
+        Self::new("daytona", "Daytona Cloud Sandbox", base_url, auth)
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!(
+            "{}/{}",
+            self.base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        )
+    }
+
+    fn require_token(&self) -> Result<String, ContainerError> {
+        self.auth.token().ok_or(ContainerError::AuthRequired {
+            provider: self.provider_id.clone(),
+            message: "OpenAgents API token required".to_string(),
+        })
+    }
+
+    fn spawn_info_refresh(&self) {
+        let info = Arc::clone(&self.info);
+        let provider_id = self.provider_id.clone();
+        let name = self.name.clone();
+        let url = self.url(&format!("containers/providers/{}/info", provider_id));
+        let auth = Arc::clone(&self.auth);
+        spawn_local(async move {
+            let token = auth.token();
+            let response = wasm_http::request_bytes("GET", &url, token.as_deref(), None).await;
+            let updated = match response {
+                Ok((status, bytes)) if (200..300).contains(&status) => {
+                    serde_json::from_slice::<ContainerProviderInfo>(&bytes).unwrap_or_else(|err| {
+                        unavailable_provider_info(
+                            &provider_id,
+                            &name,
+                            format!("invalid provider info: {}", err),
+                        )
+                    })
+                }
+                Ok((status, bytes)) => {
+                    let body = String::from_utf8_lossy(&bytes);
+                    unavailable_provider_info(
+                        &provider_id,
+                        &name,
+                        format!("openagents api {}: {}", status, body),
+                    )
+                }
+                Err(err) => unavailable_provider_info(&provider_id, &name, err),
+            };
+            let mut guard = info.write().unwrap_or_else(|e| e.into_inner());
+            *guard = updated;
+        });
+    }
+
+    fn spawn_session_refresh(&self, session_id: &str) {
+        let (remote_id, url, auth, sessions, remote_sessions, session_id) = {
+            let mut guard = self.remote_sessions.lock().unwrap_or_else(|e| e.into_inner());
+            let state = match guard.get_mut(session_id) {
+                Some(state) => state,
+                None => return,
+            };
+            if state.refreshing {
+                return;
+            }
+            let remote_id = match state.remote_id.clone() {
+                Some(id) => id,
+                None => return,
+            };
+            state.refreshing = true;
+            let url = self.url(&format!("containers/sessions/{}", remote_id));
+            (
+                remote_id,
+                url,
+                Arc::clone(&self.auth),
+                Arc::clone(&self.sessions),
+                Arc::clone(&self.remote_sessions),
+                session_id.to_string(),
+            )
+        };
+
+        spawn_local(async move {
+            let token = auth.token();
+            let response = wasm_http::request_bytes("GET", &url, token.as_deref(), None).await;
+            let next_state = match response {
+                Ok((status, bytes)) if (200..300).contains(&status) => {
+                    serde_json::from_slice::<SessionState>(&bytes)
+                        .map_err(|err| format!("invalid session state: {}", err))
+                }
+                Ok((404, _)) => Err("session not found".to_string()),
+                Ok((status, bytes)) => {
+                    let body = String::from_utf8_lossy(&bytes);
+                    Err(format!("openagents api {}: {}", status, body))
+                }
+                Err(err) => Err(err),
+            };
+
+            match next_state {
+                Ok(state) => {
+                    let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(session_id.clone(), state);
+                }
+                Err(err) => {
+                    let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        session_id.clone(),
+                        SessionState::Failed {
+                            error: err,
+                            at: Timestamp::now(),
+                        },
+                    );
+                }
+            }
+
+            let mut guard = remote_sessions.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(state) = guard.get_mut(&session_id) {
+                state.refreshing = false;
+                state.remote_id = Some(remote_id);
+            }
+        });
+    }
+
+    fn spawn_session_output_poll(&self, session_id: &str) {
+        let (url, auth, sessions, remote_sessions, session_id, cursor) = {
+            let mut guard = self.remote_sessions.lock().unwrap_or_else(|e| e.into_inner());
+            let state = match guard.get_mut(session_id) {
+                Some(state) => state,
+                None => return,
+            };
+            if state.streaming {
+                return;
+            }
+            let remote_id = match state.remote_id.clone() {
+                Some(id) => id,
+                None => return,
+            };
+            state.streaming = true;
+            let cursor = state.cursor.clone();
+            let url = match cursor.as_ref() {
+                Some(cursor) => self.url(&format!(
+                    "containers/sessions/{}/output?cursor={}",
+                    remote_id, cursor
+                )),
+                None => self.url(&format!("containers/sessions/{}/output", remote_id)),
+            };
+            (
+                url,
+                Arc::clone(&self.auth),
+                Arc::clone(&self.sessions),
+                Arc::clone(&self.remote_sessions),
+                session_id.to_string(),
+                cursor,
+            )
+        };
+
+        spawn_local(async move {
+            let token = auth.token();
+            let response = wasm_http::request_bytes("GET", &url, token.as_deref(), None).await;
+            let mut next_chunk: Option<OutputChunk> = None;
+            let mut next_cursor = cursor.clone();
+            let mut error: Option<String> = None;
+
+            match response {
+                Ok((status, bytes)) if status == 204 || bytes.is_empty() => {}
+                Ok((status, bytes)) if (200..300).contains(&status) => {
+                    #[derive(Deserialize)]
+                    struct OutputResponse {
+                        chunk: Option<OutputChunk>,
+                        cursor: Option<String>,
+                    }
+                    if let Ok(payload) = serde_json::from_slice::<OutputResponse>(&bytes) {
+                        next_chunk = payload.chunk;
+                        next_cursor = payload.cursor.or(next_cursor);
+                    } else if let Ok(chunk) = serde_json::from_slice::<OutputChunk>(&bytes) {
+                        next_chunk = Some(chunk);
+                    }
+                }
+                Ok((status, bytes)) => {
+                    let body = String::from_utf8_lossy(&bytes);
+                    error = Some(format!("openagents api {}: {}", status, body));
+                }
+                Err(err) => error = Some(err),
+            }
+
+            if let Some(err) = error {
+                let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+                guard.insert(
+                    session_id.clone(),
+                    SessionState::Failed {
+                        error: err,
+                        at: Timestamp::now(),
+                    },
+                );
+            } else if let Some(chunk) = next_chunk {
+                {
+                    let mut guard = remote_sessions.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(state) = guard.get_mut(&session_id) {
+                        state.queue.push_back(chunk);
+                        state.cursor = next_cursor.clone();
+                    }
+                }
+            }
+
+            let mut guard = remote_sessions.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(state) = guard.get_mut(&session_id) {
+                state.streaming = false;
+                state.cursor = next_cursor;
+            }
+        });
+    }
+
+    fn spawn_exec_refresh(&self, exec_id: &str) {
+        let (remote_id, url, auth, execs, remote_execs, exec_id) = {
+            let mut guard = self.remote_execs.lock().unwrap_or_else(|e| e.into_inner());
+            let state = match guard.get_mut(exec_id) {
+                Some(state) => state,
+                None => return,
+            };
+            if state.refreshing {
+                return;
+            }
+            let remote_id = match state.remote_id.clone() {
+                Some(id) => id,
+                None => return,
+            };
+            state.refreshing = true;
+            let url = self.url(&format!("containers/exec/{}", remote_id));
+            (
+                remote_id,
+                url,
+                Arc::clone(&self.auth),
+                Arc::clone(&self.execs),
+                Arc::clone(&self.remote_execs),
+                exec_id.to_string(),
+            )
+        };
+
+        spawn_local(async move {
+            let token = auth.token();
+            let response = wasm_http::request_bytes("GET", &url, token.as_deref(), None).await;
+            let next_state = match response {
+                Ok((status, bytes)) if (200..300).contains(&status) => {
+                    serde_json::from_slice::<ExecState>(&bytes)
+                        .map_err(|err| format!("invalid exec state: {}", err))
+                }
+                Ok((404, _)) => Err("exec not found".to_string()),
+                Ok((status, bytes)) => {
+                    let body = String::from_utf8_lossy(&bytes);
+                    Err(format!("openagents api {}: {}", status, body))
+                }
+                Err(err) => Err(err),
+            };
+
+            match next_state {
+                Ok(state) => {
+                    let mut guard = execs.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(exec_id.clone(), state);
+                }
+                Err(err) => {
+                    let mut guard = execs.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        exec_id.clone(),
+                        ExecState::Failed {
+                            error: err,
+                            at: Timestamp::now(),
+                        },
+                    );
+                }
+            }
+
+            let mut guard = remote_execs.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(state) = guard.get_mut(&exec_id) {
+                state.refreshing = false;
+                state.remote_id = Some(remote_id);
+            }
+        });
+    }
+
+    fn spawn_exec_output_poll(&self, exec_id: &str) {
+        let (url, auth, remote_execs, exec_id, cursor) = {
+            let mut guard = self.remote_execs.lock().unwrap_or_else(|e| e.into_inner());
+            let state = match guard.get_mut(exec_id) {
+                Some(state) => state,
+                None => return,
+            };
+            if state.streaming {
+                return;
+            }
+            let remote_id = match state.remote_id.clone() {
+                Some(id) => id,
+                None => return,
+            };
+            state.streaming = true;
+            let cursor = state.cursor.clone();
+            let url = match cursor.as_ref() {
+                Some(cursor) => self.url(&format!(
+                    "containers/exec/{}/output?cursor={}",
+                    remote_id, cursor
+                )),
+                None => self.url(&format!("containers/exec/{}/output", remote_id)),
+            };
+            (
+                url,
+                Arc::clone(&self.auth),
+                Arc::clone(&self.remote_execs),
+                exec_id.to_string(),
+                cursor,
+            )
+        };
+
+        spawn_local(async move {
+            let token = auth.token();
+            let response = wasm_http::request_bytes("GET", &url, token.as_deref(), None).await;
+            let mut next_chunk: Option<OutputChunk> = None;
+            let mut next_cursor = cursor.clone();
+            let mut error: Option<String> = None;
+
+            match response {
+                Ok((status, bytes)) if status == 204 || bytes.is_empty() => {}
+                Ok((status, bytes)) if (200..300).contains(&status) => {
+                    #[derive(Deserialize)]
+                    struct OutputResponse {
+                        chunk: Option<OutputChunk>,
+                        cursor: Option<String>,
+                    }
+                    if let Ok(payload) = serde_json::from_slice::<OutputResponse>(&bytes) {
+                        next_chunk = payload.chunk;
+                        next_cursor = payload.cursor.or(next_cursor);
+                    } else if let Ok(chunk) = serde_json::from_slice::<OutputChunk>(&bytes) {
+                        next_chunk = Some(chunk);
+                    }
+                }
+                Ok((status, bytes)) => {
+                    let body = String::from_utf8_lossy(&bytes);
+                    error = Some(format!("openagents api {}: {}", status, body));
+                }
+                Err(err) => error = Some(err),
+            }
+
+            if let Some(chunk) = next_chunk {
+                let mut guard = remote_execs.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(state) = guard.get_mut(&exec_id) {
+                    state.queue.push_back(chunk);
+                    state.cursor = next_cursor.clone();
+                }
+            }
+
+            if error.is_some() {
+                let mut guard = remote_execs.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(state) = guard.get_mut(&exec_id) {
+                    state.queue.push_back(OutputChunk {
+                        session_id: exec_id.clone(),
+                        exec_id: Some(exec_id.clone()),
+                        stream: OutputStream::Stderr,
+                        data: error.unwrap_or_else(|| "exec output error".to_string()),
+                    });
+                }
+            }
+
+            let mut guard = remote_execs.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(state) = guard.get_mut(&exec_id) {
+                state.streaming = false;
+                state.cursor = next_cursor;
+            }
+        });
+    }
+}
+
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+impl ContainerProvider for WasmOpenAgentsContainerProvider {
+    fn id(&self) -> &str {
+        &self.provider_id
+    }
+
+    fn info(&self) -> ContainerProviderInfo {
+        self.info.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    fn is_available(&self) -> bool {
+        let info = self.info.read().unwrap_or_else(|e| e.into_inner());
+        matches!(
+            info.status,
+            ProviderStatus::Available | ProviderStatus::Degraded { .. }
+        )
+    }
+
+    fn submit(&self, request: ContainerRequest) -> Result<String, ContainerError> {
+        let token = self.require_token()?;
+        let session_id = uuid::Uuid::new_v4().to_string();
+        let started_at = Timestamp::now();
+        self.sessions
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                session_id.clone(),
+                SessionState::Provisioning { started_at },
+            );
+        self.remote_sessions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(session_id.clone(), RemoteSessionState::default());
+
+        let url = self.url(&format!("containers/providers/{}/sessions", self.provider_id));
+        let sessions = Arc::clone(&self.sessions);
+        let remote_sessions = Arc::clone(&self.remote_sessions);
+        let session_id_clone = session_id.clone();
+
+        spawn_local(async move {
+            let body = match serde_json::to_string(&request) {
+                Ok(body) => body,
+                Err(err) => {
+                    let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        session_id_clone.clone(),
+                        SessionState::Failed {
+                            error: err.to_string(),
+                            at: Timestamp::now(),
+                        },
+                    );
+                    return;
+                }
+            };
+            let response = wasm_http::request_bytes("POST", &url, Some(&token), Some(body)).await;
+            #[derive(Deserialize)]
+            struct SessionResponse {
+                session_id: String,
+            }
+            match response {
+                Ok((status, bytes)) if (200..300).contains(&status) => {
+                    match serde_json::from_slice::<SessionResponse>(&bytes) {
+                        Ok(payload) => {
+                            let mut guard =
+                                remote_sessions.lock().unwrap_or_else(|e| e.into_inner());
+                            if let Some(state) = guard.get_mut(&session_id_clone) {
+                                state.remote_id = Some(payload.session_id);
+                            }
+                        }
+                        Err(err) => {
+                            let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+                            guard.insert(
+                                session_id_clone.clone(),
+                                SessionState::Failed {
+                                    error: format!("invalid response: {}", err),
+                                    at: Timestamp::now(),
+                                },
+                            );
+                        }
+                    }
+                }
+                Ok((status, bytes)) => {
+                    let body = String::from_utf8_lossy(&bytes);
+                    let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        session_id_clone.clone(),
+                        SessionState::Failed {
+                            error: format!("openagents api {}: {}", status, body),
+                            at: Timestamp::now(),
+                        },
+                    );
+                }
+                Err(err) => {
+                    let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        session_id_clone.clone(),
+                        SessionState::Failed {
+                            error: err,
+                            at: Timestamp::now(),
+                        },
+                    );
+                }
+            }
+        });
+
+        Ok(session_id)
+    }
+
+    fn get_session(&self, session_id: &str) -> Option<SessionState> {
+        let state = self
+            .sessions
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(session_id)
+            .cloned();
+        if let Some(state) = state.as_ref() {
+            if !matches!(state, SessionState::Complete(_) | SessionState::Failed { .. } | SessionState::Expired { .. }) {
+                self.spawn_session_refresh(session_id);
+            }
+        }
+        state
+    }
+
+    fn submit_exec(&self, session_id: &str, command: &str) -> Result<String, ContainerError> {
+        let token = self.require_token()?;
+        let remote_id = {
+            let guard = self.remote_sessions.lock().unwrap_or_else(|e| e.into_inner());
+            guard.get(session_id).and_then(|state| state.remote_id.clone())
+        }
+        .ok_or_else(|| ContainerError::InvalidRequest("session not ready".to_string()))?;
+
+        let exec_id = uuid::Uuid::new_v4().to_string();
+        self.execs
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                exec_id.clone(),
+                ExecState::Pending {
+                    submitted_at: Timestamp::now(),
+                },
+            );
+        self.remote_execs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                exec_id.clone(),
+                RemoteExecState {
+                    session_id: session_id.to_string(),
+                    ..RemoteExecState::default()
+                },
+            );
+
+        let url = self.url(&format!("containers/sessions/{}/exec", remote_id));
+        let execs = Arc::clone(&self.execs);
+        let remote_execs = Arc::clone(&self.remote_execs);
+        let exec_id_clone = exec_id.clone();
+        let command = command.to_string();
+
+        spawn_local(async move {
+            let body = serde_json::json!({ "command": command });
+            let body = match serde_json::to_string(&body) {
+                Ok(body) => body,
+                Err(err) => {
+                    let mut guard = execs.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        exec_id_clone.clone(),
+                        ExecState::Failed {
+                            error: err.to_string(),
+                            at: Timestamp::now(),
+                        },
+                    );
+                    return;
+                }
+            };
+            let response = wasm_http::request_bytes("POST", &url, Some(&token), Some(body)).await;
+            #[derive(Deserialize)]
+            struct ExecResponse {
+                exec_id: String,
+            }
+            match response {
+                Ok((status, bytes)) if (200..300).contains(&status) => {
+                    match serde_json::from_slice::<ExecResponse>(&bytes) {
+                        Ok(payload) => {
+                            let mut guard =
+                                remote_execs.lock().unwrap_or_else(|e| e.into_inner());
+                            if let Some(state) = guard.get_mut(&exec_id_clone) {
+                                state.remote_id = Some(payload.exec_id);
+                            }
+                            let mut guard = execs.write().unwrap_or_else(|e| e.into_inner());
+                            guard.insert(
+                                exec_id_clone.clone(),
+                                ExecState::Running {
+                                    started_at: Timestamp::now(),
+                                },
+                            );
+                        }
+                        Err(err) => {
+                            let mut guard = execs.write().unwrap_or_else(|e| e.into_inner());
+                            guard.insert(
+                                exec_id_clone.clone(),
+                                ExecState::Failed {
+                                    error: format!("invalid response: {}", err),
+                                    at: Timestamp::now(),
+                                },
+                            );
+                        }
+                    }
+                }
+                Ok((status, bytes)) => {
+                    let body = String::from_utf8_lossy(&bytes);
+                    let mut guard = execs.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        exec_id_clone.clone(),
+                        ExecState::Failed {
+                            error: format!("openagents api {}: {}", status, body),
+                            at: Timestamp::now(),
+                        },
+                    );
+                }
+                Err(err) => {
+                    let mut guard = execs.write().unwrap_or_else(|e| e.into_inner());
+                    guard.insert(
+                        exec_id_clone.clone(),
+                        ExecState::Failed {
+                            error: err,
+                            at: Timestamp::now(),
+                        },
+                    );
+                }
+            }
+        });
+
+        Ok(exec_id)
+    }
+
+    fn get_exec(&self, exec_id: &str) -> Option<ExecState> {
+        let state = self
+            .execs
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(exec_id)
+            .cloned();
+        if let Some(state) = state.as_ref() {
+            if !matches!(state, ExecState::Complete(_) | ExecState::Failed { .. }) {
+                self.spawn_exec_refresh(exec_id);
+            }
+        }
+        state
+    }
+
+    fn poll_exec_output(&self, exec_id: &str) -> Result<Option<OutputChunk>, ContainerError> {
+        let mut chunk = None;
+        {
+            let mut guard = self.remote_execs.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(state) = guard.get_mut(exec_id) {
+                chunk = state.queue.pop_front();
+            }
+        }
+        if chunk.is_some() {
+            return Ok(chunk);
+        }
+        self.spawn_exec_output_poll(exec_id);
+        Ok(None)
+    }
+
+    fn cancel_exec(&self, _exec_id: &str) -> Result<(), ContainerError> {
+        Err(ContainerError::NotSupported {
+            capability: "cancel_exec".to_string(),
+            provider: self.provider_id.clone(),
+        })
+    }
+
+    fn read_file(
+        &self,
+        _session_id: &str,
+        _path: &str,
+        _offset: u64,
+        _len: u64,
+    ) -> Result<Vec<u8>, ContainerError> {
+        Err(ContainerError::NotSupported {
+            capability: "file_access".to_string(),
+            provider: self.provider_id.clone(),
+        })
+    }
+
+    fn write_file(
+        &self,
+        _session_id: &str,
+        _path: &str,
+        _offset: u64,
+        _data: &[u8],
+    ) -> Result<(), ContainerError> {
+        Err(ContainerError::NotSupported {
+            capability: "file_access".to_string(),
+            provider: self.provider_id.clone(),
+        })
+    }
+
+    fn stop(&self, session_id: &str) -> Result<(), ContainerError> {
+        let remote_id = {
+            let guard = self.remote_sessions.lock().unwrap_or_else(|e| e.into_inner());
+            guard.get(session_id).and_then(|state| state.remote_id.clone())
+        }
+        .ok_or_else(|| ContainerError::SessionNotFound)?;
+
+        let mut sessions = self.sessions.write().unwrap_or_else(|e| e.into_inner());
+        sessions.insert(
+            session_id.to_string(),
+            SessionState::Failed {
+                error: "cancelled".to_string(),
+                at: Timestamp::now(),
+            },
+        );
+
+        let url = self.url(&format!("containers/sessions/{}/stop", remote_id));
+        let auth = Arc::clone(&self.auth);
+        spawn_local(async move {
+            if let Some(token) = auth.token() {
+                let _ = wasm_http::request_bytes("POST", &url, Some(&token), None).await;
+            }
+        });
+        Ok(())
+    }
+
+    fn poll_output(&self, session_id: &str) -> Result<Option<OutputChunk>, ContainerError> {
+        let mut chunk = None;
+        {
+            let mut guard = self.remote_sessions.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(state) = guard.get_mut(session_id) {
+                chunk = state.queue.pop_front();
+            }
+        }
+        if chunk.is_some() {
+            return Ok(chunk);
+        }
+        self.spawn_session_output_poll(session_id);
+        Ok(None)
+    }
+}
+
 /// Local container provider using the Docker CLI.
+#[cfg(not(target_arch = "wasm32"))]
 pub struct LocalContainerProvider {
     sessions: Arc<RwLock<HashMap<String, Arc<LocalSession>>>>,
     execs: Arc<RwLock<HashMap<String, Arc<LocalExec>>>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl LocalContainerProvider {
     /// Create a new local provider.
     pub fn new() -> Self {
@@ -2142,12 +5327,14 @@ impl LocalContainerProvider {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Default for LocalContainerProvider {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl ContainerProvider for LocalContainerProvider {
     fn id(&self) -> &str {
         "local"
@@ -2418,6 +5605,7 @@ impl ContainerProvider for LocalContainerProvider {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct LocalSession {
     session_id: String,
     state: RwLock<SessionState>,
@@ -2429,6 +5617,7 @@ struct LocalSession {
     repo_dir: Mutex<Option<tempfile::TempDir>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl LocalSession {
     fn new(
         session_id: String,
@@ -2623,12 +5812,14 @@ impl LocalSession {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct LocalExec {
     state: RwLock<ExecState>,
     output_tx: mpsc::Sender<OutputChunk>,
     output_rx: Mutex<mpsc::Receiver<OutputChunk>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl LocalExec {
     fn new(
         _exec_id: String,
@@ -2666,6 +5857,7 @@ impl LocalExec {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn run_exec_command(
     container_id: &str,
     session_id: &str,
@@ -2760,6 +5952,7 @@ fn run_exec_command(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn spawn_reader<R: Read + Send + 'static>(
     mut reader: R,
     stream: OutputStream,

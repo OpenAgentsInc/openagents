@@ -401,6 +401,12 @@ Agent can buy compute from DVM within reserved max cost.
 
 Demo: browser agent with `/compute` + `/containers` via cloud.
 
+### Implementation Notes (completed)
+
+- Added WASM-safe feature gating for local/DVM providers plus a lightweight `wasm_http` fetch helper for browser networking.
+- Implemented OpenAgents API-backed compute + container providers for WASM, including async token/nostr validation in `OpenAgentsAuth` and bech32 npub handling for browser builds.
+- Added `BrowserRuntime` + `BrowserRuntimeConfig` to mount `/compute` and `/containers` via OpenAgents API providers with in-memory storage/journals (browser defaults use `InMemorySigner`).
+
 ### References
 
 - [BACKENDS.md](BACKENDS.md) — Browser backend
