@@ -79,6 +79,17 @@ Notes:
 - Avoid mounting a host directory onto `/home/agent/.claude` or the `claude`
   binary gets hidden.
 
+Helper script:
+
+```bash
+scripts/claude-container-smoke-test.sh "Reply with OK"
+OPENAGENTS_CLAUDE_CONTAINER_RUNTIME=docker scripts/claude-container-smoke-test.sh "Reply with OK"
+```
+
+The script sources credentials from `CLAUDE_CREDENTIALS_JSON`, from
+`~/.claude/.credentials.json`, or from macOS Keychain (`Claude Code-credentials`)
+and cleans up its temp directory after the run.
+
 ## Runtime wiring
 
 The runtime reads these environment variables to wrap Claude in a container:

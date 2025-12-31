@@ -245,7 +245,10 @@ Manual credential smoke tests:
   and set `CLAUDE_CONFIG_DIR` so the CLI can write `.claude.json` without
   masking `/home/agent/.claude/bin/claude`.
 
-For full command examples, see `docs/claude/container-image.md`.
+For full command examples, see `docs/claude/container-image.md`. For an
+automated local smoke test, use `scripts/claude-container-smoke-test.sh` and
+set `OPENAGENTS_CLAUDE_CONTAINER_RUNTIME=apple|docker` if you need to override
+runtime auto-detection.
 
 ### Multi-Instance Worker Pool
 
