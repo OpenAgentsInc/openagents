@@ -80,6 +80,14 @@ env.write("/inbox", ...)      // works
 env.watch("/logs/trace")      // works
 ```
 
+### Implementation Notes (completed)
+
+- Added filesystem core traits/types in `crates/runtime/src/fs.rs` plus namespace resolution in `crates/runtime/src/namespace.rs`.
+- Implemented standard services (`StatusFs`, `InboxFs`, `DeadletterFs`, `LogsFs`, `IdentityFs`, `GoalsFs`) under `crates/runtime/src/services/`.
+- Added `AgentEnv` in `crates/runtime/src/env.rs` to mount standard services and enforce SignOnly access.
+- Added a minimal `Envelope` type (`crates/runtime/src/envelope.rs`) and `SigningService` stub (`crates/runtime/src/identity.rs`).
+- Added env-level tests in `crates/runtime/src/tests/mod.rs` for status read, inbox write, and logs watch.
+
 ### References
 
 - [FILESYSTEM.md](FILESYSTEM.md) — FileService trait

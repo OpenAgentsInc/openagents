@@ -106,16 +106,28 @@
 #![warn(rustdoc::missing_crate_level_docs)]
 
 pub mod agent;
+pub mod env;
 pub mod engine;
+pub mod envelope;
 pub mod error;
+pub mod fs;
+pub mod identity;
+pub mod namespace;
+pub mod services;
 pub mod storage;
 pub mod tick;
 pub mod trigger;
 pub mod types;
 
 pub use agent::{Agent, AgentConfig, AgentContext, AgentState};
+pub use env::AgentEnv;
 pub use engine::{manual_trigger, TickEngine};
+pub use envelope::Envelope;
 pub use error::{AgentError, Result};
+pub use fs::{AccessLevel, BudgetPolicy, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat, WatchEvent, WatchHandle};
+pub use identity::{InMemorySigner, PublicKey, Signature, SigningService};
+pub use namespace::Namespace;
+pub use services::{DeadletterFs, GoalsFs, IdentityFs, InboxFs, LogsFs, StatusFs, StatusSnapshot, TraceEvent};
 pub use storage::{AgentStorage, InMemoryStorage, StorageOp};
 pub use tick::{ResourceUsage, TickResult};
 pub use trigger::{AlarmTrigger, EventTrigger, InitializeTrigger, ManualTrigger, MessageTrigger, Trigger, TriggerMeta};
