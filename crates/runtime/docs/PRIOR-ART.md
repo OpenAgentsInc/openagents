@@ -25,16 +25,118 @@ Key concepts adapted for agents:
 
 ## WANIX
 
-Jeff Lindsay's WebAssembly runtime inspired by Plan 9. WANIX brings Plan 9 concepts to the browser:
+Jeff Lindsay's WebAssembly runtime inspired by Plan 9. WANIX brings Plan 9 concepts to the browser with a focus on **browser-first execution**:
 
-- Per-environment namespaces composed of mounted services
-- WASI execution in sandboxed environments
-- FileService abstraction for capabilities
-- Runs on browser, server, and edge
+### Core Philosophy
 
-WANIX demonstrated that Plan 9 concepts work well for sandboxed, portable execution environments.
+"A virtual environment runtime for the web, inspired by Plan 9."
+
+- **Run WASI and x86 programs on web pages** — Not just Node, actual browser tabs
+- **Apply Plan 9 ideas in the browser** — Namespaces, filesystem abstraction, tasks
+- **Build a web-native operating system** — The browser becomes the OS
+
+### Key Insights
+
+1. **Per-process namespaces in browser**
+   - Each process gets isolated view of capabilities
+   - Security through capability mounting, not sandboxing
+
+2. **Tasks as virtual processes**
+   - POSIX process "shape" (args, env, stdin/stdout, exit code)
+   - Backed by Web Workers, VMs, or remote jobs
+   - Created and managed via filesystem (`task/new/wasi`)
+
+3. **Capabilities via filesystem**
+   ```
+   #task      — Process/task management
+   #cap       — Mounted capabilities
+   #bundle    — Loaded application bundle
+   #console   — Browser console
+   ```
+
+4. **Browser APIs as files**
+   - DOM, fetch, WebSocket exposed through FileService
+   - Universal interface across all platforms
+
+### Browser-First Example
+
+```javascript
+// Create WASI task in browser
+const tid = (await wanix.readText("task/new/wasi")).trim();
+await wanix.writeFile(`task/${tid}/cmd`, `#bundle/agent.wasm`);
+const stdout = await wanix.openReadable(`task/${tid}/fd/1`);
+await wanix.writeFile(`task/${tid}/ctl`, "start");
+stdout.pipeTo(logStream);  // Real WASI execution in browser
+```
+
+### What We Learn
+
+- **WASI portability is real** — Same binary runs server and browser
+- **Filesystem abstraction scales** — Works for capabilities, not just files
+- **Browser is a first-class target** — Not a fallback, a primary deployment
 
 **Reference**: https://github.com/tractordev/wanix
+**Demo**: https://wanix.run
+
+---
+
+## Apptron
+
+Apptron extends WANIX concepts to create a **full Linux environment in the browser**:
+
+### What It Is
+
+"Runs entirely in the browser and does not depend on the cloud."
+
+- VSCode-based editor in browser
+- Full Alpine Linux via v86 x86 emulator
+- WANIX for native WASM and DOM filesystem access
+- "Similar to Smalltalk" — self-contained compute environment
+
+### Key Features
+
+1. **Full Linux in Browser**
+   - Alpine Linux with custom kernel via v86
+   - Install packages with `apk`
+   - Run git, make, esbuild out of the box
+
+2. **Persistence via Browser Storage**
+   - Project, home, public directories persisted
+   - Cloud synced automatically
+   - Changes outside persist directories reset on reload
+
+3. **Virtual Network**
+   - Virtual DHCP assigns session IP
+   - Session IPs routable across browser tabs/devices
+   - Bind TCP port → get public HTTPS endpoint (like ngrok)
+
+4. **DOM APIs via Filesystem**
+   - WANIX integration for "native Wasm executable support"
+   - Access browser APIs through filesystem abstraction
+
+### Why This Matters for Agents
+
+Apptron proves:
+- **Full compute environments run in browser** — Not toy demos
+- **Network presence from browser** — Agents can expose HTTP APIs
+- **Cross-device communication** — Session IPs enable agent coordination
+- **Heavy workloads are possible** — Linux toolchain, x86 emulation
+
+### Virtual Network for Agents
+
+```
+Browser Agent A                     Browser Agent B
+      │                                    │
+      ├── Session IP: 10.0.0.1            ├── Session IP: 10.0.0.2
+      │                                    │
+      └── WebSocket tunnel ───────────────►│
+            to public endpoint             │
+                                           │
+          Both agents can communicate via session IPs
+          or through public HTTPS endpoints
+```
+
+**Reference**: https://github.com/progrium/apptron
 
 ---
 
@@ -234,14 +336,14 @@ Key differences from pure actors:
 
 ## Comparison Matrix
 
-| Aspect | Plan 9 | WANIX | OANIX | Our Runtime |
-|--------|--------|-------|-------|-------------|
-| Language | C | TS/WASM | Rust | Rust |
-| Execution | Processes | WASI | WASI | Native + WASI |
-| Namespace | 9P mounts | Service mounts | FileService | FileService |
-| Network | IP/9P | Browser APIs | Executor bridge | Drivers |
-| Target | OS | Browser | Server/Browser | Everywhere |
-| Focus | General OS | Sandbox | Agent sandbox | Agent runtime |
+| Aspect | Plan 9 | WANIX | Apptron | OANIX | Our Runtime |
+|--------|--------|-------|---------|-------|-------------|
+| Language | C | TS/WASM | Go/TS | Rust | Rust |
+| Execution | Processes | WASI | WASI + x86 | WASI | Native + WASI |
+| Namespace | 9P mounts | Service mounts | WANIX + Linux | FileService | FileService |
+| Network | IP/9P | Browser APIs | Virtual network | Executor bridge | Drivers |
+| Target | OS | Browser | Browser | Server/Browser | Everywhere |
+| Focus | General OS | Sandbox | Full dev env | Agent sandbox | Agent runtime |
 
 ---
 
@@ -254,8 +356,16 @@ From Plan 9:
 - Plumber-style event routing
 
 From WANIX:
-- Browser portability via WASM
-- FileService abstraction
+- Browser as first-class target, not fallback
+- WASI portability across server/desktop/browser
+- FileService abstraction for capabilities
+- Tasks with POSIX process shape
+
+From Apptron:
+- Virtual network for browser-to-browser communication
+- Public HTTPS endpoints from browser agents
+- Heavy compute is possible in browser (x86 emulation)
+- Persistence via browser storage with cloud sync
 
 From OANIX:
 - Rust trait definitions
@@ -271,6 +381,7 @@ From Durable Objects:
 
 New in our runtime:
 - Agent-specific traits (memory, identity, economics)
-- Multiple backend support (not just Cloudflare)
+- Multiple backend support (Browser, Cloudflare, Local, K8s)
 - Nostr-native identity and communication
 - Autonomy levels and transparency
+- True write-once-run-anywhere via WASI

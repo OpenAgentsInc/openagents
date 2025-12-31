@@ -29,6 +29,12 @@ The key insight: an agent is closer to a **living process** than a **function ca
 
 Agents must run everywhere humans compute:
 
+### Browser (WebAssembly)
+- **Constraints:** Browser memory/storage quotas, single-threaded main context
+- **Benefits:** Maximum privacy, zero cost, offline capable, instant startup
+- **Pattern:** WASI module in Web Worker, state in IndexedDB
+- **Inspiration:** WANIX (Plan 9 in browser), Apptron (Linux in browser)
+
 ### Cloud Serverless (Cloudflare Workers, AWS Lambda)
 - **Constraints:** Cold starts, execution time limits, ephemeral compute
 - **Benefits:** Global scale, zero ops, pay-per-use
@@ -50,6 +56,8 @@ Agents must run everywhere humans compute:
 - **Pattern:** Lightweight agent with cloud fallback
 
 The runtime must provide a **uniform abstraction** across all these environments. Agent code should not know or care where it runs.
+
+The same WASI binary can run on server (native), desktop (native), or browser (WASM)—true write-once-run-anywhere for agents.
 
 ---
 
@@ -389,13 +397,13 @@ This enables:
 
 ### What Varies by Backend
 
-| Concern | Cloudflare | Local | Kubernetes |
-|---------|------------|-------|------------|
-| **Process model** | Isolate per request | Daemon | Pod |
-| **Storage** | DO SQLite | File SQLite | PostgreSQL |
-| **Wake trigger** | HTTP/WS | IPC/file | HTTP/gRPC |
-| **Hibernation** | Automatic | Manual | Automatic |
-| **Scaling** | Automatic | N/A | HPA |
+| Concern | Browser | Cloudflare | Local | Kubernetes |
+|---------|---------|------------|-------|------------|
+| **Process model** | Web Worker | Isolate per request | Daemon | Pod |
+| **Storage** | IndexedDB | DO SQLite | File SQLite | PostgreSQL |
+| **Wake trigger** | postMessage | HTTP/WS | IPC/file | HTTP/gRPC |
+| **Hibernation** | Kill Worker | Automatic | Manual | Automatic |
+| **Scaling** | N/A | Automatic | N/A | HPA |
 
 ### Backend Trait
 
@@ -421,6 +429,13 @@ This enables:
 ```
 
 ### Backend Implementations
+
+**BrowserBackend:**
+- Agents run as WASI modules in Web Workers
+- IndexedDB + OPFS for state storage
+- Wake via postMessage to Worker
+- Hibernation = terminate Worker (state persists in IndexedDB)
+- Browser capabilities mounted as files (like WANIX)
 
 **CloudflareBackend:**
 - Each agent is a Durable Object

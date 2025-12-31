@@ -46,10 +46,13 @@ Same agent code runs on any backend:
 
 | Backend | Cold Start | Max Agents | Best For |
 |---------|------------|------------|----------|
+| **Browser** | <10ms | Single | Privacy, offline, zero cost |
 | **Cloudflare** | 10-50ms | Millions | Global scale, zero ops |
 | **Local** | <100ms | Hundreds | Privacy, offline, free |
 | **Docker** | 1-5s | Hundreds | Self-hosting |
 | **Kubernetes** | 5-30s | Thousands | Enterprise scale |
+
+The browser backend is inspired by [WANIX](https://github.com/tractordev/wanix) (Plan 9 in browser) and [Apptron](https://github.com/progrium/apptron) (full Linux in browser). Same WASI binary runs on server (native), desktop (native), or browser (WASM).
 
 ## What Makes This Agent-Specific
 
@@ -114,6 +117,7 @@ impl Agent for MyAgent {
 ```
 crates/
 ├── runtime/              # This crate - core abstractions
+├── runtime-browser/      # Browser backend (WASM + IndexedDB)
 ├── runtime-local/        # Local device backend (SQLite + tokio)
 ├── runtime-cloudflare/   # Cloudflare Workers backend (DO)
 ├── runtime-server/       # Container/VM backend
@@ -124,6 +128,7 @@ crates/
 
 ## Feature Flags
 
+- `browser` — Browser backend with WASM + IndexedDB
 - `cloudflare` — Cloudflare Workers/Durable Objects backend
 - `local` — Local device backend with SQLite
 - `full` — Enable all optional features (tracing, metrics)
@@ -133,7 +138,8 @@ crates/
 This design builds on:
 
 - **Plan 9** — Everything is a file, per-process namespaces
-- **WANIX** — WebAssembly runtime with Plan 9 concepts
+- **WANIX** — Browser-first runtime with Plan 9 concepts (WASI in browser)
+- **Apptron** — Full Linux environment in browser (virtual network, heavy compute)
 - **OANIX** — Our experimental Rust-native agent OS
 - **Cloudflare Durable Objects** — Tick model, SQLite, hibernation
 

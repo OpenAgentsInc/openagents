@@ -14,11 +14,159 @@ How the runtime abstraction maps to concrete deployment targets.
 │  (Agent trait, Context, Triggers, Lifecycle)                    │
 ├─────────────────────────────────────────────────────────────────┤
 │                      Backend Trait                              │
-├──────────┬──────────┬──────────┬──────────┬────────────────────┤
-│Cloudflare│  Local   │  Docker  │   K8s    │     Custom         │
-│  Workers │  Device  │Container │  Pods    │    Backend         │
-└──────────┴──────────┴──────────┴──────────┴────────────────────┘
+├─────────┬─────────┬─────────┬─────────┬─────────┬─────────────┤
+│ Browser │Cloudflare│  Local  │ Docker  │   K8s   │   Custom    │
+│  WASM   │ Workers │ Device  │Container│  Pods   │   Backend   │
+└─────────┴─────────┴─────────┴─────────┴─────────┴─────────────┘
 ```
+
+---
+
+## Browser WASM Backend
+
+Agents run directly in the browser via WebAssembly. Zero cloud dependency—compute happens client-side.
+
+This is a first-class deployment target, inspired by [WANIX](https://github.com/tractordev/wanix) (Plan 9 concepts in the browser) and [Apptron](https://github.com/progrium/apptron) (full Linux environment in browser).
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Browser Tab                               │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                    Runtime (WASM)                            ││
+│  │  ┌─────────────────────────────────────────────────────┐    ││
+│  │  │  Agent (WASI binary)                                │    ││
+│  │  │  ┌─────────────────────────────────────────────┐    │    ││
+│  │  │  │  Namespace (mounted capabilities)           │    │    ││
+│  │  │  │  - IndexedDB storage                        │    │    ││
+│  │  │  │  - Web Crypto for signing                   │    │    ││
+│  │  │  │  - WebSocket for Nostr relays               │    │    ││
+│  │  │  │  - DOM APIs via filesystem                  │    │    ││
+│  │  │  └─────────────────────────────────────────────┘    │    ││
+│  │  └─────────────────────────────────────────────────────┘    ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
+│  │   IndexedDB     │  │  OPFS Storage   │  │  Service Worker │  │
+│  │   (state)       │  │  (files)        │  │  (offline)      │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Mapping
+
+| Runtime Concept | Browser Implementation |
+|-----------------|------------------------|
+| Agent instance | WASI module in Web Worker |
+| Agent ID | IndexedDB key |
+| State storage | IndexedDB + OPFS |
+| KV storage | IndexedDB |
+| Wake trigger | postMessage to Worker |
+| Hibernation | Terminate Worker, state in IndexedDB |
+| Alarms | setTimeout / Service Worker |
+| Connections | WebSocket (native) |
+| Identity/Signing | Web Crypto API |
+
+### Implementation Notes
+
+```rust
+// Compiled to WASM, runs in browser
+pub struct BrowserBackend {
+    // IndexedDB handle
+    storage: IdbDatabase,
+    // Worker pool for agent execution
+    workers: WorkerPool,
+    // WebSocket manager for Nostr
+    ws_manager: WebSocketManager,
+}
+
+impl RuntimeBackend for BrowserBackend {
+    async fn wake(&self, id: &AgentId, trigger: Trigger) -> Result<TickResult> {
+        // Spawn or reuse Web Worker
+        let worker = self.workers.get_or_create(id).await?;
+
+        // Send trigger via postMessage
+        worker.post_message(&JsValue::from_serde(&trigger)?);
+
+        // Wait for result
+        let result = worker.wait_for_result().await?;
+        Ok(result)
+    }
+
+    async fn hibernate(&self, id: &AgentId) -> Result<()> {
+        // Terminate worker, state already in IndexedDB
+        self.workers.terminate(id).await?;
+        Ok(())
+    }
+}
+```
+
+### WASI Compatibility (Key Insight from WANIX)
+
+WANIX demonstrated that WASI binaries run seamlessly in browser:
+
+```javascript
+// From WANIX: creating a WASI task in browser
+const tid = (await wanix.readText("task/new/wasi")).trim();
+await wanix.writeFile(`task/${tid}/cmd`, `#bundle/agent.wasm`);
+await wanix.writeFile(`task/${tid}/ctl`, "start");
+
+// Agent executes in browser, same binary as server
+```
+
+This means **same agent binary** runs:
+- On server (native)
+- On desktop (native)
+- In browser (WASM)
+
+### DOM/Browser APIs via Filesystem
+
+Following WANIX pattern, browser capabilities mount as files:
+
+```
+/cap/
+├── fetch/          # HTTP requests
+├── ws/             # WebSocket connections
+├── crypto/         # Web Crypto API
+├── storage/
+│   ├── indexeddb/  # IndexedDB access
+│   └── opfs/       # Origin Private File System
+├── dom/            # DOM manipulation (careful!)
+└── console/        # Browser console
+```
+
+### Characteristics
+
+- **Latency:** <10ms (everything local)
+- **Scale:** Single agent (or few via Web Workers)
+- **Cost:** Zero (user's browser)
+- **Limits:** Browser memory/storage quotas
+- **Offline:** Yes (with Service Worker)
+- **Privacy:** Maximum (data never leaves device)
+
+### When to Use Browser Backend
+
+- **Privacy-first agents** — Data stays on user's device
+- **Offline capability** — Works without network
+- **Zero-cost** — No server infrastructure
+- **Instant startup** — No network round-trip
+- **Demos/sandboxes** — Try agents without backend
+- **Edge compute** — Distribute compute to clients
+
+### Virtual Network (From Apptron)
+
+Apptron shows browser agents can have network presence:
+
+```
+Browser Agent → WebSocket tunnel → Public HTTPS endpoint
+                                 (like ngrok but browser-native)
+```
+
+This enables:
+- Agent exposing HTTP API from browser
+- Cross-browser agent communication
+- Bridging to external services
 
 ---
 
@@ -334,20 +482,28 @@ spec:
 
 ## Comparison Matrix
 
-| Aspect | Cloudflare | Local | Docker | Kubernetes |
-|--------|------------|-------|--------|------------|
-| **Cold start** | 10-50ms | 100ms | 1-5s | 5-30s |
-| **Warm latency** | <1ms | <1ms | <10ms | <10ms |
-| **Max agents** | Millions | Hundreds | Hundreds | Thousands |
-| **Ops burden** | Zero | Low | Medium | High |
-| **Cost model** | Pay-per-use | Fixed | Fixed | Fixed |
-| **Offline** | No | Yes | Yes | Yes |
-| **Privacy** | Cloud | Full | Self-host | Self-host |
-| **Multi-region** | Built-in | Manual | Manual | Federation |
+| Aspect | Browser | Cloudflare | Local | Docker | Kubernetes |
+|--------|---------|------------|-------|--------|------------|
+| **Cold start** | <10ms | 10-50ms | 100ms | 1-5s | 5-30s |
+| **Warm latency** | <1ms | <1ms | <1ms | <10ms | <10ms |
+| **Max agents** | Single | Millions | Hundreds | Hundreds | Thousands |
+| **Ops burden** | Zero | Zero | Low | Medium | High |
+| **Cost model** | Free | Pay-per-use | Fixed | Fixed | Fixed |
+| **Offline** | Yes | No | Yes | Yes | Yes |
+| **Privacy** | Maximum | Cloud | Full | Self-host | Self-host |
+| **Multi-region** | N/A | Built-in | Manual | Manual | Federation |
 
 ---
 
 ## Backend Selection Guide
+
+### Use Browser When:
+- Privacy is paramount (data never leaves device)
+- Offline operation essential
+- Zero infrastructure cost required
+- Building demos or sandboxes
+- Distributing compute to clients
+- Agent serves single user
 
 ### Use Cloudflare When:
 - Global distribution matters
@@ -423,6 +579,6 @@ Potential future backend implementations:
 
 - **AWS Lambda + DynamoDB** — Serverless on AWS
 - **Fly.io Machines** — Edge containers
-- **WASM in Browser** — Client-side agents
 - **Raspberry Pi** — IoT edge agents
 - **TEE/SGX** — Confidential computing agents
+- **React Native** — Mobile app agents

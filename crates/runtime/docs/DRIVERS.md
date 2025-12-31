@@ -364,15 +364,17 @@ drivers:
 
 Some drivers only make sense on certain backends:
 
-| Driver | Local | Cloudflare | Server |
-|--------|-------|------------|--------|
-| HTTP | ✅ axum | ✅ fetch handler | ✅ axum |
-| WebSocket | ✅ tokio-tungstenite | ✅ DO WebSocket | ✅ tokio-tungstenite |
-| Nostr | ✅ nostr-client | ⚠️ via fetch | ✅ nostr-client |
-| Scheduler | ✅ tokio timers | ✅ DO alarms | ✅ tokio timers |
-| Webhook | ✅ HTTP server | ✅ fetch handler | ✅ HTTP server |
-| CLI | ✅ stdin/IPC | ❌ | ✅ stdin/IPC |
-| FUSE | ✅ fuser | ❌ | ✅ fuser |
+| Driver | Browser | Local | Cloudflare | Server |
+|--------|---------|-------|------------|--------|
+| HTTP | ✅ fetch API | ✅ axum | ✅ fetch handler | ✅ axum |
+| WebSocket | ✅ native WS | ✅ tokio-tungstenite | ✅ DO WebSocket | ✅ tokio-tungstenite |
+| Nostr | ✅ native WS | ✅ nostr-client | ⚠️ via fetch | ✅ nostr-client |
+| Scheduler | ✅ setTimeout | ✅ tokio timers | ✅ DO alarms | ✅ tokio timers |
+| Webhook | ❌ | ✅ HTTP server | ✅ fetch handler | ✅ HTTP server |
+| CLI | ❌ | ✅ stdin/IPC | ❌ | ✅ stdin/IPC |
+| FUSE | ❌ | ✅ fuser | ❌ | ✅ fuser |
+| IndexedDB | ✅ native | ❌ | ❌ | ❌ |
+| OPFS | ✅ native | ❌ | ❌ | ❌ |
 
 ---
 
