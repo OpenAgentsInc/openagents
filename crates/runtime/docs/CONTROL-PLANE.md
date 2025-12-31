@@ -98,8 +98,8 @@ Content-Type: application/json
   "config": {
     "autonomy_level": "semi_autonomous",
     "budget": {
-      "max_daily_sats": 50000,
-      "max_per_tick_sats": 1000
+      "max_daily_usd": 10000000,
+      "max_per_tick_usd": 100000
     },
     "mounts": {
       "/repo": {
@@ -149,9 +149,9 @@ Response:
   "tick_count": 1423,
   "queue_depth": 2,
   "budget": {
-    "daily_limit_sats": 50000,
-    "daily_spent_sats": 1200,
-    "remaining_sats": 48800
+    "daily_limit_usd": 10000000,
+    "daily_spent_usd": 120000,
+    "remaining_usd": 9880000
   },
   "memory": {
     "conversations": 12,

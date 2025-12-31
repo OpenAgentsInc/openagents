@@ -10,7 +10,7 @@ Agents access AI compute through the `/compute` mount. The runtime provides:
 
 - **Provider abstraction** — Same interface for local, cloud, and decentralized compute
 - **Policy enforcement** — Per-agent model restrictions and cost limits
-- **Budget tracking** — Sats-denominated accounting (runtime's native money)
+- **Budget tracking** — USD-denominated accounting (settled in sats via Lightning)
 - **Idempotency** — Dedup via scoped journal to prevent double-billing
 - **Streaming** — Token-by-token output via `watch()` on job streams
 
@@ -22,7 +22,7 @@ This enables agents to use any AI model without hardcoding providers.
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Budget units | **Sats** (with FX conversion) | Runtime's native money; consistent with BudgetPolicy |
+| Budget units | **USD** (micro-USD for precision) | Universal pricing language; settled in sats via Lightning |
 | Execution model | **Always returns job_id** | No blocking; works on all backends including Cloudflare |
 | Streaming | **Only via watch()** | Single streaming surface; no internal StreamPoll exposed |
 | Interface | **`/compute/new` → job_id** | Avoids shared-file races on `/compute/run` |
@@ -49,7 +49,7 @@ This enables agents to use any AI model without hardcoding providers.
 │       └── health
 ├── new                  # Write request → read job_id (always async)
 ├── policy               # Read/write: compute policy JSON
-├── usage                # Read: current tick/day usage (sats)
+├── usage                # Read: current tick/day usage (USD)
 └── jobs/
     └── <job_id>/       # Individual job tracking
         ├── status      # Read: pending|running|streaming|complete|failed
@@ -117,10 +117,10 @@ pub struct ComputeRequest {
     /// Full key is scoped: {agent_id}:{provider_id}:{idempotency_key}
     pub idempotency_key: Option<String>,
 
-    /// Maximum cost in sats the caller is willing to pay.
+    /// Maximum cost in micro-USD (1 micro-USD = $0.000001) the caller is willing to pay.
     /// Budget check uses this value directly—no estimation guessing.
     /// If omitted, uses policy default or rejects if policy.require_max_cost.
-    pub max_cost_sats: Option<u64>,
+    pub max_cost_usd: Option<u64>,
 }
 ```
 
@@ -141,8 +141,8 @@ pub struct ComputeResponse {
     /// Token usage (if applicable)
     pub usage: Option<TokenUsage>,
 
-    /// Actual cost in sats (post-execution)
-    pub cost_sats: u64,
+    /// Actual cost in micro-USD (post-execution)
+    pub cost_usd: u64,
 
     /// Latency in milliseconds
     pub latency_ms: u64,
@@ -221,16 +221,16 @@ pub struct ComputePolicy {
     #[serde(default)]
     pub blocked_models: Vec<String>,
 
-    /// Maximum cost per tick in sats
-    pub max_cost_sats_per_tick: Option<u64>,
+    /// Maximum cost per tick in micro-USD
+    pub max_cost_usd_per_tick: Option<u64>,
 
-    /// Maximum cost per day in sats
-    pub max_cost_sats_per_day: Option<u64>,
+    /// Maximum cost per day in micro-USD
+    pub max_cost_usd_per_day: Option<u64>,
 
-    /// Default max_cost_sats if request doesn't specify
-    pub default_max_cost_sats: Option<u64>,
+    /// Default max_cost_usd if request doesn't specify
+    pub default_max_cost_usd: Option<u64>,
 
-    /// Require requests to specify max_cost_sats
+    /// Require requests to specify max_cost_usd
     #[serde(default)]
     pub require_max_cost: bool,
 
@@ -253,14 +253,14 @@ pub struct ComputePolicy {
 fn default_timeout() -> u64 { 120_000 } // 2 minutes
 ```
 
-### Budget Units: Sats with FX Conversion
+### Budget Units: USD with Sats Settlement
 
-All budget tracking uses **sats** (1 sat = 1/100,000,000 BTC) as the canonical unit. This is the runtime's native money, consistent with `/wallet` and `BudgetPolicy`.
+All budget tracking uses **micro-USD** (1 micro-USD = $0.000001) as the canonical unit. This is the universal pricing language—providers price in USD, users think in USD, and budgets are set in USD.
 
-Providers that price in fiat (Cloudflare, OpenAI, etc.) convert using an FX rate source:
+**Settlement happens in sats via Lightning.** When paying DVM providers or reconciling costs, the runtime converts USD to sats using a configured FX source:
 
 ```rust
-/// FX rate source for USD→sats conversion
+/// FX rate source for USD→sats conversion (for settlement)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FxSource {
@@ -275,7 +275,7 @@ pub enum FxSource {
 /// Budget configuration for compute
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComputeBudgetConfig {
-    /// How to convert provider fiat prices to sats
+    /// How to convert USD to sats for Lightning settlement
     pub fx_source: FxSource,
     /// Cache FX rate for this duration (seconds)
     #[serde(default = "default_fx_cache")]
@@ -285,11 +285,16 @@ pub struct ComputeBudgetConfig {
 fn default_fx_cache() -> u64 { 300 } // 5 minutes
 ```
 
-**Conversion flow:**
-1. Provider reports cost in native units (e.g., micro-USD)
-2. ComputeFs converts via `fx_source` to sats
-3. Budget enforcement uses sats exclusively
-4. Response includes `cost_sats` (actual cost in sats)
+**Why USD:**
+- Providers price in USD (OpenAI, Cloudflare, Anthropic)
+- Users set budgets in USD ("$10/day")
+- Stable unit for cost comparison and limits
+- No constant recalculation as BTC price moves
+
+**Why sats for settlement:**
+- DVM providers accept Lightning payments
+- Permissionless, instant, global
+- Runtime's `/wallet` already handles sats
 
 Mount table configuration:
 
@@ -299,17 +304,17 @@ mounts:
     type: compute
     access: budgeted  # REQUIRED: /compute MUST use AccessLevel::Budgeted
     budget:
-      per_tick_sats: 1000       # ~$0.10 at $100k/BTC
-      per_day_sats: 100000      # ~$10/day
-      approval_threshold_sats: 5000
+      per_tick_usd: 100000      # $0.10/tick (in micro-USD)
+      per_day_usd: 10000000     # $10/day (in micro-USD)
+      approval_threshold_usd: 1000000  # $1 requires approval
     policy:
       allowed_providers: ["local", "cloudflare", "dvm"]
       blocked_models: ["gpt-4"]
       prefer: cost
       require_idempotency: true
-      require_max_cost: true    # Reject requests without max_cost_sats
-    budget_config:
-      fx_source: wallet         # Use /wallet/fx for conversion
+      require_max_cost: true    # Reject requests without max_cost_usd
+    settlement:
+      fx_source: wallet         # Use /wallet/fx for USD→sats conversion
       fx_cache_secs: 300
 ```
 
@@ -431,7 +436,6 @@ Routes requests to appropriate providers:
 /// Routes compute requests to appropriate providers
 pub struct ComputeRouter {
     providers: Vec<Arc<dyn ComputeProvider>>,
-    fx_converter: Arc<dyn FxConverter>,
 }
 
 impl ComputeRouter {
@@ -478,12 +482,12 @@ impl ComputeRouter {
         // Sort by preference
         let selected = match policy.prefer {
             Prefer::Cost => {
-                // Use caller's max_cost_sats as the cost ceiling for comparison
+                // Use caller's max_cost_usd as the cost ceiling for comparison
                 // Providers that can't serve under that cost are filtered out
-                let max_sats = request.max_cost_sats.unwrap_or(u64::MAX);
+                let max_usd = request.max_cost_usd.unwrap_or(u64::MAX);
                 candidates.into_iter()
-                    .filter(|p| self.estimate_provider_cost_sats(p, request) <= max_sats)
-                    .min_by_key(|p| self.estimate_provider_cost_sats(p, request))
+                    .filter(|p| self.estimate_provider_cost_usd(p, request) <= max_usd)
+                    .min_by_key(|p| self.estimate_provider_cost_usd(p, request))
             }
             Prefer::Latency => {
                 // Use actual latency metrics from ProviderInfo
@@ -499,7 +503,7 @@ impl ComputeRouter {
                 // Balance cost and latency (simple heuristic)
                 candidates.into_iter()
                     .min_by_key(|p| {
-                        let cost = self.estimate_provider_cost_sats(p, request);
+                        let cost = self.estimate_provider_cost_usd(p, request);
                         let latency = p.info().latency.ttft_ms;
                         cost.saturating_mul(latency) // Simple cost×latency score
                     })
@@ -514,8 +518,8 @@ impl ComputeRouter {
             })
     }
 
-    /// Estimate cost in sats for a provider (uses FX conversion)
-    fn estimate_provider_cost_sats(
+    /// Estimate cost in micro-USD for a provider
+    fn estimate_provider_cost_usd(
         &self,
         provider: &Arc<dyn ComputeProvider>,
         request: &ComputeRequest,
@@ -527,15 +531,13 @@ impl ComputeRouter {
             None => return 0,
         };
 
-        // Estimate based on request's max_cost_sats if provided
-        // Otherwise use provider's base pricing converted to sats
-        if let Some(max_sats) = request.max_cost_sats {
-            return max_sats;
+        // Use request's max_cost_usd if provided
+        if let Some(max_usd) = request.max_cost_usd {
+            return max_usd;
         }
 
-        // Fallback: estimate from provider pricing (rough)
-        let microusd = pricing.input_per_1k_microusd + pricing.output_per_1k_microusd;
-        self.fx_converter.microusd_to_sats(microusd)
+        // Fallback: estimate from provider pricing (rough, assumes ~1k tokens)
+        pricing.input_per_1k_microusd + pricing.output_per_1k_microusd
     }
 
     /// Submit request with routing (returns job_id immediately)
@@ -547,12 +549,6 @@ impl ComputeRouter {
         let provider = self.select(&request, policy)?;
         provider.submit(request)
     }
-}
-
-/// FX conversion interface
-pub trait FxConverter: Send + Sync {
-    fn microusd_to_sats(&self, microusd: u64) -> u64;
-    fn sats_to_microusd(&self, sats: u64) -> u64;
 }
 ```
 
@@ -571,15 +567,14 @@ pub struct ComputeFs {
     usage: Arc<RwLock<ComputeUsageState>>,
     jobs: Arc<RwLock<HashMap<String, JobState>>>,
     journal: Arc<dyn IdempotencyJournal>,
-    fx_converter: Arc<dyn FxConverter>,
 }
 
-/// Usage tracking (sats)
+/// Usage tracking (micro-USD)
 pub struct ComputeUsageState {
     pub tick_start: Timestamp,
     pub day_start: Timestamp,
-    pub spent_tick_sats: u64,
-    pub spent_day_sats: u64,
+    pub spent_tick_usd: u64,
+    pub spent_day_usd: u64,
 }
 
 impl FileService for ComputeFs {
@@ -611,22 +606,22 @@ impl FileService for ComputeFs {
                 }
             }
 
-            // /compute/usage — current usage stats (sats)
+            // /compute/usage — current usage stats (micro-USD)
             ["usage"] => {
                 let usage = self.usage.read();
                 let policy = self.policy.read();
                 let json = serde_json::json!({
                     "tick": {
-                        "spent_sats": usage.spent_tick_sats,
-                        "limit_sats": policy.max_cost_sats_per_tick,
-                        "remaining_sats": policy.max_cost_sats_per_tick
-                            .map(|l| l.saturating_sub(usage.spent_tick_sats)),
+                        "spent_usd": usage.spent_tick_usd,
+                        "limit_usd": policy.max_cost_usd_per_tick,
+                        "remaining_usd": policy.max_cost_usd_per_tick
+                            .map(|l| l.saturating_sub(usage.spent_tick_usd)),
                     },
                     "day": {
-                        "spent_sats": usage.spent_day_sats,
-                        "limit_sats": policy.max_cost_sats_per_day,
-                        "remaining_sats": policy.max_cost_sats_per_day
-                            .map(|l| l.saturating_sub(usage.spent_day_sats)),
+                        "spent_usd": usage.spent_day_usd,
+                        "limit_usd": policy.max_cost_usd_per_day,
+                        "remaining_usd": policy.max_cost_usd_per_day
+                            .map(|l| l.saturating_sub(usage.spent_day_usd)),
                     }
                 });
                 Ok(Box::new(StringHandle::new(json.to_string())))
@@ -827,42 +822,42 @@ impl ComputeNewHandle {
             }
         }
 
-        // 4. Check max_cost_sats requirement
-        let max_cost_sats = match (request.max_cost_sats, policy.default_max_cost_sats, policy.require_max_cost) {
+        // 4. Check max_cost_usd requirement
+        let max_cost_usd = match (request.max_cost_usd, policy.default_max_cost_usd, policy.require_max_cost) {
             (Some(c), _, _) => c,
             (None, Some(d), _) => d,
             (None, None, true) => return Err(Error::MaxCostRequired),
             (None, None, false) => u64::MAX, // No limit
         };
 
-        // 5. Check budget (uses max_cost_sats as the ceiling)
+        // 5. Check budget (uses max_cost_usd as the ceiling)
         let mut usage = self.usage.write();
 
-        if let Some(tick_limit) = policy.max_cost_sats_per_tick {
-            if usage.spent_tick_sats + max_cost_sats > tick_limit {
+        if let Some(tick_limit) = policy.max_cost_usd_per_tick {
+            if usage.spent_tick_usd + max_cost_usd > tick_limit {
                 return Err(Error::BudgetExceeded {
                     limit: "tick",
-                    spent_sats: usage.spent_tick_sats,
-                    limit_sats: tick_limit,
-                    requested_sats: max_cost_sats,
+                    spent_usd: usage.spent_tick_usd,
+                    limit_usd: tick_limit,
+                    requested_usd: max_cost_usd,
                 });
             }
         }
 
-        if let Some(day_limit) = policy.max_cost_sats_per_day {
-            if usage.spent_day_sats + max_cost_sats > day_limit {
+        if let Some(day_limit) = policy.max_cost_usd_per_day {
+            if usage.spent_day_usd + max_cost_usd > day_limit {
                 return Err(Error::BudgetExceeded {
                     limit: "day",
-                    spent_sats: usage.spent_day_sats,
-                    limit_sats: day_limit,
-                    requested_sats: max_cost_sats,
+                    spent_usd: usage.spent_day_usd,
+                    limit_usd: day_limit,
+                    requested_usd: max_cost_usd,
                 });
             }
         }
 
         // 6. Reserve budget (actual cost deducted on completion)
-        usage.spent_tick_sats += max_cost_sats;
-        usage.spent_day_sats += max_cost_sats;
+        usage.spent_tick_usd += max_cost_usd;
+        usage.spent_day_usd += max_cost_usd;
         drop(usage); // Release lock before submit
 
         // 7. Submit to provider (never blocks)
@@ -896,7 +891,7 @@ impl ComputeNewHandle {
 
 **Key differences from old `/compute/run`:**
 1. `submit()` never blocks — returns job_id immediately
-2. Budget uses `max_cost_sats` directly (no estimation)
+2. Budget uses `max_cost_usd` directly (no estimation)
 3. Idempotency keys are scoped: `{agent_id}:{provider_id}:{user_key}`
 4. Response always includes paths to poll status/stream/result
 
@@ -1241,7 +1236,7 @@ async fn execute_local_job(
             output_tokens: u.completion_tokens as u64,
             total_tokens: u.total_tokens as u64,
         }),
-        cost_sats: 0,  // Local is free
+        cost_usd: 0,  // Local is free
         latency_ms: start.elapsed().as_millis() as u64,
         provider_id: "local".to_string(),
         model: request.model.clone(),
@@ -1343,7 +1338,7 @@ impl ComputeProvider for CloudflareProvider {
             job_id: job_id.clone(),
             output,
             usage: None,
-            cost_sats: 0, // Tracked at ComputeFs level
+            cost_usd: 0, // Tracked at ComputeFs level via pricing
             latency_ms: start.elapsed().as_millis() as u64,
             provider_id: "cloudflare".to_string(),
             model: request.model,
@@ -1379,6 +1374,13 @@ pub struct DvmProvider {
     executor: Arc<ExecutorManager>,
     active_jobs: Arc<RwLock<HashMap<String, DvmJobState>>>,
     signer: Arc<dyn SigningService>,
+    fx_converter: Arc<dyn FxConverter>,  // For USD↔sats conversion
+}
+
+/// FX conversion for DVM payments
+pub trait FxConverter: Send + Sync {
+    fn usd_to_sats(&self, micro_usd: u64) -> u64;
+    fn sats_to_usd(&self, sats: u64) -> u64;
 }
 
 /// DVM job state machine
@@ -1419,7 +1421,9 @@ enum DvmLifecycle {
 struct DvmQuote {
     /// DVM's pubkey
     provider_pubkey: String,
-    /// Quoted price in sats
+    /// Quoted price in micro-USD (converted from sats via FX)
+    price_usd: u64,
+    /// Quoted price in sats (for Lightning payment)
     price_sats: u64,
     /// Quote event ID
     event_id: String,
@@ -1468,7 +1472,7 @@ impl ComputeProvider for DvmProvider {
 
     fn submit(&self, request: ComputeRequest) -> Result<String, ComputeError> {
         let job_id = generate_job_id();
-        let max_cost_sats = request.max_cost_sats.unwrap_or(1000); // Default 1000 sats
+        let max_cost_usd = request.max_cost_usd.unwrap_or(100_000); // Default $0.10
 
         // Publish NIP-90 job request (kind 5xxx based on ComputeKind)
         let kind = match request.kind {
@@ -1479,7 +1483,7 @@ impl ComputeProvider for DvmProvider {
         };
 
         let request_event = self.executor.execute(async {
-            self.create_job_request(kind, &request, max_cost_sats).await
+            self.create_job_request(kind, &request, max_cost_usd).await
         })?;
 
         let event_id = self.executor.execute(async {
@@ -1556,14 +1560,17 @@ impl DvmProvider {
         &self,
         kind: u16,
         request: &ComputeRequest,
-        max_cost_sats: u64,
+        max_cost_usd: u64,
     ) -> Result<NostrEvent, ComputeError> {
         let content = serde_json::to_string(&request.input)?;
+
+        // Convert USD to sats for the bid (DVMs price in sats)
+        let max_cost_sats = self.fx_converter.usd_to_sats(max_cost_usd);
 
         let tags = vec![
             vec!["i".to_string(), content.clone(), "text".to_string()],
             vec!["param".to_string(), "model".to_string(), request.model.clone()],
-            // Bid is the maximum we'll pay (DVMs respond with quotes ≤ this)
+            // Bid is in sats (DVMs respond with quotes ≤ this)
             vec!["bid".to_string(), max_cost_sats.to_string()],
         ];
 
@@ -1595,9 +1602,9 @@ impl DvmProvider {
                 return;
             }
 
-            // Phase 2: Accept cheapest quote
+            // Phase 2: Accept cheapest quote (by USD price)
             let best = job.quotes.iter()
-                .min_by_key(|q| q.price_sats)
+                .min_by_key(|q| q.price_usd)
                 .cloned()
                 .unwrap();
 
@@ -1677,7 +1684,7 @@ impl DvmProvider {
 | Provider | `LocalProvider` | `CloudflareProvider` | `DvmProvider` |
 | Execution | `BackendRegistry` | `worker::Ai` | NIP-90 events |
 | Streaming | `mpsc::Receiver` | Not supported | Kind 7000 (status=partial) |
-| Cost | Free (0 sats) | Per-token (via FX) | Bid-based (sats) |
+| Pricing | Free ($0) | Per-token (micro-USD) | Bid-based (sats→USD) |
 | Models | Auto-detected | Fixed catalog | NIP-89 handlers |
 | Latency (TTFT) | ~50ms | ~30ms | ~2000ms (includes quotes) |
 | Availability | Requires local server | Always available | Requires relays |
@@ -1693,11 +1700,11 @@ impl DvmProvider {
 This is enforced at the mount table level. Attempting to mount `/compute` with any other access level is an error.
 
 ```rust
-// Mount with budget policy
+// Mount with budget policy (amounts in micro-USD)
 namespace.mount("/compute", compute_fs, AccessLevel::Budgeted(BudgetPolicy {
-    per_tick_sats: 1000,          // Max sats per tick
-    per_day_sats: 100000,         // Max sats per day
-    approval_threshold_sats: 5000, // Human approval above this
+    per_tick_usd: 100_000,         // $0.10 per tick
+    per_day_usd: 10_000_000,       // $10 per day
+    approval_threshold_usd: 1_000_000, // $1 requires human approval
     approvers: vec![owner_pubkey],
 }));
 ```
@@ -1707,7 +1714,7 @@ namespace.mount("/compute", compute_fs, AccessLevel::Budgeted(BudgetPolicy {
 1. **`AccessLevel::Budgeted`** — Mount-level enforcement (same as `/wallet/pay`)
 2. **`ComputePolicy`** — Compute-specific limits (models, providers)
 
-Both must pass for a request to succeed. The budget reservation happens at submit time using `max_cost_sats` from the request; actual cost is reconciled when the job completes.
+Both must pass for a request to succeed. The budget reservation happens at submit time using `max_cost_usd` from the request; actual cost is reconciled when the job completes.
 
 ---
 
@@ -1723,7 +1730,7 @@ let request = serde_json::json!({
     "input": {
         "messages": [{"role": "user", "content": "Hello!"}]
     },
-    "max_cost_sats": 100,         // Budget ceiling
+    "max_cost_usd": 100_000,      // $0.10 budget ceiling (micro-USD)
     "idempotency_key": "req_abc123"
 });
 
@@ -1741,7 +1748,7 @@ loop {
         let result_bytes = env.read(&format!("/compute/jobs/{}/result", job_id))?;
         let response: ComputeResponse = serde_json::from_slice(&result_bytes)?;
         println!("Response: {}", response.output["text"]);
-        println!("Cost: {} sats", response.cost_sats);
+        println!("Cost: ${:.6}", response.cost_usd as f64 / 1_000_000.0);
         break;
     } else if status["status"] == "failed" {
         return Err("Job failed");
@@ -1760,7 +1767,7 @@ let request = serde_json::json!({
     "kind": "chat",
     "input": {"messages": [{"role": "user", "content": "Write a story"}]},
     "stream": true,
-    "max_cost_sats": 500,
+    "max_cost_usd": 500_000,  // $0.50
     "idempotency_key": "stream_xyz"
 });
 
@@ -1791,13 +1798,19 @@ if let Some(mut watch) = env.watch(&format!("/compute/jobs/{}/stream", job_id))?
 let usage_bytes = env.read("/compute/usage")?;
 let usage: serde_json::Value = serde_json::from_slice(&usage_bytes)?;
 
-println!("Tick spent: {} / {} sats",
-    usage["tick"]["spent_sats"],
-    usage["tick"]["limit_sats"]);
+// Values are in micro-USD
+let tick_spent = usage["tick"]["spent_usd"].as_u64().unwrap_or(0);
+let tick_limit = usage["tick"]["limit_usd"].as_u64().unwrap_or(0);
+let day_spent = usage["day"]["spent_usd"].as_u64().unwrap_or(0);
+let day_limit = usage["day"]["limit_usd"].as_u64().unwrap_or(0);
 
-println!("Day spent: {} / {} sats",
-    usage["day"]["spent_sats"],
-    usage["day"]["limit_sats"]);
+println!("Tick spent: ${:.4} / ${:.4}",
+    tick_spent as f64 / 1_000_000.0,
+    tick_limit as f64 / 1_000_000.0);
+
+println!("Day spent: ${:.2} / ${:.2}",
+    day_spent as f64 / 1_000_000.0,
+    day_limit as f64 / 1_000_000.0);
 ```
 
 ### List Providers
@@ -1824,7 +1837,7 @@ let request = serde_json::json!({
     "model": "gpt-4-turbo",
     "kind": "chat",
     "input": {"messages": [{"role": "user", "content": "Analyze this code..."}]},
-    "max_cost_sats": 5000,  // Maximum bid
+    "max_cost_usd": 500_000,  // $0.50 budget ceiling (micro-USD, converted to sats for DVM bid)
     "idempotency_key": "dvm_analysis_123"
 });
 
