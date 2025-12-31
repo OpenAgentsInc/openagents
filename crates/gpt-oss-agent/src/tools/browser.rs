@@ -217,7 +217,11 @@ fn parse_duckduckgo_html(html: &str) -> Vec<SearchResult> {
                     .map(|node| node.text().collect::<Vec<_>>().join("").trim().to_string())
                     .filter(|text| !text.is_empty());
 
-                results.push(SearchResult { title, url, snippet });
+                results.push(SearchResult {
+                    title,
+                    url,
+                    snippet,
+                });
                 if results.len() >= MAX_SEARCH_RESULTS {
                     break;
                 }
@@ -226,20 +230,21 @@ fn parse_duckduckgo_html(html: &str) -> Vec<SearchResult> {
     }
 
     if results.is_empty()
-        && let Some(link_selector) = link_selector.as_ref() {
-            for link in document.select(link_selector).take(MAX_SEARCH_RESULTS) {
-                let title = link.text().collect::<Vec<_>>().join("").trim().to_string();
-                let url = link.value().attr("href").unwrap_or("").to_string();
-                if title.is_empty() || url.is_empty() {
-                    continue;
-                }
-                results.push(SearchResult {
-                    title,
-                    url,
-                    snippet: None,
-                });
+        && let Some(link_selector) = link_selector.as_ref()
+    {
+        for link in document.select(link_selector).take(MAX_SEARCH_RESULTS) {
+            let title = link.text().collect::<Vec<_>>().join("").trim().to_string();
+            let url = link.value().attr("href").unwrap_or("").to_string();
+            if title.is_empty() || url.is_empty() {
+                continue;
             }
+            results.push(SearchResult {
+                title,
+                url,
+                snippet: None,
+            });
         }
+    }
 
     results
 }

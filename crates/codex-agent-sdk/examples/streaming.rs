@@ -1,6 +1,4 @@
-use codex_agent_sdk::{
-    Codex, ThreadEvent, ThreadItemDetails, ThreadOptions, TurnOptions,
-};
+use codex_agent_sdk::{Codex, ThreadEvent, ThreadItemDetails, ThreadOptions, TurnOptions};
 
 #[tokio::main]
 async fn main() -> Result<(), codex_agent_sdk::Error> {
@@ -31,53 +29,49 @@ async fn main() -> Result<(), codex_agent_sdk::Error> {
                 println!("Turn started\n");
             }
 
-            ThreadEvent::ItemStarted(item) => {
-                match &item.item.details {
-                    ThreadItemDetails::Reasoning(_) => {
-                        println!("[Reasoning] Agent is thinking...");
-                    }
-                    ThreadItemDetails::CommandExecution(cmd) => {
-                        println!("[Command] Executing: {}", cmd.command);
-                    }
-                    ThreadItemDetails::FileChange(file) => {
-                        if let Some(change) = file.changes.first() {
-                            println!("[File] Modifying: {}", change.path);
-                        }
-                    }
-                    ThreadItemDetails::WebSearch(search) => {
-                        println!("[Search] Query: {}", search.query);
-                    }
-                    ThreadItemDetails::McpToolCall(tool) => {
-                        println!("[MCP Tool] Calling: {}", tool.tool);
-                    }
-                    ThreadItemDetails::AgentMessage(_) => {
-                        println!("[Message] Agent is responding...");
-                    }
-                    ThreadItemDetails::TodoList(_) => {
-                        println!("[Todo] Updating task list...");
-                    }
-                    ThreadItemDetails::Error(err) => {
-                        println!("[Error] {}", err.message);
+            ThreadEvent::ItemStarted(item) => match &item.item.details {
+                ThreadItemDetails::Reasoning(_) => {
+                    println!("[Reasoning] Agent is thinking...");
+                }
+                ThreadItemDetails::CommandExecution(cmd) => {
+                    println!("[Command] Executing: {}", cmd.command);
+                }
+                ThreadItemDetails::FileChange(file) => {
+                    if let Some(change) = file.changes.first() {
+                        println!("[File] Modifying: {}", change.path);
                     }
                 }
-            }
+                ThreadItemDetails::WebSearch(search) => {
+                    println!("[Search] Query: {}", search.query);
+                }
+                ThreadItemDetails::McpToolCall(tool) => {
+                    println!("[MCP Tool] Calling: {}", tool.tool);
+                }
+                ThreadItemDetails::AgentMessage(_) => {
+                    println!("[Message] Agent is responding...");
+                }
+                ThreadItemDetails::TodoList(_) => {
+                    println!("[Todo] Updating task list...");
+                }
+                ThreadItemDetails::Error(err) => {
+                    println!("[Error] {}", err.message);
+                }
+            },
 
-            ThreadEvent::ItemCompleted(item) => {
-                match &item.item.details {
-                    ThreadItemDetails::AgentMessage(msg) => {
-                        println!("\nAgent response:\n{}\n", msg.text);
-                    }
-                    ThreadItemDetails::CommandExecution(cmd) => {
-                        if !cmd.aggregated_output.is_empty() {
-                            println!("Command output:\n{}\n", cmd.aggregated_output);
-                        }
-                    }
-                    ThreadItemDetails::Reasoning(reasoning) => {
-                        println!("Reasoning: {}\n", reasoning.text);
-                    }
-                    _ => {}
+            ThreadEvent::ItemCompleted(item) => match &item.item.details {
+                ThreadItemDetails::AgentMessage(msg) => {
+                    println!("\nAgent response:\n{}\n", msg.text);
                 }
-            }
+                ThreadItemDetails::CommandExecution(cmd) => {
+                    if !cmd.aggregated_output.is_empty() {
+                        println!("Command output:\n{}\n", cmd.aggregated_output);
+                    }
+                }
+                ThreadItemDetails::Reasoning(reasoning) => {
+                    println!("Reasoning: {}\n", reasoning.text);
+                }
+                _ => {}
+            },
 
             ThreadEvent::TurnCompleted(tc) => {
                 println!("\nTurn completed!");

@@ -63,11 +63,7 @@ async fn test_agent_get_tool_schemas() {
 
     for tool_name in &["browser", "python", "apply_patch", "ui_pane"] {
         let schema = agent.get_tool_schema(tool_name).await;
-        assert!(
-            schema.is_some(),
-            "Tool {} should have a schema",
-            tool_name
-        );
+        assert!(schema.is_some(), "Tool {} should have a schema", tool_name);
         assert!(
             schema.unwrap().is_object(),
             "Tool {} schema should be an object",

@@ -2,7 +2,10 @@
 use crate::error::{GptOssError, Result};
 use crate::types::*;
 use reqwest::Client;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::Duration;
 use tokio_stream::Stream;
 
@@ -228,10 +231,9 @@ fn parse_models_response(value: serde_json::Value) -> Result<Vec<GptOssModelInfo
         return serde_json::from_value(value).map_err(GptOssError::JsonError);
     }
 
-    let data = value
-        .get("data")
-        .cloned()
-        .ok_or_else(|| GptOssError::InvalidRequest("Models response missing data array".to_string()))?;
+    let data = value.get("data").cloned().ok_or_else(|| {
+        GptOssError::InvalidRequest("Models response missing data array".to_string())
+    })?;
 
     serde_json::from_value(data).map_err(GptOssError::JsonError)
 }

@@ -12,9 +12,11 @@ use gpt_oss::{GptOssClient, GptOssRequest};
 use crate::error::Result;
 use crate::session::GptOssSession;
 use crate::tools::{
-    apply_patch::ApplyPatchTool, browser::BrowserTool, python::PythonTool,
-    ui_pane::{PaneManager, UiPaneTool},
     Tool, ToolRequest, ToolResult,
+    apply_patch::ApplyPatchTool,
+    browser::BrowserTool,
+    python::PythonTool,
+    ui_pane::{PaneManager, UiPaneTool},
 };
 
 /// GPT-OSS agent configuration
@@ -126,11 +128,7 @@ impl GptOssAgent {
     /// trajectory data for reproducibility.
     pub async fn create_session(&self) -> GptOssSession {
         let tools = self.tools.read().await;
-        GptOssSession::new(
-            self.client.clone(),
-            self.config.clone(),
-            tools.clone(),
-        )
+        GptOssSession::new(self.client.clone(), self.config.clone(), tools.clone())
     }
 
     /// Get the configuration

@@ -8,11 +8,13 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use gpt_oss::{GptOssClient, GptOssRequest, HarmonyRenderer, HarmonyRole, HarmonyToolSpec, HarmonyTurn};
+use gpt_oss::{
+    GptOssClient, GptOssRequest, HarmonyRenderer, HarmonyRole, HarmonyToolSpec, HarmonyTurn,
+};
 
+use crate::GptOssAgentConfig;
 use crate::error::{GptOssAgentError, Result};
 use crate::tools::{Tool, ToolRequest, ToolResult};
-use crate::GptOssAgentConfig;
 
 /// A message in the conversation history
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -118,11 +120,7 @@ impl GptOssSession {
     }
 
     /// Send a user message and execute tool calls until completion
-    pub async fn send_with_tools(
-        &self,
-        message: &str,
-        max_tool_turns: u32,
-    ) -> Result<String> {
+    pub async fn send_with_tools(&self, message: &str, max_tool_turns: u32) -> Result<String> {
         self.add_user_message(message).await?;
 
         let mut tool_turns = 0;
@@ -208,10 +206,7 @@ impl GptOssSession {
         Ok((assistant_text, tool_requests))
     }
 
-    async fn parse_completion_messages(
-        &self,
-        completion: &str,
-    ) -> Result<(String, Vec<Message>)> {
+    async fn parse_completion_messages(&self, completion: &str) -> Result<(String, Vec<Message>)> {
         let renderer = HarmonyRenderer::gpt_oss()?;
         let parsed = renderer.parse_completion(completion, Some(HarmonyRole::Assistant));
 
@@ -273,9 +268,9 @@ impl GptOssSession {
     fn extract_text_content(message: &gpt_oss::harmony::HarmonyMessage) -> String {
         let mut content = String::new();
         for part in &message.content {
-            if let gpt_oss::harmony::HarmonyContent::Text(
-                gpt_oss::harmony::HarmonyTextContent { text },
-            ) = part
+            if let gpt_oss::harmony::HarmonyContent::Text(gpt_oss::harmony::HarmonyTextContent {
+                text,
+            }) = part
             {
                 content.push_str(text);
             }
@@ -338,7 +333,9 @@ impl GptOssSession {
             .tools
             .iter()
             .find(|t| t.name() == request.tool)
-            .ok_or_else(|| GptOssAgentError::ToolError(format!("Tool not found: {}", request.tool)))?;
+            .ok_or_else(|| {
+                GptOssAgentError::ToolError(format!("Tool not found: {}", request.tool))
+            })?;
 
         // Record tool start
         self.record_line(&format!(

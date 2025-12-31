@@ -7,7 +7,7 @@
 //! Run with: cargo test -p codex-agent-sdk -- --ignored
 
 use codex_agent_sdk::{
-    thread, Codex, Input, SandboxMode, ThreadEvent, ThreadOptions, TurnOptions, UserInput,
+    Codex, Input, SandboxMode, ThreadEvent, ThreadOptions, TurnOptions, UserInput, thread,
 };
 use std::path::PathBuf;
 
@@ -54,14 +54,18 @@ async fn test_streaming() {
     assert!(!events.is_empty());
 
     // Should have thread started event
-    assert!(events
-        .iter()
-        .any(|e| matches!(e, ThreadEvent::ThreadStarted(_))));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, ThreadEvent::ThreadStarted(_)))
+    );
 
     // Should have turn completed event
-    assert!(events
-        .iter()
-        .any(|e| matches!(e, ThreadEvent::TurnCompleted(_))));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, ThreadEvent::TurnCompleted(_)))
+    );
 }
 
 #[tokio::test]
@@ -109,9 +113,7 @@ async fn test_resume_thread() {
 
     assert!(!turn2.final_response.is_empty());
     // Response should reference 42
-    assert!(
-        turn2.final_response.contains("42") || turn2.final_response.contains("forty-two")
-    );
+    assert!(turn2.final_response.contains("42") || turn2.final_response.contains("forty-two"));
 }
 
 #[tokio::test]
@@ -146,9 +148,7 @@ async fn test_all_thread_options() {
     });
 
     // This should not fail - it should build the correct CLI args
-    let result = thread
-        .run("Echo 'test'", TurnOptions::default())
-        .await;
+    let result = thread.run("Echo 'test'", TurnOptions::default()).await;
 
     // Even if the command fails, we've verified the options are processed
     // In a real test with codex installed, this would succeed
@@ -193,10 +193,7 @@ async fn test_thread_id_captured() {
     // Thread ID should be None before first turn
     assert!(thread.id().is_none());
 
-    let _turn = thread
-        .run("Hello", TurnOptions::default())
-        .await
-        .unwrap();
+    let _turn = thread.run("Hello", TurnOptions::default()).await.unwrap();
 
     // Thread ID should be set after first turn
     assert!(thread.id().is_some());

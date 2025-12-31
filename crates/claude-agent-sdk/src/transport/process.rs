@@ -9,8 +9,7 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::mpsc;
 
 /// Configuration for finding the Claude Code executable.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct ExecutableConfig {
     /// Explicit path to the Claude Code executable (cli.js or claude binary).
     pub path: Option<PathBuf>,
@@ -19,7 +18,6 @@ pub struct ExecutableConfig {
     /// Additional arguments for the runtime.
     pub executable_args: Vec<String>,
 }
-
 
 /// Process transport for communicating with Claude Code CLI.
 pub struct ProcessTransport {
@@ -91,17 +89,15 @@ impl ProcessTransport {
 
         let mut child = cmd.spawn()?;
 
-        let stdin = child.stdin.take().ok_or_else(|| {
-            Error::SpawnFailed(std::io::Error::other(
-                "Failed to capture stdin",
-            ))
-        })?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| Error::SpawnFailed(std::io::Error::other("Failed to capture stdin")))?;
 
-        let stdout = child.stdout.take().ok_or_else(|| {
-            Error::SpawnFailed(std::io::Error::other(
-                "Failed to capture stdout",
-            ))
-        })?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| Error::SpawnFailed(std::io::Error::other("Failed to capture stdout")))?;
 
         // Create channel for stdout messages
         let (stdout_tx, stdout_rx) = mpsc::channel(256);
@@ -168,12 +164,13 @@ impl ProcessTransport {
         if let Ok(output) = std::process::Command::new("zsh")
             .args(["-lc", "which claude"])
             .output()
-            && output.status.success() {
-                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !path.is_empty() && std::path::Path::new(&path).exists() {
-                    return Ok((path, Vec::new()));
-                }
+            && output.status.success()
+        {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() && std::path::Path::new(&path).exists() {
+                return Ok((path, Vec::new()));
             }
+        }
 
         Err(Error::ExecutableNotFound(
             "Could not find 'claude' executable. Install Claude Code CLI or provide explicit path."

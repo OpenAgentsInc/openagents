@@ -9,7 +9,7 @@ use crate::error::{Error, Result};
 use crate::events::{ThreadEvent, Usage};
 use crate::items::{ThreadItem, ThreadItemDetails};
 use crate::options::{CodexOptions, ThreadOptions, TurnOptions};
-use crate::transport::{find_codex_executable, ProcessTransport};
+use crate::transport::{ProcessTransport, find_codex_executable};
 
 /// User input variants.
 #[derive(Debug, Clone)]
@@ -215,7 +215,10 @@ impl Thread {
 
         if let Some(approval) = &self.thread_options.approval_policy {
             args.push("--config".to_string());
-            args.push(format!("approval_policy=\"{}\"", approval.as_config_value()));
+            args.push(format!(
+                "approval_policy=\"{}\"",
+                approval.as_config_value()
+            ));
         }
 
         // Add images
@@ -226,8 +229,7 @@ impl Thread {
 
         // Handle output schema
         let _schema_file = if let Some(schema) = &options.output_schema {
-            let file = tempfile::NamedTempFile::new()
-                .map_err(Error::OutputSchemaFile)?;
+            let file = tempfile::NamedTempFile::new().map_err(Error::OutputSchemaFile)?;
             std::fs::write(file.path(), serde_json::to_string(schema)?)
                 .map_err(Error::OutputSchemaFile)?;
             args.push("--output-schema".to_string());

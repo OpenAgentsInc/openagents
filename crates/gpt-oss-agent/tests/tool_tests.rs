@@ -1,7 +1,7 @@
 //! Unit tests for GPT-OSS agent tools
 
 use gpt_oss_agent::tools::{
-    apply_patch::ApplyPatchTool, browser::BrowserTool, python::PythonTool, Tool,
+    Tool, apply_patch::ApplyPatchTool, browser::BrowserTool, python::PythonTool,
 };
 use serde_json::json;
 use std::path::PathBuf;
@@ -114,11 +114,7 @@ async fn test_all_tools_have_unique_names() {
     unique_names.sort();
     unique_names.dedup();
 
-    assert_eq!(
-        names.len(),
-        unique_names.len(),
-        "Tool names must be unique"
-    );
+    assert_eq!(names.len(), unique_names.len(), "Tool names must be unique");
 }
 
 #[tokio::test]

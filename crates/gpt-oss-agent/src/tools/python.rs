@@ -45,7 +45,9 @@ impl Tool for PythonTool {
             return Ok(ToolResult {
                 success: false,
                 output: String::new(),
-                error: Some("Docker is not available. Python execution requires Docker.".to_string()),
+                error: Some(
+                    "Docker is not available. Python execution requires Docker.".to_string(),
+                ),
             });
         }
 
@@ -91,11 +93,13 @@ impl PythonTool {
     async fn execute_python(&self, code: &str) -> crate::Result<String> {
         // Create a temporary file with the Python code
         use std::io::Write;
-        let mut temp_file = tempfile::NamedTempFile::new()
-            .map_err(|e| crate::GptOssAgentError::ToolError(format!("Failed to create temp file: {}", e)))?;
+        let mut temp_file = tempfile::NamedTempFile::new().map_err(|e| {
+            crate::GptOssAgentError::ToolError(format!("Failed to create temp file: {}", e))
+        })?;
 
-        temp_file.write_all(code.as_bytes())
-            .map_err(|e| crate::GptOssAgentError::ToolError(format!("Failed to write code: {}", e)))?;
+        temp_file.write_all(code.as_bytes()).map_err(|e| {
+            crate::GptOssAgentError::ToolError(format!("Failed to write code: {}", e))
+        })?;
 
         // Execute in Docker container
         let output = tokio::process::Command::new("docker")
@@ -113,7 +117,9 @@ impl PythonTool {
             ])
             .output()
             .await
-            .map_err(|e| crate::GptOssAgentError::ToolError(format!("Failed to execute Docker: {}", e)))?;
+            .map_err(|e| {
+                crate::GptOssAgentError::ToolError(format!("Failed to execute Docker: {}", e))
+            })?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())

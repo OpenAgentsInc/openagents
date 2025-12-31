@@ -87,13 +87,13 @@ pub mod transport;
 pub use error::{Error, Result};
 pub use hooks::{
     AsyncHookOutput, BaseHookInput, CompactTrigger, FnHookCallback, HookCallback,
-    HookCallbackMatcher, HookDecision, HookEvent, HookInput, HookOutput,
-    HookPermissionDecision, HookPermissionResult, HookSpecificOutput, NotificationHookInput,
-    PermissionRequestHookInput, PostToolUseFailureHookInput, PostToolUseHookInput,
-    PostToolUseSpecificOutput, PreCompactHookInput, PreToolUseHookInput, PreToolUseSpecificOutput,
-    SessionEndHookInput, SessionStartHookInput, SessionStartSource, SessionStartSpecificOutput,
-    StopHookInput, SubagentStartHookInput, SubagentStartSpecificOutput, SubagentStopHookInput,
-    SyncHookOutput, UserPromptSubmitHookInput, UserPromptSubmitSpecificOutput,
+    HookCallbackMatcher, HookDecision, HookEvent, HookInput, HookOutput, HookPermissionDecision,
+    HookPermissionResult, HookSpecificOutput, NotificationHookInput, PermissionRequestHookInput,
+    PostToolUseFailureHookInput, PostToolUseHookInput, PostToolUseSpecificOutput,
+    PreCompactHookInput, PreToolUseHookInput, PreToolUseSpecificOutput, SessionEndHookInput,
+    SessionStartHookInput, SessionStartSource, SessionStartSpecificOutput, StopHookInput,
+    SubagentStartHookInput, SubagentStartSpecificOutput, SubagentStopHookInput, SyncHookOutput,
+    UserPromptSubmitHookInput, UserPromptSubmitSpecificOutput,
 };
 pub use options::{
     AgentDefinition, AgentModel, McpServerConfig, OutputFormat, PluginConfig, QueryOptions,

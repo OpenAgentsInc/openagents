@@ -2,8 +2,8 @@
 //!
 //! Tests edge cases, error conditions, and error propagation.
 
+use gpt_oss_agent::tools::{Tool, ToolRequest};
 use gpt_oss_agent::{GptOssAgent, GptOssAgentConfig, GptOssAgentError};
-use gpt_oss_agent::tools::{ToolRequest, Tool};
 use serde_json::json;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -79,7 +79,10 @@ async fn test_agent_config_with_invalid_workspace() {
 
     // Agent creation should still succeed - workspace is created on demand
     let result = GptOssAgent::new(config).await;
-    assert!(result.is_ok(), "Agent should create with invalid workspace path");
+    assert!(
+        result.is_ok(),
+        "Agent should create with invalid workspace path"
+    );
 }
 
 #[tokio::test]
@@ -95,7 +98,10 @@ async fn test_agent_is_ready_when_server_unavailable() {
 
     // Should return false when server is unavailable
     let ready = agent.is_ready().await;
-    assert!(!ready, "Agent should not be ready when server is unavailable");
+    assert!(
+        !ready,
+        "Agent should not be ready when server is unavailable"
+    );
 }
 
 #[tokio::test]

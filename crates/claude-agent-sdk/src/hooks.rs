@@ -378,7 +378,10 @@ pub struct PostToolUseSpecificOutput {
     #[serde(rename = "additionalContext", skip_serializing_if = "Option::is_none")]
     pub additional_context: Option<String>,
     /// Updated MCP tool output.
-    #[serde(rename = "updatedMCPToolOutput", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "updatedMCPToolOutput",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub updated_mcp_tool_output: Option<Value>,
 }
 
@@ -590,7 +593,11 @@ impl Default for HookCallbackMatcher {
 /// A simple function-based hook callback implementation.
 pub struct FnHookCallback<F>
 where
-    F: Fn(HookInput, Option<String>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<HookOutput>> + Send>>
+    F: Fn(
+            HookInput,
+            Option<String>,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<HookOutput>> + Send>>
         + Send
         + Sync,
 {
@@ -599,7 +606,11 @@ where
 
 impl<F> FnHookCallback<F>
 where
-    F: Fn(HookInput, Option<String>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<HookOutput>> + Send>>
+    F: Fn(
+            HookInput,
+            Option<String>,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<HookOutput>> + Send>>
         + Send
         + Sync,
 {
@@ -612,7 +623,11 @@ where
 #[async_trait]
 impl<F> HookCallback for FnHookCallback<F>
 where
-    F: Fn(HookInput, Option<String>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<HookOutput>> + Send>>
+    F: Fn(
+            HookInput,
+            Option<String>,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<HookOutput>> + Send>>
         + Send
         + Sync,
 {

@@ -1,12 +1,12 @@
 use gpt_oss_agent::{
-    tools::{apply_patch::ApplyPatchTool, browser::BrowserTool, Tool, ToolRequest, ToolResult},
     GptOssAgent, GptOssAgentConfig,
+    tools::{Tool, ToolRequest, ToolResult, apply_patch::ApplyPatchTool, browser::BrowserTool},
 };
 use serde_json::json;
 use tempfile::TempDir;
 use wiremock::{
-    matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
+    matchers::{method, path},
 };
 
 #[tokio::test]
@@ -16,8 +16,9 @@ async fn test_browser_open_url_success() {
     Mock::given(method("GET"))
         .and(path("/test-page"))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string("<html><body><h1>Hello World</h1><p>Test content</p></body></html>"),
+            ResponseTemplate::new(200).set_body_string(
+                "<html><body><h1>Hello World</h1><p>Test content</p></body></html>",
+            ),
         )
         .mount(&mock_server)
         .await;
@@ -298,9 +299,10 @@ async fn test_agent_execute_tool_browser() {
 
     Mock::given(method("GET"))
         .and(path("/api-endpoint"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(
-            r#"{"status": "ok", "message": "API response"}"#,
-        ))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(r#"{"status": "ok", "message": "API response"}"#),
+        )
         .mount(&mock_server)
         .await;
 
@@ -309,9 +311,7 @@ async fn test_agent_execute_tool_browser() {
         ..Default::default()
     };
 
-    let agent = GptOssAgent::new(config)
-        .await
-        .expect("Agent should create");
+    let agent = GptOssAgent::new(config).await.expect("Agent should create");
 
     let request = ToolRequest {
         tool: "browser".to_string(),
@@ -335,9 +335,7 @@ async fn test_agent_execute_tool_browser() {
 #[tokio::test]
 async fn test_agent_execute_tool_not_found() {
     let config = GptOssAgentConfig::default();
-    let agent = GptOssAgent::new(config)
-        .await
-        .expect("Agent should create");
+    let agent = GptOssAgent::new(config).await.expect("Agent should create");
 
     let request = ToolRequest {
         tool: "nonexistent_tool".to_string(),
@@ -358,9 +356,7 @@ async fn test_agent_execute_tool_not_found() {
 #[tokio::test]
 async fn test_agent_lists_available_tools() {
     let config = GptOssAgentConfig::default();
-    let agent = GptOssAgent::new(config)
-        .await
-        .expect("Agent should create");
+    let agent = GptOssAgent::new(config).await.expect("Agent should create");
 
     let tools = agent.list_tools().await;
 
@@ -374,9 +370,7 @@ async fn test_agent_lists_available_tools() {
 #[tokio::test]
 async fn test_agent_get_tool_schema_browser() {
     let config = GptOssAgentConfig::default();
-    let agent = GptOssAgent::new(config)
-        .await
-        .expect("Agent should create");
+    let agent = GptOssAgent::new(config).await.expect("Agent should create");
 
     let schema = agent
         .get_tool_schema("browser")
@@ -391,9 +385,7 @@ async fn test_agent_get_tool_schema_browser() {
 #[tokio::test]
 async fn test_agent_get_tool_schema_apply_patch() {
     let config = GptOssAgentConfig::default();
-    let agent = GptOssAgent::new(config)
-        .await
-        .expect("Agent should create");
+    let agent = GptOssAgent::new(config).await.expect("Agent should create");
 
     let schema = agent
         .get_tool_schema("apply_patch")

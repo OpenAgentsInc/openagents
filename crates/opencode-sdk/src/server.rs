@@ -3,7 +3,7 @@ use crate::error::{Error, Result};
 use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::process::{Child, Command};
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone)]
