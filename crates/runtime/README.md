@@ -49,21 +49,27 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 │   ├── relays          # connected relay list
 │   └── publish         # write event to publish
 ├── compute/
-│   ├── new             # write request, read job_id
-│   ├── jobs/<id>/      # status, result, stream
 │   ├── providers/      # available AI providers
-│   └── usage           # budget tracking (micro-USD)
+│   ├── new             # Call (write+read) → job_id
+│   ├── jobs/<id>/      # status, result, stream
+│   ├── policy          # compute policy (agents: read-only)
+│   └── usage           # reserved/spent (micro-USD)
 ├── containers/
-│   ├── new             # spawn container, read session_id
 │   ├── providers/      # local, cloudflare, daytona, dvm
+│   ├── new             # Call (write+read) → session_id
 │   ├── sessions/       # per-session status, output, files
-│   └── auth/           # OpenAgents API authentication
+│   ├── policy          # container policy (agents: read-only)
+│   ├── usage           # reserved/spent (micro-USD)
+│   └── auth/           # OpenAgents API auth (admin-only writes)
 ├── claude/
-│   ├── new             # create Claude session, read session_id
 │   ├── providers/      # tunnel, cloud, local
-│   ├── sessions/       # per-session prompt, output, tools
-│   ├── workers/        # Claude worker pool status
-│   └── proxy/          # host proxy for credential injection
+│   ├── new             # Call (write+read) → session_id
+│   ├── sessions/       # status, prompt, output, tools, fork, ctl
+│   ├── policy          # claude policy (agents: read-only)
+│   ├── usage           # reserved/spent (micro-USD)
+│   ├── auth/           # tunnels/challenge (admin-only writes)
+│   ├── workers/        # worker pool status (admin-only)
+│   └── proxy/          # proxy status/allowlist (admin-only)
 ├── hud/
 │   ├── stream          # redacted event stream (public viewers)
 │   └── settings        # public/private, embed_allowed
@@ -82,6 +88,23 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 - **Global admin** (what operators/CLI see): `/agents/<id>/...` prefix. Just a namespacing wrapper.
 
 The same interface works locally (FUSE), in the cloud (HTTP), or in a UI.
+
+**Policies are admin-only:** Agents can read `/compute/policy`, `/containers/policy`, `/claude/policy` but cannot modify them; changes are applied through the control plane.
+
+### /compute vs /containers vs /claude
+
+| Mount | Purpose | Stateful | Tool Use |
+|-------|---------|----------|----------|
+| `/compute` | Stateless inference jobs (LLM calls, embeddings) | No | No |
+| `/containers` | Sandboxed code execution (build, test, run) | Session | No |
+| `/claude` | Autonomous Claude Agent SDK sessions | Yes | Yes |
+
+**When to use each:**
+- `/compute`: Quick LLM queries, embeddings, simple inference
+- `/containers`: Run untrusted code, CI builds, shell commands
+- `/claude`: Multi-turn conversations, complex multi-step tasks with tool use
+
+**Security posture:** `/claude` workers should prefer running in sandboxed containers with proxy-only networking when processing untrusted content. Credentials stay outside the sandbox via the tunnel/proxy pattern.
 
 ## Backends
 
@@ -199,7 +222,7 @@ See [PRIOR-ART.md](docs/PRIOR-ART.md) for details.
 
 **Implementation in progress.** Milestones 0-6 complete (core tick engine, filesystem, control plane, budgets, /compute, /containers). See [ROADMAP.md](docs/ROADMAP.md) for details.
 
-Current focus: M7 (HUD), M8 (/claude integration).
+Current focus: HUD integration, `/claude` mount.
 
 ## License
 
