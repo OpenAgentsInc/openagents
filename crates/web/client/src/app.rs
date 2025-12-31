@@ -10,8 +10,8 @@ use wgpui::{
 };
 
 use crate::hud::{
-    fetch_live_hud, get_hud_context, init_hud_runtime, ensure_hud_session, update_hud_settings,
-    stop_metrics_poll, HudContext,
+    dispatch_hud_event, ensure_hud_session, fetch_live_hud, get_hud_context, init_hud_runtime,
+    stop_metrics_poll, update_hud_settings, HudContext,
 };
 use crate::state::{AppState, AppView, RepoInfo, UserInfo};
 use crate::views::{build_landing_page, build_repo_selector, build_repo_view};
@@ -107,6 +107,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             }
 
             dispatch_wallet_event(
+                &state_clone,
+                InputEvent::MouseMove { x, y },
+            );
+            dispatch_hud_event(
                 &state_clone,
                 InputEvent::MouseMove { x, y },
             );
@@ -247,6 +251,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let y = event.offset_y() as f32;
             let button = mouse_button_from_event(&event);
             let input_event = InputEvent::MouseDown { button, x, y };
+            dispatch_hud_event(&state_clone, input_event.clone());
             dispatch_wallet_event(&state_clone, input_event);
         });
         canvas.add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref())?;
@@ -260,7 +265,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let x = event.offset_x() as f32;
             let y = event.offset_y() as f32;
             let button = mouse_button_from_event(&event);
-            dispatch_wallet_event(&state_clone, InputEvent::MouseUp { button, x, y });
+            let input_event = InputEvent::MouseUp { button, x, y };
+            dispatch_hud_event(&state_clone, input_event.clone());
+            dispatch_wallet_event(&state_clone, input_event);
         });
         canvas.add_event_listener_with_callback("mouseup", closure.as_ref().unchecked_ref())?;
         closure.forget();
@@ -324,11 +331,15 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let hud_hover = state.view == AppView::RepoView
                 && (state.hud_layout.settings_public_bounds.contains(state.mouse_pos)
                     || state.hud_layout.settings_embed_bounds.contains(state.mouse_pos));
+            let start_hover = state.view == AppView::RepoView
+                && (state.hud_layout.start_prompt_bounds.contains(state.mouse_pos)
+                    || state.hud_layout.start_button_bounds.contains(state.mouse_pos));
             let landing_hover =
                 state.view == AppView::Landing && state.landing_issue_bounds.contains(state.mouse_pos);
             let cursor = if state.button_hovered
                 || state.hovered_repo_idx.is_some()
                 || hud_hover
+                || start_hover
                 || landing_hover
             {
                 "pointer"
@@ -350,7 +361,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             if let Some(key) = key_from_event(&event) {
                 let modifiers = modifiers_from_event(&event);
                 let input_event = InputEvent::KeyDown { key, modifiers };
-                handled = dispatch_wallet_event(&state_clone, input_event);
+                handled = dispatch_hud_event(&state_clone, input_event.clone());
+                if matches!(handled, EventResult::Ignored) {
+                    handled = dispatch_wallet_event(&state_clone, input_event);
+                }
             }
 
             if matches!(handled, EventResult::Handled) {
