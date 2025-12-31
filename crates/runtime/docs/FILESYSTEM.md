@@ -686,9 +686,14 @@ impl AgentEnv {
             AccessLevel::ReadOnly if flags.write => {
                 return Err(Error::PermissionDenied);
             }
-            AccessLevel::SignOnly if flags.write || flags.read => {
-                // SignOnly: only sign/verify operations allowed (via special paths)
-                if !relative.starts_with("sign") && !relative.starts_with("verify") {
+            AccessLevel::SignOnly => {
+                // SignOnly: crypto operations allowed, but private keys never exposed
+                // Allowed paths: pubkey, sign, verify, encrypt, decrypt
+                let allowed = matches!(
+                    relative.split('/').next(),
+                    Some("pubkey" | "sign" | "verify" | "encrypt" | "decrypt")
+                );
+                if !allowed {
                     return Err(Error::PermissionDenied);
                 }
             }

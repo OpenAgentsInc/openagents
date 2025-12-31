@@ -128,9 +128,15 @@ docker run \
 ```bash
 # Configure Claude to use Unix socket proxy
 export ANTHROPIC_BASE_URL="http://unix:/var/run/anthropic-proxy.sock"
+
 # Or via HTTP proxy
 export HTTPS_PROXY="http://localhost:8080"
+
+# IMPORTANT: For Node.js-based Claude Code, ensure fetch() respects proxy env vars
+export NODE_USE_ENV_PROXY=1
 ```
+
+**Note:** Claude Code is Node.js-based. Without `NODE_USE_ENV_PROXY=1`, Node's `fetch()` ignores `HTTP_PROXY`/`HTTPS_PROXY` environment variables. This is a common "why isn't my proxy working?" trap in hardened container setups.
 
 ### Credential Injection via Proxy
 
@@ -358,9 +364,9 @@ pub struct ClaudeRequest {
     /// Timeout in milliseconds for session creation (default: 60000)
     pub timeout_ms: Option<u64>,
 
-    /// Autonomy level for this session
+    /// Autonomy level for this session (tool-approval mode, distinct from runtime autonomy)
     #[serde(default)]
-    pub autonomy: AutonomyLevel,
+    pub autonomy: ClaudeSessionAutonomy,
 }
 
 /// Tool definition for Claude Agent SDK
@@ -374,10 +380,12 @@ pub struct ToolDefinition {
     pub config: Option<serde_json::Value>,
 }
 
-/// Autonomy level for Claude sessions
+/// Claude session autonomy level (tool-approval mode)
+/// Note: This is distinct from runtime AutonomyLevel (Supervised/SemiAutonomous/Autonomous)
+/// which controls mount-level access grants. This controls tool approval within a Claude session.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum AutonomyLevel {
+pub enum ClaudeSessionAutonomy {
     /// Full autonomy - Claude executes tools without approval
     Full,
     /// Supervised - Certain tools require approval
@@ -522,10 +530,12 @@ pub struct ClaudePolicy {
     pub allowed_providers: Vec<String>,
 
     /// Allowed models (empty = all)
+    /// Supports glob patterns: "claude-sonnet-4-*", "claude-haiku-*"
     #[serde(default)]
     pub allowed_models: Vec<String>,
 
     /// Blocked models (takes precedence over allowed)
+    /// Supports glob patterns: "claude-opus-*"
     #[serde(default)]
     pub blocked_models: Vec<String>,
 
@@ -561,9 +571,9 @@ pub struct ClaudePolicy {
     /// Maximum context tokens per session
     pub max_context_tokens: Option<u64>,
 
-    /// Default autonomy level
+    /// Default autonomy level for sessions
     #[serde(default)]
-    pub default_autonomy: AutonomyLevel,
+    pub default_autonomy: ClaudeSessionAutonomy,
 
     /// Require idempotency keys for all requests
     #[serde(default)]

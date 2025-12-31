@@ -41,10 +41,14 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 ├── identity/
 │   ├── pubkey          # agent's public key
 │   ├── sign            # write data, read signature
-│   └── verify          # verify signatures
+│   ├── verify          # verify signatures
+│   ├── encrypt         # encrypt to recipient pubkey
+│   └── decrypt         # decrypt from sender
 ├── wallet/
 │   ├── balance         # current balance
-│   └── pay             # write bolt11 to pay
+│   ├── pay             # write bolt11 to pay
+│   ├── invoice         # create invoice to receive
+│   └── history/        # transaction history
 ├── nostr/
 │   ├── relays          # connected relay list
 │   └── publish         # write event to publish
@@ -60,14 +64,14 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 │   ├── sessions/       # per-session status, output, files
 │   ├── policy          # container policy (agents: read-only)
 │   ├── usage           # reserved/spent (micro-USD)
-│   └── auth/           # OpenAgents API auth (admin-only writes)
+│   └── auth/           # challenge: agent writes; token/config: admin
 ├── claude/
 │   ├── providers/      # tunnel, cloud, local
 │   ├── new             # Call (write+read) → session_id
 │   ├── sessions/       # status, prompt, output, tools, fork, ctl
 │   ├── policy          # claude policy (agents: read-only)
 │   ├── usage           # reserved/spent (micro-USD)
-│   ├── auth/           # tunnels/challenge (admin-only writes)
+│   ├── auth/           # challenge: agent writes; tunnels config: admin
 │   ├── workers/        # worker pool status (admin-only)
 │   └── proxy/          # proxy status/allowlist (admin-only)
 ├── hud/

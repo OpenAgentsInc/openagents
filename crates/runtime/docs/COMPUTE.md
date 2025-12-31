@@ -602,10 +602,12 @@ impl FileService for ComputeFs {
                 )))
             }
 
-            // /compute/policy — read-only to agents (control plane updates)
+            // /compute/policy — read-only to agents
+            // Policy writes are admin-only via control plane, not agent-accessible
             ["policy"] => {
                 if flags.write {
-                    Ok(Box::new(PolicyWriteHandle::new(self.policy.clone())))
+                    // Agents cannot write policy; control plane uses separate admin context
+                    Err(Error::PermissionDenied("policy is read-only to agents".into()))
                 } else {
                     let policy = self.policy.read();
                     Ok(Box::new(StringHandle::new(serde_json::to_string_pretty(&*policy)?)))
@@ -864,9 +866,9 @@ impl ComputeNewHandle {
             }
         }
 
-        // 6. Reserve budget (actual cost deducted on completion)
-        usage.spent_tick_usd += max_cost_usd;
-        usage.spent_day_usd += max_cost_usd;
+        // 6. Reserve budget (actual cost reconciled on completion)
+        usage.reserved_tick_usd += max_cost_usd;
+        usage.reserved_day_usd += max_cost_usd;
         drop(usage); // Release lock before submit
 
         // 7. Submit to provider (never blocks)
@@ -1723,7 +1725,34 @@ namespace.mount("/compute", compute_fs, AccessLevel::Budgeted(BudgetPolicy {
 1. **`AccessLevel::Budgeted`** — Mount-level enforcement (same as `/wallet/pay`)
 2. **`ComputePolicy`** — Compute-specific limits (models, providers)
 
-Both must pass for a request to succeed. The budget reservation happens at submit time using `max_cost_usd` from the request; actual cost is reconciled when the job completes.
+Both must pass for a request to succeed.
+
+### Reserve/Reconcile Model
+
+Budget tracking uses a reserve-then-reconcile pattern:
+
+```rust
+// On submit: reserve the maximum possible cost
+usage.reserved_tick_usd += max_cost_usd;
+usage.reserved_day_usd += max_cost_usd;
+
+// remaining = limit - reserved - spent
+// This prevents over-spending even with concurrent jobs
+
+// On completion: reconcile actual vs reserved
+usage.reserved_tick_usd -= max_cost_usd;
+usage.reserved_day_usd -= max_cost_usd;
+usage.spent_tick_usd += actual_cost_usd;
+usage.spent_day_usd += actual_cost_usd;
+
+// Refund is implicit: reserved - actual never leaves the budget
+```
+
+**Why this matters:**
+- Concurrent jobs can't collectively exceed budget
+- Agents see accurate "remaining" in `/compute/usage`
+- Actual cost is recorded for billing/auditing
+- Refunds are automatic (reserved but not spent)
 
 ---
 
