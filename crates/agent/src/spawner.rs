@@ -7,7 +7,7 @@ use crate::registry::{AgentRegistry, RegistryError};
 use compute::domain::UnifiedIdentity;
 use nostr::nip_sa::{
     AgentProfile, AgentProfileContent, AgentSchedule, AgentState, AgentStateContent,
-    ThresholdConfig, KIND_AGENT_PROFILE, KIND_AGENT_SCHEDULE, KIND_AGENT_STATE,
+    KIND_AGENT_PROFILE, KIND_AGENT_SCHEDULE, KIND_AGENT_STATE, ThresholdConfig,
 };
 use nostr::{Event, EventTemplate, finalize_event};
 use nostr_client::RelayConnection;
@@ -106,8 +106,8 @@ impl AgentSpawner {
     /// Spawn a new agent
     pub async fn spawn(&self, request: SpawnRequest) -> Result<SpawnResult, SpawnError> {
         // 1. Generate identity
-        let identity = UnifiedIdentity::generate()
-            .map_err(|e| SpawnError::Identity(e.to_string()))?;
+        let identity =
+            UnifiedIdentity::generate().map_err(|e| SpawnError::Identity(e.to_string()))?;
 
         let mnemonic = identity.mnemonic().to_string();
         let npub = identity
@@ -174,7 +174,9 @@ impl AgentSpawner {
         config.relays = request.relays;
         config.profile = ProfileConfig {
             name: request.name,
-            about: request.about.unwrap_or_else(|| "A sovereign AI agent".to_string()),
+            about: request
+                .about
+                .unwrap_or_else(|| "A sovereign AI agent".to_string()),
             autonomy: request.autonomy,
             capabilities: request.capabilities,
             version: "1.0.0".to_string(),
@@ -203,8 +205,8 @@ impl AgentSpawner {
         request: &SpawnRequest,
         relay_url: &str,
     ) -> Result<(), SpawnError> {
-        let relay = RelayConnection::new(relay_url)
-            .map_err(|e| SpawnError::Relay(e.to_string()))?;
+        let relay =
+            RelayConnection::new(relay_url).map_err(|e| SpawnError::Relay(e.to_string()))?;
 
         relay
             .connect()
@@ -235,7 +237,10 @@ impl AgentSpawner {
         let profile = AgentProfile::new(profile_content, threshold, &identity.public_key_hex());
         let profile_event = self.build_event(
             KIND_AGENT_PROFILE,
-            &profile.content.to_json().map_err(|e| SpawnError::Signing(e.to_string()))?,
+            &profile
+                .content
+                .to_json()
+                .map_err(|e| SpawnError::Signing(e.to_string()))?,
             profile.build_tags(),
             now,
             identity,

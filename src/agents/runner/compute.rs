@@ -12,19 +12,19 @@
 //!
 //! NIP-28 channels are optional and only used if the provider requires them.
 
-use crate::agents::{
-    now, parse_agent_message, parse_job_feedback, parse_job_result, publish_job_request,
-    subscribe_job_responses, AgentMessage, JobStatus, KIND_JOB_FEEDBACK, KIND_JOB_REQUEST_TEXT,
-    KIND_JOB_RESULT_TEXT,
-};
 use crate::agents::SharedRelay;
-use anyhow::{anyhow, Result};
-use compute::domain::UnifiedIdentity;
-use nostr::{
-    finalize_event, ChannelMessageEvent, Event, EventTemplate, HandlerInfo, KIND_CHANNEL_MESSAGE,
-    KIND_HANDLER_INFO,
+use crate::agents::{
+    AgentMessage, JobStatus, KIND_JOB_FEEDBACK, KIND_JOB_REQUEST_TEXT, KIND_JOB_RESULT_TEXT, now,
+    parse_agent_message, parse_job_feedback, parse_job_result, publish_job_request,
+    subscribe_job_responses,
 };
+use anyhow::{Result, anyhow};
+use compute::domain::UnifiedIdentity;
 use nostr::nip_sa::AgentStateContent;
+use nostr::{
+    ChannelMessageEvent, Event, EventTemplate, HandlerInfo, KIND_CHANNEL_MESSAGE,
+    KIND_HANDLER_INFO, finalize_event,
+};
 use openagents_spark::SparkWallet;
 use std::sync::Arc;
 use std::time::Duration;
@@ -179,7 +179,13 @@ impl ComputeClient {
         // If provider has a channel, use the channel-based flow (legacy)
         if let Some(ref channel_id) = provider.channel_id {
             return self
-                .request_inference_via_channel(provider, channel_id, prompt, max_tokens, budget_sats)
+                .request_inference_via_channel(
+                    provider,
+                    channel_id,
+                    prompt,
+                    max_tokens,
+                    budget_sats,
+                )
                 .await;
         }
 

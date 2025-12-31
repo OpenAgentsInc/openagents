@@ -25,10 +25,17 @@ fn status() -> Result<()> {
     println!("Checking authentication status...\n");
 
     // Check OpenAgents auth
-    println!("OpenAgents auth ({}):", auth::openagents_auth_path().display());
+    println!(
+        "OpenAgents auth ({}):",
+        auth::openagents_auth_path().display()
+    );
     match auth::check_openagents_auth() {
         auth::AuthStatus::Found { providers } => {
-            println!("  Found {} provider(s): {}", providers.len(), providers.join(", "));
+            println!(
+                "  Found {} provider(s): {}",
+                providers.len(),
+                providers.join(", ")
+            );
         }
         auth::AuthStatus::NotFound => {
             println!("  Not configured");
@@ -45,7 +52,11 @@ fn status() -> Result<()> {
     println!("OpenCode auth ({}):", auth::opencode_auth_path().display());
     match auth::check_opencode_auth() {
         auth::AuthStatus::Found { providers } => {
-            println!("  Found {} provider(s): {}", providers.len(), providers.join(", "));
+            println!(
+                "  Found {} provider(s): {}",
+                providers.len(),
+                providers.join(", ")
+            );
         }
         auth::AuthStatus::NotFound => {
             println!("  Not found");
@@ -77,7 +88,10 @@ fn import() -> Result<()> {
 
     match opencode_status {
         auth::AuthStatus::NotFound => {
-            println!("OpenCode auth not found at {}", auth::opencode_auth_path().display());
+            println!(
+                "OpenCode auth not found at {}",
+                auth::opencode_auth_path().display()
+            );
             println!("Please run 'opencode auth login' first to configure credentials.");
             return Ok(());
         }
@@ -94,11 +108,17 @@ fn import() -> Result<()> {
     // Copy the credentials
     match auth::copy_opencode_auth() {
         Ok(auth::AuthStatus::Copied { providers }) => {
-            println!("\nSuccessfully copied {} provider(s) to OpenAgents:", providers.len());
+            println!(
+                "\nSuccessfully copied {} provider(s) to OpenAgents:",
+                providers.len()
+            );
             for provider in &providers {
                 println!("  - {}", provider);
             }
-            println!("\nCredentials saved to: {}", auth::openagents_auth_path().display());
+            println!(
+                "\nCredentials saved to: {}",
+                auth::openagents_auth_path().display()
+            );
         }
         Ok(auth::AuthStatus::NotFound) => {
             println!("No credentials found to copy.");

@@ -3,11 +3,11 @@
 use std::process::Command;
 use std::sync::Arc;
 use tracing::info;
-use wgpui::{
-    Bounds, Component, EventContext, InputEvent, Key, Modifiers, NamedKey, PaintContext,
-    Scene, Size, TextSystem,
-};
 use wgpui::renderer::Renderer;
+use wgpui::{
+    Bounds, Component, EventContext, InputEvent, Key, Modifiers, NamedKey, PaintContext, Scene,
+    Size, TextSystem,
+};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -184,7 +184,9 @@ impl ApplicationHandler for App {
                         if current.is_some() {
                             state.window.set_fullscreen(None);
                         } else {
-                            state.window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+                            state
+                                .window
+                                .set_fullscreen(Some(Fullscreen::Borderless(None)));
                         }
                     }
                 }
@@ -212,7 +214,10 @@ impl ApplicationHandler for App {
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
                 };
 
-                let input_event = InputEvent::Scroll { dx: 0.0, dy: scroll_delta };
+                let input_event = InputEvent::Scroll {
+                    dx: 0.0,
+                    dy: scroll_delta,
+                };
 
                 let scale_factor = state.window.scale_factor() as f32;
                 let width = state.config.width as f32 / scale_factor;
@@ -243,7 +248,11 @@ impl ApplicationHandler for App {
 
                 state.window.request_redraw();
             }
-            WindowEvent::MouseInput { state: button_state, button, .. } => {
+            WindowEvent::MouseInput {
+                state: button_state,
+                button,
+                ..
+            } => {
                 let scale_factor = state.window.scale_factor() as f32;
                 let width = state.config.width as f32 / scale_factor;
                 let height = state.config.height as f32 / scale_factor;
@@ -260,9 +269,17 @@ impl ApplicationHandler for App {
                 };
 
                 let input_event = if button_state.is_pressed() {
-                    InputEvent::MouseDown { button: mouse_button, x, y }
+                    InputEvent::MouseDown {
+                        button: mouse_button,
+                        x,
+                        y,
+                    }
                 } else {
-                    InputEvent::MouseUp { button: mouse_button, x, y }
+                    InputEvent::MouseUp {
+                        button: mouse_button,
+                        x,
+                        y,
+                    }
                 };
 
                 let mut cx = EventContext::new();
@@ -289,15 +306,20 @@ impl ApplicationHandler for App {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                let mut encoder = state
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("Render Encoder"),
-                    });
+                let mut encoder =
+                    state
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Render Encoder"),
+                        });
 
                 let physical_width = state.config.width as f32;
                 let physical_height = state.config.height as f32;
-                state.renderer.resize(&state.queue, Size::new(physical_width, physical_height), scale_factor);
+                state.renderer.resize(
+                    &state.queue,
+                    Size::new(physical_width, physical_height),
+                    scale_factor,
+                );
 
                 if state.text_system.is_dirty() {
                     state.renderer.update_atlas(
@@ -308,7 +330,9 @@ impl ApplicationHandler for App {
                     state.text_system.mark_clean();
                 }
 
-                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
+                state
+                    .renderer
+                    .prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));
@@ -392,7 +416,11 @@ fn kill_existing_autopilots() {
     let my_pid = std::process::id();
 
     // Use pgrep to find autopilot processes, then kill them
-    if let Ok(output) = Command::new("pgrep").arg("-f").arg("target/debug/autopilot").output() {
+    if let Ok(output) = Command::new("pgrep")
+        .arg("-f")
+        .arg("target/debug/autopilot")
+        .output()
+    {
         let pids = String::from_utf8_lossy(&output.stdout);
         for line in pids.lines() {
             if let Ok(pid) = line.trim().parse::<u32>() {
@@ -404,7 +432,11 @@ fn kill_existing_autopilots() {
     }
 
     // Also check for release builds
-    if let Ok(output) = Command::new("pgrep").arg("-f").arg("target/release/autopilot").output() {
+    if let Ok(output) = Command::new("pgrep")
+        .arg("-f")
+        .arg("target/release/autopilot")
+        .output()
+    {
         let pids = String::from_utf8_lossy(&output.stdout);
         for line in pids.lines() {
             if let Ok(pid) = line.trim().parse::<u32>() {

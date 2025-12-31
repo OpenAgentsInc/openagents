@@ -18,9 +18,7 @@ pub enum GitafterCommands {
 
 pub fn run(cmd: GitafterCommands) -> anyhow::Result<()> {
     match cmd {
-        GitafterCommands::Repos => {
-            gitafter::run_with_route(Some("/"))
-        }
+        GitafterCommands::Repos => gitafter::run_with_route(Some("/")),
         GitafterCommands::Repo { id } => {
             let route = format!("/repo/{}", id);
             gitafter::run_with_route(Some(&route))

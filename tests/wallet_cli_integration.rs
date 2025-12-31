@@ -122,7 +122,8 @@ fn test_wallet_password_set_requires_unlock() {
 
     let mut locked_cmd = openagents_cmd(&workspace, &keychain);
     locked_cmd.arg("wallet").arg("whoami");
-    locked_cmd.assert()
+    locked_cmd
+        .assert()
         .failure()
         .stderr(predicate::str::contains("password protected"));
 
@@ -131,7 +132,8 @@ fn test_wallet_password_set_requires_unlock() {
         .env("OPENAGENTS_WALLET_PASSWORD", "hunter2")
         .arg("wallet")
         .arg("whoami");
-    unlocked_cmd.assert()
+    unlocked_cmd
+        .assert()
         .success()
         .stdout(predicate::str::contains("Wallet Information"));
 
@@ -160,7 +162,8 @@ fn test_wallet_profile_set_and_show() {
 
     let mut show_cmd = openagents_cmd(&workspace, &keychain);
     show_cmd.arg("wallet").arg("profile").arg("show");
-    show_cmd.assert()
+    show_cmd
+        .assert()
         .success()
         .stdout(predicate::str::contains("Alice"))
         .stdout(predicate::str::contains("Test user"));
@@ -180,45 +183,53 @@ fn test_wallet_contacts_add_list_remove() {
     let contact_two = "b".repeat(64);
 
     let mut add_cmd = openagents_cmd(&workspace, &keychain);
-    add_cmd.arg("wallet")
+    add_cmd
+        .arg("wallet")
         .arg("contacts")
         .arg("add")
         .arg(&contact_one)
         .arg("--name")
         .arg("Alice");
-    add_cmd.assert()
+    add_cmd
+        .assert()
         .success()
         .stdout(predicate::str::contains("Followed"));
 
     let mut add_cmd_two = openagents_cmd(&workspace, &keychain);
-    add_cmd_two.arg("wallet")
+    add_cmd_two
+        .arg("wallet")
         .arg("contacts")
         .arg("add")
         .arg(&contact_two);
-    add_cmd_two.assert()
+    add_cmd_two
+        .assert()
         .success()
         .stdout(predicate::str::contains("Followed"));
 
     let mut list_cmd = openagents_cmd(&workspace, &keychain);
     list_cmd.arg("wallet").arg("contacts").arg("list");
-    list_cmd.assert()
+    list_cmd
+        .assert()
         .success()
         .stdout(predicate::str::contains("Following: 2"))
         .stdout(predicate::str::contains(&contact_one))
         .stdout(predicate::str::contains(&contact_two));
 
     let mut remove_cmd = openagents_cmd(&workspace, &keychain);
-    remove_cmd.arg("wallet")
+    remove_cmd
+        .arg("wallet")
         .arg("contacts")
         .arg("remove")
         .arg(&contact_one);
-    remove_cmd.assert()
+    remove_cmd
+        .assert()
         .success()
         .stdout(predicate::str::contains("Unfollowed"));
 
     let mut list_after = openagents_cmd(&workspace, &keychain);
     list_after.arg("wallet").arg("contacts").arg("list");
-    list_after.assert()
+    list_after
+        .assert()
         .success()
         .stdout(predicate::str::contains("Following: 1"))
         .stdout(predicate::str::contains(&contact_two));
@@ -235,9 +246,7 @@ fn test_wallet_post_offline() {
     write_wallet_config(&workspace, &[]);
 
     let mut cmd = openagents_cmd(&workspace, &keychain);
-    cmd.arg("wallet")
-        .arg("post")
-        .arg("Hello Nostr");
+    cmd.arg("wallet").arg("post").arg("Hello Nostr");
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Publishing note"))
@@ -255,7 +264,8 @@ fn test_wallet_dm_send_offline() {
     init_wallet(&workspace, &keychain);
     write_wallet_config(&workspace, &[]);
 
-    let recipient_mnemonic = "legal winner thank year wave sausage worth useful legal winner thank yellow";
+    let recipient_mnemonic =
+        "legal winner thank year wave sausage worth useful legal winner thank yellow";
     let parsed = Mnemonic::parse(recipient_mnemonic).expect("parse recipient mnemonic");
     let recipient = UnifiedIdentity::from_mnemonic(parsed)
         .expect("derive recipient identity")

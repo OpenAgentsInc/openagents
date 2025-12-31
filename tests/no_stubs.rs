@@ -47,7 +47,10 @@ fn test_stub_scanner_rejects_unimplemented() {
     let output = run_stub_check(&["--files", file.to_str().expect("file path")]);
     let _ = fs::remove_file(&file);
 
-    assert!(!output.status.success(), "expected failure for unimplemented macro");
+    assert!(
+        !output.status.success(),
+        "expected failure for unimplemented macro"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Stub patterns detected"));
 }

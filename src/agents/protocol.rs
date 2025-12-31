@@ -25,8 +25,8 @@
 
 use crate::agents::RelayApi;
 use nostr::{
-    finalize_event, ChannelMessageEvent, ChannelMetadata, Event, EventTemplate, Keypair,
-    KIND_CHANNEL_CREATION, KIND_CHANNEL_MESSAGE,
+    ChannelMessageEvent, ChannelMetadata, Event, EventTemplate, KIND_CHANNEL_CREATION,
+    KIND_CHANNEL_MESSAGE, Keypair, finalize_event,
 };
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -72,8 +72,7 @@ pub const PROVIDER_MNEMONIC: &str =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
 /// Customer mnemonic (for testing - in production use secure storage)
-pub const CUSTOMER_MNEMONIC: &str =
-    "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
+pub const CUSTOMER_MNEMONIC: &str = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
 
 /// NIP-90 kind for text generation jobs
 pub const KIND_JOB_TEXT_GENERATION: u16 = 5050;
@@ -177,15 +176,9 @@ pub enum AgentMessage {
         payment_hash: Option<String>,
     },
     /// Customer confirms payment was sent
-    PaymentSent {
-        job_id: String,
-        payment_id: String,
-    },
+    PaymentSent { job_id: String, payment_id: String },
     /// Provider delivers job result
-    JobResult {
-        job_id: String,
-        result: String,
-    },
+    JobResult { job_id: String, result: String },
     /// Streaming chunk from provider (for real-time token delivery)
     StreamChunk {
         job_id: String,
@@ -243,7 +236,11 @@ pub async fn publish_job_request(
     // Build tags per NIP-90 spec
     let tags = vec![
         vec!["p".to_string(), provider_pubkey.to_string()],
-        vec!["param".to_string(), "max_tokens".to_string(), max_tokens.to_string()],
+        vec![
+            "param".to_string(),
+            "max_tokens".to_string(),
+            max_tokens.to_string(),
+        ],
     ];
 
     let template = EventTemplate {
@@ -290,7 +287,11 @@ pub async fn publish_job_feedback(
 
     // Add amount tag if provided
     if let Some(amount) = amount_msats {
-        tags.push(vec!["amount".to_string(), amount.to_string(), "msats".to_string()]);
+        tags.push(vec![
+            "amount".to_string(),
+            amount.to_string(),
+            "msats".to_string(),
+        ]);
     }
 
     // Content is the bolt11 invoice for payment-required status
@@ -393,13 +394,17 @@ pub fn parse_job_request(event: &Event) -> Option<(String, u32, Option<String>)>
     let prompt = event.content.clone();
 
     // Parse max_tokens from param tag
-    let max_tokens = event.tags.iter()
+    let max_tokens = event
+        .tags
+        .iter()
         .find(|t| t.len() >= 3 && t[0] == "param" && t[1] == "max_tokens")
         .and_then(|t| t[2].parse().ok())
         .unwrap_or(256);
 
     // Get target provider from p tag
-    let target_provider = event.tags.iter()
+    let target_provider = event
+        .tags
+        .iter()
         .find(|t| t.len() >= 2 && t[0] == "p")
         .map(|t| t[1].clone());
 
@@ -409,14 +414,20 @@ pub fn parse_job_request(event: &Event) -> Option<(String, u32, Option<String>)>
 /// Parse a NIP-90 job feedback event
 ///
 /// Returns (job_request_id, status, bolt11, amount_msats) if valid
-pub fn parse_job_feedback(event: &Event) -> Option<(String, JobStatus, Option<String>, Option<u64>)> {
+pub fn parse_job_feedback(
+    event: &Event,
+) -> Option<(String, JobStatus, Option<String>, Option<u64>)> {
     // Get job request ID from e tag
-    let job_id = event.tags.iter()
+    let job_id = event
+        .tags
+        .iter()
         .find(|t| t.len() >= 2 && t[0] == "e")
         .map(|t| t[1].clone())?;
 
     // Parse status from status tag
-    let status_str = event.tags.iter()
+    let status_str = event
+        .tags
+        .iter()
         .find(|t| t.len() >= 2 && t[0] == "status")
         .map(|t| t[1].as_str())?;
 
@@ -437,7 +448,9 @@ pub fn parse_job_feedback(event: &Event) -> Option<(String, JobStatus, Option<St
     };
 
     // Parse amount from amount tag
-    let amount = event.tags.iter()
+    let amount = event
+        .tags
+        .iter()
         .find(|t| t.len() >= 2 && t[0] == "amount")
         .and_then(|t| t[1].parse().ok());
 
@@ -449,7 +462,9 @@ pub fn parse_job_feedback(event: &Event) -> Option<(String, JobStatus, Option<St
 /// Returns (job_request_id, result_content) if valid
 pub fn parse_job_result(event: &Event) -> Option<(String, String)> {
     // Get job request ID from e tag
-    let job_id = event.tags.iter()
+    let job_id = event
+        .tags
+        .iter()
         .find(|t| t.len() >= 2 && t[0] == "e")
         .map(|t| t[1].clone())?;
 
@@ -529,7 +544,9 @@ pub async fn subscribe_to_channel(
         "#e": [channel_id]
     })];
 
-    let rx = relay.subscribe_with_channel(subscription_id, &filters).await?;
+    let rx = relay
+        .subscribe_with_channel(subscription_id, &filters)
+        .await?;
     Ok(rx)
 }
 
@@ -917,7 +934,11 @@ mod tests {
             kind: KIND_JOB_REQUEST_TEXT,
             tags: vec![
                 vec!["p".to_string(), "provider_pubkey".to_string()],
-                vec!["param".to_string(), "max_tokens".to_string(), "500".to_string()],
+                vec![
+                    "param".to_string(),
+                    "max_tokens".to_string(),
+                    "500".to_string(),
+                ],
             ],
             content: "What is the meaning of life?".to_string(),
             sig: "".to_string(),
@@ -942,9 +963,7 @@ mod tests {
             pubkey: "customer_pubkey".to_string(),
             created_at: 1234567890,
             kind: KIND_JOB_REQUEST_TEXT,
-            tags: vec![
-                vec!["p".to_string(), "provider_pubkey".to_string()],
-            ],
+            tags: vec![vec!["p".to_string(), "provider_pubkey".to_string()]],
             content: "Hello".to_string(),
             sig: "".to_string(),
         };
@@ -966,7 +985,11 @@ mod tests {
                 vec!["e".to_string(), "job_request_id".to_string()],
                 vec!["p".to_string(), "customer_pubkey".to_string()],
                 vec!["status".to_string(), "payment-required".to_string()],
-                vec!["amount".to_string(), "10000".to_string(), "msats".to_string()],
+                vec![
+                    "amount".to_string(),
+                    "10000".to_string(),
+                    "msats".to_string(),
+                ],
             ],
             content: "lnbcrt100n1pj...".to_string(),
             sig: "".to_string(),

@@ -135,7 +135,10 @@ pub fn run(cmd: AgentCommands) -> anyhow::Result<()> {
             relay,
         } => start_agent(&agent, single_tick, relay),
         AgentCommands::Stop { agent } => stop_agent(&agent),
-        AgentCommands::Fund { agent, show_address } => fund_agent(&agent, show_address),
+        AgentCommands::Fund {
+            agent,
+            show_address,
+        } => fund_agent(&agent, show_address),
         AgentCommands::Delete { agent, yes } => delete_agent(&agent, yes),
     }
 }
@@ -156,7 +159,10 @@ fn spawn_agent(
             "supervised" => AutonomyLevel::Supervised,
             "bounded" => AutonomyLevel::Bounded,
             "autonomous" => AutonomyLevel::Autonomous,
-            other => anyhow::bail!("Invalid autonomy level: {}. Use: supervised, bounded, or autonomous", other),
+            other => anyhow::bail!(
+                "Invalid autonomy level: {}. Use: supervised, bounded, or autonomous",
+                other
+            ),
         };
 
         let network = match network.to_lowercase().as_str() {
@@ -164,7 +170,10 @@ fn spawn_agent(
             "testnet" => NetworkConfig::Testnet,
             "signet" => NetworkConfig::Signet,
             "regtest" => NetworkConfig::Regtest,
-            other => anyhow::bail!("Invalid network: {}. Use: mainnet, testnet, signet, or regtest", other),
+            other => anyhow::bail!(
+                "Invalid network: {}. Use: mainnet, testnet, signet, or regtest",
+                other
+            ),
         };
 
         let request = SpawnRequest {
@@ -223,7 +232,10 @@ fn list_agents(verbose: bool, state_filter: Option<String>) -> anyhow::Result<()
             "dormant" => LifecycleState::Dormant,
             other => anyhow::bail!("Invalid state filter: {}", other),
         };
-        agents.into_iter().filter(|a| a.state == filter_state).collect()
+        agents
+            .into_iter()
+            .filter(|a| a.state == filter_state)
+            .collect()
     } else {
         agents
     };
@@ -254,7 +266,13 @@ fn list_agents(verbose: bool, state_filter: Option<String>) -> anyhow::Result<()
             println!("    Autonomy: {:?}", agent.profile.autonomy);
             println!();
         } else {
-            println!("  {} {} - {} ({:?})", state_icon, agent.name, truncate_npub(&agent.npub), agent.state);
+            println!(
+                "  {} {} - {} ({:?})",
+                state_icon,
+                agent.name,
+                truncate_npub(&agent.npub),
+                agent.state
+            );
         }
     }
 
@@ -293,19 +311,31 @@ fn show_status(identifier: &str, verbose: bool) -> anyhow::Result<()> {
         println!("Profile:");
         println!("  About:           {}", config.profile.about);
         println!("  Autonomy:        {:?}", config.profile.autonomy);
-        println!("  Capabilities:    {}", config.profile.capabilities.join(", "));
+        println!(
+            "  Capabilities:    {}",
+            config.profile.capabilities.join(", ")
+        );
         println!("  Version:         {}", config.profile.version);
         println!();
         println!("Schedule:");
-        println!("  Heartbeat:       {} seconds", config.schedule.heartbeat_seconds);
+        println!(
+            "  Heartbeat:       {} seconds",
+            config.schedule.heartbeat_seconds
+        );
         println!("  Triggers:        {}", config.schedule.triggers.join(", "));
         println!("  Active:          {}", config.schedule.active);
         println!();
         println!("Runway:");
         println!("  Low Balance:     {} days", config.runway.low_balance_days);
-        println!("  Hibernate:       {} sats", config.runway.hibernate_threshold_sats);
+        println!(
+            "  Hibernate:       {} sats",
+            config.runway.hibernate_threshold_sats
+        );
         println!("  Daily Burn:      {} sats", config.runway.daily_burn_sats);
-        println!("  Per-Tick Limit:  {} sats", config.runway.per_tick_limit_sats);
+        println!(
+            "  Per-Tick Limit:  {} sats",
+            config.runway.per_tick_limit_sats
+        );
         println!();
         println!("Relays:");
         for relay in &config.relays {
@@ -322,7 +352,10 @@ fn start_agent(identifier: &str, single_tick: bool, relay: Option<String>) -> an
 
     if config.state == LifecycleState::Dormant {
         println!("Agent {} is dormant (zero balance).", config.name);
-        println!("Fund it first to revive: openagents agent fund {}", config.name);
+        println!(
+            "Fund it first to revive: openagents agent fund {}",
+            config.name
+        );
         return Ok(());
     }
 
@@ -336,7 +369,9 @@ fn start_agent(identifier: &str, single_tick: bool, relay: Option<String>) -> an
     }
 
     let relay_url = relay.unwrap_or_else(|| {
-        config.relays.first()
+        config
+            .relays
+            .first()
             .cloned()
             .unwrap_or_else(|| "wss://relay.damus.io".to_string())
     });
@@ -346,7 +381,10 @@ fn start_agent(identifier: &str, single_tick: bool, relay: Option<String>) -> an
     // TODO: Actually start the agent runner
     // For now, just show what would happen
     println!("Agent runner not yet implemented.");
-    println!("Use 'cargo run --bin agent-runner -- --agent {}' when available.", identifier);
+    println!(
+        "Use 'cargo run --bin agent-runner -- --agent {}' when available.",
+        identifier
+    );
 
     Ok(())
 }
@@ -409,7 +447,7 @@ fn delete_agent(identifier: &str, yes: bool) -> anyhow::Result<()> {
 
 fn truncate_npub(npub: &str) -> String {
     if npub.len() > 20 {
-        format!("{}...{}", &npub[..10], &npub[npub.len()-8..])
+        format!("{}...{}", &npub[..10], &npub[npub.len() - 8..])
     } else {
         npub.to_string()
     }

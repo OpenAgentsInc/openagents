@@ -297,37 +297,54 @@ pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
         WalletCommands::Import { mnemonic } => wallet::cli::identity::import(mnemonic),
         WalletCommands::Export => wallet::cli::identity::export(),
         WalletCommands::Password(cmd) => match cmd {
-            PasswordCommands::Set { password, current_password } => {
-                wallet::cli::password::set(password, current_password)
-            }
+            PasswordCommands::Set {
+                password,
+                current_password,
+            } => wallet::cli::password::set(password, current_password),
         },
         WalletCommands::Identity(cmd) => match cmd {
             IdentityCommands::List => wallet::cli::identity::identities_list(),
             IdentityCommands::Current => wallet::cli::identity::identity_current(),
-            IdentityCommands::Create { name, show_mnemonic } => {
-                wallet::cli::identity::identity_create(name, show_mnemonic)
-            }
+            IdentityCommands::Create {
+                name,
+                show_mnemonic,
+            } => wallet::cli::identity::identity_create(name, show_mnemonic),
             IdentityCommands::Import { name, mnemonic } => {
                 wallet::cli::identity::identity_import(name, mnemonic)
             }
             IdentityCommands::Use { name } => wallet::cli::identity::identity_use(name),
-            IdentityCommands::Remove { name, yes } => wallet::cli::identity::identity_remove(name, yes),
+            IdentityCommands::Remove { name, yes } => {
+                wallet::cli::identity::identity_remove(name, yes)
+            }
         },
         WalletCommands::Whoami => wallet::cli::identity::whoami(),
         WalletCommands::Balance => wallet::cli::bitcoin::balance(),
         WalletCommands::Status => wallet::cli::bitcoin::status(),
         WalletCommands::Gui => wallet::gui::run_gui(),
-        WalletCommands::Receive { amount, expiry, qr, copy } => {
-            wallet::cli::bitcoin::receive(amount, qr, copy, expiry)
-        }
+        WalletCommands::Receive {
+            amount,
+            expiry,
+            qr,
+            copy,
+        } => wallet::cli::bitcoin::receive(amount, qr, copy, expiry),
         WalletCommands::Notify => wallet::cli::bitcoin::notify(),
-        WalletCommands::Send { address, amount, yes, qr, payee } => {
-            wallet::cli::bitcoin::send(address, amount, yes, qr, payee)
-        }
-        WalletCommands::Retry { payment_id, last, yes } => {
-            wallet::cli::bitcoin::retry(payment_id, last, yes)
-        }
-        WalletCommands::History { limit, format, output } => {
+        WalletCommands::Send {
+            address,
+            amount,
+            yes,
+            qr,
+            payee,
+        } => wallet::cli::bitcoin::send(address, amount, yes, qr, payee),
+        WalletCommands::Retry {
+            payment_id,
+            last,
+            yes,
+        } => wallet::cli::bitcoin::retry(payment_id, last, yes),
+        WalletCommands::History {
+            limit,
+            format,
+            output,
+        } => {
             let format = wallet::cli::bitcoin::HistoryFormat::parse(&format)?;
             wallet::cli::bitcoin::history(limit, format, output)
         }

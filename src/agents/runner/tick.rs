@@ -12,19 +12,19 @@ use super::state::StateManager;
 use super::trajectory::TrajectoryPublisher;
 use crate::agents::SharedRelay;
 use agent::{LifecycleManager, LifecycleState, RunwayAnalysis};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use bech32::{Bech32, Hrp};
 use bitcoin::secp256k1::PublicKey;
 use compute::domain::UnifiedIdentity;
 use nostr::nip_sa::{
-    AgentStateContent, TickAction as NipSaTickAction, TickRequest, TickResult as NipSaTickResult,
-    TickResultContent, TickStatus, TickTrigger as NipSaTickTrigger, KIND_TICK_REQUEST,
-    KIND_TICK_RESULT,
+    AgentStateContent, KIND_TICK_REQUEST, KIND_TICK_RESULT, TickAction as NipSaTickAction,
+    TickRequest, TickResult as NipSaTickResult, TickResultContent, TickStatus,
+    TickTrigger as NipSaTickTrigger,
 };
 use nostr::{
-    decode, decrypt, decrypt_v2, encrypt, encrypt_v2, finalize_event, ChannelMessageEvent, Event,
-    EventTemplate, KIND_CHANNEL_MESSAGE, KIND_DM_RELAY_LIST, Nip19Entity,
-    RELAY_LIST_METADATA_KIND, ZAP_REQUEST_KIND,
+    ChannelMessageEvent, Event, EventTemplate, KIND_CHANNEL_MESSAGE, KIND_DM_RELAY_LIST,
+    Nip19Entity, RELAY_LIST_METADATA_KIND, ZAP_REQUEST_KIND, decode, decrypt, decrypt_v2, encrypt,
+    encrypt_v2, finalize_event,
 };
 use reqwest::{Client, Url};
 use serde::Deserialize;
@@ -97,7 +97,10 @@ pub enum TickAction {
     /// Update a goal
     UpdateGoal { goal_id: String, progress: f64 },
     /// Add a memory
-    AddMemory { memory_type: String, content: String },
+    AddMemory {
+        memory_type: String,
+        content: String,
+    },
     /// No action taken
     None,
 }
@@ -136,8 +139,7 @@ fn parse_recipient_pubkey(value: &str) -> Result<RecipientPubkey> {
             Err(e) => Err(anyhow!("Invalid npub: {}", e)),
         }
     } else {
-        let bytes =
-            hex::decode(trimmed).map_err(|e| anyhow!("Invalid pubkey hex: {}", e))?;
+        let bytes = hex::decode(trimmed).map_err(|e| anyhow!("Invalid pubkey hex: {}", e))?;
         match bytes.len() {
             32 => {
                 let mut compressed = Vec::with_capacity(33);
@@ -229,13 +231,19 @@ impl TickAction {
                     "encryption": "nip44"
                 })
             }
-            TickAction::ChannelMessage { channel_id, content } => {
+            TickAction::ChannelMessage {
+                channel_id,
+                content,
+            } => {
                 serde_json::json!({
                     "channel_id": channel_id,
                     "content_preview": content.chars().take(100).collect::<String>()
                 })
             }
-            TickAction::Zap { target, amount_sats } => {
+            TickAction::Zap {
+                target,
+                amount_sats,
+            } => {
                 serde_json::json!({
                     "target": target,
                     "amount_sats": amount_sats
@@ -263,7 +271,10 @@ impl TickAction {
                     "progress": progress
                 })
             }
-            TickAction::AddMemory { memory_type, content } => {
+            TickAction::AddMemory {
+                memory_type,
+                content,
+            } => {
                 serde_json::json!({
                     "memory_type": memory_type,
                     "content_preview": content.chars().take(100).collect::<String>()
@@ -327,13 +338,21 @@ impl TickExecutor {
         tracing::info!("[{}] Starting tick #{}", self.agent_name, tick_number);
 
         if let Err(e) = self.compute_client.refresh_wallet_balance(&mut state).await {
-            tracing::warn!("[{}] Failed to refresh wallet balance: {}", self.agent_name, e);
+            tracing::warn!(
+                "[{}] Failed to refresh wallet balance: {}",
+                self.agent_name,
+                e
+            );
         }
 
         let tick_request_id = match self.publish_tick_request(&trigger).await {
             Ok(id) => Some(id),
             Err(e) => {
-                tracing::warn!("[{}] Failed to publish tick request: {}", self.agent_name, e);
+                tracing::warn!(
+                    "[{}] Failed to publish tick request: {}",
+                    self.agent_name,
+                    e
+                );
                 None
             }
         };
@@ -343,10 +362,7 @@ impl TickExecutor {
         let runway = self.lifecycle_manager.analyze_runway(balance_sats);
 
         // Update lifecycle state based on balance
-        if let Err(e) = self
-            .lifecycle_manager
-            .update_from_balance(balance_sats)
-        {
+        if let Err(e) = self.lifecycle_manager.update_from_balance(balance_sats) {
             tracing::warn!("[{}] Lifecycle transition error: {}", self.agent_name, e);
         }
 
@@ -375,11 +391,7 @@ impl TickExecutor {
                     )
                     .await
                 {
-                    tracing::warn!(
-                        "[{}] Failed to publish tick result: {}",
-                        self.agent_name,
-                        e
-                    );
+                    tracing::warn!("[{}] Failed to publish tick result: {}", self.agent_name, e);
                 }
             }
 
@@ -402,7 +414,11 @@ impl TickExecutor {
             .start_session(&tick_id, "claude")
             .await
         {
-            tracing::warn!("[{}] Failed to start trajectory session: {}", self.agent_name, e);
+            tracing::warn!(
+                "[{}] Failed to start trajectory session: {}",
+                self.agent_name,
+                e
+            );
         }
 
         // 4. Gather observations
@@ -414,7 +430,11 @@ impl TickExecutor {
         );
 
         // Record observations in trajectory
-        if let Err(e) = self.trajectory_publisher.record_observations(&observations).await {
+        if let Err(e) = self
+            .trajectory_publisher
+            .record_observations(&observations)
+            .await
+        {
             tracing::warn!("[{}] Failed to record observations: {}", self.agent_name, e);
         }
 
@@ -451,11 +471,7 @@ impl TickExecutor {
                     )
                     .await
                 {
-                    tracing::warn!(
-                        "[{}] Failed to publish tick result: {}",
-                        self.agent_name,
-                        e
-                    );
+                    tracing::warn!("[{}] Failed to publish tick result: {}", self.agent_name, e);
                 }
             }
 
@@ -580,7 +596,11 @@ impl TickExecutor {
         // Add memory of this tick
         state.memory.push(nostr::nip_sa::MemoryEntry::new(
             "tick",
-            format!("Tick #{}: {}", tick_number, reasoning.chars().take(100).collect::<String>()),
+            format!(
+                "Tick #{}: {}",
+                tick_number,
+                reasoning.chars().take(100).collect::<String>()
+            ),
         ));
 
         // 11. Publish updated state
@@ -589,15 +609,15 @@ impl TickExecutor {
         // 12. End trajectory session and get hash
         let trajectory_hash = match self.trajectory_publisher.end_session().await {
             Ok(hash) => {
-                tracing::debug!(
-                    "[{}] Trajectory hash: {}",
-                    self.agent_name,
-                    &hash[..16]
-                );
+                tracing::debug!("[{}] Trajectory hash: {}", self.agent_name, &hash[..16]);
                 Some(hash)
             }
             Err(e) => {
-                tracing::warn!("[{}] Failed to end trajectory session: {}", self.agent_name, e);
+                tracing::warn!(
+                    "[{}] Failed to end trajectory session: {}",
+                    self.agent_name,
+                    e
+                );
                 None
             }
         };
@@ -624,11 +644,7 @@ impl TickExecutor {
                 )
                 .await
             {
-                tracing::warn!(
-                    "[{}] Failed to publish tick result: {}",
-                    self.agent_name,
-                    e
-                );
+                tracing::warn!("[{}] Failed to publish tick result: {}", self.agent_name, e);
             }
         }
 
@@ -679,7 +695,8 @@ impl TickExecutor {
 
             while std::time::Instant::now() < deadline {
                 let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-                match tokio::time::timeout(remaining.max(Duration::from_millis(100)), rx.recv()).await
+                match tokio::time::timeout(remaining.max(Duration::from_millis(100)), rx.recv())
+                    .await
                 {
                     Ok(Some(event)) => {
                         if !observations.iter().any(|e| e.id == event.id) {
@@ -737,12 +754,9 @@ impl TickExecutor {
 
         while Instant::now() < deadline {
             let remaining = deadline.saturating_duration_since(Instant::now());
-            match tokio::time::timeout(remaining.max(Duration::from_millis(100)), rx.recv()).await
-            {
+            match tokio::time::timeout(remaining.max(Duration::from_millis(100)), rx.recv()).await {
                 Ok(Some(event)) => {
-                    if event.kind != RELAY_LIST_METADATA_KIND
-                        && event.kind != KIND_DM_RELAY_LIST
-                    {
+                    if event.kind != RELAY_LIST_METADATA_KIND && event.kind != KIND_DM_RELAY_LIST {
                         continue;
                     }
                     latest_by_key
@@ -802,9 +816,7 @@ impl TickExecutor {
             TickTrigger::Heartbeat => prompt.push_str("Scheduled heartbeat tick.\n"),
             TickTrigger::Mention(_) => prompt.push_str("Someone mentioned you.\n"),
             TickTrigger::DirectMessage(_) => prompt.push_str("You received a direct message.\n"),
-            TickTrigger::ChannelMessage(_) => {
-                prompt.push_str("You received a channel message.\n")
-            }
+            TickTrigger::ChannelMessage(_) => prompt.push_str("You received a channel message.\n"),
             TickTrigger::Zap(_) => prompt.push_str("You received a zap (Bitcoin payment).\n"),
         }
         prompt.push('\n');
@@ -948,7 +960,10 @@ impl TickExecutor {
                 let mut parts = payload.split('|').map(str::trim);
                 let recipient = parts.next().unwrap_or("");
                 let amount = parts.next().unwrap_or("");
-                let memo = parts.next().map(|value| value.to_string()).filter(|s| !s.is_empty());
+                let memo = parts
+                    .next()
+                    .map(|value| value.to_string())
+                    .filter(|s| !s.is_empty());
 
                 if !recipient.is_empty() {
                     if let Ok(amount_sats) = amount.parse::<u64>() {
@@ -1056,14 +1071,19 @@ impl TickExecutor {
         let peer_pubkey = self.dm_peer_pubkey(event)?;
         let compressed = xonly_hex_to_compressed(&peer_pubkey).ok()?;
 
-        if let Ok(plaintext) = decrypt(self.identity.private_key_bytes(), &compressed, &event.content)
-        {
+        if let Ok(plaintext) = decrypt(
+            self.identity.private_key_bytes(),
+            &compressed,
+            &event.content,
+        ) {
             return Some(plaintext);
         }
 
-        if let Ok(plaintext) =
-            decrypt_v2(self.identity.private_key_bytes(), &compressed, &event.content)
-        {
+        if let Ok(plaintext) = decrypt_v2(
+            self.identity.private_key_bytes(),
+            &compressed,
+            &event.content,
+        ) {
             return Some(plaintext);
         }
 
@@ -1104,7 +1124,10 @@ impl TickExecutor {
                     serde_json::json!(content.chars().take(100).collect::<String>()),
                 )
                 .with_metadata("encryption", serde_json::json!("nip44")),
-            TickAction::ChannelMessage { channel_id, content } => {
+            TickAction::ChannelMessage {
+                channel_id,
+                content,
+            } => {
                 let mut action = NipSaTickAction::new("channel_message").with_metadata(
                     "content_preview",
                     serde_json::json!(content.chars().take(100).collect::<String>()),
@@ -1120,8 +1143,10 @@ impl TickExecutor {
             } => NipSaTickAction::new("zap")
                 .with_metadata("target", serde_json::json!(target))
                 .with_metadata("amount_sats", serde_json::json!(amount_sats)),
-            TickAction::PayInvoice { bolt11 } => NipSaTickAction::new("pay_invoice")
-                .with_metadata("bolt11_preview", serde_json::json!(&bolt11[..16.min(bolt11.len())])),
+            TickAction::PayInvoice { bolt11 } => NipSaTickAction::new("pay_invoice").with_metadata(
+                "bolt11_preview",
+                serde_json::json!(&bolt11[..16.min(bolt11.len())]),
+            ),
             TickAction::RequestPayment {
                 recipient,
                 amount_sats,
@@ -1195,13 +1220,16 @@ impl TickExecutor {
             .map(|action| self.to_nip_sa_action(action))
             .collect::<Vec<_>>();
 
-        let content =
-            TickResultContent::new(tokens_in, tokens_out, 0.0, goals_updated).with_actions(
-                nip_actions,
-            );
+        let content = TickResultContent::new(tokens_in, tokens_out, 0.0, goals_updated)
+            .with_actions(nip_actions);
 
-        let mut result =
-            NipSaTickResult::new(request_id, self.pubkey.clone(), status, duration_ms, content);
+        let mut result = NipSaTickResult::new(
+            request_id,
+            self.pubkey.clone(),
+            status,
+            duration_ms,
+            content,
+        );
 
         if let Some(hash) = trajectory_hash {
             result = result.with_trajectory_hash(hash);
@@ -1246,8 +1274,7 @@ impl TickExecutor {
 
         while Instant::now() < deadline {
             let remaining = deadline.saturating_duration_since(Instant::now());
-            match tokio::time::timeout(remaining.max(Duration::from_millis(100)), rx.recv()).await
-            {
+            match tokio::time::timeout(remaining.max(Duration::from_millis(100)), rx.recv()).await {
                 Ok(Some(event)) => events.push(event),
                 Ok(None) => break,
                 Err(_) => break,
@@ -1386,12 +1413,7 @@ impl TickExecutor {
                 self.execute_post(content).await?;
             }
             TickAction::DirectMessage { recipient, content } => {
-                tracing::info!(
-                    "[{}] DM to {}: {}",
-                    self.agent_name,
-                    recipient,
-                    content
-                );
+                tracing::info!("[{}] DM to {}: {}", self.agent_name, recipient, content);
                 self.execute_dm(recipient, content).await?;
             }
             TickAction::DirectMessageNip44 { recipient, content } => {
@@ -1403,15 +1425,18 @@ impl TickExecutor {
                 );
                 self.execute_dm_nip44(recipient, content).await?;
             }
-            TickAction::ChannelMessage { channel_id, content } => {
-                tracing::info!(
-                    "[{}] Channel message: {}",
-                    self.agent_name,
-                    content
-                );
-                self.execute_channel_message(channel_id.as_deref(), content).await?;
+            TickAction::ChannelMessage {
+                channel_id,
+                content,
+            } => {
+                tracing::info!("[{}] Channel message: {}", self.agent_name, content);
+                self.execute_channel_message(channel_id.as_deref(), content)
+                    .await?;
             }
-            TickAction::Zap { target, amount_sats } => {
+            TickAction::Zap {
+                target,
+                amount_sats,
+            } => {
                 tracing::info!(
                     "[{}] Zapping {} with {} sats",
                     self.agent_name,
@@ -1557,16 +1582,15 @@ impl TickExecutor {
             return Err(anyhow!("Zap amount must be greater than zero"));
         }
 
-        let (recipient_pubkey, zapped_event) = if target.starts_with("note")
-            || target.starts_with("nevent")
-        {
-            let event_id = parse_note_reference(target)?;
-            let event = self.fetch_event_by_id(&event_id).await?;
-            (event.pubkey.clone(), Some(event))
-        } else {
-            let pubkey = parse_recipient_pubkey(target)?.xonly_hex;
-            (pubkey, None)
-        };
+        let (recipient_pubkey, zapped_event) =
+            if target.starts_with("note") || target.starts_with("nevent") {
+                let event_id = parse_note_reference(target)?;
+                let event = self.fetch_event_by_id(&event_id).await?;
+                (event.pubkey.clone(), Some(event))
+            } else {
+                let pubkey = parse_recipient_pubkey(target)?.xonly_hex;
+                (pubkey, None)
+            };
 
         let profile = self.fetch_profile_event(&recipient_pubkey).await?;
         let lnurl_source = lnurl_from_profile(&profile)?;
@@ -1772,8 +1796,8 @@ async fn request_zap_invoice(
     zap_request: &Event,
     lnurl: &str,
 ) -> Result<String> {
-    let mut url =
-        Url::parse(callback).map_err(|e| anyhow!("Invalid LNURL callback '{}': {}", callback, e))?;
+    let mut url = Url::parse(callback)
+        .map_err(|e| anyhow!("Invalid LNURL callback '{}': {}", callback, e))?;
     let zap_json = serde_json::to_string(zap_request)
         .map_err(|e| anyhow!("Failed to encode zap request: {}", e))?;
 
@@ -1824,8 +1848,7 @@ mod tests {
     use super::*;
     use bitcoin::secp256k1::{Secp256k1, SecretKey};
 
-    const TEST_MNEMONIC_1: &str =
-        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const TEST_MNEMONIC_1: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
     const TEST_MNEMONIC_2: &str =
         "legal winner thank year wave sausage worth useful legal winner thank yellow";
 
@@ -1867,9 +1890,12 @@ mod tests {
         let secp = Secp256k1::new();
         let sender_secret = SecretKey::from_slice(&sender.private_key).expect("sender secret");
         let sender_pubkey = PublicKey::from_secret_key(&secp, &sender_secret);
-        let decrypted =
-            decrypt_v2(&recipient.private_key, &sender_pubkey.serialize(), &encrypted)
-                .expect("decrypt nip44");
+        let decrypted = decrypt_v2(
+            &recipient.private_key,
+            &sender_pubkey.serialize(),
+            &encrypted,
+        )
+        .expect("decrypt nip44");
 
         assert_eq!(decrypted, "hello nip44");
     }

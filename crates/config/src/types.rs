@@ -437,7 +437,6 @@ pub struct CloudConfig {
     pub api_key: Option<String>,
 }
 
-
 /// Main project configuration
 ///
 /// CONF-001..005: Core project settings

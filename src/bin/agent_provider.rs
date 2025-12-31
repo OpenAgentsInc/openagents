@@ -14,15 +14,15 @@
 use clap::Parser;
 use compute::backends::{BackendRegistry, CompletionRequest};
 use nostr::{
-    derive_keypair, finalize_event, Event, EventTemplate, HandlerInfo, HandlerMetadata,
-    HandlerType, Keypair, PricingInfo, KIND_DM_RELAY_LIST, KIND_HANDLER_INFO,
-    RELAY_LIST_METADATA_KIND,
+    Event, EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, KIND_DM_RELAY_LIST,
+    KIND_HANDLER_INFO, Keypair, PricingInfo, RELAY_LIST_METADATA_KIND, derive_keypair,
+    finalize_event,
 };
 use openagents::agents::{
-    create_channel, now, parse_agent_message, parse_job_request, publish_job_feedback,
-    publish_job_result, send_channel_message, subscribe_job_requests, subscribe_to_channel,
-    AgentMessage, JobStatus, Network as AgentNetwork, RelayApi, RelayHub, SharedRelay,
-    DEFAULT_RELAY, KIND_JOB_REQUEST_TEXT, KIND_JOB_RESULT_TEXT, PROVIDER_MNEMONIC,
+    AgentMessage, DEFAULT_RELAY, JobStatus, KIND_JOB_REQUEST_TEXT, KIND_JOB_RESULT_TEXT,
+    Network as AgentNetwork, PROVIDER_MNEMONIC, RelayApi, RelayHub, SharedRelay, create_channel,
+    now, parse_agent_message, parse_job_request, publish_job_feedback, publish_job_result,
+    send_channel_message, subscribe_job_requests, subscribe_to_channel,
 };
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use std::collections::{HashMap, HashSet};
@@ -34,7 +34,9 @@ use uuid::Uuid;
 
 #[derive(Parser)]
 #[command(name = "agent-provider")]
-#[command(about = "NIP-90 Provider Agent - provides compute services via direct events or optional NIP-28 channels")]
+#[command(
+    about = "NIP-90 Provider Agent - provides compute services via direct events or optional NIP-28 channels"
+)]
 struct Args {
     /// Create a new NIP-28 channel for coordination (optional)
     #[arg(long)]
@@ -159,9 +161,7 @@ async fn watch_relay_list_updates(relay_hub: Arc<RelayHub>, pubkey_hex: String) 
     let mut latest_seen = 0_u64;
 
     while let Some(event) = rx.recv().await {
-        if event.kind != RELAY_LIST_METADATA_KIND
-            && event.kind != KIND_DM_RELAY_LIST
-        {
+        if event.kind != RELAY_LIST_METADATA_KIND && event.kind != KIND_DM_RELAY_LIST {
             continue;
         }
         if event.created_at < latest_seen {
@@ -244,7 +244,11 @@ async fn run_inference(
                 Ok(response) => {
                     println!(
                         "[PROVIDER] Inference complete ({} tokens)",
-                        response.usage.as_ref().map(|u| u.completion_tokens).unwrap_or(0)
+                        response
+                            .usage
+                            .as_ref()
+                            .map(|u| u.completion_tokens)
+                            .unwrap_or(0)
                     );
                     Ok(response.text)
                 }
@@ -294,10 +298,12 @@ async fn main() -> Result<()> {
     }
 
     // Determine which model to use
-    let model_to_use = args
-        .model
-        .clone()
-        .unwrap_or_else(|| available_models.first().cloned().unwrap_or_else(|| "llama3.2".to_string()));
+    let model_to_use = args.model.clone().unwrap_or_else(|| {
+        available_models
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "llama3.2".to_string())
+    });
     println!("[PROVIDER] Will use model: {}", model_to_use);
 
     // Initialize wallet (optional)
@@ -324,10 +330,7 @@ async fn main() -> Result<()> {
     } else {
         args.relays.clone()
     };
-    println!(
-        "[PROVIDER] Connecting to relays: {}",
-        relay_urls.join(", ")
-    );
+    println!("[PROVIDER] Connecting to relays: {}", relay_urls.join(", "));
     let relay_hub = Arc::new(RelayHub::new(relay_urls)?);
     relay_hub.connect_all().await?;
     println!("[PROVIDER] Connected to relays");
