@@ -108,6 +108,10 @@ pub(crate) struct HudLayout {
     pub(crate) start_form_bounds: Bounds,
     pub(crate) start_prompt_bounds: Bounds,
     pub(crate) start_button_bounds: Bounds,
+    pub(crate) share_button_bounds: Bounds,
+    pub(crate) share_panel_bounds: Bounds,
+    pub(crate) copy_url_bounds: Bounds,
+    pub(crate) copy_embed_bounds: Bounds,
     pub(crate) status_bounds: Bounds,
     pub(crate) settings_public_bounds: Bounds,
     pub(crate) settings_embed_bounds: Bounds,
@@ -116,6 +120,15 @@ pub(crate) struct HudLayout {
 #[derive(Clone, Copy)]
 pub(crate) enum HudAction {
     StartAutopilot,
+    ToggleSharePanel,
+    CopyShareUrl,
+    CopyEmbedCode,
+}
+
+#[derive(Clone, Copy)]
+enum ShareNotice {
+    Url,
+    Embed,
 }
 
 pub(crate) struct HudUi {
@@ -131,14 +144,25 @@ pub(crate) struct HudUi {
     pub(crate) settings: HudSettingsData,
     pub(crate) start_prompt_input: TextInput,
     pub(crate) start_button: Button,
+    pub(crate) share_button: Button,
+    pub(crate) copy_url_button: Button,
+    pub(crate) copy_embed_button: Button,
+    pub(crate) share_panel_open: bool,
+    pub(crate) share_url_copied: bool,
+    pub(crate) embed_code_copied: bool,
+    pub(crate) share_url_timer: Option<i32>,
+    pub(crate) embed_code_timer: Option<i32>,
     pub(crate) event_ctx: EventContext,
-    start_actions: Rc<RefCell<Vec<HudAction>>>,
+    actions: Rc<RefCell<Vec<HudAction>>>,
 }
 
 impl HudUi {
     pub(crate) fn new() -> Self {
-        let start_actions = Rc::new(RefCell::new(Vec::new()));
-        let start_actions_handle = start_actions.clone();
+        let actions = Rc::new(RefCell::new(Vec::new()));
+        let start_actions_handle = actions.clone();
+        let share_actions_handle = actions.clone();
+        let copy_url_actions_handle = actions.clone();
+        let copy_embed_actions_handle = actions.clone();
         let start_button = Button::new("Start Autopilot")
             .variant(ButtonVariant::Primary)
             .padding(12.0, 5.0)
@@ -146,6 +170,30 @@ impl HudUi {
                 start_actions_handle
                     .borrow_mut()
                     .push(HudAction::StartAutopilot);
+            });
+        let share_button = Button::new("Share")
+            .variant(ButtonVariant::Secondary)
+            .padding(10.0, 4.0)
+            .on_click(move || {
+                share_actions_handle
+                    .borrow_mut()
+                    .push(HudAction::ToggleSharePanel);
+            });
+        let copy_url_button = Button::new("Copy URL")
+            .variant(ButtonVariant::Secondary)
+            .padding(10.0, 4.0)
+            .on_click(move || {
+                copy_url_actions_handle
+                    .borrow_mut()
+                    .push(HudAction::CopyShareUrl);
+            });
+        let copy_embed_button = Button::new("Copy Embed")
+            .variant(ButtonVariant::Secondary)
+            .padding(10.0, 4.0)
+            .on_click(move || {
+                copy_embed_actions_handle
+                    .borrow_mut()
+                    .push(HudAction::CopyEmbedCode);
             });
         let mut status_bar = StatusBar::new();
         status_bar.set_items(vec![
@@ -172,8 +220,16 @@ impl HudUi {
                 .font_size(11.0)
                 .padding(8.0, 5.0),
             start_button,
+            share_button,
+            copy_url_button,
+            copy_embed_button,
+            share_panel_open: false,
+            share_url_copied: false,
+            embed_code_copied: false,
+            share_url_timer: None,
+            embed_code_timer: None,
             event_ctx: EventContext::new(),
-            start_actions,
+            actions,
         }
     }
 
@@ -182,31 +238,55 @@ impl HudUi {
         event: &InputEvent,
         layout: &HudLayout,
         show_start: bool,
+        show_share: bool,
     ) -> EventResult {
-        if !show_start {
-            self.start_prompt_input.blur();
-            return EventResult::Ignored;
+        let mut handled = EventResult::Ignored;
+
+        if show_share {
+            handled = merge_event_result(
+                handled,
+                self.share_button
+                    .event(event, layout.share_button_bounds, &mut self.event_ctx),
+            );
+
+            if self.share_panel_open {
+                handled = merge_event_result(
+                    handled,
+                    self.copy_url_button
+                        .event(event, layout.copy_url_bounds, &mut self.event_ctx),
+                );
+                handled = merge_event_result(
+                    handled,
+                    self.copy_embed_button
+                        .event(event, layout.copy_embed_bounds, &mut self.event_ctx),
+                );
+            }
+        } else {
+            self.share_panel_open = false;
         }
 
-        let mut handled = EventResult::Ignored;
-        handled = merge_event_result(
-            handled,
-            self.start_prompt_input.event(
-                event,
-                layout.start_prompt_bounds,
-                &mut self.event_ctx,
-            ),
-        );
-        handled = merge_event_result(
-            handled,
-            self.start_button
-                .event(event, layout.start_button_bounds, &mut self.event_ctx),
-        );
+        if show_start {
+            handled = merge_event_result(
+                handled,
+                self.start_prompt_input.event(
+                    event,
+                    layout.start_prompt_bounds,
+                    &mut self.event_ctx,
+                ),
+            );
+            handled = merge_event_result(
+                handled,
+                self.start_button
+                    .event(event, layout.start_button_bounds, &mut self.event_ctx),
+            );
+        } else {
+            self.start_prompt_input.blur();
+        }
         handled
     }
 
     pub(crate) fn take_actions(&self) -> Vec<HudAction> {
-        let mut actions = self.start_actions.borrow_mut();
+        let mut actions = self.actions.borrow_mut();
         std::mem::take(&mut *actions)
     }
 }
@@ -834,13 +914,22 @@ pub(crate) fn dispatch_hud_event(state: &Rc<RefCell<AppState>>, event: InputEven
                 .map(|ctx| ctx.is_owner && ctx.status == "idle")
                 .unwrap_or(false)
     };
+    let show_share = {
+        let guard = state.borrow();
+        guard.view == AppView::RepoView
+            && guard
+                .hud_context
+                .as_ref()
+                .map(|ctx| ctx.is_owner && ctx.is_public)
+                .unwrap_or(false)
+    };
 
     let (handled, actions) = {
         let mut guard = state.borrow_mut();
         let layout = guard.hud_layout;
         let handled = guard
             .hud_ui
-            .handle_event(&event, &layout, show_start_form);
+            .handle_event(&event, &layout, show_start_form, show_share);
         let actions = guard.hud_ui.take_actions();
         (handled, actions)
     };
@@ -905,8 +994,116 @@ fn queue_hud_actions(state: Rc<RefCell<AppState>>, actions: Vec<HudAction>) {
                     }
                 });
             }
+            HudAction::ToggleSharePanel => {
+                let mut guard = state.borrow_mut();
+                guard.hud_ui.share_panel_open = !guard.hud_ui.share_panel_open;
+                if !guard.hud_ui.share_panel_open {
+                    guard.hud_ui.share_url_copied = false;
+                    guard.hud_ui.embed_code_copied = false;
+                }
+            }
+            HudAction::CopyShareUrl => {
+                let share_url = {
+                    let guard = state.borrow();
+                    guard.hud_context.as_ref().map(hud_share_url)
+                };
+                if let Some(share_url) = share_url {
+                    let state_clone = state.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if copy_to_clipboard(&share_url).await {
+                            set_share_notice(state_clone, ShareNotice::Url);
+                        }
+                    });
+                }
+            }
+            HudAction::CopyEmbedCode => {
+                let embed_code = {
+                    let guard = state.borrow();
+                    guard.hud_context.as_ref().map(hud_embed_code)
+                };
+                if let Some(embed_code) = embed_code {
+                    let state_clone = state.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if copy_to_clipboard(&embed_code).await {
+                            set_share_notice(state_clone, ShareNotice::Embed);
+                        }
+                    });
+                }
+            }
         }
     }
+}
+
+fn hud_share_url(ctx: &HudContext) -> String {
+    format!("openagents.com/hud/@{}/{}", ctx.username, ctx.repo)
+}
+
+fn hud_embed_code(ctx: &HudContext) -> String {
+    format!(
+        "<iframe src=\"openagents.com/embed/@{}/{}\">",
+        ctx.username, ctx.repo
+    )
+}
+
+async fn copy_to_clipboard(text: &str) -> bool {
+    let window = match web_sys::window() {
+        Some(window) => window,
+        None => return false,
+    };
+    let clipboard = window.navigator().clipboard();
+    let promise = clipboard.write_text(text);
+    JsFuture::from(promise).await.is_ok()
+}
+
+fn set_share_notice(state: Rc<RefCell<AppState>>, notice: ShareNotice) {
+    let window = match web_sys::window() {
+        Some(window) => window,
+        None => return,
+    };
+
+    {
+        let mut guard = state.borrow_mut();
+        match notice {
+            ShareNotice::Url => {
+                guard.hud_ui.share_url_copied = true;
+                if let Some(id) = guard.hud_ui.share_url_timer.take() {
+                    window.clear_timeout_with_handle(id);
+                }
+            }
+            ShareNotice::Embed => {
+                guard.hud_ui.embed_code_copied = true;
+                if let Some(id) = guard.hud_ui.embed_code_timer.take() {
+                    window.clear_timeout_with_handle(id);
+                }
+            }
+        }
+    }
+
+    let state_clone = state.clone();
+    let cb = Closure::once(move || {
+        let mut guard = state_clone.borrow_mut();
+        match notice {
+            ShareNotice::Url => {
+                guard.hud_ui.share_url_copied = false;
+                guard.hud_ui.share_url_timer = None;
+            }
+            ShareNotice::Embed => {
+                guard.hud_ui.embed_code_copied = false;
+                guard.hud_ui.embed_code_timer = None;
+            }
+        }
+    });
+    if let Ok(id) = window.set_timeout_with_callback_and_timeout_and_arguments_0(
+        cb.as_ref().unchecked_ref(),
+        1500,
+    ) {
+        let mut guard = state.borrow_mut();
+        match notice {
+            ShareNotice::Url => guard.hud_ui.share_url_timer = Some(id),
+            ShareNotice::Embed => guard.hud_ui.embed_code_timer = Some(id),
+        }
+    }
+    cb.forget();
 }
 
 async fn fetch_metrics(agent_id: &str) -> Option<MetricsPayload> {
@@ -1205,6 +1402,11 @@ pub(crate) fn draw_hud_view(
         .as_ref()
         .map(|ctx| ctx.is_owner && ctx.status == "idle")
         .unwrap_or(false);
+    let show_share = state
+        .hud_context
+        .as_ref()
+        .map(|ctx| ctx.is_owner && ctx.is_public)
+        .unwrap_or(false);
 
     if width < 900.0 {
         let pane_h = ((content_h - gutter * 4.0) / 5.0).max(0.0);
@@ -1250,6 +1452,10 @@ pub(crate) fn draw_hud_view(
     layout.start_form_bounds = Bounds::ZERO;
     layout.start_prompt_bounds = Bounds::ZERO;
     layout.start_button_bounds = Bounds::ZERO;
+    layout.share_button_bounds = Bounds::ZERO;
+    layout.share_panel_bounds = Bounds::ZERO;
+    layout.copy_url_bounds = Bounds::ZERO;
+    layout.copy_embed_bounds = Bounds::ZERO;
     if let Some(ctx) = state.hud_context.as_ref() {
         if ctx.is_owner {
             let settings_height = 58.0;
@@ -1295,6 +1501,32 @@ pub(crate) fn draw_hud_view(
     layout.metrics_bounds = metrics_bounds;
     layout.wallet_bounds = wallet_bounds;
     layout.status_bounds = Bounds::new(0.0, height - status_h, width, status_h);
+    if show_share {
+        let (button_w, button_h) = state.hud_ui.share_button.size_hint();
+        let button_w = button_w.unwrap_or(64.0);
+        let button_h = button_h
+            .unwrap_or(layout.status_bounds.size.height - 6.0)
+            .min(layout.status_bounds.size.height - 6.0);
+        let button_x = layout.status_bounds.origin.x + layout.status_bounds.size.width - button_w - 6.0;
+        let button_y = layout.status_bounds.origin.y
+            + (layout.status_bounds.size.height - button_h) / 2.0;
+        layout.share_button_bounds = Bounds::new(button_x, button_y, button_w, button_h);
+
+        if state.hud_ui.share_panel_open {
+            let panel_w = 340.0;
+            let panel_h = 128.0;
+            let panel_x = (layout.status_bounds.origin.x + layout.status_bounds.size.width - panel_w - 6.0)
+                .max(6.0);
+            let panel_y = (layout.status_bounds.origin.y - panel_h - 6.0).max(6.0);
+            layout.share_panel_bounds = Bounds::new(panel_x, panel_y, panel_w, panel_h);
+            let (copy_url_bounds, copy_embed_bounds) =
+                share_panel_layout(&state.hud_ui, layout.share_panel_bounds);
+            layout.copy_url_bounds = copy_url_bounds;
+            layout.copy_embed_bounds = copy_embed_bounds;
+        }
+    } else {
+        state.hud_ui.share_panel_open = false;
+    }
     state.hud_layout = layout;
 
     let mut cx = PaintContext::new(scene, text_system, scale_factor);
@@ -1341,17 +1573,44 @@ pub(crate) fn draw_hud_view(
         } else {
             "private"
         };
-        state.hud_ui.status_bar.set_items(vec![
+        let mut items = vec![
             StatusItem::text("status", state.hud_ui.status_text.clone())
                 .align(StatusItemAlignment::Left),
             StatusItem::text("scope", scope).center(),
-            StatusItem::text("repo", repo).right(),
-        ]);
+        ];
+        if show_share {
+            items.push(StatusItem::text("repo", repo).left());
+        } else {
+            items.push(StatusItem::text("repo", repo).right());
+        }
+        state.hud_ui.status_bar.set_items(items);
     }
     state
         .hud_ui
         .status_bar
         .paint(state.hud_layout.status_bounds, &mut cx);
+
+    if show_share {
+        state
+            .hud_ui
+            .share_button
+            .paint(state.hud_layout.share_button_bounds, &mut cx);
+        if state.hud_ui.share_panel_open {
+            if let Some(ctx) = state.hud_context.as_ref() {
+                let share_url = hud_share_url(ctx);
+                let embed_code = hud_embed_code(ctx);
+                draw_share_panel(
+                    &mut cx,
+                    &mut state.hud_ui,
+                    state.hud_layout.share_panel_bounds,
+                    state.hud_layout.copy_url_bounds,
+                    state.hud_layout.copy_embed_bounds,
+                    &share_url,
+                    &embed_code,
+                );
+            }
+        }
+    }
 }
 
 fn start_form_layout(hud_ui: &HudUi, bounds: Bounds) -> (Bounds, Bounds) {
@@ -1404,6 +1663,111 @@ fn draw_start_form(
 
     hud_ui.start_prompt_input.paint(prompt_bounds, cx);
     hud_ui.start_button.paint(button_bounds, cx);
+}
+
+fn share_panel_layout(hud_ui: &HudUi, bounds: Bounds) -> (Bounds, Bounds) {
+    let padding = 10.0;
+    let (url_w, url_h) = hud_ui.copy_url_button.size_hint();
+    let (embed_w, embed_h) = hud_ui.copy_embed_button.size_hint();
+    let button_w = url_w
+        .unwrap_or(90.0)
+        .max(embed_w.unwrap_or(90.0))
+        .max(90.0);
+    let button_h = url_h
+        .unwrap_or(20.0)
+        .max(embed_h.unwrap_or(20.0));
+    let copy_url_bounds = Bounds::new(
+        bounds.origin.x + bounds.size.width - padding - button_w,
+        bounds.origin.y + 44.0,
+        button_w,
+        button_h,
+    );
+    let copy_embed_bounds = Bounds::new(
+        bounds.origin.x + bounds.size.width - padding - button_w,
+        bounds.origin.y + 76.0,
+        button_w,
+        button_h,
+    );
+    (copy_url_bounds, copy_embed_bounds)
+}
+
+fn draw_share_panel(
+    cx: &mut PaintContext,
+    hud_ui: &mut HudUi,
+    bounds: Bounds,
+    copy_url_bounds: Bounds,
+    copy_embed_bounds: Bounds,
+    share_url: &str,
+    embed_code: &str,
+) {
+    cx.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+
+    let title = cx.text.layout(
+        "Share HUD",
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 8.0),
+        11.0,
+        theme::text::PRIMARY,
+    );
+    cx.scene.draw_text(title);
+
+    let url_label = cx.text.layout(
+        "URL",
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 32.0),
+        9.0,
+        theme::text::MUTED,
+    );
+    cx.scene.draw_text(url_label);
+
+    let url_text = cx.text.layout(
+        share_url,
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 44.0),
+        10.0,
+        theme::text::PRIMARY,
+    );
+    cx.scene.draw_text(url_text);
+
+    let embed_label = cx.text.layout(
+        "Embed",
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 64.0),
+        9.0,
+        theme::text::MUTED,
+    );
+    cx.scene.draw_text(embed_label);
+
+    let embed_text = cx.text.layout(
+        embed_code,
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 76.0),
+        10.0,
+        theme::text::PRIMARY,
+    );
+    cx.scene.draw_text(embed_text);
+
+    hud_ui.copy_url_button.paint(copy_url_bounds, cx);
+    hud_ui.copy_embed_button.paint(copy_embed_bounds, cx);
+
+    if hud_ui.share_url_copied {
+        let copied = cx.text.layout(
+            "Copied!",
+            Point::new(copy_url_bounds.origin.x - 56.0, copy_url_bounds.origin.y + 6.0),
+            9.0,
+            theme::accent::PRIMARY,
+        );
+        cx.scene.draw_text(copied);
+    }
+
+    if hud_ui.embed_code_copied {
+        let copied = cx.text.layout(
+            "Copied!",
+            Point::new(copy_embed_bounds.origin.x - 56.0, copy_embed_bounds.origin.y + 6.0),
+            9.0,
+            theme::accent::PRIMARY,
+        );
+        cx.scene.draw_text(copied);
+    }
 }
 
 fn draw_hud_settings(
