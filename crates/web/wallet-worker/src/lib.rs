@@ -212,10 +212,10 @@ fn wallet_config(env: &Env) -> Result<WalletConfig> {
     };
 
     let api_key = env
-        .var("BREEZ_API_KEY")
+        .secret("BREEZ_API_KEY")
         .ok()
         .map(|value| value.to_string())
-        .or_else(|| env.var("SPARK_API_KEY").ok().map(|value| value.to_string()));
+        .or_else(|| env.secret("SPARK_API_KEY").ok().map(|value| value.to_string()));
 
     Ok(WalletConfig {
         network,
@@ -501,6 +501,36 @@ async fn send(user: AuthenticatedUser, env: Env, body: String) -> Result<Respons
     })
 }
 
+/// Response for wallet seed endpoint
+#[derive(Serialize)]
+struct WalletSeedResponse {
+    /// Hex-encoded entropy for BIP39 mnemonic generation
+    entropy_hex: String,
+    /// Network to use (mainnet, testnet, etc.)
+    network: String,
+}
+
+/// Get wallet seed for browser SDK initialization
+///
+/// This endpoint returns the decrypted wallet entropy so the browser
+/// can initialize the Breez SDK directly, bypassing the Worker's
+/// gRPC limitations.
+async fn get_wallet_seed(user: AuthenticatedUser, env: Env) -> Result<Response> {
+    let db = env.d1("DB")?;
+    let session_secret = env.secret("SESSION_SECRET")?.to_string();
+    let identity = get_identity_material(&db, &user.user_id, &session_secret).await?;
+
+    let network = match env.var("SPARK_NETWORK") {
+        Ok(value) => value.to_string(),
+        Err(_) => "testnet".to_string(),
+    };
+
+    Response::from_json(&WalletSeedResponse {
+        entropy_hex: identity.bitcoin_xpriv,
+        network,
+    })
+}
+
 async fn list_payments(user: AuthenticatedUser, env: Env) -> Result<Response> {
     let config = wallet_config(&env)?;
     let wallet = build_wallet(&user, &env, config).await?;
@@ -514,6 +544,172 @@ async fn list_payments(user: AuthenticatedUser, env: Env) -> Result<Response> {
         .collect::<Vec<_>>();
 
     Response::from_json(&WalletPaymentsResponse { payments })
+}
+
+// ============================================================================
+// Debug: Raw gRPC-Web Fetch
+// ============================================================================
+
+#[derive(Serialize)]
+struct DebugGrpcResponse {
+    operator_url: String,
+    status: u16,
+    status_text: String,
+    headers: Vec<(String, String)>,
+    body_preview: String,
+    error: Option<String>,
+}
+
+async fn debug_grpc_fetch() -> Result<Response> {
+    use js_sys::Uint8Array;
+    use wasm_bindgen::JsCast;
+    use web_sys::RequestInit;
+
+    // Test multiple operators and configurations
+    let operators = [
+        "https://0.spark.lightspark.com",
+        "https://1.spark.lightspark.com",
+        "https://2.spark.flashnet.xyz",
+    ];
+
+    let mut results = Vec::new();
+
+    for operator_url in operators {
+        let init = RequestInit::new();
+        init.set_method("POST");
+        // Don't set mode - let it default
+
+        // Set gRPC-Web headers
+        let headers = web_sys::Headers::new().map_err(|e| {
+            Error::RustError(format!("Failed to create headers: {:?}", e))
+        })?;
+        headers
+            .set("content-type", "application/grpc-web+proto")
+            .map_err(|e| Error::RustError(format!("Failed to set content-type: {:?}", e)))?;
+        headers
+            .set("accept", "application/grpc-web+proto")
+            .map_err(|e| Error::RustError(format!("Failed to set accept: {:?}", e)))?;
+        headers
+            .set("x-grpc-web", "1")
+            .map_err(|e| Error::RustError(format!("Failed to set x-grpc-web: {:?}", e)))?;
+        // Add a User-Agent to look less like a bot
+        headers
+            .set("user-agent", "Mozilla/5.0 (compatible; OpenAgentsWallet/1.0)")
+            .map_err(|e| Error::RustError(format!("Failed to set user-agent: {:?}", e)))?;
+        init.set_headers(headers.as_ref());
+
+        // Empty body (we're just testing connectivity, not a real RPC)
+        let empty_body = Uint8Array::new_with_length(0);
+        init.set_body(&empty_body);
+
+        // Create and execute request
+        let request = match web_sys::Request::new_with_str_and_init(operator_url, &init) {
+            Ok(r) => r,
+            Err(e) => {
+                results.push(DebugGrpcResponse {
+                    operator_url: operator_url.to_string(),
+                    status: 0,
+                    status_text: "REQUEST_CREATE_FAILED".to_string(),
+                    headers: Vec::new(),
+                    body_preview: String::new(),
+                    error: Some(format!("{:?}", e)),
+                });
+                continue;
+            }
+        };
+
+        let global = js_sys::global();
+        let scope = match global.dyn_into::<web_sys::ServiceWorkerGlobalScope>() {
+            Ok(s) => s,
+            Err(_) => {
+                results.push(DebugGrpcResponse {
+                    operator_url: operator_url.to_string(),
+                    status: 0,
+                    status_text: "NOT_SERVICE_WORKER".to_string(),
+                    headers: Vec::new(),
+                    body_preview: String::new(),
+                    error: Some("Not in ServiceWorker scope".to_string()),
+                });
+                continue;
+            }
+        };
+
+        let promise = scope.fetch_with_request(&request);
+        let result = wasm_bindgen_futures::JsFuture::from(promise).await;
+
+        match result {
+            Ok(resp_value) => {
+                let resp: web_sys::Response = match resp_value.dyn_into() {
+                    Ok(r) => r,
+                    Err(e) => {
+                        results.push(DebugGrpcResponse {
+                            operator_url: operator_url.to_string(),
+                            status: 0,
+                            status_text: "CAST_FAILED".to_string(),
+                            headers: Vec::new(),
+                            body_preview: String::new(),
+                            error: Some(format!("{:?}", e)),
+                        });
+                        continue;
+                    }
+                };
+
+                let status = resp.status();
+                let status_text = resp.status_text();
+
+                // Collect response headers
+                let mut response_headers = Vec::new();
+                if let Ok(Some(iter)) = js_sys::try_iter(resp.headers().as_ref()) {
+                    for item in iter {
+                        if let Ok(pair) = item {
+                            let arr: js_sys::Array = pair.into();
+                            let name = arr.get(0).as_string().unwrap_or_default();
+                            let value = arr.get(1).as_string().unwrap_or_default();
+                            response_headers.push((name, value));
+                        }
+                    }
+                }
+
+                // Try to read body
+                let body_preview = if let Ok(text_promise) = resp.text() {
+                    match wasm_bindgen_futures::JsFuture::from(text_promise).await {
+                        Ok(text) => {
+                            let s = text.as_string().unwrap_or_else(|| "[non-string]".to_string());
+                            if s.len() > 200 {
+                                format!("{}... ({} bytes)", &s[..200], s.len())
+                            } else {
+                                s
+                            }
+                        }
+                        Err(e) => format!("[body read error: {:?}]", e),
+                    }
+                } else {
+                    "[no body]".to_string()
+                };
+
+                results.push(DebugGrpcResponse {
+                    operator_url: operator_url.to_string(),
+                    status,
+                    status_text,
+                    headers: response_headers,
+                    body_preview,
+                    error: None,
+                });
+            }
+            Err(e) => {
+                results.push(DebugGrpcResponse {
+                    operator_url: operator_url.to_string(),
+                    status: 0,
+                    status_text: "FETCH_FAILED".to_string(),
+                    headers: Vec::new(),
+                    body_preview: String::new(),
+                    error: Some(format!("{:?}", e)),
+                });
+            }
+        }
+    }
+
+    Response::from_json(&results)
 }
 
 // ============================================================================
@@ -566,8 +762,16 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             with_auth(&req, &env, |user| list_payments(user, env.clone())).await
         }
 
+        // Get wallet seed for browser SDK initialization
+        (Method::Get, "/api/wallet/seed") => {
+            with_auth(&req, &env, |user| get_wallet_seed(user, env.clone())).await
+        }
+
         // Health check
         (Method::Get, "/health") => Response::ok("wallet-worker ok"),
+
+        // Debug: Raw gRPC-Web fetch test
+        (Method::Get, "/api/wallet/debug-grpc") => debug_grpc_fetch().await,
 
         _ => Response::error("Not Found", 404),
     };

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenAgents</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            background: #0a0a0a;
+            overflow: hidden;
+        }
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #888;
+            font-family: 'Vera Mono', monospace;
+            font-size: 13px;
+            text-align: center;
+        }
+        #progress-container {
+            width: 200px;
+            height: 4px;
+            background: #222;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+        #progress-bar {
+            height: 100%;
+            width: 0%;
+            background: #fff;
+            transition: width 0.1s ease-out;
+        }
+        #progress-text {
+            margin-top: 8px;
+            font-size: 11px;
+            color: #666;
+        }
+        #error {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff4444;
+            font-family: monospace;
+            font-size: 14px;
+            max-width: 80%;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="loading">
+        <div id="loading-text">Loading OpenAgents...</div>
+        <div id="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+        <div id="progress-text"></div>
+    </div>
+    <div id="error"></div>
+    <script type="module">
+        // Load wallet bridge first (this loads the Breez SDK WASM)
+        import './breez/wallet-bridge.js';
+
+        import init, { start_demo } from './pkg/openagents_web_client.js';
+
+        async function fetchWithProgress(url, onProgress) {
+            const response = await fetch(url);
+            const contentLength = response.headers.get('content-length');
+            const total = parseInt(contentLength, 10);
+
+            if (!response.body || !total) {
+                // Fallback if streaming not supported or no content-length
+                return await response.arrayBuffer();
+            }
+
+            const reader = response.body.getReader();
+            const chunks = [];
+            let received = 0;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                received += value.length;
+                onProgress(received, total);
+            }
+
+            const buffer = new Uint8Array(received);
+            let position = 0;
+            for (const chunk of chunks) {
+                buffer.set(chunk, position);
+                position += chunk.length;
+            }
+            return buffer.buffer;
+        }
+
+        async function run() {
+            const loading = document.getElementById('loading');
+            const loadingText = document.getElementById('loading-text');
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const error = document.getElementById('error');
+
+            try {
+                loadingText.textContent = 'Downloading...';
+
+                const wasmBytes = await fetchWithProgress(
+                    './pkg/openagents_web_client_bg.wasm',
+                    (received, total) => {
+                        const pct = Math.round((received / total) * 100);
+                        const mb = (received / 1024 / 1024).toFixed(1);
+                        const totalMb = (total / 1024 / 1024).toFixed(1);
+                        progressBar.style.width = pct + '%';
+                        progressText.textContent = `${mb} / ${totalMb} MB`;
+                    }
+                );
+
+                progressBar.style.width = '100%';
+                loadingText.textContent = 'Initializing...';
+                progressText.textContent = '';
+
+                await init({ module_or_path: wasmBytes });
+
+                loadingText.textContent = 'Starting GPU...';
+                await start_demo('canvas');
+
+                loading.style.display = 'none';
+            } catch (e) {
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.textContent = 'Error: ' + e.toString();
+                console.error('Failed to start:', e);
+            }
+        }
+
+        run();
+    </script>
+</body>
+</html>

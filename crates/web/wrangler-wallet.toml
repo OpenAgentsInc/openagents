@@ -14,7 +14,7 @@ compatibility_date = "2024-12-01"
 
 # Worker build configuration
 [build]
-command = "cd wallet-worker && cargo install -q worker-build && CC_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/clang AR_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/llvm-ar worker-build --release"
+command = "cd wallet-worker && cargo install -q worker-build && CC=clang AR=llvm-ar worker-build --release --no-opt"
 
 # D1 Database (same as main worker)
 [[d1_databases]]
@@ -29,7 +29,7 @@ id = "0aa10501fe834f84ad33672acf4ed741"
 
 # Environment variables (non-secret)
 [vars]
-SPARK_NETWORK = "testnet"
+SPARK_NETWORK = "mainnet"
 
 # Secrets (set via: wrangler secret put <NAME> --config wrangler-wallet.toml)
 # SESSION_SECRET (same as main worker - needed for identity decryption)

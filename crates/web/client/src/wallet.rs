@@ -1,9 +1,40 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use wasm_bindgen::prelude::JsValue;
+use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
+
+// JavaScript bridge functions for browser-based Breez SDK
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_name = breezWalletInit)]
+    fn js_wallet_init() -> js_sys::Promise;
+
+    #[wasm_bindgen(js_name = breezWalletConnect)]
+    fn js_wallet_connect(entropy_hex: &str, network: &str) -> js_sys::Promise;
+
+    #[wasm_bindgen(js_name = breezWalletGetBalance)]
+    fn js_wallet_get_balance() -> js_sys::Promise;
+
+    #[wasm_bindgen(js_name = breezWalletGetSparkAddress)]
+    fn js_wallet_get_spark_address() -> js_sys::Promise;
+
+    #[wasm_bindgen(js_name = breezWalletGetBitcoinAddress)]
+    fn js_wallet_get_bitcoin_address() -> js_sys::Promise;
+
+    #[wasm_bindgen(js_name = breezWalletListPayments)]
+    fn js_wallet_list_payments(limit: u32, offset: u32) -> js_sys::Promise;
+
+    #[wasm_bindgen(js_name = breezWalletSendPayment)]
+    fn js_wallet_send_payment(payment_request: &str, amount_sats: Option<u64>) -> js_sys::Promise;
+
+    #[wasm_bindgen(js_name = breezWalletCreateInvoice)]
+    fn js_wallet_create_invoice(amount_sats: u64, description: &str) -> js_sys::Promise;
+
+    #[wasm_bindgen(js_name = breezWalletIsConnected)]
+    fn js_wallet_is_connected() -> bool;
+}
 use wgpui::{
     Bounds, Component, EventContext, EventResult, InputEvent, MouseButton, PaintContext, Point,
     Quad, theme,
@@ -943,7 +974,163 @@ fn parse_wallet_invoice(value: JsValue) -> Option<WalletInvoiceData> {
     })
 }
 
+/// Fetch wallet seed from worker, initialize browser SDK, and get wallet info
 async fn fetch_wallet_summary() -> Result<WalletSummaryData, String> {
+    // First, check if SDK is already connected
+    if !js_wallet_is_connected() {
+        // Initialize the Breez SDK WASM
+        let init_result = JsFuture::from(js_wallet_init())
+            .await
+            .map_err(|e| format!("SDK init failed: {:?}", e))?;
+
+        let init_obj = js_sys::Object::from(init_result);
+        if let Ok(err) = js_sys::Reflect::get(&init_obj, &"error".into()) {
+            if !err.is_undefined() && !err.is_null() {
+                return Err(format!("SDK init error: {}", err.as_string().unwrap_or_default()));
+            }
+        }
+
+        // Fetch seed from wallet-worker
+        let window = web_sys::window().ok_or("No window available")?;
+        let resp = JsFuture::from(window.fetch_with_str("/api/wallet/seed"))
+            .await
+            .map_err(|_| "Failed to fetch wallet seed".to_string())?;
+        let resp: web_sys::Response = resp.dyn_into().map_err(|_| "Invalid response".to_string())?;
+
+        if !resp.ok() {
+            // Fallback to old summary endpoint if seed not available
+            return fetch_wallet_summary_fallback().await;
+        }
+
+        let json = JsFuture::from(resp.json().map_err(|_| "Invalid response".to_string())?)
+            .await
+            .map_err(|_| "Invalid response".to_string())?;
+
+        let seed_obj = js_sys::Object::from(json);
+        let entropy_hex = js_sys::Reflect::get(&seed_obj, &"entropy_hex".into())
+            .ok()
+            .and_then(|v| v.as_string())
+            .ok_or("Missing entropy_hex")?;
+        let network = js_sys::Reflect::get(&seed_obj, &"network".into())
+            .ok()
+            .and_then(|v| v.as_string())
+            .unwrap_or_else(|| "testnet".to_string());
+
+        // Connect wallet with seed
+        let connect_result = JsFuture::from(js_wallet_connect(&entropy_hex, &network))
+            .await
+            .map_err(|e| format!("Wallet connect failed: {:?}", e))?;
+
+        let connect_obj = js_sys::Object::from(connect_result);
+        if let Ok(err) = js_sys::Reflect::get(&connect_obj, &"error".into()) {
+            if !err.is_undefined() && !err.is_null() {
+                return Err(format!("Connect error: {}", err.as_string().unwrap_or_default()));
+            }
+        }
+    }
+
+    // Now get wallet info from browser SDK
+    let mut errors = Vec::new();
+
+    // Get balance
+    let balance = match JsFuture::from(js_wallet_get_balance()).await {
+        Ok(result) => {
+            let obj = js_sys::Object::from(result);
+            if let Ok(balance_val) = js_sys::Reflect::get(&obj, &"balance".into()) {
+                parse_wallet_balance(&balance_val)
+            } else if let Ok(err) = js_sys::Reflect::get(&obj, &"error".into()) {
+                errors.push(format!("balance: {}", err.as_string().unwrap_or_default()));
+                None
+            } else {
+                None
+            }
+        }
+        Err(e) => {
+            errors.push(format!("balance: {:?}", e));
+            None
+        }
+    };
+
+    // Get spark address
+    let spark_address = match JsFuture::from(js_wallet_get_spark_address()).await {
+        Ok(result) => {
+            let obj = js_sys::Object::from(result);
+            js_sys::Reflect::get(&obj, &"address".into())
+                .ok()
+                .and_then(|v| v.as_string())
+        }
+        Err(e) => {
+            errors.push(format!("spark address: {:?}", e));
+            None
+        }
+    };
+
+    // Get bitcoin address
+    let onchain_address = match JsFuture::from(js_wallet_get_bitcoin_address()).await {
+        Ok(result) => {
+            let obj = js_sys::Object::from(result);
+            js_sys::Reflect::get(&obj, &"address".into())
+                .ok()
+                .and_then(|v| v.as_string())
+        }
+        Err(e) => {
+            errors.push(format!("onchain address: {:?}", e));
+            None
+        }
+    };
+
+    // Get payments
+    let payments = match JsFuture::from(js_wallet_list_payments(10, 0)).await {
+        Ok(result) => {
+            let obj = js_sys::Object::from(result);
+            if let Ok(payments_val) = js_sys::Reflect::get(&obj, &"payments".into()) {
+                let arr = js_sys::Array::from(&payments_val);
+                let mut payments_vec = Vec::new();
+                for idx in 0..arr.length() {
+                    if let Some(payment) = parse_wallet_payment(&arr.get(idx)) {
+                        payments_vec.push(payment);
+                    }
+                }
+                payments_vec
+            } else {
+                Vec::new()
+            }
+        }
+        Err(e) => {
+            errors.push(format!("payments: {:?}", e));
+            Vec::new()
+        }
+    };
+
+    let status = if balance.is_some() {
+        if errors.is_empty() {
+            WalletStatus::Ready
+        } else {
+            WalletStatus::Partial
+        }
+    } else {
+        WalletStatus::Error
+    };
+
+    Ok(WalletSummaryData {
+        status,
+        network: Some("mainnet".to_string()), // TODO: get from SDK
+        balance,
+        addresses: WalletAddressesData {
+            spark: spark_address,
+            onchain: onchain_address,
+        },
+        payments,
+        error: if errors.is_empty() {
+            None
+        } else {
+            Some(errors.join("; "))
+        },
+    })
+}
+
+/// Fallback to old wallet-worker summary endpoint
+async fn fetch_wallet_summary_fallback() -> Result<WalletSummaryData, String> {
     let window = web_sys::window().ok_or("No window available")?;
     let resp = JsFuture::from(window.fetch_with_str("/api/wallet/summary"))
         .await
