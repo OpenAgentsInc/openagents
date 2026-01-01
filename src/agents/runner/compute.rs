@@ -8,7 +8,8 @@ use nostr::nip_sa::AgentStateContent;
 use nostr::HandlerType;
 use openagents_runtime::{
     AgentId, ComputeKind, ComputeProvider, ComputeRequest, ComputeResponse, DvmProvider, FxSource,
-    JobState, UnifiedIdentity, UnifiedIdentitySigner, WalletInvoice, WalletPayment, WalletService,
+    FxRateSnapshot, JobState, UnifiedIdentity, UnifiedIdentitySigner, WalletInvoice, WalletPayment,
+    WalletService,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -35,7 +36,7 @@ pub struct ProviderInfo {
 #[derive(Debug, Clone)]
 pub struct InferenceResult {
     pub text: String,
-    pub cost_sats: Option<u64>,
+    pub cost_sats: u64,
     pub response: ComputeResponse,
 }
 
@@ -158,7 +159,8 @@ impl ComputeClient {
         budget_sats: u64,
         model: &str,
     ) -> Result<InferenceResult> {
-        let max_cost_usd = self.budget_to_usd(budget_sats)?;
+        let fx = self.wallet.fx_rate()?;
+        let max_cost_usd = Self::sats_to_micro_usd(budget_sats, &fx)?;
         let request = ComputeRequest {
             model: model.to_string(),
             kind: ComputeKind::Complete,
@@ -189,7 +191,7 @@ impl ComputeClient {
                 match state {
                     JobState::Complete(response) => {
                         let text = extract_text(&response.output);
-                        let cost_sats = self.cost_sats_from_usd(response.cost_usd);
+                        let cost_sats = Self::micro_usd_to_sats(response.cost_usd, &fx)?;
                         return Ok(InferenceResult {
                             text,
                             cost_sats,
@@ -232,8 +234,7 @@ impl ComputeClient {
         Ok(invoice.payment_request)
     }
 
-    fn budget_to_usd(&self, budget_sats: u64) -> Result<u64> {
-        let fx = self.wallet.fx_rate()?;
+    fn sats_to_micro_usd(budget_sats: u64, fx: &FxRateSnapshot) -> Result<u64> {
         if fx.sats_per_usd == 0 {
             return Err(anyhow!("invalid FX rate"));
         }
@@ -242,14 +243,13 @@ impl ComputeClient {
         Ok(u64::try_from(micro_usd).unwrap_or(u64::MAX))
     }
 
-    fn cost_sats_from_usd(&self, cost_usd: u64) -> Option<u64> {
-        let fx = self.wallet.fx_rate().ok()?;
+    fn micro_usd_to_sats(cost_usd: u64, fx: &FxRateSnapshot) -> Result<u64> {
         if fx.sats_per_usd == 0 {
-            return None;
+            return Err(anyhow!("invalid FX rate"));
         }
         let numerator = u128::from(cost_usd) * u128::from(fx.sats_per_usd);
         let sats = numerator / 1_000_000u128;
-        u64::try_from(sats).ok()
+        u64::try_from(sats).map_err(|_| anyhow!("sats overflow"))
     }
 }
 

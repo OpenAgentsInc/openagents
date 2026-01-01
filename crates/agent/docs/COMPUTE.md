@@ -57,7 +57,7 @@ let inference = compute_client
     .await?;
 
 let text = inference.text;
-let cost_sats = inference.cost_sats.unwrap_or(0);
+let cost_sats = inference.cost_sats;
 ```
 
 ## Wallet Integration
