@@ -2,6 +2,10 @@
 use crate::error::{FMError, Result};
 use crate::types::*;
 use reqwest::Client;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::Duration;
 use tokio_stream::Stream;
 
@@ -15,6 +19,7 @@ pub struct FMClient {
     base_url: String,
     http_client: Client,
     default_model: String,
+    ready: Arc<AtomicBool>,
 }
 
 impl FMClient {
@@ -38,12 +43,21 @@ impl FMClient {
             base_url: base_url.into(),
             http_client,
             default_model: DEFAULT_MODEL.to_string(),
+            ready: Arc::new(AtomicBool::new(false)),
         })
     }
 
     /// Create a builder for more configuration options
     pub fn builder() -> FMClientBuilder {
         FMClientBuilder::new()
+    }
+
+    pub(crate) fn mark_ready(&self, ready: bool) {
+        self.ready.store(ready, Ordering::SeqCst);
+    }
+
+    pub(crate) fn is_ready_flag(&self) -> bool {
+        self.ready.load(Ordering::SeqCst)
     }
 
     /// Complete a prompt (non-streaming)
@@ -222,6 +236,7 @@ impl FMClientBuilder {
             base_url: self.base_url,
             http_client,
             default_model: self.default_model,
+            ready: Arc::new(AtomicBool::new(false)),
         })
     }
 }
