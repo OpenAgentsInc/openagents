@@ -130,7 +130,7 @@ async fn test_bifrost_signing_2_of_3_over_relay() {
     let config_1 = BifrostConfig {
         default_relays: vec![relay_url.clone()],
         secret_key: Some(secret_key_1),
-        peer_pubkeys: vec![peer_pubkey_2], // Peer 1 knows about Peer 2
+        peer_pubkeys: vec![peer_pubkey_1, peer_pubkey_2],
         timeouts: TimeoutConfig {
             sign_timeout_ms: 10000,
             ..Default::default()
@@ -141,7 +141,7 @@ async fn test_bifrost_signing_2_of_3_over_relay() {
     let config_2 = BifrostConfig {
         default_relays: vec![relay_url],
         secret_key: Some(secret_key_2),
-        peer_pubkeys: vec![peer_pubkey_1], // Peer 2 knows about Peer 1
+        peer_pubkeys: vec![peer_pubkey_1, peer_pubkey_2],
         timeouts: TimeoutConfig {
             sign_timeout_ms: 10000,
             ..Default::default()
@@ -226,7 +226,7 @@ async fn test_bifrost_peer_ping_over_relay() {
     let config_1 = BifrostConfig {
         default_relays: vec![relay_url.clone()],
         secret_key: Some(secret_key_1),
-        peer_pubkeys: vec![peer_pubkey_2],
+        peer_pubkeys: vec![peer_pubkey_1, peer_pubkey_2],
         timeouts: TimeoutConfig {
             default_timeout_ms: 5000,
             ..Default::default()
@@ -237,7 +237,7 @@ async fn test_bifrost_peer_ping_over_relay() {
     let config_2 = BifrostConfig {
         default_relays: vec![relay_url],
         secret_key: Some(secret_key_2),
-        peer_pubkeys: vec![peer_pubkey_1],
+        peer_pubkeys: vec![peer_pubkey_1, peer_pubkey_2],
         timeouts: TimeoutConfig {
             default_timeout_ms: 5000,
             ..Default::default()
@@ -309,7 +309,7 @@ async fn test_bifrost_ecdh_2_of_3_over_relay() {
     let config_1 = BifrostConfig {
         default_relays: vec![relay_url.clone()],
         secret_key: Some(secret_key_1),
-        peer_pubkeys: vec![peer_pubkey_2],
+        peer_pubkeys: vec![peer_pubkey_1, peer_pubkey_2],
         timeouts: TimeoutConfig {
             ecdh_timeout_ms: 10000,
             ..Default::default()
@@ -320,7 +320,7 @@ async fn test_bifrost_ecdh_2_of_3_over_relay() {
     let config_2 = BifrostConfig {
         default_relays: vec![relay_url],
         secret_key: Some(secret_key_2),
-        peer_pubkeys: vec![peer_pubkey_1],
+        peer_pubkeys: vec![peer_pubkey_1, peer_pubkey_2],
         timeouts: TimeoutConfig {
             ecdh_timeout_ms: 10000,
             ..Default::default()
@@ -392,7 +392,7 @@ async fn test_bifrost_3_of_5_signing() {
 
     let mut nodes = Vec::new();
     for i in 0..3 {
-        let peer_pubkeys: Vec<[u8; 32]> = (0..3).filter(|&j| j != i).map(|j| pubkeys[j]).collect();
+        let peer_pubkeys = pubkeys.clone();
 
         let config = BifrostConfig {
             default_relays: vec![relay_url.clone()],
@@ -520,11 +520,12 @@ async fn test_bifrost_timeout_handling() {
     };
     let fake_peer_pubkey =
         nostr::get_public_key(&fake_peer_secret).expect("failed to derive fake peer pubkey");
+    let self_pubkey = nostr::get_public_key(&secret_key).expect("failed to derive self pubkey");
 
     let config = BifrostConfig {
         default_relays: vec![relay_url],
         secret_key: Some(secret_key),
-        peer_pubkeys: vec![fake_peer_pubkey], // Peer that doesn't exist
+        peer_pubkeys: vec![self_pubkey, fake_peer_pubkey],
         timeouts: TimeoutConfig {
             sign_timeout_ms: 1000, // Short timeout
             ecdh_timeout_ms: 1000,
@@ -808,11 +809,11 @@ async fn test_nip44_peer_isolation_over_relay() {
     let pubkey_b = get_public_key(&secret_key_b).expect("failed to derive pubkey B");
     let _pubkey_c = get_public_key(&secret_key_c).expect("failed to derive pubkey C");
 
-    // Node A knows about B only (will send encrypted messages to B)
+    // Node A lists itself and B so participant IDs align, but only B is a peer target.
     let config_a = BifrostConfig {
         default_relays: vec![relay_url.clone()],
         secret_key: Some(secret_key_a),
-        peer_pubkeys: vec![pubkey_b], // Only B is a peer
+        peer_pubkeys: vec![pubkey_a, pubkey_b],
         timeouts: TimeoutConfig {
             sign_timeout_ms: 5000,
             ..Default::default()
@@ -820,11 +821,11 @@ async fn test_nip44_peer_isolation_over_relay() {
         ..Default::default()
     };
 
-    // Node B knows about A (can decrypt messages from A)
+    // Node B lists itself and A so participant IDs align.
     let config_b = BifrostConfig {
         default_relays: vec![relay_url.clone()],
         secret_key: Some(secret_key_b),
-        peer_pubkeys: vec![pubkey_a],
+        peer_pubkeys: vec![pubkey_a, pubkey_b],
         timeouts: TimeoutConfig {
             sign_timeout_ms: 5000,
             ..Default::default()

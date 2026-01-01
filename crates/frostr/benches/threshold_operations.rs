@@ -7,8 +7,15 @@ use frost_secp256k1::SigningPackage;
 use frostr::ecdh::threshold_ecdh;
 use frostr::keygen::generate_key_shares;
 use frostr::signing::{aggregate_signatures, round1_commit, round2_sign};
+use nostr::get_public_key;
 use std::collections::BTreeMap;
 use std::hint::black_box;
+
+fn benchmark_peer_pubkey() -> [u8; 32] {
+    let mut secret_key = [0u8; 32];
+    secret_key[31] = 0x01;
+    get_public_key(&secret_key).expect("peer pubkey should be valid")
+}
 
 fn bench_key_generation(c: &mut Criterion) {
     let mut group = c.benchmark_group("frost_keygen");
@@ -200,8 +207,7 @@ fn bench_signature_aggregation(c: &mut Criterion) {
 fn bench_threshold_ecdh(c: &mut Criterion) {
     let shares = generate_key_shares(2, 3).expect("Key generation failed");
 
-    // Generate a peer public key (x-only, 32 bytes)
-    let peer_pk: [u8; 32] = [0x42u8; 32];
+    let peer_pk = benchmark_peer_pubkey();
 
     c.bench_function("threshold_ecdh_2_of_3", |b| {
         b.iter(|| {
@@ -213,7 +219,7 @@ fn bench_threshold_ecdh(c: &mut Criterion) {
 fn bench_threshold_ecdh_various_configs(c: &mut Criterion) {
     let mut group = c.benchmark_group("threshold_ecdh");
 
-    let peer_pk: [u8; 32] = [0x42u8; 32];
+    let peer_pk = benchmark_peer_pubkey();
 
     for (k, n) in [(2, 3), (3, 5), (5, 7)].iter() {
         let shares = generate_key_shares(*k, *n).expect("Key generation failed");
