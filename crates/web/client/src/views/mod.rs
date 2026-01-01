@@ -93,4 +93,21 @@ pub(crate) fn build_repo_view(
     state.hud_layout.status_bounds = Bounds::ZERO;
     state.hud_layout.settings_public_bounds = Bounds::ZERO;
     state.hud_layout.settings_embed_bounds = Bounds::ZERO;
+
+    // Clear landing page bounds to prevent ghost hover/clicks
+    state.left_cta_bounds = Bounds::ZERO;
+    state.right_cta_bounds = Bounds::ZERO;
+    state.landing_issue_bounds = Bounds::ZERO;
+    state.left_cta_hovered = false;
+    state.right_cta_hovered = false;
+
+    // Clear repo selector bounds
+    state.repo_bounds.clear();
+    state.hovered_repo_idx = None;
+
+    // Clear DVM/Nostr bounds
+    state.dvm_tab_bounds = [Bounds::ZERO, Bounds::ZERO];
+    state.dvm_content_bounds = Bounds::ZERO;
+    state.nip90_event_bounds.clear();
+    state.global_feed_bounds = Bounds::ZERO;
 }
