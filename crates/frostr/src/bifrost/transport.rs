@@ -12,7 +12,7 @@ use tokio::time::{Duration, sleep};
 
 // NIP-44 encryption support
 use bitcoin::secp256k1::{PublicKey, SECP256K1, SecretKey};
-use nostr::{Event, decrypt_v2, encrypt_v2};
+use nostr::{Event, decrypt_v2, encrypt_v2, get_public_key};
 
 /// Event kind for Bifrost messages (ephemeral, not stored by relays)
 pub const BIFROST_EVENT_KIND: u16 = 28000;
@@ -404,9 +404,14 @@ impl NostrTransport {
         let envelope_json = serde_json::to_string(&envelope)
             .map_err(|e| Error::Encoding(format!("failed to serialize envelope: {}", e)))?;
 
+        let self_pubkey = get_public_key(&self.config.secret_key).ok();
+
         // Publish encrypted message to each peer individually
         // This ensures only the intended recipient can read the message
         for peer_pk in &self.config.peer_pubkeys {
+            if self_pubkey.as_ref() == Some(peer_pk) {
+                continue;
+            }
             // Encrypt content for this specific peer using NIP-44
             let encrypted_content = self.encrypt_for_peer(&envelope_json, peer_pk)?;
 

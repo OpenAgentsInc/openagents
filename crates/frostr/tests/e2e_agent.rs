@@ -388,7 +388,7 @@ async fn test_agent_signs_with_bifrost() {
     let config_1 = BifrostConfig {
         default_relays: vec![relay_url.clone()],
         secret_key: Some(secret_key_1),
-        peer_pubkeys: vec![peer_pubkey_2],
+        peer_pubkeys: vec![peer_pubkey_1, peer_pubkey_2],
         timeouts: TimeoutConfig {
             sign_timeout_ms: 10000,
             ..Default::default()
@@ -399,7 +399,7 @@ async fn test_agent_signs_with_bifrost() {
     let config_2 = BifrostConfig {
         default_relays: vec![relay_url],
         secret_key: Some(secret_key_2),
-        peer_pubkeys: vec![peer_pubkey_1],
+        peer_pubkeys: vec![peer_pubkey_1, peer_pubkey_2],
         timeouts: TimeoutConfig {
             sign_timeout_ms: 10000,
             ..Default::default()
