@@ -32,19 +32,6 @@
             font-size: 13px;
             text-align: center;
         }
-        #progress-container {
-            width: 200px;
-            height: 4px;
-            background: #222;
-            margin-top: 12px;
-            overflow: hidden;
-        }
-        #progress-bar {
-            height: 100%;
-            width: 0%;
-            background: #fff;
-            transition: width 0.1s ease-out;
-        }
         #progress-text {
             margin-top: 8px;
             font-size: 11px;
@@ -72,10 +59,6 @@
     <canvas id="canvas"></canvas>
     <div id="loading">
         <img src="/static/Thinking-Animation.gif" alt="Loading">
-        <div id="loading-text">Loading...</div>
-        <div id="progress-container">
-            <div id="progress-bar"></div>
-        </div>
         <div id="progress-text"></div>
     </div>
     <div id="error"></div>
@@ -118,32 +101,22 @@
 
         async function run() {
             const loading = document.getElementById('loading');
-            const loadingText = document.getElementById('loading-text');
-            const progressBar = document.getElementById('progress-bar');
             const progressText = document.getElementById('progress-text');
             const error = document.getElementById('error');
 
             try {
-                loadingText.textContent = 'Downloading...';
-
                 const wasmBytes = await fetchWithProgress(
                     './pkg/openagents_web_client_bg.wasm',
                     (received, total) => {
                         const pct = Math.round((received / total) * 100);
-                        const mb = (received / 1024 / 1024).toFixed(1);
-                        const totalMb = (total / 1024 / 1024).toFixed(1);
-                        progressBar.style.width = pct + '%';
-                        progressText.textContent = `${mb} / ${totalMb} MB`;
+                        progressText.textContent = `${pct}%`;
                     }
                 );
 
-                progressBar.style.width = '100%';
-                loadingText.textContent = 'Initializing...';
+                // Hide percentage after download completes
                 progressText.textContent = '';
 
                 await init({ module_or_path: wasmBytes });
-
-                loadingText.textContent = 'Starting GPU...';
                 await start_demo('canvas');
 
                 loading.style.display = 'none';
