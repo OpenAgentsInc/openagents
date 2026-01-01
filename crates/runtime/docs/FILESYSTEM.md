@@ -471,7 +471,6 @@ Payment operations as files:
 ```rust
 pub struct WalletFs {
     wallet: Arc<dyn WalletService>,
-    budget: Budget,
 }
 
 impl FileService for WalletFs {
@@ -480,28 +479,23 @@ impl FileService for WalletFs {
     fn readdir(&self, _path: &str) -> Result<Vec<DirEntry>> {
         Ok(vec![
             DirEntry::file("balance"),
-            DirEntry::file("invoice"),
+            DirEntry::file("fx"),
             DirEntry::file("pay"),
-            DirEntry::dir("history"),
         ])
     }
 
     fn open(&self, path: &str, _flags: OpenFlags) -> Result<Box<dyn FileHandle>> {
         match path {
             "balance" => {
-                let balance = self.wallet.balance()?;
-                let json = serde_json::json!({
-                    "balance_usd": balance,  // micro-USD
-                    "budget": {
-                        "daily_limit_usd": self.budget.daily_limit,
-                        "daily_spent_usd": self.budget.daily_spent,
-                        "remaining_usd": self.budget.daily_limit - self.budget.daily_spent,
-                    }
-                });
-                Ok(Box::new(StringHandle::new(json.to_string())))
+                // { balance_sats, balance_usd, fx }
             }
-            "invoice" => Ok(Box::new(InvoiceHandle::new(self.wallet.clone()))),
-            "pay" => Ok(Box::new(PayHandle::new(self.wallet.clone(), self.budget.clone()))),
+            "fx" => {
+                // { sats_per_usd, updated_at }
+            }
+            "pay" => {
+                // Write: bolt11 string or JSON with { invoice, amount_sats|amount_msats }
+                // Read: { payment_id, amount_sats, paid_at }
+            }
             _ => Err(Error::NotFound),
         }
     }

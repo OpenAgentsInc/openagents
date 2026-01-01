@@ -114,7 +114,7 @@ The recorder crate parses, validates, and repairs rlog session logs. It also shi
 The relay crate defines the WebSocket protocol shared by the browser, worker, and tunnel client. It includes session registration/status structs and message envelopes for StartTask, Autopilot streaming, and Claude tunnel session control.
 
 ## runtime
-The runtime crate provides a pluggable execution environment for autonomous agents. It defines the tick model, identity/storage abstractions, and filesystem-style mounts for compute, containers, and Claude sessions, plus HUD event streaming. Backends target local, browser, and cloud deployments.
+The runtime crate provides a pluggable execution environment for autonomous agents. It defines the tick model, identity/storage abstractions, filesystem-style mounts for compute/containers/Claude, and HUD event streaming, and ships adapters like `SparkWalletService` plus the NIP-90 `DvmProvider` for decentralized compute. Backends target local, browser, and cloud deployments.
 
 ## spark
 The spark crate integrates Breez Spark payments for OpenAgents. It derives Bitcoin keys from the shared mnemonic, provides wallet configuration, and wraps Spark payment flows (Lightning, LNURL, and on-chain primitives) used by wallet and compute components.

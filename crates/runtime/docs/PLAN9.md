@@ -45,8 +45,8 @@ In Plan 9, services expose themselves as files. For agents: every agent exposes 
 │       └── <npub>      # write → encrypt+send DM
 ├── wallet/
 │   ├── balance         # read: current balance
-│   ├── invoice         # write amount → read bolt11
-│   └── pay             # write bolt11 → execute payment
+│   ├── fx              # read: sats_per_usd snapshot
+│   └── pay             # write bolt11 or JSON → execute payment
 ├── fs/
 │   └── <mounts>        # mounted capabilities (repos, tools, etc.)
 ├── deadletter/         # overflow envelopes (when inbox full)
