@@ -2,8 +2,9 @@
 //!
 //! Run with: cargo bench -p nostr --bench nip44_crypto
 
+use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
-use nostr::{decrypt_v2 as decrypt, encrypt_v2 as encrypt};
+use nostr::{MAX_PLAINTEXT_LEN, MIN_PLAINTEXT_LEN, decrypt_v2 as decrypt, encrypt_v2 as encrypt};
 use nostr::{generate_secret_key, get_public_key};
 
 /// Generate test message of given size
@@ -11,14 +12,29 @@ fn generate_message(size: usize) -> String {
     "a".repeat(size)
 }
 
+fn generate_valid_secret_key() -> [u8; 32] {
+    loop {
+        let key = generate_secret_key();
+        if SecretKey::from_slice(&key).is_ok() {
+            return key;
+        }
+    }
+}
+
+fn get_public_key_compressed(secret_key: &[u8; 32]) -> [u8; 33] {
+    let secp = Secp256k1::new();
+    let sk = SecretKey::from_slice(secret_key).expect("Valid secret key");
+    PublicKey::from_secret_key(&secp, &sk).serialize()
+}
+
 fn bench_encrypt_various_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("nip44_encrypt");
 
-    let sender_sk = generate_secret_key();
-    let recipient_sk = generate_secret_key();
-    let recipient_pk = get_public_key(&recipient_sk).unwrap();
+    let sender_sk = generate_valid_secret_key();
+    let recipient_sk = generate_valid_secret_key();
+    let recipient_pk = get_public_key_compressed(&recipient_sk);
 
-    for size in [100, 1_000, 10_000, 100_000].iter() {
+    for size in [100, 1_000, 10_000, MAX_PLAINTEXT_LEN].iter() {
         let message = generate_message(*size);
         group.throughput(Throughput::Bytes(*size as u64));
 
@@ -40,12 +56,12 @@ fn bench_encrypt_various_sizes(c: &mut Criterion) {
 fn bench_decrypt_various_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("nip44_decrypt");
 
-    let sender_sk = generate_secret_key();
-    let recipient_sk = generate_secret_key();
-    let recipient_pk = get_public_key(&recipient_sk).unwrap();
-    let sender_pk = get_public_key(&sender_sk).unwrap();
+    let sender_sk = generate_valid_secret_key();
+    let recipient_sk = generate_valid_secret_key();
+    let recipient_pk = get_public_key_compressed(&recipient_sk);
+    let sender_pk = get_public_key_compressed(&sender_sk);
 
-    for size in [100, 1_000, 10_000, 100_000].iter() {
+    for size in [100, 1_000, 10_000, MAX_PLAINTEXT_LEN].iter() {
         let message = generate_message(*size);
         let encrypted = encrypt(&sender_sk, &recipient_pk, &message).expect("Encryption failed");
         group.throughput(Throughput::Bytes(*size as u64));
@@ -68,10 +84,10 @@ fn bench_decrypt_various_sizes(c: &mut Criterion) {
 fn bench_encrypt_decrypt_roundtrip(c: &mut Criterion) {
     let mut group = c.benchmark_group("nip44_roundtrip");
 
-    let sender_sk = generate_secret_key();
-    let recipient_sk = generate_secret_key();
-    let recipient_pk = get_public_key(&recipient_sk).unwrap();
-    let sender_pk = get_public_key(&sender_sk).unwrap();
+    let sender_sk = generate_valid_secret_key();
+    let recipient_sk = generate_valid_secret_key();
+    let recipient_pk = get_public_key_compressed(&recipient_sk);
+    let sender_pk = get_public_key_compressed(&sender_sk);
 
     for size in [100, 1_000, 10_000].iter() {
         let message = generate_message(*size);
@@ -106,24 +122,25 @@ fn bench_key_generation(c: &mut Criterion) {
 }
 
 fn bench_public_key_derivation(c: &mut Criterion) {
-    let secret_key = generate_secret_key();
+    let secret_key = generate_valid_secret_key();
 
     c.bench_function("get_public_key", |b| {
         b.iter(|| get_public_key(black_box(&secret_key)));
     });
 }
 
-fn bench_encrypt_empty_message(c: &mut Criterion) {
-    let sender_sk = generate_secret_key();
-    let recipient_sk = generate_secret_key();
-    let recipient_pk = get_public_key(&recipient_sk).unwrap();
+fn bench_encrypt_min_message(c: &mut Criterion) {
+    let sender_sk = generate_valid_secret_key();
+    let recipient_sk = generate_valid_secret_key();
+    let recipient_pk = get_public_key_compressed(&recipient_sk);
+    let message = "a".repeat(MIN_PLAINTEXT_LEN);
 
-    c.bench_function("encrypt_empty_message", |b| {
+    c.bench_function("encrypt_min_message", |b| {
         b.iter(|| {
             encrypt(
                 black_box(&sender_sk),
                 black_box(&recipient_pk),
-                black_box(""),
+                black_box(&message),
             )
             .expect("Encryption failed")
         });
@@ -131,9 +148,9 @@ fn bench_encrypt_empty_message(c: &mut Criterion) {
 }
 
 fn bench_encrypt_unicode(c: &mut Criterion) {
-    let sender_sk = generate_secret_key();
-    let recipient_sk = generate_secret_key();
-    let recipient_pk = get_public_key(&recipient_sk).unwrap();
+    let sender_sk = generate_valid_secret_key();
+    let recipient_sk = generate_valid_secret_key();
+    let recipient_pk = get_public_key_compressed(&recipient_sk);
 
     // Unicode message with emojis and various scripts
     let message = "Hello 世界 🌍 Привет мир مرحبا بالعالم";
@@ -153,14 +170,14 @@ fn bench_encrypt_unicode(c: &mut Criterion) {
 fn bench_multiple_recipients(c: &mut Criterion) {
     let mut group = c.benchmark_group("nip44_multiple_recipients");
 
-    let sender_sk = generate_secret_key();
+    let sender_sk = generate_valid_secret_key();
     let message = generate_message(1_000);
 
     for num_recipients in [1, 5, 10, 20].iter() {
         let recipients: Vec<_> = (0..*num_recipients)
             .map(|_| {
-                let sk = generate_secret_key();
-                get_public_key(&sk).unwrap()
+                let sk = generate_valid_secret_key();
+                get_public_key_compressed(&sk)
             })
             .collect();
 
@@ -192,7 +209,7 @@ criterion_group!(
     bench_encrypt_decrypt_roundtrip,
     bench_key_generation,
     bench_public_key_derivation,
-    bench_encrypt_empty_message,
+    bench_encrypt_min_message,
     bench_encrypt_unicode,
     bench_multiple_recipients,
 );

@@ -2,13 +2,13 @@
 
 use super::*;
 use nostr::{EventTemplate, finalize_event, generate_secret_key};
-use nostr_client::RelayConnection;
+use nostr_client::{RelayConfig, RelayConnection};
 use serde_json::json;
-use tokio::time::{Duration, timeout};
+use tokio::time::Duration;
 
 #[tokio::test]
 async fn test_invalid_event_rejection() {
-    let port = 17300;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -44,7 +44,7 @@ async fn test_invalid_event_rejection() {
 
 #[tokio::test]
 async fn test_malformed_json_handling() {
-    let port = 17301;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -65,7 +65,7 @@ async fn test_malformed_json_handling() {
 
 #[tokio::test]
 async fn test_invalid_filter_handling() {
-    let port = 17302;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -91,18 +91,17 @@ async fn test_invalid_filter_handling() {
 async fn test_connection_to_invalid_url() {
     let url = "ws://127.0.0.1:99999"; // Invalid port
 
-    let relay = RelayConnection::new(url).unwrap();
-    let result = timeout(Duration::from_secs(2), relay.connect()).await;
-
-    // Should timeout or error
-    assert!(result.is_err() || result.unwrap().is_err());
+    let result = RelayConnection::new(url);
+    assert!(result.is_err(), "Invalid URL should be rejected");
 }
 
 #[tokio::test]
 async fn test_publish_while_disconnected() {
     let url = "ws://127.0.0.1:17311";
 
-    let relay = RelayConnection::new(url).unwrap();
+    let mut config = RelayConfig::default();
+    config.enable_queue = false;
+    let relay = RelayConnection::with_config(url, config).unwrap();
     // Don't connect
 
     let secret_key = generate_secret_key();
@@ -139,7 +138,7 @@ async fn test_subscribe_while_disconnected() {
 
 #[tokio::test]
 async fn test_empty_subscription_id() {
-    let port = 17305;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -158,7 +157,7 @@ async fn test_empty_subscription_id() {
 
 #[tokio::test]
 async fn test_very_long_subscription_id() {
-    let port = 17306;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -178,7 +177,7 @@ async fn test_very_long_subscription_id() {
 
 #[tokio::test]
 async fn test_event_with_future_timestamp() {
-    let port = 17307;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -216,7 +215,7 @@ async fn test_event_with_future_timestamp() {
 
 #[tokio::test]
 async fn test_event_with_past_timestamp() {
-    let port = 17308;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -248,7 +247,7 @@ async fn test_event_with_past_timestamp() {
 
 #[tokio::test]
 async fn test_close_nonexistent_subscription() {
-    let port = 17309;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -266,7 +265,7 @@ async fn test_close_nonexistent_subscription() {
 
 #[tokio::test]
 async fn test_rapid_reconnection() {
-    let port = 17310;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 

@@ -5,7 +5,7 @@
 //!
 //! Includes exchange integration tests demonstrating agent-to-agent trading.
 
-use super::{start_test_relay, test_relay_url};
+use super::{next_test_port, start_test_relay, test_relay_url};
 use neobank::{ExchangeClient, OrderParams, OrderSide, TradeOutcome};
 use nostr::{
     // NIP-SA Profile types
@@ -60,7 +60,7 @@ fn to_compressed_pubkey(xonly: &[u8; 32]) -> [u8; 33] {
 #[tokio::test]
 async fn test_agent_profile_publish_and_fetch() {
     // 1. Start test relay
-    let port = 19100;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let relay_url = test_relay_url(port);
 
@@ -229,7 +229,7 @@ async fn test_agent_profile_publish_and_fetch() {
 #[tokio::test]
 async fn test_agent_schedule_replaceable_semantics() {
     // 1. Start test relay
-    let port = 19101;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let _relay_url = test_relay_url(port);
 
@@ -264,7 +264,7 @@ async fn test_agent_schedule_replaceable_semantics() {
 #[tokio::test]
 async fn test_agent_state_encrypt_publish_fetch_decrypt() {
     // 1. Start test relay
-    let port = 19102;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let relay_url = test_relay_url(port);
 
@@ -347,7 +347,7 @@ async fn test_agent_state_encrypt_publish_fetch_decrypt() {
 #[tokio::test]
 async fn test_tick_request_result_flow() {
     // 1. Start test relay
-    let port = 19103;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let relay_url = test_relay_url(port);
 
@@ -509,7 +509,7 @@ async fn test_tick_request_result_flow() {
 #[tokio::test]
 async fn test_trajectory_session_and_events() {
     // 1. Start test relay
-    let port = 19104;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let relay_url = test_relay_url(port);
 
@@ -803,7 +803,7 @@ const KIND_LABEL: u16 = 1985;
 #[tokio::test]
 async fn test_sovereign_agent_exchange_flow() {
     // 1. Start test relay
-    let port = 19110;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let relay_url = test_relay_url(port);
 

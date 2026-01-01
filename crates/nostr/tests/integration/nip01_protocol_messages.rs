@@ -18,7 +18,7 @@ use tokio::time::{Duration, timeout};
 
 #[tokio::test]
 async fn test_event_message_structure() {
-    let port = 18000;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -46,7 +46,7 @@ async fn test_event_message_structure() {
 
 #[tokio::test]
 async fn test_req_message_structure() {
-    let port = 18001;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -64,7 +64,7 @@ async fn test_req_message_structure() {
 
 #[tokio::test]
 async fn test_req_with_multiple_filters() {
-    let port = 18002;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -82,7 +82,7 @@ async fn test_req_with_multiple_filters() {
 
 #[tokio::test]
 async fn test_close_message_structure() {
-    let port = 18003;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -106,7 +106,7 @@ async fn test_close_message_structure() {
 
 #[tokio::test]
 async fn test_ok_message_format() {
-    let port = 18004;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -141,7 +141,7 @@ async fn test_ok_message_format() {
 
 #[tokio::test]
 async fn test_ok_message_rejection() {
-    let port = 18005;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -180,7 +180,7 @@ async fn test_ok_message_rejection() {
 
 #[tokio::test]
 async fn test_eose_message_received() {
-    let port = 18006;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -215,7 +215,7 @@ async fn test_eose_message_received() {
 
 #[tokio::test]
 async fn test_event_message_with_subscription_id() {
-    let port = 18007;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -278,7 +278,7 @@ async fn test_event_message_with_subscription_id() {
 async fn test_notice_message_handling() {
     // NOTICE messages are optional and implementation-specific
     // This test just ensures they don't break the connection if received
-    let port = 18008;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -300,7 +300,7 @@ async fn test_notice_message_handling() {
 
 #[tokio::test]
 async fn test_filter_ids_64_char_hex() {
-    let port = 18010;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -320,7 +320,7 @@ async fn test_filter_ids_64_char_hex() {
 
 #[tokio::test]
 async fn test_filter_authors_64_char_hex() {
-    let port = 18011;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -340,7 +340,7 @@ async fn test_filter_authors_64_char_hex() {
 
 #[tokio::test]
 async fn test_filter_tag_queries() {
-    let port = 18012;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -362,7 +362,7 @@ async fn test_filter_tag_queries() {
 
 #[tokio::test]
 async fn test_filter_since_until() {
-    let port = 18013;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -387,7 +387,7 @@ async fn test_filter_since_until() {
 
 #[tokio::test]
 async fn test_filter_limit_positive() {
-    let port = 18014;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -407,7 +407,7 @@ async fn test_filter_limit_positive() {
 
 #[tokio::test]
 async fn test_filter_empty() {
-    let port = 18015;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -429,7 +429,7 @@ async fn test_filter_empty() {
 
 #[tokio::test]
 async fn test_subscription_id_max_length() {
-    let port = 18016;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -448,7 +448,7 @@ async fn test_subscription_id_max_length() {
 
 #[tokio::test]
 async fn test_subscription_id_special_characters() {
-    let port = 18017;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -473,7 +473,7 @@ async fn test_subscription_id_special_characters() {
 
 #[tokio::test]
 async fn test_eose_before_new_events() {
-    let port = 18020;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -541,7 +541,7 @@ async fn test_eose_before_new_events() {
 
 #[tokio::test]
 async fn test_duplicate_event_handling() {
-    let port = 18021;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -590,7 +590,7 @@ async fn test_duplicate_event_handling() {
 
 #[tokio::test]
 async fn test_multiple_subscriptions_per_connection() {
-    let port = 18030;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -614,7 +614,7 @@ async fn test_multiple_subscriptions_per_connection() {
 
 #[tokio::test]
 async fn test_subscription_replacement_same_id() {
-    let port = 18031;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -637,7 +637,7 @@ async fn test_subscription_replacement_same_id() {
 
 #[tokio::test]
 async fn test_subscription_independent_per_connection() {
-    let port = 18032;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 

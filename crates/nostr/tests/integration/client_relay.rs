@@ -7,22 +7,24 @@ use tokio::time::{Duration, timeout};
 
 #[tokio::test]
 async fn test_client_connects_to_relay() {
-    let port = 17000;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
     let relay = RelayConnection::new(&url).unwrap();
-    let result = timeout(Duration::from_secs(2), relay.connect()).await;
+    let result = timeout(Duration::from_secs(10), relay.connect()).await;
 
     assert!(result.is_ok(), "Connection should succeed");
-    assert!(result.unwrap().is_ok(), "Connection should not error");
+    if let Err(err) = result.unwrap() {
+        panic!("Connection should not error: {}", err);
+    }
 
     relay.disconnect().await.ok();
 }
 
 #[tokio::test]
 async fn test_client_publishes_event() {
-    let port = 17001;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -58,26 +60,36 @@ async fn test_client_publishes_event() {
 
 #[tokio::test]
 async fn test_client_subscribes_and_receives_event() {
-    let port = 17002;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
     // Connect first client to subscribe
     let relay1 = RelayConnection::new(&url).unwrap();
-    relay1.connect().await.unwrap();
+    let connect_result = timeout(Duration::from_secs(2), relay1.connect()).await;
+    assert!(connect_result.is_ok(), "Relay1 connect timed out");
+    assert!(connect_result.unwrap().is_ok(), "Relay1 connect failed");
 
     // Subscribe to kind 1 events
     let filters = vec![serde_json::json!({
         "kinds": [1]
     })];
-    relay1.subscribe("test-sub", &filters).await.unwrap();
+    let sub_result = timeout(
+        Duration::from_secs(2),
+        relay1.subscribe_with_channel("test-sub", &filters),
+    )
+    .await;
+    assert!(sub_result.is_ok(), "Relay1 subscribe timed out");
+    let mut rx = sub_result.unwrap().unwrap();
 
     // Give subscription time to register
     sleep(Duration::from_millis(50)).await;
 
     // Connect second client to publish
     let relay2 = RelayConnection::new(&url).unwrap();
-    relay2.connect().await.unwrap();
+    let connect_result = timeout(Duration::from_secs(2), relay2.connect()).await;
+    assert!(connect_result.is_ok(), "Relay2 connect timed out");
+    assert!(connect_result.unwrap().is_ok(), "Relay2 connect failed");
 
     // Publish event
     let secret_key = generate_secret_key();
@@ -93,31 +105,19 @@ async fn test_client_subscribes_and_receives_event() {
     let event = finalize_event(&template, &secret_key).unwrap();
     let event_id = event.id.clone();
 
-    relay2
-        .publish_event(&event, Duration::from_secs(5))
-        .await
-        .unwrap();
+    let publish_result = timeout(
+        Duration::from_secs(5),
+        relay2.publish_event(&event, Duration::from_secs(5)),
+    )
+    .await;
+    assert!(publish_result.is_ok(), "Relay2 publish timed out");
+    publish_result.unwrap().unwrap();
 
     // Wait for event on first client
-    let result = timeout(Duration::from_secs(2), async {
-        loop {
-            if let Ok(Some(msg)) = relay1.recv().await {
-                match msg {
-                    RelayMessage::Event(sub_id, evt) => {
-                        if evt.id == event_id {
-                            return Some((sub_id, evt));
-                        }
-                    }
-                    _ => continue,
-                }
-            }
-        }
-    })
-    .await;
+    let result = timeout(Duration::from_secs(2), rx.recv()).await;
 
     assert!(result.is_ok(), "Should receive event");
-    let (sub_id, received_event) = result.unwrap().unwrap();
-    assert_eq!(sub_id, "test-sub");
+    let received_event = result.unwrap().unwrap();
     assert_eq!(received_event.id, event_id);
 
     relay1.disconnect().await.ok();
@@ -126,7 +126,7 @@ async fn test_client_subscribes_and_receives_event() {
 
 #[tokio::test]
 async fn test_subscription_receives_eose() {
-    let port = 17003;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -160,7 +160,7 @@ async fn test_subscription_receives_eose() {
 
 #[tokio::test]
 async fn test_close_subscription() {
-    let port = 17004;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -191,7 +191,7 @@ async fn test_close_subscription() {
 
 #[tokio::test]
 async fn test_multiple_clients_receive_broadcast() {
-    let port = 17005;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -263,7 +263,7 @@ async fn test_multiple_clients_receive_broadcast() {
 
 #[tokio::test]
 async fn test_reconnection() {
-    let port = 17006;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 

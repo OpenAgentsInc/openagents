@@ -10,7 +10,7 @@ use tokio::time::{Duration, timeout};
 
 #[tokio::test]
 async fn test_subscription_replacement() {
-    let port = 17100;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -89,7 +89,7 @@ async fn test_subscription_replacement() {
 
 #[tokio::test]
 async fn test_multiple_concurrent_subscriptions() {
-    let port = 17101;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -163,7 +163,7 @@ async fn test_multiple_concurrent_subscriptions() {
 
 #[tokio::test]
 async fn test_subscription_with_multiple_filters() {
-    let port = 17102;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -235,7 +235,7 @@ async fn test_subscription_with_multiple_filters() {
 
 #[tokio::test]
 async fn test_realtime_event_delivery() {
-    let port = 17103;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -313,7 +313,7 @@ async fn test_realtime_event_delivery() {
 
 #[tokio::test]
 async fn test_subscription_receives_job_request_kind() {
-    let port = 17104;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 

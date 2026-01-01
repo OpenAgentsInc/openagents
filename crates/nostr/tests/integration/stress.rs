@@ -22,7 +22,7 @@ use tokio::time::{Duration, timeout};
 #[tokio::test]
 #[ignore] // Run with: cargo test --test integration_tests stress -- --ignored --test-threads=1
 async fn test_1000_concurrent_connections() {
-    let port = 19000;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -85,7 +85,7 @@ async fn test_1000_concurrent_connections() {
 #[tokio::test]
 #[ignore]
 async fn test_500_persistent_connections() {
-    let port = 19001;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -140,7 +140,7 @@ async fn test_500_persistent_connections() {
 #[tokio::test]
 #[ignore]
 async fn test_rapid_event_publishing_single_client() {
-    let port = 19002;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -203,7 +203,7 @@ async fn test_rapid_event_publishing_single_client() {
 #[tokio::test]
 #[ignore]
 async fn test_concurrent_event_publishing_100_clients() {
-    let port = 19003;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -296,7 +296,7 @@ async fn test_concurrent_event_publishing_100_clients() {
 #[tokio::test]
 #[ignore]
 async fn test_100_clients_with_10_subscriptions_each() {
-    let port = 19004;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -372,7 +372,7 @@ async fn test_100_clients_with_10_subscriptions_each() {
 #[tokio::test]
 #[ignore]
 async fn test_broadcast_to_100_subscribers() {
-    let port = 19005;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -443,7 +443,7 @@ async fn test_broadcast_to_100_subscribers() {
 #[tokio::test]
 #[ignore]
 async fn test_sustained_load_30_seconds() {
-    let port = 19006;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -539,7 +539,7 @@ async fn test_sustained_load_30_seconds() {
 #[tokio::test]
 #[ignore]
 async fn test_connection_churn() {
-    let port = 19007;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
