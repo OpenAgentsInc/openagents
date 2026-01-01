@@ -29,3 +29,6 @@ pub use db::PylonDb;
 pub use host::{AgentHandle, AgentRunner};
 pub use neobank_service::{NeobankConfig, NeobankError, NeobankService, TreasuryStatus};
 pub use provider::PylonProvider;
+
+#[cfg(test)]
+mod tests;
