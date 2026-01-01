@@ -77,10 +77,6 @@ name = "agent-customer"
 path = "src/bin/agent_customer.rs"
 
 [[bin]]
-name = "autopilot-cli"
-path = "src/bin/autopilot-cli.rs"
-
-[[bin]]
 name = "agent-runner"
 path = "src/bin/agent_runner.rs"
 
