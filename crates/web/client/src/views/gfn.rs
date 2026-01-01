@@ -65,7 +65,7 @@ pub(crate) fn build_gfn_page(
         .line_color(Hsla::new(0.0, 0.0, 1.0, 0.8))
         .bg_color(Hsla::new(0.0, 0.0, 0.0, 0.4))
         .glow_color(Hsla::new(0.0, 0.0, 1.0, 0.15))
-        .border_color(Hsla::new(0.0, 0.0, 1.0, 0.5))
+        .border_color(Hsla::new(0.0, 0.0, 1.0, 0.1))
         .stroke_width(1.0)
         .corner_length(30.0)
         .animation_progress(frame_progress);
@@ -665,21 +665,11 @@ fn draw_comparison_graph(
     let graph_w = bounds.width() - margin_left - margin_right;
     let graph_h = bounds.height() - margin_top - margin_bottom;
 
-    // Background
-    scene.draw_quad(
-        Quad::new(Bounds::new(graph_x, graph_y, graph_w, graph_h))
-            .with_background(theme::bg::SURFACE.with_alpha(0.3))
-            .with_border(theme::border::DEFAULT, 1.0),
-    );
-
     // Log scale parameters
-    // Y-axis: 10^0 to 10^15 (1 to 1 quadrillion)
     let log_min = 0.0_f64;  // 10^0 = 1
     let log_max = 15.0_f64; // 10^15
-
-    // X-axis: 2 to 50 nodes
-    let x_min = 2;
-    let x_max = 50;
+    let x_min = 2u32;
+    let x_max = 50u32;
 
     // Helper to convert value to Y position (log scale)
     let value_to_y = |value: f64| -> f32 {
@@ -696,20 +686,19 @@ fn draw_comparison_graph(
         graph_x + ((n - x_min) as f32 / (x_max - x_min) as f32) * graph_w
     };
 
-    // Draw Y-axis gridlines and labels (log scale: 10^0, 10^3, 10^6, 10^9, 10^12, 10^15)
+    // Draw background (no clip needed)
+    scene.draw_quad(
+        Quad::new(Bounds::new(graph_x, graph_y, graph_w, graph_h))
+            .with_background(theme::bg::SURFACE.with_alpha(0.3))
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+
+    // Draw Y-axis labels OUTSIDE clip (they're to the left of graph area)
     let y_ticks = [0, 3, 6, 9, 12, 15];
     let y_labels = ["1", "10^3", "10^6", "10^9", "10^12", "10^15"];
     for (i, &exp) in y_ticks.iter().enumerate() {
         let value = 10.0_f64.powi(exp);
         let y_pos = value_to_y(value);
-
-        // Gridline
-        scene.draw_quad(
-            Quad::new(Bounds::new(graph_x, y_pos - 0.5, graph_w, 1.0))
-                .with_background(theme::border::DEFAULT.with_alpha(0.3)),
-        );
-
-        // Label
         let label = y_labels[i];
         let label_width = text_system.measure(label, 9.0);
         let label_run = text_system.layout(
@@ -731,18 +720,10 @@ fn draw_comparison_graph(
     );
     scene.draw_text(y_title_run);
 
-    // Draw X-axis gridlines and labels
+    // Draw X-axis labels OUTSIDE clip (they're below graph area)
     let x_ticks = [2, 10, 20, 30, 40, 50];
     for &n in &x_ticks {
         let x_pos = n_to_x(n);
-
-        // Gridline
-        scene.draw_quad(
-            Quad::new(Bounds::new(x_pos - 0.5, graph_y, 1.0, graph_h))
-                .with_background(theme::border::DEFAULT.with_alpha(0.2)),
-        );
-
-        // Label
         let label = format!("{}", n);
         let label_width = text_system.measure(&label, 9.0);
         let label_run = text_system.layout(
@@ -765,7 +746,29 @@ fn draw_comparison_graph(
     );
     scene.draw_text(x_title_run);
 
-    // Draw Metcalfe curve (N²) - yellow/orange - thicker line
+    // NOW push clip for graph content (gridlines, curves, markers)
+    scene.push_clip(Bounds::new(graph_x, graph_y, graph_w, graph_h));
+
+    // Draw Y-axis gridlines
+    for &exp in &y_ticks {
+        let value = 10.0_f64.powi(exp);
+        let y_pos = value_to_y(value);
+        scene.draw_quad(
+            Quad::new(Bounds::new(graph_x, y_pos - 0.5, graph_w, 1.0))
+                .with_background(theme::border::DEFAULT.with_alpha(0.3)),
+        );
+    }
+
+    // Draw X-axis gridlines
+    for &n in &x_ticks {
+        let x_pos = n_to_x(n);
+        scene.draw_quad(
+            Quad::new(Bounds::new(x_pos - 0.5, graph_y, 1.0, graph_h))
+                .with_background(theme::border::DEFAULT.with_alpha(0.2)),
+        );
+    }
+
+    // Draw Metcalfe curve (N²)
     let metcalfe_color = METCALFE_COLOR;
     let mut prev_metcalfe: Option<(f32, f32)> = None;
     for n in x_min..=x_max {
@@ -773,24 +776,21 @@ fn draw_comparison_graph(
         let px = n_to_x(n);
         let py = value_to_y(value);
 
-        // Draw point
         scene.draw_quad(
             Quad::new(Bounds::new(px - 1.5, py - 1.5, 3.0, 3.0))
                 .with_background(metcalfe_color),
         );
 
-        // Connect to previous point
         if let Some((prev_x, prev_y)) = prev_metcalfe {
             draw_thick_line(scene, Point::new(prev_x, prev_y), Point::new(px, py), metcalfe_color, 2.0);
         }
         prev_metcalfe = Some((px, py));
     }
 
-    // Draw Reed curve (2^N - N - 1) - green - thicker line, goes way higher
+    // Draw Reed curve (2^N - N - 1)
     let reed_color = REED_COLOR;
     let mut prev_reed: Option<(f32, f32)> = None;
     for n in x_min..=x_max {
-        // Correct Reed's Law: 2^N - N - 1 (non-trivial subsets)
         let value = if n <= 50 {
             2.0_f64.powi(n as i32) - (n as f64) - 1.0
         } else {
@@ -800,15 +800,13 @@ fn draw_comparison_graph(
         let px = n_to_x(n);
         let py = value_to_y(value);
 
-        // Draw point
         scene.draw_quad(
-            Quad::new(Bounds::new(px - 1.5, py.max(graph_y) - 1.5, 3.0, 3.0))
+            Quad::new(Bounds::new(px - 1.5, py - 1.5, 3.0, 3.0))
                 .with_background(reed_color),
         );
 
-        // Connect to previous point
         if let Some((prev_x, prev_y)) = prev_reed {
-            draw_thick_line(scene, Point::new(prev_x, prev_y.max(graph_y)), Point::new(px, py.max(graph_y)), reed_color, 2.0);
+            draw_thick_line(scene, Point::new(prev_x, prev_y), Point::new(px, py), reed_color, 2.0);
         }
         prev_reed = Some((px, py));
     }
@@ -820,12 +818,12 @@ fn draw_comparison_graph(
             .with_background(theme::text::PRIMARY.with_alpha(0.5)),
     );
 
-    // Current N label at top of marker
+    // Current N label (inside graph area)
     let n_label = format!("N={}", current_n);
     let n_label_width = text_system.measure(&n_label, 10.0);
     let n_label_run = text_system.layout(
         &n_label,
-        Point::new(marker_x - n_label_width / 2.0, graph_y - 14.0),
+        Point::new(marker_x - n_label_width / 2.0, graph_y + 4.0),
         10.0,
         theme::text::PRIMARY,
     );
@@ -835,13 +833,11 @@ fn draw_comparison_graph(
     let legend_x = graph_x + graph_w - 85.0;
     let legend_y = graph_y + 12.0;
 
-    // Legend background
     scene.draw_quad(
         Quad::new(Bounds::new(legend_x - 6.0, legend_y - 4.0, 90.0, 32.0))
             .with_background(theme::bg::APP.with_alpha(0.8)),
     );
 
-    // Metcalfe legend
     scene.draw_quad(
         Quad::new(Bounds::new(legend_x, legend_y + 2.0, 16.0, 3.0))
             .with_background(metcalfe_color),
@@ -849,13 +845,15 @@ fn draw_comparison_graph(
     let m_run = text_system.layout("N^2", Point::new(legend_x + 20.0, legend_y), 10.0, metcalfe_color);
     scene.draw_text(m_run);
 
-    // Reed legend
     scene.draw_quad(
         Quad::new(Bounds::new(legend_x, legend_y + 16.0, 16.0, 3.0))
             .with_background(reed_color),
     );
     let r_run = text_system.layout("2^N-N-1", Point::new(legend_x + 20.0, legend_y + 14.0), 10.0, reed_color);
     scene.draw_text(r_run);
+
+    // Pop the clip
+    scene.pop_clip();
 }
 
 /// Draw a thick line between two points

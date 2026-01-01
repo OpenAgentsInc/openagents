@@ -33,6 +33,7 @@ const ITEMS: [(&str, &[&str]); 6] = [
     ("Agent Network(s)", &[
         "https://x.com/OpenAgentsInc/status/1989473563066376585",
         "https://x.com/OpenAgentsInc/status/2002621049616179223",
+        "https://github.com/OpenAgentsInc/openagents/blob/main/docs/research/openagents-vs-distributional-agi-safety.md",
         "https://chatgpt.com/share/6956b860-9288-8011-b67d-c78b64fceb49",
     ]),
 ];
@@ -85,7 +86,7 @@ pub(crate) fn build_2026_page(
         .line_color(Hsla::new(0.0, 0.0, 1.0, 0.8))
         .bg_color(Hsla::new(0.0, 0.0, 0.0, 0.4))
         .glow_color(Hsla::new(0.0, 0.0, 1.0, 0.15))
-        .border_color(Hsla::new(0.0, 0.0, 1.0, 0.5))
+        .border_color(Hsla::new(0.0, 0.0, 1.0, 0.1))
         .stroke_width(1.0)
         .corner_length(30.0)
         .animation_progress(frame_progress);

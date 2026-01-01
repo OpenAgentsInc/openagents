@@ -227,6 +227,12 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // 2026 page - key themes and links
         (Method::Get, "/2026") => routes::y2026::view_2026(env).await,
 
+        // Homepage - shows landing/waitlist page
+        (Method::Get, "/") => routes::early::view_early(env).await,
+
+        // Early access page - old landing page
+        (Method::Get, "/early") => routes::early::view_early(env).await,
+
         // Embed route: /repo/:username/:repo/embed
         (Method::Get, path) if path.starts_with("/repo/") && path.ends_with("/embed") => {
             let inner = path.trim_start_matches("/repo/").trim_end_matches("/embed");
