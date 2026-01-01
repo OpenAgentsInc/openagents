@@ -399,4 +399,3 @@ async fn test_comment_grouping_by_file_and_line() -> Result<()> {
     app.shutdown().await;
     Ok(())
 }
-#![cfg(feature = "legacy-web")]

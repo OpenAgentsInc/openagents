@@ -384,4 +384,3 @@ fn test_notifications_page_notification_types() {
     // Should render all notification types
     assert!(html.contains("PR Review"));
 }
-#![cfg(feature = "legacy-web")]
