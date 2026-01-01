@@ -39,6 +39,7 @@ web-sys = { version = "0.3", features = [
     "CloseEvent",
     "Event",
     "Location",
+    "Storage",
     "console",
     "Performance",
     "Request",

@@ -1627,6 +1627,7 @@ pub(crate) fn draw_hud_view(
     let code_bounds;
     let terminal_bounds;
     let metrics_bounds;
+    // Wallet disabled
     let wallet_bounds;
     let show_start_form = state
         .hud_context
@@ -1640,15 +1641,15 @@ pub(crate) fn draw_hud_view(
         .unwrap_or(false);
 
     if width < 900.0 {
-        let pane_h = ((content_h - gutter * 4.0) / 5.0).max(0.0);
+        // Wallet disabled - use 4 panes instead of 5
+        let pane_h = ((content_h - gutter * 3.0) / 4.0).max(0.0);
         thread_bounds = Bounds::new(content_x, content_y, content_w, pane_h);
         code_bounds = Bounds::new(content_x, content_y + pane_h + gutter, content_w, pane_h);
         terminal_bounds =
             Bounds::new(content_x, content_y + (pane_h + gutter) * 2.0, content_w, pane_h);
         metrics_bounds =
             Bounds::new(content_x, content_y + (pane_h + gutter) * 3.0, content_w, pane_h);
-        wallet_bounds =
-            Bounds::new(content_x, content_y + (pane_h + gutter) * 4.0, content_w, pane_h);
+        wallet_bounds = Bounds::ZERO; // Wallet disabled
     } else {
         let left_w = (content_w * 0.34).max(280.0).min(420.0);
         let right_w = (content_w * 0.28).max(240.0).min(360.0);
@@ -1659,10 +1660,9 @@ pub(crate) fn draw_hud_view(
         thread_bounds = Bounds::new(left_x, content_y, left_w, content_h);
         code_bounds = Bounds::new(center_x, content_y, center_w, content_h);
         let mut terminal_h = (content_h * 0.6).max(0.0);
-        terminal_h = terminal_h.min(content_h - gutter * 2.0).max(0.0);
-        let remaining_h = (content_h - terminal_h - gutter * 2.0).max(0.0);
-        let metrics_h = remaining_h * 0.5;
-        let wallet_h = remaining_h - metrics_h;
+        terminal_h = terminal_h.min(content_h - gutter).max(0.0);
+        // Wallet disabled - metrics takes all remaining height
+        let metrics_h = (content_h - terminal_h - gutter).max(0.0);
         terminal_bounds = Bounds::new(right_x, content_y, right_w, terminal_h);
         metrics_bounds = Bounds::new(
             right_x,
@@ -1670,12 +1670,7 @@ pub(crate) fn draw_hud_view(
             right_w,
             metrics_h,
         );
-        wallet_bounds = Bounds::new(
-            right_x,
-            content_y + terminal_h + gutter + metrics_h + gutter,
-            right_w,
-            wallet_h,
-        );
+        wallet_bounds = Bounds::ZERO; // Wallet disabled
     }
 
     layout.settings_public_bounds = Bounds::ZERO;
@@ -1780,14 +1775,16 @@ pub(crate) fn draw_hud_view(
     state.hud_ui.code.paint(code_bounds, &mut cx);
     state.hud_ui.terminal.paint(terminal_bounds, &mut cx);
     state.hud_ui.metrics.paint(metrics_bounds, &mut cx);
-    let show_wallet = state
-        .hud_context
-        .as_ref()
-        .map(|ctx| ctx.is_owner)
-        .unwrap_or(false);
-    if show_wallet {
-        state.wallet.paint(wallet_bounds, &mut cx);
-    }
+    // Wallet disabled
+    // let show_wallet = state
+    //     .hud_context
+    //     .as_ref()
+    //     .map(|ctx| ctx.is_owner)
+    //     .unwrap_or(false);
+    // if show_wallet {
+    //     state.wallet.paint(wallet_bounds, &mut cx);
+    // }
+    let _ = wallet_bounds; // Suppress unused warning
 
     if state.hud_ui.thread.entry_count() == 0 {
         let placeholder = cx.text.layout(

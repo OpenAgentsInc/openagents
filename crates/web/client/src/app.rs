@@ -87,6 +87,41 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 let mut state = state_clone.borrow_mut();
                 state.repos = repos;
                 state.repos_loading = false;
+
+                // Check localStorage for saved repo and auto-select
+                if let Some(window) = web_sys::window() {
+                    if let Ok(Some(storage)) = window.local_storage() {
+                        if let Ok(Some(saved_repo)) = storage.get_item("selected_repo") {
+                            // Check if saved repo exists in loaded repos
+                            if state.repos.iter().any(|r| r.full_name == saved_repo) {
+                                let parts: Vec<&str> = saved_repo.split('/').collect();
+                                let (owner, repo_name) = if parts.len() == 2 {
+                                    (parts[0].to_string(), parts[1].to_string())
+                                } else {
+                                    (saved_repo.clone(), "".to_string())
+                                };
+
+                                state.selected_repo = Some(saved_repo.clone());
+                                state.hud_context = Some(HudContext {
+                                    username: owner,
+                                    repo: repo_name,
+                                    is_owner: true,
+                                    is_public: true,
+                                    embed_mode: false,
+                                    agent_id: None,
+                                    stream_url: None,
+                                    session_id: None,
+                                    ws_url: None,
+                                    status: "starting".to_string(),
+                                });
+                                state.hud_ui.status_text = "starting".to_string();
+                                state.open_share_after_start = true;
+                                state.view = AppView::RepoView;
+                                state.hud_settings_loaded = false;
+                            }
+                        }
+                    }
+                }
             } else if state_clone.borrow().hud_context.is_some() {
                 init_hud_runtime(state_clone.clone());
             }
@@ -330,6 +365,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     };
 
                     state.selected_repo = Some(repo_full.clone());
+                    // Save to localStorage
+                    if let Some(window) = web_sys::window() {
+                        if let Ok(Some(storage)) = window.local_storage() {
+                            let _ = storage.set_item("selected_repo", &repo_full);
+                        }
+                    }
                     state.hud_context = Some(HudContext {
                         username: owner,
                         repo: repo_name,
@@ -461,6 +502,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if let Some(window) = web_sys::window() {
                     match state.view {
                         AppView::RepoView | AppView::RepoSelector => {
+                            // Clear saved repo from localStorage
+                            if let Ok(Some(storage)) = window.local_storage() {
+                                let _ = storage.remove_item("selected_repo");
+                            }
                             let opts = web_sys::RequestInit::new();
                             opts.set_method("POST");
                             let _ = window.fetch_with_str_and_init("/api/auth/logout", &opts);
@@ -545,8 +590,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     return;
                 }
 
-                state.scroll_offset += event.delta_y() as f32 * 0.5;
-                state.scroll_offset = state.scroll_offset.max(0.0);
+                // Only scroll if repos overflow the visible area (more than 10 repos)
+                let max_visible_repos = 10;
+                if state.repos.len() > max_visible_repos {
+                    let row_height = 40.0;
+                    let total_height = state.repos.len() as f32 * row_height;
+                    let visible_height = max_visible_repos as f32 * row_height;
+                    let max_scroll = total_height - visible_height;
+                    state.scroll_offset += event.delta_y() as f32 * 0.5;
+                    state.scroll_offset = state.scroll_offset.clamp(0.0, max_scroll);
+                }
                 return;
             }
 

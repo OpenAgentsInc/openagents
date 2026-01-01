@@ -1,4 +1,8 @@
-use wgpui::{Bounds, Point, Quad, Scene, TextSystem, theme};
+use wgpui::{Bounds, Hsla, Point, Quad, Scene, TextSystem, theme};
+use wgpui::animation::AnimatorState;
+use wgpui::components::Component;
+use wgpui::components::hud::{DotsGrid, DotsOrigin};
+use wgpui::PaintContext;
 
 use crate::state::AppState;
 
@@ -8,9 +12,22 @@ pub(crate) fn build_repo_selector(
     state: &mut AppState,
     width: f32,
     height: f32,
-    _scale_factor: f32,
+    scale_factor: f32,
 ) {
+    // Background
     scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+
+    // Dots grid background
+    let mut cx = PaintContext::new(scene, text_system, scale_factor);
+    state.dots_grid = DotsGrid::new()
+        .color(Hsla::new(0.0, 0.0, 1.0, 0.15))
+        .distance(36.0)
+        .size(1.0)
+        .origin(DotsOrigin::Center);
+    state.dots_grid.update(AnimatorState::Entered);
+    state.dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
+    let scene = cx.scene;
+    let text_system = cx.text;
 
     // Centered layout - max width 500px
     let max_content_width: f32 = 500.0;
@@ -50,14 +67,15 @@ pub(crate) fn build_repo_selector(
     scene.draw_text(header_run);
 
     // Logout button (top right - fixed position)
-    let logout_text = "Logout";
+    let logout_text = "Log out";
     let logout_size = 12.0;
-    let logout_width = logout_text.len() as f32 * logout_size * 0.6 + 16.0;
+    let logout_width = text_system.measure(logout_text, logout_size) + 16.0;
     let logout_x = width - 24.0 - logout_width;
     let logout_y = 20.0; // Fixed top position
     state.button_bounds = Bounds::new(logout_x, logout_y, logout_width, 24.0);
 
-    let logout_bg = if state.button_hovered {
+    // Red border, transparent background
+    let border_color = if state.button_hovered {
         theme::status::ERROR
     } else {
         theme::status::ERROR.with_alpha(0.7)
@@ -65,15 +83,15 @@ pub(crate) fn build_repo_selector(
 
     scene.draw_quad(
         Quad::new(state.button_bounds)
-            .with_background(logout_bg)
-            .with_corner_radius(4.0),
+            .with_background(Hsla::new(0.0, 0.0, 0.0, 0.0))
+            .with_border(border_color, 1.0),
     );
 
     let logout_run = text_system.layout(
         logout_text,
         Point::new(logout_x + 8.0, logout_y + 4.0),
         logout_size,
-        theme::text::PRIMARY,
+        border_color,
     );
     scene.draw_text(logout_run);
 
