@@ -382,6 +382,12 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             routes::analytics::track_event(env, maybe_user, body).await
         }
 
+        // Telemetry batch endpoint (sendBeacon)
+        (Method::Post, "/api/telemetry/batch") => {
+            let body = req.text().await?;
+            routes::telemetry::handle_batch(env, body).await
+        }
+
         // Tunnel routes (WebSocket relay)
         (Method::Post, "/api/tunnel/register") => {
             let body = req.text().await?;

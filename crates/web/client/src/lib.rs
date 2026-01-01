@@ -7,8 +7,10 @@ mod hud;
 mod intro_agent;
 mod nostr;
 mod state;
+mod telemetry;
 mod utils;
 mod views;
 mod wallet;
 
 pub use app::start_demo;
+pub use telemetry::{TelemetryCollector, TelemetryEvent, set_panic_hook};

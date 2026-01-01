@@ -17,6 +17,7 @@ use crate::hud::{
 };
 use crate::nostr::{connect_to_relay, BazaarJob, DEFAULT_RELAYS};
 use crate::state::{AppState, AppView, RepoInfo, UserInfo};
+use crate::telemetry::{TelemetryCollector, set_panic_hook};
 use crate::views::{build_2026_page, build_brb_page, build_gfn_page, build_landing_page, build_repo_selector, build_repo_view};
 use crate::fs_access::{self, FileKind};
 use crate::utils::{read_clipboard_text, track_funnel_event};
@@ -31,6 +32,10 @@ pub fn main() {
 
 #[wasm_bindgen]
 pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
+    // Initialize telemetry first (before panic hook setup)
+    let telemetry = TelemetryCollector::new().init();
+    set_panic_hook(telemetry.clone());
+
     let platform = WebPlatform::init(canvas_id)
         .await
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
