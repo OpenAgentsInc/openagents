@@ -77,6 +77,7 @@ reqwest = { workspace = true }
 tempfile = { workspace = true }
 nostr-client = { path = "../nostr/client" }
 compute = { path = "../compute" }
+spark = { package = "openagents-spark", path = "../spark" }
 bitcoin = { workspace = true }
 nostr = { workspace = true }
 claude-agent-sdk = { path = "../claude-agent-sdk" }

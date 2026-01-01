@@ -2634,14 +2634,14 @@ impl DvmProvider {
         Ok(())
     }
 
-    fn query_handlers(&self) -> Result<Vec<HandlerInfo>, ComputeError> {
+    fn query_handlers(&self, timeout: Duration) -> Result<Vec<HandlerInfo>, ComputeError> {
         let filters = vec![serde_json::json!({
             "kinds": [KIND_HANDLER_INFO],
             "limit": 100
         })];
         let events = self
             .executor
-            .block_on(self.transport.query(&filters, Duration::from_secs(2)))
+            .block_on(self.transport.query(&filters, timeout))
             .map_err(ComputeError::ProviderError)?;
         let mut handlers = Vec::new();
         for event in events {
@@ -2653,6 +2653,11 @@ impl DvmProvider {
         }
         Ok(handlers)
     }
+
+    /// List available handler info events for compute providers.
+    pub fn list_handlers(&self, timeout: Duration) -> Result<Vec<HandlerInfo>, ComputeError> {
+        self.query_handlers(timeout)
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -2662,7 +2667,7 @@ impl ComputeProvider for DvmProvider {
     }
 
     fn info(&self) -> ProviderInfo {
-        let handlers = self.query_handlers().unwrap_or_default();
+        let handlers = self.query_handlers(Duration::from_secs(2)).unwrap_or_default();
         let mut models = Vec::new();
         for handler in handlers {
             for (key, value) in handler.custom_tags {
@@ -2713,7 +2718,7 @@ impl ComputeProvider for DvmProvider {
     }
 
     fn supports_model(&self, model: &str) -> bool {
-        self.query_handlers()
+        self.query_handlers(Duration::from_secs(2))
             .map(|handlers| {
                 handlers.iter().any(|handler| {
                     handler

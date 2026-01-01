@@ -5,7 +5,8 @@ use crate::neobank_service::{NeobankConfig, NeobankService, TreasuryStatus};
 use compute::backends::{
     AgentBackend, AgentRegistry, BackendRegistry, ClaudeCodeBackend,
 };
-use compute::domain::{DomainEvent, UnifiedIdentity};
+use compute::domain::DomainEvent;
+use openagents_runtime::UnifiedIdentity;
 use compute::services::{DvmService, RelayService};
 use neobank::Currency;
 use spark::{Network as SparkNetwork, SparkWallet, WalletConfig};

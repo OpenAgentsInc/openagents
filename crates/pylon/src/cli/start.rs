@@ -3,7 +3,8 @@
 //! Runs Pylon in host mode, provider mode, or both.
 
 use clap::{Args, ValueEnum};
-use compute::domain::{DomainEvent, UnifiedIdentity};
+use compute::domain::DomainEvent;
+use openagents_runtime::UnifiedIdentity;
 use std::time::Instant;
 use tokio::sync::{RwLock, broadcast};
 

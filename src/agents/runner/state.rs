@@ -4,7 +4,7 @@
 
 use crate::agents::SharedRelay;
 use anyhow::Result;
-use compute::domain::UnifiedIdentity;
+use openagents_runtime::UnifiedIdentity;
 use nostr::nip_sa::{AgentState, AgentStateContent, KIND_AGENT_STATE, STATE_D_TAG, STATE_VERSION};
 use nostr::{Event, EventTemplate, finalize_event};
 use std::time::Duration;

@@ -13,7 +13,7 @@
 use agent::{AgentConfig, AgentRegistry, AutonomyLevel, LifecycleState};
 use anyhow::Result;
 use clap::Parser;
-use compute::domain::UnifiedIdentity;
+use openagents_runtime::{SparkWalletService, UnifiedIdentity, WalletService};
 use nostr::nip_sa::{
     AgentProfile, AgentProfileContent, AgentSchedule, AutonomyLevel as NipSaAutonomyLevel,
     KIND_AGENT_PROFILE, KIND_AGENT_SCHEDULE, ThresholdConfig, TriggerType,
@@ -363,6 +363,15 @@ async fn main() -> Result<()> {
     }
 
     let wallet = Arc::new(wallet);
+    let wallet_service: Arc<dyn WalletService> =
+        Arc::new(SparkWalletService::new(wallet.clone())?);
+    let network_label = match network {
+        SparkNetwork::Mainnet => "mainnet",
+        SparkNetwork::Testnet => "testnet",
+        SparkNetwork::Signet => "signet",
+        SparkNetwork::Regtest => "regtest",
+    }
+    .to_string();
 
     // Connect to relay
     println!("\nConnecting to relays: {}", relay_urls.join(", "));
@@ -411,8 +420,9 @@ async fn main() -> Result<()> {
     let compute_client = ComputeClient::new(
         UnifiedIdentity::from_mnemonic(identity.mnemonic(), "")?,
         relay.clone(),
-        wallet.clone(),
-    );
+        wallet_service.clone(),
+        Some(network_label.clone()),
+    )?;
 
     let mut executor = TickExecutor::new(
         UnifiedIdentity::from_mnemonic(identity.mnemonic(), "")?,

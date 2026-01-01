@@ -1,10 +1,16 @@
 use std::path::Path;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
 use crate::logger::SessionLogger;
 use crate::startup::ClaudeModel;
+
+use openagents_runtime::{
+    ClaudeChunk, ClaudeLocalProvider, ClaudeProvider, ClaudeRequest, ClaudeSessionAutonomy,
+    ClaudeSessionState, ClaudeUsage, ChunkType,
+};
 
 /// Check if verbose mode is enabled
 fn is_verbose() -> bool {
@@ -81,48 +87,6 @@ fn extract_tool_output(tool_result: &serde_json::Value) -> Option<String> {
     }
 }
 
-fn extract_session_id(message: &claude_agent_sdk::SdkMessage) -> Option<&str> {
-    use claude_agent_sdk::{SdkMessage, SdkResultMessage, SdkSystemMessage};
-
-    match message {
-        SdkMessage::Assistant(msg) => Some(msg.session_id.as_str()),
-        SdkMessage::User(msg) => Some(msg.session_id.as_str()),
-        SdkMessage::Result(result) => match result {
-            SdkResultMessage::Success(msg) => Some(msg.session_id.as_str()),
-            SdkResultMessage::ErrorDuringExecution(msg)
-            | SdkResultMessage::ErrorMaxTurns(msg)
-            | SdkResultMessage::ErrorMaxBudget(msg)
-            | SdkResultMessage::ErrorMaxStructuredOutputRetries(msg) => {
-                Some(msg.session_id.as_str())
-            }
-        },
-        SdkMessage::System(system) => Some(match system {
-            SdkSystemMessage::Init(msg) => msg.session_id.as_str(),
-            SdkSystemMessage::CompactBoundary(msg) => msg.session_id.as_str(),
-            SdkSystemMessage::Status(msg) => msg.session_id.as_str(),
-            SdkSystemMessage::HookResponse(msg) => msg.session_id.as_str(),
-            SdkSystemMessage::ApiError(msg) => msg.session_id.as_str(),
-            SdkSystemMessage::StopHookSummary(msg) => msg.session_id.as_str(),
-            SdkSystemMessage::Informational(msg) => msg.session_id.as_str(),
-            SdkSystemMessage::LocalCommand(msg) => msg.session_id.as_str(),
-        }),
-        SdkMessage::StreamEvent(event) => Some(event.session_id.as_str()),
-        SdkMessage::ToolProgress(progress) => Some(progress.session_id.as_str()),
-        SdkMessage::AuthStatus(auth) => Some(auth.session_id.as_str()),
-    }
-}
-
-fn maybe_send_session_id(
-    session_id: &str,
-    last_sent: &mut Option<String>,
-    tx: &mpsc::Sender<ClaudeToken>,
-) {
-    if last_sent.as_deref() != Some(session_id) {
-        let _ = tx.send(ClaudeToken::SessionId(session_id.to_string()));
-        *last_sent = Some(session_id.to_string());
-    }
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 pub enum ClaudeToken {
     Chunk(String),
@@ -152,12 +116,12 @@ pub struct ClaudeUsageData {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
-    pub cache_creation_tokens: u64,
+    pub cache_write_tokens: u64,
     pub total_cost_usd: f64,
-    pub duration_ms: u64,
-    pub duration_api_ms: u64,
-    pub num_turns: u32,
-    pub context_window: u64,
+    pub duration_ms: Option<u64>,
+    pub duration_api_ms: Option<u64>,
+    pub num_turns: Option<u32>,
+    pub context_window: Option<u64>,
     pub model: String,
 }
 
@@ -177,6 +141,9 @@ pub enum ClaudeEvent {
     },
 }
 
+/// Timeout between stream messages (if no message received in this time, abort)
+const STREAM_IDLE_TIMEOUT_SECS: u64 = 300;
+
 pub fn run_claude_planning(
     _cwd: &Path,
     _issue_summary: &str,
@@ -186,9 +153,6 @@ pub fn run_claude_planning(
     tx: mpsc::Sender<ClaudeToken>,
     logger: Option<SessionLogger>,
 ) {
-    use futures_util::StreamExt;
-    use tokio::time::{Duration, timeout};
-
     if let Some(ref log) = logger {
         log.log_phase_start("planning");
     }
@@ -219,373 +183,30 @@ Goal: Gain comprehensive understanding of the project state and what needs to be
 ### Phase 2: Design
 Goal: Design an implementation approach based on Phase 1 findings.
 
-Launch 1-3 Plan agent(s) to design the implementation:
-- **Default**: Launch at least 1 Plan agent to validate understanding and consider alternatives
-- **Multiple agents**: Use for complex tasks benefiting from different perspectives:
-  - Perspective 1: Focus on highest business value / revenue impact
-  - Perspective 2: Focus on technical debt / infrastructure improvements
-  - Perspective 3: Focus on quick wins / unblocking other work
+1. Map the problem to specific files/modules.
+2. Identify dependencies or constraints (tests, build system, API contracts).
+3. Propose a step-by-step implementation plan.
+4. Note any potential risks or tradeoffs.
 
-In the agent prompt, provide:
-- Comprehensive context from Phase 1 exploration
-- Current blockers and constraints
-- Request a prioritized implementation plan
+### Phase 3: Final Output
+Goal: Provide the actionable plan.
 
-### Phase 3: Review
-Goal: Review and consolidate the plan(s) from Phase 2.
+- Output a numbered list of steps.
+- Each step should be specific (file paths, changes).
+- Include test/verification steps.
+- Keep it concise but complete.
 
-1. Read any critical files identified by the Plan agents
-2. Ensure recommendations align with project priorities (check SYNTHESIS.md, directives)
-3. Resolve conflicts between different perspectives
+Begin now."#;
 
-### Phase 4: Final Plan
-Goal: Output your final consolidated plan.
-
-Create a comprehensive plan in Markdown format with these sections:
-- **Current State** - Project status, what's been built, recent activity
-- **Open Work** - Pending issues, directives, their priorities and blockers
-- **Recommended Next Steps** - Prioritized list of what to work on next (be specific!)
-  - Include file paths that need to be modified
-  - Include specific implementation steps
-  - Estimate complexity (small/medium/large)
-- **Technical Considerations** - Blockers, dependencies, architectural notes
-
-The plan must be:
-- Actionable and specific (not vague suggestions)
-- Prioritized by business value and feasibility
-- Executable by an autonomous agent
-
-### Phase 5: Exit
-Call ExitPlanMode when your plan is complete.
-
-Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_string();
-
-    let cwd_clone = std::env::current_dir().unwrap_or_default();
-
-    let rt = match tokio::runtime::Runtime::new() {
-        Ok(rt) => rt,
-        Err(e) => {
-            let _ = tx.send(ClaudeToken::Error(format!(
-                "Failed to create runtime: {}",
-                e
-            )));
-            return;
-        }
-    };
-
-    rt.block_on(async {
-        use claude_agent_sdk::{PermissionMode, QueryOptions, SdkMessage, SettingSource, query};
-
-        let mut attempt = 0;
-        let mut last_error = String::new();
-
-        'retry: loop {
-            if attempt > 0 {
-                let delay = retry_delay(attempt - 1);
-                eprintln!("[CLAUDE] Retry attempt {} after {:?}...", attempt, delay);
-                tokio::time::sleep(delay).await;
-            }
-
-            if attempt >= MAX_RETRIES {
-                eprintln!(
-                    "[CLAUDE] All {} retries exhausted. Last error: {}",
-                    MAX_RETRIES, last_error
-                );
-                let _ = tx.send(ClaudeToken::Error(format!(
-                    "Failed after {} retries: {}",
-                    MAX_RETRIES, last_error
-                )));
-                return;
-            }
-
-            attempt += 1;
-            let resume_session_id = resume_session_id.clone().filter(|id| !id.is_empty());
-            if let Some(ref session_id) = resume_session_id {
-                verbose_println!("[CLAUDE] Resuming session {}", session_id);
-            }
-            verbose_println!(
-                "[CLAUDE] Starting query (attempt {}/{}) with prompt length: {} chars",
-                attempt,
-                MAX_RETRIES,
-                prompt.len()
-            );
-            verbose_println!(
-                "[CLAUDE] Options: cwd={:?}, model={}, permission_mode=Plan, max_turns=50",
-                cwd_clone,
-                model.as_str()
-            );
-
-            let mut options = QueryOptions::new()
-                .cwd(cwd_clone.clone())
-                .model(model.as_str())
-                .permission_mode(PermissionMode::Plan)
-                .max_turns(50)
-                .include_partial_messages(true)
-                .setting_sources(vec![SettingSource::Project, SettingSource::User])
-                .disallowed_tools(vec![
-                    "Edit".to_string(),
-                    "Write".to_string(),
-                    "NotebookEdit".to_string(),
-                ]);
-
-            if let Some(ref session_id) = resume_session_id {
-                options = options.resume(session_id.clone());
-            }
-
-            let prompt_to_send = if resume_session_id.is_some() {
-                ""
-            } else {
-                &prompt
-            };
-
-            // Start query with timeout
-            let query_result = timeout(
-                Duration::from_secs(QUERY_START_TIMEOUT_SECS),
-                query(prompt_to_send, options),
-            )
-            .await;
-
-            let mut stream = match query_result {
-                Ok(Ok(s)) => {
-                    verbose_println!("[CLAUDE] Stream started successfully");
-                    if resume_session_id.is_none() {
-                        // Send initial usage estimate based on prompt size (rough: ~4 chars per token)
-                        let estimated_input = (prompt.len() / 4) as u64;
-                        let _ = tx.send(ClaudeToken::Usage(ClaudeUsageData {
-                            input_tokens: estimated_input,
-                            output_tokens: 0,
-                            cache_read_tokens: 0,
-                            cache_creation_tokens: 0,
-                            total_cost_usd: 0.0,
-                            duration_ms: 0,
-                            duration_api_ms: 0,
-                            num_turns: 1,
-                            context_window: 200_000,
-                            model: model.as_str().to_string(),
-                        }));
-                    }
-                    s
-                }
-                Ok(Err(e)) => {
-                    last_error = format!("Failed to start Claude: {}", e);
-                    eprintln!("[CLAUDE] {}", last_error);
-                    continue 'retry;
-                }
-                Err(_) => {
-                    last_error =
-                        format!("Timeout starting query after {}s", QUERY_START_TIMEOUT_SECS);
-                    eprintln!("[CLAUDE] {}", last_error);
-                    continue 'retry;
-                }
-            };
-
-            let mut session_id: Option<String> = None;
-            let mut full_response = String::new();
-            let mut last_tool_name = String::new();
-
-            loop {
-                let next_result =
-                    timeout(Duration::from_secs(STREAM_IDLE_TIMEOUT_SECS), stream.next()).await;
-
-                let msg = match next_result {
-                    Ok(Some(msg)) => msg,
-                    Ok(None) => {
-                        // Stream ended - this is normal when Result was already received
-                        if full_response.is_empty() {
-                            last_error = "Stream ended unexpectedly with no data".to_string();
-                            eprintln!("[CLAUDE] {}", last_error);
-                            let _ = stream.abort().await;
-                            continue 'retry;
-                        }
-                        break;
-                    }
-                    Err(_) => {
-                        last_error =
-                            format!("Stream idle timeout after {}s", STREAM_IDLE_TIMEOUT_SECS);
-                        eprintln!("[CLAUDE] {}", last_error);
-                        let _ = stream.abort().await;
-                        continue 'retry;
-                    }
-                };
-
-                if let Ok(ref sdk_msg) = msg {
-                    if let Some(id) = extract_session_id(sdk_msg) {
-                        maybe_send_session_id(id, &mut session_id, &tx);
-                    }
-                }
-
-                match msg {
-                    Ok(SdkMessage::Assistant(assistant_msg)) => {
-                        verbose_println!("[CLAUDE][ASSISTANT] uuid={}", assistant_msg.uuid);
-                        verbose_println!(
-                            "[CLAUDE][ASSISTANT] message={}",
-                            serde_json::to_string_pretty(&assistant_msg.message)
-                                .unwrap_or_default()
-                        );
-                        if let Some(ref log) = logger {
-                            log.log_assistant("planning", &assistant_msg.message);
-                        }
-                        if let Some(content) = assistant_msg.message.get("content") {
-                            if let Some(blocks) = content.as_array() {
-                                for block in blocks {
-                                    verbose_println!(
-                                        "[CLAUDE][BLOCK] type={}",
-                                        block
-                                            .get("type")
-                                            .and_then(|t| t.as_str())
-                                            .unwrap_or("unknown")
-                                    );
-                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                        verbose_println!("[CLAUDE][TEXT] {}", text);
-                                        full_response.push_str(text);
-                                        let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
-                                    }
-                                    if let Some(tool_name) =
-                                        block.get("name").and_then(|n| n.as_str())
-                                    {
-                                        verbose_println!("[CLAUDE][TOOL_USE] name={}", tool_name);
-                                        let input = block.get("input");
-                                        let params = extract_tool_params(tool_name, input);
-                                        last_tool_name = tool_name.to_string();
-                                        if let Some(ref log) = logger {
-                                            log.log_tool_use(
-                                                "planning",
-                                                tool_name,
-                                                input.unwrap_or(&serde_json::Value::Null),
-                                            );
-                                        }
-                                        let _ = tx.send(ClaudeToken::ToolUse {
-                                            name: tool_name.to_string(),
-                                            params,
-                                        });
-                                        verbose_println!(
-                                            "[CLAUDE][TOOL_USE] input={}",
-                                            serde_json::to_string_pretty(
-                                                input.unwrap_or(&serde_json::Value::Null)
-                                            )
-                                            .unwrap_or_default()
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Ok(SdkMessage::User(user_msg)) => {
-                        verbose_println!("[CLAUDE][USER] session_id={}", user_msg.session_id);
-                        verbose_println!(
-                            "[CLAUDE][USER] message={}",
-                            serde_json::to_string_pretty(&user_msg.message).unwrap_or_default()
-                        );
-                        if let Some(ref log) = logger {
-                            log.log_user("planning", &user_msg.message);
-                        }
-                        if let Some(tool_result) = &user_msg.tool_use_result {
-                            let tool_name = tool_result
-                                .get("name")
-                                .and_then(|n| n.as_str())
-                                .or_else(|| tool_result.get("tool_name").and_then(|n| n.as_str()))
-                                .unwrap_or(&last_tool_name)
-                                .to_string();
-                            if let Some(ref log) = logger {
-                                log.log_tool_result("planning", &tool_name, tool_result);
-                            }
-                            // Extract output and error status from tool_result
-                            let output = extract_tool_output(tool_result);
-                            let is_error = tool_result
-                                .get("is_error")
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false);
-                            let _ = tx.send(ClaudeToken::ToolDone {
-                                name: tool_name,
-                                output,
-                                is_error,
-                            });
-                            verbose_println!(
-                                "[CLAUDE][TOOL_RESULT] {}",
-                                serde_json::to_string_pretty(tool_result).unwrap_or_default()
-                            );
-                        }
-                    }
-                    Ok(SdkMessage::System(sys_msg)) => {
-                        verbose_println!("[CLAUDE][SYSTEM] {:?}", sys_msg);
-                    }
-                    Ok(SdkMessage::StreamEvent(event)) => {
-                        verbose_println!("[CLAUDE][STREAM] {:?}", event);
-                    }
-                    Ok(SdkMessage::ToolProgress(progress)) => {
-                        verbose_println!(
-                            "[CLAUDE][TOOL_PROGRESS] tool={} elapsed={}s",
-                            progress.tool_name,
-                            progress.elapsed_time_seconds
-                        );
-                        let _ = tx.send(ClaudeToken::Progress {
-                            tool_name: progress.tool_name.clone(),
-                            elapsed_secs: progress.elapsed_time_seconds,
-                        });
-                    }
-                    Ok(SdkMessage::AuthStatus(auth)) => {
-                        verbose_println!(
-                            "[CLAUDE][AUTH] is_authenticating={}",
-                            auth.is_authenticating
-                        );
-                    }
-                    Ok(SdkMessage::Result(result)) => {
-                        verbose_println!("[CLAUDE][RESULT] {:?}", result);
-                        // Log result to session logger
-                        if let Some(ref log) = logger {
-                            log.log_result(
-                                "planning",
-                                &serde_json::to_value(&result).unwrap_or_default(),
-                            );
-                        }
-                        // Extract final usage data and send it (replaces initial estimate)
-                        let usage = extract_usage_from_result(&result, model.as_str());
-                        let _ = tx.send(ClaudeToken::Usage(usage));
-                        break;
-                    }
-                    Err(e) => {
-                        last_error = format!("Stream error: {}", e);
-                        eprintln!("[CLAUDE][ERROR] {}", last_error);
-                        let _ = stream.abort().await;
-                        continue 'retry;
-                    }
-                }
-            }
-
-            // Success - cleanup and return
-            verbose_println!("[CLAUDE] Aborting stream for cleanup...");
-            if let Err(e) = stream.abort().await {
-                verbose_println!("[CLAUDE] Abort returned error (expected): {}", e);
-            }
-
-            verbose_println!(
-                "[CLAUDE] Done. Total response length: {} chars, {} lines",
-                full_response.len(),
-                full_response.lines().count()
-            );
-            if let Some(ref log) = logger {
-                log.log_phase_end(
-                    "planning",
-                    &format!(
-                        "{} chars, {} lines",
-                        full_response.len(),
-                        full_response.lines().count()
-                    ),
-                );
-            }
-            let _ = tx.send(ClaudeToken::Done(full_response));
-
-            // Small delay to let process cleanup complete before next query
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            return;
-        }
-    });
+    run_claude_session(
+        "planning",
+        prompt,
+        model,
+        resume_session_id,
+        tx,
+        logger,
+    );
 }
-
-/// Timeout for starting a query (getting the stream)
-const QUERY_START_TIMEOUT_SECS: u64 = 60;
-/// Timeout between stream messages (if no message received in this time, abort)
-const STREAM_IDLE_TIMEOUT_SECS: u64 = 300;
 
 pub fn run_claude_execution(
     plan: &str,
@@ -594,9 +215,6 @@ pub fn run_claude_execution(
     tx: mpsc::Sender<ClaudeToken>,
     logger: Option<SessionLogger>,
 ) {
-    use futures_util::StreamExt;
-    use tokio::time::{Duration, timeout};
-
     if let Some(ref log) = logger {
         log.log_phase_start("execution");
     }
@@ -621,274 +239,69 @@ Start now."#,
         plan
     );
 
-    let cwd_clone = std::env::current_dir().unwrap_or_default();
-
-    let rt = match tokio::runtime::Runtime::new() {
-        Ok(rt) => rt,
-        Err(e) => {
-            let _ = tx.send(ClaudeToken::Error(format!(
-                "Failed to create runtime: {}",
-                e
-            )));
-            return;
-        }
-    };
-
-    rt.block_on(async {
-        use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode, SettingSource};
-
-        let mut attempt = 0;
-        let mut last_error = String::new();
-
-        'retry: loop {
-            if attempt > 0 {
-                let delay = retry_delay(attempt - 1);
-                eprintln!("[CLAUDE-EXEC] Retry attempt {} after {:?}...", attempt, delay);
-                tokio::time::sleep(delay).await;
-            }
-
-            if attempt >= MAX_RETRIES {
-                eprintln!("[CLAUDE-EXEC] All {} retries exhausted. Last error: {}", MAX_RETRIES, last_error);
-                let _ = tx.send(ClaudeToken::Error(format!("Failed after {} retries: {}", MAX_RETRIES, last_error)));
-                return;
-            }
-
-            attempt += 1;
-            let resume_session_id = resume_session_id.clone().filter(|id| !id.is_empty());
-            if let Some(ref session_id) = resume_session_id {
-                verbose_println!("[CLAUDE-EXEC] Resuming session {}", session_id);
-            }
-            verbose_println!("[CLAUDE-EXEC] Starting execution (attempt {}/{}) with plan length: {} chars", attempt, MAX_RETRIES, plan.len());
-            verbose_println!("[CLAUDE-EXEC] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=100", cwd_clone, model.as_str());
-
-            let mut options = QueryOptions::new()
-                .cwd(cwd_clone.clone())
-                .model(model.as_str())
-                .permission_mode(PermissionMode::BypassPermissions)
-                .dangerously_skip_permissions(true)
-                .max_turns(100)
-                .include_partial_messages(true)
-                .setting_sources(vec![SettingSource::Project, SettingSource::User]);
-
-            if let Some(ref session_id) = resume_session_id {
-                options = options.resume(session_id.clone());
-            }
-
-            let prompt_to_send = if resume_session_id.is_some() { "" } else { &prompt };
-
-            verbose_println!("[CLAUDE-EXEC] Calling query() with {}s timeout...", QUERY_START_TIMEOUT_SECS);
-            let query_result = timeout(
-                Duration::from_secs(QUERY_START_TIMEOUT_SECS),
-                query(prompt_to_send, options)
-            ).await;
-
-            let mut stream = match query_result {
-                Ok(Ok(s)) => {
-                    verbose_println!("[CLAUDE-EXEC] Stream started successfully");
-                    s
-                }
-                Ok(Err(e)) => {
-                    last_error = format!("Failed to start Claude: {}", e);
-                    eprintln!("[CLAUDE-EXEC] {}", last_error);
-                    continue 'retry;
-                }
-                Err(_) => {
-                    last_error = format!("Timeout starting query after {}s", QUERY_START_TIMEOUT_SECS);
-                    eprintln!("[CLAUDE-EXEC] {}", last_error);
-                    continue 'retry;
-                }
-            };
-
-            let mut session_id: Option<String> = None;
-            let mut full_response = String::new();
-            let mut last_tool_name = String::new();
-
-            loop {
-                let next_result = timeout(
-                    Duration::from_secs(STREAM_IDLE_TIMEOUT_SECS),
-                    stream.next()
-                ).await;
-
-                let msg = match next_result {
-                    Ok(Some(msg)) => msg,
-                    Ok(None) => {
-                        if full_response.is_empty() {
-                            last_error = "Stream ended unexpectedly with no data".to_string();
-                            eprintln!("[CLAUDE-EXEC] {}", last_error);
-                            let _ = stream.abort().await;
-                            continue 'retry;
-                        }
-                        verbose_println!("[CLAUDE-EXEC] Stream ended (None)");
-                        break;
-                    }
-                    Err(_) => {
-                        last_error = format!("Stream idle timeout after {}s", STREAM_IDLE_TIMEOUT_SECS);
-                        eprintln!("[CLAUDE-EXEC] {}", last_error);
-                        let _ = stream.abort().await;
-                        continue 'retry;
-                    }
-                };
-
-                if let Ok(ref sdk_msg) = msg {
-                    if let Some(id) = extract_session_id(sdk_msg) {
-                        maybe_send_session_id(id, &mut session_id, &tx);
-                    }
-                }
-
-                match msg {
-                    Ok(SdkMessage::Assistant(assistant_msg)) => {
-                        if let Some(ref log) = logger {
-                            log.log_assistant("execution", &assistant_msg.message);
-                        }
-                        if let Some(content) = assistant_msg.message.get("content") {
-                            if let Some(blocks) = content.as_array() {
-                                for block in blocks {
-                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                        full_response.push_str(text);
-                                        let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
-                                    }
-                                    if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
-                                        let input = block.get("input");
-                                        let params = extract_tool_params(tool_name, input);
-                                        last_tool_name = tool_name.to_string();
-                                        if let Some(ref log) = logger {
-                                            log.log_tool_use("execution", tool_name, input.unwrap_or(&serde_json::Value::Null));
-                                        }
-                                        let _ = tx.send(ClaudeToken::ToolUse {
-                                            name: tool_name.to_string(),
-                                            params
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Ok(SdkMessage::User(user_msg)) => {
-                        if let Some(ref log) = logger {
-                            log.log_user("execution", &user_msg.message);
-                        }
-                        if let Some(tool_result) = &user_msg.tool_use_result {
-                            let tool_name = tool_result.get("name")
-                                .and_then(|n| n.as_str())
-                                .or_else(|| tool_result.get("tool_name").and_then(|n| n.as_str()))
-                                .unwrap_or(&last_tool_name)
-                                .to_string();
-                            if let Some(ref log) = logger {
-                                log.log_tool_result("execution", &tool_name, tool_result);
-                            }
-                            // Extract output and error status from tool_result
-                            let output = extract_tool_output(tool_result);
-                            let is_error = tool_result
-                                .get("is_error")
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false);
-                            let _ = tx.send(ClaudeToken::ToolDone {
-                                name: tool_name,
-                                output,
-                                is_error,
-                            });
-                        }
-                    }
-                    Ok(SdkMessage::StreamEvent(event)) => {
-                        verbose_println!("[CLAUDE-EXEC][STREAM] {:?}", event);
-                    }
-                    Ok(SdkMessage::ToolProgress(progress)) => {
-                        verbose_println!(
-                            "[CLAUDE-EXEC][TOOL_PROGRESS] tool={} elapsed={}s",
-                            progress.tool_name,
-                            progress.elapsed_time_seconds
-                        );
-                        let _ = tx.send(ClaudeToken::Progress {
-                            tool_name: progress.tool_name.clone(),
-                            elapsed_secs: progress.elapsed_time_seconds,
-                        });
-                    }
-                    Ok(SdkMessage::Result(result)) => {
-                        verbose_println!("[CLAUDE-EXEC] Got Result message");
-                        let usage = extract_usage_from_result(&result, model.as_str());
-                        let _ = tx.send(ClaudeToken::Usage(usage));
-                        break;
-                    }
-                    Err(e) => {
-                        last_error = format!("Stream error: {}", e);
-                        eprintln!("[CLAUDE-EXEC][ERROR] {}", last_error);
-                        let _ = stream.abort().await;
-                        continue 'retry;
-                    }
-                    _ => {}
-                }
-            }
-
-            // Success - cleanup and return
-            verbose_println!("[CLAUDE-EXEC] Aborting stream for cleanup...");
-            if let Err(e) = stream.abort().await {
-                verbose_println!("[CLAUDE-EXEC] Abort returned error (expected): {}", e);
-            }
-
-            verbose_println!("[CLAUDE-EXEC] Done. Total response length: {} chars", full_response.len());
-            if let Some(ref log) = logger {
-                log.log_phase_end("execution", &format!("{} chars", full_response.len()));
-            }
-            let _ = tx.send(ClaudeToken::Done(full_response));
-
-            // Small delay to let process cleanup complete before next query
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            return;
-        }
-    });
+    run_claude_session(
+        "execution",
+        &prompt,
+        model,
+        resume_session_id,
+        tx,
+        logger,
+    );
 }
 
-/// Review the work done against the original plan and determine next steps
 pub fn run_claude_review(
     plan: &str,
-    execution_result: &str,
-    iteration: u32,
+    model: ClaudeModel,
+    repo_summary: &str,
+    resume_session_id: Option<String>,
+    tx: mpsc::Sender<ClaudeToken>,
+    logger: Option<SessionLogger>,
+) {
+    if let Some(ref log) = logger {
+        log.log_phase_start("review");
+    }
+
+    let prompt = format!(
+        r#"You are an expert code reviewer for the OpenAgents project.
+
+## Plan Summary
+{}
+
+## Repository Summary
+{}
+
+## Your Task
+
+Review the executed changes for correctness and completeness. Focus on:
+- Behavior regressions
+- Missing tests
+- Edge cases
+- Architecture consistency
+
+Provide a concise review with any issues and recommendations.
+
+Start now."#,
+        plan, repo_summary
+    );
+
+    run_claude_session(
+        "review",
+        &prompt,
+        model,
+        resume_session_id,
+        tx,
+        logger,
+    );
+}
+
+fn run_claude_session(
+    phase: &str,
+    prompt: &str,
     model: ClaudeModel,
     resume_session_id: Option<String>,
     tx: mpsc::Sender<ClaudeToken>,
     logger: Option<SessionLogger>,
 ) {
-    use futures_util::StreamExt;
-    use tokio::time::{Duration, timeout};
-
-    if let Some(ref log) = logger {
-        log.log_phase_start(&format!("review_{}", iteration));
-    }
-
-    let prompt = format!(
-        r#"You are reviewing work done by an autonomous software engineer on the OpenAgents project.
-
-## Iteration {iteration}
-
-## Original Plan
-
-{plan}
-
-## Work Completed
-
-{execution_result}
-
-## Your Task
-
-1. Review what was accomplished vs what was planned
-2. Identify any remaining work from the original plan
-3. Check for any new issues or improvements discovered during execution
-4. Read the git log to see what commits were made
-5. Check git status for any uncommitted changes
-
-Based on your review, create a NEW plan for the next iteration that includes:
-- Any uncompleted items from the original plan
-- Any new issues discovered
-- Any improvements or follow-up work identified
-
-If ALL planned work is complete and no new issues were found, respond with:
-"CYCLE COMPLETE - All planned work has been finished."
-
-Otherwise, provide a detailed plan for the next iteration in the same format as the original plan."#
-    );
-
-    let cwd_clone = std::env::current_dir().unwrap_or_default();
-
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
@@ -901,258 +314,258 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
     };
 
     rt.block_on(async {
-        use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode, SettingSource};
-
         let mut attempt = 0;
         let mut last_error = String::new();
 
-        'retry: loop {
+        loop {
             if attempt > 0 {
                 let delay = retry_delay(attempt - 1);
-                eprintln!("[CLAUDE-REVIEW] Retry attempt {} after {:?}...", attempt, delay);
+                eprintln!(
+                    "[CLAUDE-{}] Retry attempt {} after {:?}...",
+                    phase.to_uppercase(),
+                    attempt,
+                    delay
+                );
                 tokio::time::sleep(delay).await;
             }
 
             if attempt >= MAX_RETRIES {
-                eprintln!("[CLAUDE-REVIEW] All {} retries exhausted. Last error: {}", MAX_RETRIES, last_error);
-                let _ = tx.send(ClaudeToken::Error(format!("Failed after {} retries: {}", MAX_RETRIES, last_error)));
+                eprintln!(
+                    "[CLAUDE-{}] All {} retries exhausted. Last error: {}",
+                    phase.to_uppercase(),
+                    MAX_RETRIES,
+                    last_error
+                );
+                let _ = tx.send(ClaudeToken::Error(format!(
+                    "Failed after {} retries: {}",
+                    MAX_RETRIES, last_error
+                )));
                 return;
             }
 
             attempt += 1;
-            let resume_session_id = resume_session_id.clone().filter(|id| !id.is_empty());
-            if let Some(ref session_id) = resume_session_id {
-                verbose_println!("[CLAUDE-REVIEW] Resuming session {}", session_id);
-            }
-            verbose_println!("[CLAUDE-REVIEW] Starting review iteration {} (attempt {}/{})", iteration, attempt, MAX_RETRIES);
-            verbose_println!("[CLAUDE-REVIEW] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=30", cwd_clone, model.as_str());
 
-            let mut options = QueryOptions::new()
-                .cwd(cwd_clone.clone())
-                .model(model.as_str())
-                .permission_mode(PermissionMode::BypassPermissions)
-                .dangerously_skip_permissions(true)
-                .max_turns(30)
-                .include_partial_messages(true)
-                .setting_sources(vec![SettingSource::Project, SettingSource::User]);
-
-            if let Some(ref session_id) = resume_session_id {
-                options = options.resume(session_id.clone());
-            }
-
-            let prompt_to_send = if resume_session_id.is_some() { "" } else { &prompt };
-
-            let query_result = timeout(
-                Duration::from_secs(QUERY_START_TIMEOUT_SECS),
-                query(prompt_to_send, options)
-            ).await;
-
-            let mut stream = match query_result {
-                Ok(Ok(s)) => {
-                    verbose_println!("[CLAUDE-REVIEW] Stream started successfully");
-                    s
-                }
-                Ok(Err(e)) => {
-                    last_error = format!("Failed to start Claude: {}", e);
-                    eprintln!("[CLAUDE-REVIEW] {}", last_error);
-                    continue 'retry;
-                }
-                Err(_) => {
-                    last_error = format!("Timeout starting query after {}s", QUERY_START_TIMEOUT_SECS);
-                    eprintln!("[CLAUDE-REVIEW] {}", last_error);
-                    continue 'retry;
+            let provider = match build_provider() {
+                Ok(provider) => provider,
+                Err(err) => {
+                    last_error = err;
+                    continue;
                 }
             };
 
-            let mut session_id: Option<String> = None;
+            let resume_session_id = resume_session_id.clone().filter(|id| !id.is_empty());
+            let request = build_request(prompt, model, resume_session_id.clone());
+            let session_id = match provider.create_session(request) {
+                Ok(id) => id,
+                Err(err) => {
+                    last_error = err.to_string();
+                    continue;
+                }
+            };
+
+            let _ = tx.send(ClaudeToken::SessionId(session_id.clone()));
+
+            let started_at = Instant::now();
             let mut full_response = String::new();
-            let mut last_tool_name = String::new();
+            let mut last_output = Instant::now();
+            let mut tool_timings: std::collections::HashMap<String, Instant> =
+                std::collections::HashMap::new();
 
             loop {
-                let next_result = timeout(
-                    Duration::from_secs(STREAM_IDLE_TIMEOUT_SECS),
-                    stream.next()
-                ).await;
-
-                let msg = match next_result {
-                    Ok(Some(msg)) => msg,
+                match provider.poll_output(&session_id) {
+                    Ok(Some(chunk)) => {
+                        last_output = Instant::now();
+                        if let Some(success) = handle_chunk(
+                            phase,
+                            &chunk,
+                            &mut full_response,
+                            &mut tool_timings,
+                            &tx,
+                            logger.as_ref(),
+                        ) {
+                            if let Some(usage) = usage_from_state(
+                                provider.get_session(&session_id),
+                                started_at,
+                                model.as_str(),
+                            ) {
+                                let _ = tx.send(ClaudeToken::Usage(usage));
+                            }
+                            if success {
+                                let _ = tx.send(ClaudeToken::Done(full_response));
+                            }
+                            return;
+                        }
+                    }
                     Ok(None) => {
-                        if full_response.is_empty() {
-                            last_error = "Stream ended unexpectedly with no data".to_string();
-                            eprintln!("[CLAUDE-REVIEW] {}", last_error);
-                            let _ = stream.abort().await;
-                            continue 'retry;
+                        if last_output.elapsed().as_secs() > STREAM_IDLE_TIMEOUT_SECS {
+                            last_error = format!(
+                                "Stream idle timeout after {}s",
+                                STREAM_IDLE_TIMEOUT_SECS
+                            );
+                            break;
                         }
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    }
+                    Err(err) => {
+                        last_error = err.to_string();
                         break;
                     }
-                    Err(_) => {
-                        last_error = format!("Stream idle timeout after {}s", STREAM_IDLE_TIMEOUT_SECS);
-                        eprintln!("[CLAUDE-REVIEW] {}", last_error);
-                        let _ = stream.abort().await;
-                        continue 'retry;
-                    }
-                };
-
-                if let Ok(ref sdk_msg) = msg {
-                    if let Some(id) = extract_session_id(sdk_msg) {
-                        maybe_send_session_id(id, &mut session_id, &tx);
-                    }
-                }
-
-                match msg {
-                    Ok(SdkMessage::Assistant(assistant_msg)) => {
-                        if let Some(ref log) = logger {
-                            log.log_assistant(&format!("review_{}", iteration), &assistant_msg.message);
-                        }
-                        if let Some(content) = assistant_msg.message.get("content") {
-                            if let Some(blocks) = content.as_array() {
-                                for block in blocks {
-                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                        full_response.push_str(text);
-                                        let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
-                                    }
-                                    if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
-                                        let input = block.get("input");
-                                        let params = extract_tool_params(tool_name, input);
-                                        last_tool_name = tool_name.to_string();
-                                        if let Some(ref log) = logger {
-                                            log.log_tool_use(&format!("review_{}", iteration), tool_name, input.unwrap_or(&serde_json::Value::Null));
-                                        }
-                                        let _ = tx.send(ClaudeToken::ToolUse {
-                                            name: tool_name.to_string(),
-                                            params
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Ok(SdkMessage::User(user_msg)) => {
-                        if let Some(ref log) = logger {
-                            log.log_user(&format!("review_{}", iteration), &user_msg.message);
-                        }
-                        if let Some(tool_result) = &user_msg.tool_use_result {
-                            let tool_name = tool_result.get("name")
-                                .and_then(|n| n.as_str())
-                                .or_else(|| tool_result.get("tool_name").and_then(|n| n.as_str()))
-                                .unwrap_or(&last_tool_name)
-                                .to_string();
-                            if let Some(ref log) = logger {
-                                log.log_tool_result(&format!("review_{}", iteration), &tool_name, tool_result);
-                            }
-                            // Extract output and error status from tool_result
-                            let output = extract_tool_output(tool_result);
-                            let is_error = tool_result
-                                .get("is_error")
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false);
-                            let _ = tx.send(ClaudeToken::ToolDone {
-                                name: tool_name,
-                                output,
-                                is_error,
-                            });
-                        }
-                    }
-                    Ok(SdkMessage::StreamEvent(event)) => {
-                        verbose_println!("[CLAUDE-REVIEW][STREAM] {:?}", event);
-                    }
-                    Ok(SdkMessage::ToolProgress(progress)) => {
-                        verbose_println!(
-                            "[CLAUDE-REVIEW][TOOL_PROGRESS] tool={} elapsed={}s",
-                            progress.tool_name,
-                            progress.elapsed_time_seconds
-                        );
-                        let _ = tx.send(ClaudeToken::Progress {
-                            tool_name: progress.tool_name.clone(),
-                            elapsed_secs: progress.elapsed_time_seconds,
-                        });
-                    }
-                    Ok(SdkMessage::Result(result)) => {
-                        // Extract usage data and send it
-                        let usage = extract_usage_from_result(&result, model.as_str());
-                        verbose_println!("[CLAUDE-REVIEW] Usage: input={}, output={}, cost=${:.4}, turns={}",
-                            usage.input_tokens, usage.output_tokens, usage.total_cost_usd, usage.num_turns);
-                        let _ = tx.send(ClaudeToken::Usage(usage));
-                        break;
-                    }
-                    Err(e) => {
-                        last_error = format!("Stream error: {}", e);
-                        eprintln!("[CLAUDE-REVIEW][ERROR] {}", last_error);
-                        let _ = stream.abort().await;
-                        continue 'retry;
-                    }
-                    _ => {}
                 }
             }
-
-            // Success - cleanup and return
-            verbose_println!("[CLAUDE-REVIEW] Aborting stream for cleanup...");
-            if let Err(e) = stream.abort().await {
-                verbose_println!("[CLAUDE-REVIEW] Abort returned error (expected): {}", e);
-            }
-
-            verbose_println!("[CLAUDE-REVIEW] Done. Total response length: {} chars", full_response.len());
-            if let Some(ref log) = logger {
-                log.log_phase_end(&format!("review_{}", iteration), &format!("{} chars", full_response.len()));
-            }
-            let _ = tx.send(ClaudeToken::Done(full_response));
-
-            // Small delay to let process cleanup complete before next query
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            return;
         }
     });
 }
 
-/// Extract usage data from SDK Result message into ClaudeUsageData.
-fn extract_usage_from_result(
-    result: &claude_agent_sdk::SdkResultMessage,
+fn build_provider() -> Result<Arc<dyn ClaudeProvider>, String> {
+    ClaudeLocalProvider::new()
+        .map(|provider| Arc::new(provider) as Arc<dyn ClaudeProvider>)
+        .map_err(|err| err.to_string())
+}
+
+fn build_request(
+    prompt: &str,
+    model: ClaudeModel,
+    resume_session_id: Option<String>,
+) -> ClaudeRequest {
+    let mut request = ClaudeRequest::new(model.as_str());
+    request.autonomy = Some(ClaudeSessionAutonomy::Full);
+    if let Some(session_id) = resume_session_id {
+        request.resume_session_id = Some(session_id);
+        request.initial_prompt = Some(String::new());
+    } else {
+        request.initial_prompt = Some(prompt.to_string());
+    }
+    request
+}
+
+fn handle_chunk(
+    phase: &str,
+    chunk: &ClaudeChunk,
+    full_response: &mut String,
+    tool_timings: &mut std::collections::HashMap<String, Instant>,
+    tx: &mpsc::Sender<ClaudeToken>,
+    logger: Option<&SessionLogger>,
+) -> Option<bool> {
+    match chunk.chunk_type {
+        ChunkType::Text => {
+            if let Some(delta) = chunk.delta.as_deref() {
+                full_response.push_str(delta);
+                if let Some(log) = logger {
+                    log.log_assistant(phase, delta);
+                }
+                let _ = tx.send(ClaudeToken::Chunk(delta.to_string()));
+            }
+            None
+        }
+        ChunkType::ToolStart => {
+            if let Some(tool) = chunk.tool.as_ref() {
+                let params = extract_tool_params(&tool.name, tool.params.as_ref());
+                if let Some(log) = logger {
+                    log.log_tool_use(phase, &tool.name, tool.params.as_ref().unwrap_or(&serde_json::Value::Null));
+                }
+                tool_timings.insert(tool.name.clone(), Instant::now());
+                let _ = tx.send(ClaudeToken::ToolUse {
+                    name: tool.name.clone(),
+                    params,
+                });
+            }
+            None
+        }
+        ChunkType::ToolOutput | ChunkType::ToolDone => {
+            if let Some(tool) = chunk.tool.as_ref() {
+                let output = tool
+                    .result
+                    .as_ref()
+                    .and_then(extract_tool_output)
+                    .or_else(|| tool.error.clone());
+                let is_error = tool.error.is_some()
+                    || tool
+                        .result
+                        .as_ref()
+                        .and_then(|value| value.get("error"))
+                        .is_some();
+                if let Some(log) = logger {
+                    if let Some(result) = tool.result.as_ref() {
+                        log.log_tool_result(phase, &tool.name, result);
+                    }
+                }
+                if let Some(started_at) = tool_timings.get(&tool.name) {
+                    let _ = tx.send(ClaudeToken::Progress {
+                        tool_name: tool.name.clone(),
+                        elapsed_secs: started_at.elapsed().as_secs_f64(),
+                    });
+                }
+                tool_timings.remove(&tool.name);
+                let _ = tx.send(ClaudeToken::ToolDone {
+                    name: tool.name.clone(),
+                    output,
+                    is_error,
+                });
+            }
+            None
+        }
+        ChunkType::Done => Some(true),
+        ChunkType::Error => {
+            let message = chunk
+                .delta
+                .clone()
+                .unwrap_or_else(|| "Claude error".to_string());
+            let _ = tx.send(ClaudeToken::Error(message));
+            Some(false)
+        }
+    }
+}
+
+fn usage_from_state(
+    state: Option<ClaudeSessionState>,
+    started_at: Instant,
     model: &str,
-) -> ClaudeUsageData {
-    use claude_agent_sdk::SdkResultMessage;
-
-    // Extract common fields from success or error variants
-    let (duration_ms, duration_api_ms, num_turns, total_cost_usd, usage, model_usage) = match result
-    {
-        SdkResultMessage::Success(s) => (
-            s.duration_ms,
-            s.duration_api_ms,
-            s.num_turns,
-            s.total_cost_usd,
-            &s.usage,
-            &s.model_usage,
-        ),
-        SdkResultMessage::ErrorDuringExecution(e)
-        | SdkResultMessage::ErrorMaxTurns(e)
-        | SdkResultMessage::ErrorMaxBudget(e)
-        | SdkResultMessage::ErrorMaxStructuredOutputRetries(e) => (
-            e.duration_ms,
-            e.duration_api_ms,
-            e.num_turns,
-            e.total_cost_usd,
-            &e.usage,
-            &e.model_usage,
-        ),
-    };
-
-    // Get context window from model_usage if available
-    let context_window = model_usage
-        .values()
-        .next()
-        .map(|m| m.context_window)
-        .unwrap_or(0);
-
-    ClaudeUsageData {
-        input_tokens: usage.input_tokens,
-        output_tokens: usage.output_tokens,
-        cache_read_tokens: usage.cache_read_input_tokens.unwrap_or(0),
-        cache_creation_tokens: usage.cache_creation_input_tokens.unwrap_or(0),
-        total_cost_usd,
-        duration_ms,
-        duration_api_ms,
-        num_turns,
-        context_window,
-        model: model.to_string(),
+) -> Option<ClaudeUsageData> {
+    let elapsed_ms = started_at.elapsed().as_millis() as u64;
+    match state {
+        Some(ClaudeSessionState::Complete(response)) => {
+            let usage = response.usage.unwrap_or(ClaudeUsage {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                total_tokens: 0,
+            });
+            Some(ClaudeUsageData {
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+                cache_read_tokens: usage.cache_read_tokens,
+                cache_write_tokens: usage.cache_write_tokens,
+                total_cost_usd: response.cost_usd as f64 / 1_000_000.0,
+                duration_ms: Some(elapsed_ms),
+                duration_api_ms: None,
+                num_turns: None,
+                context_window: None,
+                model: response.model,
+            })
+        }
+        Some(ClaudeSessionState::Idle { usage, cost_usd, .. }) => {
+            let usage = usage.unwrap_or(ClaudeUsage {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                total_tokens: 0,
+            });
+            Some(ClaudeUsageData {
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+                cache_read_tokens: usage.cache_read_tokens,
+                cache_write_tokens: usage.cache_write_tokens,
+                total_cost_usd: cost_usd as f64 / 1_000_000.0,
+                duration_ms: Some(elapsed_ms),
+                duration_api_ms: None,
+                num_turns: None,
+                context_window: None,
+                model: model.to_string(),
+            })
+        }
+        _ => None,
     }
 }
 

@@ -137,8 +137,5 @@ The web/worker crate is the Cloudflare Worker API for the web app, built with Ax
 ## web/wallet-worker
 The web/wallet-worker crate is a separate Cloudflare Worker for Spark wallet operations to stay under WASM size limits. It authenticates users via KV sessions, decrypts identity material from D1, and serves balance, receive, and send endpoints.
 
-## web-platform
-The web-platform crate is an Actix-based web platform server for GitHub OAuth, Stripe checkout, and managed Autopilot jobs. It is distinct from the Cloudflare worker-based web stack.
-
 ## wgpui
 The wgpui crate is the GPU-accelerated UI library used across desktop and web. It provides a component/layout system, text rendering and Markdown views, input event handling, and wgpu-backed rendering for Winit and WebGPU/WebGL targets.
