@@ -18,7 +18,8 @@ use crate::state::{AppState, AppView, RepoInfo, UserInfo};
 use crate::views::{build_landing_page, build_repo_selector, build_repo_view};
 use crate::fs_access::{self, FileKind};
 use crate::utils::{read_clipboard_text, track_funnel_event};
-use crate::wallet::{dispatch_wallet_event, queue_wallet_actions, WalletAction};
+// Wallet disabled
+// use crate::wallet::{dispatch_wallet_event, queue_wallet_actions, WalletAction};
 
 #[wasm_bindgen(start)]
 pub fn main() {
@@ -30,7 +31,7 @@ pub fn main() {
 pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
     let platform = WebPlatform::init(canvas_id)
         .await
-        .map_err(|e| JsValue::from_str(&e))?;
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let platform = Rc::new(RefCell::new(platform));
     let state = Rc::new(RefCell::new(AppState::default()));
