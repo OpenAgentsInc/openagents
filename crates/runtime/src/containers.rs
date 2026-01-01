@@ -4870,7 +4870,7 @@ impl ContainerProvider for DaytonaContainerProvider {
             let start = Instant::now();
             let wrapped = wrap_shell_command(&command_string);
             let mut request = ExecuteRequest::new(wrapped)
-                .timeout(session_clone.request.limits.max_time_secs as f64);
+                .timeout(session_clone.request.limits.max_time_secs as i32);
             if let Some(workdir) = session_clone.workdir() {
                 request = request.cwd(workdir);
             }
@@ -4880,7 +4880,7 @@ impl ContainerProvider for DaytonaContainerProvider {
                     let duration_ms = start.elapsed().as_millis() as u64;
                     let result = CommandResult {
                         command: command_string.clone(),
-                        exit_code: response.exit_code,
+                        exit_code: response.exit_code(),
                         stdout: response.result.clone(),
                         stderr: String::new(),
                         duration_ms,
@@ -5302,7 +5302,7 @@ async fn run_daytona_session(
         let start = Instant::now();
         let wrapped = wrap_shell_command(command);
         let mut exec_request =
-            ExecuteRequest::new(wrapped).timeout(request.limits.max_time_secs as f64);
+            ExecuteRequest::new(wrapped).timeout(request.limits.max_time_secs as i32);
         if let Some(dir) = workdir.clone() {
             exec_request = exec_request.cwd(dir);
         }
@@ -5315,7 +5315,7 @@ async fn run_daytona_session(
         let duration_ms = start.elapsed().as_millis() as u64;
         let result = CommandResult {
             command: command.clone(),
-            exit_code: response.exit_code,
+            exit_code: response.exit_code(),
             stdout: response.result.clone(),
             stderr: String::new(),
             duration_ms,
@@ -5323,12 +5323,12 @@ async fn run_daytona_session(
         session.push_output(None, OutputStream::Stdout, &response.result);
         command_results.push(result.clone());
 
-        if response.exit_code != 0 {
+        if response.exit_code() != 0 {
             session.fail("command failed");
             return Ok(());
         }
 
-        combined_exit = response.exit_code;
+        combined_exit = response.exit_code();
         session.set_state(SessionState::Running {
             started_at: Timestamp::now(),
             commands_completed: idx + 1,

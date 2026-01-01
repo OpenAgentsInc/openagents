@@ -15,8 +15,6 @@ pub mod ci;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod claude;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod deprecation;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod github;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod logger;
