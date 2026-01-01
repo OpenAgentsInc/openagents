@@ -602,18 +602,23 @@ fn draw_selectors_section(
 ) {
     draw_section_title(scene, text_system, x, y, "Mode & Model Selectors");
 
-    let mut cx = PaintContext::new(scene, text_system, 1.0);
-
-    ModeSelector::new(demo.selected_mode).paint(Bounds::new(x, *y, 150.0, 32.0), &mut cx);
-    ModelSelector::new(demo.selected_model).paint(Bounds::new(x + 170.0, *y, 150.0, 32.0), &mut cx);
+    {
+        let mut cx = PaintContext::new(scene, text_system, 1.0);
+        ModeSelector::new(demo.selected_mode).paint(Bounds::new(x, *y, 150.0, 32.0), &mut cx);
+        ModelSelector::new(demo.selected_model)
+            .paint(Bounds::new(x + 170.0, *y, 150.0, 32.0), &mut cx);
+    }
 
     *y += 48.0;
 
     draw_section_title(scene, text_system, x, y, "Message Header");
 
-    MessageHeader::new(EntryType::Assistant)
-        .model(Model::Claude)
-        .paint(Bounds::new(x, *y, width, 40.0), &mut cx);
+    {
+        let mut cx = PaintContext::new(scene, text_system, 1.0);
+        MessageHeader::new(EntryType::Assistant)
+            .model(Model::Claude)
+            .paint(Bounds::new(x, *y, width, 40.0), &mut cx);
+    }
 
     *y += 56.0;
 }
