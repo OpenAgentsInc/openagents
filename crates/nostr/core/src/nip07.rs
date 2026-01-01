@@ -224,6 +224,7 @@ mod tests {
     }
 
     // Mock implementation for testing
+    #[allow(dead_code)]
     struct MockNostrProvider {
         public_key: String,
     }

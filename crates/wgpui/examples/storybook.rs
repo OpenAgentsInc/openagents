@@ -20,11 +20,10 @@ use wgpui::components::atoms::{
 };
 use wgpui::components::atoms::{BreadcrumbItem, SessionBreadcrumb};
 use wgpui::components::hud::{
-    Command, CommandPalette, ContextMenu, CornerConfig, DotShape, DotsGrid, DotsOrigin,
-    DrawDirection, Frame, FrameAnimation, FrameStyle, GridLinesBackground, LineDirection, MenuItem,
-    MovingLinesBackground, Notification, NotificationLevel, NotificationPosition, Notifications,
-    PuffsBackground, ResizablePane, ResizeEdge, Reticle, Scanlines, SignalMeter, StatusBar,
-    StatusBarPosition, StatusItem, StatusItemAlignment, Tooltip, TooltipPosition,
+    CornerConfig, DotShape, DotsGrid, DotsOrigin, DrawDirection, Frame, FrameAnimation, FrameStyle,
+    GridLinesBackground, LineDirection, MovingLinesBackground, NotificationLevel,
+    PuffsBackground, ResizablePane, Reticle, Scanlines, SignalMeter, StatusBar, StatusBarPosition,
+    StatusItem, Tooltip, TooltipPosition,
 };
 use wgpui::components::molecules::{
     AddressCard, AddressType, AgentProfileCard, AgentProfileInfo, ApmComparisonCard,
@@ -46,10 +45,10 @@ use wgpui::components::molecules::{
 use wgpui::components::molecules::{EntryActions, TerminalHeader};
 use wgpui::components::organisms::{
     AgentAction, AgentGoal, AgentGoalStatus, AgentStateInspector, ApmLeaderboard, DmThread,
-    EventCategory, EventData, EventInspector, InspectorView, IntervalUnit, KeyShare,
-    LeaderboardEntry, PeerStatus, ReceiveFlow, ReceiveStep, ReceiveType, RelayManager,
-    ResourceUsage, ScheduleConfig, ScheduleData, ScheduleType, SendFlow, SendStep, SigningRequest,
-    TagData, ThresholdKeyManager, ThresholdPeer, ZapFlow,
+    EventData, EventInspector, IntervalUnit, KeyShare, LeaderboardEntry, PeerStatus, ReceiveFlow,
+    ReceiveStep, ReceiveType, RelayManager, ResourceUsage, ScheduleConfig, ScheduleData,
+    ScheduleType, SendFlow, SendStep, SigningRequest, TagData, ThresholdKeyManager, ThresholdPeer,
+    ZapFlow,
 };
 use wgpui::components::organisms::{
     AssistantMessage, DiffLine, DiffLineKind, DiffToolCall, PermissionDialog, SearchMatch,
@@ -57,8 +56,7 @@ use wgpui::components::organisms::{
     UserMessage,
 };
 use wgpui::components::sections::{
-    FeedbackRating, MessageEditor, ThreadFeedback, ThreadHeader, ThreadView, TrajectoryEntry,
-    TrajectoryView,
+    MessageEditor, ThreadFeedback, ThreadHeader, TrajectoryEntry, TrajectoryView,
 };
 use wgpui::renderer::Renderer;
 use wgpui::{
@@ -238,7 +236,7 @@ fn start_hot_reload_watcher(args: Vec<String>) {
     };
 
     std::thread::spawn(move || {
-        let mut last_modified = last_modified;
+        let last_modified = last_modified;
         loop {
             std::thread::sleep(Duration::from_millis(HOT_RELOAD_POLL_MS));
             let Ok(meta) = std::fs::metadata(&exe) else {
@@ -4919,7 +4917,6 @@ impl Storybook {
             ];
 
             let tile_w = 100.0;
-            let tile_h = 50.0;
             let gap = 12.0;
 
             for (idx, status) in statuses.iter().enumerate() {
@@ -5000,7 +4997,6 @@ impl Storybook {
             ];
 
             let tile_w = 110.0;
-            let tile_h = 50.0;
             let gap = 12.0;
 
             for (idx, (amount, status)) in bounties.iter().enumerate() {
@@ -5035,7 +5031,6 @@ impl Storybook {
             ];
 
             let tile_w = 120.0;
-            let tile_h = 60.0;
             let gap = 12.0;
 
             for (idx, (layer, total, status)) in stacks.iter().enumerate() {
@@ -6686,7 +6681,6 @@ impl Storybook {
         let feedback_bounds = Bounds::new(bounds.origin.x, y, width, feedback_height);
         draw_panel("Thread Feedback", feedback_bounds, cx, |inner, cx| {
             let tile_w = 280.0;
-            let tile_h = 90.0;
             let gap = 16.0;
 
             // Default state
@@ -10099,6 +10093,7 @@ fn draw_tile(
     paint(inner, cx);
 }
 
+#[allow(dead_code)]
 fn paint_centered(component: &mut impl wgpui::Component, bounds: Bounds, cx: &mut PaintContext) {
     let (w, h) = component.size_hint();
     let width = w.unwrap_or(bounds.size.width).min(bounds.size.width);

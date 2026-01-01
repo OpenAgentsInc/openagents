@@ -2,9 +2,9 @@ use crate::agent::{Agent, AgentContext, AgentState};
 use crate::budget::BudgetPolicy;
 use crate::claude::{
     ClaudeCapabilities, ClaudeChunk, ClaudeError, ClaudeFs, ClaudeModelInfo, ClaudePolicy,
-    ClaudePricing, ClaudeProvider, ClaudeProviderInfo, ClaudeProviderStatus, ClaudeRequest,
+    ClaudeProvider, ClaudeProviderInfo, ClaudeProviderStatus, ClaudeRequest,
     ClaudeResponse, ClaudeRouter, ClaudeSessionAutonomy, ClaudeSessionStatus, ClaudeUsage,
-    SessionState as ClaudeSessionState, ToolDefinition, ToolLogEntry,
+    SessionState as ClaudeSessionState, ToolLogEntry,
 };
 use crate::compute::{
     ComputeChunk, ComputeError, ComputeFs, ComputeKind, ComputePolicy, ComputeProvider,

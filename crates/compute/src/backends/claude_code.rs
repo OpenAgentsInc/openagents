@@ -20,7 +20,7 @@ use super::agent::{AgentBackend, AgentCapabilities, AgentError, JobProgress, Res
 use crate::domain::{
     CodeReviewRequest, CodeReviewResult, CommandResult, PatchGenRequest, PatchGenResult,
     PatchVerification, RepoIndexRequest, RepoIndexResult, ResourceUsage, SandboxRunRequest,
-    SandboxRunResult, TokenUsage,
+    SandboxRunResult,
 };
 
 // ============================================================================
@@ -292,12 +292,7 @@ impl ClaudeCodeBackend {
             )));
         }
 
-        Ok(ClaudeOutput {
-            content: stdout,
-            stderr,
-            exit_code: output.status.code().unwrap_or(-1),
-            usage: None, // CLI doesn't provide token usage easily
-        })
+        Ok(ClaudeOutput { content: stdout })
     }
 
     /// Run Claude in a container
@@ -366,15 +361,11 @@ impl ClaudeCodeBackend {
             )));
         }
 
-        Ok(ClaudeOutput {
-            content: stdout,
-            stderr,
-            exit_code: output.status.code().unwrap_or(-1),
-            usage: None,
-        })
+        Ok(ClaudeOutput { content: stdout })
     }
 
     /// Extract patch from Claude's output
+    #[cfg(test)]
     fn extract_patch(&self, output: &str) -> Option<String> {
         // Look for diff blocks in the output
         let mut in_diff = false;
@@ -572,7 +563,7 @@ impl AgentBackend for ClaudeCodeBackend {
 
         // Run Claude
         let model = self.resolve_model(request.model.as_deref());
-        let output = self
+        let _output = self
             .run_claude(
                 &work_dir,
                 &prompt,
@@ -908,9 +899,6 @@ impl AgentBackend for ClaudeCodeBackend {
 /// Output from running Claude
 struct ClaudeOutput {
     content: String,
-    stderr: String,
-    exit_code: i32,
-    usage: Option<TokenUsage>,
 }
 
 /// Check if the Claude CLI is available

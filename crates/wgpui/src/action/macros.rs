@@ -126,7 +126,7 @@ macro_rules! action {
 
 #[cfg(test)]
 mod tests {
-    use crate::action::{Action, AnyAction};
+    use crate::action::Action;
 
     // Test the actions! macro
     mod test_namespace {

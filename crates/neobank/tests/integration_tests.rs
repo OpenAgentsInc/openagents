@@ -14,9 +14,8 @@ use neobank::{
     relay::{ExchangeRelay, OrderFilter},
     reputation::{ReputationScore, ReputationService},
     rfq::{RfqMarket, RfqRequest},
-    settlement::{SettlementEngine, SettlementMode},
+    settlement::SettlementEngine,
     treasury_agent::{TradingPair, TreasuryAgent, TreasuryAgentConfig},
-    types::Currency,
 };
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -252,8 +251,6 @@ async fn test_rfq_workflow() {
 
 #[tokio::test]
 async fn test_rfq_expiration() {
-    let market = RfqMarket::new();
-
     // Create request that expires immediately
     let mut request = RfqRequest::new(OrderSide::Buy, 100_000, "USD");
     request.expires_at = 0; // Already expired
@@ -393,12 +390,12 @@ async fn test_escrow_full_flow() {
     assert_eq!(escrow.bond_amount(), 5_000);
 
     // Fund both sides
-    let maker_bond = service
+    let _maker_bond = service
         .fund_escrow(&escrow.id, TradeSide::Maker, "maker_pubkey")
         .await
         .unwrap();
 
-    let taker_bond = service
+    let _taker_bond = service
         .fund_escrow(&escrow.id, TradeSide::Taker, "taker_pubkey")
         .await
         .unwrap();
@@ -503,7 +500,7 @@ async fn test_expired_order_not_accepted() {
     let orders = exchange.fetch_orders(None).await.unwrap();
 
     // Order should be filtered out as expired
-    let order_found = orders.iter().any(|o| o.order_id == order_id);
+    let _order_found = orders.iter().any(|o| o.order_id == order_id);
     // Since expires_in = 0, it expires at creation time
     // Depending on timing, may or may not be filtered
 }

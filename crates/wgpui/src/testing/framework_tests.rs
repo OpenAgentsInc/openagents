@@ -231,18 +231,6 @@ fn test_keyboard_modifiers() {
         alt: false,
         meta: false,
     };
-    let ctrl = Modifiers {
-        shift: false,
-        ctrl: true,
-        alt: false,
-        meta: false,
-    };
-    let alt = Modifiers {
-        shift: false,
-        ctrl: false,
-        alt: true,
-        meta: false,
-    };
 
     assert!(shift.shift);
     assert!(!shift.ctrl);

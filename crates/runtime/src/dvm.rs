@@ -13,6 +13,7 @@ use tokio::sync::mpsc;
 
 /// Parsed DVM feedback status.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub(crate) enum DvmFeedbackStatus {
     Quote,
     Job(JobStatus),
@@ -21,6 +22,7 @@ pub(crate) enum DvmFeedbackStatus {
 
 /// Parsed feedback event.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub(crate) struct DvmFeedback {
     pub status: DvmFeedbackStatus,
     pub status_extra: Option<String>,

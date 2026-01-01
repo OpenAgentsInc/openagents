@@ -300,8 +300,6 @@ async fn test_wallet_payment_flow() {
 
 #[cfg(test)]
 mod smoke_tests {
-    use super::*;
-
     /// Quick smoke test that wallet commands are available
     #[tokio::test]
     async fn test_wallet_subcommand_exists() {

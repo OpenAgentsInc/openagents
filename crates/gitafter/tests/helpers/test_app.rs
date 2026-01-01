@@ -9,6 +9,7 @@ use std::sync::Arc;
 use testing::MockRelay;
 
 /// Test application helper for GitAfter integration tests
+#[allow(dead_code)]
 pub struct TestApp {
     /// Mock Nostr relay for testing
     pub relay: MockRelay,
@@ -20,6 +21,7 @@ pub struct TestApp {
     pub broadcaster: Arc<WsBroadcaster>,
 }
 
+#[allow(dead_code)]
 impl TestApp {
     /// Create a new test application with mock relay
     pub async fn new() -> Result<Self> {

@@ -9,8 +9,6 @@ use std::time::Duration;
 #[derive(Clone)]
 struct Message {
     content: String,
-    author: String,
-    timestamp: u64,
 }
 
 impl Message {
@@ -20,8 +18,6 @@ impl Message {
                 "This is message number {} with some realistic content that might appear in a chat application. It includes multiple sentences to simulate real-world usage patterns.",
                 id
             ),
-            author: format!("user_{}", id % 100),
-            timestamp: 1703500000 + id as u64,
         }
     }
 }
@@ -78,7 +74,7 @@ fn simulate_markdown_parse(content: &str) -> usize {
 }
 
 /// Simulate layout computation
-fn simulate_layout(message_count: usize, viewport_width: f32) -> Vec<(f32, f32)> {
+fn simulate_layout(message_count: usize, _viewport_width: f32) -> Vec<(f32, f32)> {
     let mut layouts = Vec::with_capacity(message_count);
     let mut y = 0.0;
 
@@ -167,7 +163,6 @@ Another paragraph with `inline code` and [a link](https://example.com).
 fn benchmark_scroll(c: &mut Criterion) {
     let mut group = c.benchmark_group("scroll");
 
-    let messages: Vec<Message> = (0..10_000).map(Message::new).collect();
     let layouts = simulate_layout(10_000, 800.0);
 
     group.bench_function("find_visible_range", |b| {

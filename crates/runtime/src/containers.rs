@@ -1,5 +1,7 @@
 //! Container filesystem service and providers.
 
+#![allow(missing_docs)]
+
 use crate::budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetTracker};
 use crate::compute::{ApiTokenProvider, Prefer};
 #[cfg(not(target_arch = "wasm32"))]
@@ -1113,7 +1115,7 @@ impl OpenAgentsAuth {
         {
             if let Some(api) = &self.api {
                 if let Ok(response) = api.authenticate_token(token) {
-                    state = self.apply_auth_response(state, response, AuthMethod::ApiKey, None)?;
+                    state = self.apply_auth_response(response, AuthMethod::ApiKey, None)?;
                 }
             }
         }
@@ -1199,7 +1201,6 @@ impl OpenAgentsAuth {
             if let Some(api) = &self.api {
                 if let Ok(response) = api.authenticate_nostr(&response) {
                     state = self.apply_auth_response(
-                        state,
                         response,
                         AuthMethod::Nostr,
                         Some(challenge.pubkey.clone()),
@@ -1225,12 +1226,11 @@ impl OpenAgentsAuth {
 
     fn apply_auth_response(
         &self,
-        mut state: ApiAuthState,
         response: ApiAuthResponse,
         default_method: AuthMethod,
         default_pubkey: Option<String>,
     ) -> Result<ApiAuthState, ContainerError> {
-        state = response.state;
+        let mut state = response.state;
         if state.method.is_none() {
             state.method = Some(default_method);
         }
@@ -1263,8 +1263,7 @@ impl OpenAgentsAuth {
         let Ok(payload) = serde_json::from_slice::<ApiAuthResponse>(&bytes) else {
             return;
         };
-        let state = match self.apply_auth_response(self.status(), payload, AuthMethod::ApiKey, None)
-        {
+        let state = match self.apply_auth_response(payload, AuthMethod::ApiKey, None) {
             Ok(state) => state,
             Err(_) => return,
         };
@@ -1288,12 +1287,9 @@ impl OpenAgentsAuth {
         let Ok(payload) = serde_json::from_slice::<ApiAuthResponse>(&bytes) else {
             return;
         };
-        let state = match self.apply_auth_response(
-            self.status(),
-            payload,
-            AuthMethod::Nostr,
-            Some(response.pubkey.clone()),
-        ) {
+        let state = match self
+            .apply_auth_response(payload, AuthMethod::Nostr, Some(response.pubkey.clone()))
+        {
             Ok(state) => state,
             Err(_) => return,
         };
@@ -3519,6 +3515,7 @@ struct DvmContainerQuote {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
+#[allow(dead_code)]
 enum DvmContainerLifecycle {
     AwaitingQuotes {
         since: Timestamp,
@@ -3543,6 +3540,7 @@ enum DvmContainerLifecycle {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
+#[allow(dead_code)]
 struct DvmContainerSession {
     session_id: String,
     request_event_id: String,

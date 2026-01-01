@@ -7,9 +7,9 @@ use wgpui::components::hud::{Command, CommandPalette, Notifications, StatusBar, 
 use wgpui::components::molecules::{MessageHeader, ModeSelector, ModelSelector};
 use wgpui::renderer::Renderer;
 use wgpui::{
-    Animatable, Animation, Bounds, Button, ButtonVariant, Component, ContextMenu, Div, Easing,
-    InputEvent, MenuItem, MouseButton, PaintContext, Point, Quad, Scene, Size, SpringAnimation,
-    Text, TextInput, Tooltip, TooltipPosition, VirtualList, theme,
+    Animation, Bounds, Button, ButtonVariant, Component, ContextMenu, Easing, MenuItem,
+    PaintContext, Point, Quad, Scene, Size, SpringAnimation, TextInput, Tooltip, TooltipPosition,
+    VirtualList, theme,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -39,18 +39,23 @@ struct RenderState {
 }
 
 struct DemoState {
+    #[allow(dead_code)]
     start_time: Instant,
     position_anim: Animation<f32>,
     color_anim: Animation<wgpui::Hsla>,
     spring: SpringAnimation<f32>,
+    #[allow(dead_code)]
     tooltip: Tooltip,
+    #[allow(dead_code)]
     context_menu: ContextMenu,
+    #[allow(dead_code)]
     command_palette: CommandPalette,
     status_bar: StatusBar,
     notifications: Notifications,
     text_input: TextInput,
     selected_mode: Mode,
     selected_model: Model,
+    #[allow(dead_code)]
     hover_button: Option<usize>,
     message_count: usize,
 }

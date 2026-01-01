@@ -313,11 +313,7 @@ mod tests {
         let mut cx = EventContext::new();
 
         // Register a handler
-        let mut handled = false;
-        cx.on_action::<Cancel>(42, move |_| {
-            handled = true;
-            true
-        });
+        cx.on_action::<Cancel>(42, |_| true);
 
         // Dispatch action
         let action = Cancel;

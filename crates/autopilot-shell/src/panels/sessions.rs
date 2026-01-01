@@ -106,6 +106,7 @@ impl SessionsPanel {
     }
 
     /// Set the current model
+    #[allow(dead_code)]
     pub fn set_model(&mut self, model: Model) {
         self.model_selector.set_model(model);
     }
@@ -390,7 +391,6 @@ impl Panel for SessionsPanel {
         // RESUME section
         y = self.resume_header_y(bounds);
         self.paint_section_header("RESUME", y, bounds, cx);
-        y += header_h;
 
         let resume_input_bounds = self.resume_input_bounds(bounds);
         self.resume_at_input.paint(resume_input_bounds, cx);
@@ -402,7 +402,6 @@ impl Panel for SessionsPanel {
             "Fork session: off"
         };
         self.paint_button(fork_label, y, bounds, self.fork_hovered, cx);
-        y += 32.0;
 
         // New Session button
         let new_btn_bounds = self.new_session_button_bounds(bounds);

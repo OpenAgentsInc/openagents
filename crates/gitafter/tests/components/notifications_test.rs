@@ -273,7 +273,7 @@ fn test_notifications_page_event_id_links() {
     )];
 
     let html = notifications_page(&notifications).into_string();
-    let doc = Html::parse_fragment(&html);
+    let _doc = Html::parse_fragment(&html);
 
     // Event ID is stored but not necessarily displayed as a link in the UI
     // The notification system uses event_id internally for the database

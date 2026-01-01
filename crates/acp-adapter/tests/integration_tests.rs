@@ -19,6 +19,7 @@ use acp_adapter::{
 };
 
 /// Mock agent that implements basic ACP protocol for testing
+#[allow(dead_code)]
 mod mock_agent {
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -700,7 +701,7 @@ async fn test_telemetry_end_to_end() {
     });
 
     // Create a regular session (without telemetry integration for now)
-    let session = connection
+    let _session = connection
         .new_session(cwd.clone())
         .await
         .expect("Failed to create session");

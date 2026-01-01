@@ -2291,6 +2291,7 @@ struct DvmQuote {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
+#[allow(dead_code)]
 enum DvmLifecycle {
     AwaitingQuotes {
         since: Timestamp,
@@ -2315,6 +2316,7 @@ enum DvmLifecycle {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
+#[allow(dead_code)]
 struct DvmJobState {
     job_id: String,
     request_event_id: String,

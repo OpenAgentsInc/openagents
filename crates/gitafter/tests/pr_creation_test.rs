@@ -11,7 +11,7 @@ async fn test_create_pull_request() -> Result<()> {
     let app = TestApp::new().await?;
 
     // Create repository first
-    let repo = app
+    let _repo = app
         .create_repository("test-repo", "Test Repo", "Test repository")
         .await?;
 

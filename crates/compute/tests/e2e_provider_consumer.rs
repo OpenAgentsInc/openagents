@@ -179,7 +179,7 @@ async fn test_dvm_service_with_mock_backend() {
     // Create services
     let relay_service = Arc::new(RelayService::new());
     let backend_registry = Arc::new(RwLock::new(registry));
-    let (event_tx, mut event_rx) = broadcast::channel(100);
+    let (event_tx, _event_rx) = broadcast::channel(100);
 
     // Create DVM service
     let dvm = DvmService::new(relay_service, backend_registry.clone(), event_tx);
@@ -267,7 +267,7 @@ async fn test_full_job_processing_flow() {
 
     // Create provider identity
     let provider_identity = UnifiedIdentity::generate().expect("should generate provider identity");
-    let provider_pubkey = provider_identity.public_key_hex();
+    let _provider_pubkey = provider_identity.public_key_hex();
 
     // Create customer identity (simulated)
     let customer_identity = UnifiedIdentity::generate().expect("should generate customer identity");

@@ -42,21 +42,6 @@ impl ClaudeModel {
     }
 }
 
-fn extract_tool_display(name: &str, params: &str) -> String {
-    let truncated = if params.len() > 60 {
-        format!("{}...", &params[..57])
-    } else {
-        params.to_string()
-    };
-
-    match name {
-        "Read" | "read" | "Edit" | "edit" | "Write" | "write" => {
-            shorten_path(&PathBuf::from(&truncated))
-        }
-        _ => truncated,
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogLine {
     pub text: String,
