@@ -78,6 +78,7 @@ impl ClaudeUsage {
     }
 
     /// Update a single session stat
+    #[allow(dead_code)]
     pub fn add_tokens(&mut self, input: u64, output: u64, cache_read: u64, cache_create: u64) {
         self.session.input_tokens += input;
         self.session.output_tokens += output;
@@ -85,10 +86,12 @@ impl ClaudeUsage {
         self.session.cache_creation_tokens += cache_create;
     }
 
+    #[allow(dead_code)]
     pub fn increment_turns(&mut self) {
         self.session.num_turns += 1;
     }
 
+    #[allow(dead_code)]
     pub fn set_web_searches(&mut self, count: u64) {
         self.web_searches = count;
     }

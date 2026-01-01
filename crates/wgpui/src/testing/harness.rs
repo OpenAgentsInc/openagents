@@ -245,7 +245,6 @@ impl TestHarness {
                 theme::text::PRIMARY,
             );
             cx.scene.draw_text(speed_run);
-            x += 48.0;
 
             // Shortcuts hint (right-aligned)
             let hints = "[P]lay [S]tep [Space] [1-4]Speed";

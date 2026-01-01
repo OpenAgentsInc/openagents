@@ -886,7 +886,7 @@ mod tests {
         assert_eq!(escrow.bond_amount(), 5_000);
 
         // Fund maker side
-        let maker_bond_id = service
+        let _maker_bond_id = service
             .fund_escrow(&escrow.id, TradeSide::Maker, "maker_pubkey")
             .await
             .unwrap();
@@ -895,7 +895,7 @@ mod tests {
         assert_eq!(updated_escrow.status, EscrowStatus::PartiallyFunded);
 
         // Fund taker side
-        let taker_bond_id = service
+        let _taker_bond_id = service
             .fund_escrow(&escrow.id, TradeSide::Taker, "taker_pubkey")
             .await
             .unwrap();

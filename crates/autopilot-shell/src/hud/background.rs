@@ -22,6 +22,7 @@ impl HudBackground {
         }
     }
 
+    #[allow(dead_code)]
     pub fn dots_color(mut self, color: Hsla) -> Self {
         self.color = color;
         self

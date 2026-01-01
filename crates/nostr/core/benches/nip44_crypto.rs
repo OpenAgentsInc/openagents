@@ -3,9 +3,10 @@
 //! Run with: cargo bench -p nostr --bench nip44_crypto
 
 use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use nostr::{MAX_PLAINTEXT_LEN, MIN_PLAINTEXT_LEN, decrypt_v2 as decrypt, encrypt_v2 as encrypt};
 use nostr::{generate_secret_key, get_public_key};
+use std::hint::black_box;
 
 /// Generate test message of given size
 fn generate_message(size: usize) -> String {

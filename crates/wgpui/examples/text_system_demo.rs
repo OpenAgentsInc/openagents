@@ -71,6 +71,7 @@ struct RenderState {
 }
 
 struct DemoState {
+    #[allow(dead_code)]
     start_time: Instant,
     frame_count: u64,
     mouse_pos: Point,
@@ -87,6 +88,7 @@ struct DemoState {
     last_token_frame: u64,
     // HUD effects
     dots_grid: DotsGrid,
+    #[allow(dead_code)]
     dots_anim: Animation<f32>,
     frame_anim: Animation<f32>,
     anim_controller: AnimationController,

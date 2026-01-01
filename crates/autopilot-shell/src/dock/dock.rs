@@ -55,7 +55,8 @@ impl DockState {
     }
 
     pub fn effective_size(&self) -> f32 {
-        if self.open { self.size } else { 0.0 }
+        let size = self.size.clamp(self.min_size, self.max_size);
+        if self.open { size } else { 0.0 }
     }
 }
 

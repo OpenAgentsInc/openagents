@@ -187,7 +187,7 @@ fn parse_unified_rate_limit(headers: &HeaderMap) -> Option<RateLimitWindow> {
     let status = parse_header_str(headers, "anthropic-ratelimit-unified-status");
 
     // Get the representative claim if specified
-    let representative =
+    let _representative =
         parse_header_str(headers, "anthropic-ratelimit-unified-representative-claim");
 
     // Try each claim type to find utilization data

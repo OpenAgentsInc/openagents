@@ -164,10 +164,11 @@ mod tests {
     #[test]
     fn test_on_action_and_handle() {
         let mut listeners = ActionListeners::new();
-        let mut received_value = 0;
+        let received_value = std::rc::Rc::new(std::cell::Cell::new(0));
+        let received_value_clone = received_value.clone();
 
         listeners.on_action::<TestAction>(move |action| {
-            received_value = action.value;
+            received_value_clone.set(action.value);
             true
         });
 
@@ -177,6 +178,7 @@ mod tests {
         let action = TestAction { value: 42 };
         let handled = listeners.handle(&action);
         assert!(handled);
+        assert_eq!(received_value.get(), 42);
     }
 
     #[test]

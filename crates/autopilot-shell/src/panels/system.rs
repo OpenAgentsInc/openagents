@@ -33,6 +33,7 @@ impl SystemPanel {
     }
 
     /// Add tokens to session
+    #[allow(dead_code)]
     pub fn add_tokens(&mut self, input: u64, output: u64, cache_read: u64, cache_create: u64) {
         self.claude_usage
             .add_tokens(input, output, cache_read, cache_create);
@@ -49,6 +50,7 @@ impl SystemPanel {
     }
 
     /// Get mutable access to ClaudeUsage for direct updates
+    #[allow(dead_code)]
     pub fn claude_usage_mut(&mut self) -> &mut ClaudeUsage {
         &mut self.claude_usage
     }

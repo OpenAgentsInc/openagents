@@ -385,7 +385,7 @@ async fn test_multiple_bounties_on_same_issue() -> Result<()> {
             .as_secs(),
     };
 
-    let bounty1 = app.publish_event(bounty1_template).await?;
+    let _bounty1 = app.publish_event(bounty1_template).await?;
 
     // Second bounty offer (from same or different user)
     let bounty2_template = EventTemplate {
@@ -407,7 +407,7 @@ async fn test_multiple_bounties_on_same_issue() -> Result<()> {
             .as_secs(),
     };
 
-    let bounty2 = app.publish_event(bounty2_template).await?;
+    let _bounty2 = app.publish_event(bounty2_template).await?;
 
     // Verify both bounties stored
     let bounties = app.relay.get_events_by_kind(1636).await;

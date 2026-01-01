@@ -1,5 +1,7 @@
 //! Claude filesystem service and providers.
 
+#![allow(missing_docs)]
+
 use crate::budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetTracker};
 use crate::fs::{
     BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Permissions,

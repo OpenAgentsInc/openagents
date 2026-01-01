@@ -159,7 +159,7 @@ async fn stress_test_job_throughput_no_payment() {
                         let event_id = format!("stress_{:016x}", rand::random::<u64>());
 
                         let result = {
-                            let mut dvm = dvm.write().await;
+                            let dvm = dvm.write().await;
                             dvm.handle_job_request(
                                 &event_id,
                                 5050,
@@ -491,7 +491,7 @@ async fn stress_test_full_e2e_throughput() {
 
         // 1. Submit job request
         {
-            let mut dvm = dvm.write().await;
+            let dvm = dvm.write().await;
             let job_inputs = vec![JobInput::text("stress test")];
             let mut params = HashMap::new();
             params.insert("model".to_string(), "fast-model".to_string());
@@ -541,7 +541,7 @@ async fn stress_test_full_e2e_throughput() {
 
         // 4. Confirm and process
         {
-            let mut dvm = dvm.write().await;
+            let dvm = dvm.write().await;
             if let Err(e) = dvm.confirm_payment(&job_id).await {
                 println!("  Job {}: Confirm failed: {}", i, e);
                 continue;

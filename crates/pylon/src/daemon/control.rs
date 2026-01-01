@@ -248,7 +248,7 @@ mod tests {
         let socket_path = tmp.path().join("test.sock");
 
         {
-            let socket = ControlSocket::new(socket_path.clone()).unwrap();
+            let _socket = ControlSocket::new(socket_path.clone()).unwrap();
             assert!(socket_path.exists());
         }
 

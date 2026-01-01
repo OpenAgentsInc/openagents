@@ -2,9 +2,10 @@
 //!
 //! Run with: cargo bench -p issues --bench database_operations
 
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use issues::{IssueType, Priority, db, issue};
 use rusqlite::Connection;
+use std::hint::black_box;
 use tempfile::TempDir;
 
 /// Setup a test database with N issues

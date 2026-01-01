@@ -10,10 +10,7 @@
 //! Tests use a mock transport layer to avoid real relay dependencies.
 
 use frostr::Result;
-use frostr::bifrost::{
-    BifrostConfig, BifrostMessage, BifrostNode, CommitmentRequest, CommitmentResponse,
-    TimeoutConfig,
-};
+use frostr::bifrost::{BifrostConfig, BifrostMessage, BifrostNode, CommitmentResponse, TimeoutConfig};
 use frostr::keygen::{FrostShare, generate_key_shares};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -26,6 +23,7 @@ struct MockTransport {
     /// Simulated message bus: maps peer_id -> incoming message queue
     message_bus: Arc<RwLock<HashMap<u8, mpsc::Sender<BifrostMessage>>>>,
     /// Our peer ID in the simulation
+    #[allow(dead_code)]
     peer_id: u8,
     /// Simulated network delay in milliseconds
     network_delay_ms: u64,
@@ -43,6 +41,7 @@ impl MockTransport {
         }
     }
 
+    #[allow(dead_code)]
     fn with_network_delay(mut self, delay_ms: u64) -> Self {
         self.network_delay_ms = delay_ms;
         self
@@ -86,6 +85,7 @@ impl MockTransport {
         }
     }
 
+    #[allow(dead_code)]
     async fn broadcast(&self, message: BifrostMessage) -> Result<()> {
         let bus = self.message_bus.read().await;
         for (peer_id, tx) in bus.iter() {
@@ -103,6 +103,7 @@ impl MockTransport {
 /// Mock peer that responds to signing requests using two-phase protocol
 struct MockSigningPeer {
     peer_id: u8,
+    #[allow(dead_code)]
     frost_share: FrostShare,
     transport: MockTransport,
     rx: mpsc::Receiver<BifrostMessage>,

@@ -73,7 +73,8 @@ fn try_command(cmd: &str, args: &[&str], contents: &str) -> Result<(), ()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    #[cfg(target_os = "macos")]
+    use super::copy_to_clipboard;
 
     #[test]
     #[cfg(target_os = "macos")]

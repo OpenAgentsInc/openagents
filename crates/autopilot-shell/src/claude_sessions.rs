@@ -285,6 +285,7 @@ pub fn load_session_messages(path: &PathBuf) -> Vec<SessionMessage> {
         };
 
         if let Some(msg) = entry.message {
+            let role = msg.role.clone().unwrap_or_else(|| entry_type.clone());
             if let Some(content) = msg.content {
                 for block in content {
                     match block.block_type.as_str() {
@@ -292,7 +293,7 @@ pub fn load_session_messages(path: &PathBuf) -> Vec<SessionMessage> {
                             if let Some(text) = &block.text {
                                 if !text.trim().is_empty() {
                                     messages.push(SessionMessage {
-                                        role: entry_type.clone(),
+                                        role: role.clone(),
                                         content: text.clone(),
                                         is_tool_use: false,
                                         tool_name: None,
@@ -358,7 +359,7 @@ pub fn load_session_messages(path: &PathBuf) -> Vec<SessionMessage> {
                             }
 
                             messages.push(SessionMessage {
-                                role: entry_type.clone(),
+                                role: role.clone(),
                                 content: String::new(), // Content is in tool_input/tool_output
                                 is_tool_use: true,
                                 tool_name: Some(tool_name),
