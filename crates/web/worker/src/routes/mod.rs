@@ -8,9 +8,11 @@ pub mod auth;
 pub mod billing;
 pub mod claude_auth;
 pub mod container;
+pub mod gfn;
 pub mod github_explore;
 pub mod hud;
 pub mod repo_knowledge;
 pub mod stripe;
 pub mod tunnel;
+pub mod y2026;
 // pub mod wallet;  // Moved to separate worker for size

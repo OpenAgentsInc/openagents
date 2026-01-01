@@ -1,5 +1,7 @@
+mod gfn;
 mod landing;
 mod repo_selector;
+mod y2026;
 pub(crate) mod job_detail;
 
 use wgpui::{Bounds, Hsla, Point, Quad, Scene, TextSystem, theme};
@@ -11,8 +13,10 @@ use wgpui::PaintContext;
 use crate::state::AppState;
 
 // Re-export the main view functions
+pub(crate) use gfn::build_gfn_page;
 pub(crate) use landing::build_landing_page;
 pub(crate) use repo_selector::build_repo_selector;
+pub(crate) use y2026::build_2026_page;
 
 pub(crate) fn build_repo_view(
     scene: &mut Scene,
