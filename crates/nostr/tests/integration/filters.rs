@@ -7,7 +7,7 @@ use tokio::time::{Duration, timeout};
 
 #[tokio::test]
 async fn test_filter_by_kinds() {
-    let port = 17200;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -68,7 +68,7 @@ async fn test_filter_by_kinds() {
 
 #[tokio::test]
 async fn test_filter_by_authors() {
-    let port = 17201;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -143,7 +143,7 @@ async fn test_filter_by_authors() {
 
 #[tokio::test]
 async fn test_filter_by_event_ids() {
-    let port = 17202;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -217,7 +217,7 @@ async fn test_filter_by_event_ids() {
 
 #[tokio::test]
 async fn test_filter_by_tags() {
-    let port = 17203;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -281,7 +281,7 @@ async fn test_filter_by_tags() {
 
 #[tokio::test]
 async fn test_filter_by_since_until() {
-    let port = 17204;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 
@@ -351,7 +351,7 @@ async fn test_filter_by_since_until() {
 
 #[tokio::test]
 async fn test_filter_limit() {
-    let port = 17205;
+    let port = next_test_port();
     let (_server, _addr, _temp_dir) = start_test_relay(port).await;
     let url = test_relay_url(port);
 

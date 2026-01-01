@@ -6,8 +6,8 @@ use nostr_client::{PoolConfig, RelayPool};
 
 #[tokio::test]
 async fn test_pool_publishes_to_multiple_relays() {
-    let port_a = 17100;
-    let port_b = 17101;
+    let port_a = next_test_port();
+    let port_b = next_test_port();
     let (_server_a, _addr_a, _temp_a) = start_test_relay(port_a).await;
     let (_server_b, _addr_b, _temp_b) = start_test_relay(port_b).await;
 

@@ -1,6 +1,5 @@
 //! Public relay compatibility tests (ignored by default).
 
-use super::*;
 use nostr_client::{PoolConfig, RelayConnection, RelayMessage, RelayPool};
 use serde_json::json;
 use tokio::time::{Duration, timeout};

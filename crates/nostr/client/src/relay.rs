@@ -5,7 +5,7 @@
 //! offline support.
 
 use crate::error::{ClientError, Result};
-use crate::queue::MessageQueue;
+use crate::queue::{MessageQueue, QueueConfig};
 use crate::recovery::{CircuitBreaker, ExponentialBackoff, HealthMetrics};
 use crate::subscription::Subscription;
 use futures::{SinkExt, StreamExt};
@@ -13,6 +13,7 @@ use nostr::Event;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, RwLock, mpsc, oneshot};
@@ -107,10 +108,10 @@ pub struct RelayConnection {
     state: Arc<RwLock<ConnectionState>>,
     /// WebSocket stream
     ws: Arc<Mutex<Option<WsStream>>>,
-    /// Incoming message channel (for future background task)
-    _rx: Arc<Mutex<mpsc::UnboundedReceiver<RelayMessage>>>,
-    /// Outgoing message channel (for future background task)
-    _tx: mpsc::UnboundedSender<Value>,
+    /// Incoming message channel (fed by background receive loop)
+    rx: Arc<Mutex<mpsc::UnboundedReceiver<RelayMessage>>>,
+    /// Sender for incoming message channel
+    msg_tx: mpsc::UnboundedSender<RelayMessage>,
     /// Pending event confirmations (event_id -> oneshot sender)
     pending_confirmations: Arc<Mutex<HashMap<String, ConfirmationSender>>>,
     /// Active subscriptions (subscription_id -> Subscription)
@@ -149,12 +150,20 @@ impl RelayConnection {
             )));
         }
 
-        let (_msg_tx, msg_rx) = mpsc::unbounded_channel();
-        let (out_tx, _) = mpsc::unbounded_channel();
+        let (msg_tx, msg_rx) = mpsc::unbounded_channel();
 
-        // Create message queue if enabled
+        // Create message queue if enabled (allow env override for db path)
         let queue = if config.enable_queue {
-            Some(Arc::new(MessageQueue::new().map_err(|e| {
+            let queue = if let Ok(db_path) = std::env::var("NOSTR_QUEUE_DB_PATH") {
+                let queue_config = QueueConfig {
+                    db_path: PathBuf::from(db_path),
+                    ..QueueConfig::default()
+                };
+                MessageQueue::with_config(queue_config)
+            } else {
+                MessageQueue::new()
+            };
+            Some(Arc::new(queue.map_err(|e| {
                 ClientError::Internal(format!("Failed to create message queue: {}", e))
             })?))
         } else {
@@ -183,8 +192,8 @@ impl RelayConnection {
             config,
             state: Arc::new(RwLock::new(ConnectionState::Disconnected)),
             ws: Arc::new(Mutex::new(None)),
-            _rx: Arc::new(Mutex::new(msg_rx)),
-            _tx: out_tx,
+            rx: Arc::new(Mutex::new(msg_rx)),
+            msg_tx,
             pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
             subscriptions: Arc::new(Mutex::new(HashMap::new())),
             queue,
@@ -295,6 +304,7 @@ impl RelayConnection {
         let state = Arc::clone(&self.state);
         let pending_confirmations = Arc::clone(&self.pending_confirmations);
         let subscriptions = Arc::clone(&self.subscriptions);
+        let msg_tx = self.msg_tx.clone();
         let url = self.url.to_string();
 
         let handle = tokio::spawn(async move {
@@ -340,6 +350,8 @@ impl RelayConnection {
                 if let Some(text) = msg
                     && let Ok(Some(relay_msg)) = Self::parse_relay_message(&text)
                 {
+                    let _ = msg_tx.send(relay_msg.clone());
+
                     // Handle OK messages for pending confirmations
                     if let RelayMessage::Ok(event_id, accepted, message) = &relay_msg {
                         let mut confirmations = pending_confirmations.lock().await;
@@ -634,79 +646,8 @@ impl RelayConnection {
             return Err(ClientError::NotConnected);
         }
 
-        let mut ws = self.ws.lock().await;
-        if let Some(stream) = ws.as_mut() {
-            match stream.next().await {
-                Some(Ok(Message::Text(text))) => {
-                    debug!("Received from {}: {}", self.url, text);
-                    let msg = Self::parse_relay_message(&text)?;
-
-                    // Handle OK messages for pending confirmations
-                    if let Some(RelayMessage::Ok(event_id, accepted, message)) = &msg {
-                        let mut confirmations = self.pending_confirmations.lock().await;
-                        if let Some(tx) = confirmations.remove(event_id) {
-                            let confirmation = PublishConfirmation {
-                                event_id: event_id.clone(),
-                                accepted: *accepted,
-                                message: message.clone(),
-                            };
-                            let _ = tx.send(confirmation); // Ignore error if receiver dropped
-                        }
-                    }
-
-                    // Route EVENT messages to subscriptions
-                    if let Some(RelayMessage::Event(sub_id, event)) = &msg {
-                        let mut should_remove = false;
-                        {
-                            let subs = self.subscriptions.lock().await;
-                            if let Some(subscription) = subs.get(sub_id) {
-                                if let Err(e) = subscription.handle_event(event.clone()) {
-                                    let err_str = e.to_string();
-                                    if err_str.contains("channel closed") {
-                                        debug!("Subscription {} channel closed, removing", sub_id);
-                                        should_remove = true;
-                                    } else {
-                                        warn!(
-                                            "Error handling event for subscription {}: {}",
-                                            sub_id, e
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        if should_remove {
-                            self.subscriptions.lock().await.remove(sub_id);
-                        }
-                    }
-
-                    // Handle EOSE messages for subscriptions
-                    if let Some(RelayMessage::Eose(sub_id)) = &msg {
-                        let subs = self.subscriptions.lock().await;
-                        if let Some(subscription) = subs.get(sub_id) {
-                            subscription.mark_eose();
-                        }
-                    }
-
-                    Ok(msg)
-                }
-                Some(Ok(Message::Close(_))) => {
-                    info!("Relay closed connection: {}", self.url);
-                    Ok(None)
-                }
-                Some(Ok(Message::Ping(data))) => {
-                    stream
-                        .send(Message::Pong(data))
-                        .await
-                        .map_err(|e| ClientError::WebSocket(e.to_string()))?;
-                    Ok(None)
-                }
-                Some(Ok(_)) => Ok(None), // Ignore other message types
-                Some(Err(e)) => Err(ClientError::WebSocket(e.to_string())),
-                None => Ok(None),
-            }
-        } else {
-            Err(ClientError::NotConnected)
-        }
+        let mut rx = self.rx.lock().await;
+        Ok(rx.recv().await)
     }
 
     /// Parse a relay message
