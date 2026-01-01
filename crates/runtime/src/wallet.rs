@@ -29,6 +29,15 @@ pub struct WalletPayment {
     pub amount_sats: u64,
 }
 
+/// Wallet invoice record.
+#[derive(Debug, Clone)]
+pub struct WalletInvoice {
+    /// Lightning invoice / payment request string.
+    pub payment_request: String,
+    /// Amount requested (sats).
+    pub amount_sats: u64,
+}
+
 /// Wallet service for Lightning payments.
 pub trait WalletService: Send + Sync {
     /// Return total balance in sats.
@@ -41,6 +50,17 @@ pub trait WalletService: Send + Sync {
     ) -> Result<WalletPayment, WalletError>;
     /// Return FX rate snapshot.
     fn fx_rate(&self) -> Result<FxRateSnapshot, WalletError>;
+    /// Create an invoice for receiving funds.
+    fn create_invoice(
+        &self,
+        _amount_sats: u64,
+        _memo: Option<String>,
+        _expiry_seconds: Option<u64>,
+    ) -> Result<WalletInvoice, WalletError> {
+        Err(WalletError::InvalidRequest(
+            "invoice creation not supported".to_string(),
+        ))
+    }
 }
 
 /// Adapter that exposes wallet FX through FxRateProvider.

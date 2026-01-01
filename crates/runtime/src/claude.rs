@@ -3037,6 +3037,42 @@ fn extract_text_from_value(value: &serde_json::Value) -> Option<String> {
     }
 }
 
+fn extract_tool_blocks(value: &serde_json::Value) -> Vec<(String, serde_json::Value)> {
+    fn block_from_value(value: &serde_json::Value) -> Option<(String, serde_json::Value)> {
+        let map = value.as_object()?;
+        let name = map
+            .get("name")
+            .or_else(|| map.get("tool_name"))
+            .or_else(|| map.get("toolName"))
+            .and_then(|v| v.as_str())?
+            .to_string();
+        let params = map
+            .get("input")
+            .or_else(|| map.get("params"))
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        Some((name, params))
+    }
+
+    let mut blocks = Vec::new();
+    if let Some(content) = value.get("content").and_then(|v| v.as_array()) {
+        for item in content {
+            if let Some(block) = block_from_value(item) {
+                blocks.push(block);
+            }
+        }
+    } else if let Some(items) = value.as_array() {
+        for item in items {
+            if let Some(block) = block_from_value(item) {
+                blocks.push(block);
+            }
+        }
+    } else if let Some(block) = block_from_value(value) {
+        blocks.push(block);
+    }
+    blocks
+}
+
 fn extract_delta_from_event(event: &serde_json::Value) -> Option<String> {
     if let Some(delta) = event.get("delta") {
         if let Some(text) = extract_text_from_value(delta) {
@@ -3321,6 +3357,8 @@ mod providers {
 
                 let _ = query.stream_input(ReceiverStream::new(prompt_rx)).await;
 
+                let mut last_tool_name: Option<String> = None;
+
                 loop {
                     tokio::select! {
                         Some(cmd) = control_rx.recv() => {
@@ -3360,9 +3398,56 @@ mod providers {
                                         let chunk = ClaudeChunk { session_id: session_id.clone(), chunk_type: ChunkType::Text, delta: Some(text), tool: None, usage: None };
                                         let _ = output_tx.send(chunk).await;
                                     }
+                                    for (tool_name, params) in extract_tool_blocks(&assistant.message) {
+                                        last_tool_name = Some(tool_name.clone());
+                                        let chunk = ClaudeChunk {
+                                            session_id: session_id.clone(),
+                                            chunk_type: ChunkType::ToolStart,
+                                            delta: None,
+                                            tool: Some(ToolChunk {
+                                                name: tool_name,
+                                                params: Some(params),
+                                                result: None,
+                                                error: None,
+                                            }),
+                                            usage: None,
+                                        };
+                                        let _ = output_tx.send(chunk).await;
+                                    }
+                                    ProcessProvider::update_state(&state, SessionState::Working { started_at: Timestamp::now(), current_tool: None });
+                                }
+                                Ok(SdkMessage::User(user_msg)) => {
+                                    if let Some(tool_result) = user_msg.tool_use_result.as_ref() {
+                                        let tool_name = tool_result
+                                            .get(\"name\")
+                                            .and_then(|v| v.as_str())
+                                            .or_else(|| tool_result.get(\"tool_name\").and_then(|v| v.as_str()))
+                                            .map(|name| name.to_string())
+                                            .or_else(|| last_tool_name.clone())
+                                            .unwrap_or_else(|| \"tool\".to_string());
+                                        let tool_error = tool_result
+                                            .get(\"error\")
+                                            .and_then(|v| v.as_str())
+                                            .map(|err| err.to_string());
+                                        let chunk = ClaudeChunk {
+                                            session_id: session_id.clone(),
+                                            chunk_type: ChunkType::ToolDone,
+                                            delta: None,
+                                            tool: Some(ToolChunk {
+                                                name: tool_name.clone(),
+                                                params: None,
+                                                result: Some(tool_result.clone()),
+                                                error: tool_error,
+                                            }),
+                                            usage: None,
+                                        };
+                                        let _ = output_tx.send(chunk).await;
+                                        last_tool_name = Some(tool_name);
+                                    }
                                     ProcessProvider::update_state(&state, SessionState::Working { started_at: Timestamp::now(), current_tool: None });
                                 }
                                 Ok(SdkMessage::ToolProgress(progress)) => {
+                                    last_tool_name = Some(progress.tool_name.clone());
                                     let chunk = ClaudeChunk {
                                         session_id: session_id.clone(),
                                         chunk_type: ChunkType::ToolStart,

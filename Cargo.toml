@@ -38,7 +38,6 @@ members = [
     "crates/wgpui",
     "crates/pylon",
     "crates/neobank",
-    "crates/web-platform",
     "crates/orderbook",
     "crates/relay",
     "crates/runtime",
@@ -99,6 +98,7 @@ nostr = { path = "crates/nostr/core" }
 nostr-client = { path = "crates/nostr/client" }
 openagents-spark = { path = "crates/spark" }
 compute = { path = "crates/compute" }
+openagents-runtime = { path = "crates/runtime", default-features = false }
 hex = { workspace = true }
 sha2 = { workspace = true }
 rand = { workspace = true }

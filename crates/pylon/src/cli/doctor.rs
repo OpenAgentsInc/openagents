@@ -1,7 +1,7 @@
 //! pylon doctor - Run diagnostics
 
 use clap::Args;
-use compute::domain::UnifiedIdentity;
+use openagents_runtime::UnifiedIdentity;
 
 use crate::config::PylonConfig;
 use crate::provider::PylonProvider;

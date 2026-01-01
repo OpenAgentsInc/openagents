@@ -1179,12 +1179,24 @@ impl StartupState {
                             self.session_usage.input_tokens += usage.input_tokens;
                             self.session_usage.output_tokens += usage.output_tokens;
                             self.session_usage.cache_read_tokens += usage.cache_read_tokens;
-                            self.session_usage.cache_creation_tokens += usage.cache_creation_tokens;
+                            self.session_usage.cache_write_tokens += usage.cache_write_tokens;
                             self.session_usage.total_cost_usd += usage.total_cost_usd;
-                            self.session_usage.duration_ms += usage.duration_ms;
-                            self.session_usage.duration_api_ms += usage.duration_api_ms;
-                            self.session_usage.num_turns += usage.num_turns;
-                            self.session_usage.context_window = usage.context_window;
+                            if let Some(duration_ms) = usage.duration_ms {
+                                self.session_usage.duration_ms =
+                                    Some(self.session_usage.duration_ms.unwrap_or(0) + duration_ms);
+                            }
+                            if let Some(duration_api_ms) = usage.duration_api_ms {
+                                self.session_usage.duration_api_ms = Some(
+                                    self.session_usage.duration_api_ms.unwrap_or(0) + duration_api_ms,
+                                );
+                            }
+                            if let Some(num_turns) = usage.num_turns {
+                                self.session_usage.num_turns =
+                                    Some(self.session_usage.num_turns.unwrap_or(0) + num_turns);
+                            }
+                            if usage.context_window.is_some() {
+                                self.session_usage.context_window = usage.context_window;
+                            }
                             self.session_usage.model = usage.model.clone();
                             tracing::info!(
                                 "[STARTUP] Accumulated usage: input={}, output={}, cost=${:.4}",
@@ -1401,12 +1413,24 @@ impl StartupState {
                             self.session_usage.input_tokens += usage.input_tokens;
                             self.session_usage.output_tokens += usage.output_tokens;
                             self.session_usage.cache_read_tokens += usage.cache_read_tokens;
-                            self.session_usage.cache_creation_tokens += usage.cache_creation_tokens;
+                            self.session_usage.cache_write_tokens += usage.cache_write_tokens;
                             self.session_usage.total_cost_usd += usage.total_cost_usd;
-                            self.session_usage.duration_ms += usage.duration_ms;
-                            self.session_usage.duration_api_ms += usage.duration_api_ms;
-                            self.session_usage.num_turns += usage.num_turns;
-                            self.session_usage.context_window = usage.context_window;
+                            if let Some(duration_ms) = usage.duration_ms {
+                                self.session_usage.duration_ms =
+                                    Some(self.session_usage.duration_ms.unwrap_or(0) + duration_ms);
+                            }
+                            if let Some(duration_api_ms) = usage.duration_api_ms {
+                                self.session_usage.duration_api_ms = Some(
+                                    self.session_usage.duration_api_ms.unwrap_or(0) + duration_api_ms,
+                                );
+                            }
+                            if let Some(num_turns) = usage.num_turns {
+                                self.session_usage.num_turns =
+                                    Some(self.session_usage.num_turns.unwrap_or(0) + num_turns);
+                            }
+                            if usage.context_window.is_some() {
+                                self.session_usage.context_window = usage.context_window;
+                            }
                             self.session_usage.model = usage.model;
                         }
                     }
@@ -1629,12 +1653,24 @@ impl StartupState {
                             self.session_usage.input_tokens += usage.input_tokens;
                             self.session_usage.output_tokens += usage.output_tokens;
                             self.session_usage.cache_read_tokens += usage.cache_read_tokens;
-                            self.session_usage.cache_creation_tokens += usage.cache_creation_tokens;
+                            self.session_usage.cache_write_tokens += usage.cache_write_tokens;
                             self.session_usage.total_cost_usd += usage.total_cost_usd;
-                            self.session_usage.duration_ms += usage.duration_ms;
-                            self.session_usage.duration_api_ms += usage.duration_api_ms;
-                            self.session_usage.num_turns += usage.num_turns;
-                            self.session_usage.context_window = usage.context_window;
+                            if let Some(duration_ms) = usage.duration_ms {
+                                self.session_usage.duration_ms =
+                                    Some(self.session_usage.duration_ms.unwrap_or(0) + duration_ms);
+                            }
+                            if let Some(duration_api_ms) = usage.duration_api_ms {
+                                self.session_usage.duration_api_ms = Some(
+                                    self.session_usage.duration_api_ms.unwrap_or(0) + duration_api_ms,
+                                );
+                            }
+                            if let Some(num_turns) = usage.num_turns {
+                                self.session_usage.num_turns =
+                                    Some(self.session_usage.num_turns.unwrap_or(0) + num_turns);
+                            }
+                            if usage.context_window.is_some() {
+                                self.session_usage.context_window = usage.context_window;
+                            }
                             self.session_usage.model = usage.model;
                         }
                     }
@@ -1962,12 +1998,24 @@ impl StartupState {
                             self.session_usage.input_tokens += usage.input_tokens;
                             self.session_usage.output_tokens += usage.output_tokens;
                             self.session_usage.cache_read_tokens += usage.cache_read_tokens;
-                            self.session_usage.cache_creation_tokens += usage.cache_creation_tokens;
+                            self.session_usage.cache_write_tokens += usage.cache_write_tokens;
                             self.session_usage.total_cost_usd += usage.total_cost_usd;
-                            self.session_usage.duration_ms += usage.duration_ms;
-                            self.session_usage.duration_api_ms += usage.duration_api_ms;
-                            self.session_usage.num_turns += usage.num_turns;
-                            self.session_usage.context_window = usage.context_window;
+                            if let Some(duration_ms) = usage.duration_ms {
+                                self.session_usage.duration_ms =
+                                    Some(self.session_usage.duration_ms.unwrap_or(0) + duration_ms);
+                            }
+                            if let Some(duration_api_ms) = usage.duration_api_ms {
+                                self.session_usage.duration_api_ms = Some(
+                                    self.session_usage.duration_api_ms.unwrap_or(0) + duration_api_ms,
+                                );
+                            }
+                            if let Some(num_turns) = usage.num_turns {
+                                self.session_usage.num_turns =
+                                    Some(self.session_usage.num_turns.unwrap_or(0) + num_turns);
+                            }
+                            if usage.context_window.is_some() {
+                                self.session_usage.context_window = usage.context_window;
+                            }
                             self.session_usage.model = usage.model;
                         }
                     }

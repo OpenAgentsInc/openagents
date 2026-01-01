@@ -8,7 +8,7 @@
 
 use crate::agents::SharedRelay;
 use anyhow::Result;
-use compute::domain::UnifiedIdentity;
+use openagents_runtime::UnifiedIdentity;
 use nostr::nip_sa::{
     KIND_TRAJECTORY_EVENT, KIND_TRAJECTORY_SESSION, StepType, TrajectoryEvent,
     TrajectoryEventContent, TrajectorySession, TrajectorySessionContent, TrajectoryVisibility,

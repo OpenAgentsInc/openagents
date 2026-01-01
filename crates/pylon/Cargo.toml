@@ -21,6 +21,7 @@ compute = { path = "../compute" }
 neobank = { path = "../neobank" }
 nostr = { path = "../nostr/core", features = ["full"] }
 nostr-client = { path = "../nostr/client" }
+openagents-runtime = { path = "../runtime", default-features = false }
 openagents-relay = { path = "../relay" }
 spark = { package = "openagents-spark", path = "../spark" }
 claude-agent-sdk = { path = "../claude-agent-sdk" }

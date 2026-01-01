@@ -15,7 +15,7 @@ use agent::{LifecycleManager, LifecycleState, RunwayAnalysis};
 use anyhow::{Result, anyhow};
 use bech32::{Bech32, Hrp};
 use bitcoin::secp256k1::PublicKey;
-use compute::domain::UnifiedIdentity;
+use openagents_runtime::UnifiedIdentity;
 use nostr::nip_sa::{
     AgentStateContent, KIND_TICK_REQUEST, KIND_TICK_RESULT, TickAction as NipSaTickAction,
     TickRequest, TickResult as NipSaTickResult, TickResultContent, TickStatus,
@@ -337,7 +337,7 @@ impl TickExecutor {
 
         tracing::info!("[{}] Starting tick #{}", self.agent_name, tick_number);
 
-        if let Err(e) = self.compute_client.refresh_wallet_balance(&mut state).await {
+        if let Err(e) = self.compute_client.refresh_wallet_balance(&mut state) {
             tracing::warn!(
                 "[{}] Failed to refresh wallet balance: {}",
                 self.agent_name,
@@ -411,7 +411,7 @@ impl TickExecutor {
         // 3. Start trajectory session for transparency
         if let Err(e) = self
             .trajectory_publisher
-            .start_session(&tick_id, "claude")
+            .start_session(&tick_id, "dvm")
             .await
         {
             tracing::warn!(
@@ -450,7 +450,7 @@ impl TickExecutor {
         let prompt = self.build_reasoning_prompt(&state, &trigger, &observations);
 
         // 6. Discover providers and request compute
-        let providers = self.compute_client.discover_providers(3).await?;
+        let providers = self.compute_client.discover_providers(3)?;
         if providers.is_empty() {
             // End trajectory session even on error
             let _trajectory_hash = self.trajectory_publisher.end_session().await.ok();
@@ -478,21 +478,20 @@ impl TickExecutor {
             return Err(anyhow!("No compute providers available"));
         }
 
-        // Select cheapest provider within budget
+        // Select model within budget
         let budget_sats = state
             .budget
             .as_ref()
             .map(|b| b.limits.per_tick_limit_sats)
             .unwrap_or(1000);
 
-        let provider = ComputeClient::select_cheapest_provider(&providers, budget_sats)
-            .ok_or_else(|| anyhow!("No provider within budget {} sats", budget_sats))?;
+        let model = ComputeClient::select_model(&providers);
 
         tracing::info!(
-            "[{}] Selected provider: {} ({} msats)",
+            "[{}] Selected model: {} ({} providers visible)",
             self.agent_name,
-            provider.name,
-            provider.price_msats
+            model,
+            providers.len()
         );
 
         // Record tool use (compute request) in trajectory
@@ -501,8 +500,8 @@ impl TickExecutor {
             .record_tool_use(
                 "compute_request",
                 serde_json::json!({
-                    "provider": provider.name,
-                    "price_msats": provider.price_msats,
+                    "model": model.as_str(),
+                    "providers_visible": providers.len(),
                     "budget_sats": budget_sats
                 }),
             )
@@ -512,9 +511,9 @@ impl TickExecutor {
         }
 
         // 7. Request inference and PAY for it
-        let reasoning = match self
+        let inference = match self
             .compute_client
-            .request_inference(&provider, &prompt, 500, budget_sats)
+            .request_inference(&prompt, 500, budget_sats, &model)
             .await
         {
             Ok(result) => result,
@@ -547,7 +546,8 @@ impl TickExecutor {
             }
         };
 
-        let compute_cost_sats = provider.price_msats / 1000;
+        let compute_cost_sats = inference.cost_sats.unwrap_or(0);
+        let reasoning = inference.text;
 
         // Record tool result in trajectory
         if let Err(e) = self
@@ -1372,7 +1372,7 @@ impl TickExecutor {
     }
 
     async fn execute_pay_invoice(&self, bolt11: &str) -> Result<()> {
-        self.compute_client.pay_invoice(bolt11, None).await?;
+        self.compute_client.pay_invoice(bolt11, None)?;
         Ok(())
     }
 
@@ -1384,8 +1384,7 @@ impl TickExecutor {
     ) -> Result<()> {
         let invoice = self
             .compute_client
-            .create_invoice(amount_sats, memo.map(|value| value.to_string()), None)
-            .await?;
+            .create_invoice(amount_sats, memo.map(|value| value.to_string()), None)?;
 
         let message = if let Some(memo) = memo {
             format!("{} Invoice: {}", memo, invoice)
@@ -1631,7 +1630,7 @@ impl TickExecutor {
         )
         .await?;
 
-        self.compute_client.pay_invoice(&invoice, None).await?;
+        self.compute_client.pay_invoice(&invoice, None)?;
         Ok(())
     }
 }

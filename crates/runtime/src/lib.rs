@@ -135,6 +135,8 @@ pub mod tick;
 pub mod trigger;
 pub mod types;
 pub mod wallet;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod wallet_spark;
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 pub(crate) mod wasm_http;
 
@@ -168,6 +170,8 @@ pub use compute::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use compute::{DvmProvider, LocalProvider};
+#[cfg(not(target_arch = "wasm32"))]
+pub use compute::domain::UnifiedIdentity;
 pub use containers::ProviderStatus as ContainerProviderStatus;
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 pub use containers::WasmOpenAgentsContainerProvider;
@@ -207,6 +211,8 @@ pub use idempotency::SqliteJournal;
 pub use idempotency::{IdempotencyJournal, JournalEntry, JournalError, MemoryJournal};
 #[cfg(not(target_arch = "wasm32"))]
 pub use identity::NostrSigner;
+#[cfg(not(target_arch = "wasm32"))]
+pub use identity::UnifiedIdentitySigner;
 pub use identity::{InMemorySigner, PublicKey, Signature, SigningService};
 pub use namespace::Namespace;
 pub use services::{
@@ -225,7 +231,9 @@ pub use trigger::{
     TriggerMeta,
 };
 pub use types::{AgentId, EnvelopeId, Timestamp};
-pub use wallet::{WalletError, WalletFxProvider, WalletPayment, WalletService};
+pub use wallet::{WalletError, WalletFxProvider, WalletInvoice, WalletPayment, WalletService};
+#[cfg(not(target_arch = "wasm32"))]
+pub use wallet_spark::SparkWalletService;
 
 #[cfg(test)]
 mod tests;

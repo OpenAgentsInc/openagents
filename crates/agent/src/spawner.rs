@@ -4,7 +4,7 @@
 
 use crate::config::{AgentConfig, AutonomyLevel, NetworkConfig, ProfileConfig, ScheduleConfig};
 use crate::registry::{AgentRegistry, RegistryError};
-use compute::domain::UnifiedIdentity;
+use openagents_runtime::UnifiedIdentity;
 use nostr::nip_sa::{
     AgentProfile, AgentProfileContent, AgentSchedule, AgentState, AgentStateContent,
     KIND_AGENT_PROFILE, KIND_AGENT_SCHEDULE, KIND_AGENT_STATE, ThresholdConfig,
