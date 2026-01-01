@@ -268,7 +268,7 @@ impl EventCache {
             for tag in &event.tags {
                 if tag.len() >= 2 {
                     let tag_name = &tag[0];
-                    if matches!(tag_name.as_str(), "a" | "e" | "p" | "d" | "t") {
+                    if matches!(tag_name.as_str(), "a" | "e" | "p" | "d" | "t" | "stack") {
                         let tag_value = &tag[1];
                         tag_insert_stmt.execute(params![event.id, tag_name, tag_value])?;
                     }
@@ -310,7 +310,7 @@ impl EventCache {
         for tag in &event.tags {
             if tag.len() >= 2 {
                 let tag_name = &tag[0];
-                if matches!(tag_name.as_str(), "a" | "e" | "p" | "d" | "t") {
+                if matches!(tag_name.as_str(), "a" | "e" | "p" | "d" | "t" | "stack") {
                     let tag_value = &tag[1];
                     self.conn.execute(
                         r#"
