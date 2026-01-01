@@ -10,7 +10,9 @@ pub(crate) enum FileKind {
 #[derive(Clone)]
 pub(crate) struct FileEntry {
     pub(crate) path: String,
+    #[allow(dead_code)]
     pub(crate) name: String,
+    #[allow(dead_code)]
     pub(crate) depth: usize,
     pub(crate) kind: FileKind,
     pub(crate) handle: JsValue,

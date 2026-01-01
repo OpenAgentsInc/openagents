@@ -636,7 +636,7 @@ async fn serve_hud_html(_env: &Env, context: &HudContext) -> Result<Response> {
         context_json = serde_json::to_string(context).unwrap_or_default()
     );
 
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     headers.set("Content-Type", "text/html; charset=utf-8")?;
     headers.set("Cross-Origin-Opener-Policy", "same-origin")?;
     headers.set("Cross-Origin-Embedder-Policy", "require-corp")?;

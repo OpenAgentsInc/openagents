@@ -2,6 +2,8 @@
 //!
 //! Handles API routes, GitHub OAuth, Stripe payments, and serves WGPUI frontend.
 
+#![allow(dead_code)]
+
 use worker::*;
 
 mod agent_do;
@@ -57,6 +59,40 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
                     }))
                 }
                 None => Response::from_json(&serde_json::json!({ "user": null })),
+            }
+        }
+
+        // GitHub explore route (require auth)
+        (Method::Get, "/api/github/explore") => {
+            routes::github_explore::explore(req, env).await
+        }
+        (Method::Get, "/api/github/contents") => {
+            routes::github_explore::contents(req, env).await
+        }
+
+        // Repo knowledge routes (agent memory persistence)
+        (Method::Get, path) if path.starts_with("/api/repo-knowledge/") => {
+            let parts: Vec<&str> = path.trim_start_matches("/api/repo-knowledge/").split('/').collect();
+            if parts.len() == 2 {
+                routes::repo_knowledge::get_knowledge(req, env, parts[0], parts[1]).await
+            } else {
+                Response::error("Invalid path, expected /api/repo-knowledge/:owner/:repo", 400)
+            }
+        }
+        (Method::Post, path) if path.starts_with("/api/repo-knowledge/") => {
+            let parts: Vec<&str> = path.trim_start_matches("/api/repo-knowledge/").split('/').collect();
+            if parts.len() == 2 {
+                routes::repo_knowledge::save_knowledge(req, env, parts[0], parts[1]).await
+            } else {
+                Response::error("Invalid path, expected /api/repo-knowledge/:owner/:repo", 400)
+            }
+        }
+        (Method::Post, path) if path.starts_with("/api/file-knowledge/") => {
+            let parts: Vec<&str> = path.trim_start_matches("/api/file-knowledge/").split('/').collect();
+            if parts.len() == 2 {
+                routes::repo_knowledge::save_file_knowledge(req, env, parts[0], parts[1]).await
+            } else {
+                Response::error("Invalid path, expected /api/file-knowledge/:owner/:repo", 400)
             }
         }
 
@@ -368,6 +404,22 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         }
         (Method::Get, path) if path.starts_with("/api/container/ws/") => {
             routes::container::websocket(req, env).await
+        }
+
+        // AI completion routes (Stripe LLM proxy)
+        (Method::Post, "/api/ai/chat") => {
+            let body = req.text().await?;
+            with_auth(&req, &env, |user| {
+                routes::ai::chat_completion(user, env.clone(), body.clone())
+            })
+            .await
+        }
+        (Method::Post, "/api/ai/chat/stream") => {
+            let body = req.text().await?;
+            with_auth(&req, &env, |user| {
+                routes::ai::chat_completion_stream(user, env.clone(), body.clone())
+            })
+            .await
         }
 
         // For all other routes, let Cloudflare's asset binding handle it

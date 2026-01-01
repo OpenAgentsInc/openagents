@@ -82,7 +82,7 @@ pub async fn exchange_code(
         urlencoding::encode(code_verifier)
     );
 
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     headers.set("Content-Type", "application/x-www-form-urlencoded")?;
     headers.set("Accept", "application/json")?;
 
@@ -119,7 +119,7 @@ pub async fn refresh_token(
         urlencoding::encode(client_id)
     );
 
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     headers.set("Content-Type", "application/x-www-form-urlencoded")?;
     headers.set("Accept", "application/json")?;
 
@@ -150,7 +150,7 @@ pub async fn create_api_key(access_token: &str, name: &str) -> Result<String> {
         "name": name
     });
 
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     headers.set("Content-Type", "application/json")?;
     headers.set("Accept", "application/json")?;
     headers.set("Authorization", &format!("Bearer {}", access_token))?;

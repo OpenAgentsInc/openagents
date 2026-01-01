@@ -2,8 +2,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use wgpui::{
-    Bounds, Button, ButtonVariant, Cursor, EventContext, EventResult, InputEvent, PaintContext,
-    Point, Quad, TextInput, theme,
+    Bounds, Button, ButtonVariant, Component, Cursor, EventContext, EventResult, InputEvent,
+    PaintContext, Point, Quad, TextInput, theme,
 };
 use wgpui::components::Text;
 use wgpui::components::organisms::{MarkdownView, ThreadEntry, ThreadEntryType};
@@ -132,6 +132,7 @@ impl ClaudeChatPane {
         self.visible = true;
     }
 
+    #[allow(dead_code)]
     pub(crate) fn hide(&mut self) {
         self.visible = false;
     }
@@ -171,6 +172,7 @@ impl ClaudeChatPane {
         value
     }
 
+    #[allow(dead_code)]
     pub(crate) fn push_assistant_message(&mut self, text: &str) {
         let parser = MarkdownParser::new();
         let document = parser.parse(text);
@@ -478,6 +480,7 @@ impl ClaudeChatPane {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn cursor(&self, _point: Point) -> Cursor {
         if !self.visible {
             Cursor::Default

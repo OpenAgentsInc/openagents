@@ -375,9 +375,8 @@ fn handle_claude_chunk(state: &Rc<RefCell<AppState>>, chunk: ClaudeChunk) {
         ChunkType::Text => {
             if let Some(delta) = chunk.delta {
                 guard.claude_state.streaming_text.push_str(&delta);
-                guard
-                    .claude_chat
-                    .update_last_assistant(&guard.claude_state.streaming_text);
+                let text = guard.claude_state.streaming_text.clone();
+                guard.claude_chat.update_last_assistant(&text);
             }
         }
         ChunkType::ToolStart => {

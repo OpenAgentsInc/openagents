@@ -106,7 +106,7 @@ pub async fn github_callback(req: Request, env: Env) -> Result<Response> {
     let origin = url.origin().ascii_serialization();
     let is_secure = origin.starts_with("https");
 
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     headers.set("Location", &origin)?;
     headers.set("Set-Cookie", &session_cookie(&session_token, is_secure))?;
 
@@ -125,7 +125,7 @@ pub async fn logout(req: Request, env: Env) -> Result<Response> {
         }
     }
 
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     headers.set("Set-Cookie", &clear_session_cookie())?;
 
     Ok(Response::ok("Logged out")?.with_headers(headers))
