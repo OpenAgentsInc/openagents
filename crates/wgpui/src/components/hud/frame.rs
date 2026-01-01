@@ -81,6 +81,7 @@ pub struct Frame {
     line_color: Hsla,
     bg_color: Hsla,
     glow_color: Option<Hsla>,
+    border_color: Option<Hsla>,
     stroke_width: f32,
     corner_length: f32,
     small_line_length: f32,
@@ -104,6 +105,7 @@ impl Frame {
             line_color: Hsla::new(180.0, 0.8, 0.6, 1.0),
             bg_color: Hsla::new(180.0, 0.3, 0.1, 0.3),
             glow_color: None,
+            border_color: None,
             stroke_width: 2.0,
             corner_length: 20.0,
             small_line_length: 16.0,
@@ -178,6 +180,11 @@ impl Frame {
 
     pub fn glow_color(mut self, color: Hsla) -> Self {
         self.glow_color = Some(color);
+        self
+    }
+
+    pub fn border_color(mut self, color: Hsla) -> Self {
+        self.border_color = Some(color);
         self
     }
 
@@ -461,6 +468,19 @@ impl Frame {
             Quad::new(Bounds::new(x + t, y + t, w - t * 2.0, h - t * 2.0))
                 .with_background(self.bg_color.with_alpha(bg_alpha)),
         );
+
+        // Draw faint border along entire edge (under the bright corners)
+        if let Some(border) = self.border_color {
+            let b = border.with_alpha(border.a * self.compute_alpha());
+            // Top edge
+            cx.scene.draw_quad(Quad::new(Bounds::new(x, y, w, t)).with_background(b));
+            // Bottom edge
+            cx.scene.draw_quad(Quad::new(Bounds::new(x, y + h - t, w, t)).with_background(b));
+            // Left edge
+            cx.scene.draw_quad(Quad::new(Bounds::new(x, y, t, h)).with_background(b));
+            // Right edge
+            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - t, y, t, h)).with_background(b));
+        }
 
         if let Some(glow) = self.glow_color {
             let g = glow.with_alpha(glow.a * self.compute_alpha());

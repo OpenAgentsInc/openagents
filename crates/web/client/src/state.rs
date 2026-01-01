@@ -192,6 +192,8 @@ pub(crate) struct Y2026State {
     pub(crate) frame_started: bool,
     /// Link bounds for click detection (bounds, url)
     pub(crate) link_bounds: Vec<(Bounds, String)>,
+    /// Whether any link is currently hovered
+    pub(crate) link_hovered: bool,
 }
 
 impl Default for Y2026State {
@@ -200,6 +202,7 @@ impl Default for Y2026State {
             frame_animator: FrameAnimator::new(),
             frame_started: false,
             link_bounds: Vec::new(),
+            link_hovered: false,
         }
     }
 }

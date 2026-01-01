@@ -65,6 +65,7 @@ pub(crate) fn build_gfn_page(
         .line_color(Hsla::new(0.0, 0.0, 1.0, 0.8))
         .bg_color(Hsla::new(0.0, 0.0, 0.0, 0.4))
         .glow_color(Hsla::new(0.0, 0.0, 1.0, 0.15))
+        .border_color(Hsla::new(0.0, 0.0, 1.0, 0.5))
         .stroke_width(1.0)
         .corner_length(30.0)
         .animation_progress(frame_progress);
