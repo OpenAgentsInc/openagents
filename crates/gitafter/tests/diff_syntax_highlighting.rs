@@ -88,7 +88,6 @@ fn test_diff_rendering_with_config() {
     let config = DiffRenderConfig {
         collapse_threshold: 10,
         context_lines: 3,
-        initial_chunk_size: Some(1000),
     };
 
     let comments: Vec<InlineComment> = vec![];
@@ -228,7 +227,6 @@ fn test_collapsible_sections_with_large_unchanged_blocks() {
     let config = DiffRenderConfig {
         collapse_threshold: 10,
         context_lines: 3,
-        initial_chunk_size: Some(1000),
     };
 
     let comments: Vec<InlineComment> = vec![];
@@ -252,4 +250,3 @@ fn test_collapsible_sections_with_large_unchanged_blocks() {
     assert!(html.contains("key === 'e'"), "Should have 'e' to expand all");
     assert!(html.contains("key === 'c'"), "Should have 'c' to collapse all");
 }
-#![cfg(feature = "legacy-web")]
