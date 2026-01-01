@@ -1449,7 +1449,6 @@ impl StartupState {
 
                     let plan = self.claude_full_text.clone();
                     let exec_result = self.exec_full_text.clone();
-                    let iteration = self.iteration;
                     let model = self.model;
                     let logger = self.session_logger.clone();
                     let resume_session_id = self.review_session_id.clone();
@@ -1460,9 +1459,8 @@ impl StartupState {
                     std::thread::spawn(move || {
                         run_claude_review(
                             &plan,
-                            &exec_result,
-                            iteration,
                             model,
+                            &exec_result,
                             resume_session_id,
                             tx,
                             logger,
@@ -1479,7 +1477,6 @@ impl StartupState {
                     if let Some(session_id) = self.review_session_id.clone() {
                         let plan = self.claude_full_text.clone();
                         let exec_result = self.exec_full_text.clone();
-                        let iteration = self.iteration;
                         let model = self.model;
                         let logger = self.session_logger.clone();
 
@@ -1489,9 +1486,8 @@ impl StartupState {
                         std::thread::spawn(move || {
                             run_claude_review(
                                 &plan,
-                                &exec_result,
-                                iteration,
                                 model,
+                                &exec_result,
                                 Some(session_id),
                                 tx,
                                 logger,
