@@ -45,10 +45,9 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 │   ├── encrypt         # encrypt to recipient pubkey
 │   └── decrypt         # decrypt from sender
 ├── wallet/
-│   ├── balance         # current balance
-│   ├── pay             # write bolt11 to pay
-│   ├── invoice         # create invoice to receive
-│   └── history/        # transaction history
+│   ├── balance         # current balance (sats + optional USD)
+│   ├── fx              # sats_per_usd snapshot
+│   └── pay             # write bolt11 or JSON to pay
 ├── nostr/
 │   ├── relays          # connected relay list
 │   └── publish         # write event to publish
@@ -188,19 +187,13 @@ impl Agent for MyAgent {
 }
 ```
 
-## Crate Layout
+## Module Layout
 
-```
-crates/
-├── runtime/              # This crate - core abstractions
-├── runtime-browser/      # Browser backend (WASM + IndexedDB)
-├── runtime-cloudflare/   # Cloudflare Workers backend (DO)
-├── runtime-local/        # Local device backend (SQLite + tokio)
-├── runtime-server/       # Server backend (Docker/K8s/bare metal)
-├── agent-memory/         # Structured memory schema
-├── agent-identity/       # Identity and signing (SigningService)
-└── agent-drivers/        # Shared driver implementations
-```
+Backend implementations live inside this crate behind feature flags:
+
+- `browser` — WASM + IndexedDB
+- `cloudflare` — Workers/Durable Objects
+- `control_plane` and `drivers` — Local/server control plane and relay drivers
 
 ## Feature Flags
 
