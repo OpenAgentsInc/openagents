@@ -81,7 +81,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             }
 
             if user_info.is_some() {
-                queue_wallet_actions(state_clone.clone(), vec![WalletAction::Refresh]);
+                // Wallet disabled
+                // queue_wallet_actions(state_clone.clone(), vec![WalletAction::Refresh]);
 
                 let repos = fetch_repos().await;
                 let mut state = state_clone.borrow_mut();
@@ -187,10 +188,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             }
 
-            dispatch_wallet_event(
-                &state_clone,
-                InputEvent::MouseMove { x, y },
-            );
+            // Wallet disabled
+            // dispatch_wallet_event(
+            //     &state_clone,
+            //     InputEvent::MouseMove { x, y },
+            // );
             dispatch_hud_event(
                 &state_clone,
                 InputEvent::MouseMove { x, y },
@@ -538,7 +540,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             }
             dispatch_hud_event(&state_clone, input_event.clone());
-            dispatch_wallet_event(&state_clone, input_event);
+            // Wallet disabled
+            // dispatch_wallet_event(&state_clone, input_event);
         });
         canvas.add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref())?;
         closure.forget();
@@ -558,7 +561,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             }
             dispatch_hud_event(&state_clone, input_event.clone());
-            dispatch_wallet_event(&state_clone, input_event);
+            // Wallet disabled
+            // dispatch_wallet_event(&state_clone, input_event);
         });
         canvas.add_event_listener_with_callback("mouseup", closure.as_ref().unchecked_ref())?;
         closure.forget();
@@ -779,9 +783,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
                 if matches!(handled, EventResult::Ignored) {
                     handled = dispatch_hud_event(&state_clone, input_event.clone());
-                    if matches!(handled, EventResult::Ignored) {
-                        handled = dispatch_wallet_event(&state_clone, input_event);
-                    }
+                    // Wallet disabled
+                    // if matches!(handled, EventResult::Ignored) {
+                    //     handled = dispatch_wallet_event(&state_clone, input_event);
+                    // }
                 }
             }
 
