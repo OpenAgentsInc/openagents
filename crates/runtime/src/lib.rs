@@ -135,7 +135,7 @@ pub mod tick;
 pub mod trigger;
 pub mod types;
 pub mod wallet;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
 pub(crate) mod wasm_http;
 
 pub use agent::{Agent, AgentConfig, AgentContext, AgentState};
