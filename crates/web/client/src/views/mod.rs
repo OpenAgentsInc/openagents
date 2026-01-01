@@ -76,4 +76,21 @@ pub(crate) fn build_repo_view(
         border_color,
     );
     scene.draw_text(logout_run);
+
+    // Clear all HUD layout bounds to prevent ghost button clicks
+    state.hud_layout.thread_bounds = Bounds::ZERO;
+    state.hud_layout.code_bounds = Bounds::ZERO;
+    state.hud_layout.terminal_bounds = Bounds::ZERO;
+    state.hud_layout.metrics_bounds = Bounds::ZERO;
+    state.hud_layout.wallet_bounds = Bounds::ZERO;
+    state.hud_layout.start_form_bounds = Bounds::ZERO;
+    state.hud_layout.start_prompt_bounds = Bounds::ZERO;
+    state.hud_layout.start_button_bounds = Bounds::ZERO;
+    state.hud_layout.share_button_bounds = Bounds::ZERO;
+    state.hud_layout.share_panel_bounds = Bounds::ZERO;
+    state.hud_layout.copy_url_bounds = Bounds::ZERO;
+    state.hud_layout.copy_embed_bounds = Bounds::ZERO;
+    state.hud_layout.status_bounds = Bounds::ZERO;
+    state.hud_layout.settings_public_bounds = Bounds::ZERO;
+    state.hud_layout.settings_embed_bounds = Bounds::ZERO;
 }
