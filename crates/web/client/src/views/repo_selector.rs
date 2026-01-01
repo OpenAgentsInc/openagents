@@ -16,7 +16,23 @@ pub(crate) fn build_repo_selector(
     let max_content_width: f32 = 500.0;
     let content_width = max_content_width.min(width - 48.0);
     let content_x = (width - content_width) / 2.0;
-    let mut y = 40.0;
+
+    // Calculate total content height for vertical centering
+    let header_height = 24.0;
+    let header_to_subtitle_gap = 24.0;
+    let subtitle_height = 14.0;
+    let subtitle_to_list_gap = 32.0;
+    let row_height = 40.0;
+    let max_visible_repos = 8; // Limit visible repos for centering calculation
+    let visible_repos = state.repos.len().min(max_visible_repos);
+    let list_height = if state.repos_loading || state.repos.is_empty() {
+        40.0 // Single line for loading/empty state
+    } else {
+        visible_repos as f32 * row_height
+    };
+
+    let total_content_height = header_height + header_to_subtitle_gap + subtitle_height + subtitle_to_list_gap + list_height;
+    let mut y = ((height - total_content_height) / 2.0).max(40.0);
 
     // Header
     let header = format!(
@@ -33,12 +49,13 @@ pub(crate) fn build_repo_selector(
     );
     scene.draw_text(header_run);
 
-    // Logout button (top right)
+    // Logout button (top right - fixed position)
     let logout_text = "Logout";
     let logout_size = 12.0;
     let logout_width = logout_text.len() as f32 * logout_size * 0.6 + 16.0;
     let logout_x = width - 24.0 - logout_width;
-    state.button_bounds = Bounds::new(logout_x, y - 4.0, logout_width, 24.0);
+    let logout_y = 20.0; // Fixed top position
+    state.button_bounds = Bounds::new(logout_x, logout_y, logout_width, 24.0);
 
     let logout_bg = if state.button_hovered {
         theme::status::ERROR
@@ -54,26 +71,13 @@ pub(crate) fn build_repo_selector(
 
     let logout_run = text_system.layout(
         logout_text,
-        Point::new(logout_x + 8.0, y),
+        Point::new(logout_x + 8.0, logout_y + 4.0),
         logout_size,
         theme::text::PRIMARY,
     );
     scene.draw_text(logout_run);
 
-    y += 48.0;
-
-    // npub commented out
-    // if let Some(npub) = state.user.nostr_npub.as_deref() {
-    //     let npub_text = format!("npub: {}", npub);
-    //     let npub_run = text_system.layout(
-    //         &npub_text,
-    //         Point::new(content_x, y),
-    //         11.0,
-    //         theme::text::MUTED,
-    //     );
-    //     scene.draw_text(npub_run);
-    //     y += 18.0;
-    // }
+    y += header_height + header_to_subtitle_gap;
 
     let subtitle = "Select a repository:";
     let subtitle_width = text_system.measure(subtitle, 14.0);
@@ -86,7 +90,7 @@ pub(crate) fn build_repo_selector(
     );
     scene.draw_text(subtitle_run);
 
-    y += 32.0;
+    y += subtitle_height + subtitle_to_list_gap;
 
     state.repo_bounds.clear();
 
@@ -113,7 +117,6 @@ pub(crate) fn build_repo_selector(
         );
         scene.draw_text(empty_run);
     } else {
-        let row_height = 40.0; // Smaller rows, no description
         for (i, repo) in state.repos.iter().enumerate() {
             let row_y = y + (i as f32 * row_height) - state.scroll_offset;
 
