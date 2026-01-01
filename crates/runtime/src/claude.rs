@@ -3419,14 +3419,14 @@ mod providers {
                                 Ok(SdkMessage::User(user_msg)) => {
                                     if let Some(tool_result) = user_msg.tool_use_result.as_ref() {
                                         let tool_name = tool_result
-                                            .get(\"name\")
+                                            .get("name")
                                             .and_then(|v| v.as_str())
-                                            .or_else(|| tool_result.get(\"tool_name\").and_then(|v| v.as_str()))
+                                            .or_else(|| tool_result.get("tool_name").and_then(|v| v.as_str()))
                                             .map(|name| name.to_string())
                                             .or_else(|| last_tool_name.clone())
-                                            .unwrap_or_else(|| \"tool\".to_string());
+                                            .unwrap_or_else(|| "tool".to_string());
                                         let tool_error = tool_result
-                                            .get(\"error\")
+                                            .get("error")
                                             .and_then(|v| v.as_str())
                                             .map(|err| err.to_string());
                                         let chunk = ClaudeChunk {

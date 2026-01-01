@@ -451,7 +451,8 @@ fn handle_chunk(
             if let Some(delta) = chunk.delta.as_deref() {
                 full_response.push_str(delta);
                 if let Some(log) = logger {
-                    log.log_assistant(phase, delta);
+                    let message = serde_json::Value::String(delta.to_string());
+                    log.log_assistant(phase, &message);
                 }
                 let _ = tx.send(ClaudeToken::Chunk(delta.to_string()));
             }

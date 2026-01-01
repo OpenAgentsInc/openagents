@@ -145,10 +145,10 @@ pub use agent::{Agent, AgentConfig, AgentContext, AgentState};
 pub use browser::{BrowserRuntime, BrowserRuntimeConfig};
 pub use budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetState, BudgetTracker};
 pub use claude::{
-    ClaudeCapabilities, ClaudeChunk, ClaudeError, ClaudeFs, ClaudeModelInfo, ClaudePolicy,
-    ClaudePricing, ClaudeProvider, ClaudeProviderInfo, ClaudeProviderStatus, ClaudeRequest,
-    ClaudeResponse, ClaudeRouter, ClaudeSessionAutonomy, ClaudeSessionStatus, ClaudeUsage,
-    ClaudeUsageState, IsolationMode, NetworkMode, RateLimit, RepoFilterMode,
+    ChunkType, ClaudeCapabilities, ClaudeChunk, ClaudeError, ClaudeFs, ClaudeModelInfo,
+    ClaudePolicy, ClaudePricing, ClaudeProvider, ClaudeProviderInfo, ClaudeProviderStatus,
+    ClaudeRequest, ClaudeResponse, ClaudeRouter, ClaudeSessionAutonomy, ClaudeSessionStatus,
+    ClaudeUsage, ClaudeUsageState, IsolationMode, NetworkMode, RateLimit, RepoFilterMode,
     SessionState as ClaudeSessionState, ToolDefinition, ToolLogEntry, TunnelAuth,
     TunnelAuthChallenge, TunnelAuthResponse, TunnelAuthState, TunnelEndpoint,
 };
@@ -171,7 +171,7 @@ pub use compute::{
 #[cfg(not(target_arch = "wasm32"))]
 pub use compute::{DvmProvider, LocalProvider};
 #[cfg(not(target_arch = "wasm32"))]
-pub use compute::domain::UnifiedIdentity;
+pub use ::compute::domain::UnifiedIdentity;
 pub use containers::ProviderStatus as ContainerProviderStatus;
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 pub use containers::WasmOpenAgentsContainerProvider;

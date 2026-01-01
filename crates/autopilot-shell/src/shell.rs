@@ -435,7 +435,11 @@ impl AutopilotShell {
         // Note: context_window from SDK is the model's capacity, NOT used context
         // Use input_tokens as a rough proxy for context used in this session
         let context_used = snapshot.session_usage.input_tokens;
-        let context_total = snapshot.session_usage.context_window.max(200_000);
+        let context_total = snapshot
+            .session_usage
+            .context_window
+            .unwrap_or(200_000)
+            .max(200_000);
         self.system_panel
             .update_usage(model_str, context_used, context_total);
 
@@ -444,11 +448,11 @@ impl AutopilotShell {
             input_tokens: snapshot.session_usage.input_tokens,
             output_tokens: snapshot.session_usage.output_tokens,
             cache_read_tokens: snapshot.session_usage.cache_read_tokens,
-            cache_creation_tokens: snapshot.session_usage.cache_creation_tokens,
+            cache_creation_tokens: snapshot.session_usage.cache_write_tokens,
             total_cost_usd: snapshot.session_usage.total_cost_usd,
-            duration_ms: snapshot.session_usage.duration_ms,
-            duration_api_ms: snapshot.session_usage.duration_api_ms,
-            num_turns: snapshot.session_usage.num_turns,
+            duration_ms: snapshot.session_usage.duration_ms.unwrap_or(0),
+            duration_api_ms: snapshot.session_usage.duration_api_ms.unwrap_or(0),
+            num_turns: snapshot.session_usage.num_turns.unwrap_or(0),
         };
         self.system_panel.update_session(session);
         self.system_panel.update_session_ids(
