@@ -337,7 +337,7 @@ impl TickExecutor {
 
         tracing::info!("[{}] Starting tick #{}", self.agent_name, tick_number);
 
-        if let Err(e) = self.compute_client.refresh_wallet_balance(&mut state) {
+        if let Err(e) = self.compute_client.refresh_wallet_balance(&mut state).await {
             tracing::warn!(
                 "[{}] Failed to refresh wallet balance: {}",
                 self.agent_name,
@@ -1372,7 +1372,7 @@ impl TickExecutor {
     }
 
     async fn execute_pay_invoice(&self, bolt11: &str) -> Result<()> {
-        self.compute_client.pay_invoice(bolt11, None)?;
+        self.compute_client.pay_invoice(bolt11, None).await?;
         Ok(())
     }
 
@@ -1384,7 +1384,8 @@ impl TickExecutor {
     ) -> Result<()> {
         let invoice = self
             .compute_client
-            .create_invoice(amount_sats, memo.map(|value| value.to_string()), None)?;
+            .create_invoice(amount_sats, memo.map(|value| value.to_string()), None)
+            .await?;
 
         let message = if let Some(memo) = memo {
             format!("{} Invoice: {}", memo, invoice)
@@ -1630,7 +1631,7 @@ impl TickExecutor {
         )
         .await?;
 
-        self.compute_client.pay_invoice(&invoice, None)?;
+        self.compute_client.pay_invoice(&invoice, None).await?;
         Ok(())
     }
 }

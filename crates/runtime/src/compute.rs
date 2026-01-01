@@ -15,7 +15,7 @@ use crate::idempotency::{IdempotencyJournal, JournalError};
 use crate::identity::SigningService;
 use crate::types::{AgentId, Timestamp};
 #[cfg(not(target_arch = "wasm32"))]
-use crate::wallet::{WalletFxProvider, WalletService};
+use crate::wallet::{block_on_wallet, WalletFxProvider, WalletService};
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 use crate::wasm_http;
 #[cfg(not(target_arch = "wasm32"))]
@@ -2952,7 +2952,8 @@ fn handle_dvm_feedback(
         return;
     };
     let amount_sats = amount_msats.map(msats_to_sats);
-    let payment = tokio::task::block_in_place(|| wallet.pay_invoice(&invoice, amount_sats));
+    let wallet = Arc::clone(wallet);
+    let payment = block_on_wallet(async move { wallet.pay_invoice(&invoice, amount_sats).await });
     match payment {
         Ok(payment) => {
             let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());
@@ -3066,7 +3067,8 @@ fn handle_dvm_result(
         return;
     };
     let invoice = invoice.unwrap();
-    let payment = tokio::task::block_in_place(|| wallet.pay_invoice(&invoice, amount_sats));
+    let wallet = Arc::clone(wallet);
+    let payment = block_on_wallet(async move { wallet.pay_invoice(&invoice, amount_sats).await });
     match payment {
         Ok(payment) => {
             let mut guard = jobs.write().unwrap_or_else(|e| e.into_inner());

@@ -5,7 +5,7 @@ use crate::fs::{
 };
 use crate::fx::FxRateSnapshot;
 use crate::types::Timestamp;
-use crate::wallet::WalletService;
+use crate::wallet::{block_on_wallet, WalletService};
 use serde_json::Value;
 use std::str;
 use std::sync::Arc;
@@ -23,11 +23,15 @@ impl WalletFs {
     }
 
     fn balance_json(&self) -> FsResult<Vec<u8>> {
-        let balance_sats = self
-            .wallet
-            .balance_sats()
-            .map_err(|err| FsError::Other(err.to_string()))?;
-        let fx = self.wallet.fx_rate().ok();
+        let balance_sats = {
+            let wallet = Arc::clone(&self.wallet);
+            block_on_wallet(async move { wallet.balance_sats().await })
+                .map_err(|err| FsError::Other(err.to_string()))?
+        };
+        let fx = {
+            let wallet = Arc::clone(&self.wallet);
+            block_on_wallet(async move { wallet.fx_rate().await }).ok()
+        };
         let (balance_usd, fx_snapshot) = match fx {
             Some(snapshot) => {
                 let balance_usd = if snapshot.sats_per_usd == 0 {
@@ -50,10 +54,11 @@ impl WalletFs {
     }
 
     fn fx_json(&self) -> FsResult<Vec<u8>> {
-        let rate = self
-            .wallet
-            .fx_rate()
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let rate = {
+            let wallet = Arc::clone(&self.wallet);
+            block_on_wallet(async move { wallet.fx_rate().await })
+                .map_err(|err| FsError::Other(err.to_string()))?
+        };
         let json = serde_json::json!(fx_json(&rate));
         serde_json::to_vec(&json).map_err(|err| FsError::Other(err.to_string()))
     }
@@ -144,10 +149,11 @@ impl WalletPayHandle {
         }
 
         let (invoice, amount_sats) = parse_payment_request(&input)?;
-        let payment = self
-            .wallet
-            .pay_invoice(&invoice, amount_sats)
-            .map_err(|err| FsError::Other(err.to_string()))?;
+        let payment = {
+            let wallet = Arc::clone(&self.wallet);
+            block_on_wallet(async move { wallet.pay_invoice(&invoice, amount_sats).await })
+                .map_err(|err| FsError::Other(err.to_string()))?
+        };
         let json = serde_json::json!({
             "payment_id": payment.payment_id,
             "amount_sats": payment.amount_sats,

@@ -1,7 +1,9 @@
 //! Wallet service traits for Lightning payments and FX rates.
 
 use crate::fx::{FxError, FxRateProvider, FxRateSnapshot};
+use std::future::Future;
 use std::sync::Arc;
+use async_trait::async_trait;
 
 /// Wallet errors.
 #[derive(Debug, thiserror::Error)]
@@ -39,19 +41,20 @@ pub struct WalletInvoice {
 }
 
 /// Wallet service for Lightning payments.
+#[async_trait]
 pub trait WalletService: Send + Sync {
     /// Return total balance in sats.
-    fn balance_sats(&self) -> Result<u64, WalletError>;
+    async fn balance_sats(&self) -> Result<u64, WalletError>;
     /// Pay a Lightning invoice.
-    fn pay_invoice(
+    async fn pay_invoice(
         &self,
         invoice: &str,
         amount_sats: Option<u64>,
     ) -> Result<WalletPayment, WalletError>;
     /// Return FX rate snapshot.
-    fn fx_rate(&self) -> Result<FxRateSnapshot, WalletError>;
+    async fn fx_rate(&self) -> Result<FxRateSnapshot, WalletError>;
     /// Create an invoice for receiving funds.
-    fn create_invoice(
+    async fn create_invoice(
         &self,
         _amount_sats: u64,
         _memo: Option<String>,
@@ -61,6 +64,19 @@ pub trait WalletService: Send + Sync {
             "invoice creation not supported".to_string(),
         ))
     }
+}
+
+pub(crate) fn block_on_wallet<F, T>(future: F) -> Result<T, WalletError>
+where
+    F: Future<Output = Result<T, WalletError>>,
+{
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            return tokio::task::block_in_place(|| handle.block_on(future));
+        }
+    }
+    futures::executor::block_on(future)
 }
 
 /// Adapter that exposes wallet FX through FxRateProvider.
@@ -77,8 +93,8 @@ impl WalletFxProvider {
 
 impl FxRateProvider for WalletFxProvider {
     fn fx_rate(&self) -> Result<FxRateSnapshot, FxError> {
-        self.wallet
-            .fx_rate()
+        let wallet = Arc::clone(&self.wallet);
+        block_on_wallet(async move { wallet.fx_rate().await })
             .map_err(|err| FxError::Wallet(err.to_string()))
     }
 }
