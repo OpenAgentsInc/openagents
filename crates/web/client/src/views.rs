@@ -1267,7 +1267,7 @@ pub(crate) fn build_repo_selector(
         );
         scene.draw_text(open_run);
 
-        let save_enabled = state.current_file_handle.is_some();
+        let save_enabled = state.editor_workspace.active_buffer_handle().is_some();
         let save_bg = if !save_enabled {
             theme::bg::SURFACE.with_alpha(0.6)
         } else if state.file_save_hovered {
@@ -1288,8 +1288,8 @@ pub(crate) fn build_repo_selector(
         let info_top = action_y + button_height + 6.0;
         let max_chars = ((file_panel_bounds.size.width - 24.0) / (10.0 * 0.6)).floor() as usize;
         let current_path = state
-            .current_file_path
-            .as_deref()
+            .editor_workspace
+            .active_buffer_path()
             .unwrap_or("No file selected");
         let current_label = truncate_line(current_path, max_chars);
         let current_run = text_system.layout(
@@ -1367,7 +1367,10 @@ pub(crate) fn build_repo_selector(
                     let row_bounds = Bounds::new(list_bounds.origin.x, row_y, list_bounds.size.width, row_height);
                     state.file_entry_bounds.push(row_bounds);
                     let is_hovered = state.hovered_file_idx == Some(i);
-                    let is_selected = state.current_file_path.as_deref() == Some(entry.path.as_str());
+                    let is_selected = state
+                        .editor_workspace
+                        .active_buffer_path()
+                        == Some(entry.path.as_str());
                     let row_bg = if is_selected {
                         theme::accent::PRIMARY.with_alpha(0.2)
                     } else if is_hovered {
@@ -1433,9 +1436,10 @@ pub(crate) fn build_repo_selector(
                     .with_background(theme::bg::SURFACE)
                     .with_border(theme::border::SUBTLE, 1.0),
             );
+            state.editor_workspace.bounds = editor_panel_bounds;
 
             let editor_title = text_system.layout(
-                "Editor Core",
+                "Workspace",
                 Point::new(editor_panel_bounds.origin.x + 12.0, editor_panel_bounds.origin.y + 10.0),
                 13.0,
                 theme::text::PRIMARY,
@@ -1443,7 +1447,7 @@ pub(crate) fn build_repo_selector(
             scene.draw_text(editor_title);
 
             let editor_subtitle = text_system.layout(
-                "WGPUI EditorView",
+                "WGPUI Editor + Buffers",
                 Point::new(editor_panel_bounds.origin.x + 12.0, editor_panel_bounds.origin.y + 26.0),
                 10.0,
                 theme::text::MUTED,
@@ -1460,45 +1464,286 @@ pub(crate) fn build_repo_selector(
                 .with_background(theme::border::SUBTLE),
             );
 
-            let editor_content_y = editor_panel_bounds.origin.y + 48.0;
-            let editor_content_height =
-                (editor_panel_bounds.size.height - (editor_content_y - editor_panel_bounds.origin.y) - 12.0)
-                    .max(0.0);
-            let editor_content_bounds = Bounds::new(
-                editor_panel_bounds.origin.x + 10.0,
-                editor_content_y,
-                editor_panel_bounds.size.width - 20.0,
-                editor_content_height,
-            );
-            scene.draw_quad(
-                Quad::new(editor_content_bounds)
-                    .with_background(theme::bg::APP)
-                    .with_border(theme::border::SUBTLE, 1.0),
-            );
-
-            if editor_content_height > 0.0 {
-                let editor_bounds = Bounds::new(
-                    editor_content_bounds.origin.x + 8.0,
-                    editor_content_bounds.origin.y + 8.0,
-                    (editor_content_bounds.size.width - 16.0).max(0.0),
-                    (editor_content_bounds.size.height - 16.0).max(0.0),
-                );
-                state.editor_demo.bounds = editor_bounds;
-                let mut cx = PaintContext::new(scene, text_system, scale_factor);
-                state.editor_demo.view.paint(editor_bounds, &mut cx);
+            let toolbar_y = editor_panel_bounds.origin.y + 44.0;
+            let toolbar_height = 22.0;
+            let split_label = if state.editor_workspace.split {
+                "Split: On"
             } else {
-                state.editor_demo.bounds = Bounds::ZERO;
-                state.editor_demo.clear_hover();
+                "Split: Off"
+            };
+            let split_width = split_label.len() as f32 * 10.0 * 0.6 + 16.0;
+            let split_bounds = Bounds::new(
+                editor_panel_bounds.origin.x + 12.0,
+                toolbar_y,
+                split_width,
+                toolbar_height,
+            );
+            state.editor_workspace.split_toggle_bounds = split_bounds;
+
+            let new_label = "New";
+            let new_width = new_label.len() as f32 * 10.0 * 0.6 + 16.0;
+            let new_bounds = Bounds::new(
+                split_bounds.origin.x + split_bounds.size.width + 8.0,
+                toolbar_y,
+                new_width,
+                toolbar_height,
+            );
+            state.editor_workspace.new_buffer_bounds = new_bounds;
+
+            let split_bg = if state.editor_workspace.split {
+                if state.editor_workspace.hovered_split_toggle {
+                    theme::accent::PRIMARY
+                } else {
+                    theme::accent::PRIMARY.with_alpha(0.8)
+                }
+            } else if state.editor_workspace.hovered_split_toggle {
+                theme::bg::HOVER
+            } else {
+                theme::bg::SURFACE
+            };
+            let split_text = if state.editor_workspace.split {
+                theme::bg::APP
+            } else {
+                theme::text::MUTED
+            };
+            scene.draw_quad(Quad::new(split_bounds).with_background(split_bg));
+            let split_run = text_system.layout(
+                split_label,
+                Point::new(split_bounds.origin.x + 8.0, split_bounds.origin.y + 6.0),
+                10.0,
+                split_text,
+            );
+            scene.draw_text(split_run);
+
+            let new_bg = if state.editor_workspace.hovered_new_buffer {
+                theme::status::SUCCESS
+            } else {
+                theme::status::SUCCESS.with_alpha(0.8)
+            };
+            scene.draw_quad(Quad::new(new_bounds).with_background(new_bg));
+            let new_run = text_system.layout(
+                new_label,
+                Point::new(new_bounds.origin.x + 8.0, new_bounds.origin.y + 6.0),
+                10.0,
+                theme::bg::APP,
+            );
+            scene.draw_text(new_run);
+
+            let workspace_top = toolbar_y + toolbar_height + 6.0;
+            let workspace_height =
+                (editor_panel_bounds.origin.y + editor_panel_bounds.size.height - 10.0 - workspace_top)
+                    .max(0.0);
+            if workspace_height > 0.0 {
+                let buffer_names = state
+                    .editor_workspace
+                    .buffers
+                    .iter()
+                    .map(|buffer| buffer.name.clone())
+                    .collect::<Vec<_>>();
+                let list_width = (editor_panel_bounds.size.width * 0.34).clamp(100.0, 160.0);
+                let list_bounds = Bounds::new(
+                    editor_panel_bounds.origin.x + 10.0,
+                    workspace_top,
+                    list_width,
+                    workspace_height,
+                );
+                state.editor_workspace.buffer_list_bounds = list_bounds;
+                scene.draw_quad(
+                    Quad::new(list_bounds)
+                        .with_background(theme::bg::APP)
+                        .with_border(theme::border::SUBTLE, 1.0),
+                );
+
+                state.editor_workspace.buffer_row_bounds.clear();
+                let row_height = 18.0;
+                for (idx, buffer_name) in buffer_names.iter().enumerate() {
+                    let row_y = list_bounds.origin.y + (idx as f32 * row_height);
+                    if row_y + row_height > list_bounds.origin.y + list_bounds.size.height {
+                        state.editor_workspace.buffer_row_bounds.push(Bounds::ZERO);
+                        continue;
+                    }
+                    let row_bounds = Bounds::new(list_bounds.origin.x, row_y, list_bounds.size.width, row_height);
+                    state.editor_workspace.buffer_row_bounds.push(row_bounds);
+
+                    let left_active = state.editor_workspace.panes[0].active_buffer == Some(idx);
+                    let right_active = state.editor_workspace.split
+                        && state.editor_workspace.panes[1].active_buffer == Some(idx);
+                    let is_hovered = state.editor_workspace.hovered_buffer_idx == Some(idx);
+                    let row_bg = if left_active || right_active {
+                        theme::accent::PRIMARY.with_alpha(0.2)
+                    } else if is_hovered {
+                        theme::bg::HOVER
+                    } else {
+                        theme::bg::APP
+                    };
+                    scene.draw_quad(Quad::new(row_bounds).with_background(row_bg));
+
+                    let mut marker = String::new();
+                    if left_active {
+                        marker.push('L');
+                    }
+                    if right_active {
+                        marker.push('R');
+                    }
+                    let label = if marker.is_empty() {
+                        buffer_name.clone()
+                    } else {
+                        format!("[{}] {}", marker, buffer_name)
+                    };
+                    let available_chars =
+                        ((row_bounds.size.width - 12.0) / (10.0 * 0.6)).floor() as usize;
+                    let label_text = truncate_line(&label, available_chars);
+                    let label_run = text_system.layout(
+                        &label_text,
+                        Point::new(row_bounds.origin.x + 6.0, row_bounds.origin.y + 3.0),
+                        10.0,
+                        if left_active || right_active {
+                            theme::text::PRIMARY
+                        } else {
+                            theme::text::MUTED
+                        },
+                    );
+                    scene.draw_text(label_run);
+                }
+
+                let panes_x = list_bounds.origin.x + list_bounds.size.width + 8.0;
+                let panes_width =
+                    (editor_panel_bounds.origin.x + editor_panel_bounds.size.width - 10.0 - panes_x).max(0.0);
+                let panes_bounds = Bounds::new(panes_x, workspace_top, panes_width, workspace_height);
+
+                let pane_count = if state.editor_workspace.split { 2 } else { 1 };
+                let pane_gap = if pane_count > 1 { 8.0 } else { 0.0 };
+                let pane_width =
+                    ((panes_bounds.size.width - pane_gap) / pane_count as f32).max(0.0);
+                let tab_height = 20.0;
+                for pane_idx in 0..pane_count {
+                    let pane_x = panes_bounds.origin.x + (pane_idx as f32 * (pane_width + pane_gap));
+                    let pane_bounds = Bounds::new(pane_x, panes_bounds.origin.y, pane_width, panes_bounds.size.height);
+                    let border = if state.editor_workspace.active_pane == pane_idx {
+                        theme::accent::PRIMARY.with_alpha(0.6)
+                    } else {
+                        theme::border::SUBTLE
+                    };
+                    scene.draw_quad(
+                        Quad::new(pane_bounds)
+                            .with_background(theme::bg::APP)
+                            .with_border(border, 1.0),
+                    );
+
+                    state.editor_workspace.panes[pane_idx].bounds = pane_bounds;
+                    state.editor_workspace.panes[pane_idx]
+                        .tab_bounds
+                        .resize(buffer_names.len(), Bounds::ZERO);
+
+                    let mut tab_x = pane_bounds.origin.x + 6.0;
+                    let tab_y = pane_bounds.origin.y + 4.0;
+                    let tab_font = 10.0;
+                    let tab_max_x = pane_bounds.origin.x + pane_bounds.size.width - 6.0;
+                    for (buffer_idx, buffer_name) in buffer_names.iter().enumerate() {
+                        let tab_label = truncate_line(buffer_name, 12);
+                        let tab_width = tab_label.chars().count() as f32 * tab_font * 0.6 + 16.0;
+                        if tab_x + tab_width > tab_max_x {
+                            break;
+                        }
+                        let tab_bounds = Bounds::new(tab_x, tab_y, tab_width, tab_height);
+                        state.editor_workspace.panes[pane_idx].tab_bounds[buffer_idx] = tab_bounds;
+                        let is_active = state.editor_workspace.panes[pane_idx].active_buffer == Some(buffer_idx);
+                        let is_hovered =
+                            state.editor_workspace.hovered_tab == Some((pane_idx, buffer_idx));
+                        let tab_bg = if is_active {
+                            theme::accent::PRIMARY.with_alpha(0.25)
+                        } else if is_hovered {
+                            theme::bg::HOVER
+                        } else {
+                            theme::bg::SURFACE
+                        };
+                        scene.draw_quad(
+                            Quad::new(tab_bounds)
+                                .with_background(tab_bg)
+                                .with_border(theme::border::SUBTLE, 1.0),
+                        );
+                        let tab_run = text_system.layout(
+                            &tab_label,
+                            Point::new(tab_bounds.origin.x + 6.0, tab_bounds.origin.y + 5.0),
+                            tab_font,
+                            if is_active {
+                                theme::text::PRIMARY
+                            } else {
+                                theme::text::MUTED
+                            },
+                        );
+                        scene.draw_text(tab_run);
+                        tab_x += tab_width + 4.0;
+                    }
+
+                    let editor_bounds = Bounds::new(
+                        pane_bounds.origin.x + 4.0,
+                        pane_bounds.origin.y + tab_height + 8.0,
+                        (pane_bounds.size.width - 8.0).max(0.0),
+                        (pane_bounds.size.height - tab_height - 12.0).max(0.0),
+                    );
+                    state.editor_workspace.panes[pane_idx].editor_bounds = editor_bounds;
+
+                    if let Some(buffer_idx) = state.editor_workspace.panes[pane_idx].active_buffer {
+                        if editor_bounds.size.height > 0.0 && editor_bounds.size.width > 0.0 {
+                            let mut cx = PaintContext::new(scene, text_system, scale_factor);
+                            state.editor_workspace.buffers[buffer_idx]
+                                .view
+                                .paint(editor_bounds, &mut cx);
+                        }
+                    } else if editor_bounds.size.height > 0.0 {
+                        let empty_run = text_system.layout(
+                            "No buffer",
+                            Point::new(editor_bounds.origin.x + 8.0, editor_bounds.origin.y + 8.0),
+                            10.0,
+                            theme::text::MUTED,
+                        );
+                        scene.draw_text(empty_run);
+                    }
+                }
+                if pane_count == 1 {
+                    if let Some(pane) = state.editor_workspace.panes.get_mut(1) {
+                        pane.bounds = Bounds::ZERO;
+                        pane.editor_bounds = Bounds::ZERO;
+                        pane.tab_bounds.clear();
+                    }
+                }
             }
         } else {
-            state.editor_demo.bounds = Bounds::ZERO;
-            state.editor_demo.clear_hover();
+            state.editor_workspace.bounds = Bounds::ZERO;
+            state.editor_workspace.buffer_list_bounds = Bounds::ZERO;
+            state.editor_workspace.buffer_row_bounds.clear();
+            state.editor_workspace.split_toggle_bounds = Bounds::ZERO;
+            state.editor_workspace.new_buffer_bounds = Bounds::ZERO;
+            state.editor_workspace.hovered_buffer_idx = None;
+            state.editor_workspace.hovered_tab = None;
+            state.editor_workspace.hovered_split_toggle = false;
+            state.editor_workspace.hovered_new_buffer = false;
+            state.editor_workspace.clear_hover();
+            for pane in &mut state.editor_workspace.panes {
+                pane.bounds = Bounds::ZERO;
+                pane.editor_bounds = Bounds::ZERO;
+                pane.tab_bounds.clear();
+            }
         }
     } else {
         state.markdown_demo.bounds = Bounds::ZERO;
         state.markdown_demo.clear_hover();
-        state.editor_demo.bounds = Bounds::ZERO;
-        state.editor_demo.clear_hover();
+        state.editor_workspace.bounds = Bounds::ZERO;
+        state.editor_workspace.buffer_list_bounds = Bounds::ZERO;
+        state.editor_workspace.buffer_row_bounds.clear();
+        state.editor_workspace.split_toggle_bounds = Bounds::ZERO;
+        state.editor_workspace.new_buffer_bounds = Bounds::ZERO;
+        state.editor_workspace.hovered_buffer_idx = None;
+        state.editor_workspace.hovered_tab = None;
+        state.editor_workspace.hovered_split_toggle = false;
+        state.editor_workspace.hovered_new_buffer = false;
+        state.editor_workspace.clear_hover();
+        for pane in &mut state.editor_workspace.panes {
+            pane.bounds = Bounds::ZERO;
+            pane.editor_bounds = Bounds::ZERO;
+            pane.tab_bounds.clear();
+        }
         state.file_list_bounds = Bounds::ZERO;
         state.file_entry_bounds.clear();
         state.file_open_bounds = Bounds::ZERO;

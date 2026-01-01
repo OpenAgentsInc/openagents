@@ -28,6 +28,10 @@ impl TextBuffer {
         self.rope.len_chars()
     }
 
+    pub fn len_bytes(&self) -> usize {
+        self.rope.len_bytes()
+    }
+
     pub fn line_count(&self) -> usize {
         self.rope.len_lines().max(1)
     }
@@ -63,6 +67,16 @@ impl TextBuffer {
         let line_len = self.line_len(line);
         let column = idx.saturating_sub(line_start).min(line_len);
         Position { line, column }
+    }
+
+    pub fn byte_to_char(&self, byte_idx: usize) -> usize {
+        let idx = byte_idx.min(self.len_bytes());
+        self.rope.byte_to_char(idx)
+    }
+
+    pub fn byte_to_position(&self, byte_idx: usize) -> Position {
+        let char_idx = self.byte_to_char(byte_idx);
+        self.char_to_position(char_idx)
     }
 
     pub fn slice(&self, range: Range<usize>) -> String {

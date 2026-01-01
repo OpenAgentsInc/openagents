@@ -8,4 +8,8 @@ publish = false
 ropey = "1.6"
 wgpui = { path = "../wgpui", default-features = true }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tree-sitter = "0.24"
+tree-sitter-rust = "0.24"
+
 [dev-dependencies]

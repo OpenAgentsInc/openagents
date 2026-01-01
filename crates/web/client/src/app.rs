@@ -132,7 +132,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
 
                 if state.view == AppView::RepoSelector {
                     state.file_open_hovered = state.file_open_bounds.contains(state.mouse_pos);
-                    state.file_save_hovered = state.current_file_handle.is_some()
+                    state.file_save_hovered = state
+                        .editor_workspace
+                        .active_buffer_handle()
+                        .is_some()
                         && state.file_save_bounds.contains(state.mouse_pos);
                     state.hovered_file_idx = None;
                     for (i, bounds) in state.file_entry_bounds.iter().enumerate() {
@@ -144,9 +147,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     let _ = state
                         .markdown_demo
                         .handle_event(InputEvent::MouseMove { x, y });
-                    let _ = state
-                        .editor_demo
-                        .handle_event(InputEvent::MouseMove { x, y });
+                    let mouse_pos = state.mouse_pos;
+                    state.editor_workspace.update_hover(mouse_pos);
                 }
             }
 
@@ -193,10 +195,14 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.file_open_bounds.contains(click_pos) {
                     open_folder = true;
                 } else if state.file_save_bounds.contains(click_pos) {
-                    if let Some(handle) = state.current_file_handle.clone() {
-                        let contents = state.editor_demo.view.editor().text();
-                        let path = state.current_file_path.clone();
-                        save_request = Some((handle, contents, path));
+                    if let Some(handle) = state.editor_workspace.active_buffer_handle() {
+                        if let Some(contents) = state.editor_workspace.active_buffer_text() {
+                            let path = state
+                                .editor_workspace
+                                .active_buffer_path()
+                                .map(|value| value.to_string());
+                            save_request = Some((handle, contents, path));
+                        }
                     }
                 } else {
                     for (i, bounds) in state.file_entry_bounds.iter().enumerate() {
@@ -222,9 +228,6 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                                     state.file_entry_bounds.clear();
                                     state.file_scroll_offset = 0.0;
                                     state.hovered_file_idx = None;
-                                    state.current_file_path = None;
-                                    state.current_file_kind = None;
-                                    state.current_file_handle = None;
                                     state.file_status = Some("Folder loaded".to_string());
                                 }
                             }
@@ -265,10 +268,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         match fs_access::read_file(&handle).await {
                             Ok(contents) => {
                                 if let Ok(mut state) = state_for_fs.try_borrow_mut() {
-                                    state.editor_demo.view.set_text(&contents);
-                                    state.current_file_path = Some(path.clone());
-                                    state.current_file_kind = Some(FileKind::File);
-                                    state.current_file_handle = Some(handle);
+                                    state
+                                        .editor_workspace
+                                        .open_file(path.clone(), handle, contents);
                                     state.file_status = Some(format!("Opened {}", path));
                                 }
                             }
@@ -280,6 +282,39 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         }
                     });
                     return;
+                }
+
+                if state.editor_workspace.split_toggle_bounds.contains(click_pos) {
+                    state.editor_workspace.toggle_split();
+                    return;
+                }
+
+                if state.editor_workspace.new_buffer_bounds.contains(click_pos) {
+                    state.editor_workspace.add_scratch_buffer();
+                    return;
+                }
+
+                let pane_count = if state.editor_workspace.split { 2 } else { 1 };
+                for pane_idx in 0..pane_count {
+                    for (buffer_idx, bounds) in state.editor_workspace.panes[pane_idx]
+                        .tab_bounds
+                        .iter()
+                        .enumerate()
+                    {
+                        if bounds.contains(click_pos) {
+                            state.editor_workspace.set_active_buffer(pane_idx, buffer_idx);
+                            return;
+                        }
+                    }
+                }
+
+                for (buffer_idx, bounds) in state.editor_workspace.buffer_row_bounds.iter().enumerate()
+                {
+                    if bounds.contains(click_pos) {
+                        let pane_idx = state.editor_workspace.active_pane;
+                        state.editor_workspace.set_active_buffer(pane_idx, buffer_idx);
+                        return;
+                    }
                 }
             }
 
@@ -462,7 +497,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             if let Ok(mut state) = state_clone.try_borrow_mut() {
                 if state.view == AppView::RepoSelector {
                     let _ = state.markdown_demo.handle_event(input_event.clone());
-                    let _ = state.editor_demo.handle_event(input_event.clone());
+                    let _ = state.editor_workspace.handle_mouse_event(input_event.clone());
                 }
             }
             dispatch_hud_event(&state_clone, input_event.clone());
@@ -482,7 +517,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let input_event = InputEvent::MouseUp { button, x, y };
             if let Ok(mut state) = state_clone.try_borrow_mut() {
                 if state.view == AppView::RepoSelector {
-                    let _ = state.editor_demo.handle_event(input_event.clone());
+                    let _ = state.editor_workspace.handle_mouse_event(input_event.clone());
                 }
             }
             dispatch_hud_event(&state_clone, input_event.clone());
@@ -511,8 +546,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     state.file_scroll_offset = state.file_scroll_offset.max(0.0);
                     return;
                 }
-                if state.editor_demo.bounds.contains(point) {
-                    let _ = state.editor_demo.handle_event(scroll);
+                if matches!(
+                    state.editor_workspace.handle_scroll_at(point, scroll),
+                    EventResult::Handled
+                ) {
                     return;
                 }
 
@@ -624,8 +661,13 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 && (state.file_open_hovered
                     || state.file_save_hovered
                     || state.hovered_file_idx.is_some());
+            let workspace_hover = state.view == AppView::RepoSelector
+                && (state.editor_workspace.hovered_buffer_idx.is_some()
+                    || state.editor_workspace.hovered_tab.is_some()
+                    || state.editor_workspace.hovered_split_toggle
+                    || state.editor_workspace.hovered_new_buffer);
             let editor_cursor = if state.view == AppView::RepoSelector {
-                state.editor_demo.cursor()
+                state.editor_workspace.cursor()
             } else {
                 Cursor::Default
             };
@@ -640,6 +682,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 || dvm_content_hover
                 || markdown_hover
                 || file_hover
+                || workspace_hover
             {
                 "pointer"
             } else if matches!(editor_cursor, Cursor::Text) {
@@ -664,14 +707,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 let should_paste = state_clone
                     .try_borrow()
                     .ok()
-                    .map(|state| state.view == AppView::RepoSelector && state.editor_demo.is_focused())
+                    .map(|state| {
+                        state.view == AppView::RepoSelector && state.editor_workspace.is_focused()
+                    })
                     .unwrap_or(false);
                 if should_paste {
                     let state_for_clip = state_clone.clone();
                     wasm_bindgen_futures::spawn_local(async move {
                         if let Ok(text) = read_clipboard_text().await {
                             if let Ok(mut state) = state_for_clip.try_borrow_mut() {
-                                state.editor_demo.paste_text(&text);
+                                state.editor_workspace.paste_text(&text);
                             }
                         }
                     });
@@ -684,7 +729,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 let input_event = InputEvent::KeyDown { key, modifiers };
                 if let Ok(mut state) = state_clone.try_borrow_mut() {
                     if state.view == AppView::RepoSelector {
-                        handled = state.editor_demo.handle_event(input_event.clone());
+                        handled = state.editor_workspace.handle_key_event(input_event.clone());
                     }
                 }
                 if matches!(handled, EventResult::Ignored) {
@@ -708,8 +753,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         let window = web_sys::window().unwrap();
         let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::CompositionEvent| {
             if let Ok(mut state) = state_clone.try_borrow_mut() {
-                if state.view == AppView::RepoSelector && state.editor_demo.is_focused() {
-                    state.editor_demo
+                if state.view == AppView::RepoSelector && state.editor_workspace.is_focused() {
+                    state.editor_workspace
                         .composition_start(event.data().as_deref().unwrap_or(""));
                     event.prevent_default();
                 }
@@ -724,8 +769,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         let window = web_sys::window().unwrap();
         let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::CompositionEvent| {
             if let Ok(mut state) = state_clone.try_borrow_mut() {
-                if state.view == AppView::RepoSelector && state.editor_demo.is_focused() {
-                    state.editor_demo
+                if state.view == AppView::RepoSelector && state.editor_workspace.is_focused() {
+                    state.editor_workspace
                         .composition_update(event.data().as_deref().unwrap_or(""));
                     event.prevent_default();
                 }
@@ -740,8 +785,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         let window = web_sys::window().unwrap();
         let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::CompositionEvent| {
             if let Ok(mut state) = state_clone.try_borrow_mut() {
-                if state.view == AppView::RepoSelector && state.editor_demo.is_focused() {
-                    state.editor_demo
+                if state.view == AppView::RepoSelector && state.editor_workspace.is_focused() {
+                    state.editor_workspace
                         .composition_end(event.data().as_deref().unwrap_or(""));
                     event.prevent_default();
                 }
@@ -767,7 +812,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             state.markdown_demo.tick();
         } else {
             state.markdown_demo.clear_hover();
-            state.editor_demo.clear_hover();
+            state.editor_workspace.clear_hover();
         }
 
         match state.view {
