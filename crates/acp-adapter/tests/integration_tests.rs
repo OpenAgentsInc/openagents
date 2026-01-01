@@ -204,13 +204,32 @@ fn create_mock_agent_binary(agent_type: &str) -> PathBuf {
     let src = r###"
 use std::io::{BufRead, Write};
 
+fn extract_id(line: &str) -> u64 {
+    let key = "\"id\":";
+    if let Some(idx) = line.find(key) {
+        let rest = &line[idx + key.len()..];
+        let rest = rest.trim_start();
+        let end = rest
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(rest.len());
+        rest[..end].parse::<u64>().unwrap_or(0)
+    } else {
+        0
+    }
+}
+
+fn has_method(line: &str, method: &str) -> bool {
+    let needle = format!("\"method\":\"{}\"", method);
+    line.contains(&needle)
+}
+
 fn main() {
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut reader = stdin.lock();
     let mut writer = stdout.lock();
 
-    let mut _session_counter = 0u64;
+    let mut session_counter = 0u64;
 
     loop {
         let mut line = String::new();
@@ -225,15 +244,20 @@ fn main() {
             continue;
         }
 
-        if line.contains("initialize") {
-            let _ = writeln!(writer, r#"{{"jsonrpc":"2.0","id":1,"result":{{"protocolVersion":"v1","agentCapabilities":{{"sessions":true,"prompts":true}},"agentInfo":{{"name":"mock","version":"1.0.0"}}}}}}"#);
+        let id = extract_id(line);
+
+        if has_method(line, "initialize") {
+            let result = "{\"protocolVersion\":1,\"agentCapabilities\":{\"sessions\":true,\"prompts\":true},\"agentInfo\":{\"name\":\"mock\",\"version\":\"1.0.0\"}}";
+            let _ = writeln!(writer, "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{}}}", id, result);
             let _ = writer.flush();
-        } else if line.contains("session/new") {
-            _session_counter += 1;
-            let _ = writeln!(writer, r#"{{"jsonrpc":"2.0","id":2,"result":{{"sessionId":"session-1"}}}}"#);
+        } else if has_method(line, "session/new") {
+            session_counter += 1;
+            let result = format!("{{\"sessionId\":\"session-{}\"}}", session_counter);
+            let _ = writeln!(writer, "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{}}}", id, result);
             let _ = writer.flush();
-        } else if line.contains("session/prompt") {
-            let _ = writeln!(writer, r#"{{"jsonrpc":"2.0","id":3,"result":{{"status":"completed"}}}}"#);
+        } else if has_method(line, "session/prompt") {
+            let result = "{\"stopReason\":\"end_turn\"}";
+            let _ = writeln!(writer, "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{}}}", id, result);
             let _ = writer.flush();
         }
     }
@@ -508,6 +532,7 @@ async fn test_openagents_client_file_operations() {
 async fn test_rlog_streaming() {
     use std::time::Duration;
     use tokio::time::sleep;
+    use serde_json::json;
 
     let temp_dir = std::env::temp_dir();
     let log_file = temp_dir.join("acp-test-stream.rlog");
@@ -534,7 +559,9 @@ async fn test_rlog_streaming() {
         acp::SessionId::new("test-session"),
         acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
             acp::ToolCallId::new("tool-1"),
-            Default::default(),
+            acp::ToolCallUpdateFields::new()
+                .status(acp::ToolCallStatus::Completed)
+                .raw_output(json!({"ok": true})),
         )),
     );
 
@@ -542,7 +569,9 @@ async fn test_rlog_streaming() {
         acp::SessionId::new("test-session"),
         acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
             acp::ToolCallId::new("tool-2"),
-            Default::default(),
+            acp::ToolCallUpdateFields::new()
+                .status(acp::ToolCallStatus::Completed)
+                .raw_output(json!({"ok": false})),
         )),
     );
 
