@@ -60,14 +60,11 @@ pub(crate) fn build_landing_page(
     // Hero frame
     state.left_cta_bounds = Bounds::new(card_x, card_y, card_w, card_h);
 
-    let mut hero_frame = Frame::kranox()
+    let mut hero_frame = Frame::corners()
         .line_color(theme::text::MUTED)
         .bg_color(theme::bg::SURFACE.with_alpha(0.0))
         .glow_color(theme::text::MUTED.with_alpha(0.2))
         .stroke_width(1.0)
-        .square_size(10.0)
-        .small_line_length(14.0)
-        .large_line_length(40.0)
         .animation_progress(frame_progress);
 
     hero_frame.paint(state.left_cta_bounds, &mut cx);
