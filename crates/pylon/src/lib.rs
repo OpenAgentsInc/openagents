@@ -15,6 +15,7 @@
 //! - Apple Foundation Models (localhost:11435) - macOS Apple Silicon only
 
 pub mod cli;
+pub mod claude_tunnel;
 pub mod config;
 pub mod daemon;
 pub mod db;

@@ -1,6 +1,7 @@
 //! Pylon CLI commands
 
 mod agent;
+mod connect;
 mod compute;
 mod doctor;
 mod earnings;
@@ -40,6 +41,8 @@ pub enum Commands {
     Earnings(earnings::EarningsArgs),
     /// Show compute mix (all available compute options)
     Compute(compute::ComputeArgs),
+    /// Connect a Claude tunnel session
+    Connect(connect::ConnectArgs),
     /// Manage neobank treasury
     Neobank(neobank::NeobankArgs),
 }
@@ -55,6 +58,7 @@ pub async fn execute(cli: PylonCli) -> anyhow::Result<()> {
         Commands::Agent(args) => agent::run(args).await,
         Commands::Earnings(args) => earnings::run(args).await,
         Commands::Compute(args) => compute::run(args).await,
+        Commands::Connect(args) => connect::run(args).await,
         Commands::Neobank(args) => neobank::run(args).await,
     }
 }

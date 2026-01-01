@@ -106,6 +106,54 @@ pub enum RelayMessage {
         recoverable: bool,
     },
 
+    // === Browser ↔ Tunnel (Claude Sessions) ===
+    /// Create a new Claude session over the tunnel.
+    ClaudeCreateSession {
+        session_id: String,
+        request: ClaudeRequest,
+    },
+    /// Claude session created and ready.
+    ClaudeSessionCreated {
+        session_id: String,
+    },
+    /// Send a prompt to an existing Claude session.
+    ClaudePrompt {
+        session_id: String,
+        content: String,
+    },
+    /// Streaming chunk from Claude.
+    ClaudeChunk {
+        chunk: ClaudeChunk,
+    },
+    /// Claude requests tool approval.
+    ClaudeToolApproval {
+        session_id: String,
+        tool: String,
+        params: serde_json::Value,
+    },
+    /// Tool approval decision from browser.
+    ClaudeToolApprovalResponse {
+        session_id: String,
+        approved: bool,
+    },
+    /// Stop a Claude session.
+    ClaudeStop {
+        session_id: String,
+    },
+    /// Pause a Claude session (best-effort).
+    ClaudePause {
+        session_id: String,
+    },
+    /// Resume a Claude session (best-effort).
+    ClaudeResume {
+        session_id: String,
+    },
+    /// Claude session error.
+    ClaudeError {
+        session_id: String,
+        error: String,
+    },
+
     // === Error Handling ===
     /// Generic error message
     Error {
@@ -151,6 +199,88 @@ pub struct SessionStatus {
     pub tunnel_connected: bool,
     pub repo: Option<String>,
     pub active_task: Option<String>,
+}
+
+// === Claude Tunnel Types ===
+
+/// Claude session autonomy level.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ClaudeSessionAutonomy {
+    Full,
+    Supervised,
+    Restricted,
+    ReadOnly,
+}
+
+impl Default for ClaudeSessionAutonomy {
+    fn default() -> Self {
+        Self::Supervised
+    }
+}
+
+/// Tool definition for Claude sessions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    pub name: String,
+    pub description: Option<String>,
+    pub config: Option<serde_json::Value>,
+}
+
+/// Request to create a Claude session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeRequest {
+    pub model: String,
+    pub system_prompt: Option<String>,
+    pub initial_prompt: Option<String>,
+    #[serde(default)]
+    pub tools: Vec<ToolDefinition>,
+    pub max_cost_usd: Option<u64>,
+    #[serde(default)]
+    pub autonomy: Option<ClaudeSessionAutonomy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_required_tools: Option<Vec<String>>,
+}
+
+/// Token usage statistics.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub total_tokens: u64,
+}
+
+/// Tool chunk information.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolChunk {
+    pub name: String,
+    pub params: Option<serde_json::Value>,
+    pub result: Option<serde_json::Value>,
+    pub error: Option<String>,
+}
+
+/// Chunk type for streaming responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChunkType {
+    Text,
+    ToolStart,
+    ToolOutput,
+    ToolDone,
+    Done,
+    Error,
+}
+
+/// Streaming chunk from Claude.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeChunk {
+    pub session_id: String,
+    pub chunk_type: ChunkType,
+    pub delta: Option<String>,
+    pub tool: Option<ToolChunk>,
+    pub usage: Option<ClaudeUsage>,
 }
 
 #[cfg(test)]
@@ -200,6 +330,30 @@ mod tests {
                 assert_eq!(repo, "owner/repo");
                 assert_eq!(task, "Fix the bug in login");
                 assert!(use_own_key);
+            }
+            _ => panic!("Wrong message type"),
+        }
+    }
+
+    #[test]
+    fn test_claude_chunk_roundtrip() {
+        let chunk = ClaudeChunk {
+            session_id: "session-1".to_string(),
+            chunk_type: ChunkType::Text,
+            delta: Some("hello".to_string()),
+            tool: None,
+            usage: None,
+        };
+        let msg = RelayMessage::ClaudeChunk { chunk };
+
+        let json = msg.to_json();
+        let parsed = RelayMessage::from_json(&json).unwrap();
+
+        match parsed {
+            RelayMessage::ClaudeChunk { chunk } => {
+                assert_eq!(chunk.session_id, "session-1");
+                assert!(matches!(chunk.chunk_type, ChunkType::Text));
+                assert_eq!(chunk.delta.as_deref(), Some("hello"));
             }
             _ => panic!("Wrong message type"),
         }

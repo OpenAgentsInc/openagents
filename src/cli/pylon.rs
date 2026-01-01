@@ -56,6 +56,12 @@ pub fn run(cmd: PylonCommands) -> anyhow::Result<()> {
                 })
                 .await
             }
+            PylonCommands::Connect(args) => {
+                pylon::cli::execute(pylon::cli::PylonCli {
+                    command: pylon::cli::Commands::Connect(args),
+                })
+                .await
+            }
             PylonCommands::Neobank(args) => {
                 pylon::cli::execute(pylon::cli::PylonCli {
                     command: pylon::cli::Commands::Neobank(args),

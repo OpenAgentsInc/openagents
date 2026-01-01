@@ -21,11 +21,16 @@ compute = { path = "../compute" }
 neobank = { path = "../neobank" }
 nostr = { path = "../nostr/core", features = ["full"] }
 nostr-client = { path = "../nostr/client" }
+openagents-relay = { path = "../relay" }
 spark = { package = "openagents-spark", path = "../spark" }
+claude-agent-sdk = { path = "../claude-agent-sdk" }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "macros"] }
 async-trait = "0.1"
+tokio-stream = "0.1"
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -34,6 +39,8 @@ clap = { version = "4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
+hex = "0.4"
+base64 = "0.22"
 
 # Logging
 tracing = "0.1"

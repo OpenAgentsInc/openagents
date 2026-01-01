@@ -192,6 +192,18 @@ The main Autopilot interface, shown after selecting a repository.
 - Left: Keyboard shortcut hints
 - Right: Current repo path
 
+#### Claude Tunnel Overlay
+
+After the intro agent finishes, a **Start Claude** CTA appears in the Autopilot overlay.
+Launching it opens a second overlay with:
+
+- Tunnel status header (relay + tunnel connection)
+- Local connect command (`openagents pylon connect --tunnel-url ...`)
+- Chat thread + prompt input
+- Tool approval bar when Claude requests permissions
+
+This flow keeps Claude running locally while the browser remains the UI.
+
 ## State Management
 
 ### AppState Structure
@@ -333,6 +345,83 @@ Using WGPUI's theme system:
 | `theme::status::WARNING` | Private repo badge |
 | `theme::status::ERROR` | Logout button |
 
+## Autopilot Chat Overlay
+
+When a repository is selected, an autopilot agent automatically starts and displays a centered chat overlay. The overlay shows the agent introducing itself and exploring the repository.
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                              RepoView                                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                 Centered Overlay (600px max width)                    │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐  │  │
+│  │  │ Autopilot                                            (header)   │  │  │
+│  │  ├────────────────────────────────────────────────────────────────┤  │  │
+│  │  │                                                                 │  │  │
+│  │  │ Hello Chris, I am your first Autopilot. I'll begin by          │  │  │
+│  │  │ learning about your repo.                                       │  │  │
+│  │  │                                                                 │  │  │
+│  │  │ 🔧 GitHub API: Fetching repository metadata...                  │  │  │
+│  │  │                                                                 │  │  │
+│  │  │ Found repository: OpenAgents                                    │  │  │
+│  │  │ Language: Rust, 42 stars                                        │  │  │
+│  │  │                                                                 │  │  │
+│  │  │ 🔧 GitHub API: Checking open issues...                          │  │  │
+│  │  │                                                                 │  │  │
+│  │  └────────────────────────────────────────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│          (backdrop with 85% opacity covers entire viewport)                 │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### AutopilotChatPane Component
+
+**Location:** `src/autopilot_chat.rs`
+
+The chat overlay wraps WGPUI's `ThreadView` component for message display.
+
+| Property | Value |
+|----------|-------|
+| Max width | 600px |
+| Top margin | 60px |
+| Bottom margin | 40px |
+| Backdrop | `theme::bg::APP` at 85% alpha |
+| Pane background | `theme::bg::SURFACE` |
+| Header height | 40px |
+| Corner radius | 4px |
+
+### Message Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| Assistant | Agent responses | "Found 15 open issues..." |
+| Tool | Tool call updates | "🔧 GitHub API: Fetching..." |
+| System | System messages | "Connection established" |
+| Error | Error messages | "Failed to fetch repo" |
+
+### Event Handling
+
+The overlay intercepts events when visible:
+- **Scroll** - Forwarded to ThreadView for scrolling messages
+- **Mouse** - Click/move events handled within pane
+- **Click outside** - Currently does not dismiss (future enhancement)
+
+### Exploration Phases
+
+The IntroAgent progresses through these phases:
+
+1. **Greeting** - "Hello {username}, I am your first Autopilot..."
+2. **Metadata** - Repository description, language, stars
+3. **Issues** - Recent open issues
+4. **PRs** - Recent pull requests
+5. **Tree** - Key directories in the file tree
+6. **README** - First 500 characters of README
+7. **Commits** - Last 5 commit messages
+8. **Contributors** - Top 5 contributors
+9. **Complete** - "I've finished learning about your repository..."
+
+See [autopilot.md](./autopilot.md) for detailed implementation documentation.
+
 ## Future Enhancements
 
 1. **ThreadView Integration**
@@ -359,3 +448,8 @@ Using WGPUI's theme system:
    - Connect to autopilot backend
    - Show running state
    - Progress indicators
+
+6. **Dismissable Overlay**
+   - Click outside to close chat
+   - Minimize/maximize controls
+   - Dock to side panel

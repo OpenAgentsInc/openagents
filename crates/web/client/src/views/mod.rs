@@ -110,4 +110,18 @@ pub(crate) fn build_repo_view(
     state.dvm_content_bounds = Bounds::ZERO;
     state.nip90_event_bounds.clear();
     state.global_feed_bounds = Bounds::ZERO;
+
+    // Draw autopilot chat overlay (on top of everything)
+    if state.autopilot_chat.visible {
+        state.autopilot_chat.calculate_bounds(width, height);
+        let mut cx = PaintContext::new(scene, text_system, scale_factor);
+        state.autopilot_chat.paint(&mut cx);
+    }
+
+    // Draw Claude chat overlay (highest priority)
+    if state.claude_chat.visible {
+        state.claude_chat.calculate_bounds(width, height);
+        let mut cx = PaintContext::new(scene, text_system, scale_factor);
+        state.claude_chat.paint(&mut cx);
+    }
 }

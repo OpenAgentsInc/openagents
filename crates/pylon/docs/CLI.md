@@ -570,6 +570,38 @@ SATS     SOURCE     TIME AGO
 
 ---
 
+### pylon connect
+
+Connect the local Claude tunnel client to a relay session.
+
+```bash
+pylon connect [OPTIONS] --tunnel-url <URL>
+```
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--tunnel-url` | Tunnel WebSocket URL from `/api/tunnel/register` |
+| `--model` | Override Claude model |
+| `--autonomy` | Autonomy policy: full, supervised, restricted, read-only |
+| `--max-cost-usd` | Max cost per session (micro-USD) |
+| `--cwd` | Working directory for Claude sessions |
+| `--executable-path` | Path to Claude executable |
+| `--config` | Custom config path |
+
+#### Examples
+
+```bash
+# Connect using the tunnel URL from the web UI
+pylon connect --tunnel-url wss://openagents-web.openagents.workers.dev/api/tunnel/ws/tunnel?session_id=...&token=...
+
+# Override model and autonomy
+pylon connect --tunnel-url wss://... --model claude-sonnet-4-20250514 --autonomy supervised
+```
+
+---
+
 ## Environment Variables
 
 | Variable | Description | Default |
