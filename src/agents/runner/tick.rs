@@ -546,7 +546,7 @@ impl TickExecutor {
             }
         };
 
-        let compute_cost_sats = inference.cost_sats.unwrap_or(0);
+        let compute_cost_sats = inference.cost_sats;
         let reasoning = inference.text;
 
         // Record tool result in trajectory
