@@ -2451,12 +2451,13 @@ impl TestWallet {
     }
 }
 
+#[async_trait]
 impl WalletService for TestWallet {
-    fn balance_sats(&self) -> std::result::Result<u64, WalletError> {
+    async fn balance_sats(&self) -> std::result::Result<u64, WalletError> {
         Ok(self.balance_sats)
     }
 
-    fn pay_invoice(
+    async fn pay_invoice(
         &self,
         _invoice: &str,
         amount_sats: Option<u64>,
@@ -2473,7 +2474,7 @@ impl WalletService for TestWallet {
         Ok(payment)
     }
 
-    fn fx_rate(&self) -> std::result::Result<FxRateSnapshot, WalletError> {
+    async fn fx_rate(&self) -> std::result::Result<FxRateSnapshot, WalletError> {
         Ok(self.fx.clone())
     }
 }

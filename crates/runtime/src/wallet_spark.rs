@@ -3,33 +3,20 @@
 use crate::fx::FxRateSnapshot;
 use crate::types::Timestamp;
 use crate::wallet::{WalletError, WalletInvoice, WalletPayment, WalletService};
+use async_trait::async_trait;
 use spark::SparkWallet;
 use std::sync::Arc;
-use tokio::runtime::Runtime;
 
 /// Wallet adapter that bridges SparkWallet into the runtime WalletService trait.
 #[derive(Clone)]
 pub struct SparkWalletService {
     wallet: Arc<SparkWallet>,
-    runtime: Arc<Runtime>,
 }
 
 impl SparkWalletService {
-    /// Create a new Spark wallet service with a dedicated runtime.
+    /// Create a new Spark wallet service.
     pub fn new(wallet: Arc<SparkWallet>) -> Result<Self, WalletError> {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .map_err(|err| WalletError::Unavailable(err.to_string()))?;
-        Ok(Self {
-            wallet,
-            runtime: Arc::new(runtime),
-        })
-    }
-
-    /// Create a Spark wallet service with a caller-provided runtime.
-    pub fn with_runtime(wallet: Arc<SparkWallet>, runtime: Arc<Runtime>) -> Self {
-        Self { wallet, runtime }
+        Ok(Self { wallet })
     }
 
     /// Access the underlying Spark wallet.
@@ -53,26 +40,26 @@ impl SparkWalletService {
     }
 }
 
+#[async_trait]
 impl WalletService for SparkWalletService {
-    fn balance_sats(&self) -> Result<u64, WalletError> {
-        let wallet = Arc::clone(&self.wallet);
+    async fn balance_sats(&self) -> Result<u64, WalletError> {
         let balance = self
-            .runtime
-            .block_on(async move { wallet.get_balance().await })
+            .wallet
+            .get_balance()
+            .await
             .map_err(|err| WalletError::Unavailable(err.to_string()))?;
         Ok(balance.total_sats())
     }
 
-    fn pay_invoice(
+    async fn pay_invoice(
         &self,
         invoice: &str,
         amount_sats: Option<u64>,
     ) -> Result<WalletPayment, WalletError> {
-        let wallet = Arc::clone(&self.wallet);
-        let invoice = invoice.to_string();
         let response = self
-            .runtime
-            .block_on(async move { wallet.send_payment_simple(&invoice, amount_sats).await })
+            .wallet
+            .send_payment_simple(invoice, amount_sats)
+            .await
             .map_err(|err| WalletError::PaymentFailed(err.to_string()))?;
         let amount_sats = u64::try_from(response.payment.amount)
             .map_err(|_| WalletError::PaymentFailed("payment amount overflow".to_string()))?;
@@ -82,11 +69,11 @@ impl WalletService for SparkWalletService {
         })
     }
 
-    fn fx_rate(&self) -> Result<FxRateSnapshot, WalletError> {
-        let wallet = Arc::clone(&self.wallet);
+    async fn fx_rate(&self) -> Result<FxRateSnapshot, WalletError> {
         let response = self
-            .runtime
-            .block_on(async move { wallet.list_fiat_rates().await })
+            .wallet
+            .list_fiat_rates()
+            .await
             .map_err(|err| WalletError::FxUnavailable(err.to_string()))?;
         let usd_rate = response
             .rates
@@ -100,16 +87,16 @@ impl WalletService for SparkWalletService {
         })
     }
 
-    fn create_invoice(
+    async fn create_invoice(
         &self,
         amount_sats: u64,
         memo: Option<String>,
         expiry_seconds: Option<u64>,
     ) -> Result<WalletInvoice, WalletError> {
-        let wallet = Arc::clone(&self.wallet);
         let response = self
-            .runtime
-            .block_on(async move { wallet.create_invoice(amount_sats, memo, expiry_seconds).await })
+            .wallet
+            .create_invoice(amount_sats, memo, expiry_seconds)
+            .await
             .map_err(|err| WalletError::PaymentFailed(err.to_string()))?;
         Ok(WalletInvoice {
             payment_request: response.payment_request,

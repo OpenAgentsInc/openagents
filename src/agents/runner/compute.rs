@@ -159,7 +159,7 @@ impl ComputeClient {
         budget_sats: u64,
         model: &str,
     ) -> Result<InferenceResult> {
-        let fx = self.wallet.fx_rate()?;
+        let fx = self.wallet.fx_rate().await?;
         let max_cost_usd = Self::sats_to_micro_usd(budget_sats, &fx)?;
         let request = ComputeRequest {
             model: model.to_string(),
@@ -210,27 +210,29 @@ impl ComputeClient {
     }
 
     /// Refresh wallet balance and update agent state.
-    pub fn refresh_wallet_balance(&self, state: &mut AgentStateContent) -> Result<u64> {
-        let balance = self.wallet.balance_sats()?;
+    pub async fn refresh_wallet_balance(&self, state: &mut AgentStateContent) -> Result<u64> {
+        let balance = self.wallet.balance_sats().await?;
         state.update_balance(balance);
         Ok(balance)
     }
 
     /// Pay a Lightning invoice.
-    pub fn pay_invoice(&self, bolt11: &str, amount_sats: Option<u64>) -> Result<String> {
-        let payment: WalletPayment = self.wallet.pay_invoice(bolt11, amount_sats)?;
+    pub async fn pay_invoice(&self, bolt11: &str, amount_sats: Option<u64>) -> Result<String> {
+        let payment: WalletPayment = self.wallet.pay_invoice(bolt11, amount_sats).await?;
         Ok(payment.payment_id)
     }
 
     /// Create an invoice for receiving funds.
-    pub fn create_invoice(
+    pub async fn create_invoice(
         &self,
         amount_sats: u64,
         memo: Option<String>,
         expiry_seconds: Option<u64>,
     ) -> Result<String> {
-        let invoice: WalletInvoice =
-            self.wallet.create_invoice(amount_sats, memo, expiry_seconds)?;
+        let invoice: WalletInvoice = self
+            .wallet
+            .create_invoice(amount_sats, memo, expiry_seconds)
+            .await?;
         Ok(invoice.payment_request)
     }
 
