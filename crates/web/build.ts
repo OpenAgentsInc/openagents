@@ -17,14 +17,23 @@ async function clean() {
   await mkdir(join(DIST_DIR, "pkg"), { recursive: true });
 }
 
-async function copyPkg() {
-  const files = await readdir(PKG_DIR);
-  for (const file of files) {
-    if (file.endsWith(".wasm") || file.endsWith(".js") || file.endsWith(".d.ts")) {
-      await copyFile(join(PKG_DIR, file), join(DIST_DIR, "pkg", file));
-      console.log(`  Copied: pkg/${file}`);
+async function copyDir(source: string, dest: string) {
+  await mkdir(dest, { recursive: true });
+  const entries = await readdir(source, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = join(source, entry.name);
+    const destPath = join(dest, entry.name);
+    if (entry.isDirectory()) {
+      await copyDir(sourcePath, destPath);
+    } else if (entry.isFile()) {
+      await copyFile(sourcePath, destPath);
+      console.log(`  Copied: ${destPath.replace(`${DIST_DIR}/`, "")}`);
     }
   }
+}
+
+async function copyPkg() {
+  await copyDir(PKG_DIR, join(DIST_DIR, "pkg"));
 }
 
 async function copyStatic() {

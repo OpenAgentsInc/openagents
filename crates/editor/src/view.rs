@@ -6,6 +6,7 @@ use wgpui::{
 
 use crate::editor::Editor;
 use crate::caret::Position;
+use crate::syntax::{HighlightSpan, SyntaxHighlighter, SyntaxLanguage};
 
 struct CompositionState {
     base: Position,
@@ -33,6 +34,7 @@ pub struct EditorView {
     focused: bool,
     dragging: bool,
     composition: Option<CompositionState>,
+    syntax: Option<SyntaxHighlighter>,
     text_origin: Point,
     viewport_height: f32,
     bounds: Bounds,
@@ -62,6 +64,7 @@ impl EditorView {
             focused: false,
             dragging: false,
             composition: None,
+            syntax: None,
             text_origin: Point::ZERO,
             viewport_height: 0.0,
             bounds: Bounds::ZERO,
@@ -89,6 +92,10 @@ impl EditorView {
     pub fn set_text(&mut self, text: &str) {
         self.clear_composition();
         self.editor.set_text(text);
+    }
+
+    pub fn set_language(&mut self, language: Option<SyntaxLanguage>) {
+        self.syntax = language.and_then(SyntaxHighlighter::new);
     }
 
     pub fn on_copy<F>(mut self, f: F) -> Self
@@ -243,6 +250,77 @@ impl EditorView {
     fn clear_composition(&mut self) {
         self.composition = None;
     }
+
+    fn draw_highlighted_line(
+        &self,
+        line_text: &str,
+        spans: &[HighlightSpan],
+        text_y: f32,
+        cx: &mut PaintContext,
+    ) {
+        let mut cursor_col = 0usize;
+        for span in spans {
+            if span.end_col <= span.start_col {
+                continue;
+            }
+            if span.start_col > cursor_col {
+                self.draw_text_segment(
+                    line_text,
+                    cursor_col,
+                    span.start_col,
+                    text_y,
+                    self.text_color,
+                    cx,
+                );
+            }
+            self.draw_text_segment(
+                line_text,
+                span.start_col,
+                span.end_col,
+                text_y,
+                span.color,
+                cx,
+            );
+            cursor_col = cursor_col.max(span.end_col);
+        }
+
+        let line_len = line_text.chars().count();
+        if cursor_col < line_len {
+            self.draw_text_segment(
+                line_text,
+                cursor_col,
+                line_len,
+                text_y,
+                self.text_color,
+                cx,
+            );
+        }
+    }
+
+    fn draw_text_segment(
+        &self,
+        line_text: &str,
+        start_col: usize,
+        end_col: usize,
+        text_y: f32,
+        color: Hsla,
+        cx: &mut PaintContext,
+    ) {
+        if start_col >= end_col {
+            return;
+        }
+        let segment: String = line_text
+            .chars()
+            .skip(start_col)
+            .take(end_col.saturating_sub(start_col))
+            .collect();
+        if segment.is_empty() {
+            return;
+        }
+        let x = self.text_origin.x + start_col as f32 * self.char_width;
+        let run = cx.text.layout(&segment, Point::new(x, text_y), self.font_size, color);
+        cx.scene.draw_text(run);
+    }
 }
 
 impl Component for EditorView {
@@ -280,6 +358,10 @@ impl Component for EditorView {
             0
         };
         let visible_end = (visible_start + visible_lines).min(line_count);
+
+        if let Some(syntax) = &mut self.syntax {
+            syntax.update(self.editor.buffer(), self.editor.revision());
+        }
 
         if let Some(primary) = self.editor.cursors().first() {
             let line = primary.position.line;
@@ -345,13 +427,24 @@ impl Component for EditorView {
 
             let line_text = self.editor.buffer().line_text(line_idx);
             let text_y = y + self.line_height * 0.5 - self.font_size * 0.55;
-            let text_run = cx.text.layout(
-                &line_text,
-                Point::new(self.text_origin.x, text_y),
-                self.font_size,
-                self.text_color,
-            );
-            cx.scene.draw_text(text_run);
+            let mut drew_highlight = false;
+            if let Some(syntax) = &self.syntax {
+                if let Some(spans) = syntax.spans_for_line(line_idx) {
+                    if !spans.is_empty() {
+                        self.draw_highlighted_line(&line_text, spans, text_y, cx);
+                        drew_highlight = true;
+                    }
+                }
+            }
+            if !drew_highlight {
+                let text_run = cx.text.layout(
+                    &line_text,
+                    Point::new(self.text_origin.x, text_y),
+                    self.font_size,
+                    self.text_color,
+                );
+                cx.scene.draw_text(text_run);
+            }
 
             let line_number = (line_idx + 1).to_string();
             let number_x = bounds.origin.x + self.padding + self.gutter_width

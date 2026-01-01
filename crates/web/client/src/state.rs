@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use editor::EditorView;
+use editor::{EditorView, SyntaxLanguage};
 use wasm_bindgen::prelude::JsValue;
 use wgpui::{
     Bounds, Component, Cursor, EventContext, EventResult, InputEvent, MarkdownDocument,
@@ -10,7 +10,7 @@ use wgpui::components::hud::{DotsGrid, FrameAnimator};
 
 use crate::hud::{HudContext, HudLayout, HudStreamHandle, HudUi, LandingLive};
 use crate::nostr::{BazaarState, DvmDirectoryState, GlobalFeedState, Nip90State, NostrRelayHandle};
-use crate::fs_access::{FileEntry, FileKind};
+use crate::fs_access::FileEntry;
 use crate::utils::copy_to_clipboard;
 use crate::wallet::WalletUi;
 
@@ -146,60 +146,356 @@ impl MarkdownDemo {
     }
 }
 
-pub(crate) struct EditorDemo {
+pub(crate) struct EditorBuffer {
+    pub(crate) name: String,
+    pub(crate) path: Option<String>,
+    pub(crate) handle: Option<JsValue>,
     pub(crate) view: EditorView,
-    pub(crate) bounds: Bounds,
     pub(crate) events: EventContext,
 }
 
-impl EditorDemo {
-    pub(crate) fn new() -> Self {
-        let source = demo_editor_source();
-        let view = EditorView::from_text(&source).on_copy(copy_to_clipboard);
+impl EditorBuffer {
+    fn new(name: String, path: Option<String>, handle: Option<JsValue>, text: &str) -> Self {
+        let mut view = EditorView::from_text(text).on_copy(copy_to_clipboard);
+        if let Some(language) = SyntaxLanguage::from_path(path.as_deref().unwrap_or(&name)) {
+            view.set_language(Some(language));
+        }
         Self {
+            name,
+            path,
+            handle,
             view,
-            bounds: Bounds::ZERO,
             events: EventContext::new(),
         }
     }
+}
 
-    pub(crate) fn handle_event(&mut self, event: InputEvent) -> EventResult {
-        if self.bounds.size.width <= 0.0 || self.bounds.size.height <= 0.0 {
-            return EventResult::Ignored;
+pub(crate) struct EditorPane {
+    pub(crate) bounds: Bounds,
+    pub(crate) editor_bounds: Bounds,
+    pub(crate) tab_bounds: Vec<Bounds>,
+    pub(crate) active_buffer: Option<usize>,
+}
+
+impl EditorPane {
+    fn new() -> Self {
+        Self {
+            bounds: Bounds::ZERO,
+            editor_bounds: Bounds::ZERO,
+            tab_bounds: Vec::new(),
+            active_buffer: None,
         }
-        self.view.event(&event, self.bounds, &mut self.events)
+    }
+}
+
+pub(crate) struct EditorWorkspace {
+    pub(crate) buffers: Vec<EditorBuffer>,
+    pub(crate) panes: Vec<EditorPane>,
+    pub(crate) active_pane: usize,
+    pub(crate) split: bool,
+    pub(crate) bounds: Bounds,
+    pub(crate) buffer_list_bounds: Bounds,
+    pub(crate) buffer_row_bounds: Vec<Bounds>,
+    pub(crate) split_toggle_bounds: Bounds,
+    pub(crate) new_buffer_bounds: Bounds,
+    pub(crate) hovered_buffer_idx: Option<usize>,
+    pub(crate) hovered_tab: Option<(usize, usize)>,
+    pub(crate) hovered_split_toggle: bool,
+    pub(crate) hovered_new_buffer: bool,
+    untitled_counter: usize,
+}
+
+impl EditorWorkspace {
+    pub(crate) fn new() -> Self {
+        let source = demo_editor_source();
+        let mut buffers = Vec::new();
+        buffers.push(EditorBuffer::new(
+            "views.rs".to_string(),
+            None,
+            None,
+            &source,
+        ));
+
+        let mut panes = vec![EditorPane::new(), EditorPane::new()];
+        panes[0].active_buffer = Some(0);
+
+        Self {
+            buffers,
+            panes,
+            active_pane: 0,
+            split: false,
+            bounds: Bounds::ZERO,
+            buffer_list_bounds: Bounds::ZERO,
+            buffer_row_bounds: Vec::new(),
+            split_toggle_bounds: Bounds::ZERO,
+            new_buffer_bounds: Bounds::ZERO,
+            hovered_buffer_idx: None,
+            hovered_tab: None,
+            hovered_split_toggle: false,
+            hovered_new_buffer: false,
+            untitled_counter: 1,
+        }
+    }
+
+    pub(crate) fn add_scratch_buffer(&mut self) -> usize {
+        let name = format!("Untitled {}", self.untitled_counter);
+        self.untitled_counter += 1;
+        let idx = self.create_buffer(name, None, None, "");
+        self.set_active_buffer(self.active_pane, idx);
+        idx
+    }
+
+    pub(crate) fn open_file(&mut self, path: String, handle: JsValue, contents: String) -> usize {
+        if let Some(idx) = self
+            .buffers
+            .iter()
+            .position(|buffer| buffer.path.as_deref() == Some(path.as_str()))
+        {
+            let buffer = &mut self.buffers[idx];
+            buffer.view.set_text(&contents);
+            buffer.handle = Some(handle);
+            buffer.path = Some(path);
+            if let Some(language) = SyntaxLanguage::from_path(buffer.path.as_deref().unwrap_or("")) {
+                buffer.view.set_language(Some(language));
+            }
+            self.set_active_buffer(self.active_pane, idx);
+            return idx;
+        }
+
+        let name = path
+            .split('/')
+            .last()
+            .filter(|part| !part.is_empty())
+            .unwrap_or(&path)
+            .to_string();
+        let idx = self.create_buffer(name, Some(path), Some(handle), &contents);
+        self.set_active_buffer(self.active_pane, idx);
+        idx
+    }
+
+    pub(crate) fn toggle_split(&mut self) {
+        if self.split {
+            self.split = false;
+            self.panes[1].active_buffer = None;
+            self.active_pane = 0;
+            return;
+        }
+
+        self.split = true;
+        if self.panes[1].active_buffer.is_none() {
+            let fallback = (0..self.buffers.len())
+                .find(|idx| Some(*idx) != self.panes[0].active_buffer)
+                .unwrap_or_else(|| {
+                    let name = format!("Untitled {}", self.untitled_counter);
+                    self.untitled_counter += 1;
+                    self.create_buffer(name, None, None, "")
+                });
+            self.panes[1].active_buffer = Some(fallback);
+        }
+    }
+
+    pub(crate) fn active_buffer_path(&self) -> Option<&str> {
+        let idx = self.active_buffer_idx()?;
+        self.buffers[idx].path.as_deref()
+    }
+
+    pub(crate) fn active_buffer_handle(&self) -> Option<JsValue> {
+        let idx = self.active_buffer_idx()?;
+        self.buffers[idx].handle.clone()
+    }
+
+    pub(crate) fn active_buffer_text(&self) -> Option<String> {
+        let idx = self.active_buffer_idx()?;
+        Some(self.buffers[idx].view.editor().text())
     }
 
     pub(crate) fn cursor(&self) -> Cursor {
-        if self.bounds.size.width <= 0.0 || self.bounds.size.height <= 0.0 {
-            Cursor::Default
-        } else {
-            self.view.cursor()
+        let pane_count = if self.split { 2 } else { 1 };
+        for pane_idx in 0..pane_count {
+            if let Some(buffer_idx) = self.panes[pane_idx].active_buffer {
+                if matches!(self.buffers[buffer_idx].view.cursor(), Cursor::Text) {
+                    return Cursor::Text;
+                }
+            }
         }
+        Cursor::Default
     }
 
     pub(crate) fn is_focused(&self) -> bool {
-        self.view.is_focused()
+        self.active_buffer_idx()
+            .and_then(|idx| self.buffers.get(idx))
+            .map(|buffer| buffer.view.is_focused())
+            .unwrap_or(false)
     }
 
     pub(crate) fn paste_text(&mut self, text: &str) {
-        self.view.paste_text(text);
+        if let Some(idx) = self.active_buffer_idx() {
+            self.buffers[idx].view.paste_text(text);
+        }
     }
 
     pub(crate) fn composition_start(&mut self, text: &str) {
-        self.view.composition_start(text);
+        if let Some(idx) = self.active_buffer_idx() {
+            self.buffers[idx].view.composition_start(text);
+        }
     }
 
     pub(crate) fn composition_update(&mut self, text: &str) {
-        self.view.composition_update(text);
+        if let Some(idx) = self.active_buffer_idx() {
+            self.buffers[idx].view.composition_update(text);
+        }
     }
 
     pub(crate) fn composition_end(&mut self, text: &str) {
-        self.view.composition_end(text);
+        if let Some(idx) = self.active_buffer_idx() {
+            self.buffers[idx].view.composition_end(text);
+        }
     }
 
     pub(crate) fn clear_hover(&mut self) {
-        self.view.clear_hover();
+        for buffer in &mut self.buffers {
+            buffer.view.clear_hover();
+        }
+    }
+
+    pub(crate) fn update_hover(&mut self, point: Point) {
+        self.hovered_buffer_idx = None;
+        for (idx, bounds) in self.buffer_row_bounds.iter().enumerate() {
+            if bounds.contains(point) {
+                self.hovered_buffer_idx = Some(idx);
+                break;
+            }
+        }
+
+        self.hovered_tab = None;
+        let pane_count = if self.split { 2 } else { 1 };
+        for pane_idx in 0..pane_count {
+            for (buffer_idx, bounds) in self.panes[pane_idx].tab_bounds.iter().enumerate() {
+                if bounds.contains(point) {
+                    self.hovered_tab = Some((pane_idx, buffer_idx));
+                    break;
+                }
+            }
+            if self.hovered_tab.is_some() {
+                break;
+            }
+        }
+
+        self.hovered_split_toggle = self.split_toggle_bounds.contains(point);
+        self.hovered_new_buffer = self.new_buffer_bounds.contains(point);
+
+        let _ = self.handle_mouse_event(InputEvent::MouseMove { x: point.x, y: point.y });
+    }
+
+    pub(crate) fn handle_mouse_event(&mut self, event: InputEvent) -> EventResult {
+        match event {
+            InputEvent::MouseMove { .. } => {
+                let pane_count = if self.split { 2 } else { 1 };
+                for pane_idx in 0..pane_count {
+                    let Some(buffer_idx) = self.panes[pane_idx].active_buffer else {
+                        continue;
+                    };
+                    let bounds = self.panes[pane_idx].editor_bounds;
+                    let buffer = &mut self.buffers[buffer_idx];
+                    let _ = buffer.view.event(&event, bounds, &mut buffer.events);
+                }
+                EventResult::Handled
+            }
+            InputEvent::MouseDown { x, y, .. } => {
+                let point = Point::new(x, y);
+                let pane_count = if self.split { 2 } else { 1 };
+                let mut hit_pane = None;
+                for pane_idx in 0..pane_count {
+                    let bounds = self.panes[pane_idx].editor_bounds;
+                    if bounds.contains(point) {
+                        hit_pane = Some(pane_idx);
+                        break;
+                    }
+                }
+                if let Some(pane_idx) = hit_pane {
+                    self.active_pane = pane_idx;
+                }
+                for pane_idx in 0..pane_count {
+                    if Some(pane_idx) == hit_pane {
+                        continue;
+                    }
+                    if let Some(buffer_idx) = self.panes[pane_idx].active_buffer {
+                        let bounds = self.panes[pane_idx].editor_bounds;
+                        let buffer = &mut self.buffers[buffer_idx];
+                        let _ = buffer.view.event(&event, bounds, &mut buffer.events);
+                    }
+                }
+                if let Some(pane_idx) = hit_pane {
+                    if let Some(buffer_idx) = self.panes[pane_idx].active_buffer {
+                        let bounds = self.panes[pane_idx].editor_bounds;
+                        let buffer = &mut self.buffers[buffer_idx];
+                        return buffer.view.event(&event, bounds, &mut buffer.events);
+                    }
+                }
+                EventResult::Ignored
+            }
+            InputEvent::MouseUp { .. } => {
+                if let Some(buffer_idx) = self.active_buffer_idx() {
+                    let bounds = self.panes[self.active_pane].editor_bounds;
+                    let buffer = &mut self.buffers[buffer_idx];
+                    return buffer.view.event(&event, bounds, &mut buffer.events);
+                }
+                EventResult::Ignored
+            }
+            _ => EventResult::Ignored,
+        }
+    }
+
+    pub(crate) fn handle_scroll_at(&mut self, point: Point, event: InputEvent) -> EventResult {
+        let pane_count = if self.split { 2 } else { 1 };
+        for pane_idx in 0..pane_count {
+            let bounds = self.panes[pane_idx].editor_bounds;
+            if bounds.contains(point) {
+                if let Some(buffer_idx) = self.panes[pane_idx].active_buffer {
+                    let buffer = &mut self.buffers[buffer_idx];
+                    return buffer.view.event(&event, bounds, &mut buffer.events);
+                }
+            }
+        }
+        EventResult::Ignored
+    }
+
+    pub(crate) fn handle_key_event(&mut self, event: InputEvent) -> EventResult {
+        let Some(buffer_idx) = self.active_buffer_idx() else {
+            return EventResult::Ignored;
+        };
+        let bounds = self.panes[self.active_pane].editor_bounds;
+        let buffer = &mut self.buffers[buffer_idx];
+        buffer.view.event(&event, bounds, &mut buffer.events)
+    }
+
+    pub(crate) fn set_active_buffer(&mut self, pane_idx: usize, buffer_idx: usize) {
+        if pane_idx >= self.panes.len() || buffer_idx >= self.buffers.len() {
+            return;
+        }
+        let other_idx = if pane_idx == 0 { 1 } else { 0 };
+        let previous = self.panes[pane_idx].active_buffer;
+        if other_idx < self.panes.len() && self.panes[other_idx].active_buffer == Some(buffer_idx) {
+            self.panes[other_idx].active_buffer = previous;
+        }
+        self.panes[pane_idx].active_buffer = Some(buffer_idx);
+        self.active_pane = pane_idx;
+    }
+
+    fn active_buffer_idx(&self) -> Option<usize> {
+        self.panes.get(self.active_pane)?.active_buffer
+    }
+
+    fn create_buffer(
+        &mut self,
+        name: String,
+        path: Option<String>,
+        handle: Option<JsValue>,
+        text: &str,
+    ) -> usize {
+        let buffer = EditorBuffer::new(name, path, handle, text);
+        self.buffers.push(buffer);
+        self.buffers.len() - 1
     }
 }
 
@@ -269,12 +565,9 @@ pub(crate) struct AppState {
     pub(crate) file_save_hovered: bool,
     pub(crate) hovered_file_idx: Option<usize>,
     pub(crate) file_scroll_offset: f32,
-    pub(crate) current_file_path: Option<String>,
-    pub(crate) current_file_kind: Option<FileKind>,
-    pub(crate) current_file_handle: Option<JsValue>,
     pub(crate) file_status: Option<String>,
     pub(crate) markdown_demo: MarkdownDemo,
-    pub(crate) editor_demo: EditorDemo,
+    pub(crate) editor_workspace: EditorWorkspace,
 }
 
 impl Default for AppState {
@@ -338,12 +631,9 @@ impl Default for AppState {
             file_save_hovered: false,
             hovered_file_idx: None,
             file_scroll_offset: 0.0,
-            current_file_path: None,
-            current_file_kind: None,
-            current_file_handle: None,
             file_status: None,
             markdown_demo: MarkdownDemo::new(),
-            editor_demo: EditorDemo::new(),
+            editor_workspace: EditorWorkspace::new(),
         }
     }
 }

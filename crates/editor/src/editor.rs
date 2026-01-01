@@ -15,6 +15,7 @@ pub struct Editor {
     cursors: Vec<Caret>,
     undo_stack: Vec<EditorSnapshot>,
     redo_stack: Vec<EditorSnapshot>,
+    revision: u64,
 }
 
 impl Editor {
@@ -25,6 +26,7 @@ impl Editor {
             cursors: vec![Caret::new(Position::zero())],
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            revision: 0,
         }
     }
 
@@ -36,6 +38,10 @@ impl Editor {
         &mut self.buffer
     }
 
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
     pub fn text(&self) -> String {
         self.buffer.text()
     }
@@ -45,6 +51,7 @@ impl Editor {
         self.cursors = vec![Caret::new(Position::zero())];
         self.undo_stack.clear();
         self.redo_stack.clear();
+        self.bump_revision();
     }
 
     pub fn cursors(&self) -> &[Caret] {
@@ -130,6 +137,7 @@ impl Editor {
         }
 
         self.dedupe_cursors();
+        self.bump_revision();
     }
 
     pub fn insert_newline(&mut self) {
@@ -157,11 +165,13 @@ impl Editor {
         }
 
         self.dedupe_cursors();
+        self.bump_revision();
     }
 
     pub fn delete_backward(&mut self) {
         self.push_undo();
         self.normalize_cursors();
+        let mut changed = false;
 
         let mut ranges = self.cursor_ranges();
         ranges.sort_by(|a, b| b.start.cmp(&a.start));
@@ -177,6 +187,7 @@ impl Editor {
             };
 
             self.buffer.remove(target_range.clone());
+            changed = true;
             let new_pos = self.buffer.char_to_position(target_range.start);
             cursor.position = new_pos;
             cursor.anchor = new_pos;
@@ -184,11 +195,15 @@ impl Editor {
         }
 
         self.dedupe_cursors();
+        if changed {
+            self.bump_revision();
+        }
     }
 
     pub fn delete_forward(&mut self) {
         self.push_undo();
         self.normalize_cursors();
+        let mut changed = false;
 
         let mut ranges = self.cursor_ranges();
         ranges.sort_by(|a, b| b.start.cmp(&a.start));
@@ -204,6 +219,7 @@ impl Editor {
             };
 
             self.buffer.remove(target_range.clone());
+            changed = true;
             let new_pos = self.buffer.char_to_position(target_range.start);
             cursor.position = new_pos;
             cursor.anchor = new_pos;
@@ -211,6 +227,9 @@ impl Editor {
         }
 
         self.dedupe_cursors();
+        if changed {
+            self.bump_revision();
+        }
     }
 
     pub fn move_left(&mut self, select: bool) {
@@ -448,11 +467,16 @@ impl Editor {
             snapshot.cursors
         };
         self.normalize_cursors();
+        self.bump_revision();
     }
 
     fn push_undo(&mut self) {
         self.undo_stack.push(self.snapshot());
         self.redo_stack.clear();
+    }
+
+    fn bump_revision(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
     }
 
     fn clamp_position(&self, position: Position) -> Position {
