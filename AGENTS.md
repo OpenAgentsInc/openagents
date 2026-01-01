@@ -12,9 +12,15 @@ OpenAgents desktop repo.
 
 **Safety:**
 - NEVER `push --force` to main
-- NEVER commit unless asked
 - NEVER use `-i` flag (interactive not supported)
 - NEVER destructive commands (`reset --hard`, `checkout -- .`, `restore .`) without asking
+- NEVER use `git stash` - it interferes with other agents' uncommitted work
+
+**Commit Often:**
+- COMMIT working code frequently (every 15-30 minutes of work)
+- Don't let code sit uncommitted - it can be lost or cause merge conflicts
+- Small, frequent commits are better than large, infrequent ones
+- If you've made progress that works, commit it immediately
 
 **Multi-agent coordination:** Other agents may have uncommitted work. Before discarding changes in files you didn't modify, run `git diff <file>` and ASK first.
 **Clarification:** You can always continue work in your own files without asking permission, even if other files are dirty. You do not need permission to ignore other agents' changes.
