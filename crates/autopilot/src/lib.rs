@@ -1,5 +1,6 @@
 // Core agent module - works on both native and WASM
 pub mod agent;
+pub mod deprecation;
 
 // Browser entry point - WASM only
 #[cfg(feature = "wasm")]
