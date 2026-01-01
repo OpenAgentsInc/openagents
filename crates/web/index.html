@@ -61,12 +61,18 @@
             text-align: center;
             display: none;
         }
+        #loading img {
+            width: 32px;
+            height: 32px;
+            margin-bottom: 12px;
+        }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
     <div id="loading">
-        <div id="loading-text">Loading OpenAgents...</div>
+        <img src="/static/Thinking-Animation.gif" alt="Loading">
+        <div id="loading-text">Loading...</div>
         <div id="progress-container">
             <div id="progress-bar"></div>
         </div>
