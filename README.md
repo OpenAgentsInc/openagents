@@ -677,7 +677,7 @@ cargo add tokio --features full
 - Edition 2024 for all crates
 - No border radius (sharp corners in UI)
 - Inline-first styling via WGPUI StyleRefinement
-- Vera Mono font stack
+- Square721 Std Roman default; Vera Mono for monospace
 
 ### Testing
 

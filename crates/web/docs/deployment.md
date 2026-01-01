@@ -148,7 +148,7 @@ Our 5.7MB WASM includes:
 | cosmic-text | ~1.5 MB | Text shaping, font handling |
 | syntect | ~1.2 MB | Syntax highlighting (themes + grammars) |
 | wgpu | ~1.0 MB | WebGPU/WebGL abstraction |
-| embedded fonts | ~800 KB | Vera Mono (4 variants) |
+| embedded fonts | ~800 KB | Square721 Std Roman + Vera Mono (4 variants) |
 | pulldown-cmark | ~200 KB | Markdown parsing |
 | taffy | ~150 KB | Flexbox layout |
 | other | ~850 KB | Misc dependencies |

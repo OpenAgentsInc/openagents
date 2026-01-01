@@ -594,13 +594,14 @@ async fn serve_hud_html(_env: &Env, context: &HudContext) -> Result<Response> {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Autopilot - {}/{}</title>
+    <link rel="stylesheet" href="/static/MyWebfontsKit.css">
     <style>
         body {{
             margin: 0;
             padding: 0;
             background: #0a0a0a;
             color: #e0e0e0;
-            font-family: 'Vera Mono', monospace;
+            font-family: 'Square721StdRoman', sans-serif;
         }}
         #hud-container {{
             width: 100vw;

@@ -91,7 +91,7 @@ The HUD is not a nice-to-have dashboard—it's the product's signature moment. W
 
 **Design Principles:**
 - Dense information display (no wasted whitespace)
-- Sharp corners, Vera Mono font, high contrast
+- Sharp corners, Square721 Std Roman default with Vera Mono for monospace, high contrast
 - Panes that open/close/resize as the agent works
 - Visible autonomous action—the AI is clearly "doing things"
 - Minimal but powerful user intervention points

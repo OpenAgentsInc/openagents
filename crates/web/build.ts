@@ -39,6 +39,11 @@ async function copyPkg() {
 async function copyStatic() {
   await copyFile("./index.html", join(DIST_DIR, "index.html"));
   console.log("  Copied: index.html");
+  try {
+    await copyDir("./static", join(DIST_DIR, "static"));
+  } catch {
+    // No static assets to copy.
+  }
 }
 
 async function build() {

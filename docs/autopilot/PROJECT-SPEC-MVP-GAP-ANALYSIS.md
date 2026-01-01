@@ -69,7 +69,7 @@ This analysis reconciles docs/autopilot/PROJECT-SPEC.md with the current code in
 - Trajectory viewer integration (use crates/autopilot/src/replay.rs or autopilot-wasm for render pipeline).
 - Session browser with search/filter based on ~/.openagents/sessions and checkpoints (current UI reads ~/.claude sessions).
 - Daemon health and worker controls in the UI.
-- Enforce Vera Mono font only and sharp-corner styling across UI components.
+- Enforce Square721 Std Roman as default, with Vera Mono for monospace, and sharp-corner styling across UI components.
 
 ### 1.7 Data Path Consistency
 - Normalize file locations across components:
@@ -124,7 +124,7 @@ This analysis reconciles docs/autopilot/PROJECT-SPEC.md with the current code in
 6. Implement the daemon server with worker supervision, stall detection, memory monitoring, health checks, and multi-worker scheduling; connect the existing daemon client to real status endpoints.
 7. Add compaction hooks with task-type strategies and critical context preservation; persist compaction summaries for resume.
 8. Add plan validation before execution (parse and check required sections) and implement subagent launching with result aggregation.
-9. Upgrade the UI to show APM, issue queue, trajectory viewer, session browser/search, and daemon controls; enforce Vera Mono font and sharp corner styling across panels.
+9. Upgrade the UI to show APM, issue queue, trajectory viewer, session browser/search, and daemon controls; enforce Square721 Std Roman default with Vera Mono for monospace and sharp corner styling across panels.
 10. Implement metrics collection: session + tool-call metrics DB, real-time event streaming to UI, and backfill import from JSONL logs.
 11. Implement analysis pipeline: baselines, anomaly detection, regression detection, weekly reports, and automated issue creation wired to the issues crate.
 12. Implement velocity tracking outputs and UI visualization.

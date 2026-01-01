@@ -327,9 +327,10 @@ Focus handling beyond storage is expected in a later phase.
 
 ### Text system and fonts
 
-`TextSystem` is part of `Window` and is configured to use Vera Mono only. Fonts
-are embedded from `src/gui/assets/fonts/VeraMono*.ttf` in `text.rs`. This
-matches the OpenAgents UI constraint (no other fonts).
+`TextSystem` is part of `Window` and defaults to Square721 Std Roman, with Vera
+Mono embedded for monospace use. Fonts are embedded from
+`src/gui/assets/fonts/Square721StdRoman.ttf` and `src/gui/assets/fonts/VeraMono*.ttf`
+in `text.rs`.
 
 ## Styled DSL
 
