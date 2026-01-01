@@ -39,6 +39,7 @@ Both are 100% Rust, compiled to WebAssembly, running at the edge.
 │  │  │  routes/stripe.rs    → Payment methods, webhooks                 │  ││
 │  │  │  routes/wallet.rs    → Spark wallet summary/send/receive         │  ││
 │  │  │  routes/hud.rs       → Personal HUD URLs, embed                  │  ││
+│  │  │  routes/github_explore.rs → Repo exploration for autopilot       │  ││
 │  │  └──────────────────────────────────────────────────────────────────┘  ││
 │  │                                                                          ││
 │  └─────────────────────────────────────────────────────────────────────────┘│
@@ -348,9 +349,12 @@ The client is a single-page app that runs entirely on `/`. Views are managed via
 enum AppView {
     Landing,      // Login screen (not authenticated)
     RepoSelector, // Repository picker (authenticated)
-    RepoView,     // Main app shell with sidebars (repo selected)
+    RepoView,     // Main app shell with autopilot overlay (repo selected)
 }
 ```
+
+When entering `RepoView`, an autopilot agent automatically starts to explore the repository.
+See [autopilot.md](./autopilot.md) for details.
 
 **View transitions:**
 ```

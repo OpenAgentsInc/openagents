@@ -106,7 +106,7 @@ impl ThreadView {
         let mut height = 0.0;
         for entry in &self.entries {
             let (_, h) = entry.size_hint();
-            height += h.unwrap_or(80.0) + self.item_spacing;
+            height += h.unwrap_or(30.0) + self.item_spacing;
         }
         height
     }
@@ -133,7 +133,7 @@ impl Component for ThreadView {
 
         for entry in &mut self.entries {
             let (_, entry_height) = entry.size_hint();
-            let height = entry_height.unwrap_or(80.0);
+            let height = entry_height.unwrap_or(30.0);
 
             if y + height >= bounds.origin.y && y <= bounds.origin.y + bounds.size.height {
                 let entry_bounds = Bounds::new(bounds.origin.x, y, bounds.size.width, height);
@@ -167,7 +167,8 @@ impl Component for ThreadView {
         match event {
             InputEvent::Scroll { dy, .. } => {
                 let max_scroll = (self.content_height - bounds.size.height).max(0.0);
-                self.scroll_offset = (self.scroll_offset - dy).clamp(0.0, max_scroll);
+                // Positive dy = scroll wheel down = show content below = increase offset
+                self.scroll_offset = (self.scroll_offset + dy).clamp(0.0, max_scroll);
                 return EventResult::Handled;
             }
             InputEvent::MouseUp { x, y, .. } => {
@@ -176,7 +177,7 @@ impl Component for ThreadView {
                     let mut check_y = bounds.origin.y - self.scroll_offset;
                     for (i, entry) in self.entries.iter().enumerate() {
                         let (_, entry_height) = entry.size_hint();
-                        let height = entry_height.unwrap_or(80.0);
+                        let height = entry_height.unwrap_or(30.0);
                         let entry_bounds =
                             Bounds::new(bounds.origin.x, check_y, bounds.size.width, height);
 
@@ -197,7 +198,7 @@ impl Component for ThreadView {
         let mut check_y = bounds.origin.y - self.scroll_offset;
         for entry in &mut self.entries {
             let (_, entry_height) = entry.size_hint();
-            let height = entry_height.unwrap_or(80.0);
+            let height = entry_height.unwrap_or(30.0);
             let entry_bounds = Bounds::new(bounds.origin.x, check_y, bounds.size.width, height);
 
             let result = entry.event(event, entry_bounds, cx);

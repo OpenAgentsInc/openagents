@@ -21,6 +21,10 @@ pub struct MarkdownView {
     copy_button_on_hover: bool,
     show_copy_button: bool,
     on_copy: Option<Box<dyn FnMut(String)>>,
+    /// Cached height from last render (used for size_hint)
+    last_rendered_height: f32,
+    /// Width used for last render (to detect when re-measure is needed)
+    last_rendered_width: f32,
 }
 
 impl MarkdownView {
@@ -38,6 +42,8 @@ impl MarkdownView {
             copy_button_on_hover: true,
             show_copy_button: true,
             on_copy: None,
+            last_rendered_height: 0.0,
+            last_rendered_width: 0.0,
         }
     }
 
@@ -242,6 +248,10 @@ impl Component for MarkdownView {
             cx.scene,
         );
 
+        // Cache rendered dimensions for size_hint
+        self.last_rendered_width = bounds.size.width;
+        self.last_rendered_height = self.layout.size.height;
+
         self.update_copy_bounds(cx.text);
         self.draw_copy_buttons(cx);
     }
@@ -283,6 +293,14 @@ impl Component for MarkdownView {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        (None, None)
+        // Return cached height if we've rendered at least once
+        if self.last_rendered_height > 0.0 {
+            (None, Some(self.last_rendered_height))
+        } else {
+            // Conservative estimate: ~24px per block (single line height)
+            // More blocks = more lines, but start small to avoid wasted space
+            let estimated_height = (self.document.blocks.len() as f32 * 24.0).max(24.0);
+            (None, Some(estimated_height))
+        }
     }
 }

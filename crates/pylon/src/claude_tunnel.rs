@@ -316,6 +316,7 @@ async fn spawn_claude_session(
                                 }
                             };
 
+                            let is_error = matches!(chunk_type, ChunkType::Error);
                             let chunk = ClaudeChunk {
                                 session_id: session_id.clone(),
                                 chunk_type,
@@ -325,7 +326,7 @@ async fn spawn_claude_session(
                             };
                             let _ = outgoing_tx.send(RelayMessage::ClaudeChunk { chunk }).await;
 
-                            if cost.is_some() && matches!(chunk_type, ChunkType::Error) {
+                            if cost.is_some() && is_error {
                                 let _ = outgoing_tx
                                     .send(RelayMessage::ClaudeError {
                                         session_id: session_id.clone(),

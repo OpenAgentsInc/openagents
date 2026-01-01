@@ -336,7 +336,7 @@ impl MarkdownRenderer {
         &self,
         lines: &[StyledLine],
         origin: Point,
-        _max_width: f32,
+        max_width: f32,
         base_indent: u32,
         text_system: &mut TextSystem,
         scene: &mut Scene,
@@ -347,72 +347,90 @@ impl MarkdownRenderer {
         for line in lines {
             y += line.margin_top;
             let indent = (base_indent + line.indent) as f32 * theme::spacing::LG;
-            let x = origin.x + indent;
+            let line_start_x = origin.x + indent;
+            let right_edge = origin.x + max_width;
 
-            let mut span_x = x;
+            let mut current_x = line_start_x;
+
             // Ensure minimum line height based on font size
             let base_font_size = line
                 .spans
                 .first()
                 .map(|s| s.style.font_size)
                 .unwrap_or(self.config.base_font_size);
-            let mut line_height = base_font_size * line.line_height;
+            let line_height = base_font_size * line.line_height;
 
             for span in &line.spans {
-                let text_size = text_system.measure_size(&span.text, span.style.font_size, None);
-
-                if let Some(bg) = span.style.background {
-                    let padding = 2.0;
-                    let bg_with_opacity = bg.with_alpha(bg.a * opacity);
-                    scene.draw_quad(Quad {
-                        bounds: Bounds::new(
-                            span_x - padding,
-                            y - padding,
-                            text_size.width + padding * 2.0,
-                            text_size.height + padding * 2.0,
-                        ),
-                        background: Some(bg_with_opacity),
-                        border_color: Hsla::transparent(),
-                        border_width: 0.0,
-                        corner_radius: 0.0,
-                    });
-                }
-
-                let color = span.style.color.with_alpha(span.style.color.a * opacity);
-
                 let font_style = FontStyle {
                     bold: span.style.bold,
                     italic: span.style.italic,
                 };
+                let color = span.style.color.with_alpha(span.style.color.a * opacity);
 
-                let text_run = text_system.layout_styled(
-                    &span.text,
-                    Point::new(span_x, y),
-                    span.style.font_size,
-                    color,
-                    font_style,
-                );
+                // Split span text into words (keeping whitespace attached)
+                let words: Vec<&str> = split_into_words(&span.text);
 
-                // CRITICAL: Use measure_styled with the SAME font_style as layout_styled!
-                // Bold/italic text has different widths than regular text.
-                let span_width =
-                    text_system.measure_styled(&span.text, span.style.font_size, font_style);
-                line_height = line_height.max(span.style.font_size * line.line_height);
+                for word in words {
+                    if word.is_empty() {
+                        continue;
+                    }
 
-                scene.draw_text(text_run);
+                    let word_width =
+                        text_system.measure_styled_mono(word, span.style.font_size, font_style);
 
-                if span.style.strikethrough {
-                    let strike_y = y + text_size.height * 0.5;
-                    scene.draw_quad(Quad {
-                        bounds: Bounds::new(span_x, strike_y, span_width, 1.0),
-                        background: Some(color),
-                        border_color: Hsla::transparent(),
-                        border_width: 0.0,
-                        corner_radius: 0.0,
-                    });
+                    // Check if word fits on current line
+                    if current_x + word_width > right_edge && current_x > line_start_x {
+                        // Wrap to next line
+                        y += line_height;
+                        current_x = line_start_x;
+                    }
+
+                    // Draw background if needed
+                    if let Some(bg) = span.style.background {
+                        let text_size =
+                            text_system.measure_size(word, span.style.font_size, None);
+                        let padding = 2.0;
+                        let bg_with_opacity = bg.with_alpha(bg.a * opacity);
+                        scene.draw_quad(Quad {
+                            bounds: Bounds::new(
+                                current_x - padding,
+                                y - padding,
+                                text_size.width + padding * 2.0,
+                                text_size.height + padding * 2.0,
+                            ),
+                            background: Some(bg_with_opacity),
+                            border_color: Hsla::transparent(),
+                            border_width: 0.0,
+                            corner_radius: 0.0,
+                        });
+                    }
+
+                    // Render word
+                    let text_run = text_system.layout_styled_mono(
+                        word,
+                        Point::new(current_x, y),
+                        span.style.font_size,
+                        color,
+                        font_style,
+                    );
+                    scene.draw_text(text_run);
+
+                    // Draw strikethrough if needed
+                    if span.style.strikethrough {
+                        let text_size =
+                            text_system.measure_size(word, span.style.font_size, None);
+                        let strike_y = y + text_size.height * 0.5;
+                        scene.draw_quad(Quad {
+                            bounds: Bounds::new(current_x, strike_y, word_width, 1.0),
+                            background: Some(color),
+                            border_color: Hsla::transparent(),
+                            border_width: 0.0,
+                            corner_radius: 0.0,
+                        });
+                    }
+
+                    current_x += word_width;
                 }
-
-                span_x += span_width;
             }
 
             y += line_height;
@@ -593,7 +611,7 @@ impl MarkdownRenderer {
                 .config
                 .text_color
                 .with_alpha(self.config.text_color.a * opacity);
-            let bullet_run = text_system.layout_styled(
+            let bullet_run = text_system.layout_styled_mono(
                 "\u{2022}",
                 Point::new(bullet_x, item_y),
                 self.config.base_font_size,
@@ -643,7 +661,7 @@ impl MarkdownRenderer {
                 .config
                 .text_color
                 .with_alpha(self.config.text_color.a * opacity);
-            let number_run = text_system.layout_styled(
+            let number_run = text_system.layout_styled_mono(
                 &format!("{}.", number),
                 Point::new(number_x, item_y),
                 self.config.base_font_size,
@@ -785,6 +803,38 @@ pub fn render_markdown(
     let renderer = MarkdownRenderer::new();
     let document = parser.parse(markdown);
     renderer.render(&document, origin, max_width, text_system, scene)
+}
+
+/// Split text into words, keeping whitespace attached to preceding word.
+/// This is optimized for word wrapping - each segment can be wrapped independently.
+fn split_into_words(text: &str) -> Vec<&str> {
+    let mut words = Vec::new();
+    let mut start = 0;
+    let mut in_word = false;
+
+    for (i, c) in text.char_indices() {
+        if c.is_whitespace() {
+            if in_word {
+                // End of word - include this whitespace char with the word
+                in_word = false;
+            }
+            // Continue accumulating whitespace
+        } else {
+            if !in_word && start < i {
+                // We have accumulated whitespace, push it as a segment
+                words.push(&text[start..i]);
+                start = i;
+            }
+            in_word = true;
+        }
+    }
+
+    // Push remaining text
+    if start < text.len() {
+        words.push(&text[start..]);
+    }
+
+    words
 }
 
 #[cfg(test)]

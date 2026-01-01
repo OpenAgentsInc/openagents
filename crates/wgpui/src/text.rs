@@ -8,6 +8,7 @@ use cosmic_text::{
 use std::collections::HashMap;
 
 const DEFAULT_FONT_FAMILY: Family<'static> = Family::Name("Square721StdRoman");
+const MONO_FONT_FAMILY: Family<'static> = Family::Name("Bitstream Vera Sans Mono");
 
 #[cfg(target_arch = "wasm32")]
 const DEFAULT_SHAPING: Shaping = Shaping::Basic;
@@ -314,6 +315,134 @@ impl TextSystem {
         let logical_width = line_width / self.scale_factor;
 
         (logical_width, glyph_data)
+    }
+
+    /// Shape text using monospace font (Vera Mono)
+    fn shape_text_mono(
+        &mut self,
+        text: &str,
+        font_size: f32,
+        style: FontStyle,
+    ) -> (f32, Vec<(GlyphCacheKey, f32, f32, u16)>) {
+        if text.is_empty() {
+            return (0.0, Vec::new());
+        }
+
+        let physical_font_size = font_size * self.scale_factor;
+        let metrics = Metrics::new(physical_font_size, physical_font_size * 1.2);
+
+        let mut buffer = Buffer::new(&mut self.font_system, metrics);
+        buffer.set_size(&mut self.font_system, Some(10000.0), None);
+
+        let attrs = Attrs::new()
+            .family(MONO_FONT_FAMILY)
+            .weight(if style.bold {
+                Weight::BOLD
+            } else {
+                Weight::NORMAL
+            })
+            .style(if style.italic {
+                Style::Italic
+            } else {
+                Style::Normal
+            });
+
+        buffer.set_text(&mut self.font_system, text, attrs, DEFAULT_SHAPING);
+        buffer.shape_until_scroll(&mut self.font_system, false);
+
+        let mut glyph_data: Vec<(GlyphCacheKey, f32, f32, u16)> = Vec::new();
+        let mut line_width = 0.0f32;
+
+        for run in buffer.layout_runs() {
+            line_width = line_width.max(run.line_w);
+
+            for glyph in run.glyphs.iter() {
+                let physical_glyph = glyph.physical((0.0, 0.0), 1.0);
+                let cache_key = GlyphCacheKey {
+                    cache_key: physical_glyph.cache_key,
+                };
+                let glyph_x = glyph.x;
+                let line_y = run.line_y;
+
+                glyph_data.push((cache_key, glyph_x, line_y, glyph.glyph_id));
+            }
+        }
+
+        let logical_width = line_width / self.scale_factor;
+        (logical_width, glyph_data)
+    }
+
+    /// Layout styled text using monospace font (Vera Mono)
+    pub fn layout_styled_mono(
+        &mut self,
+        text: &str,
+        origin: Point,
+        font_size: f32,
+        color: Hsla,
+        style: FontStyle,
+    ) -> TextRun {
+        let (_, glyph_data) = self.shape_text_mono(text, font_size, style);
+
+        let mut text_run = TextRun::new(origin, color, font_size);
+
+        for (cache_key, glyph_x, line_y, glyph_id) in glyph_data {
+            let entry = if let Some(entry) = self.glyph_cache.get(&cache_key) {
+                entry.clone()
+            } else {
+                let image_data: Option<(i32, i32, u32, u32, SwashContent, Vec<u8>)> = self
+                    .swash_cache
+                    .get_image(&mut self.font_system, cache_key.cache_key)
+                    .as_ref()
+                    .map(|image| {
+                        (
+                            image.placement.left,
+                            image.placement.top,
+                            image.placement.width,
+                            image.placement.height,
+                            image.content,
+                            image.data.to_vec(),
+                        )
+                    });
+
+                if let Some((left, top, width, height, content, data)) = image_data {
+                    let placement = cosmic_text::Placement {
+                        left,
+                        top,
+                        width,
+                        height,
+                    };
+                    let entry = self.pack_glyph_data(&placement, content, &data);
+                    self.glyph_cache.insert(cache_key, entry.clone());
+                    entry
+                } else {
+                    continue;
+                }
+            };
+
+            // Convert all coordinates from physical to LOGICAL pixels
+            let glyph_instance = GlyphInstance {
+                glyph_id,
+                offset: Point::new(
+                    (glyph_x + entry.offset.x) / self.scale_factor,
+                    (line_y + entry.offset.y) / self.scale_factor,
+                ),
+                size: Size::new(
+                    entry.size.width / self.scale_factor,
+                    entry.size.height / self.scale_factor,
+                ),
+                uv: entry.uv,
+            };
+
+            text_run.push_glyph(glyph_instance);
+        }
+
+        text_run
+    }
+
+    /// Measure styled text width using monospace font (Vera Mono)
+    pub fn measure_styled_mono(&mut self, text: &str, font_size: f32, style: FontStyle) -> f32 {
+        let (width, _) = self.shape_text_mono(text, font_size, style);
+        width
     }
 
     fn pack_glyph_data(
