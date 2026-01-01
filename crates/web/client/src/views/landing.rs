@@ -119,7 +119,7 @@ pub(crate) fn build_landing_page(
         cx.scene.draw_quad(Quad::new(Bounds::new(btn_x + 1.0, btn_y + 1.0, btn_w - 2.0, btn_h - 2.0)).with_background(btn_bg));
         let btn_text_width = cx.text.measure(btn_text, btn_font_size);
         let btn_text_x = btn_x + (btn_w - btn_text_width) / 2.0;
-        let btn_text_y = btn_y + (btn_h - btn_font_size) / 2.0 + 4.0; // +4 to visually center
+        let btn_text_y = btn_y + (btn_h - btn_font_size) / 2.0 - 2.0; // -2 to visually center
         let btn_run = cx.text.layout(btn_text, Point::new(btn_text_x, btn_text_y), btn_font_size, theme::text::PRIMARY);
         cx.scene.draw_text(btn_run);
 
