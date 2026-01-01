@@ -9,6 +9,9 @@ use wgpui::{
     NamedKey, Platform, Point, Scene, WebPlatform, run_animation_loop, setup_resize_observer,
 };
 
+use crate::claude_agent;
+use crate::claude_chat::ClaudeChatAction;
+use crate::autopilot_chat::AutopilotAction;
 use crate::hud::{
     dispatch_hud_event, ensure_hud_session, fetch_live_hud, get_hud_context, init_hud_runtime,
     stop_metrics_poll, update_hud_settings, HudContext,
@@ -120,6 +123,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                                 state.open_share_after_start = true;
                                 state.view = AppView::RepoView;
                                 state.hud_settings_loaded = false;
+
+                                // Start the intro agent for restored repo
+                                let github_username = state.user.github_username.clone().unwrap_or_default();
+                                let repo_for_agent = saved_repo.clone();
+                                drop(state);
+                                crate::intro_agent::start_intro_agent(
+                                    state_clone.clone(),
+                                    github_username,
+                                    repo_for_agent,
+                                );
                             }
                         }
                     }
@@ -149,6 +162,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
             let x = event.offset_x() as f32;
             let y = event.offset_y() as f32;
+            let mut overlay_active = false;
 
             // Use try_borrow_mut to avoid panic if animation loop holds borrow
             if let Ok(mut state) = state_clone.try_borrow_mut() {
@@ -187,6 +201,22 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     let mouse_pos = state.mouse_pos;
                     state.editor_workspace.update_hover(mouse_pos);
                 }
+
+                if state.claude_chat.visible {
+                    overlay_active = true;
+                    let _ = state
+                        .claude_chat
+                        .handle_event(InputEvent::MouseMove { x, y });
+                } else if state.autopilot_chat.visible {
+                    overlay_active = true;
+                    let _ = state
+                        .autopilot_chat
+                        .handle_event(InputEvent::MouseMove { x, y });
+                }
+            }
+
+            if overlay_active {
+                return;
             }
 
             // Wallet disabled
@@ -212,6 +242,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 return;
             };
             let click_pos = Point::new(event.offset_x() as f32, event.offset_y() as f32);
+
+            if state.claude_chat.visible || state.autopilot_chat.visible {
+                return;
+            }
 
             if state.view == AppView::Landing
                 && state.landing_issue_bounds.contains(click_pos)
@@ -399,6 +433,15 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     stop_metrics_poll(&mut state);
                     drop(state);
                     init_hud_runtime(state_clone.clone());
+
+                    // Start the intro agent
+                    let github_username = state_clone.borrow().user.github_username.clone().unwrap_or_default();
+                    crate::intro_agent::start_intro_agent(
+                        state_clone.clone(),
+                        github_username,
+                        repo_full.clone(),
+                    );
+
                     let repo_full = repo_full.clone();
                     let state_for_session = state_clone.clone();
                     wasm_bindgen_futures::spawn_local(async move {
@@ -534,11 +577,22 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let y = event.offset_y() as f32;
             let button = mouse_button_from_event(&event);
             let input_event = InputEvent::MouseDown { button, x, y };
+            let mut overlay_active = false;
             if let Ok(mut state) = state_clone.try_borrow_mut() {
+                if state.claude_chat.visible {
+                    overlay_active = true;
+                    let _ = state.claude_chat.handle_event(input_event.clone());
+                } else if state.autopilot_chat.visible {
+                    overlay_active = true;
+                    let _ = state.autopilot_chat.handle_event(input_event.clone());
+                }
                 if state.view == AppView::RepoSelector {
                     let _ = state.markdown_demo.handle_event(input_event.clone());
                     let _ = state.editor_workspace.handle_mouse_event(input_event.clone());
                 }
+            }
+            if overlay_active {
+                return;
             }
             dispatch_hud_event(&state_clone, input_event.clone());
             // Wallet disabled
@@ -556,10 +610,21 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let y = event.offset_y() as f32;
             let button = mouse_button_from_event(&event);
             let input_event = InputEvent::MouseUp { button, x, y };
+            let mut overlay_active = false;
             if let Ok(mut state) = state_clone.try_borrow_mut() {
+                if state.claude_chat.visible {
+                    overlay_active = true;
+                    let _ = state.claude_chat.handle_event(input_event.clone());
+                } else if state.autopilot_chat.visible {
+                    overlay_active = true;
+                    let _ = state.autopilot_chat.handle_event(input_event.clone());
+                }
                 if state.view == AppView::RepoSelector {
                     let _ = state.editor_workspace.handle_mouse_event(input_event.clone());
                 }
+            }
+            if overlay_active {
+                return;
             }
             dispatch_hud_event(&state_clone, input_event.clone());
             // Wallet disabled
@@ -645,6 +710,17 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     dx: 0.0,
                     dy: event.delta_y() as f32,
                 };
+
+                // Handle overlays first (they are on top)
+                if state.claude_chat.visible && state.claude_chat.contains(point) {
+                    let _ = state.claude_chat.handle_event(scroll);
+                    return;
+                }
+                if state.autopilot_chat.visible && state.autopilot_chat.contains(point) {
+                    let _ = state.autopilot_chat.handle_event(scroll);
+                    return;
+                }
+
                 let mut event_ctx = EventContext::new();
                 let thread_bounds = state.hud_layout.thread_bounds;
                 let code_bounds = state.hud_layout.code_bounds;
@@ -686,6 +762,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let Ok(state) = state_clone.try_borrow() else {
                 return;
             };
+            if state.claude_chat.visible || state.autopilot_chat.visible {
+                let _ = canvas2.style().set_property("cursor", "default");
+                return;
+            }
             let hud_hover = state.view == AppView::RepoView
                 && (state.hud_layout.settings_public_bounds.contains(state.mouse_pos)
                     || state.hud_layout.settings_embed_bounds.contains(state.mouse_pos));
@@ -778,7 +858,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             if let Some(key) = key_from_event(&event) {
                 let input_event = InputEvent::KeyDown { key, modifiers };
                 if let Ok(mut state) = state_clone.try_borrow_mut() {
-                    if state.view == AppView::RepoSelector {
+                    if state.claude_chat.visible {
+                        handled = state.claude_chat.handle_event(input_event.clone());
+                    } else if state.view == AppView::RepoSelector {
                         handled = state.editor_workspace.handle_key_event(input_event.clone());
                     }
                 }
@@ -847,9 +929,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         closure.forget();
     }
 
+    let state_handle = state.clone();
     run_animation_loop(move || {
         let mut platform = platform.borrow_mut();
-        let mut state = state.borrow_mut();
+        let mut state = state_handle.borrow_mut();
 
         let size = platform.logical_size();
         let width = size.width;
@@ -865,6 +948,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             state.markdown_demo.clear_hover();
             state.editor_workspace.clear_hover();
         }
+
+        let autopilot_actions = state.autopilot_chat.take_actions();
+        let claude_actions = state.claude_chat.take_actions();
+        let selected_repo = state.selected_repo.clone();
 
         match state.view {
             AppView::Landing => {
@@ -901,6 +988,46 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
 
         if let Err(e) = platform.render_scene(&scene) {
             web_sys::console::error_1(&format!("Render error: {}", e).into());
+        }
+
+        drop(state);
+
+        if !autopilot_actions.is_empty() {
+            for action in autopilot_actions {
+                if let AutopilotAction::StartClaude = action {
+                    if let Some(repo) = selected_repo.clone() {
+                        if let Ok(mut guard) = state_handle.try_borrow_mut() {
+                            guard.autopilot_chat.hide();
+                        }
+                        claude_agent::start_claude_chat(state_handle.clone(), repo);
+                    }
+                }
+            }
+        }
+
+        if !claude_actions.is_empty() {
+            for action in claude_actions {
+                match action {
+                    ClaudeChatAction::SendPrompt(prompt) => {
+                        if let Ok(mut guard) = state_handle.try_borrow_mut() {
+                            let _ = guard.claude_chat.take_input();
+                        }
+                        claude_agent::send_prompt(state_handle.clone(), prompt);
+                    }
+                    ClaudeChatAction::SendCurrentInput => {
+                        claude_agent::send_current_input(state_handle.clone());
+                    }
+                    ClaudeChatAction::CopyConnectCommand => {
+                        claude_agent::copy_connect_command(state_handle.clone());
+                    }
+                    ClaudeChatAction::ApproveTool => {
+                        claude_agent::respond_tool_approval(state_handle.clone(), true);
+                    }
+                    ClaudeChatAction::DenyTool => {
+                        claude_agent::respond_tool_approval(state_handle.clone(), false);
+                    }
+                }
+            }
         }
     });
 

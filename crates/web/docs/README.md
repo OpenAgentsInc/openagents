@@ -132,9 +132,17 @@ bun run deploy
 ```
 crates/web/
 ├── client/                     # WGPUI Frontend (Client-side WASM)
-│   ├── Cargo.toml              # wasm-bindgen, wgpui dependencies
+│   ├── Cargo.toml              # wasm-bindgen, wgpui, openagents-runtime dependencies
 │   └── src/
-│       └── lib.rs              # Single-page app: Landing → RepoSelector → App Shell
+│       ├── lib.rs              # Single-page app: Landing → RepoSelector → App Shell
+│       ├── app.rs              # Main app logic and event handling
+│       ├── state.rs            # AppState and view management
+│       ├── autopilot_chat.rs   # Centered overlay chat pane component
+│       ├── intro_agent.rs      # IntroAgent using BrowserRuntime
+│       └── views/
+│           ├── mod.rs          # View builders (landing, repo_selector, repo_view)
+│           ├── landing.rs      # Landing page with Nostr feeds
+│           └── repo_selector.rs # Repository picker
 │
 ├── worker/                     # Axum API (Server-side WASM)
 │   ├── Cargo.toml              # workers-rs, serde, chrono
@@ -154,7 +162,8 @@ crates/web/
 │       │   ├── billing.rs      # Credits, plans, packages
 │       │   ├── stripe.rs       # Payment methods, webhooks
 │       │   ├── wallet.rs       # Spark wallet routes
-│       │   └── hud.rs          # HUD page rendering
+│       │   ├── hud.rs          # HUD page rendering
+│       │   └── github_explore.rs # GitHub repo exploration endpoint
 │       └── services/
 │           ├── mod.rs
 │           ├── github.rs       # GitHub API client (OAuth, repos)
@@ -227,6 +236,36 @@ bun run cf:tail          # Live logs from production
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/repos` | List user's GitHub repositories |
+| GET | `/api/github/explore?repo=owner/name` | Explore repository (metadata, issues, PRs, tree, README, commits, contributors) |
+
+**GET /api/github/explore response:**
+```json
+{
+  "repo": {
+    "description": "Repository description",
+    "language": "Rust",
+    "stargazers_count": 1234,
+    "open_issues_count": 42
+  },
+  "issues": [
+    { "number": 123, "title": "Issue title" }
+  ],
+  "pull_requests": [
+    { "number": 456, "title": "PR title" }
+  ],
+  "tree": [
+    { "path": "src", "type": "tree" },
+    { "path": "README.md", "type": "blob" }
+  ],
+  "readme_excerpt": "First 500 chars of README...",
+  "commits": [
+    { "sha": "abc123", "message": "Commit message" }
+  ],
+  "contributors": [
+    { "login": "username", "contributions": 100 }
+  ]
+}
+```
 
 ### Wallet (requires auth)
 
@@ -285,15 +324,20 @@ HUDs are public by default, opt-out via `/api/hud/settings`.
 
 ### Tunnel (Free Tier - Local Compute)
 
-Routes for the local tunnel mode where users run `openagents connect` on their machine.
+Routes for the local tunnel mode where users run `openagents pylon connect` on their machine.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/tunnel/register` | Register a new tunnel session |
 | GET | `/api/tunnel/status/:session_id` | Check tunnel connection status |
-| GET | `/api/tunnel/ws/:session_id` | WebSocket relay to local CLI |
+| GET | `/api/tunnel/ws/:type` | WebSocket relay (browser or tunnel) |
 
 Tunnel mode uses the `TunnelRelay` Durable Object to maintain WebSocket connections between the browser and the user's local machine.
+After registering, the UI shows a command like:
+
+```bash
+openagents pylon connect --tunnel-url wss://.../api/tunnel/ws/tunnel?session_id=...&token=...
+```
 
 ### Container (Paid Tier - Cloud Compute)
 
@@ -437,6 +481,7 @@ See `migrations/0001_initial.sql` for full schema. Key tables:
 | [client-ui.md](./client-ui.md) | Client UI views, app shell, keyboard shortcuts |
 | [architecture.md](./architecture.md) | Technical architecture, data flows, WASM details |
 | [deployment.md](./deployment.md) | Build, optimize, deploy to Cloudflare |
+| [autopilot.md](./autopilot.md) | Autopilot chat pane, IntroAgent, BrowserRuntime |
 
 ## Related
 

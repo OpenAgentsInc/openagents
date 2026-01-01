@@ -64,6 +64,26 @@ Directory for Pylon data files (identity, etc.).
 data_dir = "/home/user/.pylon-data"
 ```
 
+### claude
+
+**Type**: Table
+**Required**: No
+
+Claude tunnel settings for local Claude Agent SDK sessions.
+
+```toml
+[claude]
+enabled = true
+model = "claude-sonnet-4-20250514"
+autonomy = "supervised"           # full | supervised | restricted | read_only
+approval_required_tools = ["Write", "Edit", "Bash"]
+allowed_tools = []                # empty = allow requested tools
+blocked_tools = []
+max_cost_usd = 250000             # micro-USD ($0.25) or omit
+cwd = "/path/to/repo"
+executable_path = "/usr/local/bin/claude"
+```
+
 ## Complete Example
 
 ```toml
@@ -77,6 +97,13 @@ relays = [
     "wss://nos.lol",             # Backup
     "wss://relay.nostr.band",    # Additional coverage
 ]
+
+# Claude tunnel defaults
+[claude]
+enabled = true
+model = "claude-sonnet-4-20250514"
+autonomy = "supervised"
+approval_required_tools = ["Write", "Edit", "Bash"]
 
 # Data directory (uncomment to customize)
 # data_dir = "/custom/path"

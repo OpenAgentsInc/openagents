@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use editor::{EditorView, SyntaxLanguage};
 use wasm_bindgen::prelude::JsValue;
+use web_sys::WebSocket;
 use wgpui::{
     Bounds, Component, Cursor, EventContext, EventResult, InputEvent, MarkdownDocument,
     MarkdownView, Point, StreamingMarkdown,
@@ -68,6 +69,61 @@ pub(crate) struct RepoInfo {
     pub(crate) full_name: String,
     pub(crate) description: Option<String>,
     pub(crate) private: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ClaudeToolRequest {
+    pub(crate) session_id: String,
+    pub(crate) tool: String,
+    pub(crate) params: serde_json::Value,
+}
+
+pub(crate) struct ClaudeAgentState {
+    pub(crate) status: String,
+    pub(crate) repo: Option<String>,
+    pub(crate) tunnel_session_id: Option<String>,
+    pub(crate) tunnel_url: Option<String>,
+    pub(crate) browser_url: Option<String>,
+    pub(crate) connect_command: Option<String>,
+    pub(crate) tunnel_connected: bool,
+    pub(crate) ws: Option<WebSocket>,
+    pub(crate) claude_session_id: Option<String>,
+    pub(crate) pending_tool: Option<ClaudeToolRequest>,
+    pub(crate) streaming_text: String,
+}
+
+impl ClaudeAgentState {
+    pub(crate) fn reset(&mut self) {
+        self.status = "idle".to_string();
+        self.repo = None;
+        self.tunnel_session_id = None;
+        self.tunnel_url = None;
+        self.browser_url = None;
+        self.connect_command = None;
+        self.tunnel_connected = false;
+        self.ws = None;
+        self.claude_session_id = None;
+        self.pending_tool = None;
+        self.streaming_text.clear();
+    }
+}
+
+impl Default for ClaudeAgentState {
+    fn default() -> Self {
+        Self {
+            status: "idle".to_string(),
+            repo: None,
+            tunnel_session_id: None,
+            tunnel_url: None,
+            browser_url: None,
+            connect_command: None,
+            tunnel_connected: false,
+            ws: None,
+            claude_session_id: None,
+            pending_tool: None,
+            streaming_text: String::new(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -568,6 +624,12 @@ pub(crate) struct AppState {
     pub(crate) file_status: Option<String>,
     pub(crate) markdown_demo: MarkdownDemo,
     pub(crate) editor_workspace: EditorWorkspace,
+    // Autopilot chat overlay
+    pub(crate) autopilot_chat: crate::autopilot_chat::AutopilotChatPane,
+    // Claude chat overlay + tunnel state
+    pub(crate) claude_chat: crate::claude_chat::ClaudeChatPane,
+    pub(crate) claude_state: ClaudeAgentState,
+    pub(crate) intro_agent_state: crate::intro_agent::IntroAgentState,
 }
 
 impl Default for AppState {
@@ -634,6 +696,10 @@ impl Default for AppState {
             file_status: None,
             markdown_demo: MarkdownDemo::new(),
             editor_workspace: EditorWorkspace::new(),
+            autopilot_chat: crate::autopilot_chat::AutopilotChatPane::new(),
+            claude_chat: crate::claude_chat::ClaudeChatPane::new(),
+            claude_state: ClaudeAgentState::default(),
+            intro_agent_state: crate::intro_agent::IntroAgentState::default(),
         }
     }
 }

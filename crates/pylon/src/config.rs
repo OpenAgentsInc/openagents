@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use openagents_relay::ClaudeSessionAutonomy;
 
 /// Pylon configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +35,9 @@ pub struct PylonConfig {
     /// Spark wallet auth token
     #[serde(default)]
     pub spark_token: Option<String>,
+    /// Claude tunnel configuration
+    #[serde(default)]
+    pub claude: ClaudeConfig,
 }
 
 fn default_network() -> String {
@@ -67,8 +71,69 @@ impl Default for PylonConfig {
             enable_payments: true, // Enabled by default
             spark_url: None,
             spark_token: None,
+            claude: ClaudeConfig::default(),
         }
     }
+}
+
+/// Claude tunnel configuration for local Claude sessions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeConfig {
+    /// Whether Claude tunnel support is enabled.
+    #[serde(default = "default_claude_enabled")]
+    pub enabled: bool,
+    /// Default model to use.
+    #[serde(default = "default_claude_model")]
+    pub model: String,
+    /// Autonomy level for tool approvals.
+    #[serde(default)]
+    pub autonomy: ClaudeSessionAutonomy,
+    /// Tools that require approval when autonomy is supervised.
+    #[serde(default = "default_approval_tools")]
+    pub approval_required_tools: Vec<String>,
+    /// Tools allowed to run (empty = allow requested).
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
+    /// Tools blocked from running.
+    #[serde(default)]
+    pub blocked_tools: Vec<String>,
+    /// Default max cost per session (micro-USD).
+    #[serde(default)]
+    pub max_cost_usd: Option<u64>,
+    /// Default working directory for Claude sessions.
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
+    /// Optional explicit path to Claude executable.
+    #[serde(default)]
+    pub executable_path: Option<PathBuf>,
+}
+
+impl Default for ClaudeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            model: default_claude_model(),
+            autonomy: ClaudeSessionAutonomy::default(),
+            approval_required_tools: default_approval_tools(),
+            allowed_tools: Vec::new(),
+            blocked_tools: Vec::new(),
+            max_cost_usd: None,
+            cwd: None,
+            executable_path: None,
+        }
+    }
+}
+
+fn default_claude_enabled() -> bool {
+    true
+}
+
+fn default_claude_model() -> String {
+    "claude-sonnet-4-20250514".to_string()
+}
+
+fn default_approval_tools() -> Vec<String> {
+    vec!["Write".to_string(), "Edit".to_string(), "Bash".to_string()]
 }
 
 impl PylonConfig {

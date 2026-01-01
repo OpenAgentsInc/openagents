@@ -171,6 +171,12 @@ Everything is embedded:
 | `pylon status` | Show daemon and agent status |
 | `pylon logs` | Tail daemon logs |
 
+### Claude Tunnel
+
+| Command | Description |
+|---------|-------------|
+| `pylon connect --tunnel-url <url>` | Connect local Claude tunnel for the web UI |
+
 ### Agent Management
 
 | Command | Description |
