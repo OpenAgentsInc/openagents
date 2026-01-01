@@ -154,7 +154,11 @@ impl BrowserTool {
             return Ok(format!("No results found for query: {}", query));
         }
 
-        Ok(format_search_results(&results))
+        Ok(format!(
+            "Search results for: {}\n{}",
+            query,
+            format_search_results(&results)
+        ))
     }
 
     async fn find_text(&self, url: &str, text: &str) -> crate::Result<String> {

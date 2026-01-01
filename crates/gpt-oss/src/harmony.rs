@@ -182,33 +182,51 @@ impl HarmonyRenderer {
     }
 
     pub fn extract_assistant_text(&self, completion: &str) -> Result<String> {
-        let messages = self.parse_completion(completion, Some(Role::Assistant))?;
-        let mut text = String::new();
-        for message in messages.iter().rev() {
-            if message.author.role == Role::Assistant && message.recipient.is_none() {
-                for content in &message.content {
-                    if let Content::Text(TextContent { text: chunk }) = content {
-                        text.push_str(chunk);
-                    }
-                }
-                if !text.is_empty() {
-                    break;
-                }
-            }
+        if let Ok(text) = self.extract_assistant_text_with_role(completion, Some(Role::Assistant))
+        {
+            return Ok(text);
         }
 
-        if text.is_empty() {
-            return Err(GptOssError::HarmonyError(
-                "No assistant content found in completion".to_string(),
-            ));
-        }
-
-        Ok(text)
+        self.extract_assistant_text_with_role(completion, None)
     }
 
     pub fn encoding(&self) -> &HarmonyEncoding {
         &self.encoding
     }
+}
+
+impl HarmonyRenderer {
+    fn extract_assistant_text_with_role(
+        &self,
+        completion: &str,
+        role: Option<Role>,
+    ) -> Result<String> {
+        let messages = self.parse_completion(completion, role)?;
+        if let Some(text) = extract_assistant_text_from_messages(&messages) {
+            return Ok(text);
+        }
+
+        Err(GptOssError::HarmonyError(
+            "No assistant content found in completion".to_string(),
+        ))
+    }
+}
+
+fn extract_assistant_text_from_messages(messages: &[Message]) -> Option<String> {
+    for message in messages.iter().rev() {
+        if message.author.role == Role::Assistant && message.recipient.is_none() {
+            let mut text = String::new();
+            for content in &message.content {
+                if let Content::Text(TextContent { text: chunk }) = content {
+                    text.push_str(chunk);
+                }
+            }
+            if !text.is_empty() {
+                return Some(text);
+            }
+        }
+    }
+    None
 }
 
 pub use openai_harmony::chat::{
