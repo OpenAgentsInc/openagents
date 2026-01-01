@@ -91,10 +91,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 init_hud_runtime(state_clone.clone());
             }
 
-            // Connect to Nostr relay for NIP-90 events on landing page
-            if state_clone.borrow().view == AppView::Landing {
-                connect_nostr_relay(state_clone.clone());
-            }
+            // Nostr relay disabled on landing page for now
+            // if state_clone.borrow().view == AppView::Landing {
+            //     connect_nostr_relay(state_clone.clone());
+            // }
         });
     }
 

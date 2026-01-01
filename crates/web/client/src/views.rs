@@ -29,10 +29,10 @@ pub(crate) fn build_landing_page(
     let mut cx = PaintContext::new(scene, text_system, scale_factor);
     state.dots_grid = DotsGrid::new()
         .color(Hsla::new(0.0, 0.0, 1.0, 0.15)) // Faint white dots
-        .distance(24.0)
+        .distance(36.0)
         .size(1.0)
         .origin(DotsOrigin::Center);
-    state.dots_grid.update(AnimatorState::Entering);
+    state.dots_grid.update(AnimatorState::Entered);
     state.dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
     let scene = cx.scene;
     let text_system = cx.text;
@@ -61,47 +61,68 @@ pub(crate) fn build_landing_page(
     state.left_cta_bounds = Bounds::new(card_x, card_y, card_w, card_h);
 
     let mut hero_frame = Frame::corners()
-        .line_color(theme::text::MUTED)
-        .bg_color(theme::bg::SURFACE.with_alpha(0.0))
-        .glow_color(theme::text::MUTED.with_alpha(0.2))
+        .line_color(Hsla::new(0.0, 0.0, 1.0, 1.0)) // White corners
+        .bg_color(Hsla::new(0.0, 0.0, 1.0, 0.02)) // White 2% opacity
+        .glow_color(Hsla::new(0.0, 0.0, 1.0, 0.2))
         .stroke_width(1.0)
+        .corner_length(40.0) // 2x default
         .animation_progress(frame_progress);
 
     hero_frame.paint(state.left_cta_bounds, &mut cx);
 
-    // Title - "Autopilot ready"
-    let title_text = "Autopilot ready";
-    let title_width = cx.text.measure(title_text, 28.0);
+    // Content sizing
+    let title_size = 32.0;
+    let subtitle_size = 16.0;
+    let btn_h = 40.0;
+    let gap1 = 8.0;  // title to subtitle
+    let gap2 = 28.0; // subtitle to button
+
+    // Calculate total content height and center vertically
+    let content_h = title_size + gap1 + subtitle_size + gap2 + btn_h;
+    let content_start_y = card_y + (card_h - content_h) / 2.0;
+
+    // Title - "Autopilot"
+    let title_text = "Autopilot";
+    let title_width = cx.text.measure(title_text, title_size);
     let title_x = card_x + (card_w - title_width) / 2.0;
-    let title_run = cx.text.layout(title_text, Point::new(title_x, card_y + 40.0), 28.0, theme::text::PRIMARY);
+    let title_run = cx.text.layout(title_text, Point::new(title_x, content_start_y), title_size, theme::text::PRIMARY);
     cx.scene.draw_text(title_run);
 
-    // Subtitle - "Awaiting your command"
-    let subtitle_text = "Awaiting your command";
-    let subtitle_width = cx.text.measure(subtitle_text, 14.0);
+    // Subtitle - "Early access"
+    let subtitle_text = "Early access";
+    let subtitle_width = cx.text.measure(subtitle_text, subtitle_size);
     let subtitle_x = card_x + (card_w - subtitle_width) / 2.0;
-    let subtitle_run = cx.text.layout(subtitle_text, Point::new(subtitle_x, card_y + 76.0), 14.0, theme::text::MUTED);
+    let subtitle_y = content_start_y + title_size + gap1;
+    let subtitle_run = cx.text.layout(subtitle_text, Point::new(subtitle_x, subtitle_y), subtitle_size, theme::text::MUTED);
     cx.scene.draw_text(subtitle_run);
 
-    // Button - "Connect GitHub"
-    let btn_text = if state.loading { "Connecting..." } else { "Connect GitHub" };
-    let btn_w = 140.0;
-    let btn_h = 36.0;
+    // Button - "Log in with GitHub"
+    let btn_text = if state.loading { "Connecting..." } else { "Log in with GitHub" };
+    let btn_font_size = 15.0;
+    let btn_w = 180.0;
     let btn_x = card_x + (card_w - btn_w) / 2.0;
-    let btn_y = card_y + card_h - 60.0;
+    let btn_y = subtitle_y + subtitle_size + gap2;
     let btn_bg = if state.left_cta_hovered && !state.loading {
         theme::bg::ELEVATED
     } else {
         theme::bg::SURFACE
     };
-    cx.scene.draw_quad(
-        Quad::new(Bounds::new(btn_x, btn_y, btn_w, btn_h))
-            .with_background(btn_bg)
-            .with_border(theme::border::DEFAULT, 1.0)
-    );
-    let btn_text_width = cx.text.measure(btn_text, 13.0);
+    // Draw button border manually to ensure all sides show
+    let border_color = theme::border::DEFAULT;
+    // Top border
+    cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y, btn_w, 1.0)).with_background(border_color));
+    // Bottom border
+    cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y + btn_h - 1.0, btn_w, 1.0)).with_background(border_color));
+    // Left border
+    cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y, 1.0, btn_h)).with_background(border_color));
+    // Right border
+    cx.scene.draw_quad(Quad::new(Bounds::new(btn_x + btn_w - 1.0, btn_y, 1.0, btn_h)).with_background(border_color));
+    // Background (inside the border)
+    cx.scene.draw_quad(Quad::new(Bounds::new(btn_x + 1.0, btn_y + 1.0, btn_w - 2.0, btn_h - 2.0)).with_background(btn_bg));
+    let btn_text_width = cx.text.measure(btn_text, btn_font_size);
     let btn_text_x = btn_x + (btn_w - btn_text_width) / 2.0;
-    let btn_run = cx.text.layout(btn_text, Point::new(btn_text_x, btn_y + 10.0), 13.0, theme::text::PRIMARY);
+    let btn_text_y = btn_y + (btn_h - btn_font_size) / 2.0;
+    let btn_run = cx.text.layout(btn_text, Point::new(btn_text_x, btn_text_y), btn_font_size, theme::text::PRIMARY);
     cx.scene.draw_text(btn_run);
 
     // Set button bounds for click handling
@@ -185,10 +206,13 @@ pub(crate) fn build_landing_page(
             );
             scene.draw_text(pubkey_run);
 
-            // Issue reference or repo URL
+            // Issue reference or repo URL (UTF-8 safe truncation)
             let ref_text = job.issue_ref.as_ref()
                 .or(job.repo_url.as_ref())
-                .map(|s| if s.len() > 25 { format!("{}...", &s[..22]) } else { s.clone() })
+                .map(|s| if s.chars().count() > 25 {
+                    let safe_end = s.char_indices().nth(22).map(|(i, _)| i).unwrap_or(s.len());
+                    format!("{}...", &s[..safe_end])
+                } else { s.clone() })
                 .unwrap_or_else(|| "—".to_string());
             let ref_run = text_system.layout(
                 &ref_text,
@@ -786,8 +810,15 @@ pub(crate) fn build_landing_page(
                 .unwrap_or("")
                 .trim();
 
-            let content_preview = if first_line.len() > max_content_chars {
-                format!("{}...", &first_line[..max_content_chars.saturating_sub(3)])
+            let content_preview = if first_line.chars().count() > max_content_chars {
+                // Safe UTF-8 truncation using char boundaries
+                let truncate_at = max_content_chars.saturating_sub(3);
+                let safe_end = first_line
+                    .char_indices()
+                    .nth(truncate_at)
+                    .map(|(i, _)| i)
+                    .unwrap_or(first_line.len());
+                format!("{}...", &first_line[..safe_end])
             } else {
                 first_line.to_string()
             };
@@ -1007,8 +1038,9 @@ pub(crate) fn build_repo_selector(
             }
 
             if let Some(desc) = &repo.description {
-                let desc_truncated = if desc.len() > 80 {
-                    format!("{}...", &desc[..77])
+                let desc_truncated = if desc.chars().count() > 80 {
+                    let safe_end = desc.char_indices().nth(77).map(|(i, _)| i).unwrap_or(desc.len());
+                    format!("{}...", &desc[..safe_end])
                 } else {
                     desc.clone()
                 };
@@ -1831,9 +1863,10 @@ fn draw_job_detail(
             );
             scene.draw_text(type_run);
 
-            // Truncate long input values
-            let value = if input.value.len() > 60 {
-                format!("{}...", &input.value[..57])
+            // Truncate long input values (UTF-8 safe)
+            let value = if input.value.chars().count() > 60 {
+                let safe_end = input.value.char_indices().nth(57).map(|(i, _)| i).unwrap_or(input.value.len());
+                format!("{}...", &input.value[..safe_end])
             } else {
                 input.value.clone()
             };
