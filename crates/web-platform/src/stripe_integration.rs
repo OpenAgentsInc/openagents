@@ -61,7 +61,7 @@ pub async fn checkout_success(req: HttpRequest) -> Result<HttpResponse> {
             <title>Payment Successful - OpenAgents</title>
             <style>
                 body {
-                    font-family: 'Vera Mono', monospace;
+                    font-family: 'Square721StdRoman', 'Helvetica Neue', Arial, sans-serif;
                     background: #0a0a0a;
                     color: #e0e0e0;
                     display: flex;
@@ -109,7 +109,7 @@ pub async fn checkout_cancel() -> Result<HttpResponse> {
             <title>Payment Cancelled - OpenAgents</title>
             <style>
                 body {
-                    font-family: 'Vera Mono', monospace;
+                    font-family: 'Square721StdRoman', 'Helvetica Neue', Arial, sans-serif;
                     background: #0a0a0a;
                     color: #e0e0e0;
                     display: flex;

@@ -479,7 +479,7 @@ fn demo_font_sizes(
     let mut text_y = *y + 10.0;
 
     for size in sizes {
-        let text = format!("{}px - Vera Mono", size as i32);
+        let text = format!("{}px - Square721 Std Roman", size as i32);
         let run = text_system.layout(
             &text,
             Point::new(x + 10.0, text_y),

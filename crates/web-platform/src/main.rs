@@ -38,7 +38,7 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Vera Mono', 'Monaco', 'Courier New', monospace;
+            font-family: 'Square721StdRoman', 'Helvetica Neue', Arial, sans-serif;
             background: #0a0a0a;
             color: #e0e0e0;
             line-height: 1.6;

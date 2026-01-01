@@ -411,7 +411,7 @@ User Input → AppState → Scene → Renderer → GPU → Canvas
 "Hello" → TextSystem → TextRun → Scene → GPU
 
 TextSystem (cosmic-text):
-├── FontDB (embedded Vera Mono)
+├── FontDB (embedded Square721 Std Roman + Vera Mono)
 ├── Shaper (rustybuzz)
 ├── GlyphCache (atlas)
 └── Layout engine

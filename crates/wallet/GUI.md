@@ -55,7 +55,7 @@ openagents wallet init
 ## UI Conventions
 
 - WGPUI-only rendering, no web stack
-- Vera Mono embedded via WGPUI TextSystem
+- Square721 Std Roman default; Vera Mono embedded for monospace via WGPUI TextSystem
 - Sharp corners (no border radius)
 - Inline-first layout styling
 
