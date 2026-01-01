@@ -218,6 +218,7 @@ impl OpenAgentsClient {
         permission_handler: Arc<dyn PermissionHandler>,
         root_dir: PathBuf,
     ) -> Self {
+        let root_dir = root_dir.canonicalize().unwrap_or(root_dir);
         Self {
             sessions,
             permission_handler,
