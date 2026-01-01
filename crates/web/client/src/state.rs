@@ -743,7 +743,7 @@ fn tokenize_markdown(source: &str) -> VecDeque<String> {
 }
 
 fn demo_editor_source() -> String {
-    let source = include_str!("views.rs");
+    let source = include_str!("views/landing.rs");
     source
         .lines()
         .take(160)

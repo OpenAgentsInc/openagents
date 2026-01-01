@@ -329,8 +329,6 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         (repo_full.clone(), "".to_string())
                     };
 
-                    let share_owner = owner.clone();
-                    let share_repo = repo_name.clone();
                     state.selected_repo = Some(repo_full.clone());
                     state.hud_context = Some(HudContext {
                         username: owner,
@@ -362,12 +360,6 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     wasm_bindgen_futures::spawn_local(async move {
                         ensure_hud_session(state_for_session, repo_full).await;
                     });
-                    if let Some(window) = web_sys::window() {
-                        if let Ok(history) = window.history() {
-                            let path = format!("/hud/@{}/{}", share_owner, share_repo);
-                            let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&path));
-                        }
-                    }
                     return;
                 }
             }
