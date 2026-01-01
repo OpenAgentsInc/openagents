@@ -31,10 +31,19 @@ pub(crate) fn start_claude_chat(state: Rc<RefCell<AppState>>, repo: String) {
     wasm_bindgen_futures::spawn_local(async move {
         match register_tunnel(&repo).await {
             Ok(response) => {
-                let connect_command = format!(
-                    "openagents pylon connect --tunnel-url {}",
-                    response.tunnel_url
-                );
+                // Use cargo run in dev mode (non-production URLs)
+                let is_prod = response.tunnel_url.contains("openagents.com");
+                let connect_command = if is_prod {
+                    format!(
+                        "openagents pylon connect --tunnel-url {}",
+                        response.tunnel_url
+                    )
+                } else {
+                    format!(
+                        "cargo run --bin openagents -- pylon connect --tunnel-url {}",
+                        response.tunnel_url
+                    )
+                };
 
                 {
                     let mut guard = state_clone.borrow_mut();

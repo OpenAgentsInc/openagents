@@ -360,6 +360,16 @@ pub async fn chat_completion_stream(
         llm_body["tool_choice"] = tool_choice.clone();
     }
 
+    // Add system if provided
+    if let Some(system) = &request.system {
+        llm_body["system"] = serde_json::json!(system);
+    }
+
+    // Add temperature if provided
+    if let Some(temp) = request.temperature {
+        llm_body["temperature"] = serde_json::json!(temp);
+    }
+
     let headers = Headers::new();
     headers.set("Authorization", &format!("Bearer {}", stripe_secret))?;
     headers.set("Content-Type", "application/json")?;

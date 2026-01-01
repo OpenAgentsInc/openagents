@@ -950,7 +950,7 @@ async fn run_agent_loop(
         },
     ];
 
-    let max_iterations = 50;
+    let max_iterations = 15;
     let mut iteration = 0;
     let mut consecutive_errors = 0;
     let max_consecutive_errors = 3;
@@ -1164,7 +1164,8 @@ async fn fetch_ai_with_tools(messages: &[Message]) -> Result<AiResponse, String>
         "model": "anthropic/claude-sonnet-4.5",
         "max_tokens": 4096,
         "tools": get_tools(),
-        "tool_choice": "auto"
+        "tool_choice": "auto",
+        "system": "You are an AI agent exploring a GitHub repository. You MUST use the provided tools (recall_knowledge, view_folder, view_file) to gather information about the repository. Do NOT answer questions without using tools first. Always start by calling recall_knowledge to check what you already know, then use view_folder and view_file to explore the repository structure and code."
     });
 
     let opts = web_sys::RequestInit::new();
@@ -1216,7 +1217,8 @@ async fn stream_ai_with_tools(
         "model": "anthropic/claude-sonnet-4.5",
         "max_tokens": 4096,
         "tools": get_tools(),
-        "tool_choice": "auto"
+        "tool_choice": "auto",
+        "system": "You are an AI agent exploring a GitHub repository. You MUST use the provided tools (recall_knowledge, view_folder, view_file) to gather information about the repository. Do NOT answer questions without using tools first. Always start by calling recall_knowledge to check what you already know, then use view_folder and view_file to explore the repository structure and code."
     });
 
     let opts = web_sys::RequestInit::new();
@@ -1317,13 +1319,16 @@ async fn stream_ai_with_tools(
                                         if let Some(id) = tc.get("id").and_then(|i| i.as_str()) {
                                             // Save previous tool call if any
                                             if let Some((prev_id, prev_name, prev_args)) = current_tool_call.take() {
-                                                if let Ok(input) = serde_json::from_str::<serde_json::Value>(&prev_args) {
-                                                    tool_calls.push(ToolUseBlock {
-                                                        id: prev_id,
-                                                        name: prev_name,
-                                                        input,
-                                                    });
-                                                }
+                                                let input = if prev_args.is_empty() {
+                                                    serde_json::json!({})
+                                                } else {
+                                                    serde_json::from_str::<serde_json::Value>(&prev_args).unwrap_or(serde_json::json!({}))
+                                                };
+                                                tool_calls.push(ToolUseBlock {
+                                                    id: prev_id,
+                                                    name: prev_name,
+                                                    input,
+                                                });
                                             }
 
                                             let name = tc.get("function")
@@ -1354,9 +1359,13 @@ async fn stream_ai_with_tools(
 
     // Finalize any remaining tool call
     if let Some((id, name, args)) = current_tool_call.take() {
-        if let Ok(input) = serde_json::from_str::<serde_json::Value>(&args) {
-            tool_calls.push(ToolUseBlock { id, name, input });
-        }
+        // Empty args should be treated as empty object {}
+        let input = if args.is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::from_str::<serde_json::Value>(&args).unwrap_or(serde_json::json!({}))
+        };
+        tool_calls.push(ToolUseBlock { id, name, input });
     }
 
     Ok(AiResponse {
