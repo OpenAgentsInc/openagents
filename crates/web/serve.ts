@@ -11,6 +11,13 @@ const mimeTypes: Record<string, string> = {
 
 const PORT = parseInt(process.env.PORT || '3000');
 
+// Kill any process using the port
+try {
+  await Bun.$`fuser -k ${PORT}/tcp 2>/dev/null`.quiet();
+} catch {
+  // No process on port, that's fine
+}
+
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
