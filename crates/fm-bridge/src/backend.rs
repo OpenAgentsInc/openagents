@@ -12,9 +12,16 @@ use crate::{CompletionOptions, FMClient};
 impl LocalModelBackend for FMClient {
     async fn initialize(&mut self) -> Result<()> {
         // Verify the server is reachable
-        self.health()
+        let healthy = self
+            .health()
             .await
             .map_err(|e| LocalModelError::InitializationError(e.to_string()))?;
+        if !healthy {
+            return Err(LocalModelError::InitializationError(
+                "FM-bridge health check failed".to_string(),
+            ));
+        }
+        self.mark_ready(true);
         Ok(())
     }
 
@@ -131,11 +138,15 @@ impl LocalModelBackend for FMClient {
     }
 
     async fn is_ready(&self) -> bool {
+        if !self.is_ready_flag() {
+            return false;
+        }
         self.health().await.unwrap_or(false)
     }
 
     async fn shutdown(&mut self) -> Result<()> {
         // No cleanup needed for HTTP client
+        self.mark_ready(false);
         Ok(())
     }
 }

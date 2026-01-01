@@ -86,14 +86,17 @@ async fn test_fm_bridge_list_models() {
     Mock::given(method("GET"))
         .and(path("/v1/models"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list",
             "data": [
                 {
                     "id": "apple-intelligence-1",
+                    "object": "model",
                     "owned_by": "Apple",
                     "created": 1234567890
                 },
                 {
                     "id": "apple-intelligence-2",
+                    "object": "model",
                     "owned_by": "Apple",
                     "created": 1234567891
                 }
@@ -131,9 +134,11 @@ async fn test_fm_bridge_get_model_info() {
     Mock::given(method("GET"))
         .and(path("/v1/models"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list",
             "data": [
                 {
                     "id": "apple-intelligence-1",
+                    "object": "model",
                     "owned_by": "Apple",
                     "created": 1234567890
                 }
@@ -177,9 +182,12 @@ async fn test_fm_bridge_complete() {
         .and(path("/v1/chat/completions"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "completion-abc",
+            "object": "chat.completion",
+            "created": 1234567890,
             "model": "apple-intelligence-1",
             "choices": [
                 {
+                    "index": 0,
                     "message": {
                         "role": "assistant",
                         "content": "Rust is a systems programming language focused on safety and performance."
@@ -243,9 +251,12 @@ async fn test_fm_bridge_complete_simple() {
         .and(path("/v1/chat/completions"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "completion-def",
+            "object": "chat.completion",
+            "created": 1234567891,
             "model": "apple-intelligence-1",
             "choices": [
                 {
+                    "index": 0,
                     "message": {
                         "role": "assistant",
                         "content": "Rust is great for systems programming."
@@ -300,10 +311,11 @@ async fn test_fm_bridge_complete_stream() {
         .respond_with(
             ResponseTemplate::new(200)
                 .set_body_string(
-                    "data: {\"text\":\"Rust\",\"finish_reason\":null}\n\n\
-                     data: {\"text\":\" is\",\"finish_reason\":null}\n\n\
-                     data: {\"text\":\" amazing\",\"finish_reason\":null}\n\n\
-                     data: {\"text\":\"!\",\"finish_reason\":\"stop\"}\n\n",
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"Rust\"},\"finish_reason\":null}]}\n\n\
+                     data: {\"choices\":[{\"delta\":{\"content\":\" is\"},\"finish_reason\":null}]}\n\n\
+                     data: {\"choices\":[{\"delta\":{\"content\":\" amazing\"},\"finish_reason\":null}]}\n\n\
+                     data: {\"choices\":[{\"delta\":{\"content\":\"!\"},\"finish_reason\":\"stop\"}]}\n\n\
+                     data: [DONE]\n\n",
                 )
                 .insert_header("content-type", "text/event-stream"),
         )
@@ -363,9 +375,11 @@ async fn test_fm_bridge_has_model() {
     Mock::given(method("GET"))
         .and(path("/v1/models"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list",
             "data": [
                 {
                     "id": "apple-intelligence-1",
+                    "object": "model",
                     "owned_by": "Apple",
                     "created": 1234567890
                 }
