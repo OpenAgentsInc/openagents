@@ -1,4 +1,5 @@
 mod app;
+mod fs_access;
 mod hud;
 mod nostr;
 mod state;

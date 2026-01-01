@@ -51,3 +51,13 @@ pub(crate) fn copy_to_clipboard(text: String) {
         let _ = JsFuture::from(promise).await;
     });
 }
+
+pub(crate) async fn read_clipboard_text() -> Result<String, String> {
+    let window = web_sys::window().ok_or_else(|| "Missing window".to_string())?;
+    let promise = window.navigator().clipboard().read_text();
+    let text = JsFuture::from(promise)
+        .await
+        .map_err(|_| "Clipboard read failed".to_string())?;
+    text.as_string()
+        .ok_or_else(|| "Clipboard read failed".to_string())
+}

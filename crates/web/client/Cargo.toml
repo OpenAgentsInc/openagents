@@ -30,6 +30,7 @@ web-sys = { version = "0.3", features = [
     "KeyboardEvent",
     "Navigator",
     "Clipboard",
+    "CompositionEvent",
     "MouseEvent",
     "WheelEvent",
     "WebSocket",
