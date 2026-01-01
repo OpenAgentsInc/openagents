@@ -3,6 +3,8 @@
 //! Note: The full BrowserRuntime uses Timestamp::now() which depends on native time APIs
 //! that don't work in WASM. This simplified version uses direct async/fetch for exploration.
 
+#![allow(dead_code)]
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -1309,7 +1311,7 @@ async fn stream_ai_with_tools(
                                 // Extract tool_calls (OpenAI streaming format)
                                 if let Some(tc_array) = delta.get("tool_calls").and_then(|t| t.as_array()) {
                                     for tc in tc_array {
-                                        let index = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
+                                        let _index = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
 
                                         // New tool call starting
                                         if let Some(id) = tc.get("id").and_then(|i| i.as_str()) {

@@ -168,7 +168,7 @@ async fn stripe_request(
     url: &str,
     body: Option<&str>,
 ) -> Result<String> {
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     headers.set(
         "Authorization",
         &format!("Bearer {}", secret_key),
@@ -191,6 +191,84 @@ async fn stripe_request(
     let mut response = Fetch::Request(request).send().await?;
 
     response.text().await
+}
+
+/// Stripe LLM proxy chat completion request
+#[derive(Debug, serde::Serialize)]
+pub struct LlmChatRequest {
+    pub model: String,
+    pub messages: Vec<LlmMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct LlmMessage {
+    pub role: String,
+    pub content: String,
+}
+
+/// Stripe LLM proxy chat completion response
+#[derive(Debug, Deserialize)]
+pub struct LlmChatResponse {
+    pub id: String,
+    pub model: String,
+    pub choices: Vec<LlmChoice>,
+    pub usage: Option<LlmUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LlmChoice {
+    pub index: u32,
+    pub message: LlmMessage,
+    pub finish_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LlmUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
+/// Call Stripe's LLM proxy for chat completions
+pub async fn llm_chat_completion(
+    secret_key: &str,
+    customer_id: &str,
+    request: &LlmChatRequest,
+) -> Result<LlmChatResponse> {
+    let body = serde_json::to_string(request)
+        .map_err(|e| Error::RustError(format!("Failed to serialize request: {}", e)))?;
+
+    let headers = Headers::new();
+    headers.set("Authorization", &format!("Bearer {}", secret_key))?;
+    headers.set("Content-Type", "application/json")?;
+    headers.set("X-Stripe-Customer-ID", customer_id)?;
+
+    let mut init = RequestInit::new();
+    init.with_method(Method::Post);
+    init.with_headers(headers);
+    init.with_body(Some(JsValue::from_str(&body)));
+
+    let request = Request::new_with_init("https://llm.stripe.com/chat/completions", &init)?;
+    let mut response = Fetch::Request(request).send().await?;
+
+    let status = response.status_code();
+    let text = response.text().await?;
+
+    if status != 200 {
+        return Err(Error::RustError(format!(
+            "LLM API error ({}): {}",
+            status, text
+        )));
+    }
+
+    serde_json::from_str(&text)
+        .map_err(|e| Error::RustError(format!("Failed to parse LLM response: {} - {}", e, text)))
 }
 
 // We need hex encoding for the signature verification

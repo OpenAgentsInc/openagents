@@ -13,7 +13,7 @@
     "build": "bun run build:client && bun run build:client:opt && bun run build:dist",
     "dev": "bun serve.ts",
     "dev:worker": "bun run build && npx wrangler dev --local",
-    "deploy": "bun run build && bun run build:worker && npx wrangler deploy",
+    "deploy": "bun run build && bun run build:worker && npx wrangler deploy --env \"\"",
     "deploy:preview": "bun run build && bun run build:worker && npx wrangler deploy --env preview",
     "deploy:wallet": "bun run build:wallet-worker && npx wrangler deploy --config wrangler-wallet.toml",
     "dev:wallet": "bun run build:wallet-worker && npx wrangler dev --config wrangler-wallet.toml --local",
@@ -22,6 +22,8 @@
     "db:migrate:prod": "npx wrangler d1 migrations apply openagents",
     "kv:create": "npx wrangler kv:namespace create SESSIONS",
     "cf:tail": "npx wrangler tail",
+    "test:knowledge-api": "./test-knowledge-api.sh",
+    "test:knowledge-api:prod": "./test-knowledge-api.sh https://openagents-web.openagents.workers.dev",
     "setup": "bun run db:create && bun run kv:create && echo 'Update wrangler.toml with the IDs above, then run: bun run db:migrate'"
   },
   "devDependencies": {

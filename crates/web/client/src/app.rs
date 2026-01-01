@@ -11,7 +11,6 @@ use wgpui::{
 
 use crate::claude_agent;
 use crate::claude_chat::ClaudeChatAction;
-use crate::autopilot_chat::AutopilotAction;
 use crate::hud::{
     dispatch_hud_event, ensure_hud_session, fetch_live_hud, get_hud_context, init_hud_runtime,
     stop_metrics_poll, update_hud_settings, HudContext,
@@ -993,14 +992,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         drop(state);
 
         if !autopilot_actions.is_empty() {
-            for action in autopilot_actions {
-                if let AutopilotAction::StartClaude = action {
-                    if let Some(repo) = selected_repo.clone() {
-                        if let Ok(mut guard) = state_handle.try_borrow_mut() {
-                            guard.autopilot_chat.hide();
-                        }
-                        claude_agent::start_claude_chat(state_handle.clone(), repo);
+            for _action in autopilot_actions {
+                if let Some(repo) = selected_repo.clone() {
+                    if let Ok(mut guard) = state_handle.try_borrow_mut() {
+                        guard.autopilot_chat.hide();
                     }
+                    claude_agent::start_claude_chat(state_handle.clone(), repo);
                 }
             }
         }
@@ -1164,6 +1161,7 @@ async fn fetch_repos() -> Vec<RepoInfo> {
     repos
 }
 
+#[allow(dead_code)]
 fn connect_nostr_relay(state: Rc<RefCell<AppState>>) {
     // Use the first default relay
     let relay_url = DEFAULT_RELAYS[0];

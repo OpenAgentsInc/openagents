@@ -39,7 +39,7 @@ pub async fn exchange_code(
         "code": code
     });
 
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     headers.set("Accept", "application/json")?;
     headers.set("Content-Type", "application/json")?;
     headers.set("User-Agent", "OpenAgents-Worker/1.0")?;
@@ -63,7 +63,7 @@ pub async fn exchange_code(
 
 /// Get authenticated user info
 pub async fn get_user(access_token: &str) -> Result<GitHubUser> {
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     headers.set("Accept", "application/json")?;
     headers.set("Authorization", &format!("Bearer {}", access_token))?;
     headers.set("User-Agent", "OpenAgents-Worker/1.0")?;
@@ -83,7 +83,7 @@ pub async fn get_user(access_token: &str) -> Result<GitHubUser> {
 
 /// Get user's emails
 pub async fn get_emails(access_token: &str) -> Result<Vec<GitHubEmail>> {
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     headers.set("Accept", "application/json")?;
     headers.set("Authorization", &format!("Bearer {}", access_token))?;
     headers.set("User-Agent", "OpenAgents-Worker/1.0")?;
@@ -113,7 +113,7 @@ pub struct GitHubRepo {
 }
 
 pub async fn get_repos(access_token: &str) -> Result<Vec<GitHubRepo>> {
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     headers.set("Accept", "application/json")?;
     headers.set("Authorization", &format!("Bearer {}", access_token))?;
     headers.set("User-Agent", "OpenAgents-Worker/1.0")?;

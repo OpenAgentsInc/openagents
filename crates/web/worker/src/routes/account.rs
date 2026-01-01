@@ -63,7 +63,7 @@ pub async fn delete_account(user: AuthenticatedUser, env: Env) -> Result<Respons
     let kv = env.kv("SESSIONS")?;
     crate::db::sessions::Session::delete(&kv, &user.session_token).await?;
 
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     headers.set(
         "Set-Cookie",
         &crate::db::sessions::clear_session_cookie(),

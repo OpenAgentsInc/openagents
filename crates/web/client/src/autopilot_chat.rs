@@ -138,6 +138,7 @@ impl AutopilotChatPane {
     }
 
     /// Update the last tool entry with new status (for streaming updates).
+    #[allow(dead_code)]
     pub(crate) fn update_last_tool(&mut self, status: &str) {
         if let Some(entry) = self.thread.last_entry_mut() {
             entry.set_content(Text::new(status));
@@ -323,6 +324,7 @@ impl AutopilotChatPane {
     }
 
     /// Get cursor for current state.
+    #[allow(dead_code)]
     pub(crate) fn cursor(&self, point: Point) -> Cursor {
         if !self.visible {
             return Cursor::Default;

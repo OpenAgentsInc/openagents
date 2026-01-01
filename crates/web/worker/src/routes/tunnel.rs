@@ -75,10 +75,10 @@ pub async fn status(env: Env, session_id: String) -> Result<Response> {
         Some(session) => {
             // Get DO to check if tunnel is connected
             let namespace = env.durable_object("TUNNEL_RELAY")?;
-            let stub = namespace.id_from_name(&session_id)?.get_stub()?;
+            let _stub = namespace.id_from_name(&session_id)?.get_stub()?;
 
             // Ping the DO to check status
-            let status_req = Request::new(
+            let _status_req = Request::new(
                 &format!("https://internal/status?session_id={}", session_id),
                 Method::Get,
             )?;
