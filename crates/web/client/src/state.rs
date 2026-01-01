@@ -135,6 +135,7 @@ pub(crate) enum AppView {
     RepoView,
     GfnPage,
     Y2026Page,
+    BrbPage,
 }
 
 /// State for the GFN (Group Forming Networks) page

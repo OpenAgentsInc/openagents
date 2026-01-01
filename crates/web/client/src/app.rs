@@ -17,7 +17,7 @@ use crate::hud::{
 };
 use crate::nostr::{connect_to_relay, BazaarJob, DEFAULT_RELAYS};
 use crate::state::{AppState, AppView, RepoInfo, UserInfo};
-use crate::views::{build_2026_page, build_gfn_page, build_landing_page, build_repo_selector, build_repo_view};
+use crate::views::{build_2026_page, build_brb_page, build_gfn_page, build_landing_page, build_repo_selector, build_repo_view};
 use crate::fs_access::{self, FileKind};
 use crate::utils::{read_clipboard_text, track_funnel_event};
 // Wallet disabled
@@ -52,6 +52,18 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         .map(|v| v.is_truthy())
         .unwrap_or(false);
 
+    // Check for BRB page flag (new homepage)
+    let is_brb_page = web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &"BRB_PAGE".into()).ok())
+        .map(|v| v.is_truthy())
+        .unwrap_or(false);
+
+    // Check for Early page flag (old landing at /early)
+    let is_early_page = web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &"EARLY_PAGE".into()).ok())
+        .map(|v| v.is_truthy())
+        .unwrap_or(false);
+
     if is_gfn_page {
         let mut state_guard = state.borrow_mut();
         state_guard.loading = false;
@@ -61,6 +73,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         let mut state_guard = state.borrow_mut();
         state_guard.loading = false;
         state_guard.view = AppView::Y2026Page;
+        drop(state_guard);
+    } else if is_brb_page {
+        let mut state_guard = state.borrow_mut();
+        state_guard.loading = false;
+        state_guard.view = AppView::BrbPage;
+        drop(state_guard);
+    } else if is_early_page {
+        let mut state_guard = state.borrow_mut();
+        state_guard.loading = false;
+        state_guard.view = AppView::Landing;
         drop(state_guard);
     } else if let Some(context) = get_hud_context() {
         let mut state_guard = state.borrow_mut();
@@ -81,16 +103,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 let mut state = state_clone.borrow_mut();
                 state.loading = false;
 
+                // WAITLIST MODE: Everyone sees landing page, no repo selector
                 if let Some(info) = user_info.clone() {
                     state.user = info;
-                    state.view = AppView::RepoSelector;
-                    state.repos_loading = true;
-                } else if let Some(live) = live_hud.clone() {
+                }
+                if let Some(live) = live_hud.clone() {
                     state.hud_ui.status_text = live.hud_context.status.clone();
                     state.hud_context = Some(live.hud_context.clone());
                     state.landing_live = Some(live);
-                    state.view = AppView::Landing;
                 }
+                state.view = AppView::Landing;
 
                 if user_info.is_none() && !state.funnel_landing_tracked {
                     state.funnel_landing_tracked = true;
@@ -105,7 +127,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 track_funnel_event("landing_view", track_landing_repo);
             }
 
-            if user_info.is_some() {
+            // WAITLIST MODE: Skip repo loading and auto-select
+            if false && user_info.is_some() {
                 // Wallet disabled
                 // queue_wallet_actions(state_clone.clone(), vec![WalletAction::Refresh]);
 
@@ -637,6 +660,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         AppView::Y2026Page => {
                             // No button action on 2026 page
                         }
+                        AppView::BrbPage => {
+                            // No button action on BRB page
+                        }
                     }
                 }
             }
@@ -1093,6 +1119,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             }
             AppView::Y2026Page => {
                 build_2026_page(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
+            }
+            AppView::BrbPage => {
+                build_brb_page(
                     &mut scene,
                     platform.text_system(),
                     &mut state,

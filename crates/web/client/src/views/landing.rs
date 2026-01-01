@@ -86,45 +86,61 @@ pub(crate) fn build_landing_page(
         let title_run = cx.text.layout(title_text, Point::new(title_x, content_start_y), title_size, theme::text::PRIMARY);
         cx.scene.draw_text(title_run);
 
-        // Subtitle - "Early access"
-        let subtitle_text = "Early access";
+        // Check if user is logged in
+        let is_logged_in = state.user.github_username.is_some();
+
+        // Subtitle - different text based on login status
+        let subtitle_text = if is_logged_in { "You're on the waitlist" } else { "Join the waitlist" };
         let subtitle_width = cx.text.measure(subtitle_text, subtitle_size);
         let subtitle_x = card_x + (card_w - subtitle_width) / 2.0;
-        let subtitle_y = content_start_y + title_size + gap1;
+        let subtitle_y = content_start_y + title_size + gap1 + 8.0; // +8 to move down
         let subtitle_run = cx.text.layout(subtitle_text, Point::new(subtitle_x, subtitle_y), subtitle_size, theme::text::MUTED);
         cx.scene.draw_text(subtitle_run);
 
-        // Button - "Log in with GitHub"
-        let btn_text = "Log in with GitHub";
-        let btn_font_size = 15.0;
-        let btn_w = 180.0;
-        let btn_x = card_x + (card_w - btn_w) / 2.0;
-        let btn_y = subtitle_y + subtitle_size + gap2;
-        let btn_bg = if state.left_cta_hovered {
-            theme::bg::ELEVATED
+        if is_logged_in {
+            // Show "We'll email you when we launch in January." for logged-in users
+            let msg_text = "We'll email you when we launch in January.";
+            let msg_font_size = 14.0;
+            let msg_width = cx.text.measure(msg_text, msg_font_size);
+            let msg_x = card_x + (card_w - msg_width) / 2.0;
+            let msg_y = subtitle_y + subtitle_size + gap2 + 10.0;
+            let msg_run = cx.text.layout(msg_text, Point::new(msg_x, msg_y), msg_font_size, theme::text::MUTED);
+            cx.scene.draw_text(msg_run);
+            // Clear button bounds so it's not clickable
+            state.button_bounds = Bounds::ZERO;
         } else {
-            theme::bg::SURFACE
-        };
-        // Draw button border manually to ensure all sides show
-        let border_color = theme::border::DEFAULT;
-        // Top border
-        cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y, btn_w, 1.0)).with_background(border_color));
-        // Bottom border
-        cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y + btn_h - 1.0, btn_w, 1.0)).with_background(border_color));
-        // Left border
-        cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y, 1.0, btn_h)).with_background(border_color));
-        // Right border
-        cx.scene.draw_quad(Quad::new(Bounds::new(btn_x + btn_w - 1.0, btn_y, 1.0, btn_h)).with_background(border_color));
-        // Background (inside the border)
-        cx.scene.draw_quad(Quad::new(Bounds::new(btn_x + 1.0, btn_y + 1.0, btn_w - 2.0, btn_h - 2.0)).with_background(btn_bg));
-        let btn_text_width = cx.text.measure(btn_text, btn_font_size);
-        let btn_text_x = btn_x + (btn_w - btn_text_width) / 2.0;
-        let btn_text_y = btn_y + (btn_h - btn_font_size) / 2.0 - 2.0; // -2 to visually center
-        let btn_run = cx.text.layout(btn_text, Point::new(btn_text_x, btn_text_y), btn_font_size, theme::text::PRIMARY);
-        cx.scene.draw_text(btn_run);
+            // Button - "Log in with GitHub" for non-logged-in users
+            let btn_text = "Log in with GitHub";
+            let btn_font_size = 15.0;
+            let btn_w = 180.0;
+            let btn_x = card_x + (card_w - btn_w) / 2.0;
+            let btn_y = subtitle_y + subtitle_size + gap2;
+            let btn_bg = if state.left_cta_hovered {
+                theme::bg::ELEVATED
+            } else {
+                theme::bg::SURFACE
+            };
+            // Draw button border manually to ensure all sides show
+            let border_color = theme::border::DEFAULT;
+            // Top border
+            cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y, btn_w, 1.0)).with_background(border_color));
+            // Bottom border
+            cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y + btn_h - 1.0, btn_w, 1.0)).with_background(border_color));
+            // Left border
+            cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y, 1.0, btn_h)).with_background(border_color));
+            // Right border
+            cx.scene.draw_quad(Quad::new(Bounds::new(btn_x + btn_w - 1.0, btn_y, 1.0, btn_h)).with_background(border_color));
+            // Background (inside the border)
+            cx.scene.draw_quad(Quad::new(Bounds::new(btn_x + 1.0, btn_y + 1.0, btn_w - 2.0, btn_h - 2.0)).with_background(btn_bg));
+            let btn_text_width = cx.text.measure(btn_text, btn_font_size);
+            let btn_text_x = btn_x + (btn_w - btn_text_width) / 2.0;
+            let btn_text_y = btn_y + (btn_h - btn_font_size) / 2.0 - 2.0; // -2 to visually center
+            let btn_run = cx.text.layout(btn_text, Point::new(btn_text_x, btn_text_y), btn_font_size, theme::text::PRIMARY);
+            cx.scene.draw_text(btn_run);
 
-        // Set button bounds for click handling
-        state.button_bounds = Bounds::new(btn_x, btn_y, btn_w, btn_h);
+            // Set button bounds for click handling
+            state.button_bounds = Bounds::new(btn_x, btn_y, btn_w, btn_h);
+        }
 
         (cx.scene, cx.text)
     } else {
