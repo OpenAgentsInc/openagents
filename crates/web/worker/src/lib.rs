@@ -221,6 +221,12 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             routes::stripe::webhook(env, signature, body).await
         }
 
+        // GFN (Group Forming Networks) page - public educational page
+        (Method::Get, "/gfn") => routes::gfn::view_gfn(env).await,
+
+        // 2026 page - key themes and links
+        (Method::Get, "/2026") => routes::y2026::view_2026(env).await,
+
         // Embed route: /repo/:username/:repo/embed
         (Method::Get, path) if path.starts_with("/repo/") && path.ends_with("/embed") => {
             let inner = path.trim_start_matches("/repo/").trim_end_matches("/embed");

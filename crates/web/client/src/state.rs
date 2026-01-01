@@ -133,6 +133,75 @@ pub(crate) enum AppView {
     Landing,
     RepoSelector,
     RepoView,
+    GfnPage,
+    Y2026Page,
+}
+
+/// State for the GFN (Group Forming Networks) page
+pub(crate) struct GfnState {
+    /// Current node count (N), range 2-50
+    pub(crate) node_count: u32,
+    /// Slider track bounds for hit detection
+    pub(crate) slider_bounds: Bounds,
+    /// Whether the slider is being dragged
+    pub(crate) slider_dragging: bool,
+    /// Hover state for Metcalfe network diagram
+    pub(crate) hover_metcalfe: bool,
+    /// Hover state for Reed network diagram
+    pub(crate) hover_reed: bool,
+    /// CTA button bounds
+    pub(crate) cta_bounds: Bounds,
+    /// CTA button hover state
+    pub(crate) cta_hovered: bool,
+    /// Frame animator for the main card
+    pub(crate) frame_animator: FrameAnimator,
+    /// Whether the frame animation has started
+    pub(crate) frame_started: bool,
+    /// Scroll offset for the content
+    pub(crate) scroll_offset: f32,
+    /// Content bounds for scroll detection
+    pub(crate) content_bounds: Bounds,
+    /// Total content height for scroll calculation
+    pub(crate) content_height: f32,
+}
+
+impl Default for GfnState {
+    fn default() -> Self {
+        Self {
+            node_count: 8,
+            slider_bounds: Bounds::ZERO,
+            slider_dragging: false,
+            hover_metcalfe: false,
+            hover_reed: false,
+            cta_bounds: Bounds::ZERO,
+            cta_hovered: false,
+            frame_animator: FrameAnimator::new(),
+            frame_started: false,
+            scroll_offset: 0.0,
+            content_bounds: Bounds::ZERO,
+            content_height: 0.0,
+        }
+    }
+}
+
+/// State for the 2026 page
+pub(crate) struct Y2026State {
+    /// Frame animator for the main card
+    pub(crate) frame_animator: FrameAnimator,
+    /// Whether the frame animation has started
+    pub(crate) frame_started: bool,
+    /// Link bounds for click detection (bounds, url)
+    pub(crate) link_bounds: Vec<(Bounds, String)>,
+}
+
+impl Default for Y2026State {
+    fn default() -> Self {
+        Self {
+            frame_animator: FrameAnimator::new(),
+            frame_started: false,
+            link_bounds: Vec::new(),
+        }
+    }
 }
 
 pub(crate) struct MarkdownDemo {
@@ -632,6 +701,10 @@ pub(crate) struct AppState {
     pub(crate) claude_chat: crate::claude_chat::ClaudeChatPane,
     pub(crate) claude_state: ClaudeAgentState,
     pub(crate) intro_agent_state: crate::intro_agent::IntroAgentState,
+    // GFN (Group Forming Networks) page state
+    pub(crate) gfn: GfnState,
+    // 2026 page state
+    pub(crate) y2026: Y2026State,
 }
 
 impl Default for AppState {
@@ -702,6 +775,8 @@ impl Default for AppState {
             claude_chat: crate::claude_chat::ClaudeChatPane::new(),
             claude_state: ClaudeAgentState::default(),
             intro_agent_state: crate::intro_agent::IntroAgentState::default(),
+            gfn: GfnState::default(),
+            y2026: Y2026State::default(),
         }
     }
 }

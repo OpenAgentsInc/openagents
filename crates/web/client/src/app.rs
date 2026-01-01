@@ -17,7 +17,7 @@ use crate::hud::{
 };
 use crate::nostr::{connect_to_relay, BazaarJob, DEFAULT_RELAYS};
 use crate::state::{AppState, AppView, RepoInfo, UserInfo};
-use crate::views::{build_landing_page, build_repo_selector, build_repo_view};
+use crate::views::{build_2026_page, build_gfn_page, build_landing_page, build_repo_selector, build_repo_view};
 use crate::fs_access::{self, FileKind};
 use crate::utils::{read_clipboard_text, track_funnel_event};
 // Wallet disabled
@@ -40,7 +40,29 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
 
     platform.borrow_mut().handle_resize();
 
-    if let Some(context) = get_hud_context() {
+    // Check for GFN page flag
+    let is_gfn_page = web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &"GFN_PAGE".into()).ok())
+        .map(|v| v.is_truthy())
+        .unwrap_or(false);
+
+    // Check for 2026 page flag
+    let is_2026_page = web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &"Y2026_PAGE".into()).ok())
+        .map(|v| v.is_truthy())
+        .unwrap_or(false);
+
+    if is_gfn_page {
+        let mut state_guard = state.borrow_mut();
+        state_guard.loading = false;
+        state_guard.view = AppView::GfnPage;
+        drop(state_guard);
+    } else if is_2026_page {
+        let mut state_guard = state.borrow_mut();
+        state_guard.loading = false;
+        state_guard.view = AppView::Y2026Page;
+        drop(state_guard);
+    } else if let Some(context) = get_hud_context() {
         let mut state_guard = state.borrow_mut();
         state_guard.loading = false;
         state_guard.view = AppView::RepoView;
@@ -199,6 +221,18 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         .handle_event(InputEvent::MouseMove { x, y });
                     let mouse_pos = state.mouse_pos;
                     state.editor_workspace.update_hover(mouse_pos);
+                }
+
+                // Handle GFN slider dragging FIRST (before any view checks)
+                // This ensures dragging works even if mouse leaves bounds
+                if state.gfn.slider_dragging && state.gfn.slider_bounds.width() > 0.0 {
+                    let pct = ((state.mouse_pos.x - state.gfn.slider_bounds.x()) / state.gfn.slider_bounds.width()).clamp(0.0, 1.0);
+                    state.gfn.node_count = (2.0 + pct * 48.0).round() as u32;
+                }
+
+                // Handle GFN page hover
+                if state.view == AppView::GfnPage {
+                    state.gfn.cta_hovered = state.gfn.cta_bounds.contains(state.mouse_pos);
                 }
 
                 if state.claude_chat.visible {
@@ -543,6 +577,37 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 return;
             }
 
+            // Handle GFN page CTA click
+            if state.view == AppView::GfnPage && state.gfn.cta_bounds.contains(click_pos) {
+                if let Some(window) = web_sys::window() {
+                    let _ = window.open_with_url_and_target(
+                        "https://chatgpt.com/share/6956b860-9288-8011-b67d-c78b64fceb49",
+                        "_blank"
+                    );
+                }
+                return;
+            }
+
+            // Handle 2026 page link clicks
+            if state.view == AppView::Y2026Page {
+                for (bounds, url) in &state.y2026.link_bounds {
+                    if bounds.contains(click_pos) {
+                        if let Some(window) = web_sys::window() {
+                            let _ = window.open_with_url_and_target(url, "_blank");
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // Handle GFN page slider click - start dragging
+            if state.view == AppView::GfnPage && state.gfn.slider_bounds.contains(click_pos) {
+                state.gfn.slider_dragging = true;
+                let pct = ((click_pos.x - state.gfn.slider_bounds.x()) / state.gfn.slider_bounds.width()).clamp(0.0, 1.0);
+                state.gfn.node_count = (2.0 + pct * 48.0).round() as u32;
+                return;
+            }
+
             if state.button_bounds.contains(click_pos) {
                 if let Some(window) = web_sys::window() {
                     match state.view {
@@ -559,6 +624,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         AppView::Landing => {
                             track_funnel_event("github_connect_click", None);
                             let _ = window.location().set_href("/api/auth/github/start");
+                        }
+                        AppView::GfnPage => {
+                            // No button action on GFN page
+                        }
+                        AppView::Y2026Page => {
+                            // No button action on 2026 page
                         }
                     }
                 }
@@ -621,6 +692,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.view == AppView::RepoSelector {
                     let _ = state.editor_workspace.handle_mouse_event(input_event.clone());
                 }
+                // Stop GFN slider dragging
+                if state.view == AppView::GfnPage {
+                    state.gfn.slider_dragging = false;
+                }
             }
             if overlay_active {
                 return;
@@ -670,6 +745,19 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     state.scroll_offset = state.scroll_offset.clamp(0.0, max_scroll);
                 }
                 return;
+            }
+
+            // Handle scrolling for GFN page
+            if state.view == AppView::GfnPage {
+                let point = Point::new(event.offset_x() as f32, event.offset_y() as f32);
+                let delta = event.delta_y() as f32 * 0.5;
+
+                if state.gfn.content_bounds.contains(point) {
+                    state.gfn.scroll_offset += delta;
+                    state.gfn.scroll_offset = state.gfn.scroll_offset.max(0.0);
+                    // Max scroll is handled in the view when we know content height
+                    return;
+                }
             }
 
             // Handle scrolling for DVM marketplace on Landing page
@@ -975,6 +1063,26 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             }
             AppView::RepoView => {
                 build_repo_view(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
+            }
+            AppView::GfnPage => {
+                build_gfn_page(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
+            }
+            AppView::Y2026Page => {
+                build_2026_page(
                     &mut scene,
                     platform.text_system(),
                     &mut state,
