@@ -235,6 +235,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     state.gfn.cta_hovered = state.gfn.cta_bounds.contains(state.mouse_pos);
                 }
 
+                // Handle 2026 page link hover
+                if state.view == AppView::Y2026Page {
+                    state.y2026.link_hovered = state.y2026.link_bounds.iter()
+                        .any(|(bounds, _)| bounds.contains(state.mouse_pos));
+                }
+
                 if state.claude_chat.visible {
                     overlay_active = true;
                     let _ = state
@@ -883,6 +889,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     || state.editor_workspace.hovered_tab.is_some()
                     || state.editor_workspace.hovered_split_toggle
                     || state.editor_workspace.hovered_new_buffer);
+            let y2026_link_hover = state.view == AppView::Y2026Page && state.y2026.link_hovered;
+            let gfn_cta_hover = state.view == AppView::GfnPage && state.gfn.cta_hovered;
             let editor_cursor = if state.view == AppView::RepoSelector {
                 state.editor_workspace.cursor()
             } else {
@@ -900,6 +908,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 || markdown_hover
                 || file_hover
                 || workspace_hover
+                || y2026_link_hover
+                || gfn_cta_hover
             {
                 "pointer"
             } else if matches!(editor_cursor, Cursor::Text) {
