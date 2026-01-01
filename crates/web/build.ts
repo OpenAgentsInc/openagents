@@ -44,6 +44,13 @@ async function copyStatic() {
   } catch {
     // No static assets to copy.
   }
+  // Copy favicon to root
+  try {
+    await copyFile("./static/favicon.ico", join(DIST_DIR, "favicon.ico"));
+    console.log("  Copied: favicon.ico");
+  } catch {
+    // No favicon
+  }
 }
 
 async function build() {

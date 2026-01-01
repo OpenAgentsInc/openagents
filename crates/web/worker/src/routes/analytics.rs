@@ -32,7 +32,7 @@ pub async fn track_event(
     }
 
     let db = env.d1("DB")?;
-    let created_at = chrono::Utc::now().timestamp();
+    let created_at = chrono::Utc::now().timestamp() as f64; // D1 doesn't support bigint
     let user_id = user.map(|u| JsValue::from(u.user_id)).unwrap_or(JsValue::NULL);
     let repo = payload
         .repo
@@ -47,7 +47,7 @@ pub async fn track_event(
         payload.event.into(),
         user_id,
         repo,
-        created_at.into(),
+        JsValue::from_f64(created_at),
     ])?
     .run()
     .await?;
