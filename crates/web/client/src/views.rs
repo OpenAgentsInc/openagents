@@ -7,6 +7,7 @@ use wgpui::PaintContext;
 use crate::hud::draw_hud_view;
 use crate::nostr::{BazaarJobType, DvmJob, DvmView, JobType, Nip90EventType, RelayStatus, VerificationStatus};
 use crate::state::{AppState, JobStatus};
+use crate::fs_access::FileKind;
 
 // Re-export for timestamp access
 use js_sys;
@@ -1091,12 +1092,52 @@ pub(crate) fn build_repo_selector(
         );
 
         let panel_gap = 12.0;
-        let mut code_panel_height = (sidebar_height * 0.42).max(180.0);
-        let max_code_panel = (sidebar_height - 220.0).max(120.0);
-        code_panel_height = code_panel_height.min(max_code_panel);
-        let editor_panel_height = (sidebar_height - code_panel_height - panel_gap).max(0.0);
+        let available_panels = (sidebar_height - panel_gap * 2.0).max(0.0);
+        let min_code = 160.0;
+        let min_file = 140.0;
+        let min_editor = 180.0;
+        let min_total = min_code + min_file + min_editor;
+
+        let (code_panel_height, file_panel_height, editor_panel_height) = if available_panels <= min_total {
+            let scale = if min_total > 0.0 { available_panels / min_total } else { 0.0 };
+            (min_code * scale, min_file * scale, min_editor * scale)
+        } else {
+            let mut code = (available_panels * 0.34).max(min_code);
+            let mut file = (available_panels * 0.22).max(min_file);
+            let mut editor = available_panels - code - file;
+            if editor < min_editor {
+                let deficit = min_editor - editor;
+                let shrinkable = (code - min_code) + (file - min_file);
+                if shrinkable > 0.0 {
+                    let code_shrink = deficit * (code - min_code) / shrinkable;
+                    let file_shrink = deficit - code_shrink;
+                    code = (code - code_shrink).max(min_code);
+                    file = (file - file_shrink).max(min_file);
+                    editor = available_panels - code - file;
+                }
+            }
+            (code, file, editor.max(0.0))
+        };
 
         let code_panel_top = sidebar_top;
+        let file_panel_top = code_panel_top + code_panel_height + panel_gap;
+        let editor_panel_top = file_panel_top + file_panel_height + panel_gap;
+        let truncate_line = |text: &str, max_chars: usize| -> String {
+            if max_chars == 0 {
+                return String::new();
+            }
+            let count = text.chars().count();
+            if count <= max_chars {
+                text.to_string()
+            } else if max_chars <= 3 {
+                ".".repeat(max_chars)
+            } else {
+                let mut trimmed: String = text.chars().take(max_chars - 3).collect();
+                trimmed.push_str("...");
+                trimmed
+            }
+        };
+
         let code_panel_bounds =
             Bounds::new(sidebar_x + 8.0, code_panel_top + 8.0, sidebar_width - 16.0, code_panel_height - 8.0);
         scene.draw_quad(
@@ -1164,8 +1205,227 @@ pub(crate) fn build_repo_selector(
             state.markdown_demo.clear_hover();
         }
 
+        let file_panel_bounds =
+            Bounds::new(sidebar_x + 8.0, file_panel_top, sidebar_width - 16.0, file_panel_height);
+        scene.draw_quad(
+            Quad::new(file_panel_bounds)
+                .with_background(theme::bg::SURFACE)
+                .with_border(theme::border::SUBTLE, 1.0),
+        );
+
+        let file_title = text_system.layout(
+            "Files",
+            Point::new(file_panel_bounds.origin.x + 12.0, file_panel_bounds.origin.y + 10.0),
+            13.0,
+            theme::text::PRIMARY,
+        );
+        scene.draw_text(file_title);
+
+        let file_subtitle = text_system.layout(
+            "File System Access",
+            Point::new(file_panel_bounds.origin.x + 12.0, file_panel_bounds.origin.y + 26.0),
+            10.0,
+            theme::text::MUTED,
+        );
+        scene.draw_text(file_subtitle);
+
+        scene.draw_quad(
+            Quad::new(Bounds::new(
+                file_panel_bounds.origin.x + 12.0,
+                file_panel_bounds.origin.y + 40.0,
+                file_panel_bounds.size.width - 24.0,
+                1.0,
+            ))
+            .with_background(theme::border::SUBTLE),
+        );
+
+        let action_y = file_panel_bounds.origin.y + 46.0;
+        let button_height = 22.0;
+        let open_width = 96.0;
+        let save_width = 52.0;
+        let open_bounds = Bounds::new(file_panel_bounds.origin.x + 12.0, action_y, open_width, button_height);
+        let save_bounds = Bounds::new(
+            file_panel_bounds.origin.x + file_panel_bounds.size.width - 12.0 - save_width,
+            action_y,
+            save_width,
+            button_height,
+        );
+        state.file_open_bounds = open_bounds;
+        state.file_save_bounds = save_bounds;
+
+        let open_bg = if state.file_open_hovered {
+            theme::accent::PRIMARY
+        } else {
+            theme::accent::PRIMARY.with_alpha(0.8)
+        };
+        scene.draw_quad(Quad::new(open_bounds).with_background(open_bg));
+        let open_run = text_system.layout(
+            "Open Folder",
+            Point::new(open_bounds.origin.x + 8.0, open_bounds.origin.y + 6.0),
+            10.0,
+            theme::bg::APP,
+        );
+        scene.draw_text(open_run);
+
+        let save_enabled = state.current_file_handle.is_some();
+        let save_bg = if !save_enabled {
+            theme::bg::SURFACE.with_alpha(0.6)
+        } else if state.file_save_hovered {
+            theme::status::SUCCESS
+        } else {
+            theme::status::SUCCESS.with_alpha(0.8)
+        };
+        let save_text = if save_enabled { theme::bg::APP } else { theme::text::MUTED };
+        scene.draw_quad(Quad::new(save_bounds).with_background(save_bg));
+        let save_run = text_system.layout(
+            "Save",
+            Point::new(save_bounds.origin.x + 12.0, save_bounds.origin.y + 6.0),
+            10.0,
+            save_text,
+        );
+        scene.draw_text(save_run);
+
+        let info_top = action_y + button_height + 6.0;
+        let max_chars = ((file_panel_bounds.size.width - 24.0) / (10.0 * 0.6)).floor() as usize;
+        let current_path = state
+            .current_file_path
+            .as_deref()
+            .unwrap_or("No file selected");
+        let current_label = truncate_line(current_path, max_chars);
+        let current_run = text_system.layout(
+            &current_label,
+            Point::new(file_panel_bounds.origin.x + 12.0, info_top),
+            10.0,
+            theme::text::MUTED,
+        );
+        scene.draw_text(current_run);
+
+        let mut info_height = 14.0;
+        if let Some(status) = state.file_status.as_deref() {
+            if !status.is_empty() {
+                let status_color = if status.to_lowercase().contains("failed")
+                    || status.to_lowercase().contains("error")
+                {
+                    theme::status::ERROR
+                } else {
+                    theme::text::MUTED
+                };
+                let status_label = truncate_line(status, max_chars);
+                let status_run = text_system.layout(
+                    &status_label,
+                    Point::new(file_panel_bounds.origin.x + 12.0, info_top + 12.0),
+                    9.0,
+                    status_color,
+                );
+                scene.draw_text(status_run);
+                info_height += 12.0;
+            }
+        }
+
+        let list_top = info_top + info_height + 4.0;
+        let list_height =
+            (file_panel_bounds.origin.y + file_panel_bounds.size.height - 10.0 - list_top).max(0.0);
+        if list_height > 0.0 {
+            let list_bounds = Bounds::new(
+                file_panel_bounds.origin.x + 10.0,
+                list_top,
+                file_panel_bounds.size.width - 20.0,
+                list_height,
+            );
+            state.file_list_bounds = list_bounds;
+            scene.draw_quad(
+                Quad::new(list_bounds)
+                    .with_background(theme::bg::APP)
+                    .with_border(theme::border::SUBTLE, 1.0),
+            );
+
+            let row_height = 18.0;
+            let total_height = state.file_entries.len() as f32 * row_height;
+            let visible_height = list_bounds.size.height;
+            let max_scroll = (total_height - visible_height).max(0.0);
+            state.file_scroll_offset = state.file_scroll_offset.clamp(0.0, max_scroll);
+
+            state.file_entry_bounds.clear();
+            if state.file_entries.is_empty() {
+                let empty_run = text_system.layout(
+                    "Open a folder to load files",
+                    Point::new(list_bounds.origin.x + 8.0, list_bounds.origin.y + 6.0),
+                    10.0,
+                    theme::text::MUTED,
+                );
+                scene.draw_text(empty_run);
+            } else {
+                for (i, entry) in state.file_entries.iter().enumerate() {
+                    let row_y = list_bounds.origin.y + (i as f32 * row_height) - state.file_scroll_offset;
+                    if row_y + row_height < list_bounds.origin.y
+                        || row_y > list_bounds.origin.y + list_bounds.size.height
+                    {
+                        state.file_entry_bounds.push(Bounds::ZERO);
+                        continue;
+                    }
+
+                    let row_bounds = Bounds::new(list_bounds.origin.x, row_y, list_bounds.size.width, row_height);
+                    state.file_entry_bounds.push(row_bounds);
+                    let is_hovered = state.hovered_file_idx == Some(i);
+                    let is_selected = state.current_file_path.as_deref() == Some(entry.path.as_str());
+                    let row_bg = if is_selected {
+                        theme::accent::PRIMARY.with_alpha(0.2)
+                    } else if is_hovered {
+                        theme::bg::HOVER
+                    } else {
+                        theme::bg::APP
+                    };
+                    scene.draw_quad(Quad::new(row_bounds).with_background(row_bg));
+
+                    let indent = entry.depth as f32 * 12.0;
+                    let prefix = match entry.kind {
+                        FileKind::Directory => "[D] ",
+                        FileKind::File => "[F] ",
+                    };
+                    let label = format!("{}{}", prefix, entry.name);
+                    let available_chars =
+                        ((row_bounds.size.width - 16.0 - indent) / (10.0 * 0.6)).floor() as usize;
+                    let label_text = truncate_line(&label, available_chars);
+                    let label_color = if entry.kind == FileKind::Directory {
+                        theme::text::MUTED
+                    } else {
+                        theme::text::PRIMARY
+                    };
+                    let label_run = text_system.layout(
+                        &label_text,
+                        Point::new(row_bounds.origin.x + 6.0 + indent, row_bounds.origin.y + 3.0),
+                        10.0,
+                        label_color,
+                    );
+                    scene.draw_text(label_run);
+                }
+            }
+
+            if total_height > visible_height {
+                let track_height = visible_height;
+                let thumb_height = (visible_height / total_height) * track_height;
+                let thumb_y = list_bounds.origin.y + (state.file_scroll_offset / total_height) * track_height;
+                let track_bounds = Bounds::new(
+                    list_bounds.origin.x + list_bounds.size.width - 4.0,
+                    list_bounds.origin.y,
+                    3.0,
+                    track_height,
+                );
+                let thumb_bounds = Bounds::new(
+                    list_bounds.origin.x + list_bounds.size.width - 4.0,
+                    thumb_y,
+                    3.0,
+                    thumb_height,
+                );
+                scene.draw_quad(Quad::new(track_bounds).with_background(theme::bg::SURFACE));
+                scene.draw_quad(Quad::new(thumb_bounds).with_background(theme::text::MUTED));
+            }
+        } else {
+            state.file_list_bounds = Bounds::ZERO;
+            state.file_entry_bounds.clear();
+        }
+
         if editor_panel_height > 0.0 {
-            let editor_panel_top = code_panel_top + code_panel_height + panel_gap;
             let editor_panel_bounds =
                 Bounds::new(sidebar_x + 8.0, editor_panel_top, sidebar_width - 16.0, editor_panel_height);
             scene.draw_quad(
@@ -1239,6 +1499,13 @@ pub(crate) fn build_repo_selector(
         state.markdown_demo.clear_hover();
         state.editor_demo.bounds = Bounds::ZERO;
         state.editor_demo.clear_hover();
+        state.file_list_bounds = Bounds::ZERO;
+        state.file_entry_bounds.clear();
+        state.file_open_bounds = Bounds::ZERO;
+        state.file_save_bounds = Bounds::ZERO;
+        state.file_open_hovered = false;
+        state.file_save_hovered = false;
+        state.hovered_file_idx = None;
     }
 }
 

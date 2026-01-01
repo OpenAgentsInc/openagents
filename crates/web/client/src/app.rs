@@ -16,7 +16,8 @@ use crate::hud::{
 use crate::nostr::{connect_to_relay, BazaarJob, DEFAULT_RELAYS};
 use crate::state::{AppState, AppView, RepoInfo, UserInfo};
 use crate::views::{build_landing_page, build_repo_selector, build_repo_view};
-use crate::utils::track_funnel_event;
+use crate::fs_access::{self, FileKind};
+use crate::utils::{read_clipboard_text, track_funnel_event};
 use crate::wallet::{dispatch_wallet_event, queue_wallet_actions, WalletAction};
 
 #[wasm_bindgen(start)]
@@ -130,6 +131,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
 
                 if state.view == AppView::RepoSelector {
+                    state.file_open_hovered = state.file_open_bounds.contains(state.mouse_pos);
+                    state.file_save_hovered = state.current_file_handle.is_some()
+                        && state.file_save_bounds.contains(state.mouse_pos);
+                    state.hovered_file_idx = None;
+                    for (i, bounds) in state.file_entry_bounds.iter().enumerate() {
+                        if bounds.contains(state.mouse_pos) {
+                            state.hovered_file_idx = Some(i);
+                            break;
+                        }
+                    }
                     let _ = state
                         .markdown_demo
                         .handle_event(InputEvent::MouseMove { x, y });
@@ -172,6 +183,104 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     }
                 }
                 return;
+            }
+
+            if state.view == AppView::RepoSelector {
+                let mut open_folder = false;
+                let mut save_request: Option<(JsValue, String, Option<String>)> = None;
+                let mut open_request: Option<(JsValue, String)> = None;
+
+                if state.file_open_bounds.contains(click_pos) {
+                    open_folder = true;
+                } else if state.file_save_bounds.contains(click_pos) {
+                    if let Some(handle) = state.current_file_handle.clone() {
+                        let contents = state.editor_demo.view.editor().text();
+                        let path = state.current_file_path.clone();
+                        save_request = Some((handle, contents, path));
+                    }
+                } else {
+                    for (i, bounds) in state.file_entry_bounds.iter().enumerate() {
+                        if bounds.contains(click_pos) {
+                            if let Some(entry) = state.file_entries.get(i) {
+                                if entry.kind == FileKind::File {
+                                    open_request = Some((entry.handle.clone(), entry.path.clone()));
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                if open_folder {
+                    let state_for_fs = state_clone.clone();
+                    drop(state);
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match fs_access::pick_directory_entries().await {
+                            Ok(entries) => {
+                                if let Ok(mut state) = state_for_fs.try_borrow_mut() {
+                                    state.file_entries = entries;
+                                    state.file_entry_bounds.clear();
+                                    state.file_scroll_offset = 0.0;
+                                    state.hovered_file_idx = None;
+                                    state.current_file_path = None;
+                                    state.current_file_kind = None;
+                                    state.current_file_handle = None;
+                                    state.file_status = Some("Folder loaded".to_string());
+                                }
+                            }
+                            Err(err) => {
+                                if let Ok(mut state) = state_for_fs.try_borrow_mut() {
+                                    state.file_status = Some(format!("Open failed: {}", err));
+                                }
+                            }
+                        }
+                    });
+                    return;
+                }
+
+                if let Some((handle, contents, path)) = save_request {
+                    let state_for_fs = state_clone.clone();
+                    drop(state);
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let result = fs_access::write_file(&handle, &contents).await;
+                        if let Ok(mut state) = state_for_fs.try_borrow_mut() {
+                            match result {
+                                Ok(()) => {
+                                    let label = path.unwrap_or_else(|| "file".to_string());
+                                    state.file_status = Some(format!("Saved {}", label));
+                                }
+                                Err(err) => {
+                                    state.file_status = Some(format!("Save failed: {}", err));
+                                }
+                            }
+                        }
+                    });
+                    return;
+                }
+
+                if let Some((handle, path)) = open_request {
+                    let state_for_fs = state_clone.clone();
+                    drop(state);
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match fs_access::read_file(&handle).await {
+                            Ok(contents) => {
+                                if let Ok(mut state) = state_for_fs.try_borrow_mut() {
+                                    state.editor_demo.view.set_text(&contents);
+                                    state.current_file_path = Some(path.clone());
+                                    state.current_file_kind = Some(FileKind::File);
+                                    state.current_file_handle = Some(handle);
+                                    state.file_status = Some(format!("Opened {}", path));
+                                }
+                            }
+                            Err(err) => {
+                                if let Ok(mut state) = state_for_fs.try_borrow_mut() {
+                                    state.file_status = Some(format!("Open failed: {}", err));
+                                }
+                            }
+                        }
+                    });
+                    return;
+                }
             }
 
             if let Some(idx) = state.hovered_repo_idx {
@@ -397,6 +506,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     dx: 0.0,
                     dy: event.delta_y() as f32 * 0.5,
                 };
+                if state.file_list_bounds.contains(point) {
+                    state.file_scroll_offset += event.delta_y() as f32 * 0.5;
+                    state.file_scroll_offset = state.file_scroll_offset.max(0.0);
+                    return;
+                }
                 if state.editor_demo.bounds.contains(point) {
                     let _ = state.editor_demo.handle_event(scroll);
                     return;
@@ -506,6 +620,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 && state.nip90_event_bounds.iter().any(|b| b.contains(state.mouse_pos));
             let markdown_hover = state.view == AppView::RepoSelector
                 && matches!(state.markdown_demo.cursor(), Cursor::Pointer);
+            let file_hover = state.view == AppView::RepoSelector
+                && (state.file_open_hovered
+                    || state.file_save_hovered
+                    || state.hovered_file_idx.is_some());
             let editor_cursor = if state.view == AppView::RepoSelector {
                 state.editor_demo.cursor()
             } else {
@@ -521,6 +639,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 || dvm_tab_hover
                 || dvm_content_hover
                 || markdown_hover
+                || file_hover
             {
                 "pointer"
             } else if matches!(editor_cursor, Cursor::Text) {
@@ -539,9 +658,29 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         let window = web_sys::window().unwrap();
         let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::KeyboardEvent| {
             let mut handled = EventResult::Ignored;
+            let modifiers = modifiers_from_event(&event);
+
+            if (modifiers.ctrl || modifiers.meta) && matches!(event.key().as_str(), "v" | "V") {
+                let should_paste = state_clone
+                    .try_borrow()
+                    .ok()
+                    .map(|state| state.view == AppView::RepoSelector && state.editor_demo.is_focused())
+                    .unwrap_or(false);
+                if should_paste {
+                    let state_for_clip = state_clone.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(text) = read_clipboard_text().await {
+                            if let Ok(mut state) = state_for_clip.try_borrow_mut() {
+                                state.editor_demo.paste_text(&text);
+                            }
+                        }
+                    });
+                    event.prevent_default();
+                    return;
+                }
+            }
 
             if let Some(key) = key_from_event(&event) {
-                let modifiers = modifiers_from_event(&event);
                 let input_event = InputEvent::KeyDown { key, modifiers };
                 if let Ok(mut state) = state_clone.try_borrow_mut() {
                     if state.view == AppView::RepoSelector {
@@ -561,6 +700,54 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             }
         });
         window.add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref())?;
+        closure.forget();
+    }
+
+    {
+        let state_clone = state.clone();
+        let window = web_sys::window().unwrap();
+        let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::CompositionEvent| {
+            if let Ok(mut state) = state_clone.try_borrow_mut() {
+                if state.view == AppView::RepoSelector && state.editor_demo.is_focused() {
+                    state.editor_demo
+                        .composition_start(event.data().as_deref().unwrap_or(""));
+                    event.prevent_default();
+                }
+            }
+        });
+        window.add_event_listener_with_callback("compositionstart", closure.as_ref().unchecked_ref())?;
+        closure.forget();
+    }
+
+    {
+        let state_clone = state.clone();
+        let window = web_sys::window().unwrap();
+        let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::CompositionEvent| {
+            if let Ok(mut state) = state_clone.try_borrow_mut() {
+                if state.view == AppView::RepoSelector && state.editor_demo.is_focused() {
+                    state.editor_demo
+                        .composition_update(event.data().as_deref().unwrap_or(""));
+                    event.prevent_default();
+                }
+            }
+        });
+        window.add_event_listener_with_callback("compositionupdate", closure.as_ref().unchecked_ref())?;
+        closure.forget();
+    }
+
+    {
+        let state_clone = state.clone();
+        let window = web_sys::window().unwrap();
+        let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::CompositionEvent| {
+            if let Ok(mut state) = state_clone.try_borrow_mut() {
+                if state.view == AppView::RepoSelector && state.editor_demo.is_focused() {
+                    state.editor_demo
+                        .composition_end(event.data().as_deref().unwrap_or(""));
+                    event.prevent_default();
+                }
+            }
+        });
+        window.add_event_listener_with_callback("compositionend", closure.as_ref().unchecked_ref())?;
         closure.forget();
     }
 

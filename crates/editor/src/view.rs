@@ -7,6 +7,11 @@ use wgpui::{
 use crate::editor::Editor;
 use crate::caret::Position;
 
+struct CompositionState {
+    base: Position,
+    text: String,
+}
+
 pub struct EditorView {
     id: Option<ComponentId>,
     editor: Editor,
@@ -27,6 +32,7 @@ pub struct EditorView {
     hover: bool,
     focused: bool,
     dragging: bool,
+    composition: Option<CompositionState>,
     text_origin: Point,
     viewport_height: f32,
     bounds: Bounds,
@@ -55,6 +61,7 @@ impl EditorView {
             hover: false,
             focused: false,
             dragging: false,
+            composition: None,
             text_origin: Point::ZERO,
             viewport_height: 0.0,
             bounds: Bounds::ZERO,
@@ -80,6 +87,7 @@ impl EditorView {
     }
 
     pub fn set_text(&mut self, text: &str) {
+        self.clear_composition();
         self.editor.set_text(text);
     }
 
@@ -99,9 +107,67 @@ impl EditorView {
         }
     }
 
+    pub fn is_focused(&self) -> bool {
+        self.focused
+    }
+
     pub fn clear_hover(&mut self) {
         self.hover = false;
         self.dragging = false;
+    }
+
+    pub fn paste_text(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        self.clear_composition();
+        self.editor.insert_text(text);
+    }
+
+    pub fn composition_start(&mut self, text: &str) {
+        if !self.focused {
+            return;
+        }
+        let base = self
+            .editor
+            .cursors()
+            .first()
+            .map(|cursor| cursor.position)
+            .unwrap_or_else(Position::zero);
+        self.composition = Some(CompositionState {
+            base,
+            text: text.to_string(),
+        });
+    }
+
+    pub fn composition_update(&mut self, text: &str) {
+        if !self.focused {
+            return;
+        }
+        if let Some(composition) = &mut self.composition {
+            composition.text = text.to_string();
+        } else {
+            self.composition_start(text);
+        }
+    }
+
+    pub fn composition_end(&mut self, text: &str) {
+        if !self.focused {
+            self.composition = None;
+            return;
+        }
+        let final_text = if text.is_empty() {
+            self.composition
+                .as_ref()
+                .map(|composition| composition.text.clone())
+                .unwrap_or_default()
+        } else {
+            text.to_string()
+        };
+        self.composition = None;
+        if !final_text.is_empty() {
+            self.editor.insert_text(&final_text);
+        }
     }
 
     fn update_layout(&mut self, bounds: Bounds, cx: &mut PaintContext) {
@@ -158,6 +224,7 @@ impl EditorView {
     }
 
     fn insert_tab(&mut self) {
+        self.clear_composition();
         self.editor.insert_text("    ");
     }
 
@@ -171,6 +238,10 @@ impl EditorView {
                 self.editor.move_down(select);
             }
         }
+    }
+
+    fn clear_composition(&mut self) {
+        self.composition = None;
     }
 }
 
@@ -296,17 +367,50 @@ impl Component for EditorView {
         }
 
         if self.focused {
-            for cursor in self.editor.cursors() {
-                let line = cursor.position.line;
-                if line < visible_start || line >= visible_end {
-                    continue;
+            if let Some(composition) = &self.composition {
+                let line = composition.base.line;
+                if line >= visible_start && line < visible_end {
+                    let y = self.text_origin.y + line as f32 * self.line_height - self.scroll_offset;
+                    if y + self.line_height >= bounds.origin.y && y <= bounds.origin.y + bounds.size.height {
+                        let x = self.text_origin.x + composition.base.column as f32 * self.char_width;
+                        let text_len = composition.text.chars().count().max(1) as f32;
+                        let width = text_len * self.char_width;
+                        let text_y = y + self.line_height * 0.5 - self.font_size * 0.55;
+                        let highlight_bounds = Bounds::new(x, y, width, self.line_height);
+                        cx.scene.draw_quad(
+                            Quad::new(highlight_bounds)
+                                .with_background(theme::accent::PRIMARY.with_alpha(0.12)),
+                        );
+                        let run = cx.text.layout(
+                            &composition.text,
+                            Point::new(x, text_y),
+                            self.font_size,
+                            self.text_color,
+                        );
+                        cx.scene.draw_text(run);
+                        let underline_bounds = Bounds::new(x, y + self.line_height - 2.0, width, 2.0);
+                        cx.scene.draw_quad(
+                            Quad::new(underline_bounds).with_background(theme::accent::PRIMARY),
+                        );
+                        let caret_x = x + (composition.text.chars().count() as f32 * self.char_width);
+                        let caret_bounds = Bounds::new(caret_x, y + 2.0, 2.0, self.line_height - 4.0);
+                        cx.scene
+                            .draw_quad(Quad::new(caret_bounds).with_background(self.caret_color));
+                    }
                 }
-                let col = cursor.position.column;
-                let x = self.text_origin.x + col as f32 * self.char_width;
-                let y = self.text_origin.y + line as f32 * self.line_height - self.scroll_offset;
-                let caret_bounds = Bounds::new(x, y + 2.0, 2.0, self.line_height - 4.0);
-                cx.scene
-                    .draw_quad(Quad::new(caret_bounds).with_background(self.caret_color));
+            } else {
+                for cursor in self.editor.cursors() {
+                    let line = cursor.position.line;
+                    if line < visible_start || line >= visible_end {
+                        continue;
+                    }
+                    let col = cursor.position.column;
+                    let x = self.text_origin.x + col as f32 * self.char_width;
+                    let y = self.text_origin.y + line as f32 * self.line_height - self.scroll_offset;
+                    let caret_bounds = Bounds::new(x, y + 2.0, 2.0, self.line_height - 4.0);
+                    cx.scene
+                        .draw_quad(Quad::new(caret_bounds).with_background(self.caret_color));
+                }
             }
         }
     }
@@ -366,6 +470,12 @@ impl Component for EditorView {
             InputEvent::KeyDown { key, modifiers } => {
                 if !self.focused {
                     return EventResult::Ignored;
+                }
+                if self.composition.is_some() {
+                    if matches!(key, Key::Named(NamedKey::Escape)) {
+                        self.clear_composition();
+                    }
+                    return EventResult::Handled;
                 }
 
                 match key {

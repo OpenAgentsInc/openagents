@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use editor::EditorView;
+use wasm_bindgen::prelude::JsValue;
 use wgpui::{
     Bounds, Component, Cursor, EventContext, EventResult, InputEvent, MarkdownDocument,
     MarkdownView, Point, StreamingMarkdown,
@@ -9,6 +10,7 @@ use wgpui::components::hud::{DotsGrid, FrameAnimator};
 
 use crate::hud::{HudContext, HudLayout, HudStreamHandle, HudUi, LandingLive};
 use crate::nostr::{BazaarState, DvmDirectoryState, GlobalFeedState, Nip90State, NostrRelayHandle};
+use crate::fs_access::{FileEntry, FileKind};
 use crate::utils::copy_to_clipboard;
 use crate::wallet::WalletUi;
 
@@ -176,6 +178,26 @@ impl EditorDemo {
         }
     }
 
+    pub(crate) fn is_focused(&self) -> bool {
+        self.view.is_focused()
+    }
+
+    pub(crate) fn paste_text(&mut self, text: &str) {
+        self.view.paste_text(text);
+    }
+
+    pub(crate) fn composition_start(&mut self, text: &str) {
+        self.view.composition_start(text);
+    }
+
+    pub(crate) fn composition_update(&mut self, text: &str) {
+        self.view.composition_update(text);
+    }
+
+    pub(crate) fn composition_end(&mut self, text: &str) {
+        self.view.composition_end(text);
+    }
+
     pub(crate) fn clear_hover(&mut self) {
         self.view.clear_hover();
     }
@@ -238,6 +260,19 @@ pub(crate) struct AppState {
     pub(crate) cta_frames_started: bool,
     // Background dots grid
     pub(crate) dots_grid: DotsGrid,
+    pub(crate) file_entries: Vec<FileEntry>,
+    pub(crate) file_entry_bounds: Vec<Bounds>,
+    pub(crate) file_list_bounds: Bounds,
+    pub(crate) file_open_bounds: Bounds,
+    pub(crate) file_save_bounds: Bounds,
+    pub(crate) file_open_hovered: bool,
+    pub(crate) file_save_hovered: bool,
+    pub(crate) hovered_file_idx: Option<usize>,
+    pub(crate) file_scroll_offset: f32,
+    pub(crate) current_file_path: Option<String>,
+    pub(crate) current_file_kind: Option<FileKind>,
+    pub(crate) current_file_handle: Option<JsValue>,
+    pub(crate) file_status: Option<String>,
     pub(crate) markdown_demo: MarkdownDemo,
     pub(crate) editor_demo: EditorDemo,
 }
@@ -294,6 +329,19 @@ impl Default for AppState {
             right_cta_animator: FrameAnimator::new(),
             cta_frames_started: false,
             dots_grid: DotsGrid::new(),
+            file_entries: Vec::new(),
+            file_entry_bounds: Vec::new(),
+            file_list_bounds: Bounds::ZERO,
+            file_open_bounds: Bounds::ZERO,
+            file_save_bounds: Bounds::ZERO,
+            file_open_hovered: false,
+            file_save_hovered: false,
+            hovered_file_idx: None,
+            file_scroll_offset: 0.0,
+            current_file_path: None,
+            current_file_kind: None,
+            current_file_handle: None,
+            file_status: None,
             markdown_demo: MarkdownDemo::new(),
             editor_demo: EditorDemo::new(),
         }
