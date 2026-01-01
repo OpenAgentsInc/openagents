@@ -36,6 +36,7 @@ fn setup_db_with_issues(n: usize) -> (TempDir, Connection) {
             issue_type,
             Some(agent),
             None,
+            None,
         )
         .expect("Failed to create issue");
     }
@@ -59,6 +60,7 @@ fn bench_create_issue(c: &mut Criterion) {
                 black_box(Priority::Medium),
                 black_box(IssueType::Task),
                 black_box(Some("claude")),
+                black_box(None),
                 black_box(None),
             )
             .expect("Failed to create issue")
