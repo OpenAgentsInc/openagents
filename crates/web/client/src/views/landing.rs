@@ -34,108 +34,109 @@ pub(crate) fn build_landing_page(
     let scene = cx.scene;
     let text_system = cx.text;
 
-    // === CENTERED HERO CARD ===
-    let card_w = 480.0;
-    let card_h = 180.0;
-    let card_x = (width - card_w) / 2.0;
-    let card_y = (height - card_h) / 2.0 - 40.0;
+    // === CENTERED HERO CARD (only show when auth status is known) ===
+    let (scene, text_system) = if !state.loading {
+        let card_w = 480.0;
+        let card_h = 180.0;
+        let card_x = (width - card_w) / 2.0;
+        let card_y = (height - card_h) / 2.0 - 40.0;
 
-    // Update frame animator
-    if !state.cta_frames_started {
-        state.cta_frames_started = true;
-    }
-    let anim_state = if state.cta_frames_started {
-        AnimatorState::Entering
-    } else {
-        AnimatorState::Exited
-    };
-    let frame_progress = state.left_cta_animator.update(anim_state);
+        // Update frame animator
+        if !state.cta_frames_started {
+            state.cta_frames_started = true;
+        }
+        let anim_state = if state.cta_frames_started {
+            AnimatorState::Entering
+        } else {
+            AnimatorState::Exited
+        };
+        let frame_progress = state.left_cta_animator.update(anim_state);
 
-    // Create PaintContext for Frame component
-    let mut cx = PaintContext::new(scene, text_system, scale_factor);
+        // Create PaintContext for Frame component
+        let mut cx = PaintContext::new(scene, text_system, scale_factor);
 
-    // Hero frame
-    state.left_cta_bounds = Bounds::new(card_x, card_y, card_w, card_h);
+        // Hero frame
+        state.left_cta_bounds = Bounds::new(card_x, card_y, card_w, card_h);
 
-    let mut hero_frame = Frame::corners()
-        .line_color(Hsla::new(0.0, 0.0, 1.0, 1.0)) // White corners
-        .bg_color(Hsla::new(0.0, 0.0, 1.0, 0.02)) // White 2% opacity
-        .glow_color(Hsla::new(0.0, 0.0, 1.0, 0.2))
-        .stroke_width(1.0)
-        .corner_length(40.0) // 2x default
-        .animation_progress(frame_progress);
+        let mut hero_frame = Frame::corners()
+            .line_color(Hsla::new(0.0, 0.0, 1.0, 1.0)) // White corners
+            .bg_color(Hsla::new(0.0, 0.0, 1.0, 0.02)) // White 2% opacity
+            .glow_color(Hsla::new(0.0, 0.0, 1.0, 0.2))
+            .stroke_width(1.0)
+            .corner_length(40.0) // 2x default
+            .animation_progress(frame_progress);
 
-    hero_frame.paint(state.left_cta_bounds, &mut cx);
+        hero_frame.paint(state.left_cta_bounds, &mut cx);
 
-    // Content sizing
-    let title_size = 32.0;
-    let subtitle_size = 16.0;
-    let btn_h = 40.0;
-    let gap1 = 8.0;  // title to subtitle
-    let gap2 = 28.0; // subtitle to button
+        // Content sizing
+        let title_size = 32.0;
+        let subtitle_size = 16.0;
+        let btn_h = 40.0;
+        let gap1 = 8.0;  // title to subtitle
+        let gap2 = 28.0; // subtitle to button
 
-    // Calculate total content height and center vertically
-    let content_h = title_size + gap1 + subtitle_size + gap2 + btn_h;
-    let content_start_y = card_y + (card_h - content_h) / 2.0;
+        // Calculate total content height and center vertically
+        let content_h = title_size + gap1 + subtitle_size + gap2 + btn_h;
+        let content_start_y = card_y + (card_h - content_h) / 2.0;
 
-    // Title - "Autopilot"
-    let title_text = "Autopilot";
-    let title_width = cx.text.measure(title_text, title_size);
-    let title_x = card_x + (card_w - title_width) / 2.0;
-    let title_run = cx.text.layout(title_text, Point::new(title_x, content_start_y), title_size, theme::text::PRIMARY);
-    cx.scene.draw_text(title_run);
+        // Title - "Autopilot"
+        let title_text = "Autopilot";
+        let title_width = cx.text.measure(title_text, title_size);
+        let title_x = card_x + (card_w - title_width) / 2.0;
+        let title_run = cx.text.layout(title_text, Point::new(title_x, content_start_y), title_size, theme::text::PRIMARY);
+        cx.scene.draw_text(title_run);
 
-    // Subtitle - "Early access"
-    let subtitle_text = "Early access";
-    let subtitle_width = cx.text.measure(subtitle_text, subtitle_size);
-    let subtitle_x = card_x + (card_w - subtitle_width) / 2.0;
-    let subtitle_y = content_start_y + title_size + gap1;
-    let subtitle_run = cx.text.layout(subtitle_text, Point::new(subtitle_x, subtitle_y), subtitle_size, theme::text::MUTED);
-    cx.scene.draw_text(subtitle_run);
+        // Subtitle - "Early access"
+        let subtitle_text = "Early access";
+        let subtitle_width = cx.text.measure(subtitle_text, subtitle_size);
+        let subtitle_x = card_x + (card_w - subtitle_width) / 2.0;
+        let subtitle_y = content_start_y + title_size + gap1;
+        let subtitle_run = cx.text.layout(subtitle_text, Point::new(subtitle_x, subtitle_y), subtitle_size, theme::text::MUTED);
+        cx.scene.draw_text(subtitle_run);
 
-    // Button - "Log in with GitHub"
-    let btn_text = if state.loading { "Connecting..." } else { "Log in with GitHub" };
-    let btn_font_size = 15.0;
-    let btn_w = 180.0;
-    let btn_x = card_x + (card_w - btn_w) / 2.0;
-    let btn_y = subtitle_y + subtitle_size + gap2;
-    let btn_bg = if state.left_cta_hovered && !state.loading {
-        theme::bg::ELEVATED
-    } else {
-        theme::bg::SURFACE
-    };
-    // Draw button border manually to ensure all sides show
-    let border_color = theme::border::DEFAULT;
-    // Top border
-    cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y, btn_w, 1.0)).with_background(border_color));
-    // Bottom border
-    cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y + btn_h - 1.0, btn_w, 1.0)).with_background(border_color));
-    // Left border
-    cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y, 1.0, btn_h)).with_background(border_color));
-    // Right border
-    cx.scene.draw_quad(Quad::new(Bounds::new(btn_x + btn_w - 1.0, btn_y, 1.0, btn_h)).with_background(border_color));
-    // Background (inside the border)
-    cx.scene.draw_quad(Quad::new(Bounds::new(btn_x + 1.0, btn_y + 1.0, btn_w - 2.0, btn_h - 2.0)).with_background(btn_bg));
-    let btn_text_width = cx.text.measure(btn_text, btn_font_size);
-    let btn_text_x = btn_x + (btn_w - btn_text_width) / 2.0;
-    let btn_text_y = btn_y + (btn_h - btn_font_size) / 2.0;
-    let btn_run = cx.text.layout(btn_text, Point::new(btn_text_x, btn_text_y), btn_font_size, theme::text::PRIMARY);
-    cx.scene.draw_text(btn_run);
+        // Button - "Log in with GitHub"
+        let btn_text = "Log in with GitHub";
+        let btn_font_size = 15.0;
+        let btn_w = 180.0;
+        let btn_x = card_x + (card_w - btn_w) / 2.0;
+        let btn_y = subtitle_y + subtitle_size + gap2;
+        let btn_bg = if state.left_cta_hovered {
+            theme::bg::ELEVATED
+        } else {
+            theme::bg::SURFACE
+        };
+        // Draw button border manually to ensure all sides show
+        let border_color = theme::border::DEFAULT;
+        // Top border
+        cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y, btn_w, 1.0)).with_background(border_color));
+        // Bottom border
+        cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y + btn_h - 1.0, btn_w, 1.0)).with_background(border_color));
+        // Left border
+        cx.scene.draw_quad(Quad::new(Bounds::new(btn_x, btn_y, 1.0, btn_h)).with_background(border_color));
+        // Right border
+        cx.scene.draw_quad(Quad::new(Bounds::new(btn_x + btn_w - 1.0, btn_y, 1.0, btn_h)).with_background(border_color));
+        // Background (inside the border)
+        cx.scene.draw_quad(Quad::new(Bounds::new(btn_x + 1.0, btn_y + 1.0, btn_w - 2.0, btn_h - 2.0)).with_background(btn_bg));
+        let btn_text_width = cx.text.measure(btn_text, btn_font_size);
+        let btn_text_x = btn_x + (btn_w - btn_text_width) / 2.0;
+        let btn_text_y = btn_y + (btn_h - btn_font_size) / 2.0;
+        let btn_run = cx.text.layout(btn_text, Point::new(btn_text_x, btn_text_y), btn_font_size, theme::text::PRIMARY);
+        cx.scene.draw_text(btn_run);
 
-    // Set button bounds for click handling
-    if !state.loading {
+        // Set button bounds for click handling
         state.button_bounds = Bounds::new(btn_x, btn_y, btn_w, btn_h);
+
+        (cx.scene, cx.text)
     } else {
+        // Still loading - hide everything
         state.button_bounds = Bounds::ZERO;
-    }
+        state.left_cta_bounds = Bounds::ZERO;
+        (scene, text_system)
+    };
 
     state.landing_issue_bounds = Bounds::ZERO;
     state.landing_issue_url = None;
     state.right_cta_bounds = Bounds::ZERO;
-
-    // Release the PaintContext borrow
-    let scene = cx.scene;
-    let text_system = cx.text;
 
     // === LIVE MARKET FEED (hidden for now) ===
     let pad = 24.0;
