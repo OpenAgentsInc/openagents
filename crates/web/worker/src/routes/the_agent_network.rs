@@ -84,6 +84,8 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
         <h1>The Agent Network</h1>
         <p class="subtitle">Episode 200 Transcript</p>
 
+<blockquote class="twitter-tweet" data-media-max-width="560"><p lang="en" dir="ltr">Episode 200: The Agent Network<br><br>We predict six major themes for 2026: local &amp; swarm AI, open &gt; closed, agents &gt; models, autopilots, and agent networks.<br><br>We introduce Reed&#39;s Law of group-forming networks, a concept from network economics crucial for understanding agent networks.… <a href="https://t.co/dIatR1rLCU">https://t.co/dIatR1rLCU</a> <a href="https://t.co/gZIXIy8xUQ">pic.twitter.com/gZIXIy8xUQ</a></p>&mdash; OpenAgents (@OpenAgentsInc) <a href="https://twitter.com/OpenAgentsInc/status/2006956979298685216?ref_src=twsrc%5Etfw">January 2, 2026</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+
 <p class="timestamp"><strong>[00:00]</strong></p>
 <p class="visual">[Visual: A diagram titled "GROUP FORMING NETWORKS: Metcalfe vs Reed's Law" showing network nodes. The speaker appears in a circle overlay.]</p>
 
