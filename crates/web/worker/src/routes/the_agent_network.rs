@@ -67,6 +67,14 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
             padding-left: 16px;
             color: #aaa;
         }
+        .twitter-tweet {
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+        .twitter-tweet iframe {
+            max-width: 100% !important;
+            width: 100% !important;
+        }
         code {
             background: #111;
             padding: 2px 6px;
