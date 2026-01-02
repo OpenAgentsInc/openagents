@@ -11,7 +11,7 @@
 **[00:52]**
 **[Visual: A tweet thread featuring a video of Gavin Baker.]**
 
-**Speaker:** And of course, people who are smart—Gavin Baker, for example—talking about, "Oh yeah, bear case for AI capex... in three years on a bigger phone you'll be able to run a pruned-down..." Okay. Yeah, cool. But those timelines don't make any goddamn sense because it ignores the economics of *aggregated* compute.
+**Speaker:** And of course, people who are smart — Gavin Baker, for example — talking about, "Oh yeah, bear case for AI capex... in three years on a bigger phone you'll be able to run a pruned-down..." Okay. Yeah, cool. But those timelines don't make any goddamn sense because it ignores the economics of *aggregated* compute.
 
 Everyone thinking this is thinking in terms of what edge inference and test-time compute *one* device can do for *that* user. But if we can combine this... If you have spare, unused, or "stranded" compute on your device that I can pay you for, of course you'll sell it to me for a teensy bit of bitcoin straight to your wallet.
 
