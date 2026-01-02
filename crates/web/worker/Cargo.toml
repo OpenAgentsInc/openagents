@@ -51,6 +51,9 @@ futures = "0.3"
 # Error handling
 console_error_panic_hook = "0.1"
 
+# Markdown parsing
+pulldown-cmark = "0.9"
+
 [profile.release]
 opt-level = "z"      # Maximum size optimization (was "s")
 lto = true
