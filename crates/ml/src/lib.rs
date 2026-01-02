@@ -1,45 +1,32 @@
-//! # ml - Browser-First ML Inference Library
+//! # ml - Candle-powered ML inference
 //!
-//! A WebGPU-accelerated ML inference library designed to run in the browser,
-//! enabling users to serve NIP-90 inference jobs from a browser tab.
-//!
-//! ## Architecture
-//!
-//! - `tensor` - Core tensor types (Tensor, DType, Shape, Storage)
-//! - `device` - WebGPU device abstraction with CPU fallback
-//! - `shaders` - WGSL compute kernels for ML operations
-//! - `ops` - High-level operations (matmul, softmax, attention)
-//! - `model` - Safetensors loading and weight management
-//! - `llm` - Text generation pipeline (tokenizer, KV cache)
-//! - `provider` - ComputeProvider and NIP-90 DVM integration
-//!
-//! ## Browser-First Design
-//!
-//! This library prioritizes browser execution:
-//! - Uses `web_time::Instant` instead of `std::time::Instant`
-//! - Async via `wasm_bindgen_futures::spawn_local` (not tokio)
-//! - Max workgroup size: 256 invocations
-//! - Streaming model weights via HTTP range requests
-//!
-//! ## Example
-//!
-//! ```ignore
-//! use ml::provider::WebGpuProvider;
-//!
-//! let provider = WebGpuProvider::new().await?;
-//! let job_id = provider.submit(request)?;
-//!
-//! // Poll for completion (non-blocking)
-//! while let Some(chunk) = provider.poll_stream(&job_id)? {
-//!     // Handle streaming output
-//! }
-//! ```
+//! Unified ML inference library with Candle backends (CPU/CUDA/Metal) and
+//! a browser-first NIP-90 DVM implementation.
 
-// Core modules (to be implemented)
-// pub mod tensor;
-// pub mod device;
-// pub mod shaders;
-// pub mod ops;
-// pub mod model;
-// pub mod llm;
-// pub mod provider;
+mod device;
+mod error;
+mod http;
+mod model;
+mod sampling;
+mod tokenizer;
+
+#[cfg(feature = "native")]
+mod provider;
+
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+mod browser_dvm;
+
+#[cfg(test)]
+mod tests;
+
+pub use device::MlDevice;
+pub use error::{MlError, Result};
+pub use model::{GenerationOutcome, LoadedModel, ModelKind, ModelSource};
+pub use sampling::GenerationConfig;
+pub use tokenizer::Tokenizer;
+
+#[cfg(feature = "native")]
+pub use provider::{MlProvider, MlProviderConfig};
+
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
+pub use browser_dvm::{BrowserDvm, BrowserDvmService, DvmConfig};

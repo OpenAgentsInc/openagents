@@ -25,6 +25,7 @@ openagents-runtime = { path = "../runtime", default-features = false }
 openagents-relay = { path = "../relay" }
 spark = { package = "openagents-spark", path = "../spark" }
 claude-agent-sdk = { path = "../claude-agent-sdk" }
+ml = { path = "../ml", default-features = false, optional = true, features = ["native"] }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "macros"] }
@@ -74,6 +75,7 @@ reqwest = { version = "0.12", features = ["json"] }
 default = ["cli"]
 cli = []
 gui = []
+ml-native = ["ml/native"]
 
 [dev-dependencies]
 tempfile = "3.10"

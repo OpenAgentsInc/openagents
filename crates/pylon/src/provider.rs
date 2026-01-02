@@ -5,6 +5,8 @@ use crate::neobank_service::{NeobankConfig, NeobankService, TreasuryStatus};
 use compute::backends::{
     AgentBackend, AgentRegistry, BackendRegistry, ClaudeCodeBackend,
 };
+#[cfg(feature = "ml-native")]
+use ml::{MlProvider, MlProviderConfig};
 use compute::domain::DomainEvent;
 use openagents_runtime::UnifiedIdentity;
 use compute::services::{DvmService, RelayService};
@@ -125,7 +127,25 @@ impl PylonProvider {
     /// Create a new provider with the given config
     pub async fn new(config: PylonConfig) -> Result<Self, ProviderError> {
         // Auto-detect inference backends
-        let registry = BackendRegistry::detect().await;
+        let mut registry = BackendRegistry::detect().await;
+
+        #[cfg(feature = "ml-native")]
+        {
+            match MlProviderConfig::from_env() {
+                Ok(config) => match MlProvider::new(config).await {
+                    Ok(provider) => {
+                        registry.register_with_id(\"ml-candle\", Arc::new(RwLock::new(provider)));
+                        tracing::info!(\"Registered Candle ML backend\");
+                    }
+                    Err(err) => {
+                        tracing::warn!(\"Failed to initialize Candle ML backend: {err}\");
+                    }
+                },
+                Err(err) => {
+                    tracing::debug!(\"Candle ML backend not configured: {err}\");
+                }
+            }
+        }
 
         if !registry.has_backends() {
             tracing::warn!("No inference backends detected");

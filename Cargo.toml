@@ -18,6 +18,7 @@ members = [
     "crates/local-inference",
     "crates/marketplace",
     "crates/ml",
+    "crates/ml/candle-wgpu",
     "crates/nexus",
     "crates/recorder",
     "crates/testing",
@@ -192,6 +193,7 @@ nostr = { path = "crates/nostr/core" }
 anyhow = "1.0.86"
 async-trait = "0.1"
 base64 = "0.22"
+bytemuck = { version = "1.23", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.4", features = ["derive", "wrap_help"] }
 futures = "0.3"
