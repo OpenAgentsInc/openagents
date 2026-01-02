@@ -15,7 +15,7 @@
 
 Everyone thinking this is thinking in terms of what edge inference and test-time compute *one* device can do for *that* user. But if we can combine this... If you have spare, unused, or "stranded" compute on your device that I can pay you for, of course you'll sell it to me for a teensy bit of bitcoin straight to your wallet.
 
-Hey, do we have a relevant product launch coming up in like a few days? Stay tuned. Stick with us here, people. We got more to get through here.
+Hey, do we have a relevant product launch coming up in a few days? Stay tuned. Stick with us here, people. We got more to get through here.
 
 **[01:33]**
 **[Visual: Returns to "2026" slide. Clicks "Swarm AI".]**
@@ -52,7 +52,7 @@ Hey, do we have a relevant product launch coming up in like a few days? Stay tun
 
 **Speaker:** Okay, what's next we got here? Even, DeepMind just came out with a paper two weeks ago. Good paper. Good points here. Yeah. Seb [Krier] who runs, Policy/AGI Dev Lead at DeepMind. "We argue AGI may first emerge as collective intelligence across agent networks, not a single system." Agreed. "This reframes the challenge from aligning one mind to governing emergent dynamics. More institutional design than single..."
 
-Institutions... Ooh. So, I agree with a lot of this. I disagree with a lot of this. I specifically think that their conclusions that they come to — that there has to be all of this "institution building," we need to be like roping off this like closed little environment...
+Institutions... Ooh. So, I agree with a lot of this. I disagree with a lot of this. I specifically think that their conclusions that they come to — that there has to be all of this "institution building," we need to be roping off this closed little environment...
 
 **[04:49]**
 **[Visual: Highlights text in the OpenAgents post critiquing DeepMind.]**
@@ -61,9 +61,9 @@ Institutions... Ooh. So, I agree with a lot of this. I disagree with a lot of th
 
 No. No. No. So you guys can do that for your corporate buddies, for your government people. Okay? We startups, we people building in the open, are going to be building *this* agentic market — open source on open protocols — because that's what's needed.
 
-It's already happening. So none of this is like a thing that I'm proposing. Agentic coordination and commerce on open protocol Nostr has been ongoing for a year-plus. Nothing bad has come of it. Partly because it includes other critical market-making mechanisms like reputation and payments built-in. No firewalls, walled gardens, or industry buy-in or government regulation needed.
+It's already happening. So none of this is a thing that I'm proposing. Agentic coordination and commerce on open protocol Nostr has been ongoing for a year-plus. Nothing bad has come of it. Partly because it includes other critical market-making mechanisms like reputation and payments built-in. No firewalls, walled gardens, or industry buy-in or government regulation needed.
 
-And as for broad markets of agents, see the draft NIP-SA [Nostr Implementation Possibility - Sovereign Agents]... this is a Nostr protocol plank called Sovereign Agents we posted contributing the last building block to viable autonomous agents on permissionless open protocols. It includes a cryptographic primitive called FROST—Frost on the Nostr protocol—for splitting up an agent's keys living on multiple different decentralized relays, Nostr relays, so that an agent can basically have its own identity. It can sign keys and credentials in a way that cannot be exported by a human. Like, sovereign agents.
+And as for broad markets of agents, see the draft NIP-SA [Nostr Implementation Possibility - Sovereign Agents]... this is a Nostr protocol plank called Sovereign Agents we posted contributing the last building block to viable autonomous agents on permissionless open protocols. It includes a cryptographic primitive called FROST—Frost on the Nostr protocol—for splitting up an agent's keys living on multiple different decentralized relays, Nostr relays, so that an agent can basically have its own identity. It can sign keys and credentials in a way that cannot be exported by a human. Sovereign agents.
 
 **[06:12]**
 **[Visual: Scrolls down the tweet thread.]**
@@ -73,7 +73,7 @@ And as for broad markets of agents, see the draft NIP-SA [Nostr Implementation P
 **[06:23]**
 **[Visual: Shows a YouTube video thumbnail of Dhruv Bansal.]**
 
-**Speaker:** Two-hour talk there. Interviewed by Max and another Bitcoiner/Nostr person, one of our investors. And nice little summary there on what this is about. But instead of like "Scary AGI," it's really that this is going to be thought of as like a digital life form—even though it's not technically life, you could kind of think of it that way. The idea is that digital and biological life are going to be co-existing symbiotically through economic relationships. Markets. Market forces. Okay. We'll get to the Dunbar's number thing in a second here.
+**Speaker:** Two-hour talk there. Interviewed by Max and another Bitcoiner/Nostr person, one of our investors. And nice little summary there on what this is about. But instead of "Scary AGI," it's really that this is going to be thought of as a digital life form—even though it's not technically life, you could kind of think of it that way. The idea is that digital and biological life are going to be co-existing symbiotically through economic relationships. Markets. Market forces. Okay. We'll get to the Dunbar's number thing in a second here.
 
 **[07:03]**
 **[Visual: Returns to the OpenAgents tweet thread.]**
@@ -90,14 +90,14 @@ The greater risk than open experimentation with these dynamics is that Team Clos
 **[08:13]**
 **[Visual: Switches to a ChatGPT conversation.]**
 
-**Speaker:** Finally, I dumped a bunch of this into ChatGPT. Everyone's talking now about labor and what's the future going to look like, and how scary is AGI, and there's going to be all this like job collapse and like... I partially accept those premises, but I think people have wrong what's going to be possible in terms of on the abundance side of things.
+**Speaker:** Finally, I dumped a bunch of this into ChatGPT. Everyone's talking now about labor and what's the future going to look like, and how scary is AGI, and there's going to be all this job collapse. I partially accept those premises, but I think people have wrong what's going to be possible in terms of on the abundance side of things.
 
 So I'm including this link in the Twitter thread as well as if you go to the link that I'm about to share at the bottom here, there's a Read More link that goes to the same share to chat.
 
 **[08:46]**
 **[Visual: Switches to a document titled "OpenAgents: The Agentic OS" (SYNTHESIS.md).]**
 
-**Speaker:** Let's step through it real quick. So I took our 17-page synthesis document. This is basically the entire company. Everything we've been talking about for two years. All of our thesis, all of our philosophy, all of our products, how everything works together, the protocols, glossary, cryptography, Bitcoin payments... literally *everything* is in this one document. This is open source. This is on our GitHub repo. It's in the root level called `SYNTHESIS.md`. We're going to keep this updated. So if you're ever wondering like, "What's OpenAgents doing?" Here's a 17-page document. Feed this to your AIs. Read about it. This is what we're doing.
+**Speaker:** Let's step through it real quick. So I took our 17-page synthesis document. This is basically the entire company. Everything we've been talking about for two years. All of our thesis, all of our philosophy, all of our products, how everything works together, the protocols, glossary, cryptography, Bitcoin payments... literally *everything* is in this one document. This is open source. This is on our GitHub repo. It's in the root level called `SYNTHESIS.md`. We're going to keep this updated. So if you're ever wondering "What's OpenAgents doing?" Here's a 17-page document. Feed this to your AIs. Read about it. This is what we're doing.
 
 **[09:23]**
 **[Visual: Returns to ChatGPT interface.]**
@@ -117,7 +117,7 @@ So I'm including this link in the Twitter thread as well as if you go to the lin
 **[10:19]**
 **[Visual: Speaker is overlaid on an interactive graphic titled "GROUP FORMING NETWORKS".]**
 
-**Speaker:** Namely, the law says that the value, the network value of a group-forming network is 2 to the *n*-th power ($2^N$) where *N* is the number of participants. Contrast it with Metcalfe's Law ($N^2$), which came out of telecommunications, but that was loosely used to describe the network value of like peer-to-peer networks where the value of the network is *N*-squared. And when Uber started running circles around the taxis, people started like kind of quoting Metcalfe's Law as kind of an example of how this like pseudo, almost peer-to-peer network called Uber was able to build all this network value contrasted with hierarchical organizations like the taxis.
+**Speaker:** Namely, the law says that the value, the network value of a group-forming network is 2 to the *n*-th power ($2^N$) where *N* is the number of participants. Contrast it with Metcalfe's Law ($N^2$), which came out of telecommunications, but that was loosely used to describe the network value of peer-to-peer networks where the value of the network is *N*-squared. And when Uber started running circles around the taxis, people started quoting Metcalfe's Law as an example of how this pseudo, almost peer-to-peer network called Uber was able to build all this network value contrasted with hierarchical organizations like the taxis.
 
 And then you say, okay, you know, David Reed comes along and he says, "Well, the most evolved form of network is not a peer-to-peer network. It's a group-forming network." Which is where you start with a peer-to-peer network and you make it very easy for participants to form groups with each other. In that case, the network value—upper bound you can call it—is 2 to the *n*-th power.
 
@@ -143,12 +143,12 @@ We can now start to reason about *agent networks* that approach the upper bound 
 **[13:16]**
 **[Visual: Returns to ChatGPT.]**
 
-**Speaker:** Now, with that in mind—this sort of mind-boggling concept—let's bring this back to ChatGPT. And say, okay, what are the ramifications of an agent group-forming network for society... with the full background of like all of the stuff... this explains Reed's Law and how OpenAgents is going to be building for it protocols and blah blah blah.
+**Speaker:** Now, with that in mind—this sort of mind-boggling concept—let's bring this back to ChatGPT. And say, okay, what are the ramifications of an agent group-forming network for society... with the full background of all of the stuff... this explains Reed's Law and how OpenAgents is going to be building for it protocols and blah blah blah.
 
 **[13:36]**
 **[Visual: Scrolling through ChatGPT output.]**
 
-**Speaker:** Scroll, scroll, scroll... They really need a button to like jump to the most recent message. Okay. Let's just skim through this. Now this is all public, you can read this. I encourage you to fork this conversation and have your own questions that you ask of this.
+**Speaker:** Scroll, scroll, scroll... They really need a button to jump to the most recent message. Okay. Let's just skim through this. Now this is all public, you can read this. I encourage you to fork this conversation and have your own questions that you ask of this.
 
 So here are the big society-level ramifications where once you have a group-forming network of agents—Reed's Law dynamics—where agents can rapidly discover each other, form coalitions, split work, split payments, and persist as teams...
 
@@ -177,11 +177,11 @@ Okay, firms become protocol-native. Markets accelerate. Disintermediation pressu
 
 **Speaker:** So this is interesting. Two opposing forces collide: Decentralization—anyone can contribute compute skills and earn. Concentration—the best orchestrators/markets can snowball, winner-take-most, because group-forming networks amplify incumbents.
 
-See, here's... what I'll qualify with there. One of my observations in Open AI's massive failure to create and launch GPT Store was that OpenAI is not really... they're kind of a product company, they're definitely not a marketplace company. And if you go back to Episode 1 of this series where I said like, the day after they announced GPT Store and they were going to do rev-sharing, DevDay 2023... I was like, "They're gonna half-ass that. There's no way they're gonna do what's necessary." And they *did* half-ass it.
+See, here's... what I'll qualify with there. One of my observations in Open AI's massive failure to create and launch GPT Store was that OpenAI is not really... they're kind of a product company, they're definitely not a marketplace company. And if you go back to Episode 1 of this series where I said the day after they announced GPT Store and they were going to do rev-sharing, DevDay 2023... I was saying, "They're gonna half-ass that. There's no way they're gonna do what's necessary." And they *did* half-ass it.
 
-Fast forward two-plus years, they've paid *zero* developers. We've paid like 20 developers for our MVP agent store like a year ago. We've paid infinity percent more developers than OpenAI. So, we'll get to the payment piece in a bit here.
+Fast forward two-plus years, they've paid *zero* developers. We've paid 20 developers for our MVP agent store a year ago. We've paid infinity percent more developers than OpenAI. So, we'll get to the payment piece in a bit here.
 
-But so you've got labs, Anthropic and OpenAI, xAI... like every big lab would love to, you know, *own* agents. But we think they're really structurally incapable of owning agents. Because so much of this is disintermediating. Why are you going to use labs from... or agents from one particular lab? Aren't you going to want everything to be able to work well across each other? Like, are these companies going to be harnessing Reed's Law dynamics? They just... they just can't. They can't do that.
+But so you've got labs, Anthropic and OpenAI, xAI... every big lab would love to, you know, *own* agents. But we think they're really structurally incapable of owning agents. Because so much of this is disintermediating. Why are you going to use labs from... or agents from one particular lab? Aren't you going to want everything to be able to work well across each other? Are these companies going to be harnessing Reed's Law dynamics? They just... they just can't. They can't do that.
 
 That's probably worth a separate video about why they're structurally incapable of leading this. And why it's got to be open, neutral, independent folks like us.
 
@@ -198,7 +198,7 @@ That's probably worth a separate video about why they're structurally incapable 
 **[17:45]**
 **[Visual: ChatGPT input prompting for a comparison between OpenAgents and DeepMind.]**
 
-**Speaker:** And then, I fed it the, OpenAgents versus DeepMind analysis doc. I was like, speculate more on this.
+**Speaker:** And then, I fed it the, OpenAgents versus DeepMind analysis doc. I said, speculate more on this.
 
 **[17:53]**
 **[Visual: ChatGPT output discussing "The real battleground is 'coalition latency', not 'agent intelligence'".]**
@@ -207,11 +207,11 @@ That's probably worth a separate video about why they're structurally incapable 
 
 "The real battleground is **coalition latency**, not agent intelligence."
 
-Lots of thoughts on intelligence, intelligence, intelligence, but I think there's *been* a growing recognition that coordination may end up being the bottleneck. And then like, how does that coordination best happen? Obviously on open and neutral protocols. We think that's obvious.
+Lots of thoughts on intelligence, intelligence, intelligence, but I think there's *been* a growing recognition that coordination may end up being the bottleneck. And then, how does that coordination best happen? Obviously on open and neutral protocols. We think that's obvious.
 
-So for everybody trying to push like a proprietary framework or a crypto shitcoin and say it's got to come through *you*? No.
+So for everybody trying to push a proprietary framework or a crypto shitcoin and say it's got to come through *you*? No.
 
-The only logical meeting point for this huge network to coalesce is on neutral and open protocols. For us, we think it's obvious that that's Bitcoin and Nostr. We will make that case. I could see something coming up to like supplement Nostr or replace it maybe... but it's got all the properties of what I think is needed. We'll do more content videos on that.
+The only logical meeting point for this huge network to coalesce is on neutral and open protocols. For us, we think it's obvious that that's Bitcoin and Nostr. We will make that case. I could see something coming up to supplement Nostr or replace it maybe... but it's got all the properties of what I think is needed. We'll do more content videos on that.
 
 **[19:04]**
 **[Visual: Scrolling through more ChatGPT text.]**
@@ -228,7 +228,7 @@ I think the most realistic synthesis is:
 
 **Plane B: The Containment Plane (Optional but economically necessary).** Used for high-risk tools and high-capability experiments. Semi-permeable IO with explicit ports. Costs money (insurance, bonds, fees). Produces signed artifacts back to Plane A.
 
-Okay. So this is clearly like what DeepMind was trying to articulate the architecture for this containment plane.
+Okay. So this is clearly what DeepMind was trying to articulate the architecture for this containment plane.
 
 Power to them and anyone who wants to do the **boring work** of trying to figure out how to hand-hold legacy institutions. Great. Thanks for doing that so *we* don't have to.
 
@@ -237,12 +237,12 @@ I want to build Plane A. The Open Plane. I invite you all to meet us there and h
 **[20:13]**
 **[Visual: ChatGPT Output: "7) The defining war will be: Open 'Ecology' vs Closed 'Corporate anthill'".]**
 
-**Speaker:** All right. There's more here. Let's skip down. "The defining war will be Open Ecology versus Closed Corporate Anthill." The ecology wins. Can we just fast forward? Can we just skip the war? Like, we win. Victory. We win. Open. Open wins. [Sigh]
+**Speaker:** All right. There's more here. Let's skip down. "The defining war will be Open Ecology versus Closed Corporate Anthill." The ecology wins. Can we just fast forward? Can we just skip the war? We win. Victory. We win. Open. Open wins. [Sigh]
 
 **[20:34]**
 **[Visual: ChatGPT Output: "10) What you should build (speculatively) if this doc is your worldview".]**
 
-**Speaker:** Blah blah blah blah blah. What you should build. Ya ya ya. "If you want, I can turn this into a tighter 'OpenAgents Safety Thesis v2'..." Something like: We are emergence-first. We acknowledge irreversibility domains. We make safety a market, not a ministry. We attach accountability to budget signers and receipts. We keep the system forkable to avoid capture. Yeah, all this is open source on our, GitHub repo.
+**Speaker:** Blah blah blah blah blah. What you should build. Ya ya ya. "If you want, I can turn this into a tighter 'OpenAgents Safety Thesis v2'..." Here's one way: We are emergence-first. We acknowledge irreversibility domains. We make safety a market, not a ministry. We attach accountability to budget signers and receipts. We keep the system forkable to avoid capture. Yeah, all this is open source on our, GitHub repo.
 
 **[20:55]**
 **[Visual: ChatGPT input prompting for specific "network value" concepts.]**
@@ -294,7 +294,7 @@ The big win is **micropayment income** for small contributions, paid automatical
 
 **Examples:**
 *Skill royalties:* You publish a useful skill or workflow, it gets called 10,000 times a day, Bitcoin flows to you. Or micro-US Dollars if you want fiat.
-*Data and trajectory royalties (opt-in):* You can contribute verified work traces. There was a Twitter thread last week about like, all developers using Cursor or Claude Code have valuable data on their computer they're not doing anything with. All that's valuable to agents. Will my agents want to pay you a few cents for your data? Absolutely. If you want to sell it, you can. I'll buy it.
+*Data and trajectory royalties (opt-in):* You can contribute verified work traces. There was a Twitter thread last week about all developers using Cursor or Claude Code having valuable data on their computer they're not doing anything with. All that's valuable to agents. Will my agents want to pay you a few cents for your data? Absolutely. If you want to sell it, you can. I'll buy it.
 *Compute dividends:* Your idle laptop or office cluster sells verified jobs while you sleep. Why are you not running agents around the clock making you money around the clock? The technology is possible.
 *Guardianship/Audit services:* You hold keys, run monitoring, provide dispute resolution, get paid fees.
 
@@ -317,7 +317,7 @@ Any AI lab that's trying to lead any of this and isn't paying people... you're g
 
 Do we know of any way of sending instant micropayments anywhere in the world? Bitcoin via the Lightning Network. Yes. Done. No crypto shitcoin needed. Bitcoin. Done. You want it in USD? Bitcoin-native stablecoin. Done. This all exists.
 
-All the tech for all this stuff is solved. We just need the coordination of like the actual market. Oh, maybe that's what OpenAgents should launch next week. Okay. Safeguard budgets, yeah yeah yeah.
+All the tech for all this stuff is solved. We just need the coordination of the actual market. Oh, maybe that's what OpenAgents should launch next week. Okay. Safeguard budgets, yeah yeah yeah.
 
 **[26:05]**
 **[Visual: ChatGPT input requesting a concise framing on deflation and dividends.]**
@@ -333,7 +333,7 @@ Okay. In conclusion. Give me one paragraph on deflation, one on dividends, and o
 **Deflation:**
 In a coalition-forming agent economy, the price of many goods and services falls because the expense part of production isn't just *doing* the work, it's *coordinating* people—hiring, management, handoffs, QA, compliance, contracting, and billing. When agents can self-assemble into competent micro-teams on demand, run verification cheaply, and ship outcomes with receipts, huge swaths of coordination overhead collapse. The result is real deflation in anything that's digitalizable and spec-able: software, design iterations, marketing ops, research synthesis, back-office admin—pushing more of your paycheck toward optional spending and raising living standards even if nominal wages re-balance.
 
-A lot of this is just happening because of the AI labs, but we're going to be like accelerating that by building really good agents on top.
+A lot of this is just happening because of the AI labs, but we're going to be accelerating that by building really good agents on top.
 
 **[27:17]**
 **[Visual: ChatGPT Output: "Dividends".]**
