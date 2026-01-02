@@ -142,11 +142,27 @@ pub(crate) fn build_landing_page(
             state.button_bounds = Bounds::new(btn_x, btn_y, btn_w, btn_h);
         }
 
+        // Episode link - centered below the hero frame
+        let episode_text = "Episode 200: The Agent Network";
+        let episode_font_size = 13.0;
+        let episode_width = cx.text.measure(episode_text, episode_font_size);
+        let episode_x = card_x + (card_w - episode_width) / 2.0;
+        let episode_y = card_y + card_h + 24.0;
+        let episode_run = cx.text.layout(
+            episode_text,
+            Point::new(episode_x, episode_y),
+            episode_font_size,
+            theme::text::MUTED,
+        );
+        cx.scene.draw_text(episode_run);
+        state.episode_link_bounds = Bounds::new(episode_x, episode_y, episode_width, episode_font_size + 4.0);
+
         (cx.scene, cx.text)
     } else {
         // Still loading - hide everything
         state.button_bounds = Bounds::ZERO;
         state.left_cta_bounds = Bounds::ZERO;
+        state.episode_link_bounds = Bounds::ZERO;
         (scene, text_system)
     };
 
