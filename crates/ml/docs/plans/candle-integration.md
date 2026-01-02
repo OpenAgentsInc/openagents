@@ -568,8 +568,184 @@ async fn test_browser_inference() {
 
 ---
 
+## Concrete Implementation Decisions
+
+### 1. Model File Formats
+
+| Target | Format | Loader | Rationale |
+|--------|--------|--------|-----------|
+| **Browser** | GGUF (Q4_K_M) | `gguf.rs` | Compact, pre-quantized, single file |
+| **Native** | Safetensors | `safetensors.rs` | HuggingFace standard, faster loading |
+
+**Browser uses GGUF because:**
+- Single file (no separate config/tokenizer)
+- Pre-quantized (Q4/Q8) - no runtime quantization needed
+- Candle's `quantized_llama2_c.rs` already loads GGUF
+
+**Native uses Safetensors because:**
+- Standard HuggingFace format
+- Memory-mapped loading (fast)
+- Candle's `gemma3.rs` uses safetensors
+
+### 2. Candle Model Availability ✅
+
+Verified in `candle-transformers/src/models/`:
+
+| Model | File | Quantized Version |
+|-------|------|-------------------|
+| Gemma 3 | `gemma3.rs` (17KB) | `quantized_gemma3.rs` (17KB) |
+| Llama 3.x | `llama.rs` (18KB) | `quantized_llama.rs` (22KB) |
+| Llama2-C | `llama2_c.rs` (12KB) | `quantized_llama2_c.rs` (8.7KB) |
+
+**No new model implementations needed** - all targets are covered.
+
+### 3. Tokenizer for WASM
+
+**Decision: Use HuggingFace `tokenizer.json` format (not raw SentencePiece)**
+
+```rust
+// Browser tokenizer loading
+pub async fn load_tokenizer(url: &str) -> Result<Tokenizer> {
+    let json = fetch_bytes(url).await?;
+    Tokenizer::from_bytes(&json)  // HF tokenizers crate
+}
+```
+
+**Conversion required for SentencePiece models:**
+```bash
+# Convert Llama/Gemma tokenizer.model to tokenizer.json
+python -c "
+from transformers import AutoTokenizer
+t = AutoTokenizer.from_pretrained('meta-llama/Llama-2-7b-hf')
+t.save_pretrained('./tokenizer_json/')
+"
+```
+
+**Pre-converted tokenizers hosted at:**
+- `https://huggingface.co/models/{model}/resolve/main/tokenizer.json`
+
+### 4. Browser Memory Management
+
+**128MB WebGPU buffer limit** requires:
+
+#### Range Loading (HTTP byte ranges)
+```rust
+pub struct ModelLoader {
+    url: String,
+    chunk_size: usize,  // 16MB chunks
+}
+
+impl ModelLoader {
+    pub async fn load_layer(&self, layer_idx: usize) -> Result<LayerWeights> {
+        let (start, end) = self.layer_offsets(layer_idx);
+        let bytes = fetch_range(&self.url, start, end).await?;
+        LayerWeights::from_bytes(&bytes)
+    }
+}
+```
+
+#### Layer-by-Layer Processing
+```rust
+// Don't load all weights at once - process layer by layer
+for layer_idx in 0..num_layers {
+    let weights = loader.load_layer(layer_idx).await?;
+    hidden = layer_forward(&hidden, &weights, &mut kv_cache)?;
+    // weights dropped here - memory freed
+}
+```
+
+#### Browser Cache API
+```javascript
+// Cache model chunks in browser
+const cache = await caches.open('ml-models');
+const cached = await cache.match(url);
+if (cached) return cached.arrayBuffer();
+
+const response = await fetch(url);
+cache.put(url, response.clone());
+return response.arrayBuffer();
+```
+
+#### Memory Budget
+```
+128MB WebGPU limit breakdown:
+├── Model weights (streamed): 0MB resident (layer-by-layer)
+├── KV cache: ~40MB (for 2K context, 42M model)
+├── Activations: ~20MB (hidden states, attention)
+├── Workspace buffers: ~20MB (matmul tiles, reductions)
+└── Headroom: ~48MB
+```
+
+### 5. Test Artifacts Strategy
+
+#### CI Tests (always run)
+```rust
+#[test]
+fn test_kernels() {
+    // Unit tests with synthetic data - no model files
+}
+
+#[test]
+fn test_tiny_model() {
+    // Use llama2c-260k (1MB) - embedded in test binary
+    let model_bytes = include_bytes!("../fixtures/llama2c-260k.gguf");
+}
+```
+
+#### Integration Tests (feature-gated)
+```rust
+#[test]
+#[cfg(feature = "large-models")]
+fn test_llama2c_42m() {
+    // Downloads 27MB model on first run
+    let model = download_if_missing("llama2c-42m-q4.gguf", LLAMA2C_42M_URL);
+}
+```
+
+#### Model Download Script
+```bash
+#!/bin/bash
+# scripts/download-test-models.sh
+
+# Small (CI) - 1MB
+curl -L -o tests/fixtures/llama2c-260k.gguf \
+  "https://huggingface.co/karpathy/tinyllamas/resolve/main/stories260K.gguf"
+
+# Medium (local dev) - 27MB
+curl -L -o tests/fixtures/llama2c-42m-q4.gguf \
+  "https://huggingface.co/karpathy/tinyllamas/resolve/main/stories42M.gguf"
+
+# Tokenizer
+curl -L -o tests/fixtures/tokenizer.json \
+  "https://huggingface.co/karpathy/tinyllamas/resolve/main/tokenizer.json"
+```
+
+#### .gitignore
+```
+# Large test models (downloaded on demand)
+tests/fixtures/*.gguf
+!tests/fixtures/llama2c-260k.gguf  # Keep tiny model in git
+```
+
+---
+
+## Summary: What's Locked Down
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Browser model format | GGUF Q4 | Single file, pre-quantized |
+| Native model format | Safetensors | HF standard, mmap loading |
+| Tokenizer format | tokenizer.json | WASM-compatible, no SentencePiece runtime |
+| Browser memory | Layer-by-layer streaming | Stay under 128MB |
+| CI test model | llama2c-260k (1MB) | Fast, embeddable |
+| Dev test model | llama2c-42m-q4 (27MB) | Feature-gated download |
+| Candle models | Use existing | gemma3.rs, llama.rs, quantized_* all exist |
+
+---
+
 ## Sources
 
 - [Gemma 3 Technical Report](https://arxiv.org/abs/2503.19786)
 - [Gemma 3 HuggingFace Docs](https://huggingface.co/docs/transformers/en/model_doc/gemma3)
 - [Candle WASM Examples](https://github.com/huggingface/candle/tree/main/candle-wasm-examples)
+- [TinyLlamas (test models)](https://huggingface.co/karpathy/tinyllamas)
