@@ -1,4 +1,4 @@
-use wgpui::{Bounds, Hsla, Point, Quad, Scene, TextSystem, theme};
+use wgpui::{Bounds, FontStyle, Hsla, Point, Quad, Scene, TextSystem, theme};
 use wgpui::animation::AnimatorState;
 use wgpui::components::Component;
 use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame};
@@ -54,6 +54,22 @@ pub(crate) fn build_landing_page(
 
         // Create PaintContext for Frame component
         let mut cx = PaintContext::new(scene, text_system, scale_factor);
+
+        // Episode link - italic, centered above the hero frame
+        let episode_text = "Episode 200: The Agent Network";
+        let episode_font_size = 13.0;
+        let episode_width = cx.text.measure_styled(episode_text, episode_font_size, FontStyle::italic());
+        let episode_x = card_x + (card_w - episode_width) / 2.0;
+        let episode_y = card_y - 28.0;
+        let episode_run = cx.text.layout_styled(
+            episode_text,
+            Point::new(episode_x, episode_y),
+            episode_font_size,
+            theme::text::MUTED,
+            FontStyle::italic(),
+        );
+        cx.scene.draw_text(episode_run);
+        state.episode_link_bounds = Bounds::new(episode_x, episode_y, episode_width, episode_font_size + 4.0);
 
         // Hero frame
         state.left_cta_bounds = Bounds::new(card_x, card_y, card_w, card_h);
@@ -141,21 +157,6 @@ pub(crate) fn build_landing_page(
             // Set button bounds for click handling
             state.button_bounds = Bounds::new(btn_x, btn_y, btn_w, btn_h);
         }
-
-        // Episode link - centered below the hero frame
-        let episode_text = "Episode 200: The Agent Network";
-        let episode_font_size = 13.0;
-        let episode_width = cx.text.measure(episode_text, episode_font_size);
-        let episode_x = card_x + (card_w - episode_width) / 2.0;
-        let episode_y = card_y + card_h + 24.0;
-        let episode_run = cx.text.layout(
-            episode_text,
-            Point::new(episode_x, episode_y),
-            episode_font_size,
-            theme::text::MUTED,
-        );
-        cx.scene.draw_text(episode_run);
-        state.episode_link_bounds = Bounds::new(episode_x, episode_y, episode_width, episode_font_size + 4.0);
 
         (cx.scene, cx.text)
     } else {
