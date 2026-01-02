@@ -17,5 +17,6 @@ pub mod repo_knowledge;
 pub mod stripe;
 pub mod telemetry;
 pub mod tunnel;
+pub mod the_agent_network;
 pub mod y2026;
 // pub mod wallet;  // Moved to separate worker for size
