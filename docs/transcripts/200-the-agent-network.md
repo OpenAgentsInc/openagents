@@ -20,12 +20,12 @@ Hey, do we have a relevant product launch coming up in like a few days? Stay tun
 **[01:33]**
 **[Visual: Returns to "2026" slide. Clicks "Swarm AI".]**
 
-**Speaker:** Okay. So Swarm AI. What else we got here? Okay. Just another prediction like, "Hey, we'll soon have this kind of cool stuff running on your local Mac." We don't think it's going to be 24 months; we think it's going to be two to four. Why? Our rough rule of thumb: Any predicted timeline modeled on *one* device's inference capability, that excludes the *aggregation* of all of those devices pooled into a globally accessible market... if it doesn't have that, then just assume that that timeline happens 10 times faster than predicted. So Gavin says three years? We say months. You say 24 months? We say a couple months.
+**Speaker:** Okay, swarm AI. What else we got here? Just another prediction like, "Hey, we'll soon have this kind of cool stuff running on your local Mac." We don't think it's going to be 24 months; we think it's going to be two to four. Why? Our rough rule of thumb: Any predicted timeline modeled on *one* device's inference capability, that excludes the *aggregation* of all of those devices pooled into a globally accessible market... if it doesn't have that, then just assume that that timeline happens 10 times faster than predicted. So Gavin says three years? We say months. You say 24 months? We say a couple months. Swarm AI, aggregating local compute.
 
 **[02:04]**
 **[Visual: Returns to "2026" slide. Clicks "Open > Closed".]**
 
-**Speaker:** Swarm AI, aggregating local compute. Okay, we think Open is going to start running circles around Closed. Open-source labs, products, agents are going to run circles around closed equivalents. You're starting to see this with OpenCode. Amazing project. Open source. Doing open source right. Which we can just then build on top of with OpenAgents. We're all working together. The closed labs are not.
+**Speaker:** We think open is going to start running circles around closed. Open-source labs, products, agents are going to run circles around closed equivalents. You're starting to see this with OpenCode. Amazing project. Open source. Doing open source right. Which we can just then build on top of with OpenAgents. We're all working together. The closed labs are not.
 
 **[02:31]**
 **[Visual: Returns to "2026" slide. Clicks "Agents > Models". Shows a tweet "THE AGE OF MODELS IS OVER. THE TIME OF THE AGENT HAS COME."]**
