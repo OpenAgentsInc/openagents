@@ -13,6 +13,9 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
     let mut body_html = String::new();
     html::push_html(&mut body_html, parser);
 
+    // Escape backticks in markdown for JavaScript string literal
+    let markdown_escaped = markdown_content.replace('`', "\\`");
+
     let html = format!(r##"<!DOCTYPE html>
 <html>
 <head>
@@ -243,7 +246,7 @@ Source: OpenAgents
         }});
     </script>
 </body>
-</html>"##, markdown_content, body_html);
+</html>"##, body_html, markdown_escaped);
 
     let headers = Headers::new();
     headers.set("Content-Type", "text/html; charset=utf-8")?;
