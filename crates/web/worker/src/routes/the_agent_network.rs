@@ -46,9 +46,32 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
             margin-bottom: 16px;
             color: #fff;
         }}
+        .subtitle-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }}
         .subtitle {{
             color: #888;
-            margin-bottom: 40px;
+            margin: 0;
+        }}
+        .copy-btn {{
+            background: #f80;
+            color: #000;
+            border: none;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-family: 'Vera Mono', 'DejaVu Sans Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+            cursor: pointer;
+            border-radius: 2px;
+            font-weight: bold;
+        }}
+        .copy-btn:hover {{
+            background: #ff9922;
+        }}
+        .copy-btn:active {{
+            background: #dd7700;
         }}
         p {{
             margin: 16px 0;
@@ -112,7 +135,10 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
 <body>
     <div class="container">
         <h1>The Agent Network</h1>
-        <p class="subtitle">Episode 200 Transcript</p>
+        <div class="subtitle-row">
+            <p class="subtitle">Episode 200 Transcript</p>
+            <button class="copy-btn" id="copyMarkdownBtn">Copy as markdown</button>
+        </div>
 
         <p>In this episode, we explore 2026 predictions including local AI, swarm AI, and the fundamental shift from individual agents to agent networks. We introduce Reed's Law of group-forming networks—a crucial economic principle showing why networks of autonomous agents can create exponentially greater value than previous network models.</p>
 
@@ -183,8 +209,24 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
         <hr>
         <p style="color: #666; text-align: center; margin-top: 40px;"><a href="/">OpenAgents</a></p>
     </div>
+    <script>
+        const markdownContent = `{}`;
+        document.getElementById('copyMarkdownBtn').addEventListener('click', function() {{
+            navigator.clipboard.writeText(markdownContent).then(() => {{
+                const btn = this;
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => {{
+                    btn.textContent = originalText;
+                }}, 2000);
+            }}).catch(err => {{
+                console.error('Failed to copy:', err);
+                alert('Failed to copy markdown');
+            }});
+        }});
+    </script>
 </body>
-</html>"##, body_html);
+</html>"##, markdown_content, body_html);
 
     let headers = Headers::new();
     headers.set("Content-Type", "text/html; charset=utf-8")?;
