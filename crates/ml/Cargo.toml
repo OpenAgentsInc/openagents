@@ -11,65 +11,74 @@ description = "Browser-first ML inference library with WebGPU compute"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["web"]
-web = [
+default = ["browser"]
+
+candle = ["candle-core", "candle-nn", "candle-transformers", "tokenizers"]
+
+# Browser: WebGPU + CPU fallback
+browser = [
+    "candle",
+    "candle-wgpu",
+    "nostr",
     "wasm-bindgen",
     "wasm-bindgen-futures",
     "web-sys",
     "js-sys",
     "gloo-timers",
+    "getrandom/js",
+]
+
+# Native: Candle CUDA/Metal/CPU
+native = ["candle", "compute", "reqwest", "tokio"]
+cuda = ["native", "candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
+metal = [
+    "native",
+    "candle-core/metal",
+    "candle-nn/metal",
+    "candle-transformers/metal",
 ]
 
 [dependencies]
-# GPU compute
-wgpu = { version = "24.0", features = ["webgpu", "webgl"] }
-
-# Data structures
-bytemuck = { version = "1", features = ["derive"] }
-half = { version = "2", features = ["bytemuck"] }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
 parking_lot = "0.12"
-smallvec = "1"
-
-# Time (WASM-compatible)
 web-time = "1.1"
-
-# Async
-futures = "0.3"
-
-# Logging
 log = "0.4"
+uuid = { workspace = true }
+rand = { workspace = true }
+hex = { workspace = true }
+getrandom = { version = "0.2", optional = true }
 
-# Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+tokenizers = { version = "0.20", features = ["unstable_wasm"], optional = true }
 
-# Web (optional)
+candle-core = { version = "0.8", optional = true }
+candle-nn = { version = "0.8", optional = true }
+candle-transformers = { version = "0.8", optional = true }
+candle-wgpu = { path = "candle-wgpu", optional = true }
+
+compute = { path = "../compute", optional = true }
+nostr = { path = "../nostr/core", optional = true }
+
+tokio = { version = "1", features = ["rt", "sync"], optional = true }
+reqwest = { workspace = true, optional = true }
+
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 web-sys = { version = "0.3", optional = true, features = [
+    "Headers",
+    "Request",
+    "RequestInit",
+    "Response",
+    "Event",
     "Window",
     "Navigator",
-    "Gpu",
-    "GpuAdapter",
-    "GpuDevice",
-    "GpuQueue",
-    "GpuBuffer",
-    "GpuBufferDescriptor",
-    "GpuBufferUsage",
-    "GpuShaderModule",
-    "GpuShaderModuleDescriptor",
-    "GpuComputePipeline",
-    "GpuComputePipelineDescriptor",
-    "GpuBindGroup",
-    "GpuBindGroupDescriptor",
-    "GpuBindGroupEntry",
-    "GpuBindGroupLayout",
-    "GpuCommandEncoder",
-    "GpuComputePassEncoder",
+    "WebSocket",
+    "MessageEvent",
+    "CloseEvent",
+    "console",
 ] }
 js-sys = { version = "0.3", optional = true }
 gloo-timers = { version = "0.3", optional = true }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "1", features = ["rt", "sync"] }
-reqwest = { workspace = true }

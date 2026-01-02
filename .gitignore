@@ -39,6 +39,7 @@ private
 
 # Model files (GGUF, safetensors, etc.) - never commit large model weights
 *.gguf
+!crates/ml/tests/fixtures/llama2c-260k.gguf
 *.safetensors
 *.bin
 models/
