@@ -60,12 +60,14 @@ pub(crate) fn build_landing_page(
         let episode_font_size = 13.0;
         let episode_width = cx.text.measure_styled(episode_text, episode_font_size, FontStyle::italic());
         let episode_x = card_x + (card_w - episode_width) / 2.0;
-        let episode_y = card_y - 28.0;
+        let episode_y = card_y - 36.0;
+        let episode_hovered = state.episode_link_bounds.contains(state.mouse_pos);
+        let episode_color = if episode_hovered { theme::text::PRIMARY } else { theme::text::MUTED };
         let episode_run = cx.text.layout_styled(
             episode_text,
             Point::new(episode_x, episode_y),
             episode_font_size,
-            theme::text::MUTED,
+            episode_color,
             FontStyle::italic(),
         );
         cx.scene.draw_text(episode_run);
