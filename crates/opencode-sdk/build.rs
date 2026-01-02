@@ -21,6 +21,10 @@ fn main() {
 
     let ast = syn::parse2(tokens).expect("Failed to parse generated tokens");
     let content = prettyplease::unparse(&ast);
+    let content = content.replace(
+        "elided_named_lifetimes",
+        "mismatched_lifetime_syntaxes",
+    );
 
     std::fs::write(&out_file, content).expect("Failed to write generated code");
 }

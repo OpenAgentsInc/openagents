@@ -12,20 +12,6 @@ use openagents_runtime::{
     ClaudeSessionState, ClaudeUsage, ChunkType,
 };
 
-/// Check if verbose mode is enabled
-fn is_verbose() -> bool {
-    std::env::var("AUTOPILOT_VERBOSE").is_ok()
-}
-
-/// Print only if verbose mode is enabled
-macro_rules! verbose_println {
-    ($($arg:tt)*) => {
-        if is_verbose() {
-            eprintln!($($arg)*);
-        }
-    };
-}
-
 /// Retry configuration
 const MAX_RETRIES: u32 = 3;
 const INITIAL_RETRY_DELAY_MS: u64 = 2000;
