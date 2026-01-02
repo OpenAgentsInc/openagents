@@ -166,7 +166,7 @@ export default {
           backgroundColor: "#000",
           color: "#fff",
           fontFamily: "Square721",
-          padding: "80px 60px 60px 60px",
+          padding: "120px 60px 60px 60px",
         }}
       >
         {elements}
