@@ -3,6 +3,8 @@ name = "openagents-web-client"
 version = "0.1.0"
 edition = "2024"
 description = "OpenAgents WGPUI web client"
+repository = "https://github.com/OpenAgentsInc/openagents"
+license = "CC-0"
 publish = false
 
 # Exclude from parent workspace - wasm-pack has its own process
