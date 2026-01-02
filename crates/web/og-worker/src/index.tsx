@@ -152,6 +152,10 @@ export default {
       </div>
     );
 
+    // Load Square721 font from static assets
+    const fontUrl = "https://openagents.com/static/webFonts/Square721StdRoman/font.woff";
+    const fontData = await fetch(fontUrl).then((res) => res.arrayBuffer());
+
     return new ImageResponse(
       <div
         style={{
@@ -161,8 +165,8 @@ export default {
           flexDirection: "column",
           backgroundColor: "#000",
           color: "#fff",
-          fontFamily: "monospace",
-          padding: "60px",
+          fontFamily: "Square721",
+          padding: "80px 60px 60px 60px",
         }}
       >
         {elements}
@@ -170,6 +174,13 @@ export default {
       {
         width: 1200,
         height: 630,
+        fonts: [
+          {
+            name: "Square721",
+            data: fontData,
+            style: "normal",
+          },
+        ],
       }
     );
   },
