@@ -13,4 +13,4 @@ mod views;
 mod wallet;
 
 pub use app::start_demo;
-pub use telemetry::{TelemetryCollector, TelemetryEvent, set_panic_hook};
+pub use telemetry::{TelemetryCollector, TelemetryEvent, set_panic_hook, track_cta_click};

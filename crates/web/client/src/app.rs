@@ -17,7 +17,7 @@ use crate::hud::{
 };
 use crate::nostr::{connect_to_relay, BazaarJob, DEFAULT_RELAYS};
 use crate::state::{AppState, AppView, RepoInfo, UserInfo};
-use crate::telemetry::{TelemetryCollector, set_panic_hook};
+use crate::telemetry::{TelemetryCollector, set_panic_hook, track_cta_click};
 use crate::views::{build_2026_page, build_brb_page, build_gfn_page, build_landing_page, build_repo_selector, build_repo_view};
 use crate::fs_access::{self, FileKind};
 use crate::utils::{read_clipboard_text, track_funnel_event};
@@ -602,6 +602,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             if state.view == AppView::Landing && state.right_cta_bounds.contains(click_pos) {
                 if let Some(window) = web_sys::window() {
                     track_funnel_event("start_earning_click", None);
+                    track_cta_click("start_earning", None);
                     // Open provider guide in new tab
                     let _ = window.open_with_url_and_target(
                         "https://github.com/openagents/openagents/blob/main/docs/bazaar/PROVIDER-GUIDE.md",
@@ -614,6 +615,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             // Handle GFN page CTA click
             if state.view == AppView::GfnPage && state.gfn.cta_bounds.contains(click_pos) {
                 if let Some(window) = web_sys::window() {
+                    track_cta_click("gfn_read_more", None);
                     let _ = window.open_with_url_and_target(
                         "https://chatgpt.com/share/6956b860-9288-8011-b67d-c78b64fceb49",
                         "_blank"
@@ -657,6 +659,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         }
                         AppView::Landing => {
                             track_funnel_event("github_connect_click", None);
+                            track_cta_click("github_connect", None);
                             let _ = window.location().set_href("/api/auth/github/start");
                         }
                         AppView::GfnPage => {
