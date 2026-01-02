@@ -210,9 +210,19 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
         <p style="color: #666; text-align: center; margin-top: 40px;"><a href="/">OpenAgents</a></p>
     </div>
     <script>
-        const markdownContent = `{}`;
+        const rawMarkdown = `{}`;
+        const markdownWithMetadata = `---
+Title: The Agent Network
+URL: https://openagents.com/the-agent-network
+Episode: 200
+Date: January 2, 2026
+Source: OpenAgents
+---
+
+` + rawMarkdown;
+
         document.getElementById('copyMarkdownBtn').addEventListener('click', function() {{
-            navigator.clipboard.writeText(markdownContent).then(() => {{
+            navigator.clipboard.writeText(markdownWithMetadata).then(() => {{
                 const btn = this;
                 const originalText = btn.textContent;
                 btn.textContent = 'Copied!';
