@@ -2,6 +2,7 @@ use crate::device::MlDevice;
 use crate::error::{MlError, Result};
 use crate::model::{GenerationOutcome, LoadedModel, ModelKind, ModelSource};
 use crate::sampling::GenerationConfig;
+use crate::telemetry::InferenceHook;
 use async_trait::async_trait;
 use compute::backends::{
     BackendError, CompletionRequest, CompletionResponse, InferenceBackend, ModelInfo, Result as BackendResult,
@@ -69,10 +70,11 @@ impl MlProviderConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MlProvider {
     device: MlDevice,
     models: Arc<RwLock<HashMap<String, Arc<Mutex<LoadedModel>>>>>,
+    telemetry_hook: Option<Arc<dyn InferenceHook>>,
 }
 
 impl MlProvider {
@@ -87,7 +89,15 @@ impl MlProvider {
                 .insert(source.id.clone(), Arc::new(Mutex::new(loaded)));
         }
 
-        Ok(Self { device, models })
+        Ok(Self {
+            device,
+            models,
+            telemetry_hook: None,
+        })
+    }
+
+    pub fn set_telemetry_hook(&mut self, hook: Option<Arc<dyn InferenceHook>>) {
+        self.telemetry_hook = hook;
     }
 
     pub fn device(&self) -> &MlDevice {
@@ -160,11 +170,18 @@ impl MlProvider {
         model: &Arc<Mutex<LoadedModel>>,
         request: &CompletionRequest,
         stream: bool,
-        mut on_token: Option<&mut dyn FnMut(String)>,
+        on_token: Option<&mut dyn FnMut(String)>,
+        hook: Option<Arc<dyn InferenceHook>>,
     ) -> Result<(GenerationOutcome, GenerationConfig)> {
         let mut model = model.lock();
         let config = Self::build_generation_config(request, &model);
-        let outcome = model.generate(&request.prompt, &config, if stream { on_token.take() } else { None })?;
+        let mut on_token = if stream { on_token } else { None };
+        let outcome = model.generate_with_hook(
+            &request.prompt,
+            &config,
+            &mut on_token,
+            hook.as_deref(),
+        )?;
         Ok((outcome, config))
     }
 }
@@ -199,8 +216,9 @@ impl InferenceBackend for MlProvider {
         let request_id = uuid::Uuid::new_v4().to_string();
         let request_for_task = request.clone();
 
+        let hook = self.telemetry_hook.clone();
         let (outcome, _config) = tokio::task::spawn_blocking(move || {
-            Self::generate_sync(&model, &request_for_task, false, None)
+            Self::generate_sync(&model, &request_for_task, false, None, hook)
         })
         .await
         .map_err(|e| BackendError::InferenceError(e.to_string()))?
@@ -236,6 +254,7 @@ impl InferenceBackend for MlProvider {
         let (tx, rx) = mpsc::channel(64);
         let model_id = request.model.clone();
         let prompt = request.prompt.clone();
+        let hook = self.telemetry_hook.clone();
 
         tokio::task::spawn_blocking(move || {
             let mut finish_reason = "stop".to_string();
@@ -254,7 +273,7 @@ impl InferenceBackend for MlProvider {
             };
 
             let request = CompletionRequest { prompt, ..request };
-            let outcome = Self::generate_sync(&model, &request, true, Some(&mut on_token));
+            let outcome = Self::generate_sync(&model, &request, true, Some(&mut on_token), hook);
 
             match outcome {
                 Ok((result, config)) => {

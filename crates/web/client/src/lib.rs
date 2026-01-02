@@ -5,6 +5,7 @@ mod claude_chat;
 mod fs_access;
 mod hud;
 mod intro_agent;
+mod ml_viz;
 mod nostr;
 mod state;
 mod telemetry;

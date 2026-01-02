@@ -1,16 +1,19 @@
 use crate::device::MlDevice;
 use crate::error::{MlError, Result};
 use crate::http::fetch_bytes;
-use crate::sampling::{sample_from_logits, GenerationConfig};
+use crate::sampling::{apply_repetition_penalty, sample_from_logits, softmax, GenerationConfig};
+use crate::telemetry::{InferenceHook, InferenceTelemetry, TokenCandidate};
 use crate::tokenizer::Tokenizer;
 use candle_core::{DType, IndexOp, Tensor};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::Path;
 #[cfg(feature = "native")]
 use std::path::PathBuf;
+use web_time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -159,6 +162,16 @@ impl LoadedModel {
         config: &GenerationConfig,
         mut on_token: Option<&mut dyn FnMut(String)>,
     ) -> Result<GenerationOutcome> {
+        self.generate_with_hook(prompt, config, &mut on_token, None)
+    }
+
+    pub fn generate_with_hook(
+        &mut self,
+        prompt: &str,
+        config: &GenerationConfig,
+        on_token: &mut Option<&mut dyn FnMut(String)>,
+        hook: Option<&dyn InferenceHook>,
+    ) -> Result<GenerationOutcome> {
         match &mut self.inner {
             ModelVariant::Llama2C {
                 model,
@@ -170,7 +183,8 @@ impl LoadedModel {
                 &self.device,
                 prompt,
                 config,
-                &mut on_token,
+                on_token,
+                hook,
             ),
             #[cfg(feature = "native")]
             ModelVariant::Gemma3 { model, config: cfg } => generate_gemma3(
@@ -180,7 +194,8 @@ impl LoadedModel {
                 &self.device,
                 prompt,
                 config,
-                &mut on_token,
+                on_token,
+                hook,
             ),
         }
     }
@@ -199,11 +214,13 @@ fn generate_llama2c(
     prompt: &str,
     config: &GenerationConfig,
     on_token: &mut Option<&mut dyn FnMut(String)>,
+    hook: Option<&dyn InferenceHook>,
 ) -> Result<GenerationOutcome> {
     let mut tokens = tokenizer.encode(prompt, true)?;
     let prompt_tokens = tokens.len();
     let mut output = String::new();
     let mut rng = build_rng(config.seed);
+    let start_time = Instant::now();
 
     let cache = build_llama2c_cache(cfg, device)?;
     let mut cache = cache;
@@ -222,6 +239,21 @@ fn generate_llama2c(
 
         if config.stop_tokens.contains(&next_token) {
             break;
+        }
+
+        if let Some(hook) = hook {
+            let generated_tokens = tokens.len().saturating_sub(prompt_tokens) + 1;
+            emit_token_telemetry(
+                hook,
+                &logits,
+                config,
+                &tokens,
+                tokenizer,
+                next_token,
+                generated_tokens,
+                &start_time,
+            )?;
+            emit_llama_cache_status(hook, &cache, tokens.len(), cfg.seq_len);
         }
 
         tokens.push(next_token);
@@ -253,6 +285,7 @@ fn generate_gemma3(
     prompt: &str,
     config: &GenerationConfig,
     on_token: &mut Option<&mut dyn FnMut(String)>,
+    hook: Option<&dyn InferenceHook>,
 ) -> Result<GenerationOutcome> {
     model.clear_kv_cache();
 
@@ -260,6 +293,7 @@ fn generate_gemma3(
     let prompt_tokens = tokens.len();
     let mut output = String::new();
     let mut rng = build_rng(config.seed);
+    let start_time = Instant::now();
 
     for step in 0..config.max_new_tokens {
         let context_size = if step > 0 { 1 } else { tokens.len() };
@@ -273,6 +307,20 @@ fn generate_gemma3(
 
         if config.stop_tokens.contains(&next_token) {
             break;
+        }
+
+        if let Some(hook) = hook {
+            let generated_tokens = tokens.len().saturating_sub(prompt_tokens) + 1;
+            emit_token_telemetry(
+                hook,
+                &logits,
+                config,
+                &tokens,
+                tokenizer,
+                next_token,
+                generated_tokens,
+                &start_time,
+            )?;
         }
 
         tokens.push(next_token);
@@ -301,6 +349,102 @@ fn build_llama2c_cache(
     let tensors = HashMap::new();
     let vb = candle_nn::VarBuilder::from_tensors(tensors, DType::F32, device);
     Ok(candle_transformers::models::llama2_c::Cache::new(true, cfg, vb)?)
+}
+
+fn emit_token_telemetry(
+    hook: &dyn InferenceHook,
+    logits: &[f32],
+    config: &GenerationConfig,
+    prev_tokens: &[u32],
+    tokenizer: &Tokenizer,
+    token_id: u32,
+    output_len: usize,
+    start_time: &Instant,
+) -> Result<()> {
+    let mut scores = logits.to_vec();
+    apply_repetition_penalty(&mut scores, config.repetition_penalty, prev_tokens);
+
+    if config.temperature > 0.0 {
+        for score in &mut scores {
+            *score /= config.temperature;
+        }
+    }
+
+    let probs = softmax(&scores);
+    let entropy = probs
+        .iter()
+        .copied()
+        .filter(|p| *p > 0.0)
+        .map(|p| -p * p.ln())
+        .sum::<f32>();
+
+    let top_k = build_top_k(&probs, tokenizer, config.top_k);
+
+    let elapsed = start_time.elapsed().as_secs_f32().max(1e-3);
+    let tokens_per_sec = output_len as f32 / elapsed;
+
+    let token_text = tokenizer
+        .decode(&[token_id], true)
+        .unwrap_or_else(|_| format!("<{token_id}>"));
+    hook.on_telemetry(InferenceTelemetry::TokenGenerated {
+        token_id,
+        token_text,
+        top_k,
+        entropy,
+        tokens_per_sec,
+    });
+    Ok(())
+}
+
+fn build_top_k(
+    probs: &[f32],
+    tokenizer: &Tokenizer,
+    requested_k: usize,
+) -> Vec<TokenCandidate> {
+    let k = if requested_k == 0 { 5 } else { requested_k.min(5) };
+    let mut indexed: Vec<(usize, f32)> = probs.iter().copied().enumerate().collect();
+    indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+
+    indexed
+        .into_iter()
+        .take(k)
+        .map(|(idx, prob)| {
+            let token_text = tokenizer
+                .decode(&[idx as u32], true)
+                .unwrap_or_else(|_| format!("<{idx}>"));
+            TokenCandidate {
+                token_id: idx as u32,
+                token_text,
+                probability: prob,
+            }
+        })
+        .collect()
+}
+
+fn emit_llama_cache_status(
+    hook: &dyn InferenceHook,
+    cache: &candle_transformers::models::llama2_c::Cache,
+    seq_len: usize,
+    max_len: usize,
+) {
+    for (layer, entry) in cache.kvs.iter().enumerate() {
+        let memory_bytes = entry
+            .as_ref()
+            .map(|(k, v)| tensor_bytes(k) + tensor_bytes(v))
+            .unwrap_or(0);
+
+        hook.on_telemetry(InferenceTelemetry::CacheStatus {
+            layer,
+            seq_len,
+            max_len,
+            offset: 0,
+            memory_bytes,
+        });
+    }
+}
+
+fn tensor_bytes(tensor: &Tensor) -> usize {
+    tensor.shape().elem_count() * tensor.dtype().size_in_bytes()
 }
 
 fn is_url(value: &str) -> bool {

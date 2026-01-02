@@ -8,6 +8,7 @@ mod error;
 mod http;
 mod model;
 mod sampling;
+mod telemetry;
 mod tokenizer;
 
 #[cfg(feature = "native")]
@@ -23,6 +24,7 @@ pub use device::MlDevice;
 pub use error::{MlError, Result};
 pub use model::{GenerationOutcome, LoadedModel, ModelKind, ModelSource};
 pub use sampling::GenerationConfig;
+pub use telemetry::{InferenceHook, InferenceTelemetry, TokenCandidate};
 pub use tokenizer::Tokenizer;
 
 #[cfg(feature = "native")]

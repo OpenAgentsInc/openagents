@@ -134,6 +134,7 @@ pub(crate) enum AppView {
     RepoSelector,
     RepoView,
     GfnPage,
+    MlVizPage,
     Y2026Page,
     BrbPage,
 }
@@ -204,6 +205,98 @@ impl Default for Y2026State {
             frame_started: false,
             link_bounds: Vec::new(),
             link_hovered: false,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MlTokenCandidate {
+    pub(crate) token_id: u32,
+    pub(crate) token_text: String,
+    pub(crate) probability: f32,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct LayerActivity {
+    pub(crate) layer: usize,
+    pub(crate) attention_norm: f32,
+    pub(crate) mlp_norm: f32,
+    pub(crate) output_norm: f32,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CacheInfo {
+    pub(crate) layer: usize,
+    pub(crate) seq_len: usize,
+    pub(crate) max_len: usize,
+    pub(crate) offset: usize,
+    pub(crate) memory_bytes: usize,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MemoryUsage {
+    pub(crate) gpu_allocated: usize,
+    pub(crate) cache_total: usize,
+    pub(crate) activations: usize,
+}
+
+/// State for the ML inference visualization page
+pub(crate) struct MlVizState {
+    pub(crate) frame_animator: FrameAnimator,
+    pub(crate) frame_started: bool,
+    pub(crate) scroll_offset: f32,
+    pub(crate) content_bounds: Bounds,
+    pub(crate) content_height: f32,
+    pub(crate) layer_slider_bounds: Bounds,
+    pub(crate) head_slider_bounds: Bounds,
+    pub(crate) layer_slider_dragging: bool,
+    pub(crate) head_slider_dragging: bool,
+    pub(crate) selected_layer: usize,
+    pub(crate) selected_head: usize,
+    pub(crate) max_layers: usize,
+    pub(crate) max_heads: usize,
+    pub(crate) token_stream: String,
+    pub(crate) top_k: Vec<MlTokenCandidate>,
+    pub(crate) tokens_per_sec: Option<f32>,
+    pub(crate) entropy: Option<f32>,
+    pub(crate) entropy_history: VecDeque<f32>,
+    pub(crate) probability_history: VecDeque<Vec<MlTokenCandidate>>,
+    pub(crate) attention_weights: Option<Vec<Vec<f32>>>,
+    pub(crate) attention_layer: usize,
+    pub(crate) attention_head: usize,
+    pub(crate) layer_activations: Vec<LayerActivity>,
+    pub(crate) cache_status: Vec<CacheInfo>,
+    pub(crate) memory_usage: Option<MemoryUsage>,
+}
+
+impl Default for MlVizState {
+    fn default() -> Self {
+        Self {
+            frame_animator: FrameAnimator::new(),
+            frame_started: false,
+            scroll_offset: 0.0,
+            content_bounds: Bounds::ZERO,
+            content_height: 0.0,
+            layer_slider_bounds: Bounds::ZERO,
+            head_slider_bounds: Bounds::ZERO,
+            layer_slider_dragging: false,
+            head_slider_dragging: false,
+            selected_layer: 0,
+            selected_head: 0,
+            max_layers: 1,
+            max_heads: 1,
+            token_stream: String::new(),
+            top_k: Vec::new(),
+            tokens_per_sec: None,
+            entropy: None,
+            entropy_history: VecDeque::with_capacity(64),
+            probability_history: VecDeque::with_capacity(32),
+            attention_weights: None,
+            attention_layer: 0,
+            attention_head: 0,
+            layer_activations: Vec::new(),
+            cache_status: Vec::new(),
+            memory_usage: None,
         }
     }
 }
@@ -710,6 +803,8 @@ pub(crate) struct AppState {
     pub(crate) gfn: GfnState,
     // 2026 page state
     pub(crate) y2026: Y2026State,
+    // ML inference visualization page state
+    pub(crate) ml_viz: MlVizState,
 }
 
 impl Default for AppState {
@@ -783,6 +878,7 @@ impl Default for AppState {
             intro_agent_state: crate::intro_agent::IntroAgentState::default(),
             gfn: GfnState::default(),
             y2026: Y2026State::default(),
+            ml_viz: MlVizState::default(),
         }
     }
 }
