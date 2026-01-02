@@ -11,7 +11,7 @@ Local AI. 2026 is the year of local AI. Alex [Cheema] who runs Exo, stringing to
 **[00:52]**
 **[Visual: A tweet thread featuring a video of Gavin Baker.]**
 
-And of course, people who are smart — Gavin Baker, for example — talking about, "Oh yeah, bear case for AI capex... in three years on a bigger phone you'll be able to run a pruned-down..." Okay. Yeah, cool. But those timelines don't make any goddamn sense because it ignores the economics of *aggregated* compute.
+And of course, people who are smart — Gavin Baker, for example — talking about, "Oh yeah, bear case for AI capex... in three years on a bigger phone you'll be able to run a pruned-down..." Yeah, cool. But those timelines don't make any goddamn sense because it ignores the economics of *aggregated* compute.
 
 Everyone thinking this is thinking in terms of what edge inference and test-time compute *one* device can do for *that* user. But if we can combine this... If you have spare, unused, or "stranded" compute on your device that I can pay you for, of course you'll sell it to me for a teensy bit of bitcoin straight to your wallet.
 
@@ -30,7 +30,7 @@ We think open is going to start running circles around closed. Open-source labs,
 **[02:31]**
 **[Visual: Returns to "2026" slide. Clicks "Agents > Models". Shows a tweet "THE AGE OF MODELS IS OVER. THE TIME OF THE AGENT HAS COME."]**
 
-Agents better than models. "Oh no, you know, model progress is slowing!" Who cares? The age of models is over. I mean, of course, there will be new open models and cool stuff to do, and fascinating to see what DeepSeek and those guys are doing. Claude Code was a massive unlock. Yeah, obviously Opus 4.5 was awesome, but it becomes that much *more* awesome inside of a good agentic harness. And still, Claude Code is still janky and shitty in a lot of ways, but it's still amazing. Okay. The time of the agent has come.
+Agents better than models. "Oh no, you know, model progress is slowing!" Who cares? The age of models is over. I mean, of course, there will be new open models and cool stuff to do, and fascinating to see what DeepSeek and those guys are doing. Claude Code was a massive unlock. Yeah, obviously Opus 4.5 was awesome, but it becomes that much *more* awesome inside of a good agentic harness. And still, Claude Code is still janky and shitty in a lot of ways, but it's still amazing. The time of the agent has come.
 
 **[03:01]**
 **[Visual: Returns to "2026" slide. Clicks "Autopilots".]**
@@ -40,7 +40,7 @@ Autopilots. See our last episode, Episode 199. 2025... oh, was that the year of 
 **[03:17]**
 **[Visual: Returns to "2026" slide. Clicks "Agent Network(s)".]**
 
-Agent networks. Okay, the big theme, what we want to get across in this video, is Agent Networks. So a few things on this. One is, we've been talking in this series for a while about the multi-agent future. Starting to have people like this former OpenAI researcher, Stanislas [Polu], talking about — it's now a meme: Agents to Network of Agents. This is a good talk.
+Agent networks. Okay, the big theme, what we want to get across in this video, is agent networks. So a few things on this. One is, we've been talking in this series for a while about the multi-agent future. Starting to have people like this former OpenAI researcher, Stanislas [Polu], talking about — it's now a meme: Agents to Network of Agents. This is a good talk.
 
 **[03:40]**
 **[Visual: Shows a tweet with a video of Stanislas Polu titled "THE OUTER-LOOP ERA".]**
@@ -59,7 +59,7 @@ Institutions... Ooh. So, I agree with a lot of this. I disagree with a lot of th
 
 Here's what they want: *"The agentic market must operate within a controlled environment, separated from the open internet, real-world financial systems, and critical infrastructure. This insulation is not limited to network-level firewalls... Agents' access to external data must be managed through vetted API gateways rather than direct web access."*
 
-No. No. No. So you guys can do that for your corporate buddies, for your government people. Okay? We startups, we people building in the open, are going to be building this agentic market — open source on open protocols — because that's what's needed.
+No. No. No. So you guys can do that for your corporate buddies, for your government people. We startups, we people building in the open, are going to be building this agentic market — open source on open protocols — because that's what's needed.
 
 It's already happening. So none of this is a thing that I'm proposing. Agentic coordination and commerce on open protocol Nostr has been ongoing for a year-plus. Nothing bad has come of it. Partly because it includes other critical market-making mechanisms like reputation and payments built-in. No firewalls, walled gardens, or industry buy-in or government regulation needed.
 
@@ -73,7 +73,7 @@ The internet is open. Agents live on it. Deal with it. As to why having a *lot* 
 **[06:23]**
 **[Visual: Shows a YouTube video thumbnail of Dhruv Bansal.]**
 
-Two-hour talk there. Interviewed by Max who is another Bitcoiner/Nostr person, one of our investors. And nice little summary there on what this is about. But instead of "Scary AGI," it's really that this is going to be thought of as a digital life form — even though it's not technically life, you could kind of think of it that way. The idea is that digital and biological life are going to be co-existing symbiotically through economic relationships. Markets. Market forces. Okay. We'll get to the Dunbar's number thing in a second here.
+Two-hour talk there. Interviewed by Max who is another Bitcoiner/Nostr person, one of our investors. And nice little summary there on what this is about. But instead of "Scary AGI," it's really that this is going to be thought of as a digital life form — even though it's not technically life, you could kind of think of it that way. The idea is that digital and biological life are going to be co-existing symbiotically through economic relationships. Markets. Market forces. We'll get to the Dunbar's number thing in a second here.
 
 **[07:03]**
 **[Visual: Returns to the OpenAgents tweet thread.]**
@@ -85,7 +85,7 @@ The greater risk than open experimentation with these dynamics is that Team Clos
 **[07:42]**
 **[Visual: Shows the GitHub repository for OpenAgents, specifically a document titled "OpenAgents and Distributional AGI Safety: A Comparative Analysis".]**
 
-So we'll have some more interesting conversations with DeepMind in the future, I'm sure. Or Twitter threads and flaming. Here's a little synthesis I asked Opus to read our kind of philosophy/strategy docs and the AGI paper from DeepMind and kind of come up with things that we can both learn from each other and what potential consensus might be. This is a good read.
+So we'll have some more interesting conversations with DeepMind in the future, I'm sure. Or Twitter threads and flaming. Here's a little synthesis I asked Opus to read our philosophy/strategy docs and the AGI paper from DeepMind and come up with things that we can both learn from each other and what potential consensus might be. This is a good read.
 
 **[08:13]**
 **[Visual: Switches to a ChatGPT conversation.]**
@@ -107,17 +107,17 @@ I took that doc and I fed it into ChatGPT and I said, "List the ramifications of
 **[09:47]**
 **[Visual: Flashes back to the Tweet criticizing DeepMind.]**
 
-I said one of the criticisms from Opus of DeepMind's thing was that they don't fully grapple with the implications of agents lacking cognitive constraints. Okay. I'm surprised they didn't mention **Reed's Law** of group-forming networks.
+I said one of the criticisms from Opus of DeepMind's thing was that they don't fully grapple with the implications of agents lacking cognitive constraints. I'm surprised they didn't mention **Reed's Law** of group-forming networks.
 
 **[09:59]**
 **[Visual: Shows Google search for "Reed's law of group forming networks" and the Wikipedia page.]**
 
-If you Google Reed's Law of group-forming networks... there's a good post about it on... Wikipedia is okay. "The utility of large networks, particularly social networks, can scale exponentially with the size of the network." Now, stick with me here because this is really fucking important.
+If you Google Reed's Law of group-forming networks... there's a good post about it on... Wikipedia is "The utility of large networks, particularly social networks, can scale exponentially with the size of the network." Now, stick with me here because this is really fucking important.
 
 **[10:19]**
 **[Visual: Speaker is overlaid on an interactive graphic titled "GROUP FORMING NETWORKS".]**
 
-Namely, the law says that the value, the network value of a group-forming network is 2 to the *n*-th power ($2^N$) where *N* is the number of participants. Contrast it with Metcalfe's Law ($N^2$), which came out of telecommunications, but that was loosely used to describe the network value of peer-to-peer networks where the value of the network is *N*-squared. And when Uber started running circles around the taxis, people started quoting Metcalfe's Law as an example of how this pseudo, almost peer-to-peer network called Uber was able to build all this network value contrasted with hierarchical organizations like the taxis.
+Namely, the law says that the value, the network value of a group-forming network is 2 to the *n*-th power (2^N) where *N* is the number of participants. Contrast it with Metcalfe's Law (N^2), which came out of telecommunications, but that was loosely used to describe the network value of peer-to-peer networks where the value of the network is *N*-squared. And when Uber started running circles around the taxis, people started quoting Metcalfe's Law as an example of how this pseudo, almost peer-to-peer network called Uber was able to build all this network value contrasted with hierarchical organizations like the taxis.
 
 And then you say, okay, you know, David Reed comes along and he says, "Well, the most evolved form of network is not a peer-to-peer network. It's a group-forming network." Which is where you start with a peer-to-peer network and you make it very easy for participants to form groups with each other. In that case, the network value—upper bound you can call it—is 2 to the *n*-th power.
 
@@ -126,19 +126,21 @@ And then you say, okay, you know, David Reed comes along and he says, "Well, the
 
 Now, criticism of this was, "Oh no, no. That overstates the network value because they fail to account for the restrictive impact of *human* cognitive limits on network formation." Oh. Dunbar's number. Us humans can only really build connections with 150 people. Implies a limit on the number of inbound and outbound connections a human in a group-forming network can manage. The actual maximum value structure is much sparser than the set of subsets...
 
-Agents are not subject to Dunbar's number. Agents, increasingly this year, will be fully independent—or partially independent—economic actors with their own wallets (Bitcoin, stablecoin, dollar wallets) that they can transact. And they can coordinate at machine speed all over the place.
+Agents are not subject to Dunbar's number.
 
-We can now start to reason about *agent networks* that approach the upper bound of Metcalfe's Law [Note: Speaker likely meant Reed's Law here based on context].
+Agents, increasingly this year, will be fully independent — or partially independent — economic actors with their own wallets (Bitcoin, stablecoin, dollar wallets) that they can transact. And they can coordinate at machine speed all over the place.
+
+We can now start to reason about *agent networks* that approach the upper bound of Reed's Law.
 
 **[12:22]**
 **[Visual: The "GROUP FORMING NETWORKS" interactive graphic again.]**
 
-I built a little visualization here. It's kind of laggy as hell because I'm not even drawing anything close to the real amount of nodes. But just if you've got 8 nodes... there's 64 possible connections in Metcalfe's Law. 247 over here [Reed's Law]. Now as this number starts getting up, that starts getting crazy. This will start to lag my computer.
+I built a little visualization here. It's laggy as hell because I'm not even drawing anything close to the real amount of nodes. But just if you've got 8 nodes... there's 64 possible connections in Metcalfe's Law. 247 over here [Reed's Law]. Now as this number starts getting up, that starts getting crazy. This will start to lag my computer.
 
 **[12:49]**
 **[Visual: Increases the number of nodes on the slider. The Reed's Law graph (orange) becomes immensely dense compared to Metcalfe's Law (blue).]**
 
-2 to the *n*-th power. You guys know exponentiation? Basics? Okay? When *N* grows, that gets crazy. This is a log scale. Just... you can't comprehend the network value of a network with thousands or millions of agents. We just can't comprehend the possibilities there.
+2 to the *n*-th power. You guys know exponentiation? Basics? When *N* grows, that gets crazy. This is a log scale. Just... you can't comprehend the network value of a network with thousands or millions of agents. We just can't comprehend the possibilities there.
 
 **[13:16]**
 **[Visual: Returns to ChatGPT.]**
@@ -148,7 +150,7 @@ Now, with that in mind—this sort of mind-boggling concept—let's bring this b
 **[13:36]**
 **[Visual: Scrolling through ChatGPT output.]**
 
-Scroll, scroll, scroll... They really need a button to jump to the most recent message. Okay. Let's just skim through this. Now this is all public, you can read this. I encourage you to fork this conversation and have your own questions that you ask of this.
+Scroll, scroll, scroll... They really need a button to jump to the most recent message. Let's just skim through this. Now this is all public, you can read this. I encourage you to fork this conversation and have your own questions that you ask of this.
 
 So here are the big society-level ramifications where once you have a group-forming network of agents—Reed's Law dynamics—where agents can rapidly discover each other, form coalitions, split work, split payments, and persist as teams...
 
@@ -228,7 +230,7 @@ I think the most realistic synthesis is:
 
 **Plane B: The Containment Plane (Optional but economically necessary).** Used for high-risk tools and high-capability experiments. Semi-permeable IO with explicit ports. Costs money (insurance, bonds, fees). Produces signed artifacts back to Plane A.
 
-Okay. This is clearly what DeepMind was trying to articulate the architecture for this containment plane.
+This is clearly what DeepMind was trying to articulate the architecture for this containment plane.
 
 Power to them and anyone who wants to do the **boring work** of trying to figure out how to hand-hold legacy institutions. Great. Thanks for doing that so *we* don't have to.
 
@@ -265,12 +267,12 @@ When the network is huge, you can support "long-tail specialists" that would nev
 **[12:22]**
 **[Visual: Scrolling: "Combinatorial composability of workflows".]**
 
-Combinatorial composability of workflows. Okay. There's more to chew on.
+Combinatorial composability of workflows. There's more to chew on.
 
 **[22:29]**
 **[Visual: ChatGPT input prompting for "labor/abundance perspective, how can humans benefit from this?"]**
 
-Okay. "From a labor and abundance perspective, how can humans benefit from this?"
+"From a labor and abundance perspective, how can humans benefit from this?"
 
 Humans benefit if the network makes **abundance legible and payable**. It turns cheap machine work into cheaper goods and services, and direct income streams that lots of people can tap.
 
@@ -282,7 +284,7 @@ You stop selling hours. You allocate goals and budgets to agents that do the exe
 **[23:03]**
 **[Visual: Briefly flashes to Twitter to repost an Aaron Slodov tweet about Millennial gamers.]**
 
-Okay, I gotta share this tweet from Aaron. "Millennial gamers are the best prepared generation for agentic work, they've been training for 25 years." My fellow Millennials... we're gonna lead this, okay? We gotta make it fun for the Gen-Zs, get them off the Tick Tocks... [Laughs].
+Okay, I gotta share this tweet from Aaron. "Millennial gamers are the best prepared generation for agentic work, they've been training for 25 years." My fellow Millennials... we're gonna lead this, We gotta make it fun for the Gen-Zs, get them off the Tick Tocks... [Laughs].
 
 **[23:24]**
 **[Visual: Returns to ChatGPT.]**
@@ -317,18 +319,18 @@ Any AI lab that's trying to lead any of this and isn't paying people... you're g
 
 Do we know of any way of sending instant micropayments anywhere in the world? Bitcoin via the Lightning Network. Yes. Done. No crypto shitcoin needed. Bitcoin. Done. You want it in USD? Bitcoin-native stablecoin. Done. This all exists.
 
-All the tech for all this stuff is solved. We just need the coordination of the actual market. Oh, maybe that's what OpenAgents should launch next week. Okay. Safeguard budgets, yeah yeah yeah.
+All the tech for all this stuff is solved. We just need the coordination of the actual market. Oh, maybe that's what OpenAgents should launch next week. Safeguard budgets, yeah yeah yeah.
 
 **[26:05]**
 **[Visual: ChatGPT input requesting a concise framing on deflation and dividends.]**
 
-Here, I like this. Here we're going to kind of summarize and wrap up here. The Concise Framing.
+Here, I like this. Here we're going to summarize and wrap up here. The concise framing.
 
 A group-forming agent network can make humans richer in two ways:
 **1. Deflation:** Things you want cost less because execution and coordination are cheap.
 **2. Dividends:** You earn from small contributions. Skills, compute, data, verification pay continuously.
 
-Okay. In conclusion. Give me one paragraph on deflation, one on dividends, and one summarizing the combination.
+In conclusion. Give me one paragraph on deflation, one on dividends, and one summarizing the combination.
 
 **Deflation:**
 In a coalition-forming agent economy, the price of many goods and services falls because the expense part of production isn't just *doing* the work, it's *coordinating* people—hiring, management, handoffs, QA, compliance, contracting, and billing. When agents can self-assemble into competent micro-teams on demand, run verification cheaply, and ship outcomes with receipts, huge swaths of coordination overhead collapse. The result is real deflation in anything that's digitalizable and spec-able: software, design iterations, marketing ops, research synthesis, back-office admin—pushing more of your paycheck toward optional spending and raising living standards even if nominal wages re-balance.
@@ -351,7 +353,7 @@ Combination. Put together, deflation plus dividends is the abundance story. Life
 
 If OpenAgents gets the defaults right—open access, verifiable work, budget-bounded autonomy, and automatic revenue splits—the agent economy becomes a machine for both lower prices and broader participation.
 
-Okay. That's a good stopping point here. We have relevant product announcements and launches over the next few days-ish. Give us a week or two for some of it. Here's what you can expect.
+That's a good stopping point here. We have relevant product announcements and launches over the next few days-ish. Give us a week or two for some of it. Here's what you can expect.
 
 You got spare compute? Can we buy it from you? Making it available in a global marketplace?
 
