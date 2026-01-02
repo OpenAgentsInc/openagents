@@ -156,6 +156,28 @@ export default {
     const fontUrl = "https://openagents.com/static/webFonts/Square721StdRoman/font.woff";
     const fontData = await fetch(fontUrl).then((res) => res.arrayBuffer());
 
+    // Generate dots grid background
+    const dotSpacing = 24;
+    const dotSize = 2;
+    const dots = [];
+    for (let y = 0; y < 630; y += dotSpacing) {
+      for (let x = 0; x < 1200; x += dotSpacing) {
+        dots.push(
+          <div
+            key={`dot-${x}-${y}`}
+            style={{
+              position: "absolute",
+              left: x,
+              top: y,
+              width: dotSize,
+              height: dotSize,
+              backgroundColor: "rgba(255, 255, 255, 0.08)",
+            }}
+          />
+        );
+      }
+    }
+
     return new ImageResponse(
       <div
         style={{
@@ -167,9 +189,17 @@ export default {
           color: "#fff",
           fontFamily: "Square721",
           padding: "120px 60px 60px 60px",
+          position: "relative",
         }}
       >
-        {elements}
+        {/* Dots background */}
+        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", display: "flex" }}>
+          {dots}
+        </div>
+        {/* Content */}
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, zIndex: 1 }}>
+          {elements}
+        </div>
       </div>,
       {
         width: 1200,
