@@ -230,6 +230,13 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // The Agent Network - Episode 200 transcript
         (Method::Get, "/the-agent-network") => routes::the_agent_network::view_the_agent_network(env).await,
 
+        // OG image proxy - forward to og-worker
+        (Method::Get, path) if path.starts_with("/og/") => {
+            let og_url = format!("https://openagents-og.openagents.workers.dev{}", path);
+            let og_req = Request::new(&og_url, Method::Get)?;
+            Fetch::Request(og_req).send().await
+        }
+
         // Homepage - shows landing/waitlist page
         (Method::Get, "/") => routes::early::view_early(env).await,
 

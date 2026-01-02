@@ -94,7 +94,6 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
             font-size: 12px;
             font-family: 'Vera Mono', 'DejaVu Sans Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
             cursor: pointer;
-            border-radius: 2px;
             font-weight: bold;
         }}
         .copy-btn:hover {{
