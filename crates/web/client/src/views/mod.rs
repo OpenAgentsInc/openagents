@@ -1,6 +1,7 @@
 mod brb;
 mod gfn;
 mod landing;
+mod ml_inference;
 mod repo_selector;
 mod y2026;
 pub(crate) mod job_detail;
@@ -17,6 +18,7 @@ use crate::state::AppState;
 pub(crate) use brb::build_brb_page;
 pub(crate) use gfn::build_gfn_page;
 pub(crate) use landing::build_landing_page;
+pub(crate) use ml_inference::build_ml_inference_page;
 pub(crate) use repo_selector::build_repo_selector;
 pub(crate) use y2026::build_2026_page;
 

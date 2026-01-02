@@ -67,7 +67,7 @@ pub fn sample_from_logits(
     Ok(filtered.last().map(|(idx, _)| *idx as u32).unwrap_or(0))
 }
 
-fn apply_repetition_penalty(logits: &mut [f32], penalty: f32, prev_tokens: &[u32]) {
+pub(crate) fn apply_repetition_penalty(logits: &mut [f32], penalty: f32, prev_tokens: &[u32]) {
     if penalty <= 1.0 || prev_tokens.is_empty() {
         return;
     }
@@ -82,7 +82,7 @@ fn apply_repetition_penalty(logits: &mut [f32], penalty: f32, prev_tokens: &[u32
     }
 }
 
-fn softmax(scores: &[f32]) -> Vec<f32> {
+pub(crate) fn softmax(scores: &[f32]) -> Vec<f32> {
     let max = scores
         .iter()
         .cloned()

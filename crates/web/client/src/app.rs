@@ -18,8 +18,9 @@ use crate::hud::{
 use crate::nostr::{connect_to_relay, BazaarJob, DEFAULT_RELAYS};
 use crate::state::{AppState, AppView, RepoInfo, UserInfo};
 use crate::telemetry::{TelemetryCollector, set_panic_hook, track_cta_click};
-use crate::views::{build_2026_page, build_brb_page, build_gfn_page, build_landing_page, build_repo_selector, build_repo_view};
+use crate::views::{build_2026_page, build_brb_page, build_gfn_page, build_landing_page, build_ml_inference_page, build_repo_selector, build_repo_view};
 use crate::fs_access::{self, FileKind};
+use crate::ml_viz::init_ml_viz_runtime;
 use crate::utils::{read_clipboard_text, track_funnel_event};
 // Wallet disabled
 // use crate::wallet::{dispatch_wallet_event, queue_wallet_actions, WalletAction};
@@ -51,6 +52,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         .map(|v| v.is_truthy())
         .unwrap_or(false);
 
+    // Check for ML inference visualization page flag
+    let is_ml_viz_page = web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &"ML_VIZ_PAGE".into()).ok())
+        .map(|v| v.is_truthy())
+        .unwrap_or(false);
+
     // Check for 2026 page flag
     let is_2026_page = web_sys::window()
         .and_then(|w| js_sys::Reflect::get(&w, &"Y2026_PAGE".into()).ok())
@@ -74,6 +81,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         state_guard.loading = false;
         state_guard.view = AppView::GfnPage;
         drop(state_guard);
+    } else if is_ml_viz_page {
+        let mut state_guard = state.borrow_mut();
+        state_guard.loading = false;
+        state_guard.view = AppView::MlVizPage;
+        drop(state_guard);
+        init_ml_viz_runtime(state.clone());
     } else if is_2026_page {
         let mut state_guard = state.borrow_mut();
         state_guard.loading = false;
@@ -256,6 +269,31 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.gfn.slider_dragging && state.gfn.slider_bounds.width() > 0.0 {
                     let pct = ((state.mouse_pos.x - state.gfn.slider_bounds.x()) / state.gfn.slider_bounds.width()).clamp(0.0, 1.0);
                     state.gfn.node_count = (2.0 + pct * 48.0).round() as u32;
+                }
+
+                // Handle ML viz slider dragging
+                if state.ml_viz.layer_slider_dragging && state.ml_viz.layer_slider_bounds.width() > 0.0 {
+                    let max_layer = state.ml_viz.max_layers.saturating_sub(1) as f32;
+                    if max_layer >= 1.0 {
+                        let pct = ((state.mouse_pos.x - state.ml_viz.layer_slider_bounds.x())
+                            / state.ml_viz.layer_slider_bounds.width())
+                            .clamp(0.0, 1.0);
+                        state.ml_viz.selected_layer = (pct * max_layer).round() as usize;
+                    } else {
+                        state.ml_viz.selected_layer = 0;
+                    }
+                }
+
+                if state.ml_viz.head_slider_dragging && state.ml_viz.head_slider_bounds.width() > 0.0 {
+                    let max_head = state.ml_viz.max_heads.saturating_sub(1) as f32;
+                    if max_head >= 1.0 {
+                        let pct = ((state.mouse_pos.x - state.ml_viz.head_slider_bounds.x())
+                            / state.ml_viz.head_slider_bounds.width())
+                            .clamp(0.0, 1.0);
+                        state.ml_viz.selected_head = (pct * max_head).round() as usize;
+                    } else {
+                        state.ml_viz.selected_head = 0;
+                    }
                 }
 
                 // Handle GFN page hover
@@ -654,6 +692,32 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 return;
             }
 
+            // Handle ML viz slider click - start dragging
+            if state.view == AppView::MlVizPage {
+                if state.ml_viz.layer_slider_bounds.contains(click_pos) {
+                    state.ml_viz.layer_slider_dragging = true;
+                    let max_layer = state.ml_viz.max_layers.saturating_sub(1) as f32;
+                    if max_layer >= 1.0 {
+                        let pct = ((click_pos.x - state.ml_viz.layer_slider_bounds.x())
+                            / state.ml_viz.layer_slider_bounds.width())
+                            .clamp(0.0, 1.0);
+                        state.ml_viz.selected_layer = (pct * max_layer).round() as usize;
+                    }
+                    return;
+                }
+                if state.ml_viz.head_slider_bounds.contains(click_pos) {
+                    state.ml_viz.head_slider_dragging = true;
+                    let max_head = state.ml_viz.max_heads.saturating_sub(1) as f32;
+                    if max_head >= 1.0 {
+                        let pct = ((click_pos.x - state.ml_viz.head_slider_bounds.x())
+                            / state.ml_viz.head_slider_bounds.width())
+                            .clamp(0.0, 1.0);
+                        state.ml_viz.selected_head = (pct * max_head).round() as usize;
+                    }
+                    return;
+                }
+            }
+
             if state.button_bounds.contains(click_pos) {
                 if let Some(window) = web_sys::window() {
                     match state.view {
@@ -674,6 +738,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         }
                         AppView::GfnPage => {
                             // No button action on GFN page
+                        }
+                        AppView::MlVizPage => {
+                            // No button action on ML viz page
                         }
                         AppView::Y2026Page => {
                             // No button action on 2026 page
@@ -746,6 +813,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.view == AppView::GfnPage {
                     state.gfn.slider_dragging = false;
                 }
+                if state.view == AppView::MlVizPage {
+                    state.ml_viz.layer_slider_dragging = false;
+                    state.ml_viz.head_slider_dragging = false;
+                }
             }
             if overlay_active {
                 return;
@@ -806,6 +877,18 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     state.gfn.scroll_offset += delta;
                     state.gfn.scroll_offset = state.gfn.scroll_offset.max(0.0);
                     // Max scroll is handled in the view when we know content height
+                    return;
+                }
+            }
+
+            // Handle scrolling for ML viz page
+            if state.view == AppView::MlVizPage {
+                let point = Point::new(event.offset_x() as f32, event.offset_y() as f32);
+                let delta = event.delta_y() as f32 * 0.5;
+
+                if state.ml_viz.content_bounds.contains(point) {
+                    state.ml_viz.scroll_offset += delta;
+                    state.ml_viz.scroll_offset = state.ml_viz.scroll_offset.max(0.0);
                     return;
                 }
             }
@@ -937,6 +1020,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     || state.editor_workspace.hovered_new_buffer);
             let y2026_link_hover = state.view == AppView::Y2026Page && state.y2026.link_hovered;
             let gfn_cta_hover = state.view == AppView::GfnPage && state.gfn.cta_hovered;
+            let ml_viz_slider_hover = state.view == AppView::MlVizPage
+                && (state.ml_viz.layer_slider_bounds.contains(state.mouse_pos)
+                    || state.ml_viz.head_slider_bounds.contains(state.mouse_pos));
             let editor_cursor = if state.view == AppView::RepoSelector {
                 state.editor_workspace.cursor()
             } else {
@@ -957,6 +1043,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 || workspace_hover
                 || y2026_link_hover
                 || gfn_cta_hover
+                || ml_viz_slider_hover
             {
                 "pointer"
             } else if matches!(editor_cursor, Cursor::Text) {
@@ -1130,6 +1217,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             }
             AppView::GfnPage => {
                 build_gfn_page(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
+            }
+            AppView::MlVizPage => {
+                build_ml_inference_page(
                     &mut scene,
                     platform.text_system(),
                     &mut state,

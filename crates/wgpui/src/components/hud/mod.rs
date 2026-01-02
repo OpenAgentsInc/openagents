@@ -4,9 +4,11 @@ mod context_menu;
 mod dots_grid;
 mod frame;
 mod frame_clips;
+mod heatmap;
 mod notifications;
 mod resizable_pane;
 mod reticle;
+mod ring_gauge;
 mod scanlines;
 mod signal_meter;
 mod status_bar;
@@ -21,9 +23,11 @@ pub use frame_clips::{
     CssSize, StyleFrameClipKranoxProps, StyleFrameClipOctagonProps, style_frame_clip_kranox,
     style_frame_clip_octagon,
 };
+pub use heatmap::Heatmap;
 pub use notifications::{Notification, NotificationLevel, NotificationPosition, Notifications};
 pub use resizable_pane::{ResizablePane, ResizeEdge};
 pub use reticle::Reticle;
+pub use ring_gauge::RingGauge;
 pub use scanlines::Scanlines;
 pub use signal_meter::SignalMeter;
 pub use status_bar::{
@@ -52,6 +56,8 @@ mod tests {
         let _meter = SignalMeter::new();
         let _reticle = Reticle::new();
         let _resizable = ResizablePane::new();
+        let _heatmap = Heatmap::new();
+        let _ring = RingGauge::new();
     }
 
     #[test]
