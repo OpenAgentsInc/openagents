@@ -15,7 +15,7 @@ const BLOG_POSTS: Record<string, BlogPostMeta> = {
     episode: 200,
     date: "January 1, 2026",
     description:
-      "Reed's Law, group-forming networks, and the future of agent coordination",
+      "Predictions for 2026, Reed's Law of group-forming networks, and how agent networks will pay you",
   },
   // Add future blog posts here
 };
