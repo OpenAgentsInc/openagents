@@ -326,6 +326,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 return;
             }
 
+            // Episode link click handler
+            if state.view == AppView::Landing
+                && state.episode_link_bounds.contains(click_pos)
+            {
+                if let Some(window) = web_sys::window() {
+                    let _ = window.open_with_url_and_target("https://openagents.com/the-agent-network", "_blank");
+                }
+                return;
+            }
+
             if state.view == AppView::RepoSelector {
                 let mut open_folder = false;
                 let mut save_request: Option<(JsValue, String, Option<String>)> = None;
@@ -905,6 +915,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     || state.hud_layout.start_button_bounds.contains(state.mouse_pos));
             let landing_hover =
                 state.view == AppView::Landing && state.landing_issue_bounds.contains(state.mouse_pos);
+            let episode_link_hover =
+                state.view == AppView::Landing && state.episode_link_bounds.contains(state.mouse_pos);
             let bazaar_cta_hover =
                 state.view == AppView::Landing && (state.left_cta_hovered || state.right_cta_hovered);
             let dvm_tab_hover = state.view == AppView::Landing
@@ -936,6 +948,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 || share_hover
                 || start_hover
                 || landing_hover
+                || episode_link_hover
                 || bazaar_cta_hover
                 || dvm_tab_hover
                 || dvm_content_hover

@@ -79,6 +79,7 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
         }}
         h1 {{
             margin: 0 0 8px 0;
+            white-space: nowrap;
         }}
         .episode-date {{
             color: #666;
@@ -101,6 +102,20 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
         }}
         .copy-btn:active {{
             background: #dd7700;
+        }}
+        .copy-btn .full-text {{
+            display: none;
+        }}
+        .copy-btn .short-text {{
+            display: inline;
+        }}
+        @media (min-width: 480px) {{
+            .copy-btn .full-text {{
+                display: inline;
+            }}
+            .copy-btn .short-text {{
+                display: none;
+            }}
         }}
         p {{
             margin: 16px 0;
@@ -169,7 +184,7 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
                 <h1>The Agent Network</h1>
                 <p class="episode-date">January 1, 2026</p>
             </div>
-            <button class="copy-btn" id="copyMarkdownBtn">Copy as markdown</button>
+            <button class="copy-btn" id="copyMarkdownBtn"><span class="short-text">Copy</span><span class="full-text">Copy as markdown</span></button>
         </div>
 
         <div class="tweet-embed">
@@ -254,10 +269,15 @@ Source: OpenAgents
         document.getElementById('copyMarkdownBtn').addEventListener('click', function() {{
             navigator.clipboard.writeText(markdownWithMetadata).then(() => {{
                 const btn = this;
-                const originalText = btn.textContent;
-                btn.textContent = 'Copied!';
+                const shortSpan = btn.querySelector('.short-text');
+                const fullSpan = btn.querySelector('.full-text');
+                const origShort = shortSpan.textContent;
+                const origFull = fullSpan.textContent;
+                shortSpan.textContent = 'Copied!';
+                fullSpan.textContent = 'Copied!';
                 setTimeout(() => {{
-                    btn.textContent = originalText;
+                    shortSpan.textContent = origShort;
+                    fullSpan.textContent = origFull;
                 }}, 2000);
             }}).catch(err => {{
                 console.error('Failed to copy:', err);
