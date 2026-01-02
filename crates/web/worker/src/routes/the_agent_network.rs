@@ -49,22 +49,26 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
             margin-bottom: 16px;
             color: #fff;
         }}
-        .subtitle-row {{
+        .header-row {{
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
             margin-bottom: 40px;
+            gap: 24px;
         }}
-        .subtitle {{
+        .episode-label {{
             color: #888;
-            margin: 0;
-            display: flex;
-            align-items: center;
-            gap: 16px;
+            font-size: 12px;
+            margin: 0 0 4px 0;
+            letter-spacing: 0.05em;
+        }}
+        h1 {{
+            margin: 0 0 8px 0;
         }}
         .episode-date {{
             color: #666;
             font-size: 12px;
+            margin: 0;
         }}
         .copy-btn {{
             background: #f80;
@@ -144,9 +148,12 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
 </head>
 <body>
     <div class="container">
-        <h1>The Agent Network</h1>
-        <div class="subtitle-row">
-            <p class="subtitle">Episode 200 Transcript <span class="episode-date">January 1, 2026</span></p>
+        <div class="header-row">
+            <div>
+                <p class="episode-label">EPISODE 200</p>
+                <h1>The Agent Network</h1>
+                <p class="episode-date">January 1, 2026</p>
+            </div>
             <button class="copy-btn" id="copyMarkdownBtn">Copy as markdown</button>
         </div>
 

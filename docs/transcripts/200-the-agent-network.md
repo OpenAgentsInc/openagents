@@ -40,7 +40,7 @@ Hey, do we have a relevant product launch coming up in a few days? Stay tuned. S
 **[03:17]**
 **[Visual: Returns to "2026" slide. Clicks "Agent Network(s)".]**
 
-**Speaker:** Agent networks. Okay, the big theme, what we want to get across in this video, is Agent Networks. So a few things on this. One is, we've been talking in this series for a while about the multi-agent future. Starting to have people like this former OpenAI researcher, Stanislas [Polu], talking about -  it's now a meme: Agents to Network of Agents. This is a good talk.
+**Speaker:** Agent networks. Okay, the big theme, what we want to get across in this video, is Agent Networks. So a few things on this. One is, we've been talking in this series for a while about the multi-agent future. Starting to have people like this former OpenAI researcher, Stanislas [Polu], talking about — it's now a meme: Agents to Network of Agents. This is a good talk.
 
 **[03:40]**
 **[Visual: Shows a tweet with a video of Stanislas Polu titled "THE OUTER-LOOP ERA".]**
@@ -59,7 +59,7 @@ Institutions... Ooh. So, I agree with a lot of this. I disagree with a lot of th
 
 **Speaker:** Here's what they want: *"The agentic market must operate within a controlled environment, separated from the open internet, real-world financial systems, and critical infrastructure. This insulation is not limited to network-level firewalls... Agents' access to external data must be managed through vetted API gateways rather than direct web access."*
 
-No. No. No. So you guys can do that for your corporate buddies, for your government people. Okay? We startups, we people building in the open, are going to be building *this* agentic market — open source on open protocols — because that's what's needed.
+No. No. No. So you guys can do that for your corporate buddies, for your government people. Okay? We startups, we people building in the open, are going to be building this agentic market — open source on open protocols — because that's what's needed.
 
 It's already happening. So none of this is a thing that I'm proposing. Agentic coordination and commerce on open protocol Nostr has been ongoing for a year-plus. Nothing bad has come of it. Partly because it includes other critical market-making mechanisms like reputation and payments built-in. No firewalls, walled gardens, or industry buy-in or government regulation needed.
 
@@ -73,12 +73,12 @@ And as for broad markets of agents, see the draft NIP-SA [Nostr Implementation P
 **[06:23]**
 **[Visual: Shows a YouTube video thumbnail of Dhruv Bansal.]**
 
-**Speaker:** Two-hour talk there. Interviewed by Max and another Bitcoiner/Nostr person, one of our investors. And nice little summary there on what this is about. But instead of "Scary AGI," it's really that this is going to be thought of as a digital life form—even though it's not technically life, you could kind of think of it that way. The idea is that digital and biological life are going to be co-existing symbiotically through economic relationships. Markets. Market forces. Okay. We'll get to the Dunbar's number thing in a second here.
+**Speaker:** Two-hour talk there. Interviewed by Max who is another Bitcoiner/Nostr person, one of our investors. And nice little summary there on what this is about. But instead of "Scary AGI," it's really that this is going to be thought of as a digital life form — even though it's not technically life, you could kind of think of it that way. The idea is that digital and biological life are going to be co-existing symbiotically through economic relationships. Markets. Market forces. Okay. We'll get to the Dunbar's number thing in a second here.
 
 **[07:03]**
 **[Visual: Returns to the OpenAgents tweet thread.]**
 
-**Speaker:** So all these primitives are live, awaiting coordination. Is that coordination going to be done first by the bad guys—like the hacker agent swarm factory wrote about? Or closed labs advocating deceleration and regulatory capture? You can think of a few maybe. Or the good guys? Team *Actually* Open AI?
+**Speaker:** All these primitives are live, awaiting coordination. Is that coordination going to be done first by the bad guys — like the hacker agent swarm factory wrote about? Or closed labs advocating deceleration and regulatory capture? You can think of a few maybe. Or the good guys? Team *Actually* Open AI?
 
 The greater risk than open experimentation with these dynamics is that Team Closed AI builds the *only* valuable agent networks, uses government regulation to prevent disruptive innovation from below, and entrench a croniest priest caste happy to trade *your* data and biometrics for shareholder value. Not on our watch. Okay?
 
@@ -97,12 +97,12 @@ So I'm including this link in the Twitter thread as well as if you go to the lin
 **[08:46]**
 **[Visual: Switches to a document titled "OpenAgents: The Agentic OS" (SYNTHESIS.md).]**
 
-**Speaker:** Let's step through it real quick. So I took our 17-page synthesis document. This is basically the entire company. Everything we've been talking about for two years. All of our thesis, all of our philosophy, all of our products, how everything works together, the protocols, glossary, cryptography, Bitcoin payments... literally *everything* is in this one document. This is open source. This is on our GitHub repo. It's in the root level called `SYNTHESIS.md`. We're going to keep this updated. So if you're ever wondering "What's OpenAgents doing?" Here's a 17-page document. Feed this to your AIs. Read about it. This is what we're doing.
+**Speaker:** Let's step through it real quick. I took our 17-page synthesis document. This is basically the entire company. Everything we've been talking about for two years. All of our thesis, all of our philosophy, all of our products, how everything works together, the protocols, glossary, cryptography, Bitcoin payments... literally *everything* is in this one document. This is open source. This is on our GitHub repo. It's in the root level called `SYNTHESIS.md`. We're going to keep this updated. If you're ever wondering "What's OpenAgents doing?" Here's a 17-page document. Feed this to your AIs. Read about it. This is what we're doing.
 
 **[09:23]**
 **[Visual: Returns to ChatGPT interface.]**
 
-**Speaker:** So I took that doc and I fed it into ChatGPT and I said, "List the ramifications of an agent group-forming network for society generally." Okay, here's where I'm going to pause and introduce the most important single concept that AI discourse has been completely missing. And I mentioned it in this tweet at the DeepMind people.
+**Speaker:** I took that doc and I fed it into ChatGPT and I said, "List the ramifications of an agent group-forming network for society generally." Okay, here's where I'm going to pause and introduce the most important single concept that AI discourse has been completely missing. And I mentioned it in this tweet at the DeepMind people.
 
 **[09:47]**
 **[Visual: Flashes back to the Tweet criticizing DeepMind.]**
@@ -112,7 +112,7 @@ So I'm including this link in the Twitter thread as well as if you go to the lin
 **[09:59]**
 **[Visual: Shows Google search for "Reed's law of group forming networks" and the Wikipedia page.]**
 
-**Speaker:** So if you Google Reed's Law of group-forming networks... there's a good post about it on... Wikipedia is okay. "The utility of large networks, particularly social networks, can scale exponentially with the size of the network." Now, stick with me here because this is really fucking important.
+**Speaker:** If you Google Reed's Law of group-forming networks... there's a good post about it on... Wikipedia is okay. "The utility of large networks, particularly social networks, can scale exponentially with the size of the network." Now, stick with me here because this is really fucking important.
 
 **[10:19]**
 **[Visual: Speaker is overlaid on an interactive graphic titled "GROUP FORMING NETWORKS".]**
@@ -175,11 +175,11 @@ Okay, firms become protocol-native. Markets accelerate. Disintermediation pressu
 **[15:37]**
 **[Visual: ChatGPT Output: "Power, inequality, and concentration".]**
 
-**Speaker:** So this is interesting. Two opposing forces collide: Decentralization—anyone can contribute compute skills and earn. Concentration—the best orchestrators/markets can snowball, winner-take-most, because group-forming networks amplify incumbents.
+**Speaker:** This is interesting. Two opposing forces collide: Decentralization—anyone can contribute compute skills and earn. Concentration—the best orchestrators/markets can snowball, winner-take-most, because group-forming networks amplify incumbents.
 
 See, here's... what I'll qualify with there. One of my observations in Open AI's massive failure to create and launch GPT Store was that OpenAI is not really... they're kind of a product company, they're definitely not a marketplace company. And if you go back to Episode 1 of this series where I said the day after they announced GPT Store and they were going to do rev-sharing, DevDay 2023... I was saying, "They're gonna half-ass that. There's no way they're gonna do what's necessary." And they *did* half-ass it.
 
-Fast forward two-plus years, they've paid *zero* developers. We've paid 20 developers for our MVP agent store a year ago. We've paid infinity percent more developers than OpenAI. So, we'll get to the payment piece in a bit here.
+Fast forward two-plus years, they've paid *zero* developers. We've paid 20 developers for our MVP agent store a year ago. We've paid infinity percent more developers than OpenAI. We'll get to the payment piece in a bit here.
 
 But so you've got labs, Anthropic and OpenAI, xAI... every big lab would love to, you know, *own* agents. But we think they're really structurally incapable of owning agents. Because so much of this is disintermediating. Why are you going to use labs from... or agents from one particular lab? Aren't you going to want everything to be able to work well across each other? Are these companies going to be harnessing Reed's Law dynamics? They just... they just can't. They can't do that.
 
@@ -209,7 +209,7 @@ That's probably worth a separate video about why they're structurally incapable 
 
 Lots of thoughts on intelligence, intelligence, intelligence, but I think there's *been* a growing recognition that coordination may end up being the bottleneck. And then, how does that coordination best happen? Obviously on open and neutral protocols. We think that's obvious.
 
-So for everybody trying to push a proprietary framework or a crypto shitcoin and say it's got to come through *you*? No.
+For everybody trying to push a proprietary framework or a crypto shitcoin and say it's got to come through *you*? No.
 
 The only logical meeting point for this huge network to coalesce is on neutral and open protocols. For us, we think it's obvious that that's Bitcoin and Nostr. We will make that case. I could see something coming up to supplement Nostr or replace it maybe... but it's got all the properties of what I think is needed. We'll do more content videos on that.
 
@@ -228,7 +228,7 @@ I think the most realistic synthesis is:
 
 **Plane B: The Containment Plane (Optional but economically necessary).** Used for high-risk tools and high-capability experiments. Semi-permeable IO with explicit ports. Costs money (insurance, bonds, fees). Produces signed artifacts back to Plane A.
 
-Okay. So this is clearly what DeepMind was trying to articulate the architecture for this containment plane.
+Okay. This is clearly what DeepMind was trying to articulate the architecture for this containment plane.
 
 Power to them and anyone who wants to do the **boring work** of trying to figure out how to hand-hold legacy institutions. Great. Thanks for doing that so *we* don't have to.
 
@@ -252,7 +252,7 @@ I want to build Plane A. The Open Plane. I invite you all to meet us there and h
 **[11:11]**
 **[Visual: ChatGPT Output explaining Reed's Law manifestations.]**
 
-**Speaker:** So the Reed's Law is saying that the network's value is dominated by the number of *possible coalitions*. For *N*=10 million, the raw number is so astronomically large that you should treat it as "effectively infinite optionality." The useful question becomes: What does "optionality" cash out as in the real world given coordination costs?
+**Speaker:** The Reed's Law is saying that the network's value is dominated by the number of *possible coalitions*. For *N*=10 million, the raw number is so astronomically large that you should treat it as "effectively infinite optionality." The useful question becomes: What does "optionality" cash out as in the real world given coordination costs?
 
 **1) Time-to-assemble a competent team goes to ~0.**
 The value isn't that $2^N$ coalitions *exist*, it's that for *any task*, there exists many coalitions that can do it, and the cost to find/compose one is low.
