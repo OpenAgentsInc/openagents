@@ -1,0 +1,26 @@
+# OpenAgents OG Image Generator - Cloudflare Workers configuration
+# Deploy with: npm run deploy
+
+name = "openagents-og"
+main = "src/index.tsx"
+compatibility_date = "2024-12-01"
+
+# Keep workers.dev subdomain enabled for testing
+workers_dev = true
+
+# Route pattern - handles /og/* paths on openagents.com
+# Configure in Cloudflare dashboard after initial deploy
+# routes = [{ pattern = "openagents.com/og/*", zone_name = "openagents.com" }]
+
+# Production environment
+[env.production]
+name = "openagents-og"
+
+# Preview environment for testing
+[env.preview]
+name = "openagents-og-preview"
+
+# Local development settings
+[dev]
+port = 8788
+local_protocol = "http"

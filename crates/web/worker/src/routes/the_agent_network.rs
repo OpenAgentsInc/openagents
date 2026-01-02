@@ -23,6 +23,21 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>The Agent Network - OpenAgents</title>
     <meta name="description" content="Episode 200: The Agent Network - Reed's Law, group-forming networks, and the future of agent coordination">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="The Agent Network - Episode 200">
+    <meta property="og:description" content="Reed's Law, group-forming networks, and the future of agent coordination">
+    <meta property="og:url" content="https://openagents.com/the-agent-network">
+    <meta property="og:image" content="https://openagents.com/og/the-agent-network.png">
+    <meta property="og:site_name" content="OpenAgents">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@OpenAgentsInc">
+    <meta name="twitter:title" content="The Agent Network - Episode 200">
+    <meta name="twitter:description" content="Reed's Law, group-forming networks, and the future of agent coordination">
+    <meta name="twitter:image" content="https://openagents.com/og/the-agent-network.png">
     <style>
         html, body {{
             margin: 0;

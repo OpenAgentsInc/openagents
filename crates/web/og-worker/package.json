@@ -1,0 +1,21 @@
+{
+  "name": "openagents-og",
+  "version": "1.0.0",
+  "description": "OpenAgents OG Image Generator",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:preview": "wrangler deploy --env preview"
+  },
+  "dependencies": {
+    "@cf-wasm/og": "^0.1.1",
+    "@types/react": "^19.2.7",
+    "react": "^19.2.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241205.0",
+    "typescript": "^5.3.3",
+    "wrangler": "^3.99.0"
+  }
+}
