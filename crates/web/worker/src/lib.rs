@@ -227,6 +227,9 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // 2026 page - key themes and links
         (Method::Get, "/2026") => routes::y2026::view_2026(env).await,
 
+        // The Agent Network - Episode 200 transcript
+        (Method::Get, "/the-agent-network") => routes::the_agent_network::view_the_agent_network(env).await,
+
         // Homepage - shows landing/waitlist page
         (Method::Get, "/") => routes::early::view_early(env).await,
 
