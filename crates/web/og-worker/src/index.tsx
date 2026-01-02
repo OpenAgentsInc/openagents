@@ -157,7 +157,7 @@ export default {
     const fontData = await fetch(fontUrl).then((res) => res.arrayBuffer());
 
     // Generate dots grid background
-    const dotSpacing = 24;
+    const dotSpacing = 40;
     const dotSize = 2;
     const dots = [];
     for (let y = 0; y < 630; y += dotSpacing) {
@@ -171,7 +171,7 @@ export default {
               top: y,
               width: dotSize,
               height: dotSize,
-              backgroundColor: "rgba(255, 255, 255, 0.08)",
+              backgroundColor: "rgba(255, 255, 255, 0.25)",
             }}
           />
         );
