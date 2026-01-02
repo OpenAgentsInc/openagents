@@ -55,6 +55,13 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
         .subtitle {{
             color: #888;
             margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }}
+        .episode-date {{
+            color: #666;
+            font-size: 12px;
         }}
         .copy-btn {{
             background: #f80;
@@ -136,7 +143,7 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
     <div class="container">
         <h1>The Agent Network</h1>
         <div class="subtitle-row">
-            <p class="subtitle">Episode 200 Transcript</p>
+            <p class="subtitle">Episode 200 Transcript <span class="episode-date">January 1, 2026</span></p>
             <button class="copy-btn" id="copyMarkdownBtn">Copy as markdown</button>
         </div>
 
@@ -215,7 +222,7 @@ pub async fn view_the_agent_network(_env: Env) -> Result<Response> {
 Title: The Agent Network
 URL: https://openagents.com/the-agent-network
 Episode: 200
-Date: January 2, 2026
+Date: January 1, 2026
 Source: OpenAgents
 ---
 
