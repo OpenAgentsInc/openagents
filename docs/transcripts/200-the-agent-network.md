@@ -35,12 +35,12 @@ Hey, do we have a relevant product launch coming up in like a few days? Stay tun
 **[03:01]**
 **[Visual: Returns to "2026" slide. Clicks "Autopilots".]**
 
-**Speaker:** Autopilots. See our last episode, Episode 199. 2025... oh, was that the year of agents? No, it was the year of Co-pilots. 2026 will be the year of *Autopilots*. This is the name of our core product. We're calling it Autopilot. More on that soon.
+**Speaker:** Autopilots. See our last episode, Episode 199. 2025... oh, was that the year of agents? No, it was the year of copilots. 2026 will be the year of *autopilots*. This is the name of our core product. We're calling it Autopilot. More on that soon.
 
 **[03:17]**
 **[Visual: Returns to "2026" slide. Clicks "Agent Network(s)".]**
 
-**Speaker:** Agent Networks. Okay, the big theme, what we want to get across in this video, is Agent Networks. So a few things on this. One is, we've been talking in this series for a while about the multi-agent future. Starting to have people like this former OpenAI researcher, Stanislas [Polu], talking about like, "Oh, it's now a meme: Agents to Network of Agents." This is a good talk.
+**Speaker:** Agent networks. Okay, the big theme, what we want to get across in this video, is Agent Networks. So a few things on this. One is, we've been talking in this series for a while about the multi-agent future. Starting to have people like this former OpenAI researcher, Stanislas [Polu], talking about -  it's now a meme: Agents to Network of Agents. This is a good talk.
 
 **[03:40]**
 **[Visual: Shows a tweet with a video of Stanislas Polu titled "THE OUTER-LOOP ERA".]**
@@ -50,20 +50,20 @@ Hey, do we have a relevant product launch coming up in like a few days? Stay tun
 **[04:03]**
 **[Visual: Shows a tweet analyzing a Google DeepMind paper titled "Distributional AGI Safety".]**
 
-**Speaker:** Okay, what's next we got here? Okay, so even, DeepMind just came out with a paper two weeks ago. Good paper. Good points here. Yeah. Seb [Krier] who runs, Policy/AGI Dev Lead at DeepMind. "We argue AGI may first emerge as collective intelligence across agent networks, not a single system." Agreed. "This reframes the challenge from aligning one mind to governing emergent dynamics. More institutional design than single..."
+**Speaker:** Okay, what's next we got here? Even, DeepMind just came out with a paper two weeks ago. Good paper. Good points here. Yeah. Seb [Krier] who runs, Policy/AGI Dev Lead at DeepMind. "We argue AGI may first emerge as collective intelligence across agent networks, not a single system." Agreed. "This reframes the challenge from aligning one mind to governing emergent dynamics. More institutional design than single..."
 
-Institutions... Ooh. So, I agree with a lot of this. I disagree with a lot of this. Like, I specifically think that their conclusions that they come to—that there has to be all of this "institution building," we need to be like roping off this like closed little environment...
+Institutions... Ooh. So, I agree with a lot of this. I disagree with a lot of this. I specifically think that their conclusions that they come to — that there has to be all of this "institution building," we need to be like roping off this like closed little environment...
 
 **[04:49]**
 **[Visual: Highlights text in the OpenAgents post critiquing DeepMind.]**
 
 **Speaker:** Here's what they want: *"The agentic market must operate within a controlled environment, separated from the open internet, real-world financial systems, and critical infrastructure. This insulation is not limited to network-level firewalls... Agents' access to external data must be managed through vetted API gateways rather than direct web access."*
 
-No. No. No. So you guys can do that for your like corporate buddies, if you're government people. Okay? We startups, we people building in the open, are going to be building *this* agentic market—open source on open protocols—because that's what's needed.
+No. No. No. So you guys can do that for your corporate buddies, for your government people. Okay? We startups, we people building in the open, are going to be building *this* agentic market — open source on open protocols — because that's what's needed.
 
 It's already happening. So none of this is like a thing that I'm proposing. Agentic coordination and commerce on open protocol Nostr has been ongoing for a year-plus. Nothing bad has come of it. Partly because it includes other critical market-making mechanisms like reputation and payments built-in. No firewalls, walled gardens, or industry buy-in or government regulation needed.
 
-And as for broad markets of agents, see the draft NIP-SA [Nostr Implementation Possibility - Sovereign Agents]... this is like a Nostr protocol plank called Sovereign Agents we posted contributing the last building block to viable autonomous agents on permissionless open protocols. It includes a cryptographic primitive called FROST—Frost on the Nostr protocol—for splitting up an agent's keys living on multiple different decentralized relays, Nostr relays, so that an agent can basically have its own identity. It can sign keys and credentials in a way that cannot be exported by a human. Like, sovereign agents.
+And as for broad markets of agents, see the draft NIP-SA [Nostr Implementation Possibility - Sovereign Agents]... this is a Nostr protocol plank called Sovereign Agents we posted contributing the last building block to viable autonomous agents on permissionless open protocols. It includes a cryptographic primitive called FROST—Frost on the Nostr protocol—for splitting up an agent's keys living on multiple different decentralized relays, Nostr relays, so that an agent can basically have its own identity. It can sign keys and credentials in a way that cannot be exported by a human. Like, sovereign agents.
 
 **[06:12]**
 **[Visual: Scrolls down the tweet thread.]**
