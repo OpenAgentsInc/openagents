@@ -1,0 +1,75 @@
+[package]
+name = "ml"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Browser-first ML inference library with WebGPU compute"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["web"]
+web = [
+    "wasm-bindgen",
+    "wasm-bindgen-futures",
+    "web-sys",
+    "js-sys",
+    "gloo-timers",
+]
+
+[dependencies]
+# GPU compute
+wgpu = { version = "24.0", features = ["webgpu", "webgl"] }
+
+# Data structures
+bytemuck = { version = "1", features = ["derive"] }
+half = { version = "2", features = ["bytemuck"] }
+parking_lot = "0.12"
+smallvec = "1"
+
+# Time (WASM-compatible)
+web-time = "1.1"
+
+# Async
+futures = "0.3"
+
+# Logging
+log = "0.4"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Web (optional)
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+web-sys = { version = "0.3", optional = true, features = [
+    "Window",
+    "Navigator",
+    "Gpu",
+    "GpuAdapter",
+    "GpuDevice",
+    "GpuQueue",
+    "GpuBuffer",
+    "GpuBufferDescriptor",
+    "GpuBufferUsage",
+    "GpuShaderModule",
+    "GpuShaderModuleDescriptor",
+    "GpuComputePipeline",
+    "GpuComputePipelineDescriptor",
+    "GpuBindGroup",
+    "GpuBindGroupDescriptor",
+    "GpuBindGroupEntry",
+    "GpuBindGroupLayout",
+    "GpuCommandEncoder",
+    "GpuComputePassEncoder",
+] }
+js-sys = { version = "0.3", optional = true }
+gloo-timers = { version = "0.3", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1", features = ["rt", "sync"] }
+reqwest = { workspace = true }

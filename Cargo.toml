@@ -17,6 +17,7 @@ members = [
     "crates/issues",
     "crates/local-inference",
     "crates/marketplace",
+    "crates/ml",
     "crates/nexus",
     "crates/recorder",
     "crates/testing",
