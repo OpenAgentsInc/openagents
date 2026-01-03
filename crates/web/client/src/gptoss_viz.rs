@@ -391,6 +391,12 @@ pub(crate) fn flush_gptoss_events(state: &mut GptOssVizState) {
     });
 }
 
+pub(crate) fn clear_gptoss_events() {
+    PENDING_GPTOSS_EVENTS.with(|queue| {
+        queue.borrow_mut().clear();
+    });
+}
+
 fn update_stage(
     stages: &mut Vec<GptOssStage>,
     name: String,

@@ -18,8 +18,8 @@ use crate::gguf_web::{
 };
 use crate::gptoss_tokenizer::GptOssTokenizer;
 use crate::gptoss_viz::{
-    push_gptoss_event, GptOssInferenceTelemetry, GptOssTelemetry, GptOssTokenCandidate,
-    StageStatus,
+    clear_gptoss_events, push_gptoss_event, GptOssInferenceTelemetry, GptOssTelemetry,
+    GptOssTokenCandidate, StageStatus,
 };
 use crate::state::{AppState, GpuContext};
 
@@ -1351,6 +1351,7 @@ async fn stream_full_weights(
 }
 
 fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
+    clear_gptoss_events();
     state.load_stages.clear();
     state.inference_stages.clear();
     state.events.clear();
