@@ -163,6 +163,7 @@ Notes:
 - Added sampling controls via query params (`sample`, `temp`, `top_k`, `top_p`) with HUD display of sampling mode.
 - Token limits telemetry now surfaces in the HUD I/O panel.
 - GPU workgroup size now derives from WebGPU limits (no hardcoded 64); Q8_0 matmul auto-retries with chunked path on failure.
+- Fixed WGSL helpers for Q8_0 + MXFP4 shaders (added f16 unpack, removed duplicate acc).
 
 ---
 
