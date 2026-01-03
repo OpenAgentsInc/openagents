@@ -199,6 +199,7 @@ Notes:
 - Ran full ML test suite: `cargo test -p ml --no-default-features --features native,wgpu`.
 - GPU alloc telemetry now tracks buffer count; I/O panel shows GPU buffers alongside bytes.
 - Attention heatmap now accumulates a rolling window of head weights per token.
+- GPT-OSS page now shows the full local GGUF URL under the input for easy copy/paste.
 
 ---
 

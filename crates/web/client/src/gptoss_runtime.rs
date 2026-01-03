@@ -1491,6 +1491,10 @@ pub(crate) fn local_gguf_path() -> &'static str {
     LOCAL_GGUF_PATH
 }
 
+pub(crate) fn local_gguf_url() -> &'static str {
+    LOCAL_GGUF_URL
+}
+
 pub(crate) fn local_gguf_serve_cmd() -> &'static str {
     LOCAL_GGUF_SERVE_CMD
 }
