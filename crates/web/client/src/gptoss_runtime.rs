@@ -30,6 +30,7 @@ const DEFAULT_GGUF_URL: &str =
 const LOCAL_GGUF_URL: &str = "http://localhost:8080/gpt-oss-20b-Q8_0.gguf";
 const CURRENT_DATE: &str = "2026-01-02";
 const DEFAULT_USER_PROMPT: &str = "Give me one sentence about what GPT-OSS can do.";
+const DEFAULT_DEVELOPER_PROMPT: &str = "";
 const MAX_NEW_TOKENS: usize = 8;
 const MAX_KV_TOKENS: usize = 32;
 const MAX_PROMPT_TOKENS: usize = MAX_KV_TOKENS - MAX_NEW_TOKENS;
@@ -569,6 +570,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
 
     let tokenizer = build_tokenizer(&state, index.as_ref())?;
     let prompt_tokens = encode_prompt(&state, &tokenizer)?;
+    let stop_tokens = collect_stop_tokens(&tokenizer);
 
     let gpu_context = state.borrow().gpu_context.clone();
     if let Some(gpu) = gpu_context.as_ref() {
@@ -700,6 +702,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
             &prompt_tokens,
             active_layers,
             moe_fallback,
+            stop_tokens,
         )
         .await
         {
@@ -1127,17 +1130,38 @@ fn build_harmony_prompt(user_prompt: &str) -> String {
 Knowledge cutoff: 2024-06\n\
 Current date: {CURRENT_DATE}\n\n\
 Reasoning: low\n\n\
-# Valid channels: analysis, commentary, final. Channel must be included for every message.\n\
-Calls to these tools must go to the commentary channel: 'functions'."
+# Valid channels: analysis, commentary, final. Channel must be included for every message."
     );
+    let developer_prompt = if DEFAULT_DEVELOPER_PROMPT.is_empty() {
+        "# Instructions\n\n".to_string()
+    } else {
+        format!("# Instructions\n\n{DEFAULT_DEVELOPER_PROMPT}")
+    };
 
     let mut prompt = String::new();
     prompt.push_str("<|start|>system<|message|>");
     prompt.push_str(&system_prompt);
+    prompt.push_str("<|end|><|start|>developer<|message|>");
+    prompt.push_str(&developer_prompt);
     prompt.push_str("<|end|><|start|>user<|message|>");
     prompt.push_str(user_prompt);
-    prompt.push_str("<|end|><|start|>assistant");
+    prompt.push_str("<|end|><|start|>assistant<|channel|>final<|message|>");
     prompt
+}
+
+fn collect_stop_tokens(tokenizer: &GptOssTokenizer) -> Vec<u32> {
+    let mut tokens = Vec::new();
+    for name in ["<|return|>", "<|call|>"] {
+        if let Some(id) = tokenizer.token_id(name) {
+            tokens.push(id);
+        }
+    }
+    if let Some(id) = tokenizer.eos_token_id() {
+        tokens.push(id);
+    }
+    tokens.sort_unstable();
+    tokens.dedup();
+    tokens
 }
 
 fn hex_preview(bytes: &[u8], len: usize) -> String {
@@ -1803,6 +1827,7 @@ async fn run_generation(
     prompt_tokens: &[u32],
     active_layers: usize,
     moe_fallback: bool,
+    stop_tokens: Vec<u32>,
 ) -> Result<(), String> {
     if prompt_tokens.is_empty() {
         return Err("prompt token list is empty".to_string());
@@ -1889,7 +1914,6 @@ async fn run_generation(
     );
 
     let mut logits = last_logits.ok_or_else(|| "prefill produced no logits".to_string())?;
-    let eos = tokenizer.eos_token_id();
     let mut generated = 0usize;
 
     emit_inference_stage(
@@ -1903,13 +1927,19 @@ async fn run_generation(
 
     while generated < MAX_NEW_TOKENS {
         let (top_k, entropy, next_id, next_text) = top_k_from_logits(&logits, tokenizer, 5)?;
+        let stop_token = stop_tokens.contains(&next_id);
+        let token_text = if stop_token {
+            String::new()
+        } else {
+            next_text
+        };
         let tokens_per_sec = 1000.0 / last_step_ms as f32;
 
         emit_inference_event(
             state,
             GptOssInferenceTelemetry::TokenGenerated {
                 token_id: next_id,
-                token_text: next_text,
+                token_text,
                 top_k,
                 entropy,
                 tokens_per_sec,
@@ -1926,7 +1956,7 @@ async fn run_generation(
             Some(format!("token_id={next_id}")),
         );
 
-        if eos.is_some() && eos == Some(next_id) {
+        if stop_token {
             break;
         }
 

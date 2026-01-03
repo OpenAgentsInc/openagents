@@ -312,6 +312,14 @@ impl GptOssTokenizer {
             .unwrap_or_else(|| format!("<tok:{token}>"))
     }
 
+    pub(crate) fn token_id(&self, token: &str) -> Option<Rank> {
+        self.vocab
+            .tokens
+            .iter()
+            .position(|candidate| candidate == token)
+            .map(|idx| idx as Rank)
+    }
+
     pub(crate) fn is_special_token(&self, token: Rank) -> bool {
         self.bpe.is_special_token(token)
     }
