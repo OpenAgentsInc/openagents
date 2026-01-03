@@ -6,6 +6,8 @@
 mod device;
 mod error;
 mod http;
+#[cfg(not(target_arch = "wasm32"))]
+mod gguf;
 mod model;
 mod sampling;
 mod telemetry;
@@ -22,6 +24,8 @@ mod tests;
 
 pub use device::MlDevice;
 pub use error::{MlError, Result};
+#[cfg(not(target_arch = "wasm32"))]
+pub use gguf::{load_gguf_index, GgufIndex, GgufTensorDump};
 pub use model::{GenerationOutcome, LoadedModel, ModelKind, ModelSource};
 pub use sampling::GenerationConfig;
 pub use telemetry::{InferenceHook, InferenceTelemetry, TokenCandidate};
