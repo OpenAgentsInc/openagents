@@ -210,6 +210,7 @@ Notes:
 - KV cache HUD now shows bytes alongside token counts.
 - I/O panel now renders a GPU memory gauge based on GPU limits telemetry.
 - Q8_0 chunked matmul now accounts for padding when enforcing storage limits.
+- Token embedding LRU cache added (hit/miss telemetry + HUD line) and memory totals include all cache bytes.
 
 ---
 

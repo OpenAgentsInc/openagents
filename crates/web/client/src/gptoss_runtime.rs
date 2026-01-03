@@ -53,6 +53,8 @@ const ROPE_NTK_ALPHA: f32 = 1.0;
 const ROPE_NTK_BETA: f32 = 32.0;
 const TENSOR_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
 const TENSOR_CACHE_MAX_ENTRY_BYTES: usize = 4 * 1024 * 1024;
+const TOKEN_CACHE_MAX_BYTES: usize = 32 * 1024 * 1024;
+const TOKEN_CACHE_MAX_ENTRY_BYTES: usize = 256 * 1024;
 const Q8_0_CACHE_MAX_BYTES: usize = 96 * 1024 * 1024;
 const Q8_0_CACHE_MAX_ENTRY_BYTES: usize = 32 * 1024 * 1024;
 const EXPERT_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
@@ -267,6 +269,101 @@ impl TensorCache {
 }
 
 #[derive(Clone, Debug)]
+struct TokenCacheEntry {
+    data: Vec<f32>,
+    bytes: usize,
+}
+
+#[derive(Clone, Debug)]
+struct TokenCache {
+    entries: HashMap<u32, TokenCacheEntry>,
+    order: VecDeque<u32>,
+    total_bytes: usize,
+    hits: u64,
+    misses: u64,
+    evictions: u64,
+    skipped: u64,
+}
+
+impl TokenCache {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::default(),
+            order: VecDeque::new(),
+            total_bytes: 0,
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            skipped: 0,
+        }
+    }
+
+    fn get(&mut self, token_id: u32) -> Option<Vec<f32>> {
+        let hit = self.entries.get(&token_id).map(|entry| entry.data.clone());
+        if hit.is_some() {
+            self.hits = self.hits.saturating_add(1);
+            self.touch(token_id);
+            return hit;
+        }
+        self.misses = self.misses.saturating_add(1);
+        None
+    }
+
+    fn insert(&mut self, token_id: u32, data: Vec<f32>) {
+        let bytes = data.len() * std::mem::size_of::<f32>();
+        if bytes > TOKEN_CACHE_MAX_ENTRY_BYTES {
+            self.skipped = self.skipped.saturating_add(1);
+            return;
+        }
+        if bytes > TOKEN_CACHE_MAX_BYTES {
+            self.skipped = self.skipped.saturating_add(1);
+            return;
+        }
+        if let Some(existing) = self.entries.remove(&token_id) {
+            self.total_bytes = self.total_bytes.saturating_sub(existing.bytes);
+            self.order.retain(|v| *v != token_id);
+        }
+        while self.total_bytes.saturating_add(bytes) > TOKEN_CACHE_MAX_BYTES {
+            if let Some(evicted) = self.order.pop_front() {
+                if let Some(entry) = self.entries.remove(&evicted) {
+                    self.total_bytes = self.total_bytes.saturating_sub(entry.bytes);
+                    self.evictions = self.evictions.saturating_add(1);
+                }
+            } else {
+                break;
+            }
+        }
+        self.total_bytes = self.total_bytes.saturating_add(bytes);
+        self.order.push_back(token_id);
+        self.entries.insert(
+            token_id,
+            TokenCacheEntry {
+                data,
+                bytes,
+            },
+        );
+    }
+
+    fn touch(&mut self, token_id: u32) {
+        if let Some(pos) = self.order.iter().position(|v| *v == token_id) {
+            self.order.remove(pos);
+            self.order.push_back(token_id);
+        }
+    }
+
+    fn stats(&self) -> CacheStats {
+        CacheStats {
+            hits: self.hits,
+            misses: self.misses,
+            evictions: self.evictions,
+            skipped: self.skipped,
+            bytes: self.total_bytes,
+            entries: self.entries.len(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 struct QuantCacheEntry {
     data: Vec<u8>,
     bytes: usize,
@@ -457,6 +554,7 @@ impl ExpertCache {
 }
 
 struct RuntimeCaches {
+    token_embd: TokenCache,
     tensors: TensorCache,
     quant: QuantCache,
     experts: ExpertCache,
@@ -466,6 +564,7 @@ struct RuntimeCaches {
 impl RuntimeCaches {
     fn new() -> Self {
         Self {
+            token_embd: TokenCache::new(),
             tensors: TensorCache::new(),
             quant: QuantCache::new(),
             experts: ExpertCache::new(),
@@ -2656,7 +2755,13 @@ async fn run_forward_token(
         Some(format!("token_id={token_id}")),
     );
     let emb_start = now_ms();
-    let mut hidden = fetch_q8_0_row(gguf_url, token_embd, token_id as usize).await?;
+    let (mut hidden, emb_hit) = fetch_q8_0_row_cached(
+        gguf_url,
+        token_embd,
+        token_id as usize,
+        &mut caches.token_embd,
+    )
+    .await?;
     let emb_ms = now_ms().saturating_sub(emb_start).max(1);
     emit_inference_stage(
         state,
@@ -2664,7 +2769,10 @@ async fn run_forward_token(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("token_id={token_id} ms={emb_ms}")),
+        Some(format!(
+            "token_id={token_id} ms={emb_ms} cache={}",
+            if emb_hit { "hit" } else { "miss" }
+        )),
     );
 
     let layer_limit = active_layers.min(config.block_count as usize);
@@ -2763,9 +2871,26 @@ async fn run_forward_token(
     );
 
     cache.seq_len = position.saturating_add(1);
+    let token_stats = caches.token_embd.stats();
     let tensor_stats = caches.tensors.stats();
     let quant_stats = caches.quant.stats();
     let expert_stats = caches.experts.stats();
+    emit_inference_stage(
+        state,
+        "token_cache",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!(
+            "hits={} misses={} evict={} skip={} bytes={} entries={}",
+            token_stats.hits,
+            token_stats.misses,
+            token_stats.evictions,
+            token_stats.skipped,
+            format_bytes(token_stats.bytes as u64),
+            token_stats.entries
+        )),
+    );
     emit_inference_stage(
         state,
         "tensor_cache",
@@ -2831,7 +2956,9 @@ async fn run_forward_token(
         GptOssInferenceTelemetry::MemoryUsage {
             gpu_allocated: gpu_tracker.bytes,
             cache_total: cache.total_bytes()
+                + token_stats.bytes
                 + tensor_stats.bytes
+                + quant_stats.bytes
                 + expert_stats.bytes,
             activations: final_hidden.len() * std::mem::size_of::<f32>(),
         },
@@ -3564,6 +3691,24 @@ async fn fetch_q8_0_row(
         quant.resize(padded, 0);
     }
     dequant_q8_0(&quant, values)
+}
+
+async fn fetch_q8_0_row_cached(
+    gguf_url: &str,
+    tensor: &GgufTensor,
+    row: usize,
+    cache: &mut TokenCache,
+) -> Result<(Vec<f32>, bool), String> {
+    if let Ok(token_id) = u32::try_from(row) {
+        if let Some(hit) = cache.get(token_id) {
+            return Ok((hit, true));
+        }
+        let data = fetch_q8_0_row(gguf_url, tensor, row).await?;
+        cache.insert(token_id, data.clone());
+        return Ok((data, false));
+    }
+    let data = fetch_q8_0_row(gguf_url, tensor, row).await?;
+    Ok((data, false))
 }
 
 async fn fetch_mxfp4_expert_raw(

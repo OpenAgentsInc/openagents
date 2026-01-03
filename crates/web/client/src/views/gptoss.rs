@@ -691,6 +691,23 @@ fn draw_io_panel(
         }
     }
 
+    let cache_base_y = inner.y() + 88.0 + gauge_offset;
+    let cache_line_gap = 12.0;
+
+    let token_cache = find_stage(gptoss, "token_cache")
+        .and_then(|stage| stage.detail.as_ref())
+        .map(|detail| format!("TOKEN CACHE: {}", truncate_text(detail, 46)))
+        .unwrap_or_else(|| "TOKEN CACHE: --".to_string());
+    draw_mono_text(
+        scene,
+        text_system,
+        &token_cache,
+        inner.x(),
+        cache_base_y,
+        9.0,
+        theme::text::MUTED,
+    );
+
     let tensor_cache = find_stage(gptoss, "tensor_cache")
         .and_then(|stage| stage.detail.as_ref())
         .map(|detail| format!("TENSOR CACHE: {}", truncate_text(detail, 46)))
@@ -700,7 +717,7 @@ fn draw_io_panel(
         text_system,
         &tensor_cache,
         inner.x(),
-        inner.y() + 88.0 + gauge_offset,
+        cache_base_y + cache_line_gap,
         9.0,
         theme::text::MUTED,
     );
@@ -714,7 +731,7 @@ fn draw_io_panel(
         text_system,
         &q8_cache,
         inner.x(),
-        inner.y() + 100.0 + gauge_offset,
+        cache_base_y + cache_line_gap * 2.0,
         9.0,
         theme::text::MUTED,
     );
@@ -728,7 +745,7 @@ fn draw_io_panel(
         text_system,
         &expert_cache,
         inner.x(),
-        inner.y() + 112.0 + gauge_offset,
+        cache_base_y + cache_line_gap * 3.0,
         9.0,
         theme::text::MUTED,
     );
@@ -748,14 +765,14 @@ fn draw_io_panel(
             text_system,
             line,
             inner.x(),
-            inner.y() + 128.0 + gauge_offset + (idx as f32 * 12.0),
+            inner.y() + 140.0 + gauge_offset + (idx as f32 * 12.0),
             9.0,
             theme::text::MUTED,
         );
     }
 
     let mut ry = inner.y()
-        + 144.0
+        + 156.0
         + gauge_offset
         + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
     let show_scan = gptoss.load_active
