@@ -405,7 +405,7 @@ impl Default for GptOssVizState {
                 .font_size(10.0)
                 .padding(6.0, 4.0),
             sample_input: TextInput::new()
-                .placeholder("off")
+                .placeholder("on")
                 .font_size(10.0)
                 .padding(6.0, 4.0),
             temp_input: TextInput::new()
