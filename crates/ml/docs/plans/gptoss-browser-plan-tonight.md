@@ -201,6 +201,7 @@ Notes:
 - Added WGSL **RMSNorm** + **RoPE** shaders in `crates/web/client/src/shaders/` and wired GPU dispatch in `gptoss_runtime` with CPU fallback; inference telemetry now tags `attn_norm`, `post_attn_norm`, `output_norm`, and `rope` with `gpu`/`cpu` detail.
 - Added **decode-only GPU attention** shader (`attention_decode.wgsl`) and wired a WebGPU attention path that slices the active KV window; `attn_score` now tags `gpu` vs `cpu` and falls back to CPU when GPU attention fails.
 - Added a **GPU KV cache ring** per layer (CPU+GPU storage) with sliding-window overwrite; attention now reads directly from the GPU KV buffers and decode enforces GPU attention only (CPU attention weights gated to prefill).
+- Added **Q8_0 dequant** WGSL and wired **GPU embedding lookup** on cache misses; added a **vector add** kernel and use it for residual adds (CPU fallback only on GPU failure).
 - Attention heatmap now accumulates a rolling window of head weights per token.
 - GPT-OSS page now shows the full local GGUF URL under the input for easy copy/paste.
 - Load now fails fast with a clear error if WebGPU isn't available in the browser.

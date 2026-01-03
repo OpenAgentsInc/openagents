@@ -2767,9 +2767,15 @@ async fn run_block0_attention_probe(
         }
     }
 
-    for (out, add) in hidden.iter_mut().zip(mlp_accum.iter()) {
-        *out += *add;
-    }
+    hidden = match vector_add_gpu(&hidden, &mlp_accum, gpu, &mut gpu_tracker).await {
+        Ok(value) => value,
+        Err(_) => {
+            for (out, add) in hidden.iter_mut().zip(mlp_accum.iter()) {
+                *out += *add;
+            }
+            hidden
+        }
+    };
 
     emit_inference_stage(
         state,
@@ -3113,13 +3119,33 @@ async fn run_forward_token(
         Some(format!("token_id={token_id}")),
     );
     let emb_start = now_ms();
-    let (mut hidden, emb_hit) = fetch_q8_0_row_cached(
-        gguf_url,
-        token_embd,
-        token_id as usize,
-        &mut caches.token_embd,
-    )
-    .await?;
+    let (mut hidden, emb_hit, emb_mode) =
+        match fetch_q8_0_row_cached_gpu(
+            gguf_url,
+            token_embd,
+            token_id as usize,
+            &mut caches.token_embd,
+            gpu,
+            gpu_tracker,
+        )
+        .await
+        {
+            Ok((data, hit)) => {
+                let mode = if hit { "cache" } else { "gpu" };
+                (data, hit, mode)
+            }
+            Err(_) => {
+                let (data, hit) = fetch_q8_0_row_cached(
+                    gguf_url,
+                    token_embd,
+                    token_id as usize,
+                    &mut caches.token_embd,
+                )
+                .await?;
+                let mode = if hit { "cache" } else { "cpu" };
+                (data, hit, mode)
+            }
+        };
     let emb_ms = now_ms().saturating_sub(emb_start).max(1);
     emit_inference_stage(
         state,
@@ -3128,7 +3154,7 @@ async fn run_forward_token(
         None,
         None,
         Some(format!(
-            "token_id={token_id} ms={emb_ms} cache={}",
+            "token_id={token_id} {emb_mode} ms={emb_ms} cache={}",
             if emb_hit { "hit" } else { "miss" }
         )),
     );
@@ -3736,9 +3762,15 @@ async fn run_transformer_layer(
         None,
         Some(format!("layer={layer} ms={proj_ms}")),
     );
-    for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
-        *out += *base;
-    }
+    hidden = match vector_add_gpu(&hidden, &attn_proj, gpu, gpu_tracker).await {
+        Ok(value) => value,
+        Err(_) => {
+            for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
+                *out += *base;
+            }
+            hidden
+        }
+    };
 
     let layer_attn_ms = now_ms().saturating_sub(layer_attn_start).max(1);
     emit_inference_stage(
@@ -4149,6 +4181,42 @@ async fn fetch_q8_0_row(
     dequant_q8_0(&quant, values)
 }
 
+async fn fetch_q8_0_row_gpu(
+    gguf_url: &str,
+    tensor: &GgufTensor,
+    row: usize,
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<Vec<f32>, String> {
+    if tensor.ggml_type != 8 {
+        return Err(format!(
+            "tensor {} is {}, expected Q8_0",
+            tensor.name, tensor.ggml_type_name
+        ));
+    }
+    let dims = &tensor.dims;
+    let rows = dims.get(0).copied().unwrap_or(0) as usize;
+    let cols = dims.get(1).copied().unwrap_or(0) as usize;
+    if row >= rows || cols == 0 {
+        return Err(format!("row {row} out of range for {}", tensor.name));
+    }
+    if cols % Q8_0_BLOCK_VALUES != 0 {
+        return Err("q8_0 row cols not divisible by block size".to_string());
+    }
+    let blocks_per_row = cols / Q8_0_BLOCK_VALUES;
+    let row_bytes = blocks_per_row * Q8_0_BLOCK_BYTES;
+    let offset = tensor
+        .absolute_offset
+        .saturating_add((row_bytes * row) as u64);
+    let bytes = fetch_range(gguf_url, offset, row_bytes as u64).await?;
+    let mut quant = bytes;
+    if quant.len() % 4 != 0 {
+        let padded = (quant.len() + 3) / 4 * 4;
+        quant.resize(padded, 0);
+    }
+    dequant_q8_0_gpu(&quant, cols, gpu, gpu_tracker).await
+}
+
 async fn fetch_q8_0_row_cached(
     gguf_url: &str,
     tensor: &GgufTensor,
@@ -4164,6 +4232,26 @@ async fn fetch_q8_0_row_cached(
         return Ok((data, false));
     }
     let data = fetch_q8_0_row(gguf_url, tensor, row).await?;
+    Ok((data, false))
+}
+
+async fn fetch_q8_0_row_cached_gpu(
+    gguf_url: &str,
+    tensor: &GgufTensor,
+    row: usize,
+    cache: &mut TokenCache,
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<(Vec<f32>, bool), String> {
+    if let Ok(token_id) = u32::try_from(row) {
+        if let Some(hit) = cache.get(token_id) {
+            return Ok((hit, true));
+        }
+        let data = fetch_q8_0_row_gpu(gguf_url, tensor, row, gpu, gpu_tracker).await?;
+        cache.insert(token_id, data.clone());
+        return Ok((data, false));
+    }
+    let data = fetch_q8_0_row_gpu(gguf_url, tensor, row, gpu, gpu_tracker).await?;
     Ok((data, false))
 }
 
@@ -4947,6 +5035,24 @@ struct AttentionParams {
     capacity: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct DequantParams {
+    n: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct VecAddParams {
+    n: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+}
+
 async fn rms_norm_gpu(
     input: &[f32],
     weight: &[f32],
@@ -5304,6 +5410,352 @@ async fn apply_rope_gpu(
         Ok(Ok(())) => {}
         Ok(Err(err)) => return Err(format!("rope map_async failed: {err:?}")),
         Err(_) => return Err("rope map_async channel failed".to_string()),
+    }
+
+    let data = slice.get_mapped_range();
+    let output = cast_slice(&data).to_vec();
+    drop(data);
+    readback.unmap();
+    Ok(output)
+}
+
+async fn dequant_q8_0_gpu(
+    quant: &[u8],
+    n: usize,
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<Vec<f32>, String> {
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    let device = &gpu.device;
+    let queue = &gpu.queue;
+    let max_storage = device.limits().max_storage_buffer_binding_size as usize;
+    let out_bytes = n * std::mem::size_of::<f32>();
+    ensure_storage_limit("q8_0 dequant input", quant.len(), max_storage)?;
+    ensure_storage_limit("q8_0 dequant output", out_bytes, max_storage)?;
+
+    let workgroup_size = pick_workgroup_size(device);
+    let shader_source = shader_with_workgroup(Q8_0_DEQUANT_SHADER, workgroup_size);
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("q8_0_dequant"),
+        source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+    });
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("q8_0_dequant_bindings"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("q8_0_dequant_layout"),
+        bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("q8_0_dequant_pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
+    let quant_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("q8_0_dequant_quant"),
+        contents: quant,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let out_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("q8_0_dequant_out"),
+        size: out_bytes as u64,
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let params = DequantParams {
+        n: u32::try_from(n).map_err(|_| "q8_0 dequant n overflow".to_string())?,
+        _pad0: 0,
+        _pad1: 0,
+        _pad2: 0,
+    };
+    let params_bytes = std::mem::size_of::<DequantParams>();
+    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("q8_0_dequant_params"),
+        contents: cast_slice(&[params]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("q8_0_dequant_bind_group"),
+        layout: &bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: quant_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: out_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: params_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("q8_0_dequant_readback"),
+        size: out_bytes as u64,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    gpu_tracker.add_buffers(quant.len() + out_bytes * 2 + params_bytes, 4);
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("q8_0_dequant_encoder"),
+    });
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("q8_0_dequant_pass"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        let groups = (n as u32 + workgroup_size - 1) / workgroup_size;
+        pass.dispatch_workgroups(groups, 1, 1);
+    }
+    encoder.copy_buffer_to_buffer(&out_buffer, 0, &readback, 0, out_bytes as u64);
+    queue.submit(Some(encoder.finish()));
+
+    let slice = readback.slice(..);
+    let (tx, rx) = oneshot::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = tx.send(result);
+    });
+    device.poll(wgpu::Maintain::Wait);
+    match rx.await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => return Err(format!("q8_0 dequant map_async failed: {err:?}")),
+        Err(_) => return Err("q8_0 dequant map_async channel failed".to_string()),
+    }
+
+    let data = slice.get_mapped_range();
+    let output = cast_slice(&data).to_vec();
+    drop(data);
+    readback.unmap();
+    Ok(output)
+}
+
+async fn vector_add_gpu(
+    a: &[f32],
+    b: &[f32],
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<Vec<f32>, String> {
+    if a.len() != b.len() {
+        return Err("vec_add shape mismatch".to_string());
+    }
+    let n = a.len();
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    let device = &gpu.device;
+    let queue = &gpu.queue;
+    let max_storage = device.limits().max_storage_buffer_binding_size as usize;
+    let bytes = n * std::mem::size_of::<f32>();
+    ensure_storage_limit("vec_add a", bytes, max_storage)?;
+    ensure_storage_limit("vec_add b", bytes, max_storage)?;
+    ensure_storage_limit("vec_add out", bytes, max_storage)?;
+
+    let workgroup_size = pick_workgroup_size(device);
+    let shader_source = shader_with_workgroup(VEC_ADD_SHADER, workgroup_size);
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("vec_add"),
+        source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+    });
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("vec_add_bindings"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("vec_add_layout"),
+        bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("vec_add_pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
+    let a_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("vec_add_a"),
+        contents: cast_slice(a),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let b_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("vec_add_b"),
+        contents: cast_slice(b),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let out_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("vec_add_out"),
+        size: bytes as u64,
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let params = VecAddParams {
+        n: u32::try_from(n).map_err(|_| "vec_add n overflow".to_string())?,
+        _pad0: 0,
+        _pad1: 0,
+        _pad2: 0,
+    };
+    let params_bytes = std::mem::size_of::<VecAddParams>();
+    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("vec_add_params"),
+        contents: cast_slice(&[params]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("vec_add_bind_group"),
+        layout: &bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: a_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: b_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: out_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: params_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("vec_add_readback"),
+        size: bytes as u64,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    gpu_tracker.add_buffers(bytes * 3 + params_bytes, 5);
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("vec_add_encoder"),
+    });
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("vec_add_pass"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        let groups = (n as u32 + workgroup_size - 1) / workgroup_size;
+        pass.dispatch_workgroups(groups, 1, 1);
+    }
+    encoder.copy_buffer_to_buffer(&out_buffer, 0, &readback, 0, bytes as u64);
+    queue.submit(Some(encoder.finish()));
+
+    let slice = readback.slice(..);
+    let (tx, rx) = oneshot::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = tx.send(result);
+    });
+    device.poll(wgpu::Maintain::Wait);
+    match rx.await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => return Err(format!("vec_add map_async failed: {err:?}")),
+        Err(_) => return Err("vec_add map_async channel failed".to_string()),
     }
 
     let data = slice.get_mapped_range();
@@ -6261,6 +6713,8 @@ fn f16_to_f32(bits: u16) -> f32 {
 const RMSNORM_SHADER: &str = include_str!("shaders/rmsnorm.wgsl");
 const ROPE_SHADER: &str = include_str!("shaders/rope.wgsl");
 const ATTENTION_DECODE_SHADER: &str = include_str!("shaders/attention_decode.wgsl");
+const Q8_0_DEQUANT_SHADER: &str = include_str!("shaders/q8_0_dequant.wgsl");
+const VEC_ADD_SHADER: &str = include_str!("shaders/vec_add.wgsl");
 
 const Q8_0_SHADER: &str = r#"
 struct Params {
