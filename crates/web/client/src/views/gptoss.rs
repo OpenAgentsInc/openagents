@@ -1707,6 +1707,21 @@ fn draw_stats_panel(
         theme::text::MUTED,
     );
 
+    let budget_text = find_inference_stage(gptoss, "decode_budget")
+        .and_then(|stage| stage.detail.as_ref())
+        .map(|detail| format!("DECODE BUDGET: {}", truncate_text(detail, 24)))
+        .unwrap_or_else(|| "DECODE BUDGET: --".to_string());
+    y += 14.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        &budget_text,
+        inner.x(),
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
+
     let stop_reason = gptoss
         .inference_stages
         .iter()
@@ -2150,7 +2165,7 @@ fn ensure_gptoss_inputs(gptoss: &mut GptOssVizState) {
     if let Some(value) = read_query_param("sample").filter(|value| !value.is_empty()) {
         gptoss.sample_input.set_value(value);
     } else if gptoss.sample_input.get_value().trim().is_empty() {
-        gptoss.sample_input.set_value("off");
+        gptoss.sample_input.set_value("on");
     }
     if let Some(value) = read_query_param("temp").filter(|value| !value.is_empty()) {
         gptoss.temp_input.set_value(value);

@@ -3604,6 +3604,25 @@ async fn run_generation(
         )),
     );
 
+    let avg_ms = if generated > 0 {
+        decode_ms / generated as u64
+    } else {
+        0
+    };
+    let budget_label = if generated == 0 || avg_ms <= 30_000 {
+        "ok"
+    } else {
+        "slow"
+    };
+    emit_inference_stage(
+        state,
+        "decode_budget",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("avg_ms={avg_ms} label={budget_label}")),
+    );
+
     let coherence = coherence_score(&decoded);
     let coherence_label = if decoded.is_empty() {
         "empty"
