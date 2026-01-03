@@ -444,6 +444,37 @@ fn draw_stage_panel(
             );
         }
 
+        if matches!(stage.status, GptOssStageStatus::Running) {
+            let ratio = if let (Some(bytes), Some(total)) = (stage.bytes, stage.total_bytes) {
+                if total > 0 {
+                    Some((bytes as f32 / total as f32).clamp(0.0, 1.0))
+                } else {
+                    None
+                }
+            } else if let (Some(step), Some(total)) = (stage.step, stage.total_steps) {
+                if total > 0 {
+                    Some((step as f32 / total as f32).clamp(0.0, 1.0))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some(ratio) = ratio {
+                let bar_y = y + line_h - 3.0;
+                let bar_x = inner.x() + 46.0;
+                let bar_w = inner.width() - 46.0;
+                scene.draw_quad(
+                    Quad::new(Bounds::new(bar_x, bar_y, bar_w, 2.0))
+                        .with_background(panel_border().with_alpha(0.4)),
+                );
+                scene.draw_quad(
+                    Quad::new(Bounds::new(bar_x, bar_y, bar_w * ratio, 2.0))
+                        .with_background(accent_cyan().with_alpha(0.7)),
+                );
+            }
+        }
+
         y += line_h;
         if y > inner.y() + inner.height() - line_h {
             break;
