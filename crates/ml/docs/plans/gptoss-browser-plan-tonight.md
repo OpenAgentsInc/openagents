@@ -171,6 +171,7 @@ Notes:
 - Stage panel now shows per-stage detail (tensor names, timing) inline with status rows.
 - Load progress bar now renders a percent label above the bar.
 - Load errors now include a multi-line hint with the exact `gguf_serve` command for local runs.
+- Token stream headers now show the last generated token id (gptoss + ml inference).
 
 ---
 

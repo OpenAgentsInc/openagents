@@ -639,6 +639,20 @@ fn draw_stream_panel(
         .map(|v| format!("{v:.1} tok/s"))
         .unwrap_or_else(|| "-- tok/s".to_string());
     let speed_w = measure_mono(text_system, &speed, 10.0);
+    let token_id_text = gptoss
+        .last_token_id
+        .map(|id| format!("id={id}"))
+        .unwrap_or_else(|| "id=--".to_string());
+    let token_id_w = measure_mono(text_system, &token_id_text, 10.0);
+    draw_mono_text(
+        scene,
+        text_system,
+        &token_id_text,
+        inner.x() + inner.width() - speed_w - token_id_w - 10.0,
+        inner.y(),
+        10.0,
+        theme::text::MUTED,
+    );
     draw_mono_text(
         scene,
         text_system,

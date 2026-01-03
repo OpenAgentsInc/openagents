@@ -56,14 +56,15 @@ impl MlVizState {
     pub(crate) fn apply_telemetry(&mut self, event: MlVizTelemetry) {
         match event {
             MlVizTelemetry::TokenGenerated {
+                token_id,
                 token_text,
                 top_k,
                 entropy,
                 tokens_per_sec,
-                ..
             } => {
                 self.token_stream.push_str(&token_text);
                 trim_token_stream(&mut self.token_stream, 320);
+                self.last_token_id = Some(token_id);
                 self.top_k = top_k
                     .into_iter()
                     .map(|c| MlTokenCandidate {

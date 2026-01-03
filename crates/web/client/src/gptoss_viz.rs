@@ -190,11 +190,11 @@ impl GptOssVizState {
             GptOssTelemetry::InferenceEvent { event, ts_ms } => {
                 match event {
                     GptOssInferenceTelemetry::TokenGenerated {
+                        token_id,
                         token_text,
                         top_k,
                         entropy,
                         tokens_per_sec,
-                        ..
                     } => {
                         self.token_stream.push_str(&token_text);
                         trim_token_stream(&mut self.token_stream, 420);
@@ -211,6 +211,7 @@ impl GptOssVizState {
                         if self.probability_history.len() > 18 {
                             self.probability_history.pop_front();
                         }
+                        self.last_token_id = Some(token_id);
                         self.tokens_per_sec = Some(tokens_per_sec);
                         self.entropy = Some(entropy);
                         self.entropy_history.push_back(entropy);
