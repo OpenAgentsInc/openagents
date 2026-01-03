@@ -103,6 +103,7 @@ Notes:
 - GGUF parser now captures **tokenizer metadata** (tokens, token_types, merges, chat template).
 - Added a browser-side **CoreBPE tokenizer** wired to GGUF vocab (O200k harmony pattern).
  - `/gptoss` now emits **tokenizer_load** + **prompt_encode** telemetry from real GGUF data.
+- Added an **MXFP4 probe** (expert slice) with CPU/GPU matmul compare for ggml type 39.
 - Added a `gptoss_runtime` scaffold to start centralizing browser runtime logic.
  - Wired `/gptoss` start button handling + runtime entrypoint for streaming load telemetry.
  - `/gptoss` now streams **real GGUF bytes** in chunks on click (with progress + tensor scan events).
