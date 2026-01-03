@@ -1965,7 +1965,7 @@ fn normalize_gguf_url(raw: &str) -> Result<String, String> {
         let lower = trimmed.to_ascii_lowercase();
         if lower.starts_with("/users/") || lower.starts_with("/home/") {
             return Err(format!(
-                "Local file paths are not supported in the browser.\nClick PICK FILE or run: {LOCAL_GGUF_SERVE_CMD}\nThen use: {LOCAL_GGUF_URL}"
+                "Local file paths are not supported in the browser.\nClick PICK FILE, drop a GGUF, or run: {LOCAL_GGUF_SERVE_CMD}\nThen use: {LOCAL_GGUF_URL}"
             ));
         }
         let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
@@ -1977,7 +1977,7 @@ fn normalize_gguf_url(raw: &str) -> Result<String, String> {
     }
     if trimmed.starts_with("file://") || trimmed.starts_with('~') {
         return Err(format!(
-            "Local file paths are not supported in the browser.\nClick PICK FILE or run: {LOCAL_GGUF_SERVE_CMD}\nThen use: {LOCAL_GGUF_URL}"
+            "Local file paths are not supported in the browser.\nClick PICK FILE, drop a GGUF, or run: {LOCAL_GGUF_SERVE_CMD}\nThen use: {LOCAL_GGUF_URL}"
         ));
     }
     let lower = trimmed.to_ascii_lowercase();
@@ -2069,7 +2069,7 @@ fn format_range_error(url: &str, err: &str) -> String {
     if is_bun_dev_url(url) {
         format!("{detail}\nRun: cd crates/web && bun run build && bun run dev")
     } else if is_local_url(url) {
-        format!("{detail}\nRun: {LOCAL_GGUF_SERVE_CMD}\nOr click PICK FILE")
+        format!("{detail}\nRun: {LOCAL_GGUF_SERVE_CMD}\nOr click PICK FILE / drop a GGUF")
     } else if detail.contains("Range/CORS") {
         detail
     } else {
