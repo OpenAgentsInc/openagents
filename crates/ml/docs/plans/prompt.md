@@ -631,6 +631,7 @@ Read these if stuck:
 - 2026-01-02: Tweaked LOAD MODEL button label to show PICK FILE when no GGUF source is set.
 - 2026-01-02: Improved GGUF URL error messaging to point users to the file picker.
 - 2026-01-02: Added drag-and-drop support for GGUF files on the GPT-OSS canvas.
+- 2026-01-02: Added drag-over visual affordance for dropping GGUF files onto the GPT-OSS HUD.
 
 ---
 
