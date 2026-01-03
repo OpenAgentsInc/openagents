@@ -149,6 +149,9 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let _prompt_tokens = encode_prompt(&state, &tokenizer)?;
 
     let gpu_context = state.borrow().gpu_context.clone();
+    if let Some(gpu) = gpu_context.as_ref() {
+        emit_gpu_limits(&state, gpu);
+    }
     if let Some(gpu) = gpu_context.clone() {
         let gguf = gguf_url.clone();
         let state_clone = state.clone();
@@ -386,6 +389,28 @@ fn emit_inference_event(
     );
 }
 
+fn emit_gpu_limits(state: &Rc<RefCell<AppState>>, gpu: &GpuContext) {
+    let limits = gpu.device.limits();
+    let features = gpu.device.features();
+    let detail = format!(
+        "max_storage={} max_buffer={} bind_groups={} storage_bindings={} dynamic_storage={} uniform_bindings={} features={features:?}",
+        limits.max_storage_buffer_binding_size,
+        limits.max_buffer_size,
+        limits.max_bind_groups,
+        limits.max_storage_buffers_per_shader_stage,
+        limits.max_dynamic_storage_buffers_per_pipeline_layout,
+        limits.max_uniform_buffers_per_shader_stage,
+    );
+    emit_load_stage(
+        state,
+        "gpu_limits",
+        StageStatus::Completed,
+        Some(detail),
+        None,
+        None,
+    );
+}
+
 fn build_tokenizer(
     state: &Rc<RefCell<AppState>>,
     index: &GgufIndex,
@@ -547,6 +572,18 @@ Calls to these tools must go to the commentary channel: 'functions'."
     prompt.push_str(user_prompt);
     prompt.push_str("<|end|><|start|>assistant");
     prompt
+}
+
+fn hex_preview(bytes: &[u8], len: usize) -> String {
+    let take = bytes.len().min(len);
+    let mut out = String::new();
+    for (idx, byte) in bytes.iter().take(take).enumerate() {
+        if idx > 0 {
+            out.push(' ');
+        }
+        out.push_str(&format!("{:02x}", byte));
+    }
+    out
 }
 
 fn tensor_start_cursor(index: &GgufIndex) -> Vec<(u64, String)> {
@@ -728,6 +765,14 @@ async fn run_mxfp4_probe(
         .absolute_offset
         .saturating_add((expert_idx * expert_bytes) as u64);
     let mut quant = fetch_range(gguf_url, offset, bytes_needed as u64).await?;
+    emit_inference_stage(
+        state,
+        "mxfp4_header",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(hex_preview(&quant, 64)),
+    );
     if quant.len() % 4 != 0 {
         let padded = (quant.len() + 3) / 4 * 4;
         quant.resize(padded, 0);
