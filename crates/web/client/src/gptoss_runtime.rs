@@ -8544,7 +8544,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (col >= params.n) {
         return;
     }
-    let mut acc = select(0.0, y[col], params.accumulate != 0u);
+    var acc: f32 = select(0.0, y[col], params.accumulate != 0u);
     for (var row = 0u; row < params.k; row = row + 1u) {
         let idx = row * params.n + col;
         let block = idx / 32u;
@@ -8606,7 +8606,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (col >= params.n) {
         return;
     }
-    let mut acc = select(0.0, y[col], params.accumulate != 0u);
+    var acc: f32 = select(0.0, y[col], params.accumulate != 0u);
     for (var row = 0u; row < params.k; row = row + 1u) {
         let idx = row * params.n + col;
         let block = idx / 32u;
