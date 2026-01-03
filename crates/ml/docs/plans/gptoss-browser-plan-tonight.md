@@ -117,11 +117,16 @@ Notes:
  - Added a local **GGUF range server** (`gguf_serve`) to stream the on-disk model with HTTP Range.
  - `gguf_serve` now responds to CORS preflight + exposes `Content-Range` for browser range fetches.
  - Added a **Q8_0 probe** that pulls a real GPT-OSS tensor slice and runs a WebGPU matmul in-browser.
-- `/gptoss` now shows a live **load progress bar** driven by real byte counts.
-- Added a **block 0 attention probe** (token embed → RMSNorm → Q/K/V → attn output) using real GPT-OSS weights.
+ - `/gptoss` now shows a live **load progress bar** driven by real byte counts.
+ - Added a **block 0 attention probe** (token embed → RMSNorm → Q/K/V → attn output) using real GPT-OSS weights.
 - Added a **prefill + decode loop** with a CPU KV cache (per-layer) for multi-token forward passes.
 - Added **cache telemetry** (seq_len, max_len, bytes) and live **token stream** output from real logits.
 - Added **sliding window support** for attention (uses GGUF config for window size).
+- Added **range/CORS validation** before parsing GGUF; emits a friendly error if the host doesn't honor Range.
+- Default local `gguf_serve` now uses port **8080** (aligned with prompt plan).
+- Added **tensor/expert LRU caches** (size-capped) with hit/miss/evict telemetry.
+- Added **GPU alloc tracking** + **resident tensor list** in the HUD (last few weights shown).
+- Added **runtime mode telemetry** (layer limit, attention mode, MoE fallback) and a **token pulse** on new output.
 
 ---
 
