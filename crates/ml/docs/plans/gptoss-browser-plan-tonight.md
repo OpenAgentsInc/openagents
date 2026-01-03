@@ -148,6 +148,7 @@ Notes:
 - Added `gguf_meta` CLI to inspect GGUF metadata and confirmed GPT-OSS uses `gpt-oss.*` keys.
 - Added `gpt-oss.*`/`llama.*` metadata fallback (plus rope dim fallback) and fixed MXFP4 scale decoding; `test_layer --moe-fallback` now runs for layer 0.
 - Ran `test_attention --seq-len 2` (layer 0) and captured head-0 weights preview.
+- Ran `test_moe_router` (layer 0) and captured top-k expert weights.
 
 ---
 
