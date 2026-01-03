@@ -17,6 +17,7 @@ pub(crate) struct GgufTensor {
     pub(crate) dims: Vec<u64>,
     pub(crate) offset: u64,
     pub(crate) absolute_offset: u64,
+    pub(crate) nbytes: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -189,12 +190,21 @@ fn parse_gguf_index(bytes: &[u8]) -> Result<GgufIndex, ParseError> {
             dims,
             offset,
             absolute_offset: 0,
+            nbytes: 0,
         });
     }
 
     let tensor_data_offset = align_offset(cursor.position(), 32);
-    for tensor in &mut tensors {
-        tensor.absolute_offset = tensor_data_offset + tensor.offset;
+    tensors.sort_by_key(|tensor| tensor.offset);
+    for idx in 0..tensors.len() {
+        let start = tensor_data_offset + tensors[idx].offset;
+        let end = if idx + 1 < tensors.len() {
+            tensor_data_offset + tensors[idx + 1].offset
+        } else {
+            bytes.len() as u64
+        };
+        tensors[idx].absolute_offset = start;
+        tensors[idx].nbytes = end.saturating_sub(start);
     }
 
     Ok(GgufIndex {

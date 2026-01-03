@@ -189,6 +189,25 @@ pub(crate) fn build_gptoss_page(
         );
         y += 14.0;
     }
+    if let Some(progress) = load_progress(&state.gptoss) {
+        let bar_bounds = Bounds::new(inner_x, y + 2.0, inner_width, 6.0);
+        scene.draw_quad(
+            Quad::new(bar_bounds)
+                .with_background(Hsla::new(0.0, 0.0, 0.1, 0.9))
+                .with_border(panel_border(), 1.0),
+        );
+        let fill_width = (bar_bounds.width() * progress).max(2.0);
+        scene.draw_quad(
+            Quad::new(Bounds::new(
+                bar_bounds.x(),
+                bar_bounds.y(),
+                fill_width,
+                bar_bounds.height(),
+            ))
+            .with_background(accent_cyan().with_alpha(0.7)),
+        );
+        y += 12.0;
+    }
     y += 6.0;
 
     let has_data = !state.gptoss.load_stages.is_empty()
@@ -680,6 +699,19 @@ fn draw_scrollbar(
         Quad::new(Bounds::new(scrollbar_x + 1.0, thumb_y + 1.0, scrollbar_width - 2.0, thumb_height - 2.0))
             .with_background(accent_cyan().with_alpha(0.6)),
     );
+}
+
+fn load_progress(gptoss: &GptOssVizState) -> Option<f32> {
+    let stage = gptoss
+        .load_stages
+        .iter()
+        .find(|stage| stage.name == "weights_fetch")?;
+    let bytes = stage.bytes?;
+    let total = stage.total_bytes?;
+    if total == 0 {
+        return None;
+    }
+    Some((bytes as f32 / total as f32).clamp(0.0, 1.0))
 }
 
 fn draw_mono_text(
