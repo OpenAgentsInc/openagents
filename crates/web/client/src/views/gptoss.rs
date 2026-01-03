@@ -1648,6 +1648,34 @@ fn draw_stats_panel(
         theme::text::MUTED,
     );
 
+    let rms_text = stage_kernel_mode(gptoss, "attn_norm")
+        .map(|mode| format!("RMSNORM: {mode}"))
+        .unwrap_or_else(|| "RMSNORM: --".to_string());
+    y += 14.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        &rms_text,
+        inner.x(),
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
+
+    let rope_text = stage_rope_mode(gptoss)
+        .map(|mode| format!("ROPE: {mode}"))
+        .unwrap_or_else(|| "ROPE: --".to_string());
+    y += 14.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        &rope_text,
+        inner.x(),
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
+
     let moe_text = gptoss
         .moe_mode
         .as_ref()
@@ -1764,6 +1792,57 @@ fn find_stage<'a>(gptoss: &'a GptOssVizState, name: &str) -> Option<&'a GptOssSt
         .iter()
         .find(|stage| stage.name == name)
         .or_else(|| gptoss.inference_stages.iter().find(|stage| stage.name == name))
+}
+
+fn find_inference_stage<'a>(
+    gptoss: &'a GptOssVizState,
+    name: &str,
+) -> Option<&'a GptOssStage> {
+    gptoss
+        .inference_stages
+        .iter()
+        .rev()
+        .find(|stage| stage.name == name)
+}
+
+fn stage_kernel_mode(gptoss: &GptOssVizState, name: &str) -> Option<&'static str> {
+    let detail = find_inference_stage(gptoss, name)?.detail.as_ref()?;
+    kernel_mode_from_detail(detail)
+}
+
+fn stage_rope_mode(gptoss: &GptOssVizState) -> Option<&'static str> {
+    let detail = find_inference_stage(gptoss, "rope")?.detail.as_ref()?;
+    rope_mode_from_detail(detail)
+}
+
+fn kernel_mode_from_detail(detail: &str) -> Option<&'static str> {
+    let lower = detail.to_ascii_lowercase();
+    let has_gpu = lower.contains("gpu");
+    let has_cpu = lower.contains("cpu");
+    match (has_gpu, has_cpu) {
+        (true, false) => Some("GPU"),
+        (false, true) => Some("CPU"),
+        (true, true) => Some("MIXED"),
+        _ => None,
+    }
+}
+
+fn rope_mode_from_detail(detail: &str) -> Option<&'static str> {
+    let lower = detail.to_ascii_lowercase();
+    let q_gpu = lower.contains("q=gpu");
+    let q_cpu = lower.contains("q=cpu");
+    let k_gpu = lower.contains("k=gpu");
+    let k_cpu = lower.contains("k=cpu");
+    if (q_gpu || q_cpu) && (k_gpu || k_cpu) {
+        if q_gpu && k_gpu {
+            return Some("GPU");
+        }
+        if q_cpu && k_cpu {
+            return Some("CPU");
+        }
+        return Some("MIXED");
+    }
+    kernel_mode_from_detail(detail)
 }
 
 fn status_color(status: GptOssStageStatus) -> Hsla {

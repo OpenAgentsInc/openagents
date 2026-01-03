@@ -578,8 +578,8 @@ cargo test -p ml gate_d --no-default-features --features native,wgpu
 - [x] Memory usage telemetry accurate
 
 #### Verification
-- [ ] Each GPU kernel has CPU reference test
-- [ ] GPU output matches CPU within tolerance (1e-3 for f32)
+- [x] Each GPU kernel has CPU reference test
+- [x] GPU output matches CPU within tolerance (1e-3 for f32)
 
 ---
 
@@ -612,7 +612,7 @@ Read these if stuck:
 
 ## Progress Log
 
-- 2026-01-02: Added RMSNorm/RoPE/attention parity probes (CPU vs GPU with tolerance), and updated completion checklist.
+- 2026-01-02: Added RMSNorm/RoPE/attention parity probes (CPU vs GPU with tolerance), updated completion checklist, and surfaced RMSNorm/RoPE kernel mode in HUD.
 
 ---
 
