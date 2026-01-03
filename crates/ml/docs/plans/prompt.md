@@ -630,6 +630,7 @@ Read these if stuck:
 - 2026-01-02: Updated GPT-OSS HUD copy to emphasize file-pick flow and clarify GGUF source input.
 - 2026-01-02: Tweaked LOAD MODEL button label to show PICK FILE when no GGUF source is set.
 - 2026-01-02: Improved GGUF URL error messaging to point users to the file picker.
+- 2026-01-02: Added drag-and-drop support for GGUF files on the GPT-OSS canvas.
 
 ---
 

@@ -24,7 +24,9 @@ use crate::views::{
 };
 use crate::fs_access::{self, FileKind};
 use crate::gptoss_viz::init_gptoss_viz_runtime;
-use crate::gptoss_runtime::{start_gptoss_file_pick, start_gptoss_load};
+use crate::gptoss_runtime::{
+    gguf_file_input_label, gguf_file_label, start_gptoss_file_pick, start_gptoss_load,
+};
 use crate::ml_viz::init_ml_viz_runtime;
 use crate::utils::{read_clipboard_text, track_funnel_event};
 // Wallet disabled
@@ -883,6 +885,58 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             }
         });
         canvas.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;
+        closure.forget();
+    }
+
+    {
+        let state_clone = state.clone();
+        let canvas = platform.borrow().canvas().clone();
+        let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::DragEvent| {
+            let allow_drop = state_clone
+                .try_borrow()
+                .map(|state| state.view == AppView::GptOssPage && !state.gptoss.load_active)
+                .unwrap_or(false);
+            if allow_drop {
+                event.prevent_default();
+            }
+        });
+        canvas.add_event_listener_with_callback("dragover", closure.as_ref().unchecked_ref())?;
+        closure.forget();
+    }
+
+    {
+        let state_clone = state.clone();
+        let canvas = platform.borrow().canvas().clone();
+        let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::DragEvent| {
+            let allow_drop = state_clone
+                .try_borrow()
+                .map(|state| state.view == AppView::GptOssPage && !state.gptoss.load_active)
+                .unwrap_or(false);
+            if !allow_drop {
+                return;
+            }
+            event.prevent_default();
+            let file = event
+                .data_transfer()
+                .and_then(|transfer| transfer.files())
+                .and_then(|files| files.get(0));
+            let Some(file) = file else {
+                return;
+            };
+            if let Ok(mut state) = state_clone.try_borrow_mut() {
+                if state.view != AppView::GptOssPage || state.gptoss.load_active {
+                    return;
+                }
+                let input_label = gguf_file_input_label(&file);
+                let file_label = gguf_file_label(&file);
+                state.gptoss.gguf_file = Some(file);
+                state.gptoss.gguf_file_label = Some(file_label);
+                state.gptoss.gguf_input.set_value(input_label);
+                state.gptoss.load_error = None;
+            }
+            start_gptoss_load(state_clone.clone());
+        });
+        canvas.add_event_listener_with_callback("drop", closure.as_ref().unchecked_ref())?;
         closure.forget();
     }
 
