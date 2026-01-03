@@ -203,6 +203,7 @@ Notes:
 - Load now fails fast with a clear error if WebGPU isn't available in the browser.
 - Attention telemetry no longer short-circuits event timing when empty payloads arrive.
 - Load streaming errors are now non-fatal (generation keeps running with a failed stage log).
+- GPU buffer counts now track real allocations (no more lumped counts).
 
 ---
 
