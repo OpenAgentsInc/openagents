@@ -183,6 +183,8 @@ Notes:
 - I/O panel now shows live load detail (chunk/offset/rate/ETA) while streaming.
 - Stage panel now renders a thin progress bar for active stages with bytes/steps totals.
 - Default layer count for browser runs is now 2 (override with `?layers=`), logged in load telemetry.
+- Ran `cargo run -p ml --bin test_tokenizer -- --gguf ... --text "Hello, world!"`.
+- Ran `cargo run -p ml --bin gptoss_cli -- --gguf ... --prompt "Once upon a time" --layers 1 --max-tokens 1 --moe-fallback`.
 
 ---
 
