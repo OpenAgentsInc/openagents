@@ -717,8 +717,8 @@ fn encode_prompt(
         state,
         "prompt_encode",
         StageStatus::Completed,
-        Some(total),
-        Some(total),
+        Some(tokens.len()),
+        Some(tokens.len()),
         Some(format!(
             "tokens={total} kept={} truncated={truncated}",
             tokens.len()
