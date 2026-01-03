@@ -39,6 +39,7 @@ const DEFAULT_USER_PROMPT: &str = "Give me one sentence about what GPT-OSS can d
 const DEFAULT_DEVELOPER_PROMPT: &str = "";
 const DEFAULT_MAX_NEW_TOKENS: usize = 8;
 const DEFAULT_MAX_KV_TOKENS: usize = 32;
+const DEFAULT_KV_BUDGET_BYTES: u64 = 6 * 1024 * 1024 * 1024;
 const DEFAULT_SAMPLE_TOP_K: usize = 40;
 const DEFAULT_SAMPLE_TEMP: f32 = 1.0;
 const DEFAULT_SAMPLE_TOP_P: f32 = 1.0;
@@ -96,6 +97,14 @@ struct SamplingOverrides {
     temperature: Option<f32>,
     top_k: Option<usize>,
     top_p: Option<f32>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct KvLimit {
+    max_tokens: usize,
+    per_layer_max: usize,
+    budget_max: Option<usize>,
+    budget_bytes: u64,
 }
 
 struct LayerKvCache {
@@ -959,12 +968,12 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         }
         max_kv.max(1)
     };
-    let kv_limit = kv_limit_for_gpu(&config, &gpu);
-    let mut kv_clamp = None;
+    let kv_limit = kv_limit_for_gpu(&config, &gpu, DEFAULT_KV_BUDGET_BYTES);
+    let mut kv_clamp: Option<(usize, KvLimit)> = None;
     if let Some(limit) = kv_limit {
-        if max_kv_tokens > limit {
+        if max_kv_tokens > limit.max_tokens {
             kv_clamp = Some((max_kv_tokens, limit));
-            max_kv_tokens = limit.max(1);
+            max_kv_tokens = limit.max_tokens.max(1);
         }
     }
     let max_new_tokens = input_max_new
@@ -977,8 +986,13 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let mut limit_detail = format!(
         "kv={max_kv_tokens} prompt={max_prompt_tokens} new={max_new_tokens}"
     );
-    if let Some((requested, clamped)) = kv_clamp {
-        limit_detail.push_str(&format!(" clamp={requested}->{clamped}"));
+    if let Some((requested, limit)) = kv_clamp {
+        limit_detail.push_str(&format!(" clamp={requested}->{}", limit.max_tokens));
+        if let Some(budget_max) = limit.budget_max {
+            if budget_max == limit.max_tokens && budget_max < limit.per_layer_max {
+                limit_detail.push_str(&format!(" budget={}", format_bytes(limit.budget_bytes)));
+            }
+        }
     }
     emit_load_stage(
         &state,
@@ -5688,7 +5702,11 @@ fn pick_workgroup_size(device: &wgpu::Device) -> u32 {
     1
 }
 
-fn kv_limit_for_gpu(config: &GptOssConfig, gpu: &GpuContext) -> Option<usize> {
+fn kv_limit_for_gpu(
+    config: &GptOssConfig,
+    gpu: &GpuContext,
+    budget_bytes: u64,
+) -> Option<KvLimit> {
     let head_count = config.head_count.max(1) as usize;
     let kv_heads = config.head_count_kv.max(1) as usize;
     let embed = config.embedding_length as usize;
@@ -5697,7 +5715,9 @@ fn kv_limit_for_gpu(config: &GptOssConfig, gpu: &GpuContext) -> Option<usize> {
     }
     let head_dim = (embed / head_count).max(1);
     let stride = kv_heads.checked_mul(head_dim)?;
-    let bytes_per_token = stride.checked_mul(std::mem::size_of::<f32>())?;
+    let bytes_per_token = u64::try_from(stride)
+        .ok()?
+        .checked_mul(std::mem::size_of::<f32>() as u64)?;
     if bytes_per_token == 0 {
         return None;
     }
@@ -5705,8 +5725,30 @@ fn kv_limit_for_gpu(config: &GptOssConfig, gpu: &GpuContext) -> Option<usize> {
     let max_storage = limits.max_storage_buffer_binding_size as usize;
     let max_buffer = limits.max_buffer_size as usize;
     let max_bytes = max_storage.min(max_buffer);
-    let max_tokens = max_bytes / bytes_per_token;
-    Some(max_tokens.max(1))
+    let per_layer_max_u64 = (max_bytes as u64) / bytes_per_token;
+    let per_layer_max = usize::try_from(per_layer_max_u64).unwrap_or(usize::MAX);
+    let layer_count = config.block_count.max(1) as usize;
+    let budget_max_u64 = if layer_count == 0 || budget_bytes == 0 {
+        None
+    } else {
+        let per_token_all_layers = bytes_per_token
+            .checked_mul(layer_count as u64)
+            .filter(|value| *value > 0)?;
+        Some(budget_bytes / per_token_all_layers)
+    };
+    let budget_max = budget_max_u64
+        .and_then(|value| usize::try_from(value).ok())
+        .filter(|value| *value > 0);
+    let mut max_tokens = per_layer_max.max(1);
+    if let Some(budget_tokens) = budget_max {
+        max_tokens = max_tokens.min(budget_tokens.max(1));
+    }
+    Some(KvLimit {
+        max_tokens,
+        per_layer_max: per_layer_max.max(1),
+        budget_max,
+        budget_bytes,
+    })
 }
 
 fn shader_with_workgroup(source: &str, workgroup_size: u32) -> String {
