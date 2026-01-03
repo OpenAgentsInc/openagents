@@ -2692,7 +2692,19 @@ async fn run_block0_attention_probe(
         fetch_f32_tensor_cached(state, gguf_url, gate_inp_w, &mut caches.tensors).await?;
     let gate_b =
         fetch_f32_tensor_cached(state, gguf_url, gate_inp_b, &mut caches.tensors).await?;
-    let gate_scores = linear_f32_with_bias(&gate_w, &gate_b, &hidden, gate_inp_w)?;
+    let gate_scores = match linear_f32_with_bias_gpu(
+        &gate_w,
+        &gate_b,
+        &hidden,
+        gate_inp_w,
+        gpu,
+        &mut gpu_tracker,
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => linear_f32_with_bias(&gate_w, &gate_b, &hidden, gate_inp_w)?,
+    };
     let (expert_indices, expert_weights) =
         top_k_softmax(&gate_scores, config.experts_per_token as usize)?;
     emit_inference_stage(
@@ -3837,7 +3849,19 @@ async fn run_transformer_layer(
         fetch_f32_tensor_cached(state, gguf_url, gate_inp_w, &mut caches.tensors).await?;
     let gate_b =
         fetch_f32_tensor_cached(state, gguf_url, gate_inp_b, &mut caches.tensors).await?;
-    let gate_scores = linear_f32_with_bias(&gate_w, &gate_b, &normed, gate_inp_w)?;
+    let (gate_scores, gate_mode) = match linear_f32_with_bias_gpu(
+        &gate_w,
+        &gate_b,
+        &normed,
+        gate_inp_w,
+        gpu,
+        gpu_tracker,
+    )
+    .await
+    {
+        Ok(value) => (value, "gpu"),
+        Err(_) => (linear_f32_with_bias(&gate_w, &gate_b, &normed, gate_inp_w)?, "cpu"),
+    };
     let gate_ms = now_ms().saturating_sub(gate_start).max(1);
     emit_inference_stage(
         state,
@@ -3845,7 +3869,7 @@ async fn run_transformer_layer(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("layer={layer} ms={gate_ms}")),
+        Some(format!("layer={layer} {gate_mode} ms={gate_ms}")),
     );
     let moe_fallback_active = moe_fallback || caches.moe_disabled;
     let (expert_indices, expert_weights) = if moe_fallback_active {
@@ -5015,6 +5039,41 @@ fn linear_f32_with_bias(
     Ok(y)
 }
 
+async fn linear_f32_with_bias_gpu(
+    weights: &[f32],
+    bias: &[f32],
+    x: &[f32],
+    tensor: &GgufTensor,
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<Vec<f32>, String> {
+    let dims = &tensor.dims;
+    let n = dims.get(0).copied().unwrap_or(0) as usize;
+    let k = dims.get(1).copied().unwrap_or(0) as usize;
+    if x.len() != k || n == 0 {
+        return Err(format!(
+            "linear shape mismatch for {} (k={}, n={}, input={})",
+            tensor.name,
+            k,
+            n,
+            x.len()
+        ));
+    }
+    if weights.len() != k * n {
+        return Err(format!(
+            "linear weight size mismatch for {} (have={}, want={})",
+            tensor.name,
+            weights.len(),
+            k * n
+        ));
+    }
+    let mut y = gpu_matmul_f32(weights, x, k, n, gpu, gpu_tracker).await?;
+    if bias.len() == n {
+        apply_bias_gpu(&mut y, bias, gpu, gpu_tracker).await?;
+    }
+    Ok(y)
+}
+
 fn diff_stats(y_cpu: &[f32], y_gpu: &[f32]) -> (f32, f32) {
     let mut max_abs = 0.0f32;
     let mut mean_abs = 0.0f32;
@@ -5110,6 +5169,15 @@ struct SwigluParams {
     _pad0: u32,
     _pad1: u32,
     _pad2: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct F32MatmulParams {
+    k: u32,
+    n: u32,
+    _pad0: u32,
+    _pad1: u32,
 }
 
 async fn rms_norm_gpu(
@@ -6000,6 +6068,189 @@ async fn swiglu_gpu(
         Ok(Ok(())) => {}
         Ok(Err(err)) => return Err(format!("swiglu map_async failed: {err:?}")),
         Err(_) => return Err("swiglu map_async channel failed".to_string()),
+    }
+
+    let data = slice.get_mapped_range();
+    let output = cast_slice(&data).to_vec();
+    drop(data);
+    readback.unmap();
+    Ok(output)
+}
+
+async fn gpu_matmul_f32(
+    weights: &[f32],
+    x: &[f32],
+    k: usize,
+    n: usize,
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<Vec<f32>, String> {
+    let device = &gpu.device;
+    let queue = &gpu.queue;
+    let max_storage = device.limits().max_storage_buffer_binding_size as usize;
+    let weights_bytes = weights.len() * std::mem::size_of::<f32>();
+    let x_bytes = x.len() * std::mem::size_of::<f32>();
+    let y_bytes = n * std::mem::size_of::<f32>();
+    ensure_storage_limit("f32 weights", weights_bytes, max_storage)?;
+    ensure_storage_limit("f32 input", x_bytes, max_storage)?;
+    ensure_storage_limit("f32 output", y_bytes, max_storage)?;
+
+    let workgroup_size = pick_workgroup_size(device);
+    let shader_source = shader_with_workgroup(MATMUL_F32_SHADER, workgroup_size);
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("f32_matmul"),
+        source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+    });
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("f32_matmul_bindings"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("f32_matmul_layout"),
+        bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("f32_matmul_pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
+    let weights_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("f32_matmul_weights"),
+        contents: cast_slice(weights),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let x_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("f32_matmul_x"),
+        contents: cast_slice(x),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let y_bytes = y_bytes as u64;
+    let y_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("f32_matmul_y"),
+        size: y_bytes,
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let params = F32MatmulParams {
+        k: u32::try_from(k).map_err(|_| "f32 matmul k overflow".to_string())?,
+        n: u32::try_from(n).map_err(|_| "f32 matmul n overflow".to_string())?,
+        _pad0: 0,
+        _pad1: 0,
+    };
+    let params_bytes = std::mem::size_of::<F32MatmulParams>();
+    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("f32_matmul_params"),
+        contents: cast_slice(&[params]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("f32_matmul_bind_group"),
+        layout: &bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: weights_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: x_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: y_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: params_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("f32_matmul_readback"),
+        size: y_bytes,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    gpu_tracker.add_buffers(weights_bytes + x_bytes + (y_bytes as usize) * 2 + params_bytes, 5);
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("f32_matmul_encoder"),
+    });
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("f32_matmul_pass"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        let groups = (n as u32 + workgroup_size - 1) / workgroup_size;
+        pass.dispatch_workgroups(groups, 1, 1);
+    }
+    encoder.copy_buffer_to_buffer(&y_buffer, 0, &readback, 0, y_bytes);
+    queue.submit(Some(encoder.finish()));
+
+    let slice = readback.slice(..);
+    let (tx, rx) = oneshot::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = tx.send(result);
+    });
+    device.poll(wgpu::Maintain::Wait);
+    match rx.await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => return Err(format!("f32 matmul map_async failed: {err:?}")),
+        Err(_) => return Err("f32 matmul map_async channel failed".to_string()),
     }
 
     let data = slice.get_mapped_range();
@@ -6960,6 +7211,7 @@ const ATTENTION_DECODE_SHADER: &str = include_str!("shaders/attention_decode.wgs
 const Q8_0_DEQUANT_SHADER: &str = include_str!("shaders/q8_0_dequant.wgsl");
 const VEC_ADD_SHADER: &str = include_str!("shaders/vec_add.wgsl");
 const SWIGLU_SHADER: &str = include_str!("shaders/swiglu.wgsl");
+const MATMUL_F32_SHADER: &str = include_str!("shaders/matmul_f32.wgsl");
 
 const Q8_0_SHADER: &str = r#"
 struct Params {
