@@ -923,7 +923,13 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         );
     }
 
-    let max_kv_tokens = {
+    let gpu = state
+        .borrow()
+        .gpu_context
+        .clone()
+        .ok_or_else(|| "WebGPU device unavailable (enable WebGPU in Chrome)".to_string())?;
+    emit_gpu_limits(&state, &gpu);
+    let mut max_kv_tokens = {
         let mut max_kv = input_max_kv
             .or_else(|| read_query_usize("max_kv"))
             .unwrap_or(DEFAULT_MAX_KV_TOKENS);
@@ -932,6 +938,14 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         }
         max_kv.max(1)
     };
+    let kv_limit = kv_limit_for_gpu(&config, &gpu);
+    let mut kv_clamp = None;
+    if let Some(limit) = kv_limit {
+        if max_kv_tokens > limit {
+            kv_clamp = Some((max_kv_tokens, limit));
+            max_kv_tokens = limit.max(1);
+        }
+    }
     let max_new_tokens = input_max_new
         .or_else(|| read_query_usize("max_new"))
         .unwrap_or(DEFAULT_MAX_NEW_TOKENS)
@@ -939,13 +953,17 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let max_new_tokens = max_new_tokens
         .min(max_kv_tokens.saturating_sub(1).max(1));
     let max_prompt_tokens = max_kv_tokens.saturating_sub(max_new_tokens);
+    let mut limit_detail = format!(
+        "kv={max_kv_tokens} prompt={max_prompt_tokens} new={max_new_tokens}"
+    );
+    if let Some((requested, clamped)) = kv_clamp {
+        limit_detail.push_str(&format!(" clamp={requested}->{clamped}"));
+    }
     emit_load_stage(
         &state,
         "token_limits",
         StageStatus::Completed,
-        Some(format!(
-            "kv={max_kv_tokens} prompt={max_prompt_tokens} new={max_new_tokens}"
-        )),
+        Some(limit_detail),
         None,
         None,
     );
@@ -956,13 +974,6 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let tokenizer = build_tokenizer(&state, index.as_ref())?;
     let prompt_tokens = encode_prompt(&state, &tokenizer, max_prompt_tokens)?;
     let stop_tokens = collect_stop_tokens(&tokenizer);
-
-    let gpu = state
-        .borrow()
-        .gpu_context
-        .clone()
-        .ok_or_else(|| "WebGPU device unavailable (enable WebGPU in Chrome)".to_string())?;
-    emit_gpu_limits(&state, &gpu);
 
     {
         let gguf = gguf_url.clone();
@@ -5223,6 +5234,27 @@ fn pick_workgroup_size(device: &wgpu::Device) -> u32 {
         }
     }
     1
+}
+
+fn kv_limit_for_gpu(config: &GptOssConfig, gpu: &GpuContext) -> Option<usize> {
+    let head_count = config.head_count.max(1) as usize;
+    let kv_heads = config.head_count_kv.max(1) as usize;
+    let embed = config.embedding_length as usize;
+    if embed == 0 {
+        return None;
+    }
+    let head_dim = (embed / head_count).max(1);
+    let stride = kv_heads.checked_mul(head_dim)?;
+    let bytes_per_token = stride.checked_mul(std::mem::size_of::<f32>())?;
+    if bytes_per_token == 0 {
+        return None;
+    }
+    let limits = gpu.device.limits();
+    let max_storage = limits.max_storage_buffer_binding_size as usize;
+    let max_buffer = limits.max_buffer_size as usize;
+    let max_bytes = max_storage.min(max_buffer);
+    let max_tokens = max_bytes / bytes_per_token;
+    Some(max_tokens.max(1))
 }
 
 fn shader_with_workgroup(source: &str, workgroup_size: u32) -> String {
