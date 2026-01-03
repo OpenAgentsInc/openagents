@@ -953,6 +953,13 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 .try_borrow()
                 .map(|state| state.view == AppView::GptOssPage && !state.gptoss.load_active)
                 .unwrap_or(false);
+            if state_clone
+                .try_borrow()
+                .map(|state| state.view == AppView::GptOssPage)
+                .unwrap_or(false)
+            {
+                event.prevent_default();
+            }
             if !allow_drop {
                 if let Ok(mut state) = state_clone.try_borrow_mut() {
                     if state.view == AppView::GptOssPage {
@@ -961,7 +968,6 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
                 return;
             }
-            event.prevent_default();
             let file = event
                 .data_transfer()
                 .and_then(|transfer| transfer.files())
