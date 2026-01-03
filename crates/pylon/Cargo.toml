@@ -76,6 +76,7 @@ default = ["cli"]
 cli = []
 gui = []
 ml-native = ["ml/native"]
+gpt-oss-metal = ["compute/gpt-oss-metal"]
 
 [dev-dependencies]
 tempfile = "3.10"
