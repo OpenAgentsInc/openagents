@@ -883,6 +883,13 @@ pub(crate) fn start_gptoss_file_pick(state: Rc<RefCell<AppState>>) {
                 return;
             }
         };
+        let file_name = file.name().to_ascii_lowercase();
+        if !file_name.ends_with(".gguf") {
+            if let Ok(mut guard) = state_clone.try_borrow_mut() {
+                guard.gptoss.load_error = Some("Selected file is not a .gguf".to_string());
+            }
+            return;
+        }
         let input_label = gguf_file_input_label(&file);
         let display_label = gguf_file_label(&file);
         if let Ok(mut guard) = state_clone.try_borrow_mut() {

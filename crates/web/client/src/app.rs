@@ -945,6 +945,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let Some(file) = file else {
                 return;
             };
+            let file_name = file.name().to_ascii_lowercase();
+            if !file_name.ends_with(".gguf") {
+                if let Ok(mut state) = state_clone.try_borrow_mut() {
+                    if state.view == AppView::GptOssPage {
+                        state.gptoss.drop_active = false;
+                        state.gptoss.load_error = Some("Drop a .gguf file".to_string());
+                    }
+                }
+                return;
+            }
             if let Ok(mut state) = state_clone.try_borrow_mut() {
                 if state.view != AppView::GptOssPage || state.gptoss.load_active {
                     return;
