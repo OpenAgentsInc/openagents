@@ -28,7 +28,9 @@ const LOAD_CHUNK_BYTES: u64 = 8 * 1024 * 1024;
 const PROGRESS_STEP_BYTES: u64 = 64 * 1024 * 1024;
 const DEFAULT_GGUF_URL: &str =
     "https://huggingface.co/openai/gpt-oss-20b/resolve/main/gpt-oss-20b-Q8_0.gguf";
+const LOCAL_GGUF_ROUTE: &str = "/gpt-oss-20b-Q8_0.gguf";
 const LOCAL_GGUF_URL: &str = "http://localhost:8080/gpt-oss-20b-Q8_0.gguf";
+const LOCAL_GGUF_DEV_URL: &str = "http://localhost:3000/gpt-oss-20b-Q8_0.gguf";
 const LOCAL_GGUF_PATH: &str = "crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf";
 const LOCAL_GGUF_SERVE_CMD: &str =
     "cargo run -p ml --bin gguf_serve -- crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf";
@@ -1562,9 +1564,17 @@ pub(crate) fn default_gguf_url() -> String {
         Some(window) => window,
         None => return String::new(),
     };
-    let host = window.location().hostname().ok();
+    let location = window.location();
+    let host = location.hostname().ok();
     let local = matches!(host.as_deref(), Some("localhost") | Some("127.0.0.1"));
     if local {
+        if let Ok(port) = location.port() {
+            if port == "3000" {
+                if let Ok(origin) = location.origin() {
+                    return format!("{origin}{LOCAL_GGUF_ROUTE}");
+                }
+            }
+        }
         LOCAL_GGUF_URL.to_string()
     } else {
         String::new()
@@ -1604,6 +1614,10 @@ pub(crate) fn local_gguf_path() -> &'static str {
 
 pub(crate) fn local_gguf_url() -> &'static str {
     LOCAL_GGUF_URL
+}
+
+pub(crate) fn local_gguf_dev_url() -> &'static str {
+    LOCAL_GGUF_DEV_URL
 }
 
 pub(crate) fn local_gguf_serve_cmd() -> &'static str {
