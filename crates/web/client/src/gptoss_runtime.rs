@@ -778,7 +778,8 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     emit_tensor_scan(&state, index.as_ref(), 18);
     emit_metadata_keys(&state, index.as_ref(), 18);
     let config = parse_config(index.as_ref())?;
-    let requested_layers = read_query_usize("layers");
+    let (input_layers, input_max_kv, input_max_new) = read_input_overrides(&state)?;
+    let requested_layers = input_layers.or_else(|| read_query_usize("layers"));
     let max_layers = config.block_count as usize;
     let mut active_layers = requested_layers.unwrap_or(max_layers);
     active_layers = active_layers.min(max_layers);
@@ -825,13 +826,16 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     }
 
     let max_kv_tokens = {
-        let mut max_kv = read_query_usize("max_kv").unwrap_or(DEFAULT_MAX_KV_TOKENS);
+        let mut max_kv = input_max_kv
+            .or_else(|| read_query_usize("max_kv"))
+            .unwrap_or(DEFAULT_MAX_KV_TOKENS);
         if config.context_length > 0 {
             max_kv = max_kv.min(config.context_length as usize);
         }
         max_kv.max(1)
     };
-    let max_new_tokens = read_query_usize("max_new")
+    let max_new_tokens = input_max_new
+        .or_else(|| read_query_usize("max_new"))
         .unwrap_or(DEFAULT_MAX_NEW_TOKENS)
         .max(1);
     let max_new_tokens = max_new_tokens
@@ -1553,6 +1557,40 @@ fn read_query_usize(key: &str) -> Option<usize> {
 fn read_query_f32(key: &str) -> Option<f32> {
     read_query_param(key)
         .and_then(|value| value.parse::<f32>().ok())
+}
+
+fn parse_usize_override(raw: &str, label: &str) -> Result<Option<usize>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    trimmed
+        .parse::<usize>()
+        .map(Some)
+        .map_err(|_| format!("invalid {label} value: {trimmed}"))
+}
+
+fn parse_layers_override(raw: &str) -> Result<Option<usize>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("all") {
+        return Ok(None);
+    }
+    trimmed
+        .parse::<usize>()
+        .map(Some)
+        .map_err(|_| format!("invalid layers value: {trimmed}"))
+}
+
+fn read_input_overrides(
+    state: &Rc<RefCell<AppState>>,
+) -> Result<(Option<usize>, Option<usize>, Option<usize>), String> {
+    let Ok(guard) = state.try_borrow() else {
+        return Ok((None, None, None));
+    };
+    let layers = parse_layers_override(guard.gptoss.layers_input.get_value())?;
+    let max_kv = parse_usize_override(guard.gptoss.max_kv_input.get_value(), "max_kv")?;
+    let max_new = parse_usize_override(guard.gptoss.max_new_input.get_value(), "max_new")?;
+    Ok((layers, max_kv, max_new))
 }
 
 pub(crate) fn default_gguf_url() -> String {
