@@ -130,6 +130,7 @@ Notes:
 - HUD now shows **layers / attention / MoE modes** in the stats panel; load progress persists in viz state.
 - HUD now shows **GPU limits** summary from the WebGPU limits probe.
 - Enforced **maxStorageBufferBindingSize** checks for Q8_0/MXFP4 buffers and fall back to chunked Q8_0 matmul when weights exceed limits.
+- Added **chunked MXFP4 matmul** to keep expert weights under storage limits.
 - Added **attention heatmap telemetry** (head 0) and a dedicated HUD panel for attention weights.
 - `gguf_serve` now accepts a positional path argument in addition to `--path`.
 
