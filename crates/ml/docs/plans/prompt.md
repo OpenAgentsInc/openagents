@@ -627,6 +627,7 @@ Read these if stuck:
 - 2026-01-02: Added a local GGUF file picker + file-backed range reads so `/gptoss` can load from disk without `gguf_serve`.
 - 2026-01-02: Made LOAD MODEL auto-open the file picker when no GGUF URL is provided.
 - 2026-01-02: Defaulted `/gptoss` to file-picker flow unless a GGUF URL is explicitly provided.
+- 2026-01-02: Updated GPT-OSS HUD copy to emphasize file-pick flow and clarify GGUF source input.
 
 ---
 
