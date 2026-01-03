@@ -145,6 +145,63 @@ pub(crate) fn build_gptoss_page(
         state.gptoss.gguf_input.paint(gguf_input_bounds, &mut input_cx);
     }
     y += 32.0;
+
+    let file_label = state
+        .gptoss
+        .gguf_file_label
+        .as_deref()
+        .unwrap_or("FILE: none");
+    let file_button_label = if state.gptoss.gguf_file_label.is_some() {
+        "CHANGE FILE"
+    } else {
+        "PICK FILE"
+    };
+    let file_button_font = 10.0;
+    let file_button_pad_x = 12.0;
+    let file_button_pad_y = 6.0;
+    let file_button_width =
+        measure_mono(text_system, file_button_label, file_button_font) + file_button_pad_x * 2.0;
+    let file_button_height = file_button_font + file_button_pad_y * 2.0;
+    let file_button_x = inner_x;
+    let file_button_y = y;
+    state.gptoss.file_button_bounds =
+        Bounds::new(file_button_x, file_button_y, file_button_width, file_button_height);
+    let file_button_bg = if state.gptoss.file_button_hovered {
+        accent_cyan().with_alpha(0.16)
+    } else {
+        Hsla::new(0.0, 0.0, 0.08, 0.9)
+    };
+    let file_button_border = if state.gptoss.file_button_hovered {
+        accent_cyan()
+    } else {
+        panel_border()
+    };
+    scene.draw_quad(
+        Quad::new(state.gptoss.file_button_bounds)
+            .with_background(file_button_bg)
+            .with_border(file_button_border, 1.0),
+    );
+    draw_mono_text(
+        scene,
+        text_system,
+        file_button_label,
+        file_button_x + file_button_pad_x,
+        file_button_y + file_button_pad_y,
+        file_button_font,
+        theme::text::PRIMARY,
+    );
+    y += file_button_height + 4.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        &truncate_text(file_label, 96),
+        inner_x,
+        y,
+        9.0,
+        theme::text::MUTED,
+    );
+    y += 12.0;
+
     let local_hint = format!("LOCAL: {}  (run: {})", local_gguf_path(), local_gguf_serve_cmd());
     draw_mono_text(
         scene,
@@ -623,7 +680,7 @@ pub(crate) fn build_gptoss_page(
             scene,
             text_system,
             empty_bounds,
-            "Run `cargo run -p ml --bin gguf_serve` then click LOAD MODEL",
+            "Run `cargo run -p ml --bin gguf_serve` or click PICK FILE",
         );
         y += 140.0;
     } else {

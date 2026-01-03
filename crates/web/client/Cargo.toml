@@ -52,7 +52,10 @@ web-sys = { version = "0.3", features = [
     "ErrorEvent",
     "CloseEvent",
     "Event",
+    "File",
+    "FileList",
     "Location",
+    "Node",
     "Storage",
     "console",
     "Performance",
@@ -71,6 +74,7 @@ web-sys = { version = "0.3", features = [
     "Crypto",
     "VisibilityState",
     "HtmlElement",
+    "HtmlInputElement",
 ] }
 console_error_panic_hook = "0.1"
 

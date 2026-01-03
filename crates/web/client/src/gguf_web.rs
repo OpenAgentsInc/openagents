@@ -1,6 +1,9 @@
+use std::cell::RefCell;
 use std::io::{Cursor, Read};
 use std::rc::Rc;
 
+use futures::channel::oneshot;
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use rustc_hash::FxHashMap as HashMap;
@@ -28,6 +31,25 @@ pub(crate) struct GgufIndex {
     pub(crate) tensor_data_offset: u64,
     pub(crate) tensors: Vec<GgufTensor>,
     pub(crate) metadata: GgufMetadata,
+}
+
+#[derive(Clone)]
+pub(crate) enum GgufSource {
+    Url(String),
+    File(web_sys::File),
+}
+
+impl GgufSource {
+    pub(crate) fn label(&self) -> String {
+        match self {
+            Self::Url(url) => url.clone(),
+            Self::File(file) => format!("file:{}", file.name()),
+        }
+    }
+
+    pub(crate) fn is_file(&self) -> bool {
+        matches!(self, Self::File(_))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -83,6 +105,73 @@ const GGUF_VALUE_FLOAT64: u32 = 12;
 
 const O200K_PATTERN: &str = "[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]*[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]+[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n/]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+";
 
+pub(crate) async fn pick_gguf_file() -> Result<web_sys::File, String> {
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let document = window
+        .document()
+        .ok_or_else(|| "no document".to_string())?;
+    let input: web_sys::HtmlInputElement = document
+        .create_element("input")
+        .map_err(js_err)?
+        .dyn_into()
+        .map_err(js_err)?;
+    input.set_type("file");
+    input.set_accept(".gguf");
+    input.set_multiple(false);
+    if let Some(body) = document.body() {
+        body.append_child(&input).map_err(js_err)?;
+    } else {
+        return Err("no document body".to_string());
+    }
+
+    let (tx, rx) = oneshot::channel::<Option<web_sys::File>>();
+    let tx = Rc::new(RefCell::new(Some(tx)));
+    let input_clone = input.clone();
+    let document_clone = document.clone();
+
+    let closure = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
+        let file = input_clone
+            .files()
+            .and_then(|files| files.get(0));
+        if let Some(body) = document_clone.body() {
+            let node: web_sys::Node = input_clone.clone().unchecked_into();
+            let _ = body.remove_child(&node);
+        }
+        if let Some(sender) = tx.borrow_mut().take() {
+            let _ = sender.send(file);
+        }
+    });
+    input
+        .add_event_listener_with_callback("change", closure.as_ref().unchecked_ref())
+        .map_err(js_err)?;
+    closure.forget();
+    input.click();
+
+    match rx.await {
+        Ok(Some(file)) => Ok(file),
+        Ok(None) => Err("No file selected".to_string()),
+        Err(_) => Err("File selection cancelled".to_string()),
+    }
+}
+
+pub(crate) async fn fetch_and_parse_index_source(
+    source: &GgufSource,
+    mut fetch_len: u64,
+    max_attempts: usize,
+) -> Result<GgufIndex, String> {
+    for _ in 0..max_attempts {
+        let bytes = fetch_range_source(source, 0, fetch_len).await?;
+        match parse_gguf_index(&bytes) {
+            Ok(index) => return Ok(index),
+            Err(ParseError::Incomplete) => {
+                fetch_len = fetch_len.saturating_mul(2);
+            }
+            Err(ParseError::Invalid(msg)) => return Err(msg),
+        }
+    }
+    Err("GGUF metadata parse incomplete after retries".to_string())
+}
+
 pub(crate) async fn fetch_and_parse_index(
     url: &str,
     mut fetch_len: u64,
@@ -99,6 +188,17 @@ pub(crate) async fn fetch_and_parse_index(
         }
     }
     Err("GGUF metadata parse incomplete after retries".to_string())
+}
+
+pub(crate) async fn fetch_range_source(
+    source: &GgufSource,
+    offset: u64,
+    len: u64,
+) -> Result<Vec<u8>, String> {
+    match source {
+        GgufSource::Url(url) => fetch_range(url, offset, len).await,
+        GgufSource::File(file) => fetch_range_file(file, offset, len).await,
+    }
 }
 
 pub(crate) async fn fetch_range(url: &str, offset: u64, len: u64) -> Result<Vec<u8>, String> {
@@ -139,6 +239,21 @@ pub(crate) async fn fetch_range(url: &str, offset: u64, len: u64) -> Result<Vec<
         return Err("range request not honored by server".to_string());
     }
     Ok(bytes)
+}
+
+pub(crate) async fn fetch_range_with_total_source(
+    source: &GgufSource,
+    offset: u64,
+    len: u64,
+) -> Result<(Vec<u8>, Option<u64>), String> {
+    match source {
+        GgufSource::Url(url) => fetch_range_with_total(url, offset, len).await,
+        GgufSource::File(file) => {
+            let total = file.size() as u64;
+            let bytes = fetch_range_file(file, offset, len).await?;
+            Ok((bytes, Some(total)))
+        }
+    }
 }
 
 pub(crate) async fn fetch_range_with_total(
@@ -186,6 +301,31 @@ pub(crate) async fn fetch_range_with_total(
         return Err("range request not honored by server".to_string());
     }
     Ok((bytes, total))
+}
+
+async fn fetch_range_file(
+    file: &web_sys::File,
+    offset: u64,
+    len: u64,
+) -> Result<Vec<u8>, String> {
+    if len == 0 {
+        return Err("range length is zero".to_string());
+    }
+    let total = file.size() as u64;
+    let end = offset
+        .checked_add(len)
+        .ok_or_else(|| "range length overflow".to_string())?;
+    if end > total {
+        return Err("range exceeds file size".to_string());
+    }
+    let blob = file
+        .slice_with_f64_and_f64(offset as f64, end as f64)
+        .map_err(js_err)?;
+    let buffer = JsFuture::from(blob.array_buffer()).await.map_err(js_err)?;
+    let array = js_sys::Uint8Array::new(&buffer);
+    let mut bytes = vec![0u8; array.length() as usize];
+    array.copy_to(&mut bytes);
+    Ok(bytes)
 }
 
 fn parse_gguf_index(bytes: &[u8]) -> Result<GgufIndex, ParseError> {
