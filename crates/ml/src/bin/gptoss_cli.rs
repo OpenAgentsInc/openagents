@@ -4,8 +4,9 @@ use std::path::PathBuf;
 
 use ml::{
     apply_bias, apply_rope, attention_with_cache, find_tensor, load_gguf_model, matmul_mxfp4_expert,
-    matmul_q8_0, matmul_f32, read_f32_row, read_f32_tensor, read_meta_f32, read_meta_u32,
-    read_q8_0_row, rms_norm, swiglu, top_k_softmax, GptOssTokenizer, KvCache, MlError, Result,
+    matmul_q8_0, matmul_f32, read_f32_row, read_f32_tensor, read_meta_f32, read_meta_f32_optional,
+    read_meta_u32, read_meta_u32_optional, read_q8_0_row, rms_norm, swiglu, top_k_softmax,
+    GptOssTokenizer, KvCache, MlError, Result,
 };
 
 const CURRENT_DATE: &str = "2026-01-02";
@@ -124,6 +125,8 @@ struct GptOssConfig {
     head_count_kv: u32,
     rope_dimension_count: u32,
     rope_theta: f32,
+    rope_scaling_factor: f32,
+    rope_scaling_original_context: u32,
     rms_epsilon: f32,
     sliding_window: u32,
     expert_count: u32,
@@ -140,6 +143,13 @@ impl GptOssConfig {
             head_count_kv: read_meta_u32(meta, "llama.attention.head_count_kv")?,
             rope_dimension_count: read_meta_u32(meta, "llama.rope.dimension_count")?,
             rope_theta: read_meta_f32(meta, "llama.rope.freq_base")?,
+            rope_scaling_factor: read_meta_f32_optional(meta, "gpt-oss.rope.scaling.factor")
+                .unwrap_or(1.0),
+            rope_scaling_original_context: read_meta_u32_optional(
+                meta,
+                "gpt-oss.rope.scaling.original_context_length",
+            )
+            .unwrap_or(0),
             rms_epsilon: read_meta_f32(meta, "llama.attention.layer_norm_rms_epsilon")?,
             sliding_window: read_meta_u32(meta, "llama.sliding_window")?,
             expert_count: read_meta_u32(meta, "llama.expert_count")?,
@@ -329,6 +339,8 @@ fn run_transformer_layer(
         position,
         config.rope_theta,
         config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
     )?;
     apply_rope(
         &mut k,
@@ -337,6 +349,8 @@ fn run_transformer_layer(
         position,
         config.rope_theta,
         config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
     )?;
 
     let sinks = fetch_f32_cached(path, attn_sinks, f32_cache)?;
@@ -347,7 +361,7 @@ fn run_transformer_layer(
     }
     layer_cache.append(&k, &v, kv_heads, head_dim)?;
     let seq_len = layer_cache.token_count(kv_heads, head_dim);
-    let window = if config.sliding_window > 0 {
+    let window = if config.sliding_window > 0 && layer % 2 == 0 {
         config.sliding_window as usize
     } else {
         seq_len

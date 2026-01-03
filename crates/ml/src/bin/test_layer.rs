@@ -3,8 +3,9 @@ use std::path::PathBuf;
 
 use ml::{
     apply_bias, apply_rope, attention_with_cache, find_tensor, load_gguf_model, matmul_mxfp4_expert,
-    matmul_q8_0, matmul_f32, read_f32_row, read_f32_tensor, read_meta_f32, read_meta_u32,
-    read_q8_0_row, rms_norm, swiglu, top_k_softmax, KvCache, MlError, Result,
+    matmul_q8_0, matmul_f32, read_f32_row, read_f32_tensor, read_meta_f32, read_meta_f32_optional,
+    read_meta_u32, read_meta_u32_optional, read_q8_0_row, rms_norm, swiglu, top_k_softmax,
+    KvCache, MlError, Result,
 };
 
 fn main() -> Result<()> {
@@ -47,6 +48,13 @@ fn main() -> Result<()> {
         read_meta_u32(&model.metadata, "llama.attention.head_count_kv")? as usize;
     let rope_dim = read_meta_u32(&model.metadata, "llama.rope.dimension_count")?;
     let rope_theta = read_meta_f32(&model.metadata, "llama.rope.freq_base")?;
+    let rope_scaling_factor =
+        read_meta_f32_optional(&model.metadata, "gpt-oss.rope.scaling.factor").unwrap_or(1.0);
+    let rope_scaling_original_context = read_meta_u32_optional(
+        &model.metadata,
+        "gpt-oss.rope.scaling.original_context_length",
+    )
+    .unwrap_or(0);
     let rms_eps = read_meta_f32(&model.metadata, "llama.attention.layer_norm_rms_epsilon")?;
     let experts_per_token = read_meta_u32(&model.metadata, "llama.expert_used_count")? as usize;
     if layer >= block_count {
@@ -83,8 +91,26 @@ fn main() -> Result<()> {
     apply_bias(&mut v, &v_bias);
 
     let head_dim = q.len() / head_count.max(1);
-    apply_rope(&mut q, head_count, head_dim, 0, rope_theta, rope_dim)?;
-    apply_rope(&mut k, head_count_kv, head_dim, 0, rope_theta, rope_dim)?;
+    apply_rope(
+        &mut q,
+        head_count,
+        head_dim,
+        0,
+        rope_theta,
+        rope_dim,
+        rope_scaling_factor,
+        rope_scaling_original_context,
+    )?;
+    apply_rope(
+        &mut k,
+        head_count_kv,
+        head_dim,
+        0,
+        rope_theta,
+        rope_dim,
+        rope_scaling_factor,
+        rope_scaling_original_context,
+    )?;
 
     let sinks = read_f32_tensor(&path, attn_sinks)?;
     let mut cache = KvCache::new(block_count, 1);

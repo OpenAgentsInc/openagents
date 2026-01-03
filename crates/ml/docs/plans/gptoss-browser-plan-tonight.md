@@ -152,6 +152,11 @@ Notes:
 - Ran `gptoss_cli --layers 1 --max-tokens 1 --moe-fallback` and produced a token (byte-encoded leading space).
 - Ran `gptoss_cli --layers 1 --max-tokens 1` (MoE active) and produced a token.
 - Re-ran `gptoss_cli --layers 1 --max-tokens 1 --moe-fallback` after decoding tweak (leading space now displays).
+- Added YaRN RoPE scaling (factor + original context) to native + web runtime and wired config parsing.
+- Applied sliding-window parity (even layers only) in native + web attention paths.
+- Updated `test_attention` + `test_layer` to pass RoPE scaling params from GGUF metadata.
+- Ran `test_attention --seq-len 2` (layer 0) and `test_layer --moe-fallback` (layer 0) after RoPE changes.
+- Ran `cargo check --manifest-path crates/web/client/Cargo.toml --target wasm32-unknown-unknown`.
 
 ---
 

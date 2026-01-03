@@ -44,6 +44,8 @@ const MXFP4_VALUES: [f32; 16] = [
 ];
 const SWIGLU_ALPHA: f32 = 1.702;
 const SWIGLU_LIMIT: f32 = 7.0;
+const ROPE_NTK_ALPHA: f32 = 1.0;
+const ROPE_NTK_BETA: f32 = 32.0;
 const TENSOR_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
 const TENSOR_CACHE_MAX_ENTRY_BYTES: usize = 4 * 1024 * 1024;
 const EXPERT_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
@@ -58,6 +60,8 @@ struct GptOssConfig {
     head_count_kv: u32,
     rope_dimension_count: u32,
     rope_theta: f32,
+    rope_scaling_factor: f32,
+    rope_scaling_original_context: u32,
     rms_epsilon: f32,
     sliding_window: u32,
     expert_count: u32,
@@ -885,6 +889,13 @@ fn parse_config(index: &GgufIndex) -> Result<GptOssConfig, String> {
     let head_count_kv = read_meta_u32(index, "llama.attention.head_count_kv")?;
     let rope_dimension_count = read_meta_u32(index, "llama.rope.dimension_count")?;
     let rope_theta = read_meta_f32(index, "llama.rope.freq_base")?;
+    let rope_scaling_factor =
+        read_meta_f32_optional(index, "gpt-oss.rope.scaling.factor").unwrap_or(1.0);
+    let rope_scaling_original_context = read_meta_u32_optional(
+        index,
+        "gpt-oss.rope.scaling.original_context_length",
+    )
+    .unwrap_or(0);
     let rms_epsilon = read_meta_f32(index, "llama.attention.layer_norm_rms_epsilon")?;
     let sliding_window = read_meta_u32(index, "llama.sliding_window")?;
     let expert_count = read_meta_u32(index, "llama.expert_count")?;
@@ -898,6 +909,8 @@ fn parse_config(index: &GgufIndex) -> Result<GptOssConfig, String> {
         head_count_kv,
         rope_dimension_count,
         rope_theta,
+        rope_scaling_factor,
+        rope_scaling_original_context,
         rms_epsilon,
         sliding_window,
         expert_count,
@@ -906,12 +919,22 @@ fn parse_config(index: &GgufIndex) -> Result<GptOssConfig, String> {
 }
 
 fn emit_config(state: &Rc<RefCell<AppState>>, config: &GptOssConfig) {
+    let rope_scale = if config.rope_scaling_factor > 1.0
+        && config.rope_scaling_original_context > 0
+    {
+        format!(
+            "yarn x{:.2} orig={}",
+            config.rope_scaling_factor, config.rope_scaling_original_context
+        )
+    } else {
+        "none".to_string()
+    };
     emit_load_stage(
         state,
         "model_config",
         StageStatus::Completed,
         Some(format!(
-            "blocks={} embd={} ffn={} heads={} kv_heads={} rope_dim={} rope_theta={} rms_eps={} window={} experts={} topk={}",
+            "blocks={} embd={} ffn={} heads={} kv_heads={} rope_dim={} rope_theta={} rope_scale={} rms_eps={} window={} experts={} topk={}",
             config.block_count,
             config.embedding_length,
             config.feed_forward_length,
@@ -919,6 +942,7 @@ fn emit_config(state: &Rc<RefCell<AppState>>, config: &GptOssConfig) {
             config.head_count_kv,
             config.rope_dimension_count,
             config.rope_theta,
+            rope_scale,
             config.rms_epsilon,
             config.sliding_window,
             config.expert_count,
@@ -956,6 +980,20 @@ fn read_meta_u32(index: &GgufIndex, key: &str) -> Result<u32, String> {
     }
 }
 
+fn read_meta_u32_optional(index: &GgufIndex, key: &str) -> Option<u32> {
+    let value = lookup_meta(index, key)?;
+    let out = match value {
+        crate::gguf_web::GgufScalar::U32(v) => *v,
+        crate::gguf_web::GgufScalar::I32(v) => (*v).max(0) as u32,
+        crate::gguf_web::GgufScalar::U64(v) => (*v).min(u64::from(u32::MAX)) as u32,
+        crate::gguf_web::GgufScalar::I64(v) => (*v).max(0).min(i64::from(u32::MAX)) as u32,
+        crate::gguf_web::GgufScalar::F32(v) => (*v).max(0.0) as u32,
+        crate::gguf_web::GgufScalar::F64(v) => (*v).max(0.0) as u32,
+        _ => return None,
+    };
+    Some(out)
+}
+
 fn read_meta_f32(index: &GgufIndex, key: &str) -> Result<f32, String> {
     let Some(value) = lookup_meta(index, key) else {
         return Err(format!("missing gguf metadata key: {key}"));
@@ -969,6 +1007,20 @@ fn read_meta_f32(index: &GgufIndex, key: &str) -> Result<f32, String> {
         crate::gguf_web::GgufScalar::I64(v) => Ok(*v as f32),
         _ => Err(format!("gguf metadata {key} has non-float type")),
     }
+}
+
+fn read_meta_f32_optional(index: &GgufIndex, key: &str) -> Option<f32> {
+    let value = lookup_meta(index, key)?;
+    let out = match value {
+        crate::gguf_web::GgufScalar::F32(v) => *v,
+        crate::gguf_web::GgufScalar::F64(v) => *v as f32,
+        crate::gguf_web::GgufScalar::U32(v) => *v as f32,
+        crate::gguf_web::GgufScalar::I32(v) => *v as f32,
+        crate::gguf_web::GgufScalar::U64(v) => *v as f32,
+        crate::gguf_web::GgufScalar::I64(v) => *v as f32,
+        _ => return None,
+    };
+    Some(out)
 }
 
 fn lookup_meta<'a>(index: &'a GgufIndex, key: &str) -> Option<&'a crate::gguf_web::GgufScalar> {
@@ -1638,7 +1690,16 @@ async fn run_block0_attention_probe(
 
     let q_head_dim = (q.len() / config.head_count.max(1) as usize).max(1);
     let k_head_dim = (k.len() / config.head_count_kv.max(1) as usize).max(1);
-    apply_rope(&mut q, config.head_count as usize, q_head_dim, 0, config.rope_theta, config.rope_dimension_count)?;
+    apply_rope(
+        &mut q,
+        config.head_count as usize,
+        q_head_dim,
+        0,
+        config.rope_theta,
+        config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
+    )?;
     apply_rope(
         &mut k,
         config.head_count_kv as usize,
@@ -1646,6 +1707,8 @@ async fn run_block0_attention_probe(
         0,
         config.rope_theta,
         config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
     )?;
 
     emit_inference_stage(
@@ -1874,7 +1937,7 @@ async fn run_generation(
     let mut last_logits: Option<Vec<f32>> = None;
     let mut last_step_ms = 1u64;
     let attention_mode = if config.sliding_window > 0 {
-        format!("window={}", config.sliding_window)
+        format!("window={} even", config.sliding_window)
     } else {
         "dense".to_string()
     };
@@ -2291,6 +2354,8 @@ async fn run_transformer_layer(
         position,
         config.rope_theta,
         config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
     )?;
     apply_rope(
         &mut k,
@@ -2299,6 +2364,8 @@ async fn run_transformer_layer(
         position,
         config.rope_theta,
         config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
     )?;
 
     let sinks =
@@ -2311,7 +2378,7 @@ async fn run_transformer_layer(
     }
     layer_cache.append(&k, &v, kv_heads, head_dim)?;
     let seq_len = layer_cache.token_count(kv_heads, head_dim);
-    let window = if config.sliding_window > 0 {
+    let window = if config.sliding_window > 0 && layer % 2 == 0 {
         config.sliding_window as usize
     } else {
         seq_len
@@ -3111,6 +3178,8 @@ fn apply_rope(
     position: usize,
     theta: f32,
     rope_dim: u32,
+    rope_scaling_factor: f32,
+    rope_scaling_original_context: u32,
 ) -> Result<(), String> {
     if head_dim == 0 || heads == 0 {
         return Err("rope invalid head dims".to_string());
@@ -3127,17 +3196,56 @@ fn apply_rope(
         ));
     }
     let rope_dim = rope_dim.min(head_dim as u32) as usize;
+    if rope_dim == 0 {
+        return Ok(());
+    }
     if rope_dim % 2 != 0 {
         return Err("rope_dim must be even".to_string());
     }
 
     let theta = if theta <= 0.0 { 10000.0 } else { theta };
+    let scaling_factor = rope_scaling_factor.max(1.0);
+    let original_context = rope_scaling_original_context as f32;
+    let use_yarn = scaling_factor > 1.0 && original_context > 0.0;
+    let concentration = if use_yarn {
+        0.1 * scaling_factor.ln() + 1.0
+    } else {
+        1.0
+    };
+    let theta_log = theta.ln();
+    let d_half = rope_dim as f32 / 2.0;
+    let mut low = 0.0f32;
+    let mut high = 0.0f32;
+    if use_yarn {
+        let denom = theta_log.max(1e-6);
+        low = d_half
+            * (original_context / (ROPE_NTK_BETA * 2.0 * std::f32::consts::PI)).ln()
+            / denom;
+        high = d_half
+            * (original_context / (ROPE_NTK_ALPHA * 2.0 * std::f32::consts::PI)).ln()
+            / denom;
+        if !(low > 0.0 && high > low && high < d_half - 1.0) {
+            low = 0.0;
+            high = 0.0;
+        }
+    }
     for h in 0..heads {
         let base = h * head_dim;
         for i in (0..rope_dim).step_by(2) {
-            let inv_freq = theta.powf(-(i as f32) / rope_dim as f32);
+            let freq = theta.powf(i as f32 / rope_dim as f32);
+            let mut inv_freq = 1.0 / freq;
+            if use_yarn && high > low {
+                let t = (i / 2) as f32;
+                let ramp = (t - low) / (high - low);
+                let mask = 1.0 - ramp.clamp(0.0, 1.0);
+                let interp = 1.0 / (scaling_factor * freq);
+                let extrap = 1.0 / freq;
+                inv_freq = interp * (1.0 - mask) + extrap * mask;
+            }
             let angle = position as f32 * inv_freq;
             let (sin, cos) = angle.sin_cos();
+            let sin = sin * concentration;
+            let cos = cos * concentration;
             let a = values[base + i];
             let b = values[base + i + 1];
             values[base + i] = a * cos - b * sin;
