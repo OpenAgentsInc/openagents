@@ -357,6 +357,7 @@ fn trim_token_stream(stream: &mut String, max_len: usize) {
 fn apply_runtime_mode(state: &mut GptOssVizState, detail: &str) {
     let mut moe_mode: Option<String> = None;
     let mut moe_topk: Option<String> = None;
+    let mut moe_expert: Option<String> = None;
     for part in detail.split_whitespace() {
         if let Some((key, value)) = part.split_once('=') {
             match key {
@@ -369,6 +370,9 @@ fn apply_runtime_mode(state: &mut GptOssVizState, detail: &str) {
                 "moe" => {
                     moe_mode = Some(value.to_string());
                 }
+                "expert" => {
+                    moe_expert = Some(value.to_string());
+                }
                 "topk" => {
                     moe_topk = Some(value.to_string());
                 }
@@ -377,11 +381,14 @@ fn apply_runtime_mode(state: &mut GptOssVizState, detail: &str) {
         }
     }
     if let Some(moe) = moe_mode {
-        if let Some(topk) = moe_topk {
-            state.moe_mode = Some(format!("{moe} topk={topk}"));
-        } else {
-            state.moe_mode = Some(moe);
+        let mut mode = moe;
+        if let Some(expert) = moe_expert {
+            mode = format!("{mode} expert={expert}");
         }
+        if let Some(topk) = moe_topk {
+            mode = format!("{mode} topk={topk}");
+        }
+        state.moe_mode = Some(mode);
     }
 }
 
