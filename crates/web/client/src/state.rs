@@ -305,6 +305,12 @@ pub(crate) struct FmVizState {
 
     // Event log
     pub(crate) event_log: VecDeque<FmLogEntry>,
+
+    // Demo mode
+    pub(crate) demo_mode: bool,
+    pub(crate) demo_tokens: Vec<&'static str>,
+    pub(crate) demo_token_idx: usize,
+    pub(crate) demo_last_tick: u64,
 }
 
 impl Default for FmVizState {
@@ -344,6 +350,22 @@ impl Default for FmVizState {
             tool_invocations: Vec::new(),
 
             event_log: VecDeque::new(),
+
+            demo_mode: true,
+            demo_tokens: vec![
+                "Apple", " Foundation", " Models", " provide", " on", "-device",
+                " intelligence", " for", " your", " apps", ".", " With", " the",
+                " Foundation", " Models", " framework", ",", " you", " can",
+                " integrate", " powerful", " language", " models", " directly",
+                " into", " your", " applications", ".", "\n\n", "The", " model",
+                " runs", " entirely", " on", " device", ",", " ensuring", " privacy",
+                " and", " low", " latency", ".", " No", " internet", " connection",
+                " required", ".", "\n\n", "Features", ":", "\n", "-", " Text",
+                " generation", "\n", "-", " Summarization", "\n", "-", " Tool",
+                " calling", "\n", "-", " Structured", " output", " (", "JSON", ")",
+            ],
+            demo_token_idx: 0,
+            demo_last_tick: 0,
         }
     }
 }
