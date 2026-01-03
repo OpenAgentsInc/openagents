@@ -103,6 +103,7 @@ Notes:
 - Added a `gptoss_runtime` scaffold to start centralizing browser runtime logic.
  - Wired `/gptoss` start button handling + runtime entrypoint for streaming load telemetry.
  - `/gptoss` now streams **real GGUF bytes** in chunks on click (with progress + tensor scan events).
+ - Added a local **GGUF range server** (`gguf_serve`) to stream the on-disk model with HTTP Range.
 
 ---
 
