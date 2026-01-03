@@ -678,18 +678,19 @@ pub(crate) fn build_gptoss_page(
     } else {
         state.gptoss.gguf_file_label.as_deref()
     };
-    if let Some(label) = gguf_label {
-        draw_mono_text(
-            scene,
-            text_system,
-            &format!("GGUF: {}", truncate_text(label, 60)),
-            inner_x,
-            y,
-            10.0,
-            theme::text::MUTED,
-        );
-        y += 14.0;
-    }
+    let gguf_line = gguf_label
+        .map(|label| format!("GGUF: {}", truncate_text(label, 60)))
+        .unwrap_or_else(|| "GGUF: --".to_string());
+    draw_mono_text(
+        scene,
+        text_system,
+        &gguf_line,
+        inner_x,
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
+    y += 14.0;
     if let Some(progress) = load_progress(&state.gptoss) {
         let bar_bounds = Bounds::new(inner_x, y + 2.0, inner_width, 6.0);
         scene.draw_quad(
