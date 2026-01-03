@@ -660,12 +660,25 @@ pub(crate) fn build_gptoss_page(
             y += 14.0;
         }
     }
-    if let Some(label) = state
-        .gptoss
-        .load_url
-        .as_ref()
-        .or_else(|| state.gptoss.gguf_file_label.as_ref())
-    {
+    let input_value = state.gptoss.gguf_input.get_value();
+    let input_trimmed = input_value.trim();
+    let input_lower = input_trimmed.to_ascii_lowercase();
+    let gguf_label = if let Some(label) = state.gptoss.load_url.as_ref() {
+        Some(label.as_str())
+    } else if !input_trimmed.is_empty() {
+        if input_lower.starts_with("file:") {
+            state
+                .gptoss
+                .gguf_file_label
+                .as_deref()
+                .or(Some(input_trimmed))
+        } else {
+            Some(input_trimmed)
+        }
+    } else {
+        state.gptoss.gguf_file_label.as_deref()
+    };
+    if let Some(label) = gguf_label {
         draw_mono_text(
             scene,
             text_system,

@@ -647,6 +647,7 @@ Read these if stuck:
 - 2026-01-02: Surface selected GGUF file label in the header before load starts so users can confirm the file.
 - 2026-01-02: Prevent default file-open behavior on GPT-OSS drops even when loading, so drops don’t navigate away.
 - 2026-01-02: Prevent default dragenter/dragover on the GPT-OSS canvas so drops never trigger browser navigation.
+- 2026-01-02: Prefer the current GGUF input value in the header (with file label fallback) so the pending source is always accurate.
 
 ---
 
