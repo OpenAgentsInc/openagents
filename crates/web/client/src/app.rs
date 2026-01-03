@@ -24,7 +24,7 @@ use crate::views::{
 };
 use crate::fs_access::{self, FileKind};
 use crate::gptoss_viz::init_gptoss_viz_runtime;
-use crate::gptoss_runtime::start_gptoss_load;
+use crate::gptoss_runtime::{start_gptoss_file_pick, start_gptoss_load};
 use crate::ml_viz::init_ml_viz_runtime;
 use crate::utils::{read_clipboard_text, track_funnel_event};
 // Wallet disabled
@@ -370,6 +370,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.view == AppView::GptOssPage {
                     state.gptoss.start_button_hovered = !state.gptoss.load_active
                         && state.gptoss.start_button_bounds.contains(state.mouse_pos);
+                    state.gptoss.file_button_hovered = !state.gptoss.load_active
+                        && state.gptoss.file_button_bounds.contains(state.mouse_pos);
                     let _ = state.gptoss.handle_event(&InputEvent::MouseMove { x, y });
                 }
 
@@ -822,11 +824,13 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             }
 
             let mut start_gptoss = false;
-            if state.view == AppView::GptOssPage
-                && !state.gptoss.load_active
-                && state.gptoss.start_button_bounds.contains(click_pos)
-            {
-                start_gptoss = true;
+            let mut pick_gptoss_file = false;
+            if state.view == AppView::GptOssPage && !state.gptoss.load_active {
+                if state.gptoss.file_button_bounds.contains(click_pos) {
+                    pick_gptoss_file = true;
+                } else if state.gptoss.start_button_bounds.contains(click_pos) {
+                    start_gptoss = true;
+                }
             }
 
             if state.button_bounds.contains(click_pos) {
@@ -864,6 +868,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         }
                     }
                 }
+            }
+
+            if pick_gptoss_file {
+                drop(state);
+                start_gptoss_file_pick(state_clone.clone());
+                return;
             }
 
             if start_gptoss {

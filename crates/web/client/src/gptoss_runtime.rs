@@ -13,7 +13,8 @@ use js_sys;
 use web_sys;
 
 use crate::gguf_web::{
-    fetch_and_parse_index, fetch_range, fetch_range_with_total, GgufIndex, GgufTensor,
+    fetch_and_parse_index_source, fetch_range_source, fetch_range_with_total_source,
+    pick_gguf_file, GgufIndex, GgufSource, GgufTensor,
 };
 use crate::gptoss_tokenizer::GptOssTokenizer;
 use crate::gptoss_viz::{
@@ -724,15 +725,18 @@ impl GpuAllocTracker {
 }
 
 pub(crate) struct GptOssRuntime {
-    pub(crate) gguf_url: String,
+    pub(crate) gguf_source: GgufSource,
+    pub(crate) gguf_label: String,
     pub(crate) gpu: GpuContext,
     pub(crate) index: Option<GgufIndex>,
 }
 
 impl GptOssRuntime {
-    pub(crate) fn new(gguf_url: String, gpu: GpuContext) -> Self {
+    pub(crate) fn new(gguf_source: GgufSource, gpu: GpuContext) -> Self {
+        let gguf_label = gguf_source.label();
         Self {
-            gguf_url,
+            gguf_source,
+            gguf_label,
             gpu,
             index: None,
         }
@@ -743,7 +747,8 @@ impl GptOssRuntime {
         initial_bytes: u64,
         max_attempts: usize,
     ) -> Result<&GgufIndex, String> {
-        let index = fetch_and_parse_index(&self.gguf_url, initial_bytes, max_attempts).await?;
+        let index =
+            fetch_and_parse_index_source(&self.gguf_source, initial_bytes, max_attempts).await?;
         self.index = Some(index);
         Ok(self.index.as_ref().expect("index set"))
     }
@@ -753,13 +758,14 @@ impl GptOssRuntime {
         tensor: &GgufTensor,
         len: usize,
     ) -> Result<Vec<u8>, String> {
-        let bytes = fetch_range(&self.gguf_url, tensor.absolute_offset, len as u64).await?;
+        let bytes =
+            fetch_range_source(&self.gguf_source, tensor.absolute_offset, len as u64).await?;
         Ok(bytes)
     }
 }
 
 pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
-    let raw_url = {
+    let (raw_url, file_opt) = {
         let input_override = state
             .try_borrow()
             .ok()
@@ -771,13 +777,26 @@ pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
                     Some(value)
                 }
             });
-        input_override
+        let file = state
+            .try_borrow()
+            .ok()
+            .and_then(|guard| guard.gptoss.gguf_file.clone());
+        let raw_url = input_override
             .or_else(|| read_query_param("gguf").filter(|url| !url.is_empty()))
-            .unwrap_or_else(default_gguf_url)
+            .unwrap_or_else(default_gguf_url);
+        (raw_url, file)
     };
-    let gguf_url = match normalize_gguf_url(&raw_url) {
-        Ok(url) => url,
-        Err(err) => {
+
+    let mut gguf_source = None;
+    let mut gguf_label = None;
+
+    let wants_file = is_file_input(&raw_url) || (raw_url.trim().is_empty() && file_opt.is_some());
+    if wants_file {
+        if let Some(file) = file_opt.clone() {
+            gguf_label = Some(gguf_file_label(&file));
+            gguf_source = Some(GgufSource::File(file));
+        } else {
+            let err = "No GGUF file selected. Click PICK FILE first.".to_string();
             if let Ok(mut guard) = state.try_borrow_mut() {
                 reset_gptoss_state(&mut guard.gptoss);
                 guard.gptoss.load_error = Some(err.clone());
@@ -792,24 +811,50 @@ pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
             );
             return;
         }
-    };
-    if gguf_url.is_empty() {
-        if let Ok(mut guard) = state.try_borrow_mut() {
-            reset_gptoss_state(&mut guard.gptoss);
-            guard.gptoss.load_error = Some(format!(
-                "No GGUF URL provided.\nRun: {LOCAL_GGUF_SERVE_CMD}\nOr pass ?gguf=..."
-            ));
-        }
-        emit_load_stage(
-            &state,
-            "load_failed",
-            StageStatus::Failed,
-            Some("missing gguf url".to_string()),
-            None,
-            None,
-        );
-        return;
     }
+
+    if gguf_source.is_none() {
+        let gguf_url = match normalize_gguf_url(&raw_url) {
+            Ok(url) => url,
+            Err(err) => {
+                if let Ok(mut guard) = state.try_borrow_mut() {
+                    reset_gptoss_state(&mut guard.gptoss);
+                    guard.gptoss.load_error = Some(err.clone());
+                }
+                emit_load_stage(
+                    &state,
+                    "load_failed",
+                    StageStatus::Failed,
+                    Some(err),
+                    None,
+                    None,
+                );
+                return;
+            }
+        };
+        if gguf_url.is_empty() {
+            if let Ok(mut guard) = state.try_borrow_mut() {
+                reset_gptoss_state(&mut guard.gptoss);
+                guard.gptoss.load_error = Some(format!(
+                    "No GGUF URL provided.\nRun: {LOCAL_GGUF_SERVE_CMD}\nOr pass ?gguf=..."
+                ));
+            }
+            emit_load_stage(
+                &state,
+                "load_failed",
+                StageStatus::Failed,
+                Some("missing gguf url".to_string()),
+                None,
+                None,
+            );
+            return;
+        }
+        gguf_label = Some(gguf_url.clone());
+        gguf_source = Some(GgufSource::Url(gguf_url));
+    }
+
+    let gguf_source = gguf_source.expect("gguf source set");
+    let gguf_label = gguf_label.unwrap_or_else(|| gguf_source.label());
 
     {
         let Ok(mut guard) = state.try_borrow_mut() else {
@@ -820,16 +865,16 @@ pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
         }
         reset_gptoss_state(&mut guard.gptoss);
         if guard.gptoss.gguf_input.get_value().trim().is_empty() {
-            guard.gptoss.gguf_input.set_value(gguf_url.clone());
+            guard.gptoss.gguf_input.set_value(gguf_label.clone());
         }
         guard.gptoss.load_active = true;
         guard.gptoss.load_error = None;
-        guard.gptoss.load_url = Some(gguf_url.clone());
+        guard.gptoss.load_url = Some(gguf_label.clone());
     }
 
     let state_clone = state.clone();
     spawn_local(async move {
-        if let Err(err) = run_gptoss_load(state_clone.clone(), gguf_url).await {
+        if let Err(err) = run_gptoss_load(state_clone.clone(), gguf_source, gguf_label).await {
             if let Ok(mut guard) = state_clone.try_borrow_mut() {
                 guard.gptoss.load_active = false;
                 guard.gptoss.load_error = Some(err.clone());
@@ -846,12 +891,45 @@ pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
     });
 }
 
-async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Result<(), String> {
+pub(crate) fn start_gptoss_file_pick(state: Rc<RefCell<AppState>>) {
+    if let Ok(guard) = state.try_borrow() {
+        if guard.gptoss.load_active {
+            return;
+        }
+    }
+    let state_clone = state.clone();
+    spawn_local(async move {
+        let file = match pick_gguf_file().await {
+            Ok(file) => file,
+            Err(err) => {
+                if let Ok(mut guard) = state_clone.try_borrow_mut() {
+                    guard.gptoss.load_error = Some(err);
+                }
+                return;
+            }
+        };
+        let input_label = gguf_file_input_label(&file);
+        let display_label = gguf_file_label(&file);
+        if let Ok(mut guard) = state_clone.try_borrow_mut() {
+            guard.gptoss.gguf_file = Some(file);
+            guard.gptoss.gguf_file_label = Some(display_label);
+            guard.gptoss.gguf_input.set_value(input_label);
+            guard.gptoss.load_error = None;
+        }
+        start_gptoss_load(state_clone);
+    });
+}
+
+async fn run_gptoss_load(
+    state: Rc<RefCell<AppState>>,
+    gguf_source: GgufSource,
+    gguf_label: String,
+) -> Result<(), String> {
     emit_load_stage(
         &state,
         "load_start",
         StageStatus::Started,
-        Some(format!("url={}", gguf_url)),
+        Some(format!("source={}", gguf_label)),
         None,
         None,
     );
@@ -865,9 +943,9 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         None,
     );
 
-    let (_probe, total) = fetch_range_with_total(&gguf_url, 0, 1)
+    let (_probe, total) = fetch_range_with_total_source(&gguf_source, 0, 1)
         .await
-        .map_err(|err| format_range_error(&gguf_url, &err))?;
+        .map_err(|err| format_source_error(&gguf_source, &gguf_label, &err))?;
     let total_bytes = total.ok_or_else(|| {
         "Host does not support Range/CORS. Start gguf_serve.".to_string()
     })?;
@@ -890,7 +968,8 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     );
 
     let index = Rc::new(
-        fetch_and_parse_index(&gguf_url, DEFAULT_METADATA_BYTES, MAX_METADATA_ATTEMPTS).await?,
+        fetch_and_parse_index_source(&gguf_source, DEFAULT_METADATA_BYTES, MAX_METADATA_ATTEMPTS)
+            .await?,
     );
     emit_load_stage(
         &state,
@@ -1011,7 +1090,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let stop_tokens = collect_stop_tokens(&tokenizer);
 
     {
-        let gguf = gguf_url.clone();
+        let gguf = gguf_source.clone();
         let state_clone = state.clone();
         let index_clone = index.clone();
         let gpu_clone = gpu.clone();
@@ -1031,7 +1110,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         });
     }
     {
-        let gguf = gguf_url.clone();
+        let gguf = gguf_source.clone();
         let state_clone = state.clone();
         let index_clone = index.clone();
         let gpu_clone = gpu.clone();
@@ -1051,7 +1130,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         });
     }
     {
-        let gguf = gguf_url.clone();
+        let gguf = gguf_source.clone();
         let state_clone = state.clone();
         let index_clone = index.clone();
         let gpu_clone = gpu.clone();
@@ -1078,7 +1157,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         });
     }
     {
-        let gguf = gguf_url.clone();
+        let gguf = gguf_source.clone();
         let state_clone = state.clone();
         let index_clone = index.clone();
         let gpu_clone = gpu.clone();
@@ -1100,7 +1179,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         });
     }
     {
-        let gguf = gguf_url.clone();
+        let gguf = gguf_source.clone();
         let state_clone = state.clone();
         let index_clone = index.clone();
         let gpu_clone = gpu.clone();
@@ -1128,19 +1207,20 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     }
 
     let stream_state = state.clone();
-    let stream_url = gguf_url.clone();
+    let stream_source = gguf_source.clone();
     let stream_index = index.clone();
     let stream_future = async move {
-        stream_full_weights(&stream_state, &stream_url, stream_index.as_ref(), total_bytes).await
+        stream_full_weights(&stream_state, &stream_source, stream_index.as_ref(), total_bytes)
+            .await
     };
 
     let gen_state = state.clone();
-    let gen_url = gguf_url.clone();
+    let gen_source = gguf_source.clone();
     let gen_index = index.clone();
     let gen_future = async move {
         if let Err(err) = run_generation(
             &gen_state,
-            &gen_url,
+            &gen_source,
             gen_index.as_ref(),
             &gpu,
             &tokenizer,
@@ -1187,7 +1267,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
 
 async fn stream_full_weights(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_source: &GgufSource,
     index: &GgufIndex,
     total_bytes: u64,
 ) -> Result<(), String> {
@@ -1210,7 +1290,7 @@ async fn stream_full_weights(
 
     while offset < total_bytes {
         let len = (total_bytes - offset).min(LOAD_CHUNK_BYTES);
-        let chunk = fetch_range(gguf_url, offset, len).await?;
+        let chunk = fetch_range_source(gguf_source, offset, len).await?;
         loaded = loaded.saturating_add(chunk.len() as u64);
         offset = offset.saturating_add(len);
         chunk_idx = chunk_idx.saturating_add(1);
@@ -1877,6 +1957,19 @@ pub(crate) fn default_gguf_url() -> String {
     }
 }
 
+fn is_file_input(raw: &str) -> bool {
+    let trimmed = raw.trim().to_ascii_lowercase();
+    trimmed == "file" || trimmed.starts_with("file:")
+}
+
+fn gguf_file_input_label(file: &web_sys::File) -> String {
+    format!("file:{}", file.name())
+}
+
+fn gguf_file_label(file: &web_sys::File) -> String {
+    format!("file:{} ({})", file.name(), format_bytes(file.size() as u64))
+}
+
 fn normalize_gguf_url(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -1966,6 +2059,13 @@ fn is_bun_dev_url(url: &str) -> bool {
     let url = url.to_ascii_lowercase();
     url.starts_with("http://localhost:3000")
         || url.starts_with("http://127.0.0.1:3000")
+}
+
+fn format_source_error(source: &GgufSource, label: &str, err: &str) -> String {
+    if source.is_file() {
+        return format!("Local GGUF read failed ({label}): {err}");
+    }
+    format_range_error(label, err)
 }
 
 fn format_range_error(url: &str, err: &str) -> String {
@@ -2412,7 +2512,7 @@ fn ensure_buffer_limit(
 
 async fn run_q8_0_probe(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_source: &GgufSource,
     index: &GgufIndex,
     gpu: &GpuContext,
 ) -> Result<(), String> {
@@ -2455,7 +2555,8 @@ async fn run_q8_0_probe(
         Some(format!("tensor={}", tensor.name)),
     );
 
-    let mut quant = fetch_range(gguf_url, tensor.absolute_offset, bytes_needed as u64).await?;
+    let mut quant =
+        fetch_range_source(gguf_source, tensor.absolute_offset, bytes_needed as u64).await?;
     if quant.len() % 4 != 0 {
         let padded = (quant.len() + 3) / 4 * 4;
         quant.resize(padded, 0);
@@ -2492,7 +2593,7 @@ async fn run_q8_0_probe(
 
 async fn run_mxfp4_probe(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_source: &GgufSource,
     index: &GgufIndex,
     gpu: &GpuContext,
 ) -> Result<(), String> {
@@ -2564,7 +2665,7 @@ async fn run_mxfp4_probe(
     let offset = tensor
         .absolute_offset
         .saturating_add((expert_idx * expert_bytes) as u64);
-    let mut quant = fetch_range(gguf_url, offset, bytes_needed as u64).await?;
+    let mut quant = fetch_range_source(gguf_source, offset, bytes_needed as u64).await?;
     emit_inference_stage(
         state,
         "mxfp4_header",
@@ -2608,7 +2709,7 @@ struct ProbeQkv {
 
 async fn build_probe_qkv(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_source: &GgufSource,
     index: &GgufIndex,
     config: &GptOssConfig,
     gpu: &GpuContext,
@@ -2622,15 +2723,15 @@ async fn build_probe_qkv(
     let attn_v_w = find_tensor(index, "blk.0.attn_v.weight")?;
     let attn_v_b = find_tensor(index, "blk.0.attn_v.bias")?;
 
-    let token_row = fetch_q8_0_row(gguf_url, token_embd, 0).await?;
-    let attn_norm_w = fetch_f32_tensor_raw(gguf_url, attn_norm).await?;
+    let token_row = fetch_q8_0_row(gguf_source, token_embd, 0).await?;
+    let attn_norm_w = fetch_f32_tensor_raw(gguf_source, attn_norm).await?;
     let normed = rms_norm(&token_row, &attn_norm_w, config.rms_epsilon)?;
 
     let mut caches = RuntimeCaches::new();
     let mut gpu_tracker = GpuAllocTracker::default();
     let q = matmul_q8_0_with_bias(
         state,
-        gguf_url,
+        gguf_source,
         attn_q_w,
         attn_q_b,
         &normed,
@@ -2643,7 +2744,7 @@ async fn build_probe_qkv(
     .await?;
     let k = matmul_q8_0_with_bias(
         state,
-        gguf_url,
+        gguf_source,
         attn_k_w,
         attn_k_b,
         &normed,
@@ -2656,7 +2757,7 @@ async fn build_probe_qkv(
     .await?;
     let v = matmul_q8_0_with_bias(
         state,
-        gguf_url,
+        gguf_source,
         attn_v_w,
         attn_v_b,
         &normed,
@@ -2704,7 +2805,7 @@ fn ensure_probe_tolerance(label: &str, max_abs: f32, mean_abs: f32) -> Result<()
 
 async fn run_rmsnorm_probe(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_source: &GgufSource,
     index: &GgufIndex,
     config: &GptOssConfig,
     gpu: &GpuContext,
@@ -2720,8 +2821,8 @@ async fn run_rmsnorm_probe(
 
     let token_embd = find_tensor(index, "token_embd.weight")?;
     let attn_norm = find_tensor(index, "blk.0.attn_norm.weight")?;
-    let token_row = fetch_q8_0_row(gguf_url, token_embd, 0).await?;
-    let attn_norm_w = fetch_f32_tensor_raw(gguf_url, attn_norm).await?;
+    let token_row = fetch_q8_0_row(gguf_source, token_embd, 0).await?;
+    let attn_norm_w = fetch_f32_tensor_raw(gguf_source, attn_norm).await?;
     let cpu = rms_norm(&token_row, &attn_norm_w, config.rms_epsilon)?;
     let mut gpu_tracker = GpuAllocTracker::default();
     let gpu_out =
@@ -2743,7 +2844,7 @@ async fn run_rmsnorm_probe(
 
 async fn run_rope_probe(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_source: &GgufSource,
     index: &GgufIndex,
     config: &GptOssConfig,
     gpu: &GpuContext,
@@ -2757,7 +2858,7 @@ async fn run_rope_probe(
         Some("blk.0.attn_q/attn_k".to_string()),
     );
 
-    let probe = build_probe_qkv(state, gguf_url, index, config, gpu).await?;
+    let probe = build_probe_qkv(state, gguf_source, index, config, gpu).await?;
     let mut q_cpu = probe.q.clone();
     let mut k_cpu = probe.k.clone();
     apply_rope(
@@ -2829,7 +2930,7 @@ async fn run_rope_probe(
 
 async fn run_attention_probe(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_source: &GgufSource,
     index: &GgufIndex,
     config: &GptOssConfig,
     gpu: &GpuContext,
@@ -2843,9 +2944,9 @@ async fn run_attention_probe(
         Some("blk.0 attn".to_string()),
     );
 
-    let probe = build_probe_qkv(state, gguf_url, index, config, gpu).await?;
+    let probe = build_probe_qkv(state, gguf_source, index, config, gpu).await?;
     let attn_sinks = find_tensor(index, "blk.0.attn_sinks.weight")?;
-    let sinks = fetch_f32_tensor_raw(gguf_url, attn_sinks).await?;
+    let sinks = fetch_f32_tensor_raw(gguf_source, attn_sinks).await?;
     if sinks.len() < probe.heads {
         return Err("attn_probe sinks length mismatch".to_string());
     }
@@ -2943,7 +3044,7 @@ async fn run_attention_probe(
 
 async fn run_block0_attention_probe(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     index: &GgufIndex,
     gpu: &GpuContext,
     tokenizer: &GptOssTokenizer,
@@ -3372,7 +3473,7 @@ async fn run_block0_attention_probe(
 
 async fn run_generation(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     index: &GgufIndex,
     gpu: &GpuContext,
     tokenizer: &GptOssTokenizer,
@@ -3658,7 +3759,7 @@ async fn run_generation(
 
 async fn run_forward_token(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     index: &GgufIndex,
     gpu: &GpuContext,
     config: &GptOssConfig,
@@ -3941,7 +4042,7 @@ async fn run_forward_token(
 
 async fn run_single_token_full(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     index: &GgufIndex,
     gpu: &GpuContext,
     tokenizer: &GptOssTokenizer,
@@ -3985,7 +4086,7 @@ async fn run_single_token_full(
 
 async fn run_transformer_layer(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     index: &GgufIndex,
     gpu: &GpuContext,
     config: &GptOssConfig,
@@ -4754,14 +4855,17 @@ fn find_tensor<'a>(index: &'a GgufIndex, name: &str) -> Result<&'a GgufTensor, S
         .ok_or_else(|| format!("tensor not found: {name}"))
 }
 
-async fn fetch_f32_tensor_raw(gguf_url: &str, tensor: &GgufTensor) -> Result<Vec<f32>, String> {
+async fn fetch_f32_tensor_raw(
+    gguf_url: &GgufSource,
+    tensor: &GgufTensor,
+) -> Result<Vec<f32>, String> {
     if tensor.ggml_type != 0 {
         return Err(format!(
             "tensor {} is {}, expected F32",
             tensor.name, tensor.ggml_type_name
         ));
     }
-    let bytes = fetch_range(gguf_url, tensor.absolute_offset, tensor.nbytes).await?;
+    let bytes = fetch_range_source(gguf_url, tensor.absolute_offset, tensor.nbytes).await?;
     if bytes.len() % 4 != 0 {
         return Err(format!("tensor {} f32 byte len mismatch", tensor.name));
     }
@@ -4774,7 +4878,7 @@ async fn fetch_f32_tensor_raw(gguf_url: &str, tensor: &GgufTensor) -> Result<Vec
 
 async fn fetch_f32_tensor_cached(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     tensor: &GgufTensor,
     cache: &mut TensorCache,
 ) -> Result<Vec<f32>, String> {
@@ -4818,7 +4922,7 @@ async fn fetch_f32_tensor_cached(
 }
 
 async fn fetch_f32_row(
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     tensor: &GgufTensor,
     row: usize,
 ) -> Result<Vec<f32>, String> {
@@ -4838,7 +4942,7 @@ async fn fetch_f32_row(
     let offset = tensor
         .absolute_offset
         .saturating_add((row_bytes * row) as u64);
-    let bytes = fetch_range(gguf_url, offset, row_bytes as u64).await?;
+    let bytes = fetch_range_source(gguf_url, offset, row_bytes as u64).await?;
     if bytes.len() % 4 != 0 {
         return Err(format!("tensor {} f32 row len mismatch", tensor.name));
     }
@@ -4850,7 +4954,7 @@ async fn fetch_f32_row(
 }
 
 async fn fetch_q8_0_row(
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     tensor: &GgufTensor,
     row: usize,
 ) -> Result<Vec<f32>, String> {
@@ -4874,7 +4978,7 @@ async fn fetch_q8_0_row(
     let offset = tensor
         .absolute_offset
         .saturating_add((row_bytes * row) as u64);
-    let bytes = fetch_range(gguf_url, offset, row_bytes as u64).await?;
+    let bytes = fetch_range_source(gguf_url, offset, row_bytes as u64).await?;
     let values = cols;
     let mut quant = bytes;
     if quant.len() % 4 != 0 {
@@ -4885,7 +4989,7 @@ async fn fetch_q8_0_row(
 }
 
 async fn fetch_q8_0_row_gpu(
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     tensor: &GgufTensor,
     row: usize,
     gpu: &GpuContext,
@@ -4911,7 +5015,7 @@ async fn fetch_q8_0_row_gpu(
     let offset = tensor
         .absolute_offset
         .saturating_add((row_bytes * row) as u64);
-    let bytes = fetch_range(gguf_url, offset, row_bytes as u64).await?;
+    let bytes = fetch_range_source(gguf_url, offset, row_bytes as u64).await?;
     let mut quant = bytes;
     if quant.len() % 4 != 0 {
         let padded = (quant.len() + 3) / 4 * 4;
@@ -4921,7 +5025,7 @@ async fn fetch_q8_0_row_gpu(
 }
 
 async fn fetch_q8_0_row_cached(
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     tensor: &GgufTensor,
     row: usize,
     cache: &mut TokenCache,
@@ -4939,7 +5043,7 @@ async fn fetch_q8_0_row_cached(
 }
 
 async fn fetch_q8_0_row_cached_gpu(
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     tensor: &GgufTensor,
     row: usize,
     cache: &mut TokenCache,
@@ -4959,7 +5063,7 @@ async fn fetch_q8_0_row_cached_gpu(
 }
 
 async fn fetch_mxfp4_expert_raw(
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     tensor: &GgufTensor,
     expert_idx: usize,
 ) -> Result<Vec<u8>, String> {
@@ -4987,7 +5091,7 @@ async fn fetch_mxfp4_expert_raw(
     let offset = tensor
         .absolute_offset
         .saturating_add((expert_idx * bytes_needed) as u64);
-    let mut bytes = fetch_range(gguf_url, offset, bytes_needed as u64).await?;
+    let mut bytes = fetch_range_source(gguf_url, offset, bytes_needed as u64).await?;
     if bytes.len() % 4 != 0 {
         let padded = (bytes.len() + 3) / 4 * 4;
         bytes.resize(padded, 0);
@@ -4997,7 +5101,7 @@ async fn fetch_mxfp4_expert_raw(
 
 async fn fetch_mxfp4_expert_cached(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     tensor: &GgufTensor,
     expert_idx: usize,
     cache: &mut ExpertCache,
@@ -5040,7 +5144,7 @@ async fn fetch_mxfp4_expert_cached(
 
 async fn matmul_q8_0_with_bias(
     state: &Rc<RefCell<AppState>>,
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     weight: &GgufTensor,
     bias: &GgufTensor,
     input: &[f32],
@@ -5110,7 +5214,8 @@ async fn matmul_q8_0_with_bias(
         let quant = if let Some(hit) = cached_quant {
             hit
         } else {
-            let mut quant = fetch_range(gguf_url, weight.absolute_offset, weight.nbytes).await?;
+            let mut quant =
+                fetch_range_source(gguf_url, weight.absolute_offset, weight.nbytes).await?;
             if quant.len() % 4 != 0 {
                 let padded = (quant.len() + 3) / 4 * 4;
                 quant.resize(padded, 0);
@@ -7876,7 +7981,7 @@ async fn gpu_matmul_q8_0(
 }
 
 async fn gpu_matmul_q8_0_chunked(
-    gguf_url: &str,
+    gguf_url: &GgufSource,
     weight: &GgufTensor,
     input: &[f32],
     gpu: &GpuContext,
@@ -8030,7 +8135,7 @@ async fn gpu_matmul_q8_0_chunked(
             .absolute_offset
             .saturating_add((row_offset * row_bytes) as u64);
         let len = rows * row_bytes;
-        let mut quant = fetch_range(gguf_url, offset, len as u64).await?;
+        let mut quant = fetch_range_source(gguf_url, offset, len as u64).await?;
         if quant.len() % 4 != 0 {
             let padded = (quant.len() + 3) / 4 * 4;
             quant.resize(padded, 0);

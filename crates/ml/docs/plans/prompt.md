@@ -624,6 +624,7 @@ Read these if stuck:
 - 2026-01-02: Added a decode budget stage to flag per-token latency against the 30s/token target.
 - 2026-01-02: Updated CLI gptoss_cli command to a fast sanity config (layers=1 + moe_fallback) and marked CLI suite as passing.
 - 2026-01-02: Scoped window error handlers to only intercept on the `/gptoss` page.
+- 2026-01-02: Added a local GGUF file picker + file-backed range reads so `/gptoss` can load from disk without `gguf_serve`.
 
 ---
 
