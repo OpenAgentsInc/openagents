@@ -340,7 +340,7 @@ This is harder. Implement when ready.
 
 **Done when:**
 - [x] Expert cache hit/miss telemetry visible
-- [ ] Multiple decode steps run without OOM
+- [x] Multiple decode steps run without OOM
 - [x] tok/s metric displayed
 
 ### Step 10: Tokenizer + Harmony
@@ -574,7 +574,7 @@ cargo test -p ml gate_d --no-default-features --features native,wgpu
 
 #### Performance
 - [ ] 24 layers decode without timeout (< 30s per token acceptable)
-- [ ] No GPU OOM on 8GB VRAM
+- [x] No GPU OOM on 8GB VRAM
 - [x] Memory usage telemetry accurate
 
 #### Verification
