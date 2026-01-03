@@ -191,7 +191,13 @@ impl GptOssVizState {
                     let msg = detail_clone
                         .clone()
                         .unwrap_or_else(|| format!("{stage} failed"));
-                    self.inference_error = Some(msg);
+                    let ignore = matches!(
+                        stage.as_str(),
+                        "q8_0_probe" | "mxfp4_probe" | "moe_expert"
+                    );
+                    if !ignore {
+                        self.inference_error = Some(msg);
+                    }
                 }
                 update_stage(
                     &mut self.inference_stages,
