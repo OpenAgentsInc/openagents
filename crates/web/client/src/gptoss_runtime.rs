@@ -130,7 +130,8 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
 
     emit_tensor_scan(&state, &index, 18);
 
-    if let Some(gpu) = state.borrow().gpu_context.clone() {
+    let gpu_context = state.borrow().gpu_context.clone();
+    if let Some(gpu) = gpu_context.clone() {
         let gguf = gguf_url.clone();
         let state_clone = state.clone();
         let index_clone = index.clone();
@@ -228,6 +229,36 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         Some(loaded),
         Some(total_bytes),
     );
+
+    if let Some(gpu) = gpu_context {
+        emit_inference_stage(
+            &state,
+            "blk0_attention",
+            StageStatus::Started,
+            None,
+            None,
+            Some("after_load".to_string()),
+        );
+        if let Err(err) = run_block0_attention_probe(&state, &gguf_url, &index, &gpu).await {
+            emit_inference_stage(
+                &state,
+                "blk0_attention",
+                StageStatus::Failed,
+                None,
+                None,
+                Some(err),
+            );
+        } else {
+            emit_inference_stage(
+                &state,
+                "blk0_attention",
+                StageStatus::Completed,
+                None,
+                None,
+                Some("ok".to_string()),
+            );
+        }
+    }
 
     if let Ok(mut guard) = state.try_borrow_mut() {
         guard.gptoss.load_active = false;
@@ -445,6 +476,70 @@ async fn run_q8_0_probe(
     Ok(())
 }
 
+async fn run_block0_attention_probe(
+    state: &Rc<RefCell<AppState>>,
+    gguf_url: &str,
+    index: &GgufIndex,
+    gpu: &GpuContext,
+) -> Result<(), String> {
+    let token_embd = find_tensor(index, "token_embd.weight")?;
+    let attn_norm = find_tensor(index, "blk.0.attn_norm.weight")?;
+    let attn_q_w = find_tensor(index, "blk.0.attn_q.weight")?;
+    let attn_q_b = find_tensor(index, "blk.0.attn_q.bias")?;
+    let attn_k_w = find_tensor(index, "blk.0.attn_k.weight")?;
+    let attn_k_b = find_tensor(index, "blk.0.attn_k.bias")?;
+    let attn_v_w = find_tensor(index, "blk.0.attn_v.weight")?;
+    let attn_v_b = find_tensor(index, "blk.0.attn_v.bias")?;
+    let attn_out_w = find_tensor(index, "blk.0.attn_output.weight")?;
+    let attn_out_b = find_tensor(index, "blk.0.attn_output.bias")?;
+
+    let token_row = fetch_q8_0_row(gguf_url, token_embd, 0).await?;
+    let attn_norm_w = fetch_f32_tensor(gguf_url, attn_norm).await?;
+    let mut hidden = rms_norm(&token_row, &attn_norm_w, 1e-5)?;
+
+    emit_inference_stage(
+        state,
+        "blk0_qkv",
+        StageStatus::Started,
+        None,
+        None,
+        Some("qkv".to_string()),
+    );
+
+    let q = matmul_q8_0_with_bias(gguf_url, attn_q_w, attn_q_b, &hidden, gpu).await?;
+    let k = matmul_q8_0_with_bias(gguf_url, attn_k_w, attn_k_b, &hidden, gpu).await?;
+    let v = matmul_q8_0_with_bias(gguf_url, attn_v_w, attn_v_b, &hidden, gpu).await?;
+
+    emit_inference_stage(
+        state,
+        "blk0_qkv",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("q={} k={} v={}", q.len(), k.len(), v.len())),
+    );
+
+    let attn_out = v;
+    let attn_proj = matmul_q8_0_with_bias(gguf_url, attn_out_w, attn_out_b, &attn_out, gpu).await?;
+    for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
+        *out += *base;
+    }
+
+    let attention_norm = l2_norm(&attn_proj);
+    let output_norm = l2_norm(&hidden);
+    emit_inference_event(
+        state,
+        GptOssInferenceTelemetry::LayerActivation {
+            layer: 0,
+            attention_norm,
+            mlp_norm: 0.0,
+            output_norm,
+        },
+    );
+
+    Ok(())
+}
+
 fn build_input(k: usize) -> Vec<f32> {
     let mut x = Vec::with_capacity(k);
     for i in 0..k {
@@ -452,6 +547,132 @@ fn build_input(k: usize) -> Vec<f32> {
         x.push(step * 0.01);
     }
     x
+}
+
+fn find_tensor<'a>(index: &'a GgufIndex, name: &str) -> Result<&'a GgufTensor, String> {
+    index
+        .tensors
+        .iter()
+        .find(|tensor| tensor.name == name)
+        .ok_or_else(|| format!("tensor not found: {name}"))
+}
+
+async fn fetch_f32_tensor(gguf_url: &str, tensor: &GgufTensor) -> Result<Vec<f32>, String> {
+    if tensor.ggml_type != 0 {
+        return Err(format!(
+            "tensor {} is {}, expected F32",
+            tensor.name, tensor.ggml_type_name
+        ));
+    }
+    let bytes = fetch_range(gguf_url, tensor.absolute_offset, tensor.nbytes).await?;
+    if bytes.len() % 4 != 0 {
+        return Err(format!("tensor {} f32 byte len mismatch", tensor.name));
+    }
+    let mut floats = Vec::with_capacity(bytes.len() / 4);
+    for chunk in bytes.chunks_exact(4) {
+        floats.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    }
+    Ok(floats)
+}
+
+async fn fetch_q8_0_row(
+    gguf_url: &str,
+    tensor: &GgufTensor,
+    row: usize,
+) -> Result<Vec<f32>, String> {
+    if tensor.ggml_type != 8 {
+        return Err(format!(
+            "tensor {} is {}, expected Q8_0",
+            tensor.name, tensor.ggml_type_name
+        ));
+    }
+    let dims = &tensor.dims;
+    let rows = dims.get(0).copied().unwrap_or(0) as usize;
+    let cols = dims.get(1).copied().unwrap_or(0) as usize;
+    if row >= rows || cols == 0 {
+        return Err(format!("row {row} out of range for {}", tensor.name));
+    }
+    if cols % Q8_0_BLOCK_VALUES != 0 {
+        return Err("q8_0 row cols not divisible by block size".to_string());
+    }
+    let blocks_per_row = cols / Q8_0_BLOCK_VALUES;
+    let row_bytes = blocks_per_row * Q8_0_BLOCK_BYTES;
+    let offset = tensor
+        .absolute_offset
+        .saturating_add((row_bytes * row) as u64);
+    let bytes = fetch_range(gguf_url, offset, row_bytes as u64).await?;
+    let values = cols;
+    let mut quant = bytes;
+    if quant.len() % 4 != 0 {
+        let padded = (quant.len() + 3) / 4 * 4;
+        quant.resize(padded, 0);
+    }
+    dequant_q8_0(&quant, values)
+}
+
+async fn matmul_q8_0_with_bias(
+    gguf_url: &str,
+    weight: &GgufTensor,
+    bias: &GgufTensor,
+    input: &[f32],
+    gpu: &GpuContext,
+) -> Result<Vec<f32>, String> {
+    if weight.ggml_type != 8 {
+        return Err(format!(
+            "tensor {} is {}, expected Q8_0",
+            weight.name, weight.ggml_type_name
+        ));
+    }
+    let dims = &weight.dims;
+    let n = dims.get(0).copied().unwrap_or(0) as usize;
+    let k = dims.get(1).copied().unwrap_or(0) as usize;
+    if input.len() != k || n == 0 {
+        return Err(format!(
+            "matmul shape mismatch for {} (k={}, n={}, input={})",
+            weight.name,
+            k,
+            n,
+            input.len()
+        ));
+    }
+    let mut quant = fetch_range(gguf_url, weight.absolute_offset, weight.nbytes).await?;
+    if quant.len() % 4 != 0 {
+        let padded = (quant.len() + 3) / 4 * 4;
+        quant.resize(padded, 0);
+    }
+    let mut out = gpu_matmul_q8_0(&quant, input, k, n, gpu).await?;
+    let bias_vals = fetch_f32_tensor(gguf_url, bias).await?;
+    if bias_vals.len() == out.len() {
+        for (o, b) in out.iter_mut().zip(bias_vals.iter()) {
+            *o += *b;
+        }
+    }
+    Ok(out)
+}
+
+fn rms_norm(input: &[f32], weight: &[f32], eps: f32) -> Result<Vec<f32>, String> {
+    if input.len() != weight.len() {
+        return Err("rms_norm shape mismatch".to_string());
+    }
+    let mut sum_sq = 0.0f32;
+    for v in input {
+        sum_sq += v * v;
+    }
+    let mean = sum_sq / input.len().max(1) as f32;
+    let inv = (mean + eps).sqrt().recip();
+    let mut out = Vec::with_capacity(input.len());
+    for (v, w) in input.iter().zip(weight.iter()) {
+        out.push(v * inv * w);
+    }
+    Ok(out)
+}
+
+fn l2_norm(values: &[f32]) -> f32 {
+    let mut sum = 0.0f32;
+    for v in values {
+        sum += v * v;
+    }
+    sum.sqrt()
 }
 
 fn dequant_q8_0(data: &[u8], values: usize) -> Result<Vec<f32>, String> {

@@ -107,6 +107,7 @@ Notes:
  - `gguf_serve` now responds to CORS preflight + exposes `Content-Range` for browser range fetches.
  - Added a **Q8_0 probe** that pulls a real GPT-OSS tensor slice and runs a WebGPU matmul in-browser.
  - `/gptoss` now shows a live **load progress bar** driven by real byte counts.
+ - Added a **block 0 attention probe** (token embed → RMSNorm → Q/K/V → attn output) using real GPT-OSS weights.
 
 ---
 
