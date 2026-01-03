@@ -857,16 +857,24 @@ async fn stream_full_weights(
         if loaded >= next_progress || loaded >= total_bytes {
             let now = now_ms();
             let elapsed_ms = now.saturating_sub(start_ms).max(1);
-            let rate = format_rate(loaded as f64 / (elapsed_ms as f64 / 1000.0));
+            let rate_value = loaded as f64 / (elapsed_ms as f64 / 1000.0);
+            let rate = format_rate(rate_value);
+            let eta = if rate_value > 0.0 {
+                let remaining = total_bytes.saturating_sub(loaded) as f64;
+                format!("{:.1}s", remaining / rate_value)
+            } else {
+                "--".to_string()
+            };
             emit_load_stage(
                 state,
                 "weights_fetch",
                 StageStatus::Progress,
                 Some(format!(
-                    "chunk={} offset={} rate={}",
+                    "chunk={} offset={} rate={} eta={}",
                     chunk_idx,
                     format_bytes(offset),
-                    rate
+                    rate,
+                    eta
                 )),
                 Some(loaded),
                 Some(total_bytes),
