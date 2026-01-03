@@ -897,10 +897,32 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 .map(|state| state.view == AppView::GptOssPage && !state.gptoss.load_active)
                 .unwrap_or(false);
             if allow_drop {
+                if let Ok(mut state) = state_clone.try_borrow_mut() {
+                    state.gptoss.drop_active = true;
+                }
                 event.prevent_default();
             }
         });
         canvas.add_event_listener_with_callback("dragover", closure.as_ref().unchecked_ref())?;
+        closure.forget();
+    }
+
+    {
+        let state_clone = state.clone();
+        let canvas = platform.borrow().canvas().clone();
+        let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::DragEvent| {
+            let allow_drop = state_clone
+                .try_borrow()
+                .map(|state| state.view == AppView::GptOssPage && !state.gptoss.load_active)
+                .unwrap_or(false);
+            if allow_drop {
+                if let Ok(mut state) = state_clone.try_borrow_mut() {
+                    state.gptoss.drop_active = false;
+                }
+                event.prevent_default();
+            }
+        });
+        canvas.add_event_listener_with_callback("dragleave", closure.as_ref().unchecked_ref())?;
         closure.forget();
     }
 
@@ -927,6 +949,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.view != AppView::GptOssPage || state.gptoss.load_active {
                     return;
                 }
+                state.gptoss.drop_active = false;
                 let input_label = gguf_file_input_label(&file);
                 let file_label = gguf_file_label(&file);
                 state.gptoss.gguf_file = Some(file);

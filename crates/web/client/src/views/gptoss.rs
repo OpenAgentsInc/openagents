@@ -81,6 +81,28 @@ pub(crate) fn build_gptoss_page(
     let scene = cx.scene;
     let text_system = cx.text;
 
+    if state.gptoss.drop_active && !state.gptoss.load_active {
+        scene.draw_quad(
+            Quad::new(card_bounds)
+                .with_background(Hsla::new(0.0, 0.0, 0.0, 0.35))
+                .with_border(accent_cyan().with_alpha(0.8), 2.0),
+        );
+        let drop_label = "DROP GGUF TO LOAD";
+        let drop_size = 14.0;
+        let drop_width = measure_mono(text_system, drop_label, drop_size);
+        let drop_x = card_bounds.x() + (card_bounds.width() - drop_width) * 0.5;
+        let drop_y = card_bounds.y() + 24.0;
+        draw_mono_text(
+            scene,
+            text_system,
+            drop_label,
+            drop_x,
+            drop_y,
+            drop_size,
+            accent_cyan(),
+        );
+    }
+
     let inner_padding = 26.0;
     let scrollbar_width = 10.0;
     let inner_x = content_x + inner_padding;
