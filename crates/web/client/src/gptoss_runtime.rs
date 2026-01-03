@@ -35,6 +35,20 @@ const MXFP4_VALUES: [f32; 16] = [
     -6.0,
 ];
 
+#[derive(Clone, Debug)]
+struct GptOssConfig {
+    block_count: u32,
+    embedding_length: u32,
+    head_count: u32,
+    head_count_kv: u32,
+    rope_dimension_count: u32,
+    rope_theta: f32,
+    rms_epsilon: f32,
+    sliding_window: u32,
+    expert_count: u32,
+    experts_per_token: u32,
+}
+
 pub(crate) struct GptOssRuntime {
     pub(crate) gguf_url: String,
     pub(crate) gpu: GpuContext,
@@ -144,6 +158,9 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     );
 
     emit_tensor_scan(&state, index.as_ref(), 18);
+    emit_metadata_keys(&state, index.as_ref(), 18);
+    let config = parse_config(index.as_ref())?;
+    emit_config(&state, &config);
 
     let tokenizer = build_tokenizer(&state, index.as_ref())?;
     let _prompt_tokens = encode_prompt(&state, &tokenizer)?;
@@ -334,6 +351,21 @@ fn emit_tensor_scan(state: &Rc<RefCell<AppState>>, index: &GgufIndex, limit: usi
     }
 }
 
+fn emit_metadata_keys(state: &Rc<RefCell<AppState>>, index: &GgufIndex, limit: usize) {
+    let mut keys = index.metadata.values.keys().cloned().collect::<Vec<_>>();
+    keys.sort();
+    for (idx, key) in keys.iter().take(limit).enumerate() {
+        emit_load_stage(
+            state,
+            "gguf_meta",
+            StageStatus::Progress,
+            Some(format!("{}: {}", idx + 1, key)),
+            None,
+            None,
+        );
+    }
+}
+
 fn emit_load_stage(
     state: &Rc<RefCell<AppState>>,
     stage: &str,
@@ -409,6 +441,83 @@ fn emit_gpu_limits(state: &Rc<RefCell<AppState>>, gpu: &GpuContext) {
         None,
         None,
     );
+}
+
+fn parse_config(index: &GgufIndex) -> Result<GptOssConfig, String> {
+    let block_count = read_meta_u32(index, "llama.block_count")?;
+    let embedding_length = read_meta_u32(index, "llama.embedding_length")?;
+    let head_count = read_meta_u32(index, "llama.attention.head_count")?;
+    let head_count_kv = read_meta_u32(index, "llama.attention.head_count_kv")?;
+    let rope_dimension_count = read_meta_u32(index, "llama.rope.dimension_count")?;
+    let rope_theta = read_meta_f32(index, "llama.rope.freq_base")?;
+    let rms_epsilon = read_meta_f32(index, "llama.attention.layer_norm_rms_epsilon")?;
+    let sliding_window = read_meta_u32(index, "llama.sliding_window")?;
+    let expert_count = read_meta_u32(index, "llama.expert_count")?;
+    let experts_per_token = read_meta_u32(index, "llama.expert_used_count")?;
+
+    Ok(GptOssConfig {
+        block_count,
+        embedding_length,
+        head_count,
+        head_count_kv,
+        rope_dimension_count,
+        rope_theta,
+        rms_epsilon,
+        sliding_window,
+        expert_count,
+        experts_per_token,
+    })
+}
+
+fn emit_config(state: &Rc<RefCell<AppState>>, config: &GptOssConfig) {
+    emit_load_stage(
+        state,
+        "model_config",
+        StageStatus::Completed,
+        Some(format!(
+            "blocks={} embd={} heads={} kv_heads={} rope_dim={} rope_theta={} rms_eps={} window={} experts={} topk={}",
+            config.block_count,
+            config.embedding_length,
+            config.head_count,
+            config.head_count_kv,
+            config.rope_dimension_count,
+            config.rope_theta,
+            config.rms_epsilon,
+            config.sliding_window,
+            config.expert_count,
+            config.experts_per_token,
+        )),
+        None,
+        None,
+    );
+}
+
+fn read_meta_u32(index: &GgufIndex, key: &str) -> Result<u32, String> {
+    let Some(value) = index.metadata.values.get(key) else {
+        return Err(format!("missing gguf metadata key: {key}"));
+    };
+    match value {
+        crate::gguf_web::GgufScalar::U32(v) => Ok(*v),
+        crate::gguf_web::GgufScalar::I32(v) => Ok((*v).max(0) as u32),
+        crate::gguf_web::GgufScalar::U64(v) => Ok((*v).min(u64::from(u32::MAX)) as u32),
+        crate::gguf_web::GgufScalar::I64(v) => Ok((*v).max(0).min(i64::from(u32::MAX)) as u32),
+        _ => Err(format!("gguf metadata {key} has non-integer type")),
+    }
+}
+
+fn read_meta_f32(index: &GgufIndex, key: &str) -> Result<f32, String> {
+    let Some(value) = index.metadata.values.get(key) else {
+        return Err(format!("missing gguf metadata key: {key}"));
+    };
+    match value {
+        crate::gguf_web::GgufScalar::F32(v) => Ok(*v),
+        crate::gguf_web::GgufScalar::F64(v) => Ok(*v as f32),
+        crate::gguf_web::GgufScalar::U32(v) => Ok(*v as f32),
+        crate::gguf_web::GgufScalar::I32(v) => Ok(*v as f32),
+        crate::gguf_web::GgufScalar::U64(v) => Ok(*v as f32),
+        crate::gguf_web::GgufScalar::I64(v) => Ok(*v as f32),
+        _ => Err(format!("gguf metadata {key} has non-float type")),
+    }
 }
 
 fn build_tokenizer(
