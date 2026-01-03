@@ -6,8 +6,8 @@ use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame, Heatmap};
 use wgpui::PaintContext;
 
 use crate::gptoss_runtime::{
-    default_gguf_url, default_user_prompt, local_gguf_path, local_gguf_dev_url, local_gguf_url,
-    local_gguf_serve_cmd, read_query_param,
+    default_gguf_url, default_max_kv_tokens, default_max_new_tokens, default_user_prompt,
+    local_gguf_path, local_gguf_dev_url, local_gguf_url, local_gguf_serve_cmd, read_query_param,
 };
 use crate::state::{AppState, GptOssStage, GptOssStageStatus, GptOssVizState};
 
@@ -1866,12 +1866,22 @@ fn ensure_gptoss_inputs(gptoss: &mut GptOssVizState) {
 
     if let Some(value) = read_query_param("layers").filter(|value| !value.is_empty()) {
         gptoss.layers_input.set_value(value);
+    } else if gptoss.layers_input.get_value().trim().is_empty() {
+        gptoss.layers_input.set_value("all");
     }
     if let Some(value) = read_query_param("max_kv").filter(|value| !value.is_empty()) {
         gptoss.max_kv_input.set_value(value);
+    } else if gptoss.max_kv_input.get_value().trim().is_empty() {
+        gptoss
+            .max_kv_input
+            .set_value(default_max_kv_tokens().to_string());
     }
     if let Some(value) = read_query_param("max_new").filter(|value| !value.is_empty()) {
         gptoss.max_new_input.set_value(value);
+    } else if gptoss.max_new_input.get_value().trim().is_empty() {
+        gptoss
+            .max_new_input
+            .set_value(default_max_new_tokens().to_string());
     }
 
     gptoss.inputs_initialized = true;
