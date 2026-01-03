@@ -197,70 +197,133 @@ pub(crate) fn build_gptoss_page(
     y += 40.0;
 
     let controls_gap = 12.0;
-    let controls_width = (inner_width - controls_gap * 2.0) / 3.0;
     let control_label_size = 9.0;
     let control_input_height = 26.0;
-    let control_input_y = y + 12.0;
-    let control_x0 = inner_x;
-    let control_x1 = inner_x + controls_width + controls_gap;
-    let control_x2 = inner_x + (controls_width + controls_gap) * 2.0;
+    let compact_controls = inner_width < 360.0;
 
-    draw_mono_text(
-        scene,
-        text_system,
-        "LAYERS",
-        control_x0,
-        y,
-        control_label_size,
-        theme::text::MUTED,
-    );
-    draw_mono_text(
-        scene,
-        text_system,
-        "MAX KV",
-        control_x1,
-        y,
-        control_label_size,
-        theme::text::MUTED,
-    );
-    draw_mono_text(
-        scene,
-        text_system,
-        "MAX NEW",
-        control_x2,
-        y,
-        control_label_size,
-        theme::text::MUTED,
-    );
+    if compact_controls {
+        let control_width = inner_width;
 
-    let layers_bounds = Bounds::new(
-        control_x0,
-        control_input_y,
-        controls_width,
-        control_input_height,
-    );
-    let max_kv_bounds = Bounds::new(
-        control_x1,
-        control_input_y,
-        controls_width,
-        control_input_height,
-    );
-    let max_new_bounds = Bounds::new(
-        control_x2,
-        control_input_y,
-        controls_width,
-        control_input_height,
-    );
-    state.gptoss.layers_input_bounds = layers_bounds;
-    state.gptoss.max_kv_input_bounds = max_kv_bounds;
-    state.gptoss.max_new_input_bounds = max_new_bounds;
-    {
-        let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
-        state.gptoss.layers_input.paint(layers_bounds, &mut input_cx);
-        state.gptoss.max_kv_input.paint(max_kv_bounds, &mut input_cx);
-        state.gptoss.max_new_input.paint(max_new_bounds, &mut input_cx);
+        draw_mono_text(
+            scene,
+            text_system,
+            "LAYERS",
+            inner_x,
+            y,
+            control_label_size,
+            theme::text::MUTED,
+        );
+        y += 12.0;
+        let layers_bounds =
+            Bounds::new(inner_x, y, control_width, control_input_height);
+        state.gptoss.layers_input_bounds = layers_bounds;
+        {
+            let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+            state.gptoss.layers_input.paint(layers_bounds, &mut input_cx);
+        }
+        y += control_input_height + controls_gap;
+
+        draw_mono_text(
+            scene,
+            text_system,
+            "MAX KV",
+            inner_x,
+            y,
+            control_label_size,
+            theme::text::MUTED,
+        );
+        y += 12.0;
+        let max_kv_bounds =
+            Bounds::new(inner_x, y, control_width, control_input_height);
+        state.gptoss.max_kv_input_bounds = max_kv_bounds;
+        {
+            let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+            state.gptoss.max_kv_input.paint(max_kv_bounds, &mut input_cx);
+        }
+        y += control_input_height + controls_gap;
+
+        draw_mono_text(
+            scene,
+            text_system,
+            "MAX NEW",
+            inner_x,
+            y,
+            control_label_size,
+            theme::text::MUTED,
+        );
+        y += 12.0;
+        let max_new_bounds =
+            Bounds::new(inner_x, y, control_width, control_input_height);
+        state.gptoss.max_new_input_bounds = max_new_bounds;
+        {
+            let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+            state.gptoss.max_new_input.paint(max_new_bounds, &mut input_cx);
+        }
+        y += control_input_height + 16.0;
+    } else {
+        let controls_width = (inner_width - controls_gap * 2.0) / 3.0;
+        let control_input_y = y + 12.0;
+        let control_x0 = inner_x;
+        let control_x1 = inner_x + controls_width + controls_gap;
+        let control_x2 = inner_x + (controls_width + controls_gap) * 2.0;
+
+        draw_mono_text(
+            scene,
+            text_system,
+            "LAYERS",
+            control_x0,
+            y,
+            control_label_size,
+            theme::text::MUTED,
+        );
+        draw_mono_text(
+            scene,
+            text_system,
+            "MAX KV",
+            control_x1,
+            y,
+            control_label_size,
+            theme::text::MUTED,
+        );
+        draw_mono_text(
+            scene,
+            text_system,
+            "MAX NEW",
+            control_x2,
+            y,
+            control_label_size,
+            theme::text::MUTED,
+        );
+
+        let layers_bounds = Bounds::new(
+            control_x0,
+            control_input_y,
+            controls_width,
+            control_input_height,
+        );
+        let max_kv_bounds = Bounds::new(
+            control_x1,
+            control_input_y,
+            controls_width,
+            control_input_height,
+        );
+        let max_new_bounds = Bounds::new(
+            control_x2,
+            control_input_y,
+            controls_width,
+            control_input_height,
+        );
+        state.gptoss.layers_input_bounds = layers_bounds;
+        state.gptoss.max_kv_input_bounds = max_kv_bounds;
+        state.gptoss.max_new_input_bounds = max_new_bounds;
+        {
+            let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+            state.gptoss.layers_input.paint(layers_bounds, &mut input_cx);
+            state.gptoss.max_kv_input.paint(max_kv_bounds, &mut input_cx);
+            state.gptoss.max_new_input.paint(max_new_bounds, &mut input_cx);
+        }
+        y = control_input_y + control_input_height + 16.0;
     }
-    y = control_input_y + control_input_height + 16.0;
 
     let button_label = if state.gptoss.load_active {
         "LOADING..."
