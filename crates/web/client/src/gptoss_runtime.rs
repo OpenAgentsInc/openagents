@@ -4495,7 +4495,7 @@ async fn gpu_matmul_q8_0_chunked(
     }
     ensure_storage_limit("q8_0 input", x_bytes, max_bytes)?;
     ensure_storage_limit("q8_0 output", y_bytes, max_bytes)?;
-    let max_rows = (max_bytes / row_bytes).max(1);
+    let max_rows = (max_bytes.saturating_sub(3) / row_bytes).max(1);
     let chunk_rows = max_rows;
 
     let device = &gpu.device;
@@ -4612,6 +4612,7 @@ async fn gpu_matmul_q8_0_chunked(
             let padded = (quant.len() + 3) / 4 * 4;
             quant.resize(padded, 0);
         }
+        ensure_storage_limit("q8_0 weights", quant.len(), max_bytes)?;
 
         let quant_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("q8_0_chunked_quant"),

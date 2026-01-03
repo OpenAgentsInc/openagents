@@ -209,6 +209,7 @@ Notes:
 - Layer attention/MLP stages now include total per-layer timing summaries.
 - KV cache HUD now shows bytes alongside token counts.
 - I/O panel now renders a GPU memory gauge based on GPU limits telemetry.
+- Q8_0 chunked matmul now accounts for padding when enforcing storage limits.
 
 ---
 
