@@ -104,6 +104,7 @@ Notes:
  - Wired `/gptoss` start button handling + runtime entrypoint for streaming load telemetry.
  - `/gptoss` now streams **real GGUF bytes** in chunks on click (with progress + tensor scan events).
  - Added a local **GGUF range server** (`gguf_serve`) to stream the on-disk model with HTTP Range.
+ - `gguf_serve` now responds to CORS preflight + exposes `Content-Range` for browser range fetches.
 
 ---
 

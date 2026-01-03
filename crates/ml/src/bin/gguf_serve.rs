@@ -102,6 +102,11 @@ fn handle_connection(
         }
     }
 
+    if method == "OPTIONS" {
+        respond_preflight(&mut stream)?;
+        return Ok(());
+    }
+
     if !matches!(method, "GET" | "HEAD") {
         respond_status(&mut stream, 405, "Method Not Allowed")?;
         return Ok(());
@@ -165,7 +170,7 @@ fn write_headers(
 ) -> Result<(), Box<dyn std::error::Error>> {
     write!(
         stream,
-        "HTTP/1.1 206 Partial Content\r\nContent-Type: application/octet-stream\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {}-{}/{}\r\nContent-Length: {}\r\n\r\n",
+        "HTTP/1.1 206 Partial Content\r\nContent-Type: application/octet-stream\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {}-{}/{}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Expose-Headers: Content-Range, Accept-Ranges, Content-Length\r\n\r\n",
         start, end, total, len
     )?;
     Ok(())
@@ -178,7 +183,15 @@ fn respond_status(
 ) -> Result<(), Box<dyn std::error::Error>> {
     write!(
         stream,
-        "HTTP/1.1 {code} {message}\r\nContent-Length: 0\r\n\r\n"
+        "HTTP/1.1 {code} {message}\r\nContent-Length: 0\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: Range, Content-Type\r\nAccess-Control-Allow-Methods: GET, HEAD, OPTIONS\r\n\r\n"
+    )?;
+    Ok(())
+}
+
+fn respond_preflight(stream: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+    write!(
+        stream,
+        "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: Range, Content-Type\r\nAccess-Control-Allow-Methods: GET, HEAD, OPTIONS\r\nAccess-Control-Max-Age: 600\r\n\r\n"
     )?;
     Ok(())
 }
