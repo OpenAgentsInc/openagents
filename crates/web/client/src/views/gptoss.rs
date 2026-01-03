@@ -1213,6 +1213,22 @@ fn draw_stats_panel(
         10.0,
         theme::text::MUTED,
     );
+    if let Some(cache) = cache {
+        if cache.max_len > 0 {
+            let ratio = (cache.seq_len as f32 / cache.max_len as f32).clamp(0.0, 1.0);
+            let bar_y = y + 12.0;
+            let bar_h = 4.0;
+            scene.draw_quad(
+                Quad::new(Bounds::new(inner.x(), bar_y, inner.width(), bar_h))
+                    .with_background(panel_border().with_alpha(0.4)),
+            );
+            scene.draw_quad(
+                Quad::new(Bounds::new(inner.x(), bar_y, inner.width() * ratio, bar_h))
+                    .with_background(accent_cyan().with_alpha(0.7)),
+            );
+            y += 8.0;
+        }
+    }
 
     let layers_text = gptoss
         .active_layers
