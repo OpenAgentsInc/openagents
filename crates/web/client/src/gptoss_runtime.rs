@@ -1620,7 +1620,15 @@ fn normalize_gguf_url(raw: &str) -> Result<String, String> {
     if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
         return Ok(trimmed.to_string());
     }
-    if trimmed.starts_with("file://") || trimmed.starts_with('/') || trimmed.starts_with('~') {
+    if trimmed.starts_with('/') {
+        let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+        let origin = window
+            .location()
+            .origin()
+            .map_err(|_| "failed to read window origin".to_string())?;
+        return Ok(format!("{origin}{trimmed}"));
+    }
+    if trimmed.starts_with("file://") || trimmed.starts_with('~') {
         return Err(format!(
             "Local file paths are not supported in the browser.\nRun: {LOCAL_GGUF_SERVE_CMD}\nThen use: {LOCAL_GGUF_URL}"
         ));
