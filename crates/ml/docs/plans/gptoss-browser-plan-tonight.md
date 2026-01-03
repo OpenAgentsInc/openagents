@@ -108,6 +108,7 @@ Notes:
 - Parsed **model config** from GGUF metadata (blocks, heads, rope, experts) and emit in telemetry.
 - Added a **chunked Q8_0 logits probe** for `output.weight` with top-k token telemetry.
 - Added **RoPE application** in the block-0 probe (config-driven).
+- Added **MoE router top-k** (using `ffn_gate_inp` weights + bias) with telemetry of expert picks.
 - Added a `gptoss_runtime` scaffold to start centralizing browser runtime logic.
  - Wired `/gptoss` start button handling + runtime entrypoint for streaming load telemetry.
  - `/gptoss` now streams **real GGUF bytes** in chunks on click (with progress + tensor scan events).

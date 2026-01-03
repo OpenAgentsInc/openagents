@@ -42,6 +42,7 @@ const MXFP4_VALUES: [f32; 16] = [
 struct GptOssConfig {
     block_count: u32,
     embedding_length: u32,
+    feed_forward_length: u32,
     head_count: u32,
     head_count_kv: u32,
     rope_dimension_count: u32,
@@ -452,6 +453,7 @@ fn emit_gpu_limits(state: &Rc<RefCell<AppState>>, gpu: &GpuContext) {
 fn parse_config(index: &GgufIndex) -> Result<GptOssConfig, String> {
     let block_count = read_meta_u32(index, "llama.block_count")?;
     let embedding_length = read_meta_u32(index, "llama.embedding_length")?;
+    let feed_forward_length = read_meta_u32(index, "llama.feed_forward_length")?;
     let head_count = read_meta_u32(index, "llama.attention.head_count")?;
     let head_count_kv = read_meta_u32(index, "llama.attention.head_count_kv")?;
     let rope_dimension_count = read_meta_u32(index, "llama.rope.dimension_count")?;
@@ -464,6 +466,7 @@ fn parse_config(index: &GgufIndex) -> Result<GptOssConfig, String> {
     Ok(GptOssConfig {
         block_count,
         embedding_length,
+        feed_forward_length,
         head_count,
         head_count_kv,
         rope_dimension_count,
@@ -481,9 +484,10 @@ fn emit_config(state: &Rc<RefCell<AppState>>, config: &GptOssConfig) {
         "model_config",
         StageStatus::Completed,
         Some(format!(
-            "blocks={} embd={} heads={} kv_heads={} rope_dim={} rope_theta={} rms_eps={} window={} experts={} topk={}",
+            "blocks={} embd={} ffn={} heads={} kv_heads={} rope_dim={} rope_theta={} rms_eps={} window={} experts={} topk={}",
             config.block_count,
             config.embedding_length,
+            config.feed_forward_length,
             config.head_count,
             config.head_count_kv,
             config.rope_dimension_count,
@@ -764,6 +768,49 @@ fn top_k_from_logits(
     let best_text = tokenizer.token_text(best_token_id);
 
     Ok((candidates, entropy, best_token_id, best_text))
+}
+
+fn top_k_softmax(values: &[f32], k: usize) -> Result<(Vec<usize>, Vec<f32>), String> {
+    if values.is_empty() {
+        return Err("empty values".to_string());
+    }
+    let k = k.max(1).min(values.len());
+    let mut top: Vec<(usize, f32)> = Vec::with_capacity(k);
+    for (idx, &value) in values.iter().enumerate() {
+        if top.len() < k {
+            top.push((idx, value));
+            top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        } else if let Some(last) = top.last() {
+            if value > last.1 {
+                top.pop();
+                top.push((idx, value));
+                top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            }
+        }
+    }
+
+    let mut max_val = f32::NEG_INFINITY;
+    for &(_, value) in &top {
+        if value > max_val {
+            max_val = value;
+        }
+    }
+    let mut sum = 0.0f32;
+    for &(_, value) in &top {
+        sum += (value - max_val).exp();
+    }
+    if sum <= 0.0 {
+        return Err("softmax sum is zero".to_string());
+    }
+
+    let mut indices = Vec::with_capacity(top.len());
+    let mut weights = Vec::with_capacity(top.len());
+    for &(idx, value) in &top {
+        indices.push(idx);
+        weights.push((value - max_val).exp() / sum);
+    }
+
+    Ok((indices, weights))
 }
 
 fn tensor_start_cursor(index: &GgufIndex) -> Vec<(u64, String)> {
@@ -1063,6 +1110,25 @@ async fn run_block0_attention_probe(
     let post_attn_norm_w = fetch_f32_tensor(gguf_url, post_attn_norm).await?;
     hidden = rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?;
 
+    let gate_inp_w = find_tensor(index, "blk.0.ffn_gate_inp.weight")?;
+    let gate_inp_b = find_tensor(index, "blk.0.ffn_gate_inp.bias")?;
+    let gate_w = fetch_f32_tensor(gguf_url, gate_inp_w).await?;
+    let gate_b = fetch_f32_tensor(gguf_url, gate_inp_b).await?;
+    let gate_scores = linear_f32_with_bias(&gate_w, &gate_b, &hidden, gate_inp_w)?;
+    let (expert_indices, expert_weights) =
+        top_k_softmax(&gate_scores, config.experts_per_token as usize)?;
+    emit_inference_stage(
+        state,
+        "moe_router",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!(
+            "top={:?} w={:?}",
+            expert_indices, expert_weights
+        )),
+    );
+
     let output_norm_w = fetch_f32_tensor(gguf_url, output_norm_tensor).await?;
     let final_hidden = rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?;
 
@@ -1358,6 +1424,41 @@ fn matmul_cpu(weights: &[f32], x: &[f32], k: usize, n: usize) -> Vec<f32> {
         y[col] = acc;
     }
     y
+}
+
+fn linear_f32_with_bias(
+    weights: &[f32],
+    bias: &[f32],
+    x: &[f32],
+    tensor: &GgufTensor,
+) -> Result<Vec<f32>, String> {
+    let dims = &tensor.dims;
+    let n = dims.get(0).copied().unwrap_or(0) as usize;
+    let k = dims.get(1).copied().unwrap_or(0) as usize;
+    if x.len() != k || n == 0 {
+        return Err(format!(
+            "linear shape mismatch for {} (k={}, n={}, input={})",
+            tensor.name,
+            k,
+            n,
+            x.len()
+        ));
+    }
+    if weights.len() != k * n {
+        return Err(format!(
+            "linear weight size mismatch for {} (have={}, want={})",
+            tensor.name,
+            weights.len(),
+            k * n
+        ));
+    }
+    let mut y = matmul_cpu(weights, x, k, n);
+    if bias.len() == n {
+        for (out, b) in y.iter_mut().zip(bias.iter()) {
+            *out += *b;
+        }
+    }
+    Ok(y)
 }
 
 fn diff_stats(y_cpu: &[f32], y_gpu: &[f32]) -> (f32, f32) {
