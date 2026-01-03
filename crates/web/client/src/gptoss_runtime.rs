@@ -740,6 +740,7 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.attention_head = 0;
     state.attention_selected_layer = 0;
     state.attention_selected_head = 0;
+    state.layer_activations.clear();
     state.max_layers = 1;
     state.max_heads = 1;
     state.layer_slider_bounds = wgpui::Bounds::ZERO;

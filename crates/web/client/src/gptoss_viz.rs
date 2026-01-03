@@ -8,7 +8,7 @@ use wasm_bindgen_futures::JsFuture;
 
 use crate::state::{
     AppState, CacheInfo, GptOssLogEntry, GptOssStage, GptOssStageStatus, GptOssVizState,
-    MemoryUsage, MlTokenCandidate, TensorInfo,
+    LayerActivity, MemoryUsage, MlTokenCandidate, TensorInfo,
 };
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -252,7 +252,30 @@ impl GptOssVizState {
                         self.attention_layer = layer;
                         self.attention_head = head;
                     }
-                    GptOssInferenceTelemetry::LayerActivation { .. } => {}
+                    GptOssInferenceTelemetry::LayerActivation {
+                        layer,
+                        attention_norm,
+                        mlp_norm,
+                        output_norm,
+                    } => {
+                        if self.layer_activations.len() <= layer {
+                            let target_len = layer + 1;
+                            let start = self.layer_activations.len();
+                            for idx in start..target_len {
+                                self.layer_activations.push(LayerActivity {
+                                    layer: idx,
+                                    attention_norm: 0.0,
+                                    mlp_norm: 0.0,
+                                    output_norm: 0.0,
+                                });
+                            }
+                        }
+                        if let Some(entry) = self.layer_activations.get_mut(layer) {
+                            entry.attention_norm = attention_norm;
+                            entry.mlp_norm = mlp_norm;
+                            entry.output_norm = output_norm;
+                        }
+                    }
                 }
 
                 if let Some(ts_ms) = ts_ms {

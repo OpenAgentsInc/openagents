@@ -292,6 +292,11 @@ pub(crate) fn build_gptoss_page(
         draw_stats_panel(scene, text_system, &state.gptoss, stats_bounds);
         y += topk_height + 16.0;
 
+        let layer_height = 180.0;
+        let layer_bounds = Bounds::new(inner_x, y, inner_width, layer_height);
+        draw_layer_panel(scene, text_system, &state.gptoss, layer_bounds);
+        y += layer_height + 16.0;
+
         let attention_height = 220.0;
         let attention_bounds = Bounds::new(inner_x, y, inner_width, attention_height);
         draw_attention_panel(scene, text_system, &mut state.gptoss, attention_bounds, scale_factor);
@@ -754,6 +759,111 @@ fn draw_attention_panel(
         heatmap.paint(heatmap_bounds, &mut cx);
     } else {
         draw_empty_state(scene, text_system, heatmap_bounds, "No attention telemetry");
+    }
+}
+
+fn draw_layer_panel(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    gptoss: &GptOssVizState,
+    bounds: Bounds,
+) {
+    let inner = panel(scene, text_system, bounds, "LAYER ACTIVITY");
+    if gptoss.layer_activations.is_empty() {
+        draw_empty_state(scene, text_system, inner, "No layer telemetry");
+        return;
+    }
+
+    let mut max_attn = 0.0f32;
+    let mut max_mlp = 0.0f32;
+    let mut max_out = 0.0f32;
+    for act in &gptoss.layer_activations {
+        max_attn = max_attn.max(act.attention_norm);
+        max_mlp = max_mlp.max(act.mlp_norm);
+        max_out = max_out.max(act.output_norm);
+    }
+    max_attn = max_attn.max(1e-4);
+    max_mlp = max_mlp.max(1e-4);
+    max_out = max_out.max(1e-4);
+
+    let row_height = 12.0;
+    let rows_per_col = ((inner.height() - row_height).max(row_height) / row_height) as usize;
+    let total = gptoss.layer_activations.len();
+    let cols = if total > rows_per_col { 2 } else { 1 };
+    let col_width = inner.width() / cols as f32;
+    let label_w = 26.0;
+    let bar_gap = 4.0;
+    let bars_total = (col_width - label_w - 6.0).max(0.0);
+    let bar_w = (bars_total - bar_gap * 2.0).max(0.0) / 3.0;
+
+    let legend_y = inner.y();
+    draw_mono_text(
+        scene,
+        text_system,
+        "A",
+        inner.x() + label_w,
+        legend_y,
+        9.0,
+        accent_cyan(),
+    );
+    draw_mono_text(
+        scene,
+        text_system,
+        "M",
+        inner.x() + label_w + bar_w + bar_gap,
+        legend_y,
+        9.0,
+        accent_orange(),
+    );
+    draw_mono_text(
+        scene,
+        text_system,
+        "O",
+        inner.x() + label_w + (bar_w + bar_gap) * 2.0,
+        legend_y,
+        9.0,
+        accent_green(),
+    );
+
+    for (idx, act) in gptoss
+        .layer_activations
+        .iter()
+        .take(rows_per_col * cols)
+        .enumerate()
+    {
+        let col = idx / rows_per_col;
+        let row = idx % rows_per_col;
+        let x = inner.x() + col as f32 * col_width;
+        let y = inner.y() + row_height + row as f32 * row_height;
+        let label = format!("L{:02}", act.layer);
+        draw_mono_text(scene, text_system, &label, x, y, 9.0, theme::text::MUTED);
+
+        let bar_x = x + label_w;
+        let attn_w = (act.attention_norm / max_attn).clamp(0.0, 1.0) * bar_w;
+        let mlp_w = (act.mlp_norm / max_mlp).clamp(0.0, 1.0) * bar_w;
+        let out_w = (act.output_norm / max_out).clamp(0.0, 1.0) * bar_w;
+        scene.draw_quad(
+            Quad::new(Bounds::new(bar_x, y + 2.0, attn_w, 6.0))
+                .with_background(accent_cyan().with_alpha(0.7)),
+        );
+        scene.draw_quad(
+            Quad::new(Bounds::new(
+                bar_x + bar_w + bar_gap,
+                y + 2.0,
+                mlp_w,
+                6.0,
+            ))
+            .with_background(accent_orange().with_alpha(0.7)),
+        );
+        scene.draw_quad(
+            Quad::new(Bounds::new(
+                bar_x + (bar_w + bar_gap) * 2.0,
+                y + 2.0,
+                out_w,
+                6.0,
+            ))
+            .with_background(accent_green().with_alpha(0.7)),
+        );
     }
 }
 
