@@ -241,6 +241,13 @@ pub(crate) struct MemoryUsage {
     pub(crate) activations: usize,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct TensorInfo {
+    pub(crate) name: String,
+    pub(crate) bytes: usize,
+    pub(crate) kind: String,
+}
+
 #[derive(Clone)]
 pub(crate) struct GpuContext {
     pub(crate) device: wgpu::Device,
@@ -307,6 +314,8 @@ pub(crate) struct GptOssVizState {
     pub(crate) entropy: Option<f32>,
     pub(crate) memory_usage: Option<MemoryUsage>,
     pub(crate) cache_status: Vec<CacheInfo>,
+    pub(crate) resident_tensors: Vec<TensorInfo>,
+    pub(crate) last_token_ts_ms: Option<u64>,
     pub(crate) start_ts_ms: Option<u64>,
 }
 
@@ -332,6 +341,8 @@ impl Default for GptOssVizState {
             entropy: None,
             memory_usage: None,
             cache_status: Vec::new(),
+            resident_tensors: Vec::new(),
+            last_token_ts_ms: None,
             start_ts_ms: None,
         }
     }

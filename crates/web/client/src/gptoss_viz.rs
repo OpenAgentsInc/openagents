@@ -8,7 +8,7 @@ use wasm_bindgen_futures::JsFuture;
 
 use crate::state::{
     AppState, CacheInfo, GptOssLogEntry, GptOssStage, GptOssStageStatus, GptOssVizState,
-    MemoryUsage, MlTokenCandidate,
+    MemoryUsage, MlTokenCandidate, TensorInfo,
 };
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -77,6 +77,11 @@ pub(crate) enum GptOssInferenceTelemetry {
         gpu_allocated: usize,
         cache_total: usize,
         activations: usize,
+    },
+    TensorResident {
+        name: String,
+        bytes: usize,
+        kind: String,
     },
 }
 
@@ -153,6 +158,7 @@ impl GptOssVizState {
                             .collect();
                         self.tokens_per_sec = Some(tokens_per_sec);
                         self.entropy = Some(entropy);
+                        self.last_token_ts_ms = ts_ms;
                     }
                     GptOssInferenceTelemetry::CacheStatus {
                         layer,
@@ -188,6 +194,13 @@ impl GptOssVizState {
                             cache_total,
                             activations,
                         });
+                    }
+                    GptOssInferenceTelemetry::TensorResident { name, bytes, kind } => {
+                        self.resident_tensors.push(TensorInfo { name, bytes, kind });
+                        if self.resident_tensors.len() > 12 {
+                            let drop_count = self.resident_tensors.len() - 12;
+                            self.resident_tensors.drain(0..drop_count);
+                        }
                     }
                     GptOssInferenceTelemetry::AttentionWeights { .. }
                     | GptOssInferenceTelemetry::LayerActivation { .. } => {}
