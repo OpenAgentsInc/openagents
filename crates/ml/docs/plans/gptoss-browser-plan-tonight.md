@@ -214,6 +214,7 @@ Notes:
 - I/O panel height increased to fit cache/limits/load scan telemetry without clipping.
 - GPU memory gauge now falls back to max_storage when max_buffer is unavailable.
 - Ran `cargo test -p ml --no-default-features --features native,wgpu` (passes; warnings for unused tokenizer/helpers).
+- Inference stats panel now shows the generation stop reason (max_new/stop_token/kv_full).
 
 ---
 

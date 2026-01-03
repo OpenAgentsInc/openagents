@@ -1374,6 +1374,24 @@ fn draw_stats_panel(
         theme::text::MUTED,
     );
 
+    let stop_reason = gptoss
+        .inference_stages
+        .iter()
+        .find(|stage| stage.name == "generation")
+        .and_then(|stage| stage.detail.as_ref())
+        .map(|detail| format!("STOP: {}", truncate_text(detail, 26)))
+        .unwrap_or_else(|| "STOP: --".to_string());
+    y += 14.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        &stop_reason,
+        inner.x(),
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
+
     let sample_text = gptoss
         .sampling_mode
         .as_ref()
