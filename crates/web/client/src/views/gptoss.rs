@@ -691,19 +691,23 @@ fn draw_stream_panel(
     );
 
     let show_cursor = gptoss.load_active || !gptoss.token_stream.is_empty();
-    let mut display_stream = truncate_text(&stream, 176);
-    if show_cursor {
-        display_stream.push_str(" |");
+    let char_w = measure_mono(text_system, "W", 10.0).max(1.0);
+    let max_chars = (inner.width() / char_w).floor().max(24.0) as usize;
+    let tail = tail_chars(&stream, max_chars.saturating_mul(3));
+    let mut lines = wrap_tokens(&tail, max_chars.saturating_sub(2), 3);
+    if lines.is_empty() {
+        lines.push(String::new());
     }
-    draw_mono_text(
-        scene,
-        text_system,
-        &display_stream,
-        inner.x(),
-        inner.y() + 16.0,
-        10.0,
-        stream_color,
-    );
+    if show_cursor {
+        if let Some(last) = lines.last_mut() {
+            last.push_str(" |");
+        }
+    }
+    let mut line_y = inner.y() + 16.0;
+    for line in lines {
+        draw_mono_text(scene, text_system, &line, inner.x(), line_y, 10.0, stream_color);
+        line_y += 12.0;
+    }
 }
 
 fn draw_topk_panel(
@@ -1388,6 +1392,15 @@ fn truncate_text(text: &str, max_len: usize) -> String {
     let mut out = text.chars().take(max_len).collect::<String>();
     out.push_str("...");
     out
+}
+
+fn tail_chars(text: &str, max_len: usize) -> String {
+    if text.chars().count() <= max_len {
+        return text.to_string();
+    }
+    let mut tail = text.chars().rev().take(max_len).collect::<Vec<_>>();
+    tail.reverse();
+    tail.into_iter().collect()
 }
 
 fn wrap_tokens(text: &str, max_len: usize, max_lines: usize) -> Vec<String> {

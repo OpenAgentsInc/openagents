@@ -175,6 +175,7 @@ Notes:
 - Added browser yield points during prefill/decode/layer loops so telemetry paints while compute runs.
 - GPT-OSS page now shows local GGUF path + exact `gguf_serve` command under the URL field.
 - Load scan list now shows recent tensor names during streaming (I/O panel switches to LOAD SCAN).
+- Token stream now wraps into multiple lines with tail-clip + cursor for live readability.
 
 ---
 
