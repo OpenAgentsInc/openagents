@@ -9,9 +9,10 @@ const mimeTypes: Record<string, string> = {
   '.json': 'application/json',
 };
 
+const ROOT_DIR = import.meta.dir;
 const PORT = parseInt(process.env.PORT || '3000');
 const GGUF_ROUTE = '/gpt-oss-20b-Q8_0.gguf';
-const GGUF_PATH = '../ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf';
+const GGUF_PATH = `${ROOT_DIR}/../ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf`;
 const ISOLATION_HEADERS = {
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Embedder-Policy': 'require-corp',
@@ -186,12 +187,12 @@ const server = Bun.serve({
       path = '/index.html';
     }
 
-    // Map requests to files
+    // Map requests to files (anchored to script directory)
     let filePath: string;
     if (path.startsWith('/pkg/')) {
-      filePath = `./pkg${path.slice(4)}`;
+      filePath = `${ROOT_DIR}/pkg${path.slice(4)}`;
     } else {
-      filePath = `.${path}`;
+      filePath = `${ROOT_DIR}${path}`;
     }
 
     const file = Bun.file(filePath);
