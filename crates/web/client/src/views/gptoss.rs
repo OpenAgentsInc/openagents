@@ -6,7 +6,8 @@ use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame, Heatmap};
 use wgpui::PaintContext;
 
 use crate::gptoss_runtime::{
-    default_gguf_url, default_user_prompt, local_gguf_path, local_gguf_serve_cmd, read_query_param,
+    default_active_layers, default_gguf_url, default_user_prompt, local_gguf_path,
+    local_gguf_serve_cmd, read_query_param,
 };
 use crate::state::{AppState, GptOssStage, GptOssStageStatus, GptOssVizState};
 
@@ -217,7 +218,21 @@ pub(crate) fn build_gptoss_page(
         theme::text::PRIMARY,
     );
 
-    y += button_height + 10.0;
+    y += button_height + 8.0;
+    let layers_hint = format!(
+        "LAYERS: default {} (override with ?layers=N)",
+        default_active_layers()
+    );
+    draw_mono_text(
+        scene,
+        text_system,
+        &truncate_text(&layers_hint, 72),
+        inner_x,
+        y,
+        9.0,
+        theme::text::MUTED,
+    );
+    y += 18.0;
     if let Some(err) = &state.gptoss.load_error {
         for line in err.lines().take(3) {
             draw_mono_text(

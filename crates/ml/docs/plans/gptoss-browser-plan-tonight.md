@@ -182,6 +182,7 @@ Notes:
 - Load progress detail now includes ETA based on current average rate.
 - I/O panel now shows live load detail (chunk/offset/rate/ETA) while streaming.
 - Stage panel now renders a thin progress bar for active stages with bytes/steps totals.
+- Default layer count for browser runs is now 2 (override with `?layers=`), logged in load telemetry.
 
 ---
 
