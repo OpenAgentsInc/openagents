@@ -19,6 +19,7 @@ const LOAD_CHUNK_BYTES: u64 = 8 * 1024 * 1024;
 const PROGRESS_STEP_BYTES: u64 = 64 * 1024 * 1024;
 const DEFAULT_GGUF_URL: &str =
     "https://huggingface.co/openai/gpt-oss-20b/resolve/main/gpt-oss-20b-Q8_0.gguf";
+const LOCAL_GGUF_URL: &str = "http://localhost:9898/gpt-oss-20b-Q8_0.gguf";
 
 pub(crate) struct GptOssRuntime {
     pub(crate) gguf_url: String,
@@ -58,7 +59,7 @@ impl GptOssRuntime {
 pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
     let gguf_url = read_query_param("gguf")
         .filter(|url| !url.is_empty())
-        .unwrap_or_else(|| DEFAULT_GGUF_URL.to_string());
+        .unwrap_or_else(default_gguf_url);
 
     {
         let Ok(mut guard) = state.try_borrow_mut() else {
@@ -267,6 +268,20 @@ fn read_query_param(key: &str) -> Option<String> {
     let search = window.location().search().ok()?;
     let params = web_sys::UrlSearchParams::new_with_str(&search).ok()?;
     params.get(key)
+}
+
+fn default_gguf_url() -> String {
+    let window = match web_sys::window() {
+        Some(window) => window,
+        None => return DEFAULT_GGUF_URL.to_string(),
+    };
+    let host = window.location().hostname().ok();
+    let local = matches!(host.as_deref(), Some("localhost") | Some("127.0.0.1"));
+    if local {
+        LOCAL_GGUF_URL.to_string()
+    } else {
+        DEFAULT_GGUF_URL.to_string()
+    }
 }
 
 fn tensor_start_cursor(index: &GgufIndex) -> Vec<(u64, String)> {
