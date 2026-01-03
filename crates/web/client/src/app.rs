@@ -128,6 +128,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         state_guard.loading = false;
         state_guard.view = AppView::FmPage;
         drop(state_guard);
+        crate::fm_runtime::init_fm_runtime(state.clone());
     } else if is_2026_page {
         let mut state_guard = state.borrow_mut();
         state_guard.loading = false;

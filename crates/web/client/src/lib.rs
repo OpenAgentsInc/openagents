@@ -2,6 +2,7 @@ mod app;
 mod autopilot_chat;
 mod claude_agent;
 mod claude_chat;
+mod fm_runtime;
 mod fs_access;
 mod gguf_web;
 mod hud;

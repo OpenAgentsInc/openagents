@@ -351,7 +351,7 @@ impl Default for FmVizState {
 
             event_log: VecDeque::new(),
 
-            demo_mode: true,
+            demo_mode: false,
             demo_tokens: vec![
                 "Apple", " Foundation", " Models", " provide", " on", "-device",
                 " intelligence", " for", " your", " apps", ".", " With", " the",
