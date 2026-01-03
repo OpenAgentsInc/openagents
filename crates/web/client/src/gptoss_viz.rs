@@ -124,6 +124,14 @@ impl GptOssVizState {
                         }
                     }
                 }
+                if matches!(stage.as_str(), "tensor_scan" | "tensor_index") {
+                    if let Some(name) = detail.clone() {
+                        if self.recent_tensors.len() >= 12 {
+                            self.recent_tensors.pop_front();
+                        }
+                        self.recent_tensors.push_back(name);
+                    }
+                }
                 if stage == "moe_mode" {
                     if let Some(detail) = detail_clone.as_ref() {
                         self.moe_mode = Some(detail.clone());

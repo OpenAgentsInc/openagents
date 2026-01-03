@@ -174,6 +174,7 @@ Notes:
 - Token stream headers now show the last generated token id (gptoss + ml inference).
 - Added browser yield points during prefill/decode/layer loops so telemetry paints while compute runs.
 - GPT-OSS page now shows local GGUF path + exact `gguf_serve` command under the URL field.
+- Load scan list now shows recent tensor names during streaming (I/O panel switches to LOAD SCAN).
 
 ---
 

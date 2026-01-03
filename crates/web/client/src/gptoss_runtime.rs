@@ -825,6 +825,7 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.token_limits = None;
     state.cache_status.clear();
     state.resident_tensors.clear();
+    state.recent_tensors.clear();
     state.attention_weights = None;
     state.attention_layer = 0;
     state.attention_head = 0;
