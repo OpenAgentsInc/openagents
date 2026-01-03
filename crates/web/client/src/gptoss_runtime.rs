@@ -486,9 +486,9 @@ impl GpuAllocTracker {
         self.buffers = 0;
     }
 
-    fn add(&mut self, bytes: usize) {
+    fn add_buffers(&mut self, bytes: usize, buffers: usize) {
         self.bytes = self.bytes.saturating_add(bytes);
-        self.buffers = self.buffers.saturating_add(1);
+        self.buffers = self.buffers.saturating_add(buffers);
     }
 }
 
@@ -4402,11 +4402,12 @@ async fn gpu_matmul_q8_0(
         mapped_at_creation: false,
     });
     let params_bytes = std::mem::size_of::<u32>() * 4;
-    gpu_tracker.add(
+    gpu_tracker.add_buffers(
         quant.len()
             + x.len() * std::mem::size_of::<f32>()
             + (y_bytes as usize) * 2
             + params_bytes,
+        5,
     );
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -4585,10 +4586,11 @@ async fn gpu_matmul_q8_0_chunked(
         mapped_at_creation: false,
     });
     let params_bytes = std::mem::size_of::<u32>() * 4;
-    gpu_tracker.add(
+    gpu_tracker.add_buffers(
         input.len() * std::mem::size_of::<f32>()
             + y_bytes as usize
             + y_bytes as usize,
+        3,
     );
 
     let mut row_offset = 0usize;
@@ -4609,14 +4611,14 @@ async fn gpu_matmul_q8_0_chunked(
             contents: &quant,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
-        gpu_tracker.add(quant.len());
+        gpu_tracker.add_buffers(quant.len(), 1);
         let params = [rows as u32, n as u32, row_offset as u32, if row_offset == 0 { 0 } else { 1 }];
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("q8_0_chunked_params"),
             contents: cast_slice(&params),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-        gpu_tracker.add(params_bytes);
+        gpu_tracker.add_buffers(params_bytes, 1);
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("q8_0_chunked_bind_group"),
@@ -4800,8 +4802,9 @@ async fn gpu_matmul_mxfp4(
         mapped_at_creation: false,
     });
     let params_bytes = std::mem::size_of::<u32>() * 4;
-    gpu_tracker.add(
-        x.len() * std::mem::size_of::<f32>() + (y_bytes as usize) * 2 + params_bytes,
+    gpu_tracker.add_buffers(
+        x.len() * std::mem::size_of::<f32>() + (y_bytes as usize) * 2,
+        3,
     );
 
     let mut row_offset = 0usize;
@@ -4831,7 +4834,7 @@ async fn gpu_matmul_mxfp4(
             contents: &quant_chunk,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
-        gpu_tracker.add(quant_chunk.len());
+        gpu_tracker.add_buffers(quant_chunk.len(), 1);
         let params = [
             rows as u32,
             n as u32,
@@ -4843,7 +4846,7 @@ async fn gpu_matmul_mxfp4(
             contents: cast_slice(&params),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-        gpu_tracker.add(params_bytes);
+        gpu_tracker.add_buffers(params_bytes, 1);
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("mxfp4_probe_bind_group"),
