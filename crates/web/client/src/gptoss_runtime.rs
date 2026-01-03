@@ -3380,7 +3380,7 @@ async fn gpu_matmul_q8_0_chunked(
     ensure_storage_limit("q8_0 input", x_bytes, max_bytes)?;
     ensure_storage_limit("q8_0 output", y_bytes, max_bytes)?;
     let max_rows = (max_bytes / row_bytes).max(1);
-    let chunk_rows = max_rows.min(64).max(1);
+    let chunk_rows = max_rows;
 
     let device = &gpu.device;
     let queue = &gpu.queue;
