@@ -1011,8 +1011,8 @@ async fn run_block0_attention_probe(
         Some("qkv".to_string()),
     );
 
-    let q = matmul_q8_0_with_bias(gguf_url, attn_q_w, attn_q_b, &hidden, gpu).await?;
-    let k = matmul_q8_0_with_bias(gguf_url, attn_k_w, attn_k_b, &hidden, gpu).await?;
+    let mut q = matmul_q8_0_with_bias(gguf_url, attn_q_w, attn_q_b, &hidden, gpu).await?;
+    let mut k = matmul_q8_0_with_bias(gguf_url, attn_k_w, attn_k_b, &hidden, gpu).await?;
     let v = matmul_q8_0_with_bias(gguf_url, attn_v_w, attn_v_b, &hidden, gpu).await?;
 
     emit_inference_stage(
@@ -1022,6 +1022,36 @@ async fn run_block0_attention_probe(
         None,
         None,
         Some(format!("q={} k={} v={}", q.len(), k.len(), v.len())),
+    );
+
+    emit_inference_stage(
+        state,
+        "blk0_rope",
+        StageStatus::Started,
+        None,
+        None,
+        Some("pos=0".to_string()),
+    );
+
+    let q_head_dim = (q.len() / config.head_count.max(1) as usize).max(1);
+    let k_head_dim = (k.len() / config.head_count_kv.max(1) as usize).max(1);
+    apply_rope(&mut q, config.head_count as usize, q_head_dim, 0, config.rope_theta, config.rope_dimension_count)?;
+    apply_rope(
+        &mut k,
+        config.head_count_kv as usize,
+        k_head_dim,
+        0,
+        config.rope_theta,
+        config.rope_dimension_count,
+    )?;
+
+    emit_inference_stage(
+        state,
+        "blk0_rope",
+        StageStatus::Completed,
+        None,
+        None,
+        Some("ok".to_string()),
     );
 
     let attn_out = v;
@@ -1219,6 +1249,49 @@ fn l2_norm(values: &[f32]) -> f32 {
         sum += v * v;
     }
     sum.sqrt()
+}
+
+fn apply_rope(
+    values: &mut [f32],
+    heads: usize,
+    head_dim: usize,
+    position: usize,
+    theta: f32,
+    rope_dim: u32,
+) -> Result<(), String> {
+    if head_dim == 0 || heads == 0 {
+        return Err("rope invalid head dims".to_string());
+    }
+    let expected = heads
+        .checked_mul(head_dim)
+        .ok_or_else(|| "rope shape overflow".to_string())?;
+    if values.len() != expected {
+        return Err(format!(
+            "rope shape mismatch values={} heads={} head_dim={}",
+            values.len(),
+            heads,
+            head_dim
+        ));
+    }
+    let rope_dim = rope_dim.min(head_dim as u32) as usize;
+    if rope_dim % 2 != 0 {
+        return Err("rope_dim must be even".to_string());
+    }
+
+    let theta = if theta <= 0.0 { 10000.0 } else { theta };
+    for h in 0..heads {
+        let base = h * head_dim;
+        for i in (0..rope_dim).step_by(2) {
+            let inv_freq = theta.powf(-(i as f32) / rope_dim as f32);
+            let angle = position as f32 * inv_freq;
+            let (sin, cos) = angle.sin_cos();
+            let a = values[base + i];
+            let b = values[base + i + 1];
+            values[base + i] = a * cos - b * sin;
+            values[base + i + 1] = a * sin + b * cos;
+        }
+    }
+    Ok(())
 }
 
 fn dequant_q8_0(data: &[u8], values: usize) -> Result<Vec<f32>, String> {
