@@ -447,22 +447,28 @@ fn draw_io_panel(
         theme::text::MUTED,
     );
 
-    let limits_text = gptoss
+    let limits_lines = gptoss
         .gpu_limits
         .as_ref()
-        .map(|limits| format!("LIMITS: {}", truncate_text(limits, 44)))
+        .map(|limits| format!("LIMITS: {limits}"))
         .unwrap_or_else(|| "LIMITS: --".to_string());
-    draw_mono_text(
-        scene,
-        text_system,
-        &limits_text,
-        inner.x(),
-        inner.y() + 50.0,
-        9.0,
-        theme::text::MUTED,
-    );
+    let mut limits_lines = wrap_tokens(&limits_lines, 62, 2);
+    if limits_lines.is_empty() {
+        limits_lines.push("LIMITS: --".to_string());
+    }
+    for (idx, line) in limits_lines.iter().enumerate() {
+        draw_mono_text(
+            scene,
+            text_system,
+            line,
+            inner.x(),
+            inner.y() + 50.0 + (idx as f32 * 12.0),
+            9.0,
+            theme::text::MUTED,
+        );
+    }
 
-    let mut ry = inner.y() + 66.0;
+    let mut ry = inner.y() + 66.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
     draw_mono_text(
         scene,
         text_system,
@@ -958,4 +964,32 @@ fn truncate_text(text: &str, max_len: usize) -> String {
     let mut out = text.chars().take(max_len).collect::<String>();
     out.push_str("...");
     out
+}
+
+fn wrap_tokens(text: &str, max_len: usize, max_lines: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for token in text.split_whitespace() {
+        let pending_len = if current.is_empty() {
+            token.len()
+        } else {
+            current.len() + 1 + token.len()
+        };
+        if pending_len > max_len && !current.is_empty() {
+            lines.push(current);
+            if lines.len() >= max_lines {
+                return lines;
+            }
+            current = token.to_string();
+        } else {
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(token);
+        }
+    }
+    if !current.is_empty() && lines.len() < max_lines {
+        lines.push(current);
+    }
+    lines
 }
