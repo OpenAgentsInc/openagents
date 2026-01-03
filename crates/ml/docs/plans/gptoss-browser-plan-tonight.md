@@ -205,6 +205,7 @@ Notes:
 - Added **SwigLU** WGSL and GPU bias-adds for MoE MLP (gate/up/down), with CPU fallbacks only on GPU failure; residual adds in the main layer path now use GPU.
 - Added **F32 matmul** WGSL for the MoE router gate (GPU `linear_f32_with_bias`), with CPU fallback and telemetry tagging the gate path as `gpu`/`cpu`.
 - `attn_score` telemetry now tags `phase=prefill|decode` alongside `gpu|cpu` so HUD distinguishes prefill attention from decode.
+- Attention heatmap can now be sourced from **GPU weights** (`attention_weights.wgsl`) so decode no longer needs CPU loops for visualization (CPU fallback only if GPU weights fail in prefill).
 - Attention heatmap now accumulates a rolling window of head weights per token.
 - GPT-OSS page now shows the full local GGUF URL under the input for easy copy/paste.
 - Load now fails fast with a clear error if WebGPU isn't available in the browser.
