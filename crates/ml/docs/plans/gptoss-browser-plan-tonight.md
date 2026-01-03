@@ -128,6 +128,7 @@ Notes:
 - Added **GPU alloc tracking** + **resident tensor list** in the HUD (last few weights shown).
 - Added **runtime mode telemetry** (layer limit, attention mode, MoE fallback) and a **token pulse** on new output.
 - HUD now shows **layers / attention / MoE modes** in the stats panel; load progress persists in viz state.
+- HUD now shows **GPU limits** summary from the WebGPU limits probe.
 - Added **attention heatmap telemetry** (head 0) and a dedicated HUD panel for attention weights.
 - `gguf_serve` now accepts a positional path argument in addition to `--path`.
 
