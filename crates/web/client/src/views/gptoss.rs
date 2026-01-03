@@ -1694,6 +1694,22 @@ fn draw_stats_panel(
         10.0,
         theme::text::MUTED,
     );
+
+    let fallback_text = gptoss
+        .cpu_fallback
+        .as_ref()
+        .map(|mode| format!("CPU FALLBACK: {}", truncate_text(mode, 10)))
+        .unwrap_or_else(|| "CPU FALLBACK: --".to_string());
+    y += 14.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        &fallback_text,
+        inner.x(),
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
 }
 
 fn draw_log_panel(

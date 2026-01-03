@@ -456,6 +456,7 @@ fn apply_runtime_mode(state: &mut GptOssVizState, detail: &str) {
     let mut moe_topk: Option<String> = None;
     let mut moe_expert: Option<String> = None;
     let mut sample_mode: Option<String> = None;
+    let mut cpu_fallback: Option<String> = None;
     for part in detail.split_whitespace() {
         if let Some((key, value)) = part.split_once('=') {
             match key {
@@ -477,6 +478,9 @@ fn apply_runtime_mode(state: &mut GptOssVizState, detail: &str) {
                 "sample" => {
                     sample_mode = Some(value.to_string());
                 }
+                "cpu_fallback" => {
+                    cpu_fallback = Some(value.to_string());
+                }
                 _ => {}
             }
         }
@@ -493,6 +497,9 @@ fn apply_runtime_mode(state: &mut GptOssVizState, detail: &str) {
     }
     if let Some(sample) = sample_mode {
         state.sampling_mode = Some(sample);
+    }
+    if let Some(fallback) = cpu_fallback {
+        state.cpu_fallback = Some(fallback);
     }
 }
 
