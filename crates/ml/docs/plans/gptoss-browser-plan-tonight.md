@@ -225,6 +225,7 @@ Notes:
 - HUD now surfaces `CPU FALLBACK` status parsed from `runtime_mode` so GPU-only runs are explicit in the stats panel.
 - GPU memory telemetry now includes KV cache bytes in `gpu_alloc`/memory usage so the gauge reflects persistent KV buffers (not just per-step scratch buffers).
 - Attention Q/K/V/projection stages now explicitly tag `gpu` in telemetry detail so the HUD reflects kernel execution mode for those ops.
+- Stats panel attention mode now reflects `attn_score` telemetry (gpu/cpu + phase + window) rather than only static runtime config.
 - Token embedding LRU cache added (hit/miss telemetry + HUD line) and memory totals include all cache bytes.
 - I/O panel height increased to fit cache/limits/load scan telemetry without clipping.
 - GPU memory gauge now falls back to max_storage when max_buffer is unavailable.

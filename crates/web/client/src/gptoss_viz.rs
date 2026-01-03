@@ -194,6 +194,13 @@ impl GptOssVizState {
                         self.attention_mode = Some(detail.clone());
                     }
                 }
+                if stage == "attn_score" {
+                    if let Some(detail) = detail_clone.as_ref() {
+                        if let Some(mode) = extract_attn_mode(detail) {
+                            self.attention_mode = Some(mode);
+                        }
+                    }
+                }
                 if matches!(status, StageStatus::Failed) {
                     let msg = detail_clone
                         .clone()
@@ -529,6 +536,52 @@ fn apply_model_config(state: &mut GptOssVizState, detail: &str) {
         let max_head = state.max_heads.saturating_sub(1);
         state.attention_selected_head = state.attention_selected_head.min(max_head);
     }
+}
+
+fn extract_attn_mode(detail: &str) -> Option<String> {
+    let mut mode: Option<String> = None;
+    let mut phase: Option<String> = None;
+    let mut window: Option<String> = None;
+    let mut fallback = false;
+    for part in detail.split_whitespace() {
+        if part == "gpu" || part == "cpu" {
+            mode = Some(part.to_string());
+        } else if let Some(value) = part.strip_prefix("phase=") {
+            phase = Some(value.to_string());
+        } else if let Some(value) = part.strip_prefix("window=") {
+            window = Some(value.to_string());
+        } else if part == "fallback" {
+            fallback = true;
+        }
+    }
+    if mode.is_none() && phase.is_none() && window.is_none() && !fallback {
+        return None;
+    }
+    let mut out = String::new();
+    if let Some(mode) = mode {
+        out.push_str(&mode);
+    }
+    if let Some(phase) = phase {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str("phase=");
+        out.push_str(&phase);
+    }
+    if let Some(window) = window {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str("window=");
+        out.push_str(&window);
+    }
+    if fallback {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str("fallback");
+    }
+    Some(out)
 }
 
 pub(crate) fn init_gptoss_viz_runtime(state: Rc<RefCell<AppState>>) {
