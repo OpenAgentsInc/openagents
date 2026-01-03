@@ -3017,7 +3017,8 @@ async fn run_transformer_layer(
     );
 
     let attn_start = now_ms();
-    let attn_out = attention_with_cache(
+    let mut attn_fallback = false;
+    let attn_out = match attention_with_cache(
         &q,
         layer_cache,
         &sinks,
@@ -3025,15 +3026,34 @@ async fn run_transformer_layer(
         kv_heads,
         head_dim,
         window,
-    )?;
+    ) {
+        Ok(out) => out,
+        Err(err) => {
+            attn_fallback = true;
+            emit_inference_stage(
+                state,
+                "attn_fallback",
+                StageStatus::Completed,
+                None,
+                None,
+                Some(format!("layer={layer} fallback=single_token err={err}")),
+            );
+            attention_single_token(&q, &k, &v, &sinks, heads, kv_heads, head_dim)?
+        }
+    };
     let attn_ms = now_ms().saturating_sub(attn_start).max(1);
+    let attn_detail = if attn_fallback {
+        format!("layer={layer} window={window} ms={attn_ms} fallback")
+    } else {
+        format!("layer={layer} window={window} ms={attn_ms}")
+    };
     emit_inference_stage(
         state,
         "attn_score",
         StageStatus::Completed,
         None,
         None,
-        Some(format!("layer={layer} window={window} ms={attn_ms}")),
+        Some(attn_detail),
     );
     let (selected_layer, selected_head) = state
         .try_borrow()
