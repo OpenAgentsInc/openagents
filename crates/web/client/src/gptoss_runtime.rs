@@ -1035,12 +1035,16 @@ async fn run_gptoss_load(
             max_kv_tokens = limit.max_tokens.max(1);
         }
     }
-    let max_new_tokens = input_max_new
+    let mut max_new_tokens = input_max_new
         .or_else(|| read_query_usize("max_new"))
-        .unwrap_or(DEFAULT_MAX_NEW_TOKENS)
-        .max(1);
-    let max_new_tokens = max_new_tokens
-        .min(max_kv_tokens.saturating_sub(1).max(1));
+        .unwrap_or(DEFAULT_MAX_NEW_TOKENS);
+    max_new_tokens = if max_kv_tokens <= 1 {
+        0
+    } else {
+        max_new_tokens
+            .max(1)
+            .min(max_kv_tokens.saturating_sub(1).max(1))
+    };
     let max_prompt_tokens = max_kv_tokens.saturating_sub(max_new_tokens);
     let mut limit_detail = format!(
         "kv={max_kv_tokens} prompt={max_prompt_tokens} new={max_new_tokens}"
@@ -2461,6 +2465,9 @@ fn format_rate(bytes_per_sec: f64) -> String {
 }
 
 fn ensure_storage_limit(label: &str, size: usize, max: usize) -> Result<(), String> {
+    if max == 0 {
+        return Ok(());
+    }
     if size > max {
         return Err(format!(
             "{label} size {} exceeds max storage {}",
@@ -2477,14 +2484,14 @@ fn ensure_buffer_limit(
     max_storage: u64,
     max_buffer: u64,
 ) -> Result<(), String> {
-    if size as u64 > max_storage {
+    if max_storage > 0 && size as u64 > max_storage {
         return Err(format!(
             "{label} size {} exceeds max storage {}",
             format_bytes(size as u64),
             format_bytes(max_storage)
         ));
     }
-    if size as u64 > max_buffer {
+    if max_buffer > 0 && size as u64 > max_buffer {
         return Err(format!(
             "{label} size {} exceeds max buffer {}",
             format_bytes(size as u64),
@@ -5871,7 +5878,15 @@ fn kv_limit_for_gpu(
     let limits = gpu.device.limits();
     let max_storage = limits.max_storage_buffer_binding_size as usize;
     let max_buffer = limits.max_buffer_size as usize;
-    let max_bytes = max_storage.min(max_buffer);
+    let max_bytes = match (max_storage, max_buffer) {
+        (0, 0) => return None,
+        (0, other) => other,
+        (other, 0) => other,
+        (storage, buffer) => storage.min(buffer),
+    };
+    if max_bytes == 0 {
+        return None;
+    }
     let per_layer_max_u64 = (max_bytes as u64) / bytes_per_token;
     let per_layer_max = usize::try_from(per_layer_max_u64).unwrap_or(usize::MAX);
     let layer_count = config.block_count.max(1) as usize;
