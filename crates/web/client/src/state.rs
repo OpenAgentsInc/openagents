@@ -372,7 +372,7 @@ impl Default for GptOssVizState {
             max_kv_input_bounds: Bounds::ZERO,
             max_new_input_bounds: Bounds::ZERO,
             gguf_input: TextInput::new()
-                .placeholder("http://localhost:8080/gpt-oss-20b-Q8_0.gguf")
+                .placeholder("http://localhost:3000/gpt-oss-20b-Q8_0.gguf")
                 .font_size(10.0)
                 .padding(6.0, 4.0),
             prompt_input: TextInput::new()
