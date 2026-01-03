@@ -188,6 +188,7 @@ Notes:
 - I/O panel now shows prompt tokenization detail from `prompt_encode`.
 - Top-k and probability panels now fall back to token id labels for whitespace-only tokens.
 - KV cache fill now renders as a small bar in the inference stats panel.
+- Ran full ML test suite: `cargo test -p ml --no-default-features --features native,wgpu`.
 
 ---
 
