@@ -204,6 +204,7 @@ Notes:
 - Attention telemetry no longer short-circuits event timing when empty payloads arrive.
 - Load streaming errors are now non-fatal (generation keeps running with a failed stage log).
 - GPU buffer counts now track real allocations (no more lumped counts).
+- GPU limits telemetry now formats buffer sizes in human-readable units.
 
 ---
 

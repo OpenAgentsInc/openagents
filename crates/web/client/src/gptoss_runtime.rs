@@ -1104,8 +1104,8 @@ fn emit_gpu_limits(state: &Rc<RefCell<AppState>>, gpu: &GpuContext) {
     let shader_f16 = features.contains(wgpu::Features::SHADER_F16);
     let detail = format!(
         "max_storage={} max_buffer={} bind_groups={} bindings_per_group={} storage_bindings={} dynamic_storage={} uniform_bindings={} f16={}",
-        limits.max_storage_buffer_binding_size,
-        limits.max_buffer_size,
+        format_bytes(limits.max_storage_buffer_binding_size as u64),
+        format_bytes(limits.max_buffer_size as u64),
         limits.max_bind_groups,
         limits.max_bindings_per_bind_group,
         limits.max_storage_buffers_per_shader_stage,
