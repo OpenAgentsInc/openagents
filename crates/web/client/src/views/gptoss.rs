@@ -1240,11 +1240,16 @@ fn draw_stats_panel(
 
     let cache = gptoss.cache_status.last();
     let cache_text = if let Some(cache) = cache {
-        format!(
-            "KV CACHE: {}/{}",
-            cache.seq_len,
-            cache.max_len
-        )
+        if cache.memory_bytes > 0 {
+            format!(
+                "KV CACHE: {}/{} {}",
+                cache.seq_len,
+                cache.max_len,
+                format_bytes(cache.memory_bytes),
+            )
+        } else {
+            format!("KV CACHE: {}/{}", cache.seq_len, cache.max_len)
+        }
     } else {
         "KV CACHE: --".to_string()
     };
