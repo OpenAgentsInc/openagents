@@ -649,6 +649,7 @@ Read these if stuck:
 - 2026-01-02: Prevent default dragenter/dragover on the GPT-OSS canvas so drops never trigger browser navigation.
 - 2026-01-02: Prefer the current GGUF input value in the header (with file label fallback) so the pending source is always accurate.
 - 2026-01-02: Hide the token cursor once the last token pulse fades so the stream doesn’t look active after decode ends.
+- 2026-01-02: Show `ERROR` in the stats stage line when load/inference errors occur and no stage is running.
 
 ---
 
