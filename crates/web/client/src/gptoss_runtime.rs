@@ -37,6 +37,8 @@ const MXFP4_VALUES: [f32; 16] = [
     0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0,
     -6.0,
 ];
+const SWIGLU_ALPHA: f32 = 1.702;
+const SWIGLU_LIMIT: f32 = 7.0;
 
 #[derive(Clone, Debug)]
 struct GptOssConfig {
@@ -1129,6 +1131,58 @@ async fn run_block0_attention_probe(
         )),
     );
 
+    let gate_exps_w = find_tensor(index, "blk.0.ffn_gate_exps.weight")?;
+    let gate_exps_b = find_tensor(index, "blk.0.ffn_gate_exps.bias")?;
+    let up_exps_w = find_tensor(index, "blk.0.ffn_up_exps.weight")?;
+    let up_exps_b = find_tensor(index, "blk.0.ffn_up_exps.bias")?;
+    let down_exps_w = find_tensor(index, "blk.0.ffn_down_exps.weight")?;
+    let down_exps_b = find_tensor(index, "blk.0.ffn_down_exps.bias")?;
+
+    emit_inference_stage(
+        state,
+        "moe_mlp",
+        StageStatus::Started,
+        None,
+        None,
+        Some(format!("experts={}", expert_indices.len())),
+    );
+
+    let mut mlp_accum = vec![0.0f32; hidden.len()];
+    for (expert_idx, weight) in expert_indices.iter().zip(expert_weights.iter()) {
+        let gate_quant = fetch_mxfp4_expert(gguf_url, gate_exps_w, *expert_idx).await?;
+        let mut gate_out = matmul_mxfp4_expert(&gate_quant, &hidden, gate_exps_w, gpu).await?;
+        let gate_bias = fetch_f32_row(gguf_url, gate_exps_b, *expert_idx).await?;
+        apply_bias(&mut gate_out, &gate_bias);
+
+        let up_quant = fetch_mxfp4_expert(gguf_url, up_exps_w, *expert_idx).await?;
+        let mut up_out = matmul_mxfp4_expert(&up_quant, &hidden, up_exps_w, gpu).await?;
+        let up_bias = fetch_f32_row(gguf_url, up_exps_b, *expert_idx).await?;
+        apply_bias(&mut up_out, &up_bias);
+
+        let swiglu_out = swiglu(&gate_out, &up_out)?;
+        let down_quant = fetch_mxfp4_expert(gguf_url, down_exps_w, *expert_idx).await?;
+        let mut down_out = matmul_mxfp4_expert(&down_quant, &swiglu_out, down_exps_w, gpu).await?;
+        let down_bias = fetch_f32_row(gguf_url, down_exps_b, *expert_idx).await?;
+        apply_bias(&mut down_out, &down_bias);
+
+        for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {
+            *acc += *val * *weight;
+        }
+    }
+
+    for (out, add) in hidden.iter_mut().zip(mlp_accum.iter()) {
+        *out += *add;
+    }
+
+    emit_inference_stage(
+        state,
+        "moe_mlp",
+        StageStatus::Completed,
+        None,
+        None,
+        Some("ok".to_string()),
+    );
+
     let output_norm_w = fetch_f32_tensor(gguf_url, output_norm_tensor).await?;
     let final_hidden = rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?;
 
@@ -1217,6 +1271,38 @@ async fn fetch_f32_tensor(gguf_url: &str, tensor: &GgufTensor) -> Result<Vec<f32
     Ok(floats)
 }
 
+async fn fetch_f32_row(
+    gguf_url: &str,
+    tensor: &GgufTensor,
+    row: usize,
+) -> Result<Vec<f32>, String> {
+    if tensor.ggml_type != 0 {
+        return Err(format!(
+            "tensor {} is {}, expected F32",
+            tensor.name, tensor.ggml_type_name
+        ));
+    }
+    let dims = &tensor.dims;
+    let rows = dims.get(0).copied().unwrap_or(0) as usize;
+    let cols = dims.get(1).copied().unwrap_or(0) as usize;
+    if row >= rows || cols == 0 {
+        return Err(format!("row {row} out of range for {}", tensor.name));
+    }
+    let row_bytes = cols * 4;
+    let offset = tensor
+        .absolute_offset
+        .saturating_add((row_bytes * row) as u64);
+    let bytes = fetch_range(gguf_url, offset, row_bytes as u64).await?;
+    if bytes.len() % 4 != 0 {
+        return Err(format!("tensor {} f32 row len mismatch", tensor.name));
+    }
+    let mut floats = Vec::with_capacity(bytes.len() / 4);
+    for chunk in bytes.chunks_exact(4) {
+        floats.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    }
+    Ok(floats)
+}
+
 async fn fetch_q8_0_row(
     gguf_url: &str,
     tensor: &GgufTensor,
@@ -1250,6 +1336,43 @@ async fn fetch_q8_0_row(
         quant.resize(padded, 0);
     }
     dequant_q8_0(&quant, values)
+}
+
+async fn fetch_mxfp4_expert(
+    gguf_url: &str,
+    tensor: &GgufTensor,
+    expert_idx: usize,
+) -> Result<Vec<u8>, String> {
+    if tensor.ggml_type != 39 {
+        return Err(format!(
+            "tensor {} is {}, expected MXFP4",
+            tensor.name, tensor.ggml_type_name
+        ));
+    }
+    let dims = &tensor.dims;
+    let experts = dims.get(0).copied().unwrap_or(0) as usize;
+    let n = dims.get(1).copied().unwrap_or(0) as usize;
+    let k = dims.get(2).copied().unwrap_or(0) as usize;
+    if expert_idx >= experts || n == 0 || k == 0 {
+        return Err(format!("expert {expert_idx} out of range for {}", tensor.name));
+    }
+    let values = n
+        .checked_mul(k)
+        .ok_or_else(|| "mxfp4 expert value overflow".to_string())?;
+    if values % MXFP4_BLOCK_VALUES != 0 {
+        return Err("mxfp4 expert values not divisible by block size".to_string());
+    }
+    let blocks = values / MXFP4_BLOCK_VALUES;
+    let bytes_needed = blocks * MXFP4_BLOCK_BYTES;
+    let offset = tensor
+        .absolute_offset
+        .saturating_add((expert_idx * bytes_needed) as u64);
+    let mut bytes = fetch_range(gguf_url, offset, bytes_needed as u64).await?;
+    if bytes.len() % 4 != 0 {
+        let padded = (bytes.len() + 3) / 4 * 4;
+        bytes.resize(padded, 0);
+    }
+    Ok(bytes)
 }
 
 async fn matmul_q8_0_with_bias(
@@ -1292,6 +1415,33 @@ async fn matmul_q8_0_with_bias(
     Ok(out)
 }
 
+async fn matmul_mxfp4_expert(
+    quant: &[u8],
+    input: &[f32],
+    tensor: &GgufTensor,
+    gpu: &GpuContext,
+) -> Result<Vec<f32>, String> {
+    if tensor.ggml_type != 39 {
+        return Err(format!(
+            "tensor {} is {}, expected MXFP4",
+            tensor.name, tensor.ggml_type_name
+        ));
+    }
+    let dims = &tensor.dims;
+    let n = dims.get(1).copied().unwrap_or(0) as usize;
+    let k = dims.get(2).copied().unwrap_or(0) as usize;
+    if input.len() != k || n == 0 {
+        return Err(format!(
+            "matmul shape mismatch for {} (k={}, n={}, input={})",
+            tensor.name,
+            k,
+            n,
+            input.len()
+        ));
+    }
+    gpu_matmul_mxfp4(quant, input, k, n, gpu).await
+}
+
 fn rms_norm(input: &[f32], weight: &[f32], eps: f32) -> Result<Vec<f32>, String> {
     if input.len() != weight.len() {
         return Err("rms_norm shape mismatch".to_string());
@@ -1315,6 +1465,30 @@ fn l2_norm(values: &[f32]) -> f32 {
         sum += v * v;
     }
     sum.sqrt()
+}
+
+fn apply_bias(values: &mut [f32], bias: &[f32]) {
+    if bias.len() != values.len() {
+        return;
+    }
+    for (v, b) in values.iter_mut().zip(bias.iter()) {
+        *v += *b;
+    }
+}
+
+fn swiglu(gate: &[f32], up: &[f32]) -> Result<Vec<f32>, String> {
+    if gate.len() != up.len() {
+        return Err("swiglu shape mismatch".to_string());
+    }
+    let mut out = Vec::with_capacity(gate.len());
+    for (&g, &u) in gate.iter().zip(up.iter()) {
+        let g_clamped = g.min(SWIGLU_LIMIT);
+        let u_clamped = u.max(-SWIGLU_LIMIT).min(SWIGLU_LIMIT);
+        let sigmoid = 1.0 / (1.0 + (-SWIGLU_ALPHA * g_clamped).exp());
+        let glu = g_clamped * sigmoid;
+        out.push(glu * (u_clamped + 1.0));
+    }
+    Ok(out)
 }
 
 fn apply_rope(
