@@ -813,6 +813,7 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.inference_stages.clear();
     state.events.clear();
     state.token_stream.clear();
+    state.last_token_id = None;
     state.top_k.clear();
     state.probability_history.clear();
     state.tokens_per_sec = None;

@@ -229,6 +229,21 @@ fn draw_inference_monitor(
         None => "-- tok/s".to_string(),
     };
     let speed_w = measure_mono(text_system, &speed, 11.0);
+    let token_id_text = state
+        .ml_viz
+        .last_token_id
+        .map(|id| format!("id={id}"))
+        .unwrap_or_else(|| "id=--".to_string());
+    let token_id_w = measure_mono(text_system, &token_id_text, 11.0);
+    draw_mono_text(
+        scene,
+        text_system,
+        &token_id_text,
+        inner.x() + inner.width() - speed_w - token_id_w - 12.0,
+        inner.y(),
+        11.0,
+        theme::text::MUTED,
+    );
     draw_mono_text(
         scene,
         text_system,
