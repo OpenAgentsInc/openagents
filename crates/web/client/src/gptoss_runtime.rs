@@ -2523,6 +2523,7 @@ async fn run_block0_attention_probe(
         &mut gpu_tracker,
         &mut caches.tensors,
         &mut caches.quant,
+        true,
     )
     .await?;
     let mut k = matmul_q8_0_with_bias(
@@ -2535,6 +2536,7 @@ async fn run_block0_attention_probe(
         &mut gpu_tracker,
         &mut caches.tensors,
         &mut caches.quant,
+        true,
     )
     .await?;
     let v = matmul_q8_0_with_bias(
@@ -2547,6 +2549,7 @@ async fn run_block0_attention_probe(
         &mut gpu_tracker,
         &mut caches.tensors,
         &mut caches.quant,
+        true,
     )
     .await?;
 
@@ -2665,6 +2668,7 @@ async fn run_block0_attention_probe(
         &mut gpu_tracker,
         &mut caches.tensors,
         &mut caches.quant,
+        true,
     )
     .await?;
     hidden = match vector_add_gpu(&hidden, &attn_proj, gpu, &mut gpu_tracker).await {
@@ -2699,6 +2703,7 @@ async fn run_block0_attention_probe(
         gate_inp_w,
         gpu,
         &mut gpu_tracker,
+        true,
     )
     .await
     {
@@ -2748,7 +2753,7 @@ async fn run_block0_attention_probe(
         let mut gate_out =
             matmul_mxfp4_expert(&gate_quant, &hidden, gate_exps_w, gpu, &mut gpu_tracker).await?;
         let gate_bias = fetch_f32_row(gguf_url, gate_exps_b, *expert_idx).await?;
-        apply_bias_gpu(&mut gate_out, &gate_bias, gpu, &mut gpu_tracker).await?;
+        apply_bias_gpu(&mut gate_out, &gate_bias, gpu, &mut gpu_tracker, true).await?;
 
         let up_quant = fetch_mxfp4_expert_cached(
             state,
@@ -2761,7 +2766,7 @@ async fn run_block0_attention_probe(
         let mut up_out =
             matmul_mxfp4_expert(&up_quant, &hidden, up_exps_w, gpu, &mut gpu_tracker).await?;
         let up_bias = fetch_f32_row(gguf_url, up_exps_b, *expert_idx).await?;
-        apply_bias_gpu(&mut up_out, &up_bias, gpu, &mut gpu_tracker).await?;
+        apply_bias_gpu(&mut up_out, &up_bias, gpu, &mut gpu_tracker, true).await?;
 
         let swiglu_out = match swiglu_gpu(&gate_out, &up_out, gpu, &mut gpu_tracker).await {
             Ok(value) => value,
@@ -2784,7 +2789,7 @@ async fn run_block0_attention_probe(
         )
         .await?;
         let down_bias = fetch_f32_row(gguf_url, down_exps_b, *expert_idx).await?;
-        apply_bias_gpu(&mut down_out, &down_bias, gpu, &mut gpu_tracker).await?;
+        apply_bias_gpu(&mut down_out, &down_bias, gpu, &mut gpu_tracker, true).await?;
 
         if let Ok(value) =
             scale_add_gpu(&mlp_accum, &down_out, *weight, gpu, &mut gpu_tracker).await
@@ -2902,6 +2907,7 @@ async fn run_generation(
     if prompt_tokens.is_empty() {
         return Err("prompt token list is empty".to_string());
     }
+    let allow_cpu_fallback = false;
     let generation_start_ms = now_ms();
 
     emit_inference_stage(
@@ -2953,7 +2959,8 @@ async fn run_generation(
         None,
         None,
         Some(format!(
-            "layers={active_layers} attn={attention_mode} moe={moe_mode} sample={sample_mode} kv_max={max_kv_tokens} new={max_new_tokens}",
+            "layers={active_layers} attn={attention_mode} moe={moe_mode} sample={sample_mode} kv_max={max_kv_tokens} new={max_new_tokens} cpu_fallback={}",
+            if allow_cpu_fallback { "on" } else { "off" }
         )),
     );
 
@@ -2987,7 +2994,8 @@ async fn run_generation(
             active_layers,
             moe_fallback,
             force_dense,
-            false,
+            true,
+            allow_cpu_fallback,
         )
         .await?;
         last_step_ms = now_ms().saturating_sub(start_ms).max(1);
@@ -3087,6 +3095,7 @@ async fn run_generation(
             moe_fallback,
             force_dense,
             false,
+            allow_cpu_fallback,
         )
         .await?;
         last_step_ms = now_ms().saturating_sub(start_ms).max(1);
@@ -3136,7 +3145,8 @@ async fn run_forward_token(
     active_layers: usize,
     moe_fallback: bool,
     force_dense: bool,
-    allow_cpu_attention: bool,
+    is_prefill: bool,
+    allow_cpu_fallback: bool,
 ) -> Result<Vec<f32>, String> {
     gpu_tracker.reset();
     let token_embd = find_tensor(index, "token_embd.weight")?;
@@ -3164,7 +3174,10 @@ async fn run_forward_token(
                 let mode = if hit { "cache" } else { "gpu" };
                 (data, hit, mode)
             }
-            Err(_) => {
+            Err(err) => {
+                if !allow_cpu_fallback {
+                    return Err(format!("token_embd gpu failed: {err}"));
+                }
                 let (data, hit) = fetch_q8_0_row_cached(
                     gguf_url,
                     token_embd,
@@ -3208,7 +3221,8 @@ async fn run_forward_token(
             layer_limit,
             moe_fallback,
             force_dense,
-            allow_cpu_attention,
+            is_prefill,
+            allow_cpu_fallback,
         )
         .await
         {
@@ -3256,7 +3270,12 @@ async fn run_forward_token(
     .await
     {
         Ok(value) => (value, "gpu"),
-        Err(_) => (rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?, "cpu"),
+        Err(err) => {
+            if !allow_cpu_fallback {
+                return Err(format!("output_norm gpu failed: {err}"));
+            }
+            (rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?, "cpu")
+        }
     };
     let output_norm_ms = now_ms().saturating_sub(output_norm_start).max(1);
     emit_inference_stage(
@@ -3420,6 +3439,7 @@ async fn run_single_token_full(
         false,
         false,
         true,
+        true,
     )
     .await?;
     let (top_k, entropy, next_id, next_text) = top_k_from_logits(&logits, tokenizer, 5)?;
@@ -3451,7 +3471,8 @@ async fn run_transformer_layer(
     total_layers: usize,
     moe_fallback: bool,
     force_dense: bool,
-    allow_cpu_attention: bool,
+    is_prefill: bool,
+    allow_cpu_fallback: bool,
 ) -> Result<Vec<f32>, String> {
     let attn_norm = find_tensor(index, &format!("blk.{layer}.attn_norm.weight"))?;
     let attn_q_w = find_tensor(index, &format!("blk.{layer}.attn_q.weight"))?;
@@ -3481,7 +3502,12 @@ async fn run_transformer_layer(
     let (mut normed, attn_norm_mode) =
         match rms_norm_gpu(&hidden, &attn_norm_w, config.rms_epsilon, gpu, gpu_tracker).await {
             Ok(value) => (value, "gpu"),
-            Err(_) => (rms_norm(&hidden, &attn_norm_w, config.rms_epsilon)?, "cpu"),
+            Err(err) => {
+                if !allow_cpu_fallback {
+                    return Err(format!("attn_norm gpu failed: {err}"));
+                }
+                (rms_norm(&hidden, &attn_norm_w, config.rms_epsilon)?, "cpu")
+            }
         };
     let attn_norm_ms = now_ms().saturating_sub(attn_norm_start).max(1);
     emit_inference_stage(
@@ -3504,6 +3530,7 @@ async fn run_transformer_layer(
         gpu_tracker,
         &mut caches.tensors,
         &mut caches.quant,
+        allow_cpu_fallback,
     )
     .await?;
     let q_ms = now_ms().saturating_sub(q_start).max(1);
@@ -3526,6 +3553,7 @@ async fn run_transformer_layer(
         gpu_tracker,
         &mut caches.tensors,
         &mut caches.quant,
+        allow_cpu_fallback,
     )
     .await?;
     let k_ms = now_ms().saturating_sub(k_start).max(1);
@@ -3548,6 +3576,7 @@ async fn run_transformer_layer(
         gpu_tracker,
         &mut caches.tensors,
         &mut caches.quant,
+        allow_cpu_fallback,
     )
     .await?;
     let v_ms = now_ms().saturating_sub(v_start).max(1);
@@ -3589,7 +3618,10 @@ async fn run_transformer_layer(
             q = value;
             "gpu"
         }
-        Err(_) => {
+        Err(err) => {
+            if !allow_cpu_fallback {
+                return Err(format!("rope q gpu failed: {err}"));
+            }
             apply_rope(
                 &mut q,
                 heads,
@@ -3621,7 +3653,10 @@ async fn run_transformer_layer(
             k = value;
             "gpu"
         }
-        Err(_) => {
+        Err(err) => {
+            if !allow_cpu_fallback {
+                return Err(format!("rope k gpu failed: {err}"));
+            }
             apply_rope(
                 &mut k,
                 kv_heads,
@@ -3680,7 +3715,7 @@ async fn run_transformer_layer(
     let attn_start = now_ms();
     let mut attn_fallback = false;
     let mut attn_mode = "gpu";
-    let phase = if allow_cpu_attention { "prefill" } else { "decode" };
+    let phase = if is_prefill { "prefill" } else { "decode" };
     let attn_out = match attention_with_cache_gpu(
         &q,
         layer_cache,
@@ -3696,7 +3731,7 @@ async fn run_transformer_layer(
     {
         Ok(out) => out,
         Err(err) => {
-            if !allow_cpu_attention {
+            if !allow_cpu_fallback {
                 return Err(format!("gpu attention failed: {err}"));
             }
             attn_mode = "cpu";
@@ -3771,7 +3806,7 @@ async fn run_transformer_layer(
                     weights: vec![weights],
                 },
             );
-        } else if allow_cpu_attention {
+        } else if allow_cpu_fallback {
             if let Ok(weights) = attention_head_weights(
                 &q,
                 layer_cache,
@@ -3805,6 +3840,7 @@ async fn run_transformer_layer(
         gpu_tracker,
         &mut caches.tensors,
         &mut caches.quant,
+        allow_cpu_fallback,
     )
     .await?;
     let proj_ms = now_ms().saturating_sub(proj_start).max(1);
@@ -3818,7 +3854,10 @@ async fn run_transformer_layer(
     );
     hidden = match vector_add_gpu(&hidden, &attn_proj, gpu, gpu_tracker).await {
         Ok(value) => value,
-        Err(_) => {
+        Err(err) => {
+            if !allow_cpu_fallback {
+                return Err(format!("attn_residual gpu failed: {err}"));
+            }
             for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
                 *out += *base;
             }
@@ -3849,7 +3888,12 @@ async fn run_transformer_layer(
     .await
     {
         Ok(value) => (value, "gpu"),
-        Err(_) => (rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?, "cpu"),
+        Err(err) => {
+            if !allow_cpu_fallback {
+                return Err(format!("post_attn_norm gpu failed: {err}"));
+            }
+            (rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?, "cpu")
+        }
     };
     normed = next_normed;
     let post_norm_ms = now_ms().saturating_sub(post_norm_start).max(1);
@@ -3886,11 +3930,20 @@ async fn run_transformer_layer(
         gate_inp_w,
         gpu,
         gpu_tracker,
+        allow_cpu_fallback,
     )
     .await
     {
         Ok(value) => (value, "gpu"),
-        Err(_) => (linear_f32_with_bias(&gate_w, &gate_b, &normed, gate_inp_w)?, "cpu"),
+        Err(err) => {
+            if !allow_cpu_fallback {
+                return Err(format!("moe_gate gpu failed: {err}"));
+            }
+            (
+                linear_f32_with_bias(&gate_w, &gate_b, &normed, gate_inp_w)?,
+                "cpu",
+            )
+        }
     };
     let gate_ms = now_ms().saturating_sub(gate_start).max(1);
     emit_inference_stage(
@@ -3960,7 +4013,9 @@ async fn run_transformer_layer(
                 break;
             }
         };
-        if let Err(err) = apply_bias_gpu(&mut gate_out, &gate_bias, gpu, gpu_tracker).await {
+        if let Err(err) =
+            apply_bias_gpu(&mut gate_out, &gate_bias, gpu, gpu_tracker, allow_cpu_fallback).await
+        {
             moe_error = Some(err);
             break;
         }
@@ -3995,20 +4050,33 @@ async fn run_transformer_layer(
                 break;
             }
         };
-        if let Err(err) = apply_bias_gpu(&mut up_out, &up_bias, gpu, gpu_tracker).await {
+        if let Err(err) =
+            apply_bias_gpu(&mut up_out, &up_bias, gpu, gpu_tracker, allow_cpu_fallback).await
+        {
             moe_error = Some(err);
             break;
         }
 
         let swiglu_out = match swiglu_gpu(&gate_out, &up_out, gpu, gpu_tracker).await {
-            Ok(value) => value,
-            Err(_) => match swiglu(&gate_out, &up_out) {
-                Ok(value) => value,
-                Err(err) => {
-                    moe_error = Some(err);
-                    break;
+            Ok(value) => Some(value),
+            Err(err) => {
+                if !allow_cpu_fallback {
+                    moe_error = Some(format!("swiglu gpu failed: {err}"));
+                    None
+                } else {
+                    match swiglu(&gate_out, &up_out) {
+                        Ok(value) => Some(value),
+                        Err(err) => {
+                            moe_error = Some(err);
+                            None
+                        }
+                    }
                 }
-            },
+            }
+        };
+        let swiglu_out = match swiglu_out {
+            Some(value) => value,
+            None => break,
         };
         let down_quant = match fetch_mxfp4_expert_cached(
             state,
@@ -4047,17 +4115,25 @@ async fn run_transformer_layer(
                 break;
             }
         };
-        if let Err(err) = apply_bias_gpu(&mut down_out, &down_bias, gpu, gpu_tracker).await {
+        if let Err(err) =
+            apply_bias_gpu(&mut down_out, &down_bias, gpu, gpu_tracker, allow_cpu_fallback).await
+        {
             moe_error = Some(err);
             break;
         }
 
-        if let Ok(value) = scale_add_gpu(&mlp_accum, &down_out, *weight, gpu, gpu_tracker).await
-        {
-            mlp_accum = value;
-        } else {
-            for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {
-                *acc += *val * *weight;
+        match scale_add_gpu(&mlp_accum, &down_out, *weight, gpu, gpu_tracker).await {
+            Ok(value) => {
+                mlp_accum = value;
+            }
+            Err(err) => {
+                if !allow_cpu_fallback {
+                    moe_error = Some(format!("moe_accum gpu failed: {err}"));
+                    break;
+                }
+                for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {
+                    *acc += *val * *weight;
+                }
             }
         }
         let expert_ms = now_ms().saturating_sub(expert_start).max(1);
@@ -4092,7 +4168,10 @@ async fn run_transformer_layer(
 
     hidden = match vector_add_gpu(&hidden, &mlp_accum, gpu, gpu_tracker).await {
         Ok(value) => value,
-        Err(_) => {
+        Err(err) => {
+            if !allow_cpu_fallback {
+                return Err(format!("mlp_residual gpu failed: {err}"));
+            }
             for (out, add) in hidden.iter_mut().zip(mlp_accum.iter()) {
                 *out += *add;
             }
@@ -4434,6 +4513,7 @@ async fn matmul_q8_0_with_bias(
     gpu_tracker: &mut GpuAllocTracker,
     cache: &mut TensorCache,
     quant_cache: &mut QuantCache,
+    allow_cpu_fallback: bool,
 ) -> Result<Vec<f32>, String> {
     if weight.ggml_type != 8 {
         return Err(format!(
@@ -4549,7 +4629,9 @@ async fn matmul_q8_0_with_bias(
     );
     let bias_vals = fetch_f32_tensor_cached(state, gguf_url, bias, cache).await?;
     if bias_vals.len() == out.len() {
-        if let Err(err) = apply_bias_gpu(&mut out, &bias_vals, gpu, gpu_tracker).await {
+        if let Err(err) =
+            apply_bias_gpu(&mut out, &bias_vals, gpu, gpu_tracker, allow_cpu_fallback).await
+        {
             return Err(err);
         }
     }
@@ -4623,6 +4705,7 @@ async fn apply_bias_gpu(
     bias: &[f32],
     gpu: &GpuContext,
     gpu_tracker: &mut GpuAllocTracker,
+    allow_cpu_fallback: bool,
 ) -> Result<(), String> {
     if bias.len() != values.len() {
         return Ok(());
@@ -4631,7 +4714,10 @@ async fn apply_bias_gpu(
         Ok(out) => {
             *values = out;
         }
-        Err(_) => {
+        Err(err) => {
+            if !allow_cpu_fallback {
+                return Err(format!("bias gpu failed: {err}"));
+            }
             apply_bias(values, bias);
         }
     }
@@ -5081,6 +5167,7 @@ async fn linear_f32_with_bias_gpu(
     tensor: &GgufTensor,
     gpu: &GpuContext,
     gpu_tracker: &mut GpuAllocTracker,
+    allow_cpu_fallback: bool,
 ) -> Result<Vec<f32>, String> {
     let dims = &tensor.dims;
     let n = dims.get(0).copied().unwrap_or(0) as usize;
@@ -5104,7 +5191,7 @@ async fn linear_f32_with_bias_gpu(
     }
     let mut y = gpu_matmul_f32(weights, x, k, n, gpu, gpu_tracker).await?;
     if bias.len() == n {
-        apply_bias_gpu(&mut y, bias, gpu, gpu_tracker).await?;
+        apply_bias_gpu(&mut y, bias, gpu, gpu_tracker, allow_cpu_fallback).await?;
     }
     Ok(y)
 }
