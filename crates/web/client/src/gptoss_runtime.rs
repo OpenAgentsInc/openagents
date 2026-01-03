@@ -3507,7 +3507,8 @@ async fn run_transformer_layer(
 
     let attn_start = now_ms();
     let mut attn_fallback = false;
-    let attn_out = match attention_with_cache(
+    let mut attn_mode = "gpu";
+    let attn_out = match attention_with_cache_gpu(
         &q,
         layer_cache,
         &sinks,
@@ -3515,26 +3516,44 @@ async fn run_transformer_layer(
         kv_heads,
         head_dim,
         window,
-    ) {
+        gpu,
+        gpu_tracker,
+    )
+    .await
+    {
         Ok(out) => out,
-        Err(err) => {
-            attn_fallback = true;
-            emit_inference_stage(
-                state,
-                "attn_fallback",
-                StageStatus::Completed,
-                None,
-                None,
-                Some(format!("layer={layer} fallback=single_token err={err}")),
-            );
-            attention_single_token(&q, &k, &v, &sinks, heads, kv_heads, head_dim)?
+        Err(_) => {
+            attn_mode = "cpu";
+            match attention_with_cache(
+                &q,
+                layer_cache,
+                &sinks,
+                heads,
+                kv_heads,
+                head_dim,
+                window,
+            ) {
+                Ok(out) => out,
+                Err(err) => {
+                    attn_fallback = true;
+                    emit_inference_stage(
+                        state,
+                        "attn_fallback",
+                        StageStatus::Completed,
+                        None,
+                        None,
+                        Some(format!("layer={layer} fallback=single_token err={err}")),
+                    );
+                    attention_single_token(&q, &k, &v, &sinks, heads, kv_heads, head_dim)?
+                }
+            }
         }
     };
     let attn_ms = now_ms().saturating_sub(attn_start).max(1);
     let attn_detail = if attn_fallback {
-        format!("layer={layer} window={window} ms={attn_ms} fallback")
+        format!("layer={layer} {attn_mode} window={window} ms={attn_ms} fallback")
     } else {
-        format!("layer={layer} window={window} ms={attn_ms}")
+        format!("layer={layer} {attn_mode} window={window} ms={attn_ms}")
     };
     emit_inference_stage(
         state,
@@ -4794,6 +4813,15 @@ struct RopeParams {
     _pad1: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct AttentionParams {
+    heads: u32,
+    kv_heads: u32,
+    head_dim: u32,
+    seq_len: u32,
+}
+
 async fn rms_norm_gpu(
     input: &[f32],
     weight: &[f32],
@@ -5151,6 +5179,266 @@ async fn apply_rope_gpu(
         Ok(Ok(())) => {}
         Ok(Err(err)) => return Err(format!("rope map_async failed: {err:?}")),
         Err(_) => return Err("rope map_async channel failed".to_string()),
+    }
+
+    let data = slice.get_mapped_range();
+    let output = cast_slice(&data).to_vec();
+    drop(data);
+    readback.unmap();
+    Ok(output)
+}
+
+async fn attention_with_cache_gpu(
+    q: &[f32],
+    cache: &LayerKvCache,
+    sinks: &[f32],
+    heads: usize,
+    kv_heads: usize,
+    head_dim: usize,
+    window: usize,
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<Vec<f32>, String> {
+    if heads == 0 || kv_heads == 0 || head_dim == 0 {
+        return Err("attention invalid dims".to_string());
+    }
+    let stride = kv_heads
+        .checked_mul(head_dim)
+        .ok_or_else(|| "attention stride overflow".to_string())?;
+    if cache.k.len() != cache.v.len() || cache.k.len() % stride != 0 {
+        return Err("attention cache shape mismatch".to_string());
+    }
+    if q.len() != heads * head_dim {
+        return Err("attention q shape mismatch".to_string());
+    }
+    let token_count = cache.k.len() / stride;
+    if token_count == 0 {
+        return Err("attention cache empty".to_string());
+    }
+    let window = window.max(1).min(token_count);
+    let start = token_count.saturating_sub(window);
+    let k_slice = &cache.k[start * stride..];
+    let v_slice = &cache.v[start * stride..];
+
+    let sink_len = heads.max(1);
+    let mut sink_values = vec![0.0f32; sink_len];
+    for (idx, value) in sinks.iter().enumerate().take(sink_len) {
+        sink_values[idx] = *value;
+    }
+
+    let device = &gpu.device;
+    let queue = &gpu.queue;
+    let q_bytes = q.len() * std::mem::size_of::<f32>();
+    let k_bytes = k_slice.len() * std::mem::size_of::<f32>();
+    let v_bytes = v_slice.len() * std::mem::size_of::<f32>();
+    let sink_bytes = sink_values.len() * std::mem::size_of::<f32>();
+    let out_bytes = q_bytes;
+    let max_storage = device.limits().max_storage_buffer_binding_size as usize;
+    ensure_storage_limit("attn q", q_bytes, max_storage)?;
+    ensure_storage_limit("attn k", k_bytes, max_storage)?;
+    ensure_storage_limit("attn v", v_bytes, max_storage)?;
+    ensure_storage_limit("attn sinks", sink_bytes, max_storage)?;
+    ensure_storage_limit("attn out", out_bytes, max_storage)?;
+
+    let workgroup_size = pick_workgroup_size(device)
+        .min(u32::try_from(heads).unwrap_or(1))
+        .max(1);
+    let shader_source = shader_with_workgroup(ATTENTION_DECODE_SHADER, workgroup_size);
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("attn_decode"),
+        source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+    });
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("attn_decode_bindings"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 5,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("attn_decode_layout"),
+        bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("attn_decode_pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
+    let q_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("attn_q"),
+        contents: cast_slice(q),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let k_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("attn_k"),
+        contents: cast_slice(k_slice),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let v_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("attn_v"),
+        contents: cast_slice(v_slice),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let sink_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("attn_sinks"),
+        contents: cast_slice(&sink_values),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let out_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("attn_out"),
+        size: out_bytes as u64,
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let params = AttentionParams {
+        heads: u32::try_from(heads).map_err(|_| "attn heads overflow".to_string())?,
+        kv_heads: u32::try_from(kv_heads).map_err(|_| "attn kv_heads overflow".to_string())?,
+        head_dim: u32::try_from(head_dim).map_err(|_| "attn head_dim overflow".to_string())?,
+        seq_len: u32::try_from(window).map_err(|_| "attn seq_len overflow".to_string())?,
+    };
+    let params_bytes = std::mem::size_of::<AttentionParams>();
+    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("attn_params"),
+        contents: cast_slice(&[params]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("attn_decode_bind_group"),
+        layout: &bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: q_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: k_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: v_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: sink_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: out_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: params_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("attn_readback"),
+        size: out_bytes as u64,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    gpu_tracker.add_buffers(
+        q_bytes + k_bytes + v_bytes + sink_bytes + out_bytes * 2 + params_bytes,
+        7,
+    );
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("attn_decode_encoder"),
+    });
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("attn_decode_pass"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        let head_count = u32::try_from(heads).map_err(|_| "attn head count overflow".to_string())?;
+        let groups = (head_count + workgroup_size - 1) / workgroup_size;
+        pass.dispatch_workgroups(groups, 1, 1);
+    }
+    encoder.copy_buffer_to_buffer(&out_buffer, 0, &readback, 0, out_bytes as u64);
+    queue.submit(Some(encoder.finish()));
+
+    let slice = readback.slice(..);
+    let (tx, rx) = oneshot::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = tx.send(result);
+    });
+    device.poll(wgpu::Maintain::Wait);
+    match rx.await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => return Err(format!("attn map_async failed: {err:?}")),
+        Err(_) => return Err("attn map_async channel failed".to_string()),
     }
 
     let data = slice.get_mapped_range();
@@ -5841,6 +6129,7 @@ fn f16_to_f32(bits: u16) -> f32 {
 
 const RMSNORM_SHADER: &str = include_str!("shaders/rmsnorm.wgsl");
 const ROPE_SHADER: &str = include_str!("shaders/rope.wgsl");
+const ATTENTION_DECODE_SHADER: &str = include_str!("shaders/attention_decode.wgsl");
 
 const Q8_0_SHADER: &str = r#"
 struct Params {
