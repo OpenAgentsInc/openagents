@@ -40,7 +40,6 @@ const DEFAULT_DEVELOPER_PROMPT: &str = "";
 const DEFAULT_MAX_NEW_TOKENS: usize = 8;
 const DEFAULT_MAX_KV_TOKENS: usize = 32;
 const DEFAULT_SAMPLE_TOP_K: usize = 40;
-const DEFAULT_ACTIVE_LAYERS: usize = 2;
 const Q8_0_BLOCK_BYTES: usize = 34;
 const Q8_0_BLOCK_VALUES: usize = 32;
 const MXFP4_BLOCK_BYTES: usize = 17;
@@ -780,11 +779,8 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     emit_metadata_keys(&state, index.as_ref(), 18);
     let config = parse_config(index.as_ref())?;
     let requested_layers = read_query_usize("layers");
-    let mut active_layers = requested_layers.unwrap_or(DEFAULT_ACTIVE_LAYERS);
     let max_layers = config.block_count as usize;
-    if requested_layers.is_none() && active_layers == 0 {
-        active_layers = DEFAULT_ACTIVE_LAYERS;
-    }
+    let mut active_layers = requested_layers.unwrap_or(max_layers);
     active_layers = active_layers.min(max_layers);
     if active_layers == 0 {
         emit_load_stage(
@@ -1602,10 +1598,6 @@ fn normalize_gguf_url(raw: &str) -> Result<String, String> {
         return Ok(format!("http://{trimmed}"));
     }
     Err("GGUF URL must start with http:// or https://".to_string())
-}
-
-pub(crate) fn default_active_layers() -> usize {
-    DEFAULT_ACTIVE_LAYERS
 }
 
 pub(crate) fn local_gguf_path() -> &'static str {
