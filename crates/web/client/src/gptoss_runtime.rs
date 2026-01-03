@@ -3396,6 +3396,7 @@ async fn run_forward_token(
             expert_stats.entries
         )),
     );
+    let gpu_bytes = gpu_tracker.bytes.saturating_add(cache.total_bytes());
     emit_inference_stage(
         state,
         "gpu_alloc",
@@ -3403,15 +3404,16 @@ async fn run_forward_token(
         None,
         None,
         Some(format!(
-            "bytes={} buffers={}",
-            format_bytes(gpu_tracker.bytes as u64),
-            gpu_tracker.buffers
+            "bytes={} buffers={} kv={}",
+            format_bytes(gpu_bytes as u64),
+            gpu_tracker.buffers,
+            format_bytes(cache.total_bytes() as u64)
         )),
     );
     emit_inference_event(
         state,
         GptOssInferenceTelemetry::MemoryUsage {
-            gpu_allocated: gpu_tracker.bytes,
+            gpu_allocated: gpu_bytes,
             cache_total: cache.total_bytes()
                 + token_stats.bytes
                 + tensor_stats.bytes
