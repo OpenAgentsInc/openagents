@@ -87,7 +87,7 @@ fn main() -> Result<()> {
     let mut output = String::new();
 
     while generated < max_tokens {
-        let (top_k, entropy, next_id, next_text) = top_k_from_logits(&logits, &tokenizer, 5)?;
+        let (_top_k, entropy, next_id, next_text) = top_k_from_logits(&logits, &tokenizer, 5)?;
         println!(
             "step={} token={} entropy={:.3} top1={}",
             generated, next_id, entropy, next_text.replace('\n', "\\n")
@@ -224,7 +224,7 @@ fn top_k_from_logits(
         top.push((idx as u32, prob));
     }
     let best_id = top.first().map(|(id, _)| *id).unwrap_or(0);
-    let best_text = tokenizer.token_text(best_id);
+    let best_text = tokenizer.decode_utf8_lossy(&[best_id]);
     Ok((top, entropy, best_id, best_text))
 }
 
