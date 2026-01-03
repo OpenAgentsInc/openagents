@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::Rc;
 
 use serde::Deserialize;
@@ -45,6 +46,11 @@ pub(crate) enum GptOssTelemetry {
         event: GptOssInferenceTelemetry,
         ts_ms: Option<u64>,
     },
+}
+
+thread_local! {
+    static PENDING_GPTOSS_EVENTS: RefCell<VecDeque<GptOssTelemetry>> =
+        RefCell::new(VecDeque::new());
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -370,13 +376,19 @@ impl GptOssVizState {
     }
 }
 
-pub(crate) fn push_gptoss_event(
-    state: &Rc<RefCell<AppState>>,
-    event: GptOssTelemetry,
-) {
-    if let Ok(mut guard) = state.try_borrow_mut() {
-        guard.gptoss.apply_telemetry(event);
-    }
+pub(crate) fn push_gptoss_event(_state: &Rc<RefCell<AppState>>, event: GptOssTelemetry) {
+    PENDING_GPTOSS_EVENTS.with(|queue| {
+        queue.borrow_mut().push_back(event);
+    });
+}
+
+pub(crate) fn flush_gptoss_events(state: &mut GptOssVizState) {
+    PENDING_GPTOSS_EVENTS.with(|queue| {
+        let mut queue = queue.borrow_mut();
+        while let Some(event) = queue.pop_front() {
+            state.apply_telemetry(event);
+        }
+    });
 }
 
 fn update_stage(

@@ -23,7 +23,7 @@ use crate::views::{
     build_ml_inference_page, build_repo_selector, build_repo_view,
 };
 use crate::fs_access::{self, FileKind};
-use crate::gptoss_viz::init_gptoss_viz_runtime;
+use crate::gptoss_viz::{flush_gptoss_events, init_gptoss_viz_runtime};
 use crate::gptoss_runtime::{
     gguf_file_input_label, gguf_file_label, start_gptoss_file_pick, start_gptoss_load,
 };
@@ -1462,6 +1462,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
     run_animation_loop(move || {
         let mut platform = platform.borrow_mut();
         let mut state = state_handle.borrow_mut();
+        flush_gptoss_events(&mut state.gptoss);
 
         let size = platform.logical_size();
         let width = size.width;
