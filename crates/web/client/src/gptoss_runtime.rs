@@ -1043,6 +1043,7 @@ async fn run_block0_attention_probe(
     let attn_v_b = find_tensor(index, "blk.0.attn_v.bias")?;
     let attn_out_w = find_tensor(index, "blk.0.attn_output.weight")?;
     let attn_out_b = find_tensor(index, "blk.0.attn_output.bias")?;
+    let attn_sinks = find_tensor(index, "blk.0.attn_sinks.weight")?;
     let post_attn_norm = find_tensor(index, "blk.0.post_attention_norm.weight")?;
     let output_norm_tensor = find_tensor(index, "output_norm.weight")?;
     let output_weight = find_tensor(index, "output.weight")?;
@@ -1103,7 +1104,16 @@ async fn run_block0_attention_probe(
         Some("ok".to_string()),
     );
 
-    let attn_out = v;
+    let sinks = fetch_f32_tensor(gguf_url, attn_sinks).await?;
+    let attn_out = attention_single_token(
+        &q,
+        &k,
+        &v,
+        &sinks,
+        config.head_count as usize,
+        config.head_count_kv as usize,
+        q_head_dim,
+    )?;
     let attn_proj = matmul_q8_0_with_bias(gguf_url, attn_out_w, attn_out_b, &attn_out, gpu).await?;
     for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
         *out += *base;
@@ -1487,6 +1497,48 @@ fn swiglu(gate: &[f32], up: &[f32]) -> Result<Vec<f32>, String> {
         let sigmoid = 1.0 / (1.0 + (-SWIGLU_ALPHA * g_clamped).exp());
         let glu = g_clamped * sigmoid;
         out.push(glu * (u_clamped + 1.0));
+    }
+    Ok(out)
+}
+
+fn attention_single_token(
+    q: &[f32],
+    k: &[f32],
+    v: &[f32],
+    sinks: &[f32],
+    heads: usize,
+    kv_heads: usize,
+    head_dim: usize,
+) -> Result<Vec<f32>, String> {
+    if heads == 0 || kv_heads == 0 || head_dim == 0 {
+        return Err("attention invalid dims".to_string());
+    }
+    if q.len() != heads * head_dim {
+        return Err("attention q shape mismatch".to_string());
+    }
+    if k.len() != kv_heads * head_dim || v.len() != kv_heads * head_dim {
+        return Err("attention kv shape mismatch".to_string());
+    }
+
+    let sm_scale = 1.0 / (head_dim as f32).sqrt();
+    let mut out = vec![0.0f32; heads * head_dim];
+    for h in 0..heads {
+        let q_base = h * head_dim;
+        let kv = h % kv_heads;
+        let k_base = kv * head_dim;
+        let mut dot = 0.0f32;
+        for i in 0..head_dim {
+            dot += q[q_base + i] * k[k_base + i];
+        }
+        let score = dot * sm_scale;
+        let sink = sinks.get(h).copied().unwrap_or(0.0);
+        let w = score.exp();
+        let s = sink.exp();
+        let weight = w / (w + s);
+        let v_base = k_base;
+        for i in 0..head_dim {
+            out[q_base + i] = v[v_base + i] * weight;
+        }
     }
     Ok(out)
 }
