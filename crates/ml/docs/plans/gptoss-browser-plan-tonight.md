@@ -122,6 +122,7 @@ Notes:
 - Added visible inference error lines in the `/gptoss` header so failures surface immediately (not only in the log panel).
 - Added fine-grained inference telemetry (token embd, attn norm/qkv/rope/score/out, post-attn norm, MoE gate + per-expert timing, output norm) to make the HUD reflect every step in the forward path.
 - Added automatic MoE fallback: if any expert matmul/IO fails, the MLP is skipped for that layer, the HUD switches to “fallback (mlp skipped)”, and inference continues so tokens still stream.
+- Marked probe and MoE fallback failures as non-fatal in the HUD so generation can continue without a red-blocking error banner.
  - Added a **block 0 attention probe** (token embed → RMSNorm → Q/K/V → attn output) using real GPT-OSS weights.
 - Added a **prefill + decode loop** with a CPU KV cache (per-layer) for multi-token forward passes.
 - Added **cache telemetry** (seq_len, max_len, bytes) and live **token stream** output from real logits.
