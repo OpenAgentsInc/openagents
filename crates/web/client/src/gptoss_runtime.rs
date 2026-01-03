@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
-use bytemuck::cast_slice;
+use bytemuck::{cast_slice, Pod, Zeroable};
 use futures::channel::oneshot;
 use gloo_timers::future::TimeoutFuture;
 use wgpu::util::DeviceExt;
@@ -2379,7 +2379,13 @@ async fn run_block0_attention_probe(
     let token_row = fetch_q8_0_row(gguf_url, token_embd, 0).await?;
     let attn_norm_w =
         fetch_f32_tensor_cached(state, gguf_url, attn_norm, &mut caches.tensors).await?;
-    let mut hidden = rms_norm(&token_row, &attn_norm_w, config.rms_epsilon)?;
+    let mut hidden =
+        match rms_norm_gpu(&token_row, &attn_norm_w, config.rms_epsilon, gpu, &mut gpu_tracker)
+            .await
+        {
+            Ok(value) => value,
+            Err(_) => rms_norm(&token_row, &attn_norm_w, config.rms_epsilon)?,
+        };
 
     emit_inference_stage(
         state,
@@ -2447,8 +2453,8 @@ async fn run_block0_attention_probe(
 
     let q_head_dim = (q.len() / config.head_count.max(1) as usize).max(1);
     let k_head_dim = (k.len() / config.head_count_kv.max(1) as usize).max(1);
-    apply_rope(
-        &mut q,
+    let q_mode = match apply_rope_gpu(
+        &q,
         config.head_count as usize,
         q_head_dim,
         0,
@@ -2456,9 +2462,31 @@ async fn run_block0_attention_probe(
         config.rope_dimension_count,
         config.rope_scaling_factor,
         config.rope_scaling_original_context,
-    )?;
-    apply_rope(
-        &mut k,
+        gpu,
+        &mut gpu_tracker,
+    )
+    .await
+    {
+        Ok(value) => {
+            q = value;
+            "gpu"
+        }
+        Err(_) => {
+            apply_rope(
+                &mut q,
+                config.head_count as usize,
+                q_head_dim,
+                0,
+                config.rope_theta,
+                config.rope_dimension_count,
+                config.rope_scaling_factor,
+                config.rope_scaling_original_context,
+            )?;
+            "cpu"
+        }
+    };
+    let k_mode = match apply_rope_gpu(
+        &k,
         config.head_count_kv as usize,
         k_head_dim,
         0,
@@ -2466,7 +2494,29 @@ async fn run_block0_attention_probe(
         config.rope_dimension_count,
         config.rope_scaling_factor,
         config.rope_scaling_original_context,
-    )?;
+        gpu,
+        &mut gpu_tracker,
+    )
+    .await
+    {
+        Ok(value) => {
+            k = value;
+            "gpu"
+        }
+        Err(_) => {
+            apply_rope(
+                &mut k,
+                config.head_count_kv as usize,
+                k_head_dim,
+                0,
+                config.rope_theta,
+                config.rope_dimension_count,
+                config.rope_scaling_factor,
+                config.rope_scaling_original_context,
+            )?;
+            "cpu"
+        }
+    };
 
     emit_inference_stage(
         state,
@@ -2474,7 +2524,7 @@ async fn run_block0_attention_probe(
         StageStatus::Completed,
         None,
         None,
-        Some("ok".to_string()),
+        Some(format!("q={q_mode} k={k_mode}")),
     );
 
     let sinks =
@@ -2506,7 +2556,12 @@ async fn run_block0_attention_probe(
 
     let post_attn_norm_w =
         fetch_f32_tensor_cached(state, gguf_url, post_attn_norm, &mut caches.tensors).await?;
-    hidden = rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?;
+    hidden = match rms_norm_gpu(&hidden, &post_attn_norm_w, config.rms_epsilon, gpu, &mut gpu_tracker)
+        .await
+    {
+        Ok(value) => value,
+        Err(_) => rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?,
+    };
 
     let gate_inp_w = find_tensor(index, "blk.0.ffn_gate_inp.weight")?;
     let gate_inp_b = find_tensor(index, "blk.0.ffn_gate_inp.bias")?;
@@ -2613,7 +2668,13 @@ async fn run_block0_attention_probe(
 
     let output_norm_w =
         fetch_f32_tensor_cached(state, gguf_url, output_norm_tensor, &mut caches.tensors).await?;
-    let final_hidden = rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?;
+    let final_hidden =
+        match rms_norm_gpu(&hidden, &output_norm_w, config.rms_epsilon, gpu, &mut gpu_tracker)
+            .await
+        {
+            Ok(value) => value,
+            Err(_) => rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?,
+        };
 
     let attention_norm = l2_norm(&attn_proj);
     let output_norm = l2_norm(&hidden);
@@ -3015,7 +3076,18 @@ async fn run_forward_token(
     let output_norm_start = now_ms();
     let output_norm_w =
         fetch_f32_tensor_cached(state, gguf_url, output_norm_tensor, &mut caches.tensors).await?;
-    let final_hidden = rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?;
+    let (final_hidden, output_norm_mode) = match rms_norm_gpu(
+        &hidden,
+        &output_norm_w,
+        config.rms_epsilon,
+        gpu,
+        gpu_tracker,
+    )
+    .await
+    {
+        Ok(value) => (value, "gpu"),
+        Err(_) => (rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?, "cpu"),
+    };
     let output_norm_ms = now_ms().saturating_sub(output_norm_start).max(1);
     emit_inference_stage(
         state,
@@ -3023,7 +3095,7 @@ async fn run_forward_token(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("ms={output_norm_ms}")),
+        Some(format!("{output_norm_mode} ms={output_norm_ms}")),
     );
 
     let output_weight = find_tensor(index, "output.weight")?;
@@ -3234,7 +3306,11 @@ async fn run_transformer_layer(
     let attn_norm_start = now_ms();
     let attn_norm_w =
         fetch_f32_tensor_cached(state, gguf_url, attn_norm, &mut caches.tensors).await?;
-    let mut normed = rms_norm(&hidden, &attn_norm_w, config.rms_epsilon)?;
+    let (mut normed, attn_norm_mode) =
+        match rms_norm_gpu(&hidden, &attn_norm_w, config.rms_epsilon, gpu, gpu_tracker).await {
+            Ok(value) => (value, "gpu"),
+            Err(_) => (rms_norm(&hidden, &attn_norm_w, config.rms_epsilon)?, "cpu"),
+        };
     let attn_norm_ms = now_ms().saturating_sub(attn_norm_start).max(1);
     emit_inference_stage(
         state,
@@ -3242,7 +3318,7 @@ async fn run_transformer_layer(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("layer={layer} ms={attn_norm_ms}")),
+        Some(format!("layer={layer} {attn_norm_mode} ms={attn_norm_ms}")),
     );
 
     let q_start = now_ms();
@@ -3323,8 +3399,8 @@ async fn run_transformer_layer(
     }
     let head_dim = q_head_dim;
     let rope_start = now_ms();
-    apply_rope(
-        &mut q,
+    let q_mode = match apply_rope_gpu(
+        &q,
         heads,
         q_head_dim,
         position,
@@ -3332,9 +3408,31 @@ async fn run_transformer_layer(
         config.rope_dimension_count,
         config.rope_scaling_factor,
         config.rope_scaling_original_context,
-    )?;
-    apply_rope(
-        &mut k,
+        gpu,
+        gpu_tracker,
+    )
+    .await
+    {
+        Ok(value) => {
+            q = value;
+            "gpu"
+        }
+        Err(_) => {
+            apply_rope(
+                &mut q,
+                heads,
+                q_head_dim,
+                position,
+                config.rope_theta,
+                config.rope_dimension_count,
+                config.rope_scaling_factor,
+                config.rope_scaling_original_context,
+            )?;
+            "cpu"
+        }
+    };
+    let k_mode = match apply_rope_gpu(
+        &k,
         kv_heads,
         k_head_dim,
         position,
@@ -3342,7 +3440,29 @@ async fn run_transformer_layer(
         config.rope_dimension_count,
         config.rope_scaling_factor,
         config.rope_scaling_original_context,
-    )?;
+        gpu,
+        gpu_tracker,
+    )
+    .await
+    {
+        Ok(value) => {
+            k = value;
+            "gpu"
+        }
+        Err(_) => {
+            apply_rope(
+                &mut k,
+                kv_heads,
+                k_head_dim,
+                position,
+                config.rope_theta,
+                config.rope_dimension_count,
+                config.rope_scaling_factor,
+                config.rope_scaling_original_context,
+            )?;
+            "cpu"
+        }
+    };
     let rope_ms = now_ms().saturating_sub(rope_start).max(1);
     emit_inference_stage(
         state,
@@ -3350,7 +3470,9 @@ async fn run_transformer_layer(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("layer={layer} ms={rope_ms}")),
+        Some(format!(
+            "layer={layer} q={q_mode} k={k_mode} ms={rope_ms}"
+        )),
     );
 
     let sinks =
@@ -3493,7 +3615,19 @@ async fn run_transformer_layer(
     let post_norm_start = now_ms();
     let post_attn_norm_w =
         fetch_f32_tensor_cached(state, gguf_url, post_attn_norm, &mut caches.tensors).await?;
-    normed = rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?;
+    let (next_normed, post_norm_mode) = match rms_norm_gpu(
+        &hidden,
+        &post_attn_norm_w,
+        config.rms_epsilon,
+        gpu,
+        gpu_tracker,
+    )
+    .await
+    {
+        Ok(value) => (value, "gpu"),
+        Err(_) => (rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?, "cpu"),
+    };
+    normed = next_normed;
     let post_norm_ms = now_ms().saturating_sub(post_norm_start).max(1);
     emit_inference_stage(
         state,
@@ -3501,7 +3635,7 @@ async fn run_transformer_layer(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("layer={layer} ms={post_norm_ms}")),
+        Some(format!("layer={layer} {post_norm_mode} ms={post_norm_ms}")),
     );
 
     let layer_mlp_start = now_ms();
@@ -4379,6 +4513,57 @@ fn attention_head_weights(
     Ok(weights)
 }
 
+struct RopeScaling {
+    theta: f32,
+    scaling_factor: f32,
+    concentration: f32,
+    low: f32,
+    high: f32,
+    use_yarn: bool,
+}
+
+fn compute_rope_scaling(
+    theta: f32,
+    rope_dim: usize,
+    rope_scaling_factor: f32,
+    rope_scaling_original_context: u32,
+) -> RopeScaling {
+    let theta = if theta <= 0.0 { 10000.0 } else { theta };
+    let scaling_factor = rope_scaling_factor.max(1.0);
+    let original_context = rope_scaling_original_context as f32;
+    let use_yarn = scaling_factor > 1.0 && original_context > 0.0;
+    let concentration = if use_yarn {
+        0.1 * scaling_factor.ln() + 1.0
+    } else {
+        1.0
+    };
+    let theta_log = theta.ln();
+    let d_half = rope_dim as f32 / 2.0;
+    let mut low = 0.0f32;
+    let mut high = 0.0f32;
+    if use_yarn {
+        let denom = theta_log.max(1e-6);
+        low = d_half
+            * (original_context / (ROPE_NTK_BETA * 2.0 * std::f32::consts::PI)).ln()
+            / denom;
+        high = d_half
+            * (original_context / (ROPE_NTK_ALPHA * 2.0 * std::f32::consts::PI)).ln()
+            / denom;
+        if !(low > 0.0 && high > low && high < d_half - 1.0) {
+            low = 0.0;
+            high = 0.0;
+        }
+    }
+    RopeScaling {
+        theta,
+        scaling_factor,
+        concentration,
+        low,
+        high,
+        use_yarn,
+    }
+}
+
 fn apply_rope(
     values: &mut [f32],
     heads: usize,
@@ -4411,32 +4596,18 @@ fn apply_rope(
         return Err("rope_dim must be even".to_string());
     }
 
-    let theta = if theta <= 0.0 { 10000.0 } else { theta };
-    let scaling_factor = rope_scaling_factor.max(1.0);
-    let original_context = rope_scaling_original_context as f32;
-    let use_yarn = scaling_factor > 1.0 && original_context > 0.0;
-    let concentration = if use_yarn {
-        0.1 * scaling_factor.ln() + 1.0
-    } else {
-        1.0
-    };
-    let theta_log = theta.ln();
-    let d_half = rope_dim as f32 / 2.0;
-    let mut low = 0.0f32;
-    let mut high = 0.0f32;
-    if use_yarn {
-        let denom = theta_log.max(1e-6);
-        low = d_half
-            * (original_context / (ROPE_NTK_BETA * 2.0 * std::f32::consts::PI)).ln()
-            / denom;
-        high = d_half
-            * (original_context / (ROPE_NTK_ALPHA * 2.0 * std::f32::consts::PI)).ln()
-            / denom;
-        if !(low > 0.0 && high > low && high < d_half - 1.0) {
-            low = 0.0;
-            high = 0.0;
-        }
-    }
+    let scaling = compute_rope_scaling(
+        theta,
+        rope_dim,
+        rope_scaling_factor,
+        rope_scaling_original_context,
+    );
+    let theta = scaling.theta;
+    let scaling_factor = scaling.scaling_factor;
+    let use_yarn = scaling.use_yarn;
+    let concentration = scaling.concentration;
+    let low = scaling.low;
+    let high = scaling.high;
     for h in 0..heads {
         let base = h * head_dim;
         for i in (0..rope_dim).step_by(2) {
@@ -4595,6 +4766,398 @@ fn pick_workgroup_size(device: &wgpu::Device) -> u32 {
 
 fn shader_with_workgroup(source: &str, workgroup_size: u32) -> String {
     source.replace("{{WORKGROUP_SIZE}}", &workgroup_size.to_string())
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct RmsNormParams {
+    n: u32,
+    _pad0: u32,
+    eps: f32,
+    _pad1: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct RopeParams {
+    heads: u32,
+    head_dim: u32,
+    rope_dim: u32,
+    position: u32,
+    theta: f32,
+    scaling_factor: f32,
+    low: f32,
+    high: f32,
+    concentration: f32,
+    use_yarn: u32,
+    _pad0: u32,
+    _pad1: u32,
+}
+
+async fn rms_norm_gpu(
+    input: &[f32],
+    weight: &[f32],
+    eps: f32,
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<Vec<f32>, String> {
+    if input.len() != weight.len() {
+        return Err("rms_norm shape mismatch".to_string());
+    }
+    let n = input.len();
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    let device = &gpu.device;
+    let queue = &gpu.queue;
+    let bytes = n * std::mem::size_of::<f32>();
+    let max_storage = device.limits().max_storage_buffer_binding_size as usize;
+    ensure_storage_limit("rms_norm input", bytes, max_storage)?;
+    ensure_storage_limit("rms_norm weight", bytes, max_storage)?;
+    ensure_storage_limit("rms_norm output", bytes, max_storage)?;
+
+    let workgroup_size = pick_workgroup_size(device);
+    let shader_source = shader_with_workgroup(RMSNORM_SHADER, workgroup_size);
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("rmsnorm"),
+        source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+    });
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("rmsnorm_bindings"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("rmsnorm_layout"),
+        bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("rmsnorm_pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
+    let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("rmsnorm_input"),
+        contents: cast_slice(input),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let weight_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("rmsnorm_weight"),
+        contents: cast_slice(weight),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("rmsnorm_output"),
+        size: bytes as u64,
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let params = RmsNormParams {
+        n: u32::try_from(n).map_err(|_| "rms_norm length overflow".to_string())?,
+        _pad0: 0,
+        eps,
+        _pad1: 0,
+    };
+    let params_bytes = std::mem::size_of::<RmsNormParams>();
+    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("rmsnorm_params"),
+        contents: cast_slice(&[params]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("rmsnorm_bind_group"),
+        layout: &bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: input_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: weight_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: output_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: params_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("rmsnorm_readback"),
+        size: bytes as u64,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    gpu_tracker.add_buffers(bytes * 4 + params_bytes, 5);
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("rmsnorm_encoder"),
+    });
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("rmsnorm_pass"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        pass.dispatch_workgroups(1, 1, 1);
+    }
+    encoder.copy_buffer_to_buffer(&output_buffer, 0, &readback, 0, bytes as u64);
+    queue.submit(Some(encoder.finish()));
+
+    let slice = readback.slice(..);
+    let (tx, rx) = oneshot::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = tx.send(result);
+    });
+    device.poll(wgpu::Maintain::Wait);
+    match rx.await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => return Err(format!("rmsnorm map_async failed: {err:?}")),
+        Err(_) => return Err("rmsnorm map_async channel failed".to_string()),
+    }
+
+    let data = slice.get_mapped_range();
+    let output = cast_slice(&data).to_vec();
+    drop(data);
+    readback.unmap();
+    Ok(output)
+}
+
+async fn apply_rope_gpu(
+    values: &[f32],
+    heads: usize,
+    head_dim: usize,
+    position: usize,
+    theta: f32,
+    rope_dim: u32,
+    rope_scaling_factor: f32,
+    rope_scaling_original_context: u32,
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<Vec<f32>, String> {
+    if head_dim == 0 || heads == 0 {
+        return Err("rope invalid head dims".to_string());
+    }
+    let expected = heads
+        .checked_mul(head_dim)
+        .ok_or_else(|| "rope shape overflow".to_string())?;
+    if values.len() != expected {
+        return Err(format!(
+            "rope shape mismatch values={} heads={} head_dim={}",
+            values.len(),
+            heads,
+            head_dim
+        ));
+    }
+    let rope_dim = rope_dim.min(head_dim as u32) as usize;
+    if rope_dim == 0 {
+        return Ok(values.to_vec());
+    }
+    if rope_dim % 2 != 0 {
+        return Err("rope_dim must be even".to_string());
+    }
+    let pairs = heads
+        .checked_mul(rope_dim / 2)
+        .ok_or_else(|| "rope pair overflow".to_string())?;
+    if pairs == 0 {
+        return Ok(values.to_vec());
+    }
+
+    let scaling = compute_rope_scaling(theta, rope_dim, rope_scaling_factor, rope_scaling_original_context);
+    let device = &gpu.device;
+    let queue = &gpu.queue;
+    let bytes = values.len() * std::mem::size_of::<f32>();
+    let max_storage = device.limits().max_storage_buffer_binding_size as usize;
+    ensure_storage_limit("rope values", bytes, max_storage)?;
+
+    let workgroup_size = pick_workgroup_size(device);
+    let shader_source = shader_with_workgroup(ROPE_SHADER, workgroup_size);
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("rope"),
+        source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+    });
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("rope_bindings"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("rope_layout"),
+        bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("rope_pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
+    let values_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("rope_values"),
+        contents: cast_slice(values),
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+    });
+    let params = RopeParams {
+        heads: u32::try_from(heads).map_err(|_| "rope heads overflow".to_string())?,
+        head_dim: u32::try_from(head_dim).map_err(|_| "rope head_dim overflow".to_string())?,
+        rope_dim: u32::try_from(rope_dim).map_err(|_| "rope rope_dim overflow".to_string())?,
+        position: u32::try_from(position).map_err(|_| "rope position overflow".to_string())?,
+        theta: scaling.theta,
+        scaling_factor: scaling.scaling_factor,
+        low: scaling.low,
+        high: scaling.high,
+        concentration: scaling.concentration,
+        use_yarn: if scaling.use_yarn { 1 } else { 0 },
+        _pad0: 0,
+        _pad1: 0,
+    };
+    let params_bytes = std::mem::size_of::<RopeParams>();
+    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("rope_params"),
+        contents: cast_slice(&[params]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("rope_bind_group"),
+        layout: &bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: values_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: params_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("rope_readback"),
+        size: bytes as u64,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    gpu_tracker.add_buffers(bytes * 2 + params_bytes, 3);
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("rope_encoder"),
+    });
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("rope_pass"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        let pair_count = u32::try_from(pairs).map_err(|_| "rope pair count overflow".to_string())?;
+        let groups = (pair_count + workgroup_size - 1) / workgroup_size;
+        pass.dispatch_workgroups(groups, 1, 1);
+    }
+    encoder.copy_buffer_to_buffer(&values_buffer, 0, &readback, 0, bytes as u64);
+    queue.submit(Some(encoder.finish()));
+
+    let slice = readback.slice(..);
+    let (tx, rx) = oneshot::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = tx.send(result);
+    });
+    device.poll(wgpu::Maintain::Wait);
+    match rx.await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => return Err(format!("rope map_async failed: {err:?}")),
+        Err(_) => return Err("rope map_async channel failed".to_string()),
+    }
+
+    let data = slice.get_mapped_range();
+    let output = cast_slice(&data).to_vec();
+    drop(data);
+    readback.unmap();
+    Ok(output)
 }
 
 async fn gpu_matmul_q8_0(
@@ -5275,6 +5838,9 @@ fn f16_to_f32(bits: u16) -> f32 {
     }
     val
 }
+
+const RMSNORM_SHADER: &str = include_str!("shaders/rmsnorm.wgsl");
+const ROPE_SHADER: &str = include_str!("shaders/rope.wgsl");
 
 const Q8_0_SHADER: &str = r#"
 struct Params {
