@@ -173,6 +173,7 @@ Notes:
 - Load errors now include a multi-line hint with the exact `gguf_serve` command for local runs.
 - Token stream headers now show the last generated token id (gptoss + ml inference).
 - Added browser yield points during prefill/decode/layer loops so telemetry paints while compute runs.
+- GPT-OSS page now shows local GGUF path + exact `gguf_serve` command under the URL field.
 
 ---
 

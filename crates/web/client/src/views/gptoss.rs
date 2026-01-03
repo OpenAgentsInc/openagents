@@ -5,7 +5,9 @@ use wgpui::components::Component;
 use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame, Heatmap};
 use wgpui::PaintContext;
 
-use crate::gptoss_runtime::{default_gguf_url, default_user_prompt, read_query_param};
+use crate::gptoss_runtime::{
+    default_gguf_url, default_user_prompt, local_gguf_path, local_gguf_serve_cmd, read_query_param,
+};
 use crate::state::{AppState, GptOssStage, GptOssStageStatus, GptOssVizState};
 
 fn accent_cyan() -> Hsla {
@@ -140,7 +142,18 @@ pub(crate) fn build_gptoss_page(
         let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
         state.gptoss.gguf_input.paint(gguf_input_bounds, &mut input_cx);
     }
-    y += 34.0;
+    y += 32.0;
+    let local_hint = format!("LOCAL: {}  (run: {})", local_gguf_path(), local_gguf_serve_cmd());
+    draw_mono_text(
+        scene,
+        text_system,
+        &truncate_text(&local_hint, 96),
+        inner_x,
+        y,
+        9.0,
+        theme::text::MUTED,
+    );
+    y += 20.0;
 
     draw_mono_text(
         scene,
