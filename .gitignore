@@ -43,6 +43,7 @@ private
 *.safetensors
 *.bin
 models/
+crates/ml/models/
 *.tsbuildinfo
 
 # Beads local artifacts
