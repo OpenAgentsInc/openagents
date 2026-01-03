@@ -13,6 +13,7 @@ use web_sys;
 use crate::gguf_web::{
     fetch_and_parse_index, fetch_range, fetch_range_with_total, GgufIndex, GgufTensor,
 };
+use crate::gptoss_tokenizer::GptOssTokenizer;
 use crate::gptoss_viz::{push_gptoss_event, GptOssInferenceTelemetry, GptOssTelemetry, StageStatus};
 use crate::state::{AppState, GpuContext};
 
@@ -23,6 +24,8 @@ const PROGRESS_STEP_BYTES: u64 = 64 * 1024 * 1024;
 const DEFAULT_GGUF_URL: &str =
     "https://huggingface.co/openai/gpt-oss-20b/resolve/main/gpt-oss-20b-Q8_0.gguf";
 const LOCAL_GGUF_URL: &str = "http://localhost:9898/gpt-oss-20b-Q8_0.gguf";
+const CURRENT_DATE: &str = "2026-01-02";
+const DEFAULT_USER_PROMPT: &str = "Give me one sentence about what GPT-OSS can do.";
 const Q8_0_BLOCK_BYTES: usize = 34;
 const Q8_0_BLOCK_VALUES: usize = 32;
 
@@ -117,18 +120,27 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         None,
     );
 
-    let index = fetch_and_parse_index(&gguf_url, DEFAULT_METADATA_BYTES, MAX_METADATA_ATTEMPTS)
-        .await?;
+    let index = Rc::new(
+        fetch_and_parse_index(&gguf_url, DEFAULT_METADATA_BYTES, MAX_METADATA_ATTEMPTS).await?,
+    );
     emit_load_stage(
         &state,
         "gguf_parse",
         StageStatus::Completed,
-        Some(format!("tensors={}", index.tensors.len())),
+        Some(format!(
+            "tensors={} v{} data_offset={}",
+            index.tensors.len(),
+            index.version,
+            format_bytes(index.tensor_data_offset)
+        )),
         None,
         None,
     );
 
-    emit_tensor_scan(&state, &index, 18);
+    emit_tensor_scan(&state, index.as_ref(), 18);
+
+    let tokenizer = build_tokenizer(&state, index.as_ref())?;
+    let _prompt_tokens = encode_prompt(&state, &tokenizer)?;
 
     let gpu_context = state.borrow().gpu_context.clone();
     if let Some(gpu) = gpu_context.clone() {
@@ -136,7 +148,9 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         let state_clone = state.clone();
         let index_clone = index.clone();
         spawn_local(async move {
-            if let Err(err) = run_q8_0_probe(&state_clone, &gguf, &index_clone, &gpu).await {
+            if let Err(err) = run_q8_0_probe(&state_clone, &gguf, index_clone.as_ref(), &gpu)
+                .await
+            {
                 emit_inference_stage(
                     &state_clone,
                     "q8_0_probe",
@@ -167,7 +181,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let mut loaded = 0u64;
     let mut next_progress = PROGRESS_STEP_BYTES;
     let mut chunk_idx = 0u64;
-    let mut tensor_cursor = tensor_start_cursor(&index);
+    let mut tensor_cursor = tensor_start_cursor(index.as_ref());
     let mut tensor_emitted = 0usize;
 
     while offset < total_bytes {
@@ -239,7 +253,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
             None,
             Some("after_load".to_string()),
         );
-        if let Err(err) = run_block0_attention_probe(&state, &gguf_url, &index, &gpu).await {
+        if let Err(err) = run_block0_attention_probe(&state, &gguf_url, index.as_ref(), &gpu).await {
             emit_inference_stage(
                 &state,
                 "blk0_attention",
@@ -347,6 +361,121 @@ fn emit_inference_event(
     );
 }
 
+fn build_tokenizer(
+    state: &Rc<RefCell<AppState>>,
+    index: &GgufIndex,
+) -> Result<GptOssTokenizer, String> {
+    emit_load_stage(
+        state,
+        "tokenizer_load",
+        StageStatus::Started,
+        Some("building BPE".to_string()),
+        None,
+        None,
+    );
+
+    let Some(tokenizer_meta) = index.metadata.tokenizer.clone() else {
+        let err = "gguf tokenizer metadata missing".to_string();
+        emit_load_stage(
+            state,
+            "tokenizer_load",
+            StageStatus::Failed,
+            Some(err.clone()),
+            None,
+            None,
+        );
+        return Err(err);
+    };
+
+    let token_count = tokenizer_meta.tokens.len();
+    let merges_len = tokenizer_meta.merges.len();
+    let model = tokenizer_meta
+        .model
+        .as_deref()
+        .unwrap_or("-");
+    let pre = tokenizer_meta
+        .pre
+        .as_deref()
+        .unwrap_or("-");
+    let chat_len = tokenizer_meta
+        .chat_template
+        .as_ref()
+        .map(|value| value.len())
+        .unwrap_or(0);
+    let bos = tokenizer_meta
+        .bos_token_id
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let eos = tokenizer_meta
+        .eos_token_id
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let pad = tokenizer_meta
+        .pad_token_id
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string());
+
+    let tokenizer = match GptOssTokenizer::from_gguf(tokenizer_meta.clone()) {
+        Ok(tok) => tok,
+        Err(err) => {
+            emit_load_stage(
+                state,
+                "tokenizer_load",
+                StageStatus::Failed,
+                Some(err.clone()),
+                None,
+                None,
+            );
+            return Err(err);
+        }
+    };
+
+    emit_load_stage(
+        state,
+        "tokenizer_load",
+        StageStatus::Completed,
+        Some(format!(
+            "vocab={token_count} merges={merges_len} model={model} pre={pre} template={chat_len}b bos={bos} eos={eos} pad={pad}",
+        )),
+        None,
+        None,
+    );
+    Ok(tokenizer)
+}
+
+fn encode_prompt(
+    state: &Rc<RefCell<AppState>>,
+    tokenizer: &GptOssTokenizer,
+) -> Result<Vec<u32>, String> {
+    let user_prompt = read_query_param("prompt")
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(default_user_prompt);
+    let prompt = build_harmony_prompt(&user_prompt);
+
+    emit_inference_stage(
+        state,
+        "prompt_encode",
+        StageStatus::Started,
+        Some(0),
+        None,
+        Some(format!("chars={}", prompt.len())),
+    );
+
+    let tokens = tokenizer.encode_with_special_tokens(&prompt)?;
+    let total = tokens.len();
+
+    emit_inference_stage(
+        state,
+        "prompt_encode",
+        StageStatus::Completed,
+        Some(total),
+        Some(total),
+        Some(format!("tokens={total}")),
+    );
+
+    Ok(tokens)
+}
+
 fn now_ms() -> u64 {
     js_sys::Date::now().max(0.0) as u64
 }
@@ -370,6 +499,29 @@ fn default_gguf_url() -> String {
     } else {
         DEFAULT_GGUF_URL.to_string()
     }
+}
+
+fn default_user_prompt() -> String {
+    DEFAULT_USER_PROMPT.to_string()
+}
+
+fn build_harmony_prompt(user_prompt: &str) -> String {
+    let system_prompt = format!(
+        "You are ChatGPT, a large language model trained by OpenAI.\n\
+Knowledge cutoff: 2024-06\n\
+Current date: {CURRENT_DATE}\n\n\
+Reasoning: low\n\n\
+# Valid channels: analysis, commentary, final. Channel must be included for every message.\n\
+Calls to these tools must go to the commentary channel: 'functions'."
+    );
+
+    let mut prompt = String::new();
+    prompt.push_str("<|start|>system<|message|>");
+    prompt.push_str(&system_prompt);
+    prompt.push_str("<|end|><|start|>user<|message|>");
+    prompt.push_str(user_prompt);
+    prompt.push_str("<|end|><|start|>assistant");
+    prompt
 }
 
 fn tensor_start_cursor(index: &GgufIndex) -> Vec<(u64, String)> {
