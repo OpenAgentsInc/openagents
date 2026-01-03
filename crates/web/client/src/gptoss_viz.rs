@@ -187,6 +187,11 @@ impl GptOssVizState {
                         self.moe_mode = Some(detail.clone());
                     }
                 }
+                if stage == "attn_fallback" {
+                    if let Some(detail) = detail_clone.as_ref() {
+                        self.attention_mode = Some(detail.clone());
+                    }
+                }
                 if matches!(status, StageStatus::Failed) {
                     let msg = detail_clone
                         .clone()
