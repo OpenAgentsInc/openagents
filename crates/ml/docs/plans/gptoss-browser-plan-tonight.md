@@ -202,6 +202,7 @@ Notes:
 - Added **decode-only GPU attention** shader (`attention_decode.wgsl`) and wired a WebGPU attention path that slices the active KV window; `attn_score` now tags `gpu` vs `cpu` and falls back to CPU when GPU attention fails.
 - Added a **GPU KV cache ring** per layer (CPU+GPU storage) with sliding-window overwrite; attention now reads directly from the GPU KV buffers and decode enforces GPU attention only (CPU attention weights gated to prefill).
 - Added **Q8_0 dequant** WGSL and wired **GPU embedding lookup** on cache misses; added a **vector add** kernel and use it for residual adds (CPU fallback only on GPU failure).
+- Added **SwigLU** WGSL and GPU bias-adds for MoE MLP (gate/up/down), with CPU fallbacks only on GPU failure; residual adds in the main layer path now use GPU.
 - Attention heatmap now accumulates a rolling window of head weights per token.
 - GPT-OSS page now shows the full local GGUF URL under the input for easy copy/paste.
 - Load now fails fast with a clear error if WebGPU isn't available in the browser.
