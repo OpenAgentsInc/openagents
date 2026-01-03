@@ -1209,6 +1209,7 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.attention_mode = None;
     state.moe_mode = None;
     state.sampling_mode = None;
+    state.cpu_fallback = None;
     state.active_layers = None;
     state.load_progress = None;
     state.current_stage = None;
