@@ -2987,7 +2987,7 @@ async fn run_generation(
             active_layers,
             moe_fallback,
             force_dense,
-            true,
+            false,
         )
         .await?;
         last_step_ms = now_ms().saturating_sub(start_ms).max(1);
