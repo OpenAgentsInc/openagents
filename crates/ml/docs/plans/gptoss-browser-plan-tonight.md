@@ -207,6 +207,7 @@ Notes:
 - GPU limits telemetry now formats buffer sizes in human-readable units.
 - Generation stages now report stop reasons (max_new, stop_token, kv_full).
 - Layer attention/MLP stages now include total per-layer timing summaries.
+- KV cache HUD now shows bytes alongside token counts.
 
 ---
 
