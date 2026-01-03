@@ -241,6 +241,18 @@ pub(crate) struct MemoryUsage {
     pub(crate) activations: usize,
 }
 
+#[derive(Clone)]
+pub(crate) struct GpuContext {
+    pub(crate) device: wgpu::Device,
+    pub(crate) queue: wgpu::Queue,
+}
+
+impl GpuContext {
+    pub(crate) fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+        Self { device, queue }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum GptOssStageStatus {
     Idle,
@@ -845,6 +857,7 @@ pub(crate) struct AppState {
     pub(crate) user: UserInfo,
     pub(crate) loading: bool,
     pub(crate) view: AppView,
+    pub(crate) gpu_context: Option<GpuContext>,
     pub(crate) repos: Vec<RepoInfo>,
     pub(crate) repos_loading: bool,
     pub(crate) hovered_repo_idx: Option<usize>,
@@ -933,6 +946,7 @@ impl Default for AppState {
             user: UserInfo::default(),
             loading: true,
             view: AppView::Landing,
+            gpu_context: None,
             repos: Vec::new(),
             repos_loading: false,
             hovered_repo_idx: None,
