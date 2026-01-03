@@ -613,6 +613,7 @@ Read these if stuck:
 ## Progress Log
 
 - 2026-01-02: Added RMSNorm/RoPE/attention parity probes (CPU vs GPU with tolerance), updated completion checklist, and surfaced RMSNorm/RoPE kernel mode in HUD.
+- 2026-01-02: Ran CLI gates/tests (gguf_dump, gguf_range, gguf_gate_c/d, test_tokenizer/embed/lm_head/layer/attention/moe_router). `gptoss_cli` full run timed out at 8/20 tokens; 1-layer `--moe-fallback` run completed (output not coherent).
 
 ---
 
