@@ -205,6 +205,7 @@ Notes:
 - Load streaming errors are now non-fatal (generation keeps running with a failed stage log).
 - GPU buffer counts now track real allocations (no more lumped counts).
 - GPU limits telemetry now formats buffer sizes in human-readable units.
+- Generation stages now report stop reasons (max_new, stop_token, kv_full).
 
 ---
 
