@@ -52,6 +52,8 @@ const ROPE_NTK_ALPHA: f32 = 1.0;
 const ROPE_NTK_BETA: f32 = 32.0;
 const TENSOR_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
 const TENSOR_CACHE_MAX_ENTRY_BYTES: usize = 4 * 1024 * 1024;
+const Q8_0_CACHE_MAX_BYTES: usize = 96 * 1024 * 1024;
+const Q8_0_CACHE_MAX_ENTRY_BYTES: usize = 32 * 1024 * 1024;
 const EXPERT_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
 const EXPERT_CACHE_MAX_ENTRY_BYTES: usize = 8 * 1024 * 1024;
 
@@ -264,6 +266,101 @@ impl TensorCache {
 }
 
 #[derive(Clone, Debug)]
+struct QuantCacheEntry {
+    data: Vec<u8>,
+    bytes: usize,
+}
+
+#[derive(Clone, Debug)]
+struct QuantCache {
+    entries: HashMap<String, QuantCacheEntry>,
+    order: VecDeque<String>,
+    total_bytes: usize,
+    hits: u64,
+    misses: u64,
+    evictions: u64,
+    skipped: u64,
+}
+
+impl QuantCache {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+            total_bytes: 0,
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            skipped: 0,
+        }
+    }
+
+    fn get(&mut self, name: &str) -> Option<Vec<u8>> {
+        let hit = self.entries.get(name).map(|entry| entry.data.clone());
+        if hit.is_some() {
+            self.hits = self.hits.saturating_add(1);
+            self.touch(name);
+            return hit;
+        }
+        self.misses = self.misses.saturating_add(1);
+        None
+    }
+
+    fn insert(&mut self, name: String, data: Vec<u8>) {
+        let bytes = data.len();
+        if bytes > Q8_0_CACHE_MAX_ENTRY_BYTES {
+            self.skipped = self.skipped.saturating_add(1);
+            return;
+        }
+        if bytes > Q8_0_CACHE_MAX_BYTES {
+            self.skipped = self.skipped.saturating_add(1);
+            return;
+        }
+        if let Some(existing) = self.entries.remove(&name) {
+            self.total_bytes = self.total_bytes.saturating_sub(existing.bytes);
+            self.order.retain(|v| v != &name);
+        }
+        while self.total_bytes.saturating_add(bytes) > Q8_0_CACHE_MAX_BYTES {
+            if let Some(evicted) = self.order.pop_front() {
+                if let Some(entry) = self.entries.remove(&evicted) {
+                    self.total_bytes = self.total_bytes.saturating_sub(entry.bytes);
+                    self.evictions = self.evictions.saturating_add(1);
+                }
+            } else {
+                break;
+            }
+        }
+        self.total_bytes = self.total_bytes.saturating_add(bytes);
+        self.order.push_back(name.clone());
+        self.entries.insert(
+            name,
+            QuantCacheEntry {
+                data,
+                bytes,
+            },
+        );
+    }
+
+    fn touch(&mut self, name: &str) {
+        if let Some(pos) = self.order.iter().position(|v| v == name) {
+            self.order.remove(pos);
+            self.order.push_back(name.to_string());
+        }
+    }
+
+    fn stats(&self) -> CacheStats {
+        CacheStats {
+            hits: self.hits,
+            misses: self.misses,
+            evictions: self.evictions,
+            skipped: self.skipped,
+            bytes: self.total_bytes,
+            entries: self.entries.len(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 struct ExpertCacheEntry {
     data: Vec<u8>,
     bytes: usize,
@@ -360,6 +457,7 @@ impl ExpertCache {
 
 struct RuntimeCaches {
     tensors: TensorCache,
+    quant: QuantCache,
     experts: ExpertCache,
 }
 
@@ -367,6 +465,7 @@ impl RuntimeCaches {
     fn new() -> Self {
         Self {
             tensors: TensorCache::new(),
+            quant: QuantCache::new(),
             experts: ExpertCache::new(),
         }
     }
@@ -1941,6 +2040,7 @@ async fn run_block0_attention_probe(
         gpu,
         &mut gpu_tracker,
         &mut caches.tensors,
+        &mut caches.quant,
     )
     .await?;
     let mut k = matmul_q8_0_with_bias(
@@ -1952,6 +2052,7 @@ async fn run_block0_attention_probe(
         gpu,
         &mut gpu_tracker,
         &mut caches.tensors,
+        &mut caches.quant,
     )
     .await?;
     let v = matmul_q8_0_with_bias(
@@ -1963,6 +2064,7 @@ async fn run_block0_attention_probe(
         gpu,
         &mut gpu_tracker,
         &mut caches.tensors,
+        &mut caches.quant,
     )
     .await?;
 
@@ -2036,6 +2138,7 @@ async fn run_block0_attention_probe(
         gpu,
         &mut gpu_tracker,
         &mut caches.tensors,
+        &mut caches.quant,
     )
     .await?;
     for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
@@ -2488,6 +2591,7 @@ async fn run_forward_token(
 
     cache.seq_len = position.saturating_add(1);
     let tensor_stats = caches.tensors.stats();
+    let quant_stats = caches.quant.stats();
     let expert_stats = caches.experts.stats();
     emit_inference_stage(
         state,
@@ -2503,6 +2607,22 @@ async fn run_forward_token(
             tensor_stats.skipped,
             format_bytes(tensor_stats.bytes as u64),
             tensor_stats.entries
+        )),
+    );
+    emit_inference_stage(
+        state,
+        "q8_0_cache",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!(
+            "hits={} misses={} evict={} skip={} bytes={} entries={}",
+            quant_stats.hits,
+            quant_stats.misses,
+            quant_stats.evictions,
+            quant_stats.skipped,
+            format_bytes(quant_stats.bytes as u64),
+            quant_stats.entries
         )),
     );
     emit_inference_stage(
@@ -2635,6 +2755,7 @@ async fn run_transformer_layer(
         gpu,
         gpu_tracker,
         &mut caches.tensors,
+        &mut caches.quant,
     )
     .await?;
     let mut k = matmul_q8_0_with_bias(
@@ -2646,6 +2767,7 @@ async fn run_transformer_layer(
         gpu,
         gpu_tracker,
         &mut caches.tensors,
+        &mut caches.quant,
     )
     .await?;
     let v = matmul_q8_0_with_bias(
@@ -2657,6 +2779,7 @@ async fn run_transformer_layer(
         gpu,
         gpu_tracker,
         &mut caches.tensors,
+        &mut caches.quant,
     )
     .await?;
 
@@ -2771,6 +2894,7 @@ async fn run_transformer_layer(
         gpu,
         gpu_tracker,
         &mut caches.tensors,
+        &mut caches.quant,
     )
     .await?;
     for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
@@ -3139,6 +3263,7 @@ async fn matmul_q8_0_with_bias(
     gpu: &GpuContext,
     gpu_tracker: &mut GpuAllocTracker,
     cache: &mut TensorCache,
+    quant_cache: &mut QuantCache,
 ) -> Result<Vec<f32>, String> {
     if weight.ggml_type != 8 {
         return Err(format!(
@@ -3162,6 +3287,17 @@ async fn matmul_q8_0_with_bias(
     let weight_bytes = usize::try_from(weight.nbytes).unwrap_or(usize::MAX);
     let chunked = weight_bytes > max_storage;
     let start_ms = now_ms();
+    let mut cached_quant = None;
+    let cache_note = if chunked {
+        "cache=skip"
+    } else {
+        cached_quant = quant_cache.get(&weight.name);
+        if cached_quant.is_some() {
+            "cache=hit"
+        } else {
+            "cache=miss"
+        }
+    };
     emit_inference_stage(
         state,
         "weights_fetch",
@@ -3176,7 +3312,7 @@ async fn matmul_q8_0_with_bias(
             )
         } else {
             format!(
-                "{} bytes={}",
+                "{} bytes={} {cache_note}",
                 weight.name,
                 format_bytes(weight.nbytes)
             )
@@ -3186,12 +3322,18 @@ async fn matmul_q8_0_with_bias(
     let mut out = if chunked {
         gpu_matmul_q8_0_chunked(gguf_url, weight, input, gpu, gpu_tracker).await?
     } else {
-        let mut quant = fetch_range(gguf_url, weight.absolute_offset, weight.nbytes).await?;
-        if quant.len() % 4 != 0 {
-            let padded = (quant.len() + 3) / 4 * 4;
-            quant.resize(padded, 0);
-        }
-        emit_tensor_resident(state, weight.name.clone(), quant.len(), "q8_0");
+        let quant = if let Some(hit) = cached_quant {
+            hit
+        } else {
+            let mut quant = fetch_range(gguf_url, weight.absolute_offset, weight.nbytes).await?;
+            if quant.len() % 4 != 0 {
+                let padded = (quant.len() + 3) / 4 * 4;
+                quant.resize(padded, 0);
+            }
+            emit_tensor_resident(state, weight.name.clone(), quant.len(), "q8_0");
+            quant_cache.insert(weight.name.clone(), quant.clone());
+            quant
+        };
         match gpu_matmul_q8_0(&quant, input, k, n, gpu, gpu_tracker).await {
             Ok(out) => out,
             Err(err) => {
@@ -3229,7 +3371,7 @@ async fn matmul_q8_0_with_bias(
             )
         } else {
             format!(
-                "{} bytes={} ms={fetch_ms}",
+                "{} bytes={} ms={fetch_ms} {cache_note}",
                 weight.name,
                 format_bytes(weight.nbytes)
             )

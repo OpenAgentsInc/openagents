@@ -555,6 +555,20 @@ fn draw_io_panel(
         theme::text::MUTED,
     );
 
+    let q8_cache = find_stage(gptoss, "q8_0_cache")
+        .and_then(|stage| stage.detail.as_ref())
+        .map(|detail| format!("Q8_0 CACHE: {}", truncate_text(detail, 46)))
+        .unwrap_or_else(|| "Q8_0 CACHE: --".to_string());
+    draw_mono_text(
+        scene,
+        text_system,
+        &q8_cache,
+        inner.x(),
+        inner.y() + 78.0,
+        9.0,
+        theme::text::MUTED,
+    );
+
     let expert_cache = find_stage(gptoss, "expert_cache")
         .and_then(|stage| stage.detail.as_ref())
         .map(|detail| format!("EXPERT CACHE: {}", truncate_text(detail, 46)))
@@ -564,7 +578,7 @@ fn draw_io_panel(
         text_system,
         &expert_cache,
         inner.x(),
-        inner.y() + 80.0,
+        inner.y() + 90.0,
         9.0,
         theme::text::MUTED,
     );
@@ -584,13 +598,13 @@ fn draw_io_panel(
             text_system,
             line,
             inner.x(),
-            inner.y() + 96.0 + (idx as f32 * 12.0),
+            inner.y() + 106.0 + (idx as f32 * 12.0),
             9.0,
             theme::text::MUTED,
         );
     }
 
-    let mut ry = inner.y() + 112.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
+    let mut ry = inner.y() + 122.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
     let show_scan = gptoss.load_active
         || (gptoss.resident_tensors.is_empty() && !gptoss.recent_tensors.is_empty());
     let label = if show_scan { "LOAD SCAN:" } else { "RESIDENT:" };
