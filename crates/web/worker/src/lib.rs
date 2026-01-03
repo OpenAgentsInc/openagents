@@ -227,6 +227,9 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // ML inference visualization page
         (Method::Get, "/ml-inference") => routes::ml_inference::view_ml_inference(env).await,
 
+        // GPT-OSS pipeline visualization page
+        (Method::Get, "/gptoss") => routes::gptoss::view_gptoss(env).await,
+
         // 2026 page - key themes and links
         (Method::Get, "/2026") => routes::y2026::view_2026(env).await,
 

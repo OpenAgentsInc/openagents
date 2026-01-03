@@ -6,6 +6,7 @@ mod fs_access;
 mod hud;
 mod intro_agent;
 mod ml_viz;
+mod gptoss_viz;
 mod ml_gate;
 mod nostr;
 mod state;

@@ -11,6 +11,7 @@ pub mod claude_auth;
 pub mod container;
 pub mod early;
 pub mod gfn;
+pub mod gptoss;
 pub mod github_explore;
 pub mod hud;
 pub mod ml_inference;
