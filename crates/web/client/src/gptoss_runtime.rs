@@ -33,6 +33,7 @@ const DEFAULT_USER_PROMPT: &str = "Give me one sentence about what GPT-OSS can d
 const DEFAULT_DEVELOPER_PROMPT: &str = "";
 const DEFAULT_MAX_NEW_TOKENS: usize = 8;
 const DEFAULT_MAX_KV_TOKENS: usize = 32;
+const DEFAULT_SAMPLE_TOP_K: usize = 40;
 const Q8_0_BLOCK_BYTES: usize = 34;
 const Q8_0_BLOCK_VALUES: usize = 32;
 const MXFP4_BLOCK_BYTES: usize = 17;
@@ -66,6 +67,14 @@ struct GptOssConfig {
     sliding_window: u32,
     expert_count: u32,
     experts_per_token: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SamplingConfig {
+    enabled: bool,
+    temperature: f32,
+    top_k: usize,
+    top_p: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -596,6 +605,8 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         None,
     );
 
+    let sampling = parse_sampling_config();
+
     let tokenizer = build_tokenizer(&state, index.as_ref())?;
     let prompt_tokens = encode_prompt(&state, &tokenizer, max_prompt_tokens)?;
     let stop_tokens = collect_stop_tokens(&tokenizer);
@@ -661,16 +672,17 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
                 gen_index.as_ref(),
                 &gpu,
                 &tokenizer,
-                &config,
-                &prompt_tokens,
-                active_layers,
-                moe_fallback,
-                max_kv_tokens,
-                max_new_tokens,
-                stop_tokens,
-            )
-            .await
-            {
+            &config,
+            &prompt_tokens,
+            active_layers,
+            moe_fallback,
+            max_kv_tokens,
+            max_new_tokens,
+            sampling,
+            stop_tokens,
+        )
+        .await
+        {
                 emit_inference_stage(
                     &gen_state,
                     "generation",
@@ -806,6 +818,7 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.head_slider_dragging = false;
     state.attention_mode = None;
     state.moe_mode = None;
+    state.sampling_mode = None;
     state.active_layers = None;
     state.load_progress = None;
     state.current_stage = None;
@@ -1256,6 +1269,11 @@ fn read_query_usize(key: &str) -> Option<usize> {
         .and_then(|value| value.parse::<usize>().ok())
 }
 
+fn read_query_f32(key: &str) -> Option<f32> {
+    read_query_param(key)
+        .and_then(|value| value.parse::<f32>().ok())
+}
+
 pub(crate) fn default_gguf_url() -> String {
     let window = match web_sys::window() {
         Some(window) => window,
@@ -1297,6 +1315,41 @@ Reasoning: low\n\n\
     prompt.push_str(user_prompt);
     prompt.push_str("<|end|><|start|>assistant<|channel|>final<|message|>");
     prompt
+}
+
+fn parse_sampling_config() -> SamplingConfig {
+    let mut enabled = false;
+    let temp = read_query_f32("temp")
+        .map(|value| {
+            enabled = true;
+            value
+        })
+        .unwrap_or(1.0);
+    let top_k = read_query_usize("top_k")
+        .map(|value| {
+            enabled = true;
+            value
+        })
+        .unwrap_or(0);
+    let top_p = read_query_f32("top_p")
+        .map(|value| {
+            enabled = true;
+            value
+        })
+        .unwrap_or(1.0);
+    if let Some(flag) = read_query_param("sample") {
+        enabled = matches!(
+            flag.as_str(),
+            "1" | "true" | "yes" | "on"
+        );
+    }
+
+    SamplingConfig {
+        enabled,
+        temperature: temp.max(1e-4),
+        top_k,
+        top_p: top_p.clamp(0.0, 1.0),
+    }
 }
 
 fn collect_stop_tokens(tokenizer: &GptOssTokenizer) -> Vec<u32> {
@@ -1392,6 +1445,32 @@ fn top_k_from_logits(
     Ok((candidates, entropy, best_token_id, best_text))
 }
 
+fn sample_from_logits(
+    logits: &[f32],
+    tokenizer: &GptOssTokenizer,
+    sampling: SamplingConfig,
+    display_k: usize,
+) -> Result<(Vec<GptOssTokenCandidate>, f32, u32, String), String> {
+    let (top_k, entropy, best_id, best_text) = top_k_from_logits(logits, tokenizer, display_k)?;
+    if !sampling.enabled {
+        return Ok((top_k, entropy, best_id, best_text));
+    }
+
+    let effective_top_k = if sampling.top_k == 0 {
+        DEFAULT_SAMPLE_TOP_K
+    } else {
+        sampling.top_k
+    };
+    let (mut indices, mut weights) =
+        top_k_softmax_scaled(logits, effective_top_k, sampling.temperature)?;
+    apply_top_p(&mut indices, &mut weights, sampling.top_p);
+    let selected = sample_index(&indices, &weights);
+    let token_id = selected as u32;
+    let token_text = tokenizer.decode_utf8_lossy(&[token_id]);
+
+    Ok((top_k, entropy, token_id, token_text))
+}
+
 fn top_k_softmax(values: &[f32], k: usize) -> Result<(Vec<usize>, Vec<f32>), String> {
     if values.is_empty() {
         return Err("empty values".to_string());
@@ -1433,6 +1512,93 @@ fn top_k_softmax(values: &[f32], k: usize) -> Result<(Vec<usize>, Vec<f32>), Str
     }
 
     Ok((indices, weights))
+}
+
+fn top_k_softmax_scaled(
+    values: &[f32],
+    k: usize,
+    temperature: f32,
+) -> Result<(Vec<usize>, Vec<f32>), String> {
+    if values.is_empty() {
+        return Err("empty values".to_string());
+    }
+    let temp = temperature.max(1e-6);
+    let k = k.max(1).min(values.len());
+    let mut top: Vec<(usize, f32)> = Vec::with_capacity(k);
+    for (idx, &value) in values.iter().enumerate() {
+        if top.len() < k {
+            top.push((idx, value));
+            top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        } else if let Some(last) = top.last() {
+            if value > last.1 {
+                top.pop();
+                top.push((idx, value));
+                top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            }
+        }
+    }
+
+    let mut max_val = f32::NEG_INFINITY;
+    for &(_, value) in &top {
+        let scaled = value / temp;
+        if scaled > max_val {
+            max_val = scaled;
+        }
+    }
+    let mut sum = 0.0f32;
+    for &(_, value) in &top {
+        sum += (value / temp - max_val).exp();
+    }
+    if sum <= 0.0 {
+        return Err("softmax sum is zero".to_string());
+    }
+
+    let mut indices = Vec::with_capacity(top.len());
+    let mut weights = Vec::with_capacity(top.len());
+    for &(idx, value) in &top {
+        indices.push(idx);
+        weights.push((value / temp - max_val).exp() / sum);
+    }
+
+    Ok((indices, weights))
+}
+
+fn apply_top_p(indices: &mut Vec<usize>, weights: &mut Vec<f32>, top_p: f32) {
+    if indices.is_empty() || weights.is_empty() || top_p >= 1.0 {
+        return;
+    }
+    let mut cumulative = 0.0f32;
+    let mut cutoff = weights.len();
+    for (idx, weight) in weights.iter().enumerate() {
+        cumulative += *weight;
+        if cumulative >= top_p {
+            cutoff = idx + 1;
+            break;
+        }
+    }
+    indices.truncate(cutoff);
+    weights.truncate(cutoff);
+    let sum: f32 = weights.iter().sum();
+    if sum > 0.0 {
+        for weight in weights.iter_mut() {
+            *weight /= sum;
+        }
+    }
+}
+
+fn sample_index(indices: &[usize], weights: &[f32]) -> usize {
+    if indices.is_empty() || weights.is_empty() {
+        return 0;
+    }
+    let draw = js_sys::Math::random() as f32;
+    let mut cumulative = 0.0f32;
+    for (idx, weight) in weights.iter().enumerate() {
+        cumulative += *weight;
+        if draw <= cumulative {
+            return indices[idx];
+        }
+    }
+    *indices.last().unwrap_or(&0)
 }
 
 fn tensor_start_cursor(index: &GgufIndex) -> Vec<(u64, String)> {
@@ -1990,6 +2156,7 @@ async fn run_generation(
     moe_fallback: bool,
     max_kv_tokens: usize,
     max_new_tokens: usize,
+    sampling: SamplingConfig,
     stop_tokens: Vec<u32>,
 ) -> Result<(), String> {
     if prompt_tokens.is_empty() {
@@ -2014,6 +2181,19 @@ async fn run_generation(
     } else {
         "disabled".to_string()
     };
+    let sample_mode = if sampling.enabled {
+        let top_k_label = if sampling.top_k == 0 {
+            "auto".to_string()
+        } else {
+            sampling.top_k.to_string()
+        };
+        format!(
+            "temp={:.2},top_k={},top_p={:.2}",
+            sampling.temperature, top_k_label, sampling.top_p
+        )
+    } else {
+        "greedy".to_string()
+    };
     emit_inference_stage(
         state,
         "runtime_mode",
@@ -2021,7 +2201,7 @@ async fn run_generation(
         None,
         None,
         Some(format!(
-            "layers={active_layers} attn={attention_mode} moe={moe_mode} kv_max={max_kv_tokens} new={max_new_tokens}",
+            "layers={active_layers} attn={attention_mode} moe={moe_mode} sample={sample_mode} kv_max={max_kv_tokens} new={max_new_tokens}",
         )),
     );
 
@@ -2089,7 +2269,8 @@ async fn run_generation(
     );
 
     while generated < max_new_tokens {
-        let (top_k, entropy, next_id, next_text) = top_k_from_logits(&logits, tokenizer, 5)?;
+        let (top_k, entropy, next_id, next_text) =
+            sample_from_logits(&logits, tokenizer, sampling, 5)?;
         let stop_token = stop_tokens.contains(&next_id);
         let token_text = if stop_token {
             String::new()

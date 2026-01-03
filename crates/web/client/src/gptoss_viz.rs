@@ -395,6 +395,7 @@ fn apply_runtime_mode(state: &mut GptOssVizState, detail: &str) {
     let mut moe_mode: Option<String> = None;
     let mut moe_topk: Option<String> = None;
     let mut moe_expert: Option<String> = None;
+    let mut sample_mode: Option<String> = None;
     for part in detail.split_whitespace() {
         if let Some((key, value)) = part.split_once('=') {
             match key {
@@ -413,6 +414,9 @@ fn apply_runtime_mode(state: &mut GptOssVizState, detail: &str) {
                 "topk" => {
                     moe_topk = Some(value.to_string());
                 }
+                "sample" => {
+                    sample_mode = Some(value.to_string());
+                }
                 _ => {}
             }
         }
@@ -426,6 +430,9 @@ fn apply_runtime_mode(state: &mut GptOssVizState, detail: &str) {
             mode = format!("{mode} topk={topk}");
         }
         state.moe_mode = Some(mode);
+    }
+    if let Some(sample) = sample_mode {
+        state.sampling_mode = Some(sample);
     }
 }
 

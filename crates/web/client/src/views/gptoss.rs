@@ -1061,6 +1061,22 @@ fn draw_stats_panel(
         10.0,
         theme::text::MUTED,
     );
+
+    let sample_text = gptoss
+        .sampling_mode
+        .as_ref()
+        .map(|mode| format!("SAMPLE: {}", truncate_text(mode, 26)))
+        .unwrap_or_else(|| "SAMPLE: --".to_string());
+    y += 14.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        &sample_text,
+        inner.x(),
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
 }
 
 fn draw_log_panel(
