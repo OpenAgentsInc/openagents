@@ -652,6 +652,7 @@ Read these if stuck:
 - 2026-01-02: Show `ERROR` in the stats stage line when load/inference errors occur and no stage is running.
 - 2026-01-02: Include `<|end|>` in the stop token list to match Harmony’s default stop tokens.
 - 2026-01-02: Tint the stage label red when `ERROR` is active to make failures obvious.
+- 2026-01-02: Always render a GGUF header line, falling back to `GGUF: --` when no source is set.
 
 ---
 
