@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
 use fancy_regex::Regex;
 use rustc_hash::FxHashMap as HashMap;
@@ -7,6 +8,79 @@ use rustc_hash::FxHashMap as HashMap;
 use crate::GgufTokenizer;
 
 pub type Rank = u32;
+
+// GPT-2 byte encoder/decoder mapping used by the GGUF vocab.
+fn byte_encoder() -> &'static [char; 256] {
+    static TABLE: OnceLock<[char; 256]> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        let mut table = ['\0'; 256];
+        let mut bytes = Vec::with_capacity(256);
+        bytes.extend(33u8..=126u8);
+        bytes.extend(161u8..=172u8);
+        bytes.extend(174u8..=255u8);
+
+        let mut seen = [false; 256];
+        for &b in &bytes {
+            seen[b as usize] = true;
+        }
+
+        let mut codepoints = Vec::with_capacity(256);
+        for &b in &bytes {
+            codepoints.push(b as u32);
+        }
+        let mut next = 0u32;
+        for b in 0u8..=255u8 {
+            if !seen[b as usize] {
+                bytes.push(b);
+                codepoints.push(256 + next);
+                next += 1;
+            }
+        }
+
+        for (b, cp) in bytes.into_iter().zip(codepoints.into_iter()) {
+            table[b as usize] = char::from_u32(cp).unwrap_or('\u{FFFD}');
+        }
+        table
+    })
+}
+
+fn byte_decoder() -> &'static HashMap<char, u8> {
+    static TABLE: OnceLock<HashMap<char, u8>> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        let mut map = HashMap::default();
+        for (idx, ch) in byte_encoder().iter().enumerate() {
+            map.insert(*ch, idx as u8);
+        }
+        map
+    })
+}
+
+fn byte_encode(piece: &[u8]) -> Vec<u8> {
+    let table = byte_encoder();
+    let mut out = Vec::with_capacity(piece.len());
+    for &b in piece {
+        let ch = table[b as usize];
+        let mut buf = [0u8; 4];
+        let encoded = ch.encode_utf8(&mut buf);
+        out.extend_from_slice(encoded.as_bytes());
+    }
+    out
+}
+
+fn byte_decode(encoded: &[u8]) -> Result<Vec<u8>, String> {
+    let text = std::str::from_utf8(encoded)
+        .map_err(|err| format!("decode utf8 error: {err}"))?;
+    let decoder = byte_decoder();
+    let mut out = Vec::with_capacity(text.len());
+    for ch in text.chars() {
+        let byte = decoder
+            .get(&ch)
+            .copied()
+            .ok_or_else(|| format!("missing byte decoder for {ch}"))?;
+        out.push(byte);
+    }
+    Ok(out)
+}
 
 fn byte_pair_merge(ranks: &HashMap<Vec<u8>, Rank>, piece: &[u8]) -> Vec<(usize, Rank)> {
     let mut parts = Vec::with_capacity(piece.len() + 1);
@@ -128,11 +202,11 @@ impl CoreBpe {
         let mut out = Vec::new();
         for mat in self.regex.find_iter(text) {
             let mat = mat.map_err(|err| format!("regex error: {err}"))?;
-            let piece = mat.as_str().as_bytes();
-            if let Some(token) = self.encoder.get(piece) {
+            let piece = byte_encode(mat.as_str().as_bytes());
+            if let Some(token) = self.encoder.get(&piece) {
                 out.push(*token);
             } else {
-                out.extend(byte_pair_encode(piece, &self.encoder)?);
+                out.extend(byte_pair_encode(&piece, &self.encoder)?);
             }
         }
         Ok(out)
@@ -170,12 +244,12 @@ impl CoreBpe {
             let end = next_special.map_or(text.len(), |m| m.start());
             for mat in self.regex.find_iter(&text[start..end]) {
                 let mat = mat.map_err(|err| format!("regex error: {err}"))?;
-                let piece = mat.as_str().as_bytes();
-                if let Some(token) = self.encoder.get(piece) {
+                let piece = byte_encode(mat.as_str().as_bytes());
+                if let Some(token) = self.encoder.get(&piece) {
                     last_piece_token_len = 1;
                     out.push(*token);
                 } else {
-                    let tokens = byte_pair_encode(piece, &self.encoder)?;
+                    let tokens = byte_pair_encode(&piece, &self.encoder)?;
                     last_piece_token_len = tokens.len();
                     out.extend(tokens);
                 }
@@ -224,7 +298,7 @@ impl CoreBpe {
             };
             out.extend(token_bytes);
         }
-        Ok(out)
+        byte_decode(&out)
     }
 
     pub fn decode_utf8<S, E>(&self, tokens: S) -> Result<String, String>
