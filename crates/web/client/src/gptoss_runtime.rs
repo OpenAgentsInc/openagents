@@ -757,16 +757,20 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let prompt_tokens = encode_prompt(&state, &tokenizer, max_prompt_tokens)?;
     let stop_tokens = collect_stop_tokens(&tokenizer);
 
-    let gpu_context = state.borrow().gpu_context.clone();
-    if let Some(gpu) = gpu_context.as_ref() {
-        emit_gpu_limits(&state, gpu);
-    }
-    if let Some(gpu) = gpu_context.clone() {
+    let gpu = state
+        .borrow()
+        .gpu_context
+        .clone()
+        .ok_or_else(|| "WebGPU device unavailable (enable WebGPU in Chrome)".to_string())?;
+    emit_gpu_limits(&state, &gpu);
+
+    {
         let gguf = gguf_url.clone();
         let state_clone = state.clone();
         let index_clone = index.clone();
+        let gpu_clone = gpu.clone();
         spawn_local(async move {
-            if let Err(err) = run_q8_0_probe(&state_clone, &gguf, index_clone.as_ref(), &gpu)
+            if let Err(err) = run_q8_0_probe(&state_clone, &gguf, index_clone.as_ref(), &gpu_clone)
                 .await
             {
                 emit_inference_stage(
@@ -780,12 +784,13 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
             }
         });
     }
-    if let Some(gpu) = gpu_context.clone() {
+    {
         let gguf = gguf_url.clone();
         let state_clone = state.clone();
         let index_clone = index.clone();
+        let gpu_clone = gpu.clone();
         spawn_local(async move {
-            if let Err(err) = run_mxfp4_probe(&state_clone, &gguf, index_clone.as_ref(), &gpu)
+            if let Err(err) = run_mxfp4_probe(&state_clone, &gguf, index_clone.as_ref(), &gpu_clone)
                 .await
             {
                 emit_inference_stage(
@@ -811,13 +816,12 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let gen_url = gguf_url.clone();
     let gen_index = index.clone();
     let gen_future = async move {
-        if let Some(gpu) = gpu_context {
-            if let Err(err) = run_generation(
-                &gen_state,
-                &gen_url,
-                gen_index.as_ref(),
-                &gpu,
-                &tokenizer,
+        if let Err(err) = run_generation(
+            &gen_state,
+            &gen_url,
+            gen_index.as_ref(),
+            &gpu,
+            &tokenizer,
             &config,
             &prompt_tokens,
             active_layers,
@@ -830,15 +834,14 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         )
         .await
         {
-                emit_inference_stage(
-                    &gen_state,
-                    "generation",
-                    StageStatus::Failed,
-                    None,
-                    None,
-                    Some(err),
-                );
-            }
+            emit_inference_stage(
+                &gen_state,
+                "generation",
+                StageStatus::Failed,
+                None,
+                None,
+                Some(err),
+            );
         }
     };
 

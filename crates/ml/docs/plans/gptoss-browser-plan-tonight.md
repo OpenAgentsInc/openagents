@@ -200,6 +200,7 @@ Notes:
 - GPU alloc telemetry now tracks buffer count; I/O panel shows GPU buffers alongside bytes.
 - Attention heatmap now accumulates a rolling window of head weights per token.
 - GPT-OSS page now shows the full local GGUF URL under the input for easy copy/paste.
+- Load now fails fast with a clear error if WebGPU isn't available in the browser.
 
 ---
 
