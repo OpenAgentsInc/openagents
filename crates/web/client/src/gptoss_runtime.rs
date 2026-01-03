@@ -1248,6 +1248,17 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
+fn ensure_storage_limit(label: &str, size: usize, max: usize) -> Result<(), String> {
+    if size > max {
+        return Err(format!(
+            "{label} size {} exceeds max storage {}",
+            format_bytes(size as u64),
+            format_bytes(max as u64)
+        ));
+    }
+    Ok(())
+}
+
 async fn run_q8_0_probe(
     state: &Rc<RefCell<AppState>>,
     gguf_url: &str,
@@ -2644,6 +2655,9 @@ async fn matmul_q8_0_with_bias(
             input.len()
         ));
     }
+    let max_storage = gpu.device.limits().max_storage_buffer_binding_size as usize;
+    let weight_bytes = usize::try_from(weight.nbytes).unwrap_or(usize::MAX);
+    let chunked = weight_bytes > max_storage;
     let start_ms = now_ms();
     emit_inference_stage(
         state,
@@ -2651,18 +2665,32 @@ async fn matmul_q8_0_with_bias(
         StageStatus::Started,
         None,
         None,
-        Some(format!(
-            "{} bytes={}",
-            weight.name,
-            format_bytes(weight.nbytes)
-        )),
+        Some(if chunked {
+            format!(
+                "{} bytes={} (chunked)",
+                weight.name,
+                format_bytes(weight.nbytes)
+            )
+        } else {
+            format!(
+                "{} bytes={}",
+                weight.name,
+                format_bytes(weight.nbytes)
+            )
+        }),
     );
-    let mut quant = fetch_range(gguf_url, weight.absolute_offset, weight.nbytes).await?;
-    if quant.len() % 4 != 0 {
-        let padded = (quant.len() + 3) / 4 * 4;
-        quant.resize(padded, 0);
-    }
-    emit_tensor_resident(state, weight.name.clone(), quant.len(), "q8_0");
+    let mut out = if chunked {
+        let out = gpu_matmul_q8_0_chunked(gguf_url, weight, input, gpu, gpu_tracker).await?;
+        out
+    } else {
+        let mut quant = fetch_range(gguf_url, weight.absolute_offset, weight.nbytes).await?;
+        if quant.len() % 4 != 0 {
+            let padded = (quant.len() + 3) / 4 * 4;
+            quant.resize(padded, 0);
+        }
+        emit_tensor_resident(state, weight.name.clone(), quant.len(), "q8_0");
+        gpu_matmul_q8_0(&quant, input, k, n, gpu, gpu_tracker).await?
+    };
     let fetch_ms = now_ms().saturating_sub(start_ms).max(1);
     emit_inference_stage(
         state,
@@ -2670,9 +2698,20 @@ async fn matmul_q8_0_with_bias(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("{} bytes={} ms={fetch_ms}", weight.name, quant.len())),
+        Some(if chunked {
+            format!(
+                "{} bytes={} ms={fetch_ms} (chunked)",
+                weight.name,
+                format_bytes(weight.nbytes)
+            )
+        } else {
+            format!(
+                "{} bytes={} ms={fetch_ms}",
+                weight.name,
+                format_bytes(weight.nbytes)
+            )
+        }),
     );
-    let mut out = gpu_matmul_q8_0(&quant, input, k, n, gpu, gpu_tracker).await?;
     let bias_vals = fetch_f32_tensor_cached(state, gguf_url, bias, cache).await?;
     if bias_vals.len() == out.len() {
         for (o, b) in out.iter_mut().zip(bias_vals.iter()) {
@@ -3124,6 +3163,12 @@ async fn gpu_matmul_q8_0(
 ) -> Result<Vec<f32>, String> {
     let device = &gpu.device;
     let queue = &gpu.queue;
+    let max_storage = device.limits().max_storage_buffer_binding_size as usize;
+    let x_bytes = x.len() * std::mem::size_of::<f32>();
+    let y_bytes = n * std::mem::size_of::<f32>();
+    ensure_storage_limit("q8_0 weights", quant.len(), max_storage)?;
+    ensure_storage_limit("q8_0 input", x_bytes, max_storage)?;
+    ensure_storage_limit("q8_0 output", y_bytes, max_storage)?;
 
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("q8_0_probe"),
@@ -3201,7 +3246,7 @@ async fn gpu_matmul_q8_0(
         contents: cast_slice(x),
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
     });
-    let y_bytes = (n * std::mem::size_of::<f32>()) as u64;
+    let y_bytes = y_bytes as u64;
     let y_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("q8_0_probe_y"),
         size: y_bytes,
@@ -3322,6 +3367,17 @@ async fn gpu_matmul_q8_0_chunked(
 
     let row_bytes = (n / Q8_0_BLOCK_VALUES) * Q8_0_BLOCK_BYTES;
     let max_bytes = gpu.device.limits().max_storage_buffer_binding_size as usize;
+    let x_bytes = input.len() * std::mem::size_of::<f32>();
+    let y_bytes = n * std::mem::size_of::<f32>();
+    if row_bytes > max_bytes {
+        return Err(format!(
+            "q8_0 row bytes {} exceed max storage {}",
+            format_bytes(row_bytes as u64),
+            format_bytes(max_bytes as u64)
+        ));
+    }
+    ensure_storage_limit("q8_0 input", x_bytes, max_bytes)?;
+    ensure_storage_limit("q8_0 output", y_bytes, max_bytes)?;
     let max_rows = (max_bytes / row_bytes).max(1);
     let chunk_rows = max_rows.min(64).max(1);
 
@@ -3400,7 +3456,7 @@ async fn gpu_matmul_q8_0_chunked(
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
     });
 
-    let y_bytes = (n * std::mem::size_of::<f32>()) as u64;
+    let y_bytes = y_bytes as u64;
     let mut zeroes = vec![0.0f32; n];
     let y_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("q8_0_chunked_y"),
@@ -3528,6 +3584,12 @@ async fn gpu_matmul_mxfp4(
 ) -> Result<Vec<f32>, String> {
     let device = &gpu.device;
     let queue = &gpu.queue;
+    let max_storage = device.limits().max_storage_buffer_binding_size as usize;
+    let x_bytes = x.len() * std::mem::size_of::<f32>();
+    let y_bytes = n * std::mem::size_of::<f32>();
+    ensure_storage_limit("mxfp4 weights", quant.len(), max_storage)?;
+    ensure_storage_limit("mxfp4 input", x_bytes, max_storage)?;
+    ensure_storage_limit("mxfp4 output", y_bytes, max_storage)?;
 
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("mxfp4_probe"),
@@ -3605,7 +3667,7 @@ async fn gpu_matmul_mxfp4(
         contents: cast_slice(x),
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
     });
-    let y_bytes = (n * std::mem::size_of::<f32>()) as u64;
+    let y_bytes = y_bytes as u64;
     let y_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("mxfp4_probe_y"),
         size: y_bytes,
