@@ -295,32 +295,31 @@ impl GptOssVizState {
                         }
                     }
                     GptOssInferenceTelemetry::AttentionWeights { layer, head, weights } => {
-                        if weights.is_empty() {
-                            return;
-                        }
-                        let mut merged = weights;
-                        if merged.len() == 1 {
-                            if let Some(existing) = self.attention_weights.as_ref() {
-                                if self.attention_layer == layer
-                                    && self.attention_head == head
-                                    && !existing.is_empty()
-                                {
-                                    let cols = existing[0].len();
-                                    if cols == merged[0].len() {
-                                        let mut combined = existing.clone();
-                                        combined.push(merged.remove(0));
-                                        if combined.len() > ATTENTION_HISTORY_MAX_ROWS {
-                                            let drop = combined.len() - ATTENTION_HISTORY_MAX_ROWS;
-                                            combined.drain(0..drop);
+                        if !weights.is_empty() {
+                            let mut merged = weights;
+                            if merged.len() == 1 {
+                                if let Some(existing) = self.attention_weights.as_ref() {
+                                    if self.attention_layer == layer
+                                        && self.attention_head == head
+                                        && !existing.is_empty()
+                                    {
+                                        let cols = existing[0].len();
+                                        if cols == merged[0].len() {
+                                            let mut combined = existing.clone();
+                                            combined.push(merged.remove(0));
+                                            if combined.len() > ATTENTION_HISTORY_MAX_ROWS {
+                                                let drop = combined.len() - ATTENTION_HISTORY_MAX_ROWS;
+                                                combined.drain(0..drop);
+                                            }
+                                            merged = combined;
                                         }
-                                        merged = combined;
                                     }
                                 }
                             }
+                            self.attention_weights = Some(merged);
+                            self.attention_layer = layer;
+                            self.attention_head = head;
                         }
-                        self.attention_weights = Some(merged);
-                        self.attention_layer = layer;
-                        self.attention_head = head;
                     }
                     GptOssInferenceTelemetry::LayerActivation {
                         layer,
