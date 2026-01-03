@@ -718,6 +718,7 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.attention_weights = None;
     state.attention_layer = 0;
     state.attention_head = 0;
+    state.current_stage = None;
     state.last_token_ts_ms = None;
     state.start_ts_ms = None;
 }
@@ -1957,6 +1958,7 @@ async fn run_forward_token(
     let final_hidden = rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?;
 
     let output_weight = find_tensor(index, "output.weight")?;
+    let logits_start = now_ms();
     emit_inference_stage(
         state,
         "weights_fetch",
@@ -1973,13 +1975,14 @@ async fn run_forward_token(
         gpu_tracker,
     )
     .await?;
+    let logits_ms = now_ms().saturating_sub(logits_start).max(1);
     emit_inference_stage(
         state,
         "weights_fetch",
         StageStatus::Completed,
         None,
         None,
-        Some(format!("{} ok", output_weight.name)),
+        Some(format!("{} ok ms={logits_ms}", output_weight.name)),
     );
 
     cache.seq_len = position.saturating_add(1);
@@ -2431,6 +2434,7 @@ async fn fetch_f32_tensor_cached(
         );
         return Ok(hit);
     }
+    let start_ms = now_ms();
     emit_inference_stage(
         state,
         "tensor_fetch",
@@ -2444,6 +2448,7 @@ async fn fetch_f32_tensor_cached(
         )),
     );
     let data = fetch_f32_tensor_raw(gguf_url, tensor).await?;
+    let elapsed_ms = now_ms().saturating_sub(start_ms).max(1);
     emit_tensor_resident(state, tensor.name.clone(), data.len() * 4, "f32");
     cache.insert(tensor.name.clone(), data.clone());
     emit_inference_stage(
@@ -2452,7 +2457,7 @@ async fn fetch_f32_tensor_cached(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("{} cache=miss", tensor.name)),
+        Some(format!("{} cache=miss ms={elapsed_ms}", tensor.name)),
     );
     Ok(data)
 }
@@ -2580,6 +2585,7 @@ async fn fetch_mxfp4_expert_cached(
         );
         return Ok(hit);
     }
+    let start_ms = now_ms();
     emit_inference_stage(
         state,
         "expert_fetch",
@@ -2589,6 +2595,7 @@ async fn fetch_mxfp4_expert_cached(
         Some(format!("{} bytes=~{}", key, format_bytes(tensor.nbytes))),
     );
     let data = fetch_mxfp4_expert_raw(gguf_url, tensor, expert_idx).await?;
+    let elapsed_ms = now_ms().saturating_sub(start_ms).max(1);
     emit_tensor_resident(state, key.clone(), data.len(), "mxfp4");
     cache.insert(key.clone(), data.clone());
     emit_inference_stage(
@@ -2597,7 +2604,7 @@ async fn fetch_mxfp4_expert_cached(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("{} cache=miss", key)),
+        Some(format!("{} cache=miss ms={elapsed_ms}", key)),
     );
     Ok(data)
 }
@@ -2630,6 +2637,7 @@ async fn matmul_q8_0_with_bias(
             input.len()
         ));
     }
+    let start_ms = now_ms();
     emit_inference_stage(
         state,
         "weights_fetch",
@@ -2648,13 +2656,14 @@ async fn matmul_q8_0_with_bias(
         quant.resize(padded, 0);
     }
     emit_tensor_resident(state, weight.name.clone(), quant.len(), "q8_0");
+    let fetch_ms = now_ms().saturating_sub(start_ms).max(1);
     emit_inference_stage(
         state,
         "weights_fetch",
         StageStatus::Completed,
         None,
         None,
-        Some(format!("{} bytes={}", weight.name, quant.len())),
+        Some(format!("{} bytes={} ms={fetch_ms}", weight.name, quant.len())),
     );
     let mut out = gpu_matmul_q8_0(&quant, input, k, n, gpu, gpu_tracker).await?;
     let bias_vals = fetch_f32_tensor_cached(state, gguf_url, bias, cache).await?;

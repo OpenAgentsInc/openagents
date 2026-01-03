@@ -318,6 +318,7 @@ pub(crate) struct GptOssVizState {
     pub(crate) attention_weights: Option<Vec<Vec<f32>>>,
     pub(crate) attention_layer: usize,
     pub(crate) attention_head: usize,
+    pub(crate) current_stage: Option<String>,
     pub(crate) last_token_ts_ms: Option<u64>,
     pub(crate) start_ts_ms: Option<u64>,
 }
@@ -348,6 +349,7 @@ impl Default for GptOssVizState {
             attention_weights: None,
             attention_layer: 0,
             attention_head: 0,
+            current_stage: None,
             last_token_ts_ms: None,
             start_ts_ms: None,
         }

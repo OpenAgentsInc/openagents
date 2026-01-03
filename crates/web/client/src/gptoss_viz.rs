@@ -103,6 +103,9 @@ impl GptOssVizState {
                 total_bytes,
                 ts_ms,
             } => {
+                if matches!(status, StageStatus::Started | StageStatus::Progress) {
+                    self.current_stage = Some(format!("LOAD {stage}"));
+                }
                 update_stage(
                     &mut self.load_stages,
                     stage.clone(),
@@ -124,6 +127,9 @@ impl GptOssVizState {
                 detail,
                 ts_ms,
             } => {
+                if matches!(status, StageStatus::Started | StageStatus::Progress) {
+                    self.current_stage = Some(format!("INFER {stage}"));
+                }
                 update_stage(
                     &mut self.inference_stages,
                     stage.clone(),
