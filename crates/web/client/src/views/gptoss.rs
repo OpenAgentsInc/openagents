@@ -352,7 +352,7 @@ pub(crate) fn build_gptoss_page(
         draw_stage_panel(scene, text_system, &state.gptoss, false, infer_bounds);
         y += stage_height + 16.0;
 
-        let io_height = 160.0;
+        let io_height = 240.0;
         let io_bounds = Bounds::new(left_x, y, col_width, io_height);
         draw_io_panel(scene, text_system, &state.gptoss, io_bounds);
         let stream_bounds = Bounds::new(right_x, y, col_width, io_height);
