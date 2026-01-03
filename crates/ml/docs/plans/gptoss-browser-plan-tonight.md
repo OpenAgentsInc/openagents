@@ -225,6 +225,7 @@ Notes:
 - Default browser runs now use all model layers (override with `?layers=N`), and the HUD hint reflects “default ALL”.
 - Added GPT-OSS controls for `layers`, `max_kv`, and `max_new` in the HUD and wired them into the runtime (inputs override query params).
 - GPT-OSS URL input placeholder now points to the bun dev GGUF route (`localhost:3000`) to match the default dev setup.
+- The `layer_limit` stage now always emits (even for full-layer runs) so the HUD always shows the active layer count.
 
 ---
 

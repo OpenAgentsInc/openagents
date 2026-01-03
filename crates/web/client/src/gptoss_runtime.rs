@@ -783,30 +783,27 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let max_layers = config.block_count as usize;
     let mut active_layers = requested_layers.unwrap_or(max_layers);
     active_layers = active_layers.min(max_layers);
-    if active_layers == 0 {
-        emit_load_stage(
-            &state,
-            "layer_limit",
-            StageStatus::Completed,
-            Some("layers=0 (lm_head only)".to_string()),
-            None,
-            None,
-        );
-    } else if active_layers != max_layers {
-        let detail = if requested_layers.is_none() {
+    let layer_detail = if active_layers == 0 {
+        "layers=0 (lm_head only)".to_string()
+    } else if active_layers == max_layers {
+        if requested_layers.is_none() {
             format!("layers={active_layers}/{max_layers} default")
         } else {
             format!("layers={active_layers}/{max_layers}")
-        };
-        emit_load_stage(
-            &state,
-            "layer_limit",
-            StageStatus::Completed,
-            Some(detail),
-            None,
-            None,
-        );
-    }
+        }
+    } else if requested_layers.is_none() {
+        format!("layers={active_layers}/{max_layers} default")
+    } else {
+        format!("layers={active_layers}/{max_layers}")
+    };
+    emit_load_stage(
+        &state,
+        "layer_limit",
+        StageStatus::Completed,
+        Some(layer_detail),
+        None,
+        None,
+    );
     let force_dense = read_query_param("attn")
         .map(|value| matches!(value.as_str(), "dense" | "full" | "0"))
         .unwrap_or(false);
