@@ -14,7 +14,10 @@ use crate::gguf_web::{
     fetch_and_parse_index, fetch_range, fetch_range_with_total, GgufIndex, GgufTensor,
 };
 use crate::gptoss_tokenizer::GptOssTokenizer;
-use crate::gptoss_viz::{push_gptoss_event, GptOssInferenceTelemetry, GptOssTelemetry, StageStatus};
+use crate::gptoss_viz::{
+    push_gptoss_event, GptOssInferenceTelemetry, GptOssTelemetry, GptOssTokenCandidate,
+    StageStatus,
+};
 use crate::state::{AppState, GpuContext};
 
 const DEFAULT_METADATA_BYTES: u64 = 16 * 1024 * 1024;
@@ -298,7 +301,10 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
             None,
             Some("after_load".to_string()),
         );
-        if let Err(err) = run_block0_attention_probe(&state, &gguf_url, index.as_ref(), &gpu).await {
+        if let Err(err) =
+            run_block0_attention_probe(&state, &gguf_url, index.as_ref(), &gpu, &tokenizer, &config)
+                .await
+        {
             emit_inference_stage(
                 &state,
                 "blk0_attention",
@@ -695,6 +701,71 @@ fn hex_preview(bytes: &[u8], len: usize) -> String {
     out
 }
 
+fn top_k_from_logits(
+    logits: &[f32],
+    tokenizer: &GptOssTokenizer,
+    k: usize,
+) -> Result<(Vec<GptOssTokenCandidate>, f32, u32, String), String> {
+    if logits.is_empty() {
+        return Err("empty logits".to_string());
+    }
+    let mut max_logit = f32::NEG_INFINITY;
+    for &logit in logits {
+        if logit > max_logit {
+            max_logit = logit;
+        }
+    }
+
+    let mut sum_exp = 0.0f32;
+    for &logit in logits {
+        sum_exp += (logit - max_logit).exp();
+    }
+    if sum_exp <= 0.0 {
+        return Err("softmax sum is zero".to_string());
+    }
+
+    let mut entropy = 0.0f32;
+    for &logit in logits {
+        let p = (logit - max_logit).exp() / sum_exp;
+        if p > 0.0 {
+            entropy -= p * p.ln();
+        }
+    }
+
+    let mut top: Vec<(usize, f32)> = Vec::with_capacity(k.min(logits.len()));
+    for (idx, &logit) in logits.iter().enumerate() {
+        if top.len() < k {
+            top.push((idx, logit));
+            top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        } else if let Some(last) = top.last() {
+            if logit > last.1 {
+                top.pop();
+                top.push((idx, logit));
+                top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            }
+        }
+    }
+
+    let mut candidates = Vec::with_capacity(top.len());
+    for (idx, logit) in top.iter() {
+        let prob = (logit - max_logit).exp() / sum_exp;
+        candidates.push(GptOssTokenCandidate {
+            token_id: *idx as u32,
+            token_text: tokenizer.token_text(*idx as u32),
+            probability: prob,
+        });
+    }
+
+    let (best_idx, _) = top
+        .first()
+        .copied()
+        .unwrap_or((0usize, logits[0]));
+    let best_token_id = best_idx as u32;
+    let best_text = tokenizer.token_text(best_token_id);
+
+    Ok((candidates, entropy, best_token_id, best_text))
+}
+
 fn tensor_start_cursor(index: &GgufIndex) -> Vec<(u64, String)> {
     let mut entries = index
         .tensors
@@ -910,6 +981,8 @@ async fn run_block0_attention_probe(
     gguf_url: &str,
     index: &GgufIndex,
     gpu: &GpuContext,
+    tokenizer: &GptOssTokenizer,
+    config: &GptOssConfig,
 ) -> Result<(), String> {
     let token_embd = find_tensor(index, "token_embd.weight")?;
     let attn_norm = find_tensor(index, "blk.0.attn_norm.weight")?;
@@ -921,10 +994,13 @@ async fn run_block0_attention_probe(
     let attn_v_b = find_tensor(index, "blk.0.attn_v.bias")?;
     let attn_out_w = find_tensor(index, "blk.0.attn_output.weight")?;
     let attn_out_b = find_tensor(index, "blk.0.attn_output.bias")?;
+    let post_attn_norm = find_tensor(index, "blk.0.post_attention_norm.weight")?;
+    let output_norm_tensor = find_tensor(index, "output_norm.weight")?;
+    let output_weight = find_tensor(index, "output.weight")?;
 
     let token_row = fetch_q8_0_row(gguf_url, token_embd, 0).await?;
     let attn_norm_w = fetch_f32_tensor(gguf_url, attn_norm).await?;
-    let mut hidden = rms_norm(&token_row, &attn_norm_w, 1e-5)?;
+    let mut hidden = rms_norm(&token_row, &attn_norm_w, config.rms_epsilon)?;
 
     emit_inference_stage(
         state,
@@ -954,6 +1030,12 @@ async fn run_block0_attention_probe(
         *out += *base;
     }
 
+    let post_attn_norm_w = fetch_f32_tensor(gguf_url, post_attn_norm).await?;
+    hidden = rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?;
+
+    let output_norm_w = fetch_f32_tensor(gguf_url, output_norm_tensor).await?;
+    let final_hidden = rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?;
+
     let attention_norm = l2_norm(&attn_proj);
     let output_norm = l2_norm(&hidden);
     emit_inference_event(
@@ -964,6 +1046,41 @@ async fn run_block0_attention_probe(
             mlp_norm: 0.0,
             output_norm,
         },
+    );
+
+    emit_inference_stage(
+        state,
+        "logits_probe",
+        StageStatus::Started,
+        None,
+        None,
+        Some("output.weight".to_string()),
+    );
+
+    let start_ms = now_ms();
+    let logits = gpu_matmul_q8_0_chunked(gguf_url, output_weight, &final_hidden, gpu).await?;
+    let (top_k, entropy, token_id, token_text) = top_k_from_logits(&logits, tokenizer, 5)?;
+    let elapsed_ms = now_ms().saturating_sub(start_ms).max(1);
+    let tokens_per_sec = 1000.0 / elapsed_ms as f32;
+
+    emit_inference_event(
+        state,
+        GptOssInferenceTelemetry::TokenGenerated {
+            token_id,
+            token_text,
+            top_k,
+            entropy,
+            tokens_per_sec,
+        },
+    );
+
+    emit_inference_stage(
+        state,
+        "logits_probe",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("elapsed={}ms", elapsed_ms)),
     );
 
     Ok(())
@@ -1281,7 +1398,7 @@ async fn gpu_matmul_q8_0(
             | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
-    let params = [k as u32, n as u32, n as u32, 0u32];
+    let params = [k as u32, n as u32, 0u32, 0u32];
     let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("q8_0_probe_params"),
         contents: cast_slice(&params),
@@ -1332,6 +1449,225 @@ async fn gpu_matmul_q8_0(
         let groups = (n as u32 + workgroup_size - 1) / workgroup_size;
         pass.dispatch_workgroups(groups, 1, 1);
     }
+    encoder.copy_buffer_to_buffer(&y_buffer, 0, &readback, 0, y_bytes);
+    queue.submit(Some(encoder.finish()));
+
+    let slice = readback.slice(..);
+    let (tx, rx) = oneshot::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = tx.send(result);
+    });
+    device.poll(wgpu::Maintain::Wait);
+    match rx.await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => return Err(format!("map_async failed: {err:?}")),
+        Err(_) => return Err("map_async channel failed".to_string()),
+    }
+
+    let data = slice.get_mapped_range();
+    let output = cast_slice(&data).to_vec();
+    drop(data);
+    readback.unmap();
+    Ok(output)
+}
+
+async fn gpu_matmul_q8_0_chunked(
+    gguf_url: &str,
+    weight: &GgufTensor,
+    input: &[f32],
+    gpu: &GpuContext,
+) -> Result<Vec<f32>, String> {
+    if weight.ggml_type != 8 {
+        return Err(format!(
+            "tensor {} is {}, expected Q8_0",
+            weight.name, weight.ggml_type_name
+        ));
+    }
+
+    let dims = &weight.dims;
+    let n = dims.get(0).copied().unwrap_or(0) as usize;
+    let k = dims.get(1).copied().unwrap_or(0) as usize;
+    if input.len() != k || n == 0 {
+        return Err(format!(
+            "matmul shape mismatch for {} (k={}, n={}, input={})",
+            weight.name,
+            k,
+            n,
+            input.len()
+        ));
+    }
+    if n % Q8_0_BLOCK_VALUES != 0 {
+        return Err("q8_0 n not divisible by block size".to_string());
+    }
+
+    let row_bytes = (n / Q8_0_BLOCK_VALUES) * Q8_0_BLOCK_BYTES;
+    let max_bytes = gpu.device.limits().max_storage_buffer_binding_size as usize;
+    let max_rows = (max_bytes / row_bytes).max(1);
+    let chunk_rows = max_rows.min(64).max(1);
+
+    let device = &gpu.device;
+    let queue = &gpu.queue;
+
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("q8_0_chunked"),
+        source: wgpu::ShaderSource::Wgsl(Q8_0_SHADER.into()),
+    });
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("q8_0_chunked_bindings"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("q8_0_chunked_layout"),
+        bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
+
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("q8_0_chunked_pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
+    let x_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("q8_0_chunked_x"),
+        contents: cast_slice(input),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let y_bytes = (n * std::mem::size_of::<f32>()) as u64;
+    let mut zeroes = vec![0.0f32; n];
+    let y_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("q8_0_chunked_y"),
+        contents: cast_slice(&zeroes),
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+    });
+    zeroes.clear();
+
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("q8_0_chunked_readback"),
+        size: y_bytes,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+
+    let mut row_offset = 0usize;
+    while row_offset < k {
+        let rows = (k - row_offset).min(chunk_rows);
+        let offset = weight
+            .absolute_offset
+            .saturating_add((row_offset * row_bytes) as u64);
+        let len = rows * row_bytes;
+        let mut quant = fetch_range(gguf_url, offset, len as u64).await?;
+        if quant.len() % 4 != 0 {
+            let padded = (quant.len() + 3) / 4 * 4;
+            quant.resize(padded, 0);
+        }
+
+        let quant_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("q8_0_chunked_quant"),
+            contents: &quant,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+        let params = [rows as u32, n as u32, row_offset as u32, if row_offset == 0 { 0 } else { 1 }];
+        let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("q8_0_chunked_params"),
+            contents: cast_slice(&params),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("q8_0_chunked_bind_group"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: quant_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: x_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: y_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: params_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("q8_0_chunked_encoder"),
+        });
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("q8_0_chunked_pass"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&pipeline);
+            pass.set_bind_group(0, &bind_group, &[]);
+            let workgroup_size = 64u32;
+            let groups = (n as u32 + workgroup_size - 1) / workgroup_size;
+            pass.dispatch_workgroups(groups, 1, 1);
+        }
+        queue.submit(Some(encoder.finish()));
+
+        row_offset += rows;
+    }
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("q8_0_chunked_readback_encoder"),
+    });
     encoder.copy_buffer_to_buffer(&y_buffer, 0, &readback, 0, y_bytes);
     queue.submit(Some(encoder.finish()));
 
@@ -1547,8 +1883,8 @@ const Q8_0_SHADER: &str = r#"
 struct Params {
     k: u32,
     n: u32,
-    stride: u32,
-    _pad: u32,
+    row_offset: u32,
+    accumulate: u32,
 };
 
 @group(0) @binding(0)
@@ -1581,13 +1917,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (col >= params.n) {
         return;
     }
-    let mut acc = 0.0;
+    let mut acc = select(0.0, y[col], params.accumulate != 0u);
     for (var row = 0u; row < params.k; row = row + 1u) {
         let idx = row * params.n + col;
         let block = idx / 32u;
         let offset = idx % 32u;
         let w = q8_0_unpack(block, offset);
-        acc = acc + x[row] * w;
+        acc = acc + x[params.row_offset + row] * w;
     }
     y[col] = acc;
 }
