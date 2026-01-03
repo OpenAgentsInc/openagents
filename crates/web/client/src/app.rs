@@ -1129,19 +1129,31 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let modifiers = modifiers_from_event(&event);
 
             if (modifiers.ctrl || modifiers.meta) && matches!(event.key().as_str(), "v" | "V") {
-                let should_paste = state_clone
+                let paste_target = state_clone
                     .try_borrow()
                     .ok()
                     .map(|state| {
-                        state.view == AppView::RepoSelector && state.editor_workspace.is_focused()
+                        if state.view == AppView::RepoSelector && state.editor_workspace.is_focused() {
+                            Some("repo")
+                        } else if state.view == AppView::GptOssPage && state.gptoss.input_focused() {
+                            Some("gptoss")
+                        } else {
+                            None
+                        }
                     })
-                    .unwrap_or(false);
-                if should_paste {
+                    .unwrap_or(None);
+                if let Some(target) = paste_target {
                     let state_for_clip = state_clone.clone();
                     wasm_bindgen_futures::spawn_local(async move {
                         if let Ok(text) = read_clipboard_text().await {
                             if let Ok(mut state) = state_for_clip.try_borrow_mut() {
-                                state.editor_workspace.paste_text(&text);
+                                match target {
+                                    "repo" => state.editor_workspace.paste_text(&text),
+                                    "gptoss" => {
+                                        state.gptoss.paste_text(&text);
+                                    }
+                                    _ => {}
+                                }
                             }
                         }
                     });
