@@ -477,15 +477,18 @@ impl RuntimeCaches {
 #[derive(Default)]
 struct GpuAllocTracker {
     bytes: usize,
+    buffers: usize,
 }
 
 impl GpuAllocTracker {
     fn reset(&mut self) {
         self.bytes = 0;
+        self.buffers = 0;
     }
 
     fn add(&mut self, bytes: usize) {
         self.bytes = self.bytes.saturating_add(bytes);
+        self.buffers = self.buffers.saturating_add(1);
     }
 }
 
@@ -2800,7 +2803,11 @@ async fn run_forward_token(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("bytes={}", format_bytes(gpu_tracker.bytes as u64))),
+        Some(format!(
+            "bytes={} buffers={}",
+            format_bytes(gpu_tracker.bytes as u64),
+            gpu_tracker.buffers
+        )),
     );
     emit_inference_event(
         state,

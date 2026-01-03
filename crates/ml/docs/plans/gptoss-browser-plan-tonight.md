@@ -197,6 +197,8 @@ Notes:
 - Top-k and probability panels now fall back to token id labels for whitespace-only tokens.
 - KV cache fill now renders as a small bar in the inference stats panel.
 - Ran full ML test suite: `cargo test -p ml --no-default-features --features native,wgpu`.
+- GPU alloc telemetry now tracks buffer count; I/O panel shows GPU buffers alongside bytes.
+- Attention heatmap now accumulates a rolling window of head weights per token.
 
 ---
 
