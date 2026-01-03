@@ -3554,7 +3554,7 @@ async fn run_transformer_layer(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("layer={layer} ms={q_ms}")),
+        Some(format!("layer={layer} gpu ms={q_ms}")),
     );
     let k_start = now_ms();
     let mut k = matmul_q8_0_with_bias(
@@ -3577,7 +3577,7 @@ async fn run_transformer_layer(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("layer={layer} ms={k_ms}")),
+        Some(format!("layer={layer} gpu ms={k_ms}")),
     );
     let v_start = now_ms();
     let v = matmul_q8_0_with_bias(
@@ -3600,7 +3600,7 @@ async fn run_transformer_layer(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("layer={layer} ms={v_ms}")),
+        Some(format!("layer={layer} gpu ms={v_ms}")),
     );
 
     let heads = config.head_count as usize;
@@ -3864,7 +3864,7 @@ async fn run_transformer_layer(
         StageStatus::Completed,
         None,
         None,
-        Some(format!("layer={layer} ms={proj_ms}")),
+        Some(format!("layer={layer} gpu ms={proj_ms}")),
     );
     hidden = match vector_add_gpu(&hidden, &attn_proj, gpu, gpu_tracker).await {
         Ok(value) => value,
