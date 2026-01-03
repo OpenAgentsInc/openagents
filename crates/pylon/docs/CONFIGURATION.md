@@ -186,6 +186,45 @@ Override the agent-runner binary location:
 PYLON_AGENT_RUNNER=/path/to/agent-runner pylon start
 ```
 
+### GPT-OSS Metal (macOS)
+
+Enable the GPT-OSS Metal backend (local `model.bin`) for Pylon providers.
+
+1) Build the Metal libraries from the GPT-OSS repo:
+
+```bash
+cd ~/code/gpt-oss/gpt_oss/metal
+cmake -B build
+cmake --build build --config Release
+```
+
+2) Create or download Metal-format weights:
+
+```bash
+python gpt_oss/metal/scripts/create-local-model.py -s <model_dir> -d <output>/model.bin
+```
+
+3) Export environment variables:
+
+```bash
+export GPT_OSS_METAL_DIR=~/code/gpt-oss/gpt_oss/metal/build
+export GPT_OSS_METAL_MODEL_PATH=/path/to/model.bin
+export GPT_OSS_METAL_MODEL_ID=gpt-oss-20b
+
+# Optional tuning
+export GPT_OSS_METAL_CONTEXT_LENGTH=8192
+export GPT_OSS_METAL_MAX_BATCH_TOKENS=512
+export GPT_OSS_METAL_TEMPERATURE=0.7
+export GPT_OSS_METAL_MAX_TOKENS=256
+export GPT_OSS_METAL_SEED=42
+```
+
+4) Run Pylon with the feature enabled:
+
+```bash
+cargo run -p pylon --features gpt-oss-metal -- start -f
+```
+
 ## Default Configuration
 
 When `pylon init` runs, it creates:

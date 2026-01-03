@@ -13,6 +13,7 @@ members = [
     "crates/frostr",
     "crates/gpt-oss",
     "crates/gpt-oss-agent",
+    "crates/gpt-oss-metal",
     "crates/issue-tool",
     "crates/issues",
     "crates/local-inference",

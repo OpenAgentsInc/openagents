@@ -2270,6 +2270,7 @@ dependencies = [
  "dirs 5.0.1",
  "env_logger 0.11.8",
  "eventsource-stream",
+ "gpt-oss-metal",
  "log",
  "nostr 0.1.0",
  "nostr-client",
@@ -5131,6 +5132,15 @@ dependencies = [
  "tracing",
  "uuid",
  "wiremock",
+]
+
+[[package]]
+name = "gpt-oss-metal"
+version = "0.1.0"
+dependencies = [
+ "openai-harmony",
+ "rand 0.8.5",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
