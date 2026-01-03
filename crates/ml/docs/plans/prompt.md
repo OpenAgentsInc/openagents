@@ -202,6 +202,9 @@ Read these if stuck:
 - `crates/ml/docs/plans/gptoss-browser-plan.md` - Full architecture
 - `crates/ml/docs/COMPUTE-KERNELS.md` - WGSL kernel specs
 - `crates/ml/docs/ml-inference-visualization.md` - Visualization specs
+- `/Users/christopherdavid/code/harmony/` - The harmony repo
+- `/Users/christopherdavid/code/gpt-oss/` - The gpt-oss repo
+- `/Users/christopherdavid/code/candle/` - Candle Rust ML library - you can use or adapt any code from here
 
 ---
 
