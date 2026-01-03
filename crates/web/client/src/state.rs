@@ -315,6 +315,9 @@ pub(crate) struct GptOssVizState {
     pub(crate) memory_usage: Option<MemoryUsage>,
     pub(crate) cache_status: Vec<CacheInfo>,
     pub(crate) resident_tensors: Vec<TensorInfo>,
+    pub(crate) attention_weights: Option<Vec<Vec<f32>>>,
+    pub(crate) attention_layer: usize,
+    pub(crate) attention_head: usize,
     pub(crate) last_token_ts_ms: Option<u64>,
     pub(crate) start_ts_ms: Option<u64>,
 }
@@ -342,6 +345,9 @@ impl Default for GptOssVizState {
             memory_usage: None,
             cache_status: Vec::new(),
             resident_tensors: Vec::new(),
+            attention_weights: None,
+            attention_layer: 0,
+            attention_head: 0,
             last_token_ts_ms: None,
             start_ts_ms: None,
         }

@@ -2,7 +2,7 @@ use wgpui::{Bounds, FontStyle, Hsla, Point, Quad, Scene, TextSystem, theme};
 use js_sys;
 use wgpui::animation::AnimatorState;
 use wgpui::components::Component;
-use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame};
+use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame, Heatmap};
 use wgpui::PaintContext;
 
 use crate::state::{AppState, GptOssStage, GptOssStageStatus, GptOssVizState};
@@ -124,7 +124,7 @@ pub(crate) fn build_gptoss_page(
     let button_label = if state.gptoss.load_active {
         "LOADING..."
     } else {
-        "START LOAD"
+        "LOAD MODEL"
     };
     let button_font = 12.0;
     let button_pad_x = 18.0;
@@ -223,7 +223,7 @@ pub(crate) fn build_gptoss_page(
             scene,
             text_system,
             empty_bounds,
-            "Run `cargo run -p ml --bin gguf_serve` then click START LOAD",
+            "Run `cargo run -p ml --bin gguf_serve` then click LOAD MODEL",
         );
         y += 140.0;
     } else {
@@ -252,6 +252,11 @@ pub(crate) fn build_gptoss_page(
         let stats_bounds = Bounds::new(right_x, y, col_width, topk_height);
         draw_stats_panel(scene, text_system, &state.gptoss, stats_bounds);
         y += topk_height + 16.0;
+
+        let attention_height = 220.0;
+        let attention_bounds = Bounds::new(inner_x, y, inner_width, attention_height);
+        draw_attention_panel(scene, text_system, &state.gptoss, attention_bounds, scale_factor);
+        y += attention_height + 16.0;
 
         let log_height = 240.0;
         let log_bounds = Bounds::new(inner_x, y, inner_width, log_height);
@@ -584,6 +589,69 @@ fn draw_topk_panel(
         if y > inner.y() + inner.height() - 12.0 {
             break;
         }
+    }
+}
+
+fn draw_attention_panel(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    gptoss: &GptOssVizState,
+    bounds: Bounds,
+    scale_factor: f32,
+) {
+    let inner = panel(scene, text_system, bounds, "ATTENTION");
+    let label = if gptoss.attention_weights.is_some() {
+        format!(
+            "LAYER {} HEAD {}",
+            gptoss.attention_layer,
+            gptoss.attention_head
+        )
+    } else {
+        "NO ATTENTION TELEMETRY".to_string()
+    };
+    draw_mono_text(
+        scene,
+        text_system,
+        &label,
+        inner.x(),
+        inner.y(),
+        10.0,
+        theme::text::MUTED,
+    );
+
+    let heatmap_bounds = Bounds::new(
+        inner.x(),
+        inner.y() + 14.0,
+        inner.width(),
+        inner.height() - 18.0,
+    );
+    scene.draw_quad(
+        Quad::new(heatmap_bounds)
+            .with_background(panel_bg().with_alpha(0.8))
+            .with_border(panel_border().with_alpha(0.6), 1.0),
+    );
+
+    if let Some(weights) = &gptoss.attention_weights {
+        if weights.is_empty() || weights.first().map(|row| row.is_empty()).unwrap_or(true) {
+            draw_empty_state(scene, text_system, heatmap_bounds, "No attention telemetry");
+            return;
+        }
+        let rows = weights.len();
+        let cols = weights.first().map(|row| row.len()).unwrap_or(0);
+        let mut data = Vec::with_capacity(rows * cols);
+        for row in weights {
+            data.extend(row.iter().copied());
+        }
+        let mut heatmap = Heatmap::new()
+            .data(rows, cols, data)
+            .gap(1.0)
+            .low_color(Hsla::from_hex(0x04101a))
+            .mid_color(Some(accent_cyan()))
+            .high_color(Hsla::from_hex(0xf8fbff));
+        let mut cx = PaintContext::new(scene, text_system, scale_factor);
+        heatmap.paint(heatmap_bounds, &mut cx);
+    } else {
+        draw_empty_state(scene, text_system, heatmap_bounds, "No attention telemetry");
     }
 }
 

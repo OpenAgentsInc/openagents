@@ -27,7 +27,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     port = value.parse().unwrap_or(8080);
                 }
             }
-            _ => {}
+            _ => {
+                if path.is_none() && !arg.starts_with('-') {
+                    path = Some(PathBuf::from(arg));
+                }
+            }
         }
     }
 

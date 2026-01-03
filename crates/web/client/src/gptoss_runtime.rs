@@ -412,7 +412,7 @@ pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
         if let Ok(mut guard) = state.try_borrow_mut() {
             reset_gptoss_state(&mut guard.gptoss);
             guard.gptoss.load_error =
-                Some("No GGUF URL provided. Start gguf_serve or pass ?gguf=...".to_string());
+                Some("No GGUF URL provided. Start gguf_serve (:8080) or pass ?gguf=...".to_string());
         }
         emit_load_stage(
             &state,
@@ -715,6 +715,9 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.memory_usage = None;
     state.cache_status.clear();
     state.resident_tensors.clear();
+    state.attention_weights = None;
+    state.attention_layer = 0;
+    state.attention_head = 0;
     state.last_token_ts_ms = None;
     state.start_ts_ms = None;
 }
@@ -2215,6 +2218,25 @@ async fn run_transformer_layer(
         head_dim,
         window,
     )?;
+    if let Ok(weights) = attention_head_weights(
+        &q,
+        layer_cache,
+        &sinks,
+        0,
+        heads,
+        kv_heads,
+        head_dim,
+        window,
+    ) {
+        emit_inference_event(
+            state,
+            GptOssInferenceTelemetry::AttentionWeights {
+                layer: layer as usize,
+                head: 0,
+                weights: vec![weights],
+            },
+        );
+    }
 
     let attn_proj = matmul_q8_0_with_bias(
         state,
@@ -2841,6 +2863,79 @@ fn attention_with_cache(
     }
 
     Ok(out)
+}
+
+fn attention_head_weights(
+    q: &[f32],
+    cache: &LayerKvCache,
+    sinks: &[f32],
+    head_index: usize,
+    heads: usize,
+    kv_heads: usize,
+    head_dim: usize,
+    window: usize,
+) -> Result<Vec<f32>, String> {
+    if heads == 0 || kv_heads == 0 || head_dim == 0 {
+        return Err("attention invalid dims".to_string());
+    }
+    if head_index >= heads {
+        return Err("attention head index out of range".to_string());
+    }
+    let stride = kv_heads
+        .checked_mul(head_dim)
+        .ok_or_else(|| "attention stride overflow".to_string())?;
+    if cache.k.len() != cache.v.len() || cache.k.len() % stride != 0 {
+        return Err("attention cache shape mismatch".to_string());
+    }
+    if q.len() != heads * head_dim {
+        return Err("attention q shape mismatch".to_string());
+    }
+
+    let token_count = cache.k.len() / stride;
+    if token_count == 0 {
+        return Err("attention cache empty".to_string());
+    }
+    let window = window.max(1).min(token_count);
+    let start = token_count.saturating_sub(window);
+    let sm_scale = 1.0 / (head_dim as f32).sqrt();
+
+    let q_base = head_index * head_dim;
+    let kv = head_index % kv_heads;
+    let sink = sinks.get(head_index).copied().unwrap_or(0.0);
+    let mut max_score = sink;
+    for t in start..token_count {
+        let k_base = (t * kv_heads + kv) * head_dim;
+        let mut dot = 0.0f32;
+        for i in 0..head_dim {
+            dot += q[q_base + i] * cache.k[k_base + i];
+        }
+        let score = dot * sm_scale;
+        if score > max_score {
+            max_score = score;
+        }
+    }
+
+    let mut weights = Vec::with_capacity(window);
+    let mut denom = (sink - max_score).exp();
+    for t in start..token_count {
+        let k_base = (t * kv_heads + kv) * head_dim;
+        let mut dot = 0.0f32;
+        for i in 0..head_dim {
+            dot += q[q_base + i] * cache.k[k_base + i];
+        }
+        let score = dot * sm_scale;
+        let w = (score - max_score).exp();
+        weights.push(w);
+        denom += w;
+    }
+
+    if denom <= 0.0 {
+        return Err("attention softmax denom is zero".to_string());
+    }
+    for weight in &mut weights {
+        *weight /= denom;
+    }
+    Ok(weights)
 }
 
 fn apply_rope(
