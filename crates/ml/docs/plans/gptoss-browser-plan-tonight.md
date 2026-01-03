@@ -180,6 +180,7 @@ Notes:
 - Re-ran `cargo test -p ml --no-default-features --features native,wgpu gguf_gate_d`.
 - Weight streaming telemetry now reports average load rate and total elapsed time.
 - Load progress detail now includes ETA based on current average rate.
+- I/O panel now shows live load detail (chunk/offset/rate/ETA) while streaming.
 
 ---
 
