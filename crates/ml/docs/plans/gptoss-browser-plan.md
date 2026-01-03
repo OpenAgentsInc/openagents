@@ -247,42 +247,55 @@ Split implementation into three phases to keep shipping:
 
 These are the minimum kernels to produce logits:
 
-1. **Q8_0 dequant + matmul** ✅ (done)
+1. **Q8_0 dequant + matmul** ✅ GPU (done)
    * Kernel: `y = x @ Wq` where `Wq` is packed Q8_0 blocks.
    * Tiled GEMM with workgroup memory.
 
-2. **RMSNorm**
+2. **RMSNorm** ❌ CPU (needs GPU)
    * Required before every attention/FFN block.
    * Simple: compute RMS, scale by learned weights.
+   * **Must create `rmsnorm.wgsl`**
 
-3. **RoPE**
+3. **RoPE** ❌ CPU (needs GPU)
    * Config-driven base frequency (10k local, 1M global for GPT-OSS).
    * Apply to Q and K after projection.
+   * **Must create `rope.wgsl`**
 
-4. **Residual add**
+4. **Residual add** ❌ CPU (low priority)
    * `x = x + sublayer_output`
 
-5. **LM head logits + CPU sampling**
+5. **LM head logits + CPU sampling** ✅ (acceptable)
    * logits → copy to CPU → top-k/top-p sampling there.
    * GPU sampling is Phase 2c optimization.
 
-**Done when:** `token_embd → RMSNorm → lm_head → logits → top-5 tokens displayed`
+**Done when:** `token_embd → RMSNorm(GPU) → lm_head → logits → top-5 tokens displayed`
 
 ### Phase 2b: Attention (dense only)
 
-1. **Dense attention with KV cache**
-   * QKV projections (Q8_0 matmul).
-   * Scaled dot-product attention.
-   * Output projection.
+**CRITICAL: Attention is currently CPU. Must implement `attention.wgsl`.**
 
-2. **GQA path**
+1. **Dense attention with KV cache** ❌ CPU (MUST FIX)
+   * QKV projections (Q8_0 matmul) ✅ GPU
+   * Scaled dot-product attention ❌ CPU - **needs `attention.wgsl`**
+   * Output projection ✅ GPU
+   * KV cache ❌ CPU Vec - **needs GPU wgpu::Buffer**
+
+2. **GQA path** ❌ CPU
    * Group size 8 for GPT-OSS.
    * Repeat K/V heads for grouped queries.
+   * **Must be in WGSL kernel**
 
-3. **Causal masking**
+3. **Causal masking** ❌ CPU
    * Lower-triangular mask for autoregressive decode.
+   * **Must be fused into attention.wgsl**
 
-**Done when:** A single prompt runs through ≥1 real attention layer, KV cache grows by 1 token, top-5 tokens render.
+**Current state:** CPU attention runs but is O(n²) slow. Unacceptable for production.
+
+**Done when:**
+- `attention.wgsl` exists and runs on GPU
+- KV cache is wgpu::Buffer
+- A single prompt runs through ≥1 GPU attention layer
+- HUD shows "Attention: GPU"
 
 ### Phase 2c: GPT-OSS Exactness
 
