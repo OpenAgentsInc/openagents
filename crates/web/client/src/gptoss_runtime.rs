@@ -1313,6 +1313,14 @@ pub(crate) fn default_gguf_url() -> String {
     }
 }
 
+pub(crate) fn local_gguf_path() -> &'static str {
+    LOCAL_GGUF_PATH
+}
+
+pub(crate) fn local_gguf_serve_cmd() -> &'static str {
+    LOCAL_GGUF_SERVE_CMD
+}
+
 pub(crate) fn default_user_prompt() -> String {
     DEFAULT_USER_PROMPT.to_string()
 }
