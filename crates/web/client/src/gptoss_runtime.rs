@@ -97,23 +97,88 @@ struct SamplingOverrides {
     top_p: Option<f32>,
 }
 
-#[derive(Clone, Debug)]
 struct LayerKvCache {
     k: Vec<f32>,
     v: Vec<f32>,
+    start: usize,
+    len: usize,
+    capacity: usize,
+    stride: usize,
+    gpu_k: Option<wgpu::Buffer>,
+    gpu_v: Option<wgpu::Buffer>,
 }
 
 impl LayerKvCache {
     fn new() -> Self {
-        Self { k: Vec::new(), v: Vec::new() }
+        Self {
+            k: Vec::new(),
+            v: Vec::new(),
+            start: 0,
+            len: 0,
+            capacity: 0,
+            stride: 0,
+            gpu_k: None,
+            gpu_v: None,
+        }
     }
 
-    fn token_count(&self, kv_heads: usize, head_dim: usize) -> usize {
-        let stride = kv_heads.saturating_mul(head_dim);
-        if stride == 0 {
-            return 0;
+    fn token_count(&self) -> usize {
+        self.len
+    }
+
+    fn ensure_capacity(
+        &mut self,
+        max_len: usize,
+        stride: usize,
+        gpu: &GpuContext,
+    ) -> Result<(), String> {
+        if max_len == 0 {
+            return Err("kv cache max length is zero".to_string());
         }
-        self.k.len() / stride
+        if stride == 0 {
+            return Err("kv cache stride is zero".to_string());
+        }
+        if self.capacity == 0 || self.capacity != max_len || self.stride != stride {
+            self.capacity = max_len;
+            self.stride = stride;
+            self.start = 0;
+            self.len = 0;
+            self.k = vec![0.0f32; max_len * stride];
+            self.v = vec![0.0f32; max_len * stride];
+            self.gpu_k = None;
+            self.gpu_v = None;
+        }
+
+        if self.gpu_k.is_none() || self.gpu_v.is_none() {
+            let bytes = max_len
+                .checked_mul(stride)
+                .ok_or_else(|| "kv cache byte overflow".to_string())?
+                .checked_mul(std::mem::size_of::<f32>())
+                .ok_or_else(|| "kv cache byte overflow".to_string())?;
+            let limits = gpu.device.limits();
+            ensure_buffer_limit(
+                "kv cache",
+                bytes,
+                limits.max_storage_buffer_binding_size.into(),
+                limits.max_buffer_size,
+            )?;
+            let k_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("kv_cache_k"),
+                size: bytes as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let v_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("kv_cache_v"),
+                size: bytes as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.gpu_k = Some(k_buf);
+            self.gpu_v = Some(v_buf);
+        }
+
+        Ok(())
     }
 
     fn append(
@@ -122,6 +187,8 @@ impl LayerKvCache {
         v: &[f32],
         kv_heads: usize,
         head_dim: usize,
+        max_len: usize,
+        gpu: &GpuContext,
     ) -> Result<(), String> {
         let expected = kv_heads
             .checked_mul(head_dim)
@@ -133,8 +200,33 @@ impl LayerKvCache {
                 v.len()
             ));
         }
-        self.k.extend_from_slice(k);
-        self.v.extend_from_slice(v);
+        self.ensure_capacity(max_len, expected, gpu)?;
+
+        let slot = if self.len < self.capacity {
+            let slot = (self.start + self.len) % self.capacity;
+            self.len = self.len.saturating_add(1).min(self.capacity);
+            slot
+        } else {
+            let slot = self.start;
+            self.start = (self.start + 1) % self.capacity;
+            slot
+        };
+
+        let base = slot
+            .checked_mul(self.stride)
+            .ok_or_else(|| "kv append base overflow".to_string())?;
+        let end = base + self.stride;
+        self.k[base..end].copy_from_slice(k);
+        self.v[base..end].copy_from_slice(v);
+
+        let byte_offset = base
+            .checked_mul(std::mem::size_of::<f32>())
+            .ok_or_else(|| "kv append offset overflow".to_string())? as u64;
+        if let (Some(k_buf), Some(v_buf)) = (self.gpu_k.as_ref(), self.gpu_v.as_ref()) {
+            gpu.queue.write_buffer(k_buf, byte_offset, cast_slice(k));
+            gpu.queue.write_buffer(v_buf, byte_offset, cast_slice(v));
+        }
+
         Ok(())
     }
 
@@ -143,7 +235,6 @@ impl LayerKvCache {
     }
 }
 
-#[derive(Clone, Debug)]
 struct KvCache {
     layers: Vec<LayerKvCache>,
     seq_len: usize,
@@ -2158,6 +2249,29 @@ fn ensure_storage_limit(label: &str, size: usize, max: usize) -> Result<(), Stri
     Ok(())
 }
 
+fn ensure_buffer_limit(
+    label: &str,
+    size: usize,
+    max_storage: u64,
+    max_buffer: u64,
+) -> Result<(), String> {
+    if size as u64 > max_storage {
+        return Err(format!(
+            "{label} size {} exceeds max storage {}",
+            format_bytes(size as u64),
+            format_bytes(max_storage)
+        ));
+    }
+    if size as u64 > max_buffer {
+        return Err(format!(
+            "{label} size {} exceeds max buffer {}",
+            format_bytes(size as u64),
+            format_bytes(max_buffer)
+        ));
+    }
+    Ok(())
+}
+
 async fn run_q8_0_probe(
     state: &Rc<RefCell<AppState>>,
     gguf_url: &str,
@@ -2837,6 +2951,7 @@ async fn run_generation(
             active_layers,
             moe_fallback,
             force_dense,
+            true,
         )
         .await?;
         last_step_ms = now_ms().saturating_sub(start_ms).max(1);
@@ -2920,10 +3035,6 @@ async fn run_generation(
         }
 
         let position = cache.seq_len;
-        if position >= cache.max_len {
-            stop_reason = "kv_full".to_string();
-            break;
-        }
         let start_ms = now_ms();
         logits = run_forward_token(
             state,
@@ -2939,6 +3050,7 @@ async fn run_generation(
             active_layers,
             moe_fallback,
             force_dense,
+            false,
         )
         .await?;
         last_step_ms = now_ms().saturating_sub(start_ms).max(1);
@@ -2988,6 +3100,7 @@ async fn run_forward_token(
     active_layers: usize,
     moe_fallback: bool,
     force_dense: bool,
+    allow_cpu_attention: bool,
 ) -> Result<Vec<f32>, String> {
     gpu_tracker.reset();
     let token_embd = find_tensor(index, "token_embd.weight")?;
@@ -3039,6 +3152,7 @@ async fn run_forward_token(
             layer_limit,
             moe_fallback,
             force_dense,
+            allow_cpu_attention,
         )
         .await
         {
@@ -3249,6 +3363,7 @@ async fn run_single_token_full(
         config.block_count as usize,
         false,
         false,
+        true,
     )
     .await?;
     let (top_k, entropy, next_id, next_text) = top_k_from_logits(&logits, tokenizer, 5)?;
@@ -3280,6 +3395,7 @@ async fn run_transformer_layer(
     total_layers: usize,
     moe_fallback: bool,
     force_dense: bool,
+    allow_cpu_attention: bool,
 ) -> Result<Vec<f32>, String> {
     let attn_norm = find_tensor(index, &format!("blk.{layer}.attn_norm.weight"))?;
     let attn_q_w = find_tensor(index, &format!("blk.{layer}.attn_q.weight"))?;
@@ -3479,12 +3595,8 @@ async fn run_transformer_layer(
         fetch_f32_tensor_cached(state, gguf_url, attn_sinks, &mut caches.tensors).await?;
     let max_len = cache.max_len;
     let layer_cache = cache.layer_mut(layer as usize)?;
-    let token_count = layer_cache.token_count(kv_heads, head_dim);
-    if token_count >= max_len {
-        return Err("kv cache max length exceeded".to_string());
-    }
-    layer_cache.append(&k, &v, kv_heads, head_dim)?;
-    let seq_len = layer_cache.token_count(kv_heads, head_dim);
+    layer_cache.append(&k, &v, kv_heads, head_dim, max_len, gpu)?;
+    let seq_len = layer_cache.token_count();
     let window = if force_dense || config.sliding_window == 0 {
         seq_len
     } else if layer % 2 == 0 {
@@ -3493,7 +3605,11 @@ async fn run_transformer_layer(
         seq_len
     };
     let window = window.max(1).min(seq_len);
-    let offset = seq_len.saturating_sub(window);
+    let offset = if layer_cache.capacity > 0 {
+        (layer_cache.start + seq_len.saturating_sub(window)) % layer_cache.capacity
+    } else {
+        0
+    };
     emit_inference_event(
         state,
         GptOssInferenceTelemetry::CacheStatus {
@@ -3522,7 +3638,10 @@ async fn run_transformer_layer(
     .await
     {
         Ok(out) => out,
-        Err(_) => {
+        Err(err) => {
+            if !allow_cpu_attention {
+                return Err(format!("gpu attention failed: {err}"));
+            }
             attn_mode = "cpu";
             match attention_with_cache(
                 &q,
@@ -3573,7 +3692,7 @@ async fn run_transformer_layer(
             )
         })
         .unwrap_or((0, 0));
-    if selected_layer == layer as usize {
+    if allow_cpu_attention && selected_layer == layer as usize {
         if let Ok(weights) = attention_head_weights(
             &q,
             layer_cache,
@@ -4394,19 +4513,19 @@ fn attention_with_cache(
     let stride = kv_heads
         .checked_mul(head_dim)
         .ok_or_else(|| "attention stride overflow".to_string())?;
-    if cache.k.len() != cache.v.len() || cache.k.len() % stride != 0 {
-        return Err("attention cache shape mismatch".to_string());
+    if cache.capacity == 0 || cache.stride != stride || cache.k.len() != cache.v.len() {
+        return Err("attention cache uninitialized".to_string());
     }
     if q.len() != heads * head_dim {
         return Err("attention q shape mismatch".to_string());
     }
 
-    let token_count = cache.k.len() / stride;
+    let token_count = cache.len;
     if token_count == 0 {
         return Err("attention cache empty".to_string());
     }
     let window = window.max(1).min(token_count);
-    let start = token_count.saturating_sub(window);
+    let start = (cache.start + token_count.saturating_sub(window)) % cache.capacity;
     let sm_scale = 1.0 / (head_dim as f32).sqrt();
     let mut out = vec![0.0f32; heads * head_dim];
 
@@ -4416,8 +4535,9 @@ fn attention_with_cache(
         let sink = sinks.get(h).copied().unwrap_or(0.0);
         let mut max_score = sink;
 
-        for t in start..token_count {
-            let k_base = (t * kv_heads + kv) * head_dim;
+        for t in 0..window {
+            let token = (start + t) % cache.capacity;
+            let k_base = (token * kv_heads + kv) * head_dim;
             let mut dot = 0.0f32;
             for i in 0..head_dim {
                 dot += q[q_base + i] * cache.k[k_base + i];
@@ -4430,8 +4550,9 @@ fn attention_with_cache(
 
         let mut weights = Vec::with_capacity(window);
         let mut denom = (sink - max_score).exp();
-        for t in start..token_count {
-            let k_base = (t * kv_heads + kv) * head_dim;
+        for t in 0..window {
+            let token = (start + t) % cache.capacity;
+            let k_base = (token * kv_heads + kv) * head_dim;
             let mut dot = 0.0f32;
             for i in 0..head_dim {
                 dot += q[q_base + i] * cache.k[k_base + i];
@@ -4448,8 +4569,8 @@ fn attention_with_cache(
 
         for (idx, w) in weights.iter().enumerate() {
             let weight = *w / denom;
-            let token_idx = start + idx;
-            let v_base = (token_idx * kv_heads + kv) * head_dim;
+            let token = (start + idx) % cache.capacity;
+            let v_base = (token * kv_heads + kv) * head_dim;
             for i in 0..head_dim {
                 out[q_base + i] += cache.v[v_base + i] * weight;
             }
@@ -4478,27 +4599,28 @@ fn attention_head_weights(
     let stride = kv_heads
         .checked_mul(head_dim)
         .ok_or_else(|| "attention stride overflow".to_string())?;
-    if cache.k.len() != cache.v.len() || cache.k.len() % stride != 0 {
-        return Err("attention cache shape mismatch".to_string());
+    if cache.capacity == 0 || cache.stride != stride || cache.k.len() != cache.v.len() {
+        return Err("attention cache uninitialized".to_string());
     }
     if q.len() != heads * head_dim {
         return Err("attention q shape mismatch".to_string());
     }
 
-    let token_count = cache.k.len() / stride;
+    let token_count = cache.len;
     if token_count == 0 {
         return Err("attention cache empty".to_string());
     }
     let window = window.max(1).min(token_count);
-    let start = token_count.saturating_sub(window);
+    let start = (cache.start + token_count.saturating_sub(window)) % cache.capacity;
     let sm_scale = 1.0 / (head_dim as f32).sqrt();
 
     let q_base = head_index * head_dim;
     let kv = head_index % kv_heads;
     let sink = sinks.get(head_index).copied().unwrap_or(0.0);
     let mut max_score = sink;
-    for t in start..token_count {
-        let k_base = (t * kv_heads + kv) * head_dim;
+    for t in 0..window {
+        let token = (start + t) % cache.capacity;
+        let k_base = (token * kv_heads + kv) * head_dim;
         let mut dot = 0.0f32;
         for i in 0..head_dim {
             dot += q[q_base + i] * cache.k[k_base + i];
@@ -4511,8 +4633,9 @@ fn attention_head_weights(
 
     let mut weights = Vec::with_capacity(window);
     let mut denom = (sink - max_score).exp();
-    for t in start..token_count {
-        let k_base = (t * kv_heads + kv) * head_dim;
+    for t in 0..window {
+        let token = (start + t) % cache.capacity;
+        let k_base = (token * kv_heads + kv) * head_dim;
         let mut dot = 0.0f32;
         for i in 0..head_dim {
             dot += q[q_base + i] * cache.k[k_base + i];
@@ -4820,6 +4943,8 @@ struct AttentionParams {
     kv_heads: u32,
     head_dim: u32,
     seq_len: u32,
+    window_start: u32,
+    capacity: u32,
 }
 
 async fn rms_norm_gpu(
@@ -5205,20 +5330,26 @@ async fn attention_with_cache_gpu(
     let stride = kv_heads
         .checked_mul(head_dim)
         .ok_or_else(|| "attention stride overflow".to_string())?;
-    if cache.k.len() != cache.v.len() || cache.k.len() % stride != 0 {
-        return Err("attention cache shape mismatch".to_string());
+    if cache.capacity == 0 || cache.stride != stride || cache.k.len() != cache.v.len() {
+        return Err("attention cache uninitialized".to_string());
     }
     if q.len() != heads * head_dim {
         return Err("attention q shape mismatch".to_string());
     }
-    let token_count = cache.k.len() / stride;
+    let token_count = cache.len;
     if token_count == 0 {
         return Err("attention cache empty".to_string());
     }
     let window = window.max(1).min(token_count);
-    let start = token_count.saturating_sub(window);
-    let k_slice = &cache.k[start * stride..];
-    let v_slice = &cache.v[start * stride..];
+    let window_start = (cache.start + token_count.saturating_sub(window)) % cache.capacity;
+    let k_buf = cache
+        .gpu_k
+        .as_ref()
+        .ok_or_else(|| "attention gpu cache missing".to_string())?;
+    let v_buf = cache
+        .gpu_v
+        .as_ref()
+        .ok_or_else(|| "attention gpu cache missing".to_string())?;
 
     let sink_len = heads.max(1);
     let mut sink_values = vec![0.0f32; sink_len];
@@ -5229,8 +5360,12 @@ async fn attention_with_cache_gpu(
     let device = &gpu.device;
     let queue = &gpu.queue;
     let q_bytes = q.len() * std::mem::size_of::<f32>();
-    let k_bytes = k_slice.len() * std::mem::size_of::<f32>();
-    let v_bytes = v_slice.len() * std::mem::size_of::<f32>();
+    let k_bytes = cache
+        .capacity
+        .checked_mul(stride)
+        .ok_or_else(|| "attention cache overflow".to_string())?
+        * std::mem::size_of::<f32>();
+    let v_bytes = k_bytes;
     let sink_bytes = sink_values.len() * std::mem::size_of::<f32>();
     let out_bytes = q_bytes;
     let max_storage = device.limits().max_storage_buffer_binding_size as usize;
@@ -5334,16 +5469,8 @@ async fn attention_with_cache_gpu(
         contents: cast_slice(q),
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
     });
-    let k_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("attn_k"),
-        contents: cast_slice(k_slice),
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-    });
-    let v_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("attn_v"),
-        contents: cast_slice(v_slice),
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-    });
+    let k_buffer = k_buf.clone();
+    let v_buffer = v_buf.clone();
     let sink_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("attn_sinks"),
         contents: cast_slice(&sink_values),
@@ -5362,6 +5489,10 @@ async fn attention_with_cache_gpu(
         kv_heads: u32::try_from(kv_heads).map_err(|_| "attn kv_heads overflow".to_string())?,
         head_dim: u32::try_from(head_dim).map_err(|_| "attn head_dim overflow".to_string())?,
         seq_len: u32::try_from(window).map_err(|_| "attn seq_len overflow".to_string())?,
+        window_start: u32::try_from(window_start)
+            .map_err(|_| "attn window_start overflow".to_string())?,
+        capacity: u32::try_from(cache.capacity)
+            .map_err(|_| "attn capacity overflow".to_string())?,
     };
     let params_bytes = std::mem::size_of::<AttentionParams>();
     let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

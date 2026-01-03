@@ -3,6 +3,8 @@ struct Params {
     kv_heads: u32,
     head_dim: u32,
     seq_len: u32,
+    window_start: u32,
+    capacity: u32,
 };
 
 @group(0) @binding(0)
@@ -29,7 +31,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (head >= params.heads) {
         return;
     }
-    if (params.head_dim == 0u || params.kv_heads == 0u || params.seq_len == 0u) {
+    if (params.head_dim == 0u || params.kv_heads == 0u || params.seq_len == 0u || params.capacity == 0u) {
         return;
     }
     let q_base = head * params.head_dim;
@@ -43,7 +45,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (t >= params.seq_len) {
             break;
         }
-        let k_base = (t * params.kv_heads + kv) * params.head_dim;
+        let token = (params.window_start + t) % params.capacity;
+        let k_base = (token * params.kv_heads + kv) * params.head_dim;
         var dot = 0.0;
         var i = 0u;
         loop {
@@ -66,7 +69,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (t >= params.seq_len) {
             break;
         }
-        let k_base = (t * params.kv_heads + kv) * params.head_dim;
+        let token = (params.window_start + t) % params.capacity;
+        let k_base = (token * params.kv_heads + kv) * params.head_dim;
         var dot = 0.0;
         var i = 0u;
         loop {
@@ -98,7 +102,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (t >= params.seq_len) {
             break;
         }
-        let k_base = (t * params.kv_heads + kv) * params.head_dim;
+        let token = (params.window_start + t) % params.capacity;
+        let k_base = (token * params.kv_heads + kv) * params.head_dim;
         var dot = 0.0;
         var j = 0u;
         loop {
