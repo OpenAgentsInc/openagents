@@ -475,6 +475,21 @@ fn draw_io_panel(
         theme::text::MUTED,
     );
 
+    let token_limits = gptoss
+        .token_limits
+        .as_ref()
+        .map(|limits| format!("TOKENS: {limits}"))
+        .unwrap_or_else(|| "TOKENS: --".to_string());
+    draw_mono_text(
+        scene,
+        text_system,
+        &token_limits,
+        inner.x(),
+        inner.y() + 34.0,
+        10.0,
+        theme::text::MUTED,
+    );
+
     let mem = gptoss.memory_usage.as_ref();
     let mem_text = if let Some(mem) = mem {
         format!(
@@ -491,7 +506,7 @@ fn draw_io_panel(
         text_system,
         &mem_text,
         inner.x(),
-        inner.y() + 34.0,
+        inner.y() + 50.0,
         10.0,
         theme::text::MUTED,
     );
@@ -511,13 +526,13 @@ fn draw_io_panel(
             text_system,
             line,
             inner.x(),
-            inner.y() + 50.0 + (idx as f32 * 12.0),
+            inner.y() + 66.0 + (idx as f32 * 12.0),
             9.0,
             theme::text::MUTED,
         );
     }
 
-    let mut ry = inner.y() + 66.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
+    let mut ry = inner.y() + 82.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
     draw_mono_text(
         scene,
         text_system,
