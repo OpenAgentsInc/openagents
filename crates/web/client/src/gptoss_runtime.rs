@@ -1671,6 +1671,12 @@ fn is_local_url(url: &str) -> bool {
         || url.starts_with("https://127.0.0.1")
 }
 
+fn is_bun_dev_url(url: &str) -> bool {
+    let url = url.to_ascii_lowercase();
+    url.starts_with("http://localhost:3000")
+        || url.starts_with("http://127.0.0.1:3000")
+}
+
 fn format_range_error(url: &str, err: &str) -> String {
     let lower = err.to_ascii_lowercase();
     let detail = if lower.contains("fetch failed: 404") || lower.contains(" 404") {
@@ -1686,7 +1692,9 @@ fn format_range_error(url: &str, err: &str) -> String {
         format!("Range/CORS check failed for {url}: {err}")
     };
 
-    if is_local_url(url) {
+    if is_bun_dev_url(url) {
+        format!("{detail}\nRun: cd crates/web && bun run build && bun run dev")
+    } else if is_local_url(url) {
         format!("{detail}\nRun: {LOCAL_GGUF_SERVE_CMD}")
     } else if detail.contains("Range/CORS") {
         detail
