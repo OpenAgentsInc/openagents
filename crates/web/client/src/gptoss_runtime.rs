@@ -783,7 +783,7 @@ pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
             .and_then(|guard| guard.gptoss.gguf_file.clone());
         let raw_url = input_override
             .or_else(|| read_query_param("gguf").filter(|url| !url.is_empty()))
-            .unwrap_or_else(default_gguf_url);
+            .unwrap_or_default();
         (raw_url, file)
     };
 
