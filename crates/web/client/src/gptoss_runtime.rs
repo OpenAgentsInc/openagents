@@ -930,7 +930,15 @@ fn emit_config(state: &Rc<RefCell<AppState>>, config: &GptOssConfig) {
 }
 
 fn read_meta_u32(index: &GgufIndex, key: &str) -> Result<u32, String> {
-    let Some(value) = index.metadata.values.get(key) else {
+    let value = lookup_meta(index, key);
+    if value.is_none() && key.ends_with("rope.dimension_count") {
+        let embedding = read_meta_u32(index, "llama.embedding_length")?;
+        let heads = read_meta_u32(index, "llama.attention.head_count")?;
+        if heads > 0 {
+            return Ok(embedding / heads);
+        }
+    }
+    let Some(value) = value else {
         return Err(format!("missing gguf metadata key: {key}"));
     };
     match value {
@@ -943,7 +951,7 @@ fn read_meta_u32(index: &GgufIndex, key: &str) -> Result<u32, String> {
 }
 
 fn read_meta_f32(index: &GgufIndex, key: &str) -> Result<f32, String> {
-    let Some(value) = index.metadata.values.get(key) else {
+    let Some(value) = lookup_meta(index, key) else {
         return Err(format!("missing gguf metadata key: {key}"));
     };
     match value {
@@ -955,6 +963,17 @@ fn read_meta_f32(index: &GgufIndex, key: &str) -> Result<f32, String> {
         crate::gguf_web::GgufScalar::I64(v) => Ok(*v as f32),
         _ => Err(format!("gguf metadata {key} has non-float type")),
     }
+}
+
+fn lookup_meta<'a>(index: &'a GgufIndex, key: &str) -> Option<&'a crate::gguf_web::GgufScalar> {
+    if let Some(value) = index.metadata.values.get(key) {
+        return Some(value);
+    }
+    let fallback = key
+        .strip_prefix("llama.")
+        .map(|rest| format!("gpt-oss.{rest}"))
+        .or_else(|| key.strip_prefix("gpt-oss.").map(|rest| format!("llama.{rest}")))?;
+    index.metadata.values.get(&fallback)
 }
 
 fn build_tokenizer(
