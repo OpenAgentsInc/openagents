@@ -2407,6 +2407,15 @@ async fn run_generation(
         return Err("prompt token list is empty".to_string());
     }
 
+    emit_inference_stage(
+        state,
+        "generation",
+        StageStatus::Started,
+        None,
+        None,
+        Some(format!("prompt_tokens={} new={max_new_tokens}", prompt_tokens.len())),
+    );
+
     let total_prefill = prompt_tokens.len();
     let mut cache = KvCache::new(config.block_count as usize, max_kv_tokens);
     let mut caches = RuntimeCaches::new();
@@ -2586,6 +2595,15 @@ async fn run_generation(
         Some("ok".to_string()),
     );
 
+    emit_inference_stage(
+        state,
+        "generation",
+        StageStatus::Completed,
+        Some(generated),
+        Some(max_new_tokens),
+        Some("ok".to_string()),
+    );
+
     Ok(())
 }
 
@@ -2606,7 +2624,25 @@ async fn run_forward_token(
 ) -> Result<Vec<f32>, String> {
     gpu_tracker.reset();
     let token_embd = find_tensor(index, "token_embd.weight")?;
+    emit_inference_stage(
+        state,
+        "token_embd",
+        StageStatus::Started,
+        None,
+        None,
+        Some(format!("token_id={token_id}")),
+    );
+    let emb_start = now_ms();
     let mut hidden = fetch_q8_0_row(gguf_url, token_embd, token_id as usize).await?;
+    let emb_ms = now_ms().saturating_sub(emb_start).max(1);
+    emit_inference_stage(
+        state,
+        "token_embd",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("token_id={token_id} ms={emb_ms}")),
+    );
 
     let layer_limit = active_layers.min(config.block_count as usize);
     for layer in 0..layer_limit as u32 {
@@ -2631,9 +2667,19 @@ async fn run_forward_token(
     }
 
     let output_norm_tensor = find_tensor(index, "output_norm.weight")?;
+    let output_norm_start = now_ms();
     let output_norm_w =
         fetch_f32_tensor_cached(state, gguf_url, output_norm_tensor, &mut caches.tensors).await?;
     let final_hidden = rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?;
+    let output_norm_ms = now_ms().saturating_sub(output_norm_start).max(1);
+    emit_inference_stage(
+        state,
+        "output_norm",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("ms={output_norm_ms}")),
+    );
 
     let output_weight = find_tensor(index, "output.weight")?;
     let logits_start = now_ms();
@@ -2816,10 +2862,21 @@ async fn run_transformer_layer(
         Some(format!("layer={layer}")),
     );
 
+    let attn_norm_start = now_ms();
     let attn_norm_w =
         fetch_f32_tensor_cached(state, gguf_url, attn_norm, &mut caches.tensors).await?;
     let mut normed = rms_norm(&hidden, &attn_norm_w, config.rms_epsilon)?;
+    let attn_norm_ms = now_ms().saturating_sub(attn_norm_start).max(1);
+    emit_inference_stage(
+        state,
+        "attn_norm",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("layer={layer} ms={attn_norm_ms}")),
+    );
 
+    let q_start = now_ms();
     let mut q = matmul_q8_0_with_bias(
         state,
         gguf_url,
@@ -2832,6 +2889,16 @@ async fn run_transformer_layer(
         &mut caches.quant,
     )
     .await?;
+    let q_ms = now_ms().saturating_sub(q_start).max(1);
+    emit_inference_stage(
+        state,
+        "attn_q",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("layer={layer} ms={q_ms}")),
+    );
+    let k_start = now_ms();
     let mut k = matmul_q8_0_with_bias(
         state,
         gguf_url,
@@ -2844,6 +2911,16 @@ async fn run_transformer_layer(
         &mut caches.quant,
     )
     .await?;
+    let k_ms = now_ms().saturating_sub(k_start).max(1);
+    emit_inference_stage(
+        state,
+        "attn_k",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("layer={layer} ms={k_ms}")),
+    );
+    let v_start = now_ms();
     let v = matmul_q8_0_with_bias(
         state,
         gguf_url,
@@ -2856,6 +2933,15 @@ async fn run_transformer_layer(
         &mut caches.quant,
     )
     .await?;
+    let v_ms = now_ms().saturating_sub(v_start).max(1);
+    emit_inference_stage(
+        state,
+        "attn_v",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("layer={layer} ms={v_ms}")),
+    );
 
     let heads = config.head_count as usize;
     let kv_heads = config.head_count_kv as usize;
@@ -2867,6 +2953,7 @@ async fn run_transformer_layer(
         ));
     }
     let head_dim = q_head_dim;
+    let rope_start = now_ms();
     apply_rope(
         &mut q,
         heads,
@@ -2887,6 +2974,15 @@ async fn run_transformer_layer(
         config.rope_scaling_factor,
         config.rope_scaling_original_context,
     )?;
+    let rope_ms = now_ms().saturating_sub(rope_start).max(1);
+    emit_inference_stage(
+        state,
+        "rope",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("layer={layer} ms={rope_ms}")),
+    );
 
     let sinks =
         fetch_f32_tensor_cached(state, gguf_url, attn_sinks, &mut caches.tensors).await?;
@@ -2918,6 +3014,7 @@ async fn run_transformer_layer(
         },
     );
 
+    let attn_start = now_ms();
     let attn_out = attention_with_cache(
         &q,
         layer_cache,
@@ -2927,6 +3024,15 @@ async fn run_transformer_layer(
         head_dim,
         window,
     )?;
+    let attn_ms = now_ms().saturating_sub(attn_start).max(1);
+    emit_inference_stage(
+        state,
+        "attn_score",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("layer={layer} window={window} ms={attn_ms}")),
+    );
     let (selected_layer, selected_head) = state
         .try_borrow()
         .ok()
@@ -2959,6 +3065,7 @@ async fn run_transformer_layer(
         }
     }
 
+    let proj_start = now_ms();
     let attn_proj = matmul_q8_0_with_bias(
         state,
         gguf_url,
@@ -2971,6 +3078,15 @@ async fn run_transformer_layer(
         &mut caches.quant,
     )
     .await?;
+    let proj_ms = now_ms().saturating_sub(proj_start).max(1);
+    emit_inference_stage(
+        state,
+        "attn_out",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("layer={layer} ms={proj_ms}")),
+    );
     for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
         *out += *base;
     }
@@ -2984,9 +3100,19 @@ async fn run_transformer_layer(
         Some("ok".to_string()),
     );
 
+    let post_norm_start = now_ms();
     let post_attn_norm_w =
         fetch_f32_tensor_cached(state, gguf_url, post_attn_norm, &mut caches.tensors).await?;
     normed = rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?;
+    let post_norm_ms = now_ms().saturating_sub(post_norm_start).max(1);
+    emit_inference_stage(
+        state,
+        "post_attn_norm",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("layer={layer} ms={post_norm_ms}")),
+    );
 
     emit_inference_stage(
         state,
@@ -2999,11 +3125,21 @@ async fn run_transformer_layer(
 
     let gate_inp_w = find_tensor(index, &format!("blk.{layer}.ffn_gate_inp.weight"))?;
     let gate_inp_b = find_tensor(index, &format!("blk.{layer}.ffn_gate_inp.bias"))?;
+    let gate_start = now_ms();
     let gate_w =
         fetch_f32_tensor_cached(state, gguf_url, gate_inp_w, &mut caches.tensors).await?;
     let gate_b =
         fetch_f32_tensor_cached(state, gguf_url, gate_inp_b, &mut caches.tensors).await?;
     let gate_scores = linear_f32_with_bias(&gate_w, &gate_b, &normed, gate_inp_w)?;
+    let gate_ms = now_ms().saturating_sub(gate_start).max(1);
+    emit_inference_stage(
+        state,
+        "moe_gate",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("layer={layer} ms={gate_ms}")),
+    );
     let (expert_indices, expert_weights) = if moe_fallback {
         (vec![0usize], vec![1.0f32])
     } else {
@@ -3030,6 +3166,7 @@ async fn run_transformer_layer(
 
     let mut mlp_accum = vec![0.0f32; hidden.len()];
     for (expert_idx, weight) in expert_indices.iter().zip(expert_weights.iter()) {
+        let expert_start = now_ms();
         let gate_quant = fetch_mxfp4_expert_cached(
             state,
             gguf_url,
@@ -3073,6 +3210,15 @@ async fn run_transformer_layer(
         for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {
             *acc += *val * *weight;
         }
+        let expert_ms = now_ms().saturating_sub(expert_start).max(1);
+        emit_inference_stage(
+            state,
+            "moe_expert",
+            StageStatus::Completed,
+            None,
+            None,
+            Some(format!("layer={layer} expert={expert_idx} ms={expert_ms}")),
+        );
     }
 
     for (out, add) in hidden.iter_mut().zip(mlp_accum.iter()) {

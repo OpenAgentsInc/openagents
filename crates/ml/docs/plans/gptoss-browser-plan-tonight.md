@@ -120,6 +120,7 @@ Notes:
 - `/gptoss` now shows a live **load progress bar** driven by real byte counts.
 - Added GGUF URL normalization: bare `localhost:...` is auto-prefixed; local file paths show a clear gguf_serve hint.
 - Added visible inference error lines in the `/gptoss` header so failures surface immediately (not only in the log panel).
+- Added fine-grained inference telemetry (token embd, attn norm/qkv/rope/score/out, post-attn norm, MoE gate + per-expert timing, output norm) to make the HUD reflect every step in the forward path.
  - Added a **block 0 attention probe** (token embed → RMSNorm → Q/K/V → attn output) using real GPT-OSS weights.
 - Added a **prefill + decode loop** with a CPU KV cache (per-layer) for multi-token forward passes.
 - Added **cache telemetry** (seq_len, max_len, bytes) and live **token stream** output from real logits.
