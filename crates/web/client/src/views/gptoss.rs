@@ -485,6 +485,20 @@ fn draw_io_panel(
         theme::text::PRIMARY,
     );
 
+    let weights_detail = weights
+        .and_then(|stage| stage.detail.as_ref())
+        .map(|detail| format!("LOAD: {}", truncate_text(detail, 56)))
+        .unwrap_or_else(|| "LOAD: --".to_string());
+    draw_mono_text(
+        scene,
+        text_system,
+        &weights_detail,
+        inner.x(),
+        inner.y() + 12.0,
+        9.0,
+        theme::text::MUTED,
+    );
+
     let tokenizer = find_stage(gptoss, "tokenizer_load");
     let tokenizer_text = if let Some(stage) = tokenizer {
         if let Some(detail) = &stage.detail {
@@ -500,7 +514,7 @@ fn draw_io_panel(
         text_system,
         &tokenizer_text,
         inner.x(),
-        inner.y() + 16.0,
+        inner.y() + 28.0,
         10.0,
         theme::text::MUTED,
     );
@@ -515,7 +529,7 @@ fn draw_io_panel(
         text_system,
         &token_limits,
         inner.x(),
-        inner.y() + 34.0,
+        inner.y() + 46.0,
         10.0,
         theme::text::MUTED,
     );
@@ -536,7 +550,7 @@ fn draw_io_panel(
         text_system,
         &mem_text,
         inner.x(),
-        inner.y() + 50.0,
+        inner.y() + 62.0,
         10.0,
         theme::text::MUTED,
     );
@@ -550,7 +564,7 @@ fn draw_io_panel(
         text_system,
         &tensor_cache,
         inner.x(),
-        inner.y() + 66.0,
+        inner.y() + 78.0,
         9.0,
         theme::text::MUTED,
     );
@@ -564,7 +578,7 @@ fn draw_io_panel(
         text_system,
         &q8_cache,
         inner.x(),
-        inner.y() + 78.0,
+        inner.y() + 90.0,
         9.0,
         theme::text::MUTED,
     );
@@ -578,7 +592,7 @@ fn draw_io_panel(
         text_system,
         &expert_cache,
         inner.x(),
-        inner.y() + 90.0,
+        inner.y() + 102.0,
         9.0,
         theme::text::MUTED,
     );
@@ -598,13 +612,13 @@ fn draw_io_panel(
             text_system,
             line,
             inner.x(),
-            inner.y() + 106.0 + (idx as f32 * 12.0),
+            inner.y() + 118.0 + (idx as f32 * 12.0),
             9.0,
             theme::text::MUTED,
         );
     }
 
-    let mut ry = inner.y() + 122.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
+    let mut ry = inner.y() + 134.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
     let show_scan = gptoss.load_active
         || (gptoss.resident_tensors.is_empty() && !gptoss.recent_tensors.is_empty());
     let label = if show_scan { "LOAD SCAN:" } else { "RESIDENT:" };
