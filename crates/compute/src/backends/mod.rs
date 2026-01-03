@@ -25,7 +25,7 @@ mod ollama;
 pub use agent::{
     AgentBackend, AgentCapabilities, AgentError, AgentRegistry, AgentBackendStatus, JobProgress,
 };
-pub use apple_fm::AppleFmBackend;
+pub use apple_fm::{AppleFmBackend, FmSession, FmToolDefinition, FmTranscriptMessage};
 pub use claude_code::{ClaudeCodeBackend, ClaudeCodeConfig, IsolationMode};
 #[cfg(all(feature = "gpt-oss-metal", target_os = "macos"))]
 pub use gpt_oss_metal::GptOssMetalBackend;

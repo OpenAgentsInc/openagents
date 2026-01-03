@@ -230,6 +230,9 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // GPT-OSS pipeline visualization page
         (Method::Get, "/gptoss") => routes::gptoss::view_gptoss(env).await,
 
+        // FM Bridge (Apple Foundation Models) visualization page
+        (Method::Get, "/fm") => routes::fm::view_fm(env).await,
+
         // 2026 page - key themes and links
         (Method::Get, "/2026") => routes::y2026::view_2026(env).await,
 

@@ -10,6 +10,7 @@ pub mod brb;
 pub mod claude_auth;
 pub mod container;
 pub mod early;
+pub mod fm;
 pub mod gfn;
 pub mod gptoss;
 pub mod github_explore;
