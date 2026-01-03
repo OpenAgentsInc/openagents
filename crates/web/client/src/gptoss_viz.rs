@@ -193,16 +193,25 @@ impl GptOssVizState {
                     } => {
                         self.token_stream.push_str(&token_text);
                         trim_token_stream(&mut self.token_stream, 420);
-                        self.top_k = top_k
-                            .into_iter()
+                        let converted = top_k
+                            .iter()
                             .map(|c| MlTokenCandidate {
                                 token_id: c.token_id,
-                                token_text: c.token_text,
+                                token_text: c.token_text.clone(),
                                 probability: c.probability,
                             })
-                            .collect();
+                            .collect::<Vec<_>>();
+                        self.top_k = converted.clone();
+                        self.probability_history.push_back(converted);
+                        if self.probability_history.len() > 18 {
+                            self.probability_history.pop_front();
+                        }
                         self.tokens_per_sec = Some(tokens_per_sec);
                         self.entropy = Some(entropy);
+                        self.entropy_history.push_back(entropy);
+                        if self.entropy_history.len() > 32 {
+                            self.entropy_history.pop_front();
+                        }
                         self.last_token_ts_ms = ts_ms;
                     }
                     GptOssInferenceTelemetry::CacheStatus {

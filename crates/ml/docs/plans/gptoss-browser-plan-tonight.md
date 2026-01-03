@@ -141,6 +141,7 @@ Notes:
 - `gguf_serve` now accepts a positional path argument in addition to `--path`.
 - Updated **Harmony prompt formatting** to include system + developer headers and force `assistant` into the `final` channel, and stop decoding on `<|return|>`/`<|call|>` tokens (filtered from token stream).
 - Added **layer activity telemetry** capture + a `LAYER ACTIVITY` HUD panel with per-layer attention/MLP/output norms.
+- Added **probability history waterfall** panel with per-token top-k bars + entropy sparkline.
 
 ---
 
