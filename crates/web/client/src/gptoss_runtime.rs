@@ -1937,11 +1937,11 @@ fn is_file_input(raw: &str) -> bool {
     trimmed == "file" || trimmed.starts_with("file:")
 }
 
-fn gguf_file_input_label(file: &web_sys::File) -> String {
+pub(crate) fn gguf_file_input_label(file: &web_sys::File) -> String {
     format!("file:{}", file.name())
 }
 
-fn gguf_file_label(file: &web_sys::File) -> String {
+pub(crate) fn gguf_file_label(file: &web_sys::File) -> String {
     format!("file:{} ({})", file.name(), format_bytes(file.size() as u64))
 }
 
