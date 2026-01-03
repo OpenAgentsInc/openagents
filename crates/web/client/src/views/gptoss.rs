@@ -325,6 +325,156 @@ pub(crate) fn build_gptoss_page(
         y = control_input_y + control_input_height + 16.0;
     }
 
+    let sampling_gap = 12.0;
+    let sampling_label_size = 9.0;
+    let sampling_input_height = 26.0;
+    if compact_controls {
+        let control_width = inner_width;
+        draw_mono_text(
+            scene,
+            text_system,
+            "SAMPLE",
+            inner_x,
+            y,
+            sampling_label_size,
+            theme::text::MUTED,
+        );
+        y += 12.0;
+        let sample_bounds =
+            Bounds::new(inner_x, y, control_width, sampling_input_height);
+        state.gptoss.sample_input_bounds = sample_bounds;
+        {
+            let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+            state.gptoss.sample_input.paint(sample_bounds, &mut input_cx);
+        }
+        y += sampling_input_height + sampling_gap;
+
+        draw_mono_text(
+            scene,
+            text_system,
+            "TEMP",
+            inner_x,
+            y,
+            sampling_label_size,
+            theme::text::MUTED,
+        );
+        y += 12.0;
+        let temp_bounds =
+            Bounds::new(inner_x, y, control_width, sampling_input_height);
+        state.gptoss.temp_input_bounds = temp_bounds;
+        {
+            let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+            state.gptoss.temp_input.paint(temp_bounds, &mut input_cx);
+        }
+        y += sampling_input_height + sampling_gap;
+
+        draw_mono_text(
+            scene,
+            text_system,
+            "TOP-K",
+            inner_x,
+            y,
+            sampling_label_size,
+            theme::text::MUTED,
+        );
+        y += 12.0;
+        let top_k_bounds =
+            Bounds::new(inner_x, y, control_width, sampling_input_height);
+        state.gptoss.top_k_input_bounds = top_k_bounds;
+        {
+            let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+            state.gptoss.top_k_input.paint(top_k_bounds, &mut input_cx);
+        }
+        y += sampling_input_height + sampling_gap;
+
+        draw_mono_text(
+            scene,
+            text_system,
+            "TOP-P",
+            inner_x,
+            y,
+            sampling_label_size,
+            theme::text::MUTED,
+        );
+        y += 12.0;
+        let top_p_bounds =
+            Bounds::new(inner_x, y, control_width, sampling_input_height);
+        state.gptoss.top_p_input_bounds = top_p_bounds;
+        {
+            let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+            state.gptoss.top_p_input.paint(top_p_bounds, &mut input_cx);
+        }
+        y += sampling_input_height + 16.0;
+    } else {
+        let sampling_width = (inner_width - sampling_gap) / 2.0;
+        let sample_x0 = inner_x;
+        let sample_x1 = inner_x + sampling_width + sampling_gap;
+
+        draw_mono_text(
+            scene,
+            text_system,
+            "SAMPLE",
+            sample_x0,
+            y,
+            sampling_label_size,
+            theme::text::MUTED,
+        );
+        draw_mono_text(
+            scene,
+            text_system,
+            "TEMP",
+            sample_x1,
+            y,
+            sampling_label_size,
+            theme::text::MUTED,
+        );
+        let row1_input_y = y + 12.0;
+        let sample_bounds =
+            Bounds::new(sample_x0, row1_input_y, sampling_width, sampling_input_height);
+        let temp_bounds =
+            Bounds::new(sample_x1, row1_input_y, sampling_width, sampling_input_height);
+        state.gptoss.sample_input_bounds = sample_bounds;
+        state.gptoss.temp_input_bounds = temp_bounds;
+        {
+            let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+            state.gptoss.sample_input.paint(sample_bounds, &mut input_cx);
+            state.gptoss.temp_input.paint(temp_bounds, &mut input_cx);
+        }
+        y = row1_input_y + sampling_input_height + sampling_gap;
+
+        draw_mono_text(
+            scene,
+            text_system,
+            "TOP-K",
+            sample_x0,
+            y,
+            sampling_label_size,
+            theme::text::MUTED,
+        );
+        draw_mono_text(
+            scene,
+            text_system,
+            "TOP-P",
+            sample_x1,
+            y,
+            sampling_label_size,
+            theme::text::MUTED,
+        );
+        let row2_input_y = y + 12.0;
+        let top_k_bounds =
+            Bounds::new(sample_x0, row2_input_y, sampling_width, sampling_input_height);
+        let top_p_bounds =
+            Bounds::new(sample_x1, row2_input_y, sampling_width, sampling_input_height);
+        state.gptoss.top_k_input_bounds = top_k_bounds;
+        state.gptoss.top_p_input_bounds = top_p_bounds;
+        {
+            let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+            state.gptoss.top_k_input.paint(top_k_bounds, &mut input_cx);
+            state.gptoss.top_p_input.paint(top_p_bounds, &mut input_cx);
+        }
+        y = row2_input_y + sampling_input_height + 16.0;
+    }
+
     let button_label = if state.gptoss.load_active {
         "LOADING..."
     } else {
@@ -1882,6 +2032,18 @@ fn ensure_gptoss_inputs(gptoss: &mut GptOssVizState) {
         gptoss
             .max_new_input
             .set_value(default_max_new_tokens().to_string());
+    }
+    if let Some(value) = read_query_param("sample").filter(|value| !value.is_empty()) {
+        gptoss.sample_input.set_value(value);
+    }
+    if let Some(value) = read_query_param("temp").filter(|value| !value.is_empty()) {
+        gptoss.temp_input.set_value(value);
+    }
+    if let Some(value) = read_query_param("top_k").filter(|value| !value.is_empty()) {
+        gptoss.top_k_input.set_value(value);
+    }
+    if let Some(value) = read_query_param("top_p").filter(|value| !value.is_empty()) {
+        gptoss.top_p_input.set_value(value);
     }
 
     gptoss.inputs_initialized = true;

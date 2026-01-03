@@ -307,11 +307,19 @@ pub(crate) struct GptOssVizState {
     pub(crate) layers_input_bounds: Bounds,
     pub(crate) max_kv_input_bounds: Bounds,
     pub(crate) max_new_input_bounds: Bounds,
+    pub(crate) sample_input_bounds: Bounds,
+    pub(crate) temp_input_bounds: Bounds,
+    pub(crate) top_k_input_bounds: Bounds,
+    pub(crate) top_p_input_bounds: Bounds,
     pub(crate) gguf_input: TextInput,
     pub(crate) prompt_input: TextInput,
     pub(crate) layers_input: TextInput,
     pub(crate) max_kv_input: TextInput,
     pub(crate) max_new_input: TextInput,
+    pub(crate) sample_input: TextInput,
+    pub(crate) temp_input: TextInput,
+    pub(crate) top_k_input: TextInput,
+    pub(crate) top_p_input: TextInput,
     pub(crate) input_event_ctx: EventContext,
     pub(crate) inputs_initialized: bool,
     pub(crate) load_active: bool,
@@ -371,6 +379,10 @@ impl Default for GptOssVizState {
             layers_input_bounds: Bounds::ZERO,
             max_kv_input_bounds: Bounds::ZERO,
             max_new_input_bounds: Bounds::ZERO,
+            sample_input_bounds: Bounds::ZERO,
+            temp_input_bounds: Bounds::ZERO,
+            top_k_input_bounds: Bounds::ZERO,
+            top_p_input_bounds: Bounds::ZERO,
             gguf_input: TextInput::new()
                 .placeholder("http://localhost:3000/gpt-oss-20b-Q8_0.gguf")
                 .font_size(10.0)
@@ -389,6 +401,22 @@ impl Default for GptOssVizState {
                 .padding(6.0, 4.0),
             max_new_input: TextInput::new()
                 .placeholder("8")
+                .font_size(10.0)
+                .padding(6.0, 4.0),
+            sample_input: TextInput::new()
+                .placeholder("off")
+                .font_size(10.0)
+                .padding(6.0, 4.0),
+            temp_input: TextInput::new()
+                .placeholder("1.0")
+                .font_size(10.0)
+                .padding(6.0, 4.0),
+            top_k_input: TextInput::new()
+                .placeholder("40")
+                .font_size(10.0)
+                .padding(6.0, 4.0),
+            top_p_input: TextInput::new()
+                .placeholder("1.0")
                 .font_size(10.0)
                 .padding(6.0, 4.0),
             input_event_ctx: EventContext::new(),
@@ -465,6 +493,26 @@ impl GptOssVizState {
             self.max_new_input
                 .event(event, self.max_new_input_bounds, &mut self.input_event_ctx),
         );
+        handled = merge_event_result(
+            handled,
+            self.sample_input
+                .event(event, self.sample_input_bounds, &mut self.input_event_ctx),
+        );
+        handled = merge_event_result(
+            handled,
+            self.temp_input
+                .event(event, self.temp_input_bounds, &mut self.input_event_ctx),
+        );
+        handled = merge_event_result(
+            handled,
+            self.top_k_input
+                .event(event, self.top_k_input_bounds, &mut self.input_event_ctx),
+        );
+        handled = merge_event_result(
+            handled,
+            self.top_p_input
+                .event(event, self.top_p_input_bounds, &mut self.input_event_ctx),
+        );
         handled
     }
 
@@ -474,6 +522,10 @@ impl GptOssVizState {
             || self.layers_input.is_focused()
             || self.max_kv_input.is_focused()
             || self.max_new_input.is_focused()
+            || self.sample_input.is_focused()
+            || self.temp_input.is_focused()
+            || self.top_k_input.is_focused()
+            || self.top_p_input.is_focused()
     }
 
     pub(crate) fn paste_text(&mut self, text: &str) -> bool {
@@ -495,6 +547,22 @@ impl GptOssVizState {
         }
         if self.max_new_input.is_focused() {
             self.max_new_input.insert_text(text);
+            return true;
+        }
+        if self.sample_input.is_focused() {
+            self.sample_input.insert_text(text);
+            return true;
+        }
+        if self.temp_input.is_focused() {
+            self.temp_input.insert_text(text);
+            return true;
+        }
+        if self.top_k_input.is_focused() {
+            self.top_k_input.insert_text(text);
+            return true;
+        }
+        if self.top_p_input.is_focused() {
+            self.top_p_input.insert_text(text);
             return true;
         }
         false
