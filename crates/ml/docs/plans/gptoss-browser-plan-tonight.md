@@ -168,6 +168,7 @@ Notes:
 - Allowed `?layers=0` to run the lm_head-only path (token embd → output), useful for early logits bring-up.
 - Added `?attn=dense` override to force full attention even when sliding-window metadata is set.
 - Emit explicit `layers=0 (lm_head only)` telemetry when skipping transformer blocks.
+- Stage panel now shows per-stage detail (tensor names, timing) inline with status rows.
 
 ---
 
