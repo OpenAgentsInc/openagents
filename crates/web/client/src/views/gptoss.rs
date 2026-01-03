@@ -294,7 +294,7 @@ pub(crate) fn build_gptoss_page(
 
         let attention_height = 220.0;
         let attention_bounds = Bounds::new(inner_x, y, inner_width, attention_height);
-        draw_attention_panel(scene, text_system, &state.gptoss, attention_bounds, scale_factor);
+        draw_attention_panel(scene, text_system, &mut state.gptoss, attention_bounds, scale_factor);
         y += attention_height + 16.0;
 
         let log_height = 240.0;
@@ -660,35 +660,66 @@ fn draw_topk_panel(
 fn draw_attention_panel(
     scene: &mut Scene,
     text_system: &mut TextSystem,
-    gptoss: &GptOssVizState,
+    gptoss: &mut GptOssVizState,
     bounds: Bounds,
     scale_factor: f32,
 ) {
     let inner = panel(scene, text_system, bounds, "ATTENTION");
-    let label = if gptoss.attention_weights.is_some() {
-        format!(
-            "LAYER {} HEAD {}",
-            gptoss.attention_layer,
-            gptoss.attention_head
-        )
-    } else {
-        "NO ATTENTION TELEMETRY".to_string()
-    };
+
+    let label_size = 9.0;
+    let layer_label = format!("LAYER {}", gptoss.attention_selected_layer);
+    let head_label = format!("HEAD {}", gptoss.attention_selected_head);
+    let head_label_w = measure_mono(text_system, &head_label, label_size);
     draw_mono_text(
         scene,
         text_system,
-        &label,
+        &layer_label,
         inner.x(),
         inner.y(),
-        10.0,
+        label_size,
         theme::text::MUTED,
+    );
+    draw_mono_text(
+        scene,
+        text_system,
+        &head_label,
+        inner.x() + inner.width() - head_label_w,
+        inner.y(),
+        label_size,
+        theme::text::MUTED,
+    );
+
+    let slider_y = inner.y() + 12.0;
+    let slider_w = inner.width() * 0.45;
+    gptoss.layer_slider_bounds = Bounds::new(inner.x(), slider_y, slider_w, 18.0);
+    gptoss.head_slider_bounds = Bounds::new(
+        inner.x() + inner.width() - slider_w,
+        slider_y,
+        slider_w,
+        18.0,
+    );
+    draw_slider(
+        scene,
+        gptoss.layer_slider_bounds,
+        gptoss.attention_selected_layer as u32,
+        0,
+        gptoss.max_layers.saturating_sub(1) as u32,
+        accent_cyan(),
+    );
+    draw_slider(
+        scene,
+        gptoss.head_slider_bounds,
+        gptoss.attention_selected_head as u32,
+        0,
+        gptoss.max_heads.saturating_sub(1) as u32,
+        accent_orange(),
     );
 
     let heatmap_bounds = Bounds::new(
         inner.x(),
-        inner.y() + 14.0,
+        slider_y + 24.0,
         inner.width(),
-        inner.height() - 18.0,
+        inner.height() - 32.0,
     );
     scene.draw_quad(
         Quad::new(heatmap_bounds)
@@ -697,6 +728,12 @@ fn draw_attention_panel(
     );
 
     if let Some(weights) = &gptoss.attention_weights {
+        if gptoss.attention_layer != gptoss.attention_selected_layer
+            || gptoss.attention_head != gptoss.attention_selected_head
+        {
+            draw_empty_state(scene, text_system, heatmap_bounds, "No attention telemetry");
+            return;
+        }
         if weights.is_empty() || weights.first().map(|row| row.is_empty()).unwrap_or(true) {
             draw_empty_state(scene, text_system, heatmap_bounds, "No attention telemetry");
             return;
@@ -953,6 +990,34 @@ fn draw_scrollbar(
     scene.draw_quad(
         Quad::new(Bounds::new(scrollbar_x + 1.0, thumb_y + 1.0, scrollbar_width - 2.0, thumb_height - 2.0))
             .with_background(accent_cyan().with_alpha(0.6)),
+    );
+}
+
+fn draw_slider(scene: &mut Scene, bounds: Bounds, value: u32, min: u32, max: u32, color: Hsla) {
+    let track_h = 4.0;
+    let track_y = bounds.y() + (bounds.height() - track_h) * 0.5;
+
+    scene.draw_quad(
+        Quad::new(Bounds::new(bounds.x(), track_y, bounds.width(), track_h))
+            .with_background(Hsla::from_hex(0x111820))
+            .with_border(panel_border().with_alpha(0.6), 1.0),
+    );
+
+    let span = (max - min).max(1) as f32;
+    let fill_pct = (value.saturating_sub(min) as f32 / span).clamp(0.0, 1.0);
+    let fill_w = fill_pct * bounds.width();
+    scene.draw_quad(
+        Quad::new(Bounds::new(bounds.x(), track_y, fill_w, track_h))
+            .with_background(color.with_alpha(0.8)),
+    );
+
+    let thumb_size = 12.0;
+    let thumb_x = bounds.x() + fill_pct * (bounds.width() - thumb_size);
+    let thumb_y = bounds.y() + (bounds.height() - thumb_size) * 0.5;
+    scene.draw_quad(
+        Quad::new(Bounds::new(thumb_x, thumb_y, thumb_size, thumb_size))
+            .with_background(color)
+            .with_border(Hsla::from_hex(0xf5faff).with_alpha(0.8), 1.0),
     );
 }
 

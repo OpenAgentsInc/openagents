@@ -322,6 +322,38 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     }
                 }
 
+                if state.gptoss.layer_slider_dragging && state.gptoss.layer_slider_bounds.width() > 0.0 {
+                    let max_layer = state.gptoss.max_layers.saturating_sub(1) as f32;
+                    let next = if max_layer >= 1.0 {
+                        let pct = ((state.mouse_pos.x - state.gptoss.layer_slider_bounds.x())
+                            / state.gptoss.layer_slider_bounds.width())
+                            .clamp(0.0, 1.0);
+                        (pct * max_layer).round() as usize
+                    } else {
+                        0
+                    };
+                    if next != state.gptoss.attention_selected_layer {
+                        state.gptoss.attention_selected_layer = next;
+                        state.gptoss.attention_weights = None;
+                    }
+                }
+
+                if state.gptoss.head_slider_dragging && state.gptoss.head_slider_bounds.width() > 0.0 {
+                    let max_head = state.gptoss.max_heads.saturating_sub(1) as f32;
+                    let next = if max_head >= 1.0 {
+                        let pct = ((state.mouse_pos.x - state.gptoss.head_slider_bounds.x())
+                            / state.gptoss.head_slider_bounds.width())
+                            .clamp(0.0, 1.0);
+                        (pct * max_head).round() as usize
+                    } else {
+                        0
+                    };
+                    if next != state.gptoss.attention_selected_head {
+                        state.gptoss.attention_selected_head = next;
+                        state.gptoss.attention_weights = None;
+                    }
+                }
+
                 // Handle GFN page hover
                 if state.view == AppView::GfnPage {
                     state.gfn.cta_hovered = state.gfn.cta_bounds.contains(state.mouse_pos);
@@ -750,6 +782,43 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             }
 
+            if state.view == AppView::GptOssPage {
+                if state.gptoss.layer_slider_bounds.contains(click_pos) {
+                    state.gptoss.layer_slider_dragging = true;
+                    let max_layer = state.gptoss.max_layers.saturating_sub(1) as f32;
+                    let next = if max_layer >= 1.0 {
+                        let pct = ((click_pos.x - state.gptoss.layer_slider_bounds.x())
+                            / state.gptoss.layer_slider_bounds.width())
+                            .clamp(0.0, 1.0);
+                        (pct * max_layer).round() as usize
+                    } else {
+                        0
+                    };
+                    if next != state.gptoss.attention_selected_layer {
+                        state.gptoss.attention_selected_layer = next;
+                        state.gptoss.attention_weights = None;
+                    }
+                    return;
+                }
+                if state.gptoss.head_slider_bounds.contains(click_pos) {
+                    state.gptoss.head_slider_dragging = true;
+                    let max_head = state.gptoss.max_heads.saturating_sub(1) as f32;
+                    let next = if max_head >= 1.0 {
+                        let pct = ((click_pos.x - state.gptoss.head_slider_bounds.x())
+                            / state.gptoss.head_slider_bounds.width())
+                            .clamp(0.0, 1.0);
+                        (pct * max_head).round() as usize
+                    } else {
+                        0
+                    };
+                    if next != state.gptoss.attention_selected_head {
+                        state.gptoss.attention_selected_head = next;
+                        state.gptoss.attention_weights = None;
+                    }
+                    return;
+                }
+            }
+
             let mut start_gptoss = false;
             if state.view == AppView::GptOssPage
                 && !state.gptoss.load_active
@@ -868,6 +937,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.view == AppView::MlVizPage {
                     state.ml_viz.layer_slider_dragging = false;
                     state.ml_viz.head_slider_dragging = false;
+                }
+                if state.view == AppView::GptOssPage {
+                    state.gptoss.layer_slider_dragging = false;
+                    state.gptoss.head_slider_dragging = false;
                 }
             }
             if overlay_active {

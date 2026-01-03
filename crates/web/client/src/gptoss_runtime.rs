@@ -735,6 +735,14 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.attention_weights = None;
     state.attention_layer = 0;
     state.attention_head = 0;
+    state.attention_selected_layer = 0;
+    state.attention_selected_head = 0;
+    state.max_layers = 1;
+    state.max_heads = 1;
+    state.layer_slider_bounds = wgpui::Bounds::ZERO;
+    state.head_slider_bounds = wgpui::Bounds::ZERO;
+    state.layer_slider_dragging = false;
+    state.head_slider_dragging = false;
     state.attention_mode = None;
     state.moe_mode = None;
     state.active_layers = None;
@@ -2266,24 +2274,36 @@ async fn run_transformer_layer(
         head_dim,
         window,
     )?;
-    if let Ok(weights) = attention_head_weights(
-        &q,
-        layer_cache,
-        &sinks,
-        0,
-        heads,
-        kv_heads,
-        head_dim,
-        window,
-    ) {
-        emit_inference_event(
-            state,
-            GptOssInferenceTelemetry::AttentionWeights {
-                layer: layer as usize,
-                head: 0,
-                weights: vec![weights],
-            },
-        );
+    let (selected_layer, selected_head) = state
+        .try_borrow()
+        .ok()
+        .map(|guard| {
+            (
+                guard.gptoss.attention_selected_layer,
+                guard.gptoss.attention_selected_head,
+            )
+        })
+        .unwrap_or((0, 0));
+    if selected_layer == layer as usize {
+        if let Ok(weights) = attention_head_weights(
+            &q,
+            layer_cache,
+            &sinks,
+            selected_head,
+            heads,
+            kv_heads,
+            head_dim,
+            window,
+        ) {
+            emit_inference_event(
+                state,
+                GptOssInferenceTelemetry::AttentionWeights {
+                    layer: layer as usize,
+                    head: selected_head,
+                    weights: vec![weights],
+                },
+            );
+        }
     }
 
     let attn_proj = matmul_q8_0_with_bias(

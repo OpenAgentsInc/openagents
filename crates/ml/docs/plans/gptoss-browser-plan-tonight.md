@@ -135,6 +135,7 @@ Notes:
 - `/gptoss` now exposes **GGUF URL + prompt inputs** (defaulted from query params/local) and start uses those values.
 - GPT-OSS inputs now support **clipboard paste** for quick URL/prompt entry.
 - Token stream now renders with a **cursor indicator** during generation.
+- Added **attention layer/head sliders** and emit attention weights only for the selected head.
 - Added **attention heatmap telemetry** (head 0) and a dedicated HUD panel for attention weights.
 - `gguf_serve` now accepts a positional path argument in addition to `--path`.
 
