@@ -172,6 +172,7 @@ impl GptOssVizState {
                     ts_ms,
                 );
                 push_log(self, format!("LOAD {stage}"), status, detail, ts_ms);
+                refresh_current_stage(self);
             }
             GptOssTelemetry::InferenceStage {
                 stage,
@@ -237,6 +238,7 @@ impl GptOssVizState {
                     ts_ms,
                 );
                 push_log(self, format!("INFER {stage}"), status, detail, ts_ms);
+                refresh_current_stage(self);
             }
             GptOssTelemetry::InferenceEvent { event, ts_ms } => {
                 match event {
@@ -434,6 +436,35 @@ fn update_stage(
             ts_ms,
         });
     }
+}
+
+fn refresh_current_stage(state: &mut GptOssVizState) {
+    let mut best_ts = 0u64;
+    let mut best_label: Option<String> = None;
+
+    for stage in &state.load_stages {
+        if stage.status != GptOssStageStatus::Running {
+            continue;
+        }
+        let ts = stage.ts_ms.unwrap_or(0);
+        if ts >= best_ts {
+            best_ts = ts;
+            best_label = Some(format!("LOAD {}", stage.name));
+        }
+    }
+
+    for stage in &state.inference_stages {
+        if stage.status != GptOssStageStatus::Running {
+            continue;
+        }
+        let ts = stage.ts_ms.unwrap_or(0);
+        if ts >= best_ts {
+            best_ts = ts;
+            best_label = Some(format!("INFER {}", stage.name));
+        }
+    }
+
+    state.current_stage = best_label;
 }
 
 fn push_log(
