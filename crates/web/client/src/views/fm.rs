@@ -1,5 +1,6 @@
 //! FM Bridge (Apple Foundation Models) visualization page
 
+use web_sys;
 use wgpui::{
     Bounds, Hsla, Point, Quad, Scene, TextSystem, theme,
 };
@@ -42,6 +43,46 @@ pub(crate) fn build_fm_page(
     height: f32,
     scale_factor: f32,
 ) {
+    // Demo mode: simulate token streaming
+    if state.fm_viz.demo_mode {
+        let now = web_sys::window()
+            .and_then(|w| w.performance())
+            .map(|p| p.now() as u64)
+            .unwrap_or(0);
+
+        // Initialize demo on first frame
+        if state.fm_viz.demo_last_tick == 0 {
+            state.fm_viz.demo_last_tick = now;
+            state.fm_viz.connection_status = FmConnectionStatus::Connected;
+            state.fm_viz.model_available = true;
+            state.fm_viz.ping_latency_ms = Some(12);
+            state.fm_viz.stream_status = FmStreamStatus::Streaming;
+            state.fm_viz.ttft_ms = Some(45);
+        }
+
+        // Add token every ~80ms for ~12.5 t/s
+        let elapsed = now.saturating_sub(state.fm_viz.demo_last_tick);
+        if elapsed >= 80 && state.fm_viz.demo_token_idx < state.fm_viz.demo_tokens.len() {
+            let token = state.fm_viz.demo_tokens[state.fm_viz.demo_token_idx];
+            state.fm_viz.token_stream.push_str(token);
+            state.fm_viz.demo_token_idx += 1;
+            state.fm_viz.token_count += 1;
+            state.fm_viz.demo_last_tick = now;
+
+            // Calculate throughput
+            let tokens = state.fm_viz.token_count as f32;
+            let duration_secs = (now as f32) / 1000.0;
+            if duration_secs > 0.0 {
+                state.fm_viz.tokens_per_sec = tokens / duration_secs * 10.0; // Scale for visual effect
+            }
+        }
+
+        // Mark complete when done
+        if state.fm_viz.demo_token_idx >= state.fm_viz.demo_tokens.len() {
+            state.fm_viz.stream_status = FmStreamStatus::Complete;
+        }
+    }
+
     // Background
     scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
