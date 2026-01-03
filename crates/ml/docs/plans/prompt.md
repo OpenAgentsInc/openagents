@@ -24,10 +24,19 @@ When you're done, I click **one button** on `/gptoss` and:
 | MXFP4 dequant + matmul | ✅ Done | - |
 | **RMSNorm** | ❌ CPU | P0 |
 | **RoPE** | ❌ CPU | P0 |
-| **Attention (SDPA)** | ❌ CPU | P0 |
-| **Softmax** | ❌ CPU | P0 |
+| **Attention (decode)** | ❌ CPU | P0 |
+| **Softmax** | ❌ CPU | P0 (fuse into attention) |
 | Residual add | ❌ CPU | P1 |
 | Embedding lookup | ❌ CPU | P1 |
+
+### No CPU Hot Loops Rule (BANNED)
+
+**Once Step 7a lands, the following are BANNED in the decode path:**
+
+> Any Rust `for` loop that is `O(seq_len * head_dim)` or `O(seq_len²)` in decode.
+> If it scales with `seq_len`, it MUST be WGSL.
+
+This prevents `attention_with_cache`-style CPU regressions.
 
 ### Why This Matters
 
@@ -39,9 +48,9 @@ When you're done, I click **one button** on `/gptoss` and:
 
 The current implementation has:
 - `gptoss_runtime.rs`: GPU matmuls, but **CPU attention** (`attention_with_cache` is pure Rust loops)
-- `gptoss_native.rs`: **100% CPU** (no GPU code at all)
+- `gptoss_native.rs`: 100% CPU (reference implementation, this is OK)
 
-This is **not acceptable** as final state. The spec requires GPU inference.
+**Browser path must be GPU-accelerated. Native CLI is reference-correct (CPU OK).**
 
 ### WGSL Kernel Location
 
@@ -52,12 +61,24 @@ Each kernel needs:
 2. Rust dispatch wrapper with bind group setup
 3. CPU reference for correctness testing
 
+### Kernel Implementation Guidelines
+
+**RMSNorm / RoPE: two-pass naive is fine initially**
+- RMSNorm can be **two compute passes**: `sum_squares` reduce → `apply_norm`
+- RoPE can be elementwise with precomputed sin/cos buffers
+- Get correctness first, optimize later
+
+**Workgroup sizing:**
+- Choose from standard sizes: **64, 128, or 256**
+- Clamp to adapter limits
+- Don't invent random sizes based on tensor dims
+
 ### Kernel Implementation Order
 
-1. **Attention SDPA** (biggest win - O(n²) on GPU vs CPU)
-2. **RMSNorm** (runs constantly)
+1. **Attention decode** (biggest win - get decode path on GPU first)
+2. **RMSNorm** (runs constantly, easy kernel)
 3. **RoPE** (runs per Q/K projection)
-4. **Softmax** (part of attention, can fuse)
+4. **Attention prefill** (harder, can be slower initially)
 5. Residual add (simple, low priority)
 
 ---
@@ -185,25 +206,29 @@ This proves: tokenizer + prompt formatting + display loop work.
 
 ### Step 6: Single Layer Partial (GPU Kernels)
 
-Add one transformer block with **GPU kernels for RMSNorm and RoPE**:
+Add one transformer block with **GPU kernels for RMSNorm and RoPE**.
+
+**Two-pass naive implementations are fine initially.** Get correctness first.
 
 1. **RMSNorm (GPU)** - Create `rmsnorm.wgsl`:
    ```wgsl
-   // rmsnorm.wgsl - compute RMS, normalize, scale by weights
+   // rmsnorm.wgsl - two passes OK initially
+   // Pass 1: sum_squares reduction
+   // Pass 2: apply norm = (x / sqrt(mean + eps)) * weight
    @compute @workgroup_size(256)
-   fn main(...) {
-       // 1. Compute sum of squares
-       // 2. Compute RMS = sqrt(mean(x²) + eps)
-       // 3. out = (x / RMS) * weight
+   fn rmsnorm_pass2(...) {
+       let rms = sqrt(sum_sq / n + eps);
+       out[i] = (x[i] / rms) * weight[i];
    }
    ```
 
 2. **RoPE (GPU)** - Create `rope.wgsl`:
    ```wgsl
-   // rope.wgsl - apply rotary position embeddings
+   // rope.wgsl - elementwise with precomputed sin/cos
+   // Precompute sin/cos tables on CPU, upload once
    @compute @workgroup_size(256)
-   fn main(...) {
-       // Apply sin/cos rotations to Q and K
+   fn rope(...) {
+       // Rotate pairs: (x, y) → (x*cos - y*sin, x*sin + y*cos)
    }
    ```
 
@@ -216,39 +241,83 @@ Add one transformer block with **GPU kernels for RMSNorm and RoPE**:
 - [ ] `rope.wgsl` exists and runs on GPU
 - [ ] Layer 0 runs with stubbed attention
 - [ ] HUD shows "RMSNorm: GPU", "RoPE: GPU"
-- [ ] CPU reference matches GPU output
+- [ ] CPU reference matches GPU output (tolerance 1e-3)
 
-### Step 7: Dense Attention + KV (GPU REQUIRED)
+### Step 7: GPU Attention (Staged) — REQUIRED
 
-**This step MUST implement GPU attention via WGSL.** CPU attention is not acceptable.
+**Attention is staged into sub-steps to avoid thrashing.** Don't try to build full attention in one shot.
 
-Implement WGSL SDPA kernel:
-1. Create `attention.wgsl` with scaled dot-product attention
-2. Handle GQA (group size 8) - repeat K/V heads
-3. Causal masking (lower triangular)
-4. KV cache on GPU (not CPU Vec)
+---
 
-WGSL kernel structure:
+#### Step 7a: Decode-only GPU Attention (seq_len=1)
+
+This is the **critical first win**. Decode is the hot path.
+
+Implement `attention_decode.wgsl`:
+- Input: `q[heads, head_dim]` (current token only)
+- Input: `k_cache[seq_len, kv_heads, head_dim]`, `v_cache[...]`
+- Output: `out[heads, head_dim]`
+- Softmax over `seq_len` tokens (small at first)
+- Masking is trivial (all cached tokens are ≤ current position)
+
 ```wgsl
-// attention.wgsl
-@group(0) @binding(0) var<storage, read> q: array<f32>;
-@group(0) @binding(1) var<storage, read> k: array<f32>;
-@group(0) @binding(2) var<storage, read> v: array<f32>;
+// attention_decode.wgsl - decode path only
+@group(0) @binding(0) var<storage, read> q: array<f32>;      // [heads * head_dim]
+@group(0) @binding(1) var<storage, read> k_cache: array<f32>; // [seq * kv_heads * head_dim]
+@group(0) @binding(2) var<storage, read> v_cache: array<f32>;
 @group(0) @binding(3) var<storage, read_write> out: array<f32>;
-@group(0) @binding(4) var<uniform> params: AttentionParams;
+@group(0) @binding(4) var<uniform> params: DecodeParams;
 
-@compute @workgroup_size(16, 16)
+@compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    // Compute Q @ K^T, apply mask, softmax, @ V
+    // For each head:
+    // 1. Compute scores = q @ k_cache^T (over seq_len)
+    // 2. Softmax scores
+    // 3. out = scores @ v_cache
 }
 ```
 
 **Done when:**
-- [ ] `attention.wgsl` exists and compiles
-- [ ] GPU attention runs for ≥1 layer
-- [ ] KV cache lives on GPU (wgpu::Buffer, not Vec<f32>)
-- [ ] CPU reference matches GPU output within tolerance
-- [ ] HUD shows "Attention: GPU" (not "CPU")
+- [ ] `attention_decode.wgsl` exists and compiles
+- [ ] One decode step uses GPU attention
+- [ ] CPU reference matches GPU output (tolerance 1e-3)
+- [ ] HUD shows "Attention: GPU (decode)"
+
+**After 7a lands: CPU attention in decode path is BANNED.**
+
+---
+
+#### Step 7b: GPU KV Cache Append
+
+Store new K/V for current token into GPU buffers.
+
+Options:
+- `kv_append.wgsl` kernel, OR
+- `queue.write_buffer` into a ring buffer (simpler)
+
+Must support sliding window (overwrite oldest when full).
+
+**Done when:**
+- [ ] KV cache for decode lives on GPU (wgpu::Buffer)
+- [ ] Cache grows correctly per token
+- [ ] Sliding window eviction works
+- [ ] GPU attention (7a) uses the appended tokens
+
+---
+
+#### Step 7c: Prefill GPU Attention (seq_len > 1)
+
+This is harder. Implement when ready.
+
+- Full causal masking (lower triangular)
+- Tiled for longer sequences
+- Can be slower than decode initially
+
+**Done when:**
+- [ ] Prefill runs on GPU for prompts > 1 token
+- [ ] HUD shows "Attention: GPU (prefill)"
+
+**Note:** Prefill can temporarily stage through CPU while you get 7a/7b working. Decode is the priority.
 
 ### Step 8: MoE Bring-Up
 
@@ -472,11 +541,11 @@ cargo test -p ml gate_d --no-default-features --features native,wgpu
 
 ---
 
-## Definition of Done
+## Definition of Done (Two Tiers)
 
-**Not done until:**
+### Tier 1: Done (Functional Demo)
 
-### Functional Requirements
+**Declare victory when:**
 - [ ] `/gptoss` has a visible "LOAD MODEL" button
 - [ ] Clicking button starts streaming GGUF from URL
 - [ ] Loading progress visible with live telemetry
@@ -488,22 +557,33 @@ cargo test -p ml gate_d --no-default-features --features native,wgpu
 - [ ] No console errors, no crashes
 - [ ] All CLI tests pass before browser testing
 
-### GPU Kernel Requirements (NON-NEGOTIABLE)
+### Tier 2: Done (GPU Engine)
+
+**Full completion requires:**
+
+#### GPU Kernels (P0)
 - [ ] **RMSNorm runs on GPU** (`rmsnorm.wgsl` exists and dispatches)
 - [ ] **RoPE runs on GPU** (`rope.wgsl` exists and dispatches)
-- [ ] **Attention runs on GPU** (`attention.wgsl` exists and dispatches)
-- [ ] **KV cache lives on GPU** (wgpu::Buffer, not CPU Vec)
+- [ ] **Attention decode runs on GPU** (`attention_decode.wgsl` dispatches)
+- [ ] **KV cache for decode lives on GPU** (wgpu::Buffer)
+
+#### No CPU Hot Loops
+- [ ] Decode path has no `O(seq_len * head_dim)` or `O(seq_len²)` Rust loops
 - [ ] HUD displays kernel execution mode (GPU vs CPU) for each operation
 - [ ] CPU fallbacks are clearly marked as warnings in HUD
 
-### Performance Baseline
-- [ ] 24 layers run without timeout (< 30s per token acceptable for now)
+#### Performance
+- [ ] 24 layers decode without timeout (< 30s per token acceptable)
 - [ ] No GPU OOM on 8GB VRAM
 - [ ] Memory usage telemetry accurate
 
-### Verification
+#### Verification
 - [ ] Each GPU kernel has CPU reference test
 - [ ] GPU output matches CPU within tolerance (1e-3 for f32)
+
+---
+
+**Tier 1 = demo works. Tier 2 = engine is production-ready.**
 
 ---
 

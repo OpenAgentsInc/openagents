@@ -270,32 +270,38 @@ These are the minimum kernels to produce logits:
 
 **Done when:** `token_embd → RMSNorm(GPU) → lm_head → logits → top-5 tokens displayed`
 
-### Phase 2b: Attention (dense only)
+### Phase 2b: Attention (STAGED — decode first)
 
-**CRITICAL: Attention is currently CPU. Must implement `attention.wgsl`.**
+**CRITICAL: Attention is currently CPU. Implement in stages, not one big leap.**
 
-1. **Dense attention with KV cache** ❌ CPU (MUST FIX)
-   * QKV projections (Q8_0 matmul) ✅ GPU
-   * Scaled dot-product attention ❌ CPU - **needs `attention.wgsl`**
-   * Output projection ✅ GPU
-   * KV cache ❌ CPU Vec - **needs GPU wgpu::Buffer**
+#### Stage 2b-1: Decode-only GPU attention (PRIORITY)
+* Implement `attention_decode.wgsl` for seq_len=1 decode
+* Input: current Q + cached K/V
+* Softmax over cached tokens
+* **This is the critical win** - decode is the hot path
 
-2. **GQA path** ❌ CPU
-   * Group size 8 for GPT-OSS.
-   * Repeat K/V heads for grouped queries.
-   * **Must be in WGSL kernel**
+#### Stage 2b-2: GPU KV cache append
+* Store K/V in wgpu::Buffer (not CPU Vec)
+* Support sliding window (ring buffer overwrite)
+* Can use `queue.write_buffer` initially
 
-3. **Causal masking** ❌ CPU
-   * Lower-triangular mask for autoregressive decode.
-   * **Must be fused into attention.wgsl**
+#### Stage 2b-3: Prefill GPU attention (lower priority)
+* Full causal masking for seq_len > 1
+* Can be slower initially
+* Prefill can stage through CPU while decode works
 
 **Current state:** CPU attention runs but is O(n²) slow. Unacceptable for production.
 
-**Done when:**
-- `attention.wgsl` exists and runs on GPU
+**Done when (Stage 2b-1):**
+- `attention_decode.wgsl` exists and runs
+- Decode step uses GPU attention
+- HUD shows "Attention: GPU (decode)"
+- **CPU attention in decode path is BANNED after this**
+
+**Done when (Stage 2b-2):**
 - KV cache is wgpu::Buffer
-- A single prompt runs through ≥1 GPU attention layer
-- HUD shows "Attention: GPU"
+- Cache grows correctly per token
+- Sliding window works
 
 ### Phase 2c: GPT-OSS Exactness
 
