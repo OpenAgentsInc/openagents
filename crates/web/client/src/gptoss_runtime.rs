@@ -28,6 +28,9 @@ const PROGRESS_STEP_BYTES: u64 = 64 * 1024 * 1024;
 const DEFAULT_GGUF_URL: &str =
     "https://huggingface.co/openai/gpt-oss-20b/resolve/main/gpt-oss-20b-Q8_0.gguf";
 const LOCAL_GGUF_URL: &str = "http://localhost:8080/gpt-oss-20b-Q8_0.gguf";
+const LOCAL_GGUF_PATH: &str = "crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf";
+const LOCAL_GGUF_SERVE_CMD: &str =
+    "cargo run -p ml --bin gguf_serve -- crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf";
 const CURRENT_DATE: &str = "2026-01-02";
 const DEFAULT_USER_PROMPT: &str = "Give me one sentence about what GPT-OSS can do.";
 const DEFAULT_DEVELOPER_PROMPT: &str = "";
@@ -438,8 +441,9 @@ pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
     if gguf_url.is_empty() {
         if let Ok(mut guard) = state.try_borrow_mut() {
             reset_gptoss_state(&mut guard.gptoss);
-            guard.gptoss.load_error =
-                Some("No GGUF URL provided. Start gguf_serve (:8080) or pass ?gguf=...".to_string());
+            guard.gptoss.load_error = Some(format!(
+                "No GGUF URL provided.\nRun: {LOCAL_GGUF_SERVE_CMD}\nOr pass ?gguf=..."
+            ));
         }
         emit_load_stage(
             &state,
@@ -508,7 +512,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
 
     let (_probe, total) = fetch_range_with_total(&gguf_url, 0, 1)
         .await
-        .map_err(|err| format!("{err}. Host does not support Range/CORS. Start gguf_serve."))?;
+        .map_err(|err| format_range_error(&gguf_url, &err))?;
     let total_bytes = total.ok_or_else(|| {
         "Host does not support Range/CORS. Start gguf_serve.".to_string()
     })?;
@@ -1305,6 +1309,38 @@ pub(crate) fn default_gguf_url() -> String {
 
 pub(crate) fn default_user_prompt() -> String {
     DEFAULT_USER_PROMPT.to_string()
+}
+
+fn is_local_url(url: &str) -> bool {
+    let url = url.to_ascii_lowercase();
+    url.starts_with("http://localhost")
+        || url.starts_with("http://127.0.0.1")
+        || url.starts_with("https://localhost")
+        || url.starts_with("https://127.0.0.1")
+}
+
+fn format_range_error(url: &str, err: &str) -> String {
+    let lower = err.to_ascii_lowercase();
+    let detail = if lower.contains("fetch failed: 404") || lower.contains(" 404") {
+        format!("GGUF not found at {url}")
+    } else if lower.contains("fetch failed: 416") || lower.contains(" 416") {
+        format!("Range request rejected by {url}")
+    } else if lower.contains("failed to fetch")
+        || lower.contains("networkerror")
+        || lower.contains("load failed")
+    {
+        format!("Cannot connect to {url}")
+    } else {
+        format!("Range/CORS check failed for {url}: {err}")
+    };
+
+    if is_local_url(url) {
+        format!("{detail}\nRun: {LOCAL_GGUF_SERVE_CMD}")
+    } else if detail.contains("Range/CORS") {
+        detail
+    } else {
+        format!("{detail}. Host must support Range + CORS.")
+    }
 }
 
 fn build_harmony_prompt(user_prompt: &str) -> String {
