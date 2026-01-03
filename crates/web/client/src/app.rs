@@ -19,8 +19,8 @@ use crate::nostr::{connect_to_relay, BazaarJob, DEFAULT_RELAYS};
 use crate::state::{AppState, AppView, GpuContext, RepoInfo, UserInfo};
 use crate::telemetry::{TelemetryCollector, set_panic_hook, track_cta_click};
 use crate::views::{
-    build_2026_page, build_brb_page, build_gfn_page, build_gptoss_page, build_landing_page,
-    build_ml_inference_page, build_repo_selector, build_repo_view,
+    build_2026_page, build_brb_page, build_fm_page, build_gfn_page, build_gptoss_page,
+    build_landing_page, build_ml_inference_page, build_repo_selector, build_repo_view,
 };
 use crate::fs_access::{self, FileKind};
 use crate::gptoss_viz::{flush_gptoss_events, init_gptoss_viz_runtime};
@@ -82,6 +82,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         .map(|v| v.is_truthy())
         .unwrap_or(false);
 
+    // Check for FM Bridge visualization page flag
+    let is_fm_page = web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &"FM_PAGE".into()).ok())
+        .map(|v| v.is_truthy())
+        .unwrap_or(false);
+
     // Check for 2026 page flag
     let is_2026_page = web_sys::window()
         .and_then(|w| js_sys::Reflect::get(&w, &"Y2026_PAGE".into()).ok())
@@ -117,6 +123,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         state_guard.view = AppView::GptOssPage;
         drop(state_guard);
         init_gptoss_viz_runtime(state.clone());
+    } else if is_fm_page {
+        let mut state_guard = state.borrow_mut();
+        state_guard.loading = false;
+        state_guard.view = AppView::FmPage;
+        drop(state_guard);
     } else if is_2026_page {
         let mut state_guard = state.borrow_mut();
         state_guard.loading = false;
@@ -870,6 +881,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         AppView::GptOssPage => {
                             // No button action on GPT-OSS page
                         }
+                        AppView::FmPage => {
+                            // No button action on FM Bridge page
+                        }
                         AppView::Y2026Page => {
                             // No button action on 2026 page
                         }
@@ -1569,6 +1583,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             }
             AppView::GptOssPage => {
                 build_gptoss_page(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
+            }
+            AppView::FmPage => {
+                build_fm_page(
                     &mut scene,
                     platform.text_system(),
                     &mut state,
