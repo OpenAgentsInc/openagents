@@ -552,7 +552,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let config = parse_config(index.as_ref())?;
     let active_layers = read_query_usize("layers")
         .unwrap_or(config.block_count as usize)
-        .clamp(1, config.block_count as usize);
+        .min(config.block_count as usize);
     let moe_fallback = read_query_param("moe")
         .map(|value| matches!(value.as_str(), "fallback" | "off" | "0"))
         .unwrap_or(false);
@@ -2358,9 +2358,7 @@ async fn run_forward_token(
     let token_embd = find_tensor(index, "token_embd.weight")?;
     let mut hidden = fetch_q8_0_row(gguf_url, token_embd, token_id as usize).await?;
 
-    let layer_limit = active_layers
-        .min(config.block_count as usize)
-        .max(1);
+    let layer_limit = active_layers.min(config.block_count as usize);
     for layer in 0..layer_limit as u32 {
         hidden = run_transformer_layer(
             state,

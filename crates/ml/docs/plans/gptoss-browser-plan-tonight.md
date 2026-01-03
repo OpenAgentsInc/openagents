@@ -165,6 +165,7 @@ Notes:
 - GPU workgroup size now derives from WebGPU limits (no hardcoded 64); Q8_0 matmul auto-retries with chunked path on failure.
 - Fixed WGSL helpers for Q8_0 + MXFP4 shaders (added f16 unpack, removed duplicate acc).
 - HUD now surfaces tensor/expert cache stats in the I/O panel.
+- Allowed `?layers=0` to run the lm_head-only path (token embd → output), useful for early logits bring-up.
 
 ---
 
