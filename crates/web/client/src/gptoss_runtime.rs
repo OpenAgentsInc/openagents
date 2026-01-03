@@ -2490,7 +2490,10 @@ async fn run_block0_attention_probe(
     let mut caches = RuntimeCaches::new();
     let mut gpu_tracker = GpuAllocTracker::default();
 
-    let token_row = fetch_q8_0_row(gguf_url, token_embd, 0).await?;
+    let token_row = match fetch_q8_0_row_gpu(gguf_url, token_embd, 0, gpu, &mut gpu_tracker).await {
+        Ok(value) => value,
+        Err(_) => fetch_q8_0_row(gguf_url, token_embd, 0).await?,
+    };
     let attn_norm_w =
         fetch_f32_tensor_cached(state, gguf_url, attn_norm, &mut caches.tensors).await?;
     let mut hidden =
@@ -2664,9 +2667,15 @@ async fn run_block0_attention_probe(
         &mut caches.quant,
     )
     .await?;
-    for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
-        *out += *base;
-    }
+    hidden = match vector_add_gpu(&hidden, &attn_proj, gpu, &mut gpu_tracker).await {
+        Ok(value) => value,
+        Err(_) => {
+            for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
+                *out += *base;
+            }
+            hidden
+        }
+    };
 
     let post_attn_norm_w =
         fetch_f32_tensor_cached(state, gguf_url, post_attn_norm, &mut caches.tensors).await?;
@@ -2727,7 +2736,7 @@ async fn run_block0_attention_probe(
         let mut gate_out =
             matmul_mxfp4_expert(&gate_quant, &hidden, gate_exps_w, gpu, &mut gpu_tracker).await?;
         let gate_bias = fetch_f32_row(gguf_url, gate_exps_b, *expert_idx).await?;
-        apply_bias(&mut gate_out, &gate_bias);
+        apply_bias_gpu(&mut gate_out, &gate_bias, gpu, &mut gpu_tracker).await?;
 
         let up_quant = fetch_mxfp4_expert_cached(
             state,
@@ -2740,9 +2749,12 @@ async fn run_block0_attention_probe(
         let mut up_out =
             matmul_mxfp4_expert(&up_quant, &hidden, up_exps_w, gpu, &mut gpu_tracker).await?;
         let up_bias = fetch_f32_row(gguf_url, up_exps_b, *expert_idx).await?;
-        apply_bias(&mut up_out, &up_bias);
+        apply_bias_gpu(&mut up_out, &up_bias, gpu, &mut gpu_tracker).await?;
 
-        let swiglu_out = swiglu(&gate_out, &up_out)?;
+        let swiglu_out = match swiglu_gpu(&gate_out, &up_out, gpu, &mut gpu_tracker).await {
+            Ok(value) => value,
+            Err(_) => swiglu(&gate_out, &up_out)?,
+        };
         let down_quant = fetch_mxfp4_expert_cached(
             state,
             gguf_url,
@@ -2760,7 +2772,7 @@ async fn run_block0_attention_probe(
         )
         .await?;
         let down_bias = fetch_f32_row(gguf_url, down_exps_b, *expert_idx).await?;
-        apply_bias(&mut down_out, &down_bias);
+        apply_bias_gpu(&mut down_out, &down_bias, gpu, &mut gpu_tracker).await?;
 
         for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {
             *acc += *val * *weight;
@@ -3894,7 +3906,10 @@ async fn run_transformer_layer(
                 break;
             }
         };
-        apply_bias(&mut gate_out, &gate_bias);
+        if let Err(err) = apply_bias_gpu(&mut gate_out, &gate_bias, gpu, gpu_tracker).await {
+            moe_error = Some(err);
+            break;
+        }
 
         let up_quant = match fetch_mxfp4_expert_cached(
             state,
@@ -3926,14 +3941,20 @@ async fn run_transformer_layer(
                 break;
             }
         };
-        apply_bias(&mut up_out, &up_bias);
+        if let Err(err) = apply_bias_gpu(&mut up_out, &up_bias, gpu, gpu_tracker).await {
+            moe_error = Some(err);
+            break;
+        }
 
-        let swiglu_out = match swiglu(&gate_out, &up_out) {
+        let swiglu_out = match swiglu_gpu(&gate_out, &up_out, gpu, gpu_tracker).await {
             Ok(value) => value,
-            Err(err) => {
-                moe_error = Some(err);
-                break;
-            }
+            Err(_) => match swiglu(&gate_out, &up_out) {
+                Ok(value) => value,
+                Err(err) => {
+                    moe_error = Some(err);
+                    break;
+                }
+            },
         };
         let down_quant = match fetch_mxfp4_expert_cached(
             state,
@@ -3972,7 +3993,10 @@ async fn run_transformer_layer(
                 break;
             }
         };
-        apply_bias(&mut down_out, &down_bias);
+        if let Err(err) = apply_bias_gpu(&mut down_out, &down_bias, gpu, gpu_tracker).await {
+            moe_error = Some(err);
+            break;
+        }
 
         for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {
             *acc += *val * *weight;
@@ -4007,9 +4031,15 @@ async fn run_transformer_layer(
         );
     }
 
-    for (out, add) in hidden.iter_mut().zip(mlp_accum.iter()) {
-        *out += *add;
-    }
+    hidden = match vector_add_gpu(&hidden, &mlp_accum, gpu, gpu_tracker).await {
+        Ok(value) => value,
+        Err(_) => {
+            for (out, add) in hidden.iter_mut().zip(mlp_accum.iter()) {
+                *out += *add;
+            }
+            hidden
+        }
+    };
 
     let layer_mlp_ms = now_ms().saturating_sub(layer_mlp_start).max(1);
     emit_inference_stage(
@@ -4460,8 +4490,8 @@ async fn matmul_q8_0_with_bias(
     );
     let bias_vals = fetch_f32_tensor_cached(state, gguf_url, bias, cache).await?;
     if bias_vals.len() == out.len() {
-        for (o, b) in out.iter_mut().zip(bias_vals.iter()) {
-            *o += *b;
+        if let Err(err) = apply_bias_gpu(&mut out, &bias_vals, gpu, gpu_tracker).await {
+            return Err(err);
         }
     }
     Ok(out)
@@ -4527,6 +4557,26 @@ fn apply_bias(values: &mut [f32], bias: &[f32]) {
     for (v, b) in values.iter_mut().zip(bias.iter()) {
         *v += *b;
     }
+}
+
+async fn apply_bias_gpu(
+    values: &mut Vec<f32>,
+    bias: &[f32],
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<(), String> {
+    if bias.len() != values.len() {
+        return Ok(());
+    }
+    match vector_add_gpu(values, bias, gpu, gpu_tracker).await {
+        Ok(out) => {
+            *values = out;
+        }
+        Err(_) => {
+            apply_bias(values, bias);
+        }
+    }
+    Ok(())
 }
 
 fn swiglu(gate: &[f32], up: &[f32]) -> Result<Vec<f32>, String> {
@@ -5047,6 +5097,15 @@ struct DequantParams {
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct VecAddParams {
+    n: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct SwigluParams {
     n: u32,
     _pad0: u32,
     _pad1: u32,
@@ -5756,6 +5815,191 @@ async fn vector_add_gpu(
         Ok(Ok(())) => {}
         Ok(Err(err)) => return Err(format!("vec_add map_async failed: {err:?}")),
         Err(_) => return Err("vec_add map_async channel failed".to_string()),
+    }
+
+    let data = slice.get_mapped_range();
+    let output = cast_slice(&data).to_vec();
+    drop(data);
+    readback.unmap();
+    Ok(output)
+}
+
+async fn swiglu_gpu(
+    gate: &[f32],
+    up: &[f32],
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<Vec<f32>, String> {
+    if gate.len() != up.len() {
+        return Err("swiglu shape mismatch".to_string());
+    }
+    let n = gate.len();
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    let device = &gpu.device;
+    let queue = &gpu.queue;
+    let max_storage = device.limits().max_storage_buffer_binding_size as usize;
+    let bytes = n * std::mem::size_of::<f32>();
+    ensure_storage_limit("swiglu gate", bytes, max_storage)?;
+    ensure_storage_limit("swiglu up", bytes, max_storage)?;
+    ensure_storage_limit("swiglu out", bytes, max_storage)?;
+
+    let workgroup_size = pick_workgroup_size(device);
+    let shader_source = shader_with_workgroup(SWIGLU_SHADER, workgroup_size);
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("swiglu"),
+        source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+    });
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("swiglu_bindings"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("swiglu_layout"),
+        bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("swiglu_pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
+    let gate_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("swiglu_gate"),
+        contents: cast_slice(gate),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let up_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("swiglu_up"),
+        contents: cast_slice(up),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let out_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("swiglu_out"),
+        size: bytes as u64,
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let params = SwigluParams {
+        n: u32::try_from(n).map_err(|_| "swiglu n overflow".to_string())?,
+        _pad0: 0,
+        _pad1: 0,
+        _pad2: 0,
+    };
+    let params_bytes = std::mem::size_of::<SwigluParams>();
+    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("swiglu_params"),
+        contents: cast_slice(&[params]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("swiglu_bind_group"),
+        layout: &bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: gate_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: up_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: out_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: params_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("swiglu_readback"),
+        size: bytes as u64,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    gpu_tracker.add_buffers(bytes * 3 + params_bytes, 5);
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("swiglu_encoder"),
+    });
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("swiglu_pass"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        let groups = (n as u32 + workgroup_size - 1) / workgroup_size;
+        pass.dispatch_workgroups(groups, 1, 1);
+    }
+    encoder.copy_buffer_to_buffer(&out_buffer, 0, &readback, 0, bytes as u64);
+    queue.submit(Some(encoder.finish()));
+
+    let slice = readback.slice(..);
+    let (tx, rx) = oneshot::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = tx.send(result);
+    });
+    device.poll(wgpu::Maintain::Wait);
+    match rx.await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => return Err(format!("swiglu map_async failed: {err:?}")),
+        Err(_) => return Err("swiglu map_async channel failed".to_string()),
     }
 
     let data = slice.get_mapped_range();
@@ -6715,6 +6959,7 @@ const ROPE_SHADER: &str = include_str!("shaders/rope.wgsl");
 const ATTENTION_DECODE_SHADER: &str = include_str!("shaders/attention_decode.wgsl");
 const Q8_0_DEQUANT_SHADER: &str = include_str!("shaders/q8_0_dequant.wgsl");
 const VEC_ADD_SHADER: &str = include_str!("shaders/vec_add.wgsl");
+const SWIGLU_SHADER: &str = include_str!("shaders/swiglu.wgsl");
 
 const Q8_0_SHADER: &str = r#"
 struct Params {
