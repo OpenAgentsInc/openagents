@@ -220,6 +220,7 @@ Notes:
 - Streaming load loop now yields to the browser so the HUD stays responsive during large downloads.
 - Wheel scroll listener is now passive (uses `AddEventListenerOptions`) to remove Chrome console warnings; `cargo check --manifest-path crates/web/client/Cargo.toml --target wasm32-unknown-unknown` passes.
 - Bun dev server now serves the local GGUF with Range + CORS (`/gpt-oss-20b-Q8_0.gguf`), and the default URL auto-switches to same-origin on port 3000 with a DEV URL hint in the HUD.
+- Bun dev server now serves the `/gptoss` route directly (same HTML as the worker) so `bun run dev` can load the GPT-OSS page without wrangler.
 
 ---
 
