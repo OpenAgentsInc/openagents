@@ -613,6 +613,40 @@ pub(crate) fn build_gptoss_page(
         theme::text::PRIMARY,
     );
 
+    let copy_label = "COPY LOGS";
+    let copy_font = 10.0;
+    let copy_pad_x = 12.0;
+    let copy_pad_y = 6.0;
+    let copy_width = measure_mono(text_system, copy_label, copy_font) + copy_pad_x * 2.0;
+    let copy_height = copy_font + copy_pad_y * 2.0;
+    let copy_x = inner_x + inner_width - copy_width;
+    let copy_y = button_y + (button_height - copy_height) * 0.5;
+    state.gptoss.copy_button_bounds = Bounds::new(copy_x, copy_y, copy_width, copy_height);
+    let copy_bg = if state.gptoss.copy_button_hovered {
+        accent_cyan().with_alpha(0.16)
+    } else {
+        Hsla::new(0.0, 0.0, 0.06, 0.9)
+    };
+    let copy_border = if state.gptoss.copy_button_hovered {
+        accent_cyan()
+    } else {
+        panel_border()
+    };
+    scene.draw_quad(
+        Quad::new(state.gptoss.copy_button_bounds)
+            .with_background(copy_bg)
+            .with_border(copy_border, 1.0),
+    );
+    draw_mono_text(
+        scene,
+        text_system,
+        copy_label,
+        copy_x + copy_pad_x,
+        copy_y + copy_pad_y,
+        copy_font,
+        theme::text::PRIMARY,
+    );
+
     y += button_height + 8.0;
     let layers_hint = "LAYERS: default ALL (input or ?layers=N)";
     draw_mono_text(
