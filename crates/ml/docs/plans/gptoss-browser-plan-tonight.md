@@ -105,6 +105,8 @@ Notes:
  - `/gptoss` now streams **real GGUF bytes** in chunks on click (with progress + tensor scan events).
  - Added a local **GGUF range server** (`gguf_serve`) to stream the on-disk model with HTTP Range.
  - `gguf_serve` now responds to CORS preflight + exposes `Content-Range` for browser range fetches.
+ - Added a **Q8_0 probe** that pulls a real GPT-OSS tensor slice and runs a WebGPU matmul in-browser.
+ - `/gptoss` now shows a live **load progress bar** driven by real byte counts.
 
 ---
 
