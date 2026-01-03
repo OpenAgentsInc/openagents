@@ -553,6 +553,9 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let active_layers = read_query_usize("layers")
         .unwrap_or(config.block_count as usize)
         .min(config.block_count as usize);
+    let force_dense = read_query_param("attn")
+        .map(|value| matches!(value.as_str(), "dense" | "full" | "0"))
+        .unwrap_or(false);
     let moe_fallback = read_query_param("moe")
         .map(|value| matches!(value.as_str(), "fallback" | "off" | "0"))
         .unwrap_or(false);
@@ -678,6 +681,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
             moe_fallback,
             max_kv_tokens,
             max_new_tokens,
+            force_dense,
             sampling,
             stop_tokens,
         )
@@ -2157,6 +2161,7 @@ async fn run_generation(
     moe_fallback: bool,
     max_kv_tokens: usize,
     max_new_tokens: usize,
+    force_dense: bool,
     sampling: SamplingConfig,
     stop_tokens: Vec<u32>,
 ) -> Result<(), String> {
@@ -2170,7 +2175,9 @@ async fn run_generation(
     let mut gpu_tracker = GpuAllocTracker::default();
     let mut last_logits: Option<Vec<f32>> = None;
     let mut last_step_ms = 1u64;
-    let attention_mode = if config.sliding_window > 0 {
+    let attention_mode = if force_dense {
+        "dense (override)".to_string()
+    } else if config.sliding_window > 0 {
         format!("window={} even", config.sliding_window)
     } else {
         "dense".to_string()
@@ -2234,6 +2241,7 @@ async fn run_generation(
             &mut gpu_tracker,
             active_layers,
             moe_fallback,
+            force_dense,
         )
         .await?;
         last_step_ms = now_ms().saturating_sub(start_ms).max(1);
@@ -2323,6 +2331,7 @@ async fn run_generation(
             &mut gpu_tracker,
             active_layers,
             moe_fallback,
+            force_dense,
         )
         .await?;
         last_step_ms = now_ms().saturating_sub(start_ms).max(1);
@@ -2353,6 +2362,7 @@ async fn run_forward_token(
     gpu_tracker: &mut GpuAllocTracker,
     active_layers: usize,
     moe_fallback: bool,
+    force_dense: bool,
 ) -> Result<Vec<f32>, String> {
     gpu_tracker.reset();
     let token_embd = find_tensor(index, "token_embd.weight")?;
@@ -2374,6 +2384,7 @@ async fn run_forward_token(
             gpu_tracker,
             layer_limit,
             moe_fallback,
+            force_dense,
         )
         .await?;
     }
@@ -2493,6 +2504,7 @@ async fn run_single_token_full(
         &mut gpu_tracker,
         config.block_count as usize,
         false,
+        false,
     )
     .await?;
     let (top_k, entropy, next_id, next_text) = top_k_from_logits(&logits, tokenizer, 5)?;
@@ -2523,6 +2535,7 @@ async fn run_transformer_layer(
     gpu_tracker: &mut GpuAllocTracker,
     total_layers: usize,
     moe_fallback: bool,
+    force_dense: bool,
 ) -> Result<Vec<f32>, String> {
     let attn_norm = find_tensor(index, &format!("blk.{layer}.attn_norm.weight"))?;
     let attn_q_w = find_tensor(index, &format!("blk.{layer}.attn_q.weight"))?;
@@ -2624,7 +2637,9 @@ async fn run_transformer_layer(
     }
     layer_cache.append(&k, &v, kv_heads, head_dim)?;
     let seq_len = layer_cache.token_count(kv_heads, head_dim);
-    let window = if config.sliding_window > 0 && layer % 2 == 0 {
+    let window = if force_dense || config.sliding_window == 0 {
+        seq_len
+    } else if layer % 2 == 0 {
         config.sliding_window as usize
     } else {
         seq_len
