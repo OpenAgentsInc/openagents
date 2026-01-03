@@ -2650,7 +2650,7 @@ async fn run_forward_token(
     let layer_limit = active_layers.min(config.block_count as usize);
     let mut applied_layers = 0usize;
     for layer in 0..layer_limit as u32 {
-        let current = std::mem::take(&mut hidden);
+        let fallback = hidden.clone();
         match run_transformer_layer(
             state,
             gguf_url,
@@ -2659,7 +2659,7 @@ async fn run_forward_token(
             config,
             layer,
             position,
-            current,
+            hidden,
             cache,
             caches,
             gpu_tracker,
@@ -2674,6 +2674,7 @@ async fn run_forward_token(
                 applied_layers = applied_layers.saturating_add(1);
             }
             Err(err) => {
+                hidden = fallback;
                 emit_inference_stage(
                     state,
                     "layer_fallback",
