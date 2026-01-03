@@ -53,6 +53,8 @@ thread_local! {
         RefCell::new(VecDeque::new());
 }
 
+const MAX_PENDING_GPTOSS_EVENTS: usize = 8192;
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum GptOssInferenceTelemetry {
@@ -380,7 +382,14 @@ impl GptOssVizState {
 
 pub(crate) fn push_gptoss_event(_state: &Rc<RefCell<AppState>>, event: GptOssTelemetry) {
     PENDING_GPTOSS_EVENTS.with(|queue| {
-        queue.borrow_mut().push_back(event);
+        let mut queue = queue.borrow_mut();
+        queue.push_back(event);
+        if queue.len() > MAX_PENDING_GPTOSS_EVENTS {
+            let drop_count = queue.len() - MAX_PENDING_GPTOSS_EVENTS;
+            for _ in 0..drop_count {
+                queue.pop_front();
+            }
+        }
     });
 }
 
