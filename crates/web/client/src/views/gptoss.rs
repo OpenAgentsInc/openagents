@@ -1692,6 +1692,21 @@ fn draw_stats_panel(
         theme::text::MUTED,
     );
 
+    let coherence_text = find_inference_stage(gptoss, "coherence_check")
+        .and_then(|stage| stage.detail.as_ref())
+        .map(|detail| format!("COHERENCE: {}", truncate_text(detail, 24)))
+        .unwrap_or_else(|| "COHERENCE: --".to_string());
+    y += 14.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        &coherence_text,
+        inner.x(),
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
+
     let stop_reason = gptoss
         .inference_stages
         .iter()

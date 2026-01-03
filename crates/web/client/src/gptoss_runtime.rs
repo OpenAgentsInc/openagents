@@ -2100,6 +2100,21 @@ fn collect_stop_tokens(tokenizer: &GptOssTokenizer) -> Vec<u32> {
     tokens
 }
 
+fn coherence_score(text: &str) -> f32 {
+    let mut total = 0u32;
+    let mut readable = 0u32;
+    for ch in text.chars() {
+        total += 1;
+        if ch.is_ascii_alphanumeric() || ch.is_ascii_whitespace() || ch.is_ascii_punctuation() {
+            readable += 1;
+        }
+    }
+    if total == 0 {
+        return 0.0;
+    }
+    readable as f32 / total as f32
+}
+
 fn hex_preview(bytes: &[u8], len: usize) -> String {
     let take = bytes.len().min(len);
     let mut out = String::new();
@@ -3496,6 +3511,7 @@ async fn run_generation(
     let mut logits = last_logits.ok_or_else(|| "prefill produced no logits".to_string())?;
     let mut generated = 0usize;
     let mut stop_reason = "max_new".to_string();
+    let mut decoded = String::new();
 
     emit_inference_stage(
         state,
@@ -3516,6 +3532,9 @@ async fn run_generation(
         } else {
             next_text
         };
+        if !stop_token {
+            decoded.push_str(&token_text);
+        }
         let tokens_per_sec = 1000.0 / last_step_ms as f32;
 
         emit_inference_event(
@@ -3582,6 +3601,26 @@ async fn run_generation(
         Some(max_new_tokens),
         Some(format!(
             "{stop_reason} ms={decode_ms} tok/s={decode_tok_s:.1}",
+        )),
+    );
+
+    let coherence = coherence_score(&decoded);
+    let coherence_label = if decoded.is_empty() {
+        "empty"
+    } else if coherence >= 0.6 {
+        "ok"
+    } else {
+        "low"
+    };
+    emit_inference_stage(
+        state,
+        "coherence_check",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!(
+            "score={coherence:.2} label={coherence_label} chars={}",
+            decoded.len()
         )),
     );
 
