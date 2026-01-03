@@ -634,6 +634,7 @@ Read these if stuck:
 - 2026-01-02: Added drag-over visual affordance for dropping GGUF files onto the GPT-OSS HUD.
 - 2026-01-02: Validated dropped/selected files end with .gguf and surface a clear error otherwise.
 - 2026-01-02: Updated GPT-OSS copy to advertise drag-and-drop as a first-class load path.
+- 2026-01-02: Updated GGUF error copy to mention drag-and-drop as a fallback.
 
 ---
 
