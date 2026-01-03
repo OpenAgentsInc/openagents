@@ -543,10 +543,14 @@ pub(crate) fn build_gptoss_page(
         y = row2_input_y + sampling_input_height + 16.0;
     }
 
+    let has_source = state.gptoss.gguf_file_label.is_some()
+        || !state.gptoss.gguf_input.get_value().trim().is_empty();
     let button_label = if state.gptoss.load_active {
         "LOADING..."
-    } else {
+    } else if has_source {
         "LOAD MODEL"
+    } else {
+        "PICK FILE"
     };
     let button_font = 12.0;
     let button_pad_x = 18.0;
