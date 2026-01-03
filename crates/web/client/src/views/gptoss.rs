@@ -6,9 +6,9 @@ use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame, Heatmap};
 use wgpui::PaintContext;
 
 use crate::gptoss_runtime::{
-    default_max_kv_tokens, default_max_new_tokens, default_sample_temp, default_sample_top_k,
-    default_sample_top_p, default_user_prompt, local_gguf_path, local_gguf_dev_url, local_gguf_url,
-    local_gguf_serve_cmd, read_query_param,
+    default_gguf_url, default_max_kv_tokens, default_max_new_tokens, default_sample_temp,
+    default_sample_top_k, default_sample_top_p, default_user_prompt, local_gguf_path,
+    local_gguf_dev_url, local_gguf_url, local_gguf_serve_cmd, read_query_param,
 };
 use crate::state::{AppState, GptOssStage, GptOssStageStatus, GptOssVizState};
 
@@ -2245,6 +2245,11 @@ fn ensure_gptoss_inputs(gptoss: &mut GptOssVizState) {
     let gguf_value = read_query_param("gguf").filter(|value| !value.is_empty());
     if let Some(value) = gguf_value {
         gptoss.gguf_input.set_value(value);
+    } else if gptoss.gguf_input.get_value().trim().is_empty() {
+        let default_url = default_gguf_url();
+        if !default_url.is_empty() {
+            gptoss.gguf_input.set_value(default_url);
+        }
     }
 
     let prompt_value = read_query_param("prompt")
