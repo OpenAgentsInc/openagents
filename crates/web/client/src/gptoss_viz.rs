@@ -473,6 +473,11 @@ fn refresh_current_stage(state: &mut GptOssVizState) {
         }
     }
 
+    if best_label.is_none()
+        && (!state.load_stages.is_empty() || !state.inference_stages.is_empty())
+    {
+        best_label = Some("IDLE".to_string());
+    }
     state.current_stage = best_label;
 }
 
