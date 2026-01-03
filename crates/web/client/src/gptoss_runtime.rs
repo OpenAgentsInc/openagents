@@ -31,9 +31,8 @@ const LOCAL_GGUF_URL: &str = "http://localhost:8080/gpt-oss-20b-Q8_0.gguf";
 const CURRENT_DATE: &str = "2026-01-02";
 const DEFAULT_USER_PROMPT: &str = "Give me one sentence about what GPT-OSS can do.";
 const DEFAULT_DEVELOPER_PROMPT: &str = "";
-const MAX_NEW_TOKENS: usize = 8;
-const MAX_KV_TOKENS: usize = 32;
-const MAX_PROMPT_TOKENS: usize = MAX_KV_TOKENS - MAX_NEW_TOKENS;
+const DEFAULT_MAX_NEW_TOKENS: usize = 8;
+const DEFAULT_MAX_KV_TOKENS: usize = 32;
 const Q8_0_BLOCK_BYTES: usize = 34;
 const Q8_0_BLOCK_VALUES: usize = 32;
 const MXFP4_BLOCK_BYTES: usize = 17;
@@ -54,6 +53,7 @@ const EXPERT_CACHE_MAX_ENTRY_BYTES: usize = 8 * 1024 * 1024;
 #[derive(Clone, Debug)]
 struct GptOssConfig {
     block_count: u32,
+    context_length: u32,
     embedding_length: u32,
     feed_forward_length: u32,
     head_count: u32,
@@ -572,8 +572,32 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         );
     }
 
+    let max_kv_tokens = {
+        let mut max_kv = read_query_usize("max_kv").unwrap_or(DEFAULT_MAX_KV_TOKENS);
+        if config.context_length > 0 {
+            max_kv = max_kv.min(config.context_length as usize);
+        }
+        max_kv.max(1)
+    };
+    let max_new_tokens = read_query_usize("max_new")
+        .unwrap_or(DEFAULT_MAX_NEW_TOKENS)
+        .max(1);
+    let max_new_tokens = max_new_tokens
+        .min(max_kv_tokens.saturating_sub(1).max(1));
+    let max_prompt_tokens = max_kv_tokens.saturating_sub(max_new_tokens);
+    emit_load_stage(
+        &state,
+        "token_limits",
+        StageStatus::Completed,
+        Some(format!(
+            "kv={max_kv_tokens} prompt={max_prompt_tokens} new={max_new_tokens}"
+        )),
+        None,
+        None,
+    );
+
     let tokenizer = build_tokenizer(&state, index.as_ref())?;
-    let prompt_tokens = encode_prompt(&state, &tokenizer)?;
+    let prompt_tokens = encode_prompt(&state, &tokenizer, max_prompt_tokens)?;
     let stop_tokens = collect_stop_tokens(&tokenizer);
 
     let gpu_context = state.borrow().gpu_context.clone();
@@ -706,6 +730,8 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
             &prompt_tokens,
             active_layers,
             moe_fallback,
+            max_kv_tokens,
+            max_new_tokens,
             stop_tokens,
         )
         .await
@@ -883,6 +909,9 @@ fn emit_gpu_limits(state: &Rc<RefCell<AppState>>, gpu: &GpuContext) {
 
 fn parse_config(index: &GgufIndex) -> Result<GptOssConfig, String> {
     let block_count = read_meta_u32(index, "llama.block_count")?;
+    let context_length = read_meta_u32_optional(index, "gpt-oss.context_length")
+        .or_else(|| read_meta_u32_optional(index, "llama.context_length"))
+        .unwrap_or(0);
     let embedding_length = read_meta_u32(index, "llama.embedding_length")?;
     let feed_forward_length = read_meta_u32(index, "llama.feed_forward_length")?;
     let head_count = read_meta_u32(index, "llama.attention.head_count")?;
@@ -903,6 +932,7 @@ fn parse_config(index: &GgufIndex) -> Result<GptOssConfig, String> {
 
     Ok(GptOssConfig {
         block_count,
+        context_length,
         embedding_length,
         feed_forward_length,
         head_count,
@@ -934,8 +964,13 @@ fn emit_config(state: &Rc<RefCell<AppState>>, config: &GptOssConfig) {
         "model_config",
         StageStatus::Completed,
         Some(format!(
-            "blocks={} embd={} ffn={} heads={} kv_heads={} rope_dim={} rope_theta={} rope_scale={} rms_eps={} window={} experts={} topk={}",
+            "blocks={} ctx={} embd={} ffn={} heads={} kv_heads={} rope_dim={} rope_theta={} rope_scale={} rms_eps={} window={} experts={} topk={}",
             config.block_count,
+            if config.context_length > 0 {
+                config.context_length.to_string()
+            } else {
+                "-".to_string()
+            },
             config.embedding_length,
             config.feed_forward_length,
             config.head_count,
@@ -1125,7 +1160,11 @@ fn build_tokenizer(
 fn encode_prompt(
     state: &Rc<RefCell<AppState>>,
     tokenizer: &GptOssTokenizer,
+    max_prompt_tokens: usize,
 ) -> Result<Vec<u32>, String> {
+    if max_prompt_tokens == 0 {
+        return Err("prompt token limit is zero (raise max_kv or lower max_new)".to_string());
+    }
     let user_prompt = state
         .try_borrow()
         .ok()
@@ -1153,9 +1192,9 @@ fn encode_prompt(
     let mut tokens = tokenizer.encode_with_special_tokens(&prompt)?;
     let total = tokens.len();
     let mut truncated = 0usize;
-    if total > MAX_PROMPT_TOKENS {
-        truncated = total - MAX_PROMPT_TOKENS;
-        tokens = tokens.split_off(total - MAX_PROMPT_TOKENS);
+    if total > max_prompt_tokens {
+        truncated = total - max_prompt_tokens;
+        tokens = tokens.split_off(total - max_prompt_tokens);
     }
     if tokens.is_empty() {
         return Err("prompt token list is empty".to_string());
@@ -1924,6 +1963,8 @@ async fn run_generation(
     prompt_tokens: &[u32],
     active_layers: usize,
     moe_fallback: bool,
+    max_kv_tokens: usize,
+    max_new_tokens: usize,
     stop_tokens: Vec<u32>,
 ) -> Result<(), String> {
     if prompt_tokens.is_empty() {
@@ -1931,7 +1972,7 @@ async fn run_generation(
     }
 
     let total_prefill = prompt_tokens.len();
-    let mut cache = KvCache::new(config.block_count as usize, MAX_KV_TOKENS);
+    let mut cache = KvCache::new(config.block_count as usize, max_kv_tokens);
     let mut caches = RuntimeCaches::new();
     let mut gpu_tracker = GpuAllocTracker::default();
     let mut last_logits: Option<Vec<f32>> = None;
@@ -1955,7 +1996,7 @@ async fn run_generation(
         None,
         None,
         Some(format!(
-            "layers={active_layers} attn={attention_mode} moe={moe_mode} kv_max={MAX_KV_TOKENS} new={MAX_NEW_TOKENS}",
+            "layers={active_layers} attn={attention_mode} moe={moe_mode} kv_max={max_kv_tokens} new={max_new_tokens}",
         )),
     );
 
@@ -2018,11 +2059,11 @@ async fn run_generation(
         "decode",
         StageStatus::Started,
         Some(0),
-        Some(MAX_NEW_TOKENS),
+        Some(max_new_tokens),
         None,
     );
 
-    while generated < MAX_NEW_TOKENS {
+    while generated < max_new_tokens {
         let (top_k, entropy, next_id, next_text) = top_k_from_logits(&logits, tokenizer, 5)?;
         let stop_token = stop_tokens.contains(&next_id);
         let token_text = if stop_token {
@@ -2049,7 +2090,7 @@ async fn run_generation(
             "decode",
             StageStatus::Progress,
             Some(generated),
-            Some(MAX_NEW_TOKENS),
+            Some(max_new_tokens),
             Some(format!("token_id={next_id}")),
         );
 
@@ -2085,7 +2126,7 @@ async fn run_generation(
         "decode",
         StageStatus::Completed,
         Some(generated),
-        Some(MAX_NEW_TOKENS),
+        Some(max_new_tokens),
         Some("ok".to_string()),
     );
 
