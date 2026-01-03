@@ -182,6 +182,11 @@ impl GptOssVizState {
                         apply_runtime_mode(self, detail);
                     }
                 }
+                if stage == "moe_mode" {
+                    if let Some(detail) = detail_clone.as_ref() {
+                        self.moe_mode = Some(detail.clone());
+                    }
+                }
                 if matches!(status, StageStatus::Failed) {
                     let msg = detail_clone
                         .clone()
