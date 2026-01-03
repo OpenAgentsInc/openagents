@@ -3743,17 +3743,20 @@ async fn run_transformer_layer(
             )
         })
         .unwrap_or((0, 0));
-    if allow_cpu_attention && selected_layer == layer as usize {
-        if let Ok(weights) = attention_head_weights(
+    if selected_layer == layer as usize {
+        if let Ok(weights) = attention_head_weights_gpu(
             &q,
             layer_cache,
             &sinks,
             selected_head,
-            heads,
             kv_heads,
             head_dim,
             window,
-        ) {
+            gpu,
+            gpu_tracker,
+        )
+        .await
+        {
             emit_inference_event(
                 state,
                 GptOssInferenceTelemetry::AttentionWeights {
@@ -3762,6 +3765,26 @@ async fn run_transformer_layer(
                     weights: vec![weights],
                 },
             );
+        } else if allow_cpu_attention {
+            if let Ok(weights) = attention_head_weights(
+                &q,
+                layer_cache,
+                &sinks,
+                selected_head,
+                heads,
+                kv_heads,
+                head_dim,
+                window,
+            ) {
+                emit_inference_event(
+                    state,
+                    GptOssInferenceTelemetry::AttentionWeights {
+                        layer: layer as usize,
+                        head: selected_head,
+                        weights: vec![weights],
+                    },
+                );
+            }
         }
     }
 
@@ -5181,6 +5204,19 @@ struct F32MatmulParams {
     _pad1: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct AttentionWeightsParams {
+    head_index: u32,
+    kv_heads: u32,
+    head_dim: u32,
+    seq_len: u32,
+    window_start: u32,
+    capacity: u32,
+    _pad0: u32,
+    _pad1: u32,
+}
+
 async fn rms_norm_gpu(
     input: &[f32],
     weight: &[f32],
@@ -6527,6 +6563,249 @@ async fn attention_with_cache_gpu(
     Ok(output)
 }
 
+async fn attention_head_weights_gpu(
+    q: &[f32],
+    cache: &LayerKvCache,
+    sinks: &[f32],
+    head_index: usize,
+    kv_heads: usize,
+    head_dim: usize,
+    window: usize,
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<Vec<f32>, String> {
+    if kv_heads == 0 || head_dim == 0 {
+        return Err("attention invalid dims".to_string());
+    }
+    let stride = kv_heads
+        .checked_mul(head_dim)
+        .ok_or_else(|| "attention stride overflow".to_string())?;
+    if cache.capacity == 0 || cache.stride != stride || cache.k.len() != cache.v.len() {
+        return Err("attention cache uninitialized".to_string());
+    }
+    let token_count = cache.len;
+    if token_count == 0 {
+        return Err("attention cache empty".to_string());
+    }
+    let window = window.max(1).min(token_count);
+    let window_start = (cache.start + token_count.saturating_sub(window)) % cache.capacity;
+
+    let q_len = head_index
+        .checked_add(1)
+        .ok_or_else(|| "attention head index overflow".to_string())?
+        .checked_mul(head_dim)
+        .ok_or_else(|| "attention head dim overflow".to_string())?;
+    if q.len() < q_len {
+        return Err("attention q shape mismatch".to_string());
+    }
+    let sink_len = head_index + 1;
+    if sinks.len() < sink_len {
+        return Err("attention sinks shape mismatch".to_string());
+    }
+
+    let device = &gpu.device;
+    let queue = &gpu.queue;
+    let q_bytes = q.len() * std::mem::size_of::<f32>();
+    let k_bytes = cache
+        .capacity
+        .checked_mul(stride)
+        .ok_or_else(|| "attention cache overflow".to_string())?
+        * std::mem::size_of::<f32>();
+    let sink_bytes = sinks.len() * std::mem::size_of::<f32>();
+    let out_bytes = window * std::mem::size_of::<f32>();
+    let max_storage = device.limits().max_storage_buffer_binding_size as usize;
+    ensure_storage_limit("attn weights q", q_bytes, max_storage)?;
+    ensure_storage_limit("attn weights k", k_bytes, max_storage)?;
+    ensure_storage_limit("attn weights sinks", sink_bytes, max_storage)?;
+    ensure_storage_limit("attn weights out", out_bytes, max_storage)?;
+
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("attn_weights"),
+        source: wgpu::ShaderSource::Wgsl(ATTENTION_WEIGHTS_SHADER.into()),
+    });
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("attn_weights_bindings"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("attn_weights_layout"),
+        bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("attn_weights_pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
+    let q_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("attn_weights_q"),
+        contents: cast_slice(q),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let k_buffer = cache
+        .gpu_k
+        .as_ref()
+        .ok_or_else(|| "attention gpu cache missing".to_string())?
+        .clone();
+    let sink_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("attn_weights_sinks"),
+        contents: cast_slice(sinks),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let out_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("attn_weights_out"),
+        size: out_bytes as u64,
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let params = AttentionWeightsParams {
+        head_index: u32::try_from(head_index)
+            .map_err(|_| "attention head index overflow".to_string())?,
+        kv_heads: u32::try_from(kv_heads).map_err(|_| "attention kv_heads overflow".to_string())?,
+        head_dim: u32::try_from(head_dim).map_err(|_| "attention head_dim overflow".to_string())?,
+        seq_len: u32::try_from(window).map_err(|_| "attention seq_len overflow".to_string())?,
+        window_start: u32::try_from(window_start)
+            .map_err(|_| "attention window_start overflow".to_string())?,
+        capacity: u32::try_from(cache.capacity)
+            .map_err(|_| "attention capacity overflow".to_string())?,
+        _pad0: 0,
+        _pad1: 0,
+    };
+    let params_bytes = std::mem::size_of::<AttentionWeightsParams>();
+    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("attn_weights_params"),
+        contents: cast_slice(&[params]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("attn_weights_bind_group"),
+        layout: &bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: q_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: k_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: sink_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: out_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: params_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("attn_weights_readback"),
+        size: out_bytes as u64,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    gpu_tracker.add_buffers(q_bytes + sink_bytes + out_bytes * 2 + params_bytes, 5);
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("attn_weights_encoder"),
+    });
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("attn_weights_pass"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        pass.dispatch_workgroups(1, 1, 1);
+    }
+    encoder.copy_buffer_to_buffer(&out_buffer, 0, &readback, 0, out_bytes as u64);
+    queue.submit(Some(encoder.finish()));
+
+    let slice = readback.slice(..);
+    let (tx, rx) = oneshot::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = tx.send(result);
+    });
+    device.poll(wgpu::Maintain::Wait);
+    match rx.await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => return Err(format!("attn weights map_async failed: {err:?}")),
+        Err(_) => return Err("attn weights map_async channel failed".to_string()),
+    }
+
+    let data = slice.get_mapped_range();
+    let output = cast_slice(&data).to_vec();
+    drop(data);
+    readback.unmap();
+    Ok(output)
+}
+
 async fn gpu_matmul_q8_0(
     quant: &[u8],
     x: &[f32],
@@ -7213,6 +7492,7 @@ const Q8_0_DEQUANT_SHADER: &str = include_str!("shaders/q8_0_dequant.wgsl");
 const VEC_ADD_SHADER: &str = include_str!("shaders/vec_add.wgsl");
 const SWIGLU_SHADER: &str = include_str!("shaders/swiglu.wgsl");
 const MATMUL_F32_SHADER: &str = include_str!("shaders/matmul_f32.wgsl");
+const ATTENTION_WEIGHTS_SHADER: &str = include_str!("shaders/attention_weights.wgsl");
 
 const Q8_0_SHADER: &str = r#"
 struct Params {
