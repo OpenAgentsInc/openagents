@@ -591,27 +591,41 @@ fn draw_io_panel(
     }
 
     let mut ry = inner.y() + 112.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
+    let show_scan = gptoss.load_active
+        || (gptoss.resident_tensors.is_empty() && !gptoss.recent_tensors.is_empty());
+    let label = if show_scan { "LOAD SCAN:" } else { "RESIDENT:" };
     draw_mono_text(
         scene,
         text_system,
-        "RESIDENT:",
+        label,
         inner.x(),
         ry,
         9.0,
         theme::text::MUTED,
     );
     ry += 12.0;
-    for tensor in gptoss.resident_tensors.iter().rev().take(3) {
-        let label = format!(
-            "{} {} {}",
-            tensor.kind,
-            truncate_text(&tensor.name, 22),
-            format_bytes(tensor.bytes),
-        );
-        draw_mono_text(scene, text_system, &label, inner.x(), ry, 9.0, theme::text::MUTED);
-        ry += 12.0;
-        if ry > inner.y() + inner.height() - 10.0 {
-            break;
+    if show_scan {
+        for name in gptoss.recent_tensors.iter().rev().take(3) {
+            let line = truncate_text(name, 40);
+            draw_mono_text(scene, text_system, &line, inner.x(), ry, 9.0, theme::text::MUTED);
+            ry += 12.0;
+            if ry > inner.y() + inner.height() - 10.0 {
+                break;
+            }
+        }
+    } else {
+        for tensor in gptoss.resident_tensors.iter().rev().take(3) {
+            let label = format!(
+                "{} {} {}",
+                tensor.kind,
+                truncate_text(&tensor.name, 22),
+                format_bytes(tensor.bytes),
+            );
+            draw_mono_text(scene, text_system, &label, inner.x(), ry, 9.0, theme::text::MUTED);
+            ry += 12.0;
+            if ry > inner.y() + inner.height() - 10.0 {
+                break;
+            }
         }
     }
 }
