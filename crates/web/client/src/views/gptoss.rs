@@ -660,11 +660,16 @@ pub(crate) fn build_gptoss_page(
             y += 14.0;
         }
     }
-    if let Some(url) = &state.gptoss.load_url {
+    if let Some(label) = state
+        .gptoss
+        .load_url
+        .as_ref()
+        .or_else(|| state.gptoss.gguf_file_label.as_ref())
+    {
         draw_mono_text(
             scene,
             text_system,
-            &format!("GGUF: {}", truncate_text(url, 60)),
+            &format!("GGUF: {}", truncate_text(label, 60)),
             inner_x,
             y,
             10.0,
