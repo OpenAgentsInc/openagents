@@ -553,6 +553,16 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let active_layers = read_query_usize("layers")
         .unwrap_or(config.block_count as usize)
         .min(config.block_count as usize);
+    if active_layers == 0 {
+        emit_load_stage(
+            &state,
+            "layer_limit",
+            StageStatus::Completed,
+            Some("layers=0 (lm_head only)".to_string()),
+            None,
+            None,
+        );
+    }
     let force_dense = read_query_param("attn")
         .map(|value| matches!(value.as_str(), "dense" | "full" | "0"))
         .unwrap_or(false);
@@ -560,7 +570,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         .map(|value| matches!(value.as_str(), "fallback" | "off" | "0"))
         .unwrap_or(false);
     emit_config(&state, &config);
-    if active_layers != config.block_count as usize {
+    if active_layers != config.block_count as usize && active_layers > 0 {
         emit_load_stage(
             &state,
             "layer_limit",
