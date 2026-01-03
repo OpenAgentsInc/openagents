@@ -14,7 +14,7 @@ var<storage, read_write> out: array<f32>;
 @group(0) @binding(2)
 var<uniform> params: Params;
 
-fn unpack_f16(bits: u16) -> f32 {
+fn unpack_f16(bits: u32) -> f32 {
     let sign = (bits >> 15u) & 1u;
     let exp = (bits >> 10u) & 0x1fu;
     let frac = bits & 0x03ffu;
@@ -38,7 +38,7 @@ fn unpack_f16(bits: u16) -> f32 {
 
 fn q8_0_unpack(block: u32, idx: u32) -> f32 {
     let base = block * 34u;
-    let scale_bits = u16(quant[(base + 0u) / 4u] & 0xffffu);
+    let scale_bits = quant[(base + 0u) / 4u] & 0xffffu;
     let scale = unpack_f16(scale_bits);
     let byte_index = base + 2u + idx;
     let word = quant[byte_index / 4u];
