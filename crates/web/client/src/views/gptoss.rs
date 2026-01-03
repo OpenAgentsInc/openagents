@@ -238,7 +238,7 @@ pub(crate) fn build_gptoss_page(
     draw_mono_text(
         scene,
         text_system,
-        "TIP: click LOAD MODEL to pick a local GGUF file",
+        "TIP: click LOAD MODEL or drop a GGUF file",
         inner_x,
         y,
         9.0,
@@ -716,7 +716,7 @@ pub(crate) fn build_gptoss_page(
             scene,
             text_system,
             empty_bounds,
-            "Run `cargo run -p ml --bin gguf_serve` or click LOAD MODEL to pick a file",
+            "Run `cargo run -p ml --bin gguf_serve`, click LOAD MODEL, or drop a GGUF file",
         );
         y += 140.0;
     } else {
