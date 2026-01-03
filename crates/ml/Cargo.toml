@@ -37,6 +37,7 @@ metal = [
     "candle-nn/metal",
     "candle-transformers/metal",
 ]
+wgpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck"]
 
 [dependencies]
 async-trait = { workspace = true }
@@ -52,6 +53,9 @@ rand = { workspace = true }
 hex = { workspace = true }
 sha2 = { workspace = true }
 getrandom = { version = "0.2", optional = true }
+bytemuck = { workspace = true, optional = true }
+pollster = { workspace = true, optional = true }
+wgpu = { workspace = true, optional = true }
 
 tokenizers = { version = "0.20", features = ["unstable_wasm"], optional = true }
 

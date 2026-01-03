@@ -10,7 +10,7 @@ If this passes, everything else is "just more kernels."
 
 ---
 
-## Progress (2025-01-02)
+## Progress (2026-01-02)
 
 ### Gate A — GGUF Index (complete)
 
@@ -46,6 +46,23 @@ cargo run -p ml --no-default-features --features native --bin gguf_range -- \
 Observed:
 - `sha256: ff6dcca8ec6f88daa59b9a8d6c583e288e0a5a182d86556712c48b820b519352`
 - `consistent: true` across 2 reads
+
+### Gate C — GPU Compute (complete)
+
+New `gguf_gate_c` tool runs a tiny Q8_0 matmul on GPU via wgpu and compares
+against a CPU reference for the same slice.
+
+Command:
+
+```bash
+cargo run -p ml --no-default-features --features native,wgpu --bin gguf_gate_c -- \
+  crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf --tensor output.weight --k 128 --n 64
+```
+
+Observed:
+- `max_abs_diff: 9.313226e-10`
+- `mean_abs_diff: 3.012701e-10`
+- Q8_0 dequant + matmul runs end-to-end on GPU with CPU match within tolerance
 
 ---
 
