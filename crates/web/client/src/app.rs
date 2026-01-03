@@ -1241,7 +1241,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             }
 
+            let mut start_gptoss = false;
             if let Some(key) = key_from_event(&event) {
+                let start_on_enter = matches!(key, Key::Named(NamedKey::Enter));
                 let input_event = InputEvent::KeyDown { key, modifiers };
                 if let Ok(mut state) = state_clone.try_borrow_mut() {
                     if state.claude_chat.visible {
@@ -1250,6 +1252,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         handled = state.editor_workspace.handle_key_event(input_event.clone());
                     } else if state.view == AppView::GptOssPage {
                         handled = state.gptoss.handle_event(&input_event);
+                        if start_on_enter
+                            && state.gptoss.input_focused()
+                            && !state.gptoss.load_active
+                        {
+                            start_gptoss = true;
+                        }
                     }
                 }
                 if matches!(handled, EventResult::Ignored) {
@@ -1259,6 +1267,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     //     handled = dispatch_wallet_event(&state_clone, input_event);
                     // }
                 }
+            }
+
+            if start_gptoss {
+                start_gptoss_load(state_clone.clone());
+                handled = EventResult::Handled;
             }
 
             if matches!(handled, EventResult::Handled) {
