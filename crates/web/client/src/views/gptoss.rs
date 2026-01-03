@@ -206,16 +206,18 @@ pub(crate) fn build_gptoss_page(
 
     y += button_height + 10.0;
     if let Some(err) = &state.gptoss.load_error {
-        draw_mono_text(
-            scene,
-            text_system,
-            &truncate_text(err, 80),
-            inner_x,
-            y,
-            10.0,
-            theme::status::ERROR,
-        );
-        y += 14.0;
+        for line in err.lines().take(3) {
+            draw_mono_text(
+                scene,
+                text_system,
+                &truncate_text(line, 96),
+                inner_x,
+                y,
+                10.0,
+                theme::status::ERROR,
+            );
+            y += 14.0;
+        }
     }
     if let Some(url) = &state.gptoss.load_url {
         draw_mono_text(
@@ -245,6 +247,17 @@ pub(crate) fn build_gptoss_page(
                 bar_bounds.height(),
             ))
             .with_background(accent_cyan().with_alpha(0.7)),
+        );
+        let pct = format!("{:.1}%", progress * 100.0);
+        let pct_w = measure_mono(text_system, &pct, 9.0);
+        draw_mono_text(
+            scene,
+            text_system,
+            &pct,
+            bar_bounds.x() + bar_bounds.width() - pct_w,
+            bar_bounds.y() - 10.0,
+            9.0,
+            theme::text::MUTED,
         );
         y += 12.0;
     }

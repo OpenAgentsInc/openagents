@@ -169,6 +169,8 @@ Notes:
 - Added `?attn=dense` override to force full attention even when sliding-window metadata is set.
 - Emit explicit `layers=0 (lm_head only)` telemetry when skipping transformer blocks.
 - Stage panel now shows per-stage detail (tensor names, timing) inline with status rows.
+- Load progress bar now renders a percent label above the bar.
+- Load errors now include a multi-line hint with the exact `gguf_serve` command for local runs.
 
 ---
 
