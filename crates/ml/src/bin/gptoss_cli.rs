@@ -164,7 +164,8 @@ fn build_harmony_prompt(user_prompt: &str) -> String {
 Knowledge cutoff: 2024-06\n\
 Current date: {CURRENT_DATE}\n\n\
 Reasoning: low\n\n\
-# Valid channels: analysis, commentary, final. Channel must be included for every message."
+# Valid channels: analysis, commentary, final. Channel must be included for every message.\n\
+Calls to these tools must go to the commentary channel: 'functions'."
     );
     let developer_prompt = "# Instructions\n\n".to_string();
 

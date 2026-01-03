@@ -1389,7 +1389,7 @@ fn encode_prompt(
         StageStatus::Started,
         Some(0),
         None,
-        Some(format!("chars={}", prompt.len())),
+        Some(format!("format=harmony chars={}", prompt.len())),
     );
 
     let mut tokens = tokenizer.encode_with_special_tokens(&prompt)?;
@@ -1534,7 +1534,8 @@ fn build_harmony_prompt(user_prompt: &str) -> String {
 Knowledge cutoff: 2024-06\n\
 Current date: {CURRENT_DATE}\n\n\
 Reasoning: low\n\n\
-# Valid channels: analysis, commentary, final. Channel must be included for every message."
+# Valid channels: analysis, commentary, final. Channel must be included for every message.\n\
+Calls to these tools must go to the commentary channel: 'functions'."
     );
     let developer_prompt = if DEFAULT_DEVELOPER_PROMPT.is_empty() {
         "# Instructions\n\n".to_string()

@@ -124,6 +124,7 @@ Notes:
 - Added automatic MoE fallback: if any expert matmul/IO fails, the MLP is skipped for that layer, the HUD switches to “fallback (mlp skipped)”, and inference continues so tokens still stream.
 - Marked probe and MoE fallback failures as non-fatal in the HUD so generation can continue without a red-blocking error banner.
 - Added attention fallback: if cache attention fails, fall back to single-token attention and annotate the HUD with the fallback reason.
+- Aligned Harmony prompt header with the reference format (tool-call channel note) and surfaced `format=harmony` in prompt telemetry.
  - Added a **block 0 attention probe** (token embed → RMSNorm → Q/K/V → attn output) using real GPT-OSS weights.
 - Added a **prefill + decode loop** with a CPU KV cache (per-layer) for multi-token forward passes.
 - Added **cache telemetry** (seq_len, max_len, bytes) and live **token stream** output from real logits.
