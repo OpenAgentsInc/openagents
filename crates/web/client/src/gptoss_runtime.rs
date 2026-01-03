@@ -2535,6 +2535,7 @@ async fn run_generation(
 
     let mut logits = last_logits.ok_or_else(|| "prefill produced no logits".to_string())?;
     let mut generated = 0usize;
+    let mut stop_reason = "max_new".to_string();
 
     emit_inference_stage(
         state,
@@ -2579,11 +2580,13 @@ async fn run_generation(
         yield_to_browser().await;
 
         if stop_token {
+            stop_reason = "stop_token".to_string();
             break;
         }
 
         let position = cache.seq_len;
         if position >= cache.max_len {
+            stop_reason = "kv_full".to_string();
             break;
         }
         let start_ms = now_ms();
@@ -2612,7 +2615,7 @@ async fn run_generation(
         StageStatus::Completed,
         Some(generated),
         Some(max_new_tokens),
-        Some("ok".to_string()),
+        Some(stop_reason.clone()),
     );
 
     emit_inference_stage(
@@ -2621,7 +2624,7 @@ async fn run_generation(
         StageStatus::Completed,
         Some(generated),
         Some(max_new_tokens),
-        Some("ok".to_string()),
+        Some(stop_reason),
     );
 
     Ok(())
