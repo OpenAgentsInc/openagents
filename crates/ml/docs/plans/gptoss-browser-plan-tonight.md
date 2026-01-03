@@ -79,6 +79,23 @@ Observed:
 - CPU vs GPU diff remains below `0.01` tolerance for `output.weight` (K=128, N=64)
 - Test run passes locally (`1 passed`)
 
+### Browser Wiring — Gate C/D (in progress)
+
+Started wiring Gate C/D into the `/ml-inference` WebGPU page. The browser runtime
+now accepts query params and runs the same Q8_0 slice via WebGPU, then compares
+against CPU reference.
+
+Run (requires a Range-capable GGUF URL):
+
+```
+/ml-inference?gguf=<URL>&tensor=output.weight&k=128&n=64&tolerance=0.01
+```
+
+Notes:
+- Browser fetches GGUF metadata (first ~16MB) and then range-fetches the Q8_0 slice.
+- Gate status + diff stats render in the ML Inference HUD.
+- `cargo check --target wasm32-unknown-unknown` passes for `openagents-web-client` (1 pre-existing warning about `token_id` unused).
+
 ---
 
 ## Tonight MVP (non-negotiable)

@@ -240,6 +240,20 @@ pub(crate) struct MemoryUsage {
     pub(crate) activations: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GateStatus {
+    Idle,
+    Running,
+    Passed,
+    Failed,
+}
+
+impl Default for GateStatus {
+    fn default() -> Self {
+        Self::Idle
+    }
+}
+
 /// State for the ML inference visualization page
 pub(crate) struct MlVizState {
     pub(crate) frame_animator: FrameAnimator,
@@ -267,6 +281,17 @@ pub(crate) struct MlVizState {
     pub(crate) layer_activations: Vec<LayerActivity>,
     pub(crate) cache_status: Vec<CacheInfo>,
     pub(crate) memory_usage: Option<MemoryUsage>,
+    pub(crate) gate_status: GateStatus,
+    pub(crate) gate_started: bool,
+    pub(crate) gate_message: Option<String>,
+    pub(crate) gate_error: Option<String>,
+    pub(crate) gate_source: Option<String>,
+    pub(crate) gate_tensor: Option<String>,
+    pub(crate) gate_k: Option<usize>,
+    pub(crate) gate_n: Option<usize>,
+    pub(crate) gate_bytes: Option<usize>,
+    pub(crate) gate_max_abs: Option<f32>,
+    pub(crate) gate_mean_abs: Option<f32>,
 }
 
 impl Default for MlVizState {
@@ -297,6 +322,17 @@ impl Default for MlVizState {
             layer_activations: Vec::new(),
             cache_status: Vec::new(),
             memory_usage: None,
+            gate_status: GateStatus::Idle,
+            gate_started: false,
+            gate_message: None,
+            gate_error: None,
+            gate_source: None,
+            gate_tensor: None,
+            gate_k: None,
+            gate_n: None,
+            gate_bytes: None,
+            gate_max_abs: None,
+            gate_mean_abs: None,
         }
     }
 }

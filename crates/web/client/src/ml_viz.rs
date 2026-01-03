@@ -5,6 +5,7 @@ use serde::Deserialize;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 
+use crate::ml_gate::init_ml_gate_runtime;
 use crate::state::{
     AppState, CacheInfo, LayerActivity, MemoryUsage, MlTokenCandidate, MlVizState,
 };
@@ -182,6 +183,8 @@ pub(crate) fn init_ml_viz_runtime(state: Rc<RefCell<AppState>>) {
             });
         }
     }
+
+    init_ml_gate_runtime(state);
 }
 
 async fn fetch_events(state: &Rc<RefCell<AppState>>, url: &str) -> Result<(), JsValue> {
