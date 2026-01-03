@@ -10,6 +10,45 @@ If this passes, everything else is "just more kernels."
 
 ---
 
+## Progress (2025-01-02)
+
+### Gate A — GGUF Index (complete)
+
+Implemented a local GGUF parser + tensor dump tool and validated against the
+downloaded GPT-OSS GGUF.
+
+Command:
+
+```bash
+cargo run -p ml --no-default-features --features native --bin gguf_dump -- \
+  crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf --limit 20
+```
+
+Observed:
+- `version: 3`
+- `tensor_data_offset: 13008832`
+- `tensor_count: 459`
+- Q8_0 tensors present (e.g., `output.weight`, `token_embd.weight`)
+- Unknown ggml type `39` appears for expert weights (still indexed cleanly)
+
+### Gate B — Deterministic Range Reads (complete)
+
+New `gguf_range` tool supports hashed range reads with optional tensor lookup.
+
+Command:
+
+```bash
+cargo run -p ml --no-default-features --features native --bin gguf_range -- \
+  crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf \
+  --tensor output.weight --len 1048576 --repeat 2
+```
+
+Observed:
+- `sha256: ff6dcca8ec6f88daa59b9a8d6c583e288e0a5a182d86556712c48b820b519352`
+- `consistent: true` across 2 reads
+
+---
+
 ## Tonight MVP (non-negotiable)
 
 Goal: **one end-to-end compute path runs in-browser**:
