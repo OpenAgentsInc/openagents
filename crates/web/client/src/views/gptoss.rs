@@ -668,7 +668,9 @@ fn draw_io_panel(
 
     let mut gauge_offset = 0.0;
     if let (Some(mem), Some(limits)) = (mem, gptoss.gpu_limits.as_ref()) {
-        if let Some(max_buffer) = parse_limit_bytes(limits, "max_buffer") {
+        let max_buffer = parse_limit_bytes(limits, "max_buffer")
+            .or_else(|| parse_limit_bytes(limits, "max_storage"));
+        if let Some(max_buffer) = max_buffer {
             if max_buffer > 0 {
                 let ratio = (mem.gpu_allocated as f32 / max_buffer as f32)
                     .clamp(0.0, 1.0);
