@@ -1037,6 +1037,8 @@ async fn stream_full_weights(
                 );
             }
         }
+
+        yield_to_browser().await;
     }
 
     emit_load_stage(

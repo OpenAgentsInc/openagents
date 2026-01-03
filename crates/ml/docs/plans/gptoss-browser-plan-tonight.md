@@ -217,6 +217,7 @@ Notes:
 - Inference stats panel now shows the generation stop reason (max_new/stop_token/kv_full).
 - Prompt encode telemetry now includes format=harmony on completion for HUD visibility.
 - Prefill/decode/generation completion telemetry now includes elapsed ms and tok/s rates.
+- Streaming load loop now yields to the browser so the HUD stays responsive during large downloads.
 
 ---
 
