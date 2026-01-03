@@ -1621,6 +1621,12 @@ fn normalize_gguf_url(raw: &str) -> Result<String, String> {
         return Ok(trimmed.to_string());
     }
     if trimmed.starts_with('/') {
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with("/users/") || lower.starts_with("/home/") {
+            return Err(format!(
+                "Local file paths are not supported in the browser.\nRun: {LOCAL_GGUF_SERVE_CMD}\nThen use: {LOCAL_GGUF_URL}"
+            ));
+        }
         let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
         let origin = window
             .location()
