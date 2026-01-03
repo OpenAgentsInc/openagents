@@ -632,6 +632,7 @@ Read these if stuck:
 - 2026-01-02: Improved GGUF URL error messaging to point users to the file picker.
 - 2026-01-02: Added drag-and-drop support for GGUF files on the GPT-OSS canvas.
 - 2026-01-02: Added drag-over visual affordance for dropping GGUF files onto the GPT-OSS HUD.
+- 2026-01-02: Validated dropped/selected files end with .gguf and surface a clear error otherwise.
 
 ---
 
