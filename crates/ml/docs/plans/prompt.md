@@ -22,12 +22,12 @@ When you're done, I click **one button** on `/gptoss` and:
 |--------|--------|----------|
 | Q8_0 dequant + matmul | ✅ Done | - |
 | MXFP4 dequant + matmul | ✅ Done | - |
-| **RMSNorm** | ❌ CPU | P0 |
-| **RoPE** | ❌ CPU | P0 |
-| **Attention (decode)** | ❌ CPU | P0 |
-| **Softmax** | ❌ CPU | P0 (fuse into attention) |
-| Residual add | ❌ CPU | P1 |
-| Embedding lookup | ❌ CPU | P1 |
+| **RMSNorm** | ✅ Done | P0 |
+| **RoPE** | ✅ Done | P0 |
+| **Attention (decode)** | ✅ Done | P0 |
+| **Softmax** | ✅ Done (fused) | P0 |
+| Residual add | ✅ Done | P1 |
+| Embedding lookup | ✅ Done | P1 |
 
 ### No CPU Hot Loops Rule (BANNED)
 
@@ -47,7 +47,7 @@ This prevents `attention_with_cache`-style CPU regressions.
 ### Current Gap (MUST FIX)
 
 The current implementation has:
-- `gptoss_runtime.rs`: GPU matmuls, but **CPU attention** (`attention_with_cache` is pure Rust loops)
+- `gptoss_runtime.rs`: GPU attention + RMSNorm + RoPE + residuals (CPU fallbacks disabled for generation)
 - `gptoss_native.rs`: 100% CPU (reference implementation, this is OK)
 
 **Browser path must be GPU-accelerated. Native CLI is reference-correct (CPU OK).**
