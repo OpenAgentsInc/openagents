@@ -405,9 +405,22 @@ impl GptOssRuntime {
 }
 
 pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
-    let gguf_url = read_query_param("gguf")
-        .filter(|url| !url.is_empty())
-        .unwrap_or_else(default_gguf_url);
+    let gguf_url = {
+        let input_override = state
+            .try_borrow()
+            .ok()
+            .and_then(|guard| {
+                let value = guard.gptoss.gguf_input.get_value().trim().to_string();
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value)
+                }
+            });
+        input_override
+            .or_else(|| read_query_param("gguf").filter(|url| !url.is_empty()))
+            .unwrap_or_else(default_gguf_url)
+    };
     if gguf_url.is_empty() {
         if let Ok(mut guard) = state.try_borrow_mut() {
             reset_gptoss_state(&mut guard.gptoss);
@@ -433,6 +446,9 @@ pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
             return;
         }
         reset_gptoss_state(&mut guard.gptoss);
+        if guard.gptoss.gguf_input.get_value().trim().is_empty() {
+            guard.gptoss.gguf_input.set_value(gguf_url.clone());
+        }
         guard.gptoss.load_active = true;
         guard.gptoss.load_error = None;
         guard.gptoss.load_url = Some(gguf_url.clone());
@@ -1013,8 +1029,18 @@ fn encode_prompt(
     state: &Rc<RefCell<AppState>>,
     tokenizer: &GptOssTokenizer,
 ) -> Result<Vec<u32>, String> {
-    let user_prompt = read_query_param("prompt")
-        .filter(|value| !value.is_empty())
+    let user_prompt = state
+        .try_borrow()
+        .ok()
+        .and_then(|guard| {
+            let value = guard.gptoss.prompt_input.get_value().trim().to_string();
+            if value.is_empty() {
+                None
+            } else {
+                Some(value)
+            }
+        })
+        .or_else(|| read_query_param("prompt").filter(|value| !value.is_empty()))
         .unwrap_or_else(default_user_prompt);
     let prompt = build_harmony_prompt(&user_prompt);
 
@@ -1057,7 +1083,7 @@ fn now_ms() -> u64 {
     js_sys::Date::now().max(0.0) as u64
 }
 
-fn read_query_param(key: &str) -> Option<String> {
+pub(crate) fn read_query_param(key: &str) -> Option<String> {
     let window = web_sys::window()?;
     let search = window.location().search().ok()?;
     let params = web_sys::UrlSearchParams::new_with_str(&search).ok()?;
@@ -1069,7 +1095,7 @@ fn read_query_usize(key: &str) -> Option<usize> {
         .and_then(|value| value.parse::<usize>().ok())
 }
 
-fn default_gguf_url() -> String {
+pub(crate) fn default_gguf_url() -> String {
     let window = match web_sys::window() {
         Some(window) => window,
         None => return String::new(),
@@ -1083,7 +1109,7 @@ fn default_gguf_url() -> String {
     }
 }
 
-fn default_user_prompt() -> String {
+pub(crate) fn default_user_prompt() -> String {
     DEFAULT_USER_PROMPT.to_string()
 }
 

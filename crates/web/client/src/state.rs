@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::JsValue;
 use web_sys::WebSocket;
 use wgpui::{
     Bounds, Component, Cursor, EventContext, EventResult, InputEvent, MarkdownDocument,
-    MarkdownView, Point, StreamingMarkdown,
+    MarkdownView, Point, StreamingMarkdown, TextInput,
 };
 use wgpui::components::hud::{DotsGrid, FrameAnimator};
 
@@ -302,6 +302,12 @@ pub(crate) struct GptOssVizState {
     pub(crate) content_height: f32,
     pub(crate) start_button_bounds: Bounds,
     pub(crate) start_button_hovered: bool,
+    pub(crate) gguf_input_bounds: Bounds,
+    pub(crate) prompt_input_bounds: Bounds,
+    pub(crate) gguf_input: TextInput,
+    pub(crate) prompt_input: TextInput,
+    pub(crate) input_event_ctx: EventContext,
+    pub(crate) inputs_initialized: bool,
     pub(crate) load_active: bool,
     pub(crate) load_error: Option<String>,
     pub(crate) load_url: Option<String>,
@@ -338,6 +344,18 @@ impl Default for GptOssVizState {
             content_height: 0.0,
             start_button_bounds: Bounds::ZERO,
             start_button_hovered: false,
+            gguf_input_bounds: Bounds::ZERO,
+            prompt_input_bounds: Bounds::ZERO,
+            gguf_input: TextInput::new()
+                .placeholder("http://localhost:8080/gpt-oss-20b-Q8_0.gguf")
+                .font_size(10.0)
+                .padding(6.0, 4.0),
+            prompt_input: TextInput::new()
+                .placeholder("Enter a prompt")
+                .font_size(10.0)
+                .padding(6.0, 4.0),
+            input_event_ctx: EventContext::new(),
+            inputs_initialized: false,
             load_active: false,
             load_error: None,
             load_url: None,
@@ -363,6 +381,30 @@ impl Default for GptOssVizState {
             last_token_ts_ms: None,
             start_ts_ms: None,
         }
+    }
+}
+
+impl GptOssVizState {
+    pub(crate) fn handle_event(&mut self, event: &InputEvent) -> EventResult {
+        let mut handled = EventResult::Ignored;
+        handled = merge_event_result(
+            handled,
+            self.gguf_input
+                .event(event, self.gguf_input_bounds, &mut self.input_event_ctx),
+        );
+        handled = merge_event_result(
+            handled,
+            self.prompt_input
+                .event(event, self.prompt_input_bounds, &mut self.input_event_ctx),
+        );
+        handled
+    }
+}
+
+fn merge_event_result(lhs: EventResult, rhs: EventResult) -> EventResult {
+    match (lhs, rhs) {
+        (EventResult::Handled, _) | (_, EventResult::Handled) => EventResult::Handled,
+        _ => EventResult::Ignored,
     }
 }
 

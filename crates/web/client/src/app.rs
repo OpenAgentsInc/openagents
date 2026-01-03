@@ -336,6 +336,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.view == AppView::GptOssPage {
                     state.gptoss.start_button_hovered = !state.gptoss.load_active
                         && state.gptoss.start_button_bounds.contains(state.mouse_pos);
+                    let _ = state.gptoss.handle_event(&InputEvent::MouseMove { x, y });
                 }
 
                 if state.claude_chat.visible {
@@ -825,6 +826,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     let _ = state.markdown_demo.handle_event(input_event.clone());
                     let _ = state.editor_workspace.handle_mouse_event(input_event.clone());
                 }
+                if state.view == AppView::GptOssPage {
+                    let _ = state.gptoss.handle_event(&input_event);
+                }
             }
             if overlay_active {
                 return;
@@ -1153,6 +1157,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         handled = state.claude_chat.handle_event(input_event.clone());
                     } else if state.view == AppView::RepoSelector {
                         handled = state.editor_workspace.handle_key_event(input_event.clone());
+                    } else if state.view == AppView::GptOssPage {
+                        handled = state.gptoss.handle_event(&input_event);
                     }
                 }
                 if matches!(handled, EventResult::Ignored) {
