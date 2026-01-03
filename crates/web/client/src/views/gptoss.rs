@@ -1277,7 +1277,7 @@ fn draw_stream_panel(
         accent_cyan(),
     );
 
-    let show_cursor = gptoss.load_active || !gptoss.token_stream.is_empty();
+    let show_cursor = gptoss.load_active || pulse > 0.0;
     let char_w = measure_mono(text_system, "W", 10.0).max(1.0);
     let max_chars = (inner.width() / char_w).floor().max(24.0) as usize;
     let tail = tail_chars(&stream, max_chars.saturating_mul(3));
