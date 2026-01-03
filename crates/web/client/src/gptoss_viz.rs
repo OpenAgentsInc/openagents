@@ -207,7 +207,13 @@ impl GptOssVizState {
                         .unwrap_or_else(|| format!("{stage} failed"));
                     let ignore = matches!(
                         stage.as_str(),
-                        "q8_0_probe" | "mxfp4_probe" | "moe_expert" | "layer_fallback"
+                        "q8_0_probe"
+                            | "mxfp4_probe"
+                            | "rmsnorm_probe"
+                            | "rope_probe"
+                            | "attn_probe"
+                            | "moe_expert"
+                            | "layer_fallback"
                     );
                     if !ignore {
                         self.inference_error = Some(msg);
