@@ -1,0 +1,184 @@
+[
+  {
+    "type": "load_stage",
+    "stage": "load_start",
+    "status": "started",
+    "detail": "model_id=gpt-oss-20b",
+    "ts_ms": 1767321600000
+  },
+  {
+    "type": "load_stage",
+    "stage": "tokenizer_load",
+    "status": "started",
+    "detail": "tokenizer.json",
+    "ts_ms": 1767321600500
+  },
+  {
+    "type": "load_stage",
+    "stage": "tokenizer_load",
+    "status": "completed",
+    "ts_ms": 1767321600800
+  },
+  {
+    "type": "load_stage",
+    "stage": "weights_map",
+    "status": "started",
+    "detail": "gpt-oss-20b.gguf",
+    "bytes": 536870912,
+    "total_bytes": 1073741824,
+    "ts_ms": 1767321601200
+  },
+  {
+    "type": "load_stage",
+    "stage": "weights_map",
+    "status": "completed",
+    "bytes": 1073741824,
+    "total_bytes": 1073741824,
+    "ts_ms": 1767321602600
+  },
+  {
+    "type": "load_stage",
+    "stage": "gguf_parse",
+    "status": "started",
+    "ts_ms": 1767321603000
+  },
+  {
+    "type": "load_stage",
+    "stage": "gguf_parse",
+    "status": "completed",
+    "ts_ms": 1767321603600
+  },
+  {
+    "type": "load_stage",
+    "stage": "model_init",
+    "status": "started",
+    "ts_ms": 1767321604200
+  },
+  {
+    "type": "load_stage",
+    "stage": "model_init",
+    "status": "completed",
+    "ts_ms": 1767321605200
+  },
+  {
+    "type": "load_stage",
+    "stage": "load_complete",
+    "status": "completed",
+    "ts_ms": 1767321605400
+  },
+  {
+    "type": "inference_stage",
+    "stage": "tokenize_prompt",
+    "status": "started",
+    "detail": "prompt_bytes=128",
+    "ts_ms": 1767321606000
+  },
+  {
+    "type": "inference_stage",
+    "stage": "tokenize_prompt",
+    "status": "completed",
+    "detail": "prompt_tokens=36",
+    "ts_ms": 1767321606200
+  },
+  {
+    "type": "inference_stage",
+    "stage": "cache_init",
+    "status": "started",
+    "ts_ms": 1767321606400
+  },
+  {
+    "type": "inference_stage",
+    "stage": "cache_init",
+    "status": "completed",
+    "ts_ms": 1767321606600
+  },
+  {
+    "type": "inference_stage",
+    "stage": "prefill",
+    "status": "started",
+    "step": 0,
+    "total_steps": 32,
+    "ts_ms": 1767321607000
+  },
+  {
+    "type": "inference_stage",
+    "stage": "prefill",
+    "status": "completed",
+    "step": 1,
+    "total_steps": 32,
+    "ts_ms": 1767321607600
+  },
+  {
+    "type": "inference_event",
+    "event": {
+      "type": "memory_usage",
+      "gpu_allocated": 2147483648,
+      "cache_total": 536870912,
+      "activations": 268435456
+    },
+    "ts_ms": 1767321607800
+  },
+  {
+    "type": "inference_event",
+    "event": {
+      "type": "cache_status",
+      "layer": 31,
+      "seq_len": 37,
+      "max_len": 4096,
+      "offset": 0,
+      "memory_bytes": 33554432
+    },
+    "ts_ms": 1767321608000
+  },
+  {
+    "type": "inference_event",
+    "event": {
+      "type": "token_generated",
+      "token_id": 7262,
+      "token_text": "Hello",
+      "top_k": [
+        { "token_id": 7262, "token_text": "Hello", "probability": 0.42 },
+        { "token_id": 321, "token_text": "Hi", "probability": 0.21 },
+        { "token_id": 999, "token_text": "Hey", "probability": 0.14 },
+        { "token_id": 44, "token_text": ",", "probability": 0.11 },
+        { "token_id": 13, "token_text": ".", "probability": 0.06 }
+      ],
+      "entropy": 1.62,
+      "tokens_per_sec": 18.7
+    },
+    "ts_ms": 1767321608200
+  },
+  {
+    "type": "inference_event",
+    "event": {
+      "type": "token_generated",
+      "token_id": 322,
+      "token_text": " world",
+      "top_k": [
+        { "token_id": 322, "token_text": " world", "probability": 0.38 },
+        { "token_id": 1, "token_text": "!", "probability": 0.24 },
+        { "token_id": 13, "token_text": ".", "probability": 0.18 },
+        { "token_id": 198, "token_text": " there", "probability": 0.12 },
+        { "token_id": 31, "token_text": "?", "probability": 0.05 }
+      ],
+      "entropy": 1.74,
+      "tokens_per_sec": 18.7
+    },
+    "ts_ms": 1767321608400
+  },
+  {
+    "type": "inference_stage",
+    "stage": "decode_step",
+    "status": "progress",
+    "step": 2,
+    "total_steps": 32,
+    "ts_ms": 1767321608600
+  },
+  {
+    "type": "inference_stage",
+    "stage": "inference_complete",
+    "status": "completed",
+    "step": 2,
+    "ts_ms": 1767321609800
+  }
+]
