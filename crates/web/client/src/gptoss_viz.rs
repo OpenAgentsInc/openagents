@@ -202,8 +202,12 @@ impl GptOssVizState {
                             self.resident_tensors.drain(0..drop_count);
                         }
                     }
-                    GptOssInferenceTelemetry::AttentionWeights { .. }
-                    | GptOssInferenceTelemetry::LayerActivation { .. } => {}
+                    GptOssInferenceTelemetry::AttentionWeights { layer, head, weights } => {
+                        self.attention_weights = Some(weights);
+                        self.attention_layer = layer;
+                        self.attention_head = head;
+                    }
+                    GptOssInferenceTelemetry::LayerActivation { .. } => {}
                 }
 
                 if let Some(ts_ms) = ts_ms {
