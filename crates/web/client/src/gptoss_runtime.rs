@@ -1663,6 +1663,14 @@ pub(crate) fn default_user_prompt() -> String {
     DEFAULT_USER_PROMPT.to_string()
 }
 
+pub(crate) fn default_max_kv_tokens() -> usize {
+    DEFAULT_MAX_KV_TOKENS
+}
+
+pub(crate) fn default_max_new_tokens() -> usize {
+    DEFAULT_MAX_NEW_TOKENS
+}
+
 fn is_local_url(url: &str) -> bool {
     let url = url.to_ascii_lowercase();
     url.starts_with("http://localhost")

@@ -229,6 +229,7 @@ Notes:
 - GPT-OSS control inputs now stack vertically on narrow viewports to keep the page usable on mobile.
 - Relative GGUF paths like `/gpt-oss-20b-Q8_0.gguf` now resolve against the current origin for easy local testing.
 - Range/CORS errors now differentiate bun dev (`bun run dev`) vs `gguf_serve` when pointing at `localhost`.
+- GPT-OSS input fields now prefill defaults (`layers=all`, `max_kv=32`, `max_new=8`) for quicker runs.
 
 ---
 
