@@ -118,7 +118,78 @@ pub(crate) fn build_gptoss_page(
         subtitle_size,
         theme::text::MUTED,
     );
-    y += subtitle_size + 18.0;
+    y += subtitle_size + 14.0;
+
+    let button_label = if state.gptoss.load_active {
+        "LOADING..."
+    } else {
+        "START LOAD"
+    };
+    let button_font = 12.0;
+    let button_pad_x = 18.0;
+    let button_pad_y = 8.0;
+    let button_width = measure_mono(text_system, button_label, button_font) + button_pad_x * 2.0;
+    let button_height = button_font + button_pad_y * 2.0;
+    let button_x = inner_x + (inner_width - button_width) * 0.5;
+    let button_y = y;
+    state.gptoss.start_button_bounds = Bounds::new(button_x, button_y, button_width, button_height);
+
+    let button_bg = if state.gptoss.load_active {
+        Hsla::new(0.0, 0.0, 0.12, 0.9)
+    } else if state.gptoss.start_button_hovered {
+        accent_cyan().with_alpha(0.18)
+    } else {
+        Hsla::new(0.0, 0.0, 0.08, 0.9)
+    };
+    let button_border = if state.gptoss.load_active {
+        theme::text::MUTED
+    } else if state.gptoss.start_button_hovered {
+        accent_cyan()
+    } else {
+        panel_border()
+    };
+
+    scene.draw_quad(
+        Quad::new(state.gptoss.start_button_bounds)
+            .with_background(button_bg)
+            .with_border(button_border, 1.0),
+    );
+    draw_mono_text(
+        scene,
+        text_system,
+        button_label,
+        button_x + button_pad_x,
+        button_y + button_pad_y,
+        button_font,
+        theme::text::PRIMARY,
+    );
+
+    y += button_height + 10.0;
+    if let Some(err) = &state.gptoss.load_error {
+        draw_mono_text(
+            scene,
+            text_system,
+            &truncate_text(err, 80),
+            inner_x,
+            y,
+            10.0,
+            theme::status::ERROR,
+        );
+        y += 14.0;
+    }
+    if let Some(url) = &state.gptoss.load_url {
+        draw_mono_text(
+            scene,
+            text_system,
+            &format!("GGUF: {}", truncate_text(url, 60)),
+            inner_x,
+            y,
+            10.0,
+            theme::text::MUTED,
+        );
+        y += 14.0;
+    }
+    y += 6.0;
 
     let has_data = !state.gptoss.load_stages.is_empty()
         || !state.gptoss.inference_stages.is_empty()
@@ -132,7 +203,7 @@ pub(crate) fn build_gptoss_page(
             scene,
             text_system,
             empty_bounds,
-            "Provide ?data=<url> with telemetry JSON",
+            "Provide ?gguf=<url> then click START LOAD",
         );
         y += 140.0;
     } else {

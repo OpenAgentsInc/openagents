@@ -24,6 +24,7 @@ use crate::views::{
 };
 use crate::fs_access::{self, FileKind};
 use crate::gptoss_viz::init_gptoss_viz_runtime;
+use crate::gptoss_runtime::start_gptoss_load;
 use crate::ml_viz::init_ml_viz_runtime;
 use crate::utils::{read_clipboard_text, track_funnel_event};
 // Wallet disabled
@@ -330,6 +331,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.view == AppView::Y2026Page {
                     state.y2026.link_hovered = state.y2026.link_bounds.iter()
                         .any(|(bounds, _)| bounds.contains(state.mouse_pos));
+                }
+
+                if state.view == AppView::GptOssPage {
+                    state.gptoss.start_button_hovered = !state.gptoss.load_active
+                        && state.gptoss.start_button_bounds.contains(state.mouse_pos);
                 }
 
                 if state.claude_chat.visible {
@@ -743,6 +749,14 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             }
 
+            let mut start_gptoss = false;
+            if state.view == AppView::GptOssPage
+                && !state.gptoss.load_active
+                && state.gptoss.start_button_bounds.contains(click_pos)
+            {
+                start_gptoss = true;
+            }
+
             if state.button_bounds.contains(click_pos) {
                 if let Some(window) = web_sys::window() {
                     match state.view {
@@ -778,6 +792,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         }
                     }
                 }
+            }
+
+            if start_gptoss {
+                drop(state);
+                start_gptoss_load(state_clone.clone());
+                return;
             }
         });
         canvas.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;
