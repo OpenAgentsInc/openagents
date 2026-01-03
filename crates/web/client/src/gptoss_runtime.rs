@@ -460,6 +460,7 @@ struct RuntimeCaches {
     tensors: TensorCache,
     quant: QuantCache,
     experts: ExpertCache,
+    moe_disabled: bool,
 }
 
 impl RuntimeCaches {
@@ -468,6 +469,7 @@ impl RuntimeCaches {
             tensors: TensorCache::new(),
             quant: QuantCache::new(),
             experts: ExpertCache::new(),
+            moe_disabled: false,
         }
     }
 }
@@ -3140,7 +3142,8 @@ async fn run_transformer_layer(
         None,
         Some(format!("layer={layer} ms={gate_ms}")),
     );
-    let (expert_indices, expert_weights) = if moe_fallback {
+    let moe_fallback_active = moe_fallback || caches.moe_disabled;
+    let (expert_indices, expert_weights) = if moe_fallback_active {
         (vec![0usize], vec![1.0f32])
     } else {
         top_k_softmax(&gate_scores, config.experts_per_token as usize)?
@@ -3165,46 +3168,117 @@ async fn run_transformer_layer(
     let down_exps_b = find_tensor(index, &format!("blk.{layer}.ffn_down_exps.bias"))?;
 
     let mut mlp_accum = vec![0.0f32; hidden.len()];
+    let mut moe_error: Option<String> = None;
     for (expert_idx, weight) in expert_indices.iter().zip(expert_weights.iter()) {
         let expert_start = now_ms();
-        let gate_quant = fetch_mxfp4_expert_cached(
+        let gate_quant = match fetch_mxfp4_expert_cached(
             state,
             gguf_url,
             gate_exps_w,
             *expert_idx,
             &mut caches.experts,
         )
-        .await?;
+        .await
+        {
+            Ok(value) => value,
+            Err(err) => {
+                moe_error = Some(err);
+                break;
+            }
+        };
         let mut gate_out =
-            matmul_mxfp4_expert(&gate_quant, &normed, gate_exps_w, gpu, gpu_tracker).await?;
-        let gate_bias = fetch_f32_row(gguf_url, gate_exps_b, *expert_idx).await?;
+            match matmul_mxfp4_expert(&gate_quant, &normed, gate_exps_w, gpu, gpu_tracker).await {
+                Ok(value) => value,
+                Err(err) => {
+                    moe_error = Some(err);
+                    break;
+                }
+            };
+        let gate_bias = match fetch_f32_row(gguf_url, gate_exps_b, *expert_idx).await {
+            Ok(value) => value,
+            Err(err) => {
+                moe_error = Some(err);
+                break;
+            }
+        };
         apply_bias(&mut gate_out, &gate_bias);
 
-        let up_quant = fetch_mxfp4_expert_cached(
+        let up_quant = match fetch_mxfp4_expert_cached(
             state,
             gguf_url,
             up_exps_w,
             *expert_idx,
             &mut caches.experts,
         )
-        .await?;
+        .await
+        {
+            Ok(value) => value,
+            Err(err) => {
+                moe_error = Some(err);
+                break;
+            }
+        };
         let mut up_out =
-            matmul_mxfp4_expert(&up_quant, &normed, up_exps_w, gpu, gpu_tracker).await?;
-        let up_bias = fetch_f32_row(gguf_url, up_exps_b, *expert_idx).await?;
+            match matmul_mxfp4_expert(&up_quant, &normed, up_exps_w, gpu, gpu_tracker).await {
+                Ok(value) => value,
+                Err(err) => {
+                    moe_error = Some(err);
+                    break;
+                }
+            };
+        let up_bias = match fetch_f32_row(gguf_url, up_exps_b, *expert_idx).await {
+            Ok(value) => value,
+            Err(err) => {
+                moe_error = Some(err);
+                break;
+            }
+        };
         apply_bias(&mut up_out, &up_bias);
 
-        let swiglu_out = swiglu(&gate_out, &up_out)?;
-        let down_quant = fetch_mxfp4_expert_cached(
+        let swiglu_out = match swiglu(&gate_out, &up_out) {
+            Ok(value) => value,
+            Err(err) => {
+                moe_error = Some(err);
+                break;
+            }
+        };
+        let down_quant = match fetch_mxfp4_expert_cached(
             state,
             gguf_url,
             down_exps_w,
             *expert_idx,
             &mut caches.experts,
         )
-        .await?;
-        let mut down_out =
-            matmul_mxfp4_expert(&down_quant, &swiglu_out, down_exps_w, gpu, gpu_tracker).await?;
-        let down_bias = fetch_f32_row(gguf_url, down_exps_b, *expert_idx).await?;
+        .await
+        {
+            Ok(value) => value,
+            Err(err) => {
+                moe_error = Some(err);
+                break;
+            }
+        };
+        let mut down_out = match matmul_mxfp4_expert(
+            &down_quant,
+            &swiglu_out,
+            down_exps_w,
+            gpu,
+            gpu_tracker,
+        )
+        .await
+        {
+            Ok(value) => value,
+            Err(err) => {
+                moe_error = Some(err);
+                break;
+            }
+        };
+        let down_bias = match fetch_f32_row(gguf_url, down_exps_b, *expert_idx).await {
+            Ok(value) => value,
+            Err(err) => {
+                moe_error = Some(err);
+                break;
+            }
+        };
         apply_bias(&mut down_out, &down_bias);
 
         for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {
@@ -3218,6 +3292,25 @@ async fn run_transformer_layer(
             None,
             None,
             Some(format!("layer={layer} expert={expert_idx} ms={expert_ms}")),
+        );
+    }
+    if let Some(err) = moe_error {
+        caches.moe_disabled = true;
+        emit_inference_stage(
+            state,
+            "moe_expert",
+            StageStatus::Failed,
+            None,
+            None,
+            Some(format!("layer={layer} err={err}")),
+        );
+        emit_inference_stage(
+            state,
+            "moe_mode",
+            StageStatus::Completed,
+            None,
+            None,
+            Some("fallback (mlp skipped)".to_string()),
         );
     }
 
