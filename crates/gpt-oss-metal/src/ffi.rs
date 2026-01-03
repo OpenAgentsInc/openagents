@@ -58,7 +58,7 @@ pub type gptoss_tokenizer_t = *mut gptoss_tokenizer;
 pub type gptoss_context_t = *mut gptoss_context;
 pub type gptoss_sampler_t = *mut gptoss_sampler;
 
-extern "C" {
+unsafe extern "C" {
     pub fn gptoss_model_create_from_file(
         path: *const c_char,
         model_out: *mut gptoss_model_t,

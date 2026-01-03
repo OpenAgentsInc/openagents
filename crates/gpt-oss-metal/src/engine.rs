@@ -154,7 +154,7 @@ impl GptOssMetalEngine {
             .seed
             .unwrap_or_else(|| OsRng.next_u64());
 
-        let mut model = self.model.lock().map_err(|_| {
+        let model = self.model.lock().map_err(|_| {
             GptOssMetalError::FfiError("model mutex poisoned".to_string())
         })?;
 
