@@ -13,7 +13,7 @@ use crate::state::{
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum StageStatus {
+pub(crate) enum StageStatus {
     Started,
     Progress,
     Completed,
@@ -22,7 +22,7 @@ enum StageStatus {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum GptOssTelemetry {
+pub(crate) enum GptOssTelemetry {
     LoadStage {
         stage: String,
         status: StageStatus,
@@ -47,7 +47,7 @@ enum GptOssTelemetry {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum GptOssInferenceTelemetry {
+pub(crate) enum GptOssInferenceTelemetry {
     TokenGenerated {
         token_id: u32,
         token_text: String,
@@ -81,7 +81,7 @@ enum GptOssInferenceTelemetry {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct GptOssTokenCandidate {
+pub(crate) struct GptOssTokenCandidate {
     token_id: u32,
     token_text: String,
     probability: f32,
@@ -200,6 +200,15 @@ impl GptOssVizState {
                 }
             }
         }
+    }
+}
+
+pub(crate) fn push_gptoss_event(
+    state: &Rc<RefCell<AppState>>,
+    event: GptOssTelemetry,
+) {
+    if let Ok(mut guard) = state.try_borrow_mut() {
+        guard.gptoss.apply_telemetry(event);
     }
 }
 

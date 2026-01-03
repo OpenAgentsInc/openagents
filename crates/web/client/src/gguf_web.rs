@@ -84,6 +84,53 @@ pub(crate) async fn fetch_range(url: &str, offset: u64, len: u64) -> Result<Vec<
     Ok(bytes)
 }
 
+pub(crate) async fn fetch_range_with_total(
+    url: &str,
+    offset: u64,
+    len: u64,
+) -> Result<(Vec<u8>, Option<u64>), String> {
+    if len == 0 {
+        return Err("range length is zero".to_string());
+    }
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let end = offset.saturating_add(len.saturating_sub(1));
+    let range_header = format!("bytes={offset}-{end}");
+
+    let init = web_sys::RequestInit::new();
+    init.set_method("GET");
+
+    let headers = web_sys::Headers::new().map_err(js_err)?;
+    headers.set("Range", &range_header).map_err(js_err)?;
+    init.set_headers(&headers);
+
+    let request = web_sys::Request::new_with_str_and_init(url, &init).map_err(js_err)?;
+    let resp_value = JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(js_err)?;
+    let resp: web_sys::Response = resp_value.dyn_into().map_err(js_err)?;
+
+    if !resp.ok() {
+        return Err(format!("fetch failed: {}", resp.status()));
+    }
+
+    let content_range = resp.headers().get("Content-Range").map_err(js_err)?;
+    let total = content_range
+        .as_deref()
+        .and_then(parse_content_range_total);
+
+    let buffer = JsFuture::from(resp.array_buffer().map_err(js_err)?)
+        .await
+        .map_err(js_err)?;
+    let array = js_sys::Uint8Array::new(&buffer);
+    let mut bytes = vec![0u8; array.length() as usize];
+    array.copy_to(&mut bytes);
+    if bytes.len() > len as usize && content_range.is_none() {
+        return Err("range request not honored by server".to_string());
+    }
+    Ok((bytes, total))
+}
+
 fn parse_gguf_index(bytes: &[u8]) -> Result<GgufIndex, ParseError> {
     let mut cursor = Cursor::new(bytes);
 
@@ -347,4 +394,15 @@ fn map_incomplete(err: std::io::Error) -> ParseError {
 
 fn js_err(err: impl std::fmt::Debug) -> String {
     format!("{err:?}")
+}
+
+fn parse_content_range_total(value: &str) -> Option<u64> {
+    let mut parts = value.split('/');
+    let _range = parts.next()?;
+    let total = parts.next()?;
+    if total == "*" {
+        None
+    } else {
+        total.parse::<u64>().ok()
+    }
 }
