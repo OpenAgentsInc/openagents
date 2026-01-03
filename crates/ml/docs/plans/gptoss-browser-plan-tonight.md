@@ -218,6 +218,7 @@ Notes:
 - Prompt encode telemetry now includes format=harmony on completion for HUD visibility.
 - Prefill/decode/generation completion telemetry now includes elapsed ms and tok/s rates.
 - Streaming load loop now yields to the browser so the HUD stays responsive during large downloads.
+- Wheel scroll listener is now passive (uses `AddEventListenerOptions`) to remove Chrome console warnings; `cargo check --manifest-path crates/web/client/Cargo.toml --target wasm32-unknown-unknown` passes.
 
 ---
 

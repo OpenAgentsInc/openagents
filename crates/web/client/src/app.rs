@@ -1106,7 +1106,13 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             }
         });
-        canvas.add_event_listener_with_callback("wheel", closure.as_ref().unchecked_ref())?;
+        let options = web_sys::AddEventListenerOptions::new();
+        options.set_passive(true);
+        canvas.add_event_listener_with_callback_and_add_event_listener_options(
+            "wheel",
+            closure.as_ref().unchecked_ref(),
+            &options,
+        )?;
         closure.forget();
     }
 
