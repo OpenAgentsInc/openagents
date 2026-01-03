@@ -374,7 +374,11 @@ fn draw_stage_panel(
         let status_color = status_color(stage.status);
         draw_mono_text(scene, text_system, status_text, inner.x(), y, 10.0, status_color);
 
-        let name = truncate_text(&stage.name, 20);
+        let name = if let Some(detail) = stage.detail.as_ref() {
+            truncate_text(&format!("{}: {}", stage.name, detail), 32)
+        } else {
+            truncate_text(&stage.name, 32)
+        };
         draw_mono_text(
             scene,
             text_system,
