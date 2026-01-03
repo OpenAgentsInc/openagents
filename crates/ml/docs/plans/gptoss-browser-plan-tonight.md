@@ -144,6 +144,7 @@ Notes:
 - Added **probability history waterfall** panel with per-token top-k bars + entropy sparkline.
 - Added **native GPT-OSS CLI harness** (`test_tokenizer`, `test_embed`, `test_lm_head`, `test_attention`, `test_layer`, `test_moe_router`, `gptoss_cli`) plus GGUF metadata parsing + tokenizer for native validation.
 - Added **GPT-2 byte encoder/decoder** for the tokenizer (fixes byte-encoded space handling like `U+0120`), verified `test_tokenizer` encodes and roundtrips `Hello, world!`.
+- Ran `test_lm_head` with a limited row scan (1k rows) and got top-k token output from `output.weight`.
 
 ---
 
