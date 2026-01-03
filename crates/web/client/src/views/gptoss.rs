@@ -511,6 +511,34 @@ fn draw_io_panel(
         theme::text::MUTED,
     );
 
+    let tensor_cache = find_stage(gptoss, "tensor_cache")
+        .and_then(|stage| stage.detail.as_ref())
+        .map(|detail| format!("TENSOR CACHE: {}", truncate_text(detail, 46)))
+        .unwrap_or_else(|| "TENSOR CACHE: --".to_string());
+    draw_mono_text(
+        scene,
+        text_system,
+        &tensor_cache,
+        inner.x(),
+        inner.y() + 66.0,
+        9.0,
+        theme::text::MUTED,
+    );
+
+    let expert_cache = find_stage(gptoss, "expert_cache")
+        .and_then(|stage| stage.detail.as_ref())
+        .map(|detail| format!("EXPERT CACHE: {}", truncate_text(detail, 46)))
+        .unwrap_or_else(|| "EXPERT CACHE: --".to_string());
+    draw_mono_text(
+        scene,
+        text_system,
+        &expert_cache,
+        inner.x(),
+        inner.y() + 80.0,
+        9.0,
+        theme::text::MUTED,
+    );
+
     let limits_lines = gptoss
         .gpu_limits
         .as_ref()
@@ -526,13 +554,13 @@ fn draw_io_panel(
             text_system,
             line,
             inner.x(),
-            inner.y() + 66.0 + (idx as f32 * 12.0),
+            inner.y() + 96.0 + (idx as f32 * 12.0),
             9.0,
             theme::text::MUTED,
         );
     }
 
-    let mut ry = inner.y() + 82.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
+    let mut ry = inner.y() + 112.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
     draw_mono_text(
         scene,
         text_system,
