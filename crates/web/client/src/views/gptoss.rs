@@ -1670,11 +1670,19 @@ fn draw_stats_panel(
         accent_orange(),
     );
 
-    let stage_text = gptoss
+    let (stage_text, stage_color) = gptoss
         .current_stage
         .as_ref()
-        .map(|stage| format!("STAGE: {}", truncate_text(stage, 32)))
-        .unwrap_or_else(|| "STAGE: --".to_string());
+        .map(|stage| {
+            let label = truncate_text(stage, 32);
+            let color = if stage == "ERROR" {
+                theme::status::ERROR
+            } else {
+                theme::text::MUTED
+            };
+            (format!("STAGE: {label}"), color)
+        })
+        .unwrap_or_else(|| ("STAGE: --".to_string(), theme::text::MUTED));
     y += 14.0;
     draw_mono_text(
         scene,
@@ -1683,7 +1691,7 @@ fn draw_stats_panel(
         inner.x(),
         y,
         10.0,
-        theme::text::MUTED,
+        stage_color,
     );
 
     let cache = gptoss.cache_status.last();

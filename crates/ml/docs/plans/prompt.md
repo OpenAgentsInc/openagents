@@ -651,6 +651,7 @@ Read these if stuck:
 - 2026-01-02: Hide the token cursor once the last token pulse fades so the stream doesn’t look active after decode ends.
 - 2026-01-02: Show `ERROR` in the stats stage line when load/inference errors occur and no stage is running.
 - 2026-01-02: Include `<|end|>` in the stop token list to match Harmony’s default stop tokens.
+- 2026-01-02: Tint the stage label red when `ERROR` is active to make failures obvious.
 
 ---
 
