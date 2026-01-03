@@ -5,6 +5,7 @@ use wgpui::components::Component;
 use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame, Heatmap};
 use wgpui::PaintContext;
 
+use crate::gptoss_runtime::{default_gguf_url, default_user_prompt, read_query_param};
 use crate::state::{AppState, GptOssStage, GptOssStageStatus, GptOssVizState};
 
 fn accent_cyan() -> Hsla {
@@ -120,6 +121,44 @@ pub(crate) fn build_gptoss_page(
         theme::text::MUTED,
     );
     y += subtitle_size + 14.0;
+
+    ensure_gptoss_inputs(&mut state.gptoss);
+
+    draw_mono_text(
+        scene,
+        text_system,
+        "GGUF URL",
+        inner_x,
+        y,
+        9.0,
+        theme::text::MUTED,
+    );
+    y += 12.0;
+    let gguf_input_bounds = Bounds::new(inner_x, y, inner_width, 28.0);
+    state.gptoss.gguf_input_bounds = gguf_input_bounds;
+    {
+        let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+        state.gptoss.gguf_input.paint(gguf_input_bounds, &mut input_cx);
+    }
+    y += 34.0;
+
+    draw_mono_text(
+        scene,
+        text_system,
+        "PROMPT",
+        inner_x,
+        y,
+        9.0,
+        theme::text::MUTED,
+    );
+    y += 12.0;
+    let prompt_input_bounds = Bounds::new(inner_x, y, inner_width, 28.0);
+    state.gptoss.prompt_input_bounds = prompt_input_bounds;
+    {
+        let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+        state.gptoss.prompt_input.paint(prompt_input_bounds, &mut input_cx);
+    }
+    y += 40.0;
 
     let button_label = if state.gptoss.load_active {
         "LOADING..."
@@ -992,4 +1031,32 @@ fn wrap_tokens(text: &str, max_len: usize, max_lines: usize) -> Vec<String> {
         lines.push(current);
     }
     lines
+}
+
+fn ensure_gptoss_inputs(gptoss: &mut GptOssVizState) {
+    if gptoss.inputs_initialized {
+        return;
+    }
+    let gguf_value = read_query_param("gguf")
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            let default = default_gguf_url();
+            if default.is_empty() {
+                None
+            } else {
+                Some(default)
+            }
+        });
+    if let Some(value) = gguf_value {
+        gptoss.gguf_input.set_value(value);
+    }
+
+    let prompt_value = read_query_param("prompt")
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(default_user_prompt);
+    if !prompt_value.is_empty() {
+        gptoss.prompt_input.set_value(prompt_value);
+    }
+
+    gptoss.inputs_initialized = true;
 }
