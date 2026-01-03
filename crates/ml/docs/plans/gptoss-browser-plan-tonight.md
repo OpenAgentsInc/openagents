@@ -202,6 +202,7 @@ Notes:
 - GPT-OSS page now shows the full local GGUF URL under the input for easy copy/paste.
 - Load now fails fast with a clear error if WebGPU isn't available in the browser.
 - Attention telemetry no longer short-circuits event timing when empty payloads arrive.
+- Load streaming errors are now non-fatal (generation keeps running with a failed stage log).
 
 ---
 

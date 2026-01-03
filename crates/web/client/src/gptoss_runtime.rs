@@ -847,7 +847,14 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
 
     let (stream_res, _) = futures::join!(stream_future, gen_future);
     if let Err(err) = stream_res {
-        return Err(err);
+        emit_load_stage(
+            &state,
+            "weights_fetch",
+            StageStatus::Failed,
+            Some(format!("stream error: {err}")),
+            None,
+            None,
+        );
     }
 
     if let Ok(mut guard) = state.try_borrow_mut() {
