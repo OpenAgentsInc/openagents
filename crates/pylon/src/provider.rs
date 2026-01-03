@@ -134,15 +134,15 @@ impl PylonProvider {
             match MlProviderConfig::from_env() {
                 Ok(config) => match MlProvider::new(config).await {
                     Ok(provider) => {
-                        registry.register_with_id(\"ml-candle\", Arc::new(RwLock::new(provider)));
-                        tracing::info!(\"Registered Candle ML backend\");
+                        registry.register_with_id("ml-candle", Arc::new(RwLock::new(provider)));
+                        tracing::info!("Registered Candle ML backend");
                     }
                     Err(err) => {
-                        tracing::warn!(\"Failed to initialize Candle ML backend: {err}\");
+                        tracing::warn!("Failed to initialize Candle ML backend: {err}");
                     }
                 },
                 Err(err) => {
-                    tracing::debug!(\"Candle ML backend not configured: {err}\");
+                    tracing::debug!("Candle ML backend not configured: {err}");
                 }
             }
         }
