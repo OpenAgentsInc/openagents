@@ -718,6 +718,10 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.attention_weights = None;
     state.attention_layer = 0;
     state.attention_head = 0;
+    state.attention_mode = None;
+    state.moe_mode = None;
+    state.active_layers = None;
+    state.load_progress = None;
     state.current_stage = None;
     state.last_token_ts_ms = None;
     state.start_ts_ms = None;
@@ -1767,7 +1771,7 @@ async fn run_generation(
         "dense".to_string()
     };
     let moe_mode = if moe_fallback {
-        "fallback".to_string()
+        "fallback expert=0".to_string()
     } else if config.expert_count > 0 {
         format!("experts={} topk={}", config.expert_count, config.experts_per_token)
     } else {

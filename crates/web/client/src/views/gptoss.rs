@@ -667,12 +667,13 @@ fn draw_stats_panel(
         .map(|v| format!("{v:.3}"))
         .unwrap_or_else(|| "--".to_string());
 
+    let mut y = inner.y();
     draw_mono_text(
         scene,
         text_system,
         &format!("ENTROPY: {entropy}"),
         inner.x(),
-        inner.y(),
+        y,
         11.0,
         accent_orange(),
     );
@@ -682,12 +683,13 @@ fn draw_stats_panel(
         .as_ref()
         .map(|stage| format!("STAGE: {}", truncate_text(stage, 32)))
         .unwrap_or_else(|| "STAGE: --".to_string());
+    y += 14.0;
     draw_mono_text(
         scene,
         text_system,
         &stage_text,
         inner.x(),
-        inner.y() + 14.0,
+        y,
         10.0,
         theme::text::MUTED,
     );
@@ -702,12 +704,60 @@ fn draw_stats_panel(
     } else {
         "KV CACHE: --".to_string()
     };
+    y += 14.0;
     draw_mono_text(
         scene,
         text_system,
         &cache_text,
         inner.x(),
-        inner.y() + 28.0,
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
+
+    let layers_text = gptoss
+        .active_layers
+        .map(|layers| format!("LAYERS: {layers}"))
+        .unwrap_or_else(|| "LAYERS: --".to_string());
+    y += 14.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        &layers_text,
+        inner.x(),
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
+
+    let attn_text = gptoss
+        .attention_mode
+        .as_ref()
+        .map(|mode| format!("ATTN: {}", truncate_text(mode, 26)))
+        .unwrap_or_else(|| "ATTN: --".to_string());
+    y += 14.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        &attn_text,
+        inner.x(),
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
+
+    let moe_text = gptoss
+        .moe_mode
+        .as_ref()
+        .map(|mode| format!("MOE: {}", truncate_text(mode, 26)))
+        .unwrap_or_else(|| "MOE: --".to_string());
+    y += 14.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        &moe_text,
+        inner.x(),
+        y,
         10.0,
         theme::text::MUTED,
     );
@@ -842,6 +892,9 @@ fn draw_scrollbar(
 }
 
 fn load_progress(gptoss: &GptOssVizState) -> Option<f32> {
+    if let Some(progress) = gptoss.load_progress {
+        return Some(progress.clamp(0.0, 1.0));
+    }
     let stage = gptoss
         .load_stages
         .iter()
