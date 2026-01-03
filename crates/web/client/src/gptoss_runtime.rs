@@ -3674,6 +3674,7 @@ async fn run_transformer_layer(
     let attn_start = now_ms();
     let mut attn_fallback = false;
     let mut attn_mode = "gpu";
+    let phase = if allow_cpu_attention { "prefill" } else { "decode" };
     let attn_out = match attention_with_cache_gpu(
         &q,
         layer_cache,
@@ -3711,7 +3712,7 @@ async fn run_transformer_layer(
                         StageStatus::Completed,
                         None,
                         None,
-                        Some(format!("layer={layer} fallback=single_token err={err}")),
+                        Some(format!("layer={layer} phase={phase} fallback=single_token err={err}")),
                     );
                     attention_single_token(&q, &k, &v, &sinks, heads, kv_heads, head_dim)?
                 }
@@ -3720,9 +3721,9 @@ async fn run_transformer_layer(
     };
     let attn_ms = now_ms().saturating_sub(attn_start).max(1);
     let attn_detail = if attn_fallback {
-        format!("layer={layer} {attn_mode} window={window} ms={attn_ms} fallback")
+        format!("layer={layer} {attn_mode} phase={phase} window={window} ms={attn_ms} fallback")
     } else {
-        format!("layer={layer} {attn_mode} window={window} ms={attn_ms}")
+        format!("layer={layer} {attn_mode} phase={phase} window={window} ms={attn_ms}")
     };
     emit_inference_stage(
         state,
