@@ -579,10 +579,15 @@ fn draw_stream_panel(
         accent_cyan(),
     );
 
+    let show_cursor = gptoss.load_active || !gptoss.token_stream.is_empty();
+    let mut display_stream = truncate_text(&stream, 176);
+    if show_cursor {
+        display_stream.push_str(" |");
+    }
     draw_mono_text(
         scene,
         text_system,
-        &truncate_text(&stream, 180),
+        &display_stream,
         inner.x(),
         inner.y() + 16.0,
         10.0,
