@@ -827,10 +827,11 @@ fn emit_gpu_limits(state: &Rc<RefCell<AppState>>, gpu: &GpuContext) {
     let features = gpu.device.features();
     let shader_f16 = features.contains(wgpu::Features::SHADER_F16);
     let detail = format!(
-        "max_storage={} max_buffer={} bind_groups={} storage_bindings={} dynamic_storage={} uniform_bindings={} f16={}",
+        "max_storage={} max_buffer={} bind_groups={} bindings_per_group={} storage_bindings={} dynamic_storage={} uniform_bindings={} f16={}",
         limits.max_storage_buffer_binding_size,
         limits.max_buffer_size,
         limits.max_bind_groups,
+        limits.max_bindings_per_bind_group,
         limits.max_storage_buffers_per_shader_stage,
         limits.max_dynamic_storage_buffers_per_pipeline_layout,
         limits.max_uniform_buffers_per_shader_stage,
@@ -3587,9 +3588,19 @@ async fn gpu_matmul_mxfp4(
     let max_storage = device.limits().max_storage_buffer_binding_size as usize;
     let x_bytes = x.len() * std::mem::size_of::<f32>();
     let y_bytes = n * std::mem::size_of::<f32>();
-    ensure_storage_limit("mxfp4 weights", quant.len(), max_storage)?;
+    if n % MXFP4_BLOCK_VALUES != 0 {
+        return Err("mxfp4 n not divisible by block size".to_string());
+    }
+    let row_bytes = (n / MXFP4_BLOCK_VALUES) * MXFP4_BLOCK_BYTES;
+    let expected_bytes = row_bytes
+        .checked_mul(k)
+        .ok_or_else(|| "mxfp4 weight byte overflow".to_string())?;
+    if quant.len() < expected_bytes {
+        return Err("mxfp4 weights truncated".to_string());
+    }
     ensure_storage_limit("mxfp4 input", x_bytes, max_storage)?;
     ensure_storage_limit("mxfp4 output", y_bytes, max_storage)?;
+    let chunked = expected_bytes > max_storage;
 
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("mxfp4_probe"),
@@ -3657,11 +3668,6 @@ async fn gpu_matmul_mxfp4(
         cache: None,
     });
 
-    let quant_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("mxfp4_probe_quant"),
-        contents: quant,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-    });
     let x_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("mxfp4_probe_x"),
         contents: cast_slice(x),
@@ -3676,36 +3682,6 @@ async fn gpu_matmul_mxfp4(
             | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
-    let params = [k as u32, n as u32, n as u32, 0u32];
-    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("mxfp4_probe_params"),
-        contents: cast_slice(&params),
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-    });
-
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("mxfp4_probe_bind_group"),
-        layout: &bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: quant_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: x_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: y_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: params_buffer.as_entire_binding(),
-            },
-        ],
-    });
-
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("mxfp4_probe_readback"),
         size: y_bytes,
@@ -3714,26 +3690,99 @@ async fn gpu_matmul_mxfp4(
     });
     let params_bytes = std::mem::size_of::<u32>() * 4;
     gpu_tracker.add(
-        quant.len()
-            + x.len() * std::mem::size_of::<f32>()
-            + (y_bytes as usize) * 2
-            + params_bytes,
+        x.len() * std::mem::size_of::<f32>() + (y_bytes as usize) * 2 + params_bytes,
     );
 
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("mxfp4_probe_encoder"),
-    });
-    {
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some("mxfp4_probe_pass"),
-            timestamp_writes: None,
+    let mut row_offset = 0usize;
+    while row_offset < k {
+        let rows = if chunked {
+            let max_rows = (max_storage / row_bytes).max(1);
+            (k - row_offset).min(max_rows)
+        } else {
+            k
+        };
+        let start = row_offset * row_bytes;
+        let end = start + rows * row_bytes;
+        let slice = &quant[start..end];
+        let mut quant_chunk = slice.to_vec();
+        if quant_chunk.len() % 4 != 0 {
+            let padded = (quant_chunk.len() + 3) / 4 * 4;
+            quant_chunk.resize(padded, 0);
+        }
+        if chunked {
+            ensure_storage_limit("mxfp4 weights", quant_chunk.len(), max_storage)?;
+        } else {
+            ensure_storage_limit("mxfp4 weights", quant_chunk.len(), max_storage)?;
+        }
+
+        let quant_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("mxfp4_probe_quant"),
+            contents: &quant_chunk,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
-        pass.set_pipeline(&pipeline);
-        pass.set_bind_group(0, &bind_group, &[]);
-        let workgroup_size = 64u32;
-        let groups = (n as u32 + workgroup_size - 1) / workgroup_size;
-        pass.dispatch_workgroups(groups, 1, 1);
+        gpu_tracker.add(quant_chunk.len());
+        let params = [
+            rows as u32,
+            n as u32,
+            row_offset as u32,
+            if row_offset == 0 { 0 } else { 1 },
+        ];
+        let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("mxfp4_probe_params"),
+            contents: cast_slice(&params),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        gpu_tracker.add(params_bytes);
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("mxfp4_probe_bind_group"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: quant_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: x_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: y_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: params_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("mxfp4_probe_encoder"),
+        });
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("mxfp4_probe_pass"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&pipeline);
+            pass.set_bind_group(0, &bind_group, &[]);
+            let workgroup_size = 64u32;
+            let groups = (n as u32 + workgroup_size - 1) / workgroup_size;
+            pass.dispatch_workgroups(groups, 1, 1);
+        }
+        queue.submit(Some(encoder.finish()));
+
+        if chunked {
+            row_offset += rows;
+        } else {
+            break;
+        }
     }
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("mxfp4_probe_readback_encoder"),
+    });
     encoder.copy_buffer_to_buffer(&y_buffer, 0, &readback, 0, y_bytes);
     queue.submit(Some(encoder.finish()));
 
@@ -3831,8 +3880,8 @@ const MXFP4_SHADER: &str = r#"
 struct Params {
     k: u32,
     n: u32,
-    stride: u32,
-    _pad: u32,
+    row_offset: u32,
+    accumulate: u32,
 };
 
 @group(0) @binding(0)
@@ -3878,12 +3927,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let mut acc = 0.0;
+    let mut acc = select(0.0, y[col], params.accumulate != 0u);
     for (var row = 0u; row < params.k; row = row + 1u) {
         let idx = row * params.n + col;
         let block = idx / 32u;
         let offset = idx % 32u;
         let w = mxfp4_unpack(block, offset);
-        acc = acc + x[row] * w;
+        acc = acc + x[params.row_offset + row] * w;
     }
     y[col] = acc;
 }
