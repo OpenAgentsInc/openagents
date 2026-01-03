@@ -12,6 +12,8 @@ const MXFP4_VALUES: [f32; 16] = [
     0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0,
     -6.0,
 ];
+const ROPE_NTK_ALPHA: f32 = 1.0;
+const ROPE_NTK_BETA: f32 = 32.0;
 
 #[derive(Clone, Debug)]
 pub struct LayerKvCache {
@@ -129,6 +131,20 @@ pub fn read_meta_u32(metadata: &GgufMetadata, key: &str) -> Result<u32> {
     }
 }
 
+pub fn read_meta_u32_optional(metadata: &GgufMetadata, key: &str) -> Option<u32> {
+    let value = lookup_meta(metadata, key)?;
+    let out = match value {
+        GgufScalar::U32(v) => *v,
+        GgufScalar::I32(v) => *v as u32,
+        GgufScalar::U64(v) => *v as u32,
+        GgufScalar::I64(v) => *v as u32,
+        GgufScalar::F32(v) => *v as u32,
+        GgufScalar::F64(v) => *v as u32,
+        _ => return None,
+    };
+    Some(out)
+}
+
 pub fn read_meta_f32(metadata: &GgufMetadata, key: &str) -> Result<f32> {
     let value = lookup_meta(metadata, key).ok_or_else(|| {
         MlError::Model(format!("missing gguf metadata key: {key}"))
@@ -144,6 +160,20 @@ pub fn read_meta_f32(metadata: &GgufMetadata, key: &str) -> Result<f32> {
             "metadata {key} is not numeric"
         ))),
     }
+}
+
+pub fn read_meta_f32_optional(metadata: &GgufMetadata, key: &str) -> Option<f32> {
+    let value = lookup_meta(metadata, key)?;
+    let out = match value {
+        GgufScalar::F32(v) => *v,
+        GgufScalar::F64(v) => *v as f32,
+        GgufScalar::U32(v) => *v as f32,
+        GgufScalar::I32(v) => *v as f32,
+        GgufScalar::U64(v) => *v as f32,
+        GgufScalar::I64(v) => *v as f32,
+        _ => return None,
+    };
+    Some(out)
 }
 
 fn lookup_meta<'a>(metadata: &'a GgufMetadata, key: &str) -> Option<&'a GgufScalar> {
@@ -423,6 +453,8 @@ pub fn apply_rope(
     position: usize,
     theta: f32,
     rope_dim: u32,
+    rope_scaling_factor: f32,
+    rope_scaling_original_context: u32,
 ) -> Result<()> {
     if head_dim == 0 || heads == 0 {
         return Err(MlError::Model("rope invalid head dims".to_string()));
@@ -442,14 +474,55 @@ pub fn apply_rope(
     if rope_dim == 0 {
         return Ok(());
     }
+    if rope_dim % 2 != 0 {
+        return Err(MlError::Model("rope_dim must be even".to_string()));
+    }
+
+    let theta = if theta <= 0.0 { 10000.0 } else { theta };
+    let scaling_factor = rope_scaling_factor.max(1.0);
+    let original_context = rope_scaling_original_context as f32;
+    let use_yarn = scaling_factor > 1.0 && original_context > 0.0;
+    let concentration = if use_yarn {
+        0.1 * scaling_factor.ln() + 1.0
+    } else {
+        1.0
+    };
+    let theta_log = theta.ln();
+    let d_half = rope_dim as f32 / 2.0;
+    let mut low = 0.0f32;
+    let mut high = 0.0f32;
+    if use_yarn {
+        let denom = theta_log.max(1e-6);
+        low = d_half
+            * (original_context / (ROPE_NTK_BETA * 2.0 * std::f32::consts::PI)).ln()
+            / denom;
+        high = d_half
+            * (original_context / (ROPE_NTK_ALPHA * 2.0 * std::f32::consts::PI)).ln()
+            / denom;
+        if !(low > 0.0 && high > low && high < d_half - 1.0) {
+            low = 0.0;
+            high = 0.0;
+        }
+    }
     for h in 0..heads {
         let base = h * head_dim;
         for i in (0..rope_dim).step_by(2) {
             let idx = base + i;
             let idx2 = idx + 1;
-            let freq = 1.0 / theta.powf(i as f32 / rope_dim as f32);
-            let angle = position as f32 * freq;
+            let freq = theta.powf(i as f32 / rope_dim as f32);
+            let mut inv_freq = 1.0 / freq;
+            if use_yarn && high > low {
+                let t = (i / 2) as f32;
+                let ramp = (t - low) / (high - low);
+                let mask = 1.0 - ramp.clamp(0.0, 1.0);
+                let interp = 1.0 / (scaling_factor * freq);
+                let extrap = 1.0 / freq;
+                inv_freq = interp * (1.0 - mask) + extrap * mask;
+            }
+            let angle = position as f32 * inv_freq;
             let (sin, cos) = angle.sin_cos();
+            let sin = sin * concentration;
+            let cos = cos * concentration;
             let v0 = values[idx];
             let v1 = values[idx2];
             values[idx] = v0 * cos - v1 * sin;

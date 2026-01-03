@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use ml::{
     apply_bias, apply_rope, attention_head_weights, attention_with_cache, find_tensor,
-    load_gguf_model, matmul_q8_0, read_f32_tensor, read_meta_f32, read_meta_u32, read_q8_0_row,
-    rms_norm, KvCache, MlError, Result,
+    load_gguf_model, matmul_q8_0, read_f32_tensor, read_meta_f32, read_meta_f32_optional,
+    read_meta_u32, read_meta_u32_optional, read_q8_0_row, rms_norm, KvCache, MlError, Result,
 };
 
 fn main() -> Result<()> {
@@ -44,7 +44,15 @@ fn main() -> Result<()> {
         read_meta_u32(&model.metadata, "llama.attention.head_count_kv")? as usize;
     let rope_dim = read_meta_u32(&model.metadata, "llama.rope.dimension_count")?;
     let rope_theta = read_meta_f32(&model.metadata, "llama.rope.freq_base")?;
+    let rope_scaling_factor =
+        read_meta_f32_optional(&model.metadata, "gpt-oss.rope.scaling.factor").unwrap_or(1.0);
+    let rope_scaling_original_context = read_meta_u32_optional(
+        &model.metadata,
+        "gpt-oss.rope.scaling.original_context_length",
+    )
+    .unwrap_or(0);
     let rms_eps = read_meta_f32(&model.metadata, "llama.attention.layer_norm_rms_epsilon")?;
+    let sliding_window = read_meta_u32(&model.metadata, "llama.sliding_window")? as usize;
     let block_count = read_meta_u32(&model.metadata, "llama.block_count")? as usize;
     if layer >= block_count {
         return Err(MlError::Model(format!("layer {layer} out of range")));
@@ -83,12 +91,36 @@ fn main() -> Result<()> {
         apply_bias(&mut v, &v_bias);
 
         let head_dim = q.len() / config_heads.max(1);
-        apply_rope(&mut q, config_heads, head_dim, pos, rope_theta, rope_dim)?;
-        apply_rope(&mut k, config_kv_heads, head_dim, pos, rope_theta, rope_dim)?;
+        apply_rope(
+            &mut q,
+            config_heads,
+            head_dim,
+            pos,
+            rope_theta,
+            rope_dim,
+            rope_scaling_factor,
+            rope_scaling_original_context,
+        )?;
+        apply_rope(
+            &mut k,
+            config_kv_heads,
+            head_dim,
+            pos,
+            rope_theta,
+            rope_dim,
+            rope_scaling_factor,
+            rope_scaling_original_context,
+        )?;
 
         let layer_cache = cache.layer_mut(layer)?;
         layer_cache.append(&k, &v, config_kv_heads, head_dim)?;
         let seq = layer_cache.token_count(config_kv_heads, head_dim);
+        let window = if sliding_window > 0 && layer % 2 == 0 {
+            sliding_window
+        } else {
+            seq
+        };
+        let window = window.max(1).min(seq);
         let _attn_out = attention_with_cache(
             &q,
             layer_cache,
@@ -96,7 +128,7 @@ fn main() -> Result<()> {
             config_heads,
             config_kv_heads,
             head_dim,
-            seq,
+            window,
         )?;
         last_q = q;
         last_head_dim = head_dim;
