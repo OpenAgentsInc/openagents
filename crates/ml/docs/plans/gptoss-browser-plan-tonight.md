@@ -106,6 +106,7 @@ Notes:
 - Added an **MXFP4 probe** (expert slice) with CPU/GPU matmul compare for ggml type 39.
 - Added a **GPU limits probe** (max storage/buffer sizes, bind group caps) to catch WebGPU limit issues early.
 - Parsed **model config** from GGUF metadata (blocks, heads, rope, experts) and emit in telemetry.
+- Added a **chunked Q8_0 logits probe** for `output.weight` with top-k token telemetry.
 - Added a `gptoss_runtime` scaffold to start centralizing browser runtime logic.
  - Wired `/gptoss` start button handling + runtime entrypoint for streaming load telemetry.
  - `/gptoss` now streams **real GGUF bytes** in chunks on click (with progress + tensor scan events).

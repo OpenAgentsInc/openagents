@@ -82,9 +82,9 @@ pub(crate) enum GptOssInferenceTelemetry {
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct GptOssTokenCandidate {
-    token_id: u32,
-    token_text: String,
-    probability: f32,
+    pub(crate) token_id: u32,
+    pub(crate) token_text: String,
+    pub(crate) probability: f32,
 }
 
 impl GptOssVizState {
