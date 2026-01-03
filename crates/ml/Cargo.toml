@@ -50,6 +50,7 @@ log = "0.4"
 uuid = { workspace = true }
 rand = { workspace = true }
 hex = { workspace = true }
+sha2 = { workspace = true }
 getrandom = { version = "0.2", optional = true }
 
 tokenizers = { version = "0.20", features = ["unstable_wasm"], optional = true }
