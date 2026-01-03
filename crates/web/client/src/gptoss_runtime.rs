@@ -2648,8 +2648,10 @@ async fn run_forward_token(
     );
 
     let layer_limit = active_layers.min(config.block_count as usize);
+    let mut applied_layers = 0usize;
     for layer in 0..layer_limit as u32 {
-        hidden = run_transformer_layer(
+        let current = std::mem::take(&mut hidden);
+        match run_transformer_layer(
             state,
             gguf_url,
             index,
@@ -2657,7 +2659,7 @@ async fn run_forward_token(
             config,
             layer,
             position,
-            hidden,
+            current,
             cache,
             caches,
             gpu_tracker,
@@ -2665,8 +2667,35 @@ async fn run_forward_token(
             moe_fallback,
             force_dense,
         )
-        .await?;
+        .await
+        {
+            Ok(next_hidden) => {
+                hidden = next_hidden;
+                applied_layers = applied_layers.saturating_add(1);
+            }
+            Err(err) => {
+                emit_inference_stage(
+                    state,
+                    "layer_fallback",
+                    StageStatus::Failed,
+                    Some(applied_layers),
+                    Some(layer_limit),
+                    Some(format!("layer={layer} err={err}")),
+                );
+                break;
+            }
+        }
         yield_to_browser().await;
+    }
+    if applied_layers < layer_limit {
+        emit_inference_stage(
+            state,
+            "layer_fallback",
+            StageStatus::Completed,
+            Some(applied_layers),
+            Some(layer_limit),
+            Some("skipped remaining layers".to_string()),
+        );
     }
 
     let output_norm_tensor = find_tensor(index, "output_norm.weight")?;
