@@ -11,6 +11,8 @@ use crate::state::{
     LayerActivity, MemoryUsage, MlTokenCandidate, TensorInfo,
 };
 
+const ATTENTION_HISTORY_MAX_ROWS: usize = 12;
+
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum StageStatus {
@@ -293,7 +295,30 @@ impl GptOssVizState {
                         }
                     }
                     GptOssInferenceTelemetry::AttentionWeights { layer, head, weights } => {
-                        self.attention_weights = Some(weights);
+                        if weights.is_empty() {
+                            return;
+                        }
+                        let mut merged = weights;
+                        if merged.len() == 1 {
+                            if let Some(existing) = self.attention_weights.as_ref() {
+                                if self.attention_layer == layer
+                                    && self.attention_head == head
+                                    && !existing.is_empty()
+                                {
+                                    let cols = existing[0].len();
+                                    if cols == merged[0].len() {
+                                        let mut combined = existing.clone();
+                                        combined.push(merged.remove(0));
+                                        if combined.len() > ATTENTION_HISTORY_MAX_ROWS {
+                                            let drop = combined.len() - ATTENTION_HISTORY_MAX_ROWS;
+                                            combined.drain(0..drop);
+                                        }
+                                        merged = combined;
+                                    }
+                                }
+                            }
+                        }
+                        self.attention_weights = Some(merged);
                         self.attention_layer = layer;
                         self.attention_head = head;
                     }

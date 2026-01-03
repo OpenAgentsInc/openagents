@@ -621,14 +621,26 @@ fn draw_io_panel(
         theme::text::MUTED,
     );
 
+    let gpu_buffers = find_stage(gptoss, "gpu_alloc")
+        .and_then(|stage| stage.detail.as_ref())
+        .and_then(|detail| parse_stage_value(detail, "buffers"));
     let mem = gptoss.memory_usage.as_ref();
     let mem_text = if let Some(mem) = mem {
-        format!(
-            "GPU: {}  CACHE: {}  ACT: {}",
-            format_bytes(mem.gpu_allocated),
-            format_bytes(mem.cache_total),
-            format_bytes(mem.activations),
-        )
+        if let Some(buffers) = gpu_buffers {
+            format!(
+                "GPU: {} (buf {buffers})  CACHE: {}  ACT: {}",
+                format_bytes(mem.gpu_allocated),
+                format_bytes(mem.cache_total),
+                format_bytes(mem.activations),
+            )
+        } else {
+            format!(
+                "GPU: {}  CACHE: {}  ACT: {}",
+                format_bytes(mem.gpu_allocated),
+                format_bytes(mem.cache_total),
+                format_bytes(mem.activations),
+            )
+        }
     } else {
         "GPU: --  CACHE: --  ACT: --".to_string()
     };
@@ -1568,6 +1580,17 @@ fn wrap_tokens(text: &str, max_len: usize, max_lines: usize) -> Vec<String> {
         lines.push(current);
     }
     lines
+}
+
+fn parse_stage_value(detail: &str, key: &str) -> Option<usize> {
+    for part in detail.split_whitespace() {
+        if let Some(value) = part.strip_prefix(&format!("{key}=")) {
+            if let Ok(parsed) = value.parse::<usize>() {
+                return Some(parsed);
+            }
+        }
+    }
+    None
 }
 
 fn ensure_gptoss_inputs(gptoss: &mut GptOssVizState) {
