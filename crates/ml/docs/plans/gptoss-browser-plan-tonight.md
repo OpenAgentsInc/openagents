@@ -176,6 +176,7 @@ Notes:
 - GPT-OSS page now shows local GGUF path + exact `gguf_serve` command under the URL field.
 - Load scan list now shows recent tensor names during streaming (I/O panel switches to LOAD SCAN).
 - Token stream now wraps into multiple lines with tail-clip + cursor for live readability.
+- Added Q8_0 weight cache with HUD stats to reduce repeat range fetches for small/medium tensors.
 
 ---
 
