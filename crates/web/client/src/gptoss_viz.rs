@@ -103,14 +103,37 @@ impl GptOssVizState {
                 total_bytes,
                 ts_ms,
             } => {
+                let detail_clone = detail.clone();
                 if matches!(status, StageStatus::Started | StageStatus::Progress) {
                     self.current_stage = Some(format!("LOAD {stage}"));
+                }
+                if stage == "load_start" {
+                    self.load_progress = Some(0.0);
+                }
+                if stage == "load_complete" {
+                    self.load_progress = Some(1.0);
+                }
+                if stage == "load_failed" {
+                    self.load_progress = None;
+                }
+                if stage == "weights_fetch" {
+                    if let (Some(bytes), Some(total)) = (bytes, total_bytes) {
+                        if total > 0 {
+                            let progress = (bytes as f32 / total as f32).clamp(0.0, 1.0);
+                            self.load_progress = Some(progress);
+                        }
+                    }
+                }
+                if stage == "moe_mode" {
+                    if let Some(detail) = detail_clone.as_ref() {
+                        self.moe_mode = Some(detail.clone());
+                    }
                 }
                 update_stage(
                     &mut self.load_stages,
                     stage.clone(),
                     status,
-                    detail.clone(),
+                    detail_clone.clone(),
                     bytes,
                     total_bytes,
                     None,
@@ -127,14 +150,20 @@ impl GptOssVizState {
                 detail,
                 ts_ms,
             } => {
+                let detail_clone = detail.clone();
                 if matches!(status, StageStatus::Started | StageStatus::Progress) {
                     self.current_stage = Some(format!("INFER {stage}"));
+                }
+                if stage == "runtime_mode" {
+                    if let Some(detail) = detail_clone.as_ref() {
+                        apply_runtime_mode(self, detail);
+                    }
                 }
                 update_stage(
                     &mut self.inference_stages,
                     stage.clone(),
                     status,
-                    detail.clone(),
+                    detail_clone.clone(),
                     None,
                     None,
                     step,
@@ -318,6 +347,37 @@ fn trim_token_stream(stream: &mut String, max_len: usize) {
         .map(|(idx, _)| idx)
         .unwrap_or(0);
     *stream = stream[start..].to_string();
+}
+
+fn apply_runtime_mode(state: &mut GptOssVizState, detail: &str) {
+    let mut moe_mode: Option<String> = None;
+    let mut moe_topk: Option<String> = None;
+    for part in detail.split_whitespace() {
+        if let Some((key, value)) = part.split_once('=') {
+            match key {
+                "layers" => {
+                    state.active_layers = value.parse::<usize>().ok();
+                }
+                "attn" => {
+                    state.attention_mode = Some(value.to_string());
+                }
+                "moe" => {
+                    moe_mode = Some(value.to_string());
+                }
+                "topk" => {
+                    moe_topk = Some(value.to_string());
+                }
+                _ => {}
+            }
+        }
+    }
+    if let Some(moe) = moe_mode {
+        if let Some(topk) = moe_topk {
+            state.moe_mode = Some(format!("{moe} topk={topk}"));
+        } else {
+            state.moe_mode = Some(moe);
+        }
+    }
 }
 
 pub(crate) fn init_gptoss_viz_runtime(state: Rc<RefCell<AppState>>) {
