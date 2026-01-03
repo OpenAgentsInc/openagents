@@ -399,6 +399,22 @@ impl GptOssVizState {
         );
         handled
     }
+
+    pub(crate) fn input_focused(&self) -> bool {
+        self.gguf_input.is_focused() || self.prompt_input.is_focused()
+    }
+
+    pub(crate) fn paste_text(&mut self, text: &str) -> bool {
+        if self.gguf_input.is_focused() {
+            self.gguf_input.insert_text(text);
+            return true;
+        }
+        if self.prompt_input.is_focused() {
+            self.prompt_input.insert_text(text);
+            return true;
+        }
+        false
+    }
 }
 
 fn merge_event_result(lhs: EventResult, rhs: EventResult) -> EventResult {

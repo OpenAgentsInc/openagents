@@ -109,6 +109,10 @@ impl TextInput {
         self.cursor_pos = self.cursor_pos.min(self.value.len());
     }
 
+    pub fn insert_text(&mut self, text: &str) {
+        self.insert_str(text);
+    }
+
     pub fn is_focused(&self) -> bool {
         self.focused
     }
