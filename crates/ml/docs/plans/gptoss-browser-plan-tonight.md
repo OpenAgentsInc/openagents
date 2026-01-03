@@ -149,6 +149,7 @@ Notes:
 - Added `gpt-oss.*`/`llama.*` metadata fallback (plus rope dim fallback) and fixed MXFP4 scale decoding; `test_layer --moe-fallback` now runs for layer 0.
 - Ran `test_attention --seq-len 2` (layer 0) and captured head-0 weights preview.
 - Ran `test_moe_router` (layer 0) and captured top-k expert weights.
+- Ran `gptoss_cli --layers 1 --max-tokens 1 --moe-fallback` and produced a token (byte-encoded leading space).
 
 ---
 

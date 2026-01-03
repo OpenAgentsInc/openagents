@@ -932,6 +932,12 @@ fn emit_config(state: &Rc<RefCell<AppState>>, config: &GptOssConfig) {
 fn read_meta_u32(index: &GgufIndex, key: &str) -> Result<u32, String> {
     let value = lookup_meta(index, key);
     if value.is_none() && key.ends_with("rope.dimension_count") {
+        if let Ok(key_len) = read_meta_u32(index, "gpt-oss.attention.key_length") {
+            return Ok(key_len);
+        }
+        if let Ok(value_len) = read_meta_u32(index, "gpt-oss.attention.value_length") {
+            return Ok(value_len);
+        }
         let embedding = read_meta_u32(index, "llama.embedding_length")?;
         let heads = read_meta_u32(index, "llama.attention.head_count")?;
         if heads > 0 {
@@ -968,6 +974,12 @@ fn read_meta_f32(index: &GgufIndex, key: &str) -> Result<f32, String> {
 fn lookup_meta<'a>(index: &'a GgufIndex, key: &str) -> Option<&'a crate::gguf_web::GgufScalar> {
     if let Some(value) = index.metadata.values.get(key) {
         return Some(value);
+    }
+    if key == "llama.sliding_window" {
+        return index.metadata.values.get("gpt-oss.attention.sliding_window");
+    }
+    if key == "gpt-oss.attention.sliding_window" {
+        return index.metadata.values.get("llama.sliding_window");
     }
     let fallback = key
         .strip_prefix("llama.")

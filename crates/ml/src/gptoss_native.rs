@@ -101,6 +101,12 @@ pub fn find_tensor<'a>(index: &'a GgufIndex, name: &str) -> Result<&'a GgufTenso
 pub fn read_meta_u32(metadata: &GgufMetadata, key: &str) -> Result<u32> {
     let value = lookup_meta(metadata, key);
     if value.is_none() && key.ends_with("rope.dimension_count") {
+        if let Ok(key_len) = read_meta_u32(metadata, "gpt-oss.attention.key_length") {
+            return Ok(key_len);
+        }
+        if let Ok(value_len) = read_meta_u32(metadata, "gpt-oss.attention.value_length") {
+            return Ok(value_len);
+        }
         let embedding = read_meta_u32(metadata, "llama.embedding_length")?;
         let heads = read_meta_u32(metadata, "llama.attention.head_count")?;
         if heads > 0 {
@@ -143,6 +149,12 @@ pub fn read_meta_f32(metadata: &GgufMetadata, key: &str) -> Result<f32> {
 fn lookup_meta<'a>(metadata: &'a GgufMetadata, key: &str) -> Option<&'a GgufScalar> {
     if let Some(value) = metadata.values.get(key) {
         return Some(value);
+    }
+    if key == "llama.sliding_window" {
+        return metadata.values.get("gpt-oss.attention.sliding_window");
+    }
+    if key == "gpt-oss.attention.sliding_window" {
+        return metadata.values.get("llama.sliding_window");
     }
     let fallback = key
         .strip_prefix("llama.")
