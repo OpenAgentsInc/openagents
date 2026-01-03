@@ -6,8 +6,9 @@ use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame, Heatmap};
 use wgpui::PaintContext;
 
 use crate::gptoss_runtime::{
-    default_gguf_url, default_max_kv_tokens, default_max_new_tokens, default_user_prompt,
-    local_gguf_path, local_gguf_dev_url, local_gguf_url, local_gguf_serve_cmd, read_query_param,
+    default_gguf_url, default_max_kv_tokens, default_max_new_tokens, default_sample_temp,
+    default_sample_top_k, default_sample_top_p, default_user_prompt, local_gguf_path,
+    local_gguf_dev_url, local_gguf_url, local_gguf_serve_cmd, read_query_param,
 };
 use crate::state::{AppState, GptOssStage, GptOssStageStatus, GptOssVizState};
 
@@ -2035,15 +2036,29 @@ fn ensure_gptoss_inputs(gptoss: &mut GptOssVizState) {
     }
     if let Some(value) = read_query_param("sample").filter(|value| !value.is_empty()) {
         gptoss.sample_input.set_value(value);
+    } else if gptoss.sample_input.get_value().trim().is_empty() {
+        gptoss.sample_input.set_value("off");
     }
     if let Some(value) = read_query_param("temp").filter(|value| !value.is_empty()) {
         gptoss.temp_input.set_value(value);
+    } else if gptoss.temp_input.get_value().trim().is_empty() {
+        gptoss
+            .temp_input
+            .set_value(format!("{:.1}", default_sample_temp()));
     }
     if let Some(value) = read_query_param("top_k").filter(|value| !value.is_empty()) {
         gptoss.top_k_input.set_value(value);
+    } else if gptoss.top_k_input.get_value().trim().is_empty() {
+        gptoss
+            .top_k_input
+            .set_value(default_sample_top_k().to_string());
     }
     if let Some(value) = read_query_param("top_p").filter(|value| !value.is_empty()) {
         gptoss.top_p_input.set_value(value);
+    } else if gptoss.top_p_input.get_value().trim().is_empty() {
+        gptoss
+            .top_p_input
+            .set_value(format!("{:.1}", default_sample_top_p()));
     }
 
     gptoss.inputs_initialized = true;

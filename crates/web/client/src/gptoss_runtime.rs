@@ -40,6 +40,8 @@ const DEFAULT_DEVELOPER_PROMPT: &str = "";
 const DEFAULT_MAX_NEW_TOKENS: usize = 8;
 const DEFAULT_MAX_KV_TOKENS: usize = 32;
 const DEFAULT_SAMPLE_TOP_K: usize = 40;
+const DEFAULT_SAMPLE_TEMP: f32 = 1.0;
+const DEFAULT_SAMPLE_TOP_P: f32 = 1.0;
 const Q8_0_BLOCK_BYTES: usize = 34;
 const Q8_0_BLOCK_VALUES: usize = 32;
 const MXFP4_BLOCK_BYTES: usize = 17;
@@ -1724,6 +1726,18 @@ pub(crate) fn default_max_kv_tokens() -> usize {
 
 pub(crate) fn default_max_new_tokens() -> usize {
     DEFAULT_MAX_NEW_TOKENS
+}
+
+pub(crate) fn default_sample_temp() -> f32 {
+    DEFAULT_SAMPLE_TEMP
+}
+
+pub(crate) fn default_sample_top_k() -> usize {
+    DEFAULT_SAMPLE_TOP_K
+}
+
+pub(crate) fn default_sample_top_p() -> f32 {
+    DEFAULT_SAMPLE_TOP_P
 }
 
 fn is_local_url(url: &str) -> bool {
