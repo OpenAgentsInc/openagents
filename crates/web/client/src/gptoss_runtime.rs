@@ -107,6 +107,8 @@ struct LayerKvCache {
     stride: usize,
     gpu_k: Option<wgpu::Buffer>,
     gpu_v: Option<wgpu::Buffer>,
+    gpu_bytes: usize,
+    cpu_enabled: bool,
 }
 
 impl LayerKvCache {
@@ -120,6 +122,8 @@ impl LayerKvCache {
             stride: 0,
             gpu_k: None,
             gpu_v: None,
+            gpu_bytes: 0,
+            cpu_enabled: true,
         }
     }
 
@@ -132,6 +136,7 @@ impl LayerKvCache {
         max_len: usize,
         stride: usize,
         gpu: &GpuContext,
+        store_cpu: bool,
     ) -> Result<(), String> {
         if max_len == 0 {
             return Err("kv cache max length is zero".to_string());
@@ -139,15 +144,26 @@ impl LayerKvCache {
         if stride == 0 {
             return Err("kv cache stride is zero".to_string());
         }
-        if self.capacity == 0 || self.capacity != max_len || self.stride != stride {
+        if self.capacity == 0
+            || self.capacity != max_len
+            || self.stride != stride
+            || self.cpu_enabled != store_cpu
+        {
             self.capacity = max_len;
             self.stride = stride;
             self.start = 0;
             self.len = 0;
-            self.k = vec![0.0f32; max_len * stride];
-            self.v = vec![0.0f32; max_len * stride];
+            self.cpu_enabled = store_cpu;
+            if store_cpu {
+                self.k = vec![0.0f32; max_len * stride];
+                self.v = vec![0.0f32; max_len * stride];
+            } else {
+                self.k.clear();
+                self.v.clear();
+            }
             self.gpu_k = None;
             self.gpu_v = None;
+            self.gpu_bytes = 0;
         }
 
         if self.gpu_k.is_none() || self.gpu_v.is_none() {
@@ -177,6 +193,7 @@ impl LayerKvCache {
             });
             self.gpu_k = Some(k_buf);
             self.gpu_v = Some(v_buf);
+            self.gpu_bytes = bytes * 2;
         }
 
         Ok(())
@@ -190,6 +207,7 @@ impl LayerKvCache {
         head_dim: usize,
         max_len: usize,
         gpu: &GpuContext,
+        store_cpu: bool,
     ) -> Result<(), String> {
         let expected = kv_heads
             .checked_mul(head_dim)
@@ -201,7 +219,7 @@ impl LayerKvCache {
                 v.len()
             ));
         }
-        self.ensure_capacity(max_len, expected, gpu)?;
+        self.ensure_capacity(max_len, expected, gpu, store_cpu)?;
 
         let slot = if self.len < self.capacity {
             let slot = (self.start + self.len) % self.capacity;
@@ -217,8 +235,10 @@ impl LayerKvCache {
             .checked_mul(self.stride)
             .ok_or_else(|| "kv append base overflow".to_string())?;
         let end = base + self.stride;
-        self.k[base..end].copy_from_slice(k);
-        self.v[base..end].copy_from_slice(v);
+        if self.cpu_enabled {
+            self.k[base..end].copy_from_slice(k);
+            self.v[base..end].copy_from_slice(v);
+        }
 
         let byte_offset = base
             .checked_mul(std::mem::size_of::<f32>())
@@ -232,7 +252,7 @@ impl LayerKvCache {
     }
 
     fn memory_bytes(&self) -> usize {
-        (self.k.len() + self.v.len()) * std::mem::size_of::<f32>()
+        self.gpu_bytes
     }
 }
 
@@ -2837,8 +2857,24 @@ async fn run_attention_probe(
 
     let mut layer_cache = LayerKvCache::new();
     let max_len = 4usize;
-    layer_cache.append(&k_pos0, &probe.v, probe.kv_heads, probe.head_dim, max_len, gpu)?;
-    layer_cache.append(&k_pos1, &probe.v, probe.kv_heads, probe.head_dim, max_len, gpu)?;
+    layer_cache.append(
+        &k_pos0,
+        &probe.v,
+        probe.kv_heads,
+        probe.head_dim,
+        max_len,
+        gpu,
+        true,
+    )?;
+    layer_cache.append(
+        &k_pos1,
+        &probe.v,
+        probe.kv_heads,
+        probe.head_dim,
+        max_len,
+        gpu,
+        true,
+    )?;
     let window = layer_cache.token_count();
     let cpu_out = attention_with_cache(
         &q_pos1,
@@ -4105,7 +4141,15 @@ async fn run_transformer_layer(
         fetch_f32_tensor_cached(state, gguf_url, attn_sinks, &mut caches.tensors).await?;
     let max_len = cache.max_len;
     let layer_cache = cache.layer_mut(layer as usize)?;
-    layer_cache.append(&k, &v, kv_heads, head_dim, max_len, gpu)?;
+    layer_cache.append(
+        &k,
+        &v,
+        kv_heads,
+        head_dim,
+        max_len,
+        gpu,
+        allow_cpu_fallback,
+    )?;
     let seq_len = layer_cache.token_count();
     let window = if force_dense || config.sliding_window == 0 {
         seq_len
