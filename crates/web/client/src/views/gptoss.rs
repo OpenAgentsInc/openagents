@@ -196,6 +196,72 @@ pub(crate) fn build_gptoss_page(
     }
     y += 40.0;
 
+    let controls_gap = 12.0;
+    let controls_width = (inner_width - controls_gap * 2.0) / 3.0;
+    let control_label_size = 9.0;
+    let control_input_height = 26.0;
+    let control_input_y = y + 12.0;
+    let control_x0 = inner_x;
+    let control_x1 = inner_x + controls_width + controls_gap;
+    let control_x2 = inner_x + (controls_width + controls_gap) * 2.0;
+
+    draw_mono_text(
+        scene,
+        text_system,
+        "LAYERS",
+        control_x0,
+        y,
+        control_label_size,
+        theme::text::MUTED,
+    );
+    draw_mono_text(
+        scene,
+        text_system,
+        "MAX KV",
+        control_x1,
+        y,
+        control_label_size,
+        theme::text::MUTED,
+    );
+    draw_mono_text(
+        scene,
+        text_system,
+        "MAX NEW",
+        control_x2,
+        y,
+        control_label_size,
+        theme::text::MUTED,
+    );
+
+    let layers_bounds = Bounds::new(
+        control_x0,
+        control_input_y,
+        controls_width,
+        control_input_height,
+    );
+    let max_kv_bounds = Bounds::new(
+        control_x1,
+        control_input_y,
+        controls_width,
+        control_input_height,
+    );
+    let max_new_bounds = Bounds::new(
+        control_x2,
+        control_input_y,
+        controls_width,
+        control_input_height,
+    );
+    state.gptoss.layers_input_bounds = layers_bounds;
+    state.gptoss.max_kv_input_bounds = max_kv_bounds;
+    state.gptoss.max_new_input_bounds = max_new_bounds;
+    {
+        let mut input_cx = PaintContext::new(scene, text_system, scale_factor);
+        state.gptoss.layers_input.paint(layers_bounds, &mut input_cx);
+        state.gptoss.max_kv_input.paint(max_kv_bounds, &mut input_cx);
+        state.gptoss.max_new_input.paint(max_new_bounds, &mut input_cx);
+    }
+    y = control_input_y + control_input_height + 16.0;
+
     let button_label = if state.gptoss.load_active {
         "LOADING..."
     } else {
@@ -241,7 +307,7 @@ pub(crate) fn build_gptoss_page(
     );
 
     y += button_height + 8.0;
-    let layers_hint = "LAYERS: default ALL (override with ?layers=N)";
+    let layers_hint = "LAYERS: default ALL (input or ?layers=N)";
     draw_mono_text(
         scene,
         text_system,
@@ -1733,6 +1799,16 @@ fn ensure_gptoss_inputs(gptoss: &mut GptOssVizState) {
         .unwrap_or_else(default_user_prompt);
     if !prompt_value.is_empty() {
         gptoss.prompt_input.set_value(prompt_value);
+    }
+
+    if let Some(value) = read_query_param("layers").filter(|value| !value.is_empty()) {
+        gptoss.layers_input.set_value(value);
+    }
+    if let Some(value) = read_query_param("max_kv").filter(|value| !value.is_empty()) {
+        gptoss.max_kv_input.set_value(value);
+    }
+    if let Some(value) = read_query_param("max_new").filter(|value| !value.is_empty()) {
+        gptoss.max_new_input.set_value(value);
     }
 
     gptoss.inputs_initialized = true;
