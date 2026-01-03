@@ -10,6 +10,8 @@ mod http;
 mod gguf;
 #[cfg(not(target_arch = "wasm32"))]
 mod gptoss_tokenizer;
+#[cfg(not(target_arch = "wasm32"))]
+mod gptoss_native;
 #[cfg(all(feature = "candle", feature = "wgpu", not(target_arch = "wasm32")))]
 mod gguf_gate;
 mod model;
@@ -35,6 +37,13 @@ pub use gguf::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use gptoss_tokenizer::GptOssTokenizer;
+#[cfg(not(target_arch = "wasm32"))]
+pub use gptoss_native::{
+    apply_bias, apply_rope, attention_head_weights, attention_with_cache, dequant_mxfp4,
+    dequant_q8_0, dot_q8_0_row, find_tensor, matmul_f32, matmul_mxfp4_expert, matmul_q8_0,
+    read_f32_row, read_f32_tensor, read_meta_f32, read_meta_u32, read_mxfp4_expert,
+    read_q8_0_row, read_tensor_slice, rms_norm, swiglu, top_k_softmax, KvCache, LayerKvCache,
+};
 #[cfg(all(feature = "candle", feature = "wgpu", not(target_arch = "wasm32")))]
 pub use gguf_gate::{run_q8_0_gate, GateConfig, GateOutcome};
 pub use model::{GenerationOutcome, LoadedModel, ModelKind, ModelSource};

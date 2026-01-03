@@ -142,6 +142,7 @@ Notes:
 - Updated **Harmony prompt formatting** to include system + developer headers and force `assistant` into the `final` channel, and stop decoding on `<|return|>`/`<|call|>` tokens (filtered from token stream).
 - Added **layer activity telemetry** capture + a `LAYER ACTIVITY` HUD panel with per-layer attention/MLP/output norms.
 - Added **probability history waterfall** panel with per-token top-k bars + entropy sparkline.
+- Added **native GPT-OSS CLI harness** (`test_tokenizer`, `test_embed`, `test_lm_head`, `test_attention`, `test_layer`, `test_moe_router`, `gptoss_cli`) plus GGUF metadata parsing + tokenizer for native validation.
 
 ---
 
