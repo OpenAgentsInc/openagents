@@ -666,6 +666,31 @@ fn draw_io_panel(
         theme::text::MUTED,
     );
 
+    let mut gauge_offset = 0.0;
+    if let (Some(mem), Some(limits)) = (mem, gptoss.gpu_limits.as_ref()) {
+        if let Some(max_buffer) = parse_limit_bytes(limits, "max_buffer") {
+            if max_buffer > 0 {
+                let ratio = (mem.gpu_allocated as f32 / max_buffer as f32)
+                    .clamp(0.0, 1.0);
+                let bar_bounds = Bounds::new(inner.x(), inner.y() + 84.0, inner.width(), 4.0);
+                scene.draw_quad(
+                    Quad::new(bar_bounds)
+                        .with_background(panel_border().with_alpha(0.35)),
+                );
+                scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        bar_bounds.x(),
+                        bar_bounds.y(),
+                        bar_bounds.width() * ratio,
+                        bar_bounds.height(),
+                    ))
+                    .with_background(accent_cyan().with_alpha(0.7)),
+                );
+                gauge_offset = 8.0;
+            }
+        }
+    }
+
     let tensor_cache = find_stage(gptoss, "tensor_cache")
         .and_then(|stage| stage.detail.as_ref())
         .map(|detail| format!("TENSOR CACHE: {}", truncate_text(detail, 46)))
@@ -675,7 +700,7 @@ fn draw_io_panel(
         text_system,
         &tensor_cache,
         inner.x(),
-        inner.y() + 88.0,
+        inner.y() + 88.0 + gauge_offset,
         9.0,
         theme::text::MUTED,
     );
@@ -689,7 +714,7 @@ fn draw_io_panel(
         text_system,
         &q8_cache,
         inner.x(),
-        inner.y() + 100.0,
+        inner.y() + 100.0 + gauge_offset,
         9.0,
         theme::text::MUTED,
     );
@@ -703,7 +728,7 @@ fn draw_io_panel(
         text_system,
         &expert_cache,
         inner.x(),
-        inner.y() + 112.0,
+        inner.y() + 112.0 + gauge_offset,
         9.0,
         theme::text::MUTED,
     );
@@ -723,13 +748,16 @@ fn draw_io_panel(
             text_system,
             line,
             inner.x(),
-            inner.y() + 128.0 + (idx as f32 * 12.0),
+            inner.y() + 128.0 + gauge_offset + (idx as f32 * 12.0),
             9.0,
             theme::text::MUTED,
         );
     }
 
-    let mut ry = inner.y() + 144.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
+    let mut ry = inner.y()
+        + 144.0
+        + gauge_offset
+        + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
     let show_scan = gptoss.load_active
         || (gptoss.resident_tensors.is_empty() && !gptoss.recent_tensors.is_empty());
     let label = if show_scan { "LOAD SCAN:" } else { "RESIDENT:" };
@@ -1606,6 +1634,34 @@ fn parse_stage_value(detail: &str, key: &str) -> Option<usize> {
                 return Some(parsed);
             }
         }
+    }
+    None
+}
+
+fn parse_limit_bytes(detail: &str, key: &str) -> Option<u64> {
+    for part in detail.split_whitespace() {
+        if let Some(value) = part.strip_prefix(&format!("{key}=")) {
+            return parse_human_bytes(value);
+        }
+    }
+    None
+}
+
+fn parse_human_bytes(value: &str) -> Option<u64> {
+    if let Some(num) = value.strip_suffix("GB") {
+        let parsed = num.parse::<f64>().ok()?;
+        return Some((parsed * 1_000_000_000.0) as u64);
+    }
+    if let Some(num) = value.strip_suffix("MB") {
+        let parsed = num.parse::<f64>().ok()?;
+        return Some((parsed * 1_000_000.0) as u64);
+    }
+    if let Some(num) = value.strip_suffix("KB") {
+        let parsed = num.parse::<f64>().ok()?;
+        return Some((parsed * 1_000.0) as u64);
+    }
+    if let Some(num) = value.strip_suffix("B") {
+        return num.parse::<u64>().ok();
     }
     None
 }

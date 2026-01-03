@@ -208,6 +208,7 @@ Notes:
 - Generation stages now report stop reasons (max_new, stop_token, kv_full).
 - Layer attention/MLP stages now include total per-layer timing summaries.
 - KV cache HUD now shows bytes alongside token counts.
+- I/O panel now renders a GPU memory gauge based on GPU limits telemetry.
 
 ---
 
