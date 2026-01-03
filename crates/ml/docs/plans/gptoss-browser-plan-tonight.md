@@ -224,6 +224,7 @@ Notes:
 - Bun dev server now resolves GGUF + asset paths relative to the script directory, so `bun run dev` works even if launched outside `crates/web`.
 - Default browser runs now use all model layers (override with `?layers=N`), and the HUD hint reflects “default ALL”.
 - Added GPT-OSS controls for `layers`, `max_kv`, and `max_new` in the HUD and wired them into the runtime (inputs override query params).
+- GPT-OSS URL input placeholder now points to the bun dev GGUF route (`localhost:3000`) to match the default dev setup.
 
 ---
 
