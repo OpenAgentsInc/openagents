@@ -292,6 +292,11 @@ pub(crate) fn build_gptoss_page(
         draw_stats_panel(scene, text_system, &state.gptoss, stats_bounds);
         y += topk_height + 16.0;
 
+        let history_height = 200.0;
+        let history_bounds = Bounds::new(inner_x, y, inner_width, history_height);
+        draw_probability_panel(scene, text_system, &state.gptoss, history_bounds);
+        y += history_height + 16.0;
+
         let layer_height = 180.0;
         let layer_bounds = Bounds::new(inner_x, y, inner_width, layer_height);
         draw_layer_panel(scene, text_system, &state.gptoss, layer_bounds);
@@ -759,6 +764,89 @@ fn draw_attention_panel(
         heatmap.paint(heatmap_bounds, &mut cx);
     } else {
         draw_empty_state(scene, text_system, heatmap_bounds, "No attention telemetry");
+    }
+}
+
+fn draw_probability_panel(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    gptoss: &GptOssVizState,
+    bounds: Bounds,
+) {
+    let inner = panel(scene, text_system, bounds, "PROBABILITY HISTORY");
+    if gptoss.probability_history.is_empty() {
+        draw_empty_state(scene, text_system, inner, "No token history");
+        return;
+    }
+
+    let history_len = gptoss.probability_history.len();
+    let max_cols = (inner.width() / 120.0).floor().max(1.0) as usize;
+    let cols = history_len.min(max_cols).max(1);
+    let col_width = inner.width() / cols as f32;
+    let bar_height = 8.0;
+    let row_gap = 4.0;
+    let max_rows = 5usize;
+    let label_height = 12.0;
+
+    for col in 0..cols {
+        let idx = history_len - cols + col;
+        let candidates = &gptoss.probability_history[idx];
+        if candidates.is_empty() {
+            continue;
+        }
+        let x = inner.x() + col as f32 * col_width;
+        let y = inner.y();
+        let top_label = truncate_text(&candidates[0].token_text, 10);
+        draw_mono_text(
+            scene,
+            text_system,
+            &top_label,
+            x,
+            y,
+            9.0,
+            theme::text::PRIMARY,
+        );
+
+        let max_prob = candidates
+            .iter()
+            .take(max_rows)
+            .map(|c| c.probability)
+            .fold(0.0f32, |acc, v| acc.max(v))
+            .max(1e-4);
+        for (row_idx, candidate) in candidates.iter().take(max_rows).enumerate() {
+            let norm = (candidate.probability / max_prob).clamp(0.0, 1.0);
+            let bar_w = (col_width - 8.0) * norm;
+            let y_offset = y + label_height + row_idx as f32 * (bar_height + row_gap);
+            let color = if row_idx == 0 {
+                accent_cyan().with_alpha(0.8)
+            } else {
+                theme::text::MUTED.with_alpha(0.5)
+            };
+            scene.draw_quad(
+                Quad::new(Bounds::new(x, y_offset, bar_w, bar_height)).with_background(color),
+            );
+        }
+    }
+
+    if gptoss.entropy_history.len() >= 2 {
+        let spark_height = 18.0;
+        let spark_y = inner.y() + inner.height() - spark_height;
+        let points = gptoss.entropy_history.len();
+        let step = inner.width() / points as f32;
+        let max_entropy = gptoss
+            .entropy_history
+            .iter()
+            .fold(0.0f32, |acc, v| acc.max(*v))
+            .max(1e-4);
+        for (idx, entropy) in gptoss.entropy_history.iter().enumerate() {
+            let norm = (*entropy / max_entropy).clamp(0.0, 1.0);
+            let bar_h = norm * spark_height;
+            let x = inner.x() + idx as f32 * step;
+            scene.draw_quad(
+                Quad::new(Bounds::new(x, spark_y + spark_height - bar_h, 2.0, bar_h))
+                    .with_background(accent_orange().with_alpha(0.35)),
+            );
+        }
     }
 }
 

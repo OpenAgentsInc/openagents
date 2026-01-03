@@ -729,8 +729,10 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.events.clear();
     state.token_stream.clear();
     state.top_k.clear();
+    state.probability_history.clear();
     state.tokens_per_sec = None;
     state.entropy = None;
+    state.entropy_history.clear();
     state.memory_usage = None;
     state.gpu_limits = None;
     state.cache_status.clear();
