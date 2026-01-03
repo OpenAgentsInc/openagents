@@ -12,31 +12,80 @@ When you're done, I click **one button** on `/gptoss` and:
 
 ---
 
-## Allowed Fallbacks (Critical)
+## GPU Kernel Requirements (NON-NEGOTIABLE)
 
-You have permission to ship intermediate correctness. These fallbacks keep you shipping instead of thrashing forever on one missing kernel:
+**All heavy compute MUST run on GPU via WGSL shaders.** CPU implementations are temporary scaffolding only.
+
+### Required WGSL Kernels (must implement)
+
+| Kernel | Status | Priority |
+|--------|--------|----------|
+| Q8_0 dequant + matmul | ✅ Done | - |
+| MXFP4 dequant + matmul | ✅ Done | - |
+| **RMSNorm** | ❌ CPU | P0 |
+| **RoPE** | ❌ CPU | P0 |
+| **Attention (SDPA)** | ❌ CPU | P0 |
+| **Softmax** | ❌ CPU | P0 |
+| Residual add | ❌ CPU | P1 |
+| Embedding lookup | ❌ CPU | P1 |
+
+### Why This Matters
+
+- **Attention is O(n²)** - CPU attention kills performance for seq_len > 32
+- **RMSNorm runs 2× per layer** - 48 CPU calls per token for 24 layers
+- **Memory bandwidth** - GPU keeps tensors resident; CPU requires readback
+
+### Current Gap (MUST FIX)
+
+The current implementation has:
+- `gptoss_runtime.rs`: GPU matmuls, but **CPU attention** (`attention_with_cache` is pure Rust loops)
+- `gptoss_native.rs`: **100% CPU** (no GPU code at all)
+
+This is **not acceptable** as final state. The spec requires GPU inference.
+
+### WGSL Kernel Location
+
+All WGSL shaders go in: `crates/web/client/src/shaders/` (browser) or `crates/ml/src/shaders/` (shared)
+
+Each kernel needs:
+1. `.wgsl` shader file
+2. Rust dispatch wrapper with bind group setup
+3. CPU reference for correctness testing
+
+### Kernel Implementation Order
+
+1. **Attention SDPA** (biggest win - O(n²) on GPU vs CPU)
+2. **RMSNorm** (runs constantly)
+3. **RoPE** (runs per Q/K projection)
+4. **Softmax** (part of attention, can fuse)
+5. Residual add (simple, low priority)
+
+---
+
+## Allowed Fallbacks (Temporary Only)
+
+You have permission to ship intermediate correctness **while building GPU kernels**. These fallbacks are **scaffolding, not final state**:
 
 ### MoE Fallback (if ggml type 39 not supported yet)
 - Run **dense-only path**: router selects expert 0 always.
 - **Clearly label in HUD**: "MoE: fallback mode (expert 0 only)"
 - This still generates tokens, just worse quality.
 
-### Attention Fallback (if banded attention not implemented)
-- Use **dense attention everywhere** (slower but correct).
-- Land sliding window later as optimization.
-- Label in HUD: "Attention: dense mode"
+### Attention Fallback (TEMPORARY - must replace with GPU)
+- CPU attention is allowed **only during bring-up**.
+- Label in HUD: "Attention: CPU (SLOW)" with warning color.
+- **Must be replaced with WGSL SDPA kernel.**
 
-### Sampling Fallback (if GPU sampling is hard)
+### Sampling Fallback (acceptable long-term)
 - Do sampling on **CPU from readback logits**.
-- Copy logits to CPU, run top-k/top-p there, return token ID.
-- This is the default path for Phase 2a anyway.
+- This is fine - sampling is cheap and logits are small.
 
 ### Layer Fallback (for bring-up)
 - Run only **first N layers** initially (N=1, 2, 4...).
 - Show how many layers are active in HUD.
 - Iterate until full 24 layers run.
 
-**The goal is "button → tokens", not "perfect architecture."**
+**The goal is "button → tokens on GPU", not "tokens on CPU with GPU matmuls."**
 
 ---
 
@@ -134,32 +183,72 @@ Implement minimal path:
 
 This proves: tokenizer + prompt formatting + display loop work.
 
-### Step 6: Single Layer Partial
+### Step 6: Single Layer Partial (GPU Kernels)
 
-Add one transformer block:
-1. RMSNorm before attention
-2. QKV projections (Q8_0 matmul)
-3. RoPE application
+Add one transformer block with **GPU kernels for RMSNorm and RoPE**:
+
+1. **RMSNorm (GPU)** - Create `rmsnorm.wgsl`:
+   ```wgsl
+   // rmsnorm.wgsl - compute RMS, normalize, scale by weights
+   @compute @workgroup_size(256)
+   fn main(...) {
+       // 1. Compute sum of squares
+       // 2. Compute RMS = sqrt(mean(x²) + eps)
+       // 3. out = (x / RMS) * weight
+   }
+   ```
+
+2. **RoPE (GPU)** - Create `rope.wgsl`:
+   ```wgsl
+   // rope.wgsl - apply rotary position embeddings
+   @compute @workgroup_size(256)
+   fn main(...) {
+       // Apply sin/cos rotations to Q and K
+   }
+   ```
+
+3. QKV projections (Q8_0 matmul - already GPU)
 4. Residual plumbing
 5. **Attention can be stubbed to identity for this step**
 
 **Done when:**
+- [ ] `rmsnorm.wgsl` exists and runs on GPU
+- [ ] `rope.wgsl` exists and runs on GPU
 - [ ] Layer 0 runs with stubbed attention
-- [ ] Residual connections work
-- [ ] Output shape is correct
+- [ ] HUD shows "RMSNorm: GPU", "RoPE: GPU"
+- [ ] CPU reference matches GPU output
 
-### Step 7: Dense Attention + KV
+### Step 7: Dense Attention + KV (GPU REQUIRED)
 
-Implement real attention for 1 layer, then all layers:
-1. Scaled dot-product attention
-2. GQA (group size 8)
-3. Causal masking
-4. KV cache append
+**This step MUST implement GPU attention via WGSL.** CPU attention is not acceptable.
+
+Implement WGSL SDPA kernel:
+1. Create `attention.wgsl` with scaled dot-product attention
+2. Handle GQA (group size 8) - repeat K/V heads
+3. Causal masking (lower triangular)
+4. KV cache on GPU (not CPU Vec)
+
+WGSL kernel structure:
+```wgsl
+// attention.wgsl
+@group(0) @binding(0) var<storage, read> q: array<f32>;
+@group(0) @binding(1) var<storage, read> k: array<f32>;
+@group(0) @binding(2) var<storage, read> v: array<f32>;
+@group(0) @binding(3) var<storage, read_write> out: array<f32>;
+@group(0) @binding(4) var<uniform> params: AttentionParams;
+
+@compute @workgroup_size(16, 16)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    // Compute Q @ K^T, apply mask, softmax, @ V
+}
+```
 
 **Done when:**
-- [ ] A single prompt runs through ≥1 real attention layer
-- [ ] KV cache grows by 1 token per decode step
-- [ ] Top-5 tokens render and make some sense
+- [ ] `attention.wgsl` exists and compiles
+- [ ] GPU attention runs for ≥1 layer
+- [ ] KV cache lives on GPU (wgpu::Buffer, not Vec<f32>)
+- [ ] CPU reference matches GPU output within tolerance
+- [ ] HUD shows "Attention: GPU" (not "CPU")
 
 ### Step 8: MoE Bring-Up
 
@@ -386,6 +475,8 @@ cargo test -p ml gate_d --no-default-features --features native,wgpu
 ## Definition of Done
 
 **Not done until:**
+
+### Functional Requirements
 - [ ] `/gptoss` has a visible "LOAD MODEL" button
 - [ ] Clicking button starts streaming GGUF from URL
 - [ ] Loading progress visible with live telemetry
@@ -395,7 +486,24 @@ cargo test -p ml gate_d --no-default-features --features native,wgpu
 - [ ] Token visualization shows probabilities
 - [ ] Works in Chrome WebGPU
 - [ ] No console errors, no crashes
-- [ ] **All CLI tests pass before browser testing** (new requirement)
+- [ ] All CLI tests pass before browser testing
+
+### GPU Kernel Requirements (NON-NEGOTIABLE)
+- [ ] **RMSNorm runs on GPU** (`rmsnorm.wgsl` exists and dispatches)
+- [ ] **RoPE runs on GPU** (`rope.wgsl` exists and dispatches)
+- [ ] **Attention runs on GPU** (`attention.wgsl` exists and dispatches)
+- [ ] **KV cache lives on GPU** (wgpu::Buffer, not CPU Vec)
+- [ ] HUD displays kernel execution mode (GPU vs CPU) for each operation
+- [ ] CPU fallbacks are clearly marked as warnings in HUD
+
+### Performance Baseline
+- [ ] 24 layers run without timeout (< 30s per token acceptable for now)
+- [ ] No GPU OOM on 8GB VRAM
+- [ ] Memory usage telemetry accurate
+
+### Verification
+- [ ] Each GPU kernel has CPU reference test
+- [ ] GPU output matches CPU within tolerance (1e-3 for f32)
 
 ---
 
