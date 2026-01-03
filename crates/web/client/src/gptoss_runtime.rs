@@ -713,6 +713,7 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.tokens_per_sec = None;
     state.entropy = None;
     state.memory_usage = None;
+    state.gpu_limits = None;
     state.cache_status.clear();
     state.resident_tensors.clear();
     state.attention_weights = None;
@@ -824,14 +825,16 @@ fn emit_tensor_resident(state: &Rc<RefCell<AppState>>, name: String, bytes: usiz
 fn emit_gpu_limits(state: &Rc<RefCell<AppState>>, gpu: &GpuContext) {
     let limits = gpu.device.limits();
     let features = gpu.device.features();
+    let shader_f16 = features.contains(wgpu::Features::SHADER_F16);
     let detail = format!(
-        "max_storage={} max_buffer={} bind_groups={} storage_bindings={} dynamic_storage={} uniform_bindings={} features={features:?}",
+        "max_storage={} max_buffer={} bind_groups={} storage_bindings={} dynamic_storage={} uniform_bindings={} f16={}",
         limits.max_storage_buffer_binding_size,
         limits.max_buffer_size,
         limits.max_bind_groups,
         limits.max_storage_buffers_per_shader_stage,
         limits.max_dynamic_storage_buffers_per_pipeline_layout,
         limits.max_uniform_buffers_per_shader_stage,
+        shader_f16,
     );
     emit_load_stage(
         state,

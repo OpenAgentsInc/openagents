@@ -129,6 +129,11 @@ impl GptOssVizState {
                         self.moe_mode = Some(detail.clone());
                     }
                 }
+                if stage == "gpu_limits" {
+                    if let Some(detail) = detail_clone.as_ref() {
+                        self.gpu_limits = Some(detail.clone());
+                    }
+                }
                 update_stage(
                     &mut self.load_stages,
                     stage.clone(),

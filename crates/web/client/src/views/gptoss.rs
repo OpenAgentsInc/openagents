@@ -447,7 +447,22 @@ fn draw_io_panel(
         theme::text::MUTED,
     );
 
-    let mut ry = inner.y() + 52.0;
+    let limits_text = gptoss
+        .gpu_limits
+        .as_ref()
+        .map(|limits| format!("LIMITS: {}", truncate_text(limits, 44)))
+        .unwrap_or_else(|| "LIMITS: --".to_string());
+    draw_mono_text(
+        scene,
+        text_system,
+        &limits_text,
+        inner.x(),
+        inner.y() + 50.0,
+        9.0,
+        theme::text::MUTED,
+    );
+
+    let mut ry = inner.y() + 66.0;
     draw_mono_text(
         scene,
         text_system,
