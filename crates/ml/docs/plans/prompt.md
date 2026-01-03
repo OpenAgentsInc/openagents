@@ -637,6 +637,7 @@ Read these if stuck:
 - 2026-01-02: Updated GGUF error copy to mention drag-and-drop as a fallback.
 - 2026-01-02: Added drag-enter handling so the drop overlay shows immediately.
 - 2026-01-02: Cleared drop overlay when drops are rejected or missing files to avoid stuck drag state.
+- 2026-01-02: Buffered GPT-OSS telemetry events and flush them each frame to prevent inference stages from dropping during render.
 
 ---
 
