@@ -830,6 +830,7 @@ async fn stream_full_weights(
     index: &GgufIndex,
     total_bytes: u64,
 ) -> Result<(), String> {
+    let start_ms = now_ms();
     emit_load_stage(
         state,
         "weights_fetch",
@@ -854,14 +855,18 @@ async fn stream_full_weights(
         chunk_idx = chunk_idx.saturating_add(1);
 
         if loaded >= next_progress || loaded >= total_bytes {
+            let now = now_ms();
+            let elapsed_ms = now.saturating_sub(start_ms).max(1);
+            let rate = format_rate(loaded as f64 / (elapsed_ms as f64 / 1000.0));
             emit_load_stage(
                 state,
                 "weights_fetch",
                 StageStatus::Progress,
                 Some(format!(
-                    "chunk={} offset={}",
+                    "chunk={} offset={} rate={}",
                     chunk_idx,
-                    format_bytes(offset)
+                    format_bytes(offset),
+                    rate
                 )),
                 Some(loaded),
                 Some(total_bytes),
@@ -892,7 +897,11 @@ async fn stream_full_weights(
         state,
         "weights_fetch",
         StageStatus::Completed,
-        Some(format!("loaded={}", format_bytes(loaded))),
+        Some(format!(
+            "loaded={} elapsed={:.1}s",
+            format_bytes(loaded),
+            (now_ms().saturating_sub(start_ms) as f32 / 1000.0).max(0.1)
+        )),
         Some(loaded),
         Some(total_bytes),
     );
@@ -1786,6 +1795,11 @@ fn format_bytes(bytes: u64) -> String {
     } else {
         format!("{bytes}B")
     }
+}
+
+fn format_rate(bytes_per_sec: f64) -> String {
+    let rate = bytes_per_sec.max(0.0) as u64;
+    format!("{}/s", format_bytes(rate))
 }
 
 fn ensure_storage_limit(label: &str, size: usize, max: usize) -> Result<(), String> {

@@ -178,6 +178,7 @@ Notes:
 - Token stream now wraps into multiple lines with tail-clip + cursor for live readability.
 - Added Q8_0 weight cache with HUD stats to reduce repeat range fetches for small/medium tensors.
 - Re-ran `cargo test -p ml --no-default-features --features native,wgpu gguf_gate_d`.
+- Weight streaming telemetry now reports average load rate and total elapsed time.
 
 ---
 
