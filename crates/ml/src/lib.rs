@@ -8,6 +8,8 @@ mod error;
 mod http;
 #[cfg(not(target_arch = "wasm32"))]
 mod gguf;
+#[cfg(not(target_arch = "wasm32"))]
+mod gptoss_tokenizer;
 #[cfg(all(feature = "candle", feature = "wgpu", not(target_arch = "wasm32")))]
 mod gguf_gate;
 mod model;
@@ -27,7 +29,12 @@ mod tests;
 pub use device::MlDevice;
 pub use error::{MlError, Result};
 #[cfg(not(target_arch = "wasm32"))]
-pub use gguf::{load_gguf_index, GgufIndex, GgufTensorDump};
+pub use gguf::{
+    load_gguf_index, load_gguf_model, GgufIndex, GgufMetadata, GgufModel, GgufScalar,
+    GgufTensorDump, GgufTokenizer,
+};
+#[cfg(not(target_arch = "wasm32"))]
+pub use gptoss_tokenizer::GptOssTokenizer;
 #[cfg(all(feature = "candle", feature = "wgpu", not(target_arch = "wasm32")))]
 pub use gguf_gate::{run_q8_0_gate, GateConfig, GateOutcome};
 pub use model::{GenerationOutcome, LoadedModel, ModelKind, ModelSource};
