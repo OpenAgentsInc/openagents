@@ -38,6 +38,7 @@ const DEFAULT_DEVELOPER_PROMPT: &str = "";
 const DEFAULT_MAX_NEW_TOKENS: usize = 8;
 const DEFAULT_MAX_KV_TOKENS: usize = 32;
 const DEFAULT_SAMPLE_TOP_K: usize = 40;
+const DEFAULT_ACTIVE_LAYERS: usize = 2;
 const Q8_0_BLOCK_BYTES: usize = 34;
 const Q8_0_BLOCK_VALUES: usize = 32;
 const MXFP4_BLOCK_BYTES: usize = 17;
@@ -654,15 +655,33 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     emit_tensor_scan(&state, index.as_ref(), 18);
     emit_metadata_keys(&state, index.as_ref(), 18);
     let config = parse_config(index.as_ref())?;
-    let active_layers = read_query_usize("layers")
-        .unwrap_or(config.block_count as usize)
-        .min(config.block_count as usize);
+    let requested_layers = read_query_usize("layers");
+    let mut active_layers = requested_layers.unwrap_or(DEFAULT_ACTIVE_LAYERS);
+    let max_layers = config.block_count as usize;
+    if requested_layers.is_none() && active_layers == 0 {
+        active_layers = DEFAULT_ACTIVE_LAYERS;
+    }
+    active_layers = active_layers.min(max_layers);
     if active_layers == 0 {
         emit_load_stage(
             &state,
             "layer_limit",
             StageStatus::Completed,
             Some("layers=0 (lm_head only)".to_string()),
+            None,
+            None,
+        );
+    } else if active_layers != max_layers {
+        let detail = if requested_layers.is_none() {
+            format!("layers={active_layers}/{max_layers} default")
+        } else {
+            format!("layers={active_layers}/{max_layers}")
+        };
+        emit_load_stage(
+            &state,
+            "layer_limit",
+            StageStatus::Completed,
+            Some(detail),
             None,
             None,
         );
@@ -674,19 +693,6 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         .map(|value| matches!(value.as_str(), "fallback" | "off" | "0"))
         .unwrap_or(false);
     emit_config(&state, &config);
-    if active_layers != config.block_count as usize && active_layers > 0 {
-        emit_load_stage(
-            &state,
-            "layer_limit",
-            StageStatus::Completed,
-            Some(format!(
-                "layers={active_layers}/{}",
-                config.block_count
-            )),
-            None,
-            None,
-        );
-    }
     if moe_fallback {
         emit_load_stage(
             &state,
@@ -1428,6 +1434,10 @@ pub(crate) fn default_gguf_url() -> String {
     } else {
         String::new()
     }
+}
+
+pub(crate) fn default_active_layers() -> usize {
+    DEFAULT_ACTIVE_LAYERS
 }
 
 pub(crate) fn local_gguf_path() -> &'static str {
