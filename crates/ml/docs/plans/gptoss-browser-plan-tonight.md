@@ -96,6 +96,12 @@ Notes:
 - Gate status + diff stats render in the ML Inference HUD.
 - `cargo check --target wasm32-unknown-unknown` passes for `openagents-web-client` (1 pre-existing warning about `token_id` unused).
 
+### Phase 2 Kickoff — Shared GPU + Runtime Scaffold (in progress)
+
+- Added a shared **GPU context** to the web app state (reuse WGPUI device/queue).
+- Extracted a reusable **GGUF web parser + range fetch** module.
+- Added a `gptoss_runtime` scaffold to start centralizing browser runtime logic.
+
 ---
 
 ## Tonight MVP (non-negotiable)
@@ -141,6 +147,69 @@ Goal: **one end-to-end compute path runs in-browser**:
 - Read back GPU `Y` and compare within tolerance.
 
 If Gate D passes, the browser spine is real.
+
+---
+
+## Phase 2 Plan — In-Browser GPT-OSS Runtime (Next)
+
+Goal: turn the Gate C/D prototype into a real **gpt-oss** runtime in the browser,
+with live telemetry streaming into `/gptoss` while weights load and tokens decode.
+
+### Phase 2 Milestones (ordered)
+
+1) **Shared WebGPU context**
+   - Reuse the **existing** WGPUI `wgpu::Device/Queue` (no second device).
+   - Surface limits/features in-state so kernel tiling respects WebGPU caps.
+
+2) **Browser GGUF + range I/O module**
+   - Extract `GGUF index + range fetch` into a reusable `gguf_web` module.
+   - The runtime and gate should share the same parser + range reader.
+
+3) **Runtime scaffold**
+   - Add `gptoss_runtime` module that owns:
+     - `GpuContext` (device/queue)
+     - `GgufIndex`
+     - weight residency manager (resident + paged experts)
+   - Initial API:
+     - `load_index(url) -> GgufIndex`
+     - `load_tensor_slice(name, len) -> bytes`
+
+4) **Real-shape Q8_0 linear**
+   - Upgrade kernel to handle **real GPT-OSS tensor shapes** with tiling.
+   - Enforce **buffer chunking**: never assume a huge single binding.
+   - Emit telemetry:
+     - `weights_fetch`, `weights_map`, `gguf_parse`, `kernel_dispatch`
+
+5) **Single transformer block (no MoE)**
+   - RMSNorm → RoPE → QKV → **dense attention** for one block.
+   - Use a tiny test prompt; stop after one block; validate logits shape.
+
+6) **MoE router + 1 expert path**
+   - Parse expert weights (ggml type 39 in GPT-OSS GGUF).
+   - Implement router top-k (k=2) and run one expert MLP.
+
+7) **Paged expert cache**
+   - Cache hot experts on GPU with LRU eviction.
+   - Emit telemetry for cache hits/misses and resident memory.
+
+8) **KV cache + decode loop**
+   - Add per-layer KV cache (f16 if available).
+   - Token-by-token decode; stream telemetry to `/gptoss`.
+
+9) **Tokenizer + Harmony format**
+   - Add GPT-OSS tokenizer + Harmony prompt wrapper.
+
+10) **Correctness checks**
+   - Compare a short prompt vs llama.cpp (tolerance-based).
+
+### Full GPT-OSS Checklist (blocking items)
+
+- GGUF tensor naming map for GPT-OSS (dense + MoE experts).
+- WebGPU limits adaptation (buffer sizes, binding counts, dynamic offsets).
+- Q8_0 (dev) + Q4_K_M (realistic memory) kernels.
+- Attention banded window for alternating layers.
+- MoE expert paging and cache accounting.
+- KV cache eviction + sliding window.
 
 ---
 

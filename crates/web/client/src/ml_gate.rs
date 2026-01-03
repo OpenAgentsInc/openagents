@@ -1,14 +1,13 @@
 use std::cell::RefCell;
-use std::io::{Cursor, Read};
 use std::rc::Rc;
 
 use bytemuck::cast_slice;
 use futures::channel::oneshot;
-use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::{spawn_local, JsFuture};
+use wasm_bindgen_futures::spawn_local;
 use wgpu::util::DeviceExt;
 
-use crate::state::{AppState, GateStatus};
+use crate::gguf_web::{fetch_and_parse_index, fetch_range};
+use crate::state::{AppState, GateStatus, GpuContext};
 
 const DEFAULT_TENSOR: &str = "output.weight";
 const DEFAULT_K: usize = 128;
@@ -49,6 +48,7 @@ pub(crate) fn init_ml_gate_runtime(state: Rc<RefCell<AppState>>) {
         return;
     }
 
+    let gpu_context = state.borrow().gpu_context.clone();
     let tensor = params.get("tensor").unwrap_or_else(|| DEFAULT_TENSOR.to_string());
     let k = parse_usize(params.get("k"), DEFAULT_K);
     let n = parse_usize(params.get("n"), DEFAULT_N);
@@ -78,7 +78,7 @@ pub(crate) fn init_ml_gate_runtime(state: Rc<RefCell<AppState>>) {
 
     let state_clone = state.clone();
     spawn_local(async move {
-        if let Err(err) = run_gate(state_clone.clone(), &config).await {
+        if let Err(err) = run_gate(state_clone.clone(), &config, gpu_context).await {
             update_gate_state(&state_clone, |gate| {
                 gate.gate_status = GateStatus::Failed;
                 gate.gate_error = Some(err);
@@ -96,12 +96,21 @@ struct GateConfig {
     tolerance: f32,
 }
 
-async fn run_gate(state: Rc<RefCell<AppState>>, config: &GateConfig) -> Result<(), String> {
+async fn run_gate(
+    state: Rc<RefCell<AppState>>,
+    config: &GateConfig,
+    gpu_context: Option<GpuContext>,
+) -> Result<(), String> {
     update_gate_state(&state, |gate| {
         gate.gate_message = Some("fetching GGUF metadata".to_string());
     });
 
-    let index = fetch_and_parse_index(&config.gguf_url).await?;
+    let index = fetch_and_parse_index(
+        &config.gguf_url,
+        METADATA_FETCH_BYTES,
+        MAX_METADATA_ATTEMPTS,
+    )
+    .await?;
     let tensor = index
         .tensors
         .iter()
@@ -160,10 +169,15 @@ async fn run_gate(state: Rc<RefCell<AppState>>, config: &GateConfig) -> Result<(
     }
 
     update_gate_state(&state, |gate| {
-        gate.gate_message = Some("running WebGPU kernel".to_string());
+        let label = if gpu_context.is_some() {
+            "running WebGPU kernel (shared device)"
+        } else {
+            "running WebGPU kernel"
+        };
+        gate.gate_message = Some(label.to_string());
     });
 
-    let y_gpu = gpu_matmul_q8_0(&quant, &x, config.k, config.n).await?;
+    let y_gpu = gpu_matmul_q8_0(&quant, &x, config.k, config.n, gpu_context.as_ref()).await?;
     let (max_abs, mean_abs) = diff_stats(&y_cpu, &y_gpu);
 
     update_gate_state(&state, |gate| {
@@ -195,69 +209,6 @@ async fn run_gate(state: Rc<RefCell<AppState>>, config: &GateConfig) -> Result<(
     Ok(())
 }
 
-async fn fetch_and_parse_index(url: &str) -> Result<GgufIndex, String> {
-    let mut fetch_len = METADATA_FETCH_BYTES;
-    for _ in 0..MAX_METADATA_ATTEMPTS {
-        let bytes = fetch_range(url, 0, fetch_len).await?;
-        match parse_gguf_index(&bytes) {
-            Ok(index) => return Ok(index),
-            Err(ParseError::Incomplete) => {
-                fetch_len = fetch_len.saturating_mul(2);
-            }
-            Err(ParseError::Invalid(msg)) => return Err(msg),
-        }
-    }
-    Err("GGUF metadata parse incomplete after retries".to_string())
-}
-
-async fn fetch_range(url: &str, offset: u64, len: u64) -> Result<Vec<u8>, String> {
-    if len == 0 {
-        return Err("range length is zero".to_string());
-    }
-
-    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let end = offset.saturating_add(len.saturating_sub(1));
-    let range_header = format!("bytes={offset}-{end}");
-
-    let init = web_sys::RequestInit::new();
-    init.set_method("GET");
-
-    let headers = web_sys::Headers::new().map_err(|err| js_err(err))?;
-    headers
-        .set("Range", &range_header)
-        .map_err(|err| js_err(err))?;
-    init.set_headers(&headers);
-
-    let request =
-        web_sys::Request::new_with_str_and_init(url, &init).map_err(|err| js_err(err))?;
-    let resp_value = JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|err| js_err(err))?;
-    let resp: web_sys::Response = resp_value.dyn_into().map_err(|err| js_err(err))?;
-
-    if !resp.ok() {
-        return Err(format!("fetch failed: {}", resp.status()));
-    }
-
-    let buffer = JsFuture::from(resp.array_buffer().map_err(|err| js_err(err))?)
-        .await
-        .map_err(|err| js_err(err))?;
-    let array = js_sys::Uint8Array::new(&buffer);
-    let mut data = vec![0u8; array.length() as usize];
-    array.copy_to(&mut data);
-
-    if data.len() > len as usize
-        && resp
-            .headers()
-            .get("Content-Range")
-            .map_err(|err| js_err(err))?
-            .is_none()
-    {
-        return Err("range request not honored by server".to_string());
-    }
-
-    Ok(data)
-}
 
 fn build_input(k: usize) -> Vec<f32> {
     let mut x = Vec::with_capacity(k);
@@ -327,33 +278,39 @@ async fn gpu_matmul_q8_0(
     x: &[f32],
     k: usize,
     n: usize,
+    gpu_context: Option<&GpuContext>,
 ) -> Result<Vec<f32>, String> {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::BROWSER_WEBGPU,
-        ..Default::default()
-    });
+    let (device, queue) = if let Some(gpu) = gpu_context {
+        (gpu.device.clone(), gpu.queue.clone())
+    } else {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::BROWSER_WEBGPU,
+            ..Default::default()
+        });
 
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        })
-        .await
-        .ok_or_else(|| "no WebGPU adapter available".to_string())?;
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })
+            .await
+            .ok_or_else(|| "no WebGPU adapter available".to_string())?;
 
-    let (device, queue) = adapter
-        .request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("ml-gate"),
-                required_features: wgpu::Features::empty(),
-                required_limits: adapter.limits(),
-                memory_hints: wgpu::MemoryHints::default(),
-            },
-            None,
-        )
-        .await
-        .map_err(|e| format!("failed to create WebGPU device: {e:?}"))?;
+        let (created_device, created_queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("ml-gate"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: adapter.limits(),
+                    memory_hints: wgpu::MemoryHints::default(),
+                },
+                None,
+            )
+            .await
+            .map_err(|e| format!("failed to create WebGPU device: {e:?}"))?;
+        (created_device, created_queue)
+    };
 
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("q8_0_gate_c"),
@@ -540,266 +497,6 @@ fn parse_f32(value: Option<String>, default: f32) -> f32 {
         .unwrap_or(default)
 }
 
-fn js_err(err: impl std::fmt::Debug) -> String {
-    format!("{err:?}")
-}
-
-#[derive(Debug)]
-enum ParseError {
-    Incomplete,
-    Invalid(String),
-}
-
-#[allow(dead_code)]
-struct GgufTensor {
-    name: String,
-    ggml_type: u32,
-    ggml_type_name: String,
-    dims: Vec<u64>,
-    offset: u64,
-    absolute_offset: u64,
-}
-
-#[allow(dead_code)]
-struct GgufIndex {
-    version: u32,
-    tensor_data_offset: u64,
-    tensors: Vec<GgufTensor>,
-}
-
-fn parse_gguf_index(bytes: &[u8]) -> Result<GgufIndex, ParseError> {
-    let mut cursor = Cursor::new(bytes);
-
-    let magic = read_u32(&mut cursor)?;
-    if magic != 0x4655_4747 && magic != 0x4747_5546 {
-        return Err(ParseError::Invalid(format!(
-            "invalid gguf magic: 0x{magic:08x}"
-        )));
-    }
-
-    let version_raw = read_u32(&mut cursor)?;
-    let version = match version_raw {
-        1 | 2 | 3 => version_raw,
-        _ => {
-            return Err(ParseError::Invalid(format!(
-                "unsupported gguf version: {version_raw}"
-            )))
-        }
-    };
-
-    let tensor_count = if version == 1 {
-        read_u32(&mut cursor)? as u64
-    } else {
-        read_u64(&mut cursor)?
-    };
-    let kv_count = if version == 1 {
-        read_u32(&mut cursor)? as u64
-    } else {
-        read_u64(&mut cursor)?
-    };
-
-    skip_kv_entries(&mut cursor, kv_count, version)?;
-
-    let tensor_count_usize = usize::try_from(tensor_count)
-        .map_err(|_| ParseError::Invalid("tensor count too large".to_string()))?;
-    let mut tensors = Vec::with_capacity(tensor_count_usize);
-    for _ in 0..tensor_count_usize {
-        let name = read_string(&mut cursor, version)?;
-        let n_dims = read_u32(&mut cursor)?;
-        let mut dims = Vec::with_capacity(n_dims as usize);
-        for _ in 0..n_dims {
-            let dim = if version == 1 {
-                read_u32(&mut cursor)? as u64
-            } else {
-                read_u64(&mut cursor)?
-            };
-            dims.push(dim);
-        }
-        dims.reverse();
-        let ggml_type = read_u32(&mut cursor)?;
-        let offset = read_u64(&mut cursor)?;
-        tensors.push(GgufTensor {
-            name,
-            ggml_type,
-            ggml_type_name: ggml_type_name(ggml_type).to_string(),
-            dims,
-            offset,
-            absolute_offset: 0,
-        });
-    }
-
-    let tensor_data_offset = align_offset(cursor.position(), 32);
-    for tensor in &mut tensors {
-        tensor.absolute_offset = tensor_data_offset + tensor.offset;
-    }
-
-    Ok(GgufIndex {
-        version,
-        tensor_data_offset,
-        tensors,
-    })
-}
-
-fn skip_kv_entries<R: Read>(
-    reader: &mut R,
-    kv_count: u64,
-    version: u32,
-) -> Result<(), ParseError> {
-    for _ in 0..kv_count {
-        let _key = read_string(reader, version)?;
-        let value_type = read_u32(reader)?;
-        skip_value(reader, value_type, version)?;
-    }
-    Ok(())
-}
-
-fn skip_value<R: Read>(reader: &mut R, value_type: u32, version: u32) -> Result<(), ParseError> {
-    match value_type {
-        0 | 1 | 7 => skip_bytes(reader, 1),
-        2 | 3 => skip_bytes(reader, 2),
-        4 | 5 | 6 => skip_bytes(reader, 4),
-        10 | 11 | 12 => skip_bytes(reader, 8),
-        8 => {
-            let len = read_string_len(reader, version)?;
-            skip_bytes(reader, len)?;
-            Ok(())
-        }
-        9 => {
-            let elem_type = read_u32(reader)?;
-            let len = read_u64(reader)?;
-            skip_array(reader, elem_type, len, version)
-        }
-        _ => Err(ParseError::Invalid(format!(
-            "unsupported gguf value type: {value_type}"
-        ))),
-    }
-}
-
-fn skip_array<R: Read>(
-    reader: &mut R,
-    elem_type: u32,
-    len: u64,
-    version: u32,
-) -> Result<(), ParseError> {
-    match elem_type {
-        0 | 1 | 7 => skip_bytes(reader, len),
-        2 | 3 => skip_bytes(reader, len * 2),
-        4 | 5 | 6 => skip_bytes(reader, len * 4),
-        10 | 11 | 12 => skip_bytes(reader, len * 8),
-        8 => {
-            for _ in 0..len {
-                let slen = read_string_len(reader, version)?;
-                skip_bytes(reader, slen)?;
-            }
-            Ok(())
-        }
-        _ => Err(ParseError::Invalid(format!(
-            "unsupported gguf array type: {elem_type}"
-        ))),
-    }
-}
-
-fn read_u32<R: Read>(reader: &mut R) -> Result<u32, ParseError> {
-    let mut buf = [0u8; 4];
-    reader.read_exact(&mut buf).map_err(map_incomplete)?;
-    Ok(u32::from_le_bytes(buf))
-}
-
-fn read_u64<R: Read>(reader: &mut R) -> Result<u64, ParseError> {
-    let mut buf = [0u8; 8];
-    reader.read_exact(&mut buf).map_err(map_incomplete)?;
-    Ok(u64::from_le_bytes(buf))
-}
-
-fn read_string_len<R: Read>(reader: &mut R, version: u32) -> Result<u64, ParseError> {
-    if version == 1 {
-        Ok(read_u32(reader)? as u64)
-    } else {
-        read_u64(reader)
-    }
-}
-
-fn read_string<R: Read>(reader: &mut R, version: u32) -> Result<String, ParseError> {
-    let len = read_string_len(reader, version)?;
-    if len > (usize::MAX as u64) {
-        return Err(ParseError::Invalid("gguf string too long".to_string()));
-    }
-    let mut buf = vec![0u8; len as usize];
-    reader.read_exact(&mut buf).map_err(map_incomplete)?;
-    let value = String::from_utf8(buf)
-        .map_err(|_| ParseError::Invalid("gguf string invalid utf8".to_string()))?;
-    Ok(value)
-}
-
-fn skip_bytes<R: Read>(reader: &mut R, len: u64) -> Result<(), ParseError> {
-    let mut remaining = len;
-    let mut buf = [0u8; 1024];
-    while remaining > 0 {
-        let chunk = buf.len().min(remaining as usize);
-        reader
-            .read_exact(&mut buf[..chunk])
-            .map_err(map_incomplete)?;
-        remaining -= chunk as u64;
-    }
-    Ok(())
-}
-
-fn align_offset(offset: u64, align: u64) -> u64 {
-    if align == 0 {
-        return offset;
-    }
-    let rem = offset % align;
-    if rem == 0 {
-        offset
-    } else {
-        offset + (align - rem)
-    }
-}
-
-fn ggml_type_name(type_id: u32) -> &'static str {
-    match type_id {
-        0 => "F32",
-        1 => "F16",
-        2 => "Q4_0",
-        3 => "Q4_1",
-        4 => "Q4_2",
-        5 => "Q4_3",
-        6 => "Q5_0",
-        7 => "Q5_1",
-        8 => "Q8_0",
-        9 => "Q8_1",
-        10 => "Q2_K",
-        11 => "Q3_K",
-        12 => "Q4_K",
-        13 => "Q5_K",
-        14 => "Q6_K",
-        15 => "Q8_K",
-        16 => "IQ2_XXS",
-        17 => "IQ2_XS",
-        18 => "IQ3_XXS",
-        19 => "IQ1_S",
-        20 => "IQ4_NL",
-        21 => "IQ3_S",
-        22 => "IQ2_S",
-        23 => "IQ4_XS",
-        24 => "I8",
-        25 => "I16",
-        26 => "I32",
-        27 => "I64",
-        28 => "F64",
-        29 => "IQ1_M",
-        30 => "BF16",
-        _ => "unknown",
-    }
-}
-
-fn map_incomplete(err: std::io::Error) -> ParseError {
-    if err.kind() == std::io::ErrorKind::UnexpectedEof {
-        ParseError::Incomplete
-    } else {
-        ParseError::Invalid(err.to_string())
-    }
-}
 
 fn f16_to_f32(bits: u16) -> f32 {
     let sign = ((bits >> 15) & 1) as u32;

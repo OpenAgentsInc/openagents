@@ -16,7 +16,7 @@ use crate::hud::{
     stop_metrics_poll, update_hud_settings, HudContext,
 };
 use crate::nostr::{connect_to_relay, BazaarJob, DEFAULT_RELAYS};
-use crate::state::{AppState, AppView, RepoInfo, UserInfo};
+use crate::state::{AppState, AppView, GpuContext, RepoInfo, UserInfo};
 use crate::telemetry::{TelemetryCollector, set_panic_hook, track_cta_click};
 use crate::views::{
     build_2026_page, build_brb_page, build_gfn_page, build_gptoss_page, build_landing_page,
@@ -49,6 +49,15 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
     let state = Rc::new(RefCell::new(AppState::default()));
 
     platform.borrow_mut().handle_resize();
+
+    {
+        let platform_ref = platform.borrow();
+        let gpu_context = GpuContext::new(
+            platform_ref.device().clone(),
+            platform_ref.queue().clone(),
+        );
+        state.borrow_mut().gpu_context = Some(gpu_context);
+    }
 
     // Check for GFN page flag
     let is_gfn_page = web_sys::window()
