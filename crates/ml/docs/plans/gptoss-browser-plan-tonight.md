@@ -185,6 +185,7 @@ Notes:
 - Default layer count for browser runs is now 2 (override with `?layers=`), logged in load telemetry.
 - Ran `cargo run -p ml --bin test_tokenizer -- --gguf ... --text "Hello, world!"`.
 - Ran `cargo run -p ml --bin gptoss_cli -- --gguf ... --prompt "Once upon a time" --layers 1 --max-tokens 1 --moe-fallback`.
+- I/O panel now shows prompt tokenization detail from `prompt_encode`.
 
 ---
 

@@ -565,6 +565,26 @@ fn draw_io_panel(
         theme::text::MUTED,
     );
 
+    let prompt_stage = find_stage(gptoss, "prompt_encode");
+    let prompt_text = if let Some(stage) = prompt_stage {
+        if let Some(detail) = &stage.detail {
+            format!("PROMPT: {}", truncate_text(detail, 40))
+        } else {
+            "PROMPT: ok".to_string()
+        }
+    } else {
+        "PROMPT: --".to_string()
+    };
+    draw_mono_text(
+        scene,
+        text_system,
+        &prompt_text,
+        inner.x(),
+        inner.y() + 42.0,
+        9.0,
+        theme::text::MUTED,
+    );
+
     let token_limits = gptoss
         .token_limits
         .as_ref()
@@ -575,7 +595,7 @@ fn draw_io_panel(
         text_system,
         &token_limits,
         inner.x(),
-        inner.y() + 46.0,
+        inner.y() + 56.0,
         10.0,
         theme::text::MUTED,
     );
@@ -596,7 +616,7 @@ fn draw_io_panel(
         text_system,
         &mem_text,
         inner.x(),
-        inner.y() + 62.0,
+        inner.y() + 72.0,
         10.0,
         theme::text::MUTED,
     );
@@ -610,7 +630,7 @@ fn draw_io_panel(
         text_system,
         &tensor_cache,
         inner.x(),
-        inner.y() + 78.0,
+        inner.y() + 88.0,
         9.0,
         theme::text::MUTED,
     );
@@ -624,7 +644,7 @@ fn draw_io_panel(
         text_system,
         &q8_cache,
         inner.x(),
-        inner.y() + 90.0,
+        inner.y() + 100.0,
         9.0,
         theme::text::MUTED,
     );
@@ -638,7 +658,7 @@ fn draw_io_panel(
         text_system,
         &expert_cache,
         inner.x(),
-        inner.y() + 102.0,
+        inner.y() + 112.0,
         9.0,
         theme::text::MUTED,
     );
@@ -658,13 +678,13 @@ fn draw_io_panel(
             text_system,
             line,
             inner.x(),
-            inner.y() + 118.0 + (idx as f32 * 12.0),
+            inner.y() + 128.0 + (idx as f32 * 12.0),
             9.0,
             theme::text::MUTED,
         );
     }
 
-    let mut ry = inner.y() + 134.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
+    let mut ry = inner.y() + 144.0 + ((limits_lines.len().saturating_sub(1) as f32) * 12.0);
     let show_scan = gptoss.load_active
         || (gptoss.resident_tensors.is_empty() && !gptoss.recent_tensors.is_empty());
     let label = if show_scan { "LOAD SCAN:" } else { "RESIDENT:" };
