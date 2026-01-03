@@ -2786,8 +2786,14 @@ async fn run_block0_attention_probe(
         let down_bias = fetch_f32_row(gguf_url, down_exps_b, *expert_idx).await?;
         apply_bias_gpu(&mut down_out, &down_bias, gpu, &mut gpu_tracker).await?;
 
-        for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {
-            *acc += *val * *weight;
+        if let Ok(value) =
+            scale_add_gpu(&mlp_accum, &down_out, *weight, gpu, &mut gpu_tracker).await
+        {
+            mlp_accum = value;
+        } else {
+            for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {
+                *acc += *val * *weight;
+            }
         }
     }
 
@@ -4046,8 +4052,13 @@ async fn run_transformer_layer(
             break;
         }
 
-        for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {
-            *acc += *val * *weight;
+        if let Ok(value) = scale_add_gpu(&mlp_accum, &down_out, *weight, gpu, gpu_tracker).await
+        {
+            mlp_accum = value;
+        } else {
+            for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {
+                *acc += *val * *weight;
+            }
         }
         let expert_ms = now_ms().saturating_sub(expert_start).max(1);
         emit_inference_stage(
@@ -5217,6 +5228,19 @@ struct AttentionWeightsParams {
     _pad1: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct ScaleAddParams {
+    n: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+    weight: f32,
+    _pad3: u32,
+    _pad4: u32,
+    _pad5: u32,
+}
+
 async fn rms_norm_gpu(
     input: &[f32],
     weight: &[f32],
@@ -5920,6 +5944,196 @@ async fn vector_add_gpu(
         Ok(Ok(())) => {}
         Ok(Err(err)) => return Err(format!("vec_add map_async failed: {err:?}")),
         Err(_) => return Err("vec_add map_async channel failed".to_string()),
+    }
+
+    let data = slice.get_mapped_range();
+    let output = cast_slice(&data).to_vec();
+    drop(data);
+    readback.unmap();
+    Ok(output)
+}
+
+async fn scale_add_gpu(
+    acc: &[f32],
+    input: &[f32],
+    weight: f32,
+    gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+) -> Result<Vec<f32>, String> {
+    if acc.len() != input.len() {
+        return Err("scale_add shape mismatch".to_string());
+    }
+    let n = acc.len();
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    let device = &gpu.device;
+    let queue = &gpu.queue;
+    let max_storage = device.limits().max_storage_buffer_binding_size as usize;
+    let bytes = n * std::mem::size_of::<f32>();
+    ensure_storage_limit("scale_add acc", bytes, max_storage)?;
+    ensure_storage_limit("scale_add input", bytes, max_storage)?;
+    ensure_storage_limit("scale_add out", bytes, max_storage)?;
+
+    let workgroup_size = pick_workgroup_size(device);
+    let shader_source = shader_with_workgroup(SCALE_ADD_SHADER, workgroup_size);
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("scale_add"),
+        source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+    });
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("scale_add_bindings"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("scale_add_layout"),
+        bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("scale_add_pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
+    let acc_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("scale_add_acc"),
+        contents: cast_slice(acc),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("scale_add_input"),
+        contents: cast_slice(input),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+    let out_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("scale_add_out"),
+        size: bytes as u64,
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let params = ScaleAddParams {
+        n: u32::try_from(n).map_err(|_| "scale_add n overflow".to_string())?,
+        _pad0: 0,
+        _pad1: 0,
+        _pad2: 0,
+        weight,
+        _pad3: 0,
+        _pad4: 0,
+        _pad5: 0,
+    };
+    let params_bytes = std::mem::size_of::<ScaleAddParams>();
+    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("scale_add_params"),
+        contents: cast_slice(&[params]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("scale_add_bind_group"),
+        layout: &bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: acc_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: input_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: out_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: params_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("scale_add_readback"),
+        size: bytes as u64,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    gpu_tracker.add_buffers(bytes * 3 + params_bytes, 5);
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("scale_add_encoder"),
+    });
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("scale_add_pass"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        let groups = (n as u32 + workgroup_size - 1) / workgroup_size;
+        pass.dispatch_workgroups(groups, 1, 1);
+    }
+    encoder.copy_buffer_to_buffer(&out_buffer, 0, &readback, 0, bytes as u64);
+    queue.submit(Some(encoder.finish()));
+
+    let slice = readback.slice(..);
+    let (tx, rx) = oneshot::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = tx.send(result);
+    });
+    device.poll(wgpu::Maintain::Wait);
+    match rx.await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => return Err(format!("scale_add map_async failed: {err:?}")),
+        Err(_) => return Err("scale_add map_async channel failed".to_string()),
     }
 
     let data = slice.get_mapped_range();
@@ -7493,6 +7707,7 @@ const VEC_ADD_SHADER: &str = include_str!("shaders/vec_add.wgsl");
 const SWIGLU_SHADER: &str = include_str!("shaders/swiglu.wgsl");
 const MATMUL_F32_SHADER: &str = include_str!("shaders/matmul_f32.wgsl");
 const ATTENTION_WEIGHTS_SHADER: &str = include_str!("shaders/attention_weights.wgsl");
+const SCALE_ADD_SHADER: &str = include_str!("shaders/scale_add.wgsl");
 
 const Q8_0_SHADER: &str = r#"
 struct Params {

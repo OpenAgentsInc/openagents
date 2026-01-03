@@ -218,6 +218,7 @@ Notes:
 - KV cache HUD now shows bytes alongside token counts.
 - I/O panel now renders a GPU memory gauge based on GPU limits telemetry.
 - Q8_0 chunked matmul now accounts for padding when enforcing storage limits.
+- Added a **scale-add** WGSL kernel and used it for MoE expert accumulation (acc += weight * down_out) in block-0 probe and main transformer layers, with CPU fallback.
 - Token embedding LRU cache added (hit/miss telemetry + HUD line) and memory totals include all cache bytes.
 - I/O panel height increased to fit cache/limits/load scan telemetry without clipping.
 - GPU memory gauge now falls back to max_storage when max_buffer is unavailable.
