@@ -523,7 +523,7 @@ impl GptOssRuntime {
 }
 
 pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
-    let gguf_url = {
+    let raw_url = {
         let input_override = state
             .try_borrow()
             .ok()
@@ -538,6 +538,24 @@ pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
         input_override
             .or_else(|| read_query_param("gguf").filter(|url| !url.is_empty()))
             .unwrap_or_else(default_gguf_url)
+    };
+    let gguf_url = match normalize_gguf_url(&raw_url) {
+        Ok(url) => url,
+        Err(err) => {
+            if let Ok(mut guard) = state.try_borrow_mut() {
+                reset_gptoss_state(&mut guard.gptoss);
+                guard.gptoss.load_error = Some(err.clone());
+            }
+            emit_load_stage(
+                &state,
+                "load_failed",
+                StageStatus::Failed,
+                Some(err),
+                None,
+                None,
+            );
+            return;
+        }
     };
     if gguf_url.is_empty() {
         if let Ok(mut guard) = state.try_borrow_mut() {
@@ -966,6 +984,7 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.active_layers = None;
     state.load_progress = None;
     state.current_stage = None;
+    state.inference_error = None;
     state.last_token_ts_ms = None;
     state.start_ts_ms = None;
 }
@@ -1434,6 +1453,29 @@ pub(crate) fn default_gguf_url() -> String {
     } else {
         String::new()
     }
+}
+
+fn normalize_gguf_url(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(String::new());
+    }
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Ok(trimmed.to_string());
+    }
+    if trimmed.starts_with("file://") || trimmed.starts_with('/') || trimmed.starts_with('~') {
+        return Err(format!(
+            "Local file paths are not supported in the browser.\nRun: {LOCAL_GGUF_SERVE_CMD}\nThen use: {LOCAL_GGUF_URL}"
+        ));
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("localhost")
+        || lower.starts_with("127.0.0.1")
+        || lower.starts_with("0.0.0.0")
+    {
+        return Ok(format!("http://{trimmed}"));
+    }
+    Err("GGUF URL must start with http:// or https://".to_string())
 }
 
 pub(crate) fn default_active_layers() -> usize {

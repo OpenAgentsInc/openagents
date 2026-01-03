@@ -116,8 +116,10 @@ Notes:
  - `/gptoss` now streams **real GGUF bytes** in chunks on click (with progress + tensor scan events).
  - Added a local **GGUF range server** (`gguf_serve`) to stream the on-disk model with HTTP Range.
  - `gguf_serve` now responds to CORS preflight + exposes `Content-Range` for browser range fetches.
- - Added a **Q8_0 probe** that pulls a real GPT-OSS tensor slice and runs a WebGPU matmul in-browser.
- - `/gptoss` now shows a live **load progress bar** driven by real byte counts.
+- Added a **Q8_0 probe** that pulls a real GPT-OSS tensor slice and runs a WebGPU matmul in-browser.
+- `/gptoss` now shows a live **load progress bar** driven by real byte counts.
+- Added GGUF URL normalization: bare `localhost:...` is auto-prefixed; local file paths show a clear gguf_serve hint.
+- Added visible inference error lines in the `/gptoss` header so failures surface immediately (not only in the log panel).
  - Added a **block 0 attention probe** (token embed → RMSNorm → Q/K/V → attn output) using real GPT-OSS weights.
 - Added a **prefill + decode loop** with a CPU KV cache (per-layer) for multi-token forward passes.
 - Added **cache telemetry** (seq_len, max_len, bytes) and live **token stream** output from real logits.

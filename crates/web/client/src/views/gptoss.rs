@@ -247,6 +247,27 @@ pub(crate) fn build_gptoss_page(
             y += 14.0;
         }
     }
+    if let Some(err) = &state.gptoss.inference_error {
+        let mut first = true;
+        for line in err.lines().take(2) {
+            let label = if first {
+                format!("INFER: {}", line)
+            } else {
+                line.to_string()
+            };
+            first = false;
+            draw_mono_text(
+                scene,
+                text_system,
+                &truncate_text(&label, 96),
+                inner_x,
+                y,
+                10.0,
+                theme::status::ERROR,
+            );
+            y += 14.0;
+        }
+    }
     if let Some(url) = &state.gptoss.load_url {
         draw_mono_text(
             scene,
