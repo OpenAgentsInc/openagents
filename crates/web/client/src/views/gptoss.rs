@@ -7,7 +7,7 @@ use wgpui::PaintContext;
 
 use crate::gptoss_runtime::{
     default_active_layers, default_gguf_url, default_user_prompt, local_gguf_path,
-    local_gguf_url,
+    local_gguf_dev_url, local_gguf_url,
     local_gguf_serve_cmd, read_query_param,
 };
 use crate::state::{AppState, GptOssStage, GptOssStageStatus, GptOssVizState};
@@ -161,6 +161,17 @@ pub(crate) fn build_gptoss_page(
         scene,
         text_system,
         &truncate_text(&local_url, 96),
+        inner_x,
+        y,
+        9.0,
+        theme::text::MUTED,
+    );
+    y += 12.0;
+    let dev_url = format!("DEV URL: {}", local_gguf_dev_url());
+    draw_mono_text(
+        scene,
+        text_system,
+        &truncate_text(&dev_url, 96),
         inner_x,
         y,
         9.0,
