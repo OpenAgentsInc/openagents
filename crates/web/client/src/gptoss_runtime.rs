@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::cell::RefCell;
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 use bytemuck::cast_slice;
@@ -26,7 +27,7 @@ const LOAD_CHUNK_BYTES: u64 = 8 * 1024 * 1024;
 const PROGRESS_STEP_BYTES: u64 = 64 * 1024 * 1024;
 const DEFAULT_GGUF_URL: &str =
     "https://huggingface.co/openai/gpt-oss-20b/resolve/main/gpt-oss-20b-Q8_0.gguf";
-const LOCAL_GGUF_URL: &str = "http://localhost:9898/gpt-oss-20b-Q8_0.gguf";
+const LOCAL_GGUF_URL: &str = "http://localhost:8080/gpt-oss-20b-Q8_0.gguf";
 const CURRENT_DATE: &str = "2026-01-02";
 const DEFAULT_USER_PROMPT: &str = "Give me one sentence about what GPT-OSS can do.";
 const MAX_NEW_TOKENS: usize = 8;
@@ -42,6 +43,10 @@ const MXFP4_VALUES: [f32; 16] = [
 ];
 const SWIGLU_ALPHA: f32 = 1.702;
 const SWIGLU_LIMIT: f32 = 7.0;
+const TENSOR_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
+const TENSOR_CACHE_MAX_ENTRY_BYTES: usize = 4 * 1024 * 1024;
+const EXPERT_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
+const EXPERT_CACHE_MAX_ENTRY_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
 struct GptOssConfig {
@@ -135,6 +140,235 @@ impl KvCache {
     }
 }
 
+#[derive(Clone, Debug)]
+struct CacheStats {
+    hits: u64,
+    misses: u64,
+    evictions: u64,
+    skipped: u64,
+    bytes: usize,
+    entries: usize,
+}
+
+#[derive(Clone, Debug)]
+struct TensorCacheEntry {
+    data: Vec<f32>,
+    bytes: usize,
+}
+
+#[derive(Clone, Debug)]
+struct TensorCache {
+    entries: HashMap<String, TensorCacheEntry>,
+    order: VecDeque<String>,
+    total_bytes: usize,
+    hits: u64,
+    misses: u64,
+    evictions: u64,
+    skipped: u64,
+}
+
+impl TensorCache {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+            total_bytes: 0,
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            skipped: 0,
+        }
+    }
+
+    fn get(&mut self, name: &str) -> Option<Vec<f32>> {
+        let hit = self.entries.get(name).map(|entry| entry.data.clone());
+        if hit.is_some() {
+            self.hits = self.hits.saturating_add(1);
+            self.touch(name);
+            return hit;
+        }
+        self.misses = self.misses.saturating_add(1);
+        None
+    }
+
+    fn insert(&mut self, name: String, data: Vec<f32>) {
+        let bytes = data.len() * std::mem::size_of::<f32>();
+        if bytes > TENSOR_CACHE_MAX_ENTRY_BYTES {
+            self.skipped = self.skipped.saturating_add(1);
+            return;
+        }
+        if bytes > TENSOR_CACHE_MAX_BYTES {
+            self.skipped = self.skipped.saturating_add(1);
+            return;
+        }
+        if let Some(existing) = self.entries.remove(&name) {
+            self.total_bytes = self.total_bytes.saturating_sub(existing.bytes);
+            self.order.retain(|v| v != &name);
+        }
+        while self.total_bytes.saturating_add(bytes) > TENSOR_CACHE_MAX_BYTES {
+            if let Some(evicted) = self.order.pop_front() {
+                if let Some(entry) = self.entries.remove(&evicted) {
+                    self.total_bytes = self.total_bytes.saturating_sub(entry.bytes);
+                    self.evictions = self.evictions.saturating_add(1);
+                }
+            } else {
+                break;
+            }
+        }
+        self.total_bytes = self.total_bytes.saturating_add(bytes);
+        self.order.push_back(name.clone());
+        self.entries.insert(
+            name,
+            TensorCacheEntry {
+                data,
+                bytes,
+            },
+        );
+    }
+
+    fn touch(&mut self, name: &str) {
+        if let Some(pos) = self.order.iter().position(|v| v == name) {
+            self.order.remove(pos);
+            self.order.push_back(name.to_string());
+        }
+    }
+
+    fn stats(&self) -> CacheStats {
+        CacheStats {
+            hits: self.hits,
+            misses: self.misses,
+            evictions: self.evictions,
+            skipped: self.skipped,
+            bytes: self.total_bytes,
+            entries: self.entries.len(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ExpertCacheEntry {
+    data: Vec<u8>,
+    bytes: usize,
+}
+
+#[derive(Clone, Debug)]
+struct ExpertCache {
+    entries: HashMap<String, ExpertCacheEntry>,
+    order: VecDeque<String>,
+    total_bytes: usize,
+    hits: u64,
+    misses: u64,
+    evictions: u64,
+    skipped: u64,
+}
+
+impl ExpertCache {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+            total_bytes: 0,
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            skipped: 0,
+        }
+    }
+
+    fn get(&mut self, key: &str) -> Option<Vec<u8>> {
+        let hit = self.entries.get(key).map(|entry| entry.data.clone());
+        if hit.is_some() {
+            self.hits = self.hits.saturating_add(1);
+            self.touch(key);
+            return hit;
+        }
+        self.misses = self.misses.saturating_add(1);
+        None
+    }
+
+    fn insert(&mut self, key: String, data: Vec<u8>) {
+        let bytes = data.len();
+        if bytes > EXPERT_CACHE_MAX_ENTRY_BYTES {
+            self.skipped = self.skipped.saturating_add(1);
+            return;
+        }
+        if bytes > EXPERT_CACHE_MAX_BYTES {
+            self.skipped = self.skipped.saturating_add(1);
+            return;
+        }
+        if let Some(existing) = self.entries.remove(&key) {
+            self.total_bytes = self.total_bytes.saturating_sub(existing.bytes);
+            self.order.retain(|v| v != &key);
+        }
+        while self.total_bytes.saturating_add(bytes) > EXPERT_CACHE_MAX_BYTES {
+            if let Some(evicted) = self.order.pop_front() {
+                if let Some(entry) = self.entries.remove(&evicted) {
+                    self.total_bytes = self.total_bytes.saturating_sub(entry.bytes);
+                    self.evictions = self.evictions.saturating_add(1);
+                }
+            } else {
+                break;
+            }
+        }
+        self.total_bytes = self.total_bytes.saturating_add(bytes);
+        self.order.push_back(key.clone());
+        self.entries.insert(
+            key,
+            ExpertCacheEntry {
+                data,
+                bytes,
+            },
+        );
+    }
+
+    fn touch(&mut self, key: &str) {
+        if let Some(pos) = self.order.iter().position(|v| v == key) {
+            self.order.remove(pos);
+            self.order.push_back(key.to_string());
+        }
+    }
+
+    fn stats(&self) -> CacheStats {
+        CacheStats {
+            hits: self.hits,
+            misses: self.misses,
+            evictions: self.evictions,
+            skipped: self.skipped,
+            bytes: self.total_bytes,
+            entries: self.entries.len(),
+        }
+    }
+}
+
+struct RuntimeCaches {
+    tensors: TensorCache,
+    experts: ExpertCache,
+}
+
+impl RuntimeCaches {
+    fn new() -> Self {
+        Self {
+            tensors: TensorCache::new(),
+            experts: ExpertCache::new(),
+        }
+    }
+}
+
+#[derive(Default)]
+struct GpuAllocTracker {
+    bytes: usize,
+}
+
+impl GpuAllocTracker {
+    fn reset(&mut self) {
+        self.bytes = 0;
+    }
+
+    fn add(&mut self, bytes: usize) {
+        self.bytes = self.bytes.saturating_add(bytes);
+    }
+}
+
 pub(crate) struct GptOssRuntime {
     pub(crate) gguf_url: String,
     pub(crate) gpu: GpuContext,
@@ -174,6 +408,22 @@ pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
     let gguf_url = read_query_param("gguf")
         .filter(|url| !url.is_empty())
         .unwrap_or_else(default_gguf_url);
+    if gguf_url.is_empty() {
+        if let Ok(mut guard) = state.try_borrow_mut() {
+            reset_gptoss_state(&mut guard.gptoss);
+            guard.gptoss.load_error =
+                Some("No GGUF URL provided. Start gguf_serve or pass ?gguf=...".to_string());
+        }
+        emit_load_stage(
+            &state,
+            "load_failed",
+            StageStatus::Failed,
+            Some("missing gguf url".to_string()),
+            None,
+            None,
+        );
+        return;
+    }
 
     {
         let Ok(mut guard) = state.try_borrow_mut() else {
@@ -219,6 +469,30 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
 
     emit_load_stage(
         &state,
+        "range_check",
+        StageStatus::Started,
+        None,
+        None,
+        None,
+    );
+
+    let (_probe, total) = fetch_range_with_total(&gguf_url, 0, 1)
+        .await
+        .map_err(|err| format!("{err}. Host does not support Range/CORS. Start gguf_serve."))?;
+    let total_bytes = total.ok_or_else(|| {
+        "Host does not support Range/CORS. Start gguf_serve.".to_string()
+    })?;
+    emit_load_stage(
+        &state,
+        "range_check",
+        StageStatus::Completed,
+        Some(format!("total={}", format_bytes(total_bytes))),
+        None,
+        None,
+    );
+
+    emit_load_stage(
+        &state,
         "gguf_parse",
         StageStatus::Started,
         Some("reading gguf header".to_string()),
@@ -246,7 +520,36 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     emit_tensor_scan(&state, index.as_ref(), 18);
     emit_metadata_keys(&state, index.as_ref(), 18);
     let config = parse_config(index.as_ref())?;
+    let active_layers = read_query_usize("layers")
+        .unwrap_or(config.block_count as usize)
+        .clamp(1, config.block_count as usize);
+    let moe_fallback = read_query_param("moe")
+        .map(|value| matches!(value.as_str(), "fallback" | "off" | "0"))
+        .unwrap_or(false);
     emit_config(&state, &config);
+    if active_layers != config.block_count as usize {
+        emit_load_stage(
+            &state,
+            "layer_limit",
+            StageStatus::Completed,
+            Some(format!(
+                "layers={active_layers}/{}",
+                config.block_count
+            )),
+            None,
+            None,
+        );
+    }
+    if moe_fallback {
+        emit_load_stage(
+            &state,
+            "moe_mode",
+            StageStatus::Completed,
+            Some("fallback expert=0".to_string()),
+            None,
+            None,
+        );
+    }
 
     let tokenizer = build_tokenizer(&state, index.as_ref())?;
     let prompt_tokens = encode_prompt(&state, &tokenizer)?;
@@ -293,11 +596,6 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
             }
         });
     }
-
-    let (_probe, total) = fetch_range_with_total(&gguf_url, 0, 1).await?;
-    let total_bytes = total.ok_or_else(|| {
-        "range response missing Content-Range total size".to_string()
-    })?;
 
     emit_load_stage(
         &state,
@@ -384,6 +682,8 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
             &tokenizer,
             &config,
             &prompt_tokens,
+            active_layers,
+            moe_fallback,
         )
         .await
         {
@@ -414,6 +714,8 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.entropy = None;
     state.memory_usage = None;
     state.cache_status.clear();
+    state.resident_tensors.clear();
+    state.last_token_ts_ms = None;
     state.start_ts_ms = None;
 }
 
@@ -496,6 +798,17 @@ fn emit_inference_event(
         GptOssTelemetry::InferenceEvent {
             event,
             ts_ms: Some(now_ms()),
+        },
+    );
+}
+
+fn emit_tensor_resident(state: &Rc<RefCell<AppState>>, name: String, bytes: usize, kind: &str) {
+    emit_inference_event(
+        state,
+        GptOssInferenceTelemetry::TensorResident {
+            name,
+            bytes,
+            kind: kind.to_string(),
         },
     );
 }
@@ -739,17 +1052,22 @@ fn read_query_param(key: &str) -> Option<String> {
     params.get(key)
 }
 
+fn read_query_usize(key: &str) -> Option<usize> {
+    read_query_param(key)
+        .and_then(|value| value.parse::<usize>().ok())
+}
+
 fn default_gguf_url() -> String {
     let window = match web_sys::window() {
         Some(window) => window,
-        None => return DEFAULT_GGUF_URL.to_string(),
+        None => return String::new(),
     };
     let host = window.location().hostname().ok();
     let local = matches!(host.as_deref(), Some("localhost") | Some("127.0.0.1"));
     if local {
         LOCAL_GGUF_URL.to_string()
     } else {
-        DEFAULT_GGUF_URL.to_string()
+        String::new()
     }
 }
 
@@ -974,16 +1292,14 @@ async fn run_q8_0_probe(
     let weights = dequant_q8_0(&quant, values)?;
     let y_cpu = matmul_cpu(&weights, &x, k, n);
 
-    let y_gpu = gpu_matmul_q8_0(&quant, &x, k, n, gpu).await?;
+    let mut gpu_tracker = GpuAllocTracker::default();
+    let y_gpu = gpu_matmul_q8_0(&quant, &x, k, n, gpu, &mut gpu_tracker).await?;
     let (max_abs, mean_abs) = diff_stats(&y_cpu, &y_gpu);
 
-    let gpu_bytes = quant.len()
-        + x.len() * std::mem::size_of::<f32>()
-        + y_gpu.len() * std::mem::size_of::<f32>();
     emit_inference_event(
         state,
         GptOssInferenceTelemetry::MemoryUsage {
-            gpu_allocated: gpu_bytes,
+            gpu_allocated: gpu_tracker.bytes,
             cache_total: 0,
             activations: 0,
         },
@@ -1092,7 +1408,8 @@ async fn run_mxfp4_probe(
     let x = build_input(k);
     let weights = dequant_mxfp4(&quant, values)?;
     let y_cpu = matmul_cpu(&weights, &x, k, n);
-    let y_gpu = gpu_matmul_mxfp4(&quant, &x, k, n, gpu).await?;
+    let mut gpu_tracker = GpuAllocTracker::default();
+    let y_gpu = gpu_matmul_mxfp4(&quant, &x, k, n, gpu, &mut gpu_tracker).await?;
     let (max_abs, mean_abs) = diff_stats(&y_cpu, &y_gpu);
 
     emit_inference_stage(
@@ -1129,9 +1446,18 @@ async fn run_block0_attention_probe(
     let post_attn_norm = find_tensor(index, "blk.0.post_attention_norm.weight")?;
     let output_norm_tensor = find_tensor(index, "output_norm.weight")?;
     let output_weight = find_tensor(index, "output.weight")?;
+    emit_tensor_resident(
+        state,
+        output_weight.name.clone(),
+        output_weight.nbytes as usize,
+        "q8_0",
+    );
+    let mut caches = RuntimeCaches::new();
+    let mut gpu_tracker = GpuAllocTracker::default();
 
     let token_row = fetch_q8_0_row(gguf_url, token_embd, 0).await?;
-    let attn_norm_w = fetch_f32_tensor(gguf_url, attn_norm).await?;
+    let attn_norm_w =
+        fetch_f32_tensor_cached(state, gguf_url, attn_norm, &mut caches.tensors).await?;
     let mut hidden = rms_norm(&token_row, &attn_norm_w, config.rms_epsilon)?;
 
     emit_inference_stage(
@@ -1143,9 +1469,39 @@ async fn run_block0_attention_probe(
         Some("qkv".to_string()),
     );
 
-    let mut q = matmul_q8_0_with_bias(gguf_url, attn_q_w, attn_q_b, &hidden, gpu).await?;
-    let mut k = matmul_q8_0_with_bias(gguf_url, attn_k_w, attn_k_b, &hidden, gpu).await?;
-    let v = matmul_q8_0_with_bias(gguf_url, attn_v_w, attn_v_b, &hidden, gpu).await?;
+    let mut q = matmul_q8_0_with_bias(
+        state,
+        gguf_url,
+        attn_q_w,
+        attn_q_b,
+        &hidden,
+        gpu,
+        &mut gpu_tracker,
+        &mut caches.tensors,
+    )
+    .await?;
+    let mut k = matmul_q8_0_with_bias(
+        state,
+        gguf_url,
+        attn_k_w,
+        attn_k_b,
+        &hidden,
+        gpu,
+        &mut gpu_tracker,
+        &mut caches.tensors,
+    )
+    .await?;
+    let v = matmul_q8_0_with_bias(
+        state,
+        gguf_url,
+        attn_v_w,
+        attn_v_b,
+        &hidden,
+        gpu,
+        &mut gpu_tracker,
+        &mut caches.tensors,
+    )
+    .await?;
 
     emit_inference_stage(
         state,
@@ -1186,7 +1542,8 @@ async fn run_block0_attention_probe(
         Some("ok".to_string()),
     );
 
-    let sinks = fetch_f32_tensor(gguf_url, attn_sinks).await?;
+    let sinks =
+        fetch_f32_tensor_cached(state, gguf_url, attn_sinks, &mut caches.tensors).await?;
     let attn_out = attention_single_token(
         &q,
         &k,
@@ -1196,18 +1553,31 @@ async fn run_block0_attention_probe(
         config.head_count_kv as usize,
         q_head_dim,
     )?;
-    let attn_proj = matmul_q8_0_with_bias(gguf_url, attn_out_w, attn_out_b, &attn_out, gpu).await?;
+    let attn_proj = matmul_q8_0_with_bias(
+        state,
+        gguf_url,
+        attn_out_w,
+        attn_out_b,
+        &attn_out,
+        gpu,
+        &mut gpu_tracker,
+        &mut caches.tensors,
+    )
+    .await?;
     for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
         *out += *base;
     }
 
-    let post_attn_norm_w = fetch_f32_tensor(gguf_url, post_attn_norm).await?;
+    let post_attn_norm_w =
+        fetch_f32_tensor_cached(state, gguf_url, post_attn_norm, &mut caches.tensors).await?;
     hidden = rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?;
 
     let gate_inp_w = find_tensor(index, "blk.0.ffn_gate_inp.weight")?;
     let gate_inp_b = find_tensor(index, "blk.0.ffn_gate_inp.bias")?;
-    let gate_w = fetch_f32_tensor(gguf_url, gate_inp_w).await?;
-    let gate_b = fetch_f32_tensor(gguf_url, gate_inp_b).await?;
+    let gate_w =
+        fetch_f32_tensor_cached(state, gguf_url, gate_inp_w, &mut caches.tensors).await?;
+    let gate_b =
+        fetch_f32_tensor_cached(state, gguf_url, gate_inp_b, &mut caches.tensors).await?;
     let gate_scores = linear_f32_with_bias(&gate_w, &gate_b, &hidden, gate_inp_w)?;
     let (expert_indices, expert_weights) =
         top_k_softmax(&gate_scores, config.experts_per_token as usize)?;
@@ -1241,19 +1611,49 @@ async fn run_block0_attention_probe(
 
     let mut mlp_accum = vec![0.0f32; hidden.len()];
     for (expert_idx, weight) in expert_indices.iter().zip(expert_weights.iter()) {
-        let gate_quant = fetch_mxfp4_expert(gguf_url, gate_exps_w, *expert_idx).await?;
-        let mut gate_out = matmul_mxfp4_expert(&gate_quant, &hidden, gate_exps_w, gpu).await?;
+        let gate_quant = fetch_mxfp4_expert_cached(
+            state,
+            gguf_url,
+            gate_exps_w,
+            *expert_idx,
+            &mut caches.experts,
+        )
+        .await?;
+        let mut gate_out =
+            matmul_mxfp4_expert(&gate_quant, &hidden, gate_exps_w, gpu, &mut gpu_tracker).await?;
         let gate_bias = fetch_f32_row(gguf_url, gate_exps_b, *expert_idx).await?;
         apply_bias(&mut gate_out, &gate_bias);
 
-        let up_quant = fetch_mxfp4_expert(gguf_url, up_exps_w, *expert_idx).await?;
-        let mut up_out = matmul_mxfp4_expert(&up_quant, &hidden, up_exps_w, gpu).await?;
+        let up_quant = fetch_mxfp4_expert_cached(
+            state,
+            gguf_url,
+            up_exps_w,
+            *expert_idx,
+            &mut caches.experts,
+        )
+        .await?;
+        let mut up_out =
+            matmul_mxfp4_expert(&up_quant, &hidden, up_exps_w, gpu, &mut gpu_tracker).await?;
         let up_bias = fetch_f32_row(gguf_url, up_exps_b, *expert_idx).await?;
         apply_bias(&mut up_out, &up_bias);
 
         let swiglu_out = swiglu(&gate_out, &up_out)?;
-        let down_quant = fetch_mxfp4_expert(gguf_url, down_exps_w, *expert_idx).await?;
-        let mut down_out = matmul_mxfp4_expert(&down_quant, &swiglu_out, down_exps_w, gpu).await?;
+        let down_quant = fetch_mxfp4_expert_cached(
+            state,
+            gguf_url,
+            down_exps_w,
+            *expert_idx,
+            &mut caches.experts,
+        )
+        .await?;
+        let mut down_out = matmul_mxfp4_expert(
+            &down_quant,
+            &swiglu_out,
+            down_exps_w,
+            gpu,
+            &mut gpu_tracker,
+        )
+        .await?;
         let down_bias = fetch_f32_row(gguf_url, down_exps_b, *expert_idx).await?;
         apply_bias(&mut down_out, &down_bias);
 
@@ -1275,7 +1675,8 @@ async fn run_block0_attention_probe(
         Some("ok".to_string()),
     );
 
-    let output_norm_w = fetch_f32_tensor(gguf_url, output_norm_tensor).await?;
+    let output_norm_w =
+        fetch_f32_tensor_cached(state, gguf_url, output_norm_tensor, &mut caches.tensors).await?;
     let final_hidden = rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?;
 
     let attention_norm = l2_norm(&attn_proj);
@@ -1300,7 +1701,14 @@ async fn run_block0_attention_probe(
     );
 
     let start_ms = now_ms();
-    let logits = gpu_matmul_q8_0_chunked(gguf_url, output_weight, &final_hidden, gpu).await?;
+    let logits = gpu_matmul_q8_0_chunked(
+        gguf_url,
+        output_weight,
+        &final_hidden,
+        gpu,
+        &mut gpu_tracker,
+    )
+    .await?;
     let (top_k, entropy, token_id, token_text) = top_k_from_logits(&logits, tokenizer, 5)?;
     let elapsed_ms = now_ms().saturating_sub(start_ms).max(1);
     let tokens_per_sec = 1000.0 / elapsed_ms as f32;
@@ -1336,6 +1744,8 @@ async fn run_generation(
     tokenizer: &GptOssTokenizer,
     config: &GptOssConfig,
     prompt_tokens: &[u32],
+    active_layers: usize,
+    moe_fallback: bool,
 ) -> Result<(), String> {
     if prompt_tokens.is_empty() {
         return Err("prompt token list is empty".to_string());
@@ -1343,8 +1753,32 @@ async fn run_generation(
 
     let total_prefill = prompt_tokens.len();
     let mut cache = KvCache::new(config.block_count as usize, MAX_KV_TOKENS);
+    let mut caches = RuntimeCaches::new();
+    let mut gpu_tracker = GpuAllocTracker::default();
     let mut last_logits: Option<Vec<f32>> = None;
     let mut last_step_ms = 1u64;
+    let attention_mode = if config.sliding_window > 0 {
+        format!("window={}", config.sliding_window)
+    } else {
+        "dense".to_string()
+    };
+    let moe_mode = if moe_fallback {
+        "fallback".to_string()
+    } else if config.expert_count > 0 {
+        format!("experts={} topk={}", config.expert_count, config.experts_per_token)
+    } else {
+        "disabled".to_string()
+    };
+    emit_inference_stage(
+        state,
+        "runtime_mode",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!(
+            "layers={active_layers} attn={attention_mode} moe={moe_mode} kv_max={MAX_KV_TOKENS} new={MAX_NEW_TOKENS}",
+        )),
+    );
 
     emit_inference_stage(
         state,
@@ -1370,6 +1804,10 @@ async fn run_generation(
             token_id,
             position,
             &mut cache,
+            &mut caches,
+            &mut gpu_tracker,
+            active_layers,
+            moe_fallback,
         )
         .await?;
         last_step_ms = now_ms().saturating_sub(start_ms).max(1);
@@ -1449,6 +1887,10 @@ async fn run_generation(
             next_id,
             position,
             &mut cache,
+            &mut caches,
+            &mut gpu_tracker,
+            active_layers,
+            moe_fallback,
         )
         .await?;
         last_step_ms = now_ms().saturating_sub(start_ms).max(1);
@@ -1475,11 +1917,19 @@ async fn run_forward_token(
     token_id: u32,
     position: usize,
     cache: &mut KvCache,
+    caches: &mut RuntimeCaches,
+    gpu_tracker: &mut GpuAllocTracker,
+    active_layers: usize,
+    moe_fallback: bool,
 ) -> Result<Vec<f32>, String> {
+    gpu_tracker.reset();
     let token_embd = find_tensor(index, "token_embd.weight")?;
     let mut hidden = fetch_q8_0_row(gguf_url, token_embd, token_id as usize).await?;
 
-    for layer in 0..config.block_count {
+    let layer_limit = active_layers
+        .min(config.block_count as usize)
+        .max(1);
+    for layer in 0..layer_limit as u32 {
         hidden = run_transformer_layer(
             state,
             gguf_url,
@@ -1490,23 +1940,95 @@ async fn run_forward_token(
             position,
             hidden,
             cache,
+            caches,
+            gpu_tracker,
+            layer_limit,
+            moe_fallback,
         )
         .await?;
     }
 
     let output_norm_tensor = find_tensor(index, "output_norm.weight")?;
-    let output_norm_w = fetch_f32_tensor(gguf_url, output_norm_tensor).await?;
+    let output_norm_w =
+        fetch_f32_tensor_cached(state, gguf_url, output_norm_tensor, &mut caches.tensors).await?;
     let final_hidden = rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?;
 
     let output_weight = find_tensor(index, "output.weight")?;
-    let logits = gpu_matmul_q8_0_chunked(gguf_url, output_weight, &final_hidden, gpu).await?;
+    emit_inference_stage(
+        state,
+        "weights_fetch",
+        StageStatus::Started,
+        None,
+        None,
+        Some(format!("{} bytes={}", output_weight.name, format_bytes(output_weight.nbytes))),
+    );
+    let logits = gpu_matmul_q8_0_chunked(
+        gguf_url,
+        output_weight,
+        &final_hidden,
+        gpu,
+        gpu_tracker,
+    )
+    .await?;
+    emit_inference_stage(
+        state,
+        "weights_fetch",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("{} ok", output_weight.name)),
+    );
 
     cache.seq_len = position.saturating_add(1);
+    let tensor_stats = caches.tensors.stats();
+    let expert_stats = caches.experts.stats();
+    emit_inference_stage(
+        state,
+        "tensor_cache",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!(
+            "hits={} misses={} evict={} skip={} bytes={} entries={}",
+            tensor_stats.hits,
+            tensor_stats.misses,
+            tensor_stats.evictions,
+            tensor_stats.skipped,
+            format_bytes(tensor_stats.bytes as u64),
+            tensor_stats.entries
+        )),
+    );
+    emit_inference_stage(
+        state,
+        "expert_cache",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!(
+            "hits={} misses={} evict={} skip={} bytes={} entries={}",
+            expert_stats.hits,
+            expert_stats.misses,
+            expert_stats.evictions,
+            expert_stats.skipped,
+            format_bytes(expert_stats.bytes as u64),
+            expert_stats.entries
+        )),
+    );
+    emit_inference_stage(
+        state,
+        "gpu_alloc",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("bytes={}", format_bytes(gpu_tracker.bytes as u64))),
+    );
     emit_inference_event(
         state,
         GptOssInferenceTelemetry::MemoryUsage {
-            gpu_allocated: 0,
-            cache_total: cache.total_bytes(),
+            gpu_allocated: gpu_tracker.bytes,
+            cache_total: cache.total_bytes()
+                + tensor_stats.bytes
+                + expert_stats.bytes,
             activations: final_hidden.len() * std::mem::size_of::<f32>(),
         },
     );
@@ -1524,6 +2046,8 @@ async fn run_single_token_full(
     token_id: u32,
 ) -> Result<(), String> {
     let mut cache = KvCache::new(config.block_count as usize, 1);
+    let mut caches = RuntimeCaches::new();
+    let mut gpu_tracker = GpuAllocTracker::default();
     let logits = run_forward_token(
         state,
         gguf_url,
@@ -1533,6 +2057,10 @@ async fn run_single_token_full(
         token_id,
         0,
         &mut cache,
+        &mut caches,
+        &mut gpu_tracker,
+        config.block_count as usize,
+        false,
     )
     .await?;
     let (top_k, entropy, next_id, next_text) = top_k_from_logits(&logits, tokenizer, 5)?;
@@ -1559,6 +2087,10 @@ async fn run_transformer_layer(
     position: usize,
     mut hidden: Vec<f32>,
     cache: &mut KvCache,
+    caches: &mut RuntimeCaches,
+    gpu_tracker: &mut GpuAllocTracker,
+    total_layers: usize,
+    moe_fallback: bool,
 ) -> Result<Vec<f32>, String> {
     let attn_norm = find_tensor(index, &format!("blk.{layer}.attn_norm.weight"))?;
     let attn_q_w = find_tensor(index, &format!("blk.{layer}.attn_q.weight"))?;
@@ -1577,16 +2109,47 @@ async fn run_transformer_layer(
         "layer_attn",
         StageStatus::Started,
         Some((layer + 1) as usize),
-        Some(config.block_count as usize),
+        Some(total_layers),
         Some(format!("layer={layer}")),
     );
 
-    let attn_norm_w = fetch_f32_tensor(gguf_url, attn_norm).await?;
+    let attn_norm_w =
+        fetch_f32_tensor_cached(state, gguf_url, attn_norm, &mut caches.tensors).await?;
     let mut normed = rms_norm(&hidden, &attn_norm_w, config.rms_epsilon)?;
 
-    let mut q = matmul_q8_0_with_bias(gguf_url, attn_q_w, attn_q_b, &normed, gpu).await?;
-    let mut k = matmul_q8_0_with_bias(gguf_url, attn_k_w, attn_k_b, &normed, gpu).await?;
-    let v = matmul_q8_0_with_bias(gguf_url, attn_v_w, attn_v_b, &normed, gpu).await?;
+    let mut q = matmul_q8_0_with_bias(
+        state,
+        gguf_url,
+        attn_q_w,
+        attn_q_b,
+        &normed,
+        gpu,
+        gpu_tracker,
+        &mut caches.tensors,
+    )
+    .await?;
+    let mut k = matmul_q8_0_with_bias(
+        state,
+        gguf_url,
+        attn_k_w,
+        attn_k_b,
+        &normed,
+        gpu,
+        gpu_tracker,
+        &mut caches.tensors,
+    )
+    .await?;
+    let v = matmul_q8_0_with_bias(
+        state,
+        gguf_url,
+        attn_v_w,
+        attn_v_b,
+        &normed,
+        gpu,
+        gpu_tracker,
+        &mut caches.tensors,
+    )
+    .await?;
 
     let heads = config.head_count as usize;
     let kv_heads = config.head_count_kv as usize;
@@ -1615,7 +2178,8 @@ async fn run_transformer_layer(
         config.rope_dimension_count,
     )?;
 
-    let sinks = fetch_f32_tensor(gguf_url, attn_sinks).await?;
+    let sinks =
+        fetch_f32_tensor_cached(state, gguf_url, attn_sinks, &mut caches.tensors).await?;
     let max_len = cache.max_len;
     let layer_cache = cache.layer_mut(layer as usize)?;
     let token_count = layer_cache.token_count(kv_heads, head_dim);
@@ -1652,7 +2216,17 @@ async fn run_transformer_layer(
         window,
     )?;
 
-    let attn_proj = matmul_q8_0_with_bias(gguf_url, attn_out_w, attn_out_b, &attn_out, gpu).await?;
+    let attn_proj = matmul_q8_0_with_bias(
+        state,
+        gguf_url,
+        attn_out_w,
+        attn_out_b,
+        &attn_out,
+        gpu,
+        gpu_tracker,
+        &mut caches.tensors,
+    )
+    .await?;
     for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
         *out += *base;
     }
@@ -1662,11 +2236,12 @@ async fn run_transformer_layer(
         "layer_attn",
         StageStatus::Completed,
         Some((layer + 1) as usize),
-        Some(config.block_count as usize),
+        Some(total_layers),
         Some("ok".to_string()),
     );
 
-    let post_attn_norm_w = fetch_f32_tensor(gguf_url, post_attn_norm).await?;
+    let post_attn_norm_w =
+        fetch_f32_tensor_cached(state, gguf_url, post_attn_norm, &mut caches.tensors).await?;
     normed = rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?;
 
     emit_inference_stage(
@@ -1674,17 +2249,33 @@ async fn run_transformer_layer(
         "layer_mlp",
         StageStatus::Started,
         Some((layer + 1) as usize),
-        Some(config.block_count as usize),
+        Some(total_layers),
         Some(format!("layer={layer}")),
     );
 
     let gate_inp_w = find_tensor(index, &format!("blk.{layer}.ffn_gate_inp.weight"))?;
     let gate_inp_b = find_tensor(index, &format!("blk.{layer}.ffn_gate_inp.bias"))?;
-    let gate_w = fetch_f32_tensor(gguf_url, gate_inp_w).await?;
-    let gate_b = fetch_f32_tensor(gguf_url, gate_inp_b).await?;
+    let gate_w =
+        fetch_f32_tensor_cached(state, gguf_url, gate_inp_w, &mut caches.tensors).await?;
+    let gate_b =
+        fetch_f32_tensor_cached(state, gguf_url, gate_inp_b, &mut caches.tensors).await?;
     let gate_scores = linear_f32_with_bias(&gate_w, &gate_b, &normed, gate_inp_w)?;
-    let (expert_indices, expert_weights) =
-        top_k_softmax(&gate_scores, config.experts_per_token as usize)?;
+    let (expert_indices, expert_weights) = if moe_fallback {
+        (vec![0usize], vec![1.0f32])
+    } else {
+        top_k_softmax(&gate_scores, config.experts_per_token as usize)?
+    };
+    emit_inference_stage(
+        state,
+        "moe_router",
+        StageStatus::Completed,
+        Some((layer + 1) as usize),
+        Some(total_layers),
+        Some(format!(
+            "layer={layer} experts={:?}",
+            expert_indices
+        )),
+    );
 
     let gate_exps_w = find_tensor(index, &format!("blk.{layer}.ffn_gate_exps.weight"))?;
     let gate_exps_b = find_tensor(index, &format!("blk.{layer}.ffn_gate_exps.bias"))?;
@@ -1695,19 +2286,43 @@ async fn run_transformer_layer(
 
     let mut mlp_accum = vec![0.0f32; hidden.len()];
     for (expert_idx, weight) in expert_indices.iter().zip(expert_weights.iter()) {
-        let gate_quant = fetch_mxfp4_expert(gguf_url, gate_exps_w, *expert_idx).await?;
-        let mut gate_out = matmul_mxfp4_expert(&gate_quant, &normed, gate_exps_w, gpu).await?;
+        let gate_quant = fetch_mxfp4_expert_cached(
+            state,
+            gguf_url,
+            gate_exps_w,
+            *expert_idx,
+            &mut caches.experts,
+        )
+        .await?;
+        let mut gate_out =
+            matmul_mxfp4_expert(&gate_quant, &normed, gate_exps_w, gpu, gpu_tracker).await?;
         let gate_bias = fetch_f32_row(gguf_url, gate_exps_b, *expert_idx).await?;
         apply_bias(&mut gate_out, &gate_bias);
 
-        let up_quant = fetch_mxfp4_expert(gguf_url, up_exps_w, *expert_idx).await?;
-        let mut up_out = matmul_mxfp4_expert(&up_quant, &normed, up_exps_w, gpu).await?;
+        let up_quant = fetch_mxfp4_expert_cached(
+            state,
+            gguf_url,
+            up_exps_w,
+            *expert_idx,
+            &mut caches.experts,
+        )
+        .await?;
+        let mut up_out =
+            matmul_mxfp4_expert(&up_quant, &normed, up_exps_w, gpu, gpu_tracker).await?;
         let up_bias = fetch_f32_row(gguf_url, up_exps_b, *expert_idx).await?;
         apply_bias(&mut up_out, &up_bias);
 
         let swiglu_out = swiglu(&gate_out, &up_out)?;
-        let down_quant = fetch_mxfp4_expert(gguf_url, down_exps_w, *expert_idx).await?;
-        let mut down_out = matmul_mxfp4_expert(&down_quant, &swiglu_out, down_exps_w, gpu).await?;
+        let down_quant = fetch_mxfp4_expert_cached(
+            state,
+            gguf_url,
+            down_exps_w,
+            *expert_idx,
+            &mut caches.experts,
+        )
+        .await?;
+        let mut down_out =
+            matmul_mxfp4_expert(&down_quant, &swiglu_out, down_exps_w, gpu, gpu_tracker).await?;
         let down_bias = fetch_f32_row(gguf_url, down_exps_b, *expert_idx).await?;
         apply_bias(&mut down_out, &down_bias);
 
@@ -1725,7 +2340,7 @@ async fn run_transformer_layer(
         "layer_mlp",
         StageStatus::Completed,
         Some((layer + 1) as usize),
-        Some(config.block_count as usize),
+        Some(total_layers),
         Some("ok".to_string()),
     );
 
@@ -1759,7 +2374,7 @@ fn find_tensor<'a>(index: &'a GgufIndex, name: &str) -> Result<&'a GgufTensor, S
         .ok_or_else(|| format!("tensor not found: {name}"))
 }
 
-async fn fetch_f32_tensor(gguf_url: &str, tensor: &GgufTensor) -> Result<Vec<f32>, String> {
+async fn fetch_f32_tensor_raw(gguf_url: &str, tensor: &GgufTensor) -> Result<Vec<f32>, String> {
     if tensor.ggml_type != 0 {
         return Err(format!(
             "tensor {} is {}, expected F32",
@@ -1775,6 +2390,49 @@ async fn fetch_f32_tensor(gguf_url: &str, tensor: &GgufTensor) -> Result<Vec<f32
         floats.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
     }
     Ok(floats)
+}
+
+async fn fetch_f32_tensor_cached(
+    state: &Rc<RefCell<AppState>>,
+    gguf_url: &str,
+    tensor: &GgufTensor,
+    cache: &mut TensorCache,
+) -> Result<Vec<f32>, String> {
+    if let Some(hit) = cache.get(&tensor.name) {
+        emit_inference_stage(
+            state,
+            "tensor_fetch",
+            StageStatus::Completed,
+            None,
+            None,
+            Some(format!("{} cache=hit", tensor.name)),
+        );
+        return Ok(hit);
+    }
+    emit_inference_stage(
+        state,
+        "tensor_fetch",
+        StageStatus::Started,
+        None,
+        None,
+        Some(format!(
+            "{} bytes={}",
+            tensor.name,
+            format_bytes(tensor.nbytes)
+        )),
+    );
+    let data = fetch_f32_tensor_raw(gguf_url, tensor).await?;
+    emit_tensor_resident(state, tensor.name.clone(), data.len() * 4, "f32");
+    cache.insert(tensor.name.clone(), data.clone());
+    emit_inference_stage(
+        state,
+        "tensor_fetch",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("{} cache=miss", tensor.name)),
+    );
+    Ok(data)
 }
 
 async fn fetch_f32_row(
@@ -1844,7 +2502,7 @@ async fn fetch_q8_0_row(
     dequant_q8_0(&quant, values)
 }
 
-async fn fetch_mxfp4_expert(
+async fn fetch_mxfp4_expert_raw(
     gguf_url: &str,
     tensor: &GgufTensor,
     expert_idx: usize,
@@ -1881,12 +2539,56 @@ async fn fetch_mxfp4_expert(
     Ok(bytes)
 }
 
+async fn fetch_mxfp4_expert_cached(
+    state: &Rc<RefCell<AppState>>,
+    gguf_url: &str,
+    tensor: &GgufTensor,
+    expert_idx: usize,
+    cache: &mut ExpertCache,
+) -> Result<Vec<u8>, String> {
+    let key = format!("{}#{}", tensor.name, expert_idx);
+    if let Some(hit) = cache.get(&key) {
+        emit_inference_stage(
+            state,
+            "expert_fetch",
+            StageStatus::Completed,
+            None,
+            None,
+            Some(format!("{} cache=hit", key)),
+        );
+        return Ok(hit);
+    }
+    emit_inference_stage(
+        state,
+        "expert_fetch",
+        StageStatus::Started,
+        None,
+        None,
+        Some(format!("{} bytes=~{}", key, format_bytes(tensor.nbytes))),
+    );
+    let data = fetch_mxfp4_expert_raw(gguf_url, tensor, expert_idx).await?;
+    emit_tensor_resident(state, key.clone(), data.len(), "mxfp4");
+    cache.insert(key.clone(), data.clone());
+    emit_inference_stage(
+        state,
+        "expert_fetch",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("{} cache=miss", key)),
+    );
+    Ok(data)
+}
+
 async fn matmul_q8_0_with_bias(
+    state: &Rc<RefCell<AppState>>,
     gguf_url: &str,
     weight: &GgufTensor,
     bias: &GgufTensor,
     input: &[f32],
     gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
+    cache: &mut TensorCache,
 ) -> Result<Vec<f32>, String> {
     if weight.ggml_type != 8 {
         return Err(format!(
@@ -1906,13 +2608,34 @@ async fn matmul_q8_0_with_bias(
             input.len()
         ));
     }
+    emit_inference_stage(
+        state,
+        "weights_fetch",
+        StageStatus::Started,
+        None,
+        None,
+        Some(format!(
+            "{} bytes={}",
+            weight.name,
+            format_bytes(weight.nbytes)
+        )),
+    );
     let mut quant = fetch_range(gguf_url, weight.absolute_offset, weight.nbytes).await?;
     if quant.len() % 4 != 0 {
         let padded = (quant.len() + 3) / 4 * 4;
         quant.resize(padded, 0);
     }
-    let mut out = gpu_matmul_q8_0(&quant, input, k, n, gpu).await?;
-    let bias_vals = fetch_f32_tensor(gguf_url, bias).await?;
+    emit_tensor_resident(state, weight.name.clone(), quant.len(), "q8_0");
+    emit_inference_stage(
+        state,
+        "weights_fetch",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("{} bytes={}", weight.name, quant.len())),
+    );
+    let mut out = gpu_matmul_q8_0(&quant, input, k, n, gpu, gpu_tracker).await?;
+    let bias_vals = fetch_f32_tensor_cached(state, gguf_url, bias, cache).await?;
     if bias_vals.len() == out.len() {
         for (o, b) in out.iter_mut().zip(bias_vals.iter()) {
             *o += *b;
@@ -1926,6 +2649,7 @@ async fn matmul_mxfp4_expert(
     input: &[f32],
     tensor: &GgufTensor,
     gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
 ) -> Result<Vec<f32>, String> {
     if tensor.ggml_type != 39 {
         return Err(format!(
@@ -1945,7 +2669,7 @@ async fn matmul_mxfp4_expert(
             input.len()
         ));
     }
-    gpu_matmul_mxfp4(quant, input, k, n, gpu).await
+    gpu_matmul_mxfp4(quant, input, k, n, gpu, gpu_tracker).await
 }
 
 fn rms_norm(input: &[f32], weight: &[f32], eps: f32) -> Result<Vec<f32>, String> {
@@ -2285,6 +3009,7 @@ async fn gpu_matmul_q8_0(
     k: usize,
     n: usize,
     gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
 ) -> Result<Vec<f32>, String> {
     let device = &gpu.device;
     let queue = &gpu.queue;
@@ -2410,6 +3135,13 @@ async fn gpu_matmul_q8_0(
         usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
+    let params_bytes = std::mem::size_of::<u32>() * 4;
+    gpu_tracker.add(
+        quant.len()
+            + x.len() * std::mem::size_of::<f32>()
+            + (y_bytes as usize) * 2
+            + params_bytes,
+    );
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("q8_0_probe_encoder"),
@@ -2452,6 +3184,7 @@ async fn gpu_matmul_q8_0_chunked(
     weight: &GgufTensor,
     input: &[f32],
     gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
 ) -> Result<Vec<f32>, String> {
     if weight.ggml_type != 8 {
         return Err(format!(
@@ -2573,6 +3306,12 @@ async fn gpu_matmul_q8_0_chunked(
         usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
+    let params_bytes = std::mem::size_of::<u32>() * 4;
+    gpu_tracker.add(
+        input.len() * std::mem::size_of::<f32>()
+            + y_bytes as usize
+            + y_bytes as usize,
+    );
 
     let mut row_offset = 0usize;
     while row_offset < k {
@@ -2592,12 +3331,14 @@ async fn gpu_matmul_q8_0_chunked(
             contents: &quant,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
+        gpu_tracker.add(quant.len());
         let params = [rows as u32, n as u32, row_offset as u32, if row_offset == 0 { 0 } else { 1 }];
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("q8_0_chunked_params"),
             contents: cast_slice(&params),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
+        gpu_tracker.add(params_bytes);
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("q8_0_chunked_bind_group"),
@@ -2672,6 +3413,7 @@ async fn gpu_matmul_mxfp4(
     k: usize,
     n: usize,
     gpu: &GpuContext,
+    gpu_tracker: &mut GpuAllocTracker,
 ) -> Result<Vec<f32>, String> {
     let device = &gpu.device;
     let queue = &gpu.queue;
@@ -2797,6 +3539,13 @@ async fn gpu_matmul_mxfp4(
         usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
+    let params_bytes = std::mem::size_of::<u32>() * 4;
+    gpu_tracker.add(
+        quant.len()
+            + x.len() * std::mem::size_of::<f32>()
+            + (y_bytes as usize) * 2
+            + params_bytes,
+    );
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("mxfp4_probe_encoder"),

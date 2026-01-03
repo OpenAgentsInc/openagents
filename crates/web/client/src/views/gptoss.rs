@@ -1,4 +1,5 @@
 use wgpui::{Bounds, FontStyle, Hsla, Point, Quad, Scene, TextSystem, theme};
+use js_sys;
 use wgpui::animation::AnimatorState;
 use wgpui::components::Component;
 use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame};
@@ -440,6 +441,31 @@ fn draw_io_panel(
         10.0,
         theme::text::MUTED,
     );
+
+    let mut ry = inner.y() + 52.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        "RESIDENT:",
+        inner.x(),
+        ry,
+        9.0,
+        theme::text::MUTED,
+    );
+    ry += 12.0;
+    for tensor in gptoss.resident_tensors.iter().rev().take(3) {
+        let label = format!(
+            "{} {} {}",
+            tensor.kind,
+            truncate_text(&tensor.name, 22),
+            format_bytes(tensor.bytes),
+        );
+        draw_mono_text(scene, text_system, &label, inner.x(), ry, 9.0, theme::text::MUTED);
+        ry += 12.0;
+        if ry > inner.y() + inner.height() - 10.0 {
+            break;
+        }
+    }
 }
 
 fn draw_stream_panel(
@@ -453,6 +479,24 @@ fn draw_stream_panel(
         "No tokens yet".to_string()
     } else {
         gptoss.token_stream.clone()
+    };
+
+    let now_ms = js_sys::Date::now().max(0.0) as u64;
+    let pulse = gptoss
+        .last_token_ts_ms
+        .and_then(|ts| now_ms.checked_sub(ts))
+        .map(|delta| {
+            if delta >= 420 {
+                0.0
+            } else {
+                1.0 - (delta as f32 / 420.0)
+            }
+        })
+        .unwrap_or(0.0);
+    let stream_color = if pulse > 0.0 {
+        accent_cyan().with_alpha(0.35 + 0.45 * pulse)
+    } else {
+        theme::text::PRIMARY
     };
 
     let speed = gptoss
@@ -477,7 +521,7 @@ fn draw_stream_panel(
         inner.x(),
         inner.y() + 16.0,
         10.0,
-        theme::text::PRIMARY,
+        stream_color,
     );
 }
 
@@ -502,6 +546,19 @@ fn draw_topk_panel(
         .map(|c| c.probability)
         .fold(0.0f32, |acc, v| acc.max(v))
         .max(1e-4);
+    let now_ms = js_sys::Date::now().max(0.0) as u64;
+    let pulse = gptoss
+        .last_token_ts_ms
+        .and_then(|ts| now_ms.checked_sub(ts))
+        .map(|delta| {
+            if delta >= 420 {
+                0.0
+            } else {
+                1.0 - (delta as f32 / 420.0)
+            }
+        })
+        .unwrap_or(0.0);
+    let bar_color = accent_cyan().with_alpha(0.35 + 0.45 * pulse);
 
     for candidate in &gptoss.top_k {
         let label = truncate_text(&candidate.token_text, 12);
@@ -510,7 +567,7 @@ fn draw_topk_panel(
         let bar_w = (candidate.probability / max_prob).clamp(0.0, 1.0) * (inner.width() - 120.0);
         scene.draw_quad(
             Quad::new(Bounds::new(inner.x() + 80.0, y + 2.0, bar_w, bar_h))
-                .with_background(accent_cyan().with_alpha(0.7)),
+                .with_background(bar_color),
         );
 
         let prob_text = format!("{:.3}", candidate.probability);

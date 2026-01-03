@@ -7,7 +7,7 @@ use std::thread;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut path = None;
     let mut bind = "127.0.0.1".to_string();
-    let mut port = 9898u16;
+    let mut port = 8080u16;
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "--port" => {
                 if let Some(value) = args.next() {
-                    port = value.parse().unwrap_or(9898);
+                    port = value.parse().unwrap_or(8080);
                 }
             }
             _ => {}
