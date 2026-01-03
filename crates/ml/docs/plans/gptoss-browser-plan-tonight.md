@@ -166,6 +166,7 @@ Notes:
 - Fixed WGSL helpers for Q8_0 + MXFP4 shaders (added f16 unpack, removed duplicate acc).
 - HUD now surfaces tensor/expert cache stats in the I/O panel.
 - Allowed `?layers=0` to run the lm_head-only path (token embd → output), useful for early logits bring-up.
+- Added `?attn=dense` override to force full attention even when sliding-window metadata is set.
 
 ---
 
