@@ -1522,8 +1522,8 @@ fn encode_prompt(
         Some(tokens.len()),
         Some(tokens.len()),
         Some(format!(
-            "tokens={total} kept={} truncated={truncated}",
-            tokens.len()
+            "format=harmony tokens={total} kept={} truncated={truncated}",
+            tokens.len(),
         )),
     );
 
