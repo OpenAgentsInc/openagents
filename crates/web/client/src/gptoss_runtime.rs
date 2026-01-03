@@ -52,6 +52,7 @@ const MXFP4_VALUES: [f32; 16] = [
 ];
 const SWIGLU_ALPHA: f32 = 1.702;
 const SWIGLU_LIMIT: f32 = 7.0;
+const PROBE_TOLERANCE: f32 = 1e-3;
 const ROPE_NTK_ALPHA: f32 = 1.0;
 const ROPE_NTK_BETA: f32 = 32.0;
 const TENSOR_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
@@ -1007,6 +1008,82 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
                 emit_inference_stage(
                     &state_clone,
                     "mxfp4_probe",
+                    StageStatus::Failed,
+                    None,
+                    None,
+                    Some(err),
+                );
+            }
+        });
+    }
+    {
+        let gguf = gguf_url.clone();
+        let state_clone = state.clone();
+        let index_clone = index.clone();
+        let gpu_clone = gpu.clone();
+        let config_clone = config.clone();
+        spawn_local(async move {
+            if let Err(err) = run_rmsnorm_probe(
+                &state_clone,
+                &gguf,
+                index_clone.as_ref(),
+                &config_clone,
+                &gpu_clone,
+            )
+            .await
+            {
+                emit_inference_stage(
+                    &state_clone,
+                    "rmsnorm_probe",
+                    StageStatus::Failed,
+                    None,
+                    None,
+                    Some(err),
+                );
+            }
+        });
+    }
+    {
+        let gguf = gguf_url.clone();
+        let state_clone = state.clone();
+        let index_clone = index.clone();
+        let gpu_clone = gpu.clone();
+        let config_clone = config.clone();
+        spawn_local(async move {
+            if let Err(err) =
+                run_rope_probe(&state_clone, &gguf, index_clone.as_ref(), &config_clone, &gpu_clone)
+                    .await
+            {
+                emit_inference_stage(
+                    &state_clone,
+                    "rope_probe",
+                    StageStatus::Failed,
+                    None,
+                    None,
+                    Some(err),
+                );
+            }
+        });
+    }
+    {
+        let gguf = gguf_url.clone();
+        let state_clone = state.clone();
+        let index_clone = index.clone();
+        let gpu_clone = gpu.clone();
+        let config_clone = config.clone();
+        spawn_local(async move {
+            if let Err(err) = run_attention_probe(
+                &state_clone,
+                &gguf,
+                index_clone.as_ref(),
+                &config_clone,
+                &gpu_clone,
+            )
+            .await
+            {
+                emit_inference_stage(
+                    &state_clone,
+                    "attn_probe",
                     StageStatus::Failed,
                     None,
                     None,
@@ -2468,6 +2545,334 @@ async fn run_mxfp4_probe(
         Some(format!("max_abs={max_abs:.4} mean_abs={mean_abs:.4}")),
     );
 
+    Ok(())
+}
+
+struct ProbeQkv {
+    q: Vec<f32>,
+    k: Vec<f32>,
+    v: Vec<f32>,
+    heads: usize,
+    kv_heads: usize,
+    head_dim: usize,
+}
+
+async fn build_probe_qkv(
+    state: &Rc<RefCell<AppState>>,
+    gguf_url: &str,
+    index: &GgufIndex,
+    config: &GptOssConfig,
+    gpu: &GpuContext,
+) -> Result<ProbeQkv, String> {
+    let token_embd = find_tensor(index, "token_embd.weight")?;
+    let attn_norm = find_tensor(index, "blk.0.attn_norm.weight")?;
+    let attn_q_w = find_tensor(index, "blk.0.attn_q.weight")?;
+    let attn_q_b = find_tensor(index, "blk.0.attn_q.bias")?;
+    let attn_k_w = find_tensor(index, "blk.0.attn_k.weight")?;
+    let attn_k_b = find_tensor(index, "blk.0.attn_k.bias")?;
+    let attn_v_w = find_tensor(index, "blk.0.attn_v.weight")?;
+    let attn_v_b = find_tensor(index, "blk.0.attn_v.bias")?;
+
+    let token_row = fetch_q8_0_row(gguf_url, token_embd, 0).await?;
+    let attn_norm_w = fetch_f32_tensor_raw(gguf_url, attn_norm).await?;
+    let normed = rms_norm(&token_row, &attn_norm_w, config.rms_epsilon)?;
+
+    let mut caches = RuntimeCaches::new();
+    let mut gpu_tracker = GpuAllocTracker::default();
+    let q = matmul_q8_0_with_bias(
+        state,
+        gguf_url,
+        attn_q_w,
+        attn_q_b,
+        &normed,
+        gpu,
+        &mut gpu_tracker,
+        &mut caches.tensors,
+        &mut caches.quant,
+        false,
+    )
+    .await?;
+    let k = matmul_q8_0_with_bias(
+        state,
+        gguf_url,
+        attn_k_w,
+        attn_k_b,
+        &normed,
+        gpu,
+        &mut gpu_tracker,
+        &mut caches.tensors,
+        &mut caches.quant,
+        false,
+    )
+    .await?;
+    let v = matmul_q8_0_with_bias(
+        state,
+        gguf_url,
+        attn_v_w,
+        attn_v_b,
+        &normed,
+        gpu,
+        &mut gpu_tracker,
+        &mut caches.tensors,
+        &mut caches.quant,
+        false,
+    )
+    .await?;
+
+    let heads = config.head_count.max(1) as usize;
+    let kv_heads = config.head_count_kv.max(1) as usize;
+    let q_head_dim = q.len() / heads.max(1);
+    let k_head_dim = k.len() / kv_heads.max(1);
+    if q_head_dim == 0 || k_head_dim == 0 || q_head_dim != k_head_dim {
+        return Err(format!(
+            "probe q/k head dims mismatch q_dim={q_head_dim} k_dim={k_head_dim}"
+        ));
+    }
+    let head_dim = q_head_dim;
+    if q.len() != heads * head_dim || k.len() != kv_heads * head_dim || v.len() != kv_heads * head_dim
+    {
+        return Err("probe qkv shape mismatch".to_string());
+    }
+
+    Ok(ProbeQkv {
+        q,
+        k,
+        v,
+        heads,
+        kv_heads,
+        head_dim,
+    })
+}
+
+fn ensure_probe_tolerance(label: &str, max_abs: f32, mean_abs: f32) -> Result<(), String> {
+    if max_abs > PROBE_TOLERANCE {
+        return Err(format!(
+            "{label} max_abs {max_abs:.4} exceeds tolerance {PROBE_TOLERANCE:.4} (mean={mean_abs:.4})"
+        ));
+    }
+    Ok(())
+}
+
+async fn run_rmsnorm_probe(
+    state: &Rc<RefCell<AppState>>,
+    gguf_url: &str,
+    index: &GgufIndex,
+    config: &GptOssConfig,
+    gpu: &GpuContext,
+) -> Result<(), String> {
+    emit_inference_stage(
+        state,
+        "rmsnorm_probe",
+        StageStatus::Started,
+        None,
+        None,
+        Some("blk.0.attn_norm".to_string()),
+    );
+
+    let token_embd = find_tensor(index, "token_embd.weight")?;
+    let attn_norm = find_tensor(index, "blk.0.attn_norm.weight")?;
+    let token_row = fetch_q8_0_row(gguf_url, token_embd, 0).await?;
+    let attn_norm_w = fetch_f32_tensor_raw(gguf_url, attn_norm).await?;
+    let cpu = rms_norm(&token_row, &attn_norm_w, config.rms_epsilon)?;
+    let mut gpu_tracker = GpuAllocTracker::default();
+    let gpu_out =
+        rms_norm_gpu(&token_row, &attn_norm_w, config.rms_epsilon, gpu, &mut gpu_tracker)
+            .await?;
+    let (max_abs, mean_abs) = diff_stats(&cpu, &gpu_out);
+    ensure_probe_tolerance("rmsnorm_probe", max_abs, mean_abs)?;
+
+    emit_inference_stage(
+        state,
+        "rmsnorm_probe",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("max_abs={max_abs:.4} mean_abs={mean_abs:.4}")),
+    );
+    Ok(())
+}
+
+async fn run_rope_probe(
+    state: &Rc<RefCell<AppState>>,
+    gguf_url: &str,
+    index: &GgufIndex,
+    config: &GptOssConfig,
+    gpu: &GpuContext,
+) -> Result<(), String> {
+    emit_inference_stage(
+        state,
+        "rope_probe",
+        StageStatus::Started,
+        None,
+        None,
+        Some("blk.0.attn_q/attn_k".to_string()),
+    );
+
+    let probe = build_probe_qkv(state, gguf_url, index, config, gpu).await?;
+    let mut q_cpu = probe.q.clone();
+    let mut k_cpu = probe.k.clone();
+    apply_rope(
+        &mut q_cpu,
+        probe.heads,
+        probe.head_dim,
+        0,
+        config.rope_theta,
+        config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
+    )?;
+    apply_rope(
+        &mut k_cpu,
+        probe.kv_heads,
+        probe.head_dim,
+        0,
+        config.rope_theta,
+        config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
+    )?;
+
+    let mut gpu_tracker = GpuAllocTracker::default();
+    let q_gpu = apply_rope_gpu(
+        &probe.q,
+        probe.heads,
+        probe.head_dim,
+        0,
+        config.rope_theta,
+        config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
+        gpu,
+        &mut gpu_tracker,
+    )
+    .await?;
+    let k_gpu = apply_rope_gpu(
+        &probe.k,
+        probe.kv_heads,
+        probe.head_dim,
+        0,
+        config.rope_theta,
+        config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
+        gpu,
+        &mut gpu_tracker,
+    )
+    .await?;
+
+    let (q_max, q_mean) = diff_stats(&q_cpu, &q_gpu);
+    let (k_max, k_mean) = diff_stats(&k_cpu, &k_gpu);
+    ensure_probe_tolerance("rope_probe q", q_max, q_mean)?;
+    ensure_probe_tolerance("rope_probe k", k_max, k_mean)?;
+
+    emit_inference_stage(
+        state,
+        "rope_probe",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!(
+            "q_max={q_max:.4} q_mean={q_mean:.4} k_max={k_max:.4} k_mean={k_mean:.4}"
+        )),
+    );
+    Ok(())
+}
+
+async fn run_attention_probe(
+    state: &Rc<RefCell<AppState>>,
+    gguf_url: &str,
+    index: &GgufIndex,
+    config: &GptOssConfig,
+    gpu: &GpuContext,
+) -> Result<(), String> {
+    emit_inference_stage(
+        state,
+        "attn_probe",
+        StageStatus::Started,
+        None,
+        None,
+        Some("blk.0 attn".to_string()),
+    );
+
+    let probe = build_probe_qkv(state, gguf_url, index, config, gpu).await?;
+    let attn_sinks = find_tensor(index, "blk.0.attn_sinks.weight")?;
+    let sinks = fetch_f32_tensor_raw(gguf_url, attn_sinks).await?;
+    if sinks.len() < probe.heads {
+        return Err("attn_probe sinks length mismatch".to_string());
+    }
+
+    let mut q_pos1 = probe.q.clone();
+    let mut k_pos0 = probe.k.clone();
+    let mut k_pos1 = probe.k.clone();
+    apply_rope(
+        &mut q_pos1,
+        probe.heads,
+        probe.head_dim,
+        1,
+        config.rope_theta,
+        config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
+    )?;
+    apply_rope(
+        &mut k_pos0,
+        probe.kv_heads,
+        probe.head_dim,
+        0,
+        config.rope_theta,
+        config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
+    )?;
+    apply_rope(
+        &mut k_pos1,
+        probe.kv_heads,
+        probe.head_dim,
+        1,
+        config.rope_theta,
+        config.rope_dimension_count,
+        config.rope_scaling_factor,
+        config.rope_scaling_original_context,
+    )?;
+
+    let mut layer_cache = LayerKvCache::new();
+    let max_len = 4usize;
+    layer_cache.append(&k_pos0, &probe.v, probe.kv_heads, probe.head_dim, max_len, gpu)?;
+    layer_cache.append(&k_pos1, &probe.v, probe.kv_heads, probe.head_dim, max_len, gpu)?;
+    let window = layer_cache.token_count();
+    let cpu_out = attention_with_cache(
+        &q_pos1,
+        &layer_cache,
+        &sinks,
+        probe.heads,
+        probe.kv_heads,
+        probe.head_dim,
+        window,
+    )?;
+    let mut gpu_tracker = GpuAllocTracker::default();
+    let gpu_out = attention_with_cache_gpu(
+        &q_pos1,
+        &layer_cache,
+        &sinks,
+        probe.heads,
+        probe.kv_heads,
+        probe.head_dim,
+        window,
+        gpu,
+        &mut gpu_tracker,
+    )
+    .await?;
+    let (max_abs, mean_abs) = diff_stats(&cpu_out, &gpu_out);
+    ensure_probe_tolerance("attn_probe", max_abs, mean_abs)?;
+
+    emit_inference_stage(
+        state,
+        "attn_probe",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("max_abs={max_abs:.4} mean_abs={mean_abs:.4}")),
+    );
     Ok(())
 }
 

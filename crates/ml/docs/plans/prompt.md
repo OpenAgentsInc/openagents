@@ -197,10 +197,10 @@ Implement minimal path:
 5. Show top-5 tokens in HUD
 
 **Done when:**
-- [ ] A hardcoded prompt encodes to token IDs
-- [ ] Embedding lookup works
-- [ ] lm_head produces logits
-- [ ] Top-5 tokens display (even if nonsense - no layers yet!)
+- [x] A hardcoded prompt encodes to token IDs
+- [x] Embedding lookup works
+- [x] lm_head produces logits
+- [x] Top-5 tokens display (even if nonsense - no layers yet!)
 
 This proves: tokenizer + prompt formatting + display loop work.
 
@@ -237,11 +237,11 @@ Add one transformer block with **GPU kernels for RMSNorm and RoPE**.
 5. **Attention can be stubbed to identity for this step**
 
 **Done when:**
-- [ ] `rmsnorm.wgsl` exists and runs on GPU
-- [ ] `rope.wgsl` exists and runs on GPU
-- [ ] Layer 0 runs with stubbed attention
-- [ ] HUD shows "RMSNorm: GPU", "RoPE: GPU"
-- [ ] CPU reference matches GPU output (tolerance 1e-3)
+- [x] `rmsnorm.wgsl` exists and runs on GPU
+- [x] `rope.wgsl` exists and runs on GPU
+- [x] Layer 0 runs with stubbed attention
+- [x] HUD shows "RMSNorm: GPU", "RoPE: GPU"
+- [x] CPU reference matches GPU output (tolerance 1e-3)
 
 ### Step 7: GPU Attention (Staged) — REQUIRED
 
@@ -278,10 +278,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 ```
 
 **Done when:**
-- [ ] `attention_decode.wgsl` exists and compiles
-- [ ] One decode step uses GPU attention
-- [ ] CPU reference matches GPU output (tolerance 1e-3)
-- [ ] HUD shows "Attention: GPU (decode)"
+- [x] `attention_decode.wgsl` exists and compiles
+- [x] One decode step uses GPU attention
+- [x] CPU reference matches GPU output (tolerance 1e-3)
+- [x] HUD shows "Attention: GPU (decode)"
 
 **After 7a lands: CPU attention in decode path is BANNED.**
 
@@ -298,10 +298,10 @@ Options:
 Must support sliding window (overwrite oldest when full).
 
 **Done when:**
-- [ ] KV cache for decode lives on GPU (wgpu::Buffer)
-- [ ] Cache grows correctly per token
-- [ ] Sliding window eviction works
-- [ ] GPU attention (7a) uses the appended tokens
+- [x] KV cache for decode lives on GPU (wgpu::Buffer)
+- [x] Cache grows correctly per token
+- [x] Sliding window eviction works
+- [x] GPU attention (7a) uses the appended tokens
 
 ---
 
@@ -314,8 +314,8 @@ This is harder. Implement when ready.
 - Can be slower than decode initially
 
 **Done when:**
-- [ ] Prefill runs on GPU for prompts > 1 token
-- [ ] HUD shows "Attention: GPU (prefill)"
+- [x] Prefill runs on GPU for prompts > 1 token
+- [x] HUD shows "Attention: GPU (prefill)"
 
 **Note:** Prefill can temporarily stage through CPU while you get 7a/7b working. Decode is the priority.
 
@@ -327,10 +327,10 @@ This is harder. Implement when ready.
 4. Emit telemetry for router decisions
 
 **Done when:**
-- [ ] Router weights load
-- [ ] Top-k expert indices computed
-- [ ] At least expert 0 MLP runs
-- [ ] HUD shows "MoE: active" (even if fallback mode)
+- [x] Router weights load
+- [x] Top-k expert indices computed
+- [x] At least expert 0 MLP runs
+- [x] HUD shows "MoE: active" (even if fallback mode)
 
 ### Step 9: Caches + Performance
 
@@ -339,9 +339,9 @@ This is harder. Implement when ready.
 3. Speculative decode (optional but high-leverage)
 
 **Done when:**
-- [ ] Expert cache hit/miss telemetry visible
+- [x] Expert cache hit/miss telemetry visible
 - [ ] Multiple decode steps run without OOM
-- [ ] tok/s metric displayed
+- [x] tok/s metric displayed
 
 ### Step 10: Tokenizer + Harmony
 
@@ -350,8 +350,8 @@ This is harder. Implement when ready.
 3. Encode input, run prefill, decode tokens one at a time
 
 **Done when:**
-- [ ] Real prompts encode correctly
-- [ ] Harmony format applied
+- [x] Real prompts encode correctly
+- [x] Harmony format applied
 - [ ] Generated text is coherent
 
 ### Step 11: Token Generation Visualization
@@ -364,9 +364,9 @@ During generation:
 5. Pulse animation on each new token
 
 **Done when:**
-- [ ] Tokens stream to screen one by one
-- [ ] Probability bars animate
-- [ ] Stats update in real-time
+- [x] Tokens stream to screen one by one
+- [x] Probability bars animate
+- [x] Stats update in real-time
 
 ---
 
@@ -546,14 +546,14 @@ cargo test -p ml gate_d --no-default-features --features native,wgpu
 ### Tier 1: Done (Functional Demo)
 
 **Declare victory when:**
-- [ ] `/gptoss` has a visible "LOAD MODEL" button
-- [ ] Clicking button starts streaming GGUF from URL
-- [ ] Loading progress visible with live telemetry
-- [ ] Tensors load onto GPU with visual feedback
-- [ ] Model runs inference (forward pass works)
-- [ ] Tokens generate one by one
-- [ ] Token visualization shows probabilities
-- [ ] Works in Chrome WebGPU
+- [x] `/gptoss` has a visible "LOAD MODEL" button
+- [x] Clicking button starts streaming GGUF from URL
+- [x] Loading progress visible with live telemetry
+- [x] Tensors load onto GPU with visual feedback
+- [x] Model runs inference (forward pass works)
+- [x] Tokens generate one by one
+- [x] Token visualization shows probabilities
+- [x] Works in Chrome WebGPU
 - [ ] No console errors, no crashes
 - [ ] All CLI tests pass before browser testing
 
@@ -562,20 +562,20 @@ cargo test -p ml gate_d --no-default-features --features native,wgpu
 **Full completion requires:**
 
 #### GPU Kernels (P0)
-- [ ] **RMSNorm runs on GPU** (`rmsnorm.wgsl` exists and dispatches)
-- [ ] **RoPE runs on GPU** (`rope.wgsl` exists and dispatches)
-- [ ] **Attention decode runs on GPU** (`attention_decode.wgsl` dispatches)
-- [ ] **KV cache for decode lives on GPU** (wgpu::Buffer)
+- [x] **RMSNorm runs on GPU** (`rmsnorm.wgsl` exists and dispatches)
+- [x] **RoPE runs on GPU** (`rope.wgsl` exists and dispatches)
+- [x] **Attention decode runs on GPU** (`attention_decode.wgsl` dispatches)
+- [x] **KV cache for decode lives on GPU** (wgpu::Buffer)
 
 #### No CPU Hot Loops
-- [ ] Decode path has no `O(seq_len * head_dim)` or `O(seq_len²)` Rust loops
-- [ ] HUD displays kernel execution mode (GPU vs CPU) for each operation
-- [ ] CPU fallbacks are clearly marked as warnings in HUD
+- [x] Decode path has no `O(seq_len * head_dim)` or `O(seq_len²)` Rust loops
+- [x] HUD displays kernel execution mode (GPU vs CPU) for each operation
+- [x] CPU fallbacks are clearly marked as warnings in HUD
 
 #### Performance
 - [ ] 24 layers decode without timeout (< 30s per token acceptable)
 - [ ] No GPU OOM on 8GB VRAM
-- [ ] Memory usage telemetry accurate
+- [x] Memory usage telemetry accurate
 
 #### Verification
 - [ ] Each GPU kernel has CPU reference test
@@ -607,6 +607,12 @@ Read these if stuck:
 - `/Users/christopherdavid/code/harmony/` - The harmony repo
 - `/Users/christopherdavid/code/gpt-oss/` - The gpt-oss repo
 - `/Users/christopherdavid/code/candle/` - Candle Rust ML library - you can use or adapt any code from here
+
+---
+
+## Progress Log
+
+- 2026-01-02: Added RMSNorm/RoPE/attention parity probes (CPU vs GPU with tolerance), and updated completion checklist.
 
 ---
 
