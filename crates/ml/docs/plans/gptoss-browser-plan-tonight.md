@@ -100,6 +100,9 @@ Notes:
 
 - Added a shared **GPU context** to the web app state (reuse WGPUI device/queue).
 - Extracted a reusable **GGUF web parser + range fetch** module.
+- GGUF parser now captures **tokenizer metadata** (tokens, token_types, merges, chat template).
+- Added a browser-side **CoreBPE tokenizer** wired to GGUF vocab (O200k harmony pattern).
+ - `/gptoss` now emits **tokenizer_load** + **prompt_encode** telemetry from real GGUF data.
 - Added a `gptoss_runtime` scaffold to start centralizing browser runtime logic.
  - Wired `/gptoss` start button handling + runtime entrypoint for streaming load telemetry.
  - `/gptoss` now streams **real GGUF bytes** in chunks on click (with progress + tensor scan events).

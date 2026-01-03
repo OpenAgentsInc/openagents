@@ -1,7 +1,9 @@
 use std::io::{Cursor, Read};
+use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
+use rustc_hash::FxHashMap as HashMap;
 
 #[derive(Debug)]
 pub(crate) enum ParseError {
@@ -25,7 +27,61 @@ pub(crate) struct GgufIndex {
     pub(crate) version: u32,
     pub(crate) tensor_data_offset: u64,
     pub(crate) tensors: Vec<GgufTensor>,
+    pub(crate) metadata: GgufMetadata,
 }
+
+#[derive(Clone, Debug)]
+pub(crate) struct GgufTokenizer {
+    pub(crate) tokens: Vec<String>,
+    pub(crate) token_types: Vec<i32>,
+    pub(crate) merges: Vec<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) pre: Option<String>,
+    pub(crate) chat_template: Option<String>,
+    pub(crate) bos_token_id: Option<u32>,
+    pub(crate) eos_token_id: Option<u32>,
+    pub(crate) pad_token_id: Option<u32>,
+    pub(crate) pattern: String,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+pub(crate) enum GgufScalar {
+    U8(u8),
+    I8(i8),
+    U16(u16),
+    I16(i16),
+    U32(u32),
+    I32(i32),
+    U64(u64),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+    Bool(bool),
+    String(String),
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct GgufMetadata {
+    pub(crate) tokenizer: Option<Rc<GgufTokenizer>>,
+    pub(crate) values: HashMap<String, GgufScalar>,
+}
+
+const GGUF_VALUE_UINT8: u32 = 0;
+const GGUF_VALUE_INT8: u32 = 1;
+const GGUF_VALUE_UINT16: u32 = 2;
+const GGUF_VALUE_INT16: u32 = 3;
+const GGUF_VALUE_UINT32: u32 = 4;
+const GGUF_VALUE_INT32: u32 = 5;
+const GGUF_VALUE_FLOAT32: u32 = 6;
+const GGUF_VALUE_BOOL: u32 = 7;
+const GGUF_VALUE_STRING: u32 = 8;
+const GGUF_VALUE_ARRAY: u32 = 9;
+const GGUF_VALUE_UINT64: u32 = 10;
+const GGUF_VALUE_INT64: u32 = 11;
+const GGUF_VALUE_FLOAT64: u32 = 12;
+
+const O200K_PATTERN: &str = "[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]*[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]+[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n/]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+";
 
 pub(crate) async fn fetch_and_parse_index(
     url: &str,
@@ -163,7 +219,7 @@ fn parse_gguf_index(bytes: &[u8]) -> Result<GgufIndex, ParseError> {
         read_u64(&mut cursor)?
     };
 
-    skip_kv_entries(&mut cursor, kv_count, version)?;
+    let metadata = parse_kv_entries(&mut cursor, kv_count, version)?;
 
     let tensor_count_usize = usize::try_from(tensor_count)
         .map_err(|_| ParseError::Invalid("tensor count too large".to_string()))?;
@@ -211,42 +267,241 @@ fn parse_gguf_index(bytes: &[u8]) -> Result<GgufIndex, ParseError> {
         version,
         tensor_data_offset,
         tensors,
+        metadata,
     })
 }
 
-fn skip_kv_entries<R: Read>(
+fn parse_kv_entries<R: Read>(
     reader: &mut R,
     kv_count: u64,
     version: u32,
-) -> Result<(), ParseError> {
+) -> Result<GgufMetadata, ParseError> {
+    let mut metadata = GgufMetadata::default();
+    let mut tokenizer = TokenizerBuilder::default();
     for _ in 0..kv_count {
-        let _key = read_string(reader, version)?;
+        let key = read_string(reader, version)?;
         let value_type = read_u32(reader)?;
-        skip_value(reader, value_type, version)?;
+        match key.as_str() {
+            "tokenizer.ggml.tokens" => {
+                tokenizer.tokens = Some(read_string_array(reader, value_type, version)?);
+            }
+            "tokenizer.ggml.token_type" => {
+                tokenizer.token_types = Some(read_token_types(reader, value_type)?);
+            }
+            "tokenizer.ggml.merges" => {
+                tokenizer.merges = Some(read_string_array(reader, value_type, version)?);
+            }
+            "tokenizer.ggml.model" => {
+                tokenizer.model = Some(read_string_value(reader, value_type, version)?);
+            }
+            "tokenizer.ggml.pre" => {
+                tokenizer.pre = Some(read_string_value(reader, value_type, version)?);
+            }
+            "tokenizer.chat_template" => {
+                tokenizer.chat_template = Some(read_string_value(reader, value_type, version)?);
+            }
+            "tokenizer.ggml.bos_token_id" => {
+                tokenizer.bos_token_id = Some(read_token_id(reader, value_type)?);
+            }
+            "tokenizer.ggml.eos_token_id" => {
+                tokenizer.eos_token_id = Some(read_token_id(reader, value_type)?);
+            }
+            "tokenizer.ggml.pad_token_id" => {
+                tokenizer.pad_token_id = Some(read_token_id(reader, value_type)?);
+            }
+            _ => {
+                if let Some(value) = read_scalar_value(reader, value_type, version)? {
+                    metadata.values.insert(key, value);
+                }
+            }
+        }
     }
-    Ok(())
+
+    if let Some(tokenizer) = tokenizer.build() {
+        metadata.tokenizer = Some(Rc::new(tokenizer));
+    }
+
+    Ok(metadata)
 }
 
-fn skip_value<R: Read>(reader: &mut R, value_type: u32, version: u32) -> Result<(), ParseError> {
-    match value_type {
-        0 | 1 | 7 => skip_bytes(reader, 1),
-        2 | 3 => skip_bytes(reader, 2),
-        4 | 5 | 6 => skip_bytes(reader, 4),
-        10 | 11 | 12 => skip_bytes(reader, 8),
-        8 => {
-            let len = read_string_len(reader, version)?;
-            skip_bytes(reader, len)?;
-            Ok(())
+#[derive(Default)]
+struct TokenizerBuilder {
+    tokens: Option<Vec<String>>,
+    token_types: Option<Vec<i32>>,
+    merges: Option<Vec<String>>,
+    model: Option<String>,
+    pre: Option<String>,
+    chat_template: Option<String>,
+    bos_token_id: Option<u32>,
+    eos_token_id: Option<u32>,
+    pad_token_id: Option<u32>,
+}
+
+impl TokenizerBuilder {
+    fn build(self) -> Option<GgufTokenizer> {
+        let tokens = self.tokens?;
+        let token_types = self.token_types.unwrap_or_default();
+        let merges = self.merges.unwrap_or_default();
+        Some(GgufTokenizer {
+            tokens,
+            token_types,
+            merges,
+            model: self.model,
+            pre: self.pre,
+            chat_template: self.chat_template,
+            bos_token_id: self.bos_token_id,
+            eos_token_id: self.eos_token_id,
+            pad_token_id: self.pad_token_id,
+            pattern: O200K_PATTERN.to_string(),
+        })
+    }
+}
+
+fn read_string_value<R: Read>(
+    reader: &mut R,
+    value_type: u32,
+    version: u32,
+) -> Result<String, ParseError> {
+    if value_type != GGUF_VALUE_STRING {
+        return Err(ParseError::Invalid(format!(
+            "expected string value type, got {value_type}"
+        )));
+    }
+    read_string(reader, version)
+}
+
+fn read_string_array<R: Read>(
+    reader: &mut R,
+    value_type: u32,
+    version: u32,
+) -> Result<Vec<String>, ParseError> {
+    let len = read_array_header(reader, value_type, GGUF_VALUE_STRING)?;
+    let len_usize = usize::try_from(len)
+        .map_err(|_| ParseError::Invalid("string array too large".to_string()))?;
+    let mut out = Vec::with_capacity(len_usize);
+    for _ in 0..len_usize {
+        out.push(read_string(reader, version)?);
+    }
+    Ok(out)
+}
+
+fn read_token_types<R: Read>(
+    reader: &mut R,
+    value_type: u32,
+) -> Result<Vec<i32>, ParseError> {
+    let (elem_type, len) = read_array_header_raw(reader, value_type)?;
+    let len_usize = usize::try_from(len)
+        .map_err(|_| ParseError::Invalid("token_types array too large".to_string()))?;
+    let mut out = Vec::with_capacity(len_usize);
+    match elem_type {
+        GGUF_VALUE_INT32 => {
+            for _ in 0..len_usize {
+                out.push(read_i32(reader)?);
+            }
         }
-        9 => {
-            let elem_type = read_u32(reader)?;
-            let len = read_u64(reader)?;
-            skip_array(reader, elem_type, len, version)
+        GGUF_VALUE_UINT32 => {
+            for _ in 0..len_usize {
+                let val = read_u32(reader)?;
+                out.push(val as i32);
+            }
+        }
+        _ => {
+            return Err(ParseError::Invalid(format!(
+                "unexpected token_type array element type: {elem_type}"
+            )))
+        }
+    }
+    Ok(out)
+}
+
+fn read_token_id<R: Read>(reader: &mut R, value_type: u32) -> Result<u32, ParseError> {
+    match value_type {
+        GGUF_VALUE_UINT32 => Ok(read_u32(reader)?),
+        GGUF_VALUE_INT32 => {
+            let val = read_i32(reader)?;
+            if val < 0 {
+                return Err(ParseError::Invalid("negative token id".to_string()));
+            }
+            Ok(val as u32)
+        }
+        GGUF_VALUE_UINT64 => {
+            let val = read_u64(reader)?;
+            if val > u64::from(u32::MAX) {
+                return Err(ParseError::Invalid("token id too large".to_string()));
+            }
+            Ok(val as u32)
+        }
+        GGUF_VALUE_INT64 => {
+            let val = read_i64(reader)?;
+            if val < 0 || val > i64::from(u32::MAX) {
+                return Err(ParseError::Invalid("token id out of range".to_string()));
+            }
+            Ok(val as u32)
         }
         _ => Err(ParseError::Invalid(format!(
-            "unsupported gguf value type: {value_type}"
+            "unexpected token id type: {value_type}"
         ))),
     }
+}
+
+fn read_scalar_value<R: Read>(
+    reader: &mut R,
+    value_type: u32,
+    version: u32,
+) -> Result<Option<GgufScalar>, ParseError> {
+    let value = match value_type {
+        GGUF_VALUE_UINT8 => Some(GgufScalar::U8(read_u8(reader)?)),
+        GGUF_VALUE_INT8 => Some(GgufScalar::I8(read_i8(reader)?)),
+        GGUF_VALUE_UINT16 => Some(GgufScalar::U16(read_u16(reader)?)),
+        GGUF_VALUE_INT16 => Some(GgufScalar::I16(read_i16(reader)?)),
+        GGUF_VALUE_UINT32 => Some(GgufScalar::U32(read_u32(reader)?)),
+        GGUF_VALUE_INT32 => Some(GgufScalar::I32(read_i32(reader)?)),
+        GGUF_VALUE_UINT64 => Some(GgufScalar::U64(read_u64(reader)?)),
+        GGUF_VALUE_INT64 => Some(GgufScalar::I64(read_i64(reader)?)),
+        GGUF_VALUE_FLOAT32 => Some(GgufScalar::F32(read_f32(reader)?)),
+        GGUF_VALUE_FLOAT64 => Some(GgufScalar::F64(read_f64(reader)?)),
+        GGUF_VALUE_BOOL => Some(GgufScalar::Bool(read_u8(reader)? != 0)),
+        GGUF_VALUE_STRING => Some(GgufScalar::String(read_string(reader, version)?)),
+        GGUF_VALUE_ARRAY => {
+            let (elem_type, len) = read_array_header_raw(reader, value_type)?;
+            skip_array(reader, elem_type, len, version)?;
+            None
+        }
+        _ => {
+            return Err(ParseError::Invalid(format!(
+                "unsupported gguf value type: {value_type}"
+            )))
+        }
+    };
+    Ok(value)
+}
+
+fn read_array_header<R: Read>(
+    reader: &mut R,
+    value_type: u32,
+    expected_elem_type: u32,
+) -> Result<u64, ParseError> {
+    let (elem_type, len) = read_array_header_raw(reader, value_type)?;
+    if elem_type != expected_elem_type {
+        return Err(ParseError::Invalid(format!(
+            "unexpected array element type: {elem_type}"
+        )));
+    }
+    Ok(len)
+}
+
+fn read_array_header_raw<R: Read>(
+    reader: &mut R,
+    value_type: u32,
+) -> Result<(u32, u64), ParseError> {
+    if value_type != GGUF_VALUE_ARRAY {
+        return Err(ParseError::Invalid(format!(
+            "expected array value type, got {value_type}"
+        )));
+    }
+    let elem_type = read_u32(reader)?;
+    let len = read_u64(reader)?;
+    Ok((elem_type, len))
 }
 
 fn skip_array<R: Read>(
@@ -273,16 +528,62 @@ fn skip_array<R: Read>(
     }
 }
 
+fn read_u8<R: Read>(reader: &mut R) -> Result<u8, ParseError> {
+    let mut buf = [0u8; 1];
+    reader.read_exact(&mut buf).map_err(map_incomplete)?;
+    Ok(buf[0])
+}
+
+fn read_i8<R: Read>(reader: &mut R) -> Result<i8, ParseError> {
+    Ok(read_u8(reader)? as i8)
+}
+
+fn read_u16<R: Read>(reader: &mut R) -> Result<u16, ParseError> {
+    let mut buf = [0u8; 2];
+    reader.read_exact(&mut buf).map_err(map_incomplete)?;
+    Ok(u16::from_le_bytes(buf))
+}
+
+fn read_i16<R: Read>(reader: &mut R) -> Result<i16, ParseError> {
+    let mut buf = [0u8; 2];
+    reader.read_exact(&mut buf).map_err(map_incomplete)?;
+    Ok(i16::from_le_bytes(buf))
+}
+
 fn read_u32<R: Read>(reader: &mut R) -> Result<u32, ParseError> {
     let mut buf = [0u8; 4];
     reader.read_exact(&mut buf).map_err(map_incomplete)?;
     Ok(u32::from_le_bytes(buf))
 }
 
+fn read_i32<R: Read>(reader: &mut R) -> Result<i32, ParseError> {
+    let mut buf = [0u8; 4];
+    reader.read_exact(&mut buf).map_err(map_incomplete)?;
+    Ok(i32::from_le_bytes(buf))
+}
+
 fn read_u64<R: Read>(reader: &mut R) -> Result<u64, ParseError> {
     let mut buf = [0u8; 8];
     reader.read_exact(&mut buf).map_err(map_incomplete)?;
     Ok(u64::from_le_bytes(buf))
+}
+
+fn read_i64<R: Read>(reader: &mut R) -> Result<i64, ParseError> {
+    let mut buf = [0u8; 8];
+    reader.read_exact(&mut buf).map_err(map_incomplete)?;
+    Ok(i64::from_le_bytes(buf))
+}
+
+fn read_f32<R: Read>(reader: &mut R) -> Result<f32, ParseError> {
+    let mut buf = [0u8; 4];
+    reader.read_exact(&mut buf).map_err(map_incomplete)?;
+    Ok(f32::from_le_bytes(buf))
+}
+
+fn read_f64<R: Read>(reader: &mut R) -> Result<f64, ParseError> {
+    let mut buf = [0u8; 8];
+    reader.read_exact(&mut buf).map_err(map_incomplete)?;
+    Ok(f64::from_le_bytes(buf))
 }
 
 fn read_string_len<R: Read>(reader: &mut R, version: u32) -> Result<u64, ParseError> {
@@ -371,7 +672,7 @@ fn ggml_type_name(type_id: u32) -> &'static str {
         36 => "Q8_K_S",
         37 => "Q2_K_M",
         38 => "Q3_K_M",
-        39 => "Q4_K_M",
+        39 => "MXFP4",
         40 => "Q5_K_M",
         41 => "Q6_K_M",
         42 => "Q8_K_M",

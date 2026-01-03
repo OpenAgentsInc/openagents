@@ -9,6 +9,7 @@ mod intro_agent;
 mod ml_viz;
 mod gptoss_viz;
 mod gptoss_runtime;
+mod gptoss_tokenizer;
 mod ml_gate;
 mod nostr;
 mod state;
