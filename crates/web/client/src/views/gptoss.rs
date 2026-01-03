@@ -677,6 +677,21 @@ fn draw_stats_panel(
         accent_orange(),
     );
 
+    let stage_text = gptoss
+        .current_stage
+        .as_ref()
+        .map(|stage| format!("STAGE: {}", truncate_text(stage, 32)))
+        .unwrap_or_else(|| "STAGE: --".to_string());
+    draw_mono_text(
+        scene,
+        text_system,
+        &stage_text,
+        inner.x(),
+        inner.y() + 14.0,
+        10.0,
+        theme::text::MUTED,
+    );
+
     let cache = gptoss.cache_status.last();
     let cache_text = if let Some(cache) = cache {
         format!(
@@ -692,7 +707,7 @@ fn draw_stats_panel(
         text_system,
         &cache_text,
         inner.x(),
-        inner.y() + 16.0,
+        inner.y() + 28.0,
         10.0,
         theme::text::MUTED,
     );
