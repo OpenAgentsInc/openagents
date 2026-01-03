@@ -136,6 +136,7 @@ pub(crate) enum AppView {
     GfnPage,
     MlVizPage,
     GptOssPage,
+    FmPage,
     Y2026Page,
     BrbPage,
 }
@@ -206,6 +207,143 @@ impl Default for Y2026State {
             frame_started: false,
             link_bounds: Vec::new(),
             link_hovered: false,
+        }
+    }
+}
+
+/// Connection status for FM Bridge
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub(crate) enum FmConnectionStatus {
+    #[default]
+    Disconnected,
+    Connecting,
+    Connected,
+    Error,
+}
+
+/// Stream status for FM Bridge token generation
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub(crate) enum FmStreamStatus {
+    #[default]
+    Idle,
+    Streaming,
+    Complete,
+    Error,
+}
+
+/// Transcript message for FM Bridge sessions
+#[derive(Clone, Debug)]
+pub(crate) struct FmTranscriptMessage {
+    pub(crate) role: String,
+    pub(crate) content: String,
+}
+
+/// Tool info for FM Bridge
+#[derive(Clone, Debug)]
+pub(crate) struct FmToolInfo {
+    pub(crate) name: String,
+    pub(crate) description: String,
+}
+
+/// Tool invocation record
+#[derive(Clone, Debug)]
+pub(crate) struct FmToolInvocation {
+    pub(crate) tool_name: String,
+    pub(crate) timestamp_ms: u64,
+    pub(crate) completed: bool,
+    pub(crate) success: Option<bool>,
+}
+
+/// Log entry for FM Bridge events
+#[derive(Clone, Debug)]
+pub(crate) struct FmLogEntry {
+    pub(crate) stage: String,
+    pub(crate) status: String,
+    pub(crate) detail: Option<String>,
+    pub(crate) timestamp_ms: u64,
+}
+
+/// State for the FM Bridge (Apple Foundation Models) visualization page
+pub(crate) struct FmVizState {
+    pub(crate) frame_animator: FrameAnimator,
+    pub(crate) frame_started: bool,
+    pub(crate) scroll_offset: f32,
+    pub(crate) content_bounds: Bounds,
+    pub(crate) content_height: f32,
+
+    // Bridge status
+    pub(crate) connection_status: FmConnectionStatus,
+    pub(crate) bridge_url: String,
+    pub(crate) model_available: bool,
+    pub(crate) ping_latency_ms: Option<u32>,
+
+    // Prompt input
+    pub(crate) prompt_input: TextInput,
+    pub(crate) prompt_input_bounds: Bounds,
+    pub(crate) run_button_bounds: Bounds,
+    pub(crate) run_button_hovered: bool,
+    pub(crate) input_event_ctx: EventContext,
+    pub(crate) inputs_initialized: bool,
+
+    // Token stream
+    pub(crate) token_stream: String,
+    pub(crate) stream_status: FmStreamStatus,
+    pub(crate) tokens_per_sec: f32,
+    pub(crate) ttft_ms: Option<u64>,
+    pub(crate) token_count: usize,
+    pub(crate) stream_start_ts_ms: Option<u64>,
+    pub(crate) last_token_ts_ms: Option<u64>,
+
+    // Session
+    pub(crate) session_id: Option<String>,
+    pub(crate) transcript: Vec<FmTranscriptMessage>,
+    pub(crate) turn_count: u32,
+
+    // Tools
+    pub(crate) registered_tools: Vec<FmToolInfo>,
+    pub(crate) tool_invocations: Vec<FmToolInvocation>,
+
+    // Event log
+    pub(crate) event_log: VecDeque<FmLogEntry>,
+}
+
+impl Default for FmVizState {
+    fn default() -> Self {
+        Self {
+            frame_animator: FrameAnimator::new(),
+            frame_started: false,
+            scroll_offset: 0.0,
+            content_bounds: Bounds::ZERO,
+            content_height: 0.0,
+
+            connection_status: FmConnectionStatus::Disconnected,
+            bridge_url: "http://localhost:11435".to_string(),
+            model_available: false,
+            ping_latency_ms: None,
+
+            prompt_input: TextInput::new(),
+            prompt_input_bounds: Bounds::ZERO,
+            run_button_bounds: Bounds::ZERO,
+            run_button_hovered: false,
+            input_event_ctx: EventContext::new(),
+            inputs_initialized: false,
+
+            token_stream: String::new(),
+            stream_status: FmStreamStatus::Idle,
+            tokens_per_sec: 0.0,
+            ttft_ms: None,
+            token_count: 0,
+            stream_start_ts_ms: None,
+            last_token_ts_ms: None,
+
+            session_id: None,
+            transcript: Vec::new(),
+            turn_count: 0,
+
+            registered_tools: Vec::new(),
+            tool_invocations: Vec::new(),
+
+            event_log: VecDeque::new(),
         }
     }
 }
@@ -304,6 +442,8 @@ pub(crate) struct GptOssVizState {
     pub(crate) start_button_hovered: bool,
     pub(crate) file_button_bounds: Bounds,
     pub(crate) file_button_hovered: bool,
+    pub(crate) copy_button_bounds: Bounds,
+    pub(crate) copy_button_hovered: bool,
     pub(crate) drop_active: bool,
     pub(crate) gguf_input_bounds: Bounds,
     pub(crate) prompt_input_bounds: Bounds,
@@ -382,6 +522,8 @@ impl Default for GptOssVizState {
             start_button_hovered: false,
             file_button_bounds: Bounds::ZERO,
             file_button_hovered: false,
+            copy_button_bounds: Bounds::ZERO,
+            copy_button_hovered: false,
             drop_active: false,
             gguf_input_bounds: Bounds::ZERO,
             prompt_input_bounds: Bounds::ZERO,
@@ -578,6 +720,215 @@ impl GptOssVizState {
             return true;
         }
         false
+    }
+
+    pub(crate) fn build_debug_report(&self) -> String {
+        let mut out = String::new();
+        out.push_str("GPT-OSS LOGS\n");
+        out.push_str("----------------\n");
+        let gguf_label = self
+            .load_url
+            .as_deref()
+            .or(self.gguf_file_label.as_deref())
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| self.gguf_input.get_value().trim());
+        if !gguf_label.is_empty() {
+            out.push_str("gguf: ");
+            out.push_str(gguf_label);
+            out.push('\n');
+        }
+        let prompt = self.prompt_input.get_value();
+        if !prompt.trim().is_empty() {
+            out.push_str("prompt: ");
+            out.push_str(prompt.trim());
+            out.push('\n');
+        }
+        out.push_str("inputs: ");
+        out.push_str(&format!(
+            "layers={} max_kv={} max_new={} sample={} temp={} top_k={} top_p={}\n",
+            self.layers_input.get_value().trim(),
+            self.max_kv_input.get_value().trim(),
+            self.max_new_input.get_value().trim(),
+            self.sample_input.get_value().trim(),
+            self.temp_input.get_value().trim(),
+            self.top_k_input.get_value().trim(),
+            self.top_p_input.get_value().trim(),
+        ));
+        out.push_str(&format!(
+            "status: load_active={} current_stage={}\n",
+            self.load_active,
+            self.current_stage.as_deref().unwrap_or("-")
+        ));
+        if let Some(err) = &self.load_error {
+            out.push_str("load_error: ");
+            out.push_str(err);
+            out.push('\n');
+        }
+        if let Some(err) = &self.inference_error {
+            out.push_str("inference_error: ");
+            out.push_str(err);
+            out.push('\n');
+        }
+        if let Some(token_limits) = &self.token_limits {
+            out.push_str("token_limits: ");
+            out.push_str(token_limits);
+            out.push('\n');
+        }
+        if let Some(gpu_limits) = &self.gpu_limits {
+            out.push_str("gpu_limits: ");
+            out.push_str(gpu_limits);
+            out.push('\n');
+        }
+        if let Some(memory) = &self.memory_usage {
+            out.push_str("memory: ");
+            out.push_str(&format!(
+                "gpu_allocated={} cache_total={} activations={}\n",
+                format_bytes_u64(memory.gpu_allocated as u64),
+                format_bytes_u64(memory.cache_total as u64),
+                format_bytes_u64(memory.activations as u64),
+            ));
+        }
+        if let Some(entropy) = self.entropy {
+            out.push_str(&format!("entropy: {:.4}\n", entropy));
+        }
+        if let Some(tokens_per_sec) = self.tokens_per_sec {
+            out.push_str(&format!("tokens_per_sec: {:.2}\n", tokens_per_sec));
+        }
+        if let Some(token_id) = self.last_token_id {
+            out.push_str(&format!("last_token_id: {token_id}\n"));
+        }
+        if !self.token_stream.is_empty() {
+            out.push_str("token_stream:\n");
+            out.push_str(self.token_stream.trim_end());
+            out.push('\n');
+        }
+        if !self.top_k.is_empty() {
+            out.push_str("top_k:\n");
+            for cand in &self.top_k {
+                out.push_str(&format!(
+                    "- id={} prob={:.5} text={}\n",
+                    cand.token_id,
+                    cand.probability,
+                    sanitize_line(&cand.token_text)
+                ));
+            }
+        }
+        if !self.load_stages.is_empty() {
+            out.push_str("load_stages:\n");
+            for stage in &self.load_stages {
+                out.push_str(&format_stage_line(stage));
+            }
+        }
+        if !self.inference_stages.is_empty() {
+            out.push_str("inference_stages:\n");
+            for stage in &self.inference_stages {
+                out.push_str(&format_stage_line(stage));
+            }
+        }
+        if !self.events.is_empty() {
+            out.push_str("events:\n");
+            for entry in &self.events {
+                let ts = entry.ts_ms.unwrap_or(0);
+                out.push_str(&format!(
+                    "- ts={} status={} msg={}\n",
+                    ts,
+                    stage_status_label(entry.status),
+                    sanitize_line(&entry.message)
+                ));
+            }
+        }
+        if !self.cache_status.is_empty() {
+            out.push_str("cache_status:\n");
+            for cache in &self.cache_status {
+                out.push_str(&format!(
+                    "- layer={} seq_len={} max_len={} offset={} bytes={}\n",
+                    cache.layer,
+                    cache.seq_len,
+                    cache.max_len,
+                    cache.offset,
+                    format_bytes_u64(cache.memory_bytes as u64)
+                ));
+            }
+        }
+        if !self.layer_activations.is_empty() {
+            out.push_str("layer_activations:\n");
+            for act in &self.layer_activations {
+                out.push_str(&format!(
+                    "- layer={} attn_norm={:.4} mlp_norm={:.4} out_norm={:.4}\n",
+                    act.layer, act.attention_norm, act.mlp_norm, act.output_norm
+                ));
+            }
+        }
+        if !self.recent_tensors.is_empty() {
+            out.push_str("recent_tensors:\n");
+            for name in &self.recent_tensors {
+                out.push_str("- ");
+                out.push_str(name);
+                out.push('\n');
+            }
+        }
+        if !self.resident_tensors.is_empty() {
+            out.push_str("resident_tensors:\n");
+            for tensor in &self.resident_tensors {
+                out.push_str(&format!(
+                    "- {} bytes={} kind={}\n",
+                    tensor.name,
+                    format_bytes_u64(tensor.bytes as u64),
+                    tensor.kind
+                ));
+            }
+        }
+        out
+    }
+}
+
+fn stage_status_label(status: GptOssStageStatus) -> &'static str {
+    match status {
+        GptOssStageStatus::Idle => "IDLE",
+        GptOssStageStatus::Running => "RUN",
+        GptOssStageStatus::Completed => "OK",
+        GptOssStageStatus::Failed => "FAIL",
+    }
+}
+
+fn format_stage_line(stage: &GptOssStage) -> String {
+    let mut line = format!("- [{}] {}", stage_status_label(stage.status), stage.name);
+    if let Some(detail) = stage.detail.as_ref() {
+        line.push_str(" detail=");
+        line.push_str(&sanitize_line(detail));
+    }
+    if let (Some(bytes), Some(total)) = (stage.bytes, stage.total_bytes) {
+        line.push_str(&format!(
+            " bytes={}/{}",
+            format_bytes_u64(bytes),
+            format_bytes_u64(total)
+        ));
+    } else if let Some(bytes) = stage.bytes {
+        line.push_str(&format!(" bytes={}", format_bytes_u64(bytes)));
+    }
+    if let (Some(step), Some(total)) = (stage.step, stage.total_steps) {
+        line.push_str(&format!(" step={}/{}", step, total));
+    }
+    if let Some(ts) = stage.ts_ms {
+        line.push_str(&format!(" ts={ts}"));
+    }
+    line.push('\n');
+    line
+}
+
+fn sanitize_line(value: &str) -> String {
+    value.replace('\n', " | ").replace('\r', " ")
+}
+
+fn format_bytes_u64(bytes: u64) -> String {
+    if bytes >= 1_000_000_000 {
+        format!("{:.1}GB", bytes as f32 / 1_000_000_000.0)
+    } else if bytes >= 1_000_000 {
+        format!("{:.1}MB", bytes as f32 / 1_000_000.0)
+    } else if bytes >= 1_000 {
+        format!("{:.1}KB", bytes as f32 / 1_000.0)
+    } else {
+        format!("{bytes}B")
     }
 }
 
@@ -1194,6 +1545,8 @@ pub(crate) struct AppState {
     pub(crate) ml_viz: MlVizState,
     // GPT-OSS visualization page state
     pub(crate) gptoss: GptOssVizState,
+    // FM Bridge visualization page state
+    pub(crate) fm_viz: FmVizState,
 }
 
 impl Default for AppState {
@@ -1270,6 +1623,7 @@ impl Default for AppState {
             y2026: Y2026State::default(),
             ml_viz: MlVizState::default(),
             gptoss: GptOssVizState::default(),
+            fm_viz: FmVizState::default(),
         }
     }
 }

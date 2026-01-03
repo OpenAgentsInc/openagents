@@ -28,7 +28,7 @@ use crate::gptoss_runtime::{
     gguf_file_input_label, gguf_file_label, start_gptoss_file_pick, start_gptoss_load,
 };
 use crate::ml_viz::init_ml_viz_runtime;
-use crate::utils::{read_clipboard_text, track_funnel_event};
+use crate::utils::{copy_to_clipboard, read_clipboard_text, track_funnel_event};
 // Wallet disabled
 // use crate::wallet::{dispatch_wallet_event, queue_wallet_actions, WalletAction};
 
@@ -374,6 +374,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         && state.gptoss.start_button_bounds.contains(state.mouse_pos);
                     state.gptoss.file_button_hovered = !state.gptoss.load_active
                         && state.gptoss.file_button_bounds.contains(state.mouse_pos);
+                    state.gptoss.copy_button_hovered =
+                        state.gptoss.copy_button_bounds.contains(state.mouse_pos);
                     let _ = state.gptoss.handle_event(&InputEvent::MouseMove { x, y });
                 }
 
@@ -827,6 +829,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
 
             let mut start_gptoss = false;
             let mut pick_gptoss_file = false;
+            let mut copy_gptoss_logs = false;
+            if state.view == AppView::GptOssPage
+                && state.gptoss.copy_button_bounds.contains(click_pos)
+            {
+                copy_gptoss_logs = true;
+            }
             if state.view == AppView::GptOssPage && !state.gptoss.load_active {
                 if state.gptoss.file_button_bounds.contains(click_pos) {
                     pick_gptoss_file = true;
@@ -881,6 +889,13 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             if start_gptoss {
                 drop(state);
                 start_gptoss_load(state_clone.clone());
+                return;
+            }
+
+            if copy_gptoss_logs {
+                let report = state.gptoss.build_debug_report();
+                drop(state);
+                copy_to_clipboard(report);
                 return;
             }
         });
