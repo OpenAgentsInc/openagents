@@ -182,6 +182,12 @@ impl GptOssVizState {
                         apply_runtime_mode(self, detail);
                     }
                 }
+                if matches!(status, StageStatus::Failed) {
+                    let msg = detail_clone
+                        .clone()
+                        .unwrap_or_else(|| format!("{stage} failed"));
+                    self.inference_error = Some(msg);
+                }
                 update_stage(
                     &mut self.inference_stages,
                     stage.clone(),
