@@ -840,7 +840,7 @@ fn draw_topk_panel(
     let bar_color = accent_cyan().with_alpha(0.35 + 0.45 * pulse);
 
     for candidate in &gptoss.top_k {
-        let label = truncate_text(&candidate.token_text, 12);
+        let label = token_label(&candidate.token_text, candidate.token_id, 12);
         draw_mono_text(scene, text_system, &label, inner.x(), y, 10.0, theme::text::PRIMARY);
 
         let bar_w = (candidate.probability / max_prob).clamp(0.0, 1.0) * (inner.width() - 120.0);
@@ -995,7 +995,7 @@ fn draw_probability_panel(
         }
         let x = inner.x() + col as f32 * col_width;
         let y = inner.y();
-        let top_label = truncate_text(&candidates[0].token_text, 10);
+        let top_label = token_label(&candidates[0].token_text, candidates[0].token_id, 10);
         draw_mono_text(
             scene,
             text_system,
@@ -1486,6 +1486,14 @@ fn truncate_text(text: &str, max_len: usize) -> String {
     let mut out = text.chars().take(max_len).collect::<String>();
     out.push_str("...");
     out
+}
+
+fn token_label(text: &str, token_id: u32, max_len: usize) -> String {
+    if text.trim().is_empty() {
+        format!("#{token_id}")
+    } else {
+        truncate_text(text, max_len)
+    }
 }
 
 fn tail_chars(text: &str, max_len: usize) -> String {

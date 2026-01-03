@@ -186,6 +186,7 @@ Notes:
 - Ran `cargo run -p ml --bin test_tokenizer -- --gguf ... --text "Hello, world!"`.
 - Ran `cargo run -p ml --bin gptoss_cli -- --gguf ... --prompt "Once upon a time" --layers 1 --max-tokens 1 --moe-fallback`.
 - I/O panel now shows prompt tokenization detail from `prompt_encode`.
+- Top-k and probability panels now fall back to token id labels for whitespace-only tokens.
 
 ---
 
