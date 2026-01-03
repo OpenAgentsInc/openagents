@@ -2171,7 +2171,7 @@ fn parse_sampling_config(overrides: SamplingOverrides) -> SamplingConfig {
 
 fn collect_stop_tokens(tokenizer: &GptOssTokenizer) -> Vec<u32> {
     let mut tokens = Vec::new();
-    for name in ["<|return|>", "<|call|>"] {
+    for name in ["<|return|>", "<|call|>", "<|end|>"] {
         if let Some(id) = tokenizer.token_id(name) {
             tokens.push(id);
         }
