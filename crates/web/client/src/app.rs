@@ -1498,9 +1498,11 @@ fn install_error_handlers(state: Rc<RefCell<AppState>>) {
                 .map(|err| err.message())
                 .unwrap_or_else(|| "window error".to_string());
             if let Ok(mut guard) = state_clone.try_borrow_mut() {
-                guard.gptoss.inference_error = Some(message);
+                if matches!(guard.view, AppView::GptOssPage) {
+                    guard.gptoss.inference_error = Some(message);
+                    event.prevent_default();
+                }
             }
-            event.prevent_default();
         });
         let _ = window.add_event_listener_with_callback(
             "error",
@@ -1517,9 +1519,11 @@ fn install_error_handlers(state: Rc<RefCell<AppState>>) {
                 .and_then(|err| err.reason().as_string())
                 .unwrap_or_else(|| "unhandled rejection".to_string());
             if let Ok(mut guard) = state_clone.try_borrow_mut() {
-                guard.gptoss.inference_error = Some(message);
+                if matches!(guard.view, AppView::GptOssPage) {
+                    guard.gptoss.inference_error = Some(message);
+                    event.prevent_default();
+                }
             }
-            event.prevent_default();
         });
         let _ = window.add_event_listener_with_callback(
             "unhandledrejection",
