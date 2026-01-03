@@ -3105,9 +3105,9 @@ async fn matmul_q8_0_with_bias(
             )
         }),
     );
+    let mut retry_chunked = false;
     let mut out = if chunked {
-        let out = gpu_matmul_q8_0_chunked(gguf_url, weight, input, gpu, gpu_tracker).await?;
-        out
+        gpu_matmul_q8_0_chunked(gguf_url, weight, input, gpu, gpu_tracker).await?
     } else {
         let mut quant = fetch_range(gguf_url, weight.absolute_offset, weight.nbytes).await?;
         if quant.len() % 4 != 0 {
@@ -3115,7 +3115,21 @@ async fn matmul_q8_0_with_bias(
             quant.resize(padded, 0);
         }
         emit_tensor_resident(state, weight.name.clone(), quant.len(), "q8_0");
-        gpu_matmul_q8_0(&quant, input, k, n, gpu, gpu_tracker).await?
+        match gpu_matmul_q8_0(&quant, input, k, n, gpu, gpu_tracker).await {
+            Ok(out) => out,
+            Err(err) => {
+                retry_chunked = true;
+                emit_inference_stage(
+                    state,
+                    "weights_retry",
+                    StageStatus::Progress,
+                    None,
+                    None,
+                    Some(format!("{} retry=chunked err={err}", weight.name)),
+                );
+                gpu_matmul_q8_0_chunked(gguf_url, weight, input, gpu, gpu_tracker).await?
+            }
+        }
     };
     let fetch_ms = now_ms().saturating_sub(start_ms).max(1);
     emit_inference_stage(
@@ -3127,6 +3141,12 @@ async fn matmul_q8_0_with_bias(
         Some(if chunked {
             format!(
                 "{} bytes={} ms={fetch_ms} (chunked)",
+                weight.name,
+                format_bytes(weight.nbytes)
+            )
+        } else if retry_chunked {
+            format!(
+                "{} bytes={} ms={fetch_ms} (retry chunked)",
                 weight.name,
                 format_bytes(weight.nbytes)
             )
@@ -3620,6 +3640,23 @@ fn diff_stats(y_cpu: &[f32], y_gpu: &[f32]) -> (f32, f32) {
     (max_abs, mean_abs)
 }
 
+fn pick_workgroup_size(device: &wgpu::Device) -> u32 {
+    let limits = device.limits();
+    let max_x = limits.max_compute_workgroup_size_x;
+    let max_invocations = limits.max_compute_invocations_per_workgroup;
+    let max_size = max_x.min(max_invocations).max(1);
+    for candidate in [256u32, 128, 64, 32, 16, 8, 4, 2, 1] {
+        if candidate <= max_size {
+            return candidate;
+        }
+    }
+    1
+}
+
+fn shader_with_workgroup(source: &str, workgroup_size: u32) -> String {
+    source.replace("{{WORKGROUP_SIZE}}", &workgroup_size.to_string())
+}
+
 async fn gpu_matmul_q8_0(
     quant: &[u8],
     x: &[f32],
@@ -3637,9 +3674,11 @@ async fn gpu_matmul_q8_0(
     ensure_storage_limit("q8_0 input", x_bytes, max_storage)?;
     ensure_storage_limit("q8_0 output", y_bytes, max_storage)?;
 
+    let workgroup_size = pick_workgroup_size(device);
+    let shader_source = shader_with_workgroup(Q8_0_SHADER, workgroup_size);
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("q8_0_probe"),
-        source: wgpu::ShaderSource::Wgsl(Q8_0_SHADER.into()),
+        source: wgpu::ShaderSource::Wgsl(shader_source.into()),
     });
 
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -3776,7 +3815,6 @@ async fn gpu_matmul_q8_0(
         });
         pass.set_pipeline(&pipeline);
         pass.set_bind_group(0, &bind_group, &[]);
-        let workgroup_size = 64u32;
         let groups = (n as u32 + workgroup_size - 1) / workgroup_size;
         pass.dispatch_workgroups(groups, 1, 1);
     }
@@ -3851,9 +3889,11 @@ async fn gpu_matmul_q8_0_chunked(
     let device = &gpu.device;
     let queue = &gpu.queue;
 
+    let workgroup_size = pick_workgroup_size(device);
+    let shader_source = shader_with_workgroup(Q8_0_SHADER, workgroup_size);
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("q8_0_chunked"),
-        source: wgpu::ShaderSource::Wgsl(Q8_0_SHADER.into()),
+        source: wgpu::ShaderSource::Wgsl(shader_source.into()),
     });
 
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -4007,7 +4047,6 @@ async fn gpu_matmul_q8_0_chunked(
             });
             pass.set_pipeline(&pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
-            let workgroup_size = 64u32;
             let groups = (n as u32 + workgroup_size - 1) / workgroup_size;
             pass.dispatch_workgroups(groups, 1, 1);
         }
@@ -4068,9 +4107,11 @@ async fn gpu_matmul_mxfp4(
     ensure_storage_limit("mxfp4 output", y_bytes, max_storage)?;
     let chunked = expected_bytes > max_storage;
 
+    let workgroup_size = pick_workgroup_size(device);
+    let shader_source = shader_with_workgroup(MXFP4_SHADER, workgroup_size);
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("mxfp4_probe"),
-        source: wgpu::ShaderSource::Wgsl(MXFP4_SHADER.into()),
+        source: wgpu::ShaderSource::Wgsl(shader_source.into()),
     });
 
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -4233,7 +4274,6 @@ async fn gpu_matmul_mxfp4(
             });
             pass.set_pipeline(&pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
-            let workgroup_size = 64u32;
             let groups = (n as u32 + workgroup_size - 1) / workgroup_size;
             pass.dispatch_workgroups(groups, 1, 1);
         }
@@ -4324,7 +4364,7 @@ fn q8_0_unpack(block: u32, idx: u32) -> f32 {
     return scale * f32(signed);
 }
 
-@compute @workgroup_size(64)
+@compute @workgroup_size({{WORKGROUP_SIZE}})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let col = gid.x;
     if (col >= params.n) {
@@ -4386,7 +4426,7 @@ fn mxfp4_unpack(block: u32, idx: u32) -> f32 {
     return FP4_TABLE[nibble] * scale;
 }
 
-@compute @workgroup_size(64)
+@compute @workgroup_size({{WORKGROUP_SIZE}})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let col = gid.x;
     if (col >= params.n) {

@@ -162,6 +162,7 @@ Notes:
 - Streamed GGUF load runs concurrently with generation (telemetry keeps flowing while tokens start).
 - Added sampling controls via query params (`sample`, `temp`, `top_k`, `top_p`) with HUD display of sampling mode.
 - Token limits telemetry now surfaces in the HUD I/O panel.
+- GPU workgroup size now derives from WebGPU limits (no hardcoded 64); Q8_0 matmul auto-retries with chunked path on failure.
 
 ---
 
