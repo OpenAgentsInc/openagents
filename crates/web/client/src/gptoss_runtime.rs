@@ -796,19 +796,7 @@ pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
             gguf_label = Some(gguf_file_label(&file));
             gguf_source = Some(GgufSource::File(file));
         } else {
-            let err = "No GGUF file selected. Click PICK FILE first.".to_string();
-            if let Ok(mut guard) = state.try_borrow_mut() {
-                reset_gptoss_state(&mut guard.gptoss);
-                guard.gptoss.load_error = Some(err.clone());
-            }
-            emit_load_stage(
-                &state,
-                "load_failed",
-                StageStatus::Failed,
-                Some(err),
-                None,
-                None,
-            );
+            start_gptoss_file_pick(state);
             return;
         }
     }
@@ -833,20 +821,7 @@ pub(crate) fn start_gptoss_load(state: Rc<RefCell<AppState>>) {
             }
         };
         if gguf_url.is_empty() {
-            if let Ok(mut guard) = state.try_borrow_mut() {
-                reset_gptoss_state(&mut guard.gptoss);
-                guard.gptoss.load_error = Some(format!(
-                    "No GGUF URL provided.\nRun: {LOCAL_GGUF_SERVE_CMD}\nOr pass ?gguf=..."
-                ));
-            }
-            emit_load_stage(
-                &state,
-                "load_failed",
-                StageStatus::Failed,
-                Some("missing gguf url".to_string()),
-                None,
-                None,
-            );
+            start_gptoss_file_pick(state);
             return;
         }
         gguf_label = Some(gguf_url.clone());

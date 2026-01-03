@@ -680,7 +680,7 @@ pub(crate) fn build_gptoss_page(
             scene,
             text_system,
             empty_bounds,
-            "Run `cargo run -p ml --bin gguf_serve` or click PICK FILE",
+            "Run `cargo run -p ml --bin gguf_serve` or click LOAD MODEL to pick a file",
         );
         y += 140.0;
     } else {
