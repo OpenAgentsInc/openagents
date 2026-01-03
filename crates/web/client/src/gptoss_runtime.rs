@@ -2910,6 +2910,7 @@ async fn run_transformer_layer(
     let attn_sinks = find_tensor(index, &format!("blk.{layer}.attn_sinks.weight"))?;
     let post_attn_norm = find_tensor(index, &format!("blk.{layer}.post_attention_norm.weight"))?;
 
+    let layer_attn_start = now_ms();
     emit_inference_stage(
         state,
         "layer_attn",
@@ -3168,13 +3169,14 @@ async fn run_transformer_layer(
         *out += *base;
     }
 
+    let layer_attn_ms = now_ms().saturating_sub(layer_attn_start).max(1);
     emit_inference_stage(
         state,
         "layer_attn",
         StageStatus::Completed,
         Some((layer + 1) as usize),
         Some(total_layers),
-        Some("ok".to_string()),
+        Some(format!("ok ms={layer_attn_ms}")),
     );
 
     let post_norm_start = now_ms();
@@ -3191,6 +3193,7 @@ async fn run_transformer_layer(
         Some(format!("layer={layer} ms={post_norm_ms}")),
     );
 
+    let layer_mlp_start = now_ms();
     emit_inference_stage(
         state,
         "layer_mlp",
@@ -3393,13 +3396,14 @@ async fn run_transformer_layer(
         *out += *add;
     }
 
+    let layer_mlp_ms = now_ms().saturating_sub(layer_mlp_start).max(1);
     emit_inference_stage(
         state,
         "layer_mlp",
         StageStatus::Completed,
         Some((layer + 1) as usize),
         Some(total_layers),
-        Some("ok".to_string()),
+        Some(format!("ok ms={layer_mlp_ms}")),
     );
 
     emit_inference_event(
