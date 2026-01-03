@@ -87,6 +87,14 @@ struct SamplingConfig {
     top_p: f32,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct SamplingOverrides {
+    enabled: Option<bool>,
+    temperature: Option<f32>,
+    top_k: Option<usize>,
+    top_p: Option<f32>,
+}
+
 #[derive(Clone, Debug)]
 struct LayerKvCache {
     k: Vec<f32>,
@@ -849,7 +857,8 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         None,
     );
 
-    let sampling = parse_sampling_config();
+    let sampling_overrides = read_sampling_overrides(&state)?;
+    let sampling = parse_sampling_config(sampling_overrides);
 
     let tokenizer = build_tokenizer(&state, index.as_ref())?;
     let prompt_tokens = encode_prompt(&state, &tokenizer, max_prompt_tokens)?;
@@ -1578,6 +1587,34 @@ fn parse_layers_override(raw: &str) -> Result<Option<usize>, String> {
         .map_err(|_| format!("invalid layers value: {trimmed}"))
 }
 
+fn parse_bool_override(raw: &str, label: &str) -> Result<Option<bool>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let value = match trimmed.to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => true,
+        "0" | "false" | "no" | "off" => false,
+        _ => {
+            return Err(format!(
+                "invalid {label} value: {trimmed} (use on/off)"
+            ))
+        }
+    };
+    Ok(Some(value))
+}
+
+fn parse_f32_override(raw: &str, label: &str) -> Result<Option<f32>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    trimmed
+        .parse::<f32>()
+        .map(Some)
+        .map_err(|_| format!("invalid {label} value: {trimmed}"))
+}
+
 fn read_input_overrides(
     state: &Rc<RefCell<AppState>>,
 ) -> Result<(Option<usize>, Option<usize>, Option<usize>), String> {
@@ -1588,6 +1625,18 @@ fn read_input_overrides(
     let max_kv = parse_usize_override(guard.gptoss.max_kv_input.get_value(), "max_kv")?;
     let max_new = parse_usize_override(guard.gptoss.max_new_input.get_value(), "max_new")?;
     Ok((layers, max_kv, max_new))
+}
+
+fn read_sampling_overrides(state: &Rc<RefCell<AppState>>) -> Result<SamplingOverrides, String> {
+    let Ok(guard) = state.try_borrow() else {
+        return Ok(SamplingOverrides::default());
+    };
+    Ok(SamplingOverrides {
+        enabled: parse_bool_override(guard.gptoss.sample_input.get_value(), "sample")?,
+        temperature: parse_f32_override(guard.gptoss.temp_input.get_value(), "temp")?,
+        top_k: parse_usize_override(guard.gptoss.top_k_input.get_value(), "top_k")?,
+        top_p: parse_f32_override(guard.gptoss.top_p_input.get_value(), "top_p")?,
+    })
 }
 
 pub(crate) fn default_gguf_url() -> String {
@@ -1743,31 +1792,61 @@ Calls to these tools must go to the commentary channel: 'functions'."
     prompt
 }
 
-fn parse_sampling_config() -> SamplingConfig {
+fn parse_sampling_config(overrides: SamplingOverrides) -> SamplingConfig {
     let mut enabled = false;
-    let temp = read_query_f32("temp")
-        .map(|value| {
-            enabled = true;
-            value
-        })
-        .unwrap_or(1.0);
-    let top_k = read_query_usize("top_k")
-        .map(|value| {
-            enabled = true;
-            value
-        })
-        .unwrap_or(0);
-    let top_p = read_query_f32("top_p")
-        .map(|value| {
-            enabled = true;
-            value
-        })
-        .unwrap_or(1.0);
-    if let Some(flag) = read_query_param("sample") {
-        enabled = matches!(
-            flag.as_str(),
-            "1" | "true" | "yes" | "on"
-        );
+    let input_present = overrides.enabled.is_some()
+        || overrides.temperature.is_some()
+        || overrides.top_k.is_some()
+        || overrides.top_p.is_some();
+
+    let temp = if let Some(value) = overrides.temperature {
+        enabled = true;
+        value
+    } else if !input_present {
+        read_query_f32("temp")
+            .map(|value| {
+                enabled = true;
+                value
+            })
+            .unwrap_or(1.0)
+    } else {
+        1.0
+    };
+
+    let top_k = if let Some(value) = overrides.top_k {
+        enabled = true;
+        value
+    } else if !input_present {
+        read_query_usize("top_k")
+            .map(|value| {
+                enabled = true;
+                value
+            })
+            .unwrap_or(DEFAULT_SAMPLE_TOP_K)
+    } else {
+        DEFAULT_SAMPLE_TOP_K
+    };
+
+    let top_p = if let Some(value) = overrides.top_p {
+        enabled = true;
+        value
+    } else if !input_present {
+        read_query_f32("top_p")
+            .map(|value| {
+                enabled = true;
+                value
+            })
+            .unwrap_or(1.0)
+    } else {
+        1.0
+    };
+
+    if let Some(flag) = overrides.enabled {
+        enabled = flag;
+    } else if !input_present {
+        if let Some(flag) = read_query_param("sample") {
+            enabled = matches!(flag.as_str(), "1" | "true" | "yes" | "on");
+        }
     }
 
     SamplingConfig {
