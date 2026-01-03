@@ -99,10 +99,17 @@ pub fn find_tensor<'a>(index: &'a GgufIndex, name: &str) -> Result<&'a GgufTenso
 }
 
 pub fn read_meta_u32(metadata: &GgufMetadata, key: &str) -> Result<u32> {
-    let value = metadata
-        .values
-        .get(key)
-        .ok_or_else(|| MlError::Model(format!("missing gguf metadata key: {key}")))?;
+    let value = lookup_meta(metadata, key);
+    if value.is_none() && key.ends_with("rope.dimension_count") {
+        let embedding = read_meta_u32(metadata, "llama.embedding_length")?;
+        let heads = read_meta_u32(metadata, "llama.attention.head_count")?;
+        if heads > 0 {
+            return Ok(embedding / heads);
+        }
+    }
+    let value = value.ok_or_else(|| {
+        MlError::Model(format!("missing gguf metadata key: {key}"))
+    })?;
     match value {
         GgufScalar::U32(v) => Ok(*v),
         GgufScalar::I32(v) => Ok(*v as u32),
@@ -117,10 +124,9 @@ pub fn read_meta_u32(metadata: &GgufMetadata, key: &str) -> Result<u32> {
 }
 
 pub fn read_meta_f32(metadata: &GgufMetadata, key: &str) -> Result<f32> {
-    let value = metadata
-        .values
-        .get(key)
-        .ok_or_else(|| MlError::Model(format!("missing gguf metadata key: {key}")))?;
+    let value = lookup_meta(metadata, key).ok_or_else(|| {
+        MlError::Model(format!("missing gguf metadata key: {key}"))
+    })?;
     match value {
         GgufScalar::F32(v) => Ok(*v),
         GgufScalar::F64(v) => Ok(*v as f32),
@@ -132,6 +138,17 @@ pub fn read_meta_f32(metadata: &GgufMetadata, key: &str) -> Result<f32> {
             "metadata {key} is not numeric"
         ))),
     }
+}
+
+fn lookup_meta<'a>(metadata: &'a GgufMetadata, key: &str) -> Option<&'a GgufScalar> {
+    if let Some(value) = metadata.values.get(key) {
+        return Some(value);
+    }
+    let fallback = key
+        .strip_prefix("llama.")
+        .map(|rest| format!("gpt-oss.{rest}"))
+        .or_else(|| key.strip_prefix("gpt-oss.").map(|rest| format!("llama.{rest}")))?;
+    metadata.values.get(&fallback)
 }
 
 pub fn read_tensor_slice(path: &Path, offset: u64, len: usize) -> Result<Vec<u8>> {
@@ -321,10 +338,10 @@ pub fn dequant_mxfp4(data: &[u8], values: usize) -> Result<Vec<f32>> {
     let mut out = vec![0.0f32; values];
     for block in 0..blocks {
         let base = block * MXFP4_BLOCK_BYTES;
-        let scale_bits = u16::from_le_bytes([data[base], data[base + 1]]);
-        let scale = f16_to_f32(scale_bits);
+        let scale_byte = data[base];
+        let scale = (2.0f32).powi(scale_byte as i32 - 127);
         for i in 0..MXFP4_BLOCK_VALUES {
-            let byte = data[base + 2 + (i / 2)];
+            let byte = data[base + 1 + (i / 2)];
             let nibble = if i % 2 == 0 { byte & 0x0f } else { byte >> 4 };
             let value = MXFP4_VALUES[nibble as usize] * scale;
             out[block * MXFP4_BLOCK_VALUES + i] = value;

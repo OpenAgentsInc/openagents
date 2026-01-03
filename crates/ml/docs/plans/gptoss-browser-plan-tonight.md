@@ -145,6 +145,9 @@ Notes:
 - Added **native GPT-OSS CLI harness** (`test_tokenizer`, `test_embed`, `test_lm_head`, `test_attention`, `test_layer`, `test_moe_router`, `gptoss_cli`) plus GGUF metadata parsing + tokenizer for native validation.
 - Added **GPT-2 byte encoder/decoder** for the tokenizer (fixes byte-encoded space handling like `U+0120`), verified `test_tokenizer` encodes and roundtrips `Hello, world!`.
 - Ran `test_lm_head` with a limited row scan (1k rows) and got top-k token output from `output.weight`.
+- Added `gguf_meta` CLI to inspect GGUF metadata and confirmed GPT-OSS uses `gpt-oss.*` keys.
+- Added `gpt-oss.*`/`llama.*` metadata fallback (plus rope dim fallback) and fixed MXFP4 scale decoding; `test_layer --moe-fallback` now runs for layer 0.
+- Ran `test_attention --seq-len 2` (layer 0) and captured head-0 weights preview.
 
 ---
 
