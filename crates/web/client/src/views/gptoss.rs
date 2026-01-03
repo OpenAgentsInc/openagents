@@ -222,7 +222,7 @@ pub(crate) fn build_gptoss_page(
             scene,
             text_system,
             empty_bounds,
-            "Provide ?gguf=<url> then click START LOAD",
+            "Run `cargo run -p ml --bin gguf_serve` then click START LOAD",
         );
         y += 140.0;
     } else {

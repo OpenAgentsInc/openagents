@@ -29,6 +29,9 @@ const DEFAULT_GGUF_URL: &str =
 const LOCAL_GGUF_URL: &str = "http://localhost:9898/gpt-oss-20b-Q8_0.gguf";
 const CURRENT_DATE: &str = "2026-01-02";
 const DEFAULT_USER_PROMPT: &str = "Give me one sentence about what GPT-OSS can do.";
+const MAX_NEW_TOKENS: usize = 8;
+const MAX_KV_TOKENS: usize = 32;
+const MAX_PROMPT_TOKENS: usize = MAX_KV_TOKENS - MAX_NEW_TOKENS;
 const Q8_0_BLOCK_BYTES: usize = 34;
 const Q8_0_BLOCK_VALUES: usize = 32;
 const MXFP4_BLOCK_BYTES: usize = 17;
@@ -53,6 +56,83 @@ struct GptOssConfig {
     sliding_window: u32,
     expert_count: u32,
     experts_per_token: u32,
+}
+
+#[derive(Clone, Debug)]
+struct LayerKvCache {
+    k: Vec<f32>,
+    v: Vec<f32>,
+}
+
+impl LayerKvCache {
+    fn new() -> Self {
+        Self { k: Vec::new(), v: Vec::new() }
+    }
+
+    fn token_count(&self, kv_heads: usize, head_dim: usize) -> usize {
+        let stride = kv_heads.saturating_mul(head_dim);
+        if stride == 0 {
+            return 0;
+        }
+        self.k.len() / stride
+    }
+
+    fn append(
+        &mut self,
+        k: &[f32],
+        v: &[f32],
+        kv_heads: usize,
+        head_dim: usize,
+    ) -> Result<(), String> {
+        let expected = kv_heads
+            .checked_mul(head_dim)
+            .ok_or_else(|| "kv append overflow".to_string())?;
+        if k.len() != expected || v.len() != expected {
+            return Err(format!(
+                "kv append shape mismatch k={} v={} expected={expected}",
+                k.len(),
+                v.len()
+            ));
+        }
+        self.k.extend_from_slice(k);
+        self.v.extend_from_slice(v);
+        Ok(())
+    }
+
+    fn memory_bytes(&self) -> usize {
+        (self.k.len() + self.v.len()) * std::mem::size_of::<f32>()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct KvCache {
+    layers: Vec<LayerKvCache>,
+    seq_len: usize,
+    max_len: usize,
+}
+
+impl KvCache {
+    fn new(layer_count: usize, max_len: usize) -> Self {
+        let mut layers = Vec::with_capacity(layer_count);
+        for _ in 0..layer_count {
+            layers.push(LayerKvCache::new());
+        }
+        Self {
+            layers,
+            seq_len: 0,
+            max_len,
+        }
+    }
+
+    fn layer_mut(&mut self, layer: usize) -> Result<&mut LayerKvCache, String> {
+        self.layers
+            .get_mut(layer)
+            .ok_or_else(|| format!("kv cache missing layer {layer}"))
+    }
+
+    fn total_bytes(&self) -> usize {
+        self.layers.iter().map(LayerKvCache::memory_bytes).sum()
+    }
 }
 
 pub(crate) struct GptOssRuntime {
@@ -169,7 +249,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     emit_config(&state, &config);
 
     let tokenizer = build_tokenizer(&state, index.as_ref())?;
-    let _prompt_tokens = encode_prompt(&state, &tokenizer)?;
+    let prompt_tokens = encode_prompt(&state, &tokenizer)?;
 
     let gpu_context = state.borrow().gpu_context.clone();
     if let Some(gpu) = gpu_context.as_ref() {
@@ -296,34 +376,24 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     );
 
     if let Some(gpu) = gpu_context {
-        emit_inference_stage(
+        if let Err(err) = run_generation(
             &state,
-            "blk0_attention",
-            StageStatus::Started,
-            None,
-            None,
-            Some("after_load".to_string()),
-        );
-        if let Err(err) =
-            run_block0_attention_probe(&state, &gguf_url, index.as_ref(), &gpu, &tokenizer, &config)
-                .await
+            &gguf_url,
+            index.as_ref(),
+            &gpu,
+            &tokenizer,
+            &config,
+            &prompt_tokens,
+        )
+        .await
         {
             emit_inference_stage(
                 &state,
-                "blk0_attention",
+                "generation",
                 StageStatus::Failed,
                 None,
                 None,
                 Some(err),
-            );
-        } else {
-            emit_inference_stage(
-                &state,
-                "blk0_attention",
-                StageStatus::Completed,
-                None,
-                None,
-                Some("ok".to_string()),
             );
         }
     }
@@ -632,8 +702,16 @@ fn encode_prompt(
         Some(format!("chars={}", prompt.len())),
     );
 
-    let tokens = tokenizer.encode_with_special_tokens(&prompt)?;
+    let mut tokens = tokenizer.encode_with_special_tokens(&prompt)?;
     let total = tokens.len();
+    let mut truncated = 0usize;
+    if total > MAX_PROMPT_TOKENS {
+        truncated = total - MAX_PROMPT_TOKENS;
+        tokens = tokens.split_off(total - MAX_PROMPT_TOKENS);
+    }
+    if tokens.is_empty() {
+        return Err("prompt token list is empty".to_string());
+    }
 
     emit_inference_stage(
         state,
@@ -641,7 +719,10 @@ fn encode_prompt(
         StageStatus::Completed,
         Some(total),
         Some(total),
-        Some(format!("tokens={total}")),
+        Some(format!(
+            "tokens={total} kept={} truncated={truncated}",
+            tokens.len()
+        )),
     );
 
     Ok(tokens)
@@ -755,9 +836,10 @@ fn top_k_from_logits(
     let mut candidates = Vec::with_capacity(top.len());
     for (idx, logit) in top.iter() {
         let prob = (logit - max_logit).exp() / sum_exp;
+        let token_id = *idx as u32;
         candidates.push(GptOssTokenCandidate {
-            token_id: *idx as u32,
-            token_text: tokenizer.token_text(*idx as u32),
+            token_id,
+            token_text: tokenizer.decode_utf8_lossy(&[token_id]),
             probability: prob,
         });
     }
@@ -767,7 +849,7 @@ fn top_k_from_logits(
         .copied()
         .unwrap_or((0usize, logits[0]));
     let best_token_id = best_idx as u32;
-    let best_text = tokenizer.token_text(best_token_id);
+    let best_text = tokenizer.decode_utf8_lossy(&[best_token_id]);
 
     Ok((candidates, entropy, best_token_id, best_text))
 }
@@ -1246,6 +1328,420 @@ async fn run_block0_attention_probe(
     Ok(())
 }
 
+async fn run_generation(
+    state: &Rc<RefCell<AppState>>,
+    gguf_url: &str,
+    index: &GgufIndex,
+    gpu: &GpuContext,
+    tokenizer: &GptOssTokenizer,
+    config: &GptOssConfig,
+    prompt_tokens: &[u32],
+) -> Result<(), String> {
+    if prompt_tokens.is_empty() {
+        return Err("prompt token list is empty".to_string());
+    }
+
+    let total_prefill = prompt_tokens.len();
+    let mut cache = KvCache::new(config.block_count as usize, MAX_KV_TOKENS);
+    let mut last_logits: Option<Vec<f32>> = None;
+    let mut last_step_ms = 1u64;
+
+    emit_inference_stage(
+        state,
+        "prefill",
+        StageStatus::Started,
+        Some(0),
+        Some(total_prefill),
+        Some(format!("tokens={total_prefill}")),
+    );
+
+    for (idx, &token_id) in prompt_tokens.iter().enumerate() {
+        let position = cache.seq_len;
+        if position >= cache.max_len {
+            return Err("kv cache max length exceeded".to_string());
+        }
+        let start_ms = now_ms();
+        let logits = run_forward_token(
+            state,
+            gguf_url,
+            index,
+            gpu,
+            config,
+            token_id,
+            position,
+            &mut cache,
+        )
+        .await?;
+        last_step_ms = now_ms().saturating_sub(start_ms).max(1);
+        last_logits = Some(logits);
+        emit_inference_stage(
+            state,
+            "prefill",
+            StageStatus::Progress,
+            Some(idx + 1),
+            Some(total_prefill),
+            Some(format!("token_id={token_id}")),
+        );
+    }
+
+    emit_inference_stage(
+        state,
+        "prefill",
+        StageStatus::Completed,
+        Some(total_prefill),
+        Some(total_prefill),
+        Some("ok".to_string()),
+    );
+
+    let mut logits = last_logits.ok_or_else(|| "prefill produced no logits".to_string())?;
+    let eos = tokenizer.eos_token_id();
+    let mut generated = 0usize;
+
+    emit_inference_stage(
+        state,
+        "decode",
+        StageStatus::Started,
+        Some(0),
+        Some(MAX_NEW_TOKENS),
+        None,
+    );
+
+    while generated < MAX_NEW_TOKENS {
+        let (top_k, entropy, next_id, next_text) = top_k_from_logits(&logits, tokenizer, 5)?;
+        let tokens_per_sec = 1000.0 / last_step_ms as f32;
+
+        emit_inference_event(
+            state,
+            GptOssInferenceTelemetry::TokenGenerated {
+                token_id: next_id,
+                token_text: next_text,
+                top_k,
+                entropy,
+                tokens_per_sec,
+            },
+        );
+
+        generated += 1;
+        emit_inference_stage(
+            state,
+            "decode",
+            StageStatus::Progress,
+            Some(generated),
+            Some(MAX_NEW_TOKENS),
+            Some(format!("token_id={next_id}")),
+        );
+
+        if eos.is_some() && eos == Some(next_id) {
+            break;
+        }
+
+        let position = cache.seq_len;
+        if position >= cache.max_len {
+            break;
+        }
+        let start_ms = now_ms();
+        logits = run_forward_token(
+            state,
+            gguf_url,
+            index,
+            gpu,
+            config,
+            next_id,
+            position,
+            &mut cache,
+        )
+        .await?;
+        last_step_ms = now_ms().saturating_sub(start_ms).max(1);
+    }
+
+    emit_inference_stage(
+        state,
+        "decode",
+        StageStatus::Completed,
+        Some(generated),
+        Some(MAX_NEW_TOKENS),
+        Some("ok".to_string()),
+    );
+
+    Ok(())
+}
+
+async fn run_forward_token(
+    state: &Rc<RefCell<AppState>>,
+    gguf_url: &str,
+    index: &GgufIndex,
+    gpu: &GpuContext,
+    config: &GptOssConfig,
+    token_id: u32,
+    position: usize,
+    cache: &mut KvCache,
+) -> Result<Vec<f32>, String> {
+    let token_embd = find_tensor(index, "token_embd.weight")?;
+    let mut hidden = fetch_q8_0_row(gguf_url, token_embd, token_id as usize).await?;
+
+    for layer in 0..config.block_count {
+        hidden = run_transformer_layer(
+            state,
+            gguf_url,
+            index,
+            gpu,
+            config,
+            layer,
+            position,
+            hidden,
+            cache,
+        )
+        .await?;
+    }
+
+    let output_norm_tensor = find_tensor(index, "output_norm.weight")?;
+    let output_norm_w = fetch_f32_tensor(gguf_url, output_norm_tensor).await?;
+    let final_hidden = rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?;
+
+    let output_weight = find_tensor(index, "output.weight")?;
+    let logits = gpu_matmul_q8_0_chunked(gguf_url, output_weight, &final_hidden, gpu).await?;
+
+    cache.seq_len = position.saturating_add(1);
+    emit_inference_event(
+        state,
+        GptOssInferenceTelemetry::MemoryUsage {
+            gpu_allocated: 0,
+            cache_total: cache.total_bytes(),
+            activations: final_hidden.len() * std::mem::size_of::<f32>(),
+        },
+    );
+
+    Ok(logits)
+}
+
+async fn run_single_token_full(
+    state: &Rc<RefCell<AppState>>,
+    gguf_url: &str,
+    index: &GgufIndex,
+    gpu: &GpuContext,
+    tokenizer: &GptOssTokenizer,
+    config: &GptOssConfig,
+    token_id: u32,
+) -> Result<(), String> {
+    let mut cache = KvCache::new(config.block_count as usize, 1);
+    let logits = run_forward_token(
+        state,
+        gguf_url,
+        index,
+        gpu,
+        config,
+        token_id,
+        0,
+        &mut cache,
+    )
+    .await?;
+    let (top_k, entropy, next_id, next_text) = top_k_from_logits(&logits, tokenizer, 5)?;
+    emit_inference_event(
+        state,
+        GptOssInferenceTelemetry::TokenGenerated {
+            token_id: next_id,
+            token_text: next_text,
+            top_k,
+            entropy,
+            tokens_per_sec: 0.0,
+        },
+    );
+    Ok(())
+}
+
+async fn run_transformer_layer(
+    state: &Rc<RefCell<AppState>>,
+    gguf_url: &str,
+    index: &GgufIndex,
+    gpu: &GpuContext,
+    config: &GptOssConfig,
+    layer: u32,
+    position: usize,
+    mut hidden: Vec<f32>,
+    cache: &mut KvCache,
+) -> Result<Vec<f32>, String> {
+    let attn_norm = find_tensor(index, &format!("blk.{layer}.attn_norm.weight"))?;
+    let attn_q_w = find_tensor(index, &format!("blk.{layer}.attn_q.weight"))?;
+    let attn_q_b = find_tensor(index, &format!("blk.{layer}.attn_q.bias"))?;
+    let attn_k_w = find_tensor(index, &format!("blk.{layer}.attn_k.weight"))?;
+    let attn_k_b = find_tensor(index, &format!("blk.{layer}.attn_k.bias"))?;
+    let attn_v_w = find_tensor(index, &format!("blk.{layer}.attn_v.weight"))?;
+    let attn_v_b = find_tensor(index, &format!("blk.{layer}.attn_v.bias"))?;
+    let attn_out_w = find_tensor(index, &format!("blk.{layer}.attn_output.weight"))?;
+    let attn_out_b = find_tensor(index, &format!("blk.{layer}.attn_output.bias"))?;
+    let attn_sinks = find_tensor(index, &format!("blk.{layer}.attn_sinks.weight"))?;
+    let post_attn_norm = find_tensor(index, &format!("blk.{layer}.post_attention_norm.weight"))?;
+
+    emit_inference_stage(
+        state,
+        "layer_attn",
+        StageStatus::Started,
+        Some((layer + 1) as usize),
+        Some(config.block_count as usize),
+        Some(format!("layer={layer}")),
+    );
+
+    let attn_norm_w = fetch_f32_tensor(gguf_url, attn_norm).await?;
+    let mut normed = rms_norm(&hidden, &attn_norm_w, config.rms_epsilon)?;
+
+    let mut q = matmul_q8_0_with_bias(gguf_url, attn_q_w, attn_q_b, &normed, gpu).await?;
+    let mut k = matmul_q8_0_with_bias(gguf_url, attn_k_w, attn_k_b, &normed, gpu).await?;
+    let v = matmul_q8_0_with_bias(gguf_url, attn_v_w, attn_v_b, &normed, gpu).await?;
+
+    let heads = config.head_count as usize;
+    let kv_heads = config.head_count_kv as usize;
+    let q_head_dim = q.len() / heads.max(1);
+    let k_head_dim = k.len() / kv_heads.max(1);
+    if q_head_dim == 0 || k_head_dim == 0 || q_head_dim != k_head_dim {
+        return Err(format!(
+            "attention head dim mismatch q_dim={q_head_dim} k_dim={k_head_dim}"
+        ));
+    }
+    let head_dim = q_head_dim;
+    apply_rope(
+        &mut q,
+        heads,
+        q_head_dim,
+        position,
+        config.rope_theta,
+        config.rope_dimension_count,
+    )?;
+    apply_rope(
+        &mut k,
+        kv_heads,
+        k_head_dim,
+        position,
+        config.rope_theta,
+        config.rope_dimension_count,
+    )?;
+
+    let sinks = fetch_f32_tensor(gguf_url, attn_sinks).await?;
+    let max_len = cache.max_len;
+    let layer_cache = cache.layer_mut(layer as usize)?;
+    let token_count = layer_cache.token_count(kv_heads, head_dim);
+    if token_count >= max_len {
+        return Err("kv cache max length exceeded".to_string());
+    }
+    layer_cache.append(&k, &v, kv_heads, head_dim)?;
+    let seq_len = layer_cache.token_count(kv_heads, head_dim);
+    let window = if config.sliding_window > 0 {
+        config.sliding_window as usize
+    } else {
+        seq_len
+    };
+    let window = window.max(1).min(seq_len);
+    let offset = seq_len.saturating_sub(window);
+    emit_inference_event(
+        state,
+        GptOssInferenceTelemetry::CacheStatus {
+            layer: layer as usize,
+            seq_len,
+            max_len,
+            offset,
+            memory_bytes: layer_cache.memory_bytes(),
+        },
+    );
+
+    let attn_out = attention_with_cache(
+        &q,
+        layer_cache,
+        &sinks,
+        heads,
+        kv_heads,
+        head_dim,
+        window,
+    )?;
+
+    let attn_proj = matmul_q8_0_with_bias(gguf_url, attn_out_w, attn_out_b, &attn_out, gpu).await?;
+    for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
+        *out += *base;
+    }
+
+    emit_inference_stage(
+        state,
+        "layer_attn",
+        StageStatus::Completed,
+        Some((layer + 1) as usize),
+        Some(config.block_count as usize),
+        Some("ok".to_string()),
+    );
+
+    let post_attn_norm_w = fetch_f32_tensor(gguf_url, post_attn_norm).await?;
+    normed = rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?;
+
+    emit_inference_stage(
+        state,
+        "layer_mlp",
+        StageStatus::Started,
+        Some((layer + 1) as usize),
+        Some(config.block_count as usize),
+        Some(format!("layer={layer}")),
+    );
+
+    let gate_inp_w = find_tensor(index, &format!("blk.{layer}.ffn_gate_inp.weight"))?;
+    let gate_inp_b = find_tensor(index, &format!("blk.{layer}.ffn_gate_inp.bias"))?;
+    let gate_w = fetch_f32_tensor(gguf_url, gate_inp_w).await?;
+    let gate_b = fetch_f32_tensor(gguf_url, gate_inp_b).await?;
+    let gate_scores = linear_f32_with_bias(&gate_w, &gate_b, &normed, gate_inp_w)?;
+    let (expert_indices, expert_weights) =
+        top_k_softmax(&gate_scores, config.experts_per_token as usize)?;
+
+    let gate_exps_w = find_tensor(index, &format!("blk.{layer}.ffn_gate_exps.weight"))?;
+    let gate_exps_b = find_tensor(index, &format!("blk.{layer}.ffn_gate_exps.bias"))?;
+    let up_exps_w = find_tensor(index, &format!("blk.{layer}.ffn_up_exps.weight"))?;
+    let up_exps_b = find_tensor(index, &format!("blk.{layer}.ffn_up_exps.bias"))?;
+    let down_exps_w = find_tensor(index, &format!("blk.{layer}.ffn_down_exps.weight"))?;
+    let down_exps_b = find_tensor(index, &format!("blk.{layer}.ffn_down_exps.bias"))?;
+
+    let mut mlp_accum = vec![0.0f32; hidden.len()];
+    for (expert_idx, weight) in expert_indices.iter().zip(expert_weights.iter()) {
+        let gate_quant = fetch_mxfp4_expert(gguf_url, gate_exps_w, *expert_idx).await?;
+        let mut gate_out = matmul_mxfp4_expert(&gate_quant, &normed, gate_exps_w, gpu).await?;
+        let gate_bias = fetch_f32_row(gguf_url, gate_exps_b, *expert_idx).await?;
+        apply_bias(&mut gate_out, &gate_bias);
+
+        let up_quant = fetch_mxfp4_expert(gguf_url, up_exps_w, *expert_idx).await?;
+        let mut up_out = matmul_mxfp4_expert(&up_quant, &normed, up_exps_w, gpu).await?;
+        let up_bias = fetch_f32_row(gguf_url, up_exps_b, *expert_idx).await?;
+        apply_bias(&mut up_out, &up_bias);
+
+        let swiglu_out = swiglu(&gate_out, &up_out)?;
+        let down_quant = fetch_mxfp4_expert(gguf_url, down_exps_w, *expert_idx).await?;
+        let mut down_out = matmul_mxfp4_expert(&down_quant, &swiglu_out, down_exps_w, gpu).await?;
+        let down_bias = fetch_f32_row(gguf_url, down_exps_b, *expert_idx).await?;
+        apply_bias(&mut down_out, &down_bias);
+
+        for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {
+            *acc += *val * *weight;
+        }
+    }
+
+    for (out, add) in hidden.iter_mut().zip(mlp_accum.iter()) {
+        *out += *add;
+    }
+
+    emit_inference_stage(
+        state,
+        "layer_mlp",
+        StageStatus::Completed,
+        Some((layer + 1) as usize),
+        Some(config.block_count as usize),
+        Some("ok".to_string()),
+    );
+
+    emit_inference_event(
+        state,
+        GptOssInferenceTelemetry::LayerActivation {
+            layer: layer as usize,
+            attention_norm: l2_norm(&attn_proj),
+            mlp_norm: l2_norm(&mlp_accum),
+            output_norm: l2_norm(&hidden),
+        },
+    );
+
+    Ok(hidden)
+}
+
 fn build_input(k: usize) -> Vec<f32> {
     let mut x = Vec::with_capacity(k);
     for i in 0..k {
@@ -1540,6 +2036,86 @@ fn attention_single_token(
             out[q_base + i] = v[v_base + i] * weight;
         }
     }
+    Ok(out)
+}
+
+fn attention_with_cache(
+    q: &[f32],
+    cache: &LayerKvCache,
+    sinks: &[f32],
+    heads: usize,
+    kv_heads: usize,
+    head_dim: usize,
+    window: usize,
+) -> Result<Vec<f32>, String> {
+    if heads == 0 || kv_heads == 0 || head_dim == 0 {
+        return Err("attention invalid dims".to_string());
+    }
+    let stride = kv_heads
+        .checked_mul(head_dim)
+        .ok_or_else(|| "attention stride overflow".to_string())?;
+    if cache.k.len() != cache.v.len() || cache.k.len() % stride != 0 {
+        return Err("attention cache shape mismatch".to_string());
+    }
+    if q.len() != heads * head_dim {
+        return Err("attention q shape mismatch".to_string());
+    }
+
+    let token_count = cache.k.len() / stride;
+    if token_count == 0 {
+        return Err("attention cache empty".to_string());
+    }
+    let window = window.max(1).min(token_count);
+    let start = token_count.saturating_sub(window);
+    let sm_scale = 1.0 / (head_dim as f32).sqrt();
+    let mut out = vec![0.0f32; heads * head_dim];
+
+    for h in 0..heads {
+        let q_base = h * head_dim;
+        let kv = h % kv_heads;
+        let sink = sinks.get(h).copied().unwrap_or(0.0);
+        let mut max_score = sink;
+
+        for t in start..token_count {
+            let k_base = (t * kv_heads + kv) * head_dim;
+            let mut dot = 0.0f32;
+            for i in 0..head_dim {
+                dot += q[q_base + i] * cache.k[k_base + i];
+            }
+            let score = dot * sm_scale;
+            if score > max_score {
+                max_score = score;
+            }
+        }
+
+        let mut weights = Vec::with_capacity(window);
+        let mut denom = (sink - max_score).exp();
+        for t in start..token_count {
+            let k_base = (t * kv_heads + kv) * head_dim;
+            let mut dot = 0.0f32;
+            for i in 0..head_dim {
+                dot += q[q_base + i] * cache.k[k_base + i];
+            }
+            let score = dot * sm_scale;
+            let w = (score - max_score).exp();
+            weights.push(w);
+            denom += w;
+        }
+
+        if denom <= 0.0 {
+            return Err("attention softmax denom is zero".to_string());
+        }
+
+        for (idx, w) in weights.iter().enumerate() {
+            let weight = *w / denom;
+            let token_idx = start + idx;
+            let v_base = (token_idx * kv_heads + kv) * head_dim;
+            for i in 0..head_dim {
+                out[q_base + i] += cache.v[v_base + i] * weight;
+            }
+        }
+    }
+
     Ok(out)
 }
 
