@@ -131,7 +131,7 @@ pub(crate) fn build_gptoss_page(
     draw_mono_text(
         scene,
         text_system,
-        "GGUF URL",
+        "GGUF SOURCE",
         inner_x,
         y,
         9.0,
@@ -207,6 +207,16 @@ pub(crate) fn build_gptoss_page(
         scene,
         text_system,
         &truncate_text(&local_hint, 96),
+        inner_x,
+        y,
+        9.0,
+        theme::text::MUTED,
+    );
+    y += 12.0;
+    draw_mono_text(
+        scene,
+        text_system,
+        "TIP: click LOAD MODEL to pick a local GGUF file",
         inner_x,
         y,
         9.0,
