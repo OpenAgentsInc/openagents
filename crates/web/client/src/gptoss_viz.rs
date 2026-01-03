@@ -134,6 +134,11 @@ impl GptOssVizState {
                         self.gpu_limits = Some(detail.clone());
                     }
                 }
+                if stage == "model_config" {
+                    if let Some(detail) = detail_clone.as_ref() {
+                        apply_model_config(self, detail);
+                    }
+                }
                 update_stage(
                     &mut self.load_stages,
                     stage.clone(),
@@ -389,6 +394,34 @@ fn apply_runtime_mode(state: &mut GptOssVizState, detail: &str) {
             mode = format!("{mode} topk={topk}");
         }
         state.moe_mode = Some(mode);
+    }
+}
+
+fn apply_model_config(state: &mut GptOssVizState, detail: &str) {
+    let mut blocks: Option<usize> = None;
+    let mut heads: Option<usize> = None;
+    for part in detail.split_whitespace() {
+        if let Some((key, value)) = part.split_once('=') {
+            match key {
+                "blocks" => {
+                    blocks = value.parse::<usize>().ok();
+                }
+                "heads" => {
+                    heads = value.parse::<usize>().ok();
+                }
+                _ => {}
+            }
+        }
+    }
+    if let Some(blocks) = blocks {
+        state.max_layers = blocks.max(1);
+        let max_layer = state.max_layers.saturating_sub(1);
+        state.attention_selected_layer = state.attention_selected_layer.min(max_layer);
+    }
+    if let Some(heads) = heads {
+        state.max_heads = heads.max(1);
+        let max_head = state.max_heads.saturating_sub(1);
+        state.attention_selected_head = state.attention_selected_head.min(max_head);
     }
 }
 
