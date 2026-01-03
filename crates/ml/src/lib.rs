@@ -32,7 +32,10 @@ pub use gguf::{load_gguf_index, GgufIndex, GgufTensorDump};
 pub use gguf_gate::{run_q8_0_gate, GateConfig, GateOutcome};
 pub use model::{GenerationOutcome, LoadedModel, ModelKind, ModelSource};
 pub use sampling::GenerationConfig;
-pub use telemetry::{InferenceHook, InferenceTelemetry, TokenCandidate};
+pub use telemetry::{
+    InferenceHook, InferenceTelemetry, ModelLifecycleHook, ModelLifecycleTelemetry, StageStatus,
+    TokenCandidate,
+};
 pub use tokenizer::Tokenizer;
 
 #[cfg(feature = "native")]

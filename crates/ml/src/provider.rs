@@ -181,6 +181,7 @@ impl MlProvider {
             &config,
             &mut on_token,
             hook.as_deref(),
+            None,
         )?;
         Ok((outcome, config))
     }

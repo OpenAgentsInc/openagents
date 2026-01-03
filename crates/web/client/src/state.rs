@@ -135,6 +135,7 @@ pub(crate) enum AppView {
     RepoView,
     GfnPage,
     MlVizPage,
+    GptOssPage,
     Y2026Page,
     BrbPage,
 }
@@ -238,6 +239,80 @@ pub(crate) struct MemoryUsage {
     pub(crate) gpu_allocated: usize,
     pub(crate) cache_total: usize,
     pub(crate) activations: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GptOssStageStatus {
+    Idle,
+    Running,
+    Completed,
+    Failed,
+}
+
+impl Default for GptOssStageStatus {
+    fn default() -> Self {
+        Self::Idle
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct GptOssStage {
+    pub(crate) name: String,
+    pub(crate) status: GptOssStageStatus,
+    pub(crate) detail: Option<String>,
+    pub(crate) bytes: Option<u64>,
+    pub(crate) total_bytes: Option<u64>,
+    pub(crate) step: Option<usize>,
+    pub(crate) total_steps: Option<usize>,
+    pub(crate) ts_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct GptOssLogEntry {
+    pub(crate) ts_ms: Option<u64>,
+    pub(crate) message: String,
+    pub(crate) status: GptOssStageStatus,
+}
+
+/// State for the GPT-OSS model loading/inference visualization page
+pub(crate) struct GptOssVizState {
+    pub(crate) frame_animator: FrameAnimator,
+    pub(crate) frame_started: bool,
+    pub(crate) scroll_offset: f32,
+    pub(crate) content_bounds: Bounds,
+    pub(crate) content_height: f32,
+    pub(crate) load_stages: Vec<GptOssStage>,
+    pub(crate) inference_stages: Vec<GptOssStage>,
+    pub(crate) events: VecDeque<GptOssLogEntry>,
+    pub(crate) token_stream: String,
+    pub(crate) top_k: Vec<MlTokenCandidate>,
+    pub(crate) tokens_per_sec: Option<f32>,
+    pub(crate) entropy: Option<f32>,
+    pub(crate) memory_usage: Option<MemoryUsage>,
+    pub(crate) cache_status: Vec<CacheInfo>,
+    pub(crate) start_ts_ms: Option<u64>,
+}
+
+impl Default for GptOssVizState {
+    fn default() -> Self {
+        Self {
+            frame_animator: FrameAnimator::new(),
+            frame_started: false,
+            scroll_offset: 0.0,
+            content_bounds: Bounds::ZERO,
+            content_height: 0.0,
+            load_stages: Vec::new(),
+            inference_stages: Vec::new(),
+            events: VecDeque::with_capacity(120),
+            token_stream: String::new(),
+            top_k: Vec::new(),
+            tokens_per_sec: None,
+            entropy: None,
+            memory_usage: None,
+            cache_status: Vec::new(),
+            start_ts_ms: None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -841,6 +916,8 @@ pub(crate) struct AppState {
     pub(crate) y2026: Y2026State,
     // ML inference visualization page state
     pub(crate) ml_viz: MlVizState,
+    // GPT-OSS visualization page state
+    pub(crate) gptoss: GptOssVizState,
 }
 
 impl Default for AppState {
@@ -915,6 +992,7 @@ impl Default for AppState {
             gfn: GfnState::default(),
             y2026: Y2026State::default(),
             ml_viz: MlVizState::default(),
+            gptoss: GptOssVizState::default(),
         }
     }
 }

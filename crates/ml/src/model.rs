@@ -2,7 +2,10 @@ use crate::device::MlDevice;
 use crate::error::{MlError, Result};
 use crate::http::fetch_bytes;
 use crate::sampling::{apply_repetition_penalty, sample_from_logits, softmax, GenerationConfig};
-use crate::telemetry::{InferenceHook, InferenceTelemetry, TokenCandidate};
+use crate::telemetry::{
+    telemetry_timestamp_ms, InferenceHook, InferenceTelemetry, ModelLifecycleHook,
+    ModelLifecycleTelemetry, StageStatus, TokenCandidate,
+};
 use crate::tokenizer::Tokenizer;
 use candle_core::{DType, IndexOp, Tensor};
 use rand::rngs::StdRng;
@@ -95,20 +98,69 @@ enum ModelVariant {
 
 impl LoadedModel {
     pub async fn load(source: &ModelSource, device: &MlDevice) -> Result<Self> {
+        Self::load_with_hook(source, device, None).await
+    }
+
+    pub async fn load_with_hook(
+        source: &ModelSource,
+        device: &MlDevice,
+        hook: Option<&dyn ModelLifecycleHook>,
+    ) -> Result<Self> {
+        emit_load_stage(
+            hook,
+            "load_start",
+            StageStatus::Started,
+            Some(format!("model_id={}", source.id)),
+            None,
+            None,
+        );
         let device = device.candle_device();
         let tokenizer_path = source
             .tokenizer
             .as_ref()
             .ok_or_else(|| MlError::InvalidConfig("missing tokenizer".to_string()))?;
+        emit_load_stage(
+            hook,
+            "tokenizer_load",
+            StageStatus::Started,
+            Some(tokenizer_path.to_string()),
+            None,
+            None,
+        );
         let tokenizer = load_tokenizer(tokenizer_path).await?;
+        emit_load_stage(
+            hook,
+            "tokenizer_load",
+            StageStatus::Completed,
+            None,
+            None,
+            None,
+        );
 
-        match source.kind {
+        let result: Result<Self> = match source.kind {
             ModelKind::Llama2CQuantized => {
                 let weights_path = source
                     .weights
                     .first()
                     .ok_or_else(|| MlError::InvalidConfig("missing gguf weights".to_string()))?;
-                let (model, config) = load_llama2c_gguf(weights_path, &device).await?;
+                emit_load_stage(
+                    hook,
+                    "weights_load",
+                    StageStatus::Started,
+                    Some(weights_path.to_string()),
+                    None,
+                    None,
+                );
+                let (model, config) =
+                    load_llama2c_gguf(weights_path, &device, hook).await?;
+                emit_load_stage(
+                    hook,
+                    "weights_load",
+                    StageStatus::Completed,
+                    None,
+                    None,
+                    None,
+                );
                 let max_seq_len = config.seq_len;
                 let vocab_size = config.vocab_size;
                 Ok(Self {
@@ -128,11 +180,31 @@ impl LoadedModel {
                         .config
                         .as_ref()
                         .ok_or_else(|| MlError::InvalidConfig("missing config".to_string()))?;
-                    let (model, config) =
-                        load_gemma3_safetensors(&source.weights, config_path, &device)?;
+                    emit_load_stage(
+                        hook,
+                        "weights_load",
+                        StageStatus::Started,
+                        Some(config_path.to_string()),
+                        None,
+                        None,
+                    );
+                    let (model, config) = load_gemma3_safetensors(
+                        &source.weights,
+                        config_path,
+                        &device,
+                        hook,
+                    )?;
+                    emit_load_stage(
+                        hook,
+                        "weights_load",
+                        StageStatus::Completed,
+                        None,
+                        None,
+                        None,
+                    );
                     let max_seq_len = config.max_position_embeddings;
                     let vocab_size = config.vocab_size;
-                    return Ok(Self {
+                    Ok(Self {
                         id: source.id.clone(),
                         kind: source.kind.clone(),
                         tokenizer,
@@ -140,7 +212,7 @@ impl LoadedModel {
                         vocab_size,
                         device,
                         inner: ModelVariant::Gemma3 { model, config },
-                    });
+                    })
                 }
                 #[cfg(not(feature = "native"))]
                 {
@@ -148,10 +220,28 @@ impl LoadedModel {
                         .config
                         .as_ref()
                         .ok_or_else(|| MlError::InvalidConfig("missing config".to_string()))?;
-                    return Err(MlError::InvalidConfig(format!(
+                    Err(MlError::InvalidConfig(format!(
                         "gemma3 loading requires native feature (config: {config_path})"
-                    )));
+                    )))
                 }
+            }
+        };
+
+        match result {
+            Ok(model) => {
+                emit_load_stage(hook, "load_complete", StageStatus::Completed, None, None, None);
+                Ok(model)
+            }
+            Err(err) => {
+                emit_load_stage(
+                    hook,
+                    "load_failed",
+                    StageStatus::Failed,
+                    Some(err.to_string()),
+                    None,
+                    None,
+                );
+                Err(err)
             }
         }
     }
@@ -162,7 +252,7 @@ impl LoadedModel {
         config: &GenerationConfig,
         mut on_token: Option<&mut dyn FnMut(String)>,
     ) -> Result<GenerationOutcome> {
-        self.generate_with_hook(prompt, config, &mut on_token, None)
+        self.generate_with_hook(prompt, config, &mut on_token, None, None)
     }
 
     pub fn generate_with_hook(
@@ -171,6 +261,7 @@ impl LoadedModel {
         config: &GenerationConfig,
         on_token: &mut Option<&mut dyn FnMut(String)>,
         hook: Option<&dyn InferenceHook>,
+        lifecycle_hook: Option<&dyn ModelLifecycleHook>,
     ) -> Result<GenerationOutcome> {
         match &mut self.inner {
             ModelVariant::Llama2C {
@@ -185,6 +276,7 @@ impl LoadedModel {
                 config,
                 on_token,
                 hook,
+                lifecycle_hook,
             ),
             #[cfg(feature = "native")]
             ModelVariant::Gemma3 { model, config: cfg } => generate_gemma3(
@@ -196,6 +288,7 @@ impl LoadedModel {
                 config,
                 on_token,
                 hook,
+                lifecycle_hook,
             ),
         }
     }
@@ -215,15 +308,48 @@ fn generate_llama2c(
     config: &GenerationConfig,
     on_token: &mut Option<&mut dyn FnMut(String)>,
     hook: Option<&dyn InferenceHook>,
+    lifecycle_hook: Option<&dyn ModelLifecycleHook>,
 ) -> Result<GenerationOutcome> {
+    emit_inference_stage(
+        lifecycle_hook,
+        "tokenize_prompt",
+        StageStatus::Started,
+        None,
+        None,
+        Some(format!("prompt_bytes={}", prompt.len())),
+    );
     let mut tokens = tokenizer.encode(prompt, true)?;
     let prompt_tokens = tokens.len();
+    emit_inference_stage(
+        lifecycle_hook,
+        "tokenize_prompt",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("prompt_tokens={prompt_tokens}")),
+    );
     let mut output = String::new();
     let mut rng = build_rng(config.seed);
     let start_time = Instant::now();
 
+    emit_inference_stage(
+        lifecycle_hook,
+        "cache_init",
+        StageStatus::Started,
+        None,
+        None,
+        None,
+    );
     let cache = build_llama2c_cache(cfg, device)?;
     let mut cache = cache;
+    emit_inference_stage(
+        lifecycle_hook,
+        "cache_init",
+        StageStatus::Completed,
+        None,
+        None,
+        None,
+    );
     let mut index_pos = 0usize;
 
     for step in 0..config.max_new_tokens {
@@ -231,20 +357,42 @@ fn generate_llama2c(
         let context_start = tokens.len().saturating_sub(context_size);
         let ctxt = tokens[context_start..].to_vec();
         let input = Tensor::new(ctxt.as_slice(), device)?.unsqueeze(0)?;
+        if step == 0 {
+            emit_inference_stage(
+                lifecycle_hook,
+                "prefill",
+                StageStatus::Started,
+                Some(step),
+                Some(config.max_new_tokens),
+                None,
+            );
+        }
         let logits = model.forward(&input, index_pos, &mut cache)?;
         let logits = logits.i((0, logits.dim(1)? - 1))?;
         let logits = logits.to_dtype(DType::F32)?;
         let logits = logits.to_vec1::<f32>()?;
         let next_token = sample_from_logits(&logits, config, &tokens, &mut rng)?;
 
+        if step == 0 {
+            emit_inference_stage(
+                lifecycle_hook,
+                "prefill",
+                StageStatus::Completed,
+                Some(step + 1),
+                Some(config.max_new_tokens),
+                None,
+            );
+        }
+
         if config.stop_tokens.contains(&next_token) {
             break;
         }
 
-        if let Some(hook) = hook {
+        if hook.is_some() || lifecycle_hook.is_some() {
             let generated_tokens = tokens.len().saturating_sub(prompt_tokens) + 1;
             emit_token_telemetry(
                 hook,
+                lifecycle_hook,
                 &logits,
                 config,
                 &tokens,
@@ -253,8 +401,17 @@ fn generate_llama2c(
                 generated_tokens,
                 &start_time,
             )?;
-            emit_llama_cache_status(hook, &cache, tokens.len(), cfg.seq_len);
+            emit_llama_cache_status(hook, lifecycle_hook, &cache, tokens.len(), cfg.seq_len);
         }
+
+        emit_inference_stage(
+            lifecycle_hook,
+            "decode_step",
+            StageStatus::Progress,
+            Some(step + 1),
+            Some(config.max_new_tokens),
+            None,
+        );
 
         tokens.push(next_token);
         let token_text = tokenizer.decode(&[next_token], true)?;
@@ -268,6 +425,15 @@ fn generate_llama2c(
             break;
         }
     }
+
+    emit_inference_stage(
+        lifecycle_hook,
+        "inference_complete",
+        StageStatus::Completed,
+        Some(tokens.len().saturating_sub(prompt_tokens)),
+        None,
+        None,
+    );
 
     Ok(GenerationOutcome {
         text: output,
@@ -286,11 +452,28 @@ fn generate_gemma3(
     config: &GenerationConfig,
     on_token: &mut Option<&mut dyn FnMut(String)>,
     hook: Option<&dyn InferenceHook>,
+    lifecycle_hook: Option<&dyn ModelLifecycleHook>,
 ) -> Result<GenerationOutcome> {
     model.clear_kv_cache();
 
+    emit_inference_stage(
+        lifecycle_hook,
+        "tokenize_prompt",
+        StageStatus::Started,
+        None,
+        None,
+        Some(format!("prompt_bytes={}", prompt.len())),
+    );
     let mut tokens = tokenizer.encode(prompt, true)?;
     let prompt_tokens = tokens.len();
+    emit_inference_stage(
+        lifecycle_hook,
+        "tokenize_prompt",
+        StageStatus::Completed,
+        None,
+        None,
+        Some(format!("prompt_tokens={prompt_tokens}")),
+    );
     let mut output = String::new();
     let mut rng = build_rng(config.seed);
     let start_time = Instant::now();
@@ -300,19 +483,41 @@ fn generate_gemma3(
         let start_pos = tokens.len().saturating_sub(context_size);
         let ctxt = tokens[start_pos..].to_vec();
         let input = Tensor::new(ctxt.as_slice(), device)?.unsqueeze(0)?;
+        if step == 0 {
+            emit_inference_stage(
+                lifecycle_hook,
+                "prefill",
+                StageStatus::Started,
+                Some(step),
+                Some(config.max_new_tokens),
+                None,
+            );
+        }
         let logits = model.forward(&input, start_pos)?;
         let logits = logits.squeeze(0)?.squeeze(0)?.to_dtype(DType::F32)?;
         let logits = logits.to_vec1::<f32>()?;
         let next_token = sample_from_logits(&logits, config, &tokens, &mut rng)?;
 
+        if step == 0 {
+            emit_inference_stage(
+                lifecycle_hook,
+                "prefill",
+                StageStatus::Completed,
+                Some(step + 1),
+                Some(config.max_new_tokens),
+                None,
+            );
+        }
+
         if config.stop_tokens.contains(&next_token) {
             break;
         }
 
-        if let Some(hook) = hook {
+        if hook.is_some() || lifecycle_hook.is_some() {
             let generated_tokens = tokens.len().saturating_sub(prompt_tokens) + 1;
             emit_token_telemetry(
                 hook,
+                lifecycle_hook,
                 &logits,
                 config,
                 &tokens,
@@ -322,6 +527,15 @@ fn generate_gemma3(
                 &start_time,
             )?;
         }
+
+        emit_inference_stage(
+            lifecycle_hook,
+            "decode_step",
+            StageStatus::Progress,
+            Some(step + 1),
+            Some(config.max_new_tokens),
+            None,
+        );
 
         tokens.push(next_token);
         let token_text = tokenizer.decode(&[next_token], true)?;
@@ -334,6 +548,15 @@ fn generate_gemma3(
             break;
         }
     }
+
+    emit_inference_stage(
+        lifecycle_hook,
+        "inference_complete",
+        StageStatus::Completed,
+        Some(tokens.len().saturating_sub(prompt_tokens)),
+        None,
+        None,
+    );
 
     Ok(GenerationOutcome {
         text: output,
@@ -352,7 +575,8 @@ fn build_llama2c_cache(
 }
 
 fn emit_token_telemetry(
-    hook: &dyn InferenceHook,
+    hook: Option<&dyn InferenceHook>,
+    lifecycle_hook: Option<&dyn ModelLifecycleHook>,
     logits: &[f32],
     config: &GenerationConfig,
     prev_tokens: &[u32],
@@ -386,14 +610,31 @@ fn emit_token_telemetry(
     let token_text = tokenizer
         .decode(&[token_id], true)
         .unwrap_or_else(|_| format!("<{token_id}>"));
-    hook.on_telemetry(InferenceTelemetry::TokenGenerated {
+    let telemetry = InferenceTelemetry::TokenGenerated {
         token_id,
         token_text,
         top_k,
         entropy,
         tokens_per_sec,
-    });
+    };
+    dispatch_inference_telemetry(hook, lifecycle_hook, telemetry);
     Ok(())
+}
+
+fn dispatch_inference_telemetry(
+    hook: Option<&dyn InferenceHook>,
+    lifecycle_hook: Option<&dyn ModelLifecycleHook>,
+    telemetry: InferenceTelemetry,
+) {
+    if let Some(hook) = hook {
+        hook.on_telemetry(telemetry.clone());
+    }
+    if let Some(hook) = lifecycle_hook {
+        hook.on_lifecycle(ModelLifecycleTelemetry::InferenceEvent {
+            event: telemetry,
+            ts_ms: telemetry_timestamp_ms(),
+        });
+    }
 }
 
 fn build_top_k(
@@ -422,7 +663,8 @@ fn build_top_k(
 }
 
 fn emit_llama_cache_status(
-    hook: &dyn InferenceHook,
+    hook: Option<&dyn InferenceHook>,
+    lifecycle_hook: Option<&dyn ModelLifecycleHook>,
     cache: &candle_transformers::models::llama2_c::Cache,
     seq_len: usize,
     max_len: usize,
@@ -433,12 +675,56 @@ fn emit_llama_cache_status(
             .map(|(k, v)| tensor_bytes(k) + tensor_bytes(v))
             .unwrap_or(0);
 
-        hook.on_telemetry(InferenceTelemetry::CacheStatus {
-            layer,
-            seq_len,
-            max_len,
-            offset: 0,
-            memory_bytes,
+        dispatch_inference_telemetry(
+            hook,
+            lifecycle_hook,
+            InferenceTelemetry::CacheStatus {
+                layer,
+                seq_len,
+                max_len,
+                offset: 0,
+                memory_bytes,
+            },
+        );
+    }
+}
+
+fn emit_load_stage(
+    hook: Option<&dyn ModelLifecycleHook>,
+    stage: &str,
+    status: StageStatus,
+    detail: Option<String>,
+    bytes: Option<u64>,
+    total_bytes: Option<u64>,
+) {
+    if let Some(hook) = hook {
+        hook.on_lifecycle(ModelLifecycleTelemetry::LoadStage {
+            stage: stage.to_string(),
+            status,
+            detail,
+            bytes,
+            total_bytes,
+            ts_ms: telemetry_timestamp_ms(),
+        });
+    }
+}
+
+fn emit_inference_stage(
+    hook: Option<&dyn ModelLifecycleHook>,
+    stage: &str,
+    status: StageStatus,
+    step: Option<usize>,
+    total_steps: Option<usize>,
+    detail: Option<String>,
+) {
+    if let Some(hook) = hook {
+        hook.on_lifecycle(ModelLifecycleTelemetry::InferenceStage {
+            stage: stage.to_string(),
+            status,
+            step,
+            total_steps,
+            detail,
+            ts_ms: telemetry_timestamp_ms(),
         });
     }
 }
@@ -471,12 +757,37 @@ async fn load_tokenizer(path: &str) -> Result<Tokenizer> {
 async fn load_llama2c_gguf(
     path: &str,
     device: &candle_core::Device,
+    hook: Option<&dyn ModelLifecycleHook>,
 ) -> Result<(
     candle_transformers::models::quantized_llama2_c::QLlama,
     candle_transformers::models::llama2_c::Config,
 )> {
     let vb = if is_url(path) {
+        emit_load_stage(
+            hook,
+            "weights_fetch",
+            StageStatus::Started,
+            Some(path.to_string()),
+            None,
+            None,
+        );
         let bytes = fetch_bytes(path).await?;
+        emit_load_stage(
+            hook,
+            "weights_fetch",
+            StageStatus::Completed,
+            Some(format!("bytes={}", bytes.len())),
+            Some(bytes.len() as u64),
+            None,
+        );
+        emit_load_stage(
+            hook,
+            "gguf_parse",
+            StageStatus::Started,
+            None,
+            None,
+            None,
+        );
         candle_transformers::models::quantized_llama2_c::VarBuilder::from_gguf_buffer(
             &bytes, device,
         )?
@@ -491,9 +802,35 @@ async fn load_llama2c_gguf(
         {
             let path = Path::new(path);
             if path.exists() {
-                candle_transformers::models::quantized_llama2_c::VarBuilder::from_gguf(
+                let size = path.metadata().map(|m| m.len()).unwrap_or(0);
+                emit_load_stage(
+                    hook,
+                    "weights_map",
+                    StageStatus::Started,
+                    Some(path.display().to_string()),
+                    Some(size),
+                    None,
+                );
+                emit_load_stage(
+                    hook,
+                    "gguf_parse",
+                    StageStatus::Started,
+                    None,
+                    None,
+                    None,
+                );
+                let vb = candle_transformers::models::quantized_llama2_c::VarBuilder::from_gguf(
                     path, device,
-                )?
+                )?;
+                emit_load_stage(
+                    hook,
+                    "weights_map",
+                    StageStatus::Completed,
+                    None,
+                    Some(size),
+                    None,
+                );
+                vb
             } else {
                 return Err(MlError::InvalidConfig(format!(
                     "gguf file not found: {}",
@@ -502,6 +839,15 @@ async fn load_llama2c_gguf(
             }
         }
     };
+
+    emit_load_stage(
+        hook,
+        "gguf_parse",
+        StageStatus::Completed,
+        None,
+        None,
+        None,
+    );
 
     let embed = vb
         .get_no_shape("model.embed_tokens.weight")
@@ -523,7 +869,23 @@ async fn load_llama2c_gguf(
         }
     };
 
+    emit_load_stage(
+        hook,
+        "model_init",
+        StageStatus::Started,
+        None,
+        None,
+        None,
+    );
     let model = candle_transformers::models::quantized_llama2_c::QLlama::load(vb, config.clone())?;
+    emit_load_stage(
+        hook,
+        "model_init",
+        StageStatus::Completed,
+        None,
+        None,
+        None,
+    );
     Ok((model, config))
 }
 
@@ -532,6 +894,7 @@ fn load_gemma3_safetensors(
     weights: &[String],
     config_path: &str,
     device: &candle_core::Device,
+    hook: Option<&dyn ModelLifecycleHook>,
 ) -> Result<(
     candle_transformers::models::gemma3::Model,
     candle_transformers::models::gemma3::Config,
@@ -551,8 +914,46 @@ fn load_gemma3_safetensors(
         serde_json::from_reader(config_file)?;
 
     let files: Vec<PathBuf> = weights.iter().map(PathBuf::from).collect();
+    let mut total_bytes = 0u64;
+    for file in &files {
+        if let Ok(meta) = std::fs::metadata(file) {
+            total_bytes = total_bytes.saturating_add(meta.len());
+        }
+    }
+    emit_load_stage(
+        hook,
+        "weights_map",
+        StageStatus::Started,
+        Some(format!("files={}", files.len())),
+        Some(total_bytes),
+        None,
+    );
     let vb = unsafe { candle_nn::VarBuilder::from_mmaped_safetensors(&files, dtype, device)? };
+    emit_load_stage(
+        hook,
+        "weights_map",
+        StageStatus::Completed,
+        None,
+        Some(total_bytes),
+        None,
+    );
+    emit_load_stage(
+        hook,
+        "model_init",
+        StageStatus::Started,
+        None,
+        None,
+        None,
+    );
     let model = candle_transformers::models::gemma3::Model::new(false, &config, vb)?;
+    emit_load_stage(
+        hook,
+        "model_init",
+        StageStatus::Completed,
+        None,
+        None,
+        None,
+    );
 
     Ok((model, config))
 }
