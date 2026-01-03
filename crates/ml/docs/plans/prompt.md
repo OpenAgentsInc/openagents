@@ -645,6 +645,7 @@ Read these if stuck:
 - 2026-01-02: Removed the unused HuggingFace default GGUF constant to avoid accidental non-local defaults.
 - 2026-01-02: Clear `load_url` and `load_error` during GPT-OSS reset so failed attempts don’t show stale sources.
 - 2026-01-02: Surface selected GGUF file label in the header before load starts so users can confirm the file.
+- 2026-01-02: Prevent default file-open behavior on GPT-OSS drops even when loading, so drops don’t navigate away.
 
 ---
 
