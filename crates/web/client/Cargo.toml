@@ -31,6 +31,7 @@ wgpu = { version = "24.0", features = ["webgpu", "webgl"] }
 bytemuck = { version = "1", features = ["derive"] }
 fancy-regex = "0.13.0"
 rustc-hash = "1.1.0"
+gloo-timers = { version = "0.3", features = ["futures"] }
 web-sys = { version = "0.3", features = [
     "Window",
     "Document",

@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use bytemuck::cast_slice;
 use futures::channel::oneshot;
+use gloo_timers::future::TimeoutFuture;
 use wgpu::util::DeviceExt;
 use wasm_bindgen_futures::spawn_local;
 use js_sys;
@@ -1277,6 +1278,10 @@ fn now_ms() -> u64 {
     js_sys::Date::now().max(0.0) as u64
 }
 
+async fn yield_to_browser() {
+    TimeoutFuture::new(0).await;
+}
+
 pub(crate) fn read_query_param(key: &str) -> Option<String> {
     let window = web_sys::window()?;
     let search = window.location().search().ok()?;
@@ -2301,6 +2306,7 @@ async fn run_generation(
             Some(total_prefill),
             Some(format!("token_id={token_id}")),
         );
+        yield_to_browser().await;
     }
 
     emit_inference_stage(
@@ -2355,6 +2361,7 @@ async fn run_generation(
             Some(max_new_tokens),
             Some(format!("token_id={next_id}")),
         );
+        yield_to_browser().await;
 
         if stop_token {
             break;
@@ -2434,6 +2441,7 @@ async fn run_forward_token(
             force_dense,
         )
         .await?;
+        yield_to_browser().await;
     }
 
     let output_norm_tensor = find_tensor(index, "output_norm.weight")?;
