@@ -151,6 +151,7 @@ Notes:
 - Ran `test_moe_router` (layer 0) and captured top-k expert weights.
 - Ran `gptoss_cli --layers 1 --max-tokens 1 --moe-fallback` and produced a token (byte-encoded leading space).
 - Ran `gptoss_cli --layers 1 --max-tokens 1` (MoE active) and produced a token.
+- Re-ran `gptoss_cli --layers 1 --max-tokens 1 --moe-fallback` after decoding tweak (leading space now displays).
 
 ---
 
