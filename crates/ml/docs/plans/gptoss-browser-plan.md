@@ -25,8 +25,8 @@ This is optimized for: **“it loads and runs on consumer laptops”** + **“sl
 * Run `gpt-oss-20b` **entirely in browser** (desktop Chrome/Edge/Firefox WebGPU).
 * Use **Rust** compiled to `wasm32-unknown-unknown`.
 * Reuse your existing `wgpu` instance/device for compute + rendering.
-* Support GGUF quant variants (start with **Q4_K_M** and/or **Q8_0**).
-* “Slow is fine” but must be **stable** and **doesn’t OOM**.
+* Support GGUF quant variants (**Q8_0 first** for dev/correctness, **Q4_K_M later** for memory efficiency).
+* "Slow is fine" but must be **stable** and **doesn't OOM**.
 * Support **multiple async sessions** with continuous batching.
 
 ### Non-goals (initially)
@@ -34,6 +34,47 @@ This is optimized for: **“it loads and runs on consumer laptops”** + **“sl
 * iOS Safari parity (WebGPU + memory pressure makes this hard).
 * Training/fine-tuning in browser.
 * Full llama.cpp feature parity.
+
+---
+
+## 1.5) Feasibility Gates (non-negotiable)
+
+These gates must pass before proceeding to full implementation:
+
+### Gate A — GGUF Index ✅
+- Parse GGUF header + tensor table.
+- Output `{name, ggml_type, dims, offset, nbytes}`.
+- Confirm at least one Q8_0 tensor found.
+
+### Gate B — Deterministic I/O ✅
+- Range-fetch a tensor slice by `(offset, nbytes)` and hash it.
+- Same request yields same hash (cache optional).
+
+### Gate C — GPU Compute ✅
+- Upload slice into `wgpu::Buffer`.
+- Run compute shader that does Q8_0 dequant + `Y = X @ W`.
+
+### Gate D — Correctness ✅
+- CPU reference dequant + matmul.
+- Read back GPU `Y` and compare within tolerance.
+
+### Gate E — WebGPU Limits Compliance
+- Dump adapter limits + device features in HUD at startup.
+- Log: `maxBufferSize`, `maxStorageBufferBindingSize`, `maxBindGroups`, `maxBindingsPerBindGroup`, f16 support.
+- Hard-assert that all buffer sizes / bindings / bind-group counts / dynamic offsets stay within limits.
+- If not, auto-switch to smaller tile sizes and retry.
+- All kernels must select tile sizes from these limits (no hardcoded constants).
+
+### Gate F — Identify ggml Type 39
+- Must map ggml type 39 to a known quant format (MXFP4/block-fp4) or explicitly branch-support it.
+- If unknown after investigation: fallback = "router selects expert 0 always" mode (dense-only subset path).
+- This still generates tokens, just worse quality until MoE lands.
+
+### Gate G — End-to-End Logits
+- With real weights, run: `token_embd → (1-2 layers) → lm_head → logits`.
+- Attention can be stubbed to identity initially.
+- Show top-5 tokens in HUD.
+- This is the first "user-visible" checkpoint.
 
 ---
 
@@ -198,39 +239,77 @@ Target: K=8–32.
 
 ---
 
-## 9) Compute kernels (WGSL) you must implement
+## 9) Compute kernels (WGSL) — Phased Implementation
 
-### Required primitives
+Split implementation into three phases to keep shipping:
 
-1. **Dequant + MatMul for GGUF types**
+### Phase 2a: Linear + Norm + RoPE (bring-up)
 
-   * Start with `Q4_K_*` and `Q8_0` because they’re common GGUF quants.
-   * Kernel: `y = x @ Wq` where `Wq` is packed GGML blocks.
-   * Implement tiled GEMM:
+These are the minimum kernels to produce logits:
 
-     * workgroup loads tile of `x` into workgroup memory
-     * dequant weight tile on the fly
+1. **Q8_0 dequant + matmul** ✅ (done)
+   * Kernel: `y = x @ Wq` where `Wq` is packed Q8_0 blocks.
+   * Tiled GEMM with workgroup memory.
+
 2. **RMSNorm**
+   * Required before every attention/FFN block.
+   * Simple: compute RMS, scale by learned weights.
+
 3. **RoPE**
-4. **Attention**
+   * Config-driven base frequency (10k local, 1M global for GPT-OSS).
+   * Apply to Q and K after projection.
 
-   * QKV projections
-   * GQA (group size 8). ([OpenAI][2])
-   * Dense attention on designated layers
-   * Sliding-window banded attention on alternating layers. ([OpenAI][2])
-5. **MoE router + top-k**
-6. **MoE MLP**
+4. **Residual add**
+   * `x = x + sublayer_output`
 
-   * two linear layers + activation (SwiGLU per model card discussions; confirm from model card if you want exact) ([OpenAI][11])
-7. **LM head + sampling support**
+5. **LM head logits + CPU sampling**
+   * logits → copy to CPU → top-k/top-p sampling there.
+   * GPU sampling is Phase 2c optimization.
 
-   * logits → top-k/top-p on CPU initially (copy logits back)
-   * v2: sampling on GPU
+**Done when:** `token_embd → RMSNorm → lm_head → logits → top-5 tokens displayed`
+
+### Phase 2b: Attention (dense only)
+
+1. **Dense attention with KV cache**
+   * QKV projections (Q8_0 matmul).
+   * Scaled dot-product attention.
+   * Output projection.
+
+2. **GQA path**
+   * Group size 8 for GPT-OSS.
+   * Repeat K/V heads for grouped queries.
+
+3. **Causal masking**
+   * Lower-triangular mask for autoregressive decode.
+
+**Done when:** A single prompt runs through ≥1 real attention layer, KV cache grows by 1 token, top-5 tokens render.
+
+### Phase 2c: GPT-OSS Exactness
+
+1. **Sliding-window / banded attention**
+   * 1024-token local window for alternating layers.
+   * Only needed for long contexts (>1024 tokens).
+
+2. **MoE router + experts (ggml type 39)**
+   * Router top-k selection (k=2 for GPT-OSS).
+   * Expert MLP with MXFP4/block-fp4 weights.
+   * Weighted combine of expert outputs.
+
+3. **Speculative decode** (optional but huge leverage)
+   * Draft model proposes K tokens.
+   * Verifier runs in prefill mode.
+   * Amortizes expert paging and dispatch overhead.
+
+**Done when:** Full GPT-OSS forward pass with MoE runs, expert cache hits/misses visible in HUD.
 
 ### f16 usage
 
 * If `shader-f16` is enabled, use `f16` buffers and math for bandwidth wins; WGSL requires `enable f16;`. ([Chrome for Developers][5])
 * Fallback path: f32.
+
+### Q4_K_M is Phase 3
+
+**Explicit decision:** Q4_K_M support is optimization/memory work, not correctness work. Land Q8_0 end-to-end first, then add Q4_K_M for production memory efficiency.
 
 ---
 
@@ -311,7 +390,122 @@ Expose via `wasm-bindgen`:
 
 ---
 
-## 15) Key design choices (my recommendation)
+## 15) Weight Naming + Layout Discovery
+
+At startup, build a `ModelLayout` by regex-matching tensor names:
+
+```rust
+pub struct ModelLayout {
+    /// token_embd.weight
+    pub embeddings: TensorRef,
+
+    /// output.weight (lm_head)
+    pub lm_head: TensorRef,
+
+    /// Per-layer tensors
+    pub layers: Vec<LayerLayout>,
+}
+
+pub struct LayerLayout {
+    /// blk.{N}.attn_norm.weight
+    pub attn_norm: TensorRef,
+    /// blk.{N}.ffn_norm.weight
+    pub ffn_norm: TensorRef,
+
+    /// blk.{N}.attn_q.weight, attn_k.weight, attn_v.weight, attn_output.weight
+    pub attn_q: TensorRef,
+    pub attn_k: TensorRef,
+    pub attn_v: TensorRef,
+    pub attn_output: TensorRef,
+
+    /// blk.{N}.ffn_gate_inp.weight (MoE router)
+    pub router: Option<TensorRef>,
+
+    /// blk.{N}.ffn_gate.{E}.weight, ffn_up.{E}.weight, ffn_down.{E}.weight
+    pub experts: Option<Vec<ExpertLayout>>,
+
+    /// Dense FFN fallback (non-MoE layers)
+    pub ffn_gate: Option<TensorRef>,
+    pub ffn_up: Option<TensorRef>,
+    pub ffn_down: Option<TensorRef>,
+}
+```
+
+**Tensor name patterns for GPT-OSS GGUF:**
+- `token_embd.weight` → embeddings
+- `output.weight` → lm_head
+- `blk.{N}.attn_norm.weight` → per-layer attention norm
+- `blk.{N}.attn_q.weight` → Q projection
+- `blk.{N}.attn_k.weight` → K projection
+- `blk.{N}.attn_v.weight` → V projection
+- `blk.{N}.attn_output.weight` → output projection
+- `blk.{N}.ffn_gate_inp.weight` → MoE router (ggml type varies)
+- `blk.{N}.ffn_gate.{E}.weight` → expert gate (ggml type 39 = MXFP4)
+- `blk.{N}.ffn_up.{E}.weight` → expert up projection
+- `blk.{N}.ffn_down.{E}.weight` → expert down projection
+
+**Fail loudly** if any required tensor is missing. HUD should display missing tensor names.
+
+---
+
+## 16) Model Hosting Requirements
+
+Don't assume Hugging Face Range + CORS will behave. Specify hosting requirements:
+
+### Preferred: Your `gguf_serve` Range Server
+- Already built and tested (`cargo run -p ml --bin gguf_serve`).
+- Local development: `http://localhost:8080/model.gguf`
+- Full CORS + Range support guaranteed.
+
+### Required HTTP Features
+Any host must support:
+- `Accept-Ranges: bytes` header in response
+- `Content-Range` header for partial responses
+- Permissive CORS headers:
+  - `Access-Control-Allow-Origin: *`
+  - `Access-Control-Allow-Headers: Range`
+  - `Access-Control-Expose-Headers: Content-Range, Content-Length`
+
+### Startup Validation
+If Range/CORS not present, loader should immediately show:
+> "Host does not support Range/CORS. Use `gguf_serve` or a compatible host."
+
+### URL Priority
+1. `?gguf=<local gguf_serve URL>` (development)
+2. `?gguf=<your controlled host>` (production)
+3. HuggingFace URLs are "user-provided" not default (CORS issues)
+
+---
+
+## 17) Memory Budgets
+
+Explicit caps to avoid silent OOM:
+
+### Resident GPU Bytes Cap: 2-4GB
+- All permanently loaded weights (embeddings, norms, attention projections, router weights, lm_head).
+- For 20B model with Q8_0: ~3.6GB active params × 1 byte = ~3.6GB.
+- Must fit in this budget.
+
+### Expert Cache Cap: 1-2GB
+- LRU cache for hot expert weights.
+- Each expert ~100-200MB for 20B model.
+- Cache holds 8-16 experts.
+- Emit telemetry: cache size, hit rate, evictions.
+
+### KV Cache Cap Per Session: 256-512MB
+- With sliding window (1024 tokens), this is manageable.
+- Per-layer KV: `seq_len × num_kv_heads × head_dim × 2 × dtype_size`
+- For 24 layers, 8 KV heads, 128 head_dim, 1024 tokens, f16:
+  - `1024 × 8 × 128 × 2 × 2 × 24 = ~100MB` per session.
+
+### Eviction Policy
+- KV cache: sliding window (drop tokens beyond window).
+- Expert cache: LRU eviction.
+- If GPU memory pressure detected, prefer evicting experts over KV.
+
+---
+
+## 18) Key design choices (my recommendation)
 
 * **Start with `gpt-oss-20b-Q8_0.gguf`** for correctness/dev simplicity; then add `Q4_K_M` for real memory/perf.
 * Implement **paged expert cache + speculative decode** early—this is what makes browser inference tolerable.

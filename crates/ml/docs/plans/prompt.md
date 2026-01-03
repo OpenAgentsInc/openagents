@@ -12,6 +12,34 @@ When you're done, I click **one button** on `/gptoss` and:
 
 ---
 
+## Allowed Fallbacks (Critical)
+
+You have permission to ship intermediate correctness. These fallbacks keep you shipping instead of thrashing forever on one missing kernel:
+
+### MoE Fallback (if ggml type 39 not supported yet)
+- Run **dense-only path**: router selects expert 0 always.
+- **Clearly label in HUD**: "MoE: fallback mode (expert 0 only)"
+- This still generates tokens, just worse quality.
+
+### Attention Fallback (if banded attention not implemented)
+- Use **dense attention everywhere** (slower but correct).
+- Land sliding window later as optimization.
+- Label in HUD: "Attention: dense mode"
+
+### Sampling Fallback (if GPU sampling is hard)
+- Do sampling on **CPU from readback logits**.
+- Copy logits to CPU, run top-k/top-p there, return token ID.
+- This is the default path for Phase 2a anyway.
+
+### Layer Fallback (for bring-up)
+- Run only **first N layers** initially (N=1, 2, 4...).
+- Show how many layers are active in HUD.
+- Iterate until full 24 layers run.
+
+**The goal is "button → tokens", not "perfect architecture."**
+
+---
+
 ## What Already Exists (Don't Reinvent)
 
 ### Completed Gates
@@ -45,9 +73,19 @@ In `gptoss_viz.rs`:
 
 ### Step 2: GGUF URL Input
 
-Either:
-- Hardcode the GPT-OSS GGUF URL for now: `https://huggingface.co/openai/gpt-oss-20b/resolve/main/gpt-oss-20b-Q8_0.gguf`
-- Or use query param `?gguf=<URL>`
+**Important:** HuggingFace URLs often have CORS issues. Prefer local hosting.
+
+URL priority:
+1. **Local `gguf_serve`** (default for dev): `http://localhost:8080/gpt-oss-20b-Q8_0.gguf`
+   - Start with: `cargo run -p ml --bin gguf_serve -- crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf`
+2. **Query param override**: `?gguf=<URL>` for user-provided URLs
+3. HuggingFace URLs are "user-provided" only - don't default to them
+
+On startup, validate that the URL supports:
+- `Accept-Ranges: bytes`
+- CORS headers for Range requests
+
+If not, show error: "Host does not support Range/CORS. Start gguf_serve."
 
 ### Step 3: Streaming Load with Telemetry
 
@@ -77,47 +115,88 @@ Render:
 - GPU memory gauge
 - Stage status indicators
 
-### Step 5: Implement Transformer Forward Pass
+### Step 5: Produce Logits ASAP (dopamine first!)
 
-Start simple, add complexity:
+**Goal:** See tokens early, even before real layers work.
 
-1. **Token embedding lookup**
-2. **For each layer:**
-   - RMSNorm
-   - QKV projection (Q8_0 matmul)
-   - RoPE
-   - Attention (dense or sliding window depending on layer)
-   - MoE router (for MoE layers)
-   - Expert MLP (top-k experts)
-   - Residual add
-3. **Final RMSNorm + LM head**
-4. **Sampling**
+Implement minimal path:
+1. `token_embd` lookup
+2. (Optional) RMSNorm
+3. `lm_head` projection (Q8_0 matmul)
+4. Copy logits to CPU
+5. Show top-5 tokens in HUD
 
-Use existing WGSL kernels from `crates/ml/candle-wgpu/shaders/` or write new ones.
+**Done when:**
+- [ ] A hardcoded prompt encodes to token IDs
+- [ ] Embedding lookup works
+- [ ] lm_head produces logits
+- [ ] Top-5 tokens display (even if nonsense - no layers yet!)
 
-### Step 6: MoE Expert Paging
+This proves: tokenizer + prompt formatting + display loop work.
 
-GPT-OSS is MoE - most params are experts, only top-k active per token.
+### Step 6: Single Layer Partial
 
-1. Parse expert weights (ggml type 39)
-2. Implement router top-k selection
-3. Cache hot experts on GPU (LRU eviction)
-4. Emit telemetry for cache hits/misses
+Add one transformer block:
+1. RMSNorm before attention
+2. QKV projections (Q8_0 matmul)
+3. RoPE application
+4. Residual plumbing
+5. **Attention can be stubbed to identity for this step**
 
-### Step 7: KV Cache
+**Done when:**
+- [ ] Layer 0 runs with stubbed attention
+- [ ] Residual connections work
+- [ ] Output shape is correct
 
-1. Allocate per-layer KV buffers (f16 if available)
-2. Implement append for decode phase
-3. Handle sliding window for local attention layers
-4. Emit cache utilization telemetry
+### Step 7: Dense Attention + KV
 
-### Step 8: Tokenizer + Harmony
+Implement real attention for 1 layer, then all layers:
+1. Scaled dot-product attention
+2. GQA (group size 8)
+3. Causal masking
+4. KV cache append
 
-1. Load GPT-OSS tokenizer (BPE)
+**Done when:**
+- [ ] A single prompt runs through ≥1 real attention layer
+- [ ] KV cache grows by 1 token per decode step
+- [ ] Top-5 tokens render and make some sense
+
+### Step 8: MoE Bring-Up
+
+1. Map ggml type 39 (MXFP4/block-fp4)
+2. Router top-k on CPU first is fine
+3. Single expert path (expert 0)
+4. Emit telemetry for router decisions
+
+**Done when:**
+- [ ] Router weights load
+- [ ] Top-k expert indices computed
+- [ ] At least expert 0 MLP runs
+- [ ] HUD shows "MoE: active" (even if fallback mode)
+
+### Step 9: Caches + Performance
+
+1. Expert LRU cache
+2. Continuous batching (multiple sessions)
+3. Speculative decode (optional but high-leverage)
+
+**Done when:**
+- [ ] Expert cache hit/miss telemetry visible
+- [ ] Multiple decode steps run without OOM
+- [ ] tok/s metric displayed
+
+### Step 10: Tokenizer + Harmony
+
+1. Load GPT-OSS tokenizer (BPE from GGUF metadata)
 2. Implement Harmony prompt format wrapper
 3. Encode input, run prefill, decode tokens one at a time
 
-### Step 9: Token Generation Visualization
+**Done when:**
+- [ ] Real prompts encode correctly
+- [ ] Harmony format applied
+- [ ] Generated text is coherent
+
+### Step 11: Token Generation Visualization
 
 During generation:
 1. Show token stream with cursor
@@ -125,6 +204,11 @@ During generation:
 3. Show attention patterns (optional but cool)
 4. Show tokens/sec, entropy, cache usage
 5. Pulse animation on each new token
+
+**Done when:**
+- [ ] Tokens stream to screen one by one
+- [ ] Probability bars animate
+- [ ] Stats update in real-time
 
 ---
 
@@ -146,6 +230,29 @@ During generation:
 - **WebGPU limits**: Max 128MB per buffer, query adapter limits
 - **No blocking**: All I/O must be async
 - **Shared GPU context**: Reuse WGPUI device/queue, don't create a second device
+
+### Limits Probe Requirements (mandatory at startup)
+
+On startup, log AND render in HUD:
+- `maxBufferSize`
+- `maxStorageBufferBindingSize`
+- `maxBindGroups`
+- `maxBindingsPerBindGroup`
+- `shader-f16` support (true/false)
+
+All kernels must:
+- Select tile sizes from these limits (no hardcoded constants)
+- Fail loudly if a buffer exceeds `maxStorageBufferBindingSize`
+- Auto-retry with smaller tiles if initial config fails
+
+Example HUD display:
+```
+GPU Limits:
+  maxBuffer: 256MB
+  maxBinding: 128MB
+  bindGroups: 4
+  f16: ✓
+```
 
 ---
 
@@ -170,6 +277,112 @@ Each commit should:
 
 ---
 
+## CLI Testing (Don't Wait for the GUI)
+
+**Critical:** Test as much as possible via CLI before testing in browser. The browser adds complexity (WASM, CORS, async) - verify core logic works natively first.
+
+### Gate Verification (run these first)
+
+```bash
+# Gate A: GGUF parsing
+cargo run -p ml --no-default-features --features native --bin gguf_dump -- \
+  crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf --limit 20
+
+# Gate B: Range reads
+cargo run -p ml --no-default-features --features native --bin gguf_range -- \
+  crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf \
+  --tensor output.weight --len 1048576 --repeat 2
+
+# Gate C: GPU compute
+cargo run -p ml --no-default-features --features native,wgpu --bin gguf_gate_c -- \
+  crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf \
+  --tensor output.weight --k 128 --n 64
+
+# Gate D: Correctness test
+cargo test -p ml --no-default-features --features native,wgpu gguf_gate_d
+```
+
+### Runtime Component Tests
+
+Create CLI binaries that test each subsystem in isolation:
+
+```bash
+# Test tokenizer (encode/decode roundtrip)
+cargo run -p ml --bin test_tokenizer -- \
+  --gguf crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf \
+  --text "Hello, world!"
+
+# Test embedding lookup
+cargo run -p ml --bin test_embed -- \
+  --gguf crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf \
+  --tokens 1234,5678
+
+# Test lm_head logits (embeddings → logits, no layers)
+cargo run -p ml --bin test_lm_head -- \
+  --gguf crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf \
+  --show-top 5
+
+# Test single layer forward
+cargo run -p ml --bin test_layer -- \
+  --gguf crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf \
+  --layer 0
+
+# Test attention (with real KV)
+cargo run -p ml --bin test_attention -- \
+  --gguf crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf \
+  --seq-len 4
+
+# Test MoE router
+cargo run -p ml --bin test_moe_router -- \
+  --gguf crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf \
+  --layer 0 --show-experts
+
+# Full native inference (end-to-end without browser)
+cargo run -p ml --bin gptoss_cli -- \
+  --gguf crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf \
+  --prompt "Once upon a time" \
+  --max-tokens 20
+```
+
+### What Each CLI Test Validates
+
+| Test | Validates | Pass Criteria |
+|------|-----------|---------------|
+| `test_tokenizer` | BPE encode/decode | Roundtrip matches |
+| `test_embed` | Embedding lookup | Shape [seq, hidden] correct |
+| `test_lm_head` | Q8_0 matmul, logits | Top-5 tokens print |
+| `test_layer` | RMSNorm, QKV, residual | Output shape correct |
+| `test_attention` | SDPA, KV cache | No NaN, cache grows |
+| `test_moe_router` | Router top-k | Expert IDs in range |
+| `gptoss_cli` | Full pipeline | Coherent text output |
+
+### Test Before Browser
+
+**Before testing in browser, ensure:**
+1. All gate tests pass (`cargo test -p ml`)
+2. `gptoss_cli` generates tokens natively
+3. No panics, no NaN, no OOM
+
+**Only then** test in browser. Browser-specific issues should be limited to:
+- CORS/Range fetch
+- WASM async patterns
+- WebGPU device differences
+
+### Automated Test Suite
+
+```bash
+# Run all ML tests
+cargo test -p ml --no-default-features --features native,wgpu
+
+# Run with verbose output
+cargo test -p ml --no-default-features --features native,wgpu -- --nocapture
+
+# Run specific gate
+cargo test -p ml gate_d --no-default-features --features native,wgpu
+```
+
+---
+
 ## Definition of Done
 
 **Not done until:**
@@ -182,6 +395,7 @@ Each commit should:
 - [ ] Token visualization shows probabilities
 - [ ] Works in Chrome WebGPU
 - [ ] No console errors, no crashes
+- [ ] **All CLI tests pass before browser testing** (new requirement)
 
 ---
 
