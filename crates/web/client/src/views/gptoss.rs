@@ -6,9 +6,9 @@ use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame, Heatmap};
 use wgpui::PaintContext;
 
 use crate::gptoss_runtime::{
-    default_gguf_url, default_max_kv_tokens, default_max_new_tokens, default_sample_temp,
-    default_sample_top_k, default_sample_top_p, default_user_prompt, local_gguf_path,
-    local_gguf_dev_url, local_gguf_url, local_gguf_serve_cmd, read_query_param,
+    default_max_kv_tokens, default_max_new_tokens, default_sample_temp, default_sample_top_k,
+    default_sample_top_p, default_user_prompt, local_gguf_path, local_gguf_dev_url, local_gguf_url,
+    local_gguf_serve_cmd, read_query_param,
 };
 use crate::state::{AppState, GptOssStage, GptOssStageStatus, GptOssVizState};
 
@@ -2179,16 +2179,7 @@ fn ensure_gptoss_inputs(gptoss: &mut GptOssVizState) {
     if gptoss.inputs_initialized {
         return;
     }
-    let gguf_value = read_query_param("gguf")
-        .filter(|value| !value.is_empty())
-        .or_else(|| {
-            let default = default_gguf_url();
-            if default.is_empty() {
-                None
-            } else {
-                Some(default)
-            }
-        });
+    let gguf_value = read_query_param("gguf").filter(|value| !value.is_empty());
     if let Some(value) = gguf_value {
         gptoss.gguf_input.set_value(value);
     }
