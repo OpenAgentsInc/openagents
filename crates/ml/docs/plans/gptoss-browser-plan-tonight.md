@@ -159,6 +159,7 @@ Notes:
 - Ran `cargo check --manifest-path crates/web/client/Cargo.toml --target wasm32-unknown-unknown`.
 - Added `max_kv`/`max_new` query params (defaulting to 32/8) with prompt truncation tied to KV budget; clamp to model context length when present.
 - Emitted `token_limits` telemetry so HUD shows KV/prompt/new budgets during load.
+- Streamed GGUF load runs concurrently with generation (telemetry keeps flowing while tokens start).
 
 ---
 

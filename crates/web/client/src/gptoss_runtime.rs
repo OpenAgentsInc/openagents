@@ -643,8 +643,65 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
         });
     }
 
+    let stream_state = state.clone();
+    let stream_url = gguf_url.clone();
+    let stream_index = index.clone();
+    let stream_future = async move {
+        stream_full_weights(&stream_state, &stream_url, stream_index.as_ref(), total_bytes).await
+    };
+
+    let gen_state = state.clone();
+    let gen_url = gguf_url.clone();
+    let gen_index = index.clone();
+    let gen_future = async move {
+        if let Some(gpu) = gpu_context {
+            if let Err(err) = run_generation(
+                &gen_state,
+                &gen_url,
+                gen_index.as_ref(),
+                &gpu,
+                &tokenizer,
+                &config,
+                &prompt_tokens,
+                active_layers,
+                moe_fallback,
+                max_kv_tokens,
+                max_new_tokens,
+                stop_tokens,
+            )
+            .await
+            {
+                emit_inference_stage(
+                    &gen_state,
+                    "generation",
+                    StageStatus::Failed,
+                    None,
+                    None,
+                    Some(err),
+                );
+            }
+        }
+    };
+
+    let (stream_res, _) = futures::join!(stream_future, gen_future);
+    if let Err(err) = stream_res {
+        return Err(err);
+    }
+
+    if let Ok(mut guard) = state.try_borrow_mut() {
+        guard.gptoss.load_active = false;
+    }
+    Ok(())
+}
+
+async fn stream_full_weights(
+    state: &Rc<RefCell<AppState>>,
+    gguf_url: &str,
+    index: &GgufIndex,
+    total_bytes: u64,
+) -> Result<(), String> {
     emit_load_stage(
-        &state,
+        state,
         "weights_fetch",
         StageStatus::Started,
         Some(format!("total={}", format_bytes(total_bytes))),
@@ -656,19 +713,19 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     let mut loaded = 0u64;
     let mut next_progress = PROGRESS_STEP_BYTES;
     let mut chunk_idx = 0u64;
-    let mut tensor_cursor = tensor_start_cursor(index.as_ref());
+    let mut tensor_cursor = tensor_start_cursor(index);
     let mut tensor_emitted = 0usize;
 
     while offset < total_bytes {
         let len = (total_bytes - offset).min(LOAD_CHUNK_BYTES);
-        let chunk = fetch_range(&gguf_url, offset, len).await?;
+        let chunk = fetch_range(gguf_url, offset, len).await?;
         loaded = loaded.saturating_add(chunk.len() as u64);
         offset = offset.saturating_add(len);
         chunk_idx = chunk_idx.saturating_add(1);
 
         if loaded >= next_progress || loaded >= total_bytes {
             emit_load_stage(
-                &state,
+                state,
                 "weights_fetch",
                 StageStatus::Progress,
                 Some(format!(
@@ -690,7 +747,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
             tensor_emitted = tensor_emitted.saturating_add(1);
             if tensor_emitted % 6 == 0 || tensor_emitted <= 12 {
                 emit_load_stage(
-                    &state,
+                    state,
                     "tensor_scan",
                     StageStatus::Progress,
                     Some(name),
@@ -702,7 +759,7 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     }
 
     emit_load_stage(
-        &state,
+        state,
         "weights_fetch",
         StageStatus::Completed,
         Some(format!("loaded={}", format_bytes(loaded))),
@@ -711,45 +768,13 @@ async fn run_gptoss_load(state: Rc<RefCell<AppState>>, gguf_url: String) -> Resu
     );
 
     emit_load_stage(
-        &state,
+        state,
         "load_complete",
         StageStatus::Completed,
         None,
         Some(loaded),
         Some(total_bytes),
     );
-
-    if let Some(gpu) = gpu_context {
-        if let Err(err) = run_generation(
-            &state,
-            &gguf_url,
-            index.as_ref(),
-            &gpu,
-            &tokenizer,
-            &config,
-            &prompt_tokens,
-            active_layers,
-            moe_fallback,
-            max_kv_tokens,
-            max_new_tokens,
-            stop_tokens,
-        )
-        .await
-        {
-            emit_inference_stage(
-                &state,
-                "generation",
-                StageStatus::Failed,
-                None,
-                None,
-                Some(err),
-            );
-        }
-    }
-
-    if let Ok(mut guard) = state.try_borrow_mut() {
-        guard.gptoss.load_active = false;
-    }
     Ok(())
 }
 
