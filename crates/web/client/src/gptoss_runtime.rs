@@ -1386,6 +1386,8 @@ fn reset_gptoss_state(state: &mut crate::state::GptOssVizState) {
     state.active_layers = None;
     state.load_progress = None;
     state.current_stage = None;
+    state.load_error = None;
+    state.load_url = None;
     state.inference_error = None;
     state.last_token_ts_ms = None;
     state.start_ts_ms = None;
