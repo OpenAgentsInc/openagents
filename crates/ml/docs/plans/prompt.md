@@ -639,6 +639,7 @@ Read these if stuck:
 - 2026-01-02: Cleared drop overlay when drops are rejected or missing files to avoid stuck drag state.
 - 2026-01-02: Buffered GPT-OSS telemetry events and flush them each frame to prevent inference stages from dropping during render.
 - 2026-01-02: Clear pending telemetry queue on load reset to avoid stale events bleeding into a new run.
+- 2026-01-02: Keep `current_stage` synced to the latest running load/infer stage and clear when idle.
 
 ---
 
