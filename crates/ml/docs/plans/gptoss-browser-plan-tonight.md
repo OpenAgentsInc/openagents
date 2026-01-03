@@ -64,6 +64,21 @@ Observed:
 - `mean_abs_diff: 3.012701e-10`
 - Q8_0 dequant + matmul runs end-to-end on GPU with CPU match within tolerance
 
+### Gate D — Correctness (complete)
+
+Added a Gate D test that runs the same Q8_0 slice and asserts CPU/GPU match
+within tolerance.
+
+Command:
+
+```bash
+cargo test -p ml --no-default-features --features native,wgpu gguf_gate_d
+```
+
+Observed:
+- CPU vs GPU diff remains below `0.01` tolerance for `output.weight` (K=128, N=64)
+- Test run passes locally (`1 passed`)
+
 ---
 
 ## Tonight MVP (non-negotiable)

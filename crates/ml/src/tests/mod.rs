@@ -2,6 +2,9 @@ use crate::sampling::{sample_from_logits, GenerationConfig};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
+#[cfg(all(feature = "native", feature = "wgpu"))]
+mod gguf_gate_d;
+
 #[test]
 fn test_sample_greedy() {
     let logits = vec![0.1, 1.5, 0.3];

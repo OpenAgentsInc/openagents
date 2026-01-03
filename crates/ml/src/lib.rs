@@ -8,6 +8,8 @@ mod error;
 mod http;
 #[cfg(not(target_arch = "wasm32"))]
 mod gguf;
+#[cfg(all(feature = "candle", feature = "wgpu", not(target_arch = "wasm32")))]
+mod gguf_gate;
 mod model;
 mod sampling;
 mod telemetry;
@@ -26,6 +28,8 @@ pub use device::MlDevice;
 pub use error::{MlError, Result};
 #[cfg(not(target_arch = "wasm32"))]
 pub use gguf::{load_gguf_index, GgufIndex, GgufTensorDump};
+#[cfg(all(feature = "candle", feature = "wgpu", not(target_arch = "wasm32")))]
+pub use gguf_gate::{run_q8_0_gate, GateConfig, GateOutcome};
 pub use model::{GenerationOutcome, LoadedModel, ModelKind, ModelSource};
 pub use sampling::GenerationConfig;
 pub use telemetry::{InferenceHook, InferenceTelemetry, TokenCandidate};
