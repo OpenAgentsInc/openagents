@@ -896,11 +896,17 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 .try_borrow()
                 .map(|state| state.view == AppView::GptOssPage && !state.gptoss.load_active)
                 .unwrap_or(false);
+            if state_clone
+                .try_borrow()
+                .map(|state| state.view == AppView::GptOssPage)
+                .unwrap_or(false)
+            {
+                event.prevent_default();
+            }
             if allow_drop {
                 if let Ok(mut state) = state_clone.try_borrow_mut() {
                     state.gptoss.drop_active = true;
                 }
-                event.prevent_default();
             }
         });
         canvas.add_event_listener_with_callback("dragenter", closure.as_ref().unchecked_ref())?;
@@ -915,11 +921,17 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 .try_borrow()
                 .map(|state| state.view == AppView::GptOssPage && !state.gptoss.load_active)
                 .unwrap_or(false);
+            if state_clone
+                .try_borrow()
+                .map(|state| state.view == AppView::GptOssPage)
+                .unwrap_or(false)
+            {
+                event.prevent_default();
+            }
             if allow_drop {
                 if let Ok(mut state) = state_clone.try_borrow_mut() {
                     state.gptoss.drop_active = true;
                 }
-                event.prevent_default();
             }
         });
         canvas.add_event_listener_with_callback("dragover", closure.as_ref().unchecked_ref())?;
