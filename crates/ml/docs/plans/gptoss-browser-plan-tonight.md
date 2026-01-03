@@ -233,6 +233,7 @@ Notes:
 - Pressing Enter while a GPT-OSS input is focused now triggers the load action (same as clicking the button).
 - Absolute filesystem paths like `/Users/...` are again rejected with a clear gguf_serve hint (while relative URL paths still resolve to the current origin).
 - Added sampling controls (sample/temp/top-k/top-p) to the GPT-OSS HUD and wired them into the runtime with input override priority.
+- Sampling inputs now prefill defaults (sample=off, temp=1.0, top_k=40, top_p=1.0) so the HUD reflects the current configuration.
 
 ---
 
