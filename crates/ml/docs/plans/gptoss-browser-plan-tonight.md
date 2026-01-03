@@ -136,6 +136,7 @@ Notes:
 - GPT-OSS inputs now support **clipboard paste** for quick URL/prompt entry.
 - Token stream now renders with a **cursor indicator** during generation.
 - Added **attention layer/head sliders** and emit attention weights only for the selected head.
+- Ran Gate D CLI test (`cargo test -p ml --no-default-features --features native,wgpu gguf_gate_d`) to satisfy pre-browser verification.
 - Added **attention heatmap telemetry** (head 0) and a dedicated HUD panel for attention weights.
 - `gguf_serve` now accepts a positional path argument in addition to `--path`.
 
