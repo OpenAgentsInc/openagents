@@ -216,6 +216,7 @@ Notes:
 - Ran `cargo test -p ml --no-default-features --features native,wgpu` (passes; warnings for unused tokenizer/helpers).
 - Inference stats panel now shows the generation stop reason (max_new/stop_token/kv_full).
 - Prompt encode telemetry now includes format=harmony on completion for HUD visibility.
+- Prefill/decode/generation completion telemetry now includes elapsed ms and tok/s rates.
 
 ---
 

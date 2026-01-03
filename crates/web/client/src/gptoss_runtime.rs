@@ -2525,6 +2525,7 @@ async fn run_generation(
     if prompt_tokens.is_empty() {
         return Err("prompt token list is empty".to_string());
     }
+    let generation_start_ms = now_ms();
 
     emit_inference_stage(
         state,
@@ -2587,6 +2588,7 @@ async fn run_generation(
         Some(total_prefill),
         Some(format!("tokens={total_prefill}")),
     );
+    let prefill_start_ms = now_ms();
 
     for (idx, &token_id) in prompt_tokens.iter().enumerate() {
         let position = cache.seq_len;
@@ -2623,13 +2625,19 @@ async fn run_generation(
         yield_to_browser().await;
     }
 
+    let prefill_ms = now_ms().saturating_sub(prefill_start_ms).max(1);
+    let prefill_tok_s = if total_prefill > 0 {
+        total_prefill as f32 / (prefill_ms as f32 / 1000.0)
+    } else {
+        0.0
+    };
     emit_inference_stage(
         state,
         "prefill",
         StageStatus::Completed,
         Some(total_prefill),
         Some(total_prefill),
-        Some("ok".to_string()),
+        Some(format!("ok ms={prefill_ms} tok/s={prefill_tok_s:.1}")),
     );
 
     let mut logits = last_logits.ok_or_else(|| "prefill produced no logits".to_string())?;
@@ -2644,6 +2652,7 @@ async fn run_generation(
         Some(max_new_tokens),
         None,
     );
+    let decode_start_ms = now_ms();
 
     while generated < max_new_tokens {
         let (top_k, entropy, next_id, next_text) =
@@ -2708,22 +2717,31 @@ async fn run_generation(
         last_step_ms = now_ms().saturating_sub(start_ms).max(1);
     }
 
+    let decode_ms = now_ms().saturating_sub(decode_start_ms).max(1);
+    let decode_tok_s = if generated > 0 {
+        generated as f32 / (decode_ms as f32 / 1000.0)
+    } else {
+        0.0
+    };
     emit_inference_stage(
         state,
         "decode",
         StageStatus::Completed,
         Some(generated),
         Some(max_new_tokens),
-        Some(stop_reason.clone()),
+        Some(format!(
+            "{stop_reason} ms={decode_ms} tok/s={decode_tok_s:.1}",
+        )),
     );
 
+    let generation_ms = now_ms().saturating_sub(generation_start_ms).max(1);
     emit_inference_stage(
         state,
         "generation",
         StageStatus::Completed,
         Some(generated),
         Some(max_new_tokens),
-        Some(stop_reason),
+        Some(format!("{stop_reason} ms={generation_ms}")),
     );
 
     Ok(())
