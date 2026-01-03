@@ -1642,8 +1642,10 @@ dependencies = [
 name = "openagents-web-client"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "console_error_panic_hook",
  "editor",
+ "futures",
  "js-sys",
  "openagents-relay",
  "serde",
@@ -1653,6 +1655,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
+ "wgpu",
  "wgpui",
 ]
 

@@ -3,9 +3,10 @@ use wgpui::{
 };
 use wgpui::animation::AnimatorState;
 use wgpui::components::hud::{DotsGrid, DotsOrigin, Heatmap, RingGauge, Scanlines, SignalMeter};
+use wgpui::components::Component;
 use wgpui::PaintContext;
 
-use crate::state::AppState;
+use crate::state::{AppState, GateStatus};
 
 fn accent_cyan() -> Hsla {
     Hsla::from_hex(0x7fd3e5)
@@ -132,6 +133,12 @@ pub(crate) fn build_ml_inference_page(
         theme::text::MUTED,
     );
     y += subtitle_size + 18.0;
+
+    // Gate status
+    let gate_height = 120.0;
+    let gate_bounds = Bounds::new(inner_x, y, inner_width, gate_height);
+    draw_gate_panel(scene, text_system, state, gate_bounds);
+    y += gate_height + 18.0;
 
     // Inference monitor
     let monitor_height = 250.0;
@@ -272,6 +279,131 @@ fn draw_inference_monitor(
     draw_metric_row(scene, text_system, state, metrics_bounds, scale_factor);
 }
 
+fn draw_gate_panel(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    state: &mut AppState,
+    bounds: Bounds,
+) {
+    let inner = panel(scene, text_system, bounds, "GATE C/D STATUS");
+
+    let (status_text, status_color) = match state.ml_viz.gate_status {
+        GateStatus::Idle => ("IDLE", theme::text::MUTED),
+        GateStatus::Running => ("RUNNING", accent_orange()),
+        GateStatus::Passed => ("PASS", accent_green()),
+        GateStatus::Failed => ("FAIL", theme::status::ERROR),
+    };
+
+    let line_height = 14.0;
+    let mut y = inner.y();
+
+    draw_mono_text(
+        scene,
+        text_system,
+        &format!("STATUS: {status_text}"),
+        inner.x(),
+        y,
+        11.0,
+        status_color,
+    );
+    y += line_height;
+
+    let phase = state
+        .ml_viz
+        .gate_message
+        .as_deref()
+        .unwrap_or("idle");
+    draw_mono_text(
+        scene,
+        text_system,
+        &format!("PHASE: {}", truncate_text(phase, 48)),
+        inner.x(),
+        y,
+        11.0,
+        theme::text::PRIMARY,
+    );
+    y += line_height;
+
+    let gguf = state
+        .ml_viz
+        .gate_source
+        .as_deref()
+        .unwrap_or("not set");
+    draw_mono_text(
+        scene,
+        text_system,
+        &format!("GGUF: {}", truncate_text(gguf, 52)),
+        inner.x(),
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
+    y += line_height;
+
+    let tensor = state
+        .ml_viz
+        .gate_tensor
+        .as_deref()
+        .unwrap_or("--");
+    let k = state.ml_viz.gate_k.map_or("--".to_string(), |v| v.to_string());
+    let n = state.ml_viz.gate_n.map_or("--".to_string(), |v| v.to_string());
+    let bytes = state
+        .ml_viz
+        .gate_bytes
+        .map(format_bytes)
+        .unwrap_or_else(|| "--".to_string());
+    draw_mono_text(
+        scene,
+        text_system,
+        &format!(
+            "TENSOR: {}  KxN: {}x{}  BYTES: {}",
+            truncate_text(tensor, 24),
+            k,
+            n,
+            bytes
+        ),
+        inner.x(),
+        y,
+        10.0,
+        theme::text::PRIMARY,
+    );
+    y += line_height;
+
+    if let Some(err) = &state.ml_viz.gate_error {
+        draw_mono_text(
+            scene,
+            text_system,
+            &format!("ERROR: {}", truncate_text(err, 56)),
+            inner.x(),
+            y,
+            10.0,
+            theme::status::ERROR,
+        );
+        return;
+    }
+
+    let max_abs = state
+        .ml_viz
+        .gate_max_abs
+        .map(|v| format!("{v:.3e}"))
+        .unwrap_or_else(|| "--".to_string());
+    let mean_abs = state
+        .ml_viz
+        .gate_mean_abs
+        .map(|v| format!("{v:.3e}"))
+        .unwrap_or_else(|| "--".to_string());
+
+    draw_mono_text(
+        scene,
+        text_system,
+        &format!("MAX: {max_abs}  MEAN: {mean_abs}"),
+        inner.x(),
+        y,
+        10.0,
+        theme::text::MUTED,
+    );
+}
+
 fn draw_attention_panel(
     scene: &mut Scene,
     text_system: &mut TextSystem,
@@ -396,7 +528,7 @@ fn draw_layer_activity(
         .iter()
         .take(rows)
         .flat_map(|layer| [layer.attention_norm, layer.mlp_norm, layer.output_norm])
-        .fold(0.0, |acc, v| acc.max(v));
+        .fold(0.0f32, |acc, v| acc.max(v));
     let max_value = max_value.max(1e-3);
 
     for (idx, layer) in state.ml_viz.layer_activations.iter().take(rows).enumerate() {
@@ -525,7 +657,7 @@ fn draw_probability_history(
 
     let columns = state.ml_viz.probability_history.len().min(10);
     let col_w = inner.width() / columns as f32;
-    let col_h = inner.height() - 26.0;
+    let _col_h = inner.height() - 26.0;
     let bar_h = 8.0;
     let bar_gap = 4.0;
     let base_y = inner.y() + 8.0;
@@ -541,7 +673,7 @@ fn draw_probability_history(
         let max_prob = entry
             .iter()
             .map(|c| c.probability)
-            .fold(0.0, |acc, v| acc.max(v))
+            .fold(0.0f32, |acc, v| acc.max(v))
             .max(1e-4);
 
         for (row_idx, candidate) in entry.iter().take(5).enumerate() {
@@ -598,7 +730,7 @@ fn draw_top_k(
     let max_prob = entries
         .iter()
         .map(|c| c.probability)
-        .fold(0.0, |acc, v| acc.max(v))
+        .fold(0.0f32, |acc, v| acc.max(v))
         .max(1e-6);
 
     for (idx, candidate) in entries.into_iter().enumerate() {
@@ -751,7 +883,7 @@ fn draw_entropy_line(
         .entropy_history
         .iter()
         .copied()
-        .fold(0.0, |acc, v| acc.max(v))
+        .fold(0.0f32, |acc, v| acc.max(v))
         .max(1e-3);
 
     let step = bounds.width() / points as f32;
