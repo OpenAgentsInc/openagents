@@ -300,6 +300,10 @@ impl GptOssTokenizer {
         self.bpe.encode_with_special_tokens(text)
     }
 
+    pub(crate) fn decode_utf8_lossy(&self, tokens: &[Rank]) -> String {
+        self.bpe.decode_utf8_lossy(tokens)
+    }
+
     pub(crate) fn token_text(&self, token: Rank) -> String {
         self.vocab
             .tokens
