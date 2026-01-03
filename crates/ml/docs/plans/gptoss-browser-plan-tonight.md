@@ -167,6 +167,7 @@ Notes:
 - HUD now surfaces tensor/expert cache stats in the I/O panel.
 - Allowed `?layers=0` to run the lm_head-only path (token embd → output), useful for early logits bring-up.
 - Added `?attn=dense` override to force full attention even when sliding-window metadata is set.
+- Emit explicit `layers=0 (lm_head only)` telemetry when skipping transformer blocks.
 
 ---
 
