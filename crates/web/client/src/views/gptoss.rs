@@ -735,10 +735,13 @@ fn draw_stage_panel(
         let status_color = status_color(stage.status);
         draw_mono_text(scene, text_system, status_text, inner.x(), y, 10.0, status_color);
 
-        let name = if let Some(detail) = stage.detail.as_ref() {
-            truncate_text(&format!("{}: {}", stage.name, detail), 32)
+        let (name, name_color) = if let Some(detail) = stage.detail.as_ref() {
+            let detail_lower = detail.to_ascii_lowercase();
+            let warn_cpu = detail_lower.contains("cpu") && !detail_lower.contains("cpu_fallback=off");
+            let color = if warn_cpu { accent_orange() } else { theme::text::PRIMARY };
+            (truncate_text(&format!("{}: {}", stage.name, detail), 32), color)
         } else {
-            truncate_text(&stage.name, 32)
+            (truncate_text(&stage.name, 32), theme::text::PRIMARY)
         };
         draw_mono_text(
             scene,
@@ -747,7 +750,7 @@ fn draw_stage_panel(
             inner.x() + 46.0,
             y,
             10.0,
-            theme::text::PRIMARY,
+            name_color,
         );
 
         let mut right_text = String::new();
