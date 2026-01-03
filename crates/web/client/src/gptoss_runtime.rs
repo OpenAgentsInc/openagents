@@ -27,8 +27,6 @@ const DEFAULT_METADATA_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_METADATA_ATTEMPTS: usize = 3;
 const LOAD_CHUNK_BYTES: u64 = 8 * 1024 * 1024;
 const PROGRESS_STEP_BYTES: u64 = 64 * 1024 * 1024;
-const DEFAULT_GGUF_URL: &str =
-    "https://huggingface.co/openai/gpt-oss-20b/resolve/main/gpt-oss-20b-Q8_0.gguf";
 const LOCAL_GGUF_ROUTE: &str = "/gpt-oss-20b-Q8_0.gguf";
 const LOCAL_GGUF_URL: &str = "http://localhost:8080/gpt-oss-20b-Q8_0.gguf";
 const LOCAL_GGUF_DEV_URL: &str = "http://localhost:3000/gpt-oss-20b-Q8_0.gguf";

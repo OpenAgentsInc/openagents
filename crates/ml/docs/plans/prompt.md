@@ -642,6 +642,7 @@ Read these if stuck:
 - 2026-01-02: Keep `current_stage` synced to the latest running load/infer stage and clear when idle.
 - 2026-01-02: Cap queued GPT-OSS telemetry events to avoid unbounded growth if render falls behind.
 - 2026-01-02: Show `IDLE` in the stats panel when no stages are running but a prior run completed.
+- 2026-01-02: Removed the unused HuggingFace default GGUF constant to avoid accidental non-local defaults.
 
 ---
 
