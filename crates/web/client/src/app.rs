@@ -954,6 +954,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 .map(|state| state.view == AppView::GptOssPage && !state.gptoss.load_active)
                 .unwrap_or(false);
             if !allow_drop {
+                if let Ok(mut state) = state_clone.try_borrow_mut() {
+                    if state.view == AppView::GptOssPage {
+                        state.gptoss.drop_active = false;
+                    }
+                }
                 return;
             }
             event.prevent_default();
@@ -962,6 +967,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 .and_then(|transfer| transfer.files())
                 .and_then(|files| files.get(0));
             let Some(file) = file else {
+                if let Ok(mut state) = state_clone.try_borrow_mut() {
+                    if state.view == AppView::GptOssPage {
+                        state.gptoss.drop_active = false;
+                    }
+                }
                 return;
             };
             let file_name = file.name().to_ascii_lowercase();
