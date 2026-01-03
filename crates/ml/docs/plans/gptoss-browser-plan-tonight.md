@@ -161,6 +161,7 @@ Notes:
 - Emitted `token_limits` telemetry so HUD shows KV/prompt/new budgets during load.
 - Streamed GGUF load runs concurrently with generation (telemetry keeps flowing while tokens start).
 - Added sampling controls via query params (`sample`, `temp`, `top_k`, `top_p`) with HUD display of sampling mode.
+- Token limits telemetry now surfaces in the HUD I/O panel.
 
 ---
 

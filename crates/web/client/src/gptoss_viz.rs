@@ -134,6 +134,11 @@ impl GptOssVizState {
                         self.gpu_limits = Some(detail.clone());
                     }
                 }
+                if stage == "token_limits" {
+                    if let Some(detail) = detail_clone.as_ref() {
+                        self.token_limits = Some(detail.clone());
+                    }
+                }
                 if stage == "model_config" {
                     if let Some(detail) = detail_clone.as_ref() {
                         apply_model_config(self, detail);
