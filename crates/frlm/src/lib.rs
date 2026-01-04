@@ -44,6 +44,9 @@ pub mod trace;
 pub mod types;
 pub mod verification;
 
+#[cfg(test)]
+mod bench_stats;
+
 // Re-exports
 pub use conductor::FrlmConductor;
 pub use error::{FrlmError, Result};

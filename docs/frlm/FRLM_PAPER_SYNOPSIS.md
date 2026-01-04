@@ -115,25 +115,68 @@ Timeouts emit trace spans and influence reputation scores.
 
 ## 4. Verification and Trust Model (§5)
 
+**Implementation:** `crates/frlm/src/verification.rs`
+
 RLM outputs can be subjective (summaries) or objective (hashable transformations). FRLM supports **tiered verification**:
 
+```rust
+pub enum VerificationTier {
+    None,  // Trust provider
+    Redundancy { n: usize, m: usize, similarity_threshold: f32 },
+    Objective { schema: Option<String> },
+    Validated { validator_pubkey: String },
+}
+```
+
 ### 4.1 Objective Verification (§5.1)
+
+**Implementation:** `Verifier::verify_objective()`
+
 For deterministic outputs:
-- Validate by hash, schema, or replayable computation
-- Release payments only after verification ("pay-after-verify")
+- **Type validation:** Check JSON type (object, array, string, number, boolean, null)
+- **Required fields:** Validate presence of specified fields
+- **Hash verification:** SHA256 content hash matching (`sha256:abc123...` format)
+
+```rust
+// Schema format
+{"type": "object", "required": ["name", "age"]}
+{"hash": "sha256:abc123..."}
+```
+
+Uses `sha2` and `hex` crates for cryptographic hashing.
 
 ### 4.2 Redundancy Verification / Consensus (§5.2)
+
+**Implementation:** `Verifier::verify_redundancy()`
+
 For subjective tasks:
-- Run sub-queries on **multiple workers**
-- Compare outputs using similarity measures or higher-model grading
-- Accept consensus and pay accordingly
+- Run sub-queries on **N workers**, require **M agreement**
+- **Similarity calculation:**
+  - Short strings (<100 chars): Character-based prefix matching
+  - Long strings: Word-based Jaccard similarity
+- Default similarity threshold: **0.8**
+
+```rust
+// Helper constructors
+VerificationTier::redundancy(3, 2)      // 2-of-3 agreement
+VerificationTier::redundancy_3_of_5()   // 3-of-5 preset
+```
 
 ### 4.3 Validator Pods and Attestations (§5.3)
-Validator pods can:
-- Re-run a sample
-- Score divergence
-- Sign an attestation
-- Update provider reputation
+
+**Implementation:** `Verifier::verify_validated()` + `check_attestation()`
+
+Validator attestations stored in result metadata:
+```rust
+result.metadata.insert("attestation_pubkey", validator_pubkey);
+result.metadata.insert("attestation_sig", signature);
+```
+
+Verification steps:
+1. Check `attestation_pubkey` matches expected validator
+2. Compute SHA256 hash of content
+3. Verify signature covers content hash
+4. Future: Full Schnorr signature verification via Nostr
 
 ### 4.4 Reputation-Weighted Routing (§5.4)
 
@@ -151,21 +194,56 @@ Routing **prefers higher-tier providers** with explicit budget tradeoffs.
 
 ### 5.1 Event Taxonomy (§6.1)
 
-FRLM defines canonical spans across categories:
+**Implementation:** `crates/frlm/src/trace.rs`
 
-| Category | Events |
-|----------|--------|
-| **Run** | `Run.Init`, `Run.Decode`, `Run.Done` |
-| **Environment** | `Env.LoadFragment`, `Env.SelectFragments` |
-| **Sub-queries** | `SubQuery.Submit`, `SubQuery.Execute`, `SubQuery.Return` |
-| **Verification** | `Verify.Redundant`, `Verify.Objective`, `Verify.Attest` |
-| **Resources** | `Memory.CacheHit/Miss`, `Weights.Fetch`, `GPU.Dispatch` |
-| **Economics** | `Budget.Reserve`, `Budget.Settle`, `Receipt.Emit` |
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum TraceEvent {
+    // Run lifecycle
+    RunInit { run_id, program, fragment_count, timestamp_ms },
+    RunDone { run_id, output, iterations, total_cost_sats, total_duration_ms, timestamp_ms },
+
+    // Environment
+    EnvLoadFragment { run_id, fragment_id, size_bytes, timestamp_ms },
+    EnvSelectFragments { run_id, query, fragment_ids, timestamp_ms },
+
+    // Sub-query lifecycle
+    SubQuerySubmit { run_id, query_id, prompt_preview, fragment_id, timestamp_ms },
+    SubQueryExecute { run_id, query_id, provider_id, venue, timestamp_ms },
+    SubQueryReturn { run_id, query_id, result_preview, duration_ms, cost_sats, success, timestamp_ms },
+    SubQueryTimeout { run_id, query_id, elapsed_ms, timestamp_ms },
+
+    // Verification
+    VerifyRedundant { run_id, query_id, agreement, n_of_m, passed, timestamp_ms },
+    VerifyObjective { run_id, query_id, check_type, passed, timestamp_ms },
+
+    // Budget
+    BudgetReserve { run_id, query_id, amount_sats, remaining_sats, timestamp_ms },
+    BudgetSettle { run_id, query_id, actual_sats, refund_sats, timestamp_ms },
+
+    // Aggregation & Fallback
+    Aggregate { run_id, input_count, output_preview, timestamp_ms },
+    FallbackLocal { run_id, reason, timestamp_ms },
+}
+```
+
+**TraceEmitter** manages event emission:
+```rust
+pub struct TraceEmitter {
+    run_id: String,
+    start_time: web_time::Instant,
+    sender: Option<mpsc::Sender<TraceEvent>>,
+    buffer: Vec<TraceEvent>,
+    buffering: bool,
+}
+```
 
 Each event includes:
-- **Causal links** (parent span, cause)
-- **Metrics** (ms, bytes, cost)
-- **Payload references** (artifact IDs, blob refs)
+- **run_id** - Causal link to parent run
+- **timestamp_ms** - Milliseconds since run start
+- **Metrics** - duration_ms, cost_sats, size_bytes as appropriate
+- **Previews** - Truncated content for logs (max 100-500 chars)
 
 ### 5.2 Visual Grammar (§6.2)
 
@@ -191,41 +269,109 @@ Traces are replayable with checkpoints:
 ## 6. Implementation Details (§7)
 
 ### 6.1 Conductor Runtime (§7.1)
-- Stores environment state (documents, indexes, buffers)
-- Schedules sub-queries
-- Merges results
-- Enforces policy and budget constraints
-- Emits trace events
-- **Implementation:** Rust + async [TBD]
+
+**Implementation:** `crates/frlm/src/conductor.rs` (Rust + async)
+
+```rust
+pub struct FrlmConductor {
+    policy: FrlmPolicy,
+    trace: TraceEmitter,
+    scheduler: SubQueryScheduler,
+    budget_spent: u64,
+    context: HashMap<String, String>,
+    fragments: HashMap<String, Fragment>,
+    trace_rx: Option<mpsc::Receiver<TraceEvent>>,
+}
+```
+
+**Key Methods:**
+- `run()` - Main async entry point for program execution
+- `build_fragment_queries()` - Converts fragments to sub-queries
+- `run_fanout()` - Parallel sub-query submission
+- `verify_results()` - Applies verification tier
+- `aggregate_results()` - Combines verified results
+
+**Extension Traits:**
+```rust
+#[async_trait]
+pub trait SubQuerySubmitter: Send + Sync {
+    async fn submit_batch(&self, queries: Vec<SubQuery>) -> Result<Vec<(String, String)>>;
+    async fn is_available(&self) -> bool;
+}
+
+#[async_trait]
+pub trait LocalExecutor: Send + Sync {
+    async fn execute(&self, query: &str) -> Result<String>;
+}
+```
 
 ### 6.2 Worker Runtime (§7.2)
-Workers expose:
-- One or more model backends (local, datacenter endpoint)
-- Optional tool execution capabilities
-- Job acceptance policy
-- Trace emission
+
+**Nostr Submitter** (`crates/pylon-desktop/src/frlm_integration.rs`):
+```rust
+pub struct NostrSubmitter {
+    command_tx: mpsc::Sender<NostrCommand>,
+    relay_connected: bool,
+}
+```
+- Implements `SubQuerySubmitter` via NIP-90 job requests
+- Converts `SubQuery` to `BatchJobRequest { id, prompt, model, max_tokens }`
+
+**Local Executor** (FM Bridge fallback):
+```rust
+pub struct FmLocalExecutor {
+    fm_bridge_url: String,
+}
+```
+- Implements `LocalExecutor` via HTTP POST to `/generate` endpoint
+- Seamless fallback when swarm unavailable
 
 ### 6.3 Transport and Relay (§7.3)
-Supported transports:
-- Direct WebSocket/SSE
-- Message relays (e.g., pub/sub)
-- Optional encrypted payload transport
-- **Exact relay protocol:** [TBD]
+
+**Protocol:** Nostr NIP-90 (Data Vending Machine)
+
+```rust
+pub enum NostrCommand {
+    PublishJobBatch { jobs: Vec<BatchJobRequest> },
+    SubscribeJobResults { request_ids: Vec<String> },
+    // ...
+}
+
+pub struct BatchJobRequest {
+    pub id: String,
+    pub prompt: String,
+    pub model: Option<String>,
+    pub max_tokens: Option<u32>,
+}
+```
+
+**Events:**
+- `JobBatchPublished { job_mappings: Vec<(local_id, job_id)> }`
+- `JobResult { request_id, content, amount_msats, bolt11 }`
 
 ### 6.4 Budgeting and Receipts (§7.4)
 
-**Pricing models:**
-- Per-token
-- Per-job
-- Per-second
-- Per-byte
+**Budget Policy** (`crates/frlm/src/policy.rs`):
+```rust
+pub struct BudgetPolicy {
+    pub limit_sats: u64,           // Total budget for run
+    pub per_query_limit_sats: Option<u64>,  // Per sub-query cap
+    pub reserve_multiplier: f32,   // Overcommit factor (default 1.2)
+}
+```
 
-**Budget levels:**
-- Run budget (total for entire execution)
-- Subquery budget (per sub-call)
-- Provider-specific caps
+**Reserve/Settle Pattern:**
+```rust
+// Before submitting sub-query
+conductor.reserve_budget(query_id, estimated_cost)?;
+trace.budget_reserve(query_id, amount, remaining);
 
-Receipts tie spend to trace spans for full attribution.
+// After receiving result
+conductor.settle_budget(query_id, actual_cost, reserved);
+trace.budget_settle(query_id, actual, refund);
+```
+
+**Real Bitcoin Integration:** Costs in satoshis via Spark wallet, with actual Lightning payments for job completion.
 
 ---
 
@@ -273,31 +419,56 @@ Merge:
 
 ---
 
-## 8. Experimental Setup (§8) [PLACEHOLDERS]
+## 8. Implementation Validation (§8)
 
-### 8.1 Benchmarks
+### 8.1 Test Suite
 
-| Category | Datasets |
-|----------|----------|
-| Long-context QA | [Dataset A], [Dataset B] - TBD |
-| Repository QA | [Repo QA benchmark] - TBD |
-| Tool-use tasks | [Autonomous run / sandbox verify] - TBD |
+The implementation includes **23 unit tests** validating core functionality:
 
-### 8.2 Baselines
+| Module | Tests | Coverage |
+|--------|-------|----------|
+| **conductor** | `test_local_fallback`, `test_budget_tracking` | Fallback behavior, budget reserve/settle |
+| **scheduler** | `test_scheduler_basic`, `test_collect_sync`, `test_subquery_builder` | Queue management, collection, query building |
+| **policy** | `test_quorum_all`, `test_quorum_fraction`, `test_quorum_min_count`, `test_budget_estimate`, `test_verification_tier` | Quorum policies, budget estimation |
+| **trace** | `test_trace_emitter`, `test_preview_truncation` | Event emission, text truncation |
+| **verification** | 11 tests | All verification tiers |
 
-1. RLM baseline (sequential sub-calls)
-2. Local-only FRLM (no federation)
-3. Federated best-effort
-4. Federated redundancy
-5. Federated validator tier
-6. Premium datacenter lane for selected steps
+**Verification Tests (11 total):**
+- `test_verify_none` - No verification tier
+- `test_verify_redundancy_success/failure` - N-of-M agreement
+- `test_verify_objective_type/required_fields/missing_field` - JSON schema validation
+- `test_verify_validated_success/wrong_validator/no_attestation` - Attestation checking
+- `test_similarity_exact/partial` - String similarity calculation
 
-### 8.3 Metrics
+### 8.2 Mock Implementations
+
+Tests use mock implementations for isolation:
+
+```rust
+struct MockSubmitter { should_succeed: bool }
+struct MockExecutor { response: String }
+```
+
+### 8.3 Test Data Patterns
+
+- **Redundancy tests:** Use distinct strings ("the sky is blue", "water is wet") to validate disagreement detection
+- **Objective tests:** JSON objects with type/required field validation
+- **Attestation tests:** Simulated pubkey/signature with content hash verification
+
+### 8.4 Future Benchmarks
+
+| Category | Planned Datasets |
+|----------|------------------|
+| Long-context QA | Multi-document summarization |
+| Repository QA | Code understanding tasks |
+| Tool-use tasks | Autonomous sandbox execution |
+
+### 8.5 Metrics (Planned)
 
 | Metric | Description |
 |--------|-------------|
 | End-to-end latency | p50/p95 |
-| Cost | Tokens, compute cost units |
+| Cost | Satoshis per task |
 | Accuracy | Task success rate |
 | Divergence | Under redundancy sampling |
 | Churn tolerance | Provider availability resilience |
@@ -464,30 +635,80 @@ function FRLM_Run(program, env, policy, budget):
 
 ## 17. OpenAgents-Specific Implementation Notes
 
-From the chatgpt.md analysis, the concrete implementation path:
+### Implementation Status: **COMPLETE**
 
-### Phase 1: Basic Swarm Query
+All phases implemented in `crates/frlm/` with 23 passing tests.
+
+| Phase | Status | Location |
+|-------|--------|----------|
+| Phase 1: Conductor Core | ✅ Complete | `crates/frlm/src/conductor.rs` |
+| Phase 2: Async Fanout | ✅ Complete | `crates/frlm/src/scheduler.rs` |
+| Phase 3: Trace Integration | ✅ Complete | `crates/frlm/src/trace.rs` |
+| Phase 4: Policy & Budget | ✅ Complete | `crates/frlm/src/policy.rs` |
+| Phase 5: Verification Tiers | ✅ Complete | `crates/frlm/src/verification.rs` |
+
+### Pylon Desktop Integration
+
+**File:** `crates/pylon-desktop/src/frlm_integration.rs`
+
+```rust
+pub struct FrlmIntegration {
+    trace_rx: Option<mpsc::Receiver<TraceEvent>>,
+    conductor: Option<FrlmConductor>,
+    policy: FrlmPolicy,
+    manager: Option<FrlmManager>,
+}
+
+pub struct FrlmManager {
+    submitter: Arc<NostrSubmitter>,
+    local_executor: Option<Arc<FmLocalExecutor>>,
+}
 ```
-llm_query(chunk) → swarm_query(chunk)
-  └─ Nostr NIP-90 job: {chunk_id, prompt, schema}
-  └─ Route to best Mac provider
-  └─ Return structured result
+
+**Key Methods:**
+- `init()` - Wire NostrRuntime + FM Bridge URL
+- `start_run()` - Initialize conductor and UI state
+- `poll()` - Process trace events, update `FmVizState`
+- `finish_run()` - Cleanup conductor state
+
+**Trace Event Processing:**
+```rust
+// In PylonCore::poll()
+if self.frlm.poll(&mut self.state) {
+    processed = true;
+}
 ```
 
-### Phase 2: Async Fanout
-- Issue 10-200 chunk jobs simultaneously
-- Budget-bounded parallelism
-- Reduce as results arrive
+Events map to UI state updates:
+- `SubQuerySubmit` → `SubQueryDisplayStatus::Submitted`
+- `SubQueryExecute` → `SubQueryDisplayStatus::Executing`
+- `SubQueryReturn` → `SubQueryDisplayStatus::Complete` + budget update
+- `BudgetReserve/Settle` → Budget bar updates
 
-### Phase 3: Trace Integration
-- Each subcall is a HUD span (queued → running → done)
-- Buffers visible as state objects
-- Real-time "execution movie"
+### Pylon UI Panel
 
-### Phase 4: Verification Tiers
-- Redundancy for untrusted workers
-- Validator pods for high-stakes steps
-- Reputation-weighted routing
+**File:** `crates/pylon-desktop/src/ui/frlm_panel.rs`
+
+Features:
+- **Budget bar:** Real-time spend vs limit visualization
+- **Sub-query timeline:** Horizontal rail with query status
+- **3-column layout:** When FRLM active, shows trace panel alongside chat
+- **Status indicators:** Pending/executing/complete/timeout per query
+
+### Running an FRLM Program
+
+```rust
+// In application code
+let program = FrlmProgram {
+    run_id: uuid::Uuid::new_v4().to_string(),
+    query: "Analyze this codebase".to_string(),
+    fragments: vec![...],
+    reduce_prompt: "Combine the analyses...".to_string(),
+};
+
+core.frlm.start_run(program, &mut core.state);
+// Poll loop handles trace events automatically
+```
 
 ---
 
