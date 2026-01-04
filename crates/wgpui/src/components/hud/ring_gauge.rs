@@ -2,6 +2,12 @@ use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, Hsla, InputEvent, Quad};
 
+/// A circular progress/level gauge using dot segments.
+///
+/// # Deprecation
+/// This component is deprecated. Use [`viz::fill::Ring`] instead, which provides
+/// the same functionality with a unified visualization grammar.
+#[deprecated(since = "0.1.0", note = "Use viz::fill::Ring instead")]
 pub struct RingGauge {
     id: Option<ComponentId>,
     segments: usize,

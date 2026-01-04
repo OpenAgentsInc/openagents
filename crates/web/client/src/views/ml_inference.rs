@@ -2,9 +2,11 @@ use wgpui::{
     Bounds, FontStyle, Hsla, Point, Quad, Scene, TextSystem, theme,
 };
 use wgpui::animation::AnimatorState;
-use wgpui::components::hud::{DotsGrid, DotsOrigin, Heatmap, RingGauge, Scanlines, SignalMeter};
+#[allow(deprecated)]
+use wgpui::components::hud::{DotsGrid, DotsOrigin, RingGauge, Scanlines, SignalMeter};
 use wgpui::components::Component;
 use wgpui::PaintContext;
+use viz::heat::Matrix;
 
 use crate::state::{AppState, GateStatus};
 
@@ -504,14 +506,17 @@ fn draw_attention_panel(
             for row in weights {
                 data.extend(row.iter().copied());
             }
-            let mut heatmap = Heatmap::new()
-                .data(rows, cols, data)
-                .gap(1.0)
-                .low_color(Hsla::from_hex(0x04101a))
-                .mid_color(Some(Hsla::from_hex(0x2ec4d6)))
-                .high_color(Hsla::from_hex(0xf8fbff));
+            // Use viz::heat::Matrix for heatmap visualization
+            let mut matrix = Matrix::new(cols, rows)
+                .with_data(rows, cols, data)
+                .with_gap(1.0)
+                .with_gradient(
+                    Hsla::from_hex(0x04101a),
+                    Some(Hsla::from_hex(0x2ec4d6)),
+                    Hsla::from_hex(0xf8fbff),
+                );
             let mut cx = PaintContext::new(scene, text_system, scale_factor);
-            heatmap.paint(heatmap_bounds, &mut cx);
+            matrix.paint(heatmap_bounds, &mut cx);
         } else {
             draw_empty_state(scene, text_system, heatmap_bounds, "No attention telemetry");
         }
