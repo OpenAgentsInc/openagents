@@ -46,6 +46,8 @@ pub enum NostrEvent {
     Published { event_id: String },
     /// Event publish failed
     PublishFailed { error: String },
+    /// Channel found or created (kind 40)
+    ChannelFound { channel_id: String, name: String },
 }
 
 /// Commands sent from UI to Nostr runtime
@@ -65,6 +67,8 @@ pub enum NostrCommand {
     PublishJobResult { request_id: String, request_pubkey: String, content: String },
     /// Publish a chat message (kind 42)
     PublishChatMessage { channel_id: String, content: String },
+    /// Create or find a channel (kind 40)
+    CreateOrFindChannel { name: String },
 }
 
 /// Nostr runtime handle
@@ -141,6 +145,13 @@ impl NostrRuntime {
             content: content.to_string(),
         });
     }
+
+    /// Create or find a channel
+    pub fn create_or_find_channel(&self, name: &str) {
+        let _ = self.cmd_tx.try_send(NostrCommand::CreateOrFindChannel {
+            name: name.to_string(),
+        });
+    }
 }
 
 impl Default for NostrRuntime {
@@ -201,6 +212,11 @@ async fn run_nostr_loop(
             NostrCommand::PublishChatMessage { channel_id, content } => {
                 if let Some(ref relay_conn) = relay {
                     handle_publish_chat_message(relay_conn, &event_tx, &secret_key, &channel_id, &content).await;
+                }
+            }
+            NostrCommand::CreateOrFindChannel { name } => {
+                if let Some(ref relay_conn) = relay {
+                    handle_create_or_find_channel(relay_conn, &event_tx, &secret_key, &name).await;
                 }
             }
         }
@@ -398,7 +414,7 @@ async fn handle_publish_chat_message(
         kind: 42, // Channel message
         content: content.to_string(),
         tags: vec![
-            vec!["e".to_string(), channel_id.to_string(), String::new(), "root".to_string()],
+            vec!["e".to_string(), channel_id.to_string(), "wss://relay.openagents.com/".to_string(), "root".to_string()],
         ],
         created_at: now(),
     };
@@ -421,6 +437,66 @@ async fn handle_publish_chat_message(
         }
         Err(e) => {
             let _ = event_tx.send(NostrEvent::PublishFailed { error: e.to_string() }).await;
+        }
+    }
+}
+
+/// Create or find a channel (kind 40)
+async fn handle_create_or_find_channel(
+    relay: &RelayConnection,
+    event_tx: &mpsc::Sender<NostrEvent>,
+    secret_key: &[u8; 32],
+    name: &str,
+) {
+    // For now, just create a new channel
+    // In the future, we could query for existing channels with this name
+    let metadata = serde_json::json!({
+        "name": name,
+        "about": "Provider chat for the OpenAgents inference network",
+        "relays": ["wss://relay.openagents.com/"]
+    });
+
+    let template = EventTemplate {
+        kind: 40, // Channel creation
+        content: metadata.to_string(),
+        tags: vec![],
+        created_at: now(),
+    };
+
+    match finalize_event(&template, secret_key) {
+        Ok(event) => {
+            let channel_id = event.id.clone();
+            match relay.publish_event(&event, Duration::from_secs(5)).await {
+                Ok(confirmation) => {
+                    if confirmation.accepted {
+                        let _ = event_tx.send(NostrEvent::ChannelFound {
+                            channel_id,
+                            name: name.to_string(),
+                        }).await;
+                    } else {
+                        // Channel might already exist, use the name as a fallback ID
+                        let _ = event_tx.send(NostrEvent::ChannelFound {
+                            channel_id: name.to_string(),
+                            name: name.to_string(),
+                        }).await;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to create channel: {}", e);
+                    // Use name as fallback channel ID
+                    let _ = event_tx.send(NostrEvent::ChannelFound {
+                        channel_id: name.to_string(),
+                        name: name.to_string(),
+                    }).await;
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to finalize channel event: {}", e);
+            let _ = event_tx.send(NostrEvent::ChannelFound {
+                channel_id: name.to_string(),
+                name: name.to_string(),
+            }).await;
         }
     }
 }

@@ -18,7 +18,7 @@ use crate::commands;
 use crate::fm_runtime::{FmEvent, FmRuntime};
 use crate::input_convert;
 use crate::nostr_runtime::{NostrEvent, NostrRuntime};
-use crate::state::{ChatMessage, FmConnectionStatus, FmVizState, InputFocus, Job, JobStatus, NostrConnectionStatus};
+use crate::state::{ChatMessage, FmConnectionStatus, FmStreamStatus, FmVizState, InputFocus, Job, JobStatus, NostrConnectionStatus};
 use crate::ui;
 
 #[derive(Default)]
@@ -284,7 +284,10 @@ impl ApplicationHandler for PylonApp {
                 // Paint command palette overlay (last = on top)
                 if state.command_palette.is_open() {
                     let scale_factor = state.window.scale_factor() as f32;
-                    let bounds = Bounds::new(0.0, 0.0, width, height);
+                    // Use logical pixel bounds for centering calculation
+                    let logical_width = width / scale_factor;
+                    let logical_height = height / scale_factor;
+                    let bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
                     let mut paint_cx = PaintContext::new(
                         &mut scene,
                         &mut state.text_system,
@@ -389,6 +392,8 @@ impl ApplicationHandler for PylonApp {
                     }
                     NostrEvent::Authenticated => {
                         state.fm_state.nostr_status = NostrConnectionStatus::Authenticated;
+                        // Create or find our chat channel
+                        state.nostr_runtime.create_or_find_channel("openagents-providers");
                     }
                     NostrEvent::ConnectionFailed(error) => {
                         state.fm_state.nostr_status = NostrConnectionStatus::Error;
@@ -400,7 +405,7 @@ impl ApplicationHandler for PylonApp {
                         let _ = challenge; // Acknowledge but NostrRuntime handles it
                     }
                     NostrEvent::JobRequest { id, pubkey, prompt, created_at } => {
-                        // Add job to list
+                        // Add incoming job to list (we will serve this)
                         let job = Job {
                             id: id.clone(),
                             prompt: prompt.clone(),
@@ -408,6 +413,7 @@ impl ApplicationHandler for PylonApp {
                             status: JobStatus::Pending,
                             result: None,
                             created_at,
+                            is_outgoing: false,  // Incoming job - we serve
                         };
                         state.fm_state.add_job(job);
 
@@ -420,9 +426,17 @@ impl ApplicationHandler for PylonApp {
                         }
                     }
                     NostrEvent::JobResult { id: _, request_id, pubkey: _, content } => {
-                        // Display result if it's for one of our requests
-                        if state.fm_state.jobs.iter().any(|j| j.id == request_id) {
-                            state.fm_state.token_stream = content;
+                        // Check if this is a response to one of our pending requests
+                        if state.fm_state.pending_requests.remove(&request_id).is_some() {
+                            // Display result in token stream
+                            state.fm_state.token_stream = content.clone();
+                            state.fm_state.stream_status = FmStreamStatus::Complete;
+
+                            // Update the job status
+                            if let Some(job) = state.fm_state.jobs.iter_mut().find(|j| j.id == request_id) {
+                                job.status = JobStatus::Complete;
+                                job.result = Some(content);
+                            }
                         }
                     }
                     NostrEvent::ChatMessage { id, pubkey, content, created_at } => {
@@ -441,6 +455,11 @@ impl ApplicationHandler for PylonApp {
                     }
                     NostrEvent::PublishFailed { error } => {
                         state.fm_state.error_message = Some(error);
+                    }
+                    NostrEvent::ChannelFound { channel_id, name: _ } => {
+                        state.fm_state.channel_id = Some(channel_id.clone());
+                        // Subscribe to this channel for chat
+                        state.nostr_runtime.subscribe_chat(&channel_id);
                     }
                 }
             }
@@ -529,7 +548,24 @@ fn handle_chat_input(state: &mut RenderState, key: &Key, cmd: bool) {
                state.fm_state.nostr_status == NostrConnectionStatus::Authenticated {
                 let channel_id = state.fm_state.channel_id.clone()
                     .unwrap_or_else(|| "openagents-providers".to_string());
-                state.nostr_runtime.publish_chat_message(&channel_id, &state.fm_state.chat_input);
+                let content = state.fm_state.chat_input.clone();
+
+                // Self-echo: add our message to local state immediately
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let msg = crate::state::ChatMessage {
+                    id: format!("self-{}", now),
+                    author: state.fm_state.pubkey.clone().unwrap_or_else(|| "YOU".to_string()),
+                    content: content.clone(),
+                    timestamp: now,
+                    is_self: true,
+                };
+                state.fm_state.add_chat_message(msg);
+
+                // Publish to relay
+                state.nostr_runtime.publish_chat_message(&channel_id, &content);
                 state.fm_state.chat_input.clear();
                 state.fm_state.chat_cursor = 0;
             }
@@ -611,11 +647,52 @@ fn handle_prompt_input(state: &mut RenderState, key: &Key, cmd: bool) {
             }
         }
         Key::Named(NamedKey::Enter) => {
-            // Send prompt if we can
-            if state.fm_state.can_send() {
-                let prompt = state.fm_state.prompt_input.clone();
-                state.fm_state.on_stream_start(&prompt);
-                state.fm_runtime.stream(prompt);
+            if cmd {
+                // Cmd+Enter: Request inference from network (NIP-90 client mode)
+                if !state.fm_state.prompt_input.is_empty() &&
+                   state.fm_state.nostr_status == NostrConnectionStatus::Authenticated {
+                    let prompt = state.fm_state.prompt_input.clone();
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+
+                    // Create outgoing job entry
+                    let job_id = format!("req-{}", now); // Temporary ID until we get the real event ID
+                    let job = Job {
+                        id: job_id.clone(),
+                        prompt: prompt.clone(),
+                        from_pubkey: state.fm_state.pubkey.clone().unwrap_or_default(),
+                        status: JobStatus::Pending,
+                        result: None,
+                        created_at: now,
+                        is_outgoing: true,  // We requested this
+                    };
+                    state.fm_state.add_job(job);
+
+                    // Track as pending request
+                    state.fm_state.pending_requests.insert(job_id.clone(), crate::state::PendingRequest {
+                        prompt: prompt.clone(),
+                        requested_at: now,
+                    });
+
+                    // Publish job request to network
+                    state.nostr_runtime.publish_job_request(&prompt);
+                    state.fm_state.jobs_requested += 1;
+                    state.fm_state.credits -= 1;
+
+                    // Clear input
+                    state.fm_state.prompt_input.clear();
+                    state.fm_state.cursor_pos = 0;
+                    state.fm_state.selection = None;
+                }
+            } else {
+                // Enter: Use local FM Bridge
+                if state.fm_state.can_send() {
+                    let prompt = state.fm_state.prompt_input.clone();
+                    state.fm_state.on_stream_start(&prompt);
+                    state.fm_runtime.stream(prompt);
+                }
             }
         }
         Key::Named(NamedKey::Backspace) => {

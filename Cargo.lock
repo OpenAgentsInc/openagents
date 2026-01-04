@@ -9623,6 +9623,7 @@ name = "pylon-desktop"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "clap",
  "dirs 5.0.1",
  "fm-bridge",
  "futures",
