@@ -30,9 +30,9 @@ pub enum NostrEvent {
     },
     /// Received a job result (kind 6050)
     JobResult {
-        id: String,
+        _id: String,
         request_id: String,
-        pubkey: String,
+        _pubkey: String,
         content: String,
     },
     /// Received a chat message (kind 42)
@@ -43,11 +43,11 @@ pub enum NostrEvent {
         created_at: u64,
     },
     /// Event published successfully
-    Published { event_id: String },
+    Published { _event_id: String },
     /// Event publish failed
     PublishFailed { error: String },
     /// Channel found or created (kind 40)
-    ChannelFound { channel_id: String, name: String },
+    ChannelFound { channel_id: String, _name: String },
 }
 
 /// Commands sent from UI to Nostr runtime
@@ -354,7 +354,7 @@ async fn handle_publish_job_request(
             match relay.publish_event(&event, Duration::from_secs(5)).await {
                 Ok(confirmation) => {
                     if confirmation.accepted {
-                        let _ = event_tx.send(NostrEvent::Published { event_id }).await;
+                        let _ = event_tx.send(NostrEvent::Published { _event_id: event_id }).await;
                     } else {
                         let _ = event_tx.send(NostrEvent::PublishFailed { error: confirmation.message }).await;
                     }
@@ -403,7 +403,7 @@ async fn handle_publish_job_result(
             match relay.publish_event(&event, Duration::from_secs(5)).await {
                 Ok(confirmation) => {
                     if confirmation.accepted {
-                        let _ = event_tx.send(NostrEvent::Published { event_id }).await;
+                        let _ = event_tx.send(NostrEvent::Published { _event_id: event_id }).await;
                     } else {
                         let _ = event_tx.send(NostrEvent::PublishFailed { error: confirmation.message }).await;
                     }
@@ -442,7 +442,7 @@ async fn handle_publish_chat_message(
             match relay.publish_event(&event, Duration::from_secs(5)).await {
                 Ok(confirmation) => {
                     if confirmation.accepted {
-                        let _ = event_tx.send(NostrEvent::Published { event_id }).await;
+                        let _ = event_tx.send(NostrEvent::Published { _event_id: event_id }).await;
                     } else {
                         let _ = event_tx.send(NostrEvent::PublishFailed { error: confirmation.message }).await;
                     }
@@ -488,13 +488,13 @@ async fn handle_create_or_find_channel(
                     if confirmation.accepted {
                         let _ = event_tx.send(NostrEvent::ChannelFound {
                             channel_id,
-                            name: name.to_string(),
+                            _name: name.to_string(),
                         }).await;
                     } else {
                         // Channel might already exist, use the name as a fallback ID
                         let _ = event_tx.send(NostrEvent::ChannelFound {
                             channel_id: name.to_string(),
-                            name: name.to_string(),
+                            _name: name.to_string(),
                         }).await;
                     }
                 }
@@ -503,7 +503,7 @@ async fn handle_create_or_find_channel(
                     // Use name as fallback channel ID
                     let _ = event_tx.send(NostrEvent::ChannelFound {
                         channel_id: name.to_string(),
-                        name: name.to_string(),
+                        _name: name.to_string(),
                     }).await;
                 }
             }
@@ -512,7 +512,7 @@ async fn handle_create_or_find_channel(
             eprintln!("Failed to finalize channel event: {}", e);
             let _ = event_tx.send(NostrEvent::ChannelFound {
                 channel_id: name.to_string(),
-                name: name.to_string(),
+                _name: name.to_string(),
             }).await;
         }
     }
@@ -573,9 +573,9 @@ async fn poll_relay_messages(
                                 .unwrap_or_default();
 
                             let _ = event_tx.send(NostrEvent::JobResult {
-                                id: event.id,
+                                _id: event.id,
                                 request_id,
-                                pubkey: event.pubkey,
+                                _pubkey: event.pubkey,
                                 content: event.content,
                             }).await;
                         }

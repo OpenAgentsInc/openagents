@@ -44,36 +44,36 @@ pub enum InputFocus {
 }
 
 pub struct TranscriptMessage {
-    pub role: &'static str,
-    pub content: String,
+    pub _role: &'static str,
+    pub _content: String,
 }
 
 /// A NIP-90 job (request or our result)
 #[derive(Clone)]
 pub struct Job {
     pub id: String,
-    pub prompt: String,
+    pub _prompt: String,
     pub from_pubkey: String,
     pub status: JobStatus,
     pub result: Option<String>,
-    pub created_at: u64,
+    pub _created_at: u64,
     pub is_outgoing: bool,  // true = we requested, false = we serve
 }
 
 /// A pending request we made (waiting for result)
 #[derive(Clone)]
 pub struct PendingRequest {
-    pub prompt: String,
-    pub requested_at: u64,
+    pub _prompt: String,
+    pub _requested_at: u64,
 }
 
 /// A NIP-28 chat message
 #[derive(Clone)]
 pub struct ChatMessage {
-    pub id: String,
+    pub _id: String,
     pub author: String,  // npub (shortened for display)
     pub content: String,
-    pub timestamp: u64,
+    pub _timestamp: u64,
     pub is_self: bool,
 }
 
@@ -98,7 +98,7 @@ pub struct FmVizState {
     last_token_time: Option<Instant>,
 
     // Session
-    pub session_id: Option<String>,
+    pub _session_id: Option<String>,
     pub turn_count: u32,
     pub transcript: Vec<TranscriptMessage>,
 
@@ -150,7 +150,7 @@ impl FmVizState {
             stream_start: None,
             last_token_time: None,
 
-            session_id: None,
+            _session_id: None,
             turn_count: 0,
             transcript: Vec::new(),
 
@@ -237,8 +237,8 @@ impl FmVizState {
 
         // Add user message to transcript
         self.transcript.push(TranscriptMessage {
-            role: "USER",
-            content: prompt.to_string(),
+            _role: "USER",
+            _content: prompt.to_string(),
         });
         self.turn_count += 1;
     }
@@ -282,8 +282,8 @@ impl FmVizState {
         // Add assistant message to transcript
         if !self.token_stream.is_empty() {
             self.transcript.push(TranscriptMessage {
-                role: "ASST",
-                content: self.token_stream.clone(),
+                _role: "ASST",
+                _content: self.token_stream.clone(),
             });
         }
 
