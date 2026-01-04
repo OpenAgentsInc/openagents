@@ -11,9 +11,14 @@ description = "Pylon desktop GUI with FM Bridge visualization"
 name = "pylon-desktop"
 path = "src/main.rs"
 
-[[bin]]
-name = "send-job"
-path = "tests/send_job.rs"
+# Disable auto-discovery of tests (we have some as bins)
+[[test]]
+name = "nostr_test"
+path = "tests/nostr_test.rs"
+
+[[test]]
+name = "live_relay_test"
+path = "tests/live_relay_test.rs"
 
 [dependencies]
 # OpenAgents crates
@@ -47,3 +52,6 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 
 # Clipboard
 arboard = "3.4"
+
+[dev-dependencies]
+rand = "0.8"

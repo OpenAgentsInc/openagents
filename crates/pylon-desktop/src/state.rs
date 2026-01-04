@@ -152,7 +152,7 @@ impl FmVizState {
             token_history: vec![0.0; 50],
 
             nostr_status: NostrConnectionStatus::Disconnected,
-            relay_url: "ws://127.0.0.1:7001".to_string(),
+            relay_url: "wss://relay.openagents.com/".to_string(),
             pubkey: None,
 
             jobs: Vec::new(),
