@@ -11,11 +11,17 @@ description = "Pylon desktop GUI with FM Bridge visualization"
 name = "pylon-desktop"
 path = "src/main.rs"
 
+[[bin]]
+name = "send-job"
+path = "tests/send_job.rs"
+
 [dependencies]
 # OpenAgents crates
 wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
 viz = { path = "../viz", default-features = false, features = ["desktop"] }
 fm-bridge = { path = "../fm-bridge" }
+nostr = { path = "../nostr/core" }
+nostr-client = { path = "../nostr/client" }
 
 # GPU
 wgpu = { workspace = true }
@@ -31,6 +37,9 @@ web-time = "1.1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
 tokio-stream = "0.1"
 futures = "0.3"
+
+# Serialization
+serde_json = "1"
 
 # Process management
 dirs = "5.0"

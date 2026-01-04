@@ -5,6 +5,7 @@
 mod app;
 mod bridge_manager;
 mod fm_runtime;
+mod nostr_runtime;
 mod state;
 mod ui;
 

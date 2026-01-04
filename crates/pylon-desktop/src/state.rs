@@ -1,4 +1,4 @@
-//! FM Bridge state for visualization
+//! FM Bridge and Nostr state for visualization
 
 use web_time::Instant;
 
@@ -18,9 +18,54 @@ pub enum FmStreamStatus {
     Error,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum NostrConnectionStatus {
+    Disconnected,
+    Connecting,
+    Connected,
+    Authenticated,
+    Error,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum JobStatus {
+    Pending,
+    Serving,
+    Complete,
+    Failed,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum InputFocus {
+    Jobs,
+    Chat,
+    Prompt,
+}
+
 pub struct TranscriptMessage {
     pub role: &'static str,
     pub content: String,
+}
+
+/// A NIP-90 job (request or our result)
+#[derive(Clone)]
+pub struct Job {
+    pub id: String,
+    pub prompt: String,
+    pub from_pubkey: String,
+    pub status: JobStatus,
+    pub result: Option<String>,
+    pub created_at: u64,
+}
+
+/// A NIP-28 chat message
+#[derive(Clone)]
+pub struct ChatMessage {
+    pub id: String,
+    pub author: String,  // npub (shortened for display)
+    pub content: String,
+    pub timestamp: u64,
+    pub is_self: bool,
 }
 
 pub struct FmVizState {
@@ -52,9 +97,28 @@ pub struct FmVizState {
     pub prompt_input: String,
     pub cursor_pos: usize,
     pub selection: Option<(usize, usize)>, // (start, end)
+    pub input_focus: InputFocus,
 
     // Viz history
     pub token_history: Vec<f32>,
+
+    // Nostr connection
+    pub nostr_status: NostrConnectionStatus,
+    pub relay_url: String,
+    pub pubkey: Option<String>,  // Our npub
+
+    // NIP-90 Jobs
+    pub jobs: Vec<Job>,
+    pub current_job_id: Option<String>,  // Job we're currently serving
+    pub jobs_served: u32,
+    pub jobs_requested: u32,
+    pub credits: i32,  // served - requested
+
+    // NIP-28 Chat
+    pub chat_messages: Vec<ChatMessage>,
+    pub chat_input: String,
+    pub chat_cursor: usize,
+    pub channel_id: Option<String>,
 }
 
 impl FmVizState {
@@ -83,8 +147,56 @@ impl FmVizState {
             prompt_input: String::new(),
             cursor_pos: 0,
             selection: None,
+            input_focus: InputFocus::Prompt,
 
             token_history: vec![0.0; 50],
+
+            nostr_status: NostrConnectionStatus::Disconnected,
+            relay_url: "ws://127.0.0.1:7001".to_string(),
+            pubkey: None,
+
+            jobs: Vec::new(),
+            current_job_id: None,
+            jobs_served: 0,
+            jobs_requested: 0,
+            credits: 0,
+
+            chat_messages: Vec::new(),
+            chat_input: String::new(),
+            chat_cursor: 0,
+            channel_id: None,
+        }
+    }
+
+    /// Add a job to the list
+    pub fn add_job(&mut self, job: Job) {
+        self.jobs.insert(0, job);  // Add at front (newest first)
+        if self.jobs.len() > 50 {
+            self.jobs.pop();  // Keep max 50 jobs
+        }
+    }
+
+    /// Update job status
+    pub fn update_job_status(&mut self, job_id: &str, status: JobStatus) {
+        if let Some(job) = self.jobs.iter_mut().find(|j| j.id == job_id) {
+            job.status = status;
+        }
+    }
+
+    /// Add a chat message
+    pub fn add_chat_message(&mut self, msg: ChatMessage) {
+        self.chat_messages.push(msg);
+        if self.chat_messages.len() > 100 {
+            self.chat_messages.remove(0);  // Keep max 100 messages
+        }
+    }
+
+    /// Shorten pubkey for display (first 8 chars)
+    pub fn short_pubkey(pubkey: &str) -> String {
+        if pubkey.len() > 8 {
+            format!("{}...", &pubkey[..8])
+        } else {
+            pubkey.to_string()
         }
     }
 

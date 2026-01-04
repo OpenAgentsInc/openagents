@@ -2,7 +2,7 @@
 
 use wgpui::{Bounds, Hsla, Point, Quad, Scene, Size, TextSystem};
 
-use crate::state::{FmConnectionStatus, FmStreamStatus, FmVizState};
+use crate::state::{FmConnectionStatus, FmStreamStatus, FmVizState, InputFocus};
 
 use super::{accent_cyan, accent_green, panel_bg, text_dim};
 
@@ -253,15 +253,19 @@ pub fn draw_prompt_input(
         .with_background(panel_bg()),
     );
 
-    // Label
+    // Label with focus indicator
+    let is_focused = state.input_focus == InputFocus::Prompt;
     let label = if state.is_streaming() {
         "STREAMING..."
     } else if state.connection_status != FmConnectionStatus::Connected {
         "WAITING FOR CONNECTION..."
+    } else if is_focused {
+        "PROMPT (focused) - ENTER to send"
     } else {
-        "TYPE PROMPT, PRESS ENTER"
+        "PROMPT - TAB to focus"
     };
-    let run = text.layout(label, Point::new(x + 12.0, y + 8.0), 10.0, text_dim());
+    let label_color = if is_focused { accent_cyan() } else { text_dim() };
+    let run = text.layout(label, Point::new(x + 12.0, y + 8.0), 10.0, label_color);
     scene.draw_text(run);
 
     // Input field background
@@ -320,8 +324,8 @@ pub fn draw_prompt_input(
     );
     scene.draw_text(run);
 
-    // Cursor at cursor_pos - use actual measured width
-    if !state.is_streaming() && state.connection_status == FmConnectionStatus::Connected {
+    // Cursor at cursor_pos - only show when focused
+    if is_focused && !state.is_streaming() && state.connection_status == FmConnectionStatus::Connected {
         let cursor_pos = state.cursor_pos.min(state.prompt_input.len());
         let text_before_cursor = &state.prompt_input[..cursor_pos];
         let cursor_x = text_x + text.measure(text_before_cursor, font_size);
