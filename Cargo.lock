@@ -2292,6 +2292,7 @@ name = "compute"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "anyhow",
  "argon2",
  "async-trait",
  "bip39",
@@ -2300,6 +2301,7 @@ dependencies = [
  "env_logger 0.11.8",
  "eventsource-stream",
  "fm-bridge",
+ "frlm",
  "gpt-oss-metal",
  "log",
  "nostr 0.1.0",

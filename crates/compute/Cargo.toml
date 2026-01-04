@@ -22,6 +22,10 @@ nostr = { path = "../nostr/core", features = ["full"] }
 nostr-client = { path = "../nostr/client" }
 spark = { package = "openagents-spark", path = "../spark" }
 fm-bridge = { path = "../fm-bridge" }
+frlm = { path = "../frlm" }
+
+# Error handling
+anyhow = "1.0"
 
 # Logging
 tracing = "0.1"
