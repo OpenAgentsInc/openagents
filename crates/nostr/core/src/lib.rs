@@ -772,7 +772,7 @@ pub use nip72::{
 // NIP-73: External Content IDs
 pub use nip73::{
     EXTERNAL_ID_TAG, EXTERNAL_KIND_TAG, ExternalContent, ExternalContentType, Nip73Error,
-    add_external_content, bitcoin_address, bitcoin_tx, doi, ethereum_address, ethereum_tx, geohash,
+    add_external_content, bitcoin_address, bitcoin_tx, doi, geohash,
     get_external_content_refs, hashtag, isan, isbn, podcast_episode, podcast_feed,
     podcast_publisher, web,
 };

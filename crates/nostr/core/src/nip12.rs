@@ -338,7 +338,7 @@ mod tests {
     fn test_matches_tag_filter_false() {
         let event = create_test_event(vec![vec!["t".to_string(), "bitcoin".to_string()]]);
 
-        assert!(!matches_tag_filter(&event, "t", &["lightning", "ethereum"]));
+        assert!(!matches_tag_filter(&event, "t", &["lightning", "nostr"]));
     }
 
     #[test]

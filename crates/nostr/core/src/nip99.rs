@@ -103,7 +103,7 @@ impl ListingStatus {
 pub struct Price {
     /// Amount as a string (numeric format)
     pub amount: String,
-    /// Currency code (ISO 4217 or crypto like "btc", "eth")
+    /// Currency code (ISO 4217 or crypto like "btc")
     pub currency: String,
     /// Optional frequency for recurring payments (hour, day, week, month, year)
     pub frequency: Option<String>,

@@ -402,24 +402,6 @@ pub fn bitcoin_address(address: String) -> ExternalContent {
     })
 }
 
-/// Helper function to create an Ethereum transaction reference
-pub fn ethereum_tx(chain_id: String, tx_id: String) -> ExternalContent {
-    ExternalContent::new(ExternalContentType::BlockchainTx {
-        blockchain: "ethereum".to_string(),
-        chain_id: Some(chain_id),
-        tx_id,
-    })
-}
-
-/// Helper function to create an Ethereum address reference
-pub fn ethereum_address(chain_id: String, address: String) -> ExternalContent {
-    ExternalContent::new(ExternalContentType::BlockchainAddress {
-        blockchain: "ethereum".to_string(),
-        chain_id: Some(chain_id),
-        address,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -550,45 +532,6 @@ mod tests {
     }
 
     #[test]
-    fn test_ethereum_tx() {
-        let content = ethereum_tx(
-            "100".to_string(),
-            "0x98f7812be496f97f80e2e98d66358d1fc733cf34176a8356d171ea7fbbe97ccd".to_string(),
-        );
-        assert_eq!(
-            content.to_i_tag_array(),
-            vec![
-                "i".to_string(),
-                "ethereum:100:tx:0x98f7812be496f97f80e2e98d66358d1fc733cf34176a8356d171ea7fbbe97ccd"
-                    .to_string()
-            ]
-        );
-        assert_eq!(
-            content.to_k_tag_array(),
-            vec!["k".to_string(), "ethereum:tx".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_ethereum_address() {
-        let content = ethereum_address(
-            "1".to_string(),
-            "0xd8da6bf26964af9d7eed9e03e53415d37aa96045".to_string(),
-        );
-        assert_eq!(
-            content.to_i_tag_array(),
-            vec![
-                "i".to_string(),
-                "ethereum:1:address:0xd8da6bf26964af9d7eed9e03e53415d37aa96045".to_string()
-            ]
-        );
-        assert_eq!(
-            content.to_k_tag_array(),
-            vec!["k".to_string(), "ethereum:address".to_string()]
-        );
-    }
-
-    #[test]
     fn test_url_hint() {
         let content = ExternalContent::with_url_hint(
             ExternalContentType::PodcastEpisode("d98d189b-dc7b-45b1-8720-d4b98690f31f".to_string()),
@@ -646,23 +589,6 @@ mod tests {
                 ref chain_id,
                 ref tx_id
             } if blockchain == "bitcoin" && chain_id.is_none() && tx_id == "a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d"
-        ));
-    }
-
-    #[test]
-    fn test_parse_ethereum_address() {
-        let tag = vec![
-            "i".to_string(),
-            "ethereum:1:address:0xd8da6bf26964af9d7eed9e03e53415d37aa96045".to_string(),
-        ];
-        let content = ExternalContent::from_i_tag(&tag).unwrap();
-        assert!(matches!(
-            content.content,
-            ExternalContentType::BlockchainAddress {
-                ref blockchain,
-                ref chain_id,
-                ref address
-            } if blockchain == "ethereum" && chain_id.as_deref() == Some("1") && address == "0xd8da6bf26964af9d7eed9e03e53415d37aa96045"
         ));
     }
 
