@@ -417,13 +417,13 @@ impl ApplicationHandler for PylonApp {
                 match event {
                     NostrEvent::Connected => {
                         state.fm_state.nostr_status = NostrConnectionStatus::Connected;
-                        // Subscribe to jobs and chat
-                        state.nostr_runtime.subscribe_jobs();
-                        state.nostr_runtime.subscribe_chat("openagents-providers");
+                        // Don't subscribe yet - wait for auth (relay requires it)
                     }
                     NostrEvent::Authenticated => {
                         state.fm_state.nostr_status = NostrConnectionStatus::Authenticated;
-                        // Create or find our chat channel
+                        // Now we can subscribe (after auth)
+                        state.nostr_runtime.subscribe_jobs();
+                        state.nostr_runtime.subscribe_chat("openagents-providers");
                         state.nostr_runtime.create_or_find_channel("openagents-providers");
                     }
                     NostrEvent::ConnectionFailed(error) => {

@@ -117,11 +117,13 @@ impl PylonCore {
             match event {
                 NostrEvent::Connected => {
                     self.state.nostr_status = NostrConnectionStatus::Connected;
-                    self.nostr_runtime.subscribe_jobs();
-                    self.nostr_runtime.subscribe_chat("openagents-providers");
+                    // Don't subscribe yet - wait for auth (relay requires it)
                 }
                 NostrEvent::Authenticated => {
                     self.state.nostr_status = NostrConnectionStatus::Authenticated;
+                    // Now we can subscribe (after auth)
+                    self.nostr_runtime.subscribe_jobs();
+                    self.nostr_runtime.subscribe_chat("openagents-providers");
                     self.nostr_runtime.create_or_find_channel("openagents-providers");
                 }
                 NostrEvent::ConnectionFailed(error) => {

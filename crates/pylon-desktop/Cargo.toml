@@ -20,6 +20,10 @@ path = "tests/nostr_test.rs"
 name = "live_relay_test"
 path = "tests/live_relay_test.rs"
 
+[[bin]]
+name = "send-job-test"
+path = "tests/send_job_test.rs"
+
 [dependencies]
 # OpenAgents crates
 wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
