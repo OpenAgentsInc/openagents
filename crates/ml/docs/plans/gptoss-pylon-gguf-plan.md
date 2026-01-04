@@ -112,3 +112,4 @@ Tests:
 - 2026-01-04: Wired `/gptoss` to Pylon by default (`pylon://127.0.0.1:9899`) and added SSE parsing to apply telemetry/events.
 - 2026-01-04: Added Pylon telemetry for model config/token limits/tokenizer summary + moe mode to power /gptoss panels.
 - 2026-01-04: Prefer GPT-OSS model id from Pylon `/v1/models` response when auto-selecting for `/gptoss`.
+- 2026-01-04: Added default GGUF path fallback in Pylon when env var is missing (repo local).
