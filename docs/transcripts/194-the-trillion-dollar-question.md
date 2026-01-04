@@ -1,6 +1,4 @@
-Here is the transcription of the video:
-
-**Speaker:** The End of Cloud Inference? Maybe.
+The End of Cloud Inference? Maybe.
 
 People just remember, just remember that when people around T-Pot, AI Twitter, days or weeks from now, talk about how cool the Foundation Models API is from Apple, that you heard it here first, okay?
 
