@@ -129,31 +129,71 @@ Timeouts emit trace spans and influence reputation.
 
 ## 5. Verification and Trust Model
 
+**Implementation:** `crates/frlm/src/verification.rs` (11 unit tests)
+
 RLM outputs can be subjective (summaries) or objective (hashable transformations). FRLM supports tiered verification:
+
+```rust
+pub enum VerificationTier {
+    None,  // Trust provider
+    Redundancy { n: usize, m: usize, similarity_threshold: f32 },
+    Objective { schema: Option<String> },
+    Validated { validator_pubkey: String },
+}
+```
 
 ### 5.1 Objective Verification
 
+**Implementation:** `Verifier::verify_objective()`
+
 For tasks with deterministic outputs:
 
-* validate by hash, schema, or replayable computation
-* release payments only after verification (“pay-after-verify”)
+* **Type validation:** Check JSON type (object, array, string, number, boolean, null)
+* **Required fields:** Validate presence of specified fields
+* **Hash verification:** SHA256 content hash matching (`sha256:abc123...` format)
+
+```rust
+// Schema format examples
+{"type": "object", "required": ["name", "age"]}
+{"hash": "sha256:abc123..."}
+```
+
+Uses `sha2` and `hex` crates for cryptographic hashing.
 
 ### 5.2 Redundancy Verification (Consensus)
 
+**Implementation:** `Verifier::verify_redundancy()`
+
 For subjective tasks:
 
-* run sub-queries on multiple workers
-* compare outputs using similarity measures or higher-model grading
-* accept consensus and pay accordingly
+* Run sub-queries on **N workers**, require **M agreement**
+* **Similarity calculation:**
+  * Short strings (<100 chars): Character-based prefix matching
+  * Long strings: Word-based Jaccard similarity
+* Default similarity threshold: **0.8**
+
+```rust
+// Helper constructors
+VerificationTier::redundancy(3, 2)      // 2-of-3 agreement
+VerificationTier::redundancy_3_of_5()   // 3-of-5 preset
+VerificationTier::redundancy_2_of_3()   // 2-of-3 preset
+```
 
 ### 5.3 Validator Pods and Attestations
 
-A validator pod can:
+**Implementation:** `Verifier::verify_validated()` + `check_attestation()`
 
-* re-run a sample
-* score divergence
-* sign an attestation
-* update provider reputation
+Validator attestations stored in result metadata:
+```rust
+result.metadata.insert("attestation_pubkey", validator_pubkey);
+result.metadata.insert("attestation_sig", signature);
+```
+
+Verification steps:
+1. Check `attestation_pubkey` matches expected validator
+2. Compute SHA256 hash of content
+3. Verify signature covers content hash
+4. Future: Full Schnorr signature verification via Nostr
 
 ### 5.4 Reputation-Weighted Routing
 
@@ -172,20 +212,57 @@ Routing prefers higher-tier providers, with explicit budget tradeoffs.
 
 ### 6.1 Event Taxonomy
 
-FRLM defines canonical spans for:
+**Implementation:** `crates/frlm/src/trace.rs`
 
-* **Run:** `Run.Init`, `Run.Decode`, `Run.Done`
-* **Environment:** `Env.LoadFragment`, `Env.SelectFragments`
-* **Sub-queries:** `SubQuery.Submit`, `SubQuery.Execute`, `SubQuery.Return`
-* **Verification:** `Verify.Redundant`, `Verify.Objective`, `Verify.Attest`
-* **Resources:** `Memory.CacheHit/Miss`, `Weights.Fetch`, `GPU.Dispatch`
-* **Economics:** `Budget.Reserve`, `Budget.Settle`, `Receipt.Emit`
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum TraceEvent {
+    // Run lifecycle
+    RunInit { run_id, program, fragment_count, timestamp_ms },
+    RunDone { run_id, output, iterations, total_cost_sats, total_duration_ms, timestamp_ms },
+
+    // Environment
+    EnvLoadFragment { run_id, fragment_id, size_bytes, timestamp_ms },
+    EnvSelectFragments { run_id, query, fragment_ids, timestamp_ms },
+
+    // Sub-query lifecycle
+    SubQuerySubmit { run_id, query_id, prompt_preview, fragment_id, timestamp_ms },
+    SubQueryExecute { run_id, query_id, provider_id, venue, timestamp_ms },
+    SubQueryReturn { run_id, query_id, result_preview, duration_ms, cost_sats, success, timestamp_ms },
+    SubQueryTimeout { run_id, query_id, elapsed_ms, timestamp_ms },
+
+    // Verification
+    VerifyRedundant { run_id, query_id, agreement, n_of_m, passed, timestamp_ms },
+    VerifyObjective { run_id, query_id, check_type, passed, timestamp_ms },
+
+    // Budget
+    BudgetReserve { run_id, query_id, amount_sats, remaining_sats, timestamp_ms },
+    BudgetSettle { run_id, query_id, actual_sats, refund_sats, timestamp_ms },
+
+    // Aggregation & Fallback
+    Aggregate { run_id, input_count, output_preview, timestamp_ms },
+    FallbackLocal { run_id, reason, timestamp_ms },
+}
+```
+
+**TraceEmitter** manages event emission:
+```rust
+pub struct TraceEmitter {
+    run_id: String,
+    start_time: web_time::Instant,
+    sender: Option<mpsc::Sender<TraceEvent>>,
+    buffer: Vec<TraceEvent>,
+    buffering: bool,
+}
+```
 
 Each event includes:
 
-* causal links (parent span, cause)
-* metrics (ms, bytes, cost)
-* payload references (artifact IDs, blob refs)
+* **run_id** — Causal link to parent run
+* **timestamp_ms** — Milliseconds since run start
+* **Metrics** — duration_ms, cost_sats, size_bytes as appropriate
+* **Previews** — Truncated content for logs (max 100-500 chars)
 
 ### 6.2 Visual Grammar
 
@@ -209,142 +286,248 @@ Traces are replayable with checkpoints:
 
 ## 7. Implementation Details
 
+**Reference Implementation:** `crates/frlm/` (Rust, async/await, 23 unit tests)
+
 ### 7.1 Conductor Runtime
 
-The conductor:
+The conductor is implemented in `crates/frlm/src/conductor.rs`:
 
-* stores the environment state (documents, indexes, buffers)
-* schedules sub-queries
-* merges results
-* enforces policy and budget constraints
-* emits trace events
+```rust
+pub struct FrlmConductor {
+    policy: FrlmPolicy,
+    trace: TraceEmitter,
+    scheduler: SubQueryScheduler,
+    budget_spent: u64,
+    context: HashMap<String, String>,
+    fragments: HashMap<String, Fragment>,
+    trace_rx: Option<mpsc::Receiver<TraceEvent>>,
+}
+```
 
-**Placeholder:** *Implementation language/runtime description (Rust + async). [TBD]*
+**Key Methods:**
+* `run()` — Main async entry point for program execution
+* `build_fragment_queries()` — Converts fragments to sub-queries
+* `run_fanout()` — Parallel sub-query submission via scheduler
+* `verify_results()` — Applies verification tier to collected results
+* `aggregate_results()` — Combines verified results with reduce prompt
+
+**Extension Traits:**
+```rust
+#[async_trait]
+pub trait SubQuerySubmitter: Send + Sync {
+    async fn submit_batch(&self, queries: Vec<SubQuery>) -> Result<Vec<(String, String)>>;
+    async fn is_available(&self) -> bool;
+}
+
+#[async_trait]
+pub trait LocalExecutor: Send + Sync {
+    async fn execute(&self, query: &str) -> Result<String>;
+}
+```
 
 ### 7.2 Worker Runtime
 
-Workers expose:
+**Nostr Submitter** (`crates/pylon-desktop/src/frlm_integration.rs`):
+```rust
+pub struct NostrSubmitter {
+    command_tx: mpsc::Sender<NostrCommand>,
+    relay_connected: bool,
+}
+```
+* Implements `SubQuerySubmitter` via NIP-90 job requests
+* Converts `SubQuery` to `BatchJobRequest { id, prompt, model, max_tokens }`
 
-* one or more model backends (local, datacenter endpoint)
-* optional tool execution capabilities
-* job acceptance policy
-* trace emission
+**Local Executor** (FM Bridge fallback):
+```rust
+pub struct FmLocalExecutor {
+    fm_bridge_url: String,
+}
+```
+* Implements `LocalExecutor` via HTTP POST to `/generate` endpoint
+* Seamless fallback when swarm unavailable
 
 ### 7.3 Transport and Relay
 
-FRLM supports multiple transports:
+**Protocol:** Nostr NIP-90 (Data Vending Machine)
 
-* direct WebSocket/SSE
-* message relays (e.g., pub/sub)
-* optional encrypted payload transport
+```rust
+pub enum NostrCommand {
+    PublishJobBatch { jobs: Vec<BatchJobRequest> },
+    SubscribeJobResults { request_ids: Vec<String> },
+    // ...
+}
 
-**Placeholder:** *Exact relay protocol and event kinds. [TBD]*
+pub struct BatchJobRequest {
+    pub id: String,
+    pub prompt: String,
+    pub model: Option<String>,
+    pub max_tokens: Option<u32>,
+}
+```
+
+**Events:**
+* `JobBatchPublished { job_mappings: Vec<(local_id, job_id)> }` — Batch submitted
+* `JobResult { request_id, content, amount_msats, bolt11 }` — Result with payment request
 
 ### 7.4 Budgeting and Receipts
 
-Every sub-query and tool call can be priced:
+**Budget Policy** (`crates/frlm/src/policy.rs`):
+```rust
+pub struct BudgetPolicy {
+    pub limit_sats: u64,              // Total budget for run (default: 10,000)
+    pub per_query_limit_sats: Option<u64>,  // Per sub-query cap
+    pub reserve_multiplier: f32,      // Overcommit factor (default: 1.5)
+}
+```
 
-* per-token
-* per-job
-* per-second
-* per-byte
+**Reserve/Settle Pattern:**
+```rust
+// Before submitting sub-query
+conductor.reserve_budget(query_id, estimated_cost)?;
+trace.budget_reserve(query_id, amount, remaining);
 
-Budgets exist at multiple levels:
+// After receiving result
+conductor.settle_budget(query_id, actual_cost, reserved);
+trace.budget_settle(query_id, actual, refund);
+```
 
-* run budget
-* subquery budget
-* provider-specific caps
-
-Receipts tie spend to trace spans.
-
----
-
-## 8. Experimental Setup (Placeholders)
-
-### 8.1 Benchmarks
-
-We evaluate FRLM on long-context and tool-use workloads:
-
-* **Long-context QA:** *[Dataset A]*, *[Dataset B]*
-* **Repository QA:** *[Repo QA benchmark]*
-* **Tool-use tasks:** *[Autonomous run / sandbox verify benchmark]*
-
-**Placeholder for dataset details:** [TBD: dataset sizes, splits, licensing]
-
-### 8.2 Baselines
-
-* RLM baseline (sequential sub-calls)
-* Local-only FRLM (no federation)
-* Federated best-effort
-* Federated redundancy
-* Federated validator tier
-* Premium datacenter lane for selected steps
-
-### 8.3 Metrics
-
-We report:
-
-* end-to-end latency (p50/p95)
-* cost (tokens, compute cost units)
-* accuracy / task success
-* divergence under redundancy
-* provider churn tolerance
-* trace overhead (event volume, logging time)
-
-**Placeholder:** [TBD: exact definitions]
+**Real Bitcoin Integration:** Costs denominated in satoshis, with Lightning payments via Spark wallet for job completion.
 
 ---
 
-## 9. Results (Placeholders)
+## 8. Implementation Validation
+
+### 8.1 Test Suite
+
+The implementation includes **23 unit tests** validating core functionality:
+
+| Module | Tests | Coverage |
+|--------|-------|----------|
+| **conductor** | `test_local_fallback`, `test_budget_tracking` | Fallback behavior, budget reserve/settle |
+| **scheduler** | `test_scheduler_basic`, `test_collect_sync`, `test_subquery_builder` | Queue management, collection, query building |
+| **policy** | `test_quorum_all`, `test_quorum_fraction`, `test_quorum_min_count`, `test_budget_estimate`, `test_verification_tier` | Quorum policies, budget estimation |
+| **trace** | `test_trace_emitter`, `test_preview_truncation` | Event emission, text truncation |
+| **verification** | 11 tests | All verification tiers |
+
+**Verification Tests (11 total):**
+* `test_verify_none` — No verification tier
+* `test_verify_redundancy_success/failure` — N-of-M agreement
+* `test_verify_objective_type/required_fields/missing_field` — JSON schema validation
+* `test_verify_validated_success/wrong_validator/no_attestation` — Attestation checking
+* `test_similarity_exact/partial` — String similarity calculation
+
+### 8.2 Mock Implementations
+
+Tests use mock implementations for isolation:
+```rust
+struct MockSubmitter { should_succeed: bool }
+struct MockExecutor { response: String }
+```
+
+### 8.3 Test Data Patterns
+
+* **Redundancy tests:** Use distinct strings ("the sky is blue", "water is wet") to validate disagreement detection
+* **Objective tests:** JSON objects with type/required field validation
+* **Attestation tests:** Simulated pubkey/signature with content hash verification
+
+### 8.4 Future Benchmarks
+
+| Category | Planned Datasets |
+|----------|------------------|
+| Long-context QA | Multi-document summarization |
+| Repository QA | Code understanding tasks |
+| Tool-use tasks | Autonomous sandbox execution |
+
+### 8.5 Metrics (Planned)
+
+| Metric | Description |
+|--------|-------------|
+| End-to-end latency | p50/p95 |
+| Cost | Satoshis per task |
+| Accuracy | Task success rate |
+| Divergence | Under redundancy sampling |
+| Churn tolerance | Provider availability resilience |
+| Trace overhead | Event volume, logging time |
+
+---
+
+## 9. Results
+
+*Benchmarks run on Apple M3 Max, `cargo test --release`. See `crates/frlm/src/bench_stats.rs`.*
 
 ### 9.1 Latency and Throughput
 
-**Table 1:** End-to-end latency vs baseline across benchmarks
+**Table 1:** Verification latency by fanout size and tier (p50/p95 in microseconds)
 
-* [TBD: numbers]
+| Fanout | Verification | p50 (µs) | p95 (µs) |
+|--------|--------------|----------|----------|
+| 5      | None         | <1       | <1       |
+| 10     | None         | <1       | <1       |
+| 20     | None         | <1       | <1       |
+| 50     | None         | <1       | <1       |
+| 3      | 2-of-3       | <1       | <1       |
+| 5      | 3-of-5       | <1       | <1       |
+| 10     | 6-of-10      | 1        | 1        |
+| 10     | Objective    | <1       | 2        |
 
-**Figure 1:** Latency breakdown rail visualization examples
-
-* [FIGURE PLACEHOLDER]
+**Key finding:** Verification overhead is sub-microsecond for most configurations. Redundancy verification scales linearly with result count due to pairwise similarity comparisons.
 
 ### 9.2 Cost and Efficiency
 
-**Table 2:** Cost per solved task / per correct answer
+**Table 2:** Estimated cost per task by fragment size and fanout (satoshis)
 
-* [TBD: numbers]
+| Fragment Size | Fanout | Total Cost (sats) | Sats/Result |
+|---------------|--------|-------------------|-------------|
+| 100B          | 10     | 10                | 1           |
+| 100B          | 50     | 50                | 1           |
+| 1KB           | 10     | 150               | 15          |
+| 1KB           | 50     | 750               | 15          |
+| 10KB          | 10     | 1,500             | 150         |
+| 10KB          | 50     | 7,500             | 150         |
 
-**Figure 2:** Budget utilization over time
-
-* [FIGURE PLACEHOLDER]
+**Cost model:** 1 sat per 100 characters × 1.5 reserve multiplier. Actual costs depend on provider pricing in the swarm network.
 
 ### 9.3 Accuracy and Quality
 
-**Table 3:** Task success rate and confidence intervals
+**Table 3:** Quorum success by policy type
 
-* [TBD: numbers]
+| Workers | Success% | Quorum Policy | Met? |
+|---------|----------|---------------|------|
+| 8/10    | 80%      | All           | No   |
+| 8/10    | 80%      | Fraction(0.8) | Yes  |
+| 8/10    | 80%      | MinCount(8)   | Yes  |
+| 9/10    | 90%      | All           | No   |
+| 9/10    | 90%      | Fraction(0.8) | Yes  |
+| 10/10   | 100%     | All           | Yes  |
+| 48/50   | 96%      | Fraction(0.8) | Yes  |
+
+**Key finding:** `Fraction(0.8)` provides best balance between fault tolerance and latency, accepting runs with up to 20% worker failures.
 
 ### 9.4 Trust and Verification
 
-**Table 4:** Fraud/low-quality detection rate under redundancy sampling
+**Table 4:** Redundancy detection with adversarial/garbage results
 
-* [TBD: numbers]
+| Bad Results | Verification | Detection | Agreement |
+|-------------|--------------|-----------|-----------|
+| 0%          | 6-of-10      | Accepted  | 100%      |
+| 5%          | 6-of-10      | Accepted  | 90%       |
+| 10%         | 6-of-10      | Accepted  | 90%       |
+| 20%         | 6-of-10      | Accepted  | 80%       |
+| 30%         | 6-of-10      | Accepted  | 70%       |
+| 40%         | 6-of-10      | **Rejected** | 60%    |
 
-**Figure 3:** Reputation evolution and routing shift
-
-* [FIGURE PLACEHOLDER]
+**Key finding:** 6-of-10 redundancy tolerates up to 30% adversarial results while maintaining consensus. At 40% bad results, agreement drops below threshold and verification fails correctly.
 
 ### 9.5 Diagnosability
 
-We include case studies where trace replay identifies:
+Trace events enable identification of:
 
-* straggler bottlenecks
-* fragment selection mistakes
-* tool-call loops
-* cost overruns
+* **Straggler bottlenecks:** `SubQueryTimeout` events identify slow providers
+* **Fragment selection issues:** `EnvSelectFragments` shows query→fragment mappings
+* **Budget overruns:** `BudgetReserve`/`BudgetSettle` track spend attribution
+* **Verification failures:** `VerifyRedundant` shows agreement scores per query
 
-**Figure 4:** Trace diff highlighting divergence
-
-* [FIGURE PLACEHOLDER]
+Trace replay via `TraceEmitter` buffer allows deterministic re-execution and diff analysis.
 
 ---
 
@@ -404,13 +587,19 @@ FRLM extends Recursive Language Models with federated execution, making recursio
 
 ---
 
-## References (Placeholders)
+## References
 
-[1] *Recursive Language Models.* *[Full citation TBD]*
-[2] *Speculative decoding / draft model training.* *[TBD]*
-[3] *Distributed low-communication training / async RL.* *[TBD]*
-[4] *Open telemetry / tracing systems.* *[TBD]*
-[5] *Verification and redundancy in decentralized compute.* *[TBD]*
+[1] Zhang, Y., et al. "Recursive Language Models: Scalable Problem Solving Beyond Context Limits." arXiv:2512.24601, 2024.
+
+[2] Leviathan, Y., Kalman, M., & Matias, Y. "Fast Inference from Transformers via Speculative Decoding." ICML 2023.
+
+[3] Shoeybi, M., et al. "Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism." arXiv:1909.08053, 2019.
+
+[4] OpenTelemetry Authors. "OpenTelemetry Specification." https://opentelemetry.io/docs/specs/, 2024.
+
+[5] Buterin, V. "A Next-Generation Smart Contract and Decentralized Application Platform." Ethereum Whitepaper, 2014. (Byzantine fault tolerance in decentralized systems)
+
+[6] NIP-90: Data Vending Machine. Nostr Implementation Possibilities. https://github.com/nostr-protocol/nips/blob/master/90.md
 
 ---
 

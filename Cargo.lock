@@ -4120,9 +4120,11 @@ name = "frlm"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "criterion 0.5.1",
  "fm-bridge",
  "hex",
  "nostr 0.1.0",
+ "rand 0.8.5",
  "rlm",
  "serde",
  "serde_json",
