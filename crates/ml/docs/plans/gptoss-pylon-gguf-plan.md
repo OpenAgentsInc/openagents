@@ -102,3 +102,4 @@ Tests:
 - 2026-01-03: Added `GptOssGgufBackend` in `ml` (env-driven) and registered it from `pylon` to avoid compute↔ml cycles.
 - 2026-01-03: Added Pylon feature flag + configuration docs for GGUF.
 - 2026-01-03: `cargo check -p pylon --features gpt-oss-gguf` passed (only existing tokenizer dead-code warnings).
+- 2026-01-03: Surfaced GPT-OSS GGUF in `pylon doctor` + `pylon compute` for easier verification.
