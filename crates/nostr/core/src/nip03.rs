@@ -45,6 +45,7 @@
 //! # let event = finalize_event(&template, &sk).unwrap();
 //! ```
 
+#[cfg(feature = "full")]
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use thiserror::Error;
 
@@ -223,6 +224,7 @@ pub fn get_target_relay_url(tags: &[Vec<String>]) -> Result<Option<String>, Nip0
 /// let decoded = decode_ots_content(&base64).unwrap();
 /// assert_eq!(decoded, ots_data);
 /// ```
+#[cfg(feature = "full")]
 pub fn decode_ots_content(content: &str) -> Result<Vec<u8>, Nip03Error> {
     if content.is_empty() {
         return Err(Nip03Error::EmptyContent);
@@ -245,6 +247,7 @@ pub fn decode_ots_content(content: &str) -> Result<Vec<u8>, Nip03Error> {
 ///
 /// assert!(base64.len() > 0);
 /// ```
+#[cfg(feature = "full")]
 pub fn encode_ots_content(ots_data: &[u8]) -> String {
     BASE64.encode(ots_data)
 }
@@ -278,6 +281,7 @@ pub fn encode_ots_content(ots_data: &[u8]) -> String {
 /// assert_eq!(attestation.target_event_id, "event123");
 /// assert_eq!(attestation.target_event_kind, 1);
 /// ```
+#[cfg(feature = "full")]
 pub fn parse_attestation(
     kind: u16,
     tags: &[Vec<String>],
