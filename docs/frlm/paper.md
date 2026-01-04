@@ -9,7 +9,7 @@
 
 ## Abstract
 
-Recursive Language Models (RLMs) demonstrate that a language model can solve tasks far beyond its context window by delegating computation to an external execution environment and issuing recursive sub-queries over selected fragments of the input. While effective, existing RLM implementations are largely sequential, tightly coupling wall-clock latency to the number of sub-calls and limiting scalability under realistic cost and throughput constraints. We present **Federated Recursive Language Models (FedRLM)**, a distributed extension of the RLM paradigm that executes recursive sub-queries across a heterogeneous network of edge devices and datacenter pods, while preserving a single coherent execution trace and budget policy. FedRLM introduces (i) **trace-native orchestration**, which models each sub-query as a first-class span with causal links, resource accounting, and replayability; (ii) **verification tiers** that combine redundancy sampling, objective validators, and reputation-weighted routing to tolerate untrusted contributors; and (iii) **compute mobility**, allowing identical recursive programs to execute locally, on edge swarms, or on premium datacenter backends without changing semantics. Empirically, we show that FedRLM reduces end-to-end latency for long-context workloads via asynchronous fanout, improves cost-efficiency through market-based routing of sub-queries to underutilized capacity, and enables reproducible evaluation through replayable visual traces that expose bottlenecks in retrieval, sub-call scheduling, and aggregation. Our results suggest that distributed, trace-native recursion is a practical and scalable primitive for inference-time computation on web-scale inputs, and provides a foundation for auditable, budget-bounded agent systems that operate beyond fixed context limits.
+Recursive Language Models (RLMs) demonstrate that a language model can solve tasks far beyond its context window by delegating computation to an external execution environment and issuing recursive sub-queries over selected fragments of the input. While effective, existing RLM implementations are largely sequential, tightly coupling wall-clock latency to the number of sub-calls and limiting scalability under realistic cost and throughput constraints. We present **Federated Recursive Language Models (FRLM)**, a distributed extension of the RLM paradigm that executes recursive sub-queries across a heterogeneous network of edge devices and datacenter pods, while preserving a single coherent execution trace and budget policy. FRLM introduces (i) **trace-native orchestration**, which models each sub-query as a first-class span with causal links, resource accounting, and replayability; (ii) **verification tiers** that combine redundancy sampling, objective validators, and reputation-weighted routing to tolerate untrusted contributors; and (iii) **compute mobility**, allowing identical recursive programs to execute locally, on edge swarms, or on premium datacenter backends without changing semantics. Empirically, we show that FRLM reduces end-to-end latency for long-context workloads via asynchronous fanout, improves cost-efficiency through market-based routing of sub-queries to underutilized capacity, and enables reproducible evaluation through replayable visual traces that expose bottlenecks in retrieval, sub-call scheduling, and aggregation. Our results suggest that distributed, trace-native recursion is a practical and scalable primitive for inference-time computation on web-scale inputs, and provides a foundation for auditable, budget-bounded agent systems that operate beyond fixed context limits.
 
 ---
 
@@ -24,13 +24,13 @@ Despite their effectiveness, current RLM implementations exhibit two structural 
 
 At the same time, the world is accumulating a vast pool of **heterogeneous, intermittently available compute** (edge devices, prosumer hardware, microclusters) alongside specialized high-throughput datacenter infrastructure. This heterogeneity is poorly matched to monolithic inference patterns but is naturally suited to **parallelizable, asynchronous** workloads.
 
-This paper proposes **Federated Recursive Language Models (FedRLM)**: a system and methodology for executing RLM-style recursion across a federated compute network, while preserving deterministic orchestration semantics, verifiability, and replayable observability.
+This paper proposes **Federated Recursive Language Models (FRLM)**: a system and methodology for executing RLM-style recursion across a federated compute network, while preserving deterministic orchestration semantics, verifiability, and replayable observability.
 
 ### Contributions
 
 We make four contributions:
 
-* **FedRLM Orchestration:** A distributed execution model for RLM recursion, supporting asynchronous fanout and compute mobility across local, edge swarm, and datacenter pods.
+* **FRLM Orchestration:** A distributed execution model for RLM recursion, supporting asynchronous fanout and compute mobility across local, edge swarm, and datacenter pods.
 * **Trace-Native Runtime:** A standardized event taxonomy (“visual trace”) that turns recursive execution into a replayable, auditable artifact—spanning model calls, tool calls, external I/O, budgets, and verification.
 * **Federated Verification Tiers:** A practical trust model for untrusted contributors combining redundancy, objective validators, reputation-weighted routing, and optional bonded execution lanes.
 * **Experimental Evaluation:** A reproducible evaluation protocol and results on long-context and tool-use tasks (with placeholders for final measurements), highlighting latency/cost improvements and diagnosability benefits.
@@ -52,13 +52,13 @@ RLM recursion is naturally decomposable: each `llm_query(fragment)` call is larg
 * **Cost governance:** Distributed work needs budgeting and receipts.
 * **Reproducibility:** A distributed run must be replayable and attributable.
 
-FedRLM is designed to address these problems at the system level rather than treating them as “application details.”
+FRLM is designed to address these problems at the system level rather than treating them as “application details.”
 
 ---
 
 ## 3. System Overview
 
-FedRLM separates a recursive run into three roles:
+FRLM separates a recursive run into three roles:
 
 1. **Conductor (Root Orchestrator):** Maintains the external environment, schedules sub-queries, aggregates results, and enforces budgets and policies.
 2. **Workers (Federated Sub-Query Executors):** Execute `llm_query` calls on fragments and return structured outputs.
@@ -66,7 +66,7 @@ FedRLM separates a recursive run into three roles:
 
 ### 3.1 Compute Mobility
 
-FedRLM treats compute location as a routing decision, not a change in algorithm:
+FRLM treats compute location as a routing decision, not a change in algorithm:
 
 * **Local execution:** Same-machine execution (developer workstation, personal device).
 * **Edge swarm:** A network of voluntary/provisioned nodes (e.g., Apple-silicon laptops/desktops).
@@ -85,11 +85,11 @@ Every step emits structured events in a standardized schema (spans with causal l
 
 ---
 
-## 4. FedRLM Execution Model
+## 4. FRLM Execution Model
 
 ### 4.1 Recursive Program Semantics
 
-FedRLM assumes the recursive controller program is deterministic given:
+FRLM assumes the recursive controller program is deterministic given:
 
 * initial inputs (documents/repo snapshots)
 * random seeds for sampling
@@ -106,7 +106,7 @@ The conductor executes the program in an environment that exposes functions such
 
 ### 4.2 Asynchronous Fanout
 
-FedRLM generalizes `llm_query` to a batch/futures API:
+FRLM generalizes `llm_query` to a batch/futures API:
 
 * Submit a set of sub-queries concurrently.
 * Wait for quorum or best-effort completion depending on tier.
@@ -117,7 +117,7 @@ FedRLM generalizes `llm_query` to a batch/futures API:
 
 ### 4.3 Straggler and Timeout Policy
 
-FedRLM uses a policy-controlled approach:
+FRLM uses a policy-controlled approach:
 
 * **Best-effort tier:** proceed once a minimum fraction of tasks returns.
 * **Redundant tier:** require N-of-M agreement.
@@ -129,7 +129,7 @@ Timeouts emit trace spans and influence reputation.
 
 ## 5. Verification and Trust Model
 
-RLM outputs can be subjective (summaries) or objective (hashable transformations). FedRLM supports tiered verification:
+RLM outputs can be subjective (summaries) or objective (hashable transformations). FRLM supports tiered verification:
 
 ### 5.1 Objective Verification
 
@@ -172,7 +172,7 @@ Routing prefers higher-tier providers, with explicit budget tradeoffs.
 
 ### 6.1 Event Taxonomy
 
-FedRLM defines canonical spans for:
+FRLM defines canonical spans for:
 
 * **Run:** `Run.Init`, `Run.Decode`, `Run.Done`
 * **Environment:** `Env.LoadFragment`, `Env.SelectFragments`
@@ -189,7 +189,7 @@ Each event includes:
 
 ### 6.2 Visual Grammar
 
-FedRLM’s visualization uses five primitives:
+FRLM’s visualization uses five primitives:
 
 * **Fill:** budgets, cache occupancy, progress
 * **Pulse:** token emissions, dispatch, completion
@@ -232,7 +232,7 @@ Workers expose:
 
 ### 7.3 Transport and Relay
 
-FedRLM supports multiple transports:
+FRLM supports multiple transports:
 
 * direct WebSocket/SSE
 * message relays (e.g., pub/sub)
@@ -263,7 +263,7 @@ Receipts tie spend to trace spans.
 
 ### 8.1 Benchmarks
 
-We evaluate FedRLM on long-context and tool-use workloads:
+We evaluate FRLM on long-context and tool-use workloads:
 
 * **Long-context QA:** *[Dataset A]*, *[Dataset B]*
 * **Repository QA:** *[Repo QA benchmark]*
@@ -274,7 +274,7 @@ We evaluate FedRLM on long-context and tool-use workloads:
 ### 8.2 Baselines
 
 * RLM baseline (sequential sub-calls)
-* Local-only FedRLM (no federation)
+* Local-only FRLM (no federation)
 * Federated best-effort
 * Federated redundancy
 * Federated validator tier
@@ -350,9 +350,9 @@ We include case studies where trace replay identifies:
 
 ## 10. Discussion
 
-### 10.1 When FedRLM Helps Most
+### 10.1 When FRLM Helps Most
 
-FedRLM yields the largest gains when:
+FRLM yields the largest gains when:
 
 * the task decomposes into many independent sub-queries
 * fragments are large relative to the base model window
@@ -362,7 +362,7 @@ FedRLM yields the largest gains when:
 
 ### 10.2 Limits of Federation
 
-FedRLM’s benefits decrease when:
+FRLM’s benefits decrease when:
 
 * the task requires tight sequential dependence
 * sub-queries are too small (overhead dominates)
@@ -400,7 +400,7 @@ RLM-style recursion and tool-using agents converge:
 
 ## 12. Conclusion
 
-FedRLM extends Recursive Language Models with federated execution, making recursion practical at web scale by leveraging heterogeneous idle compute and datacenter pods. By making orchestration trace-native and verification tiered, FedRLM enables auditable, budget-bounded, replayable long-context problem solving. This work suggests that distributed recursion can serve as a general inference-time scaling primitive and a foundation for operable agent systems beyond fixed context windows.
+FRLM extends Recursive Language Models with federated execution, making recursion practical at web scale by leveraging heterogeneous idle compute and datacenter pods. By making orchestration trace-native and verification tiered, FRLM enables auditable, budget-bounded, replayable long-context problem solving. This work suggests that distributed recursion can serve as a general inference-time scaling primitive and a foundation for operable agent systems beyond fixed context windows.
 
 ---
 
@@ -414,10 +414,10 @@ FedRLM extends Recursive Language Models with federated execution, making recurs
 
 ---
 
-## Appendix A: FedRLM Pseudocode (Optional)
+## Appendix A: FRLM Pseudocode (Optional)
 
 ```text
-function FedRLM_Run(program, env, policy, budget):
+function FRLM_Run(program, env, policy, budget):
     trace.start("Run.Init")
     state = env.init()
     while program.has_next(state):
