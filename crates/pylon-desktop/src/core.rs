@@ -128,8 +128,9 @@ impl PylonCore {
                     self.state.nostr_status = NostrConnectionStatus::Error;
                     self.state.error_message = Some(error);
                 }
-                NostrEvent::AuthChallenge(_) => {
-                    // Runtime handles auth internally
+                NostrEvent::AuthChallenge(challenge) => {
+                    // Respond to NIP-42 auth challenge
+                    self.nostr_runtime.authenticate(&challenge);
                 }
                 NostrEvent::JobRequest { id, pubkey, prompt, created_at } => {
                     let job = Job {

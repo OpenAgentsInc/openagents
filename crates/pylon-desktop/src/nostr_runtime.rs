@@ -152,6 +152,13 @@ impl NostrRuntime {
             name: name.to_string(),
         });
     }
+
+    /// Respond to NIP-42 auth challenge
+    pub fn authenticate(&self, challenge: &str) {
+        let _ = self.cmd_tx.try_send(NostrCommand::Authenticate {
+            challenge: challenge.to_string(),
+        });
+    }
 }
 
 impl Default for NostrRuntime {
@@ -177,54 +184,64 @@ async fn run_nostr_loop(
     let mut relay: Option<RelayConnection> = None;
     let mut relay_url_str = String::new();
 
-    // Process commands
-    while let Some(cmd) = cmd_rx.recv().await {
-        match cmd {
-            NostrCommand::Connect { relay_url } => {
-                relay_url_str = relay_url.clone();
-                handle_connect(&mut relay, &event_tx, &relay_url).await;
-            }
-            NostrCommand::Authenticate { challenge } => {
-                if let Some(ref relay_conn) = relay {
-                    handle_authenticate(relay_conn, &event_tx, &secret_key, &challenge, &relay_url_str).await;
+    loop {
+        // Use select to handle both commands and incoming messages
+        tokio::select! {
+            // Check for incoming commands
+            cmd = cmd_rx.recv() => {
+                match cmd {
+                    Some(NostrCommand::Connect { relay_url }) => {
+                        relay_url_str = relay_url.clone();
+                        handle_connect(&mut relay, &event_tx, &relay_url).await;
+                    }
+                    Some(NostrCommand::Authenticate { challenge }) => {
+                        if let Some(ref relay_conn) = relay {
+                            handle_authenticate(relay_conn, &event_tx, &secret_key, &challenge, &relay_url_str).await;
+                        }
+                    }
+                    Some(NostrCommand::SubscribeJobs) => {
+                        if let Some(ref relay_conn) = relay {
+                            handle_subscribe_jobs(relay_conn).await;
+                        }
+                    }
+                    Some(NostrCommand::SubscribeChat { channel_id }) => {
+                        if let Some(ref relay_conn) = relay {
+                            handle_subscribe_chat(relay_conn, &channel_id).await;
+                        }
+                    }
+                    Some(NostrCommand::PublishJobRequest { prompt }) => {
+                        if let Some(ref relay_conn) = relay {
+                            handle_publish_job_request(relay_conn, &event_tx, &secret_key, &prompt).await;
+                        }
+                    }
+                    Some(NostrCommand::PublishJobResult { request_id, request_pubkey, content }) => {
+                        if let Some(ref relay_conn) = relay {
+                            handle_publish_job_result(relay_conn, &event_tx, &secret_key, &request_id, &request_pubkey, &content).await;
+                        }
+                    }
+                    Some(NostrCommand::PublishChatMessage { channel_id, content }) => {
+                        if let Some(ref relay_conn) = relay {
+                            handle_publish_chat_message(relay_conn, &event_tx, &secret_key, &channel_id, &content).await;
+                        }
+                    }
+                    Some(NostrCommand::CreateOrFindChannel { name }) => {
+                        if let Some(ref relay_conn) = relay {
+                            handle_create_or_find_channel(relay_conn, &event_tx, &secret_key, &name).await;
+                        }
+                    }
+                    None => {
+                        // Command channel closed, exit loop
+                        break;
+                    }
                 }
             }
-            NostrCommand::SubscribeJobs => {
+            // Poll for incoming relay messages every 50ms
+            _ = tokio::time::sleep(Duration::from_millis(50)) => {
                 if let Some(ref relay_conn) = relay {
-                    handle_subscribe_jobs(relay_conn).await;
+                    if relay_conn.is_connected().await {
+                        poll_relay_messages(relay_conn, &event_tx).await;
+                    }
                 }
-            }
-            NostrCommand::SubscribeChat { channel_id } => {
-                if let Some(ref relay_conn) = relay {
-                    handle_subscribe_chat(relay_conn, &channel_id).await;
-                }
-            }
-            NostrCommand::PublishJobRequest { prompt } => {
-                if let Some(ref relay_conn) = relay {
-                    handle_publish_job_request(relay_conn, &event_tx, &secret_key, &prompt).await;
-                }
-            }
-            NostrCommand::PublishJobResult { request_id, request_pubkey, content } => {
-                if let Some(ref relay_conn) = relay {
-                    handle_publish_job_result(relay_conn, &event_tx, &secret_key, &request_id, &request_pubkey, &content).await;
-                }
-            }
-            NostrCommand::PublishChatMessage { channel_id, content } => {
-                if let Some(ref relay_conn) = relay {
-                    handle_publish_chat_message(relay_conn, &event_tx, &secret_key, &channel_id, &content).await;
-                }
-            }
-            NostrCommand::CreateOrFindChannel { name } => {
-                if let Some(ref relay_conn) = relay {
-                    handle_create_or_find_channel(relay_conn, &event_tx, &secret_key, &name).await;
-                }
-            }
-        }
-
-        // Poll for incoming messages if connected
-        if let Some(ref relay_conn) = relay {
-            if relay_conn.is_connected().await {
-                poll_relay_messages(relay_conn, &event_tx).await;
             }
         }
     }
@@ -506,8 +523,11 @@ async fn poll_relay_messages(
     relay: &RelayConnection,
     event_tx: &mpsc::Sender<NostrEvent>,
 ) {
-    // Non-blocking poll for messages
-    while let Ok(Some(msg)) = relay.recv().await {
+    // Poll with timeout to avoid blocking
+    while let Ok(Ok(Some(msg))) = tokio::time::timeout(
+        Duration::from_millis(10),
+        relay.recv()
+    ).await {
         match msg {
             RelayMessage::Auth(challenge) => {
                 let _ = event_tx.send(NostrEvent::AuthChallenge(challenge)).await;
