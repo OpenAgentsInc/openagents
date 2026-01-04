@@ -69,6 +69,7 @@ pub struct PendingRequest {
 
 /// A pending invoice we created for a job we served
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct PendingInvoice {
     pub bolt11: String,      // The Lightning invoice
     pub amount_sats: u64,    // Amount in satoshis
