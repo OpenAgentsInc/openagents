@@ -167,6 +167,45 @@ impl TextInput {
         }
     }
 
+    /// Delete selected text (if any selection exists)
+    fn delete_selection(&mut self) -> bool {
+        if let Some(start) = self.selection_start {
+            let (from, to) = if start < self.cursor_pos {
+                (start, self.cursor_pos)
+            } else {
+                (self.cursor_pos, start)
+            };
+            if from != to {
+                self.value.replace_range(from..to, "");
+                self.cursor_pos = from;
+                self.selection_start = None;
+                self.notify_change();
+                return true;
+            }
+        }
+        self.selection_start = None;
+        false
+    }
+
+    /// Get the selection range as (start, end) where start < end
+    fn get_selection(&self) -> Option<(usize, usize)> {
+        self.selection_start.map(|start| {
+            if start < self.cursor_pos {
+                (start, self.cursor_pos)
+            } else {
+                (self.cursor_pos, start)
+            }
+        }).filter(|(start, end)| start != end)
+    }
+
+    /// Select all text
+    fn select_all(&mut self) {
+        if !self.value.is_empty() {
+            self.selection_start = Some(0);
+            self.cursor_pos = self.value.len();
+        }
+    }
+
     fn move_cursor_left(&mut self) {
         if self.cursor_pos > 0 {
             self.cursor_pos -= 1;
@@ -312,14 +351,36 @@ impl Component for TextInput {
                     Key::Character(c) => {
                         if modifiers.ctrl || modifiers.meta {
                             match c.as_str() {
-                                "a" => {
-                                    self.selection_start = Some(0);
-                                    self.cursor_pos = self.value.len();
+                                "a" | "A" => {
+                                    self.select_all();
                                 }
-                                "c" | "x" | "v" => {}
+                                "c" | "C" => {
+                                    // Copy: selection or entire value
+                                    if let Some((start, end)) = self.get_selection() {
+                                        cx.write_clipboard(&self.value[start..end]);
+                                    } else {
+                                        cx.write_clipboard(&self.value);
+                                    }
+                                }
+                                "x" | "X" => {
+                                    // Cut: copy selection then delete it
+                                    if let Some((start, end)) = self.get_selection() {
+                                        cx.write_clipboard(&self.value[start..end]);
+                                        self.delete_selection();
+                                    }
+                                }
+                                "v" | "V" => {
+                                    // Paste: delete selection first, then insert
+                                    if let Some(text) = cx.read_clipboard() {
+                                        self.delete_selection();
+                                        self.insert_str(&text);
+                                    }
+                                }
                                 _ => {}
                             }
                         } else {
+                            // Regular character input - delete selection first
+                            self.delete_selection();
                             self.insert_str(c);
                         }
                         return EventResult::Handled;
@@ -327,11 +388,20 @@ impl Component for TextInput {
 
                     Key::Named(named) => {
                         match named {
+                            NamedKey::Space => {
+                                // Space key - delete selection first, then insert space
+                                self.delete_selection();
+                                self.insert_str(" ");
+                            }
                             NamedKey::Backspace => {
-                                self.delete_backward();
+                                if !self.delete_selection() {
+                                    self.delete_backward();
+                                }
                             }
                             NamedKey::Delete => {
-                                self.delete_forward();
+                                if !self.delete_selection() {
+                                    self.delete_forward();
+                                }
                             }
                             NamedKey::Enter => {
                                 self.notify_submit();
@@ -341,12 +411,15 @@ impl Component for TextInput {
                                 cx.clear_focus();
                             }
                             NamedKey::Home => {
+                                self.selection_start = None;
                                 self.move_cursor_to_start();
                             }
                             NamedKey::End => {
+                                self.selection_start = None;
                                 self.move_cursor_to_end();
                             }
                             NamedKey::ArrowLeft => {
+                                self.selection_start = None;
                                 if modifiers.ctrl || modifiers.meta {
                                     self.move_cursor_to_start();
                                 } else {
@@ -354,6 +427,7 @@ impl Component for TextInput {
                                 }
                             }
                             NamedKey::ArrowRight => {
+                                self.selection_start = None;
                                 if modifiers.ctrl || modifiers.meta {
                                     self.move_cursor_to_end();
                                 } else {

@@ -45,6 +45,10 @@ pub struct EventContext {
     key_context: KeyContext,
     action_listeners: HashMap<u64, ActionListeners>,
     pending_action: Option<PendingAction>,
+
+    // Clipboard access (provided by host application)
+    clipboard_read: Option<Box<dyn Fn() -> Option<String>>>,
+    clipboard_write: Option<Box<dyn Fn(&str)>>,
 }
 
 impl EventContext {
@@ -57,7 +61,51 @@ impl EventContext {
             key_context: KeyContext::new(),
             action_listeners: HashMap::new(),
             pending_action: None,
+            clipboard_read: None,
+            clipboard_write: None,
         }
+    }
+
+    /// Set clipboard callbacks for read and write operations.
+    ///
+    /// This allows TextInput and other components to use clipboard operations.
+    /// The host application provides these callbacks with access to its clipboard.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let clipboard = Arc::new(Mutex::new(Clipboard::new().unwrap()));
+    /// let read_clip = clipboard.clone();
+    /// let write_clip = clipboard.clone();
+    ///
+    /// cx.set_clipboard(
+    ///     move || read_clip.lock().ok()?.get_text().ok(),
+    ///     move |text| { write_clip.lock().ok()?.set_text(text).ok(); },
+    /// );
+    /// ```
+    pub fn set_clipboard(
+        &mut self,
+        read: impl Fn() -> Option<String> + 'static,
+        write: impl Fn(&str) + 'static,
+    ) {
+        self.clipboard_read = Some(Box::new(read));
+        self.clipboard_write = Some(Box::new(write));
+    }
+
+    /// Read text from clipboard (if clipboard access is configured)
+    pub fn read_clipboard(&self) -> Option<String> {
+        self.clipboard_read.as_ref().and_then(|f| f())
+    }
+
+    /// Write text to clipboard (if clipboard access is configured)
+    pub fn write_clipboard(&self, text: &str) {
+        if let Some(f) = &self.clipboard_write {
+            f(text);
+        }
+    }
+
+    /// Check if clipboard is available
+    pub fn has_clipboard(&self) -> bool {
+        self.clipboard_read.is_some() && self.clipboard_write.is_some()
     }
 
     // =========================================================================

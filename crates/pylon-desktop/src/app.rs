@@ -1,5 +1,7 @@
 //! Application handler with winit event loop
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::mpsc;
 use arboard::Clipboard;
@@ -41,12 +43,12 @@ pub struct RenderState {
     pub bridge: BridgeManager,
     pub last_tick: Instant,
     pub modifiers: ModifiersState,
-    pub clipboard: Option<Clipboard>,
+    pub clipboard: Rc<RefCell<Option<Clipboard>>>,
     // Command palette
     pub command_palette: CommandPalette,
     pub event_context: EventContext,
-    pub _command_tx: mpsc::Sender<String>,
-    pub _command_rx: mpsc::Receiver<String>,
+    #[allow(dead_code)]
+    pub command_rx: mpsc::Receiver<String>,
 }
 
 impl ApplicationHandler for PylonApp {
@@ -161,16 +163,32 @@ impl ApplicationHandler for PylonApp {
             fm_state.nostr_status = NostrConnectionStatus::Connecting;
             nostr_runtime.connect(&fm_state.relay_url);
 
+            // Initialize clipboard with shared access for EventContext
+            let clipboard = Rc::new(RefCell::new(Clipboard::new().ok()));
+
             // Initialize command palette with channel for selection callback
             let (command_tx, command_rx) = mpsc::channel::<String>();
-            let tx_clone = command_tx.clone();
             let command_palette = CommandPalette::new()
                 .max_visible_items(8)
                 .commands(commands::build_commands())
                 .on_select(move |cmd| {
-                    let _ = tx_clone.send(cmd.id.clone());
+                    let _ = command_tx.send(cmd.id.clone());
                 });
-            let event_context = EventContext::new();
+
+            // Initialize EventContext with clipboard access
+            let mut event_context = EventContext::new();
+            let read_clip = clipboard.clone();
+            let write_clip = clipboard.clone();
+            event_context.set_clipboard(
+                move || {
+                    read_clip.borrow_mut().as_mut()?.get_text().ok()
+                },
+                move |text| {
+                    if let Some(clip) = write_clip.borrow_mut().as_mut() {
+                        let _ = clip.set_text(text);
+                    }
+                },
+            );
 
             RenderState {
                 window,
@@ -186,11 +204,10 @@ impl ApplicationHandler for PylonApp {
                 bridge,
                 last_tick: Instant::now(),
                 modifiers: ModifiersState::empty(),
-                clipboard: Clipboard::new().ok(),
+                clipboard,
                 command_palette,
                 event_context,
-                _command_tx: command_tx,
-                _command_rx: command_rx,
+                command_rx,
             }
         });
 
@@ -232,35 +249,8 @@ impl ApplicationHandler for PylonApp {
                     }
 
                     // Priority 2: Route events to palette when open
+                    // TextInput handles clipboard (Cmd+C/V/X) and selection (Cmd+A) automatically
                     if state.command_palette.is_open() {
-                        // Handle clipboard operations for command palette's TextInput
-                        if cmd {
-                            if let Key::Character(c) = &event.logical_key {
-                                match c.to_lowercase().as_str() {
-                                    "v" => {
-                                        // Paste into command palette search
-                                        if let Some(ref mut clipboard) = state.clipboard {
-                                            if let Ok(text) = clipboard.get_text() {
-                                                state.command_palette.search_input_mut().insert_text(&text);
-                                            }
-                                        }
-                                        return;
-                                    }
-                                    "c" => {
-                                        // Copy from command palette search
-                                        if let Some(ref mut clipboard) = state.clipboard {
-                                            let _ = clipboard.set_text(state.command_palette.search_input().get_value());
-                                        }
-                                        return;
-                                    }
-                                    "a" => {
-                                        // Select all - let TextInput handle it
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-
                         if let Some(wgpui_event) = input_convert::create_key_down(&event.logical_key, &state.modifiers) {
                             let scale_factor = state.window.scale_factor() as f32;
                             let logical_width = width / scale_factor;
@@ -495,7 +485,7 @@ impl ApplicationHandler for PylonApp {
             }
 
             // Poll command palette selections (non-blocking)
-            while let Ok(command_id) = state._command_rx.try_recv() {
+            while let Ok(command_id) = state.command_rx.try_recv() {
                 execute_command(&command_id, state);
             }
 
@@ -532,8 +522,8 @@ fn execute_command(command_id: &str, state: &mut RenderState) {
             state.nostr_runtime.connect(&state.fm_state.relay_url);
         }
         ids::COPY_PUBKEY => {
-            if let Some(ref mut clipboard) = state.clipboard {
-                if let Some(ref pubkey) = state.fm_state.pubkey {
+            if let Some(ref pubkey) = state.fm_state.pubkey {
+                if let Some(ref mut clipboard) = *state.clipboard.borrow_mut() {
                     let _ = clipboard.set_text(pubkey);
                 }
             }
@@ -560,7 +550,7 @@ fn handle_chat_input(state: &mut RenderState, key: &Key, cmd: bool) {
     match key {
         // Cmd+V - Paste
         Key::Character(c) if cmd && c.to_lowercase() == "v" => {
-            if let Some(ref mut clipboard) = state.clipboard {
+            if let Some(ref mut clipboard) = *state.clipboard.borrow_mut() {
                 if let Ok(text) = clipboard.get_text() {
                     let pos = state.fm_state.chat_cursor.min(state.fm_state.chat_input.len());
                     state.fm_state.chat_input.insert_str(pos, &text);
@@ -645,7 +635,7 @@ fn handle_prompt_input(state: &mut RenderState, key: &Key, cmd: bool) {
         // Cmd+V - Paste
         Key::Character(c) if cmd && c.to_lowercase() == "v" => {
             if !state.fm_state.is_streaming() {
-                if let Some(ref mut clipboard) = state.clipboard {
+                if let Some(ref mut clipboard) = *state.clipboard.borrow_mut() {
                     if let Ok(text) = clipboard.get_text() {
                         // Insert at cursor position
                         let pos = state.fm_state.cursor_pos.min(state.fm_state.prompt_input.len());
@@ -665,13 +655,13 @@ fn handle_prompt_input(state: &mut RenderState, key: &Key, cmd: bool) {
         }
         // Cmd+C - Copy
         Key::Character(c) if cmd && c.to_lowercase() == "c" => {
-            if let Some(ref mut clipboard) = state.clipboard {
+            if let Some(ref mut clipboard) = *state.clipboard.borrow_mut() {
                 let _ = clipboard.set_text(&state.fm_state.prompt_input);
             }
         }
         // Cmd+X - Cut
         Key::Character(c) if cmd && c.to_lowercase() == "x" => {
-            if let Some(ref mut clipboard) = state.clipboard {
+            if let Some(ref mut clipboard) = *state.clipboard.borrow_mut() {
                 let _ = clipboard.set_text(&state.fm_state.prompt_input);
                 state.fm_state.prompt_input.clear();
             }
