@@ -72,6 +72,7 @@ pub struct GptOssEngineConfig {
     pub layer_limit: Option<usize>,
     pub max_kv: Option<usize>,
     pub moe_fallback: bool,
+    pub disable_sinks: bool,
     pub use_harmony_prompt: bool,
     pub telemetry_top_k: usize,
 }
@@ -83,6 +84,7 @@ impl Default for GptOssEngineConfig {
             layer_limit: None,
             max_kv: None,
             moe_fallback: false,
+            disable_sinks: false,
             use_harmony_prompt: true,
             telemetry_top_k: DEFAULT_TELEMETRY_TOP_K,
         }
@@ -126,6 +128,11 @@ impl GptOssEngine {
         })?;
         let tokenizer = GptOssTokenizer::from_gguf(tokenizer_meta).map_err(MlError::Model)?;
         let config = GptOssModelConfig::from_metadata(&model.metadata)?;
+        eprintln!("[gpt-oss] Config: heads={} kv_heads={} hidden={} ff={} rope_dim={} rope_theta={} rope_scale={} rope_ctx={} layers={} experts={}x{}",
+            config.head_count, config.head_count_kv, config.embedding_length, config.feed_forward_length,
+            config.rope_dimension_count, config.rope_theta, config.rope_scaling_factor,
+            config.rope_scaling_original_context, config.block_count,
+            config.expert_count, config.experts_per_token);
         let model_id = infer_model_id(&model.metadata, &path);
 
         // Memory-map the file for fast tensor access
@@ -209,8 +216,7 @@ impl GptOssEngine {
         let active_layers = config
             .layer_limit
             .unwrap_or(self.config.block_count as usize)
-            .min(self.config.block_count as usize)
-            .max(1);
+            .min(self.config.block_count as usize);
 
         let prompt_tokens = tokens.len();
         eprintln!("[gpt-oss] Prefill: {} tokens, {} layers", prompt_tokens, active_layers);
@@ -226,6 +232,7 @@ impl GptOssEngine {
                 &self.index,
                 &mut self.f32_cache,
                 &self.config,
+                &self.tokenizer,
                 token_id,
                 idx,
                 &mut cache,
@@ -251,6 +258,16 @@ impl GptOssEngine {
 
             let next_id =
                 sample_from_logits(&logits, &config.generation, &tokens, &mut rng)?;
+
+            // DEBUG: Log sampled token and top logits
+            let sampled_text = self.tokenizer.decode_utf8_lossy(&[next_id]);
+            let mut indexed: Vec<(usize, f32)> = logits.iter().copied().enumerate().collect();
+            indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            let top5: Vec<(usize, String)> = indexed[..5].iter()
+                .map(|(id, _)| (*id, self.tokenizer.decode_utf8_lossy(&[*id as u32])))
+                .collect();
+            eprintln!("[DEBUG] gen#{} sampled={} {:?} | top5={:?}", generated, next_id, sampled_text, top5);
+
             if stop_tokens.contains(&next_id) {
                 return Ok(GptOssCompletion {
                     text: output,
@@ -298,6 +315,7 @@ impl GptOssEngine {
                 &self.index,
                 &mut self.f32_cache,
                 &self.config,
+                &self.tokenizer,
                 next_id,
                 tokens.len().saturating_sub(1),
                 &mut cache,
@@ -435,6 +453,7 @@ fn run_forward_token(
     index: &crate::GgufIndex,
     f32_cache: &mut HashMap<String, Vec<f32>>,
     config: &GptOssModelConfig,
+    tokenizer: &GptOssTokenizer,
     token_id: u32,
     position: usize,
     cache: &mut KvCache,
@@ -442,15 +461,15 @@ fn run_forward_token(
     moe_fallback: bool,
 ) -> Result<Vec<f32>> {
     let token_embd = find_tensor(index, "token_embd.weight")?;
+
+    // Debug logging disabled for performance - enable as needed
+    let _ = tokenizer; // silence unused warning
+
     let mut hidden = read_q8_0_row_mmap(mmap, token_embd, token_id as usize)?;
 
     let layer_limit = active_layers
-        .min(config.block_count as usize)
-        .max(1);
+        .min(config.block_count as usize);
     for layer in 0..layer_limit as u32 {
-        if position == 0 && layer % 4 == 0 {
-            eprintln!("[gpt-oss] Layer {}/{}", layer, layer_limit);
-        }
         hidden = run_transformer_layer(
             mmap,
             index,
@@ -461,13 +480,13 @@ fn run_forward_token(
             hidden,
             cache,
             moe_fallback,
+            false, // disable_sinks - restored
         )?;
     }
 
     let output_norm = find_tensor(index, "output_norm.weight")?;
     let output_norm_w = fetch_f32_cached(mmap, output_norm, f32_cache)?;
     let final_hidden = rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?;
-
     let output_weight = find_tensor(index, "output.weight")?;
     let logits = matmul_q8_0_mmap(mmap, output_weight, &final_hidden)?;
     cache.seq_len = position.saturating_add(1);
@@ -484,6 +503,7 @@ fn run_transformer_layer(
     mut hidden: Vec<f32>,
     cache: &mut KvCache,
     moe_fallback: bool,
+    disable_sinks: bool,
 ) -> Result<Vec<f32>> {
     let attn_norm = find_tensor(index, &format!("blk.{layer}.attn_norm.weight"))?;
     let attn_q_w = find_tensor(index, &format!("blk.{layer}.attn_q.weight"))?;
@@ -514,6 +534,7 @@ fn run_transformer_layer(
     let heads = config.head_count as usize;
     let kv_heads = config.head_count_kv as usize;
     let head_dim = q.len() / heads.max(1);
+
     apply_rope(
         &mut q,
         heads,
@@ -535,7 +556,11 @@ fn run_transformer_layer(
         config.rope_scaling_original_context,
     )?;
 
-    let sinks = fetch_f32_cached(mmap, attn_sinks, f32_cache)?;
+    let sinks = if disable_sinks {
+        vec![0.0f32; heads]  // Zero sinks to bypass attention sink mechanism
+    } else {
+        fetch_f32_cached(mmap, attn_sinks, f32_cache)?
+    };
     let max_len = cache.max_len;
     let layer_cache = cache.layer_mut(layer as usize)?;
     if layer_cache.token_count(kv_heads, head_dim) >= max_len {
@@ -548,6 +573,7 @@ fn run_transformer_layer(
     } else {
         seq_len
     };
+
     let attn_out = attention_with_cache(
         &q,
         layer_cache,

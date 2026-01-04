@@ -152,7 +152,12 @@ pub fn load_gguf_index(path: impl AsRef<Path>) -> Result<GgufIndex> {
             };
             dims.push(dim);
         }
+        // DEBUG: Log raw dims before reverse for key tensors
+        let raw_dims = dims.clone();
         dims.reverse();
+        if name == "token_embd.weight" || name == "output.weight" {
+            eprintln!("[GGUF DEBUG] {} raw_dims={:?} reversed_dims={:?}", name, raw_dims, dims);
+        }
         let ggml_type = read_u32(&mut file)?;
         let offset = read_u64(&mut file)?;
         tensors.push(GgufTensorInfo {
@@ -252,7 +257,12 @@ pub fn load_gguf_model(path: impl AsRef<Path>) -> Result<GgufModel> {
             };
             dims.push(dim);
         }
+        // DEBUG: Log raw dims before reverse for key tensors
+        let raw_dims = dims.clone();
         dims.reverse();
+        if name == "token_embd.weight" || name == "output.weight" {
+            eprintln!("[GGUF DEBUG] {} raw_dims={:?} reversed_dims={:?}", name, raw_dims, dims);
+        }
         let ggml_type = read_u32(&mut file)?;
         let offset = read_u64(&mut file)?;
         tensors.push(GgufTensorInfo {
