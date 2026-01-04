@@ -55,8 +55,9 @@ impl<'a> Storage<'a> {
             .bind(&[
                 event.id.clone().into(),
                 event.pubkey.clone().into(),
-                (event.kind as i64).into(),
-                (event.created_at as i64).into(),
+                // Use f64 instead of i64 for D1 compatibility (BigInt not supported)
+                (event.kind as f64).into(),
+                (event.created_at as f64).into(),
                 event.content.clone().into(),
                 tags_json.into(),
                 event.sig.clone().into(),
