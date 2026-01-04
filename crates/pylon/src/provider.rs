@@ -403,7 +403,7 @@ impl PylonProvider {
         let registry = self.backend_registry.read().await;
 
         // Check each potential backend
-        for backend_id in ["ollama", "apple_fm", "llamacpp"] {
+        for backend_id in ["ollama", "apple_fm", "llamacpp", "gpt-oss-gguf"] {
             let available = registry.get(backend_id).is_some();
             backends.push((backend_id.to_string(), available));
         }

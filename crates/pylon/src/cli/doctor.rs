@@ -49,18 +49,19 @@ pub async fn run(args: DoctorArgs) -> anyhow::Result<()> {
     println!("\nBackends:");
     let mut any_backend = false;
     for (backend_id, available) in &diag.backends {
-        let (port, desc) = match backend_id.as_str() {
-            "ollama" => (11434, "Ollama"),
-            "apple_fm" => (11435, "Apple FM (fm-bridge)"),
-            "llamacpp" => (8080, "Llama.cpp / GPT-OSS"),
-            _ => (0, backend_id.as_str()),
+        let (endpoint, desc) = match backend_id.as_str() {
+            "ollama" => ("localhost:11434", "Ollama"),
+            "apple_fm" => ("localhost:11435", "Apple FM (fm-bridge)"),
+            "llamacpp" => ("localhost:8080", "Llama.cpp / GPT-OSS"),
+            "gpt-oss-gguf" => ("local gguf", "GPT-OSS GGUF"),
+            other => (other, other),
         };
 
         if *available {
-            println!("  ✅ {} (localhost:{})", desc, port);
+            println!("  ✅ {} ({})", desc, endpoint);
             any_backend = true;
         } else if args.verbose {
-            println!("  ❌ {} (localhost:{}) - not responding", desc, port);
+            println!("  ❌ {} ({}) - not responding", desc, endpoint);
         }
     }
 
@@ -69,6 +70,7 @@ pub async fn run(args: DoctorArgs) -> anyhow::Result<()> {
         println!("\n  To fix:");
         println!("  - Install Ollama: https://ollama.ai");
         println!("  - Or start llama.cpp server on port 8080");
+        println!("  - Or set GPT_OSS_GGUF_PATH for local GGUF");
         if cfg!(target_os = "macos") {
             println!("  - Or run fm-bridge for Apple Foundation Models");
         }
