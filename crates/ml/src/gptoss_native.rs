@@ -8,9 +8,10 @@ const Q8_0_BLOCK_BYTES: usize = 34;
 const Q8_0_BLOCK_VALUES: usize = 32;
 const MXFP4_BLOCK_BYTES: usize = 17;
 const MXFP4_BLOCK_VALUES: usize = 32;
+// GGML MXFP4 uses doubled E2M1 values with a half-scaled exponent.
 const MXFP4_VALUES: [f32; 16] = [
-    0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0,
-    -6.0,
+    0.0, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, -0.0, -1.0, -2.0, -3.0, -4.0, -6.0, -8.0,
+    -12.0,
 ];
 const ROPE_NTK_ALPHA: f32 = 1.0;
 const ROPE_NTK_BETA: f32 = 32.0;
@@ -556,18 +557,30 @@ pub fn dequant_mxfp4(data: &[u8], values: usize) -> Result<Vec<f32>> {
         )));
     }
     let mut out = vec![0.0f32; values];
+    let half = MXFP4_BLOCK_VALUES / 2;
     for block in 0..blocks {
         let base = block * MXFP4_BLOCK_BYTES;
         let scale_byte = data[base];
-        let scale = (2.0f32).powi(scale_byte as i32 - 127);
-        for i in 0..MXFP4_BLOCK_VALUES {
-            let byte = data[base + 1 + (i / 2)];
-            let nibble = if i % 2 == 0 { byte & 0x0f } else { byte >> 4 };
-            let value = MXFP4_VALUES[nibble as usize] * scale;
-            out[block * MXFP4_BLOCK_VALUES + i] = value;
+        let scale = mxfp4_scale(scale_byte);
+        for j in 0..half {
+            let byte = data[base + 1 + j];
+            let lo = (byte & 0x0f) as usize;
+            let hi = (byte >> 4) as usize;
+            out[block * MXFP4_BLOCK_VALUES + j] = MXFP4_VALUES[lo] * scale;
+            out[block * MXFP4_BLOCK_VALUES + half + j] = MXFP4_VALUES[hi] * scale;
         }
     }
     Ok(out)
+}
+
+fn mxfp4_scale(scale_byte: u8) -> f32 {
+    // Matches ggml_e8m0_to_fp32_half.
+    let bits = if scale_byte < 2 {
+        0x0020_0000u32 << scale_byte
+    } else {
+        (scale_byte as u32 - 1) << 23
+    };
+    f32::from_bits(bits)
 }
 
 pub fn matmul_f32(weights: &[f32], input: &[f32], k: usize, n: usize) -> Vec<f32> {
@@ -840,8 +853,15 @@ pub fn attention_head_weights(
     let start = token_count.saturating_sub(window);
     let sm_scale = 1.0 / (head_dim as f32).sqrt();
 
+    if heads % kv_heads != 0 {
+        return Err(MlError::Model(format!(
+            "GQA: heads {} not divisible by kv_heads {}",
+            heads, kv_heads
+        )));
+    }
+    let group_size = heads / kv_heads;
     let q_base = head_index * head_dim;
-    let kv = head_index % kv_heads;
+    let kv = head_index / group_size;
     let sink = sinks.get(head_index).copied().unwrap_or(0.0);
     let mut max_score = sink;
     for t in start..token_count {

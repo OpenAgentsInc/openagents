@@ -8,6 +8,7 @@ fn main() -> Result<()> {
     let mut max_tokens: usize = 20;
     let mut layer_limit: Option<usize> = None;
     let mut moe_fallback = false;
+    let mut use_harmony_prompt = true;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -24,6 +25,7 @@ fn main() -> Result<()> {
                 layer_limit = args.next().and_then(|v| v.parse::<usize>().ok());
             }
             "--moe-fallback" => moe_fallback = true,
+            "--no-harmony" => use_harmony_prompt = false,
             _ => {}
         }
     }
@@ -42,6 +44,7 @@ fn main() -> Result<()> {
     config.generation.top_p = 1.0;
     config.layer_limit = layer_limit;
     config.moe_fallback = moe_fallback;
+    config.use_harmony_prompt = use_harmony_prompt;
 
     let mut step = 0usize;
     let mut on_token = |event: &GptOssTokenEvent| {

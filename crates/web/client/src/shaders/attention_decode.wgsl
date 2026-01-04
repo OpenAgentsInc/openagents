@@ -35,7 +35,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let q_base = head * params.head_dim;
-    let kv = head % params.kv_heads;
+    let group_size = params.heads / params.kv_heads;
+    if (group_size == 0u) {
+        return;
+    }
+    let kv = head / group_size;
     let sm_scale = 1.0 / sqrt(f32(params.head_dim));
     let sink = sinks[head];
 

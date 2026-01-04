@@ -50,9 +50,10 @@ const Q8_0_BLOCK_BYTES: usize = 34;
 const Q8_0_BLOCK_VALUES: usize = 32;
 const MXFP4_BLOCK_BYTES: usize = 17;
 const MXFP4_BLOCK_VALUES: usize = 32;
+// GGML MXFP4 uses doubled E2M1 values with a half-scaled exponent.
 const MXFP4_VALUES: [f32; 16] = [
-    0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0,
-    -6.0,
+    0.0, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, -0.0, -1.0, -2.0, -3.0, -4.0, -6.0, -8.0,
+    -12.0,
 ];
 const SWIGLU_ALPHA: f32 = 1.702;
 const SWIGLU_LIMIT: f32 = 7.0;
@@ -4856,6 +4857,7 @@ async fn run_transformer_layer(
             layer_cache,
             &sinks,
             selected_head,
+            heads,
             kv_heads,
             head_dim,
             window,
@@ -5829,10 +5831,17 @@ fn attention_single_token(
     }
 
     let sm_scale = 1.0 / (head_dim as f32).sqrt();
+    if heads % kv_heads != 0 {
+        return Err(format!(
+            "GQA: heads {} not divisible by kv_heads {}",
+            heads, kv_heads
+        ));
+    }
+    let group_size = heads / kv_heads;
     let mut out = vec![0.0f32; heads * head_dim];
     for h in 0..heads {
         let q_base = h * head_dim;
-        let kv = h % kv_heads;
+        let kv = h / group_size;
         let k_base = kv * head_dim;
         let mut dot = 0.0f32;
         for i in 0..head_dim {
@@ -5880,11 +5889,18 @@ fn attention_with_cache(
     let window = window.max(1).min(token_count);
     let start = (cache.start + token_count.saturating_sub(window)) % cache.capacity;
     let sm_scale = 1.0 / (head_dim as f32).sqrt();
+    if heads % kv_heads != 0 {
+        return Err(format!(
+            "GQA: heads {} not divisible by kv_heads {}",
+            heads, kv_heads
+        ));
+    }
+    let group_size = heads / kv_heads;
     let mut out = vec![0.0f32; heads * head_dim];
 
     for h in 0..heads {
         let q_base = h * head_dim;
-        let kv = h % kv_heads;
+        let kv = h / group_size;
         let sink = sinks.get(h).copied().unwrap_or(0.0);
         let mut max_score = sink;
 
@@ -5966,9 +5982,16 @@ fn attention_head_weights(
     let window = window.max(1).min(token_count);
     let start = (cache.start + token_count.saturating_sub(window)) % cache.capacity;
     let sm_scale = 1.0 / (head_dim as f32).sqrt();
+    if heads % kv_heads != 0 {
+        return Err(format!(
+            "GQA: heads {} not divisible by kv_heads {}",
+            heads, kv_heads
+        ));
+    }
+    let group_size = heads / kv_heads;
 
     let q_base = head_index * head_dim;
-    let kv = head_index % kv_heads;
+    let kv = head_index / group_size;
     let sink = sinks.get(head_index).copied().unwrap_or(0.0);
     let mut max_score = sink;
     for t in 0..window {
@@ -6169,18 +6192,30 @@ fn dequant_mxfp4(data: &[u8], values: usize) -> Result<Vec<f32>, String> {
     }
 
     let mut out = vec![0.0f32; values];
+    let half = MXFP4_BLOCK_VALUES / 2;
     for block in 0..blocks {
         let base = block * MXFP4_BLOCK_BYTES;
         let scale_byte = data[base];
-        let scale = (2.0f32).powi(scale_byte as i32 - 127);
-        for i in 0..MXFP4_BLOCK_VALUES {
-            let byte = data[base + 1 + i / 2];
-            let nibble = if i % 2 == 0 { byte & 0x0F } else { byte >> 4 };
-            let value = MXFP4_VALUES[nibble as usize] * scale;
-            out[block * MXFP4_BLOCK_VALUES + i] = value;
+        let scale = mxfp4_scale(scale_byte);
+        for j in 0..half {
+            let byte = data[base + 1 + j];
+            let lo = (byte & 0x0F) as usize;
+            let hi = (byte >> 4) as usize;
+            out[block * MXFP4_BLOCK_VALUES + j] = MXFP4_VALUES[lo] * scale;
+            out[block * MXFP4_BLOCK_VALUES + half + j] = MXFP4_VALUES[hi] * scale;
         }
     }
     Ok(out)
+}
+
+fn mxfp4_scale(scale_byte: u8) -> f32 {
+    // Matches ggml_e8m0_to_fp32_half.
+    let bits = if scale_byte < 2 {
+        0x0020_0000u32 << scale_byte
+    } else {
+        ((scale_byte as u32 - 1) << 23)
+    };
+    f32::from_bits(bits)
 }
 
 fn matmul_cpu(weights: &[f32], x: &[f32], k: usize, n: usize) -> Vec<f32> {
@@ -6433,13 +6468,13 @@ struct F32MatmulParams {
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct AttentionWeightsParams {
     head_index: u32,
+    heads: u32,
     kv_heads: u32,
     head_dim: u32,
     seq_len: u32,
     window_start: u32,
     capacity: u32,
     _pad0: u32,
-    _pad1: u32,
 }
 
 #[repr(C)]
@@ -7996,6 +8031,7 @@ async fn attention_head_weights_gpu(
     cache: &LayerKvCache,
     sinks: &[f32],
     head_index: usize,
+    heads: usize,
     kv_heads: usize,
     head_dim: usize,
     window: usize,
@@ -8148,6 +8184,7 @@ async fn attention_head_weights_gpu(
     let params = AttentionWeightsParams {
         head_index: u32::try_from(head_index)
             .map_err(|_| "attention head index overflow".to_string())?,
+        heads: u32::try_from(heads).map_err(|_| "attention heads overflow".to_string())?,
         kv_heads: u32::try_from(kv_heads).map_err(|_| "attention kv_heads overflow".to_string())?,
         head_dim: u32::try_from(head_dim).map_err(|_| "attention head_dim overflow".to_string())?,
         seq_len: u32::try_from(window).map_err(|_| "attention seq_len overflow".to_string())?,
@@ -8156,7 +8193,6 @@ async fn attention_head_weights_gpu(
         capacity: u32::try_from(cache.capacity)
             .map_err(|_| "attention capacity overflow".to_string())?,
         _pad0: 0,
-        _pad1: 0,
     };
     let params_bytes = std::mem::size_of::<AttentionWeightsParams>();
     let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -9016,10 +9052,10 @@ var<storage, read_write> y: array<f32>;
 var<uniform> params: Params;
 
 const FP4_TABLE: array<f32, 16> = array<f32, 16>(
-    0.0, 0.5, 1.0, 1.5,
-    2.0, 3.0, 4.0, 6.0,
-    -0.0, -0.5, -1.0, -1.5,
-    -2.0, -3.0, -4.0, -6.0
+    0.0, 1.0, 2.0, 3.0,
+    4.0, 6.0, 8.0, 12.0,
+    -0.0, -1.0, -2.0, -3.0,
+    -4.0, -6.0, -8.0, -12.0
 );
 
 fn load_byte(offset: u32) -> u32 {
@@ -9031,11 +9067,12 @@ fn load_byte(offset: u32) -> u32 {
 fn mxfp4_unpack(block: u32, idx: u32) -> f32 {
     let base = block * 17u;
     let scale_byte = load_byte(base);
-    let exp = f32(i32(scale_byte)) - 127.0;
+    let exp = f32(i32(scale_byte)) - 128.0;
     let scale = exp2(exp);
-    let byte_index = base + 1u + (idx / 2u);
+    let half = 16u;
+    let byte_index = base + 1u + (idx % half);
     let packed = load_byte(byte_index);
-    let nibble = select(packed & 0x0fu, packed >> 4u, (idx & 1u) == 1u);
+    let nibble = select(packed & 0x0fu, packed >> 4u, idx >= half);
     return FP4_TABLE[nibble] * scale;
 }
 
