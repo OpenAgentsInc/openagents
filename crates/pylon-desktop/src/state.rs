@@ -1,5 +1,6 @@
 //! FM Bridge and Nostr state for visualization
 
+use std::collections::HashMap;
 use web_time::Instant;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -56,6 +57,14 @@ pub struct Job {
     pub status: JobStatus,
     pub result: Option<String>,
     pub created_at: u64,
+    pub is_outgoing: bool,  // true = we requested, false = we serve
+}
+
+/// A pending request we made (waiting for result)
+#[derive(Clone)]
+pub struct PendingRequest {
+    pub prompt: String,
+    pub requested_at: u64,
 }
 
 /// A NIP-28 chat message
@@ -113,6 +122,7 @@ pub struct FmVizState {
     pub jobs_served: u32,
     pub jobs_requested: u32,
     pub credits: i32,  // served - requested
+    pub pending_requests: HashMap<String, PendingRequest>,  // event_id -> our request
 
     // NIP-28 Chat
     pub chat_messages: Vec<ChatMessage>,
@@ -160,6 +170,7 @@ impl FmVizState {
             jobs_served: 0,
             jobs_requested: 0,
             credits: 0,
+            pending_requests: HashMap::new(),
 
             chat_messages: Vec::new(),
             chat_input: String::new(),

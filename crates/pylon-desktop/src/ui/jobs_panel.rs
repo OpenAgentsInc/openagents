@@ -68,37 +68,64 @@ pub fn draw_jobs_panel(
             );
         }
 
-        // Status icon
-        let (icon, icon_color) = match job.status {
-            JobStatus::Pending => ("*", text_dim()),
-            JobStatus::Serving => (">", accent_cyan()),
-            JobStatus::Complete => ("+", accent_green()),
-            JobStatus::Failed => ("x", Hsla::new(0.0, 0.9, 0.5, 1.0)),
+        // Direction + Status icon
+        // Incoming (we serve): > for serving, + for complete
+        // Outgoing (we requested): < for pending, . for received
+        let (icon, icon_color) = if job.is_outgoing {
+            // Outgoing job - we requested this
+            match job.status {
+                JobStatus::Pending => ("<", accent_cyan()),  // Awaiting result
+                JobStatus::Serving => ("<", accent_cyan()),  // Still processing
+                JobStatus::Complete => (".", accent_green()), // Received result
+                JobStatus::Failed => ("x", Hsla::new(0.0, 0.9, 0.5, 1.0)),
+            }
+        } else {
+            // Incoming job - we serve this
+            match job.status {
+                JobStatus::Pending => ("*", text_dim()),
+                JobStatus::Serving => (">", accent_cyan()),
+                JobStatus::Complete => ("+", accent_green()),
+                JobStatus::Failed => ("x", Hsla::new(0.0, 0.9, 0.5, 1.0)),
+            }
         };
 
         let run = text.layout(icon, Point::new(x + 12.0, row_y + 6.0), 12.0, icon_color);
         scene.draw_text(run);
 
-        // Kind
-        let run = text.layout("5050", Point::new(x + 28.0, row_y + 6.0), 10.0, text_dim());
+        // Kind (show direction)
+        let kind_text = if job.is_outgoing { "REQ" } else { "5050" };
+        let run = text.layout(kind_text, Point::new(x + 28.0, row_y + 6.0), 10.0, text_dim());
         scene.draw_text(run);
 
-        // From pubkey (shortened)
-        let from_short = if job.from_pubkey.len() > 8 {
+        // From/To pubkey (shortened)
+        let pubkey_short = if job.from_pubkey.len() > 8 {
             format!("{}...", &job.from_pubkey[..8])
         } else {
             job.from_pubkey.clone()
         };
-        let from_text = format!("from {}", from_short);
-        let run = text.layout(&from_text, Point::new(x + 70.0, row_y + 6.0), 10.0, text_dim());
+        let direction_text = if job.is_outgoing {
+            format!("to {}", pubkey_short)  // We requested from network
+        } else {
+            format!("from {}", pubkey_short)  // We received from this pubkey
+        };
+        let run = text.layout(&direction_text, Point::new(x + 70.0, row_y + 6.0), 10.0, text_dim());
         scene.draw_text(run);
 
-        // Status text (right aligned)
-        let status_text = match job.status {
-            JobStatus::Pending => "PENDING",
-            JobStatus::Serving => "SERVING",
-            JobStatus::Complete => "+1",
-            JobStatus::Failed => "FAIL",
+        // Status text (right aligned) - different for incoming vs outgoing
+        let status_text = if job.is_outgoing {
+            match job.status {
+                JobStatus::Pending => "WAIT",
+                JobStatus::Serving => "WAIT",
+                JobStatus::Complete => "RECV",
+                JobStatus::Failed => "FAIL",
+            }
+        } else {
+            match job.status {
+                JobStatus::Pending => "PEND",
+                JobStatus::Serving => "SERV",
+                JobStatus::Complete => "+1",
+                JobStatus::Failed => "FAIL",
+            }
         };
         let status_color = match job.status {
             JobStatus::Pending => text_dim(),
