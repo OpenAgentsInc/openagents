@@ -113,3 +113,4 @@ Tests:
 - 2026-01-04: Added Pylon telemetry for model config/token limits/tokenizer summary + moe mode to power /gptoss panels.
 - 2026-01-04: Prefer GPT-OSS model id from Pylon `/v1/models` response when auto-selecting for `/gptoss`.
 - 2026-01-04: Added default GGUF path fallback in Pylon when env var is missing (repo local).
+- 2026-01-04: Completed Pylon prefill stage telemetry so /gptoss shows prefill finishing before decode.

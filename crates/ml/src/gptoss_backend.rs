@@ -390,9 +390,21 @@ impl InferenceBackend for GptOssGgufBackend {
             });
 
             let mut decode_started = false;
+            let mut prefill_completed = false;
             let mut callback = |event: &GptOssTokenEvent| {
                 if !decode_started {
                     decode_started = true;
+                    if !prefill_completed {
+                        prefill_completed = true;
+                        let _ = send_telemetry(ModelLifecycleTelemetry::InferenceStage {
+                            stage: "prefill".to_string(),
+                            status: StageStatus::Completed,
+                            step: None,
+                            total_steps: None,
+                            detail: None,
+                            ts_ms: telemetry_timestamp_ms(),
+                        });
+                    }
                     let _ = send_telemetry(ModelLifecycleTelemetry::InferenceStage {
                         stage: "decode".to_string(),
                         status: StageStatus::Started,
@@ -466,6 +478,16 @@ impl InferenceBackend for GptOssGgufBackend {
 
             match result {
                 Ok(completion) => {
+                    if !prefill_completed {
+                        let _ = send_telemetry(ModelLifecycleTelemetry::InferenceStage {
+                            stage: "prefill".to_string(),
+                            status: StageStatus::Completed,
+                            step: None,
+                            total_steps: None,
+                            detail: None,
+                            ts_ms: telemetry_timestamp_ms(),
+                        });
+                    }
                     let _ = send_telemetry(ModelLifecycleTelemetry::InferenceStage {
                         stage: "decode".to_string(),
                         status: StageStatus::Completed,
