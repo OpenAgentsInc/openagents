@@ -56,6 +56,9 @@ pub struct SubQuery {
     pub model: Option<String>,
     /// Maximum tokens for response.
     pub max_tokens: Option<u32>,
+    /// Available tools for this sub-query (FRLM tool names).
+    #[serde(default)]
+    pub tools: Vec<String>,
 }
 
 impl SubQuery {
@@ -67,6 +70,7 @@ impl SubQuery {
             fragment_id: None,
             model: None,
             max_tokens: None,
+            tools: Vec::new(),
         }
     }
 
@@ -82,7 +86,14 @@ impl SubQuery {
             fragment_id: Some(fragment_id.into()),
             model: None,
             max_tokens: None,
+            tools: Vec::new(),
         }
+    }
+
+    /// Set the available tools for this sub-query.
+    pub fn with_tools(mut self, tools: Vec<String>) -> Self {
+        self.tools = tools;
+        self
     }
 
     /// Set the model preference.

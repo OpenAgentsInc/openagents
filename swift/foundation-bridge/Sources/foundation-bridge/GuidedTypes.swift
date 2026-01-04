@@ -235,3 +235,107 @@ struct ToolArguments: Codable {
 // Note: Dynamic JSON schema types removed to avoid recursive struct issues.
 // Using pre-defined Generable types (TestGenerationResult) for guided generation.
 // For custom schemas, use DynamicGenerationSchema from FoundationModels framework.
+
+// MARK: - FRLM Tool Schemas
+
+/// FRLM tool names for guided generation tool selection.
+@Generable(description: "An FRLM tool for recursive LLM execution")
+enum FrlmTool: String, Codable, CaseIterable {
+    case llmQueryRecursive = "llm_query_recursive"
+    case loadEnvironment = "load_environment"
+    case selectFragments = "select_fragments"
+    case executeParallel = "execute_parallel"
+    case verifyResults = "verify_results"
+    case checkBudget = "check_budget"
+    case getTraceEvents = "get_trace_events"
+
+    var description: String {
+        switch self {
+        case .llmQueryRecursive:
+            return "Make a recursive sub-LM call"
+        case .loadEnvironment:
+            return "Load fragments into execution context"
+        case .selectFragments:
+            return "Select relevant fragments from loaded environment"
+        case .executeParallel:
+            return "Execute multiple sub-queries in parallel"
+        case .verifyResults:
+            return "Verify sub-query results using specified verification tier"
+        case .checkBudget:
+            return "Check remaining token budget or update allocation"
+        case .getTraceEvents:
+            return "Get execution trace events for debugging"
+        }
+    }
+}
+
+/// FRLM tool call request for guided generation.
+@Generable(description: "A tool call request from FM to FRLM")
+struct FrlmToolCall: Codable {
+    @Guide(description: "The FRLM tool to call", .anyOf([
+        "llm_query_recursive",
+        "load_environment",
+        "select_fragments",
+        "execute_parallel",
+        "verify_results",
+        "check_budget",
+        "get_trace_events"
+    ]))
+    var tool: String
+
+    @Guide(description: "Tool arguments as JSON string")
+    var arguments: String
+}
+
+/// Arguments for llm_query_recursive tool.
+@Generable(description: "Arguments for recursive LLM query")
+struct LlmQueryArgs: Codable {
+    @Guide(description: "The prompt to send to the sub-LM")
+    var prompt: String
+
+    @Guide(description: "Optional context to include")
+    var context: String?
+
+    @Guide(description: "Maximum tokens for this sub-query")
+    var budget: Int?
+
+    @Guide(description: "Verification tier", .anyOf([
+        "none", "redundancy", "objective", "validated"
+    ]))
+    var verification: String?
+}
+
+/// Arguments for load_environment tool.
+@Generable(description: "Arguments for loading environment")
+struct LoadEnvironmentArgs: Codable {
+    @Guide(description: "Fragment ID to load")
+    var fragmentId: String
+
+    @Guide(description: "Fragment content")
+    var content: String
+}
+
+/// Arguments for check_budget tool.
+@Generable(description: "Arguments for budget management")
+struct CheckBudgetArgs: Codable {
+    @Guide(description: "Budget action", .anyOf([
+        "check", "reserve", "release"
+    ]))
+    var action: String
+
+    @Guide(description: "Number of tokens (for reserve/release)")
+    var tokens: Int?
+}
+
+/// Result from tool selection indicating which tool to call and with what arguments.
+@Generable(description: "Tool selection result from guided generation")
+struct FrlmToolSelection: Codable {
+    @Guide(description: "Selected tool name")
+    var selectedTool: String
+
+    @Guide(description: "Reasoning for tool selection")
+    var reasoning: String
+
+    @Guide(description: "Should we execute this tool?")
+    var shouldExecute: Bool
+}

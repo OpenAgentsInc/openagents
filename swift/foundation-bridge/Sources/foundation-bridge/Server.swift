@@ -298,6 +298,16 @@ actor HTTPServer {
             let sessionId = String(pathWithoutPrefix.dropLast("/tools".count))
             return await handleToolRemove(sessionId: sessionId)
 
+        // FRLM tool endpoints
+        case ("POST", "/v1/tools/select"):
+            return await handleToolSelect(body: body)
+
+        case ("POST", "/v1/tools/execute"):
+            return await handleToolExecute(body: body)
+
+        case ("GET", "/v1/tools"):
+            return await handleToolList()
+
         // Adapter management endpoints
         case ("POST", "/v1/adapters/load"):
             return await handleAdapterLoad(body: body)
@@ -483,6 +493,47 @@ actor HTTPServer {
         } catch {
             return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
         }
+    }
+
+    // MARK: - FRLM Tool Handlers
+
+    private func handleToolSelect(body: String?) async -> Data {
+        guard let bodyString = body, !bodyString.isEmpty else {
+            return buildJSONResponse(status: 400, body: FMError.invalidRequest("Missing request body").errorResponse)
+        }
+
+        guard let bodyData = bodyString.data(using: .utf8) else {
+            return buildJSONResponse(status: 400, body: FMError.invalidRequest("Invalid body encoding").errorResponse)
+        }
+
+        do {
+            let response = try await toolHandler.selectFrlmTool(body: bodyData)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleToolExecute(body: String?) async -> Data {
+        guard let bodyString = body, !bodyString.isEmpty else {
+            return buildJSONResponse(status: 400, body: FMError.invalidRequest("Missing request body").errorResponse)
+        }
+
+        guard let bodyData = bodyString.data(using: .utf8) else {
+            return buildJSONResponse(status: 400, body: FMError.invalidRequest("Invalid body encoding").errorResponse)
+        }
+
+        do {
+            let response = try await toolHandler.executeFrlmTool(body: bodyData)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleToolList() async -> Data {
+        let response = await toolHandler.listFrlmTools()
+        return httpResponseToData(response)
     }
 
     // MARK: - Adapter Handlers

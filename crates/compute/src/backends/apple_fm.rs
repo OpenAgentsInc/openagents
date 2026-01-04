@@ -1,18 +1,21 @@
 //! Apple Foundation Models backend (localhost:11435)
 //!
-//! Enhanced with session management and tool registration via FM Bridge.
+//! Enhanced with session management, tool registration, and FRLM integration via FM Bridge.
 
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 
 use super::{
     BackendError, CompletionRequest, CompletionResponse, InferenceBackend, ModelInfo, Result,
     StreamChunk, UsageInfo,
 };
+use crate::frlm_tool_handler::FrlmToolHandler;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 120;
 
@@ -22,10 +25,13 @@ const DEFAULT_TIMEOUT_SECS: u64 = 120;
 /// - Standard completions via `/v1/chat/completions`
 /// - Session-based multi-turn conversations via `/v1/sessions`
 /// - Tool registration via `/v1/sessions/{id}/tools`
+/// - FRLM tool execution for recursive LLM calls
 /// - SSE streaming for real-time token delivery
 pub struct AppleFmBackend {
     base_url: String,
     client: Client,
+    /// FRLM tool handler for executing recursive LLM tools.
+    frlm_handler: Arc<Mutex<FrlmToolHandler>>,
 }
 
 /// Session information returned from FM Bridge
@@ -62,6 +68,7 @@ impl AppleFmBackend {
         Ok(Self {
             base_url: base_url.into(),
             client,
+            frlm_handler: Arc::new(Mutex::new(FrlmToolHandler::new())),
         })
     }
 
@@ -75,6 +82,26 @@ impl AppleFmBackend {
     /// Get the base URL
     pub fn base_url(&self) -> &str {
         &self.base_url
+    }
+
+    /// Get FRLM tool definitions for registration with FM Bridge.
+    pub fn get_frlm_tools(&self) -> Vec<FmToolDefinition> {
+        crate::frlm_tools::create_frlm_tools()
+    }
+
+    /// Execute an FRLM tool by name.
+    ///
+    /// This is called by the Swift FM Bridge to execute tools locally via FRLM.
+    pub async fn execute_frlm_tool(
+        &self,
+        name: &str,
+        arguments: Value,
+    ) -> std::result::Result<Value, BackendError> {
+        let handler = self.frlm_handler.lock().await;
+        handler
+            .execute(name, arguments)
+            .await
+            .map_err(|e| BackendError::InferenceError(e.to_string()))
     }
 
     // ========================================================================
