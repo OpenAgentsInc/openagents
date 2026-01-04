@@ -398,6 +398,49 @@ This is the first time the model reliably outputs the **correct first token**.
 ### Notes
 
 - `pylon infer` build currently fails in `crates/compute` due to `TraceEvent` field mismatches.
+
+---
+
+## Update: 2026-01-04 18:55 - Harmony Prompt + Telemetry Speedups
+
+### Prompt Formatting Fix
+
+- Updated Harmony prompt to match `openai-harmony` output:
+  - System + user only (no empty developer block)
+  - `# Valid channels: analysis, commentary, final` only
+  - Assistant start tag is now `<|start|>assistant` (no `<|channel|>final<|message|>`)
+- Removed the tools channel line when no tools are present
+- `CURRENT_DATE` updated to `2026-01-04` (native + web)
+
+### Stop Tokens
+
+- Added `<|end|>` to native stop tokens (matches web + Harmony defaults).
+
+### Performance Cleanup
+
+- Removed per-token debug top-5 sorting (was O(vocab log vocab)).
+- Rewrote `top_k_from_logits` to maintain a running top-k without sorting the full vocab.
+- Telemetry (top-k/entropy) now computed only when a hook/callback is active.
+
+### Results
+
+**Harmony prompt prefill (CPU)**
+- Prompt length now 71 tokens (was 98).
+- Still too slow on CPU: `gptoss_cli` timed out after 5 minutes (stuck at prefill token ~40/71).
+- Needs GPU or a much longer timeout to fully validate Harmony output.
+
+**No-harmony sanity checks**
+- `1+1=` → output `2\n\n- ` (top-1 token is `2`).
+- `Hi` → output `, I am a `.
+
+### Commands Used
+
+```bash
+cargo run -p ml --bin gptoss_cli -- --gguf crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf --prompt "1+1=" --max-tokens 4 --no-harmony
+cargo run -p ml --bin gptoss_cli -- --gguf crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf --prompt "Hi" --max-tokens 5 --no-harmony
+# Timed out (Harmony prompt, CPU)
+cargo run -p ml --bin gptoss_cli -- --gguf crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf --prompt "1+1=" --max-tokens 1
+```
   Used `gptoss_cli` for testing instead.
 - Harmony prompt prefill is slow on CPU (98 tokens). For now, testing done with `--no-harmony`.
   Need a longer run (or GPU) to verify full Harmony responses.

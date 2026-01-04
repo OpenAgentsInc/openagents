@@ -37,7 +37,7 @@ const LOCAL_GGUF_SERVE_CMD: &str =
     "cargo run -p ml --bin gguf_serve -- crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf";
 const PYLON_API_URL: &str = "http://127.0.0.1:9899";
 const PYLON_SOURCE_LABEL: &str = "pylon://127.0.0.1:9899";
-const CURRENT_DATE: &str = "2026-01-02";
+const CURRENT_DATE: &str = "2026-01-04";
 const DEFAULT_USER_PROMPT: &str = "Give me one sentence about what GPT-OSS can do.";
 const DEFAULT_DEVELOPER_PROMPT: &str = "";
 const DEFAULT_MAX_NEW_TOKENS: usize = 8;
@@ -2528,23 +2528,24 @@ fn build_harmony_prompt(user_prompt: &str) -> String {
 Knowledge cutoff: 2024-06\n\
 Current date: {CURRENT_DATE}\n\n\
 Reasoning: low\n\n\
-# Valid channels: analysis, commentary, final. Channel must be included for every message.\n\
-Calls to these tools must go to the commentary channel: 'functions'."
+# Valid channels: analysis, commentary, final. Channel must be included for every message."
     );
-    let developer_prompt = if DEFAULT_DEVELOPER_PROMPT.is_empty() {
-        "# Instructions\n\n".to_string()
+    let developer_prompt = if DEFAULT_DEVELOPER_PROMPT.trim().is_empty() {
+        None
     } else {
-        format!("# Instructions\n\n{DEFAULT_DEVELOPER_PROMPT}")
+        Some(format!("# Instructions\n\n{DEFAULT_DEVELOPER_PROMPT}"))
     };
 
     let mut prompt = String::new();
     prompt.push_str("<|start|>system<|message|>");
     prompt.push_str(&system_prompt);
-    prompt.push_str("<|end|><|start|>developer<|message|>");
-    prompt.push_str(&developer_prompt);
+    if let Some(developer_prompt) = developer_prompt {
+        prompt.push_str("<|end|><|start|>developer<|message|>");
+        prompt.push_str(&developer_prompt);
+    }
     prompt.push_str("<|end|><|start|>user<|message|>");
     prompt.push_str(user_prompt);
-    prompt.push_str("<|end|><|start|>assistant<|channel|>final<|message|>");
+    prompt.push_str("<|end|><|start|>assistant");
     prompt
 }
 
