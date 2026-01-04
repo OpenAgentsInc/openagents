@@ -8,6 +8,7 @@ use crate::grammar::{Flow, VizPrimitive};
 /// A stage in a pipeline
 #[derive(Clone)]
 pub struct PipelineStage {
+    #[allow(dead_code)]
     pub label: String,
     pub progress: f32, // 0.0 to 1.0
     pub active: bool,

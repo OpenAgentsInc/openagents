@@ -54,6 +54,7 @@ impl BridgeManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_port(mut self, port: u16) -> Self {
         self.port = port;
         self

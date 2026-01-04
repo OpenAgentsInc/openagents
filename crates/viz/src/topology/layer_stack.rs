@@ -9,6 +9,7 @@ use crate::grammar::{Edge, Node, NodeId, Topology, VizPrimitive};
 #[derive(Clone)]
 pub struct Layer {
     pub id: NodeId,
+    #[allow(dead_code)]
     pub label: String,
     pub intensity: f32, // 0.0 to 1.0
     pub active: bool,

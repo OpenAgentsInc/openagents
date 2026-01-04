@@ -4,10 +4,7 @@ use crate::{Bounds, Hsla, InputEvent, Quad};
 
 /// A 2D heatmap visualization.
 ///
-/// # Deprecation
-/// This component is deprecated. Use [`viz::heat::Matrix`] instead, which provides
-/// the same functionality with a unified visualization grammar.
-#[deprecated(since = "0.1.0", note = "Use viz::heat::Matrix instead")]
+/// Legacy note: prefer [`viz::heat::Matrix`] for the unified visualization grammar.
 pub struct Heatmap {
     id: Option<ComponentId>,
     rows: usize,
