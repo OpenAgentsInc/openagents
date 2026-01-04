@@ -225,6 +225,31 @@ export GPT_OSS_METAL_SEED=42
 cargo run -p pylon --features gpt-oss-metal -- start -f
 ```
 
+### GPT-OSS GGUF (cross-platform CPU)
+
+Enable the GPT-OSS GGUF backend (local `.gguf`) for Pylon providers.
+
+1) Export environment variables:
+
+```bash
+export GPT_OSS_GGUF_PATH=/path/to/gpt-oss-20b-Q8_0.gguf
+export GPT_OSS_GGUF_MODEL_ID=gpt-oss-20b
+
+# Optional tuning
+export GPT_OSS_GGUF_CONTEXT_LENGTH=8192
+export GPT_OSS_GGUF_MAX_KV=8192
+export GPT_OSS_GGUF_MAX_TOKENS=256
+export GPT_OSS_GGUF_LAYER_LIMIT=24
+export GPT_OSS_GGUF_MOE_FALLBACK=1
+export GPT_OSS_GGUF_HARMONY=1
+```
+
+2) Run Pylon with the feature enabled:
+
+```bash
+cargo run -p pylon --features gpt-oss-gguf -- start -f
+```
+
 ## Default Configuration
 
 When `pylon init` runs, it creates:

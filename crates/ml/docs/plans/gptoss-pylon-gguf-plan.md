@@ -39,17 +39,16 @@ Notes:
 - Keep the engine CPU-only first. Add optional wgpu acceleration later.
 - Avoid any new network calls in this layer (use local GGUF).
 
-## Phase 2: Compute backend for Pylon (gpt-oss-gguf)
+## Phase 2: Pylon backend (gpt-oss-gguf)
 Goal: Pylon can list + run GPT-OSS GGUF as an inference backend.
 
 Tasks:
-- Add optional dependency `ml` in `crates/compute` behind feature `gpt-oss-gguf`.
-- Implement `crates/compute/src/backends/gpt_oss_gguf.rs`:
+- Implement `GptOssGgufBackend` inside `ml` (avoids a compute↔ml dependency cycle):
   - `GptOssGgufBackend::from_env()` loads a GGUF path and model id.
   - Implement `list_models`, `complete`, `complete_stream`.
   - Use the `GptOssEngine` from Phase 1.
-- Register in `crates/compute/src/backends/mod.rs` when the feature is enabled.
-- Expose in Pylon build features (similar to `gpt-oss-metal`).
+- Register the backend in `crates/pylon/src/provider.rs` when the feature is enabled.
+- Expose a Pylon feature flag (`gpt-oss-gguf`) that enables `ml-native`.
 
 Env config (proposed):
 - `GPT_OSS_GGUF_PATH=/path/to/gpt-oss-20b-Q8_0.gguf`
@@ -97,3 +96,9 @@ Tests:
 - Do we want a pure-CPU path only, or add wgpu acceleration on native next?
 - Do we need to support more GGML quant types beyond Q8_0 + MXFP4?
 - Should we allow per-layer fallbacks when expert tensors are missing or unsupported?
+
+## Progress log
+- 2026-01-03: Added `GptOssEngine` in `ml` with streaming token callback + stop tokens + Harmony prompt, plus refactored `gptoss_cli` to use it.
+- 2026-01-03: Added `GptOssGgufBackend` in `ml` (env-driven) and registered it from `pylon` to avoid compute↔ml cycles.
+- 2026-01-03: Added Pylon feature flag + configuration docs for GGUF.
+- 2026-01-03: `cargo check -p pylon --features gpt-oss-gguf` passed (only existing tokenizer dead-code warnings).

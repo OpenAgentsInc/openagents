@@ -46,6 +46,7 @@ members = [
     "crates/runtime",
     "crates/editor",
     "crates/web",
+    "crates/viz",
 ]
 
 # Unified OpenAgents binary

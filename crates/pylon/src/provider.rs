@@ -7,6 +7,8 @@ use compute::backends::{
 };
 #[cfg(feature = "ml-native")]
 use ml::{MlProvider, MlProviderConfig};
+#[cfg(feature = "gpt-oss-gguf")]
+use ml::GptOssGgufBackend;
 use compute::domain::DomainEvent;
 use openagents_runtime::UnifiedIdentity;
 use compute::services::{DvmService, RelayService};
@@ -143,6 +145,19 @@ impl PylonProvider {
                 },
                 Err(err) => {
                     tracing::debug!("Candle ML backend not configured: {err}");
+                }
+            }
+        }
+
+        #[cfg(feature = "gpt-oss-gguf")]
+        {
+            match GptOssGgufBackend::from_env() {
+                Ok(backend) => {
+                    registry.register_with_id("gpt-oss-gguf", Arc::new(RwLock::new(backend)));
+                    tracing::info!("Registered GPT-OSS GGUF backend");
+                }
+                Err(err) => {
+                    tracing::debug!("GPT-OSS GGUF backend not configured: {err}");
                 }
             }
         }
