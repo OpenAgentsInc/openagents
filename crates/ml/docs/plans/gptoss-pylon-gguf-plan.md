@@ -103,3 +103,4 @@ Tests:
 - 2026-01-03: Added Pylon feature flag + configuration docs for GGUF.
 - 2026-01-03: `cargo check -p pylon --features gpt-oss-gguf` passed (only existing tokenizer dead-code warnings).
 - 2026-01-03: Surfaced GPT-OSS GGUF in `pylon doctor` + `pylon compute` for easier verification.
+- 2026-01-04: Ran `pylon doctor --verbose` with `GPT_OSS_GGUF_PATH` set; GGUF backend registered and visible.
