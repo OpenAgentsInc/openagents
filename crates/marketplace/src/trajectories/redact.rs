@@ -283,11 +283,6 @@ fn strict_patterns() -> Vec<RedactionPattern> {
             replacement: "[REDACTED-BITCOIN-KEY]",
         },
         RedactionPattern {
-            name: "ethereum_privkey".to_string(),
-            regex: Regex::new(r"0x[a-fA-F0-9]{64}").unwrap(),
-            replacement: "[REDACTED-ETH-KEY]",
-        },
-        RedactionPattern {
             name: "nostr_nsec".to_string(),
             regex: Regex::new(r"nsec1[a-z0-9]{58,}").unwrap(),
             replacement: "[REDACTED-NOSTR-KEY]",
