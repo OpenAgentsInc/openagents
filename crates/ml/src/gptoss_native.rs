@@ -222,6 +222,33 @@ pub fn read_f32_tensor(path: &Path, tensor: &GgufTensorDump) -> Result<Vec<f32>>
     Ok(out)
 }
 
+/// Memory-mapped version of read_f32_tensor
+pub fn read_f32_tensor_mmap(mmap: &[u8], tensor: &GgufTensorDump) -> Result<Vec<f32>> {
+    if tensor.ggml_type != 0 {
+        return Err(MlError::Model(format!(
+            "tensor {} is {}, expected F32",
+            tensor.name, tensor.ggml_type_name
+        )));
+    }
+    let offset = tensor.absolute_offset as usize;
+    let nbytes = tensor.nbytes as usize;
+    if offset + nbytes > mmap.len() {
+        return Err(MlError::Model("tensor data out of bounds".to_string()));
+    }
+    let bytes = &mmap[offset..offset + nbytes];
+    if bytes.len() % 4 != 0 {
+        return Err(MlError::Model(format!(
+            "tensor {} f32 byte len mismatch",
+            tensor.name
+        )));
+    }
+    let mut out = Vec::with_capacity(bytes.len() / 4);
+    for chunk in bytes.chunks_exact(4) {
+        out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    }
+    Ok(out)
+}
+
 pub fn read_f32_row(path: &Path, tensor: &GgufTensorDump, row: usize) -> Result<Vec<f32>> {
     if tensor.ggml_type != 0 {
         return Err(MlError::Model(format!(
@@ -242,6 +269,35 @@ pub fn read_f32_row(path: &Path, tensor: &GgufTensorDump, row: usize) -> Result<
         .absolute_offset
         .saturating_add((row_bytes * row) as u64);
     let bytes = read_tensor_slice(path, offset, row_bytes)?;
+    let mut out = Vec::with_capacity(cols);
+    for chunk in bytes.chunks_exact(4) {
+        out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    }
+    Ok(out)
+}
+
+/// Memory-mapped version of read_f32_row
+pub fn read_f32_row_mmap(mmap: &[u8], tensor: &GgufTensorDump, row: usize) -> Result<Vec<f32>> {
+    if tensor.ggml_type != 0 {
+        return Err(MlError::Model(format!(
+            "tensor {} is {}, expected F32",
+            tensor.name, tensor.ggml_type_name
+        )));
+    }
+    let rows = tensor.dims.get(0).copied().unwrap_or(0) as usize;
+    let cols = tensor.dims.get(1).copied().unwrap_or(0) as usize;
+    if row >= rows || cols == 0 {
+        return Err(MlError::Model(format!(
+            "row {row} out of range for {}",
+            tensor.name
+        )));
+    }
+    let row_bytes = cols * 4;
+    let offset = tensor.absolute_offset as usize + row_bytes * row;
+    if offset + row_bytes > mmap.len() {
+        return Err(MlError::Model("tensor data out of bounds".to_string()));
+    }
+    let bytes = &mmap[offset..offset + row_bytes];
     let mut out = Vec::with_capacity(cols);
     for chunk in bytes.chunks_exact(4) {
         out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
@@ -276,6 +332,34 @@ pub fn read_q8_0_row(path: &Path, tensor: &GgufTensorDump, row: usize) -> Result
     dequant_q8_0(&bytes, cols)
 }
 
+/// Memory-mapped version of read_q8_0_row
+pub fn read_q8_0_row_mmap(mmap: &[u8], tensor: &GgufTensorDump, row: usize) -> Result<Vec<f32>> {
+    if tensor.ggml_type != 8 {
+        return Err(MlError::Model(format!(
+            "tensor {} is {}, expected Q8_0",
+            tensor.name, tensor.ggml_type_name
+        )));
+    }
+    let rows = tensor.dims.get(0).copied().unwrap_or(0) as usize;
+    let cols = tensor.dims.get(1).copied().unwrap_or(0) as usize;
+    if row >= rows || cols == 0 {
+        return Err(MlError::Model(format!(
+            "row {row} out of range for {}",
+            tensor.name
+        )));
+    }
+    if cols % Q8_0_BLOCK_VALUES != 0 {
+        return Err(MlError::Model("q8_0 row cols not divisible by block size".to_string()));
+    }
+    let blocks_per_row = cols / Q8_0_BLOCK_VALUES;
+    let row_bytes = blocks_per_row * Q8_0_BLOCK_BYTES;
+    let offset = tensor.absolute_offset as usize + row_bytes * row;
+    if offset + row_bytes > mmap.len() {
+        return Err(MlError::Model("tensor data out of bounds".to_string()));
+    }
+    dequant_q8_0(&mmap[offset..offset + row_bytes], cols)
+}
+
 pub fn matmul_q8_0(path: &Path, tensor: &GgufTensorDump, input: &[f32]) -> Result<Vec<f32>> {
     if tensor.ggml_type != 8 {
         return Err(MlError::Model(format!(
@@ -304,6 +388,42 @@ pub fn matmul_q8_0(path: &Path, tensor: &GgufTensorDump, input: &[f32]) -> Resul
     for row in 0..rows {
         file.read_exact(&mut buf)?;
         out[row] = dot_q8_0_row(&buf, input)?;
+    }
+    Ok(out)
+}
+
+/// Memory-mapped version of matmul_q8_0 - much faster than file I/O version
+pub fn matmul_q8_0_mmap(mmap: &[u8], tensor: &GgufTensorDump, input: &[f32]) -> Result<Vec<f32>> {
+    if tensor.ggml_type != 8 {
+        return Err(MlError::Model(format!(
+            "tensor {} is {}, expected Q8_0",
+            tensor.name, tensor.ggml_type_name
+        )));
+    }
+    let rows = tensor.dims.get(0).copied().unwrap_or(0) as usize;
+    let cols = tensor.dims.get(1).copied().unwrap_or(0) as usize;
+    if cols != input.len() || rows == 0 {
+        return Err(MlError::Model(format!(
+            "matmul shape mismatch rows={rows} cols={cols} input={}",
+            input.len()
+        )));
+    }
+    if cols % Q8_0_BLOCK_VALUES != 0 {
+        return Err(MlError::Model(
+            "q8_0 cols not divisible by block size".to_string(),
+        ));
+    }
+    let row_bytes = (cols / Q8_0_BLOCK_VALUES) * Q8_0_BLOCK_BYTES;
+    let offset = tensor.absolute_offset as usize;
+    let total_bytes = rows * row_bytes;
+    if offset + total_bytes > mmap.len() {
+        return Err(MlError::Model("tensor data out of bounds".to_string()));
+    }
+    let mut out = vec![0.0f32; rows];
+    for row in 0..rows {
+        let start = offset + row * row_bytes;
+        let end = start + row_bytes;
+        out[row] = dot_q8_0_row(&mmap[start..end], input)?;
     }
     Ok(out)
 }
@@ -359,6 +479,64 @@ pub fn matmul_mxfp4_expert(
         )));
     }
     let quant = read_mxfp4_expert(path, tensor, expert_idx)?;
+    let weights = dequant_mxfp4(&quant, rows * cols)?;
+    Ok(matmul_f32(&weights, input, cols, rows))
+}
+
+/// Memory-mapped version of read_mxfp4_expert
+pub fn read_mxfp4_expert_mmap(
+    mmap: &[u8],
+    tensor: &GgufTensorDump,
+    expert_idx: usize,
+) -> Result<Vec<u8>> {
+    if tensor.ggml_type != 39 {
+        return Err(MlError::Model(format!(
+            "tensor {} is {}, expected MXFP4",
+            tensor.name, tensor.ggml_type_name
+        )));
+    }
+    let experts = tensor.dims.get(0).copied().unwrap_or(0) as usize;
+    let rows = tensor.dims.get(1).copied().unwrap_or(0) as usize;
+    let cols = tensor.dims.get(2).copied().unwrap_or(0) as usize;
+    if expert_idx >= experts || rows == 0 || cols == 0 {
+        return Err(MlError::Model(format!(
+            "expert {expert_idx} out of range for {}",
+            tensor.name
+        )));
+    }
+    let values = rows
+        .checked_mul(cols)
+        .ok_or_else(|| MlError::Model("mxfp4 value overflow".to_string()))?;
+    if values % MXFP4_BLOCK_VALUES != 0 {
+        return Err(MlError::Model(
+            "mxfp4 values not divisible by block size".to_string(),
+        ));
+    }
+    let blocks = values / MXFP4_BLOCK_VALUES;
+    let bytes_needed = blocks * MXFP4_BLOCK_BYTES;
+    let offset = tensor.absolute_offset as usize + expert_idx * bytes_needed;
+    if offset + bytes_needed > mmap.len() {
+        return Err(MlError::Model("tensor data out of bounds".to_string()));
+    }
+    Ok(mmap[offset..offset + bytes_needed].to_vec())
+}
+
+/// Memory-mapped version of matmul_mxfp4_expert
+pub fn matmul_mxfp4_expert_mmap(
+    mmap: &[u8],
+    tensor: &GgufTensorDump,
+    expert_idx: usize,
+    input: &[f32],
+) -> Result<Vec<f32>> {
+    let rows = tensor.dims.get(1).copied().unwrap_or(0) as usize;
+    let cols = tensor.dims.get(2).copied().unwrap_or(0) as usize;
+    if cols != input.len() || rows == 0 {
+        return Err(MlError::Model(format!(
+            "mxfp4 matmul shape mismatch rows={rows} cols={cols} input={}",
+            input.len()
+        )));
+    }
+    let quant = read_mxfp4_expert_mmap(mmap, tensor, expert_idx)?;
     let weights = dequant_mxfp4(&quant, rows * cols)?;
     Ok(matmul_f32(&weights, input, cols, rows))
 }

@@ -198,6 +198,7 @@ impl CoreBpe {
         })
     }
 
+    #[allow(dead_code)]
     pub fn encode_ordinary(&self, text: &str) -> Result<Vec<Rank>, String> {
         let mut out = Vec::new();
         for mat in self.regex.find_iter(text) {
@@ -301,6 +302,7 @@ impl CoreBpe {
         byte_decode(&out)
     }
 
+    #[allow(dead_code)]
     pub fn decode_utf8<S, E>(&self, tokens: S) -> Result<String, String>
     where
         S: IntoIterator<Item = E>,

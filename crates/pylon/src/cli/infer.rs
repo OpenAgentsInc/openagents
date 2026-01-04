@@ -56,11 +56,16 @@ pub async fn run(args: InferArgs) -> anyhow::Result<()> {
     }
 
     let models = registry.list_all_models().await;
+    eprintln!("[pylon] Available models:");
+    for (backend_id, info) in &models {
+        eprintln!("[pylon]   backend={} model={}", backend_id, info.id);
+    }
     if models.is_empty() {
         anyhow::bail!("no local backends detected");
     }
 
     let model_id = resolve_model_id(&models, args.model)?;
+    eprintln!("[pylon] Selected backend={} model={}", model_id.0, model_id.1);
     let backend = registry
         .get(&model_id.0)
         .ok_or_else(|| anyhow::anyhow!("backend not available: {}", model_id.0))?;
@@ -118,6 +123,14 @@ fn resolve_model_id(
 
     if let Ok(model) = std::env::var("GPT_OSS_GGUF_MODEL_ID") {
         let hit = models.iter().find(|(_, info)| info.id == model);
+        if let Some((backend_id, info)) = hit {
+            return Ok((backend_id.clone(), info.id.clone()));
+        }
+    }
+
+    // If GPT_OSS_GGUF_PATH is set, prefer the gpt-oss-gguf backend
+    if std::env::var("GPT_OSS_GGUF_PATH").is_ok() {
+        let hit = models.iter().find(|(backend_id, _)| backend_id == "gpt-oss-gguf");
         if let Some((backend_id, info)) = hit {
             return Ok((backend_id.clone(), info.id.clone()));
         }
