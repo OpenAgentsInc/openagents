@@ -221,14 +221,18 @@ mod nip16;
 #[cfg(feature = "full")]
 mod nip17;
 mod nip18;
+#[cfg(feature = "full")]
 mod nip19;
 mod nip20;
+#[cfg(feature = "full")]
 mod nip21;
 mod nip22;
 mod nip23;
 mod nip24;
 mod nip25;
+#[cfg(feature = "full")]
 mod nip26;
+#[cfg(feature = "full")]
 mod nip27;
 mod nip28;
 mod nip29;
@@ -322,12 +326,16 @@ pub use nip01::{
 // NIP-02: Follow List (Contact List and Petnames)
 pub use nip02::{CONTACT_LIST_KIND, Contact, ContactList, Nip02Error};
 
-// NIP-03: OpenTimestamps Attestations for Events
+// NIP-03: OpenTimestamps Attestations for Events (types always available)
 pub use nip03::{
     KIND_OTS_ATTESTATION, Nip03Error, OpenTimestampsAttestation, TARGET_EVENT_TAG, TARGET_KIND_TAG,
-    create_attestation_tags, decode_ots_content, encode_ots_content, get_target_event_id,
-    get_target_event_kind, get_target_relay_url, is_ots_attestation, parse_attestation,
+    create_attestation_tags, get_target_event_id, get_target_event_kind, get_target_relay_url,
+    is_ots_attestation,
 };
+
+// NIP-03: Functions requiring base64 (full feature only)
+#[cfg(feature = "full")]
+pub use nip03::{decode_ots_content, encode_ots_content, parse_attestation};
 
 // NIP-04: Encrypted Direct Messages (requires full feature)
 #[cfg(feature = "full")]
@@ -407,7 +415,8 @@ pub use nip18::{
     GENERIC_REPOST_KIND, GenericRepost, Nip18Error, REPOST_KIND, Repost, is_repost_kind,
 };
 
-// NIP-19: bech32-encoded entities
+// NIP-19: bech32-encoded entities (requires full feature)
+#[cfg(feature = "full")]
 pub use nip19::{
     AddressPointer, EventPointer, Nip19Entity, Nip19Error, ProfilePointer, decode, encode_naddr,
     encode_nevent, encode_note, encode_nprofile, encode_npub, encode_nsec,
@@ -416,7 +425,8 @@ pub use nip19::{
 // NIP-20: Command Results (deprecated, moved to NIP-01)
 pub use nip20::{CommandResult, Nip20Error, NoticeMessage, OkMessage};
 
-// NIP-21: nostr: URI scheme
+// NIP-21: nostr: URI scheme (requires full feature)
+#[cfg(feature = "full")]
 pub use nip21::{
     NOSTR_URI_SCHEME, Nip21Error, from_nostr_uri, is_nostr_uri, strip_nostr_prefix, to_nostr_uri,
 };
@@ -442,14 +452,16 @@ pub use nip25::{
     EXTERNAL_REACTION_KIND, Nip25Error, REACTION_KIND, Reaction, ReactionType, is_reaction_kind,
 };
 
-// NIP-26: Delegated Event Signing
+// NIP-26: Delegated Event Signing (requires full feature)
+#[cfg(feature = "full")]
 pub use nip26::{
     Condition, Nip26Error, check_delegation_conditions, conditions_to_string,
     create_delegation_string, create_delegation_token, parse_conditions, validate_delegation,
     verify_delegation_token,
 };
 
-// NIP-27: Text Note References
+// NIP-27: Text Note References (requires full feature)
+#[cfg(feature = "full")]
 pub use nip27::{
     MentionReference, Nip27Error, extract_event_references, extract_profile_references,
     extract_references, get_mentioned_event_ids, get_mentioned_pubkeys, has_references,

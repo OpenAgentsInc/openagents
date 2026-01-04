@@ -142,23 +142,15 @@ pub trait WindowNostrProvider: WindowNostr {
 
 /// Helper to check if window.nostr is available
 ///
-/// In WASM/browser context, this checks for the window.nostr object.
-/// In native context, always returns false.
-#[cfg(target_arch = "wasm32")]
+/// In WASM/browser context with appropriate dependencies, this would check
+/// for the window.nostr object. Without wasm_bindgen/web_sys dependencies,
+/// always returns false.
+///
+/// Note: To enable actual browser detection, add wasm_bindgen, web_sys, and
+/// js_sys as dependencies and use the `full` feature.
 pub fn is_available() -> bool {
-    use wasm_bindgen::prelude::*;
-    use web_sys::window;
-
-    if let Some(win) = window() {
-        js_sys::Reflect::has(&win, &JsValue::from_str("nostr")).unwrap_or(false)
-    } else {
-        false
-    }
-}
-
-/// Helper to check if window.nostr is available (native version)
-#[cfg(not(target_arch = "wasm32"))]
-pub fn is_available() -> bool {
+    // Without wasm_bindgen/web_sys/js_sys dependencies, we can't check
+    // for window.nostr. Always return false.
     false
 }
 
@@ -217,9 +209,8 @@ mod tests {
     }
 
     #[test]
-    fn test_is_available_native() {
-        // In native (non-WASM) context, should always return false
-        #[cfg(not(target_arch = "wasm32"))]
+    fn test_is_available() {
+        // Without wasm_bindgen/web_sys/js_sys, should always return false
         assert!(!is_available());
     }
 

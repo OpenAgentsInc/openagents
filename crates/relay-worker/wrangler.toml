@@ -1,0 +1,42 @@
+# OpenAgents Nostr Relay - Cloudflare Workers configuration
+# Deploy with: bun run deploy
+
+name = "openagents-relay"
+main = "build/index.js"
+compatibility_date = "2024-12-01"
+
+# Keep workers.dev subdomain enabled
+workers_dev = true
+
+# Worker build configuration
+[build]
+command = "cargo install -q worker-build && worker-build --release"
+
+# D1 Database for persistent event storage
+[[d1_databases]]
+binding = "DB"
+database_name = "openagents-relay"
+database_id = "df30de4e-7dcd-4037-81fe-e67f1a80889c"
+
+# Durable Objects for WebSocket relay
+[durable_objects]
+bindings = [
+    { name = "NOSTR_RELAY", class_name = "NostrRelay" }
+]
+
+[[migrations]]
+tag = "v2"
+deleted_classes = ["RelayDurableObject"]
+new_sqlite_classes = ["NostrRelay"]
+
+# Environment variables (non-secret)
+[vars]
+RELAY_NAME = "relay.openagents.com"
+RELAY_DESCRIPTION = "OpenAgents NIP-90 inference relay"
+RELAY_PUBKEY = ""
+SUPPORTED_NIPS = "1,11,28,32,42,90"
+
+# Local development settings
+[dev]
+port = 8788
+local_protocol = "http"
