@@ -5,6 +5,10 @@ edition.workspace = true
 description = "Nostr relay implementation with SQLite storage"
 license = "MIT"
 
+[[bin]]
+name = "nostr-relay"
+path = "src/main.rs"
+
 [features]
 default = ["full"]
 full = ["nostr/full"]
