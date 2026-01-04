@@ -53,11 +53,15 @@ impl GptOssGgufBackend {
     }
 
     pub fn from_env() -> BackendResult<Self> {
-        let path = std::env::var("GPT_OSS_GGUF_PATH").map_err(|_| {
-            BackendError::InitializationError("GPT_OSS_GGUF_PATH not set".to_string())
-        })?;
+        let path = std::env::var("GPT_OSS_GGUF_PATH")
+            .ok()
+            .map(PathBuf::from)
+            .or_else(default_gguf_path)
+            .ok_or_else(|| {
+                BackendError::InitializationError("GPT_OSS_GGUF_PATH not set".to_string())
+            })?;
         let model_id = std::env::var("GPT_OSS_GGUF_MODEL_ID").ok();
-        let mut backend = Self::new(PathBuf::from(path), model_id)?;
+        let mut backend = Self::new(path, model_id)?;
 
         backend.defaults.max_new_tokens = parse_env_usize("GPT_OSS_GGUF_MAX_TOKENS");
         backend.defaults.layer_limit = parse_env_usize("GPT_OSS_GGUF_LAYER_LIMIT");
@@ -513,4 +517,16 @@ fn parse_env_bool(key: &str) -> Option<bool> {
             _ => None,
         }
     })
+}
+
+fn default_gguf_path() -> Option<PathBuf> {
+    let candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("models")
+        .join("gpt-oss-20b")
+        .join("gpt-oss-20b-Q8_0.gguf");
+    if candidate.is_file() {
+        Some(candidate)
+    } else {
+        None
+    }
 }
