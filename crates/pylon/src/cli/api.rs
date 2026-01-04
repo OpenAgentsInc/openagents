@@ -208,17 +208,20 @@ fn render_stream_event(chunk: StreamChunk) -> Event {
         }
     }
 
-    let body = CompletionResponseOut {
-        id: chunk.id,
-        object: "text_completion",
-        model: chunk.model,
-        choices: vec![CompletionChoice {
-            text: chunk.delta,
-            index: 0,
-            finish_reason: chunk.finish_reason,
-        }],
-        usage: None,
-    };
+    let mut body = serde_json::json!({
+        "id": chunk.id,
+        "object": "text_completion",
+        "model": chunk.model,
+        "choices": [{
+            "text": chunk.delta,
+            "index": 0,
+            "finish_reason": chunk.finish_reason,
+        }]
+    });
+    if !chunk.extra.is_empty() {
+        let extra = serde_json::Value::Object(chunk.extra.into_iter().collect());
+        body["extra"] = extra;
+    }
     Event::default().data(serde_json::to_string(&body).unwrap_or_default())
 }
 

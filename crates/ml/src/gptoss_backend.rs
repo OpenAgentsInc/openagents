@@ -9,7 +9,10 @@ use compute::backends::{
     Result as BackendResult, StreamChunk, UsageInfo,
 };
 
-use crate::{GptOssEngine, GptOssEngineConfig, GptOssTokenEvent, MlError};
+use crate::{
+    telemetry::{telemetry_timestamp_ms, InferenceTelemetry, ModelLifecycleTelemetry, StageStatus},
+    GptOssEngine, GptOssEngineConfig, GptOssTokenEvent, MlError,
+};
 
 #[derive(Debug, Clone)]
 struct GptOssDefaults {
@@ -224,6 +227,65 @@ impl InferenceBackend for GptOssGgufBackend {
                 }
             };
 
+            let send_telemetry = |telemetry: ModelLifecycleTelemetry| -> Result<(), MlError> {
+                let mut extra = HashMap::new();
+                if let Ok(value) = serde_json::to_value(telemetry) {
+                    extra.insert("telemetry".to_string(), value);
+                }
+                let chunk = StreamChunk {
+                    id: String::new(),
+                    model: model_id.clone(),
+                    delta: String::new(),
+                    finish_reason: None,
+                    extra,
+                };
+                tx.blocking_send(Ok(chunk))
+                    .map_err(|_| MlError::Model("stream closed".to_string()))?;
+                Ok(())
+            };
+
+            let _ = send_telemetry(ModelLifecycleTelemetry::LoadStage {
+                stage: "load_start".to_string(),
+                status: StageStatus::Started,
+                detail: Some("source=pylon".to_string()),
+                bytes: None,
+                total_bytes: None,
+                ts_ms: telemetry_timestamp_ms(),
+            });
+            let _ = send_telemetry(ModelLifecycleTelemetry::LoadStage {
+                stage: "load_complete".to_string(),
+                status: StageStatus::Completed,
+                detail: Some("backend=gpt-oss-gguf".to_string()),
+                bytes: None,
+                total_bytes: None,
+                ts_ms: telemetry_timestamp_ms(),
+            });
+
+            let runtime_detail = format!(
+                "cpu_fallback=pylon sample={} moe=gguf",
+                if config.generation.temperature <= 0.0 {
+                    "off"
+                } else {
+                    "on"
+                }
+            );
+            let _ = send_telemetry(ModelLifecycleTelemetry::InferenceStage {
+                stage: "runtime_mode".to_string(),
+                status: StageStatus::Completed,
+                step: None,
+                total_steps: None,
+                detail: Some(runtime_detail),
+                ts_ms: telemetry_timestamp_ms(),
+            });
+            let _ = send_telemetry(ModelLifecycleTelemetry::InferenceStage {
+                stage: "prompt_encode".to_string(),
+                status: StageStatus::Started,
+                step: None,
+                total_steps: None,
+                detail: Some("format=harmony".to_string()),
+                ts_ms: telemetry_timestamp_ms(),
+            });
+
             if let Some(tokens) = stop {
                 for token in tokens {
                     if let Some(id) = engine.token_id(&token) {
@@ -232,7 +294,37 @@ impl InferenceBackend for GptOssGgufBackend {
                 }
             }
 
+            let _ = send_telemetry(ModelLifecycleTelemetry::InferenceStage {
+                stage: "prompt_encode".to_string(),
+                status: StageStatus::Completed,
+                step: None,
+                total_steps: None,
+                detail: None,
+                ts_ms: telemetry_timestamp_ms(),
+            });
+            let _ = send_telemetry(ModelLifecycleTelemetry::InferenceStage {
+                stage: "prefill".to_string(),
+                status: StageStatus::Started,
+                step: None,
+                total_steps: None,
+                detail: None,
+                ts_ms: telemetry_timestamp_ms(),
+            });
+
+            let mut decode_started = false;
             let mut callback = |event: &GptOssTokenEvent| {
+                if !decode_started {
+                    decode_started = true;
+                    let _ = send_telemetry(ModelLifecycleTelemetry::InferenceStage {
+                        stage: "decode".to_string(),
+                        status: StageStatus::Started,
+                        step: None,
+                        total_steps: None,
+                        detail: None,
+                        ts_ms: telemetry_timestamp_ms(),
+                    });
+                }
+
                 if event.token_text.is_empty() {
                     return Ok(());
                 }
@@ -265,6 +357,20 @@ impl InferenceBackend for GptOssGgufBackend {
                     extra.insert("top_k".to_string(), serde_json::Value::from(top_k));
                 }
 
+                let telemetry = ModelLifecycleTelemetry::InferenceEvent {
+                    event: InferenceTelemetry::TokenGenerated {
+                        token_id: event.token_id,
+                        token_text: event.token_text.clone(),
+                        top_k: event.top_k.clone(),
+                        entropy: event.entropy,
+                        tokens_per_sec: event.tokens_per_sec,
+                    },
+                    ts_ms: telemetry_timestamp_ms(),
+                };
+                if let Ok(value) = serde_json::to_value(telemetry) {
+                    extra.insert("telemetry".to_string(), value);
+                }
+
                 let chunk = StreamChunk {
                     id: String::new(),
                     model: model_id.clone(),
@@ -282,6 +388,14 @@ impl InferenceBackend for GptOssGgufBackend {
 
             match result {
                 Ok(completion) => {
+                    let _ = send_telemetry(ModelLifecycleTelemetry::InferenceStage {
+                        stage: "decode".to_string(),
+                        status: StageStatus::Completed,
+                        step: None,
+                        total_steps: None,
+                        detail: Some(completion.finish_reason.clone()),
+                        ts_ms: telemetry_timestamp_ms(),
+                    });
                     let _ = tx.blocking_send(Ok(StreamChunk {
                         id: String::new(),
                         model: model_id,
