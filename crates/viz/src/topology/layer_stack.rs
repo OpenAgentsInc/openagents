@@ -1,7 +1,7 @@
 //! LayerStack - stacked layer visualization
 
 use wgpui::components::{Component, PaintContext};
-use wgpui::{Bounds, Color, Point, Size};
+use wgpui::{Bounds, Hsla, Point, Quad, Size};
 
 use crate::grammar::{Edge, Node, NodeId, Topology, VizPrimitive};
 
@@ -18,9 +18,9 @@ pub struct Layer {
 pub struct LayerStack {
     layers: Vec<Layer>,
     highlighted: Vec<NodeId>,
-    layer_color: Color,
-    active_color: Color,
-    highlight_color: Color,
+    layer_color: Hsla,
+    active_color: Hsla,
+    highlight_color: Hsla,
     gap: f32,
 }
 
@@ -29,9 +29,9 @@ impl LayerStack {
         Self {
             layers: Vec::new(),
             highlighted: Vec::new(),
-            layer_color: Color::from_rgba(0.2, 0.2, 0.2, 1.0),
-            active_color: Color::from_rgba(0.0, 0.6, 0.3, 1.0),
-            highlight_color: Color::from_rgba(0.0, 0.8, 1.0, 1.0),
+            layer_color: Hsla::new(0.0, 0.0, 0.2, 1.0),
+            active_color: Hsla::new(145.0 / 360.0, 0.6, 0.3, 1.0),
+            highlight_color: Hsla::new(200.0 / 360.0, 0.8, 0.5, 1.0),
             gap: 4.0,
         }
     }
@@ -93,10 +93,10 @@ impl Component for LayerStack {
             };
 
             // Interpolate intensity
-            let color = Color::from_rgba(
-                base_color.r * (0.3 + 0.7 * layer.intensity),
-                base_color.g * (0.3 + 0.7 * layer.intensity),
-                base_color.b * (0.3 + 0.7 * layer.intensity),
+            let color = Hsla::new(
+                base_color.h,
+                base_color.s,
+                base_color.l * (0.3 + 0.7 * layer.intensity),
                 1.0,
             );
 
@@ -111,7 +111,7 @@ impl Component for LayerStack {
                 },
             };
 
-            cx.scene.fill_rect(layer_bounds, color);
+            cx.scene.draw_quad(Quad::new(layer_bounds).with_background(color));
         }
     }
 

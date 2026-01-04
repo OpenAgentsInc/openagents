@@ -1,7 +1,7 @@
 //! Graph - node-edge graph layout
 
 use wgpui::components::{Component, PaintContext};
-use wgpui::{Bounds, Color, Point};
+use wgpui::{Bounds, Hsla, Point, Quad, Size};
 
 use crate::grammar::{Edge, Node, NodeId, Topology, VizPrimitive};
 
@@ -10,9 +10,9 @@ pub struct Graph {
     nodes: Vec<Node>,
     edges: Vec<Edge>,
     highlighted: Vec<NodeId>,
-    node_color: Color,
-    highlight_color: Color,
-    edge_color: Color,
+    node_color: Hsla,
+    highlight_color: Hsla,
+    edge_color: Hsla,
 }
 
 impl Graph {
@@ -21,9 +21,9 @@ impl Graph {
             nodes: Vec::new(),
             edges: Vec::new(),
             highlighted: Vec::new(),
-            node_color: Color::from_rgba(0.3, 0.3, 0.3, 1.0),
-            highlight_color: Color::from_rgba(0.0, 0.8, 1.0, 1.0),
-            edge_color: Color::from_rgba(0.4, 0.4, 0.4, 1.0),
+            node_color: Hsla::new(0.0, 0.0, 0.3, 1.0),
+            highlight_color: Hsla::new(200.0 / 360.0, 0.8, 0.5, 1.0),
+            edge_color: Hsla::new(0.0, 0.0, 0.4, 1.0),
         }
     }
 
@@ -40,7 +40,7 @@ impl Default for Graph {
 
 impl Component for Graph {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        // Draw edges first
+        // Draw edges first (as lines approximated with thin quads)
         for edge in &self.edges {
             if let (Some(from), Some(to)) = (self.find_node(edge.from), self.find_node(edge.to)) {
                 let from_pt = Point {
@@ -52,29 +52,33 @@ impl Component for Graph {
                     y: bounds.origin.y + to.position.y * bounds.size.height,
                 };
 
-                // Draw line as thin rectangle
+                // Draw line as thin rectangle aligned to edge direction
                 let dx = to_pt.x - from_pt.x;
                 let dy = to_pt.y - from_pt.y;
                 let len = (dx * dx + dy * dy).sqrt();
+
                 if len > 0.1 {
-                    let nx = -dy / len * 1.5;
-                    let ny = dx / len * 1.5;
-
-                    let p1 = Point { x: from_pt.x + nx, y: from_pt.y + ny };
-                    let p2 = Point { x: from_pt.x - nx, y: from_pt.y - ny };
-                    let p3 = Point { x: to_pt.x - nx, y: to_pt.y - ny };
-                    let p4 = Point { x: to_pt.x + nx, y: to_pt.y + ny };
-
                     let edge_alpha = 0.3 + 0.7 * edge.weight.min(1.0);
-                    let edge_color = Color::from_rgba(
-                        self.edge_color.r,
-                        self.edge_color.g,
-                        self.edge_color.b,
+                    let edge_color = Hsla::new(
+                        self.edge_color.h,
+                        self.edge_color.s,
+                        self.edge_color.l,
                         edge_alpha,
                     );
 
-                    cx.scene.fill_triangle(p1, p2, p3, edge_color);
-                    cx.scene.fill_triangle(p1, p3, p4, edge_color);
+                    // Use small quads along the edge
+                    let steps = (len / 4.0).max(2.0) as i32;
+                    for i in 0..steps {
+                        let t = i as f32 / steps as f32;
+                        let px = from_pt.x + dx * t;
+                        let py = from_pt.y + dy * t;
+
+                        let seg_bounds = Bounds {
+                            origin: Point { x: px - 1.5, y: py - 1.5 },
+                            size: Size { width: 3.0, height: 3.0 },
+                        };
+                        cx.scene.draw_quad(Quad::new(seg_bounds).with_background(edge_color));
+                    }
                 }
             }
         }
@@ -93,25 +97,25 @@ impl Component for Graph {
                 self.node_color
             };
 
-            let radius = node.size * if is_highlighted { 1.3 } else { 1.0 };
+            let size = node.size * if is_highlighted { 1.3 } else { 1.0 };
 
-            // Draw as circle approximation
-            let segments = 16;
-            for i in 0..segments {
-                let a0 = (i as f32 / segments as f32) * std::f32::consts::TAU;
-                let a1 = ((i + 1) as f32 / segments as f32) * std::f32::consts::TAU;
+            // Draw as square (could use corner_radius for circle)
+            let node_bounds = Bounds {
+                origin: Point {
+                    x: center.x - size / 2.0,
+                    y: center.y - size / 2.0,
+                },
+                size: Size {
+                    width: size,
+                    height: size,
+                },
+            };
 
-                let p0 = Point {
-                    x: center.x + radius * a0.cos(),
-                    y: center.y + radius * a0.sin(),
-                };
-                let p1 = Point {
-                    x: center.x + radius * a1.cos(),
-                    y: center.y + radius * a1.sin(),
-                };
-
-                cx.scene.fill_triangle(center, p0, p1, color);
-            }
+            cx.scene.draw_quad(
+                Quad::new(node_bounds)
+                    .with_background(color)
+                    .with_corner_radius(size / 2.0)
+            );
         }
     }
 

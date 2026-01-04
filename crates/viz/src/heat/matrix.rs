@@ -1,7 +1,7 @@
 //! Matrix - 2D heatmap visualization
 
 use wgpui::components::{Component, PaintContext};
-use wgpui::{Bounds, Color, Point, Size};
+use wgpui::{Bounds, Hsla, Point, Quad, Size};
 
 use crate::grammar::{Heat, Palette, VizPrimitive};
 
@@ -52,7 +52,7 @@ impl Component for Matrix {
             for x in 0..self.width {
                 let value = self.data[y * self.width + x];
                 let color_arr = self.palette.sample(value);
-                let color = Color::from_rgba(color_arr[0], color_arr[1], color_arr[2], color_arr[3]);
+                let color = Hsla::from_rgb(color_arr[0], color_arr[1], color_arr[2]).with_alpha(color_arr[3]);
 
                 let cell_bounds = Bounds {
                     origin: Point {
@@ -65,7 +65,7 @@ impl Component for Matrix {
                     },
                 };
 
-                cx.scene.fill_rect(cell_bounds, color);
+                cx.scene.draw_quad(Quad::new(cell_bounds).with_background(color));
             }
         }
     }

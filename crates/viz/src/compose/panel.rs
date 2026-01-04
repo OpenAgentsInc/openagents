@@ -1,15 +1,14 @@
 //! Panel container with title
 
 use wgpui::components::{Component, PaintContext};
-use wgpui::{Bounds, Color, Point, Size};
+use wgpui::{Bounds, Hsla, Point, Quad, Size};
 
 /// A panel container with optional title
 pub struct Panel {
     title: Option<String>,
     title_height: f32,
-    bg_color: Color,
-    border_color: Color,
-    title_color: Color,
+    bg_color: Hsla,
+    border_color: Hsla,
     padding: f32,
 }
 
@@ -18,9 +17,8 @@ impl Panel {
         Self {
             title: None,
             title_height: 20.0,
-            bg_color: Color::from_rgba(0.08, 0.08, 0.08, 1.0),
-            border_color: Color::from_rgba(0.2, 0.2, 0.2, 1.0),
-            title_color: Color::from_rgba(0.6, 0.6, 0.6, 1.0),
+            bg_color: Hsla::new(0.0, 0.0, 0.08, 1.0),
+            border_color: Hsla::new(0.0, 0.0, 0.2, 1.0),
             padding: 8.0,
         }
     }
@@ -30,7 +28,7 @@ impl Panel {
         self
     }
 
-    pub fn with_bg_color(mut self, color: Color) -> Self {
+    pub fn with_bg_color(mut self, color: Hsla) -> Self {
         self.bg_color = color;
         self
     }
@@ -65,100 +63,65 @@ impl Default for Panel {
 impl Component for Panel {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         // Background
-        cx.scene.fill_rect(bounds, self.bg_color);
+        cx.scene.draw_quad(Quad::new(bounds).with_background(self.bg_color));
 
-        // Border (top, left, bottom, right as thin rects)
+        // Border (using 4 thin quads)
         let border_width = 1.0;
 
         // Top border
-        cx.scene.fill_rect(
-            Bounds {
-                origin: bounds.origin,
-                size: Size {
-                    width: bounds.size.width,
-                    height: border_width,
-                },
+        cx.scene.draw_quad(Quad::new(Bounds {
+            origin: bounds.origin,
+            size: Size {
+                width: bounds.size.width,
+                height: border_width,
             },
-            self.border_color,
-        );
+        }).with_background(self.border_color));
 
         // Left border
-        cx.scene.fill_rect(
-            Bounds {
-                origin: bounds.origin,
-                size: Size {
-                    width: border_width,
-                    height: bounds.size.height,
-                },
+        cx.scene.draw_quad(Quad::new(Bounds {
+            origin: bounds.origin,
+            size: Size {
+                width: border_width,
+                height: bounds.size.height,
             },
-            self.border_color,
-        );
+        }).with_background(self.border_color));
 
         // Bottom border
-        cx.scene.fill_rect(
-            Bounds {
-                origin: Point {
-                    x: bounds.origin.x,
-                    y: bounds.origin.y + bounds.size.height - border_width,
-                },
-                size: Size {
-                    width: bounds.size.width,
-                    height: border_width,
-                },
+        cx.scene.draw_quad(Quad::new(Bounds {
+            origin: Point {
+                x: bounds.origin.x,
+                y: bounds.origin.y + bounds.size.height - border_width,
             },
-            self.border_color,
-        );
+            size: Size {
+                width: bounds.size.width,
+                height: border_width,
+            },
+        }).with_background(self.border_color));
 
         // Right border
-        cx.scene.fill_rect(
-            Bounds {
-                origin: Point {
-                    x: bounds.origin.x + bounds.size.width - border_width,
-                    y: bounds.origin.y,
-                },
-                size: Size {
-                    width: border_width,
-                    height: bounds.size.height,
-                },
+        cx.scene.draw_quad(Quad::new(Bounds {
+            origin: Point {
+                x: bounds.origin.x + bounds.size.width - border_width,
+                y: bounds.origin.y,
             },
-            self.border_color,
-        );
+            size: Size {
+                width: border_width,
+                height: bounds.size.height,
+            },
+        }).with_background(self.border_color));
 
-        // Title (if present)
-        if let Some(ref title) = self.title {
-            let title_bounds = Bounds {
+        // Title separator line (if title present)
+        if self.title.is_some() {
+            cx.scene.draw_quad(Quad::new(Bounds {
                 origin: Point {
                     x: bounds.origin.x + self.padding,
-                    y: bounds.origin.y + 4.0,
+                    y: bounds.origin.y + self.title_height,
                 },
                 size: Size {
                     width: bounds.size.width - self.padding * 2.0,
-                    height: self.title_height,
+                    height: 1.0,
                 },
-            };
-
-            cx.text.draw(
-                cx.scene,
-                title,
-                title_bounds.origin,
-                12.0,
-                self.title_color,
-            );
-
-            // Title separator line
-            cx.scene.fill_rect(
-                Bounds {
-                    origin: Point {
-                        x: bounds.origin.x + self.padding,
-                        y: bounds.origin.y + self.title_height,
-                    },
-                    size: Size {
-                        width: bounds.size.width - self.padding * 2.0,
-                        height: 1.0,
-                    },
-                },
-                self.border_color,
-            );
+            }).with_background(self.border_color));
         }
     }
 
