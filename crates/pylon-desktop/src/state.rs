@@ -67,6 +67,14 @@ pub struct PendingRequest {
     pub _requested_at: u64,
 }
 
+/// A pending invoice we created for a job we served
+#[derive(Clone)]
+pub struct PendingInvoice {
+    pub bolt11: String,      // The Lightning invoice
+    pub amount_sats: u64,    // Amount in satoshis
+    pub created_at: u64,     // Unix timestamp
+}
+
 /// A NIP-28 chat message
 #[derive(Clone)]
 pub struct ChatMessage {
@@ -121,8 +129,13 @@ pub struct FmVizState {
     pub current_job_id: Option<String>,  // Job we're currently serving
     pub jobs_served: u32,
     pub jobs_requested: u32,
-    pub credits: i32,  // served - requested
     pub pending_requests: HashMap<String, PendingRequest>,  // event_id -> our request
+
+    // Wallet (real Bitcoin sats via Spark)
+    pub balance_sats: u64,           // Current wallet balance
+    pub pending_earnings: u64,       // Sats earned but not yet confirmed
+    pub wallet_connected: bool,      // Whether wallet initialized successfully
+    pub pending_invoices: HashMap<String, PendingInvoice>,  // job_id -> invoice we created
 
     // NIP-28 Chat
     pub chat_messages: Vec<ChatMessage>,
@@ -169,8 +182,12 @@ impl FmVizState {
             current_job_id: None,
             jobs_served: 0,
             jobs_requested: 0,
-            credits: 0,
             pending_requests: HashMap::new(),
+
+            balance_sats: 0,
+            pending_earnings: 0,
+            wallet_connected: false,
+            pending_invoices: HashMap::new(),
 
             chat_messages: Vec::new(),
             chat_input: String::new(),

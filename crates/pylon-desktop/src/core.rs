@@ -99,7 +99,8 @@ impl PylonCore {
                         }
                         self.state.update_job_status(&job_id, JobStatus::Complete);
                         self.state.jobs_served += 1;
-                        self.state.credits += 1;
+                        // Pending earnings until invoice is paid (10 sats per job)
+                        self.state.pending_earnings += 10;
                     }
                 }
                 FmEvent::StreamError(error) => {

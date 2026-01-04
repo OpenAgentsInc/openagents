@@ -77,8 +77,12 @@ fn format_status(core: &PylonCore) -> String {
         NostrConnectionStatus::Error => "NOSTR:ERR",
     };
 
-    let credits = format!("Credits:{}", core.state.credits);
+    let balance = if core.state.pending_earnings > 0 {
+        format!("{}(+{}) sats", core.state.balance_sats, core.state.pending_earnings)
+    } else {
+        format!("{} sats", core.state.balance_sats)
+    };
     let served = format!("Served:{}", core.state.jobs_served);
 
-    format!("[{}] [{}] [{}] [{}]", fm, nostr, credits, served)
+    format!("[{}] [{}] [{}] [{}]", fm, nostr, balance, served)
 }
