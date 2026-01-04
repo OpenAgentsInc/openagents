@@ -1,5 +1,7 @@
 build
 
+*.pdf
+
 target
 .DS_Store
 expo/.tmp
