@@ -9526,6 +9526,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pylon-desktop"
+version = "0.1.0"
+dependencies = [
+ "dirs 5.0.1",
+ "fm-bridge",
+ "futures",
+ "pollster",
+ "reqwest",
+ "tokio",
+ "tokio-stream",
+ "viz",
+ "web-time",
+ "wgpu",
+ "wgpui",
+ "winit",
+]
+
+[[package]]
 name = "qoi"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
