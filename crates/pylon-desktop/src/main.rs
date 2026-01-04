@@ -12,6 +12,7 @@ mod input_convert;
 mod nostr_runtime;
 mod state;
 mod ui;
+mod wallet_runtime;
 
 use clap::Parser;
 use winit::event_loop::EventLoop;

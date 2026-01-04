@@ -5,8 +5,11 @@ use crate::fm_runtime::{FmEvent, FmRuntime};
 use crate::nostr_runtime::{NostrEvent, NostrRuntime};
 use crate::state::{
     ChatMessage, FmConnectionStatus, FmStreamStatus, FmVizState, Job, JobStatus,
-    NostrConnectionStatus,
+    NostrConnectionStatus, PendingInvoice,
 };
+use crate::wallet_runtime::{WalletEvent, WalletRuntime, SATS_PER_JOB};
+use spark::Network;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Core Pylon state shared between CLI and GUI modes
 pub struct PylonCore {
@@ -15,6 +18,7 @@ pub struct PylonCore {
     pub state: FmVizState,
     pub fm_runtime: FmRuntime,
     pub nostr_runtime: NostrRuntime,
+    pub wallet_runtime: WalletRuntime,
 }
 
 impl PylonCore {
@@ -56,11 +60,15 @@ impl PylonCore {
 
         let fm_runtime = FmRuntime::new();
 
+        // Create wallet runtime (testnet by default)
+        let wallet_runtime = WalletRuntime::new(Network::Testnet);
+
         Self {
             bridge,
             state,
             fm_runtime,
             nostr_runtime,
+            wallet_runtime,
         }
     }
 
@@ -96,11 +104,17 @@ impl PylonCore {
                                 &job.from_pubkey,
                                 &result,
                             );
+
+                            // Create invoice for payment
+                            if self.state.wallet_connected {
+                                let description = format!("NIP-90 job {}", &job_id[..8.min(job_id.len())]);
+                                self.wallet_runtime.create_invoice(&job_id, &description);
+                            }
                         }
                         self.state.update_job_status(&job_id, JobStatus::Complete);
                         self.state.jobs_served += 1;
-                        // Pending earnings until invoice is paid (10 sats per job)
-                        self.state.pending_earnings += 10;
+                        // Pending earnings until invoice is paid
+                        self.state.pending_earnings += SATS_PER_JOB;
                     }
                 }
                 FmEvent::StreamError(error) => {
@@ -156,7 +170,7 @@ impl PylonCore {
                         self.fm_runtime.stream(prompt);
                     }
                 }
-                NostrEvent::JobResult { _id: _, request_id, _pubkey: _, content } => {
+                NostrEvent::JobResult { _id: _, request_id, _pubkey: _, content, amount_msats, bolt11 } => {
                     if self.state.pending_requests.remove(&request_id).is_some() {
                         self.state.token_stream = content.clone();
                         self.state.stream_status = FmStreamStatus::Complete;
@@ -164,6 +178,21 @@ impl PylonCore {
                         if let Some(job) = self.state.jobs.iter_mut().find(|j| j.id == request_id) {
                             job.status = JobStatus::Complete;
                             job.result = Some(content);
+                        }
+
+                        // Pay the invoice if one was included
+                        if let Some(invoice) = bolt11 {
+                            if self.state.wallet_connected {
+                                let amount_sats = amount_msats.unwrap_or(0) / 1000;
+                                if self.state.balance_sats >= amount_sats {
+                                    self.wallet_runtime.pay_invoice(&invoice);
+                                } else {
+                                    self.state.error_message = Some(format!(
+                                        "Insufficient balance: {} sats needed, {} available",
+                                        amount_sats, self.state.balance_sats
+                                    ));
+                                }
+                            }
                         }
                     }
                 }
@@ -186,6 +215,66 @@ impl PylonCore {
                     self.state.channel_id = Some(channel_id.clone());
                     self.nostr_runtime.subscribe_chat(&channel_id);
                 }
+            }
+        }
+
+        // Poll wallet events
+        while let Ok(event) = self.wallet_runtime.event_rx.try_recv() {
+            processed = true;
+            match event {
+                WalletEvent::Initialized { balance_sats, _spark_address: _ } => {
+                    self.state.wallet_connected = true;
+                    self.state.balance_sats = balance_sats;
+                }
+                WalletEvent::InitFailed(error) => {
+                    self.state.wallet_connected = false;
+                    eprintln!("Wallet init failed: {}", error);
+                }
+                WalletEvent::BalanceUpdated { balance_sats } => {
+                    self.state.balance_sats = balance_sats;
+                }
+                WalletEvent::InvoiceCreated { job_id, bolt11, amount_sats } => {
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    self.state.pending_invoices.insert(
+                        job_id,
+                        PendingInvoice {
+                            bolt11,
+                            amount_sats,
+                            created_at: now,
+                        },
+                    );
+                }
+                WalletEvent::InvoiceCreationFailed { job_id, error } => {
+                    eprintln!("Invoice creation failed for job {}: {}", job_id, error);
+                }
+                WalletEvent::PaymentReceived { _payment_id: _, amount_sats } => {
+                    // Move from pending to confirmed
+                    if self.state.pending_earnings >= amount_sats {
+                        self.state.pending_earnings -= amount_sats;
+                    }
+                    self.state.balance_sats += amount_sats;
+                }
+                WalletEvent::PaymentSent { _payment_id: _, amount_sats } => {
+                    // Balance already updated in wallet, just log
+                    eprintln!("Payment sent: {} sats", amount_sats);
+                }
+                WalletEvent::PaymentFailed { error } => {
+                    self.state.error_message = Some(format!("Payment failed: {}", error));
+                }
+            }
+        }
+
+        // Periodically poll wallet for payments (every ~5 seconds based on poll rate)
+        // This is a simple approach - could be improved with a timer
+        static mut POLL_COUNTER: u32 = 0;
+        unsafe {
+            POLL_COUNTER += 1;
+            if POLL_COUNTER % 50 == 0 {
+                // ~5 seconds at 100ms poll rate
+                self.wallet_runtime.poll_payments();
             }
         }
 

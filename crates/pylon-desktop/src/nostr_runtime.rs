@@ -34,6 +34,10 @@ pub enum NostrEvent {
         request_id: String,
         _pubkey: String,
         content: String,
+        /// Amount in millisats (from "amount" tag)
+        amount_msats: Option<u64>,
+        /// Lightning invoice (from "amount" tag, second element)
+        bolt11: Option<String>,
     },
     /// Received a chat message (kind 42)
     ChatMessage {
@@ -572,11 +576,23 @@ async fn poll_relay_messages(
                                 .cloned()
                                 .unwrap_or_default();
 
+                            // Parse amount tag: ["amount", "msats", "bolt11"]
+                            let amount_tag = event.tags.iter()
+                                .find(|t| t.first().map(|s| s.as_str()) == Some("amount"));
+                            let amount_msats = amount_tag
+                                .and_then(|t| t.get(1))
+                                .and_then(|s| s.parse::<u64>().ok());
+                            let bolt11 = amount_tag
+                                .and_then(|t| t.get(2))
+                                .cloned();
+
                             let _ = event_tx.send(NostrEvent::JobResult {
                                 _id: event.id,
                                 request_id,
                                 _pubkey: event.pubkey,
                                 content: event.content,
+                                amount_msats,
+                                bolt11,
                             }).await;
                         }
                     }

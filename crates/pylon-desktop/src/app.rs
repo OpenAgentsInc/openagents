@@ -20,8 +20,9 @@ use crate::commands;
 use crate::fm_runtime::{FmEvent, FmRuntime};
 use crate::input_convert;
 use crate::nostr_runtime::{NostrEvent, NostrRuntime};
-use crate::state::{ChatMessage, FmConnectionStatus, FmStreamStatus, FmVizState, InputFocus, Job, JobStatus, NostrConnectionStatus};
+use crate::state::{ChatMessage, FmConnectionStatus, FmStreamStatus, FmVizState, InputFocus, Job, JobStatus, NostrConnectionStatus, PendingInvoice};
 use crate::ui;
+use crate::wallet_runtime::{WalletEvent, WalletRuntime, SATS_PER_JOB};
 
 #[derive(Default)]
 pub struct PylonApp {
@@ -39,6 +40,7 @@ pub struct RenderState {
     pub fm_state: FmVizState,
     pub fm_runtime: FmRuntime,
     pub nostr_runtime: NostrRuntime,
+    pub wallet_runtime: WalletRuntime,
     #[allow(dead_code)]
     pub bridge: BridgeManager,
     pub last_tick: Instant,
@@ -163,6 +165,9 @@ impl ApplicationHandler for PylonApp {
             fm_state.nostr_status = NostrConnectionStatus::Connecting;
             nostr_runtime.connect(&fm_state.relay_url);
 
+            // Create wallet runtime (testnet by default)
+            let wallet_runtime = WalletRuntime::new(spark::Network::Testnet);
+
             // Initialize clipboard with shared access for EventContext
             let clipboard = Rc::new(RefCell::new(Clipboard::new().ok()));
 
@@ -201,6 +206,7 @@ impl ApplicationHandler for PylonApp {
                 fm_state,
                 fm_runtime,
                 nostr_runtime,
+                wallet_runtime,
                 bridge,
                 last_tick: Instant::now(),
                 modifiers: ModifiersState::empty(),
@@ -385,10 +391,17 @@ impl ApplicationHandler for PylonApp {
                             if let Some(job) = state.fm_state.jobs.iter().find(|j| j.id == job_id) {
                                 let result = state.fm_state.token_stream.clone();
                                 state.nostr_runtime.publish_job_result(&job_id, &job.from_pubkey, &result);
+
+                                // Create invoice for payment
+                                if state.fm_state.wallet_connected {
+                                    let description = format!("NIP-90 job {}", &job_id[..8.min(job_id.len())]);
+                                    state.wallet_runtime.create_invoice(&job_id, &description);
+                                }
+
                                 state.fm_state.update_job_status(&job_id, JobStatus::Complete);
                                 state.fm_state.jobs_served += 1;
-                                // Pending earnings until invoice is paid (10 sats per job)
-                                state.fm_state.pending_earnings += 10;
+                                // Pending earnings until invoice is paid
+                                state.fm_state.pending_earnings += SATS_PER_JOB;
                             }
                         }
                     }
@@ -446,7 +459,7 @@ impl ApplicationHandler for PylonApp {
                             state.fm_runtime.stream(prompt);
                         }
                     }
-                    NostrEvent::JobResult { _id: _, request_id, _pubkey: _, content } => {
+                    NostrEvent::JobResult { _id: _, request_id, _pubkey: _, content, amount_msats, bolt11 } => {
                         // Check if this is a response to one of our pending requests
                         if state.fm_state.pending_requests.remove(&request_id).is_some() {
                             // Display result in token stream
@@ -457,6 +470,21 @@ impl ApplicationHandler for PylonApp {
                             if let Some(job) = state.fm_state.jobs.iter_mut().find(|j| j.id == request_id) {
                                 job.status = JobStatus::Complete;
                                 job.result = Some(content);
+                            }
+
+                            // Pay the invoice if one was included
+                            if let Some(invoice) = bolt11 {
+                                if state.fm_state.wallet_connected {
+                                    let amount_sats = amount_msats.unwrap_or(0) / 1000;
+                                    if state.fm_state.balance_sats >= amount_sats {
+                                        state.wallet_runtime.pay_invoice(&invoice);
+                                    } else {
+                                        state.fm_state.error_message = Some(format!(
+                                            "Insufficient balance: {} sats needed, {} available",
+                                            amount_sats, state.fm_state.balance_sats
+                                        ));
+                                    }
+                                }
                             }
                         }
                     }
@@ -482,6 +510,62 @@ impl ApplicationHandler for PylonApp {
                         // Subscribe to this channel for chat
                         state.nostr_runtime.subscribe_chat(&channel_id);
                     }
+                }
+            }
+
+            // Poll wallet events (non-blocking)
+            while let Ok(event) = state.wallet_runtime.event_rx.try_recv() {
+                match event {
+                    WalletEvent::Initialized { balance_sats, _spark_address: _ } => {
+                        state.fm_state.wallet_connected = true;
+                        state.fm_state.balance_sats = balance_sats;
+                    }
+                    WalletEvent::InitFailed(error) => {
+                        state.fm_state.wallet_connected = false;
+                        eprintln!("Wallet init failed: {}", error);
+                    }
+                    WalletEvent::BalanceUpdated { balance_sats } => {
+                        state.fm_state.balance_sats = balance_sats;
+                    }
+                    WalletEvent::InvoiceCreated { job_id, bolt11, amount_sats } => {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        state.fm_state.pending_invoices.insert(
+                            job_id,
+                            PendingInvoice {
+                                bolt11,
+                                amount_sats,
+                                created_at: now,
+                            },
+                        );
+                    }
+                    WalletEvent::InvoiceCreationFailed { job_id, error } => {
+                        eprintln!("Invoice creation failed for job {}: {}", job_id, error);
+                    }
+                    WalletEvent::PaymentReceived { _payment_id: _, amount_sats } => {
+                        // Move from pending to confirmed
+                        if state.fm_state.pending_earnings >= amount_sats {
+                            state.fm_state.pending_earnings -= amount_sats;
+                        }
+                        state.fm_state.balance_sats += amount_sats;
+                    }
+                    WalletEvent::PaymentSent { _payment_id: _, amount_sats } => {
+                        eprintln!("Payment sent: {} sats", amount_sats);
+                    }
+                    WalletEvent::PaymentFailed { error } => {
+                        state.fm_state.error_message = Some(format!("Payment failed: {}", error));
+                    }
+                }
+            }
+
+            // Periodically poll wallet for payments (every ~5 seconds based on poll rate)
+            static mut POLL_COUNTER: u32 = 0;
+            unsafe {
+                POLL_COUNTER += 1;
+                if POLL_COUNTER % 50 == 0 {
+                    state.wallet_runtime.poll_payments();
                 }
             }
 

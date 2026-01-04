@@ -59,5 +59,7 @@ arboard = "3.4"
 # CLI
 clap = { version = "4", features = ["derive"] }
 
+# Random number generation (for wallet mnemonic)
+rand = "0.9"
+
 [dev-dependencies]
-rand = "0.8"
