@@ -1,5 +1,6 @@
 struct Params {
     head_index: u32,
+    heads: u32,
     kv_heads: u32,
     head_dim: u32,
     seq_len: u32,
@@ -31,7 +32,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let head = params.head_index;
-    let kv = head % params.kv_heads;
+    let group_size = params.heads / params.kv_heads;
+    if (group_size == 0u) {
+        return;
+    }
+    let kv = head / group_size;
     let q_base = head * params.head_dim;
     let sm_scale = 1.0 / sqrt(f32(params.head_dim));
     let sink = sinks[head];

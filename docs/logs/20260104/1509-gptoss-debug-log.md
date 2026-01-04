@@ -345,3 +345,59 @@ GPT_OSS_GGUF_PATH=crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf \
 cargo run -p pylon --features gpt-oss-gguf -- infer \
   --prompt "What is the capital of France?" --max-tokens 5 --temperature 0 --moe-fallback
 ```
+
+---
+
+## Update: 2025-01-04 17:35 - THIRD MAJOR BUG FOUND!
+
+### The Bug: MXFP4 Dequant Layout + Scale Mismatch
+
+GGML's MXFP4 layout is **NOT** interleaved. It stores low-nibble values in the first 16 slots,
+high-nibble values in the second 16 slots of each 32-value block. It also uses E8M0 **half**
+scales (`ggml_e8m0_to_fp32_half`, i.e. `exp2(scale_byte - 128)`).
+
+**Reference (llama.cpp `ggml-quants.c`):**
+```
+for j in 0..15:
+  y[j]     = kvalues_mxfp4[qs[j] & 0xF] * d
+  y[j+16]  = kvalues_mxfp4[qs[j] >> 4] * d
+```
+
+**Our bug:**
+- We interleaved low/high nibbles (abab...) instead of (aaaa...bbbb...).
+- We used `2^(scale-127)` instead of GGML's `2^(scale-128)` (half-scale E8M0).
+
+This permuted **every MXFP4 block** and mis-scaled all MoE weights.
+
+### Fix Applied
+
+- Updated MXFP4 table to GGML doubled values: `0, 1, 2, 3, 4, 6, 8, 12, ...`
+- Corrected layout: low nibble → indices `0..15`, high nibble → `16..31`
+- Scale uses GGML E8M0 half conversion (`exp2(scale_byte - 128)` / `ggml_e8m0_to_fp32_half`)
+- Patched **both native + web** CPU and GPU paths:
+  - `crates/ml/src/gptoss_native.rs`
+  - `crates/web/client/src/gptoss_runtime.rs`
+  - `crates/web/client/src/shaders/mxfp4` (inline WGSL)
+- Also aligned GQA head→KV mapping in web CPU/GPU attention + debug head weights
+
+### Results (Native, No Harmony)
+
+```
+Prompt: "1+1="
+Top-5: "2", "3", "4", "0", "1"
+Greedy output: "2"
+```
+
+```
+Prompt: "Hi"
+Greedy output: ", I am a "
+```
+
+This is the first time the model reliably outputs the **correct first token**.
+
+### Notes
+
+- `pylon infer` build currently fails in `crates/compute` due to `TraceEvent` field mismatches.
+  Used `gptoss_cli` for testing instead.
+- Harmony prompt prefill is slow on CPU (98 tokens). For now, testing done with `--no-harmony`.
+  Need a longer run (or GPU) to verify full Harmony responses.
