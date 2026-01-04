@@ -2,6 +2,7 @@
 
 use crate::bridge_manager::BridgeManager;
 use crate::fm_runtime::{FmEvent, FmRuntime};
+use crate::frlm_integration::FrlmIntegration;
 use crate::nostr_runtime::{NostrEvent, NostrRuntime};
 use crate::state::{
     ChatMessage, FmConnectionStatus, FmStreamStatus, FmVizState, Job, JobStatus,
@@ -19,6 +20,8 @@ pub struct PylonCore {
     pub fm_runtime: FmRuntime,
     pub nostr_runtime: NostrRuntime,
     pub wallet_runtime: WalletRuntime,
+    /// FRLM Conductor integration
+    pub frlm: FrlmIntegration,
 }
 
 impl PylonCore {
@@ -63,12 +66,17 @@ impl PylonCore {
         // Create wallet runtime (testnet by default)
         let wallet_runtime = WalletRuntime::new(Network::Testnet);
 
+        // Create FRLM integration
+        let mut frlm = FrlmIntegration::new();
+        frlm.init(&nostr_runtime, Some(&state.bridge_url));
+
         Self {
             bridge,
             state,
             fm_runtime,
             nostr_runtime,
             wallet_runtime,
+            frlm,
         }
     }
 
@@ -295,6 +303,11 @@ impl PylonCore {
                 // ~5 seconds at 100ms poll rate
                 self.wallet_runtime.poll_payments();
             }
+        }
+
+        // Poll FRLM trace events and update UI state
+        if self.frlm.poll(&mut self.state) {
+            processed = true;
         }
 
         processed

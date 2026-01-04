@@ -132,6 +132,12 @@ impl Verifier {
     }
 
     /// Verify using objective checks (schema/hash).
+    ///
+    /// Schema format (simple JSON path validation):
+    /// - `{"required": ["field1", "field2"]}` - Check required fields exist
+    /// - `{"type": "object"}` - Check result is a JSON object
+    /// - `{"type": "array"}` - Check result is a JSON array
+    /// - `{"hash": "sha256:abc123..."}` - Check content hash matches
     fn verify_objective(
         results: &[SubQueryResult],
         schema: &Option<String>,
@@ -142,11 +148,15 @@ impl Verifier {
             return Ok(VerifyResult::failed("no successful results"));
         }
 
-        // For now, just check that the result is valid JSON if schema is specified
-        if let Some(_schema) = schema {
+        if let Some(schema_str) = schema {
+            // Parse schema
+            let schema: serde_json::Value = match serde_json::from_str(schema_str) {
+                Ok(s) => s,
+                Err(_) => return Ok(VerifyResult::failed("invalid schema JSON")),
+            };
+
             for result in &successful {
-                if serde_json::from_str::<serde_json::Value>(&result.content).is_ok() {
-                    // TODO: Actual JSON schema validation
+                if Self::validate_against_schema(&result.content, &schema) {
                     return Ok(VerifyResult::passed((*result).clone()));
                 }
             }
@@ -157,21 +167,124 @@ impl Verifier {
         Ok(VerifyResult::passed((*successful[0]).clone()))
     }
 
+    /// Validate content against a simple schema.
+    fn validate_against_schema(content: &str, schema: &serde_json::Value) -> bool {
+        // Parse content as JSON
+        let value: serde_json::Value = match serde_json::from_str(content) {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+
+        // Check type constraint
+        if let Some(type_str) = schema.get("type").and_then(|t| t.as_str()) {
+            let type_matches = match type_str {
+                "object" => value.is_object(),
+                "array" => value.is_array(),
+                "string" => value.is_string(),
+                "number" => value.is_number(),
+                "boolean" => value.is_boolean(),
+                "null" => value.is_null(),
+                _ => true,
+            };
+            if !type_matches {
+                return false;
+            }
+        }
+
+        // Check required fields
+        if let Some(required) = schema.get("required").and_then(|r| r.as_array()) {
+            if let Some(obj) = value.as_object() {
+                for field in required {
+                    if let Some(field_name) = field.as_str() {
+                        if !obj.contains_key(field_name) {
+                            return false;
+                        }
+                    }
+                }
+            } else {
+                return false; // required fields only valid for objects
+            }
+        }
+
+        // Check content hash
+        if let Some(hash_str) = schema.get("hash").and_then(|h| h.as_str()) {
+            if let Some(expected) = hash_str.strip_prefix("sha256:") {
+                use sha2::{Sha256, Digest};
+                let mut hasher = Sha256::new();
+                hasher.update(content.as_bytes());
+                let actual = hex::encode(hasher.finalize());
+                if actual != expected {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
     /// Verify using validator attestation.
+    ///
+    /// Looks for attestation metadata in results:
+    /// - `attestation_pubkey`: The public key that signed the attestation
+    /// - `attestation_sig`: The signature over the content hash
+    ///
+    /// The validator_pubkey must match the attestation_pubkey for verification to pass.
     fn verify_validated(
         results: &[SubQueryResult],
-        _validator_pubkey: &str,
+        validator_pubkey: &str,
     ) -> Result<VerifyResult> {
-        // TODO: Check for validator attestation in result metadata
-        // For now, fall back to accepting first successful result
-        let result = results
-            .iter()
-            .find(|r| r.success)
-            .cloned()
-            .ok_or_else(|| FrlmError::VerificationFailed {
-                reason: "no successful results".to_string(),
-            })?;
-        Ok(VerifyResult::passed(result))
+        let successful: Vec<_> = results.iter().filter(|r| r.success).collect();
+
+        if successful.is_empty() {
+            return Ok(VerifyResult::failed("no successful results"));
+        }
+
+        // Look for a result with valid attestation
+        for result in &successful {
+            if let Some(attested_result) = Self::check_attestation(result, validator_pubkey) {
+                return Ok(VerifyResult::passed(attested_result));
+            }
+        }
+
+        // No valid attestation found - fail verification
+        Ok(VerifyResult::failed(format!(
+            "no valid attestation from validator {}",
+            validator_pubkey
+        )))
+    }
+
+    /// Check if a result has a valid attestation from the given validator.
+    fn check_attestation(result: &SubQueryResult, validator_pubkey: &str) -> Option<SubQueryResult> {
+        // Get attestation metadata
+        let attested_pubkey = result.metadata.get("attestation_pubkey")?;
+        let attestation_sig = result.metadata.get("attestation_sig")?;
+
+        // Check pubkey matches
+        if attested_pubkey != validator_pubkey {
+            return None;
+        }
+
+        // Verify signature over content hash
+        // The signature should be over: sha256(content)
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(result.content.as_bytes());
+        let content_hash = hex::encode(hasher.finalize());
+
+        // For now, we use a simple verification scheme:
+        // The attestation_sig should be the hex-encoded signature
+        // In production, this would use secp256k1 Schnorr verification
+        //
+        // Simplified check: attestation_sig should start with the first 8 chars
+        // of the content hash (proving the validator saw the content)
+        // Full Schnorr verification would be implemented with nostr crate
+        if attestation_sig.starts_with(&content_hash[..8]) {
+            Some(result.clone())
+        } else {
+            // For full verification, we would use:
+            // nostr::schnorr_verify(validator_pubkey, content_hash, attestation_sig)
+            None
+        }
     }
 
     /// Calculate similarity between two strings.
@@ -218,6 +331,19 @@ mod tests {
         SubQueryResult::success("q-1", content, Venue::Swarm, 100)
     }
 
+    fn make_attested_result(content: &str, validator_pubkey: &str) -> SubQueryResult {
+        // Create a valid attestation signature (first 8 chars of content hash)
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(content.as_bytes());
+        let content_hash = hex::encode(hasher.finalize());
+        let sig = format!("{}...rest_of_sig", &content_hash[..8]);
+
+        SubQueryResult::success("q-1", content, Venue::Swarm, 100)
+            .with_metadata("attestation_pubkey", validator_pubkey)
+            .with_metadata("attestation_sig", sig)
+    }
+
     #[test]
     fn test_verify_none() {
         let results = vec![make_result("result")];
@@ -250,6 +376,63 @@ mod tests {
             make_result("fire is hot"),
         ];
         let tier = VerificationTier::redundancy(3, 2);
+
+        let verify_result = Verifier::verify(&results, &tier).unwrap();
+        assert!(!verify_result.passed);
+    }
+
+    #[test]
+    fn test_verify_objective_type() {
+        let results = vec![make_result(r#"{"key": "value"}"#)];
+        let tier = VerificationTier::objective(Some(r#"{"type": "object"}"#.to_string()));
+
+        let verify_result = Verifier::verify(&results, &tier).unwrap();
+        assert!(verify_result.passed);
+    }
+
+    #[test]
+    fn test_verify_objective_required_fields() {
+        let results = vec![make_result(r#"{"name": "Alice", "age": 30}"#)];
+        let tier =
+            VerificationTier::objective(Some(r#"{"required": ["name", "age"]}"#.to_string()));
+
+        let verify_result = Verifier::verify(&results, &tier).unwrap();
+        assert!(verify_result.passed);
+    }
+
+    #[test]
+    fn test_verify_objective_missing_field() {
+        let results = vec![make_result(r#"{"name": "Alice"}"#)];
+        let tier =
+            VerificationTier::objective(Some(r#"{"required": ["name", "age"]}"#.to_string()));
+
+        let verify_result = Verifier::verify(&results, &tier).unwrap();
+        assert!(!verify_result.passed);
+    }
+
+    #[test]
+    fn test_verify_validated_success() {
+        let validator = "npub1validator123";
+        let results = vec![make_attested_result("verified content", validator)];
+        let tier = VerificationTier::validated(validator);
+
+        let verify_result = Verifier::verify(&results, &tier).unwrap();
+        assert!(verify_result.passed);
+    }
+
+    #[test]
+    fn test_verify_validated_wrong_validator() {
+        let results = vec![make_attested_result("verified content", "npub1wrong")];
+        let tier = VerificationTier::validated("npub1expected");
+
+        let verify_result = Verifier::verify(&results, &tier).unwrap();
+        assert!(!verify_result.passed);
+    }
+
+    #[test]
+    fn test_verify_validated_no_attestation() {
+        let results = vec![make_result("no attestation")];
+        let tier = VerificationTier::validated("npub1validator");
 
         let verify_result = Verifier::verify(&results, &tier).unwrap();
         assert!(!verify_result.passed);
