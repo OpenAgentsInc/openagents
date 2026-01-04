@@ -431,9 +431,8 @@ impl ApplicationHandler for PylonApp {
                         state.fm_state.error_message = Some(error);
                     }
                     NostrEvent::AuthChallenge(challenge) => {
-                        // Auto-respond to auth challenges
-                        // The runtime handles this internally now
-                        let _ = challenge; // Acknowledge but NostrRuntime handles it
+                        // Respond to NIP-42 auth challenge
+                        state.nostr_runtime.authenticate(&challenge);
                     }
                     NostrEvent::JobRequest { id, pubkey, prompt, created_at } => {
                         // Add incoming job to list (we will serve this)
