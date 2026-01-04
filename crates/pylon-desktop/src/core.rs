@@ -10,6 +10,7 @@ use crate::state::{
 
 /// Core Pylon state shared between CLI and GUI modes
 pub struct PylonCore {
+    #[allow(dead_code)]
     pub bridge: BridgeManager,
     pub state: FmVizState,
     pub fm_runtime: FmRuntime,
@@ -137,11 +138,11 @@ impl PylonCore {
                 NostrEvent::JobRequest { id, pubkey, prompt, created_at } => {
                     let job = Job {
                         id: id.clone(),
-                        prompt: prompt.clone(),
+                        _prompt: prompt.clone(),
                         from_pubkey: pubkey,
                         status: JobStatus::Pending,
                         result: None,
-                        created_at,
+                        _created_at: created_at,
                         is_outgoing: false,
                     };
                     self.state.add_job(job);
@@ -154,7 +155,7 @@ impl PylonCore {
                         self.fm_runtime.stream(prompt);
                     }
                 }
-                NostrEvent::JobResult { id: _, request_id, pubkey: _, content } => {
+                NostrEvent::JobResult { _id: _, request_id, _pubkey: _, content } => {
                     if self.state.pending_requests.remove(&request_id).is_some() {
                         self.state.token_stream = content.clone();
                         self.state.stream_status = FmStreamStatus::Complete;
@@ -168,19 +169,19 @@ impl PylonCore {
                 NostrEvent::ChatMessage { id, pubkey, content, created_at } => {
                     let is_self = self.state.pubkey.as_deref() == Some(&pubkey);
                     let msg = ChatMessage {
-                        id,
+                        _id: id,
                         author: FmVizState::short_pubkey(&pubkey),
                         content,
-                        timestamp: created_at,
+                        _timestamp: created_at,
                         is_self,
                     };
                     self.state.add_chat_message(msg);
                 }
-                NostrEvent::Published { event_id: _ } => {}
+                NostrEvent::Published { _event_id: _ } => {}
                 NostrEvent::PublishFailed { error } => {
                     self.state.error_message = Some(error);
                 }
-                NostrEvent::ChannelFound { channel_id, name: _ } => {
+                NostrEvent::ChannelFound { channel_id, _name: _ } => {
                     self.state.channel_id = Some(channel_id.clone());
                     self.nostr_runtime.subscribe_chat(&channel_id);
                 }

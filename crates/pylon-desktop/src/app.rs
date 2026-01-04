@@ -45,8 +45,8 @@ pub struct RenderState {
     // Command palette
     pub command_palette: CommandPalette,
     pub event_context: EventContext,
-    pub command_tx: mpsc::Sender<String>,
-    pub command_rx: mpsc::Receiver<String>,
+    pub _command_tx: mpsc::Sender<String>,
+    pub _command_rx: mpsc::Receiver<String>,
 }
 
 impl ApplicationHandler for PylonApp {
@@ -189,8 +189,8 @@ impl ApplicationHandler for PylonApp {
                 clipboard: Clipboard::new().ok(),
                 command_palette,
                 event_context,
-                command_tx,
-                command_rx,
+                _command_tx: command_tx,
+                _command_rx: command_rx,
             }
         });
 
@@ -438,11 +438,11 @@ impl ApplicationHandler for PylonApp {
                         // Add incoming job to list (we will serve this)
                         let job = Job {
                             id: id.clone(),
-                            prompt: prompt.clone(),
+                            _prompt: prompt.clone(),
                             from_pubkey: pubkey,
                             status: JobStatus::Pending,
                             result: None,
-                            created_at,
+                            _created_at: created_at,
                             is_outgoing: false,  // Incoming job - we serve
                         };
                         state.fm_state.add_job(job);
@@ -455,7 +455,7 @@ impl ApplicationHandler for PylonApp {
                             state.fm_runtime.stream(prompt);
                         }
                     }
-                    NostrEvent::JobResult { id: _, request_id, pubkey: _, content } => {
+                    NostrEvent::JobResult { _id: _, request_id, _pubkey: _, content } => {
                         // Check if this is a response to one of our pending requests
                         if state.fm_state.pending_requests.remove(&request_id).is_some() {
                             // Display result in token stream
@@ -472,21 +472,21 @@ impl ApplicationHandler for PylonApp {
                     NostrEvent::ChatMessage { id, pubkey, content, created_at } => {
                         let is_self = state.fm_state.pubkey.as_deref() == Some(&pubkey);
                         let msg = ChatMessage {
-                            id,
+                            _id: id,
                             author: FmVizState::short_pubkey(&pubkey),
                             content,
-                            timestamp: created_at,
+                            _timestamp: created_at,
                             is_self,
                         };
                         state.fm_state.add_chat_message(msg);
                     }
-                    NostrEvent::Published { event_id: _ } => {
+                    NostrEvent::Published { _event_id: _ } => {
                         // Event published successfully
                     }
                     NostrEvent::PublishFailed { error } => {
                         state.fm_state.error_message = Some(error);
                     }
-                    NostrEvent::ChannelFound { channel_id, name: _ } => {
+                    NostrEvent::ChannelFound { channel_id, _name: _ } => {
                         state.fm_state.channel_id = Some(channel_id.clone());
                         // Subscribe to this channel for chat
                         state.nostr_runtime.subscribe_chat(&channel_id);
@@ -495,7 +495,7 @@ impl ApplicationHandler for PylonApp {
             }
 
             // Poll command palette selections (non-blocking)
-            while let Ok(command_id) = state.command_rx.try_recv() {
+            while let Ok(command_id) = state._command_rx.try_recv() {
                 execute_command(&command_id, state);
             }
 
@@ -586,10 +586,10 @@ fn handle_chat_input(state: &mut RenderState, key: &Key, cmd: bool) {
                     .unwrap_or_default()
                     .as_secs();
                 let msg = crate::state::ChatMessage {
-                    id: format!("self-{}", now),
+                    _id: format!("self-{}", now),
                     author: state.fm_state.pubkey.clone().unwrap_or_else(|| "YOU".to_string()),
                     content: content.clone(),
-                    timestamp: now,
+                    _timestamp: now,
                     is_self: true,
                 };
                 state.fm_state.add_chat_message(msg);
@@ -691,19 +691,19 @@ fn handle_prompt_input(state: &mut RenderState, key: &Key, cmd: bool) {
                     let job_id = format!("req-{}", now); // Temporary ID until we get the real event ID
                     let job = Job {
                         id: job_id.clone(),
-                        prompt: prompt.clone(),
+                        _prompt: prompt.clone(),
                         from_pubkey: state.fm_state.pubkey.clone().unwrap_or_default(),
                         status: JobStatus::Pending,
                         result: None,
-                        created_at: now,
+                        _created_at: now,
                         is_outgoing: true,  // We requested this
                     };
                     state.fm_state.add_job(job);
 
                     // Track as pending request
                     state.fm_state.pending_requests.insert(job_id.clone(), crate::state::PendingRequest {
-                        prompt: prompt.clone(),
-                        requested_at: now,
+                        _prompt: prompt.clone(),
+                        _requested_at: now,
                     });
 
                     // Publish job request to network

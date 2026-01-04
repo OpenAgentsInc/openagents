@@ -19,7 +19,6 @@ mod chat_panel;
 mod fm_panel;
 mod header;
 mod jobs_panel;
-mod viz_panel;
 
 use wgpui::{Bounds, Hsla, Point, Quad, Scene, Size, TextSystem};
 

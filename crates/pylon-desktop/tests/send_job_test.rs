@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     relay.send_message(&auth_msg).await?;
                     println!("Sent auth response");
                 }
-                RelayMessage::Ok(event_id, accepted, message) => {
+                RelayMessage::Ok(_event_id, accepted, message) => {
                     if accepted {
                         println!("Auth accepted: {}", message);
                         authenticated = true;
