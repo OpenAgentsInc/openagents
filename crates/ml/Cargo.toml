@@ -53,6 +53,7 @@ rand = { workspace = true }
 hex = { workspace = true }
 sha2 = { workspace = true }
 fancy-regex = "0.13"
+memmap2 = "0.9"
 rustc-hash = "1.1"
 getrandom = { version = "0.2", optional = true }
 bytemuck = { workspace = true, optional = true }

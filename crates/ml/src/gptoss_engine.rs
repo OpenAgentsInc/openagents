@@ -1,7 +1,9 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::fs::File;
+use std::path::{PathBuf, Path};
 use std::time::Instant;
 
+use memmap2::Mmap;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -9,10 +11,10 @@ use crate::sampling::{sample_from_logits, GenerationConfig};
 use crate::telemetry::{InferenceHook, InferenceTelemetry, TokenCandidate};
 use crate::{
     apply_bias, apply_rope, attention_with_cache, find_tensor, load_gguf_model, matmul_f32,
-    matmul_mxfp4_expert, matmul_q8_0, read_f32_row, read_f32_tensor, read_meta_f32,
-    read_meta_f32_optional, read_meta_u32, read_meta_u32_optional, read_q8_0_row, rms_norm,
-    swiglu, top_k_softmax, GgufMetadata, GgufScalar, GgufTensorDump, GptOssTokenizer, KvCache,
-    MlError, Result,
+    matmul_mxfp4_expert_mmap, matmul_q8_0_mmap, read_f32_row_mmap, read_f32_tensor_mmap,
+    read_meta_f32, read_meta_f32_optional, read_meta_u32, read_meta_u32_optional,
+    read_q8_0_row_mmap, rms_norm, swiglu, top_k_softmax, GgufMetadata, GgufScalar, GgufTensorDump,
+    GptOssTokenizer, KvCache, MlError, Result,
 };
 
 const CURRENT_DATE: &str = "2026-01-02";
@@ -105,7 +107,9 @@ pub struct GptOssTokenEvent {
 }
 
 pub struct GptOssEngine {
+    #[allow(dead_code)]
     path: PathBuf,
+    mmap: Mmap,
     index: crate::GgufIndex,
     tokenizer: GptOssTokenizer,
     config: GptOssModelConfig,
@@ -124,8 +128,13 @@ impl GptOssEngine {
         let config = GptOssModelConfig::from_metadata(&model.metadata)?;
         let model_id = infer_model_id(&model.metadata, &path);
 
+        // Memory-map the file for fast tensor access
+        let file = File::open(&path)?;
+        let mmap = unsafe { Mmap::map(&file)? };
+
         Ok(Self {
             path,
+            mmap,
             index: model.index,
             tokenizer,
             config,
@@ -204,12 +213,16 @@ impl GptOssEngine {
             .max(1);
 
         let prompt_tokens = tokens.len();
+        eprintln!("[gpt-oss] Prefill: {} tokens, {} layers", prompt_tokens, active_layers);
         let mut cache = KvCache::new(self.config.block_count as usize, max_kv);
         let mut last_logits = None;
 
         for (idx, &token_id) in tokens.iter().enumerate() {
+            if idx % 10 == 0 {
+                eprintln!("[gpt-oss] Prefill token {}/{}", idx, prompt_tokens);
+            }
             let logits = run_forward_token(
-                &self.path,
+                &self.mmap,
                 &self.index,
                 &mut self.f32_cache,
                 &self.config,
@@ -223,6 +236,7 @@ impl GptOssEngine {
         }
 
         let mut logits = last_logits.ok_or_else(|| MlError::Model("no logits".to_string()))?;
+        eprintln!("[gpt-oss] Prefill complete, starting decode (max {} tokens)", config.generation.max_new_tokens);
         let mut generated = 0usize;
         let mut output = String::new();
         let mut rng = seeded_rng(config.generation.seed);
@@ -280,7 +294,7 @@ impl GptOssEngine {
 
             tokens.push(next_id);
             logits = run_forward_token(
-                &self.path,
+                &self.mmap,
                 &self.index,
                 &mut self.f32_cache,
                 &self.config,
@@ -404,20 +418,20 @@ fn top_k_from_logits(
 }
 
 fn fetch_f32_cached(
-    path: &Path,
+    mmap: &[u8],
     tensor: &GgufTensorDump,
     cache: &mut HashMap<String, Vec<f32>>,
 ) -> Result<Vec<f32>> {
     if let Some(hit) = cache.get(&tensor.name) {
         return Ok(hit.clone());
     }
-    let data = read_f32_tensor(path, tensor)?;
+    let data = read_f32_tensor_mmap(mmap, tensor)?;
     cache.insert(tensor.name.clone(), data.clone());
     Ok(data)
 }
 
 fn run_forward_token(
-    path: &Path,
+    mmap: &[u8],
     index: &crate::GgufIndex,
     f32_cache: &mut HashMap<String, Vec<f32>>,
     config: &GptOssModelConfig,
@@ -428,14 +442,17 @@ fn run_forward_token(
     moe_fallback: bool,
 ) -> Result<Vec<f32>> {
     let token_embd = find_tensor(index, "token_embd.weight")?;
-    let mut hidden = read_q8_0_row(path, token_embd, token_id as usize)?;
+    let mut hidden = read_q8_0_row_mmap(mmap, token_embd, token_id as usize)?;
 
     let layer_limit = active_layers
         .min(config.block_count as usize)
         .max(1);
     for layer in 0..layer_limit as u32 {
+        if position == 0 && layer % 4 == 0 {
+            eprintln!("[gpt-oss] Layer {}/{}", layer, layer_limit);
+        }
         hidden = run_transformer_layer(
-            path,
+            mmap,
             index,
             f32_cache,
             config,
@@ -448,17 +465,17 @@ fn run_forward_token(
     }
 
     let output_norm = find_tensor(index, "output_norm.weight")?;
-    let output_norm_w = fetch_f32_cached(path, output_norm, f32_cache)?;
+    let output_norm_w = fetch_f32_cached(mmap, output_norm, f32_cache)?;
     let final_hidden = rms_norm(&hidden, &output_norm_w, config.rms_epsilon)?;
 
     let output_weight = find_tensor(index, "output.weight")?;
-    let logits = matmul_q8_0(path, output_weight, &final_hidden)?;
+    let logits = matmul_q8_0_mmap(mmap, output_weight, &final_hidden)?;
     cache.seq_len = position.saturating_add(1);
     Ok(logits)
 }
 
 fn run_transformer_layer(
-    path: &Path,
+    mmap: &[u8],
     index: &crate::GgufIndex,
     f32_cache: &mut HashMap<String, Vec<f32>>,
     config: &GptOssModelConfig,
@@ -481,15 +498,15 @@ fn run_transformer_layer(
     let post_attn_norm =
         find_tensor(index, &format!("blk.{layer}.post_attention_norm.weight"))?;
 
-    let attn_norm_w = fetch_f32_cached(path, attn_norm, f32_cache)?;
+    let attn_norm_w = fetch_f32_cached(mmap, attn_norm, f32_cache)?;
     let mut normed = rms_norm(&hidden, &attn_norm_w, config.rms_epsilon)?;
 
-    let mut q = matmul_q8_0(path, attn_q_w, &normed)?;
-    let mut k = matmul_q8_0(path, attn_k_w, &normed)?;
-    let mut v = matmul_q8_0(path, attn_v_w, &normed)?;
-    let q_bias = fetch_f32_cached(path, attn_q_b, f32_cache)?;
-    let k_bias = fetch_f32_cached(path, attn_k_b, f32_cache)?;
-    let v_bias = fetch_f32_cached(path, attn_v_b, f32_cache)?;
+    let mut q = matmul_q8_0_mmap(mmap, attn_q_w, &normed)?;
+    let mut k = matmul_q8_0_mmap(mmap, attn_k_w, &normed)?;
+    let mut v = matmul_q8_0_mmap(mmap, attn_v_w, &normed)?;
+    let q_bias = fetch_f32_cached(mmap, attn_q_b, f32_cache)?;
+    let k_bias = fetch_f32_cached(mmap, attn_k_b, f32_cache)?;
+    let v_bias = fetch_f32_cached(mmap, attn_v_b, f32_cache)?;
     apply_bias(&mut q, &q_bias);
     apply_bias(&mut k, &k_bias);
     apply_bias(&mut v, &v_bias);
@@ -518,7 +535,7 @@ fn run_transformer_layer(
         config.rope_scaling_original_context,
     )?;
 
-    let sinks = fetch_f32_cached(path, attn_sinks, f32_cache)?;
+    let sinks = fetch_f32_cached(mmap, attn_sinks, f32_cache)?;
     let max_len = cache.max_len;
     let layer_cache = cache.layer_mut(layer as usize)?;
     if layer_cache.token_count(kv_heads, head_dim) >= max_len {
@@ -541,20 +558,20 @@ fn run_transformer_layer(
         window.max(1),
     )?;
 
-    let mut attn_proj = matmul_q8_0(path, attn_out_w, &attn_out)?;
-    let attn_out_b = fetch_f32_cached(path, attn_out_b, f32_cache)?;
+    let mut attn_proj = matmul_q8_0_mmap(mmap, attn_out_w, &attn_out)?;
+    let attn_out_b = fetch_f32_cached(mmap, attn_out_b, f32_cache)?;
     apply_bias(&mut attn_proj, &attn_out_b);
     for (out, base) in hidden.iter_mut().zip(attn_proj.iter()) {
         *out += *base;
     }
 
-    let post_attn_norm_w = fetch_f32_cached(path, post_attn_norm, f32_cache)?;
+    let post_attn_norm_w = fetch_f32_cached(mmap, post_attn_norm, f32_cache)?;
     normed = rms_norm(&hidden, &post_attn_norm_w, config.rms_epsilon)?;
 
     let gate_inp_w = find_tensor(index, &format!("blk.{layer}.ffn_gate_inp.weight"))?;
     let gate_inp_b = find_tensor(index, &format!("blk.{layer}.ffn_gate_inp.bias"))?;
-    let gate_w = fetch_f32_cached(path, gate_inp_w, f32_cache)?;
-    let gate_b = fetch_f32_cached(path, gate_inp_b, f32_cache)?;
+    let gate_w = fetch_f32_cached(mmap, gate_inp_w, f32_cache)?;
+    let gate_b = fetch_f32_cached(mmap, gate_inp_b, f32_cache)?;
     let n = gate_inp_w.dims.get(0).copied().unwrap_or(0) as usize;
     let k = gate_inp_w.dims.get(1).copied().unwrap_or(0) as usize;
     let mut gate_scores = matmul_f32(&gate_w, &normed, k, n);
@@ -575,17 +592,17 @@ fn run_transformer_layer(
 
     let mut mlp_accum = vec![0.0f32; hidden.len()];
     for (expert_idx, weight) in expert_indices.iter().zip(expert_weights.iter()) {
-        let mut gate_out = matmul_mxfp4_expert(path, gate_exps_w, *expert_idx, &normed)?;
-        let gate_bias = read_f32_row(path, gate_exps_b, *expert_idx)?;
+        let mut gate_out = matmul_mxfp4_expert_mmap(mmap, gate_exps_w, *expert_idx, &normed)?;
+        let gate_bias = read_f32_row_mmap(mmap, gate_exps_b, *expert_idx)?;
         apply_bias(&mut gate_out, &gate_bias);
 
-        let mut up_out = matmul_mxfp4_expert(path, up_exps_w, *expert_idx, &normed)?;
-        let up_bias = read_f32_row(path, up_exps_b, *expert_idx)?;
+        let mut up_out = matmul_mxfp4_expert_mmap(mmap, up_exps_w, *expert_idx, &normed)?;
+        let up_bias = read_f32_row_mmap(mmap, up_exps_b, *expert_idx)?;
         apply_bias(&mut up_out, &up_bias);
 
         let swiglu_out = swiglu(&gate_out, &up_out)?;
-        let mut down_out = matmul_mxfp4_expert(path, down_exps_w, *expert_idx, &swiglu_out)?;
-        let down_bias = read_f32_row(path, down_exps_b, *expert_idx)?;
+        let mut down_out = matmul_mxfp4_expert_mmap(mmap, down_exps_w, *expert_idx, &swiglu_out)?;
+        let down_bias = read_f32_row_mmap(mmap, down_exps_b, *expert_idx)?;
         apply_bias(&mut down_out, &down_bias);
 
         for (acc, val) in mlp_accum.iter_mut().zip(down_out.iter()) {

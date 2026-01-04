@@ -7302,6 +7302,7 @@ dependencies = [
  "hex",
  "js-sys",
  "log",
+ "memmap2",
  "nostr 0.1.0",
  "parking_lot",
  "pollster",

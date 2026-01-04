@@ -33,7 +33,9 @@ pub struct GptOssGgufBackend {
 
 impl GptOssGgufBackend {
     pub fn new(path: PathBuf, model_id: Option<String>) -> BackendResult<Self> {
+        eprintln!("[gpt-oss] Loading model from {:?}...", path);
         let engine = GptOssEngine::load(&path).map_err(map_ml_error)?;
+        eprintln!("[gpt-oss] Model loaded successfully");
         let resolved_id = model_id.unwrap_or_else(|| engine.model_id().to_string());
         let context_length = engine.context_length();
         let defaults = GptOssDefaults {
@@ -173,6 +175,7 @@ impl InferenceBackend for GptOssGgufBackend {
         let prompt = request.prompt.clone();
         let model_id = self.model_id.clone();
 
+        eprintln!("[gpt-oss] Starting inference...");
         let completion = tokio::task::spawn_blocking(move || {
             let mut engine = engine.lock().map_err(|_| {
                 BackendError::InferenceError("gpt-oss engine lock poisoned".to_string())
@@ -220,10 +223,16 @@ impl InferenceBackend for GptOssGgufBackend {
         let prompt = request.prompt.clone();
         let model_id = self.model_id.clone();
 
+        eprintln!("[gpt-oss] Starting streaming inference...");
         tokio::task::spawn_blocking(move || {
+            eprintln!("[gpt-oss] Inside spawn_blocking, acquiring lock...");
             let mut engine = match engine.lock() {
-                Ok(engine) => engine,
+                Ok(engine) => {
+                    eprintln!("[gpt-oss] Lock acquired");
+                    engine
+                }
                 Err(_) => {
+                    eprintln!("[gpt-oss] Lock poisoned!");
                     let _ = tx.blocking_send(Err(BackendError::InferenceError(
                         "gpt-oss engine lock poisoned".to_string(),
                     )));
@@ -474,10 +483,14 @@ impl InferenceBackend for GptOssGgufBackend {
                 Ok(())
             };
 
+            eprintln!("[gpt-oss] Starting generate_with_callback...");
             let result = engine.generate_with_callback(&prompt, &config, Some(&mut callback), None);
+            eprintln!("[gpt-oss] generate_with_callback returned");
 
             match result {
                 Ok(completion) => {
+                    eprintln!("[gpt-oss] Generation complete: {} tokens, reason={}",
+                        completion.completion_tokens, completion.finish_reason);
                     if !prefill_completed {
                         let _ = send_telemetry(ModelLifecycleTelemetry::InferenceStage {
                             stage: "prefill".to_string(),
@@ -505,6 +518,7 @@ impl InferenceBackend for GptOssGgufBackend {
                     }));
                 }
                 Err(err) => {
+                    eprintln!("[gpt-oss] Generation error: {:?}", err);
                     let _ = tx.blocking_send(Err(map_ml_error(err)));
                 }
             }
