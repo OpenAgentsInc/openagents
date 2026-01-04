@@ -58,47 +58,55 @@ pub fn draw_header(
     let run = text.layout(&state.relay_url, Point::new(relay_x, y + 13.0), 10.0, text_dim());
     scene.draw_text(run);
 
-    // Credits display (right side)
-    let credits_text = format!("{:+} credits", state.credits);
-    let credits_color = if state.credits > 0 {
-        accent_green()
-    } else if state.credits < 0 {
-        Hsla::new(0.0, 0.9, 0.5, 1.0) // red
+    // Balance display (right side) - show sats with pending earnings
+    let balance_text = if state.pending_earnings > 0 {
+        format!("{} sats (+{} pending)", state.balance_sats, state.pending_earnings)
     } else {
-        text_dim()
+        format!("{} sats", state.balance_sats)
+    };
+    let balance_color = if state.wallet_connected {
+        if state.balance_sats > 0 || state.pending_earnings > 0 {
+            accent_green()
+        } else {
+            text_dim()
+        }
+    } else {
+        Hsla::new(0.0, 0.9, 0.5, 1.0) // red = wallet not connected
     };
 
-    let credits_width = text.measure(&credits_text, 12.0);
-    let credits_x = x + width - credits_width - 16.0;
-    let run = text.layout(&credits_text, Point::new(credits_x, y + 12.0), 12.0, credits_color);
+    let balance_width = text.measure(&balance_text, 12.0);
+    let balance_x = x + width - balance_width - 16.0;
+    let run = text.layout(&balance_text, Point::new(balance_x, y + 12.0), 12.0, balance_color);
     scene.draw_text(run);
 
-    // Credits triangle indicator
-    let tri_x = credits_x - 16.0;
-    if state.credits > 0 {
-        // Up triangle
+    // Bitcoin indicator (small circle)
+    let btc_x = balance_x - 16.0;
+    if state.wallet_connected {
+        // Orange circle for Bitcoin
         scene.draw_quad(
             Quad::new(Bounds {
-                origin: Point::new(tri_x, y + 14.0),
+                origin: Point::new(btc_x, y + 14.0),
                 size: Size::new(10.0, 10.0),
             })
-            .with_background(accent_green()),
+            .with_background(Hsla::new(0.08, 0.9, 0.5, 1.0)) // orange
+            .with_corner_radius(5.0),
         );
-    } else if state.credits < 0 {
-        // Down triangle (using rect for now)
+    } else {
+        // Gray circle = wallet offline
         scene.draw_quad(
             Quad::new(Bounds {
-                origin: Point::new(tri_x, y + 14.0),
+                origin: Point::new(btc_x, y + 14.0),
                 size: Size::new(10.0, 10.0),
             })
-            .with_background(Hsla::new(0.0, 0.9, 0.5, 1.0)),
+            .with_background(text_dim())
+            .with_corner_radius(5.0),
         );
     }
 
     // Jobs served / requested stats
     let stats_text = format!("SERVED: {}  REQ: {}", state.jobs_served, state.jobs_requested);
     let stats_width = text.measure(&stats_text, 10.0);
-    let stats_x = credits_x - stats_width - 40.0;
+    let stats_x = balance_x - stats_width - 40.0;
     let run = text.layout(&stats_text, Point::new(stats_x, y + 14.0), 10.0, text_dim());
     scene.draw_text(run);
 }

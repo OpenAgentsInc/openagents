@@ -387,7 +387,8 @@ impl ApplicationHandler for PylonApp {
                                 state.nostr_runtime.publish_job_result(&job_id, &job.from_pubkey, &result);
                                 state.fm_state.update_job_status(&job_id, JobStatus::Complete);
                                 state.fm_state.jobs_served += 1;
-                                state.fm_state.credits += 1;
+                                // Pending earnings until invoice is paid (10 sats per job)
+                                state.fm_state.pending_earnings += 10;
                             }
                         }
                     }
@@ -699,7 +700,7 @@ fn handle_prompt_input(state: &mut RenderState, key: &Key, cmd: bool) {
                     // Publish job request to network
                     state.nostr_runtime.publish_job_request(&prompt);
                     state.fm_state.jobs_requested += 1;
-                    state.fm_state.credits -= 1;
+                    // Note: Payment happens when we receive the job result with invoice
 
                     // Clear input
                     state.fm_state.prompt_input.clear();

@@ -26,6 +26,10 @@ viz = { path = "../viz", default-features = false, features = ["desktop"] }
 fm-bridge = { path = "../fm-bridge" }
 nostr = { path = "../nostr/core" }
 nostr-client = { path = "../nostr/client" }
+spark = { path = "../spark", package = "openagents-spark" }
+
+# BIP39 for mnemonic generation
+bip39 = "2.2.0"
 
 # GPU
 wgpu = { workspace = true }
