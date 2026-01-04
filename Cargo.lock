@@ -9629,6 +9629,7 @@ dependencies = [
  "nostr 0.1.0",
  "nostr-client",
  "pollster",
+ "rand 0.8.5",
  "reqwest",
  "serde_json",
  "tokio",
