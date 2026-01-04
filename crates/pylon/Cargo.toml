@@ -33,6 +33,8 @@ async-trait = "0.1"
 tokio-stream = "0.1"
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
+axum = "0.7"
+tower-http = { version = "0.6", features = ["cors"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

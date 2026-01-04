@@ -1,6 +1,7 @@
 //! Pylon CLI commands
 
 mod agent;
+mod api;
 mod connect;
 mod compute;
 mod doctor;
@@ -28,6 +29,8 @@ pub struct PylonCli {
 pub enum Commands {
     /// Initialize pylon identity
     Init(init::InitArgs),
+    /// Run local HTTP API for completions
+    Api(api::ApiArgs),
     /// Start the pylon daemon
     Start(start::StartArgs),
     /// Stop the pylon daemon
@@ -54,6 +57,7 @@ pub enum Commands {
 pub async fn execute(cli: PylonCli) -> anyhow::Result<()> {
     match cli.command {
         Commands::Init(args) => init::run(args).await,
+        Commands::Api(args) => api::run(args).await,
         Commands::Start(args) => start::run(args).await,
         Commands::Stop(args) => stop::run(args).await,
         Commands::Status(args) => status::run(args).await,
