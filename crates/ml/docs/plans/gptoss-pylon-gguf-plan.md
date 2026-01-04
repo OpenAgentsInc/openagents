@@ -106,3 +106,5 @@ Tests:
 - 2026-01-04: Ran `pylon doctor --verbose` with `GPT_OSS_GGUF_PATH` set; GGUF backend registered and visible.
 - 2026-01-04: Added `pylon infer` command to run local GGUF completions/streams against the registered backend.
 - 2026-01-04: Verified `pylon infer` streaming with `--layers 1 --moe-fallback` (token streamed).
+- 2026-01-04: Added `pylon api` HTTP server for `/v1/models` + `/v1/completions` (SSE streaming, CORS).
+- 2026-01-04: Fixed SSE stream error handling for `pylon api` (infallible stream events).
