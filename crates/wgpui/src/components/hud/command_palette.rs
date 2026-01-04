@@ -125,6 +125,16 @@ impl CommandPalette {
         self.is_open
     }
 
+    /// Get a reference to the search input
+    pub fn search_input(&self) -> &TextInput {
+        &self.search_input
+    }
+
+    /// Get a mutable reference to the search input
+    pub fn search_input_mut(&mut self) -> &mut TextInput {
+        &mut self.search_input
+    }
+
     pub fn add_command(&mut self, command: Command) {
         self.commands.push(command);
         self.update_filtered();
