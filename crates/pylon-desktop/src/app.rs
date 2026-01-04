@@ -6,12 +6,12 @@ use web_time::Instant;
 use wgpui::renderer::Renderer;
 use wgpui::{Scene, Size, TextSystem};
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, Modifiers, WindowEvent};
+use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
 
-use crate::bridge_manager::{BridgeManager, BridgeStatus};
+use crate::bridge_manager::BridgeManager;
 use crate::fm_runtime::{FmEvent, FmRuntime};
 use crate::state::{FmConnectionStatus, FmVizState};
 use crate::ui;
@@ -31,6 +31,7 @@ pub struct RenderState {
     pub text_system: TextSystem,
     pub fm_state: FmVizState,
     pub fm_runtime: FmRuntime,
+    #[allow(dead_code)]
     pub bridge: BridgeManager,
     pub last_tick: Instant,
     pub modifiers: ModifiersState,
@@ -136,7 +137,7 @@ impl ApplicationHandler for PylonApp {
 
             // Create FM runtime and request initial connection (only if bridge is running)
             let fm_runtime = FmRuntime::new();
-            if bridge.status == BridgeStatus::Running {
+            if bridge.is_running() {
                 fm_runtime.connect();
                 fm_state.connection_status = FmConnectionStatus::Connecting;
             }
@@ -187,15 +188,21 @@ impl ApplicationHandler for PylonApp {
                             if !state.fm_state.is_streaming() {
                                 if let Some(ref mut clipboard) = state.clipboard {
                                     if let Ok(text) = clipboard.get_text() {
-                                        state.fm_state.prompt_input.push_str(&text);
+                                        // Insert at cursor position
+                                        let pos = state.fm_state.cursor_pos.min(state.fm_state.prompt_input.len());
+                                        state.fm_state.prompt_input.insert_str(pos, &text);
+                                        state.fm_state.cursor_pos = pos + text.len();
+                                        state.fm_state.selection = None;
                                     }
                                 }
                             }
                         }
-                        // Cmd+A - Select all (clear and we'll paste fresh)
+                        // Cmd+A - Select all
                         Key::Character(c) if cmd && c.to_lowercase() == "a" => {
-                            // For now, just select all means nothing in our simple input
-                            // but we won't type "a"
+                            if !state.fm_state.prompt_input.is_empty() {
+                                state.fm_state.selection = Some((0, state.fm_state.prompt_input.len()));
+                                state.fm_state.cursor_pos = state.fm_state.prompt_input.len();
+                            }
                         }
                         // Cmd+C - Copy
                         Key::Character(c) if cmd && c.to_lowercase() == "c" => {
@@ -219,22 +226,86 @@ impl ApplicationHandler for PylonApp {
                             }
                         }
                         Key::Named(NamedKey::Backspace) => {
-                            if cmd {
-                                // Cmd+Backspace - clear all
-                                state.fm_state.prompt_input.clear();
-                            } else {
-                                state.fm_state.prompt_input.pop();
+                            if !state.fm_state.is_streaming() {
+                                // If selection exists, delete selection
+                                if let Some((start, end)) = state.fm_state.selection {
+                                    let start = start.min(state.fm_state.prompt_input.len());
+                                    let end = end.min(state.fm_state.prompt_input.len());
+                                    state.fm_state.prompt_input.replace_range(start..end, "");
+                                    state.fm_state.cursor_pos = start;
+                                    state.fm_state.selection = None;
+                                } else if cmd {
+                                    // Cmd+Backspace - delete from start to cursor
+                                    let pos = state.fm_state.cursor_pos.min(state.fm_state.prompt_input.len());
+                                    state.fm_state.prompt_input.replace_range(0..pos, "");
+                                    state.fm_state.cursor_pos = 0;
+                                } else if state.fm_state.cursor_pos > 0 {
+                                    // Delete char before cursor
+                                    let pos = state.fm_state.cursor_pos.min(state.fm_state.prompt_input.len());
+                                    if pos > 0 {
+                                        state.fm_state.prompt_input.remove(pos - 1);
+                                        state.fm_state.cursor_pos = pos - 1;
+                                    }
+                                }
+                            }
+                        }
+                        Key::Named(NamedKey::ArrowLeft) => {
+                            if !state.fm_state.is_streaming() {
+                                state.fm_state.selection = None;
+                                if state.fm_state.cursor_pos > 0 {
+                                    state.fm_state.cursor_pos -= 1;
+                                }
+                            }
+                        }
+                        Key::Named(NamedKey::ArrowRight) => {
+                            if !state.fm_state.is_streaming() {
+                                state.fm_state.selection = None;
+                                if state.fm_state.cursor_pos < state.fm_state.prompt_input.len() {
+                                    state.fm_state.cursor_pos += 1;
+                                }
+                            }
+                        }
+                        Key::Named(NamedKey::Home) => {
+                            if !state.fm_state.is_streaming() {
+                                state.fm_state.selection = None;
+                                state.fm_state.cursor_pos = 0;
+                            }
+                        }
+                        Key::Named(NamedKey::End) => {
+                            if !state.fm_state.is_streaming() {
+                                state.fm_state.selection = None;
+                                state.fm_state.cursor_pos = state.fm_state.prompt_input.len();
                             }
                         }
                         Key::Named(NamedKey::Space) => {
                             if !state.fm_state.is_streaming() {
-                                state.fm_state.prompt_input.push(' ');
+                                // Delete selection if any
+                                if let Some((start, end)) = state.fm_state.selection {
+                                    let start = start.min(state.fm_state.prompt_input.len());
+                                    let end = end.min(state.fm_state.prompt_input.len());
+                                    state.fm_state.prompt_input.replace_range(start..end, "");
+                                    state.fm_state.cursor_pos = start;
+                                    state.fm_state.selection = None;
+                                }
+                                let pos = state.fm_state.cursor_pos.min(state.fm_state.prompt_input.len());
+                                state.fm_state.prompt_input.insert(pos, ' ');
+                                state.fm_state.cursor_pos = pos + 1;
                             }
                         }
                         Key::Character(c) => {
                             // Only accept input when not streaming and no cmd modifier
                             if !state.fm_state.is_streaming() && !cmd {
-                                state.fm_state.prompt_input.push_str(c);
+                                // Delete selection if any
+                                if let Some((start, end)) = state.fm_state.selection {
+                                    let start = start.min(state.fm_state.prompt_input.len());
+                                    let end = end.min(state.fm_state.prompt_input.len());
+                                    state.fm_state.prompt_input.replace_range(start..end, "");
+                                    state.fm_state.cursor_pos = start;
+                                    state.fm_state.selection = None;
+                                }
+                                let pos = state.fm_state.cursor_pos.min(state.fm_state.prompt_input.len());
+                                state.fm_state.prompt_input.insert_str(pos, c);
+                                state.fm_state.cursor_pos = pos + c.len();
                             }
                         }
                         _ => {}
