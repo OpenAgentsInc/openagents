@@ -48,6 +48,7 @@ members = [
     "crates/web",
     "crates/viz",
     "crates/pylon-desktop",
+    "crates/rlm",
 ]
 
 # Unified OpenAgents binary
