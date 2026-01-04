@@ -7,7 +7,7 @@ use cosmic_text::{
 };
 use std::collections::HashMap;
 
-const DEFAULT_FONT_FAMILY: Family<'static> = Family::Name("Square721StdRoman");
+const DEFAULT_FONT_FAMILY: Family<'static> = Family::Name("Square 721");
 const MONO_FONT_FAMILY: Family<'static> = Family::Name("Bitstream Vera Sans Mono");
 
 #[cfg(target_arch = "wasm32")]

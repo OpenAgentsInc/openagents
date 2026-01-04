@@ -35,3 +35,6 @@ futures = "0.3"
 # Process management
 dirs = "5.0"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+
+# Clipboard
+arboard = "3.4"
