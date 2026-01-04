@@ -1,0 +1,30 @@
+[package]
+name = "frlm"
+version = "0.1.0"
+edition = "2024"
+description = "Federated Recursive Language Models - distributed RLM execution"
+
+[dependencies]
+# Core async runtime
+tokio = { version = "1", features = ["sync", "time", "macros"] }
+async-trait = "0.1"
+
+# RLM base (for local fallback)
+rlm = { path = "../rlm" }
+fm-bridge = { path = "../fm-bridge" }
+
+# Nostr for swarm communication
+nostr = { path = "../nostr/core" }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Utils
+uuid = { version = "1", features = ["v4"] }
+thiserror = "1"
+tracing = "0.1"
+web-time = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

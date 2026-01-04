@@ -17,6 +17,7 @@
 
 mod chat_panel;
 mod fm_panel;
+mod frlm_panel;
 mod header;
 mod jobs_panel;
 
@@ -82,15 +83,33 @@ pub fn build_pylon_ui(
     let footer_height = 60.0;
     let nostr_height = height - y - footer_height - padding - gap;
 
-    // Split panels for Nostr (Jobs + Chat) - only if there's room
+    // Split panels for Nostr (Jobs + Chat) and FRLM - only if there's room
     if nostr_height > 100.0 {
-        let panel_width = (width - padding * 2.0 - gap) / 2.0;
+        // Check if FRLM is active - if so, use 3-column layout
+        let has_frlm = state.frlm_active_run.is_some() || !state.frlm_subquery_status.is_empty();
 
-        // Left panel: Jobs
-        jobs_panel::draw_jobs_panel(scene, text, state, padding, y, panel_width, nostr_height);
+        if has_frlm {
+            // 3-column layout: Jobs | FRLM | Chat
+            let panel_width = (width - padding * 2.0 - gap * 2.0) / 3.0;
 
-        // Right panel: Chat
-        chat_panel::draw_chat_panel(scene, text, state, padding + panel_width + gap, y, panel_width, nostr_height);
+            // Left panel: Jobs
+            jobs_panel::draw_jobs_panel(scene, text, state, padding, y, panel_width, nostr_height);
+
+            // Center panel: FRLM
+            frlm_panel::draw_frlm_panel(scene, text, state, padding + panel_width + gap, y, panel_width, nostr_height);
+
+            // Right panel: Chat
+            chat_panel::draw_chat_panel(scene, text, state, padding + panel_width * 2.0 + gap * 2.0, y, panel_width, nostr_height);
+        } else {
+            // 2-column layout: Jobs | Chat (original)
+            let panel_width = (width - padding * 2.0 - gap) / 2.0;
+
+            // Left panel: Jobs
+            jobs_panel::draw_jobs_panel(scene, text, state, padding, y, panel_width, nostr_height);
+
+            // Right panel: Chat
+            chat_panel::draw_chat_panel(scene, text, state, padding + panel_width + gap, y, panel_width, nostr_height);
+        }
 
         y += nostr_height + gap;
     }

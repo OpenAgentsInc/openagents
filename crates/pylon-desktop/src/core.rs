@@ -215,6 +215,25 @@ impl PylonCore {
                     self.state.channel_id = Some(channel_id.clone());
                     self.nostr_runtime.subscribe_chat(&channel_id);
                 }
+                NostrEvent::JobBatchPublished { job_mappings } => {
+                    // FRLM: Batch of jobs published to swarm
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    for (_local_id, job_id) in &job_mappings {
+                        self.state.pending_requests.insert(job_id.clone(), crate::state::PendingRequest {
+                            _prompt: String::from("[FRLM batch query]"),
+                            _requested_at: now,
+                        });
+                    }
+                }
+                NostrEvent::JobBatchFailed { local_id, error } => {
+                    // FRLM: Batch job failed to publish
+                    self.state.error_message = Some(format!(
+                        "Job batch failed for {}: {}", local_id, error
+                    ));
+                }
             }
         }
 

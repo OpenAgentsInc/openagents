@@ -86,6 +86,51 @@ pub struct ChatMessage {
     pub is_self: bool,
 }
 
+// ============ FRLM (Federated RLM) State ============
+
+/// Status of a sub-query in an FRLM run
+#[derive(Clone, PartialEq)]
+pub enum SubQueryDisplayStatus {
+    Pending,
+    Submitted { job_id: String },
+    Executing { provider_id: String },
+    Complete { duration_ms: u64 },
+    Failed { error: String },
+    Timeout,
+}
+
+/// State for an active FRLM run
+#[derive(Clone)]
+pub struct FrlmRunState {
+    pub run_id: String,
+    pub program: String,
+    pub fragment_count: usize,
+    pub pending_queries: usize,
+    pub completed_queries: usize,
+    pub budget_used_sats: u64,
+    pub budget_remaining_sats: u64,
+    pub started_at: u64,
+}
+
+impl FrlmRunState {
+    pub fn new(run_id: String, program: String, fragment_count: usize, budget_limit_sats: u64) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        Self {
+            run_id,
+            program,
+            fragment_count,
+            pending_queries: 0,
+            completed_queries: 0,
+            budget_used_sats: 0,
+            budget_remaining_sats: budget_limit_sats,
+            started_at: now,
+        }
+    }
+}
+
 pub struct FmVizState {
     // Connection
     pub connection_status: FmConnectionStatus,
@@ -143,6 +188,12 @@ pub struct FmVizState {
     pub chat_input: String,
     pub chat_cursor: usize,
     pub channel_id: Option<String>,
+
+    // FRLM (Federated RLM) state
+    pub frlm_active_run: Option<FrlmRunState>,
+    pub frlm_subquery_status: HashMap<String, SubQueryDisplayStatus>,
+    pub frlm_runs_completed: u32,
+    pub frlm_total_cost_sats: u64,
 }
 
 impl FmVizState {
@@ -194,6 +245,11 @@ impl FmVizState {
             chat_input: String::new(),
             chat_cursor: 0,
             channel_id: None,
+
+            frlm_active_run: None,
+            frlm_subquery_status: HashMap::new(),
+            frlm_runs_completed: 0,
+            frlm_total_cost_sats: 0,
         }
     }
 

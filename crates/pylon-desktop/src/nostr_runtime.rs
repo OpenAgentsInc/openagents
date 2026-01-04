@@ -52,6 +52,26 @@ pub enum NostrEvent {
     PublishFailed { error: String },
     /// Channel found or created (kind 40)
     ChannelFound { channel_id: String, _name: String },
+    /// Batch of jobs published successfully
+    JobBatchPublished {
+        /// Mapping of local ID to event ID
+        job_mappings: Vec<(String, String)>,
+    },
+    /// A job from the batch failed to publish
+    JobBatchFailed { local_id: String, error: String },
+}
+
+/// A job request for batch submission.
+#[derive(Debug, Clone)]
+pub struct BatchJobRequest {
+    /// Unique ID for tracking this job.
+    pub id: String,
+    /// The prompt to send.
+    pub prompt: String,
+    /// Optional model preference.
+    pub model: Option<String>,
+    /// Optional max tokens.
+    pub max_tokens: Option<u32>,
 }
 
 /// Commands sent from UI to Nostr runtime
@@ -65,8 +85,12 @@ pub enum NostrCommand {
     SubscribeJobs,
     /// Subscribe to chat channel (kind 42)
     SubscribeChat { channel_id: String },
+    /// Subscribe to job results for specific request IDs
+    SubscribeJobResults { request_ids: Vec<String> },
     /// Publish a job request (kind 5050)
     PublishJobRequest { prompt: String },
+    /// Publish a batch of job requests (kind 5050)
+    PublishJobBatch { jobs: Vec<BatchJobRequest> },
     /// Publish a job result (kind 6050)
     PublishJobResult { request_id: String, request_pubkey: String, content: String },
     /// Publish a chat message (kind 42)
@@ -119,6 +143,11 @@ impl NostrRuntime {
         let _ = self.cmd_tx.try_send(NostrCommand::SubscribeJobs);
     }
 
+    /// Get a clone of the command sender for external use
+    pub fn command_sender(&self) -> mpsc::Sender<NostrCommand> {
+        self.cmd_tx.clone()
+    }
+
     /// Subscribe to chat channel
     pub fn subscribe_chat(&self, channel_id: &str) {
         let _ = self.cmd_tx.try_send(NostrCommand::SubscribeChat {
@@ -126,11 +155,21 @@ impl NostrRuntime {
         });
     }
 
+    /// Subscribe to job results for specific request IDs
+    pub fn subscribe_job_results(&self, request_ids: Vec<String>) {
+        let _ = self.cmd_tx.try_send(NostrCommand::SubscribeJobResults { request_ids });
+    }
+
     /// Publish job request
     pub fn publish_job_request(&self, prompt: &str) {
         let _ = self.cmd_tx.try_send(NostrCommand::PublishJobRequest {
             prompt: prompt.to_string(),
         });
+    }
+
+    /// Publish a batch of job requests (for FRLM fanout)
+    pub fn publish_job_batch(&self, jobs: Vec<BatchJobRequest>) {
+        let _ = self.cmd_tx.try_send(NostrCommand::PublishJobBatch { jobs });
     }
 
     /// Publish job result
@@ -213,9 +252,19 @@ async fn run_nostr_loop(
                             handle_subscribe_chat(relay_conn, &channel_id).await;
                         }
                     }
+                    Some(NostrCommand::SubscribeJobResults { request_ids }) => {
+                        if let Some(ref relay_conn) = relay {
+                            handle_subscribe_job_results(relay_conn, &request_ids).await;
+                        }
+                    }
                     Some(NostrCommand::PublishJobRequest { prompt }) => {
                         if let Some(ref relay_conn) = relay {
                             handle_publish_job_request(relay_conn, &event_tx, &secret_key, &prompt).await;
+                        }
+                    }
+                    Some(NostrCommand::PublishJobBatch { jobs }) => {
+                        if let Some(ref relay_conn) = relay {
+                            handle_publish_job_batch(relay_conn, &event_tx, &secret_key, jobs).await;
                         }
                     }
                     Some(NostrCommand::PublishJobResult { request_id, request_pubkey, content }) => {
@@ -326,6 +375,16 @@ async fn handle_subscribe_chat(relay: &RelayConnection, channel_id: &str) {
     let _ = relay.subscribe("chat", &[filter]).await;
 }
 
+/// Subscribe to job results for specific request IDs (kind 6050)
+async fn handle_subscribe_job_results(relay: &RelayConnection, request_ids: &[String]) {
+    let filter = serde_json::json!({
+        "kinds": [KIND_JOB_TEXT_GENERATION + 1000], // 6050
+        "#e": request_ids,
+        "limit": 1000
+    });
+    let _ = relay.subscribe("job-results", &[filter]).await;
+}
+
 /// Publish job request (kind 5050)
 async fn handle_publish_job_request(
     relay: &RelayConnection,
@@ -371,6 +430,86 @@ async fn handle_publish_job_request(
         Err(e) => {
             let _ = event_tx.send(NostrEvent::PublishFailed { error: e.to_string() }).await;
         }
+    }
+}
+
+/// Publish a batch of job requests (kind 5050) for FRLM fanout
+async fn handle_publish_job_batch(
+    relay: &RelayConnection,
+    event_tx: &mpsc::Sender<NostrEvent>,
+    secret_key: &[u8; 32],
+    jobs: Vec<BatchJobRequest>,
+) {
+    let mut job_mappings = Vec::new();
+
+    for job in jobs {
+        // Build job request using NIP-90 helpers
+        let mut job_request = match JobRequest::new(KIND_JOB_TEXT_GENERATION) {
+            Ok(req) => req.add_input(JobInput::text(&job.prompt)),
+            Err(e) => {
+                let _ = event_tx.send(NostrEvent::JobBatchFailed {
+                    local_id: job.id.clone(),
+                    error: e.to_string(),
+                }).await;
+                continue;
+            }
+        };
+
+        // Add model if specified
+        if let Some(ref model) = job.model {
+            job_request = job_request.add_param("model", model);
+        } else {
+            job_request = job_request.add_param("model", "apple-fm");
+        }
+
+        // Add max_tokens if specified
+        if let Some(max_tokens) = job.max_tokens {
+            job_request = job_request.add_param("max_tokens", &max_tokens.to_string());
+        } else {
+            job_request = job_request.add_param("max_tokens", "1024");
+        }
+
+        let template = EventTemplate {
+            kind: KIND_JOB_TEXT_GENERATION,
+            content: String::new(),
+            tags: job_request.to_tags(),
+            created_at: now(),
+        };
+
+        match finalize_event(&template, secret_key) {
+            Ok(event) => {
+                let event_id = event.id.clone();
+                match relay.publish_event(&event, Duration::from_secs(5)).await {
+                    Ok(confirmation) => {
+                        if confirmation.accepted {
+                            job_mappings.push((job.id.clone(), event_id));
+                        } else {
+                            let _ = event_tx.send(NostrEvent::JobBatchFailed {
+                                local_id: job.id.clone(),
+                                error: confirmation.message,
+                            }).await;
+                        }
+                    }
+                    Err(e) => {
+                        let _ = event_tx.send(NostrEvent::JobBatchFailed {
+                            local_id: job.id.clone(),
+                            error: e.to_string(),
+                        }).await;
+                    }
+                }
+            }
+            Err(e) => {
+                let _ = event_tx.send(NostrEvent::JobBatchFailed {
+                    local_id: job.id.clone(),
+                    error: e.to_string(),
+                }).await;
+            }
+        }
+    }
+
+    // Send the successful mappings
+    if !job_mappings.is_empty() {
+        let _ = event_tx.send(NostrEvent::JobBatchPublished { job_mappings }).await;
     }
 }
 
