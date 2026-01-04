@@ -1545,14 +1545,23 @@ async fn fetch_pylon_model_id(base_url: &str) -> Result<String, String> {
         .as_string()
         .unwrap_or_default();
     let value: Value = serde_json::from_str(&text).map_err(|_| "pylon model list parse failed".to_string())?;
-    let id = value
+    let data = value
         .get("data")
         .and_then(|data| data.as_array())
-        .and_then(|data| data.first())
-        .and_then(|entry| entry.get("id"))
-        .and_then(|id| id.as_str())
         .ok_or_else(|| "pylon model list empty".to_string())?;
-    Ok(id.to_string())
+    let mut fallback: Option<String> = None;
+    for entry in data {
+        let Some(id) = entry.get("id").and_then(|id| id.as_str()) else {
+            continue;
+        };
+        if fallback.is_none() {
+            fallback = Some(id.to_string());
+        }
+        if id.to_ascii_lowercase().contains("gpt-oss") {
+            return Ok(id.to_string());
+        }
+    }
+    fallback.ok_or_else(|| "pylon model list empty".to_string())
 }
 
 fn apply_pylon_telemetry(state: &Rc<RefCell<AppState>>, extra: &Value) -> bool {
