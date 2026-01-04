@@ -4116,6 +4116,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "frlm"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "fm-bridge",
+ "nostr 0.1.0",
+ "rlm",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+ "web-time",
+]
+
+[[package]]
 name = "frost-core"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9623,10 +9640,12 @@ name = "pylon-desktop"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "async-trait",
  "bip39",
  "clap",
  "dirs 5.0.1",
  "fm-bridge",
+ "frlm",
  "futures",
  "nostr 0.1.0",
  "nostr-client",

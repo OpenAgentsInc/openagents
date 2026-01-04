@@ -17,6 +17,7 @@ pub mod heat;
 pub mod topology;
 pub mod trace;
 pub mod compose;
+pub mod frlm;
 
 // Re-export core traits
 pub use grammar::{
@@ -25,3 +26,6 @@ pub use grammar::{
 
 // Re-export trace types
 pub use trace::{TraceEvent, Venue};
+
+// Re-export FRLM visualization components
+pub use frlm::{BudgetMeter, FrlmPanel, FrlmTimeline, QueryLane, QueryStatus};

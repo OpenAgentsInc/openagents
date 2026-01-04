@@ -8,6 +8,7 @@ mod cli;
 mod commands;
 mod core;
 mod fm_runtime;
+mod frlm_integration;
 mod input_convert;
 mod nostr_runtime;
 mod state;
