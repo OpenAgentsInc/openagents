@@ -1,10 +1,12 @@
 //! Application handler with winit event loop
 
 use std::sync::Arc;
+use std::sync::mpsc;
 use arboard::Clipboard;
 use web_time::Instant;
+use wgpui::components::hud::CommandPalette;
 use wgpui::renderer::Renderer;
-use wgpui::{Scene, Size, TextSystem};
+use wgpui::{Bounds, Component, EventContext, PaintContext, Scene, Size, TextSystem};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -12,7 +14,9 @@ use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
 
 use crate::bridge_manager::BridgeManager;
+use crate::commands;
 use crate::fm_runtime::{FmEvent, FmRuntime};
+use crate::input_convert;
 use crate::nostr_runtime::{NostrEvent, NostrRuntime};
 use crate::state::{ChatMessage, FmConnectionStatus, FmVizState, InputFocus, Job, JobStatus, NostrConnectionStatus};
 use crate::ui;
@@ -38,6 +42,11 @@ pub struct RenderState {
     pub last_tick: Instant,
     pub modifiers: ModifiersState,
     pub clipboard: Option<Clipboard>,
+    // Command palette
+    pub command_palette: CommandPalette,
+    pub event_context: EventContext,
+    pub command_tx: mpsc::Sender<String>,
+    pub command_rx: mpsc::Receiver<String>,
 }
 
 impl ApplicationHandler for PylonApp {
@@ -152,6 +161,17 @@ impl ApplicationHandler for PylonApp {
             fm_state.nostr_status = NostrConnectionStatus::Connecting;
             nostr_runtime.connect(&fm_state.relay_url);
 
+            // Initialize command palette with channel for selection callback
+            let (command_tx, command_rx) = mpsc::channel::<String>();
+            let tx_clone = command_tx.clone();
+            let command_palette = CommandPalette::new()
+                .max_visible_items(8)
+                .commands(commands::build_commands())
+                .on_select(move |cmd| {
+                    let _ = tx_clone.send(cmd.id.clone());
+                });
+            let event_context = EventContext::new();
+
             RenderState {
                 window,
                 surface,
@@ -167,6 +187,10 @@ impl ApplicationHandler for PylonApp {
                 last_tick: Instant::now(),
                 modifiers: ModifiersState::empty(),
                 clipboard: Clipboard::new().ok(),
+                command_palette,
+                event_context,
+                command_tx,
+                command_rx,
             }
         });
 
@@ -192,6 +216,29 @@ impl ApplicationHandler for PylonApp {
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
                     let cmd = state.modifiers.super_key();
+                    let width = state.config.width as f32;
+                    let height = state.config.height as f32;
+
+                    // Priority 1: Cmd+K opens command palette (global shortcut)
+                    if cmd {
+                        if let Key::Character(c) = &event.logical_key {
+                            if c.to_lowercase() == "k" {
+                                if !state.command_palette.is_open() {
+                                    state.command_palette.open();
+                                    return;
+                                }
+                            }
+                        }
+                    }
+
+                    // Priority 2: Route ALL events to palette when open
+                    if state.command_palette.is_open() {
+                        if let Some(wgpui_event) = input_convert::create_key_down(&event.logical_key, &state.modifiers) {
+                            let bounds = Bounds::new(0.0, 0.0, width, height);
+                            state.command_palette.event(&wgpui_event, bounds, &mut state.event_context);
+                        }
+                        return; // Consume all input when palette is open
+                    }
 
                     // Tab to switch focus
                     if let Key::Named(NamedKey::Tab) = &event.logical_key {
@@ -233,6 +280,18 @@ impl ApplicationHandler for PylonApp {
                     width,
                     height,
                 );
+
+                // Paint command palette overlay (last = on top)
+                if state.command_palette.is_open() {
+                    let scale_factor = state.window.scale_factor() as f32;
+                    let bounds = Bounds::new(0.0, 0.0, width, height);
+                    let mut paint_cx = PaintContext::new(
+                        &mut scene,
+                        &mut state.text_system,
+                        scale_factor,
+                    );
+                    state.command_palette.paint(bounds, &mut paint_cx);
+                }
 
                 // Render
                 let output = state
@@ -386,7 +445,63 @@ impl ApplicationHandler for PylonApp {
                 }
             }
 
+            // Poll command palette selections (non-blocking)
+            while let Ok(command_id) = state.command_rx.try_recv() {
+                execute_command(&command_id, state);
+            }
+
             state.window.request_redraw();
+        }
+    }
+}
+
+/// Execute a command from the command palette
+fn execute_command(command_id: &str, state: &mut RenderState) {
+    use crate::commands::ids;
+
+    match command_id {
+        ids::JOIN_CHANNEL => {
+            // For now, join the default channel
+            let channel_id = "openagents-providers";
+            state.nostr_runtime.subscribe_chat(channel_id);
+            state.fm_state.channel_id = Some(channel_id.to_string());
+            state.fm_state.input_focus = InputFocus::Chat;
+        }
+        ids::LIST_CHANNELS => {
+            // Focus chat panel - future: show channel list
+            state.fm_state.input_focus = InputFocus::Chat;
+        }
+        ids::CREATE_JOB => {
+            // Focus prompt panel for creating a job
+            state.fm_state.input_focus = InputFocus::Prompt;
+        }
+        ids::VIEW_JOBS => {
+            state.fm_state.input_focus = InputFocus::Jobs;
+        }
+        ids::RECONNECT => {
+            state.fm_state.nostr_status = NostrConnectionStatus::Connecting;
+            state.nostr_runtime.connect(&state.fm_state.relay_url);
+        }
+        ids::COPY_PUBKEY => {
+            if let Some(ref mut clipboard) = state.clipboard {
+                if let Some(ref pubkey) = state.fm_state.pubkey {
+                    let _ = clipboard.set_text(pubkey);
+                }
+            }
+        }
+        ids::FOCUS_CHAT => {
+            state.fm_state.input_focus = InputFocus::Chat;
+        }
+        ids::FOCUS_PROMPT => {
+            state.fm_state.input_focus = InputFocus::Prompt;
+        }
+        ids::CLEAR_OUTPUT => {
+            state.fm_state.token_stream.clear();
+            state.fm_state.token_count = 0;
+            state.fm_state.tokens_per_sec = 0.0;
+        }
+        _ => {
+            // Unknown command - ignore
         }
     }
 }
