@@ -17,7 +17,7 @@ use crate::{
     GptOssTokenizer, KvCache, MlError, Result,
 };
 
-const CURRENT_DATE: &str = "2026-01-02";
+const CURRENT_DATE: &str = "2026-01-04";
 const DEFAULT_TELEMETRY_TOP_K: usize = 5;
 
 #[derive(Debug, Clone)]
@@ -250,23 +250,16 @@ impl GptOssEngine {
         let start = Instant::now();
 
         while generated < config.generation.max_new_tokens {
-            let (top_k, entropy) = if config.telemetry_top_k == 0 {
-                (Vec::new(), 0.0)
-            } else {
+            let wants_telemetry =
+                config.telemetry_top_k > 0 && (hook.is_some() || on_token.is_some());
+            let (top_k, entropy) = if wants_telemetry {
                 top_k_from_logits(&logits, &self.tokenizer, config.telemetry_top_k)?
+            } else {
+                (Vec::new(), 0.0)
             };
 
             let next_id =
                 sample_from_logits(&logits, &config.generation, &tokens, &mut rng)?;
-
-            // DEBUG: Log sampled token and top logits
-            let sampled_text = self.tokenizer.decode_utf8_lossy(&[next_id]);
-            let mut indexed: Vec<(usize, f32)> = logits.iter().copied().enumerate().collect();
-            indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-            let top5: Vec<(usize, String)> = indexed[..5].iter()
-                .map(|(id, _)| (*id, self.tokenizer.decode_utf8_lossy(&[*id as u32])))
-                .collect();
-            eprintln!("[DEBUG] gen#{} sampled={} {:?} | top5={:?}", generated, next_id, sampled_text, top5);
 
             if stop_tokens.contains(&next_id) {
                 return Ok(GptOssCompletion {
@@ -357,25 +350,21 @@ fn build_harmony_prompt(user_prompt: &str) -> String {
 Knowledge cutoff: 2024-06\n\
 Current date: {CURRENT_DATE}\n\n\
 Reasoning: low\n\n\
-# Valid channels: analysis, commentary, final. Channel must be included for every message.\n\
-Calls to these tools must go to the commentary channel: 'functions'."
+# Valid channels: analysis, commentary, final. Channel must be included for every message."
     );
-    let developer_prompt = "# Instructions\n\n".to_string();
 
     let mut prompt = String::new();
     prompt.push_str("<|start|>system<|message|>");
     prompt.push_str(&system_prompt);
-    prompt.push_str("<|end|><|start|>developer<|message|>");
-    prompt.push_str(&developer_prompt);
     prompt.push_str("<|end|><|start|>user<|message|>");
     prompt.push_str(user_prompt);
-    prompt.push_str("<|end|><|start|>assistant<|channel|>final<|message|>");
+    prompt.push_str("<|end|><|start|>assistant");
     prompt
 }
 
 fn collect_stop_tokens(tokenizer: &GptOssTokenizer) -> Vec<u32> {
     let mut tokens = Vec::new();
-    for name in ["<|return|>", "<|call|>"] {
+    for name in ["<|return|>", "<|call|>", "<|end|>"] {
         if let Some(id) = tokenizer.token_id(name) {
             tokens.push(id);
         }
@@ -396,6 +385,7 @@ fn top_k_from_logits(
     if logits.is_empty() {
         return Err(MlError::Model("empty logits".to_string()));
     }
+    let k = k.max(1);
     let mut max_logit = f32::NEG_INFINITY;
     for &logit in logits {
         if logit > max_logit {
@@ -410,28 +400,42 @@ fn top_k_from_logits(
         return Err(MlError::Model("softmax sum is zero".to_string()));
     }
     let mut entropy = 0.0f32;
-    for &logit in logits {
-        let p = (logit - max_logit).exp() / sum_exp;
-        if p > 0.0 {
-            entropy -= p * p.ln();
+    let mut top: Vec<(usize, f32)> = Vec::with_capacity(k);
+    for (idx, &logit) in logits.iter().enumerate() {
+        let prob = (logit - max_logit).exp() / sum_exp;
+        if prob > 0.0 {
+            entropy -= prob * prob.ln();
+        }
+        if top.len() < k {
+            top.push((idx, prob));
+            if top.len() == k {
+                top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            }
+            continue;
+        }
+        if let Some(last) = top.last() {
+            if prob <= last.1 {
+                continue;
+            }
+        }
+        top[k - 1] = (idx, prob);
+        let mut cursor = k - 1;
+        while cursor > 0 && top[cursor].1 > top[cursor - 1].1 {
+            top.swap(cursor, cursor - 1);
+            cursor -= 1;
         }
     }
-    let mut pairs: Vec<(usize, f32)> = logits
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(idx, logit)| (idx, (logit - max_logit).exp() / sum_exp))
+    let top = top
+        .into_iter()
+        .map(|(idx, prob)| {
+            let token_id = idx as u32;
+            TokenCandidate {
+                token_id,
+                token_text: tokenizer.decode_utf8_lossy(&[token_id]),
+                probability: prob,
+            }
+        })
         .collect();
-    pairs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    let mut top = Vec::new();
-    for (idx, prob) in pairs.into_iter().take(k.max(1)) {
-        let token_id = idx as u32;
-        top.push(TokenCandidate {
-            token_id,
-            token_text: tokenizer.decode_utf8_lossy(&[token_id]),
-            probability: prob,
-        });
-    }
     Ok((top, entropy))
 }
 
