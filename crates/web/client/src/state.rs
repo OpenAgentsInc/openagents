@@ -557,7 +557,7 @@ impl Default for GptOssVizState {
             top_k_input_bounds: Bounds::ZERO,
             top_p_input_bounds: Bounds::ZERO,
             gguf_input: TextInput::new()
-                .placeholder("file or https://...gguf")
+                .placeholder("pylon://localhost:9899 or https://...gguf")
                 .font_size(10.0)
                 .padding(6.0, 4.0),
             prompt_input: TextInput::new()
