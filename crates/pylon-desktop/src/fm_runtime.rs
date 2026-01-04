@@ -2,7 +2,7 @@
 //!
 //! Bridges async FM client with synchronous winit event loop using channels.
 
-use fm_bridge::{FMClient, CompletionOptions, FinishReason};
+use fm_bridge::{FMClient, CompletionOptions};
 use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
@@ -129,6 +129,7 @@ async fn handle_connect(client: &FMClient, event_tx: &mpsc::Sender<FmEvent>) {
 async fn handle_stream(client: &FMClient, event_tx: &mpsc::Sender<FmEvent>, prompt: String) {
     let start = Instant::now();
     let mut first_token = true;
+    let mut completed = false;
 
     // Start streaming
     let stream_result = client.stream(&prompt, Some(CompletionOptions {
@@ -152,13 +153,7 @@ async fn handle_stream(client: &FMClient, event_tx: &mpsc::Sender<FmEvent>, prom
     while let Some(chunk_result) = stream.next().await {
         match chunk_result {
             Ok(chunk) => {
-                // Check for completion
-                if chunk.finish_reason == Some(FinishReason::Stop) {
-                    let _ = event_tx.send(FmEvent::StreamComplete).await;
-                    break;
-                }
-
-                // Send token
+                // Send token first if there's text
                 if !chunk.text.is_empty() {
                     if first_token {
                         let ttft_ms = start.elapsed().as_millis() as u64;
@@ -173,18 +168,25 @@ async fn handle_stream(client: &FMClient, event_tx: &mpsc::Sender<FmEvent>, prom
                         let _ = event_tx.send(FmEvent::Token { text: chunk.text }).await;
                     }
                 }
+
+                // Check for completion after processing text
+                if chunk.finish_reason.is_some() {
+                    let _ = event_tx.send(FmEvent::StreamComplete).await;
+                    completed = true;
+                    break;
+                }
             }
             Err(e) => {
                 let err_msg = e.to_string();
                 let _ = event_tx.send(FmEvent::StreamError(err_msg)).await;
+                completed = true;
                 break;
             }
         }
     }
 
-    // Ensure we send complete if not already sent
-    if first_token {
-        // No tokens received, still complete
+    // Always send complete if not already sent (stream ended naturally)
+    if !completed {
         let _ = event_tx.send(FmEvent::StreamComplete).await;
     }
 }

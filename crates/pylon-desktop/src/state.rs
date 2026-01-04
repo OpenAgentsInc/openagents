@@ -50,6 +50,8 @@ pub struct FmVizState {
 
     // Input
     pub prompt_input: String,
+    pub cursor_pos: usize,
+    pub selection: Option<(usize, usize)>, // (start, end)
 
     // Viz history
     pub token_history: Vec<f32>,
@@ -79,6 +81,8 @@ impl FmVizState {
             transcript: Vec::new(),
 
             prompt_input: String::new(),
+            cursor_pos: 0,
+            selection: None,
 
             token_history: vec![0.0; 50],
         }
@@ -162,6 +166,8 @@ impl FmVizState {
 
         // Clear prompt input
         self.prompt_input.clear();
+        self.cursor_pos = 0;
+        self.selection = None;
     }
 
     /// Called when stream errors

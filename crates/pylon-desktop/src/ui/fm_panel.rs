@@ -277,6 +277,9 @@ pub fn draw_prompt_input(
 
     // Input text
     let font_size = 13.0;
+    let text_x = x + 18.0;
+    let text_y = input_y + 6.0;
+
     let display_text = if state.prompt_input.is_empty() && !state.is_streaming() {
         "Enter your prompt here..."
     } else {
@@ -289,17 +292,39 @@ pub fn draw_prompt_input(
         Hsla::new(0.0, 0.0, 0.9, 1.0)
     };
 
+    // Draw selection highlight if active
+    if let Some((start, end)) = state.selection {
+        let start = start.min(state.prompt_input.len());
+        let end = end.min(state.prompt_input.len());
+        if start < end && !state.prompt_input.is_empty() {
+            let before_sel = &state.prompt_input[..start];
+            let sel_text = &state.prompt_input[start..end];
+            let sel_start_x = text_x + text.measure(before_sel, font_size);
+            let sel_width = text.measure(sel_text, font_size);
+
+            scene.draw_quad(
+                Quad::new(Bounds {
+                    origin: Point::new(sel_start_x, input_y + 4.0),
+                    size: Size::new(sel_width, 16.0),
+                })
+                .with_background(accent_cyan().with_alpha(0.3)),
+            );
+        }
+    }
+
     let run = text.layout(
         display_text,
-        Point::new(x + 18.0, input_y + 6.0),
+        Point::new(text_x, text_y),
         font_size,
         text_color,
     );
     scene.draw_text(run);
 
-    // Cursor (blinking) - use actual measured width
+    // Cursor at cursor_pos - use actual measured width
     if !state.is_streaming() && state.connection_status == FmConnectionStatus::Connected {
-        let cursor_x = x + 18.0 + text.measure(&state.prompt_input, font_size);
+        let cursor_pos = state.cursor_pos.min(state.prompt_input.len());
+        let text_before_cursor = &state.prompt_input[..cursor_pos];
+        let cursor_x = text_x + text.measure(text_before_cursor, font_size);
         scene.draw_quad(
             Quad::new(Bounds {
                 origin: Point::new(cursor_x, input_y + 4.0),
