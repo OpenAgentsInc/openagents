@@ -682,15 +682,21 @@ pub fn apply_rope(
             high = 0.0;
         }
     }
+    // RoPE pairs the first half with the second half of head_dim:
+    // x1 = values[0..head_dim/2], x2 = values[head_dim/2..head_dim]
+    // o1 = x1 * cos - x2 * sin, o2 = x2 * cos + x1 * sin
+    let half_dim = rope_dim / 2;
     for h in 0..heads {
         let base = h * head_dim;
-        for i in (0..rope_dim).step_by(2) {
-            let idx = base + i;
-            let idx2 = idx + 1;
-            let freq = theta.powf(i as f32 / rope_dim as f32);
+        for i in 0..half_dim {
+            let idx1 = base + i;          // First half: 0, 1, 2, ... head_dim/2-1
+            let idx2 = base + half_dim + i; // Second half: head_dim/2, head_dim/2+1, ...
+
+            // freq = theta^(2*i / head_dim) where i is the pair index
+            let freq = theta.powf((2 * i) as f32 / rope_dim as f32);
             let mut inv_freq = 1.0 / freq;
             if use_yarn && high > low {
-                let t = (i / 2) as f32;
+                let t = i as f32;
                 let ramp = (t - low) / (high - low);
                 let mask = 1.0 - ramp.clamp(0.0, 1.0);
                 let interp = 1.0 / (scaling_factor * freq);
@@ -701,10 +707,11 @@ pub fn apply_rope(
             let (sin, cos) = angle.sin_cos();
             let sin = sin * concentration;
             let cos = cos * concentration;
-            let v0 = values[idx];
-            let v1 = values[idx2];
-            values[idx] = v0 * cos - v1 * sin;
-            values[idx2] = v0 * sin + v1 * cos;
+
+            let x1 = values[idx1];
+            let x2 = values[idx2];
+            values[idx1] = x1 * cos - x2 * sin;
+            values[idx2] = x2 * cos + x1 * sin;
         }
     }
     Ok(())
@@ -741,9 +748,18 @@ pub fn attention_with_cache(
     let sm_scale = 1.0 / (head_dim as f32).sqrt();
     let mut out = vec![0.0f32; heads * head_dim];
 
+    // GQA: heads must be a multiple of kv_heads
+    if heads % kv_heads != 0 {
+        return Err(MlError::Model(format!(
+            "GQA: heads {} not divisible by kv_heads {}",
+            heads, kv_heads
+        )));
+    }
+    let group_size = heads / kv_heads;  // How many query heads per KV head
+
     for h in 0..heads {
         let q_base = h * head_dim;
-        let kv = h % kv_heads;
+        let kv = h / group_size;  // GQA: grouped, not cycling!
         let sink = sinks.get(h).copied().unwrap_or(0.0);
         let mut max_score = sink;
 
