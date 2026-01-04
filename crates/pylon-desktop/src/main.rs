@@ -18,7 +18,7 @@ use winit::event_loop::EventLoop;
 
 #[derive(Parser)]
 #[command(name = "pylon")]
-#[command(about = "Pylon - FM Bridge + Nostr Provider")]
+#[command(about = "Pylon")]
 struct Args {
     /// Run as headless CLI provider (no GUI)
     #[arg(long)]

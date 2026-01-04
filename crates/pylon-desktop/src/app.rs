@@ -58,7 +58,7 @@ impl ApplicationHandler for PylonApp {
         }
 
         let window_attrs = Window::default_attributes()
-            .with_title("Pylon - FM Bridge + Nostr")
+            .with_title("Pylon")
             .with_maximized(true);
 
         let window = Arc::new(
