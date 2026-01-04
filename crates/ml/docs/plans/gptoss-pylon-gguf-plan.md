@@ -104,3 +104,5 @@ Tests:
 - 2026-01-03: `cargo check -p pylon --features gpt-oss-gguf` passed (only existing tokenizer dead-code warnings).
 - 2026-01-03: Surfaced GPT-OSS GGUF in `pylon doctor` + `pylon compute` for easier verification.
 - 2026-01-04: Ran `pylon doctor --verbose` with `GPT_OSS_GGUF_PATH` set; GGUF backend registered and visible.
+- 2026-01-04: Added `pylon infer` command to run local GGUF completions/streams against the registered backend.
+- 2026-01-04: Verified `pylon infer` streaming with `--layers 1 --moe-fallback` (token streamed).
