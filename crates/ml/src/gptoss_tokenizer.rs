@@ -398,4 +398,8 @@ impl GptOssTokenizer {
     pub fn pad_token_id(&self) -> Option<Rank> {
         self.vocab.pad_token_id
     }
+
+    pub fn vocab(&self) -> &GgufTokenizer {
+        &self.vocab
+    }
 }

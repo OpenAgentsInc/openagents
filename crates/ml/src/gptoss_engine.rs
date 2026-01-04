@@ -150,6 +150,10 @@ impl GptOssEngine {
         &self.tokenizer
     }
 
+    pub fn model_config(&self) -> GptOssModelConfig {
+        self.config.clone()
+    }
+
     pub fn generate_with_callback(
         &mut self,
         prompt: &str,
