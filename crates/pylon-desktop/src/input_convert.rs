@@ -11,6 +11,7 @@ pub fn convert_named_key(key: &WinitNamedKey) -> Option<NamedKey> {
         WinitNamedKey::Backspace => Some(NamedKey::Backspace),
         WinitNamedKey::Delete => Some(NamedKey::Delete),
         WinitNamedKey::Tab => Some(NamedKey::Tab),
+        WinitNamedKey::Space => Some(NamedKey::Space),
         WinitNamedKey::Home => Some(NamedKey::Home),
         WinitNamedKey::End => Some(NamedKey::End),
         WinitNamedKey::PageUp => Some(NamedKey::PageUp),

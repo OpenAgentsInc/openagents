@@ -44,6 +44,7 @@ pub enum NamedKey {
     Backspace,
     Delete,
     Tab,
+    Space,
     Home,
     End,
     PageUp,
