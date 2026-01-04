@@ -2,8 +2,10 @@ use wgpui::{Bounds, FontStyle, Hsla, Point, Quad, Scene, TextSystem, theme};
 use js_sys;
 use wgpui::animation::AnimatorState;
 use wgpui::components::Component;
-use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame, Heatmap};
+use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame};
 use wgpui::PaintContext;
+use viz::fill::Bar;
+use viz::heat::Matrix;
 
 use crate::gptoss_runtime::{
     default_gguf_url, default_max_kv_tokens, default_max_new_tokens, default_sample_temp,
@@ -727,21 +729,18 @@ pub(crate) fn build_gptoss_page(
     y += 14.0;
     if let Some(progress) = load_progress(&state.gptoss) {
         let bar_bounds = Bounds::new(inner_x, y + 2.0, inner_width, 6.0);
-        scene.draw_quad(
-            Quad::new(bar_bounds)
-                .with_background(Hsla::new(0.0, 0.0, 0.1, 0.9))
-                .with_border(panel_border(), 1.0),
-        );
-        let fill_width = (bar_bounds.width() * progress).max(2.0);
-        scene.draw_quad(
-            Quad::new(Bounds::new(
-                bar_bounds.x(),
-                bar_bounds.y(),
-                fill_width,
-                bar_bounds.height(),
-            ))
-            .with_background(accent_cyan().with_alpha(0.7)),
-        );
+        // Use viz::fill::Bar for progress visualization
+        let mut bar = Bar::new()
+            .with_value(progress)
+            .with_colors(
+                Hsla::new(0.0, 0.0, 0.1, 0.9),
+                accent_cyan().with_alpha(0.7),
+            );
+        let mut cx = PaintContext::new(scene, text_system, scale_factor);
+        bar.paint(bar_bounds, &mut cx);
+        let scene = cx.scene;
+        let text_system = cx.text;
+        // Draw percentage text above bar
         let pct = format!("{:.1}%", progress * 100.0);
         let pct_w = measure_mono(text_system, &pct, 9.0);
         draw_mono_text(
@@ -1481,14 +1480,17 @@ fn draw_attention_panel(
         for row in weights {
             data.extend(row.iter().copied());
         }
-        let mut heatmap = Heatmap::new()
-            .data(rows, cols, data)
-            .gap(1.0)
-            .low_color(Hsla::from_hex(0x04101a))
-            .mid_color(Some(accent_cyan()))
-            .high_color(Hsla::from_hex(0xf8fbff));
+        // Use viz::heat::Matrix for heatmap visualization
+        let mut matrix = Matrix::new(cols, rows)
+            .with_data(rows, cols, data)
+            .with_gap(1.0)
+            .with_gradient(
+                Hsla::from_hex(0x04101a),
+                Some(accent_cyan()),
+                Hsla::from_hex(0xf8fbff),
+            );
         let mut cx = PaintContext::new(scene, text_system, scale_factor);
-        heatmap.paint(heatmap_bounds, &mut cx);
+        matrix.paint(heatmap_bounds, &mut cx);
     } else {
         draw_empty_state(scene, text_system, heatmap_bounds, "No attention telemetry");
     }

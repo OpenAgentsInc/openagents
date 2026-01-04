@@ -43,6 +43,28 @@ impl Bar {
         self
     }
 
+    pub fn with_value(mut self, value: f32) -> Self {
+        self.value = value;
+        self.target = value;
+        self
+    }
+
+    pub fn with_bg_color(mut self, color: Hsla) -> Self {
+        self.bg_color = color;
+        self
+    }
+
+    pub fn with_fill_color(mut self, color: Hsla) -> Self {
+        self.normal_color = color;
+        self
+    }
+
+    pub fn with_colors(mut self, bg: Hsla, fill: Hsla) -> Self {
+        self.bg_color = bg;
+        self.normal_color = fill;
+        self
+    }
+
     fn normalized_value(&self) -> f32 {
         if self.max <= self.min {
             return 0.0;

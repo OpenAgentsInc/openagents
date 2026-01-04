@@ -30,6 +30,34 @@ impl Matrix {
         self
     }
 
+    /// Set data with dimensions (builder pattern)
+    pub fn with_data(mut self, rows: usize, cols: usize, data: Vec<f32>) -> Self {
+        self.height = rows;
+        self.width = cols;
+        self.data = data;
+        self
+    }
+
+    /// Set palette (builder pattern)
+    pub fn with_palette(mut self, palette: Palette) -> Self {
+        self.palette = palette;
+        self
+    }
+
+    /// Create a 3-color gradient palette (low, mid, high) for wgpui Heatmap compatibility
+    pub fn with_gradient(mut self, low: Hsla, mid: Option<Hsla>, high: Hsla) -> Self {
+        let low_rgba = low.to_rgba();
+        let high_rgba = high.to_rgba();
+        let colors = if let Some(mid) = mid {
+            let mid_rgba = mid.to_rgba();
+            vec![low_rgba, mid_rgba, high_rgba]
+        } else {
+            vec![low_rgba, high_rgba]
+        };
+        self.palette = Palette { colors };
+        self
+    }
+
     pub fn set(&mut self, x: usize, y: usize, value: f32) {
         if x < self.width && y < self.height {
             self.data[y * self.width + x] = value;

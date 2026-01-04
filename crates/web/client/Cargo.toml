@@ -15,6 +15,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wgpui = { path = "../../wgpui", default-features = true }
+viz = { path = "../../viz", default-features = true }
 editor = { path = "../../editor" }
 openagents-relay = { path = "../../relay" }
 # Note: openagents-runtime uses Timestamp::now() which requires std::time::SystemTime
