@@ -117,6 +117,9 @@ pub struct SubQueryResult {
     pub success: bool,
     /// Error message if failed.
     pub error: Option<String>,
+    /// Additional metadata (attestations, signatures, etc.).
+    #[serde(default)]
+    pub metadata: HashMap<String, String>,
 }
 
 impl SubQueryResult {
@@ -136,6 +139,7 @@ impl SubQueryResult {
             cost_sats: 0,
             success: true,
             error: None,
+            metadata: HashMap::new(),
         }
     }
 
@@ -150,7 +154,14 @@ impl SubQueryResult {
             cost_sats: 0,
             success: false,
             error: Some(error.into()),
+            metadata: HashMap::new(),
         }
+    }
+
+    /// Add metadata to the result.
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(key.into(), value.into());
+        self
     }
 
     /// Set the provider ID.

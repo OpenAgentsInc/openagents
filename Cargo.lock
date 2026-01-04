@@ -4121,10 +4121,12 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "fm-bridge",
+ "hex",
  "nostr 0.1.0",
  "rlm",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 1.0.69",
  "tokio",
  "tracing",

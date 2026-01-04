@@ -247,6 +247,18 @@ impl VerificationTier {
         Self::redundancy(3, 2)
     }
 
+    /// Create objective verification with optional schema.
+    pub fn objective(schema: Option<String>) -> Self {
+        Self::Objective { schema }
+    }
+
+    /// Create validated verification requiring attestation from a validator.
+    pub fn validated(validator_pubkey: impl Into<String>) -> Self {
+        Self::Validated {
+            validator_pubkey: validator_pubkey.into(),
+        }
+    }
+
     /// Check if this tier requires redundant execution.
     pub fn requires_redundancy(&self) -> bool {
         matches!(self, Self::Redundancy { .. })

@@ -26,5 +26,9 @@ thiserror = "1"
 tracing = "0.1"
 web-time = "1"
 
+# Verification (hash checking)
+sha2 = "0.10"
+hex = "0.4"
+
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
