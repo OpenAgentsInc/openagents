@@ -231,10 +231,41 @@ impl ApplicationHandler for PylonApp {
                         }
                     }
 
-                    // Priority 2: Route ALL events to palette when open
+                    // Priority 2: Route events to palette when open
                     if state.command_palette.is_open() {
+                        // Handle clipboard operations for command palette's TextInput
+                        if cmd {
+                            if let Key::Character(c) = &event.logical_key {
+                                match c.to_lowercase().as_str() {
+                                    "v" => {
+                                        // Paste into command palette search
+                                        if let Some(ref mut clipboard) = state.clipboard {
+                                            if let Ok(text) = clipboard.get_text() {
+                                                state.command_palette.search_input_mut().insert_text(&text);
+                                            }
+                                        }
+                                        return;
+                                    }
+                                    "c" => {
+                                        // Copy from command palette search
+                                        if let Some(ref mut clipboard) = state.clipboard {
+                                            let _ = clipboard.set_text(state.command_palette.search_input().get_value());
+                                        }
+                                        return;
+                                    }
+                                    "a" => {
+                                        // Select all - let TextInput handle it
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+
                         if let Some(wgpui_event) = input_convert::create_key_down(&event.logical_key, &state.modifiers) {
-                            let bounds = Bounds::new(0.0, 0.0, width, height);
+                            let scale_factor = state.window.scale_factor() as f32;
+                            let logical_width = width / scale_factor;
+                            let logical_height = height / scale_factor;
+                            let bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
                             state.command_palette.event(&wgpui_event, bounds, &mut state.event_context);
                         }
                         return; // Consume all input when palette is open
