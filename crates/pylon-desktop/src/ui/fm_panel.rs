@@ -121,7 +121,14 @@ pub fn draw_token_stream(
 
     // Token stream text (with word wrap simulation - just truncate for now)
     let stream_y = y + 40.0;
-    let max_chars = ((width - 24.0) / 7.0) as usize * 6; // rough estimate
+    let font_size = 13.0;
+
+    // Measure char width using actual font metrics
+    let char_width = text.measure("M", font_size);
+    let line_width = width - 24.0;
+    let chars_per_line = (line_width / char_width).floor() as usize;
+    let max_chars = chars_per_line * 6; // 6 lines worth
+
     let display_text = if state.token_stream.len() > max_chars {
         &state.token_stream[state.token_stream.len() - max_chars..]
     } else {
@@ -129,10 +136,9 @@ pub fn draw_token_stream(
     };
 
     // Split into lines
-    let chars_per_line = ((width - 24.0) / 7.5) as usize;
     let lines: Vec<&str> = display_text
         .as_bytes()
-        .chunks(chars_per_line)
+        .chunks(chars_per_line.max(1))
         .map(|chunk| std::str::from_utf8(chunk).unwrap_or(""))
         .collect();
 
@@ -140,21 +146,22 @@ pub fn draw_token_stream(
         let run = text.layout(
             line,
             Point::new(x + 12.0, stream_y + i as f32 * 18.0),
-            13.0,
+            font_size,
             Hsla::new(0.0, 0.0, 0.9, 1.0),
         );
         scene.draw_text(run);
     }
 
-    // Blinking cursor
+    // Blinking cursor - use actual measured width
     let cursor_visible = (state.token_count / 2) % 2 == 0;
     if state.stream_status == FmStreamStatus::Streaming && cursor_visible {
-        let cursor_x = x + 12.0 + (lines.last().map(|l| l.len()).unwrap_or(0) as f32 * 7.5);
+        let last_line = lines.last().copied().unwrap_or("");
+        let cursor_x = x + 12.0 + text.measure(last_line, font_size);
         let cursor_y = stream_y + (lines.len().saturating_sub(1)) as f32 * 18.0;
         scene.draw_quad(
             Quad::new(Bounds {
                 origin: Point::new(cursor_x, cursor_y),
-                size: Size::new(8.0, 14.0),
+                size: Size::new(2.0, 14.0),
             })
             .with_background(accent_cyan()),
         );
@@ -190,6 +197,9 @@ pub fn draw_session_panel(
 
     // Transcript
     let transcript_y = y + 32.0;
+    let font_size = 11.0;
+    let char_width = text.measure("M", font_size);
+
     for (i, msg) in state.transcript.iter().take(4).enumerate() {
         let role_color = if msg.role == "USER" {
             accent_cyan()
@@ -197,26 +207,28 @@ pub fn draw_session_panel(
             accent_green()
         };
 
+        let role_text = format!("{}: ", msg.role);
         let run = text.layout(
-            &format!("{}: ", msg.role),
+            &role_text,
             Point::new(x + 12.0, transcript_y + i as f32 * 20.0),
-            11.0,
+            font_size,
             role_color,
         );
         scene.draw_text(run);
 
-        // Truncate content
-        let max_content = ((width - 80.0) / 7.0) as usize;
+        // Truncate content based on actual font metrics
+        let role_width = text.measure(&role_text, font_size);
+        let max_content = ((width - 24.0 - role_width) / char_width).floor() as usize;
         let content = if msg.content.len() > max_content {
-            format!("{}...", &msg.content[..max_content])
+            format!("{}...", &msg.content[..max_content.saturating_sub(3)])
         } else {
             msg.content.clone()
         };
 
         let run = text.layout(
             &content,
-            Point::new(x + 60.0, transcript_y + i as f32 * 20.0),
-            11.0,
+            Point::new(x + 12.0 + role_width, transcript_y + i as f32 * 20.0),
+            font_size,
             Hsla::new(0.0, 0.0, 0.8, 1.0),
         );
         scene.draw_text(run);
@@ -264,6 +276,7 @@ pub fn draw_prompt_input(
     );
 
     // Input text
+    let font_size = 13.0;
     let display_text = if state.prompt_input.is_empty() && !state.is_streaming() {
         "Enter your prompt here..."
     } else {
@@ -279,14 +292,14 @@ pub fn draw_prompt_input(
     let run = text.layout(
         display_text,
         Point::new(x + 18.0, input_y + 6.0),
-        13.0,
+        font_size,
         text_color,
     );
     scene.draw_text(run);
 
-    // Cursor (blinking)
+    // Cursor (blinking) - use actual measured width
     if !state.is_streaming() && state.connection_status == FmConnectionStatus::Connected {
-        let cursor_x = x + 18.0 + (state.prompt_input.len() as f32 * 7.5);
+        let cursor_x = x + 18.0 + text.measure(&state.prompt_input, font_size);
         scene.draw_quad(
             Quad::new(Bounds {
                 origin: Point::new(cursor_x, input_y + 4.0),

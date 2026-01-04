@@ -1,13 +1,14 @@
 //! Application handler with winit event loop
 
 use std::sync::Arc;
+use arboard::Clipboard;
 use web_time::Instant;
 use wgpui::renderer::Renderer;
 use wgpui::{Scene, Size, TextSystem};
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{ElementState, Modifiers, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
-use winit::keyboard::{Key, NamedKey};
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
 
 use crate::bridge_manager::{BridgeManager, BridgeStatus};
@@ -32,6 +33,8 @@ pub struct RenderState {
     pub fm_runtime: FmRuntime,
     pub bridge: BridgeManager,
     pub last_tick: Instant,
+    pub modifiers: ModifiersState,
+    pub clipboard: Option<Clipboard>,
 }
 
 impl ApplicationHandler for PylonApp {
@@ -42,7 +45,7 @@ impl ApplicationHandler for PylonApp {
 
         let window_attrs = Window::default_attributes()
             .with_title("Pylon - FM Bridge")
-            .with_inner_size(winit::dpi::LogicalSize::new(900, 700));
+            .with_maximized(true);
 
         let window = Arc::new(
             event_loop
@@ -150,6 +153,8 @@ impl ApplicationHandler for PylonApp {
                 fm_runtime,
                 bridge,
                 last_tick: Instant::now(),
+                modifiers: ModifiersState::empty(),
+                clipboard: Clipboard::new().ok(),
             }
         });
 
@@ -169,9 +174,42 @@ impl ApplicationHandler for PylonApp {
                 state.surface.configure(&state.device, &state.config);
                 state.window.request_redraw();
             }
+            WindowEvent::ModifiersChanged(mods) => {
+                state.modifiers = mods.state();
+            }
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
+                    let cmd = state.modifiers.super_key();
+
                     match &event.logical_key {
+                        // Cmd+V - Paste
+                        Key::Character(c) if cmd && c.to_lowercase() == "v" => {
+                            if !state.fm_state.is_streaming() {
+                                if let Some(ref mut clipboard) = state.clipboard {
+                                    if let Ok(text) = clipboard.get_text() {
+                                        state.fm_state.prompt_input.push_str(&text);
+                                    }
+                                }
+                            }
+                        }
+                        // Cmd+A - Select all (clear and we'll paste fresh)
+                        Key::Character(c) if cmd && c.to_lowercase() == "a" => {
+                            // For now, just select all means nothing in our simple input
+                            // but we won't type "a"
+                        }
+                        // Cmd+C - Copy
+                        Key::Character(c) if cmd && c.to_lowercase() == "c" => {
+                            if let Some(ref mut clipboard) = state.clipboard {
+                                let _ = clipboard.set_text(&state.fm_state.prompt_input);
+                            }
+                        }
+                        // Cmd+X - Cut
+                        Key::Character(c) if cmd && c.to_lowercase() == "x" => {
+                            if let Some(ref mut clipboard) = state.clipboard {
+                                let _ = clipboard.set_text(&state.fm_state.prompt_input);
+                                state.fm_state.prompt_input.clear();
+                            }
+                        }
                         Key::Named(NamedKey::Enter) => {
                             // Send prompt if we can
                             if state.fm_state.can_send() {
@@ -181,11 +219,21 @@ impl ApplicationHandler for PylonApp {
                             }
                         }
                         Key::Named(NamedKey::Backspace) => {
-                            state.fm_state.prompt_input.pop();
+                            if cmd {
+                                // Cmd+Backspace - clear all
+                                state.fm_state.prompt_input.clear();
+                            } else {
+                                state.fm_state.prompt_input.pop();
+                            }
+                        }
+                        Key::Named(NamedKey::Space) => {
+                            if !state.fm_state.is_streaming() {
+                                state.fm_state.prompt_input.push(' ');
+                            }
                         }
                         Key::Character(c) => {
-                            // Only accept input when not streaming
-                            if !state.fm_state.is_streaming() {
+                            // Only accept input when not streaming and no cmd modifier
+                            if !state.fm_state.is_streaming() && !cmd {
                                 state.fm_state.prompt_input.push_str(c);
                             }
                         }
