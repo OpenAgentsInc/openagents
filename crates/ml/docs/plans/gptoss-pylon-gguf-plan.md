@@ -110,3 +110,4 @@ Tests:
 - 2026-01-04: Fixed SSE stream error handling for `pylon api` (infallible stream events).
 - 2026-01-04: Added GPT-OSS telemetry payloads to Pylon stream chunks (load/inference stages + token telemetry).
 - 2026-01-04: Wired `/gptoss` to Pylon by default (`pylon://127.0.0.1:9899`) and added SSE parsing to apply telemetry/events.
+- 2026-01-04: Added Pylon telemetry for model config/token limits/tokenizer summary + moe mode to power /gptoss panels.

@@ -261,8 +261,13 @@ impl InferenceBackend for GptOssGgufBackend {
                 ts_ms: telemetry_timestamp_ms(),
             });
 
+            let model_config = engine.model_config();
+            let active_layers = config
+                .layer_limit
+                .unwrap_or(model_config.block_count as usize)
+                .max(1);
             let runtime_detail = format!(
-                "cpu_fallback=pylon sample={} moe=gguf",
+                "cpu_fallback=pylon sample={} layers={active_layers}",
                 if config.generation.temperature <= 0.0 {
                     "off"
                 } else {
@@ -275,6 +280,75 @@ impl InferenceBackend for GptOssGgufBackend {
                 step: None,
                 total_steps: None,
                 detail: Some(runtime_detail),
+                ts_ms: telemetry_timestamp_ms(),
+            });
+            let model_detail = format!(
+                "blocks={} heads={}",
+                model_config.block_count, model_config.head_count
+            );
+            let _ = send_telemetry(ModelLifecycleTelemetry::LoadStage {
+                stage: "model_config".to_string(),
+                status: StageStatus::Completed,
+                detail: Some(model_detail),
+                bytes: None,
+                total_bytes: None,
+                ts_ms: telemetry_timestamp_ms(),
+            });
+            let max_kv = config
+                .max_kv
+                .unwrap_or_else(|| model_config.context_length as usize)
+                .max(1);
+            let max_new = config.generation.max_new_tokens.max(1);
+            let max_prompt = max_kv.saturating_sub(max_new);
+            let token_limits = format!("kv={max_kv} prompt={max_prompt} new={max_new}");
+            let _ = send_telemetry(ModelLifecycleTelemetry::LoadStage {
+                stage: "token_limits".to_string(),
+                status: StageStatus::Completed,
+                detail: Some(token_limits),
+                bytes: None,
+                total_bytes: None,
+                ts_ms: telemetry_timestamp_ms(),
+            });
+            let moe_detail = if config.moe_fallback {
+                "fallback expert=0".to_string()
+            } else {
+                "gguf".to_string()
+            };
+            let _ = send_telemetry(ModelLifecycleTelemetry::LoadStage {
+                stage: "moe_mode".to_string(),
+                status: StageStatus::Completed,
+                detail: Some(moe_detail),
+                bytes: None,
+                total_bytes: None,
+                ts_ms: telemetry_timestamp_ms(),
+            });
+            let vocab = engine.tokenizer().vocab();
+            let token_detail = format!(
+                "vocab={} merges={} model={} pre={} template={}b bos={} eos={} pad={}",
+                vocab.tokens.len(),
+                vocab.merges.len(),
+                vocab.model.as_deref().unwrap_or("-"),
+                vocab.pre.as_deref().unwrap_or("-"),
+                vocab.chat_template.as_ref().map(|value| value.len()).unwrap_or(0),
+                vocab
+                    .bos_token_id
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                vocab
+                    .eos_token_id
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                vocab
+                    .pad_token_id
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+            );
+            let _ = send_telemetry(ModelLifecycleTelemetry::LoadStage {
+                stage: "tokenizer_load".to_string(),
+                status: StageStatus::Completed,
+                detail: Some(token_detail),
+                bytes: None,
+                total_bytes: None,
                 ts_ms: telemetry_timestamp_ms(),
             });
             let _ = send_telemetry(ModelLifecycleTelemetry::InferenceStage {
