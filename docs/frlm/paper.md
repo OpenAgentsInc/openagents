@@ -597,9 +597,7 @@ FRLM extends Recursive Language Models with federated execution, making recursio
 
 [4] OpenTelemetry Authors. "OpenTelemetry Specification." https://opentelemetry.io/docs/specs/, 2024.
 
-[5] Buterin, V. "A Next-Generation Smart Contract and Decentralized Application Platform." Ethereum Whitepaper, 2014. (Byzantine fault tolerance in decentralized systems)
-
-[6] NIP-90: Data Vending Machine. Nostr Implementation Possibilities. https://github.com/nostr-protocol/nips/blob/master/90.md
+[5] NIP-90: Data Vending Machine. Nostr Implementation Possibilities. https://github.com/nostr-protocol/nips/blob/master/90.md
 
 ---
 
