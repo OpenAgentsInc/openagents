@@ -1,0 +1,22 @@
+[package]
+name = "viz"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Unified visualization grammar for execution movie HUD"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["web"]
+web = ["wgpui/web"]
+desktop = ["wgpui/desktop"]
+
+[dependencies]
+wgpui = { path = "../wgpui", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
+bytemuck = { workspace = true }

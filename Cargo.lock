@@ -13564,6 +13564,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "viz"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "serde",
+ "serde_json",
+ "wgpui",
+]
+
+[[package]]
 name = "wait-timeout"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

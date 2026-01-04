@@ -12,6 +12,10 @@ mod gguf;
 mod gptoss_tokenizer;
 #[cfg(not(target_arch = "wasm32"))]
 mod gptoss_native;
+#[cfg(not(target_arch = "wasm32"))]
+mod gptoss_engine;
+#[cfg(feature = "native")]
+mod gptoss_backend;
 #[cfg(all(feature = "candle", feature = "wgpu", not(target_arch = "wasm32")))]
 mod gguf_gate;
 mod model;
@@ -37,6 +41,12 @@ pub use gguf::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use gptoss_tokenizer::GptOssTokenizer;
+#[cfg(not(target_arch = "wasm32"))]
+pub use gptoss_engine::{
+    GptOssCompletion, GptOssEngine, GptOssEngineConfig, GptOssModelConfig, GptOssTokenEvent,
+};
+#[cfg(feature = "native")]
+pub use gptoss_backend::GptOssGgufBackend;
 #[cfg(not(target_arch = "wasm32"))]
 pub use gptoss_native::{
     apply_bias, apply_rope, attention_head_weights, attention_with_cache, dequant_mxfp4,
