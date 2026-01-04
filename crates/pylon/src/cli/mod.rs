@@ -5,6 +5,7 @@ mod connect;
 mod compute;
 mod doctor;
 mod earnings;
+mod infer;
 mod init;
 mod neobank;
 mod start;
@@ -39,6 +40,8 @@ pub enum Commands {
     Agent(agent::AgentArgs),
     /// View earnings (provider mode)
     Earnings(earnings::EarningsArgs),
+    /// Run a local inference request
+    Infer(infer::InferArgs),
     /// Show compute mix (all available compute options)
     Compute(compute::ComputeArgs),
     /// Connect a Claude tunnel session
@@ -57,6 +60,7 @@ pub async fn execute(cli: PylonCli) -> anyhow::Result<()> {
         Commands::Doctor(args) => doctor::run(args).await,
         Commands::Agent(args) => agent::run(args).await,
         Commands::Earnings(args) => earnings::run(args).await,
+        Commands::Infer(args) => infer::run(args).await,
         Commands::Compute(args) => compute::run(args).await,
         Commands::Connect(args) => connect::run(args).await,
         Commands::Neobank(args) => neobank::run(args).await,
