@@ -1676,3 +1676,9 @@ Conclusion: stick with `-ctk q8_0 -ctv q8_0`.
 Default config (Q2_K + q8_0 KV + flash-attn + keepalive 1s):
 - runs=200, p50 **~161ms**, p95 **~209ms**, max **~273ms**.
 - No multi‑second spikes observed.
+
+### SWA full cache
+
+Test 16: `--swa-full`
+- runs=20, p50 **~176ms**, p95 **~200ms**, max **~339ms**.
+- Slightly worse; keep disabled.
