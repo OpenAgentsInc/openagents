@@ -32,6 +32,12 @@ scripts/gpt-oss-query.sh "1+1="
 
 Defaults: `GPT_OSS_MAX_TOKENS=8`, `GPT_OSS_TEMPERATURE=0`.
 
+5. Stop keepalive loop (optional):
+
+```bash
+scripts/gpt-oss-stop-keepalive.sh
+```
+
 Notes:
 - `--raw` skips Harmony formatting for speed. Use it for quick completions.
 - Harmony mode is slower but required for tool-use and structured outputs.
