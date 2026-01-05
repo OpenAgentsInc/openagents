@@ -8,7 +8,7 @@ use bytemuck::{cast_slice, Pod, Zeroable};
 use futures::channel::oneshot;
 use gloo_timers::future::TimeoutFuture;
 use serde_json::Value;
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, JsValue};
 use wgpu::util::DeviceExt;
 use wasm_bindgen_futures::spawn_local;
 use js_sys;
@@ -6214,7 +6214,7 @@ fn mxfp4_scale(scale_byte: u8) -> f32 {
     let bits = if scale_byte < 2 {
         0x0020_0000u32 << scale_byte
     } else {
-        ((scale_byte as u32 - 1) << 23)
+        (scale_byte as u32 - 1) << 23
     };
     f32::from_bits(bits)
 }
