@@ -243,12 +243,26 @@ impl GptOssMetalEngine {
             GptOssMetalError::FfiError("model mutex poisoned".to_string())
         })?;
 
+        let context_start = Instant::now();
         let context = Context::create(
             &model,
             self.context_length,
             max_batch_tokens,
         )?;
+        info!(
+            context_ms = context_start.elapsed().as_millis(),
+            context_length = self.context_length,
+            max_batch_tokens,
+            "GPT-OSS Metal context created"
+        );
+
+        let append_start = Instant::now();
         context.append_tokens(&prompt_tokens)?;
+        info!(
+            append_ms = append_start.elapsed().as_millis(),
+            prompt_tokens = prompt_token_count,
+            "GPT-OSS Metal prompt appended"
+        );
 
         let mut output = String::new();
         let mut sent_len = 0usize;
@@ -262,7 +276,21 @@ impl GptOssMetalEngine {
         while remaining_tokens > 0 {
             let step_tokens = sample_chunk_tokens.min(remaining_tokens);
 
+            let is_first_sample = completion_tokens == 0;
+            let sample_start = Instant::now();
             let tokens = context.sample(temperature, seed, step_tokens)?;
+            let phase = if is_first_sample {
+                "prefill+decode"
+            } else {
+                "decode"
+            };
+            info!(
+                sample_ms = sample_start.elapsed().as_millis(),
+                requested_tokens = step_tokens,
+                sampled_tokens = tokens.len(),
+                phase = %phase,
+                "GPT-OSS Metal sample chunk"
+            );
             if tokens.is_empty() {
                 break;
             }
@@ -376,6 +404,7 @@ unsafe impl Send for Model {}
 
 impl Model {
     fn load(path: &Path) -> Result<Self> {
+        let load_start = Instant::now();
         let c_path = path_to_cstring(path)?;
         let mut model_ptr = std::ptr::null_mut();
         let status = unsafe { ffi::gptoss_model_create_from_file(c_path.as_ptr(), &mut model_ptr) };
@@ -390,6 +419,12 @@ impl Model {
             ffi::gptoss_model_get_max_context_length(model_ptr.as_ptr(), &mut max_context_length)
         };
         check_status(status, "gptoss_model_get_max_context_length")?;
+        info!(
+            model_path = %path.display(),
+            max_context_length,
+            load_ms = load_start.elapsed().as_millis(),
+            "GPT-OSS Metal model loaded"
+        );
 
         Ok(Self {
             ptr: model_ptr,

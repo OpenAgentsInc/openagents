@@ -753,3 +753,47 @@ Targets:
 - Rerun baseline commands.
 - Capture before/after metrics in this log.
 - Add a short "known-good" command with defaults for future checks.
+
+---
+
+## Update: 2026-01-05 04:15 - Phase 1 Instrumentation + Baseline
+
+### Phase 1 Changes (OpenAgents)
+
+- Added timing logs for:
+  - model load
+  - context creation
+  - prompt append
+  - per-sample chunk (tokens + ms, prefill vs decode)
+
+### Baseline Run (cold-ish)
+
+```bash
+cargo run -p pylon --features gpt-oss-metal -- infer \
+  --prompt "1+1=" --max-tokens 1 --temperature 0 --no-harmony
+```
+
+Logs (excerpt):
+- model load: **9490ms**
+- context create: **0ms**
+- prompt append: **0ms**
+- sample chunk (prefill+decode, 1 tok): **13300ms**
+- time to first token: **13309ms**
+- throughput: **0.075 tok/sec**
+- output: `2`
+
+### Baseline Run (warm)
+
+Same command immediately after:
+- model load: **7020ms**
+- sample chunk (prefill+decode, 1 tok): **10987ms**
+- time to first token: **10994ms**
+- throughput: **0.091 tok/sec**
+- output: `2`
+
+### Interpretation
+
+- The entire latency is inside `gptoss_context_sample` (prefill+decode).
+- Context creation + append are negligible.
+- Warm run is only ~15–20% faster, so this is **not just pipeline compile**.
+- Phase 2 should focus on Metal kernel time or per-token compute cost.
