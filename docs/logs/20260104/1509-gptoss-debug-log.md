@@ -963,3 +963,88 @@ GPT_OSS_METAL_NUM_ACTIVE_EXPERTS=1 GPT_OSS_METAL_TIMING=1 ...
 ### Takeaway
 
 Reducing active experts **did not improve** latency. The dominant cost appears to be attention/QKV, not MoE.
+
+---
+
+## Update: 2026-01-05 05:05 - MLP vs Attention + MLP Threadgroup Tuning
+
+### What Changed (gpt-oss repo, external)
+
+- Added `GPT_OSS_METAL_SKIP_ATTN=1` (skip SDPA+attn output only).
+- `GPT_OSS_METAL_SKIP_MLP=1` now skips **only** the MLP path (attention still runs).
+- Rebuilt `gpt_oss/metal/build-release`.
+
+### Baseline (full model, no-harmony, 1 token)
+
+- GPU time ≈ **10.8s**
+- TTFT ≈ **12.9s**
+- Output: `2`
+
+### Skip MLP (attention only)
+
+```
+GPT_OSS_METAL_SKIP_MLP=1 GPT_OSS_METAL_TIMING=1 ...
+```
+
+- GPU time ≈ **122ms**
+- TTFT ≈ **2.29s**
+- Output: `3` (incorrect)
+
+**Takeaway:** MLP dominates GPU time. There is still ~2s of CPU/overhead even when GPU is fast.
+
+### Skip Attention (MLP only)
+
+```
+GPT_OSS_METAL_SKIP_ATTN=1 GPT_OSS_METAL_TIMING=1 ...
+```
+
+- GPU time ≈ **10.05s**
+- TTFT ≈ **12.2s**
+- Output: `0`
+
+**Takeaway:** Attention output is a small fraction of total time; MLP is the bottleneck.
+
+### Top‑1 Experts (retest, full model)
+
+```
+GPT_OSS_METAL_NUM_ACTIVE_EXPERTS=1 GPT_OSS_METAL_TIMING=1 ...
+```
+
+- GPU time ≈ **10.05s**
+- TTFT ≈ **12.1s**
+- Output: `2`
+
+**Takeaway:** Forcing top‑1 experts still doesn’t improve latency. MoE compute is not scaling as expected.
+
+### MLP Threadgroup Sweep (full model)
+
+```
+GPT_OSS_METAL_MLP_SWIGLU_TG=128 GPT_OSS_METAL_MLP_OUT_TG=128 GPT_OSS_METAL_MLP_ACC_TG=128
+```
+- GPU time ≈ **10.0s**, TTFT ≈ **12.0s**
+
+```
+GPT_OSS_METAL_MLP_SWIGLU_TG=256 GPT_OSS_METAL_MLP_OUT_TG=256 GPT_OSS_METAL_MLP_ACC_TG=256
+```
+- GPU time ≈ **8.38s**, TTFT ≈ **10.6s**
+
+```
+GPT_OSS_METAL_MLP_SWIGLU_TG=512 GPT_OSS_METAL_MLP_OUT_TG=512 GPT_OSS_METAL_MLP_ACC_TG=512
+```
+- GPU time ≈ **8.41s**, TTFT ≈ **10.5s**
+
+```
+GPT_OSS_METAL_MLP_SWIGLU_TG=1024 ... (fails, max=832)
+```
+
+**Takeaway:** MLP TG tuning gives ~22% improvement, but still far from interactive.
+
+### Other Tweaks
+
+- `GPT_OSS_METAL_MAX_THREADGROUPS=512` (with MLP TG 256) **worsened** GPU time.
+- `GPT_OSS_METAL_MLOCK=1` failed (errno 35) and **did not** improve speed.
+- Reverting `min_tokens_for_dense_matmul_kernels` to 64 **slowed** inference; kept at 1.
+
+### Current Conclusion
+
+MLP MoE kernels are the overwhelming cost. We need **real kernel speedups** (or a different backend) to reach “fast” inference.
