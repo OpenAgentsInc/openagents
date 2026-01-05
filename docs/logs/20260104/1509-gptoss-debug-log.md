@@ -1576,3 +1576,13 @@ Test 8: `GPT_OSS_KEEPALIVE_SECS=1` (default keepalive payload)
 Recommendation update:
 - For the lowest latency + fewest spikes, use:
   `GPT_OSS_KEEPALIVE_SECS=1 GPT_OSS_PARALLEL=4 scripts/gpt-oss-fast.sh`
+
+### Context length check
+
+Test 9: `-c 256` (keepalive 1s, q8_0 KV + flash)
+- p50 ~**193ms**, p95 ~**269ms**.
+- **Slower** than `-c 512`; reverted to 512.
+
+Current (fast + stable):
+- Q2_K + `-ctk q8_0 -ctv q8_0 --flash-attn` + `-c 512` + keepalive 1s.
+- Bench: p50 ~**166ms**, p95 ~**192ms**, max ~**200ms** (10 runs).
