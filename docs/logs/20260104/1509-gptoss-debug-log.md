@@ -1446,6 +1446,8 @@ IPv4 tweak:
 - `scripts/gpt-oss-fast.sh` and `scripts/gpt-oss-query.sh` now use `curl -4`
   to avoid occasional localhost IPv6 connection delays.
 
+Added `scripts/gpt-oss-stop-keepalive.sh` to cleanly stop the keepalive loop.
+
 ### Test F: Parallel slots (`-np 2`)
 
 Server:
