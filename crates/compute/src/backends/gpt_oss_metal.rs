@@ -69,6 +69,11 @@ impl InferenceBackend for GptOssMetalBackend {
         let max_tokens = request.max_tokens;
         let temperature = request.temperature;
         let stop = request.stop.clone();
+        let use_harmony_prompt = request
+            .extra
+            .get("harmony")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true);
 
         let completion = tokio::task::spawn_blocking(move || {
             engine.generate_with_callback(
@@ -76,6 +81,7 @@ impl InferenceBackend for GptOssMetalBackend {
                 max_tokens,
                 temperature,
                 stop.as_deref(),
+                use_harmony_prompt,
                 |_| Ok(()),
             )
         })
@@ -110,6 +116,11 @@ impl InferenceBackend for GptOssMetalBackend {
         let temperature = request.temperature;
         let stop = request.stop.clone();
         let model_id = self.model_id.clone();
+        let use_harmony_prompt = request
+            .extra
+            .get("harmony")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true);
 
         tokio::task::spawn_blocking(move || {
             let tx_callback = tx.clone();
@@ -118,6 +129,7 @@ impl InferenceBackend for GptOssMetalBackend {
                 max_tokens,
                 temperature,
                 stop.as_deref(),
+                use_harmony_prompt,
                 |delta| {
                     if delta.is_empty() {
                         return Ok(());

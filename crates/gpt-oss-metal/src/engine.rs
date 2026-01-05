@@ -4,6 +4,7 @@ use std::ffi::CString;
 use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use openai_harmony::chat::{Conversation, Message, Role, SystemContent};
 use openai_harmony::{HarmonyEncoding, HarmonyEncodingName, load_harmony_encoding};
@@ -18,6 +19,7 @@ const DEFAULT_CONTEXT_LENGTH: usize = 8192;
 const DEFAULT_MAX_BATCH_TOKENS: usize = 128;
 const DEFAULT_MAX_TOKENS: usize = 256;
 const DEFAULT_TEMPERATURE: f32 = 0.7;
+const DEFAULT_SAMPLE_CHUNK_TOKENS: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct GptOssMetalConfig {
@@ -167,13 +169,16 @@ impl GptOssMetalEngine {
         max_tokens: Option<usize>,
         temperature: Option<f32>,
         stop_sequences: Option<&[String]>,
+        use_harmony_prompt: bool,
         mut on_token: F,
     ) -> Result<GptOssMetalCompletion>
     where
         F: FnMut(&str) -> Result<()>,
     {
-        let prompt_tokens = self.render_prompt_tokens(prompt)?;
+        let tokenize_start = Instant::now();
+        let prompt_tokens = self.render_prompt_tokens(prompt, use_harmony_prompt)?;
         let prompt_token_count = prompt_tokens.len();
+        let tokenize_elapsed = tokenize_start.elapsed();
 
         let available_tokens = self.context_length.saturating_sub(prompt_tokens.len());
         if available_tokens == 0 {
@@ -193,6 +198,9 @@ impl GptOssMetalEngine {
         }
         let temperature = temperature.unwrap_or(self.config.default_temperature);
         let stop_sequences = stop_sequences.unwrap_or(&[]);
+        let sample_chunk_tokens = parse_usize("GPT_OSS_METAL_SAMPLE_CHUNK_TOKENS")?
+            .unwrap_or(DEFAULT_SAMPLE_CHUNK_TOKENS)
+            .max(1);
 
         let seed = self
             .config
@@ -225,6 +233,9 @@ impl GptOssMetalEngine {
             stop_sequences = stop_sequences.len(),
             context_length = self.context_length,
             max_batch_tokens,
+            harmony = use_harmony_prompt,
+            tokenize_ms = tokenize_elapsed.as_millis(),
+            sample_chunk_tokens,
             "GPT-OSS Metal inference started"
         );
 
@@ -243,37 +254,79 @@ impl GptOssMetalEngine {
         let mut sent_len = 0usize;
         let mut completion_tokens = 0usize;
         let mut finish_reason = "length".to_string();
+        let generation_start = Instant::now();
+        let mut first_token_at = None;
+        let mut remaining_tokens = max_tokens;
+        let mut stop_generation = false;
 
-        for _ in 0..max_tokens {
-            let token = context.sample_one(temperature, seed)?;
+        while remaining_tokens > 0 {
+            let step_tokens = sample_chunk_tokens.min(remaining_tokens);
 
-            if self.stop_tokens.contains(&token) {
-                finish_reason = "stop".to_string();
+            let tokens = context.sample(temperature, seed, step_tokens)?;
+            if tokens.is_empty() {
                 break;
             }
 
-            let token_text = self
-                .encoding
-                .tokenizer()
-                .decode_utf8(&[token])
-                .map_err(|err| GptOssMetalError::HarmonyError(err.to_string()))?;
-
-            output.push_str(&token_text);
-            completion_tokens += 1;
-
-            if let Some(trim_idx) = find_stop_index(&output, stop_sequences) {
-                if trim_idx > sent_len {
-                    on_token(&output[sent_len..trim_idx])?;
+            for token in tokens {
+                if self.stop_tokens.contains(&token) {
+                    finish_reason = "stop".to_string();
+                    stop_generation = true;
+                    break;
                 }
-                output.truncate(trim_idx);
-                finish_reason = "stop".to_string();
-                break;
+
+                let token_text = self
+                    .encoding
+                    .tokenizer()
+                    .decode_utf8(&[token])
+                    .map_err(|err| GptOssMetalError::HarmonyError(err.to_string()))?;
+
+                if first_token_at.is_none() {
+                    let now = Instant::now();
+                    first_token_at = Some(now);
+                    info!(
+                        first_token_ms = now.duration_since(generation_start).as_millis(),
+                        "GPT-OSS Metal time to first token"
+                    );
+                }
+
+                output.push_str(&token_text);
+                completion_tokens += 1;
+                remaining_tokens = remaining_tokens.saturating_sub(1);
+
+                if let Some(trim_idx) = find_stop_index(&output, stop_sequences) {
+                    if trim_idx > sent_len {
+                        on_token(&output[sent_len..trim_idx])?;
+                    }
+                    output.truncate(trim_idx);
+                    finish_reason = "stop".to_string();
+                    stop_generation = true;
+                    break;
+                }
+
+                if output.len() > sent_len {
+                    on_token(&output[sent_len..])?;
+                    sent_len = output.len();
+                }
+
+                if remaining_tokens == 0 {
+                    break;
+                }
             }
 
-            if output.len() > sent_len {
-                on_token(&output[sent_len..])?;
-                sent_len = output.len();
+            if stop_generation {
+                break;
             }
+        }
+
+        let generation_elapsed = generation_start.elapsed();
+        if completion_tokens > 0 {
+            let seconds = generation_elapsed.as_secs_f64().max(1e-6);
+            let tokens_per_second = completion_tokens as f64 / seconds;
+            info!(
+                tokens_per_second,
+                generation_ms = generation_elapsed.as_millis(),
+                "GPT-OSS Metal throughput"
+            );
         }
 
         let completion = GptOssMetalCompletion {
@@ -294,16 +347,23 @@ impl GptOssMetalEngine {
         Ok(completion)
     }
 
-    fn render_prompt_tokens(&self, prompt: &str) -> Result<Vec<u32>> {
-        let mut messages = Vec::new();
-        let system = SystemContent::new();
-        messages.push(Message::from_role_and_content(Role::System, system));
-        messages.push(Message::from_role_and_content(Role::User, prompt.to_string()));
+    fn render_prompt_tokens(&self, prompt: &str, use_harmony_prompt: bool) -> Result<Vec<u32>> {
+        if use_harmony_prompt {
+            let mut messages = Vec::new();
+            let system = SystemContent::new();
+            messages.push(Message::from_role_and_content(Role::System, system));
+            messages.push(Message::from_role_and_content(Role::User, prompt.to_string()));
 
-        let convo = Conversation::from_messages(messages);
-        self.encoding
-            .render_conversation_for_completion(&convo, Role::Assistant, None)
-            .map_err(|err| GptOssMetalError::HarmonyError(err.to_string()))
+            let convo = Conversation::from_messages(messages);
+            self.encoding
+                .render_conversation_for_completion(&convo, Role::Assistant, None)
+                .map_err(|err| GptOssMetalError::HarmonyError(err.to_string()))
+        } else {
+            Ok(self
+                .encoding
+                .tokenizer()
+                .encode_with_special_tokens(prompt))
+        }
     }
 }
 
@@ -380,16 +440,20 @@ impl Context {
         check_status(status, "gptoss_context_append_tokens")
     }
 
-    fn sample_one(&self, temperature: f32, seed: u64) -> Result<u32> {
-        let mut token_out = 0u32;
+    fn sample(&self, temperature: f32, seed: u64, max_tokens: usize) -> Result<Vec<u32>> {
+        if max_tokens == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut tokens_out = vec![0u32; max_tokens];
         let mut num_tokens_out = 0usize;
         let status = unsafe {
             ffi::gptoss_context_sample(
                 self.ptr.as_ptr(),
                 temperature,
                 seed,
-                1,
-                &mut token_out,
+                max_tokens,
+                tokens_out.as_mut_ptr(),
                 &mut num_tokens_out,
             )
         };
@@ -401,7 +465,8 @@ impl Context {
             ));
         }
 
-        Ok(token_out)
+        tokens_out.truncate(num_tokens_out);
+        Ok(tokens_out)
     }
 }
 

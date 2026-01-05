@@ -67,10 +67,12 @@ fn main() {
 
 fn default_metal_dir() -> Option<PathBuf> {
     let home = env::var("HOME").ok()?;
-    let candidate = PathBuf::from(home).join("code/gpt-oss/gpt_oss/metal/build");
-    if candidate.exists() {
-        Some(candidate)
-    } else {
-        None
+    let base = PathBuf::from(home).join("code/gpt-oss/gpt_oss/metal");
+    for dir in ["build-release", "build"] {
+        let candidate = base.join(dir);
+        if candidate.exists() {
+            return Some(candidate);
+        }
     }
+    None
 }

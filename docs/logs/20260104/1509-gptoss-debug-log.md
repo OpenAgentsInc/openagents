@@ -598,6 +598,63 @@ Output (partial before timeout):
 
 Result: command timed out after ~304s (CLI timeout), inference still running.
 
+---
+
+## Update: 2026-01-05 03:40 - Speed Investigation (Metal)
+
+### Code Changes (OpenAgents)
+
+- `gpt-oss-metal` now respects `extra.harmony` (so `--no-harmony` works on Metal).
+- Added chunked sampling (`GPT_OSS_METAL_SAMPLE_CHUNK_TOKENS`, default 8).
+- Logs now show time-to-first-token + tokens/sec throughput.
+- Metal build defaults now prefer `~/code/gpt-oss/gpt_oss/metal/build-release` when present.
+
+### gpt-oss Metal Build Change (external repo)
+
+- Patched `~/code/gpt-oss/gpt_oss/metal/source/model.c`:
+  - Added `GPT_OSS_METAL_MAX_THREADGROUPS` override.
+  - Ensures `max_threadgroups >= 64`.
+  - Logs GPU cores + chosen max_threadgroups.
+- Rebuilt release libs in `~/code/gpt-oss/gpt_oss/metal/build-release`.
+
+### Measured Throughput (Metal, no-harmony)
+
+```bash
+cargo run -p pylon --features gpt-oss-metal -- infer \
+  --prompt "1+1=" --max-tokens 1 --temperature 0 --no-harmony
+```
+
+Observed:
+- prompt tokens: 4
+- time to first token: ~12–19s
+- throughput: ~0.05–0.08 tokens/sec
+ - log shows GPU cores detected: 19, max_threadgroups defaulted to 64
+
+```bash
+cargo run -p pylon --features gpt-oss-metal -- infer \
+  --prompt "1+1=" --max-tokens 2 --temperature 0 --no-harmony
+```
+
+Observed:
+- time to first token: ~12.7s
+- total time: ~66s (≈0.03 tokens/sec)
+
+### Conclusion (Current Bottleneck)
+
+Single-token generation on this machine is **extremely slow** (tens of seconds per token),
+even after:
+- release metal build,
+- no-harmony prompt,
+- increased max threadgroups.
+
+This points to the Metal kernels for small batch sizes + 20B model size as the dominant bottleneck.
+
+### Next Ideas (if needed)
+
+- Try `GPT_OSS_METAL_MAX_THREADGROUPS=256` (may help unembedding parallelism).
+- Use `GPT_OSS_METAL_MLOCK=1` if you can raise `ulimit -l` to keep model pages resident.
+- If speed is the priority, consider a smaller model or a quantized backend for interactive runs.
+
 ### Pending
 
 1. Parse Harmony output for `pylon infer` (strip channel tags, show final content).
