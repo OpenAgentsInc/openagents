@@ -134,4 +134,5 @@ println!("{}", response.output_text());
 - `docs/local-inference.md` - performance notes and model setup
 - `docs/gpt-oss/API.md` - HTTP surface and Rust type mapping
 - `docs/gpt-oss/BENCHMARKS.md` - benchmark harness and run instructions
+- `docs/gpt-oss/USAGE.md` - practical usage guide + lessons learned
 - `crates/gpt-oss-agent/src/tools/` - tool implementations
