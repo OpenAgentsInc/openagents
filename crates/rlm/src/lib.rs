@@ -26,16 +26,19 @@
 //! let result = engine.run("What is 2 + 2?").await?;
 //! ```
 
+pub mod cli;
 mod command;
 mod engine;
 mod error;
 mod executor;
 mod mock_executor;
 mod prompts;
+mod python_executor;
 
 pub use command::{Command, RunArgs};
-pub use engine::{RlmConfig, RlmEngine, RlmResult};
+pub use engine::{ExecutionLogEntry, RlmConfig, RlmEngine, RlmResult};
 pub use error::RlmError;
-pub use executor::{ExecutionEnvironment, ExecutionResult};
+pub use executor::{ExecutionEnvironment, ExecutionResult, ExecutorCapabilities};
 pub use mock_executor::MockExecutor;
 pub use prompts::SYSTEM_PROMPT;
+pub use python_executor::PythonExecutor;

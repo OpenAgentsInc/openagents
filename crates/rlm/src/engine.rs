@@ -124,8 +124,10 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
             }
 
             if self.config.verbose {
-                eprintln!("[RLM] Iteration {}: prompt ({} chars)", iteration, prompt.len());
-                eprintln!("[RLM] Prompt preview: {}...", &prompt[..prompt.len().min(100)]);
+                eprintln!("\n--- Iteration {} ---", iteration);
+                eprintln!("[PROMPT TO FM]");
+                eprintln!("{}", prompt);
+                eprintln!("[/PROMPT TO FM]\n");
             }
 
             // Get LLM response
@@ -138,23 +140,23 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
 
             if self.config.verbose {
                 debug!("LLM response: {}", text);
-            }
-
-            if self.config.verbose {
-                eprintln!("[RLM] Response: {}", &text[..text.len().min(200)]);
+                eprintln!("[FM RESPONSE]");
+                eprintln!("{}", text);
+                eprintln!("[/FM RESPONSE]\n");
             }
 
             // Parse command from response
             let cmd = Command::parse(&text);
 
+            let cmd_type = match &cmd {
+                Command::Final(_) => "FINAL",
+                Command::RunCode(_) => "RunCode",
+                Command::Run(_) => "RUN",
+                Command::Invalid => "Invalid",
+            };
+
             if self.config.verbose {
-                let cmd_type = match &cmd {
-                    Command::Final(_) => "FINAL",
-                    Command::RunCode(_) => "RunCode",
-                    Command::Run(_) => "RUN",
-                    Command::Invalid => "Invalid",
-                };
-                eprintln!("[RLM] Parsed command: {}", cmd_type);
+                eprintln!("[PARSED] Command: {}", cmd_type);
             }
 
             match &cmd {
@@ -177,7 +179,25 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
 
                 Command::RunCode(code) => {
                     debug!("Executing code block");
+
+                    if self.config.verbose {
+                        eprintln!("[EXECUTING PYTHON]");
+                        eprintln!("{}", code);
+                        eprintln!("[/EXECUTING PYTHON]\n");
+                    }
+
                     let exec_result = self.executor.execute(code).await?;
+
+                    if self.config.verbose {
+                        eprintln!("[EXECUTION RESULT]");
+                        eprintln!("stdout: {}", exec_result.stdout);
+                        if !exec_result.stderr.is_empty() {
+                            eprintln!("stderr: {}", exec_result.stderr);
+                        }
+                        eprintln!("exit_code: {}", exec_result.exit_code);
+                        eprintln!("duration: {}ms", exec_result.duration_ms);
+                        eprintln!("[/EXECUTION RESULT]\n");
+                    }
 
                     execution_log.push(ExecutionLogEntry {
                         iteration,
@@ -197,6 +217,9 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
                 Command::Run(args) => {
                     if !self.config.allow_shell {
                         warn!("Shell execution disabled, rejecting RUN command");
+                        if self.config.verbose {
+                            eprintln!("[SHELL BLOCKED] {} {:?}", args.program, args.args);
+                        }
                         execution_log.push(ExecutionLogEntry {
                             iteration,
                             llm_response: text.clone(),
@@ -209,7 +232,24 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
                     }
 
                     debug!("Executing shell command: {} {:?}", args.program, args.args);
+
+                    if self.config.verbose {
+                        eprintln!("[EXECUTING SHELL]");
+                        eprintln!("{} {:?}", args.program, args.args);
+                        eprintln!("[/EXECUTING SHELL]\n");
+                    }
+
                     let exec_result = self.execute_shell(&args.program, &args.args)?;
+
+                    if self.config.verbose {
+                        eprintln!("[EXECUTION RESULT]");
+                        eprintln!("stdout: {}", exec_result.stdout);
+                        if !exec_result.stderr.is_empty() {
+                            eprintln!("stderr: {}", exec_result.stderr);
+                        }
+                        eprintln!("exit_code: {}", exec_result.exit_code);
+                        eprintln!("[/EXECUTION RESULT]\n");
+                    }
 
                     execution_log.push(ExecutionLogEntry {
                         iteration,
