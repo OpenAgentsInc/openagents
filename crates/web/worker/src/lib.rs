@@ -224,6 +224,9 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // GFN (Group Forming Networks) page - public educational page
         (Method::Get, "/gfn") => routes::gfn::view_gfn(env).await,
 
+        // FRLM (Fracking Apple Silicon) power comparison page
+        (Method::Get, "/frlm") => routes::frlm::view_frlm(env).await,
+
         // ML inference visualization page
         (Method::Get, "/ml-inference") => routes::ml_inference::view_ml_inference(env).await,
 

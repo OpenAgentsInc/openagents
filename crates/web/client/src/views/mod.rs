@@ -1,5 +1,6 @@
 mod brb;
 mod fm;
+mod frlm;
 mod gfn;
 mod gptoss;
 mod landing;
@@ -19,6 +20,7 @@ use crate::state::AppState;
 // Re-export the main view functions
 pub(crate) use brb::build_brb_page;
 pub(crate) use fm::build_fm_page;
+pub(crate) use frlm::{build_frlm_page, handle_frlm_mouse_move};
 pub(crate) use gfn::build_gfn_page;
 pub(crate) use gptoss::build_gptoss_page;
 pub(crate) use landing::build_landing_page;
