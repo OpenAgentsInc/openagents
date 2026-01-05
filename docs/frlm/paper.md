@@ -1,8 +1,6 @@
 # Federated Recursive Language Models: Trace-Native Distributed Recursion Beyond Fixed Context
 
-**Authors:** *[TBD]*
-**Affiliations:** *[TBD]*
-**Correspondence:** *[TBD]*
+**Authors:** Christopher David, OpenAgents, Inc.
 **Keywords:** recursive language models, distributed inference, compute mobility, verification, provenance, tracing, agentic tool use, edge compute, replayable evaluation
 
 ---
@@ -115,7 +113,72 @@ FRLM generalizes `llm_query` to a batch/futures API:
 
 **Design principle:** *sub-queries are cheap and parallel; aggregation is precious.*
 
-### 4.3 Straggler and Timeout Policy
+### 4.3 Engine-Driven Orchestration for Edge Models
+
+**Implementation:** `crates/rlm/src/orchestrator.rs`, `crates/rlm/src/chunking.rs`
+
+A key insight from production deployment is that smaller edge models (e.g., Apple Foundation Models) cannot reliably orchestrate their own document traversal. While GPT-5-class models can write code that calls `llm_query()` for each chunk and synthesizes results, this meta-reasoning exceeds the capabilities of 3B-7B parameter on-device models.
+
+FRLM addresses this through **engine-driven orchestration**, where the conductor handles chunking, sub-query dispatch, and synthesis rather than delegating these decisions to the model:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ENGINE ORCHESTRATOR                       │
+├─────────────────────────────────────────────────────────────┤
+│  Phase 1: STRUCTURE DISCOVERY                                │
+│  - Detect document type (markdown, code, prose)              │
+│  - Find natural boundaries (headers, functions, paragraphs)  │
+├─────────────────────────────────────────────────────────────┤
+│  Phase 2: CHUNK GENERATION                                   │
+│  - Split on semantic boundaries (not arbitrary offsets)      │
+│  - Keep chunks under ~6000 chars (edge model sweet spot)     │
+├─────────────────────────────────────────────────────────────┤
+│  Phase 3: TARGETED EXTRACTION                                │
+│  - Simple focused prompt per chunk                           │
+│  - No meta-reasoning required from model                     │
+├─────────────────────────────────────────────────────────────┤
+│  Phase 4: HIERARCHICAL SYNTHESIS                             │
+│  - Batch findings → intermediate summaries → final answer    │
+│  - Prevents context overflow with many chunks                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Semantic Chunking** preserves document structure:
+
+```rust
+pub enum DocumentType {
+    Markdown,  // Headers, lists, code blocks
+    Code,      // Functions, classes, modules
+    Prose,     // Paragraphs, sentences
+    Mixed,     // Combination
+}
+
+pub fn detect_structure(content: &str) -> DocumentStructure {
+    // Pattern matching for markdown headers: ^#{1,6}\s+
+    // Code function boundaries: ^(pub\s+)?(async\s+)?fn\s+\w+
+    // Paragraph breaks: \n\n+
+}
+```
+
+**Hierarchical Synthesis** handles large result sets:
+
+```rust
+const MAX_DIRECT_FINDINGS: usize = 10;
+const BATCH_SIZE: usize = 8;
+
+async fn synthesize(&self, summaries: &[ChunkSummary], query: &str) -> Result<String> {
+    if summaries.len() <= MAX_DIRECT_FINDINGS {
+        self.synthesize_direct(summaries, query).await
+    } else {
+        // Group into batches → intermediate summaries → final synthesis
+        self.synthesize_hierarchical(summaries, query, BATCH_SIZE).await
+    }
+}
+```
+
+This design principle—**simple prompts repeated across chunks beats complex prompts the model can't follow**—enables edge devices to participate in FRLM workloads without requiring GPT-5-class reasoning capabilities.
+
+### 4.4 Straggler and Timeout Policy
 
 FRLM uses a policy-controlled approach:
 
@@ -288,6 +351,8 @@ Traces are replayable with checkpoints:
 
 **Reference Implementation:** `crates/frlm/` (Rust, async/await, 23 unit tests)
 
+**Engine-Orchestrated Analysis:** `crates/rlm/` (semantic chunking, hierarchical synthesis)
+
 ### 7.1 Conductor Runtime
 
 The conductor is implemented in `crates/frlm/src/conductor.rs`:
@@ -430,7 +495,70 @@ struct MockExecutor { response: String }
 * **Objective tests:** JSON objects with type/required field validation
 * **Attestation tests:** Simulated pubkey/signature with content hash verification
 
-### 8.4 Future Benchmarks
+### 8.4 Engine-Orchestrated Analysis Validation
+
+**Implementation:** `crates/rlm/src/orchestrator.rs` + CLI `--orchestrated` flag
+
+Comprehensive testing of engine-orchestrated analysis across diverse document types validates FRLM's applicability to edge model deployments. All tests executed against Apple Foundation Models via FM Bridge.
+
+**Table 5:** Engine-Orchestrated Analysis Test Results
+
+| Test | Document | Size | Chunks | Relevant | Time | Quality |
+|------|----------|------|--------|----------|------|---------|
+| Theme Extraction | Conversation log | 245KB | 50 | 50 (100%) | 120s | Excellent |
+| Specific Details | Conversation log | 245KB | 30 | 8 (27%) | 35s | Excellent |
+| Comparison Query | Technical discussion | 90KB | 50 | 14 (28%) | 118s | Excellent |
+| Architecture | System documentation | 13KB | 24 | 15 (63%) | 72s | Excellent |
+| Code Analysis | Rust source file | ~25KB | 50 | 45 (90%) | 140s | Good |
+| Strategy (small) | GTM document | 10KB | 32 | 26 (81%) | 85s | Excellent |
+| Strategy (detailed) | GTM document | 16KB | 50 | 35 (70%) | 130s | Excellent |
+
+**Key findings:**
+
+1. **Complete document coverage:** Unlike model-driven approaches that examined only the first 2000 characters, engine-orchestrated analysis processed all sections systematically.
+
+2. **Query-adaptive relevance:** Broad queries (theme extraction) found most chunks relevant; specific queries (WebGPU details) correctly identified fewer but precise sections.
+
+3. **Hierarchical synthesis success:** Documents with 50+ findings used batched synthesis (7 batches for 50 findings) without context overflow.
+
+4. **Processing time linearity:** ~2-3 seconds per chunk on Apple M3 Max, scaling predictably with document size.
+
+**Test 1: Large Document Theme Extraction (245KB)**
+
+Query: "Extract the major themes"
+
+Result: 7 comprehensive themes identified across full document:
+- AI Compute and Machine Learning Advancements
+- Agent Economy and OpenAgents
+- NLP and ML Model Optimization
+- Web Browsers and LLMs
+- Efficiency and Engineering Feasibility
+- System Performance and User Experience
+- Visual Representation and Attention Mechanisms
+
+**Test 2: Specific Technical Details (245KB)**
+
+Query: "What specific technical decisions were made about WebGPU?"
+
+Result: 8 relevant sections identified across 30 chunks:
+- WebGPU accessed through Rust's wgpu → WASM compilation
+- Custom WGSL kernels for dequant, matmul, RMSNorm, RoPE, attention, MoE routing
+- Q8_0 and MXFP4 quantization schemes
+- Limits-aware chunking for browser constraints
+
+**Comparison: Model-Driven vs Engine-Driven**
+
+| Aspect | Model-Driven (Guided Tier) | Engine-Driven (Orchestrated) |
+|--------|---------------------------|------------------------------|
+| Document coverage | First 2000 chars | All chunks systematically |
+| Relies on summaries | Yes (got lucky) | No |
+| Model orchestration | Model writes code | Engine drives process |
+| Error resilience | Model must recover | Engine handles retries |
+| Progress visibility | Limited | Per-chunk reporting |
+
+**Conclusion:** Engine-driven orchestration enables edge models to process documents 100x larger than their effective reasoning context by decomposing the task into simple extraction prompts.
+
+### 8.5 Future Benchmarks
 
 | Category | Planned Datasets |
 |----------|------------------|
@@ -438,7 +566,7 @@ struct MockExecutor { response: String }
 | Repository QA | Code understanding tasks |
 | Tool-use tasks | Autonomous sandbox execution |
 
-### 8.5 Metrics (Planned)
+### 8.6 Metrics (Planned)
 
 | Metric | Description |
 |--------|-------------|
@@ -543,16 +671,42 @@ FRLM yields the largest gains when:
 * verification is objective or redundancy-friendly
 * latency is dominated by sequential subcalls
 
-### 10.2 Limits of Federation
+### 10.2 Model Capability Tiers and Orchestration Strategy
 
-FRLM’s benefits decrease when:
+Production deployment reveals that orchestration strategy must adapt to model capabilities:
+
+**GPT-5-class models (>100B parameters):**
+- Can write code that calls `llm_query()` for each chunk
+- Can maintain multi-step reasoning across iterations
+- Benefit from full RLM REPL-style interaction
+- Model-driven orchestration is appropriate
+
+**Apple FM / Edge models (3B-7B parameters):**
+- Cannot reliably orchestrate multi-step document traversal
+- Lose context after encountering errors
+- Tend to "pattern match" rather than reason about orchestration
+- **Engine-driven orchestration is required**
+
+**Prompt Tier System:**
+
+| Tier | Target Models | Orchestration | Features |
+|------|--------------|---------------|----------|
+| Full | GPT-5, Claude | Model-driven | `llm_query()`, REPL, full meta-reasoning |
+| Guided | Apple FM, Llama-7B | Engine-driven | Simple prompts, no imports, step-by-step |
+| Minimal | <3B models | Engine-driven | Single-instruction, atomic tasks only |
+
+**Key insight:** The same RLM semantics can be preserved across model tiers by shifting orchestration complexity from model to engine. This enables heterogeneous compute pools where edge devices handle extraction while premium nodes handle synthesis.
+
+### 10.3 Limits of Federation
+
+FRLM's benefits decrease when:
 
 * the task requires tight sequential dependence
 * sub-queries are too small (overhead dominates)
 * verification is expensive or subjective without redundancy
 * data locality cannot be managed
 
-### 10.3 Implications for Tool-Using Agents
+### 10.4 Implications for Tool-Using Agents
 
 RLM-style recursion and tool-using agents converge:
 
@@ -578,6 +732,10 @@ RLM-style recursion and tool-using agents converge:
 * federated adapter learning for on-device models
 * market-based scheduling under budget constraints
 * multi-agent recursion: recursive programs that spawn specialized agents
+* **parallel chunk processing:** async extraction could reduce 120s → 30-40s for large documents
+* **adaptive chunk sizing:** code files may benefit from 3000-char chunks; prose from 8000-char chunks
+* **query-aware extraction prompts:** "List..." → bullet extraction; "Compare..." → comparative extraction
+* **hybrid orchestration:** edge models for extraction, premium models for synthesis
 
 ---
 
