@@ -11,14 +11,14 @@ use wgpui::{theme, Bounds, Hsla, Point, Quad, Scene, TextSystem};
 
 use crate::state::AppState;
 
-/// Blue-gray for typical datacenter (understated)
-const DATACENTER_COLOR: Hsla = Hsla::new(0.6, 0.4, 0.5, 1.0);
+/// Boring gray for typical datacenter (understated)
+const DATACENTER_COLOR: Hsla = Hsla::new(0.0, 0.0, 0.45, 1.0);
 
-/// Orange for Stargate (attention-grabbing)
-const STARGATE_COLOR: Hsla = Hsla::new(0.08, 0.9, 0.55, 1.0);
+/// Light blue for Stargate
+const STARGATE_COLOR: Hsla = Hsla::new(0.556, 0.7, 0.6, 1.0);
 
-/// Green for Apple Silicon swarm (the hero)
-const APPLE_COLOR: Hsla = Hsla::new(0.33, 0.75, 0.45, 1.0);
+/// Orange for Apple Silicon swarm (same as /gfn)
+const APPLE_COLOR: Hsla = Hsla::new(0.1, 1.0, 0.5, 1.0);
 
 /// Power values in GW
 const DATACENTER_GW: f32 = 0.10;
