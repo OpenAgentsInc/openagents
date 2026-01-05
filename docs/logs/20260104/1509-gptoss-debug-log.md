@@ -1856,3 +1856,11 @@ Status timings (Q4_0 + f16 KV + flash-attn + keepalive 1s):
   predicted_per_second **~56.5 tok/s** (generated 244 tokens).
 
 Throughput stays ~56–57 tok/s on longer outputs.
+
+### Prefill throughput + ctx limit
+
+With default `-c 384`:
+- Prompt of ~128 words (`"word " * 128`) fits: prompt_per_second **~442 tok/s**, predicted_per_second **~61.7 tok/s**.
+- Larger prompts (256+ words) **exceed context**: server returns 400 "request exceeds available context".
+
+If you need larger prompts, increase `GPT_OSS_CTX` (e.g., 512/1024).
