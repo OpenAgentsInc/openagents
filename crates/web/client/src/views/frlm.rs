@@ -167,7 +167,7 @@ pub(crate) fn build_frlm_page(
     // Draw bars (left to right: Datacenter, Stargate, Apple)
     let bars = [
         (DATACENTER_GW, DATACENTER_COLOR, "Typical DC", "100 MW"),
-        (STARGATE_GW, STARGATE_COLOR, "Stargate", "1.2 GW"),
+        (STARGATE_GW, STARGATE_COLOR, "Stargate Abilene", "1.2 GW"),
         (APPLE_GW, APPLE_COLOR, "110M Macs", "5.5 GW"),
     ];
 
