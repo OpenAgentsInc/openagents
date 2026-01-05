@@ -38,6 +38,12 @@ Defaults: `GPT_OSS_MAX_TOKENS=8`, `GPT_OSS_TEMPERATURE=0`.
 scripts/gpt-oss-stop-keepalive.sh
 ```
 
+6. Status + quick timing sample:
+
+```bash
+scripts/gpt-oss-status.sh
+```
+
 Notes:
 - `--raw` skips Harmony formatting for speed. Use it for quick completions.
 - Harmony mode is slower but required for tool-use and structured outputs.
