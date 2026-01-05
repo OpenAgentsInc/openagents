@@ -1361,3 +1361,16 @@ scripts/local-infer.sh --backend gpt-oss --raw \
 Result:
 - Output: `2, 2+1=3`
 - Wall time: **~0.34s**
+
+### Test D: `-c 256` with `--no-mmap` (no real gain)
+
+Server:
+```
+llama-server ... -c 256 -b 256 -ub 256 --no-mmap
+```
+
+Results (1+1=, max_tokens=8):
+- decode: **~56–65 tok/s**
+- prompt: **~29–44 tok/s** after warm
+
+Takeaway: Similar to `-c 512`, no clear improvement. Reverted to `-c 512` for headroom.
