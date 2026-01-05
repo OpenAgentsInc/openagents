@@ -17,9 +17,9 @@ LLAMA_SERVER="${LLAMA_SERVER:-$HOME/code/llama.cpp/build/bin/llama-server}"
 default_model_path() {
     local base="$HOME/models/gpt-oss-20b/gguf"
     local candidates=(
-        "gpt-oss-20b-Q2_K.gguf"
-        "gpt-oss-20b-Q3_K_S.gguf"
         "gpt-oss-20b-Q4_0.gguf"
+        "gpt-oss-20b-Q3_K_S.gguf"
+        "gpt-oss-20b-Q2_K.gguf"
         "gpt-oss-20b-Q4_K_M.gguf"
     )
     for candidate in "${candidates[@]}"; do

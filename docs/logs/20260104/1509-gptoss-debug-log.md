@@ -1710,3 +1710,20 @@ Test 21: Q3_K_S long run (100)
 Takeaway:
 - Q3_K_S can be **as fast as Q2_K** when keepalive is enabled.
 - Default still prefers Q2_K for pure speed; Q3_K_S is a quality upgrade with similar latency.
+
+### Q4 quant tests (keepalive 1s)
+
+Test 22: Q4_0
+- runs=100, p50 **~154.5ms**, p95 **~174ms**, max **~223ms**.
+- **Fastest so far**, stable.
+
+Test 23: Q4_K_M
+- runs=20, p50 **~172ms**, p95 **~213ms**, max **~250ms**.
+- Slower than Q4_0.
+
+Conclusion: Q4_0 is the fastest + stable on this box.
+
+### Default quant pick updated
+
+Since Q4_0 is now the fastest + stable, `scripts/gpt-oss-fast.sh` now prefers:
+Q4_0 → Q3_K_S → Q2_K → Q4_K_M.
