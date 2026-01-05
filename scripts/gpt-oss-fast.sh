@@ -19,6 +19,7 @@ LOG_PATH="${GPT_OSS_LOG:-/tmp/llama-server-gptoss.log}"
 WARMUP_COUNT="${GPT_OSS_WARMUP_COUNT:-2}"
 WARMUP_PROMPT="${GPT_OSS_WARMUP_PROMPT:-warmup}"
 KEEPALIVE_SECS="${GPT_OSS_KEEPALIVE_SECS:-0}"
+KEEPALIVE_PID_FILE="${GPT_OSS_KEEPALIVE_PID_FILE:-/tmp/gpt-oss-keepalive.pid}"
 
 if [[ ! -x "$LLAMA_SERVER" ]]; then
     echo "llama-server not found: $LLAMA_SERVER" >&2
@@ -87,12 +88,27 @@ if [[ "$WARMUP_COUNT" -gt 0 ]]; then
 fi
 
 if [[ "$KEEPALIVE_SECS" -gt 0 ]]; then
-    echo "Starting keepalive every ${KEEPALIVE_SECS}s..."
-    nohup bash -c "while true; do curl -s \"http://localhost:${PORT}/v1/completions\" \
-        -H 'Content-Type: application/json' \
-        -d \"{\\\"model\\\":\\\"gpt-oss-20b\\\",\\\"prompt\\\":\\\"${WARMUP_PROMPT}\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" \
-        >/dev/null || true; sleep \"${KEEPALIVE_SECS}\"; done" \
-        >/dev/null 2>&1 & disown
+    if [[ -f "$KEEPALIVE_PID_FILE" ]]; then
+        existing_pid=$(cat "$KEEPALIVE_PID_FILE" 2>/dev/null || true)
+        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+            echo "Keepalive already running (pid $existing_pid)"
+        else
+            rm -f "$KEEPALIVE_PID_FILE"
+        fi
+    fi
+
+    if [[ ! -f "$KEEPALIVE_PID_FILE" ]]; then
+        echo "Starting keepalive every ${KEEPALIVE_SECS}s..."
+        nohup bash -c "while true; do curl -s \"http://localhost:${PORT}/v1/completions\" \
+            -H 'Content-Type: application/json' \
+            -d \"{\\\"model\\\":\\\"gpt-oss-20b\\\",\\\"prompt\\\":\\\"${WARMUP_PROMPT}\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" \
+            >/dev/null || true; sleep \"${KEEPALIVE_SECS}\"; done" \
+            >/dev/null 2>&1 &
+        keepalive_pid=$!
+        disown "$keepalive_pid" 2>/dev/null || true
+        echo "$keepalive_pid" > "$KEEPALIVE_PID_FILE"
+        echo "Keepalive PID: $keepalive_pid"
+    fi
 fi
 
 echo "Ready: http://localhost:${PORT}"
