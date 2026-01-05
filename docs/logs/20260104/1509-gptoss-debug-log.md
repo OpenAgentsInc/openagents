@@ -1428,6 +1428,10 @@ Keepalive test (`GPT_OSS_KEEPALIVE_SECS=10`):
 - prompt: **~44–77 tok/s** (prompt_ms 22–56)
 - decode: **~65 tok/s**
 
+Keepalive test (`GPT_OSS_KEEPALIVE_SECS=2`, `-np 4`):
+- Wall time after warm: **~0.2–0.5s**
+- First request still slower (~7s), but spikes are rarer.
+
 ### Test F: Parallel slots (`-np 2`)
 
 Server:
