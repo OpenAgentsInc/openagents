@@ -62,7 +62,7 @@ Notes:
   plus KV cache tuning (`GPT_OSS_CACHE_TYPE_K`, `GPT_OSS_CACHE_TYPE_V`, `GPT_OSS_KV_UNIFIED=1`, `GPT_OSS_FLASH_ATTN`) and
   thread tuning (`GPT_OSS_THREADS`, `GPT_OSS_THREADS_BATCH`), cache reuse (`GPT_OSS_CACHE_REUSE`), and
   SWA cache (`GPT_OSS_SWA_FULL=1`).
-- `scripts/gpt-oss-fast.sh` defaults to `GPT_OSS_PARALLEL=4` and `GPT_OSS_KEEPALIVE_SECS=1` for lowest latency.
+- `scripts/gpt-oss-fast.sh` defaults to `GPT_OSS_CTX=384`, `GPT_OSS_PARALLEL=4`, and `GPT_OSS_KEEPALIVE_SECS=1` for lowest latency.
   Set `GPT_OSS_KEEPALIVE_SECS=0` to disable keepalive.
 - If your system pages out, set `GPT_OSS_KEEPALIVE_SECS=1` (most stable) or `=2` to keep the server hot (lower = more stable, more background load).
 - Use `GPT_OSS_KEEPALIVE_MAX_TOKENS=8` to make keepalive touch more decode kernels (higher = more load).
