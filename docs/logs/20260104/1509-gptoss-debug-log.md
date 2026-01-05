@@ -1586,3 +1586,24 @@ Test 9: `-c 256` (keepalive 1s, q8_0 KV + flash)
 Current (fast + stable):
 - Q2_K + `-ctk q8_0 -ctv q8_0 --flash-attn` + `-c 512` + keepalive 1s.
 - Bench: p50 ~**166ms**, p95 ~**192ms**, max ~**200ms** (10 runs).
+
+### Batch + parallel tuning (Q2_K, flash + q8 KV)
+
+Batch size:
+- `-b 128 -ub 128`: p50 ~**201ms**, p95 ~**233ms** (slower).
+- `-b 64 -ub 64`: p50 ~**170ms**, p95 ~**196ms** (not better).
+- `-b 256 -ub 256` (default): p50 ~**162ms**, p95 ~**191ms** (best).
+
+Parallel slots:
+- `-np 2` with keepalive 1s: p50 ~**215ms**, p95 ~**244ms** (worse).
+- `-np 4` remains best for snappy latency + keepalive.
+
+### Defaults updated
+
+`gpt-oss-fast.sh` now defaults to:
+- `GPT_OSS_PARALLEL=4`
+- `GPT_OSS_KEEPALIVE_SECS=1`
+- KV cache: `-ctk q8_0 -ctv q8_0 --flash-attn`
+
+Running with defaults (`scripts/gpt-oss-fast.sh`) yields:
+- p50 ~**191ms**, p95 ~**222ms** (10 runs, max_tokens=8).
