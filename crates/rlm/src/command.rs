@@ -23,6 +23,9 @@ pub enum Command {
     Final(String),
     /// Execute code in the REPL environment.
     RunCode(String),
+    /// Execute code, then immediately return final result (no more iterations).
+    /// This handles the case where FM outputs code block + FINAL in same response.
+    RunCodeThenFinal(String, String),
     /// No valid command found.
     Invalid,
 }
@@ -30,17 +33,24 @@ pub enum Command {
 impl Command {
     /// Parse a command from LLM response text.
     ///
-    /// Recognizes three command types:
+    /// Recognizes command types:
     /// - `RUN <program> <args>` - Shell execution
     /// - `FINAL <message>` - Terminal output
-    /// - ` ```repl\n<code>\n``` ` - Code execution (prioritized over FINAL)
+    /// - ` ```repl\n<code>\n``` ` - Code execution
+    /// - Code block + FINAL in same response - Execute then finalize
     ///
-    /// Code blocks are prioritized so the LLM must execute before answering.
+    /// If both code and FINAL are present, returns RunCodeThenFinal to execute
+    /// the code and immediately return the final answer without more iterations.
     pub fn parse(input: &str) -> Self {
         let trimmed = input.trim();
 
-        // Check for code block FIRST - we want to execute before allowing FINAL
+        // Check for code block
         if let Some(code) = Self::extract_code_block(input) {
+            // Also check if there's a FINAL after the code block
+            // This handles FMs that output code + FINAL in one response
+            if let Some(final_result) = Self::find_final_after_code(input) {
+                return Self::RunCodeThenFinal(code, final_result);
+            }
             return Self::RunCode(code);
         }
 
@@ -70,6 +80,46 @@ impl Command {
                     .join(" ");
                 if !result.is_empty() {
                     return Some(result);
+                }
+            }
+        }
+        None
+    }
+
+    /// Find FINAL command that appears after the last code block closes.
+    /// This handles FMs that output both code and FINAL in one response.
+    fn find_final_after_code(input: &str) -> Option<String> {
+        // Find the last closing ``` of a code block
+        let markers = ["```repl", "```python", "```py", "```"];
+        let mut last_code_end = None;
+
+        for start_marker in markers {
+            if let Some(start_idx) = input.find(start_marker) {
+                let code_start = start_idx + start_marker.len();
+                let remaining = &input[code_start..];
+                if let Some(end_idx) = remaining.find("```") {
+                    let absolute_end = code_start + end_idx + 3; // +3 for "```"
+                    if last_code_end.is_none() || absolute_end > last_code_end.unwrap() {
+                        last_code_end = Some(absolute_end);
+                    }
+                }
+            }
+        }
+
+        // Look for FINAL after the code block ends
+        if let Some(end_pos) = last_code_end {
+            let after_code = &input[end_pos..];
+            for line in after_code.lines() {
+                let line = line.trim();
+                if line.starts_with("FINAL") {
+                    let result = line
+                        .split_ascii_whitespace()
+                        .skip(1)
+                        .collect::<Vec<&str>>()
+                        .join(" ");
+                    if !result.is_empty() {
+                        return Some(result);
+                    }
                 }
             }
         }
