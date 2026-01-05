@@ -1448,6 +1448,9 @@ IPv4 tweak:
 
 Added `scripts/gpt-oss-stop-keepalive.sh` to cleanly stop the keepalive loop.
 
+Added `scripts/gpt-oss-status.sh` to print server health, keepalive status,
+and a quick timing sample.
+
 ### Test F: Parallel slots (`-np 2`)
 
 Server:
