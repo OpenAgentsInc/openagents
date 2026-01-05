@@ -1390,3 +1390,8 @@ Result:
 
 After restart, the first 1–2 requests can still show low prompt throughput (page-in),
 then settle back to ~40–50 tok/s prompt and ~60+ tok/s decode.
+
+### New helper script
+
+Added `scripts/gpt-oss-fast.sh` to start llama-server with the fast flags
+(`--no-mmap`, `-c 512`, etc) and run a small warmup loop automatically.

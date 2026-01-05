@@ -7,9 +7,7 @@ This guide covers running GPT-OSS locally inside OpenAgents and using the unifie
 1. Start a GPT-OSS server (llama.cpp `llama-server` or compatible endpoint):
 
 ```bash
-~/code/llama.cpp/build/bin/llama-server \
-  -m ~/models/gpt-oss-20b/gguf/gpt-oss-20b-Q3_K_S.gguf \
-  --port 8000 -ngl 999 -c 512 -b 256 -ub 256 --no-warmup --no-mmap
+scripts/gpt-oss-fast.sh
 ```
 
 2. Run a prompt via the unified runner (fast RAW mode):
@@ -31,6 +29,7 @@ Notes:
 - Harmony mode is slower but required for tool-use and structured outputs.
 - `--no-mmap` is **critical** for fast decode on macOS (loads model into RAM).
 - First request after start/idle can be slow; send a quick warmup prompt to fully page-in.
+- `scripts/gpt-oss-fast.sh` supports env overrides like `GPT_OSS_GGUF_MODEL_PATH`, `GPT_OSS_PORT`, and `GPT_OSS_WARMUP_COUNT`.
 
 ## Configuration
 
