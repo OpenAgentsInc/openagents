@@ -30,6 +30,8 @@ scripts/local-infer.sh --backend gpt-oss --tools "Summarize this repo"
 scripts/gpt-oss-query.sh "1+1="
 ```
 
+Defaults: `GPT_OSS_MAX_TOKENS=8`, `GPT_OSS_TEMPERATURE=0`.
+
 Notes:
 - `--raw` skips Harmony formatting for speed. Use it for quick completions.
 - Harmony mode is slower but required for tool-use and structured outputs.
