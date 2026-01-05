@@ -1048,3 +1048,28 @@ GPT_OSS_METAL_MLP_SWIGLU_TG=1024 ... (fails, max=832)
 ### Current Conclusion
 
 MLP MoE kernels are the overwhelming cost. We need **real kernel speedups** (or a different backend) to reach “fast” inference.
+
+---
+
+## Update: 2026-01-05 05:10 - Fast Math + Throughput Attempt
+
+### Fast Math Test (gpt-oss repo, external)
+
+Tried enabling fast math in `moematmul.metal`:
+- `#pragma METAL fp math_mode(fast)`
+- `#pragma METAL fp contract(on)`
+- `metal::fast::exp` in SwiGLU
+
+Result (MLP TG 256):
+- GPU time ≈ **9.17s** (worse vs ~8.38s)
+- TTFT ≈ **11.1s**
+
+Reverted to safe math + precise exp.
+
+### Multi‑token Throughput Test (max_tokens=8)
+
+```
+... --max-tokens 8 --no-harmony
+```
+
+Run exceeded **120s** and timed out. This suggests throughput is still far too low for interactive use.
