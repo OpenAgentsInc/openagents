@@ -1263,3 +1263,48 @@ Result:
 - Fast path confirmed with llama-server + `local-infer --raw`.
 - Harmony path now runs without panic, but returns raw channel tags and is ~15s for `1+1=` (slow).
 - Updated `docs/gpt-oss/README.md` with the fast llama-server + `--raw` usage.
+
+---
+
+## Update: 2026-01-05 07:45 - llama-server tuning (threads/ubatch/ctx)
+
+Goal: match llama-cli (50+ tok/s) with llama-server. Results below show server still slower.
+
+### Test A: `-ub 256 -t 8 -tb 8` (worse)
+
+Server:
+```
+llama-server ... -c 512 -b 256 -ub 256 -t 8 -tb 8
+```
+
+Result (1+1=, max_tokens=8):
+- prompt: **~1.6 tok/s**
+- decode: **~9.3 tok/s**
+- **Slower** than baseline. Reverted.
+
+### Test B: `-t 8 -tb 8` (worse)
+
+Server:
+```
+llama-server ... -c 512 -b 256 -t 8 -tb 8
+```
+
+Result:
+- prompt: **~1.9 tok/s**
+- decode: **~4–5 tok/s**
+- **Much slower**. Reverted.
+
+### Test C: `-c 256` (slightly faster, but variable)
+
+Server:
+```
+llama-server ... -c 256 -b 256
+```
+
+Results (multiple runs):
+- decode: **~8–11 tok/s**, occasional spikes to **~17 tok/s**
+- prompt: **~0.6–8 tok/s** (variable)
+
+Takeaway:
+- Smaller context **helps a bit**, but server still far behind llama-cli.
+- Best stability remains the original `-c 512 -b 256` config; keep server warm.
