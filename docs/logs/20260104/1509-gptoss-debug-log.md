@@ -1548,3 +1548,31 @@ Decision:
 Current server (fast defaults):
 - Q2_K + `-ctk q8_0 -ctv q8_0 --flash-attn` + keepalive 2s + `-np 4`.
 - Bench: p50 ~**190ms**, p95 ~**228ms**, max ~0.9s (10 runs).
+
+### More KV experiments (Q2_K)
+
+Test 5: `-ctk q4_0 -ctv q4_0 --flash-attn`
+- p50 ~**182ms**, p95 ~**194ms** (10 runs).
+- Slightly worse than q8_0 KV.
+
+Test 6: `--kv-unified` + `-ctk q8_0 -ctv q8_0 --flash-attn`
+- **Not good**: large spike (~7s), p50 ~**189ms**, p95 ~**291ms**.
+- Recommendation: **do not use** `--kv-unified` for GPT‑OSS on this setup.
+
+Best so far (speed + stability):
+- Q2_K + `-ctk q8_0 -ctv q8_0 --flash-attn` + keepalive 2s + `-np 4`.
+
+### Keepalive tuning
+
+Test 7: `GPT_OSS_KEEPALIVE_MAX_TOKENS=8` + `GPT_OSS_WARMUP_MAX_TOKENS=16`
+- **Worse**: p50 ~**210ms**, p95 ~**444ms**, spikes ~6s.
+- Conclusion: bigger keepalive tokens add load without improving spikes.
+
+Test 8: `GPT_OSS_KEEPALIVE_SECS=1` (default keepalive payload)
+- p50 ~**173ms**, p95 ~**196ms**, max ~**212ms** (10 runs).
+- **No big spikes** observed in this run.
+- Tradeoff: higher background load, but best stability so far.
+
+Recommendation update:
+- For the lowest latency + fewest spikes, use:
+  `GPT_OSS_KEEPALIVE_SECS=1 GPT_OSS_PARALLEL=4 scripts/gpt-oss-fast.sh`

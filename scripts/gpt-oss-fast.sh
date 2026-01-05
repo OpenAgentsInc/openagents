@@ -6,7 +6,8 @@
 #   LLAMA_SERVER, GPT_OSS_GGUF_MODEL_PATH, GPT_OSS_PORT, GPT_OSS_CTX,
 #   GPT_OSS_BATCH, GPT_OSS_UBATCH, GPT_OSS_LOG,
 #   GPT_OSS_WARMUP_COUNT, GPT_OSS_WARMUP_PROMPT, GPT_OSS_WARMUP_MAX_TOKENS,
-#   GPT_OSS_CACHE_TYPE_K, GPT_OSS_CACHE_TYPE_V, GPT_OSS_KV_UNIFIED, GPT_OSS_FLASH_ATTN
+#   GPT_OSS_CACHE_TYPE_K, GPT_OSS_CACHE_TYPE_V, GPT_OSS_KV_UNIFIED, GPT_OSS_FLASH_ATTN,
+#   GPT_OSS_KEEPALIVE_MAX_TOKENS
 #
 set -euo pipefail
 
@@ -46,6 +47,7 @@ WARMUP_MAX_TOKENS="${GPT_OSS_WARMUP_MAX_TOKENS:-8}"
 KEEPALIVE_SECS="${GPT_OSS_KEEPALIVE_SECS:-0}"
 KEEPALIVE_PID_FILE="${GPT_OSS_KEEPALIVE_PID_FILE:-/tmp/gpt-oss-keepalive.pid}"
 FORCE_WARMUP="${GPT_OSS_FORCE_WARMUP:-0}"
+KEEPALIVE_MAX_TOKENS="${GPT_OSS_KEEPALIVE_MAX_TOKENS:-1}"
 CACHE_TYPE_K="${GPT_OSS_CACHE_TYPE_K:-q8_0}"
 CACHE_TYPE_V="${GPT_OSS_CACHE_TYPE_V:-q8_0}"
 KV_UNIFIED="${GPT_OSS_KV_UNIFIED:-0}"
@@ -162,7 +164,7 @@ if [[ "$KEEPALIVE_SECS" -gt 0 ]]; then
         echo "Starting keepalive every ${KEEPALIVE_SECS}s..."
         nohup bash -c "while true; do curl -4 -s \"http://localhost:${PORT}/v1/completions\" \
             -H 'Content-Type: application/json' \
-            -d \"{\\\"model\\\":\\\"gpt-oss-20b\\\",\\\"prompt\\\":\\\"${WARMUP_PROMPT}\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" \
+            -d \"{\\\"model\\\":\\\"gpt-oss-20b\\\",\\\"prompt\\\":\\\"${WARMUP_PROMPT}\\\",\\\"max_tokens\\\":${KEEPALIVE_MAX_TOKENS},\\\"temperature\\\":0}\" \
             >/dev/null || true; sleep \"${KEEPALIVE_SECS}\"; done" \
             >/dev/null 2>&1 &
         keepalive_pid=$!
