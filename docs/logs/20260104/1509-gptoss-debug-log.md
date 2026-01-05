@@ -1437,6 +1437,11 @@ Keepalive test (`GPT_OSS_KEEPALIVE_SECS=2`, `-np 4`):
 With keepalive active, `-np 4` reduces head‑of‑line blocking better than `-np 2`.
 Recommended for interactive use.
 
+Recommended start command:
+```
+GPT_OSS_KEEPALIVE_SECS=2 GPT_OSS_PARALLEL=4 scripts/gpt-oss-fast.sh
+```
+
 ### Test F: Parallel slots (`-np 2`)
 
 Server:
