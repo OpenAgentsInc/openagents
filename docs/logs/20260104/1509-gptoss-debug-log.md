@@ -1406,3 +1406,7 @@ GPT_OSS_KEEPALIVE_SECS=30 scripts/gpt-oss-fast.sh
 ```
 
 This sends a tiny prompt every N seconds to keep pages resident.
+
+Keepalive test (`GPT_OSS_KEEPALIVE_SECS=5`):
+- prompt_ms mostly **<100ms**, occasional ~1.2s spikes
+- decode stable **~64 tok/s**
