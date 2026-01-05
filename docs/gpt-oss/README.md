@@ -56,7 +56,10 @@ Notes:
 - `--no-mmap` is **critical** for fast decode on macOS (loads model into RAM).
 - First request after start/idle can be slow; send a quick warmup prompt to fully page-in.
 - `scripts/gpt-oss-fast.sh` auto-picks the first available quant in `~/models/gpt-oss-20b/gguf` (Q2_K → Q3_K_S → Q4_0 → Q4_K_M).
-- `scripts/gpt-oss-fast.sh` supports env overrides like `GPT_OSS_GGUF_MODEL_PATH`, `GPT_OSS_PORT`, `GPT_OSS_WARMUP_COUNT`, and `GPT_OSS_WARMUP_MAX_TOKENS`.
+- `scripts/gpt-oss-fast.sh` defaults to fast KV cache settings (`q8_0` + `--flash-attn`). Override with
+  `GPT_OSS_CACHE_TYPE_K`, `GPT_OSS_CACHE_TYPE_V`, and `GPT_OSS_FLASH_ATTN=0` if needed.
+- It supports env overrides like `GPT_OSS_GGUF_MODEL_PATH`, `GPT_OSS_PORT`, `GPT_OSS_WARMUP_COUNT`, `GPT_OSS_WARMUP_MAX_TOKENS`,
+  plus KV cache tuning (`GPT_OSS_CACHE_TYPE_K`, `GPT_OSS_CACHE_TYPE_V`, `GPT_OSS_KV_UNIFIED=1`, `GPT_OSS_FLASH_ATTN`).
 - If your system pages out, set `GPT_OSS_KEEPALIVE_SECS=2` to keep the server hot (lower = more stable, more background load).
 - Keepalive PID file defaults to `/tmp/gpt-oss-keepalive.pid` (`GPT_OSS_KEEPALIVE_PID_FILE`).
 - Set `GPT_OSS_PARALLEL=4` to allow keepalive requests without blocking interactive prompts.
