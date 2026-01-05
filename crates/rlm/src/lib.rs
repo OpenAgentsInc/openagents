@@ -35,6 +35,7 @@ mod executor;
 mod mock_executor;
 mod prompts;
 mod python_executor;
+mod subquery;
 
 pub use command::{Command, RunArgs};
 pub use context::{Context, ContextType, FileEntry, SearchResult};
