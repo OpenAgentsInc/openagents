@@ -265,6 +265,11 @@ impl ApplicationHandler for PylonApp {
                                     return;
                                 }
                             }
+                            // Cmd+D toggles demo visualization data
+                            if c.to_lowercase() == "d" {
+                                toggle_demo_visualization(&mut state.fm_state);
+                                return;
+                            }
                         }
                     }
 
@@ -620,27 +625,17 @@ impl ApplicationHandler for PylonApp {
 }
 
 /// Update the viz FrlmPanel from current fm_state
+/// NOTE: This is called every frame, so keep it lightweight
 fn update_frlm_panel(state: &mut FmVizState) {
-    // Ensure panel exists
-    if state.frlm_panel.is_none() {
-        state.frlm_panel = Some(viz::FrlmPanel::new());
+    // Skip if no FRLM activity
+    if state.frlm_active_run.is_none() && state.frlm_subquery_status.is_empty() {
+        return;
     }
 
-    // Collect executing providers for topology updates
-    let executing_providers: Vec<String> = state.frlm_subquery_status
-        .values()
-        .filter_map(|status| {
-            if let SubQueryDisplayStatus::Executing { provider_id } = status {
-                Some(provider_id.clone())
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    // Update topology with executing providers
-    for provider_id in &executing_providers {
-        state.venue_topology.record_execution(ExecutionVenue::Swarm, Some(provider_id));
+    // Ensure panel exists
+    if state.frlm_panel.is_none() {
+        eprintln!("[FRLM] Creating new FrlmPanel");
+        state.frlm_panel = Some(viz::FrlmPanel::new());
     }
 
     let panel = state.frlm_panel.as_mut().unwrap();
@@ -657,7 +652,7 @@ fn update_frlm_panel(state: &mut FmVizState) {
         panel.clear();
     }
 
-    // Update query statuses
+    // Update query statuses (lightweight - just updating existing panel state)
     for (query_id, status) in &state.frlm_subquery_status {
         let (query_status, duration_ms, provider_id) = match status {
             SubQueryDisplayStatus::Pending => (QueryStatus::Pending, None, None),
@@ -674,12 +669,139 @@ fn update_frlm_panel(state: &mut FmVizState) {
         panel.update_query(query_id, query_status, 0, duration_ms, provider_id);
     }
 
-    // Set current time for timeline animation
-    let now_ms = std::time::SystemTime::now()
+    // NOTE: Don't call set_current_time with Unix timestamps - it breaks the timeline
+    // The timeline expects relative timestamps from run start (0-based), not absolute Unix time
+}
+
+/// Toggle demo visualization data (Cmd+D)
+fn toggle_demo_visualization(state: &mut FmVizState) {
+    use crate::state::{AppleFmToolCall, FrlmRunState, RlmIteration, ToolCallStatus};
+
+    eprintln!("[DEMO] toggle_demo_visualization called");
+
+    // If we have demo data, clear it
+    if state.frlm_active_run.is_some() || !state.rlm_iterations.is_empty() || !state.apple_fm_tool_calls.is_empty() {
+        eprintln!("[DEMO] Clearing demo data");
+        state.frlm_active_run = None;
+        state.frlm_subquery_status.clear();
+        state.frlm_panel = None; // Also clear the panel
+        state.rlm_iterations.clear();
+        state.rlm_active = false;
+        state.apple_fm_tool_calls.clear();
+        state.current_tool_call = None;
+        eprintln!("[DEMO] Demo data cleared");
+        return;
+    }
+
+    eprintln!("[DEMO] Adding demo data");
+
+    let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_millis() as u64;
-    panel.set_current_time(now_ms);
+        .as_secs();
+
+    // Add demo FRLM run
+    state.frlm_active_run = Some(FrlmRunState {
+        run_id: "demo-run-001".to_string(),
+        program: "Analyze codebase and find security issues".to_string(),
+        fragment_count: 12,
+        pending_queries: 3,
+        completed_queries: 5,
+        budget_used_sats: 450,
+        budget_remaining_sats: 550,
+        started_at: now - 30,
+    });
+
+    // Add demo sub-query statuses
+    state.frlm_subquery_status.insert(
+        "q-001".to_string(),
+        SubQueryDisplayStatus::Complete { duration_ms: 1200 },
+    );
+    state.frlm_subquery_status.insert(
+        "q-002".to_string(),
+        SubQueryDisplayStatus::Complete { duration_ms: 890 },
+    );
+    state.frlm_subquery_status.insert(
+        "q-003".to_string(),
+        SubQueryDisplayStatus::Executing { provider_id: "provider-abc123".to_string() },
+    );
+    state.frlm_subquery_status.insert(
+        "q-004".to_string(),
+        SubQueryDisplayStatus::Executing { provider_id: "provider-def456".to_string() },
+    );
+    state.frlm_subquery_status.insert(
+        "q-005".to_string(),
+        SubQueryDisplayStatus::Submitted { job_id: "job-pending".to_string() },
+    );
+
+    // Add demo RLM iterations
+    state.rlm_active = true;
+    state.rlm_iterations = vec![
+        RlmIteration {
+            iteration: 1,
+            command_type: "Run".to_string(),
+            executed: "Analyze src/auth/*.rs for vulnerabilities".to_string(),
+            result: "Found 3 potential issues".to_string(),
+            duration_ms: 2500,
+        },
+        RlmIteration {
+            iteration: 2,
+            command_type: "RunCode".to_string(),
+            executed: "grep -r 'unwrap()' src/".to_string(),
+            result: "42 matches found".to_string(),
+            duration_ms: 150,
+        },
+        RlmIteration {
+            iteration: 3,
+            command_type: "Run".to_string(),
+            executed: "Review each unwrap for panic risk".to_string(),
+            result: "8 high-risk unwraps identified".to_string(),
+            duration_ms: 3200,
+        },
+    ];
+
+    // Add demo Apple FM tool calls
+    state.apple_fm_tool_calls = vec![
+        AppleFmToolCall {
+            tool_name: "read_file".to_string(),
+            arguments: "src/main.rs".to_string(),
+            status: ToolCallStatus::Complete,
+            started_at: now - 25,
+            completed_at: Some(now - 24),
+            result: Some("File contents...".to_string()),
+        },
+        AppleFmToolCall {
+            tool_name: "search_code".to_string(),
+            arguments: "TODO|FIXME".to_string(),
+            status: ToolCallStatus::Complete,
+            started_at: now - 20,
+            completed_at: Some(now - 18),
+            result: Some("15 matches".to_string()),
+        },
+        AppleFmToolCall {
+            tool_name: "run_tests".to_string(),
+            arguments: "--lib".to_string(),
+            status: ToolCallStatus::Complete,
+            started_at: now - 15,
+            completed_at: Some(now - 10),
+            result: Some("42 passed, 0 failed".to_string()),
+        },
+    ];
+    state.current_tool_call = Some(AppleFmToolCall {
+        tool_name: "analyze_security".to_string(),
+        arguments: "src/auth/".to_string(),
+        status: ToolCallStatus::Executing,
+        started_at: now - 2,
+        completed_at: None,
+        result: None,
+    });
+
+    // Skip topology for now - it's expensive
+    // state.venue_topology.record_execution(ExecutionVenue::Local, Some("Apple FM"));
+    // state.venue_topology.record_execution(ExecutionVenue::Swarm, Some("provider-abc123"));
+    // state.venue_topology.record_execution(ExecutionVenue::Swarm, Some("provider-def456"));
+    // state.venue_topology.record_execution(ExecutionVenue::Datacenter, Some("datacenter-us-west"));
+    eprintln!("[DEMO] Demo data added successfully (topology disabled)");
 }
 
 /// Execute a command from the command palette

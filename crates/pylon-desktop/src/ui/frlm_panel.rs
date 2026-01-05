@@ -16,13 +16,17 @@ pub fn draw_frlm_panel(
     width: f32,
     height: f32,
 ) {
+    eprintln!("[FRLM_PANEL] draw_frlm_panel called");
+
     // Initialize panel if needed
     if state.frlm_panel.is_none() {
+        eprintln!("[FRLM_PANEL] Creating new FrlmPanel");
         state.frlm_panel = Some(FrlmPanel::new());
     }
 
     let panel = state.frlm_panel.as_mut().unwrap();
 
+    eprintln!("[FRLM_PANEL] Updating panel from state");
     // Update panel from state
     if let Some(ref run) = state.frlm_active_run {
         panel.set_run_id(&run.run_id);
@@ -35,6 +39,7 @@ pub fn draw_frlm_panel(
         panel.clear();
     }
 
+    eprintln!("[FRLM_PANEL] Updating {} query statuses", state.frlm_subquery_status.len());
     // Update query statuses
     for (query_id, status) in &state.frlm_subquery_status {
         let (query_status, duration_ms, provider_id) = match status {
@@ -52,13 +57,11 @@ pub fn draw_frlm_panel(
         panel.update_query(query_id, query_status, 0, duration_ms, provider_id);
     }
 
-    // Set current time for timeline animation
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
-    panel.set_current_time(now_ms);
+    // Don't set current time - it uses Unix timestamps which break the timeline
+    // The timeline should use relative timestamps from run start, not absolute Unix time
+    // panel.set_current_time(now_ms);
 
+    eprintln!("[FRLM_PANEL] Calling panel.paint()");
     // Paint using Component trait
     let bounds = Bounds {
         origin: Point::new(x, y),
@@ -67,6 +70,7 @@ pub fn draw_frlm_panel(
     let scale_factor = 1.0;
     let mut paint_cx = PaintContext::new(scene, text, scale_factor);
     panel.paint(bounds, &mut paint_cx);
+    eprintln!("[FRLM_PANEL] panel.paint() done");
 }
 
 /// Draw FRLM idle state (when no run is active)
