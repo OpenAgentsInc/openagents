@@ -1395,3 +1395,14 @@ then settle back to ~40–50 tok/s prompt and ~60+ tok/s decode.
 
 Added `scripts/gpt-oss-fast.sh` to start llama-server with the fast flags
 (`--no-mmap`, `-c 512`, etc) and run a small warmup loop automatically.
+
+### Keepalive (optional)
+
+Observed intermittent slow prompt prefill after idle (likely paging). Added an optional
+keepalive loop in `scripts/gpt-oss-fast.sh`:
+
+```
+GPT_OSS_KEEPALIVE_SECS=30 scripts/gpt-oss-fast.sh
+```
+
+This sends a tiny prompt every N seconds to keep pages resident.
