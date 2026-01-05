@@ -1374,3 +1374,19 @@ Results (1+1=, max_tokens=8):
 - prompt: **~29–44 tok/s** after warm
 
 Takeaway: Similar to `-c 512`, no clear improvement. Reverted to `-c 512` for headroom.
+
+### Test E: `--mlock` (fails)
+
+Server:
+```
+llama-server ... --no-mmap --mlock
+```
+
+Result:
+- Server exits during model load (no health response, no explicit error in log).
+- **Not usable** on this machine. Reverted to `--no-mmap` without `--mlock`.
+
+### Stability note
+
+After restart, the first 1–2 requests can still show low prompt throughput (page-in),
+then settle back to ~40–50 tok/s prompt and ~60+ tok/s decode.
