@@ -1924,3 +1924,39 @@ Output:
 - Even without tools, the Harmony system prompt still exceeds ctx 512.
 - For Harmony: raise `GPT_OSS_CTX` (e.g., 1024+).
 - For speed: keep `--raw` and a small ctx (384/512).
+
+---
+
+## Update: 2026-01-05 10:05 - local-infer Harmony works after rebuild
+
+### What Changed (OpenAgents)
+
+- `local-infer` now uses `GptOssSession::with_max_tokens` (so `--max-tokens` applies to Harmony runs too).
+- Added a guard to fall back to `--raw` when a Harmony request still hits a context error.
+
+### Results (ctx 512, Q4_0 server)
+
+After rebuilding the debug binary:
+```
+cargo run --bin local-infer -- "1+1="
+```
+
+Output:
+```
+2
+```
+
+And via script (uses the rebuilt debug binary):
+```
+scripts/local-infer.sh "1+1="
+```
+
+Output:
+```
+2
+```
+
+### Correction
+
+The earlier 400 context error was from a stale local-infer binary that still injected tool
+schemas. With tools removed, the Harmony prompt now fits under ctx 512.

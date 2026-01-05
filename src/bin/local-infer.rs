@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use fm_bridge_agent::{FmBridgeAgent, FmBridgeAgentConfig};
 use gpt_oss_agent::tools::{ToolRequest, ToolResult};
-use gpt_oss_agent::{GptOssAgent, GptOssAgentConfig, GptOssSession};
+use gpt_oss_agent::{GptOssAgent, GptOssAgentConfig, GptOssAgentError, GptOssSession};
 
 const TOOL_CALL_OPEN: &str = "<tool_call>";
 const TOOL_CALL_CLOSE: &str = "</tool_call>";
@@ -52,7 +52,7 @@ struct Cli {
     #[arg(long, default_value_t = 4)]
     max_tool_turns: u32,
 
-    /// Maximum tokens to generate (raw mode only)
+    /// Maximum tokens to generate (also used for Harmony runs when provided)
     #[arg(long)]
     max_tokens: Option<usize>,
 
@@ -124,14 +124,54 @@ async fn run_gpt_oss(cli: Cli) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let client = gpt_oss::GptOssClient::builder()
-        .base_url(&config.base_url)
-        .default_model(&config.model)
-        .build()?;
-    let session = GptOssSession::new(Arc::new(client), config, Vec::new());
-    let response = session.send(&cli.prompt).await?;
-    println!("{}", response.trim());
-    Ok(())
+    let model = config.model.clone();
+    let client = Arc::new(
+        gpt_oss::GptOssClient::builder()
+            .base_url(&config.base_url)
+            .default_model(&config.model)
+            .build()?,
+    );
+    let session = GptOssSession::new(Arc::clone(&client), config, Vec::new())
+        .with_max_tokens(cli.max_tokens);
+    let response = session.send(&cli.prompt).await;
+    match response {
+        Ok(text) => {
+            println!("{}", text.trim());
+            Ok(())
+        }
+        Err(err) if is_context_error(&err) => {
+            eprintln!(
+                "Harmony prompt exceeded context; retrying in --raw mode. Increase GPT_OSS_CTX for Harmony."
+            );
+            let request = gpt_oss::GptOssRequest {
+                model,
+                prompt: cli.prompt.clone(),
+                max_tokens: cli.max_tokens,
+                temperature: cli.temperature,
+                top_p: None,
+                stop: None,
+                stream: false,
+            };
+            let response = client.complete(request).await?;
+            println!("{}", response.text.trim());
+            Ok(())
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+fn is_context_error(err: &GptOssAgentError) -> bool {
+    let GptOssAgentError::ClientError(gpt_oss::GptOssError::ApiError { status, message }) = err
+    else {
+        return false;
+    };
+
+    if *status != 400 {
+        return false;
+    }
+
+    let lower = message.to_lowercase();
+    lower.contains("context size") || lower.contains("context length")
 }
 
 async fn run_fm_bridge(cli: Cli) -> anyhow::Result<()> {

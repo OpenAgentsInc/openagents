@@ -65,6 +65,8 @@ pub struct GptOssSession {
     client: Arc<GptOssClient>,
     /// Session configuration
     config: GptOssAgentConfig,
+    /// Override max tokens for completions
+    max_tokens: Option<usize>,
     /// Available tools
     tools: Vec<Arc<dyn Tool>>,
     /// Conversation history
@@ -100,11 +102,18 @@ impl GptOssSession {
             id,
             client,
             config,
+            max_tokens: None,
             tools,
             history: RwLock::new(Vec::new()),
             state: RwLock::new(SessionState::default()),
             trajectory_path,
         }
+    }
+
+    /// Set a max token override for this session.
+    pub fn with_max_tokens(mut self, max_tokens: Option<usize>) -> Self {
+        self.max_tokens = max_tokens;
+        self
     }
 
     /// Get the session ID
@@ -166,7 +175,7 @@ impl GptOssSession {
         let request = GptOssRequest {
             model: self.config.model.clone(),
             prompt,
-            max_tokens: None,
+            max_tokens: self.max_tokens,
             temperature: None,
             top_p: None,
             stop: None,
