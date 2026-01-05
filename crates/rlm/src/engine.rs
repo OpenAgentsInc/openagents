@@ -10,6 +10,7 @@ use crate::context::Context;
 use crate::error::{Result, RlmError};
 use crate::executor::{ExecutionEnvironment, ExecutionResult};
 use crate::prompts::{continuation_prompt, error_prompt, initial_prompt, system_prompt_with_context};
+use crate::subquery::{execute_sub_query, generate_result_injection, process_code_for_queries};
 
 /// Configuration for the RLM engine.
 #[derive(Debug, Clone)]
@@ -144,6 +145,59 @@ def search_context(pattern, max_results=10, window=200):
         }
     }
 
+    /// Process code for llm_query() calls and execute sub-queries.
+    ///
+    /// Returns the modified code with llm_query results injected as variables.
+    async fn process_sub_queries(&self, code: &str) -> Result<String> {
+        // Get context content if available
+        let context_content = self.loaded_context.as_ref().map(|c| c.content.as_str());
+
+        // Parse and process llm_query calls
+        let processed = process_code_for_queries(code, context_content);
+
+        if processed.pending_queries.is_empty() {
+            return Ok(code.to_string());
+        }
+
+        if self.config.verbose {
+            eprintln!(
+                "[SUBQUERY] Processing {} llm_query calls",
+                processed.pending_queries.len()
+            );
+        }
+
+        // Execute each sub-query
+        let mut results = Vec::new();
+        for query in &processed.pending_queries {
+            if self.config.verbose {
+                eprintln!(
+                    "[SUBQUERY] Executing: \"{}\" over {} chars",
+                    query.prompt,
+                    query.text.len()
+                );
+            }
+
+            let result = execute_sub_query(&self.client, &query.prompt, &query.text).await?;
+
+            if self.config.verbose {
+                let preview = if result.len() > 100 {
+                    format!("{}...", &result[..100])
+                } else {
+                    result.clone()
+                };
+                eprintln!("[SUBQUERY] Result: {}", preview);
+            }
+
+            results.push((query.id.clone(), result));
+        }
+
+        // Generate code to inject results
+        let injection = generate_result_injection(&results);
+
+        // Combine: injected results + processed code
+        Ok(format!("{}{}", injection, processed.code))
+    }
+
     /// Run the RLM on a query.
     ///
     /// This is the main entry point. It starts the prompt-execute-loop
@@ -237,8 +291,11 @@ def search_context(pattern, max_results=10, window=200):
                     // Execute the code, then return the final result immediately
                     debug!("Executing code block (with pending FINAL)");
 
+                    // Process sub-queries (llm_query calls) if any
+                    let code_with_queries = self.process_sub_queries(code).await?;
+
                     // Inject context variable if loaded
-                    let code_with_context = self.inject_context(code);
+                    let code_with_context = self.inject_context(&code_with_queries);
 
                     if self.config.verbose {
                         eprintln!("[EXECUTING PYTHON]");
@@ -287,8 +344,11 @@ def search_context(pattern, max_results=10, window=200):
                 Command::RunCode(code) => {
                     debug!("Executing code block");
 
+                    // Process sub-queries (llm_query calls) if any
+                    let code_with_queries = self.process_sub_queries(code).await?;
+
                     // Inject context variable if loaded
-                    let code_with_context = self.inject_context(code);
+                    let code_with_context = self.inject_context(&code_with_queries);
 
                     if self.config.verbose {
                         eprintln!("[EXECUTING PYTHON]");
