@@ -1317,3 +1317,26 @@ llama-server ... -c 512 -b 256
 Baseline timing (1+1=, max_tokens=8):
 - prompt: **~3.5 tok/s**
 - decode: **~9.1 tok/s**
+
+---
+
+## Update: 2026-01-05 08:05 - Major Speedup: `--no-mmap`
+
+### Key Finding
+
+Running llama-server with `--no-mmap` (fully load model into RAM) **dramatically increases decode speed**.
+
+Server:
+```
+llama-server ... -c 512 -b 256 -ub 256 --no-mmap
+```
+
+Results (1+1=, max_tokens=8, repeated):
+- decode: **~55–64 tok/s** (consistent)
+- prompt: **first request slow**, then **~30–50 tok/s**
+
+Sample timings:
+- decode: 61.8, 63.3, 63.1, 54.7, 57.2 tok/s
+- prompt: 0.06 (first), then 33–41 tok/s
+
+Conclusion: `--no-mmap` makes llama-server performance **match llama-cli**. Keep the server warm.
