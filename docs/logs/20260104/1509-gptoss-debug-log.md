@@ -1506,3 +1506,15 @@ Conclusion (speed-first):
 Current server:
 - Q2_K + keepalive (2s) + `-np 4`.
 - `scripts/gpt-oss-bench.sh 10` shows ~160–210ms end-to-end for 8 tokens.
+
+### Prompt replay (max_tokens=40)
+
+Command:
+```
+GPT_OSS_MAX_TOKENS=40 scripts/gpt-oss-query.sh "1+1="
+```
+
+Result:
+```
+2, 2+1=3, 3+1=4, 4+1=5, 5+1=6, 6+1=7, 7+
+```
