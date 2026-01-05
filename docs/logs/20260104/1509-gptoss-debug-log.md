@@ -1451,6 +1451,10 @@ Added `scripts/gpt-oss-stop-keepalive.sh` to cleanly stop the keepalive loop.
 Added `scripts/gpt-oss-status.sh` to print server health, keepalive status,
 and a quick timing sample.
 
+Status check (keepalive on, 2s):
+- prompt: **~14 tok/s** (prompt_ms ~72)
+- decode: **~64 tok/s**
+
 ### Test F: Parallel slots (`-np 2`)
 
 Server:
