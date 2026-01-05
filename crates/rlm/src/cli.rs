@@ -1,8 +1,11 @@
 //! CLI commands for RLM.
 
+use std::path::PathBuf;
+
 use clap::{Args, Subcommand};
 use fm_bridge::FMClient;
 
+use crate::context::Context;
 use crate::error::Result;
 use crate::python_executor::PythonExecutor;
 use crate::{RlmConfig, RlmEngine};
@@ -25,7 +28,7 @@ pub struct RunArgs {
     pub fm_url: String,
 
     /// Maximum number of iterations
-    #[arg(long, default_value = "5")]
+    #[arg(long, default_value = "10")]
     pub max_iterations: u32,
 
     /// Allow shell command execution
@@ -35,6 +38,14 @@ pub struct RunArgs {
     /// Python binary to use
     #[arg(long, default_value = "python3")]
     pub python: String,
+
+    /// Load context from a file
+    #[arg(long, value_name = "FILE")]
+    pub context_file: Option<PathBuf>,
+
+    /// Load context from a directory (recursively)
+    #[arg(long, value_name = "DIR")]
+    pub context_dir: Option<PathBuf>,
 }
 
 /// Execute an RLM CLI command.
@@ -51,6 +62,22 @@ async fn run_rlm(args: RunArgs) -> Result<()> {
     println!("Max iterations: {}", args.max_iterations);
     println!("Allow shell: {}", args.allow_shell);
     println!("Python: {}", args.python);
+
+    // Load context if specified
+    let context = if let Some(ref file_path) = args.context_file {
+        println!("Context file: {}", file_path.display());
+        Some(Context::from_file(file_path)?)
+    } else if let Some(ref dir_path) = args.context_dir {
+        println!("Context directory: {}", dir_path.display());
+        Some(Context::from_directory(dir_path)?)
+    } else {
+        None
+    };
+
+    if let Some(ref ctx) = context {
+        println!("\n{}", ctx.summary());
+    }
+
     println!();
 
     // Check FM Bridge health
@@ -93,7 +120,12 @@ async fn run_rlm(args: RunArgs) -> Result<()> {
         verbose: true, // Always verbose for CLI
     };
 
-    let engine = RlmEngine::with_config(client, executor, config);
+    let mut engine = RlmEngine::with_config(client, executor, config);
+
+    // Set context if loaded
+    if let Some(ctx) = context {
+        engine.set_context(ctx);
+    }
 
     println!("{}", "=".repeat(60));
     println!();

@@ -28,6 +28,14 @@ pub enum RlmError {
     /// Shell command execution error.
     #[error("Shell error: {0}")]
     ShellError(String),
+
+    /// Context loading error.
+    #[error("Context error: {0}")]
+    ContextError(String),
+
+    /// Sub-query error.
+    #[error("Sub-query error: {0}")]
+    SubQueryError(String),
 }
 
 /// Result type for RLM operations.

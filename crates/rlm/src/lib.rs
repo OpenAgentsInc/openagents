@@ -28,6 +28,7 @@
 
 pub mod cli;
 mod command;
+mod context;
 mod engine;
 mod error;
 mod executor;
@@ -36,9 +37,12 @@ mod prompts;
 mod python_executor;
 
 pub use command::{Command, RunArgs};
+pub use context::{Context, ContextType, FileEntry, SearchResult};
 pub use engine::{ExecutionLogEntry, RlmConfig, RlmEngine, RlmResult};
 pub use error::RlmError;
 pub use executor::{ExecutionEnvironment, ExecutionResult, ExecutorCapabilities};
 pub use mock_executor::MockExecutor;
-pub use prompts::SYSTEM_PROMPT;
+pub use prompts::{
+    system_prompt_with_context, BASIC_SYSTEM_PROMPT, CONTEXT_SYSTEM_PROMPT, SYSTEM_PROMPT,
+};
 pub use python_executor::PythonExecutor;
