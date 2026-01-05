@@ -5201,6 +5201,7 @@ dependencies = [
  "rand 0.8.5",
  "thiserror 2.0.17",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

@@ -797,3 +797,48 @@ Same command immediately after:
 - Context creation + append are negligible.
 - Warm run is only ~15–20% faster, so this is **not just pipeline compile**.
 - Phase 2 should focus on Metal kernel time or per-token compute cost.
+
+---
+
+## Update: 2026-01-05 04:25 - Phase 2 Bench Harness + Threadgroup Tests
+
+### Bench Harness (OpenAgents)
+
+`pylon` builds are currently blocked by unrelated `rlm` compile errors, so I added a tiny
+Metal-only bench binary to isolate the backend:
+
+- New bin: `crates/gpt-oss-metal/src/bin/gpt_oss_metal_bench.rs`
+- Added `tracing-subscriber` to print `gpt_oss_metal` logs.
+- Requires `--features link` to link the Metal libs.
+
+Example:
+
+```bash
+cargo run -p gpt-oss-metal --features link --bin gpt_oss_metal_bench -- \
+  --prompt "1+1=" --max-tokens 1 --temperature 0 --no-harmony
+```
+
+### Threadgroup Sweep (no-harmony, 1 token)
+
+All runs use the same prompt and defaults, only `GPT_OSS_METAL_MAX_THREADGROUPS` changed.
+
+**Default (64):**
+- sample chunk: **~13.97s**
+- TTFT: **~13.98s**
+- throughput: **~0.071 tok/sec**
+
+**256:**
+- sample chunk: **~13.56s**
+- TTFT: **~13.57s**
+- throughput: **~0.074 tok/sec**
+
+**512:**
+- sample chunk: **~13.43s**
+- TTFT: **~13.43s**
+- throughput: **~0.074 tok/sec**
+
+### Interpretation
+
+- Increasing `max_threadgroups` barely changes TTFT.
+- The bottleneck is not unembedding parallelism alone.
+- Next step: instrument GPU command buffer time in the Metal library itself and inspect kernel-level costs.
