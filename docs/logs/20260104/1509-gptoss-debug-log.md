@@ -1803,3 +1803,15 @@ Test 34: `-c 2048`
 - Slightly worse tail; no benefit.
 
 Conclusion: keep `-c 512` default.
+
+### Context length lower bounds (Q4_0 + f16 KV)
+
+Test 35: `-c 384`
+- runs=100, p50 **~152ms**, p95 **~172ms**, max **~231ms**.
+- Slightly better than `-c 512` but not a major change.
+
+Test 36: `-c 256`
+- runs=100, p50 **~155ms**, p95 **~191ms**, max **~284ms**.
+- Worse tail; not recommended.
+
+Conclusion: `-c 384` is fine if you want a slightly smaller ctx, but `-c 512` is still the safe default.
