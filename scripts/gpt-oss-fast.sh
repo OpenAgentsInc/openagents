@@ -74,6 +74,10 @@ has_rg() {
     command -v rg >/dev/null 2>&1
 }
 
+is_positive_number() {
+    awk -v val="$1" 'BEGIN { exit !(val + 0 > 0) }'
+}
+
 health_ok() {
     local health
     health=$(curl -4 -s "http://localhost:${PORT}/health" || true)
@@ -150,7 +154,7 @@ if [[ "$WARMUP_COUNT" -gt 0 ]] && { [[ "$started_server" -eq 1 ]] || [[ "$FORCE_
     done
 fi
 
-if [[ "$KEEPALIVE_SECS" -gt 0 ]]; then
+if is_positive_number "$KEEPALIVE_SECS"; then
     if [[ -f "$KEEPALIVE_PID_FILE" ]]; then
         existing_pid=$(cat "$KEEPALIVE_PID_FILE" 2>/dev/null || true)
         if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
