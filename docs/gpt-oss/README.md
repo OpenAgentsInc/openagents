@@ -42,6 +42,7 @@ Notes:
 - Keepalive PID file defaults to `/tmp/gpt-oss-keepalive.pid` (`GPT_OSS_KEEPALIVE_PID_FILE`).
 - Set `GPT_OSS_PARALLEL=4` to allow keepalive requests without blocking interactive prompts.
 - Set `GPT_OSS_FORCE_WARMUP=1` to run warmup even if the server is already running.
+- Scripts force IPv4 (`curl -4`) to avoid localhost IPv6 delays.
 
 ## Configuration
 
