@@ -1878,3 +1878,8 @@ Using `gpt-oss-bench` with higher `max_tokens`:
 - `GPT_OSS_MAX_TOKENS=128` (runs=20): p50 **~2330ms**, p95 **~2365ms**.
 
 These align with ~55–57 tok/s decode throughput.
+
+### Latency for medium output (16 tokens)
+
+`GPT_OSS_MAX_TOKENS=16` (runs=50):
+- p50 **~300ms**, p95 **~362ms**, max **~410ms**.
