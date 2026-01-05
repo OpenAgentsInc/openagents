@@ -1831,3 +1831,9 @@ Config (Q4_0 + f16 KV + flash-attn + keepalive 1s, -c 384):
 
 With defaults (now `-c 384`):
 - runs=100, p50 **~153ms**, p95 **~172ms**, max **~188ms**.
+
+### Q4_0 + f16 KV long-run stability (2000 runs)
+
+Config (Q4_0 + f16 KV + flash-attn + keepalive 1s, -c 384):
+- runs=2000, p50 **~153ms**, p95 **~173ms**, max **~263ms**.
+- No multi‑second spikes observed.
