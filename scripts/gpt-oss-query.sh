@@ -14,7 +14,7 @@ fi
 PROMPT="$1"
 BASE_URL="${GPT_OSS_URL:-http://localhost:8000}"
 MODEL="${GPT_OSS_MODEL:-gpt-oss-20b}"
-MAX_TOKENS="${GPT_OSS_MAX_TOKENS:-64}"
+MAX_TOKENS="${GPT_OSS_MAX_TOKENS:-8}"
 TEMP="${GPT_OSS_TEMPERATURE:-0}"
 
 payload=$(python3 - <<PY

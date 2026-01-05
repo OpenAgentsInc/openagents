@@ -1406,6 +1406,9 @@ against llama-server (curl + JSON parse).
 Bug fix: corrected `scripts/gpt-oss-query.sh` to use `python3 -c` so
 the piped JSON is read (heredoc was consuming stdin).
 
+Tweaked `scripts/gpt-oss-query.sh` defaults to `max_tokens=8` for faster replies
+(override via `GPT_OSS_MAX_TOKENS`).
+
 ### Keepalive (optional)
 
 Observed intermittent slow prompt prefill after idle (likely paging). Added an optional
