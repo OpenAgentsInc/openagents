@@ -1340,3 +1340,24 @@ Sample timings:
 - prompt: 0.06 (first), then 33–41 tok/s
 
 Conclusion: `--no-mmap` makes llama-server performance **match llama-cli**. Keep the server warm.
+
+### Warm vs Cold (no-mmap)
+
+First request after idle can be slow (page fault warmup):
+- prompt: **~0.1 tok/s**, decode still **~64 tok/s**
+
+Subsequent requests:
+- prompt: **~50+ tok/s**
+- decode: **~62–64 tok/s**
+
+### local-infer (RAW, warm server)
+
+```
+scripts/local-infer.sh --backend gpt-oss --raw \
+  --url http://localhost:8000 --model gpt-oss-20b \
+  --max-tokens 8 --temperature 0 "1+1="
+```
+
+Result:
+- Output: `2, 2+1=3`
+- Wall time: **~0.34s**

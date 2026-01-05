@@ -30,6 +30,7 @@ Notes:
 - `--raw` skips Harmony formatting for speed. Use it for quick completions.
 - Harmony mode is slower but required for tool-use and structured outputs.
 - `--no-mmap` is **critical** for fast decode on macOS (loads model into RAM).
+- First request after start/idle can be slow; send a quick warmup prompt to fully page-in.
 
 ## Configuration
 
