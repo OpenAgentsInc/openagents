@@ -2,7 +2,7 @@
 
 use worker::*;
 
-/// View the FRLM page: /frlm
+/// View the FRLM page: /frack
 /// Companion slide for "Fracking Apple Silicon" video showing power capacity comparison
 pub async fn view_frlm(_env: Env) -> Result<Response> {
     let html = r#"<!DOCTYPE html>
@@ -15,7 +15,7 @@ pub async fn view_frlm(_env: Env) -> Result<Response> {
     <meta property="og:title" content="Fracking Apple Silicon - Power at Scale">
     <meta property="og:description" content="110M Apple Silicon Macs = 5.5 GW of distributed AI compute. Stargate = 1.2 GW. The fleet already exists.">
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://openagents.com/frlm">
+    <meta property="og:url" content="https://openagents.com/frack">
     <link rel="stylesheet" href="/static/MyWebfontsKit.css">
     <style>
         html, body {
