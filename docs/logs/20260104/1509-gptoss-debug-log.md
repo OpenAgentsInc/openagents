@@ -880,3 +880,52 @@ This is only ~15–20% faster. Still far from interactive.
 - We need either:
   - a much faster kernel path (MPS/GEMM or heavily tuned Metal kernels), or
   - a smaller model for interactive performance.
+
+---
+
+## Update: 2026-01-05 05:00 - Layer/Threadgroup Experiments
+
+### Env Overrides (gpt-oss repo, external)
+
+Added env overrides for quick tuning:
+- `GPT_OSS_METAL_NUM_BLOCKS` (limit layers)
+- `GPT_OSS_METAL_*_TG` for threadgroup sizes (embeddings, attn qkv/out, mlp gate/swiglu/out/acc, unembedding)
+
+### Layer Count Scaling (no-harmony, 1 token)
+
+Full model (24 blocks):
+- GPU time ≈ **9.9–11.6s**
+- TTFT ≈ **12–13.5s**
+- Output: `2`
+
+12 blocks:
+- GPU time ≈ **4.5s**
+- TTFT ≈ **6.1s**
+- Output: `!` (quality degraded)
+
+8 blocks:
+- GPU time ≈ **1.8s**
+- TTFT ≈ **3.3s**
+- Output: `!`
+
+4 blocks:
+- GPU time ≈ **1.0s**
+- TTFT ≈ **2.6s**
+- Output: `!`
+
+Takeaway: speed scales with layer count, but quality collapses before we reach sub-2s TTFT.
+
+### Threadgroup Overrides (full model)
+
+Unembedding TG:
+- `GPT_OSS_METAL_UNEMBED_TG=1024` → **slower** (GPU ~11.9s)
+- `GPT_OSS_METAL_UNEMBED_TG=256` → **slower** (GPU ~11.2s)
+
+QKV TG:
+- `GPT_OSS_METAL_ATTN_QKV_TG=512` → **small improvement** (GPU ~10.5s vs ~11s)
+
+Takeaway: simple TG tuning doesn’t provide multi‑x gains.
+
+### Current Conclusion
+
+We need a **fundamental kernel speedup** (MPS/Metal matmul rewrite or deep kernel tuning) to hit the interactive target. Tweaking thresholds and threadgroups isn’t enough.
