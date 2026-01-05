@@ -1308,3 +1308,12 @@ Results (multiple runs):
 Takeaway:
 - Smaller context **helps a bit**, but server still far behind llama-cli.
 - Best stability remains the original `-c 512 -b 256` config; keep server warm.
+
+Reverted server to:
+```
+llama-server ... -c 512 -b 256
+```
+
+Baseline timing (1+1=, max_tokens=8):
+- prompt: **~3.5 tok/s**
+- decode: **~9.1 tok/s**
