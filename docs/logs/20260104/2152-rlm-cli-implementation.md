@@ -1039,3 +1039,553 @@ The engine-orchestrated analysis mode successfully addresses the limitation that
 4. **Flexible Queries**: Works for themes, details, comparisons, and code analysis
 
 This brings the "fracking Apple Silicon" vision closer to reality. With millions of Macs running Apple FM, we can now reliably process large documents by having the engine orchestrate the work while the model handles focused extraction tasks within its capability range.
+
+---
+
+## Addendum: Thoughts on Improving the System
+
+**Date:** 2026-01-05 06:45
+**Author:** Claude
+
+### The Current State
+
+The engine-orchestrated analysis works. Seven tests across different document types and query styles all succeeded. But "works" is not the same as "optimal." The current implementation is a proof of concept that validates the core insight—engine-driven orchestration enables edge models to process documents far beyond their reasoning capacity. Now we need to make it fast, efficient, and production-ready.
+
+This section captures deep thoughts on how to improve the system across multiple dimensions.
+
+---
+
+### 1. Performance: The 120-Second Problem
+
+The 245KB document took 120 seconds to process. That's 2 minutes of wall-clock time for what should feel instant. The bottleneck is obvious: **sequential chunk processing**. Each of the 50 chunks waits for the previous one to complete before starting.
+
+#### 1.1 Parallel Chunk Extraction
+
+The extraction phase is embarrassingly parallel. Each chunk's extraction is independent—there are no data dependencies between `llm_query("Extract themes from chunk 1")` and `llm_query("Extract themes from chunk 47")`. We should be exploiting this.
+
+**Implementation approach:**
+```rust
+// Current: sequential
+for chunk in chunks {
+    let result = client.complete(&prompt, None).await?;
+    summaries.push(result);
+}
+
+// Better: parallel with bounded concurrency
+let semaphore = Arc::new(Semaphore::new(8)); // 8 concurrent requests
+let futures: Vec<_> = chunks.iter().map(|chunk| {
+    let permit = semaphore.clone().acquire_owned();
+    async move {
+        let _permit = permit.await;
+        client.complete(&prompt, None).await
+    }
+}).collect();
+let summaries = futures::future::join_all(futures).await;
+```
+
+**Expected improvement:** With 8-way parallelism, 120 seconds → 15-20 seconds. With Apple FM's throughput limits, we might hit rate limiting, but even 4-way parallelism would cut time by 75%.
+
+**Caveat:** FM Bridge may not handle concurrent requests well. Need to test and potentially add request queuing with backpressure.
+
+#### 1.2 Speculative Synthesis
+
+Don't wait for all chunks to finish before starting synthesis. Start synthesizing early batches while later chunks are still processing.
+
+**Approach:**
+1. As soon as batch 1 (chunks 1-8) completes, start synthesizing batch 1
+2. While synthesizing, continue extracting chunks 9-16
+3. Overlap extraction and synthesis phases
+
+This is a form of pipelining. The synthesis batches become a streaming operation rather than a barrier.
+
+#### 1.3 Early Termination for Specific Queries
+
+For queries like "What decisions were made about WebGPU?", we found only 8 relevant chunks out of 30. The other 22 chunks returned "No relevant content." We processed them all anyway.
+
+**Optimization:** Track relevance rate. If the first 10 chunks yield only 1 relevant result, we're probably dealing with a needle-in-haystack query. We could:
+- Increase parallelism (spray and pray)
+- Use vector search to pre-filter to likely relevant chunks
+- Stop early once we have "enough" relevant findings
+
+---
+
+### 2. Chunking: Beyond Regex
+
+The current chunking uses regex patterns to find markdown headers, code function definitions, and paragraph breaks. This works surprisingly well but has limitations.
+
+#### 2.1 AST-Based Code Chunking
+
+For Rust files, we should parse the AST rather than regex for function boundaries:
+
+```rust
+// Current regex approach
+let fn_re = Regex::new(r"(?m)^(pub\s+)?(async\s+)?fn\s+(\w+)").unwrap();
+
+// Better: use syn crate for proper AST parsing
+let ast: syn::File = syn::parse_file(&content)?;
+for item in ast.items {
+    match item {
+        syn::Item::Fn(f) => { /* proper function boundary */ }
+        syn::Item::Impl(i) => { /* impl block boundary */ }
+        syn::Item::Mod(m) => { /* module boundary */ }
+    }
+}
+```
+
+This handles:
+- Nested functions and closures
+- Impl blocks as logical units
+- Attributes and doc comments attached to their items
+- Macro invocations that generate code
+
+#### 2.2 Semantic Paragraph Detection
+
+For prose, paragraph breaks (`\n\n`) are crude. Better approaches:
+- Sentence boundary detection with proper NLP (handling abbreviations, quotes, etc.)
+- Topic segmentation (TextTiling algorithm)
+- Coherence-based splitting (when topic shifts)
+
+For markdown specifically:
+- Recognize list items as units (don't split mid-list)
+- Keep code blocks intact
+- Preserve table rows together
+
+#### 2.3 Overlapping Context Windows
+
+Current chunking creates hard boundaries. Content at chunk edges loses context. Solution: sliding window with overlap.
+
+```rust
+// Current: chunks [0..6000], [6000..12000], [12000..18000]
+// Better: chunks [0..6000], [5500..11500], [11000..17000]
+
+// Each chunk shares 500 chars with neighbors
+// Extraction sees context from both sides
+// Synthesis deduplicates overlapping findings
+```
+
+The overlap allows the model to understand transitions and connections that span chunk boundaries.
+
+#### 2.4 Hierarchical Chunking
+
+Documents have hierarchical structure. A markdown file with H1, H2, H3 headers forms a tree. Current chunking flattens this.
+
+**Better approach:**
+1. Parse document into a tree structure
+2. Chunk at appropriate levels (sections, subsections)
+3. Preserve hierarchy in chunk metadata
+4. During synthesis, respect the hierarchy
+
+This enables queries like "summarize each major section separately" or "compare section 2 to section 5."
+
+---
+
+### 3. Query Understanding: Not All Questions Are Equal
+
+Currently, every query gets the same treatment: chunk, extract, synthesize. But different query types need different strategies.
+
+#### 3.1 Query Classification
+
+Before processing, classify the query:
+
+| Query Type | Example | Optimal Strategy |
+|------------|---------|------------------|
+| **Broad summary** | "Extract themes" | Process all chunks, aggregate |
+| **Specific search** | "Find WebGPU details" | Pre-filter, then deep extract |
+| **Comparison** | "Compare approaches" | Parallel extraction with structured output |
+| **Enumeration** | "List all partnerships" | Extraction with deduplication |
+| **Factual lookup** | "What is the budget?" | Vector search → single chunk extraction |
+
+**Implementation:** A small classifier (could even be rule-based) that routes queries to appropriate strategies.
+
+#### 3.2 Two-Pass Extraction
+
+For search queries, do two passes:
+
+**Pass 1 (Fast):** Relevance scan
+- Quick prompt: "Does this section contain information about [topic]? Answer yes/no."
+- Cheap, fast, parallelizable
+- Filters 50 chunks down to ~5-10 relevant ones
+
+**Pass 2 (Deep):** Detailed extraction
+- Full extraction prompt only on relevant chunks
+- Higher quality, more tokens, more expensive
+- But only on chunks that matter
+
+This could turn the WebGPU query from 30 extractions to 8 relevance checks + 8 deep extractions = faster and cheaper.
+
+#### 3.3 Query Expansion
+
+The query "What about WebGPU?" might miss sections that discuss "wgpu" or "GPU compute" or "browser graphics API."
+
+**Solution:** Expand queries with related terms:
+- Synonyms and acronyms (WebGPU ↔ wgpu ↔ "web GPU")
+- Related concepts (WebGPU → WGSL, compute shaders, GPU buffers)
+- Co-occurring terms from the document itself
+
+This could be a preprocessing step before extraction prompts are generated.
+
+---
+
+### 4. Quality: From "Works" to "Reliable"
+
+The tests showed "excellent" quality, but that's subjective. For production use, we need measurable quality guarantees.
+
+#### 4.1 Citation Tracking
+
+Every claim in the final answer should cite its source chunk. Currently we lose provenance during synthesis.
+
+**Implementation:**
+```rust
+struct Finding {
+    content: String,
+    chunk_id: usize,
+    char_range: (usize, usize),  // Position in original document
+    confidence: f32,
+}
+
+// Synthesis prompt includes citation requirements:
+// "For each claim, include [chunk_id] citation."
+```
+
+This enables:
+- User verification (click citation to see source)
+- Answer debugging (why did it say X?)
+- Hallucination detection (claim without citation = suspicious)
+
+#### 4.2 Self-Consistency Checking
+
+Run extraction twice with different prompts or temperatures. Compare results. Divergence indicates uncertainty.
+
+```rust
+let extraction_1 = extract(chunk, "List key points about [query]").await;
+let extraction_2 = extract(chunk, "What does this say about [query]?").await;
+
+if similarity(extraction_1, extraction_2) < 0.7 {
+    // Flag as uncertain, maybe try a third extraction
+    // Or include both perspectives in synthesis
+}
+```
+
+This is essentially the redundancy verification from FRLM, applied to single-node extraction.
+
+#### 4.3 Contradiction Detection
+
+Large documents often contain contradictory information (early draft says X, later revision says Y). Current synthesis might merge these into incoherent output.
+
+**Solution:** During synthesis, explicitly prompt for contradictions:
+- "Do any of these findings contradict each other?"
+- "If there are conflicting claims, note both and indicate which appears more recent/authoritative."
+
+#### 4.4 Completeness Validation
+
+After synthesis, ask: "Based on these findings, what aspects of [query] were NOT addressed?"
+
+This catches blind spots:
+- Chunks that should have been relevant but weren't extracted
+- Aspects of the query that the document doesn't cover
+- Gaps that require additional sources
+
+---
+
+### 5. User Experience: Making It Feel Good
+
+Even fast processing feels slow without good UX. The current CLI just prints progress lines. We can do better.
+
+#### 5.1 Streaming Output
+
+Show results as they arrive, not just at the end:
+
+```
+Analyzing document (245KB, 50 chunks)...
+
+[████████░░░░░░░░░░░░] 8/50 chunks
+
+Findings so far:
+- Browser-based LLM inference using WebGPU (chunk 2)
+- GGUF format for model streaming (chunk 11)
+- Custom WGSL kernels for attention (chunk 19)
+
+Processing chunk 9...
+```
+
+Users see progress and can even cancel early if they see the answer they need.
+
+#### 5.2 Interactive Refinement
+
+After initial results, allow follow-up:
+
+```
+> Extract the major themes
+
+[Results displayed]
+
+> Tell me more about theme 3 (WebGPU implementation)
+
+[Deeper analysis of WebGPU-related chunks only]
+
+> What specific code patterns are used?
+
+[Code-focused re-extraction]
+```
+
+This is conversational document exploration. The engine maintains context and can re-analyze specific areas without reprocessing the whole document.
+
+#### 5.3 Comparison Mode
+
+"Compare these two documents on [topic]"
+
+Process both documents, then synthesize with explicit comparison prompts:
+- What do they agree on?
+- Where do they differ?
+- What does doc A cover that B doesn't?
+
+#### 5.4 Visual Trace
+
+Integrate with FRLM's trace visualization:
+- Show chunk processing as a timeline
+- Color-code by relevance (green = relevant, gray = no content)
+- Click chunks to see extraction details
+- Replay the analysis step by step
+
+---
+
+### 6. Integration: Playing Well With Others
+
+The orchestrator shouldn't be an island. It needs to integrate with the broader system.
+
+#### 6.1 FRLM Distribution
+
+The obvious integration: distribute chunk extraction across the FRLM compute network.
+
+```rust
+// Current: all extraction on local FM
+for chunk in chunks {
+    summaries.push(local_fm.extract(chunk).await);
+}
+
+// Better: distribute via FRLM conductor
+let conductor = FrlmConductor::new(policy);
+let sub_queries = chunks.iter().map(|c| SubQuery::new(prompt, c)).collect();
+let summaries = conductor.run_fanout(sub_queries).await;
+```
+
+This enables:
+- Processing on remote workers when local FM is slow/unavailable
+- Redundancy verification for high-stakes queries
+- Cost optimization via market-based routing
+- Progress tracking via FRLM trace events
+
+#### 6.2 Vector Search Pre-Filtering
+
+For needle-in-haystack queries, vector search can identify relevant chunks before extraction:
+
+```rust
+// Before chunking
+let embeddings = embed_chunks(&chunks);  // Use embedding model
+let query_embedding = embed(&query);
+let relevant_chunks = vector_search(query_embedding, embeddings, top_k=10);
+
+// Only extract from relevant chunks
+let summaries = extract_from_chunks(&relevant_chunks, &query).await;
+```
+
+This requires:
+- An embedding model (could use Apple FM's embeddings, or a small local model)
+- Vector similarity search (could be in-memory for small docs, or use a vector DB)
+
+The tradeoff: embedding overhead vs extraction savings. For large documents with specific queries, this is a clear win.
+
+#### 6.3 Multi-Document Analysis
+
+Many real queries span multiple documents:
+- "Compare the Q3 and Q4 reports"
+- "What does the codebase say about authentication?"
+- "Summarize all meeting notes from January"
+
+**Extension:**
+```rust
+// Load multiple contexts
+let contexts = vec![
+    Context::from_file("q3_report.md")?,
+    Context::from_file("q4_report.md")?,
+];
+
+// Chunk each document, tracking source
+let chunks: Vec<(DocId, Chunk)> = contexts.iter()
+    .enumerate()
+    .flat_map(|(doc_id, ctx)| chunk(ctx).map(move |c| (doc_id, c)))
+    .collect();
+
+// Synthesis includes cross-document analysis
+```
+
+This is the natural extension to document collections, repositories, and knowledge bases.
+
+#### 6.4 Tool Use During Extraction
+
+Sometimes extraction needs tools:
+- "Calculate the total mentioned in this section"
+- "Convert these dates to a timeline"
+- "Check if this code snippet compiles"
+
+The extraction phase could support tool calls:
+
+```rust
+// Extraction prompt with tool availability
+let prompt = format!(r#"
+Extract information about [query] from this section.
+You have access to:
+- calculate(expression): Evaluate math
+- lookup(term): Check a reference database
+- code_check(lang, code): Validate code syntax
+"#);
+```
+
+This moves toward agentic document analysis, where the model can verify claims and perform computations during extraction.
+
+---
+
+### 7. Cost and Resource Management
+
+Real-world deployment needs resource governance.
+
+#### 7.1 Token Counting and Budgeting
+
+Track token usage:
+```rust
+struct AnalysisMetrics {
+    input_tokens: usize,   // Prompt tokens across all extractions
+    output_tokens: usize,  // Generated tokens
+    fm_calls: usize,       // Number of API calls
+    wall_time_ms: u64,
+    estimated_cost_sats: u64,
+}
+```
+
+Enable budget limits:
+```rust
+let config = OrchestratorConfig {
+    max_input_tokens: 100_000,
+    max_output_tokens: 20_000,
+    max_cost_sats: 1000,
+};
+```
+
+If budget is exhausted mid-analysis, gracefully degrade:
+- Synthesize from partial results
+- Indicate incompleteness
+- Offer to continue with additional budget
+
+#### 7.2 Tiered Processing
+
+Not every query needs full analysis. Offer tiers:
+
+| Tier | Strategy | Speed | Cost | Quality |
+|------|----------|-------|------|---------|
+| **Quick** | First 5 chunks + summary section | 10s | Low | Good for overview |
+| **Standard** | 30 chunks with sampling | 60s | Medium | Good for most queries |
+| **Thorough** | All chunks, redundancy checking | 120s+ | High | Comprehensive |
+
+Users can choose based on their needs. Or the system can auto-select based on query type and document size.
+
+#### 7.3 Failure Recovery and Checkpointing
+
+Long analyses can fail mid-way (network issues, FM timeout, process crash). Implement checkpointing:
+
+```rust
+// Save state after each chunk
+checkpoint.save(&ChunkState {
+    completed_chunks: completed.clone(),
+    summaries: summaries.clone(),
+    timestamp: now(),
+});
+
+// On restart, resume from checkpoint
+let state = checkpoint.load()?;
+let remaining_chunks = chunks.iter()
+    .filter(|c| !state.completed_chunks.contains(&c.id))
+    .collect();
+```
+
+This is especially important for distributed execution where individual workers may fail.
+
+---
+
+### 8. The Bigger Picture: Where This Goes
+
+The engine-orchestrated analysis is a stepping stone. The end goal is something more ambitious.
+
+#### 8.1 Continuous Document Understanding
+
+Instead of one-shot analysis, maintain a live understanding of documents:
+- Watch files for changes
+- Incrementally update chunk extractions (only re-extract changed sections)
+- Maintain a queryable knowledge graph
+- Enable instant queries against pre-processed documents
+
+This turns documents from static files into living, queryable knowledge.
+
+#### 8.2 Multi-Modal Analysis
+
+Documents contain more than text:
+- Images (diagrams, charts, screenshots)
+- Tables (structured data)
+- Code blocks (executable content)
+- Embedded files (PDFs in docs)
+
+Future extraction should handle these:
+- OCR and image understanding for visual content
+- Table parsing into structured data
+- Code analysis (type checking, linting, execution)
+
+#### 8.3 Collaborative Analysis
+
+Multiple users analyzing the same document:
+- Shared extractions and synthesis
+- Annotation and discussion layers
+- Divergent interpretations tracked
+- Consensus building
+
+This is document analysis as a social process, not just a compute process.
+
+#### 8.4 Learning From Usage
+
+Track which extractions are useful:
+- Which findings appear in final answers?
+- Which are discarded during synthesis?
+- What queries are common for what document types?
+
+Use this to improve:
+- Chunking strategies (learn optimal boundaries)
+- Extraction prompts (learn what works)
+- Synthesis templates (learn what users want)
+
+The system gets smarter over time.
+
+---
+
+### Summary of Improvement Priorities
+
+| Priority | Improvement | Impact | Effort |
+|----------|-------------|--------|--------|
+| **P0** | Parallel chunk extraction | 4-8x faster | Medium |
+| **P0** | Streaming output | Much better UX | Low |
+| **P1** | Citation tracking | Quality + trust | Medium |
+| **P1** | Two-pass relevance filtering | Faster specific queries | Medium |
+| **P1** | FRLM integration | Distribution + verification | High |
+| **P2** | AST-based code chunking | Better code analysis | Medium |
+| **P2** | Query classification | Smarter strategy selection | Medium |
+| **P2** | Vector search pre-filtering | Much faster search queries | High |
+| **P3** | Self-consistency checking | Quality guarantee | Low |
+| **P3** | Multi-document analysis | Broader use cases | Medium |
+| **P3** | Checkpointing | Reliability | Medium |
+
+The immediate focus should be on P0 items: parallel extraction and streaming output. These provide the biggest user-visible improvements with moderate implementation effort.
+
+---
+
+### Final Thought
+
+The engine-orchestrated analysis proves that we can make edge models useful for tasks they can't handle alone. The key insight—shifting orchestration from model to engine—is generalizable. It's not just about document analysis; it's about designing systems that meet models where they are, rather than demanding capabilities they don't have.
+
+The improvements outlined here are not about making the model smarter. They're about making the system around the model smarter. That's the real lesson: in the age of imperfect AI, the orchestration layer matters as much as the model itself.
