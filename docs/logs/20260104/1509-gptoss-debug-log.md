@@ -1640,3 +1640,9 @@ Test 11: `-t 8 -tb 8` (keepalive 1s)
 
 Conclusion:
 - Leave threads at defaults (auto). Manual thread limits hurt latency.
+
+### Cache reuse
+
+Test 12: `--cache-reuse 128`
+- runs=20, p50 **~173.5ms**, p95 **~208ms**.
+- No improvement vs defaults; keep `cache-reuse` disabled.
