@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use fm_bridge_agent::{FmBridgeAgent, FmBridgeAgentConfig};
 use gpt_oss_agent::tools::{ToolRequest, ToolResult};
-use gpt_oss_agent::{GptOssAgent, GptOssAgentConfig};
+use gpt_oss_agent::{GptOssAgent, GptOssAgentConfig, GptOssSession};
 
 const TOOL_CALL_OPEN: &str = "<tool_call>";
 const TOOL_CALL_CLOSE: &str = "</tool_call>";
@@ -114,10 +114,9 @@ async fn run_gpt_oss(cli: Cli) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let agent = GptOssAgent::new(config).await?;
-    let session = Arc::new(agent.create_session().await);
-
     if cli.tools {
+        let agent = GptOssAgent::new(config).await?;
+        let session = Arc::new(agent.create_session().await);
         let response = session
             .send_with_tools(&cli.prompt, cli.max_tool_turns)
             .await?;
@@ -125,6 +124,11 @@ async fn run_gpt_oss(cli: Cli) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    let client = gpt_oss::GptOssClient::builder()
+        .base_url(&config.base_url)
+        .default_model(&config.model)
+        .build()?;
+    let session = GptOssSession::new(Arc::new(client), config, Vec::new());
     let response = session.send(&cli.prompt).await?;
     println!("{}", response.trim());
     Ok(())
