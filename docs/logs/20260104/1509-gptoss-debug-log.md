@@ -1432,6 +1432,11 @@ Keepalive test (`GPT_OSS_KEEPALIVE_SECS=2`, `-np 4`):
 - Wall time after warm: **~0.2–0.5s**
 - First request still slower (~7s), but spikes are rarer.
 
+### Test G: `-np 4` recommendation
+
+With keepalive active, `-np 4` reduces head‑of‑line blocking better than `-np 2`.
+Recommended for interactive use.
+
 ### Test F: Parallel slots (`-np 2`)
 
 Server:
