@@ -1837,3 +1837,13 @@ With defaults (now `-c 384`):
 Config (Q4_0 + f16 KV + flash-attn + keepalive 1s, -c 384):
 - runs=2000, p50 **~153ms**, p95 **~173ms**, max **~263ms**.
 - No multi‑second spikes observed.
+
+### Long generation throughput
+
+Updated `scripts/gpt-oss-status.sh` to accept `GPT_OSS_STATUS_MAX_TOKENS` + `GPT_OSS_STATUS_PROMPT`.
+
+With Q4_0 + f16 KV + flash-attn + keepalive 1s:
+- `GPT_OSS_STATUS_MAX_TOKENS=128`: predicted_per_second **~57.4 tok/s**.
+- `GPT_OSS_STATUS_MAX_TOKENS=256`: predicted_per_second **~56.9 tok/s**.
+
+Takeaway: decode throughput stays ~57 tok/s for longer generations.
