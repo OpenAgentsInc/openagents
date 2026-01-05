@@ -44,6 +44,8 @@ scripts/gpt-oss-stop-keepalive.sh
 scripts/gpt-oss-status.sh
 ```
 
+Defaults: `GPT_OSS_STATUS_PROMPT="1+1="`, `GPT_OSS_STATUS_MAX_TOKENS=8`.
+
 7. Quick latency bench:
 
 ```bash
