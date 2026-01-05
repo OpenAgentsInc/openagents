@@ -60,7 +60,8 @@ Notes:
   `GPT_OSS_CACHE_TYPE_K`, `GPT_OSS_CACHE_TYPE_V`, and `GPT_OSS_FLASH_ATTN=0` if needed.
 - It supports env overrides like `GPT_OSS_GGUF_MODEL_PATH`, `GPT_OSS_PORT`, `GPT_OSS_WARMUP_COUNT`, `GPT_OSS_WARMUP_MAX_TOKENS`,
   plus KV cache tuning (`GPT_OSS_CACHE_TYPE_K`, `GPT_OSS_CACHE_TYPE_V`, `GPT_OSS_KV_UNIFIED=1`, `GPT_OSS_FLASH_ATTN`).
-- If your system pages out, set `GPT_OSS_KEEPALIVE_SECS=2` to keep the server hot (lower = more stable, more background load).
+- If your system pages out, set `GPT_OSS_KEEPALIVE_SECS=1` (most stable) or `=2` to keep the server hot (lower = more stable, more background load).
+- Use `GPT_OSS_KEEPALIVE_MAX_TOKENS=8` to make keepalive touch more decode kernels (higher = more load).
 - Keepalive PID file defaults to `/tmp/gpt-oss-keepalive.pid` (`GPT_OSS_KEEPALIVE_PID_FILE`).
 - Set `GPT_OSS_PARALLEL=4` to allow keepalive requests without blocking interactive prompts.
 - Set `GPT_OSS_FORCE_WARMUP=1` to run warmup even if the server is already running.
