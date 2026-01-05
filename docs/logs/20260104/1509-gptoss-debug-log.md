@@ -1073,3 +1073,22 @@ Reverted to safe math + precise exp.
 ```
 
 Run exceeded **120s** and timed out. This suggests throughput is still far too low for interactive use.
+
+---
+
+## Update: 2026-01-05 05:15 - Dense MoE Forced (Fails)
+
+### What Changed (gpt-oss repo, external)
+
+Temporarily forced dense MoE path:
+- `min_tokens_for_dense_moe_kernels = 1`
+
+### Result (MLP TG 256, 1 token)
+
+- GPU time ≈ **15.4s**
+- TTFT ≈ **22.0s**
+- Output: `2`
+
+### Takeaway
+
+Dense MoE kernels are **much slower** for small tokens. Reverted to `min_tokens_for_dense_moe_kernels = 64`.
