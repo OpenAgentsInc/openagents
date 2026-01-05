@@ -1403,6 +1403,9 @@ when the server is already running.
 Added `scripts/gpt-oss-query.sh` for the fastest possible raw completion
 against llama-server (curl + JSON parse).
 
+Bug fix: corrected `scripts/gpt-oss-query.sh` to use `python3 -c` so
+the piped JSON is read (heredoc was consuming stdin).
+
 ### Keepalive (optional)
 
 Observed intermittent slow prompt prefill after idle (likely paging). Added an optional

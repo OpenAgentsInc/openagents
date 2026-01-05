@@ -31,12 +31,4 @@ PY
 curl -s "${BASE_URL}/v1/completions" \
     -H 'Content-Type: application/json' \
     -d "$payload" | \
-    python3 - <<'PY'
-import json,sys
-resp=json.load(sys.stdin)
-choices=resp.get("choices", [])
-if not choices:
-    print("")
-    sys.exit(0)
-print(choices[0].get("text", ""))
-PY
+    python3 -c 'import json,sys; resp=json.load(sys.stdin); choices=resp.get("choices", []); print(choices[0].get("text", "") if choices else "")'
