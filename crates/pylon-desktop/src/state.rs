@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 use web_time::Instant;
+use viz::{FrlmPanel, Edge, Node, NodeId, Topology};
+use viz::topology::Graph;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum FmConnectionStatus {
@@ -99,6 +101,174 @@ pub enum SubQueryDisplayStatus {
     Timeout,
 }
 
+// ============ Apple FM Tools State ============
+
+/// Status of an Apple FM tool call
+#[derive(Clone, Copy, PartialEq)]
+pub enum ToolCallStatus {
+    Pending,
+    Executing,
+    Complete,
+    Failed,
+}
+
+/// An Apple FM tool call for visualization
+#[derive(Clone)]
+pub struct AppleFmToolCall {
+    pub tool_name: String,
+    pub arguments: String,
+    pub status: ToolCallStatus,
+    pub started_at: u64,
+    pub completed_at: Option<u64>,
+    pub result: Option<String>,
+}
+
+// ============ RLM Execution State ============
+
+/// A single RLM iteration for visualization
+#[derive(Clone)]
+pub struct RlmIteration {
+    pub iteration: u32,
+    pub command_type: String,  // "Run", "RunCode", "Final"
+    pub executed: String,
+    pub result: String,
+    pub duration_ms: u64,
+}
+
+// ============ Venue Topology State ============
+
+/// Venue where execution happens
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ExecutionVenue {
+    Local,
+    Swarm,
+    Datacenter,
+    Unknown,
+}
+
+impl ExecutionVenue {
+    pub fn label(&self) -> &'static str {
+        match self {
+            ExecutionVenue::Local => "Local (FM)",
+            ExecutionVenue::Swarm => "Swarm (NIP-90)",
+            ExecutionVenue::Datacenter => "Datacenter",
+            ExecutionVenue::Unknown => "Unknown",
+        }
+    }
+
+    pub fn color(&self) -> wgpui::Hsla {
+        match self {
+            ExecutionVenue::Local => wgpui::Hsla::new(145.0/360.0, 0.7, 0.45, 1.0),     // Green
+            ExecutionVenue::Swarm => wgpui::Hsla::new(45.0/360.0, 0.9, 0.55, 1.0),      // Orange
+            ExecutionVenue::Datacenter => wgpui::Hsla::new(280.0/360.0, 0.6, 0.5, 1.0), // Purple
+            ExecutionVenue::Unknown => wgpui::Hsla::new(0.0, 0.0, 0.5, 1.0),            // Gray
+        }
+    }
+}
+
+/// Venue topology graph for visualization
+pub struct VenueTopology {
+    pub graph: Graph,
+    next_node_id: NodeId,
+    conductor_id: NodeId,
+    venue_nodes: HashMap<String, NodeId>,
+}
+
+impl VenueTopology {
+    pub fn new() -> Self {
+        let mut graph = Graph::new();
+
+        // Create conductor node at center
+        let conductor_id = 0;
+        let conductor_node = Node {
+            id: conductor_id,
+            label: "FRLM Conductor".to_string(),
+            position: wgpui::Point::new(0.5, 0.3),
+            size: 20.0,
+        };
+        graph.set_nodes(&[conductor_node]);
+
+        Self {
+            graph,
+            next_node_id: 1,
+            conductor_id,
+            venue_nodes: HashMap::new(),
+        }
+    }
+
+    /// Record a sub-query execution at a venue
+    pub fn record_execution(&mut self, venue: ExecutionVenue, provider_id: Option<&str>) {
+        let node_key = provider_id.map(|s| s.to_string())
+            .unwrap_or_else(|| venue.label().to_string());
+
+        // Check if we already have this node
+        if !self.venue_nodes.contains_key(&node_key) {
+            let node_id = self.next_node_id;
+            self.next_node_id += 1;
+
+            // Position based on venue type
+            let (x, y) = match venue {
+                ExecutionVenue::Local => (0.25, 0.7),
+                ExecutionVenue::Swarm => (0.5, 0.7 + (self.venue_nodes.len() as f32 * 0.05)),
+                ExecutionVenue::Datacenter => (0.75, 0.7),
+                ExecutionVenue::Unknown => (0.5, 0.9),
+            };
+
+            // Add node and edge
+            let new_node = Node {
+                id: node_id,
+                label: node_key.clone(),
+                position: wgpui::Point::new(x, y),
+                size: 14.0,
+            };
+
+            // Collect existing nodes and add new one
+            let mut nodes = vec![Node {
+                id: self.conductor_id,
+                label: "FRLM Conductor".to_string(),
+                position: wgpui::Point::new(0.5, 0.3),
+                size: 20.0,
+            }];
+            for (key, &id) in &self.venue_nodes {
+                nodes.push(Node {
+                    id,
+                    label: key.clone(),
+                    position: wgpui::Point::new(0.5, 0.7),
+                    size: 14.0,
+                });
+            }
+            nodes.push(new_node);
+
+            self.venue_nodes.insert(node_key.clone(), node_id);
+
+            // Update graph
+            self.graph.set_nodes(&nodes);
+
+            // Add edge from conductor
+            let edges: Vec<Edge> = self.venue_nodes.values()
+                .map(|&id| Edge { from: self.conductor_id, to: id, weight: 1.0 })
+                .collect();
+            self.graph.set_edges(&edges);
+        }
+
+        // Highlight the active node
+        if let Some(&node_id) = self.venue_nodes.get(&node_key) {
+            self.graph.highlight(&[node_id]);
+        }
+    }
+
+    /// Clear highlights
+    pub fn clear_highlight(&mut self) {
+        self.graph.highlight(&[]);
+    }
+}
+
+impl Default for VenueTopology {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// State for an active FRLM run
 #[derive(Clone)]
 pub struct FrlmRunState {
@@ -194,6 +364,20 @@ pub struct FmVizState {
     pub frlm_subquery_status: HashMap<String, SubQueryDisplayStatus>,
     pub frlm_runs_completed: u32,
     pub frlm_total_cost_sats: u64,
+
+    // FRLM Panel (from viz crate)
+    pub frlm_panel: Option<FrlmPanel>,
+
+    // Apple FM Tools state
+    pub apple_fm_tool_calls: Vec<AppleFmToolCall>,
+    pub current_tool_call: Option<AppleFmToolCall>,
+
+    // RLM execution state (when running locally)
+    pub rlm_iterations: Vec<RlmIteration>,
+    pub rlm_active: bool,
+
+    // Venue topology
+    pub venue_topology: VenueTopology,
 }
 
 impl FmVizState {
@@ -250,6 +434,16 @@ impl FmVizState {
             frlm_subquery_status: HashMap::new(),
             frlm_runs_completed: 0,
             frlm_total_cost_sats: 0,
+
+            frlm_panel: None,
+
+            apple_fm_tool_calls: Vec::new(),
+            current_tool_call: None,
+
+            rlm_iterations: Vec::new(),
+            rlm_active: false,
+
+            venue_topology: VenueTopology::new(),
         }
     }
 

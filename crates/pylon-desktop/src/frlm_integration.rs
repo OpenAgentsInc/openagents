@@ -17,7 +17,7 @@ use frlm::trace::TraceEvent;
 use frlm::types::{FrlmProgram, SubQuery};
 
 use crate::nostr_runtime::{BatchJobRequest, NostrCommand, NostrRuntime};
-use crate::state::{FmVizState, FrlmRunState, SubQueryDisplayStatus};
+use crate::state::{ExecutionVenue, FmVizState, FrlmRunState, SubQueryDisplayStatus};
 
 /// Adapter that implements SubQuerySubmitter using Pylon's NostrRuntime.
 ///
@@ -269,12 +269,21 @@ impl FrlmIntegration {
                 }
             }
 
-            TraceEvent::SubQueryExecute { query_id, provider_id, .. } => {
+            TraceEvent::SubQueryExecute { query_id, provider_id, venue, .. } => {
                 // Sub-query being executed by provider
                 state.frlm_subquery_status.insert(
                     query_id,
-                    SubQueryDisplayStatus::Executing { provider_id },
+                    SubQueryDisplayStatus::Executing { provider_id: provider_id.clone() },
                 );
+
+                // Update topology with venue
+                let execution_venue = match venue {
+                    frlm::types::Venue::Local => ExecutionVenue::Local,
+                    frlm::types::Venue::Swarm => ExecutionVenue::Swarm,
+                    frlm::types::Venue::Datacenter => ExecutionVenue::Datacenter,
+                    frlm::types::Venue::Unknown => ExecutionVenue::Unknown,
+                };
+                state.venue_topology.record_execution(execution_venue, Some(&provider_id));
             }
 
             TraceEvent::SubQueryReturn { query_id, duration_ms, cost_sats, .. } => {
