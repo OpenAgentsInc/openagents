@@ -359,3 +359,70 @@ Finally, the prompt engineering could be refined based on more testing with diff
 
 1. **2aa32b18a** - Add context loading to RLM (Phase 1)
 2. **77df5ad93** - Add llm_query() sub-query support to RLM
+
+---
+
+## Addendum: Context Loading Test Results
+
+**Date:** 2026-01-04 (continued)
+**Test File:** `/Users/christopherdavid/code/backroom/live/20260103-chatgpt-convo.md` (244,940 characters)
+
+### Test Outcome
+
+The test with a real 245KB document revealed significant limitations when using Apple's on-device Foundation Model with the context-aware RLM system. The model failed to complete the task, timing out after 10 iterations without producing useful output.
+
+### What Happened
+
+The context loading worked correctly. The engine loaded all 244,940 characters, reported the file metadata, connected to FM Bridge successfully, and injected the context variable into the Python execution environment. The system prompt correctly described the available functions and context variable. From a technical standpoint, the implementation performed exactly as designed.
+
+The failure occurred in how Apple FM interpreted and followed the instructions. On the first iteration, the model generated code that included an invalid Python construct: `FINAL_VAR("summary") = final_summary`. This is a syntax error because Python does not allow assignment to a function call. The model had confused the documented output format `FINAL_VAR(variable_name)` with Python assignment syntax.
+
+When the error was reported back to the model, something more concerning happened. Rather than correcting the syntax error and continuing with the original task, the model completely abandoned its understanding of the problem. It started generating generic pandas DataFrame examples that had nothing to do with the loaded context or the user's question about extracting themes. It tried to import pandas, which is not installed in the execution environment, and then got stuck in a loop of attempting the same failing import while generating increasingly irrelevant code.
+
+This pattern continued for all 10 iterations. The model never referenced the `context` variable that contained the 245KB document. It never used `search_context()` to find patterns. It never attempted `llm_query()` for semantic processing. Instead, it generated sample code about Alice, Bob, and Charlie's ages, completely divorced from the actual task.
+
+### Analysis
+
+This failure mode is instructive because it reveals a fundamental challenge with smaller models in the RLM paradigm. The RLM system prompt is relatively complex, describing multiple available functions, context variables, output formats, and a multi-step strategy for approaching problems. Larger models like GPT-5, which the paper tested with, have sufficient capacity to internalize these instructions and maintain focus even when errors occur. Smaller on-device models apparently do not.
+
+When Apple FM encountered an error, it appeared to lose its grip on the conversation context. The error message about syntax became the dominant signal, and the model's response mechanism kicked in with "helpful" suggestions about fixing the error. But those suggestions had no connection to the original task or environment. The model pattern-matched on "Python error involving pandas-like code" and generated a response appropriate for that pattern, ignoring that the original code was not about pandas at all.
+
+This suggests that smaller models may need a fundamentally different prompting strategy for RLM. The current prompt assumes the model can hold the full instruction set in working memory while also processing the task. For smaller models, it may be better to use a minimal prompt that focuses on one capability at a time, with the engine providing more structured guidance about what to do next.
+
+### Implications for the Implementation
+
+Several changes could improve reliability with smaller models.
+
+The system prompt could be dramatically simplified for smaller models. Rather than describing all available functions upfront, the prompt could focus only on the immediate next step. For theme extraction, the prompt might say only "You have a 245KB document in the variable `context`. Write Python code that prints the first 2000 characters to understand the document structure." After seeing that output, a follow-up prompt could guide the next step. This reduces the cognitive load on the model by presenting one instruction at a time.
+
+Error recovery needs to be smarter. When the model generates invalid code, the current implementation just reports the error and asks for a fix. For smaller models, the engine should probably intercept common error patterns and provide more specific guidance. If the code contains an import for a missing module, the engine could say "The pandas module is not available. Use only built-in Python. The `context` variable already contains the document text." This redirects the model back to the task rather than letting it spiral into irrelevant fixes.
+
+The FINAL_VAR syntax caused confusion. Making this more Python-like might help. Instead of `FINAL_VAR(variable_name)`, the output format could be `FINAL = variable_name` or simply require the model to print a special marker like `print("FINAL:", result)`. Aligning with Python syntax reduces the chance of the model inventing invalid constructs.
+
+Iteration limits should perhaps be model-specific. Ten iterations is generous for a well-behaved large model that makes steady progress. For a small model that tends to spiral after errors, three to five iterations might be more appropriate, with a fallback to a simpler approach if the model appears stuck.
+
+The test also suggests that llm_query() may be too ambitious for smaller models. The recursive sub-call pattern requires the model to understand that it's generating code that will trigger further LLM invocations, and that the results will be injected back as variables. This meta-level reasoning may exceed what smaller models can reliably do. A simpler approach for smaller models might be to have the engine automatically chunk the context and summarize each chunk, presenting the model with pre-processed summaries rather than expecting it to orchestrate the chunking itself.
+
+### What Worked
+
+Despite the failure, the test validated several aspects of the implementation.
+
+Context loading from files works correctly. The 245KB document was loaded, character count was accurate, and the summary metadata was displayed. The context variable was correctly injected into the Python execution environment before each code block ran.
+
+The logging is comprehensive and diagnostic. Every iteration shows the full prompt sent to FM, the complete FM response, the parsed command type, the executed code, and the execution result. This made it immediately clear what went wrong and at what stage.
+
+FM Bridge integration is stable. The connection was established, health check passed, and completion requests were handled without errors. The infrastructure for making LLM calls is working.
+
+The Python executor correctly reports errors. Syntax errors, module not found errors, and other exceptions are captured and returned with appropriate context. The execution environment is functional.
+
+### Next Steps for Robustness
+
+The most urgent improvement is model-adaptive prompting. The system should detect which model is being used (via the FM Bridge or configuration) and select an appropriate prompt strategy. Larger models get the full context-aware prompt. Smaller models get a simplified step-by-step prompt with more hand-holding.
+
+Error recovery should include task reminders. When reporting an error back to the model, the prompt should restate the original task and available resources: "The code failed. Remember: you're extracting themes from the document in `context`. Use Python's built-in string methods and the `search_context()` function. Do not import external libraries."
+
+A stuck-detection heuristic should abort early. If the model generates the same error three times in a row, or if it generates code that doesn't reference the context variable for several iterations, the engine should give up rather than burning through all iterations with no progress.
+
+For smaller models, the engine could take a more active role in orchestration. Rather than asking the model to decide how to process a 245KB document, the engine could pre-chunk the content and present each chunk for summarization, then present the chunk summaries for synthesis into themes. This reduces the model's job to local processing within each chunk, which smaller models can handle.
+
+The test demonstrates that the RLM implementation is technically sound but that prompt engineering and error handling need significant refinement for reliability across model sizes. The architecture is correct; the dialogue design needs iteration.
