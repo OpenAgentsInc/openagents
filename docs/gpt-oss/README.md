@@ -8,14 +8,16 @@ This guide covers running GPT-OSS locally inside OpenAgents and using the unifie
 
 ```bash
 ~/code/llama.cpp/build/bin/llama-server \
-  -m ~/models/gpt-oss/gpt-oss-20b-mxfp4.gguf \
-  --port 8000
+  -m ~/models/gpt-oss-20b/gguf/gpt-oss-20b-Q3_K_S.gguf \
+  --port 8000 -ngl 999 -c 512 -b 256 --no-warmup
 ```
 
-2. Run a prompt via the unified runner:
+2. Run a prompt via the unified runner (fast RAW mode):
 
 ```bash
-scripts/local-infer.sh --backend gpt-oss --url http://localhost:8000 "Hello from GPT-OSS"
+scripts/local-infer.sh --backend gpt-oss --raw \
+  --url http://localhost:8000 --model gpt-oss-20b \
+  --max-tokens 64 --temperature 0 "Hello from GPT-OSS"
 ```
 
 3. Enable local tools (browser, python, apply_patch, ui_pane):
@@ -23,6 +25,10 @@ scripts/local-infer.sh --backend gpt-oss --url http://localhost:8000 "Hello from
 ```bash
 scripts/local-infer.sh --backend gpt-oss --tools "Summarize this repo"
 ```
+
+Notes:
+- `--raw` skips Harmony formatting for speed. Use it for quick completions.
+- Harmony mode is slower but required for tool-use and structured outputs.
 
 ## Configuration
 
