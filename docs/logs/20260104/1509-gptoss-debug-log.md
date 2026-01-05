@@ -1870,3 +1870,11 @@ If you need larger prompts, increase `GPT_OSS_CTX` (e.g., 512/1024).
 With `GPT_OSS_CTX=512`:
 - Prompt ~192 words (`"word " * 192`): prompt_per_second **~504 tok/s**, predicted_per_second **~60.7 tok/s**.
 - Prompt ~256 words still exceeded context (400 error), so bump ctx further for very long prompts.
+
+### Latency with longer outputs
+
+Using `gpt-oss-bench` with higher `max_tokens`:
+- `GPT_OSS_MAX_TOKENS=64` (runs=50): p50 **~1159ms**, p95 **~1216ms**.
+- `GPT_OSS_MAX_TOKENS=128` (runs=20): p50 **~2330ms**, p95 **~2365ms**.
+
+These align with ~55–57 tok/s decode throughput.
