@@ -52,6 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         max_iterations: 5,
         allow_shell: false,
         verbose: true,
+        ..Default::default()
     };
 
     let engine = RlmEngine::with_config(client.clone(), executor, config);

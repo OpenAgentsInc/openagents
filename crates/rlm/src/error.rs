@@ -36,6 +36,10 @@ pub enum RlmError {
     /// Sub-query error.
     #[error("Sub-query error: {0}")]
     SubQueryError(String),
+
+    /// Model is stuck in a loop.
+    #[error("Model stuck: {0}")]
+    Stuck(String),
 }
 
 /// Result type for RLM operations.

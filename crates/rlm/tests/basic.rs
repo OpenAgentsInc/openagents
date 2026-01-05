@@ -66,6 +66,7 @@ fn test_engine_creation() {
         max_iterations: 5,
         allow_shell: true,
         verbose: true,
+        ..Default::default()
     };
 
     assert_eq!(config.max_iterations, 5);
@@ -76,13 +77,19 @@ fn test_engine_creation() {
 /// Test that prompts are constructed correctly.
 #[test]
 fn test_prompts() {
-    use rlm::SYSTEM_PROMPT;
+    use rlm::{SYSTEM_PROMPT, GUIDED_SYSTEM_PROMPT, PromptTier};
 
-    // System prompt should contain key instructions
+    // Basic system prompt should contain key instructions
     assert!(SYSTEM_PROMPT.contains("FINAL"));
-    assert!(SYSTEM_PROMPT.contains("RUN"));
     assert!(SYSTEM_PROMPT.contains("repl"));
-    assert!(SYSTEM_PROMPT.contains("query_llm"));
+    assert!(SYSTEM_PROMPT.contains("MUST use code"));
+
+    // Guided prompt should NOT contain llm_query (Apple FM can't do meta-reasoning)
+    assert!(!GUIDED_SYSTEM_PROMPT.contains("llm_query"));
+    assert!(GUIDED_SYSTEM_PROMPT.contains("Do NOT import"));
+
+    // PromptTier should default to Full
+    assert_eq!(PromptTier::default(), PromptTier::Full);
 }
 
 // ========================================

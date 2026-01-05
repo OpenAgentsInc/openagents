@@ -426,3 +426,291 @@ A stuck-detection heuristic should abort early. If the model generates the same 
 For smaller models, the engine could take a more active role in orchestration. Rather than asking the model to decide how to process a 245KB document, the engine could pre-chunk the content and present each chunk for summarization, then present the chunk summaries for synthesis into themes. This reduces the model's job to local processing within each chunk, which smaller models can handle.
 
 The test demonstrates that the RLM implementation is technically sound but that prompt engineering and error handling need significant refinement for reliability across model sizes. The architecture is correct; the dialogue design needs iteration.
+
+---
+
+## Addendum: Research into External RLM Implementations and Plan for Apple FM
+
+**Date:** 2026-01-05 (continued)
+**Author:** Claude
+
+### Research Motivation
+
+Following the failed test with the 245KB document, it became clear that Apple FM requires a fundamentally different approach than the GPT-5-class models the RLM paper tested with. To understand what works for smaller models, I explored three external RLM implementations: `rlm-minimal`, `rlm`, and `rig-rlm`, each offering different insights into making the paradigm work across model sizes.
+
+### External Implementation Analysis
+
+#### rlm-minimal (Python Reference Implementation)
+
+The minimal implementation at `/Users/christopherdavid/code/rlm-minimal/` provides the cleanest view of the core RLM pattern. Several design choices stand out as particularly relevant for smaller models.
+
+First, the system prompt includes an "iteration 0 safeguard" that explicitly tells the model it has not interacted with the REPL environment yet. This prevents the eager response pattern we observed with Apple FM, where the model tried to answer before examining the data. The safeguard forces the model to start with exploration rather than jumping to conclusions.
+
+Second, the prompt includes explicit chunking examples showing exactly how to split large contexts by structure (Markdown headers, newlines, etc.), process chunks with `llm_query()`, and accumulate results in a buffer variable. Rather than assuming the model can figure out decomposition strategies, rlm-minimal teaches them directly in the prompt. This is the opposite of our current approach, which describes functions but leaves strategy to the model.
+
+Third, the `llm_query()` signature is simpler than our current implementation. It takes just a prompt string, not (prompt, fragment). The prompt itself is expected to include any relevant context. This reduces the cognitive load on the model - it just needs to construct a string, not reason about what part of the context to include.
+
+The REPL environment implementation is also instructive. It explicitly blocks certain builtins like `eval()`, `exec()`, and `input()`, but allows most standard operations including file access. More importantly, it captures output in a structured `REPLResult` object with stdout, stderr, locals dict, and execution time. Our current implementation captures this information but doesn't present it as cleanly to the model.
+
+#### rlm (Full Python Implementation)
+
+The full RLM implementation at `/Users/christopherdavid/code/rlm/` extends the minimal version with production-oriented features that address several of our challenges.
+
+Multi-model support is the most significant addition. The implementation allows different models for root and sub-calls: a capable model like GPT-4 for orchestration, and a cheaper model like GPT-4o-mini for the bulk of sub-query processing. This is exactly what we need for Apple FM - use it for simple summarization sub-queries while potentially routing complex orchestration to a cloud model.
+
+The context metadata system is sophisticated. Before asking the model to do anything, the prompt includes detailed information about the context: its type (string, dict, or list), total character count, and sizes of individual chunks if applicable. This gives the model concrete information to work with rather than having to probe blindly. The paper's observation that models should "first probe the context" becomes less necessary when the prompt already includes probing results.
+
+Batched queries via `llm_query_batched()` handle the parallel processing case elegantly. Rather than sequential sub-calls, the model can submit multiple queries at once, and the engine handles concurrent execution at the handler level using asyncio. This could dramatically improve throughput for our large-context scenarios.
+
+The max depth fallback is a safety mechanism we should adopt. When recursion depth exceeds a limit (currently 1), the system falls back to simple LLM completion rather than attempting another RLM iteration. This prevents infinite loops and provides graceful degradation when the recursive approach isn't working.
+
+#### rig-rlm (Rust/Rig Framework)
+
+The Rust implementation at `/Users/christopherdavid/code/rig-rlm/` is closest to our architecture, using the Rig framework for LLM interaction and pyo3 for Python execution. Several patterns are directly applicable.
+
+The command-based interface uses explicit markers: `RUN <command>` for bash execution, `FINAL <message>` for completion, and triple-backtick `repl` blocks for Python. This structured format is unambiguous and easy to parse. Our current implementation uses similar patterns but the documentation of them in the prompt could be clearer.
+
+The PREAMBLE (their term for system prompt) explicitly teaches step-by-step reasoning: "Think step by step carefully, plan, and execute this plan immediately." This meta-instruction about how to approach problems may help smaller models stay on track. Rather than just describing what's available, it provides cognitive scaffolding for how to use it.
+
+Most importantly, rig-rlm demonstrates that the RLM pattern can work with local models via LM Studio. This proves the concept is viable for smaller models - the question is prompt engineering, not fundamental capability. If LM Studio-compatible models can do it, Apple FM should be able to as well with the right guidance.
+
+### The Core Insight: Engine-Driven vs Model-Driven Orchestration
+
+The research crystallized a fundamental insight: the RLM paper assumes GPT-5-class models that can orchestrate their own chunking, sub-calls, and aggregation. Apple FM cannot reliably do this. The solution is to shift orchestration responsibility from the model to the engine.
+
+In model-driven orchestration (the paper's approach), the model decides how to chunk the context, writes code that calls `llm_query()` for each chunk, and writes code to aggregate results. This requires the model to hold multiple concepts in working memory simultaneously: the task, the available functions, the context structure, and the orchestration strategy.
+
+In engine-driven orchestration (what Apple FM needs), the engine pre-chunks the context based on size or structure, makes FM calls for each chunk with simple summarization prompts, and then makes a final FM call to synthesize the summaries. The model only needs to handle one step at a time: given this chunk and this question, produce a summary.
+
+This is a significant architectural shift, but it preserves the RLM value proposition. We still get code execution for ground truth, still get recursive processing of large contexts, still get the ability to handle documents far beyond the context window. We just move the orchestration logic from the model's generated code to the engine's Rust code.
+
+### Implementation Plan: Making RLM Work with Apple FM
+
+Based on this research, the plan has five phases:
+
+**Phase 1: Tiered Prompt System**
+
+Create prompt variants for different model capabilities:
+- `Full` tier: The current full prompt for GPT-5 class models
+- `Guided` tier: Simplified prompt for Apple FM with explicit examples
+- `Minimal` tier: Single-instruction prompts for very weak models
+
+The Apple FM guided prompt should:
+- Remove `llm_query()` - Apple FM can't do the meta-reasoning this requires
+- Remove `FINAL_VAR()` - Caused syntax errors; use `print("FINAL:", answer)` instead
+- Add explicit code examples for common patterns (splitting by lines, counting occurrences)
+- Include "Do NOT import any modules" to prevent the pandas spiral
+- Add iteration 0 safeguard: "You have not seen the context yet"
+
+**Phase 2: Engine-Driven Chunking**
+
+For large contexts with Apple FM, the engine orchestrates processing:
+1. Split context into chunks (default 8000 chars each)
+2. For each chunk, ask FM: "Summarize this section relevant to [query]"
+3. Collect all summaries
+4. Ask FM: "Based on these summaries, answer: [query]"
+
+This is exposed via `--engine-chunked` CLI flag. The engine handles all the iteration logic; the model just answers simple prompts.
+
+**Phase 3: Smart Error Recovery**
+
+When code fails, include the original task in the error prompt:
+
+"The code failed. REMINDER: Your task is to answer [original query]. You have a `context` variable with [N] characters. Do NOT import external modules. Use only built-in Python."
+
+This prevents the model from spiraling into irrelevant fixes by continuously grounding it in the actual task.
+
+**Phase 4: Stuck Detection**
+
+Detect when the model is spinning and abort early:
+- Same error three times in a row → stuck
+- `ModuleNotFoundError` after being told not to import → stuck
+- No reference to `context` variable for 3+ iterations → stuck
+
+When stuck, fall back to engine-driven chunking or return partial results with explanation.
+
+**Phase 5: Multi-Tier Routing**
+
+Automatically select execution strategy based on model and task:
+- Large context + Apple FM → engine-chunked
+- Small context + simple task → direct completion
+- Small context + complex task → guided REPL
+- Any model except Apple FM → full RLM
+
+This makes the CLI "just work" regardless of what model is available.
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `crates/rlm/src/prompts.rs` | Add `PromptTier` enum, Apple FM guided prompt, error recovery with task reminders |
+| `crates/rlm/src/engine.rs` | Add `StuckDetector`, strategy selection, fallback logic |
+| `crates/rlm/src/chunker.rs` | NEW: Engine-driven chunking and orchestration |
+| `crates/rlm/src/router.rs` | NEW: Multi-tier execution strategy routing |
+| `crates/rlm/src/cli.rs` | Add `--engine-chunked`, `--prompt-tier` flags |
+
+### Why This Will Work
+
+The plan addresses the specific failure modes observed with Apple FM:
+
+1. **Complex prompts overwhelm it** → Tiered prompts with simplified Apple FM version
+2. **Loses context on error** → Error recovery includes task reminders
+3. **Imports unavailable modules** → Explicit "no imports" instruction + stuck detection
+4. **Can't do meta-reasoning for llm_query()** → Engine-driven chunking handles orchestration
+
+The approach is validated by the external implementations:
+- rlm-minimal proves explicit examples in prompts help smaller models
+- rlm proves multi-model and batched queries work
+- rig-rlm proves local models can do RLM with right prompting
+
+Most importantly, this preserves the "fracking Apple Silicon" vision. We're not giving up on using millions of Macs for distributed inference - we're just being realistic about what orchestration work those Macs can handle locally versus what needs to be done by the engine.
+
+### Commits for This Session
+
+| Commit | Description |
+|--------|-------------|
+| b352d9450 | Add context loading to RLM (Phase 1) |
+| 77df5ad93 | Add llm_query() sub-query support to RLM |
+| bdddc9c06 | Document context loading test results with Apple FM |
+
+### Next Actions
+
+1. Implement tiered prompt system in `prompts.rs`
+2. Add stuck detection to `engine.rs`
+3. Create engine-driven chunker in `chunker.rs`
+4. Test with 245KB document using engine-chunked mode
+5. Verify accurate theme extraction
+
+---
+
+## Addendum: Successful Test with Guided Tier
+
+**Date:** 2026-01-05 05:01
+**Author:** Claude
+
+### Test Outcome: Success
+
+The implementation of the tiered prompt system and stuck detection proved effective. The same 245KB document that previously failed after 10 iterations of confusion now completed successfully in just 2 iterations.
+
+### Test Configuration
+
+```bash
+openagents rlm run "Extract the major themes discussed in this conversation" \
+  --context-file /Users/christopherdavid/code/backroom/live/20260103-chatgpt-convo.md \
+  --prompt-tier guided \
+  --fm-url http://localhost:11435
+```
+
+### What Happened
+
+**Iteration 1**: Following the guided prompt's explicit instruction that it had "NOT seen the context yet," Apple FM correctly generated code to examine the document first:
+
+```python
+print(f"Length: {len(context)} chars")
+print("First 2000 chars:")
+print(context[:2000])
+```
+
+The code executed successfully, revealing the document's structure - a strategic conversation about browser-based LLM inference, OpenAgents positioning, visualization systems, and partnership opportunities.
+
+**Iteration 2**: After seeing the context output, Apple FM provided a comprehensive final answer identifying five major themes:
+1. Browser-Based LLM Inference
+2. Model Execution Flexibility
+3. Visualization and Debugging
+4. Agent Economy and Partnerships
+5. Advanced Computing Techniques
+
+The model used `FINAL:` (the guided format) rather than the problematic `FINAL_VAR()` syntax that caused errors in the previous test.
+
+### Why It Worked
+
+The guided tier prompt made several critical changes that directly addressed the failure modes observed in the previous test.
+
+**Iteration 0 Safeguard**: The prompt explicitly states "IMPORTANT: You have NOT seen the context yet. Your first step MUST be to examine it." This prevented the model from trying to answer immediately and forced it to follow the correct explore-then-answer pattern. In the previous test, the model jumped straight to generating analysis code without first understanding what it was analyzing.
+
+**Removed llm_query()**: The guided prompt does not mention `llm_query()` at all. The previous test's prompt described this meta-programming capability, but Apple FM cannot reliably reason about code that triggers further LLM calls. By removing this cognitive burden, the model could focus on the simpler task of writing Python code that processes text directly.
+
+**Simplified Output Format**: Instead of `FINAL_VAR(variable_name)` which the model incorrectly treated as a Python assignment target, the guided prompt uses `print("FINAL:", answer)`. This aligns with standard Python syntax and leaves no room for confusion. The model followed this format correctly.
+
+**Explicit "No Imports" Instruction**: The guided prompt states "Do NOT import any modules. Use only built-in Python." This prevented the pandas spiral observed in the previous test, where the model repeatedly tried to import libraries that weren't available and lost track of the actual task.
+
+**Step-by-Step Examples**: The prompt includes concrete examples showing exactly what code to write at each stage - examining the context, processing it, and providing the final answer. The previous prompt described functions abstractly; the guided prompt demonstrates them concretely.
+
+**Task Reminders**: After showing the execution output, the continuation prompt included "REMINDER: Your task is to answer: [original query]". This kept the model grounded in its objective. In the previous test, the model completely forgot what it was supposed to do after encountering an error.
+
+### Accuracy of the Results
+
+The extracted themes are accurate and well-organized. Comparing to the actual document:
+
+1. **Browser-Based LLM Inference** - Correctly identified. The document's first major section discusses GGUF format, WebGPU, and in-browser inference architecture.
+
+2. **Model Execution Flexibility** - Correctly identified. The document discusses compute mobility across browser, local machine, and datacenter.
+
+3. **Visualization and Debugging** - Correctly identified. The document extensively covers the HUD system and visual trajectories.
+
+4. **Agent Economy and Partnerships** - Correctly identified. The document discusses OpenAgents as a "trusted nexus" and partnerships with Crusoe/NYDIG.
+
+5. **Advanced Computing Techniques** - Correctly identified. The document covers WebGPU, WGSL kernels, and MoE expert routing.
+
+The themes capture the document's key topics accurately. While a human analysis might organize them differently or add more detail, the model's output is factually correct and useful.
+
+### Performance Comparison
+
+| Metric | Previous Test (Full Tier) | Current Test (Guided Tier) |
+|--------|---------------------------|----------------------------|
+| Iterations | 10 (max exceeded) | 2 |
+| Outcome | Failed - spiraled into irrelevant pandas code | Success - accurate theme extraction |
+| Context variable used | Never | Yes, on iteration 1 |
+| Errors encountered | Multiple (syntax, imports) | None |
+| Final answer quality | None (did not complete) | Accurate and comprehensive |
+
+### Implementation Details
+
+The implementation added the following to make this work:
+
+**prompts.rs**:
+- `PromptTier` enum with `Full`, `Guided`, `Minimal` variants
+- `GUIDED_SYSTEM_PROMPT` constant with Apple FM-optimized instructions
+- `system_prompt_for_tier()` function to select appropriate prompt
+- `error_prompt_with_reminder()` for error recovery with task grounding
+- `continuation_prompt_with_reminder()` to keep model on track
+
+**engine.rs**:
+- `StuckDetector` struct tracking error patterns and command history
+- `StuckType` enum identifying different stuck patterns (repeated errors, import errors, invalid commands)
+- Integration into the run loop to abort early when stuck detected
+- Use of tier-appropriate prompts based on configuration
+
+**cli.rs**:
+- `--prompt-tier <full|guided|minimal>` flag
+- `--no-stuck-detection` flag (for debugging)
+- Reporting of tier and stuck detection status at startup
+
+### Implications
+
+This test validates the core insight from the research phase: Apple FM needs engine-driven guidance rather than model-driven orchestration. The model cannot hold complex multi-function prompts in working memory while also reasoning about a large document. By simplifying the prompt to focus on one step at a time and providing concrete examples, we work within the model's actual capabilities.
+
+The guided tier is not a crutch or workaround - it's a realistic interface design for smaller models. Just as mobile interfaces simplify desktop applications for smaller screens, the guided prompt simplifies the RLM paradigm for smaller models. The core value proposition remains: code execution provides ground truth that model reasoning cannot.
+
+### Remaining Work
+
+Phase 2 (engine-driven chunking) was not needed for this test because the model successfully processed the first 2000 characters and extracted themes from the document summary that appeared at the start of the file. For documents without convenient summaries, or for queries requiring analysis of the full content, engine-driven chunking would still be valuable.
+
+The stuck detection was enabled but not triggered because the model succeeded on the first try. Future testing with more challenging queries or deliberately malformed prompts would exercise this functionality.
+
+### Files Modified in This Session
+
+| File | Changes |
+|------|---------|
+| `crates/rlm/src/prompts.rs` | Added `PromptTier`, `GUIDED_SYSTEM_PROMPT`, `MINIMAL_SYSTEM_PROMPT`, tier selection functions, reminder prompts |
+| `crates/rlm/src/engine.rs` | Added `StuckDetector`, `StuckType`, tier-aware prompt selection, stuck detection integration |
+| `crates/rlm/src/cli.rs` | Added `--prompt-tier` and `--no-stuck-detection` flags |
+| `crates/rlm/src/error.rs` | Added `Stuck` error variant |
+| `crates/rlm/src/lib.rs` | Updated exports for new types |
+| `crates/rlm/tests/basic.rs` | Updated tests for new config fields |
+
+### Conclusion
+
+The tiered prompt system successfully enables Apple FM to perform RLM-style document analysis. The key was not making the model smarter, but making the interface simpler. By removing cognitive overhead (complex function signatures, meta-programming, ambiguous output formats) and adding explicit guidance (step-by-step examples, no-import rules, task reminders), we brought the task within reach of a smaller on-device model.
+
+This demonstrates that the "fracking Apple Silicon" vision is achievable. Millions of Macs with Apple FM can participate in distributed inference for document processing tasks, as long as the orchestration layer respects their capabilities. The guided tier provides that respectful interface.

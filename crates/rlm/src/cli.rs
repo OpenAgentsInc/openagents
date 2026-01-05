@@ -2,13 +2,36 @@
 
 use std::path::PathBuf;
 
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use fm_bridge::FMClient;
 
 use crate::context::Context;
 use crate::error::Result;
+use crate::prompts::PromptTier;
 use crate::python_executor::PythonExecutor;
 use crate::{RlmConfig, RlmEngine};
+
+/// CLI representation of prompt tier.
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+pub enum PromptTierArg {
+    /// Full RLM with llm_query() - for GPT-5 class models
+    #[default]
+    Full,
+    /// Guided mode for Apple FM - simpler prompts, no llm_query()
+    Guided,
+    /// Minimal mode for very small models - one step at a time
+    Minimal,
+}
+
+impl From<PromptTierArg> for PromptTier {
+    fn from(arg: PromptTierArg) -> Self {
+        match arg {
+            PromptTierArg::Full => PromptTier::Full,
+            PromptTierArg::Guided => PromptTier::Guided,
+            PromptTierArg::Minimal => PromptTier::Minimal,
+        }
+    }
+}
 
 /// RLM CLI commands.
 #[derive(Subcommand, Clone, Debug)]
@@ -46,6 +69,14 @@ pub struct RunArgs {
     /// Load context from a directory (recursively)
     #[arg(long, value_name = "DIR")]
     pub context_dir: Option<PathBuf>,
+
+    /// Prompt tier for model capability matching
+    #[arg(long, value_enum, default_value = "full")]
+    pub prompt_tier: PromptTierArg,
+
+    /// Disable stuck detection (not recommended)
+    #[arg(long)]
+    pub no_stuck_detection: bool,
 }
 
 /// Execute an RLM CLI command.
@@ -118,7 +149,12 @@ async fn run_rlm(args: RunArgs) -> Result<()> {
         max_iterations: args.max_iterations,
         allow_shell: args.allow_shell,
         verbose: true, // Always verbose for CLI
+        prompt_tier: args.prompt_tier.into(),
+        enable_stuck_detection: !args.no_stuck_detection,
     };
+
+    println!("Prompt tier: {:?}", config.prompt_tier);
+    println!("Stuck detection: {}", if config.enable_stuck_detection { "enabled" } else { "disabled" });
 
     let mut engine = RlmEngine::with_config(client, executor, config);
 
