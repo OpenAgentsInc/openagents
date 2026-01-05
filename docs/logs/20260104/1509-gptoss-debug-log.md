@@ -1733,3 +1733,15 @@ Q4_0 → Q3_K_S → Q2_K → Q4_K_M.
 Default config (Q4_0 + q8_0 KV + flash-attn + keepalive 1s):
 - runs=200, p50 **~155ms**, p95 **~213ms**, max **~338ms**.
 - Stable, no multi‑second spikes.
+
+### KV f16/bf16 tests (Q4_0)
+
+Test 24: `-ctk f16 -ctv f16`
+- runs=100, p50 **~153ms**, p95 **~176ms**, max **~276ms**.
+- Slightly **faster** than q8_0 KV.
+
+Test 25: `-ctk bf16 -ctv bf16`
+- runs=20, p50 **~325ms**, p95 **~359ms**, max **~394ms**.
+- Much slower; avoid bf16 KV.
+
+Conclusion: prefer `-ctk f16 -ctv f16` for best latency (on this Mac).
