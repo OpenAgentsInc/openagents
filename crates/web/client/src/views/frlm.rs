@@ -334,7 +334,7 @@ pub(crate) fn build_frlm_page(
     y = left_y.max(right_y) + 32.0;
 
     // Footer
-    let footer = "openagents.com/frlm";
+    let footer = "openagents.com/frack";
     let footer_size = 11.0;
     let footer_width = text_system.measure(footer, footer_size);
     let footer_x = inner_x + (inner_width - footer_width) / 2.0;
