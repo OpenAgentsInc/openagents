@@ -214,8 +214,8 @@ pub(crate) fn build_frlm_page(
     let insight_bounds = Bounds::new(inner_x, y, inner_width, insight_box_height);
     scene.draw_quad(
         Quad::new(insight_bounds)
-            .with_background(Hsla::new(0.08, 0.3, 0.15, 0.6))
-            .with_border(STARGATE_COLOR.with_alpha(0.4), 1.0),
+            .with_background(Hsla::new(0.0, 0.0, 1.0, 0.1))
+            .with_border(Hsla::new(0.0, 0.0, 1.0, 0.9), 1.0),
     );
 
     let insight_text = "Stargate (1.2 GW) = 24 million Macs at 50W each";
