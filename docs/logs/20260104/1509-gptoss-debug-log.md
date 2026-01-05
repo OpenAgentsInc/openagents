@@ -903,6 +903,11 @@ Full model (24 blocks):
 - TTFT ≈ **6.1s**
 - Output: `!` (quality degraded)
 
+16 blocks:
+- GPU time ≈ **4.35s**
+- TTFT ≈ **6.3s**
+- Output: `!`
+
 8 blocks:
 - GPU time ≈ **1.8s**
 - TTFT ≈ **3.3s**
@@ -923,6 +928,7 @@ Unembedding TG:
 
 QKV TG:
 - `GPT_OSS_METAL_ATTN_QKV_TG=512` → **small improvement** (GPU ~10.5s vs ~11s)
+  - TTFT ≈ **12.5s**
 
 Takeaway: simple TG tuning doesn’t provide multi‑x gains.
 
