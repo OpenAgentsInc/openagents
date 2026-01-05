@@ -1518,3 +1518,8 @@ Result:
 ```
 2, 2+1=3, 3+1=4, 4+1=5, 5+1=6, 6+1=7, 7+
 ```
+
+### Minor tweak
+
+`scripts/gpt-oss-fast.sh` now prints the resolved model path so it’s obvious
+which quant is active when auto-pick is enabled.

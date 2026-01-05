@@ -61,6 +61,8 @@ if [[ ! -f "$MODEL_PATH" ]]; then
     exit 1
 fi
 
+echo "Using model: $MODEL_PATH"
+
 has_rg() {
     command -v rg >/dev/null 2>&1
 }
