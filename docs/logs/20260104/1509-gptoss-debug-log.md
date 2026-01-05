@@ -471,6 +471,58 @@ GPT_OSS_METAL_DIR=~/code/gpt-oss/gpt_oss/metal/build \
 2. Export `GPT_OSS_METAL_DIR` + `GPT_OSS_METAL_MODEL_PATH`.
 3. Run:
    `cargo run -p pylon --features gpt-oss-metal -- infer --prompt "Hi" --max-tokens 16`
+
+---
+
+## Update: 2026-01-04 20:40 - GPU (Metal) Working on 20b
+
+### What Was Fixed
+
+1. **Metallib embedding**
+   - Added `crates/pylon/build.rs` to embed `default.metallib` into the binary.
+   - Confirmed `__METAL/__shaders` section exists in `target/debug/pylon`.
+
+2. **Harmony cache**
+   - `openai-harmony` downloads `o200k_base.tiktoken` on first use.
+   - Doing that inside tokio caused a runtime panic.
+   - Pre-cached the file in `TIKTOKEN_RS_CACHE_DIR=~/.cache/tiktoken-rs`.
+
+3. **GPU memory**
+   - Default context length was **131072**, allocating a ~12GB KV cache.
+   - Set `GPT_OSS_METAL_CONTEXT_LENGTH=8192` to fit GPU memory.
+
+### GPU Run (Metal, gpt-oss-20b)
+
+```bash
+TIKTOKEN_RS_CACHE_DIR=~/.cache/tiktoken-rs \
+GPT_OSS_METAL_DIR=~/code/gpt-oss/gpt_oss/metal/build \
+GPT_OSS_METAL_MODEL_PATH=~/models/gpt-oss-20b/metal/model.bin \
+GPT_OSS_METAL_MODEL_ID=gpt-oss-20b \
+GPT_OSS_METAL_CONTEXT_LENGTH=8192 \
+GPT_OSS_METAL_MAX_BATCH_TOKENS=128 \
+cargo run -p pylon --features gpt-oss-metal -- infer --prompt "1+1=" --max-tokens 4 --temperature 0
+```
+
+Output (first tokens):
+```
+<|channel|>analysis<|message|>The
+```
+
+Notes:
+- The Metal backend is now selected and running.
+- Output is **raw Harmony** (channel tags), so `pylon infer` shows the tags.
+- Lowering `GPT_OSS_METAL_MAX_BATCH_TOKENS` below prompt length triggers assert.
+
+### Errors Seen (Resolved)
+
+- `failed to create Metal default library` → fixed by embedding `default.metallib`.
+- `Cannot drop a runtime in a context where blocking is not allowed` → fixed by pre-caching tiktoken.
+- `failed to create Metal buffer of size 12884901888` → fixed by limiting context length.
+
+### Pending
+
+1. Parse Harmony output for `pylon infer` (strip channel tags, show final content).
+2. Tune speed/latency (GPU load time still heavy on first run).
   Used `gptoss_cli` for testing instead.
 - Harmony prompt prefill is slow on CPU (98 tokens). For now, testing done with `--no-harmony`.
   Need a longer run (or GPU) to verify full Harmony responses.
