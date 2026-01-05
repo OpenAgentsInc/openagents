@@ -1523,3 +1523,28 @@ Result:
 
 `scripts/gpt-oss-fast.sh` now prints the resolved model path so it’s obvious
 which quant is active when auto-pick is enabled.
+
+### KV cache tuning (Q2_K)
+
+Goal: reduce latency further + avoid spikes.
+
+Test 1: `-ctk q8_0 -ctv q8_0` without flash-attn
+- **Fails**: `V cache quantization requires flash_attn` (server exits during load).
+
+Test 2: `--flash-attn` only
+- p50 ~**173ms**, p95 ~**189ms** (10 runs, max_tokens=8).
+
+Test 3: `--flash-attn` + `-ctk q8_0 -ctv q8_0`
+- p50 ~**163ms**, p95 ~**193ms** (10 runs).
+- Best latency so far; stable and fast.
+
+Test 4: `-ctk q8_0` only (no flash-attn)
+- Occasional **~1s** spike; p50 ~**189ms**.
+
+Decision:
+- Default `scripts/gpt-oss-fast.sh` now enables **flash-attn + q8_0 KV**.
+- Override via `GPT_OSS_CACHE_TYPE_K`, `GPT_OSS_CACHE_TYPE_V`, `GPT_OSS_FLASH_ATTN=0` if needed.
+
+Current server (fast defaults):
+- Q2_K + `-ctk q8_0 -ctv q8_0 --flash-attn` + keepalive 2s + `-np 4`.
+- Bench: p50 ~**190ms**, p95 ~**228ms**, max ~0.9s (10 runs).

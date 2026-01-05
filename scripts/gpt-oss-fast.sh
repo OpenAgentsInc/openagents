@@ -5,7 +5,8 @@
 # Env overrides:
 #   LLAMA_SERVER, GPT_OSS_GGUF_MODEL_PATH, GPT_OSS_PORT, GPT_OSS_CTX,
 #   GPT_OSS_BATCH, GPT_OSS_UBATCH, GPT_OSS_LOG,
-#   GPT_OSS_WARMUP_COUNT, GPT_OSS_WARMUP_PROMPT, GPT_OSS_WARMUP_MAX_TOKENS
+#   GPT_OSS_WARMUP_COUNT, GPT_OSS_WARMUP_PROMPT, GPT_OSS_WARMUP_MAX_TOKENS,
+#   GPT_OSS_CACHE_TYPE_K, GPT_OSS_CACHE_TYPE_V, GPT_OSS_KV_UNIFIED, GPT_OSS_FLASH_ATTN
 #
 set -euo pipefail
 
@@ -45,6 +46,10 @@ WARMUP_MAX_TOKENS="${GPT_OSS_WARMUP_MAX_TOKENS:-8}"
 KEEPALIVE_SECS="${GPT_OSS_KEEPALIVE_SECS:-0}"
 KEEPALIVE_PID_FILE="${GPT_OSS_KEEPALIVE_PID_FILE:-/tmp/gpt-oss-keepalive.pid}"
 FORCE_WARMUP="${GPT_OSS_FORCE_WARMUP:-0}"
+CACHE_TYPE_K="${GPT_OSS_CACHE_TYPE_K:-q8_0}"
+CACHE_TYPE_V="${GPT_OSS_CACHE_TYPE_V:-q8_0}"
+KV_UNIFIED="${GPT_OSS_KV_UNIFIED:-0}"
+CACHE_FLASH_ATTN="${GPT_OSS_FLASH_ATTN:-1}"
 
 if [[ ! -x "$LLAMA_SERVER" ]]; then
     echo "llama-server not found: $LLAMA_SERVER" >&2
@@ -95,6 +100,18 @@ else
         --no-warmup
         --no-mmap
     )
+    if [[ -n "$CACHE_TYPE_K" ]]; then
+        server_args+=(-ctk "$CACHE_TYPE_K")
+    fi
+    if [[ -n "$CACHE_TYPE_V" ]]; then
+        server_args+=(-ctv "$CACHE_TYPE_V")
+    fi
+    if [[ "$KV_UNIFIED" -eq 1 ]]; then
+        server_args+=(--kv-unified)
+    fi
+    if [[ "$CACHE_FLASH_ATTN" -eq 1 ]]; then
+        server_args+=(--flash-attn)
+    fi
     if [[ "$PARALLEL" -gt 1 ]]; then
         server_args+=(-np "$PARALLEL")
     fi
