@@ -1468,3 +1468,41 @@ Results (after warmup, no keepalive):
 - Wall time after warmup: **~0.2–0.5s**
 
 Takeaway: `-np 2` keeps interactive requests snappy even if a keepalive is running.
+
+### New: quick bench + warmup tuning
+
+Added `scripts/gpt-oss-bench.sh` to measure end-to-end latency (curl + server) with
+`max_tokens=8`. Fixed a bug in the stats block (pipe + heredoc conflict) and added
+`GPT_OSS_PROMPT` + `GPT_OSS_SLEEP_SECS` overrides.
+
+Updated `scripts/gpt-oss-fast.sh`:
+- Auto-picks the first available quant in `~/models/gpt-oss-20b/gguf` (Q2_K → Q3_K_S → Q4_0 → Q4_K_M).
+- Warmup count now defaults to `max(2, GPT_OSS_PARALLEL)`.
+- New `GPT_OSS_WARMUP_MAX_TOKENS` (default 8) to exercise decode kernels.
+
+### Bench: Q3_K_S vs Q4_0 vs Q2_K (keepalive on, -np 4)
+
+Q3_K_S (`GPT_OSS_KEEPALIVE_SECS=2`, `-np 4`):
+- Run 1 often **~7–8s** (e.g. 7.3s), then settles to **~180–325ms**.
+- p50 ~223ms, p95 ~325ms.
+
+Q4_0 (same settings):
+- Run 1 still spikes **~4–12s**; subsequent runs **~185–355ms**.
+- p50 ~242ms, p95 ~355ms.
+
+Q2_K (same settings):
+- **No big spikes** after warmup/keepalive.
+- Stable **~158–213ms** (p50 ~171ms, p95 ~195ms).
+
+Hypothesis:
+- GPT-OSS MoE likely pages out rarely-used expert weights; short keepalive doesn’t
+  touch all experts, so Q3/Q4 still show occasional heavy page-in spikes.
+- Q2_K footprint is small enough to stay resident, eliminating spikes.
+
+Conclusion (speed-first):
+- **Q2_K is the fastest + most stable** for interactive latency.
+- Q3/Q4 are fine for quality, but expect occasional multi-second spikes even with keepalive.
+
+Current server:
+- Q2_K + keepalive (2s) + `-np 4`.
+- `scripts/gpt-oss-bench.sh 10` shows ~160–210ms end-to-end for 8 tokens.

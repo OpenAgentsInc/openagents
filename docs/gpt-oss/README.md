@@ -44,12 +44,19 @@ scripts/gpt-oss-stop-keepalive.sh
 scripts/gpt-oss-status.sh
 ```
 
+7. Quick latency bench:
+
+```bash
+scripts/gpt-oss-bench.sh 10
+```
+
 Notes:
 - `--raw` skips Harmony formatting for speed. Use it for quick completions.
 - Harmony mode is slower but required for tool-use and structured outputs.
 - `--no-mmap` is **critical** for fast decode on macOS (loads model into RAM).
 - First request after start/idle can be slow; send a quick warmup prompt to fully page-in.
-- `scripts/gpt-oss-fast.sh` supports env overrides like `GPT_OSS_GGUF_MODEL_PATH`, `GPT_OSS_PORT`, and `GPT_OSS_WARMUP_COUNT`.
+- `scripts/gpt-oss-fast.sh` auto-picks the first available quant in `~/models/gpt-oss-20b/gguf` (Q2_K → Q3_K_S → Q4_0 → Q4_K_M).
+- `scripts/gpt-oss-fast.sh` supports env overrides like `GPT_OSS_GGUF_MODEL_PATH`, `GPT_OSS_PORT`, `GPT_OSS_WARMUP_COUNT`, and `GPT_OSS_WARMUP_MAX_TOKENS`.
 - If your system pages out, set `GPT_OSS_KEEPALIVE_SECS=2` to keep the server hot (lower = more stable, more background load).
 - Keepalive PID file defaults to `/tmp/gpt-oss-keepalive.pid` (`GPT_OSS_KEEPALIVE_PID_FILE`).
 - Set `GPT_OSS_PARALLEL=4` to allow keepalive requests without blocking interactive prompts.

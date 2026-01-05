@@ -5,12 +5,34 @@
 # Env overrides:
 #   LLAMA_SERVER, GPT_OSS_GGUF_MODEL_PATH, GPT_OSS_PORT, GPT_OSS_CTX,
 #   GPT_OSS_BATCH, GPT_OSS_UBATCH, GPT_OSS_LOG,
-#   GPT_OSS_WARMUP_COUNT, GPT_OSS_WARMUP_PROMPT
+#   GPT_OSS_WARMUP_COUNT, GPT_OSS_WARMUP_PROMPT, GPT_OSS_WARMUP_MAX_TOKENS
 #
 set -euo pipefail
 
 LLAMA_SERVER="${LLAMA_SERVER:-$HOME/code/llama.cpp/build/bin/llama-server}"
-MODEL_PATH="${GPT_OSS_GGUF_MODEL_PATH:-$HOME/models/gpt-oss-20b/gguf/gpt-oss-20b-Q3_K_S.gguf}"
+
+default_model_path() {
+    local base="$HOME/models/gpt-oss-20b/gguf"
+    local candidates=(
+        "gpt-oss-20b-Q2_K.gguf"
+        "gpt-oss-20b-Q3_K_S.gguf"
+        "gpt-oss-20b-Q4_0.gguf"
+        "gpt-oss-20b-Q4_K_M.gguf"
+    )
+    for candidate in "${candidates[@]}"; do
+        local path="$base/$candidate"
+        if [[ -f "$path" ]]; then
+            echo "$path"
+            return 0
+        fi
+    done
+    return 1
+}
+
+MODEL_PATH="${GPT_OSS_GGUF_MODEL_PATH:-}"
+if [[ -z "$MODEL_PATH" ]]; then
+    MODEL_PATH="$(default_model_path || true)"
+fi
 PORT="${GPT_OSS_PORT:-8000}"
 CTX="${GPT_OSS_CTX:-512}"
 BATCH="${GPT_OSS_BATCH:-256}"
@@ -19,12 +41,18 @@ PARALLEL="${GPT_OSS_PARALLEL:-1}"
 LOG_PATH="${GPT_OSS_LOG:-/tmp/llama-server-gptoss.log}"
 WARMUP_COUNT="${GPT_OSS_WARMUP_COUNT:-2}"
 WARMUP_PROMPT="${GPT_OSS_WARMUP_PROMPT:-warmup}"
+WARMUP_MAX_TOKENS="${GPT_OSS_WARMUP_MAX_TOKENS:-8}"
 KEEPALIVE_SECS="${GPT_OSS_KEEPALIVE_SECS:-0}"
 KEEPALIVE_PID_FILE="${GPT_OSS_KEEPALIVE_PID_FILE:-/tmp/gpt-oss-keepalive.pid}"
 FORCE_WARMUP="${GPT_OSS_FORCE_WARMUP:-0}"
 
 if [[ ! -x "$LLAMA_SERVER" ]]; then
     echo "llama-server not found: $LLAMA_SERVER" >&2
+    exit 1
+fi
+
+if [[ -z "$MODEL_PATH" ]]; then
+    echo "Model not found: set GPT_OSS_GGUF_MODEL_PATH" >&2
     exit 1
 fi
 
@@ -87,12 +115,16 @@ else
     started_server=1
 fi
 
+if [[ "$WARMUP_COUNT" -lt "$PARALLEL" ]]; then
+    WARMUP_COUNT="$PARALLEL"
+fi
+
 if [[ "$WARMUP_COUNT" -gt 0 ]] && { [[ "$started_server" -eq 1 ]] || [[ "$FORCE_WARMUP" -eq 1 ]]; }; then
     echo "Warming up ($WARMUP_COUNT requests)..."
     for _ in $(seq 1 "$WARMUP_COUNT"); do
         curl -4 -s "http://localhost:${PORT}/v1/completions" \
             -H 'Content-Type: application/json' \
-            -d "{\"model\":\"gpt-oss-20b\",\"prompt\":\"${WARMUP_PROMPT}\",\"max_tokens\":1,\"temperature\":0}" \
+            -d "{\"model\":\"gpt-oss-20b\",\"prompt\":\"${WARMUP_PROMPT}\",\"max_tokens\":${WARMUP_MAX_TOKENS},\"temperature\":0}" \
             >/dev/null || true
     done
 fi
