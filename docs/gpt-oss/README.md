@@ -56,7 +56,7 @@ Notes:
 - `--no-mmap` is **critical** for fast decode on macOS (loads model into RAM).
 - First request after start/idle can be slow; send a quick warmup prompt to fully page-in.
 - `scripts/gpt-oss-fast.sh` auto-picks the first available quant in `~/models/gpt-oss-20b/gguf` (Q4_0 → Q3_K_S → Q2_K → Q4_K_M).
-- `scripts/gpt-oss-fast.sh` defaults to fast KV cache settings (`q8_0` + `--flash-attn`). Override with
+- `scripts/gpt-oss-fast.sh` defaults to fast KV cache settings (`f16` + `--flash-attn`). Override with
   `GPT_OSS_CACHE_TYPE_K`, `GPT_OSS_CACHE_TYPE_V`, and `GPT_OSS_FLASH_ATTN=0` if needed.
 - It supports env overrides like `GPT_OSS_GGUF_MODEL_PATH`, `GPT_OSS_PORT`, `GPT_OSS_WARMUP_COUNT`, `GPT_OSS_WARMUP_MAX_TOKENS`,
   plus KV cache tuning (`GPT_OSS_CACHE_TYPE_K`, `GPT_OSS_CACHE_TYPE_V`, `GPT_OSS_KV_UNIFIED=1`, `GPT_OSS_FLASH_ATTN`) and
