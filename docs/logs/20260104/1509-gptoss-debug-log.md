@@ -1442,6 +1442,10 @@ Recommended start command:
 GPT_OSS_KEEPALIVE_SECS=2 GPT_OSS_PARALLEL=4 scripts/gpt-oss-fast.sh
 ```
 
+IPv4 tweak:
+- `scripts/gpt-oss-fast.sh` and `scripts/gpt-oss-query.sh` now use `curl -4`
+  to avoid occasional localhost IPv6 connection delays.
+
 ### Test F: Parallel slots (`-np 2`)
 
 Server:

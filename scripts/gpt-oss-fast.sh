@@ -39,7 +39,7 @@ has_rg() {
 
 health_ok() {
     local health
-    health=$(curl -s "http://localhost:${PORT}/health" || true)
+    health=$(curl -4 -s "http://localhost:${PORT}/health" || true)
     if [[ -z "$health" ]]; then
         return 1
     fi
@@ -90,7 +90,7 @@ fi
 if [[ "$WARMUP_COUNT" -gt 0 ]] && { [[ "$started_server" -eq 1 ]] || [[ "$FORCE_WARMUP" -eq 1 ]]; }; then
     echo "Warming up ($WARMUP_COUNT requests)..."
     for _ in $(seq 1 "$WARMUP_COUNT"); do
-        curl -s "http://localhost:${PORT}/v1/completions" \
+        curl -4 -s "http://localhost:${PORT}/v1/completions" \
             -H 'Content-Type: application/json' \
             -d "{\"model\":\"gpt-oss-20b\",\"prompt\":\"${WARMUP_PROMPT}\",\"max_tokens\":1,\"temperature\":0}" \
             >/dev/null || true
@@ -109,7 +109,7 @@ if [[ "$KEEPALIVE_SECS" -gt 0 ]]; then
 
     if [[ ! -f "$KEEPALIVE_PID_FILE" ]]; then
         echo "Starting keepalive every ${KEEPALIVE_SECS}s..."
-        nohup bash -c "while true; do curl -s \"http://localhost:${PORT}/v1/completions\" \
+        nohup bash -c "while true; do curl -4 -s \"http://localhost:${PORT}/v1/completions\" \
             -H 'Content-Type: application/json' \
             -d \"{\\\"model\\\":\\\"gpt-oss-20b\\\",\\\"prompt\\\":\\\"${WARMUP_PROMPT}\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" \
             >/dev/null || true; sleep \"${KEEPALIVE_SECS}\"; done" \

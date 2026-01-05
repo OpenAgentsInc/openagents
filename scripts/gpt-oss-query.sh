@@ -28,7 +28,7 @@ print(json.dumps({
 PY
 )
 
-curl -s "${BASE_URL}/v1/completions" \
+curl -4 -s "${BASE_URL}/v1/completions" \
     -H 'Content-Type: application/json' \
     -d "$payload" | \
     python3 -c 'import json,sys; resp=json.load(sys.stdin); choices=resp.get("choices", []); print(choices[0].get("text", "") if choices else "")'
