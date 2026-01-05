@@ -39,11 +39,14 @@ mod subquery;
 
 pub use command::{Command, RunArgs};
 pub use context::{Context, ContextType, FileEntry, SearchResult};
-pub use engine::{ExecutionLogEntry, RlmConfig, RlmEngine, RlmResult};
+pub use engine::{ExecutionLogEntry, RlmConfig, RlmEngine, RlmResult, StuckDetector, StuckType};
 pub use error::RlmError;
 pub use executor::{ExecutionEnvironment, ExecutionResult, ExecutorCapabilities};
 pub use mock_executor::MockExecutor;
 pub use prompts::{
-    system_prompt_with_context, BASIC_SYSTEM_PROMPT, CONTEXT_SYSTEM_PROMPT, SYSTEM_PROMPT,
+    continuation_prompt_with_reminder, error_prompt_with_reminder, system_prompt_for_tier,
+    system_prompt_for_tier_no_context, system_prompt_with_context, PromptTier,
+    BASIC_SYSTEM_PROMPT, CONTEXT_SYSTEM_PROMPT, GUIDED_SYSTEM_PROMPT, MINIMAL_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
 };
 pub use python_executor::PythonExecutor;

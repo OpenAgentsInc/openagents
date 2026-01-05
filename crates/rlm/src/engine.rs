@@ -9,8 +9,138 @@ use crate::command::Command;
 use crate::context::Context;
 use crate::error::{Result, RlmError};
 use crate::executor::{ExecutionEnvironment, ExecutionResult};
-use crate::prompts::{continuation_prompt, error_prompt, initial_prompt, system_prompt_with_context};
+use crate::prompts::{
+    continuation_prompt, continuation_prompt_with_reminder, error_prompt,
+    error_prompt_with_reminder, initial_prompt, system_prompt_for_tier, PromptTier,
+};
 use crate::subquery::{execute_sub_query, generate_result_injection, process_code_for_queries};
+
+/// Detects when the model is stuck in a loop.
+///
+/// Weaker models (like Apple FM) sometimes get into stuck patterns:
+/// - Repeatedly trying to import unavailable modules
+/// - Making the same syntax error over and over
+/// - Losing track of the task entirely
+///
+/// This detector watches for these patterns and allows early abort.
+#[derive(Debug, Clone, Default)]
+pub struct StuckDetector {
+    /// Recent error messages.
+    error_history: Vec<String>,
+    /// Recent command types.
+    command_history: Vec<String>,
+    /// Maximum repeated errors before declaring stuck.
+    max_repeated_errors: usize,
+    /// Maximum invalid commands before declaring stuck.
+    max_invalid_commands: usize,
+}
+
+/// Types of stuck patterns detected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StuckType {
+    /// Same error repeated too many times.
+    RepeatedError(String),
+    /// Keeps trying to import unavailable modules.
+    ImportErrors,
+    /// Too many invalid commands.
+    InvalidCommands,
+    /// Not stuck.
+    NotStuck,
+}
+
+impl StuckDetector {
+    /// Create a new stuck detector with default thresholds.
+    pub fn new() -> Self {
+        Self {
+            error_history: Vec::new(),
+            command_history: Vec::new(),
+            max_repeated_errors: 3,
+            max_invalid_commands: 3,
+        }
+    }
+
+    /// Create a stuck detector with custom thresholds.
+    pub fn with_thresholds(max_repeated_errors: usize, max_invalid_commands: usize) -> Self {
+        Self {
+            error_history: Vec::new(),
+            command_history: Vec::new(),
+            max_repeated_errors,
+            max_invalid_commands,
+        }
+    }
+
+    /// Record an error and check for stuck patterns.
+    pub fn record_error(&mut self, error: &str) -> StuckType {
+        // Normalize error for comparison (first line usually has the key info)
+        let normalized = error.lines().next().unwrap_or(error).trim().to_string();
+        self.error_history.push(normalized.clone());
+
+        // Check for repeated identical errors
+        let repeat_count = self
+            .error_history
+            .iter()
+            .filter(|e| *e == &normalized)
+            .count();
+        if repeat_count >= self.max_repeated_errors {
+            return StuckType::RepeatedError(normalized);
+        }
+
+        // Check for import errors pattern - model keeps trying to import modules
+        let import_errors = self
+            .error_history
+            .iter()
+            .filter(|e| {
+                e.contains("ModuleNotFoundError")
+                    || e.contains("ImportError")
+                    || e.contains("No module named")
+            })
+            .count();
+        if import_errors >= self.max_repeated_errors {
+            return StuckType::ImportErrors;
+        }
+
+        StuckType::NotStuck
+    }
+
+    /// Record a command type and check for stuck patterns.
+    pub fn record_command(&mut self, command_type: &str) -> StuckType {
+        self.command_history.push(command_type.to_string());
+
+        // Check for too many invalid commands
+        let invalid_count = self
+            .command_history
+            .iter()
+            .filter(|c| *c == "Invalid")
+            .count();
+        if invalid_count >= self.max_invalid_commands {
+            return StuckType::InvalidCommands;
+        }
+
+        StuckType::NotStuck
+    }
+
+    /// Reset the detector state.
+    pub fn reset(&mut self) {
+        self.error_history.clear();
+        self.command_history.clear();
+    }
+
+    /// Get a description of the stuck state for error messages.
+    pub fn describe_stuck(stuck_type: &StuckType) -> String {
+        match stuck_type {
+            StuckType::RepeatedError(e) => {
+                format!("Model stuck repeating the same error: {}", e)
+            }
+            StuckType::ImportErrors => {
+                "Model stuck trying to import unavailable modules".to_string()
+            }
+            StuckType::InvalidCommands => {
+                "Model producing too many invalid commands".to_string()
+            }
+            StuckType::NotStuck => "Not stuck".to_string(),
+        }
+    }
+}
 
 /// Configuration for the RLM engine.
 #[derive(Debug, Clone)]
@@ -21,6 +151,10 @@ pub struct RlmConfig {
     pub allow_shell: bool,
     /// Whether to log execution details.
     pub verbose: bool,
+    /// Prompt tier for model capability matching.
+    pub prompt_tier: PromptTier,
+    /// Whether to enable stuck detection.
+    pub enable_stuck_detection: bool,
 }
 
 impl Default for RlmConfig {
@@ -29,6 +163,8 @@ impl Default for RlmConfig {
             max_iterations: 10,
             allow_shell: false,
             verbose: false,
+            prompt_tier: PromptTier::Full,
+            enable_stuck_detection: true,
         }
     }
 }
@@ -145,6 +281,43 @@ def search_context(pattern, max_results=10, window=200):
         }
     }
 
+    /// Generate an error prompt, optionally with task reminder.
+    fn make_error_prompt(
+        &self,
+        error: &str,
+        query: &str,
+        context_info: Option<&str>,
+        use_reminders: bool,
+        stuck_detector: &mut Option<StuckDetector>,
+    ) -> std::result::Result<String, StuckType> {
+        // Check for stuck patterns
+        if let Some(detector) = stuck_detector {
+            let stuck = detector.record_error(error);
+            if stuck != StuckType::NotStuck {
+                warn!("Stuck pattern detected: {:?}", stuck);
+                return Err(stuck);
+            }
+        }
+
+        // Use task reminder for guided tier
+        let prompt = if use_reminders {
+            error_prompt_with_reminder(error, query, context_info)
+        } else {
+            error_prompt(error)
+        };
+
+        Ok(prompt)
+    }
+
+    /// Generate a continuation prompt, optionally with task reminder.
+    fn make_continuation_prompt(&self, output: &str, query: &str, use_reminders: bool) -> String {
+        if use_reminders {
+            continuation_prompt_with_reminder(output, query)
+        } else {
+            continuation_prompt(output)
+        }
+    }
+
     /// Process code for llm_query() calls and execute sub-queries.
     ///
     /// Returns the modified code with llm_query results injected as variables.
@@ -204,9 +377,9 @@ def search_context(pattern, max_results=10, window=200):
     /// and returns when a FINAL command is received or max iterations
     /// are exceeded.
     pub async fn run(&self, query: &str) -> Result<RlmResult> {
-        // Build initial prompt based on whether we have context
+        // Build initial prompt based on tier and whether we have context
         let mut prompt = if let Some(ref ctx) = self.loaded_context {
-            let system_prompt = system_prompt_with_context(ctx);
+            let system_prompt = system_prompt_for_tier(self.config.prompt_tier, ctx);
             format!(
                 "{}\n\n---\n\nUser Query: {}\n\nYour response:",
                 system_prompt, query
@@ -218,9 +391,29 @@ def search_context(pattern, max_results=10, window=200):
         let mut execution_log = Vec::new();
         let mut iteration = 0;
 
+        // Create stuck detector for weaker models
+        let mut stuck_detector = if self.config.enable_stuck_detection {
+            Some(StuckDetector::new())
+        } else {
+            None
+        };
+
+        // Context info for task reminders
+        let context_info = self
+            .loaded_context
+            .as_ref()
+            .map(|c| format!("{} characters from {}", c.length, c.source));
+
+        // Whether to use task reminders (for Guided tier)
+        let use_reminders = self.config.prompt_tier == PromptTier::Guided;
+
         info!("Starting RLM execution for query: {}", query);
+        info!("Prompt tier: {:?}", self.config.prompt_tier);
         if self.loaded_context.is_some() {
-            info!("Context loaded: {} chars", self.loaded_context.as_ref().unwrap().length);
+            info!(
+                "Context loaded: {} chars",
+                self.loaded_context.as_ref().unwrap().length
+            );
         }
 
         loop {
@@ -336,8 +529,21 @@ def search_context(pattern, max_results=10, window=200):
                             execution_log,
                         });
                     } else {
-                        // Code failed, continue with error prompt
-                        prompt = error_prompt(&exec_result.stderr);
+                        // Code failed, check for stuck and continue with error prompt
+                        match self.make_error_prompt(
+                            &exec_result.stderr,
+                            query,
+                            context_info.as_deref(),
+                            use_reminders,
+                            &mut stuck_detector,
+                        ) {
+                            Ok(p) => prompt = p,
+                            Err(stuck_type) => {
+                                return Err(RlmError::Stuck(StuckDetector::describe_stuck(
+                                    &stuck_type,
+                                )));
+                            }
+                        }
                     }
                 }
 
@@ -378,9 +584,22 @@ def search_context(pattern, max_results=10, window=200):
                     });
 
                     prompt = if exec_result.is_success() {
-                        continuation_prompt(&exec_result.stdout)
+                        self.make_continuation_prompt(&exec_result.stdout, query, use_reminders)
                     } else {
-                        error_prompt(&exec_result.stderr)
+                        match self.make_error_prompt(
+                            &exec_result.stderr,
+                            query,
+                            context_info.as_deref(),
+                            use_reminders,
+                            &mut stuck_detector,
+                        ) {
+                            Ok(p) => p,
+                            Err(stuck_type) => {
+                                return Err(RlmError::Stuck(StuckDetector::describe_stuck(
+                                    &stuck_type,
+                                )));
+                            }
+                        }
                     };
                 }
 
@@ -397,6 +616,7 @@ def search_context(pattern, max_results=10, window=200):
                             executed: format!("{} {:?}", args.program, args.args),
                             result: "Shell execution is disabled".to_string(),
                         });
+                        // Shell blocked is a policy error, not a model error - use simple prompt
                         prompt = error_prompt("Shell execution is disabled for security reasons.");
                         continue;
                     }
@@ -430,14 +650,37 @@ def search_context(pattern, max_results=10, window=200):
                     });
 
                     prompt = if exec_result.is_success() {
-                        continuation_prompt(&exec_result.stdout)
+                        self.make_continuation_prompt(&exec_result.stdout, query, use_reminders)
                     } else {
-                        error_prompt(&exec_result.stderr)
+                        match self.make_error_prompt(
+                            &exec_result.stderr,
+                            query,
+                            context_info.as_deref(),
+                            use_reminders,
+                            &mut stuck_detector,
+                        ) {
+                            Ok(p) => p,
+                            Err(stuck_type) => {
+                                return Err(RlmError::Stuck(StuckDetector::describe_stuck(
+                                    &stuck_type,
+                                )));
+                            }
+                        }
                     };
                 }
 
                 Command::Invalid => {
                     debug!("No valid command found in response");
+
+                    // Check for stuck pattern with invalid commands
+                    if let Some(ref mut detector) = stuck_detector {
+                        let stuck = detector.record_command("Invalid");
+                        if stuck != StuckType::NotStuck {
+                            warn!("Stuck pattern detected: {:?}", stuck);
+                            return Err(RlmError::Stuck(StuckDetector::describe_stuck(&stuck)));
+                        }
+                    }
+
                     execution_log.push(ExecutionLogEntry {
                         iteration,
                         llm_response: text.clone(),
@@ -446,8 +689,17 @@ def search_context(pattern, max_results=10, window=200):
                         result: "No valid command found".to_string(),
                     });
 
-                    // Ask LLM to try again
-                    prompt = "Your response did not contain a valid command. Please use one of: RUN, FINAL, or a ```repl code block.".to_string();
+                    // Ask LLM to try again with task reminder if using guided tier
+                    prompt = if use_reminders {
+                        format!(
+                            "Your response did not contain a valid command.\n\n\
+                             REMINDER: Your task is to answer: \"{}\"\n\n\
+                             Please use a ```repl code block to execute Python, or print(\"FINAL:\", answer) when done.",
+                            query
+                        )
+                    } else {
+                        "Your response did not contain a valid command. Please use one of: RUN, FINAL, or a ```repl code block.".to_string()
+                    };
                 }
             }
         }
