@@ -1698,3 +1698,15 @@ Test 19: `-np 8`
 - Slightly worse than `-np 4`.
 
 Conclusion: keep `-b/-ub 256` and `-np 4`.
+
+### Q3_K_S stability (keepalive 1s)
+
+Test 20: Q3_K_S (same flags, keepalive 1s)
+- runs=20, p50 **~163.5ms**, p95 **~255ms**.
+
+Test 21: Q3_K_S long run (100)
+- runs=100, p50 **~158ms**, p95 **~181ms**, max **~234ms**.
+
+Takeaway:
+- Q3_K_S can be **as fast as Q2_K** when keepalive is enabled.
+- Default still prefers Q2_K for pure speed; Q3_K_S is a quality upgrade with similar latency.
