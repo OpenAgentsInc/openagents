@@ -1092,3 +1092,108 @@ Temporarily forced dense MoE path:
 ### Takeaway
 
 Dense MoE kernels are **much slower** for small tokens. Reverted to `min_tokens_for_dense_moe_kernels = 64`.
+
+---
+
+## Update: 2026-01-05 06:20 - llama.cpp GGUF Speed Breakthrough (Q3_K_S + Small ctx)
+
+### Why This Path
+
+Metal kernels in `gpt-oss` are still ~10s/token. Switching to `llama.cpp` + GGUF on Metal is **much faster** on this machine.
+
+### GGUF Files Downloaded
+
+Repo: `unsloth/gpt-oss-20b-GGUF`
+- `gpt-oss-20b-Q4_0.gguf`
+- `gpt-oss-20b-Q3_K_S.gguf`
+- `gpt-oss-20b-Q2_K.gguf`
+
+All stored in `~/models/gpt-oss-20b/gguf/`.
+
+### Baseline (Q4_0, ctx=2048)
+
+```
+~/code/llama.cpp/build/bin/llama-cli \
+  -m ~/models/gpt-oss-20b/gguf/gpt-oss-20b-Q4_0.gguf \
+  -p "1+1=" -n 8 --temp 0 -ngl 999 -c 2048 -b 256 --no-warmup -no-cnv
+```
+
+Results:
+- eval: **~1.96 tok/s**
+- prompt eval: **~1.27 tok/s**
+- output: `1+1=2, 2+1=3`
+
+### Q3_K_S (ctx=2048)
+
+```
+... -m gpt-oss-20b-Q3_K_S.gguf -ngl 999 -c 2048 -b 256 ...
+```
+
+Results:
+- eval: **~4.10 tok/s**
+- prompt eval: **~5.41 tok/s**
+
+### Q2_K (ctx=2048) - WORSE
+
+```
+... -m gpt-oss-20b-Q2_K.gguf -ngl 999 -c 2048 -b 256 ...
+```
+
+Results:
+- eval: **~0.19 tok/s** (bad)
+- prompt eval: **~3.86 tok/s**
+
+Conclusion: **Q2_K is slower** on this GPU. Skip.
+
+### Flash Attn + Threads (Not Good)
+
+```
+... -m gpt-oss-20b-Q3_K_S.gguf -ngl 999 -c 2048 -b 256 -t 12 -fa ...
+```
+
+Results:
+- eval: **~1.67 tok/s** (slower)
+- prompt eval: **~0.99 tok/s**
+
+Conclusion: **flash attention is slower** here. Keep it off.
+
+### Context Length Is The Big Lever
+
+**Q3_K_S, ctx=1024 (warm run):**
+- prompt eval: **~6.51 tok/s**
+- eval: **~33.75 tok/s**
+- total time: **~8.0s**, load time **~7.7s**
+
+**Q3_K_S, ctx=512 (single run):**
+- prompt eval: **~18.05 tok/s**
+- eval: **~58.04 tok/s**
+- total time: **~4.6s**, load time **~4.5s**
+
+This is the first time inference is **very fast** on this machine. The decode speed is excellent once the model is loaded.
+
+### KV Quantization Attempt (Failed)
+
+```
+... -ctk q4_0 -ctv q4_0 ...
+```
+
+Error:
+```
+llama_init_from_model: V cache quantization requires flash_attn
+```
+
+Not pursued since `-fa` was slower.
+
+### Current Fast Path (Recommended)
+
+Best speed/latency:
+```
+~/code/llama.cpp/build/bin/llama-cli \
+  -m ~/models/gpt-oss-20b/gguf/gpt-oss-20b-Q3_K_S.gguf \
+  -p "1+1=" -n 8 --temp 0 -ngl 999 -c 512 -b 256 --no-warmup -no-cnv
+```
+
+Notes:
+- `-c 512` is the key to 50+ tok/s.
+- If you need more context, `-c 1024` still gives 30+ tok/s.
+- Load time is still 4–8s; keep a **persistent llama-server** running if you want instant responses.
