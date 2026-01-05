@@ -1616,3 +1616,10 @@ Tried `GPT_OSS_KEEPALIVE_SECS=0.5`:
 
 Bug fix:
 - `gpt-oss-fast.sh` now accepts fractional keepalive values (no more bash integer error).
+
+### UBATCH tuning (Q2_K, flash + q8 KV)
+
+- `-b 256 -ub 64`: p50 ~**165ms**, p95 ~**189ms**.
+- `-b 256 -ub 32`: p50 ~**166ms**, p95 ~**217ms**.
+
+No clear win vs `-ub 256`; staying with defaults.
