@@ -1847,3 +1847,12 @@ With Q4_0 + f16 KV + flash-attn + keepalive 1s:
 - `GPT_OSS_STATUS_MAX_TOKENS=256`: predicted_per_second **~56.9 tok/s**.
 
 Takeaway: decode throughput stays ~57 tok/s for longer generations.
+
+### Longer generation check
+
+Status timings (Q4_0 + f16 KV + flash-attn + keepalive 1s):
+- `GPT_OSS_STATUS_MAX_TOKENS=512` (prompt "1+1="): predicted_per_second **~57.3 tok/s** (stopped at 252 tokens).
+- Prompt "Write the numbers 1 to 200 separated by spaces." + `max_tokens=256`:
+  predicted_per_second **~56.5 tok/s** (generated 244 tokens).
+
+Throughput stays ~56–57 tok/s on longer outputs.
