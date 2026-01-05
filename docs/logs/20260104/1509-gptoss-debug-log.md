@@ -842,3 +842,41 @@ All runs use the same prompt and defaults, only `GPT_OSS_METAL_MAX_THREADGROUPS`
 - Increasing `max_threadgroups` barely changes TTFT.
 - The bottleneck is not unembedding parallelism alone.
 - Next step: instrument GPU command buffer time in the Metal library itself and inspect kernel-level costs.
+
+---
+
+## Update: 2026-01-05 04:35 - GPU Timing + Dense Kernel Forcing
+
+### GPU Timing Instrumentation (gpt-oss repo, external)
+
+- Added `GPT_OSS_METAL_TIMING=1` switch to log GPU time from `MTLCommandBuffer`.
+- Logs now show GPU time for `gptoss_context_sample` (and prefill when used).
+
+Result (no-harmony, 1 token):
+- `Metal sample GPU time` ≈ **11.6s**
+- Total sample chunk ≈ **13.5s**
+
+Conclusion: the GPU is doing ~11s of work per token. This is *real* GPU time, not CPU overhead.
+
+### Force Dense Kernels (external experiment)
+
+- Set `min_tokens_for_dense_matmul_kernels = 1`
+- Set `min_tokens_for_dense_moe_kernels = 1`
+
+Result (no-harmony, 1 token):
+- GPU time ≈ **9.9s**
+- Total sample chunk ≈ **11.9s**
+
+This is only ~15–20% faster. Still far from interactive.
+
+### Metallib -O3 (external experiment)
+
+- Rebuilt Metal shaders with `xcrun metal -O3 -g ...`
+- No meaningful improvement (GPU time stayed ~10–11s).
+
+### Current Read
+
+- The custom Metal kernels are the dominant bottleneck.
+- We need either:
+  - a much faster kernel path (MPS/GEMM or heavily tuned Metal kernels), or
+  - a smaller model for interactive performance.
