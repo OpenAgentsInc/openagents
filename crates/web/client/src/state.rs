@@ -137,6 +137,7 @@ pub(crate) enum AppView {
     MlVizPage,
     GptOssPage,
     FmPage,
+    FrlmPage,
     Y2026Page,
     BrbPage,
 }
@@ -207,6 +208,38 @@ impl Default for Y2026State {
             frame_started: false,
             link_bounds: Vec::new(),
             link_hovered: false,
+        }
+    }
+}
+
+/// State for the FRLM (Fracking Apple Silicon) power comparison page
+pub(crate) struct FrlmState {
+    /// Frame animator for the main card
+    pub(crate) frame_animator: FrameAnimator,
+    /// Whether the frame animation has started
+    pub(crate) frame_started: bool,
+    /// Scroll offset for the content
+    pub(crate) scroll_offset: f32,
+    /// Content bounds for scroll detection
+    pub(crate) content_bounds: Bounds,
+    /// Total content height for scroll calculation
+    pub(crate) content_height: f32,
+    /// Which bar is currently hovered (0=DC, 1=Stargate, 2=Apple)
+    pub(crate) bar_hover_index: Option<usize>,
+    /// Bounds for each bar for hover detection
+    pub(crate) bar_bounds: [Bounds; 3],
+}
+
+impl Default for FrlmState {
+    fn default() -> Self {
+        Self {
+            frame_animator: FrameAnimator::new(),
+            frame_started: false,
+            scroll_offset: 0.0,
+            content_bounds: Bounds::ZERO,
+            content_height: 0.0,
+            bar_hover_index: None,
+            bar_bounds: [Bounds::ZERO; 3],
         }
     }
 }
@@ -1569,6 +1602,8 @@ pub(crate) struct AppState {
     pub(crate) gptoss: GptOssVizState,
     // FM Bridge visualization page state
     pub(crate) fm_viz: FmVizState,
+    // FRLM (Fracking Apple Silicon) power comparison page state
+    pub(crate) frlm: FrlmState,
 }
 
 impl Default for AppState {
@@ -1646,6 +1681,7 @@ impl Default for AppState {
             ml_viz: MlVizState::default(),
             gptoss: GptOssVizState::default(),
             fm_viz: FmVizState::default(),
+            frlm: FrlmState::default(),
         }
     }
 }

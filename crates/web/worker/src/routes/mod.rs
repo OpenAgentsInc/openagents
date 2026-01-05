@@ -11,6 +11,7 @@ pub mod claude_auth;
 pub mod container;
 pub mod early;
 pub mod fm;
+pub mod frlm;
 pub mod gfn;
 pub mod gptoss;
 pub mod github_explore;

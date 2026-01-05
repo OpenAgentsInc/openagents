@@ -19,8 +19,9 @@ use crate::nostr::{connect_to_relay, BazaarJob, DEFAULT_RELAYS};
 use crate::state::{AppState, AppView, GpuContext, RepoInfo, UserInfo};
 use crate::telemetry::{TelemetryCollector, set_panic_hook, track_cta_click};
 use crate::views::{
-    build_2026_page, build_brb_page, build_fm_page, build_gfn_page, build_gptoss_page,
-    build_landing_page, build_ml_inference_page, build_repo_selector, build_repo_view,
+    build_2026_page, build_brb_page, build_fm_page, build_frlm_page, build_gfn_page,
+    build_gptoss_page, build_landing_page, build_ml_inference_page, build_repo_selector,
+    build_repo_view,
 };
 use crate::fs_access::{self, FileKind};
 use crate::gptoss_viz::{flush_gptoss_events, init_gptoss_viz_runtime};
@@ -88,6 +89,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         .map(|v| v.is_truthy())
         .unwrap_or(false);
 
+    // Check for FRLM (Fracking Apple Silicon) power comparison page flag
+    let is_frlm_page = web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &"FRLM_PAGE".into()).ok())
+        .map(|v| v.is_truthy())
+        .unwrap_or(false);
+
     // Check for 2026 page flag
     let is_2026_page = web_sys::window()
         .and_then(|w| js_sys::Reflect::get(&w, &"Y2026_PAGE".into()).ok())
@@ -129,6 +136,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         state_guard.view = AppView::FmPage;
         drop(state_guard);
         crate::fm_runtime::init_fm_runtime(state.clone());
+    } else if is_frlm_page {
+        let mut state_guard = state.borrow_mut();
+        state_guard.loading = false;
+        state_guard.view = AppView::FrlmPage;
+        drop(state_guard);
     } else if is_2026_page {
         let mut state_guard = state.borrow_mut();
         state_guard.loading = false;
@@ -379,6 +391,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.view == AppView::Y2026Page {
                     state.y2026.link_hovered = state.y2026.link_bounds.iter()
                         .any(|(bounds, _)| bounds.contains(state.mouse_pos));
+                }
+
+                // Handle FRLM page bar hover
+                if state.view == AppView::FrlmPage {
+                    crate::views::handle_frlm_mouse_move(&mut state, x, y);
                 }
 
                 if state.view == AppView::GptOssPage {
@@ -885,6 +902,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         AppView::FmPage => {
                             // No button action on FM Bridge page
                         }
+                        AppView::FrlmPage => {
+                            // No button action on FRLM page
+                        }
                         AppView::Y2026Page => {
                             // No button action on 2026 page
                         }
@@ -1202,6 +1222,18 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.gptoss.content_bounds.contains(point) {
                     state.gptoss.scroll_offset += delta;
                     state.gptoss.scroll_offset = state.gptoss.scroll_offset.max(0.0);
+                    return;
+                }
+            }
+
+            // Handle scrolling for FRLM page
+            if state.view == AppView::FrlmPage {
+                let point = Point::new(event.offset_x() as f32, event.offset_y() as f32);
+                let delta = event.delta_y() as f32 * 0.5;
+
+                if state.frlm.content_bounds.contains(point) {
+                    state.frlm.scroll_offset += delta;
+                    state.frlm.scroll_offset = state.frlm.scroll_offset.max(0.0);
                     return;
                 }
             }
@@ -1594,6 +1626,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             }
             AppView::FmPage => {
                 build_fm_page(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
+            }
+            AppView::FrlmPage => {
+                build_frlm_page(
                     &mut scene,
                     platform.text_system(),
                     &mut state,
