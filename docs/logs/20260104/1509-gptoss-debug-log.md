@@ -1883,3 +1883,44 @@ These align with ~55–57 tok/s decode throughput.
 
 `GPT_OSS_MAX_TOKENS=16` (runs=50):
 - p50 **~300ms**, p95 **~362ms**, max **~410ms**.
+
+---
+
+## Update: 2026-01-05 09:40 - local-infer (Harmony) still exceeds ctx 512
+
+### Change (OpenAgents)
+
+- `local-infer` now skips tool schemas when `--tools` is not set
+  (creates a `GptOssSession` with an empty tool list instead of `GptOssAgent`).
+- Goal: shrink Harmony prompt size for non-tool runs.
+
+### Test (current llama-server)
+
+Server:
+- Q4_0 GGUF
+- `-c 512 -b 256 -ub 256 --no-mmap -ctk f16 -ctv f16 --flash-attn -np 4`
+
+Command:
+```
+scripts/local-infer.sh "1+1="
+```
+
+Result:
+- HTTP 400: `request exceeds the available context size`
+
+### RAW still works (fast)
+
+```
+scripts/local-infer.sh --raw --max-tokens 8 --temperature 0 "1+1="
+```
+
+Output:
+```
+2, 2+1=3
+```
+
+### Takeaway
+
+- Even without tools, the Harmony system prompt still exceeds ctx 512.
+- For Harmony: raise `GPT_OSS_CTX` (e.g., 1024+).
+- For speed: keep `--raw` and a small ctx (384/512).
