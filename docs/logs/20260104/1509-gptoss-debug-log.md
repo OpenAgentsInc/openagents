@@ -908,6 +908,11 @@ Full model (24 blocks):
 - TTFT ≈ **6.3s**
 - Output: `!`
 
+20 blocks:
+- GPU time ≈ **6.8s**
+- TTFT ≈ **8.7s**
+- Output: `!`
+
 8 blocks:
 - GPU time ≈ **1.8s**
 - TTFT ≈ **3.3s**
