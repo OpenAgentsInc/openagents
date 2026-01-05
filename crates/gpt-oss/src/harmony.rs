@@ -1,8 +1,12 @@
+use std::env;
+use std::path::PathBuf;
+
 use openai_harmony::chat::{
     Content, Conversation, DeveloperContent, Message, ReasoningEffort, Role, SystemContent,
     TextContent, ToolDescription,
 };
 use openai_harmony::{HarmonyEncoding, HarmonyEncodingName, load_harmony_encoding};
+use tracing::{info, warn};
 
 use crate::error::{GptOssError, Result};
 use crate::types::GptOssReasoningEffort;
@@ -93,6 +97,7 @@ impl HarmonyPromptConfig {
 
 impl HarmonyRenderer {
     pub fn gpt_oss() -> Result<Self> {
+        ensure_tiktoken_cache_dir();
         let encoding = load_harmony_encoding(HarmonyEncodingName::HarmonyGptOss)
             .map_err(|err| GptOssError::HarmonyError(err.to_string()))?;
         Ok(Self { encoding })
@@ -193,6 +198,34 @@ impl HarmonyRenderer {
     pub fn encoding(&self) -> &HarmonyEncoding {
         &self.encoding
     }
+}
+
+fn ensure_tiktoken_cache_dir() {
+    if env::var_os("TIKTOKEN_RS_CACHE_DIR").is_some() {
+        return;
+    }
+
+    let home = match env::var("HOME") {
+        Ok(home) => PathBuf::from(home),
+        Err(_) => return,
+    };
+    let cache_dir = home.join(".cache/tiktoken-rs");
+    if let Err(err) = std::fs::create_dir_all(&cache_dir) {
+        warn!(
+            cache_dir = %cache_dir.display(),
+            error = %err,
+            "Failed to create tiktoken cache dir"
+        );
+        return;
+    }
+    // Safe here: we set the default cache dir during initialization before any worker threads.
+    unsafe {
+        env::set_var("TIKTOKEN_RS_CACHE_DIR", &cache_dir);
+    }
+    info!(
+        cache_dir = %cache_dir.display(),
+        "Defaulted TIKTOKEN_RS_CACHE_DIR"
+    );
 }
 
 impl HarmonyRenderer {

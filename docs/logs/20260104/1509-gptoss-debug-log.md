@@ -1197,3 +1197,67 @@ Notes:
 - `-c 512` is the key to 50+ tok/s.
 - If you need more context, `-c 1024` still gives 30+ tok/s.
 - Load time is still 4–8s; keep a **persistent llama-server** running if you want instant responses.
+
+---
+
+## Update: 2026-01-05 07:15 - llama-server + local-infer (RAW fast path)
+
+### llama-server (persistent, fast)
+
+Started llama.cpp server with the fast Q3_K_S config on port 8000:
+
+```
+nohup ~/code/llama.cpp/build/bin/llama-server \
+  -m ~/models/gpt-oss-20b/gguf/gpt-oss-20b-Q3_K_S.gguf \
+  --port 8000 -ngl 999 -c 512 -b 256 --no-warmup \
+  > /tmp/llama-server-gptoss.log 2>&1 &
+```
+
+Health check:
+```
+curl http://localhost:8000/health
+```
+
+### Direct OpenAI-style completion (fast)
+
+```
+curl -s http://localhost:8000/v1/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"gpt-oss-20b","prompt":"1+1=","max_tokens":8,"temperature":0}'
+```
+
+Result:
+- Output: `2, 2+1=3`
+- Wall time: **~1.16s**
+- Server timing: **~12 tok/s decode**, **~8 tok/s prompt eval**
+
+### Fixes for local-infer compatibility
+
+Problem:
+- `local-infer` panicked inside `openai-harmony` because it tried to download `o200k_base.tiktoken`
+  using `reqwest::blocking` inside tokio.
+- `gpt-oss` client failed to parse llama.cpp `/v1/completions` (missing `text` field).
+
+Fixes applied (OpenAgents):
+- `gpt-oss` Harmony renderer now defaults `TIKTOKEN_RS_CACHE_DIR=~/.cache/tiktoken-rs`.
+- `gpt-oss` client now parses OpenAI-style `choices[].text` and `choices[].message.content`
+  as a fallback for `/v1/completions`.
+- Added `--raw` mode to `local-infer` to skip Harmony formatting and send the prompt directly.
+
+### local-infer (RAW, fast)
+
+```
+scripts/local-infer.sh --backend gpt-oss --raw \
+  --url http://localhost:8000 --model gpt-oss-20b \
+  --max-tokens 8 --temperature 0 "1+1="
+```
+
+Result:
+- Output: `2, 2+1=3`
+- Wall time: **~3.1s** (process start + HTTP)
+
+### Notes
+
+- Harmony prompts are ~480 tokens, which slows prompt eval. RAW mode avoids that.
+- For tool-use / Harmony, keep the server running and expect slower first-token latency.
+- Fast path confirmed with llama-server + `local-infer --raw`.

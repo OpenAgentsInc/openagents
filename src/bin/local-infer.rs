@@ -44,9 +44,21 @@ struct Cli {
     #[arg(long)]
     tools: bool,
 
+    /// Send the prompt directly (skip Harmony formatting and tool loop)
+    #[arg(long)]
+    raw: bool,
+
     /// Maximum tool-call turns
     #[arg(long, default_value_t = 4)]
     max_tool_turns: u32,
+
+    /// Maximum tokens to generate (raw mode only)
+    #[arg(long)]
+    max_tokens: Option<usize>,
+
+    /// Sampling temperature (raw mode only)
+    #[arg(long)]
+    temperature: Option<f32>,
 
     /// Record rlog trajectory output
     #[arg(long)]
@@ -67,6 +79,10 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_gpt_oss(cli: Cli) -> anyhow::Result<()> {
+    if cli.raw && cli.tools {
+        anyhow::bail!("--raw cannot be combined with --tools");
+    }
+
     let mut config = GptOssAgentConfig::default();
     if let Some(url) = cli.url {
         config.base_url = url;
@@ -78,6 +94,25 @@ async fn run_gpt_oss(cli: Cli) -> anyhow::Result<()> {
         config.workspace_root = workspace;
     }
     config.record_trajectory = cli.record;
+
+    if cli.raw {
+        let client = gpt_oss::GptOssClient::builder()
+            .base_url(&config.base_url)
+            .default_model(&config.model)
+            .build()?;
+        let request = gpt_oss::GptOssRequest {
+            model: config.model.clone(),
+            prompt: cli.prompt.clone(),
+            max_tokens: cli.max_tokens,
+            temperature: cli.temperature,
+            top_p: None,
+            stop: None,
+            stream: false,
+        };
+        let response = client.complete(request).await?;
+        println!("{}", response.text.trim());
+        return Ok(());
+    }
 
     let agent = GptOssAgent::new(config).await?;
     let session = Arc::new(agent.create_session().await);
