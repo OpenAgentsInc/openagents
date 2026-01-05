@@ -15,11 +15,14 @@
 //! │ TOKEN RAIL  ▓▓▓▓▓▓▓▓▓▒▒▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░                   │
 //! └─────────────────────────────────────────────────────────────────────────────┘
 
+mod apple_fm_panel;
 mod chat_panel;
 mod fm_panel;
 mod frlm_panel;
 mod header;
 mod jobs_panel;
+mod rlm_panel;
+mod topology_panel;
 
 use wgpui::{Bounds, Hsla, Point, Quad, Scene, Size, TextSystem};
 
@@ -83,20 +86,61 @@ pub fn build_pylon_ui(
     let footer_height = 60.0;
     let nostr_height = height - y - footer_height - padding - gap;
 
-    // Split panels for Nostr (Jobs + Chat) and FRLM - only if there's room
+    // Split panels for Nostr (Jobs + Chat) and visualization panels
     if nostr_height > 100.0 {
-        // Check if FRLM is active - if so, use 3-column layout
+        // Determine which visualization mode we're in
         let has_frlm = state.frlm_active_run.is_some() || !state.frlm_subquery_status.is_empty();
+        let has_rlm = state.rlm_active || !state.rlm_iterations.is_empty();
+        let has_tools = state.current_tool_call.is_some() || !state.apple_fm_tool_calls.is_empty();
 
-        if has_frlm {
-            // 3-column layout: Jobs | FRLM | Chat
+        if has_frlm || has_rlm || has_tools {
+            // 3-column layout: Jobs | Execution Viz | Chat
             let panel_width = (width - padding * 2.0 - gap * 2.0) / 3.0;
 
             // Left panel: Jobs
             jobs_panel::draw_jobs_panel(scene, text, state, padding, y, panel_width, nostr_height);
 
-            // Center panel: FRLM
-            frlm_panel::draw_frlm_panel(scene, text, state, padding + panel_width + gap, y, panel_width, nostr_height);
+            // Center panel: Visualization (stacked vertically)
+            let center_x = padding + panel_width + gap;
+            let center_width = panel_width;
+
+            if has_frlm {
+                // FRLM is active - show FRLM panel with Apple FM tools below
+                let frlm_height = if has_tools {
+                    nostr_height * 0.6
+                } else {
+                    nostr_height
+                };
+                frlm_panel::draw_frlm_panel(scene, text, state, center_x, y, center_width, frlm_height);
+
+                // Apple FM Tools panel (if there are tool calls)
+                if has_tools {
+                    let tools_y = y + frlm_height + gap;
+                    let tools_height = nostr_height - frlm_height - gap;
+                    apple_fm_panel::draw_apple_fm_tools_panel(
+                        scene, text, state,
+                        center_x, tools_y, center_width, tools_height,
+                    );
+                }
+            } else if has_rlm {
+                // RLM execution - show RLM panel
+                rlm_panel::draw_rlm_panel(scene, text, state, center_x, y, center_width, nostr_height);
+            } else if has_tools {
+                // Only tools active - show Apple FM tools with topology below
+                let tools_height = nostr_height * 0.5;
+                apple_fm_panel::draw_apple_fm_tools_panel(
+                    scene, text, state,
+                    center_x, y, center_width, tools_height,
+                );
+
+                // Topology panel below
+                let topo_y = y + tools_height + gap;
+                let topo_height = nostr_height - tools_height - gap;
+                topology_panel::draw_topology_panel(
+                    scene, text, state,
+                    center_x, topo_y, center_width, topo_height,
+                );
+            }
 
             // Right panel: Chat
             chat_panel::draw_chat_panel(scene, text, state, padding + panel_width * 2.0 + gap * 2.0, y, panel_width, nostr_height);

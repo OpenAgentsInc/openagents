@@ -18,11 +18,13 @@ use winit::window::{Window, WindowId};
 use crate::bridge_manager::BridgeManager;
 use crate::commands;
 use crate::fm_runtime::{FmEvent, FmRuntime};
+use crate::frlm_integration::FrlmIntegration;
 use crate::input_convert;
 use crate::nostr_runtime::{NostrEvent, NostrRuntime};
-use crate::state::{ChatMessage, FmConnectionStatus, FmStreamStatus, FmVizState, InputFocus, Job, JobStatus, NostrConnectionStatus, PendingInvoice};
+use crate::state::{ChatMessage, ExecutionVenue, FmConnectionStatus, FmStreamStatus, FmVizState, InputFocus, Job, JobStatus, NostrConnectionStatus, PendingInvoice, SubQueryDisplayStatus};
 use crate::ui;
 use crate::wallet_runtime::{WalletEvent, WalletRuntime, SATS_PER_JOB};
+use viz::QueryStatus;
 
 #[derive(Default)]
 pub struct PylonApp {
@@ -51,6 +53,8 @@ pub struct RenderState {
     pub event_context: EventContext,
     #[allow(dead_code)]
     pub command_rx: mpsc::Receiver<String>,
+    // FRLM integration
+    pub frlm_integration: FrlmIntegration,
 }
 
 impl ApplicationHandler for PylonApp {
@@ -168,6 +172,15 @@ impl ApplicationHandler for PylonApp {
             // Create wallet runtime (testnet by default)
             let wallet_runtime = WalletRuntime::new(spark::Network::Testnet);
 
+            // Create FRLM integration
+            let mut frlm_integration = FrlmIntegration::new();
+            let fm_bridge_url = if bridge.is_running() {
+                Some(bridge.url())
+            } else {
+                None
+            };
+            frlm_integration.init(&nostr_runtime, fm_bridge_url.as_deref());
+
             // Initialize clipboard with shared access for EventContext
             let clipboard = Rc::new(RefCell::new(Clipboard::new().ok()));
 
@@ -214,6 +227,7 @@ impl ApplicationHandler for PylonApp {
                 command_palette,
                 event_context,
                 command_rx,
+                frlm_integration,
             }
         });
 
@@ -579,6 +593,13 @@ impl ApplicationHandler for PylonApp {
                 }
             }
 
+            // Poll FRLM trace events (non-blocking)
+            // This processes trace events and updates fm_state + viz components
+            state.frlm_integration.poll(&mut state.fm_state);
+
+            // Update FrlmPanel from state (sync viz panel with current state)
+            update_frlm_panel(&mut state.fm_state);
+
             // Periodically poll wallet for payments (every ~5 seconds based on poll rate)
             static mut POLL_COUNTER: u32 = 0;
             unsafe {
@@ -596,6 +617,69 @@ impl ApplicationHandler for PylonApp {
             state.window.request_redraw();
         }
     }
+}
+
+/// Update the viz FrlmPanel from current fm_state
+fn update_frlm_panel(state: &mut FmVizState) {
+    // Ensure panel exists
+    if state.frlm_panel.is_none() {
+        state.frlm_panel = Some(viz::FrlmPanel::new());
+    }
+
+    // Collect executing providers for topology updates
+    let executing_providers: Vec<String> = state.frlm_subquery_status
+        .values()
+        .filter_map(|status| {
+            if let SubQueryDisplayStatus::Executing { provider_id } = status {
+                Some(provider_id.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Update topology with executing providers
+    for provider_id in &executing_providers {
+        state.venue_topology.record_execution(ExecutionVenue::Swarm, Some(provider_id));
+    }
+
+    let panel = state.frlm_panel.as_mut().unwrap();
+
+    // Update from active run
+    if let Some(ref run) = state.frlm_active_run {
+        panel.set_run_id(&run.run_id);
+        panel.set_budget(
+            run.budget_used_sats,
+            0, // reserved (not tracked separately yet)
+            run.budget_remaining_sats + run.budget_used_sats,
+        );
+    } else {
+        panel.clear();
+    }
+
+    // Update query statuses
+    for (query_id, status) in &state.frlm_subquery_status {
+        let (query_status, duration_ms, provider_id) = match status {
+            SubQueryDisplayStatus::Pending => (QueryStatus::Pending, None, None),
+            SubQueryDisplayStatus::Submitted { .. } => (QueryStatus::Submitted, None, None),
+            SubQueryDisplayStatus::Executing { provider_id } => {
+                (QueryStatus::Executing, None, Some(provider_id.clone()))
+            }
+            SubQueryDisplayStatus::Complete { duration_ms } => {
+                (QueryStatus::Complete, Some(*duration_ms), None)
+            }
+            SubQueryDisplayStatus::Failed { .. } => (QueryStatus::Failed, None, None),
+            SubQueryDisplayStatus::Timeout => (QueryStatus::Timeout, None, None),
+        };
+        panel.update_query(query_id, query_status, 0, duration_ms, provider_id);
+    }
+
+    // Set current time for timeline animation
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    panel.set_current_time(now_ms);
 }
 
 /// Execute a command from the command palette
