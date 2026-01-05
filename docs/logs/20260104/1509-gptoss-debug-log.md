@@ -940,3 +940,26 @@ Takeaway: simple TG tuning doesn’t provide multi‑x gains.
 ### Current Conclusion
 
 We need a **fundamental kernel speedup** (MPS/Metal matmul rewrite or deep kernel tuning) to hit the interactive target. Tweaking thresholds and threadgroups isn’t enough.
+
+---
+
+## Update: 2026-01-05 05:10 - MoE Top‑1 Experiment
+
+### What Changed (gpt-oss repo, external)
+
+- Added optional `GPT_OSS_METAL_NUM_ACTIVE_EXPERTS=1` to force top‑1 experts.
+- Added k1 kernels for topk + scatter/gather/accumulate.
+
+### Result (full model, no-harmony, 1 token)
+
+```
+GPT_OSS_METAL_NUM_ACTIVE_EXPERTS=1 GPT_OSS_METAL_TIMING=1 ...
+```
+
+- GPU time ≈ **11.8s**
+- TTFT ≈ **13.9s**
+- Output: `2`
+
+### Takeaway
+
+Reducing active experts **did not improve** latency. The dominant cost appears to be attention/QKV, not MoE.
