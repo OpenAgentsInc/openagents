@@ -1,15 +1,15 @@
 //! Core RLM engine implementing the prompt-execute-loop.
 
-use std::collections::HashMap;
 use std::process::Command as ProcessCommand;
 
 use fm_bridge::FMClient;
 use tracing::{debug, info, warn};
 
 use crate::command::Command;
+use crate::context::Context;
 use crate::error::{Result, RlmError};
 use crate::executor::{ExecutionEnvironment, ExecutionResult};
-use crate::prompts::{continuation_prompt, error_prompt, initial_prompt};
+use crate::prompts::{continuation_prompt, error_prompt, initial_prompt, system_prompt_with_context};
 
 /// Configuration for the RLM engine.
 #[derive(Debug, Clone)]
@@ -71,8 +71,8 @@ pub struct RlmEngine<E: ExecutionEnvironment> {
     client: FMClient,
     /// The execution environment for running code.
     executor: E,
-    /// Context variables accessible to the REPL.
-    context: HashMap<String, String>,
+    /// Loaded context for the REPL (file/directory content).
+    loaded_context: Option<Context>,
     /// Configuration options.
     config: RlmConfig,
 }
@@ -83,7 +83,7 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
         Self {
             client,
             executor,
-            context: HashMap::new(),
+            loaded_context: None,
             config: RlmConfig::default(),
         }
     }
@@ -93,14 +93,55 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
         Self {
             client,
             executor,
-            context: HashMap::new(),
+            loaded_context: None,
             config,
         }
     }
 
-    /// Set a context variable accessible to the REPL.
-    pub fn set_context(&mut self, key: impl Into<String>, value: impl Into<String>) {
-        self.context.insert(key.into(), value.into());
+    /// Set the loaded context (file or directory content).
+    pub fn set_context(&mut self, context: Context) {
+        self.loaded_context = Some(context);
+    }
+
+    /// Wrap code with context injection if context is loaded.
+    fn inject_context(&self, code: &str) -> String {
+        if let Some(ref ctx) = self.loaded_context {
+            // Escape the context content for Python string literal
+            let escaped_content = ctx.content
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n")
+                .replace('\r', "\\r")
+                .replace('\t', "\\t");
+
+            format!(
+                r#"# Injected context variable
+context = """{}"""
+
+# Helper functions for context queries
+def search_context(pattern, max_results=10, window=200):
+    """Search for a pattern in the context. Returns list of matches with surrounding text."""
+    import re
+    matches = []
+    pattern_re = re.compile(re.escape(pattern), re.IGNORECASE)
+    for match in pattern_re.finditer(context):
+        start = max(0, match.start() - window)
+        end = min(len(context), match.end() + window)
+        matches.append({{
+            "position": match.start(),
+            "context": context[start:end],
+        }})
+        if len(matches) >= max_results:
+            break
+    return matches
+
+# User code below
+{}"#,
+                escaped_content, code
+            )
+        } else {
+            code.to_string()
+        }
     }
 
     /// Run the RLM on a query.
@@ -109,11 +150,24 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
     /// and returns when a FINAL command is received or max iterations
     /// are exceeded.
     pub async fn run(&self, query: &str) -> Result<RlmResult> {
-        let mut prompt = initial_prompt(query);
+        // Build initial prompt based on whether we have context
+        let mut prompt = if let Some(ref ctx) = self.loaded_context {
+            let system_prompt = system_prompt_with_context(ctx);
+            format!(
+                "{}\n\n---\n\nUser Query: {}\n\nYour response:",
+                system_prompt, query
+            )
+        } else {
+            initial_prompt(query)
+        };
+
         let mut execution_log = Vec::new();
         let mut iteration = 0;
 
         info!("Starting RLM execution for query: {}", query);
+        if self.loaded_context.is_some() {
+            info!("Context loaded: {} chars", self.loaded_context.as_ref().unwrap().length);
+        }
 
         loop {
             iteration += 1;
@@ -183,13 +237,16 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
                     // Execute the code, then return the final result immediately
                     debug!("Executing code block (with pending FINAL)");
 
+                    // Inject context variable if loaded
+                    let code_with_context = self.inject_context(code);
+
                     if self.config.verbose {
                         eprintln!("[EXECUTING PYTHON]");
                         eprintln!("{}", code);
                         eprintln!("[/EXECUTING PYTHON]\n");
                     }
 
-                    let exec_result = self.executor.execute(code).await?;
+                    let exec_result = self.executor.execute(&code_with_context).await?;
 
                     if self.config.verbose {
                         eprintln!("[EXECUTION RESULT]");
@@ -230,13 +287,16 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
                 Command::RunCode(code) => {
                     debug!("Executing code block");
 
+                    // Inject context variable if loaded
+                    let code_with_context = self.inject_context(code);
+
                     if self.config.verbose {
                         eprintln!("[EXECUTING PYTHON]");
                         eprintln!("{}", code);
                         eprintln!("[/EXECUTING PYTHON]\n");
                     }
 
-                    let exec_result = self.executor.execute(code).await?;
+                    let exec_result = self.executor.execute(&code_with_context).await?;
 
                     if self.config.verbose {
                         eprintln!("[EXECUTION RESULT]");

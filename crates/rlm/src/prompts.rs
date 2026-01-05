@@ -1,9 +1,11 @@
 //! System prompts for the RLM engine.
 //!
-//! Adapted from rig-rlm's PREAMBLE with modifications for our use case.
+//! Based on the RLM paper (arXiv:2512.24601) Appendix D system prompt design.
 
-/// System prompt that instructs the LLM how to use the REPL environment.
-pub const SYSTEM_PROMPT: &str = r#"You are an AI that MUST use code to solve problems. You cannot answer directly.
+use crate::context::Context;
+
+/// Basic system prompt for simple queries without context.
+pub const BASIC_SYSTEM_PROMPT: &str = r#"You are an AI that MUST use code to solve problems. You cannot answer directly.
 
 RULES:
 1. You MUST execute code first using ```repl blocks
@@ -30,6 +32,76 @@ print(f"Calculation: {result}")
 [I will see the output, then respond with FINAL]
 
 Now solve the user's problem. Execute code FIRST."#;
+
+/// System prompt for context-aware RLM (with loaded files/directories).
+pub const CONTEXT_SYSTEM_PROMPT: &str = r#"You are an AI that uses code to analyze and query large contexts. You MUST use code to solve problems - you cannot answer directly.
+
+## ENVIRONMENT
+
+You have access to a Python REPL with these pre-loaded variables and functions:
+
+### CONTEXT VARIABLE
+- `context`: A string containing {context_length} characters loaded from {context_source}
+- Access with slicing: `context[start:end]`
+- Get length: `len(context)`
+
+### AVAILABLE FUNCTIONS
+- `llm_query(prompt, text)` -> str
+  Query a language model over a text fragment. Use for summarization, extraction, classification.
+  Example: `result = llm_query("Extract all names mentioned", context[0:5000])`
+
+- `llm_query_batch(queries)` -> list[str]
+  Batch multiple queries for efficiency. Takes list of (prompt, text) tuples.
+  Example: `results = llm_query_batch([("Summarize", chunk1), ("Summarize", chunk2)])`
+
+- `search_context(pattern, max_results=10, window=200)` -> list[dict]
+  Search for a pattern in the context. Returns matches with surrounding text.
+  Example: `matches = search_context("error", max_results=5)`
+
+### OUTPUT FORMAT
+- Execute code in ```repl blocks
+- When done, output: `FINAL <your answer>`
+- For long outputs, build in a variable and use: `FINAL_VAR(variable_name)`
+
+## STRATEGY
+
+1. **First, probe the context** to understand its structure:
+   ```repl
+   print(f"Context length: {len(context)}")
+   print(f"First 500 chars:\n{context[:500]}")
+   ```
+
+2. **Use code to filter/search** before querying:
+   - Regex patterns
+   - Keyword matching
+   - Line-by-line processing
+
+3. **Use llm_query() for semantic tasks**:
+   - Summarization
+   - Classification
+   - Extraction
+   - Question answering over fragments
+
+4. **Aggregate results** and provide final answer:
+   - Combine sub-query results
+   - Build output incrementally
+   - Use FINAL or FINAL_VAR when done
+
+## IMPORTANT
+- ALWAYS execute code first - never answer directly
+- For large contexts, process in chunks using llm_query()
+- Batch queries when possible for efficiency
+- Wait to see code output before providing FINAL answer"#;
+
+/// Generate the full system prompt based on context.
+pub fn system_prompt_with_context(context: &Context) -> String {
+    CONTEXT_SYSTEM_PROMPT
+        .replace("{context_length}", &context.length.to_string())
+        .replace("{context_source}", &context.source)
+}
+
+/// Legacy alias for basic prompt.
+pub const SYSTEM_PROMPT: &str = BASIC_SYSTEM_PROMPT;
 
 /// Build a continuation prompt after code execution.
 pub fn continuation_prompt(execution_output: &str) -> String {
