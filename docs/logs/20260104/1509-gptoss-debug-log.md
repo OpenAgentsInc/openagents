@@ -1815,3 +1815,9 @@ Test 36: `-c 256`
 - Worse tail; not recommended.
 
 Conclusion: `-c 384` is fine if you want a slightly smaller ctx, but `-c 512` is still the safe default.
+
+### Q4_0 + f16 KV long-run stability (1000 runs)
+
+Config (Q4_0 + f16 KV + flash-attn + keepalive 1s, -c 384):
+- runs=1000, p50 **~153ms**, p95 **~174ms**, max **~335ms**.
+- No multi-second spikes observed.
