@@ -9,10 +9,13 @@ use openai_harmony::chat::{Conversation, Message, Role, SystemContent};
 use openai_harmony::{HarmonyEncoding, HarmonyEncodingName, load_harmony_encoding};
 use rand::rngs::OsRng;
 use rand::RngCore;
+use tracing::{info, warn};
 
 use crate::error::{GptOssMetalError, Result};
 use crate::ffi;
 
+const DEFAULT_CONTEXT_LENGTH: usize = 8192;
+const DEFAULT_MAX_BATCH_TOKENS: usize = 128;
 const DEFAULT_MAX_TOKENS: usize = 256;
 const DEFAULT_TEMPERATURE: f32 = 0.7;
 
@@ -29,19 +32,28 @@ pub struct GptOssMetalConfig {
 
 impl GptOssMetalConfig {
     pub fn from_env() -> Result<Self> {
-        let model_path = env::var("GPT_OSS_METAL_MODEL_PATH")
-            .map(PathBuf::from)
-            .map_err(|_| {
+        ensure_tiktoken_cache_dir();
+
+        let model_path = match env::var("GPT_OSS_METAL_MODEL_PATH") {
+            Ok(value) => PathBuf::from(value),
+            Err(_) => default_model_path().ok_or_else(|| {
                 GptOssMetalError::InvalidConfig(
-                    "GPT_OSS_METAL_MODEL_PATH is not set".to_string(),
+                    "GPT_OSS_METAL_MODEL_PATH is not set and no default model.bin was found \
+                    (tried ~/models/gpt-oss-20b/metal/model.bin and \
+                    ~/models/gpt-oss-120b/metal/model.bin)"
+                        .to_string(),
                 )
-            })?;
+            })?,
+        };
 
         let model_id = env::var("GPT_OSS_METAL_MODEL_ID")
-            .unwrap_or_else(|_| "gpt-oss-metal".to_string());
+            .ok()
+            .or_else(|| infer_model_id(&model_path))
+            .unwrap_or_else(|| "gpt-oss-metal".to_string());
 
         let context_length = parse_usize("GPT_OSS_METAL_CONTEXT_LENGTH")?;
-        let max_batch_tokens = parse_usize("GPT_OSS_METAL_MAX_BATCH_TOKENS")?;
+        let max_batch_tokens =
+            parse_usize("GPT_OSS_METAL_MAX_BATCH_TOKENS")?.filter(|value| *value > 0);
         let default_max_tokens = parse_usize("GPT_OSS_METAL_MAX_TOKENS")?
             .unwrap_or(DEFAULT_MAX_TOKENS);
         let default_temperature = parse_f32("GPT_OSS_METAL_TEMPERATURE")?
@@ -80,20 +92,36 @@ impl GptOssMetalEngine {
     pub fn new(config: GptOssMetalConfig) -> Result<Self> {
         let model = Model::load(&config.model_path)?;
         let max_context = model.max_context_length;
-        let context_length = config.context_length.unwrap_or(max_context);
+        let mut context_length = config
+            .context_length
+            .unwrap_or(DEFAULT_CONTEXT_LENGTH);
 
-        if context_length == 0 || context_length > max_context {
-            return Err(GptOssMetalError::InvalidConfig(format!(
-                "context length {context_length} exceeds model max {max_context}"
-            )));
+        if context_length > max_context {
+            if config.context_length.is_some() {
+                return Err(GptOssMetalError::InvalidConfig(format!(
+                    "context length {context_length} exceeds model max {max_context}"
+                )));
+            }
+            info!(
+                context_length,
+                max_context,
+                "Default context length exceeds model max; clamping"
+            );
+            context_length = max_context;
         }
 
-        if let Some(max_batch_tokens) = config.max_batch_tokens
-            && max_batch_tokens > context_length
-        {
-            return Err(GptOssMetalError::InvalidConfig(format!(
-                "max batch tokens {max_batch_tokens} exceeds context length {context_length}"
-            )));
+        if context_length == 0 {
+            return Err(GptOssMetalError::InvalidConfig(
+                "context length must be greater than 0".to_string(),
+            ));
+        }
+
+        if let Some(max_batch_tokens) = config.max_batch_tokens {
+            if max_batch_tokens > context_length {
+                return Err(GptOssMetalError::InvalidConfig(format!(
+                    "max batch tokens {max_batch_tokens} exceeds context length {context_length}"
+                )));
+            }
         }
 
         let encoding = load_harmony_encoding(HarmonyEncodingName::HarmonyGptOss)
@@ -104,6 +132,17 @@ impl GptOssMetalEngine {
             .map_err(|err| GptOssMetalError::HarmonyError(err.to_string()))?
             .into_iter()
             .collect::<HashSet<_>>();
+
+        info!(
+            model_id = %config.model_id,
+            model_path = %config.model_path.display(),
+            context_length,
+            max_context,
+            max_batch_tokens = config.max_batch_tokens.unwrap_or(DEFAULT_MAX_BATCH_TOKENS),
+            default_max_tokens = config.default_max_tokens,
+            default_temperature = config.default_temperature,
+            "GPT-OSS Metal engine initialized"
+        );
 
         Ok(Self {
             config,
@@ -143,9 +182,15 @@ impl GptOssMetalEngine {
             ));
         }
 
-        let max_tokens = max_tokens
-            .unwrap_or(self.config.default_max_tokens)
-            .min(available_tokens);
+        let requested_max_tokens = max_tokens.unwrap_or(self.config.default_max_tokens);
+        let max_tokens = requested_max_tokens.min(available_tokens);
+        if max_tokens < requested_max_tokens {
+            info!(
+                requested_max_tokens,
+                max_tokens,
+                "Clamped max tokens to fit context length"
+            );
+        }
         let temperature = temperature.unwrap_or(self.config.default_temperature);
         let stop_sequences = stop_sequences.unwrap_or(&[]);
 
@@ -154,6 +199,35 @@ impl GptOssMetalEngine {
             .seed
             .unwrap_or_else(|| OsRng.next_u64());
 
+        let mut max_batch_tokens = self
+            .config
+            .max_batch_tokens
+            .unwrap_or(DEFAULT_MAX_BATCH_TOKENS)
+            .max(prompt_token_count);
+        if let Some(configured) = self.config.max_batch_tokens {
+            if configured < prompt_token_count {
+                warn!(
+                    configured,
+                    prompt_token_count,
+                    "max batch tokens below prompt length; bumping to prompt length"
+                );
+            }
+        }
+        if max_batch_tokens > self.context_length {
+            max_batch_tokens = self.context_length;
+        }
+
+        info!(
+            model_id = %self.config.model_id,
+            prompt_tokens = prompt_token_count,
+            max_tokens,
+            temperature,
+            stop_sequences = stop_sequences.len(),
+            context_length = self.context_length,
+            max_batch_tokens,
+            "GPT-OSS Metal inference started"
+        );
+
         let model = self.model.lock().map_err(|_| {
             GptOssMetalError::FfiError("model mutex poisoned".to_string())
         })?;
@@ -161,7 +235,7 @@ impl GptOssMetalEngine {
         let context = Context::create(
             &model,
             self.context_length,
-            self.config.max_batch_tokens.unwrap_or(0),
+            max_batch_tokens,
         )?;
         context.append_tokens(&prompt_tokens)?;
 
@@ -202,12 +276,22 @@ impl GptOssMetalEngine {
             }
         }
 
-        Ok(GptOssMetalCompletion {
+        let completion = GptOssMetalCompletion {
             text: output,
             prompt_tokens: prompt_token_count,
             completion_tokens,
             finish_reason,
-        })
+        };
+
+        info!(
+            model_id = %self.config.model_id,
+            prompt_tokens = completion.prompt_tokens,
+            completion_tokens = completion.completion_tokens,
+            finish_reason = %completion.finish_reason,
+            "GPT-OSS Metal inference completed"
+        );
+
+        Ok(completion)
     }
 
     fn render_prompt_tokens(&self, prompt: &str) -> Result<Vec<u32>> {
@@ -387,4 +471,55 @@ fn path_to_cstring(path: &Path) -> Result<CString> {
         })?;
         Ok(CString::new(path_str)?)
     }
+}
+
+fn default_model_path() -> Option<PathBuf> {
+    let home = env::var("HOME").ok()?;
+    let home = PathBuf::from(home);
+    let candidates = [
+        home.join("models/gpt-oss-20b/metal/model.bin"),
+        home.join("models/gpt-oss-120b/metal/model.bin"),
+    ];
+    candidates.into_iter().find(|path| path.exists())
+}
+
+fn infer_model_id(path: &Path) -> Option<String> {
+    for component in path.components().rev() {
+        if let std::path::Component::Normal(name) = component {
+            if let Some(name) = name.to_str()
+                && name.starts_with("gpt-oss-")
+            {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn ensure_tiktoken_cache_dir() {
+    if env::var_os("TIKTOKEN_RS_CACHE_DIR").is_some() {
+        return;
+    }
+
+    let home = match env::var("HOME") {
+        Ok(home) => PathBuf::from(home),
+        Err(_) => return,
+    };
+    let cache_dir = home.join(".cache/tiktoken-rs");
+    if let Err(err) = std::fs::create_dir_all(&cache_dir) {
+        warn!(
+            cache_dir = %cache_dir.display(),
+            error = %err,
+            "Failed to create tiktoken cache dir"
+        );
+        return;
+    }
+    // Safe here: we set the default cache dir during startup before inference threads spawn.
+    unsafe {
+        env::set_var("TIKTOKEN_RS_CACHE_DIR", &cache_dir);
+    }
+    info!(
+        cache_dir = %cache_dir.display(),
+        "Defaulted TIKTOKEN_RS_CACHE_DIR"
+    );
 }

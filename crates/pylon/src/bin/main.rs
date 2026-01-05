@@ -8,7 +8,11 @@ use tracing_subscriber::EnvFilter;
 async fn main() -> anyhow::Result<()> {
     // Initialize logging
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("pylon=info".parse()?))
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive("pylon=info".parse()?)
+                .add_directive("gpt_oss_metal=info".parse()?),
+        )
         .init();
 
     // Parse CLI args

@@ -10,17 +10,21 @@ fn main() {
         return;
     }
 
-    let metallib = env::var("GPT_OSS_METAL_METALLIB")
-        .map(PathBuf::from)
-        .or_else(|_| {
-            env::var("GPT_OSS_METAL_DIR")
-                .map(|dir| PathBuf::from(dir).join("default.metallib"))
-        })
-        .unwrap_or_else(|_| {
-            panic!(
-                "GPT_OSS_METAL_DIR or GPT_OSS_METAL_METALLIB must be set when gpt-oss-metal is enabled."
-            )
-        });
+    let metallib = match env::var("GPT_OSS_METAL_METALLIB") {
+        Ok(path) => PathBuf::from(path),
+        Err(_) => {
+            let base_dir = env::var("GPT_OSS_METAL_DIR")
+                .map(PathBuf::from)
+                .ok()
+                .or_else(default_metal_dir)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "GPT_OSS_METAL_DIR or GPT_OSS_METAL_METALLIB must be set when gpt-oss-metal is enabled."
+                    )
+                });
+            base_dir.join("default.metallib")
+        }
+    };
 
     if !metallib.exists() {
         panic!("GPT-OSS metallib not found at {}", metallib.display());
@@ -30,4 +34,14 @@ fn main() {
         "cargo:rustc-link-arg=-Wl,-sectcreate,__METAL,__shaders,{}",
         metallib.display()
     );
+}
+
+fn default_metal_dir() -> Option<PathBuf> {
+    let home = env::var("HOME").ok()?;
+    let candidate = PathBuf::from(home).join("code/gpt-oss/gpt_oss/metal/build");
+    if candidate.exists() {
+        Some(candidate)
+    } else {
+        None
+    }
 }
