@@ -683,3 +683,73 @@ Rebuilt `libgptoss.a` and reran Metal inference: warning is gone.
   Used `gptoss_cli` for testing instead.
 - Harmony prompt prefill is slow on CPU (98 tokens). For now, testing done with `--no-harmony`.
   Need a longer run (or GPU) to verify full Harmony responses.
+
+---
+
+## Update: 2026-01-04 22:09 - Speed Battleplan (Sprint)
+
+### Goal (Tonight)
+
+- Reduce **time-to-first-token** and **tokens/sec** for Metal on gpt-oss-20b by at least **5–10x**.
+- Get interactive feedback: TTFT under ~2s for short prompts and >=1 tok/sec steady-state.
+
+### Baseline Commands (Use These Every Time)
+
+```
+cargo run -p pylon --features gpt-oss-metal -- infer --prompt "1+1=" --max-tokens 1 --temperature 0 --no-harmony
+cargo run -p pylon --features gpt-oss-metal -- infer --prompt "1+1=" --max-tokens 2 --temperature 0 --no-harmony
+```
+
+Record:
+- prompt tokens
+- time-to-first-token
+- sample chunk duration
+- tokens/sec
+- first-run vs second-run delta (pipeline compile vs steady-state)
+
+### Phase 0 - Baseline + Sanity (10–15 min)
+
+- Run baseline commands twice (fresh + warmed).
+- Confirm model path, build-release libs, and `model.bin` size.
+- Validate that prompt length is minimal (`--no-harmony` for perf triage).
+
+### Phase 1 - Instrumentation (Now)
+
+Add per-step timings so we can see where time goes:
+- model load time
+- context creation time
+- prompt append time
+- per-sample chunk time (tokens + ms)
+- first-sample time (prefill + first decode)
+
+What to look for:
+- Is the time dominated by **append** (prefill) or **sample** (decode)?
+- Is the **first sample** uniquely slow (pipeline compile)?
+- Does sample time scale with `sample_chunk_tokens`?
+
+### Phase 2 - Diagnose Hotspot (After Phase 1)
+
+Based on timings:
+- **If first sample is huge:** add a warmup path to build pipelines before the real prompt.
+- **If append dominates:** reduce prompt length, ensure Harmony prompt is only used when needed.
+- **If decode dominates:** tune Metal kernel params (threadgroups, simdgroup size, buffer storage).
+
+### Phase 3 - Kernel/Memory Tuning (Metal repo)
+
+Targets:
+- Increase parallelism via `max_threadgroups` and threadgroup sizing.
+- Use `storageModePrivate` for large GPU buffers where possible.
+- Reduce CPU↔GPU sync points and avoid per-token allocs.
+- Optional: `GPT_OSS_METAL_MLOCK=1` if memlock limits allow (cuts page faults).
+
+### Phase 4 - Aggressive Speedups (If Still Too Slow)
+
+- Implement prefill/decoding split and speculative decoding (draft model).
+- Reduce model size for interactive runs (7B/4B) for guaranteed wins.
+- Consider alternative Metal path (MPSGraph for matmul/attention).
+
+### Phase 5 - Validate + Lock In
+
+- Rerun baseline commands.
+- Capture before/after metrics in this log.
+- Add a short "known-good" command with defaults for future checks.
