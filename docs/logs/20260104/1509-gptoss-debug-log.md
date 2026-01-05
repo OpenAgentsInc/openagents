@@ -1727,3 +1727,9 @@ Conclusion: Q4_0 is the fastest + stable on this box.
 
 Since Q4_0 is now the fastest + stable, `scripts/gpt-oss-fast.sh` now prefers:
 Q4_0 → Q3_K_S → Q2_K → Q4_K_M.
+
+### Q4_0 long-run stability (200 runs)
+
+Default config (Q4_0 + q8_0 KV + flash-attn + keepalive 1s):
+- runs=200, p50 **~155ms**, p95 **~213ms**, max **~338ms**.
+- Stable, no multi‑second spikes.
