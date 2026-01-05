@@ -151,6 +151,7 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
             let cmd_type = match &cmd {
                 Command::Final(_) => "FINAL",
                 Command::RunCode(_) => "RunCode",
+                Command::RunCodeThenFinal(_, _) => "RunCode+FINAL",
                 Command::Run(_) => "RUN",
                 Command::Invalid => "Invalid",
             };
@@ -175,6 +176,55 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
                         iterations: iteration,
                         execution_log,
                     });
+                }
+
+                Command::RunCodeThenFinal(code, final_result) => {
+                    // FM output both code and FINAL in one response
+                    // Execute the code, then return the final result immediately
+                    debug!("Executing code block (with pending FINAL)");
+
+                    if self.config.verbose {
+                        eprintln!("[EXECUTING PYTHON]");
+                        eprintln!("{}", code);
+                        eprintln!("[/EXECUTING PYTHON]\n");
+                    }
+
+                    let exec_result = self.executor.execute(code).await?;
+
+                    if self.config.verbose {
+                        eprintln!("[EXECUTION RESULT]");
+                        eprintln!("stdout: {}", exec_result.stdout);
+                        if !exec_result.stderr.is_empty() {
+                            eprintln!("stderr: {}", exec_result.stderr);
+                        }
+                        eprintln!("exit_code: {}", exec_result.exit_code);
+                        eprintln!("duration: {}ms", exec_result.duration_ms);
+                        eprintln!("[/EXECUTION RESULT]\n");
+                    }
+
+                    execution_log.push(ExecutionLogEntry {
+                        iteration,
+                        llm_response: text.clone(),
+                        command_type: "RunCode+FINAL".to_string(),
+                        executed: code.clone(),
+                        result: exec_result.output().to_string(),
+                    });
+
+                    // If code executed successfully, return the FINAL result
+                    if exec_result.is_success() {
+                        info!("FINAL received (with code) after {} iterations", iteration);
+                        if self.config.verbose {
+                            eprintln!("[FINAL] {}", final_result);
+                        }
+                        return Ok(RlmResult {
+                            output: final_result.clone(),
+                            iterations: iteration,
+                            execution_log,
+                        });
+                    } else {
+                        // Code failed, continue with error prompt
+                        prompt = error_prompt(&exec_result.stderr);
+                    }
                 }
 
                 Command::RunCode(code) => {
