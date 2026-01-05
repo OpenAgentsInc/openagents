@@ -258,3 +258,104 @@ Our tests with Apple FM showed:
 | `crates/rlm/src/command.rs` | Command parsing (RUN, FINAL, RunCode, RunCodeThenFinal) |
 | `crates/rlm/src/prompts.rs` | System prompts for RLM |
 | `docs/frlm/RLM_PAPER_SYNOPSIS.md` | Full paper synopsis |
+
+---
+
+## Addendum: Context Loading and Sub-Query Implementation
+
+**Date:** 2026-01-04 (continued session)
+**Author:** Claude
+
+### What Was Implemented
+
+Following the analysis above, the two most critical missing features were context loading and recursive sub-calls via llm_query(). Both have now been implemented, transforming RLM from a simple code-execution loop into something approaching the full vision described in the paper.
+
+### Context Loading: Making Large Inputs Accessible
+
+The fundamental insight of the RLM paper is that models can manipulate data symbolically through code rather than trying to process it directly through attention. A 10MB codebase cannot fit in a model's context window, but it can be loaded as a Python variable that the model slices, searches, and processes in chunks. This is what context loading enables.
+
+The implementation lives in `crates/rlm/src/context.rs` and provides three modes of loading. Single file loading reads a file and makes it available as the `context` variable. Directory loading recursively traverses a directory tree, concatenating all text files with markers indicating file boundaries, enabling the model to process entire codebases. Raw text input supports programmatic injection of content from any source.
+
+The directory loader is particularly sophisticated. It handles the common case of wanting to analyze a codebase by automatically filtering out noise directories like node_modules, target, __pycache__, and hidden files. It recognizes text files by extension, supporting the usual suspects from Rust to Python to TypeScript to Markdown. Each file gets wrapped with clear boundary markers that the model can use to navigate the combined context. The result is a single string that might be millions of characters, but is structured in a way that enables systematic processing.
+
+The CLI gained two new flags. The `--context-file` flag loads a single file for queries about specific documents. The `--context-dir` flag loads an entire directory tree, useful for codebase analysis. When context is loaded, the CLI reports what it found before connecting to the FM, giving the user visibility into what the model will be working with.
+
+On the engine side, context injection works by prepending the context variable assignment and helper functions to every Python code block before execution. The model's code might be a simple three-liner, but by the time it reaches Python, it has access to the full loaded content plus utility functions for searching. The escaping logic handles the various ways that loaded content might break Python string literals, including newlines, quotes, and backslashes.
+
+### The System Prompt: Teaching the Model Its Environment
+
+The original system prompt was designed for simple arithmetic and logic problems where the model writes code from scratch. With context loading, the prompt needed to expand significantly to explain what the model can do with loaded data.
+
+The new context-aware system prompt in `crates/rlm/src/prompts.rs` describes a rich execution environment. It explains that a `context` variable containing the loaded content is available, and that standard Python slicing works to extract portions. It documents the `search_context()` function for finding patterns with surrounding text. Most importantly, it describes `llm_query()` and `llm_query_batch()` for recursive sub-calls.
+
+The prompt also includes strategic guidance derived from the paper's findings. It suggests that the model should first probe the context to understand its structure rather than diving in blindly. It recommends using code for filtering and searching before invoking expensive LLM calls for semantic processing. It explains when to use batched queries for efficiency. This guidance helps the model make good decisions about how to decompose problems.
+
+The prompt generation is dynamic. When context is loaded, the system prompt includes the actual length and source of the context, giving the model concrete information to work with. When no context is loaded, the simpler prompt applies to avoid confusing the model with capabilities it doesn't have.
+
+### Sub-Query Execution: The Core RLM Innovation
+
+The `llm_query()` function is what makes RLM truly recursive. Rather than trying to process an entire large context at once, the model can break it into fragments and query each one separately. This is implemented in `crates/rlm/src/subquery.rs` through a preprocessing step that runs before Python code execution.
+
+The approach works as follows. When the model generates Python code that contains `llm_query()` calls, the engine parses the code to extract these calls before sending it to Python. For each call, it evaluates the arguments. If the text argument is a context slice like `context[1000:2000]`, it resolves this against the loaded context to get the actual text fragment. If it's a string literal, it uses that directly.
+
+With the arguments resolved, the engine makes an actual call to the FM Bridge for each sub-query. This is a real LLM invocation, potentially the same model or a different one configured for sub-calls. The sub-query prompt is structured to clearly separate the instruction from the text to process, helping the model understand its role.
+
+The results from sub-queries are then injected back into the Python code as pre-assigned variables. If the original code was `result = llm_query("Summarize", context[0:1000])`, the executed code becomes something like `__llm_query_result_0 = "The summary text..." \n result = __llm_query_result_0`. This substitution happens transparently, so the model's code works as expected but the LLM calls are intercepted and handled by the engine.
+
+This design has important implications. Sub-queries are synchronous and sequential in the current implementation, which matches the paper's baseline. The paper notes that async execution would improve performance significantly, but synchronous execution is simpler to reason about and debug. The logging shows each sub-query with its prompt, text length, and result preview, making it possible to understand what the model is doing.
+
+### Integration and Testing
+
+The engine in `crates/rlm/src/engine.rs` ties everything together. When code is about to be executed, it goes through two preprocessing steps. First, sub-queries are identified and executed, with results injected as variables. Second, if context is loaded, the context variable and helper functions are injected. Only then is the modified code sent to Python.
+
+The verbose logging mode shows all of this happening. You can see the original code the model wrote, then the sub-query executions with their prompts and results, then the final execution result. This transparency is essential for debugging when things go wrong and for understanding the model's problem-solving approach when things go right.
+
+Testing with the actual FM Bridge confirms that context loading works. Loading `context.rs` itself as context shows 12,435 characters being loaded and made available. The system prompt now includes this length, so the model knows what it's working with. Full end-to-end testing with sub-queries requires the FM Bridge to be running, but the unit tests for the parsing logic confirm that llm_query calls are correctly extracted from code.
+
+### What This Enables
+
+With these implementations, several usage patterns from the paper become possible. Codebase summarization can load an entire directory and use llm_query to process each file, aggregating the results. Document analysis can load a long document and query different sections for different types of information. Search and synthesis can find relevant portions of a context using search_context, then use llm_query to process just those portions.
+
+The combination of context loading and sub-queries creates a powerful abstraction. The model sees a simple interface where it can slice data and call LLM functions over fragments. The engine handles all the complexity of actually executing those calls, managing the FM Bridge connection, and injecting results back into the execution flow.
+
+### Recommendations for Next Steps
+
+The implementation now covers the core capabilities described in the RLM paper, but there are several directions that would significantly increase its practical utility.
+
+The most impactful next step would be implementing batch and parallel sub-query execution. The paper notes that sequential sub-queries are a major performance bottleneck. When analyzing a codebase, hundreds of files might need to be processed, and doing these sequentially could take many minutes. The `llm_query_batch()` function is already documented in the prompt, and the infrastructure for it exists, but the engine currently processes queries one at a time. Implementing true batching, where multiple sub-queries go to the FM in a single request or in parallel, would dramatically improve throughput for large contexts.
+
+Closely related is the integration with FRLM for distributed execution. The FRLM crate already has a conductor that can route sub-queries to multiple workers with different verification policies. Bridging RLM to use FRLM for sub-query execution would enable true scaling across multiple inference backends, whether local Apple FM instances or remote cloud endpoints. The architecture is already there; it needs wiring together.
+
+The chunking and fragment selection system deserves attention. Currently, the model must manually slice the context using index arithmetic. The paper describes helper functions for semantic chunking, automatic fragment sizing based on token limits, and utilities for navigating between fragments. Implementing something like `get_fragments()` that returns a list of logical chunks, or `next_fragment()` for iteration, would make the model's job easier and reduce the chance of it making mistakes in index calculation.
+
+Error handling and retry logic needs hardening for production use. If a sub-query fails due to FM timeout or rate limiting, the current implementation propagates the error and fails the whole RLM run. A more robust approach would retry failed sub-queries with exponential backoff, skip non-critical failures while logging them, and perhaps try alternative phrasings if the FM seems confused by a particular sub-query.
+
+The FINAL_VAR feature from the paper is not yet implemented. This allows the model to return a variable's contents as the final result, useful when the answer is too large to include inline. For long analysis tasks that build up extensive results in a variable, this would be cleaner than having the model try to echo back a huge string.
+
+Cost and token tracking would help users understand what their RLM runs are doing. Each sub-query has a cost in tokens and inference time. Exposing this in the logging and providing summary statistics at the end of a run would help users tune their usage. The paper found that RLM is often cheaper than baseline for simple problems but can be expensive for complex ones; visibility into costs helps users make informed decisions.
+
+The sandbox story remains concerning. The Python executor runs arbitrary model-generated code with full system access. For a local development tool this is acceptable, but for any production or shared deployment, sandboxing is essential. Options include WASM-based Python runtimes, Docker containers with restricted capabilities, or a custom Python runtime that only exposes safe operations. This is significant engineering work but necessary before wider deployment.
+
+Finally, the prompt engineering could be refined based on more testing with different models. The current prompt is based on the paper's guidelines but has only been tested with Apple FM. Different models may need different instruction styles, different levels of detail in the available functions, or different strategic guidance about when to use sub-queries versus direct processing. Building a prompt variant system that adapts to the model being used would improve reliability across backends.
+
+### Files Created in This Session
+
+| File | Purpose |
+|------|---------|
+| `crates/rlm/src/context.rs` | Context loading from files and directories |
+| `crates/rlm/src/subquery.rs` | llm_query parsing and execution |
+
+### Files Modified in This Session
+
+| File | Changes |
+|------|---------|
+| `crates/rlm/src/engine.rs` | Sub-query processing, context injection |
+| `crates/rlm/src/prompts.rs` | Context-aware system prompt |
+| `crates/rlm/src/cli.rs` | --context-file and --context-dir flags |
+| `crates/rlm/src/lib.rs` | New module exports |
+| `crates/rlm/src/error.rs` | ContextError and SubQueryError variants |
+
+### Commits
+
+1. **2aa32b18a** - Add context loading to RLM (Phase 1)
+2. **77df5ad93** - Add llm_query() sub-query support to RLM
