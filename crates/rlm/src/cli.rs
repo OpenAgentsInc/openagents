@@ -7,6 +7,7 @@ use fm_bridge::FMClient;
 
 use crate::context::Context;
 use crate::error::Result;
+use crate::orchestrator::OrchestratorConfig;
 use crate::prompts::PromptTier;
 use crate::python_executor::PythonExecutor;
 use crate::{RlmConfig, RlmEngine};
@@ -77,6 +78,18 @@ pub struct RunArgs {
     /// Disable stuck detection (not recommended)
     #[arg(long)]
     pub no_stuck_detection: bool,
+
+    /// Use engine-orchestrated analysis (recommended for large documents)
+    #[arg(long)]
+    pub orchestrated: bool,
+
+    /// Chunk size for orchestrated mode (characters)
+    #[arg(long, default_value = "6000")]
+    pub chunk_size: usize,
+
+    /// Maximum chunks to process in orchestrated mode
+    #[arg(long, default_value = "50")]
+    pub max_chunks: usize,
 }
 
 /// Execute an RLM CLI command.
@@ -90,9 +103,16 @@ async fn run_rlm(args: RunArgs) -> Result<()> {
     println!("=== RLM Run ===");
     println!("Query: {}", args.query);
     println!("FM URL: {}", args.fm_url);
-    println!("Max iterations: {}", args.max_iterations);
-    println!("Allow shell: {}", args.allow_shell);
-    println!("Python: {}", args.python);
+    if args.orchestrated {
+        println!("Mode: Orchestrated (engine-driven)");
+        println!("Chunk size: {}", args.chunk_size);
+        println!("Max chunks: {}", args.max_chunks);
+    } else {
+        println!("Mode: REPL loop");
+        println!("Max iterations: {}", args.max_iterations);
+        println!("Allow shell: {}", args.allow_shell);
+        println!("Python: {}", args.python);
+    }
 
     // Load context if specified
     let context = if let Some(ref file_path) = args.context_file {
@@ -131,70 +151,135 @@ async fn run_rlm(args: RunArgs) -> Result<()> {
         }
     }
 
-    // Check Python availability
-    let executor = PythonExecutor::with_binary(&args.python);
-    if !executor.is_available() {
-        println!("ERROR: Python not available at '{}'", args.python);
-        println!("Install Python or specify a different binary with --python");
-        return Ok(());
-    }
+    // For orchestrated mode, we don't need Python
+    if args.orchestrated {
+        // Create a minimal executor (won't be used)
+        let executor = PythonExecutor::with_binary(&args.python);
 
-    if let Some(version) = executor.version() {
-        println!("Python: {}", version);
-    }
-    println!();
+        let config = RlmConfig {
+            max_iterations: args.max_iterations,
+            allow_shell: args.allow_shell,
+            verbose: true,
+            prompt_tier: args.prompt_tier.into(),
+            enable_stuck_detection: !args.no_stuck_detection,
+        };
 
-    // Create engine with config
-    let config = RlmConfig {
-        max_iterations: args.max_iterations,
-        allow_shell: args.allow_shell,
-        verbose: true, // Always verbose for CLI
-        prompt_tier: args.prompt_tier.into(),
-        enable_stuck_detection: !args.no_stuck_detection,
-    };
+        let mut engine = RlmEngine::with_config(client, executor, config);
 
-    println!("Prompt tier: {:?}", config.prompt_tier);
-    println!("Stuck detection: {}", if config.enable_stuck_detection { "enabled" } else { "disabled" });
-
-    let mut engine = RlmEngine::with_config(client, executor, config);
-
-    // Set context if loaded
-    if let Some(ctx) = context {
-        engine.set_context(ctx);
-    }
-
-    println!("{}", "=".repeat(60));
-    println!();
-
-    // Run RLM
-    match engine.run(&args.query).await {
-        Ok(result) => {
-            println!();
-            println!("{}", "=".repeat(60));
-            println!("\n=== FINAL RESULT ===\n");
-            println!("Output: {}", result.output);
-            println!("Iterations: {}", result.iterations);
-
-            if !result.execution_log.is_empty() {
-                println!("\n=== Execution Summary ===\n");
-                for entry in &result.execution_log {
-                    println!("Iteration {}: {} -> {}",
-                        entry.iteration,
-                        entry.command_type,
-                        if entry.result.len() > 50 {
-                            format!("{}...", &entry.result[..50])
-                        } else {
-                            entry.result.clone()
-                        }
-                    );
-                }
+        // Context is required for orchestrated mode
+        match context {
+            Some(ctx) => engine.set_context(ctx),
+            None => {
+                println!("ERROR: Orchestrated mode requires --context-file or --context-dir");
+                return Ok(());
             }
         }
-        Err(e) => {
-            println!();
-            println!("{}", "=".repeat(60));
-            println!("\n=== ERROR ===\n");
-            println!("{}", e);
+
+        println!("{}", "=".repeat(60));
+        println!();
+
+        // Create orchestrator config
+        let orch_config = OrchestratorConfig {
+            chunk_size: args.chunk_size,
+            max_chunks: args.max_chunks,
+            verbose: true,
+            ..Default::default()
+        };
+
+        // Run orchestrated analysis
+        match engine.run_orchestrated_with_config(&args.query, orch_config).await {
+            Ok(result) => {
+                println!();
+                println!("{}", "=".repeat(60));
+                println!("\n=== FINAL RESULT ===\n");
+                println!("{}", result.output);
+                println!("\nChunks processed: {}", result.iterations);
+
+                if !result.execution_log.is_empty() {
+                    println!("\n=== Chunk Summaries ===\n");
+                    for entry in &result.execution_log {
+                        let preview = if entry.result.len() > 80 {
+                            format!("{}...", &entry.result[..80])
+                        } else {
+                            entry.result.clone()
+                        };
+                        println!("{}: {}", entry.executed, preview.replace('\n', " "));
+                    }
+                }
+            }
+            Err(e) => {
+                println!();
+                println!("{}", "=".repeat(60));
+                println!("\n=== ERROR ===\n");
+                println!("{}", e);
+            }
+        }
+    } else {
+        // REPL mode - check Python availability
+        let executor = PythonExecutor::with_binary(&args.python);
+        if !executor.is_available() {
+            println!("ERROR: Python not available at '{}'", args.python);
+            println!("Install Python or specify a different binary with --python");
+            return Ok(());
+        }
+
+        if let Some(version) = executor.version() {
+            println!("Python: {}", version);
+        }
+        println!();
+
+        // Create engine with config
+        let config = RlmConfig {
+            max_iterations: args.max_iterations,
+            allow_shell: args.allow_shell,
+            verbose: true, // Always verbose for CLI
+            prompt_tier: args.prompt_tier.into(),
+            enable_stuck_detection: !args.no_stuck_detection,
+        };
+
+        println!("Prompt tier: {:?}", config.prompt_tier);
+        println!("Stuck detection: {}", if config.enable_stuck_detection { "enabled" } else { "disabled" });
+
+        let mut engine = RlmEngine::with_config(client, executor, config);
+
+        // Set context if loaded
+        if let Some(ctx) = context {
+            engine.set_context(ctx);
+        }
+
+        println!("{}", "=".repeat(60));
+        println!();
+
+        // Run RLM
+        match engine.run(&args.query).await {
+            Ok(result) => {
+                println!();
+                println!("{}", "=".repeat(60));
+                println!("\n=== FINAL RESULT ===\n");
+                println!("Output: {}", result.output);
+                println!("Iterations: {}", result.iterations);
+
+                if !result.execution_log.is_empty() {
+                    println!("\n=== Execution Summary ===\n");
+                    for entry in &result.execution_log {
+                        println!("Iteration {}: {} -> {}",
+                            entry.iteration,
+                            entry.command_type,
+                            if entry.result.len() > 50 {
+                                format!("{}...", &entry.result[..50])
+                            } else {
+                                entry.result.clone()
+                            }
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                println!();
+                println!("{}", "=".repeat(60));
+                println!("\n=== ERROR ===\n");
+                println!("{}", e);
+            }
         }
     }
 

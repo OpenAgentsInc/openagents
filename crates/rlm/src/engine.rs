@@ -9,6 +9,7 @@ use crate::command::Command;
 use crate::context::Context;
 use crate::error::{Result, RlmError};
 use crate::executor::{ExecutionEnvironment, ExecutionResult};
+use crate::orchestrator::{EngineOrchestrator, OrchestratorConfig};
 use crate::prompts::{
     continuation_prompt, continuation_prompt_with_reminder, error_prompt,
     error_prompt_with_reminder, initial_prompt, system_prompt_for_tier, PromptTier,
@@ -717,6 +718,68 @@ def search_context(pattern, max_results=10, window=200):
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
             exit_code: output.status.code().unwrap_or(-1),
             duration_ms: 0,
+        })
+    }
+
+    /// Run with engine-orchestrated analysis (for large documents).
+    ///
+    /// Unlike `run()` which uses the REPL loop, this method drives document
+    /// traversal from the engine side. It:
+    /// 1. Chunks the document on semantic boundaries
+    /// 2. Processes each chunk with simple FM prompts
+    /// 3. Synthesizes findings into a final answer
+    ///
+    /// This is more reliable for Apple FM with large documents because
+    /// the engine orchestrates traversal instead of relying on the model.
+    pub async fn run_orchestrated(&self, query: &str) -> Result<RlmResult> {
+        self.run_orchestrated_with_config(query, OrchestratorConfig::default())
+            .await
+    }
+
+    /// Run orchestrated analysis with custom configuration.
+    pub async fn run_orchestrated_with_config(
+        &self,
+        query: &str,
+        config: OrchestratorConfig,
+    ) -> Result<RlmResult> {
+        let context = self
+            .loaded_context
+            .as_ref()
+            .ok_or_else(|| RlmError::ContextError("No context loaded for orchestrated analysis".into()))?;
+
+        info!(
+            "Starting orchestrated analysis: {} chars, query: {}",
+            context.length, query
+        );
+
+        let orchestrator = EngineOrchestrator::with_config(self.client.clone(), config);
+
+        let result = orchestrator.analyze(&context.content, query).await?;
+
+        info!(
+            "Orchestrated analysis complete: {} chunks, {} ms",
+            result.chunks_processed, result.processing_time_ms
+        );
+
+        // Convert orchestrator result to RlmResult
+        Ok(RlmResult {
+            output: result.answer,
+            iterations: result.chunks_processed as u32,
+            execution_log: result
+                .chunk_summaries
+                .iter()
+                .enumerate()
+                .map(|(i, summary)| ExecutionLogEntry {
+                    iteration: (i + 1) as u32,
+                    llm_response: String::new(),
+                    command_type: "ChunkAnalysis".to_string(),
+                    executed: summary
+                        .section_title
+                        .clone()
+                        .unwrap_or_else(|| format!("Chunk {}", summary.chunk_id)),
+                    result: summary.findings.clone(),
+                })
+                .collect(),
         })
     }
 }
