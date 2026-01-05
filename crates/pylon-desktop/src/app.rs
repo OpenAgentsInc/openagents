@@ -311,28 +311,30 @@ impl ApplicationHandler for PylonApp {
                 }
             }
             WindowEvent::RedrawRequested => {
-                let width = state.config.width as f32;
-                let height = state.config.height as f32;
+                // Physical pixels from window resize event
+                let physical_width = state.config.width as f32;
+                let physical_height = state.config.height as f32;
+
+                // Scene uses LOGICAL coordinates - gpu_quads() scales to physical at GPU boundary
+                let scale_factor = state.window.scale_factor() as f32;
+                let logical_width = physical_width / scale_factor;
+                let logical_height = physical_height / scale_factor;
 
                 // Update timing
                 state.last_tick = Instant::now();
 
-                // Build scene
+                // Build scene with LOGICAL coordinates
                 let mut scene = Scene::new();
                 ui::build_pylon_ui(
                     &mut scene,
                     &mut state.text_system,
                     &mut state.fm_state,
-                    width,
-                    height,
+                    logical_width,
+                    logical_height,
                 );
 
                 // Paint command palette overlay (last = on top)
                 if state.command_palette.is_open() {
-                    let scale_factor = state.window.scale_factor() as f32;
-                    // Use logical pixel bounds for centering calculation
-                    let logical_width = width / scale_factor;
-                    let logical_height = height / scale_factor;
                     let bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
                     let mut paint_cx = PaintContext::new(
                         &mut scene,
@@ -358,9 +360,10 @@ impl ApplicationHandler for PylonApp {
                             label: Some("Render Encoder"),
                         });
 
+                // Resize uses PHYSICAL pixels for the viewport
                 state
                     .renderer
-                    .resize(&state.queue, Size::new(width, height), 1.0);
+                    .resize(&state.queue, Size::new(physical_width, physical_height), 1.0);
 
                 if state.text_system.is_dirty() {
                     state.renderer.update_atlas(
