@@ -121,8 +121,23 @@ fn resolve_model_id(
         anyhow::bail!("model not found: {model}");
     }
 
+    if let Ok(model) = std::env::var("GPT_OSS_METAL_MODEL_ID") {
+        let hit = models.iter().find(|(_, info)| info.id == model);
+        if let Some((backend_id, info)) = hit {
+            return Ok((backend_id.clone(), info.id.clone()));
+        }
+    }
+
     if let Ok(model) = std::env::var("GPT_OSS_GGUF_MODEL_ID") {
         let hit = models.iter().find(|(_, info)| info.id == model);
+        if let Some((backend_id, info)) = hit {
+            return Ok((backend_id.clone(), info.id.clone()));
+        }
+    }
+
+    // If GPT_OSS_METAL_MODEL_PATH is set, prefer the gpt-oss-metal backend.
+    if std::env::var("GPT_OSS_METAL_MODEL_PATH").is_ok() {
+        let hit = models.iter().find(|(backend_id, _)| backend_id == "gpt-oss-metal");
         if let Some((backend_id, info)) = hit {
             return Ok((backend_id.clone(), info.id.clone()));
         }
