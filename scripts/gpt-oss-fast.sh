@@ -18,6 +18,7 @@ UBATCH="${GPT_OSS_UBATCH:-256}"
 LOG_PATH="${GPT_OSS_LOG:-/tmp/llama-server-gptoss.log}"
 WARMUP_COUNT="${GPT_OSS_WARMUP_COUNT:-2}"
 WARMUP_PROMPT="${GPT_OSS_WARMUP_PROMPT:-warmup}"
+KEEPALIVE_SECS="${GPT_OSS_KEEPALIVE_SECS:-0}"
 
 if [[ ! -x "$LLAMA_SERVER" ]]; then
     echo "llama-server not found: $LLAMA_SERVER" >&2
@@ -83,6 +84,15 @@ if [[ "$WARMUP_COUNT" -gt 0 ]]; then
             -d "{\"model\":\"gpt-oss-20b\",\"prompt\":\"${WARMUP_PROMPT}\",\"max_tokens\":1,\"temperature\":0}" \
             >/dev/null || true
     done
+fi
+
+if [[ "$KEEPALIVE_SECS" -gt 0 ]]; then
+    echo "Starting keepalive every ${KEEPALIVE_SECS}s..."
+    nohup bash -c "while true; do curl -s \"http://localhost:${PORT}/v1/completions\" \
+        -H 'Content-Type: application/json' \
+        -d \"{\\\"model\\\":\\\"gpt-oss-20b\\\",\\\"prompt\\\":\\\"${WARMUP_PROMPT}\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" \
+        >/dev/null || true; sleep \"${KEEPALIVE_SECS}\"; done" \
+        >/dev/null 2>&1 & disown
 fi
 
 echo "Ready: http://localhost:${PORT}"

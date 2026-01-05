@@ -30,6 +30,7 @@ Notes:
 - `--no-mmap` is **critical** for fast decode on macOS (loads model into RAM).
 - First request after start/idle can be slow; send a quick warmup prompt to fully page-in.
 - `scripts/gpt-oss-fast.sh` supports env overrides like `GPT_OSS_GGUF_MODEL_PATH`, `GPT_OSS_PORT`, and `GPT_OSS_WARMUP_COUNT`.
+- If your system pages out, set `GPT_OSS_KEEPALIVE_SECS=30` to keep the server hot.
 
 ## Configuration
 
