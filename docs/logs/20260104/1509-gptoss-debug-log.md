@@ -1261,3 +1261,4 @@ Result:
 - Harmony prompts are ~480 tokens, which slows prompt eval. RAW mode avoids that.
 - For tool-use / Harmony, keep the server running and expect slower first-token latency.
 - Fast path confirmed with llama-server + `local-infer --raw`.
+- Harmony path now runs without panic, but returns raw channel tags and is ~15s for `1+1=` (slow).
