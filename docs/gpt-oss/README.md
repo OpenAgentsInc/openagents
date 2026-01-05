@@ -24,6 +24,12 @@ scripts/local-infer.sh --backend gpt-oss --raw \
 scripts/local-infer.sh --backend gpt-oss --tools "Summarize this repo"
 ```
 
+4. Fastest raw query (minimal overhead):
+
+```bash
+scripts/gpt-oss-query.sh "1+1="
+```
+
 Notes:
 - `--raw` skips Harmony formatting for speed. Use it for quick completions.
 - Harmony mode is slower but required for tool-use and structured outputs.

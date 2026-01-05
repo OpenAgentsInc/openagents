@@ -1400,6 +1400,9 @@ Script tweak: warmup now runs **only** when the script starts the server
 (or if `GPT_OSS_FORCE_WARMUP=1`). This avoids blocking interactive requests
 when the server is already running.
 
+Added `scripts/gpt-oss-query.sh` for the fastest possible raw completion
+against llama-server (curl + JSON parse).
+
 ### Keepalive (optional)
 
 Observed intermittent slow prompt prefill after idle (likely paging). Added an optional
