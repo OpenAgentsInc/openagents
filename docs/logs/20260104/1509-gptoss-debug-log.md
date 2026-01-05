@@ -1763,3 +1763,13 @@ Test 26: Q3_K_S with `-ctk f16 -ctv f16`
 Default config (Q4_0 + f16 KV + flash-attn + keepalive 1s):
 - runs=500, p50 **~153ms**, p95 **~179ms**, max **~321ms**.
 - Consistent with prior soak.
+
+### SWA/cache-reuse with Q4_0 + f16 KV
+
+Test 27: `--swa-full`
+- runs=50, p50 **~154ms**, p95 **~184ms**, max **~228ms**.
+- Slightly worse than baseline.
+
+Test 28: `--cache-reuse 256`
+- runs=50, p50 **~153ms**, p95 **~178ms**, max **~187ms**.
+- Essentially same as baseline; no clear win.
