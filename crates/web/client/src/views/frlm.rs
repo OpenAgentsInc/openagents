@@ -183,7 +183,7 @@ pub(crate) fn build_frlm_page(
         // Hover effect
         let is_hovered = state.frlm.bar_hover_index == Some(i);
         let bar_color = if is_hovered {
-            Hsla::new(color.hue(), color.saturation(), color.lightness() + 0.1, 1.0)
+            (*color).lighten(0.1)
         } else {
             *color
         };
@@ -215,8 +215,7 @@ pub(crate) fn build_frlm_page(
     scene.draw_quad(
         Quad::new(insight_bounds)
             .with_background(Hsla::new(0.08, 0.3, 0.15, 0.6))
-            .with_border_color(STARGATE_COLOR.with_alpha(0.4))
-            .with_border_widths(1.0, 1.0, 1.0, 1.0),
+            .with_border(STARGATE_COLOR.with_alpha(0.4), 1.0),
     );
 
     let insight_text = "Stargate (1.2 GW) = 24 million Macs at 50W each";
@@ -387,4 +386,3 @@ pub(crate) fn handle_frlm_mouse_move(state: &mut AppState, x: f32, y: f32) {
     }
     state.frlm.bar_hover_index = hovered;
 }
-
