@@ -15,11 +15,13 @@ PORT="${GPT_OSS_PORT:-8000}"
 CTX="${GPT_OSS_CTX:-512}"
 BATCH="${GPT_OSS_BATCH:-256}"
 UBATCH="${GPT_OSS_UBATCH:-256}"
+PARALLEL="${GPT_OSS_PARALLEL:-1}"
 LOG_PATH="${GPT_OSS_LOG:-/tmp/llama-server-gptoss.log}"
 WARMUP_COUNT="${GPT_OSS_WARMUP_COUNT:-2}"
 WARMUP_PROMPT="${GPT_OSS_WARMUP_PROMPT:-warmup}"
 KEEPALIVE_SECS="${GPT_OSS_KEEPALIVE_SECS:-0}"
 KEEPALIVE_PID_FILE="${GPT_OSS_KEEPALIVE_PID_FILE:-/tmp/gpt-oss-keepalive.pid}"
+FORCE_WARMUP="${GPT_OSS_FORCE_WARMUP:-0}"
 
 if [[ ! -x "$LLAMA_SERVER" ]]; then
     echo "llama-server not found: $LLAMA_SERVER" >&2
@@ -48,19 +50,26 @@ health_ok() {
     fi
 }
 
+started_server=0
 if health_ok; then
     echo "llama-server already running on port $PORT"
 else
     echo "Starting llama-server..."
-    nohup "$LLAMA_SERVER" \
-        -m "$MODEL_PATH" \
-        --port "$PORT" \
-        -ngl 999 \
-        -c "$CTX" \
-        -b "$BATCH" \
-        -ub "$UBATCH" \
-        --no-warmup \
-        --no-mmap \
+    server_args=(
+        -m "$MODEL_PATH"
+        --port "$PORT"
+        -ngl 999
+        -c "$CTX"
+        -b "$BATCH"
+        -ub "$UBATCH"
+        --no-warmup
+        --no-mmap
+    )
+    if [[ "$PARALLEL" -gt 1 ]]; then
+        server_args+=(-np "$PARALLEL")
+    fi
+
+    nohup "$LLAMA_SERVER" "${server_args[@]}" \
         > "$LOG_PATH" 2>&1 &
     echo "llama-server PID: $!"
 
@@ -75,9 +84,10 @@ else
         echo "llama-server failed to become healthy. See $LOG_PATH" >&2
         exit 1
     fi
+    started_server=1
 fi
 
-if [[ "$WARMUP_COUNT" -gt 0 ]]; then
+if [[ "$WARMUP_COUNT" -gt 0 ]] && { [[ "$started_server" -eq 1 ]] || [[ "$FORCE_WARMUP" -eq 1 ]]; }; then
     echo "Warming up ($WARMUP_COUNT requests)..."
     for _ in $(seq 1 "$WARMUP_COUNT"); do
         curl -s "http://localhost:${PORT}/v1/completions" \
