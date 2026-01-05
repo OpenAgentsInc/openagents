@@ -67,7 +67,8 @@ impl GptOssClient {
             });
         }
 
-        let completion = response.json::<GptOssResponse>().await?;
+        let value = response.json::<serde_json::Value>().await?;
+        let completion = parse_completion_response(value)?;
         Ok(completion)
     }
 
@@ -236,6 +237,77 @@ fn parse_models_response(value: serde_json::Value) -> Result<Vec<GptOssModelInfo
     })?;
 
     serde_json::from_value(data).map_err(GptOssError::JsonError)
+}
+
+fn parse_completion_response(value: serde_json::Value) -> Result<GptOssResponse> {
+    if let Ok(response) = serde_json::from_value::<GptOssResponse>(value.clone()) {
+        return Ok(response);
+    }
+
+    let choices = value
+        .get("choices")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| {
+            GptOssError::InvalidRequest("Completion response missing choices".to_string())
+        })?;
+    let first_choice = choices.first().ok_or_else(|| {
+        GptOssError::InvalidRequest("Completion response missing first choice".to_string())
+    })?;
+    let text = first_choice
+        .get("text")
+        .and_then(|v| v.as_str())
+        .or_else(|| {
+            first_choice
+                .get("message")
+                .and_then(|message| message.get("content"))
+                .and_then(|v| v.as_str())
+        })
+        .unwrap_or("")
+        .to_string();
+
+    let finish_reason = first_choice
+        .get("finish_reason")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string());
+
+    let usage = value
+        .get("usage")
+        .and_then(parse_usage_stats)
+        .or_else(|| {
+            value
+                .get("usage")
+                .and_then(|usage| serde_json::from_value::<UsageStats>(usage.clone()).ok())
+        });
+
+    let response = GptOssResponse {
+        id: value
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        model: value
+            .get("model")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        text,
+        finish_reason,
+        usage,
+    };
+
+    Ok(response)
+}
+
+fn parse_usage_stats(value: &serde_json::Value) -> Option<UsageStats> {
+    let prompt_tokens = value.get("prompt_tokens")?.as_u64()? as usize;
+    let completion_tokens = value.get("completion_tokens")?.as_u64()? as usize;
+    let total_tokens = value.get("total_tokens")?.as_u64()? as usize;
+
+    Some(UsageStats {
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+    })
 }
 
 #[cfg(test)]

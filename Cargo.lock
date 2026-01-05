@@ -8350,6 +8350,7 @@ dependencies = [
  "futures-util",
  "gitafter",
  "governor 0.10.4",
+ "gpt-oss",
  "gpt-oss-agent",
  "gtk",
  "hex",

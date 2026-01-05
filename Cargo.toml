@@ -100,6 +100,7 @@ rlm = { path = "crates/rlm" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 acp-adapter = { path = "crates/acp-adapter" }
 gpt-oss-agent = { path = "crates/gpt-oss-agent" }
+gpt-oss = { path = "crates/gpt-oss" }
 fm-bridge-agent = { path = "crates/fm-bridge-agent" }
 issues = { path = "crates/issues" }
 nostr = { path = "crates/nostr/core" }
