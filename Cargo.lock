@@ -8364,6 +8364,7 @@ dependencies = [
  "pylon",
  "rand 0.9.2",
  "reqwest",
+ "rlm",
  "rusqlite",
  "serde",
  "serde_json",
@@ -10433,10 +10434,12 @@ name = "rlm"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "clap",
  "fm-bridge",
  "regex",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "tokio-test",

@@ -68,6 +68,18 @@ pub fn run(cmd: PylonCommands) -> anyhow::Result<()> {
                 })
                 .await
             }
+            PylonCommands::Api(args) => {
+                pylon::cli::execute(pylon::cli::PylonCli {
+                    command: pylon::cli::Commands::Api(args),
+                })
+                .await
+            }
+            PylonCommands::Infer(args) => {
+                pylon::cli::execute(pylon::cli::PylonCli {
+                    command: pylon::cli::Commands::Infer(args),
+                })
+                .await
+            }
         }
     })
 }

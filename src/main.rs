@@ -53,6 +53,10 @@ enum Commands {
     /// Pylon commands (NIP-90 compute provider)
     #[command(subcommand)]
     Pylon(cli::pylon::PylonCommands),
+
+    /// RLM commands (Recursive Language Model)
+    #[command(subcommand)]
+    Rlm(cli::rlm::RlmCommands),
 }
 
 fn main() {
@@ -84,6 +88,7 @@ fn main() {
         Some(Commands::Gitafter(cmd)) => cli::gitafter::run(cmd),
         Some(Commands::Auth(cmd)) => cli::auth::run(cmd),
         Some(Commands::Pylon(cmd)) => cli::pylon::run(cmd),
+        Some(Commands::Rlm(cmd)) => cli::rlm::run(cmd),
     };
 
     if let Err(e) = result {

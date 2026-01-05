@@ -8,4 +8,5 @@ pub mod autopilot;
 pub mod gitafter;
 pub mod marketplace;
 pub mod pylon;
+pub mod rlm;
 pub mod wallet;

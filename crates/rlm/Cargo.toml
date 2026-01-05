@@ -31,5 +31,11 @@ tracing = { workspace = true }
 # Regex for command parsing
 regex = "1"
 
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Temp files for Python executor
+tempfile = "3"
+
 [dev-dependencies]
 tokio-test = "0.4"
