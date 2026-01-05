@@ -1864,3 +1864,9 @@ With default `-c 384`:
 - Larger prompts (256+ words) **exceed context**: server returns 400 "request exceeds available context".
 
 If you need larger prompts, increase `GPT_OSS_CTX` (e.g., 512/1024).
+
+### Prefill with larger ctx (512)
+
+With `GPT_OSS_CTX=512`:
+- Prompt ~192 words (`"word " * 192`): prompt_per_second **~504 tok/s**, predicted_per_second **~60.7 tok/s**.
+- Prompt ~256 words still exceeded context (400 error), so bump ctx further for very long prompts.
