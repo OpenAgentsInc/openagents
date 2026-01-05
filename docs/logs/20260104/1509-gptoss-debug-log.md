@@ -1682,3 +1682,19 @@ Default config (Q2_K + q8_0 KV + flash-attn + keepalive 1s):
 Test 16: `--swa-full`
 - runs=20, p50 **~176ms**, p95 **~200ms**, max **~339ms**.
 - Slightly worse; keep disabled.
+
+### Batch + parallel extras
+
+Test 17: `-b 512 -ub 512`
+- runs=20, p50 **~162ms**, p95 **~209ms**, max **~369ms**.
+- No better than default; max latency worse.
+
+Test 18: `-np 6`
+- runs=20, p50 **~194ms**, p95 **~255ms**.
+- Worse than `-np 4`.
+
+Test 19: `-np 8`
+- runs=20, p50 **~180ms**, p95 **~214ms**.
+- Slightly worse than `-np 4`.
+
+Conclusion: keep `-b/-ub 256` and `-np 4`.
