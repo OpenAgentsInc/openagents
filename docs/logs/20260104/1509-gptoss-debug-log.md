@@ -1745,3 +1745,9 @@ Test 25: `-ctk bf16 -ctv bf16`
 - Much slower; avoid bf16 KV.
 
 Conclusion: prefer `-ctk f16 -ctv f16` for best latency (on this Mac).
+
+### Q4_0 + f16 KV long-run stability (500 runs)
+
+Default config (Q4_0 + f16 KV + flash-attn + keepalive 1s):
+- runs=500, p50 **~153ms**, p95 **~188ms**, max **~635ms**.
+- No multi‑second spikes observed.
