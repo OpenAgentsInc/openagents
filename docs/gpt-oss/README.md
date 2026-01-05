@@ -64,6 +64,7 @@ Notes:
   Set `GPT_OSS_KEEPALIVE_SECS=0` to disable keepalive.
 - If your system pages out, set `GPT_OSS_KEEPALIVE_SECS=1` (most stable) or `=2` to keep the server hot (lower = more stable, more background load).
 - Use `GPT_OSS_KEEPALIVE_MAX_TOKENS=8` to make keepalive touch more decode kernels (higher = more load).
+  Fractional keepalive intervals (e.g., `0.5`) are supported but usually increase load without improving latency.
 - Keepalive PID file defaults to `/tmp/gpt-oss-keepalive.pid` (`GPT_OSS_KEEPALIVE_PID_FILE`).
 - Set `GPT_OSS_PARALLEL=4` to allow keepalive requests without blocking interactive prompts.
 - Set `GPT_OSS_FORCE_WARMUP=1` to run warmup even if the server is already running.

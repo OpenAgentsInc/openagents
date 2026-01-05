@@ -1607,3 +1607,12 @@ Parallel slots:
 
 Running with defaults (`scripts/gpt-oss-fast.sh`) yields:
 - p50 ~**191ms**, p95 ~**222ms** (10 runs, max_tokens=8).
+
+### Keepalive fractional interval
+
+Tried `GPT_OSS_KEEPALIVE_SECS=0.5`:
+- p50 ~**181ms**, p95 ~**218ms** (10 runs).
+- Worse than 1s; more background load.
+
+Bug fix:
+- `gpt-oss-fast.sh` now accepts fractional keepalive values (no more bash integer error).
