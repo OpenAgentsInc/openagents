@@ -1757,3 +1757,9 @@ Default config (Q4_0 + f16 KV + flash-attn + keepalive 1s):
 Test 26: Q3_K_S with `-ctk f16 -ctv f16`
 - runs=100, p50 **~153ms**, p95 **~172ms**, max **~202ms**.
 - Essentially identical to Q4_0 + f16 KV.
+
+### Q4_0 + f16 KV long-run stability (500 runs, repeat)
+
+Default config (Q4_0 + f16 KV + flash-attn + keepalive 1s):
+- runs=500, p50 **~153ms**, p95 **~179ms**, max **~321ms**.
+- Consistent with prior soak.
