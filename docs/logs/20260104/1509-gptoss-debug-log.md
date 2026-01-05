@@ -441,6 +441,36 @@ cargo run -p ml --bin gptoss_cli -- --gguf crates/ml/models/gpt-oss-20b/gpt-oss-
 # Timed out (Harmony prompt, CPU)
 cargo run -p ml --bin gptoss_cli -- --gguf crates/ml/models/gpt-oss-20b/gpt-oss-20b-Q8_0.gguf --prompt "1+1=" --max-tokens 1
 ```
+
+---
+
+## Update: 2026-01-04 19:30 - GPU (Metal) Bring-up
+
+### Metal Backend Status
+
+- GPT-OSS Metal backend builds cleanly when pointed at the local `gpt-oss` metal build.
+- `pylon infer` now prefers `gpt-oss-metal` if `GPT_OSS_METAL_MODEL_PATH` is set (before GGUF).
+
+### Remaining Blocker
+
+- No Metal `model.bin` on disk yet. The backend requires the pre-converted Metal weights.
+- The OpenAI repo provides `hf download openai/gpt-oss-20b --include "metal/*"` or
+  `python gpt_oss/metal/scripts/create-local-model.py` from safetensors.
+
+### Commands Used
+
+```bash
+# Build check with Metal libs
+GPT_OSS_METAL_DIR=~/code/gpt-oss/gpt_oss/metal/build \
+  cargo check -p compute --features gpt-oss-metal
+```
+
+### Next Steps
+
+1. Download or build `model.bin` for gpt-oss-20b/120b.
+2. Export `GPT_OSS_METAL_DIR` + `GPT_OSS_METAL_MODEL_PATH`.
+3. Run:
+   `cargo run -p pylon --features gpt-oss-metal -- infer --prompt "Hi" --max-tokens 16`
   Used `gptoss_cli` for testing instead.
 - Harmony prompt prefill is slow on CPU (98 tokens). For now, testing done with `--no-harmony`.
   Need a longer run (or GPU) to verify full Harmony responses.
