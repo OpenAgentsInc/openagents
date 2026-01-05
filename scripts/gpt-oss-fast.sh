@@ -7,7 +7,8 @@
 #   GPT_OSS_BATCH, GPT_OSS_UBATCH, GPT_OSS_LOG,
 #   GPT_OSS_WARMUP_COUNT, GPT_OSS_WARMUP_PROMPT, GPT_OSS_WARMUP_MAX_TOKENS,
 #   GPT_OSS_CACHE_TYPE_K, GPT_OSS_CACHE_TYPE_V, GPT_OSS_KV_UNIFIED, GPT_OSS_FLASH_ATTN,
-#   GPT_OSS_KEEPALIVE_MAX_TOKENS, GPT_OSS_THREADS, GPT_OSS_THREADS_BATCH
+#   GPT_OSS_KEEPALIVE_MAX_TOKENS, GPT_OSS_THREADS, GPT_OSS_THREADS_BATCH,
+#   GPT_OSS_CACHE_REUSE
 #
 set -euo pipefail
 
@@ -54,6 +55,7 @@ KV_UNIFIED="${GPT_OSS_KV_UNIFIED:-0}"
 CACHE_FLASH_ATTN="${GPT_OSS_FLASH_ATTN:-1}"
 THREADS="${GPT_OSS_THREADS:-}"
 THREADS_BATCH="${GPT_OSS_THREADS_BATCH:-}"
+CACHE_REUSE="${GPT_OSS_CACHE_REUSE:-0}"
 
 if [[ ! -x "$LLAMA_SERVER" ]]; then
     echo "llama-server not found: $LLAMA_SERVER" >&2
@@ -125,6 +127,9 @@ else
     fi
     if [[ -n "$THREADS_BATCH" ]]; then
         server_args+=(-tb "$THREADS_BATCH")
+    fi
+    if is_positive_number "$CACHE_REUSE"; then
+        server_args+=(--cache-reuse "$CACHE_REUSE")
     fi
     if [[ "$PARALLEL" -gt 1 ]]; then
         server_args+=(-np "$PARALLEL")

@@ -60,7 +60,7 @@ Notes:
   `GPT_OSS_CACHE_TYPE_K`, `GPT_OSS_CACHE_TYPE_V`, and `GPT_OSS_FLASH_ATTN=0` if needed.
 - It supports env overrides like `GPT_OSS_GGUF_MODEL_PATH`, `GPT_OSS_PORT`, `GPT_OSS_WARMUP_COUNT`, `GPT_OSS_WARMUP_MAX_TOKENS`,
   plus KV cache tuning (`GPT_OSS_CACHE_TYPE_K`, `GPT_OSS_CACHE_TYPE_V`, `GPT_OSS_KV_UNIFIED=1`, `GPT_OSS_FLASH_ATTN`) and
-  thread tuning (`GPT_OSS_THREADS`, `GPT_OSS_THREADS_BATCH`).
+  thread tuning (`GPT_OSS_THREADS`, `GPT_OSS_THREADS_BATCH`) and cache reuse (`GPT_OSS_CACHE_REUSE`).
 - `scripts/gpt-oss-fast.sh` defaults to `GPT_OSS_PARALLEL=4` and `GPT_OSS_KEEPALIVE_SECS=1` for lowest latency.
   Set `GPT_OSS_KEEPALIVE_SECS=0` to disable keepalive.
 - If your system pages out, set `GPT_OSS_KEEPALIVE_SECS=1` (most stable) or `=2` to keep the server hot (lower = more stable, more background load).
