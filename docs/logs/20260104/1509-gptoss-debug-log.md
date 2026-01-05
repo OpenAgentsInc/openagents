@@ -519,10 +519,110 @@ Notes:
 - `Cannot drop a runtime in a context where blocking is not allowed` → fixed by pre-caching tiktoken.
 - `failed to create Metal buffer of size 12884901888` → fixed by limiting context length.
 
+---
+
+## Update: 2026-01-04 21:25 - Defaults + Logging + Runtime Warning
+
+### Defaults (no long env string)
+
+- Default model path: `~/models/gpt-oss-20b/metal/model.bin` (falls back to `~/models/gpt-oss-120b/metal/model.bin`)
+- Model ID inferred from path (e.g., `gpt-oss-20b`)
+- Default context length: `8192` (clamped to model max)
+- Default max batch tokens: `128` (auto-bumped to prompt length)
+- Default tiktoken cache dir: `~/.cache/tiktoken-rs` (auto-created)
+
+### Logging
+
+- `gpt_oss_metal` now logs engine init + inference start/finish + token counts.
+- Pylon default log filter includes `gpt_oss_metal=info`, so logs show without `RUST_LOG`.
+
+### CLI Selection
+
+- `pylon infer` now prefers `gpt-oss-metal` if detected, even without `GPT_OSS_METAL_MODEL_PATH`.
+
+### Metal Build Defaults
+
+- `crates/pylon/build.rs` now falls back to `~/code/gpt-oss/gpt_oss/metal/build` for `default.metallib`.
+
+### Runtime Warning (mlock)
+
+- Warning: `mlock(... model.bin ...) failed with error 35` came from the metal C library.
+- Patched `~/code/gpt-oss/gpt_oss/metal/source/model.c` to make mlock opt-in via `GPT_OSS_METAL_MLOCK=1`.
+- Rebuilt `libgptoss.a` after patch.
+
+### Minimal Command (now works with defaults)
+
+```bash
+cargo run -p pylon --features gpt-oss-metal -- infer --prompt "1+1=" --max-tokens 40 --temperature 0
+```
+
+Notes:
+- Requires the Metal `model.bin` at the default path above (or set `GPT_OSS_METAL_MODEL_PATH`).
+- Ensure `o200k_base.tiktoken` is present in `~/.cache/tiktoken-rs` to avoid Harmony download at runtime.
+
+---
+
+## Update: 2026-01-05 02:42 - Default Runs (Metal)
+
+### Run: max_tokens=4
+
+```bash
+cargo run -p pylon --features gpt-oss-metal -- infer --prompt "1+1=" --max-tokens 4 --temperature 0
+```
+
+Logs (excerpt):
+- `Defaulted TIKTOKEN_RS_CACHE_DIR=/Users/christopherdavid/.cache/tiktoken-rs`
+- `GPT-OSS Metal engine initialized` (model_id `gpt-oss-20b`, context_length `8192`)
+- `GPT-OSS Metal inference started` (prompt_tokens `60`, max_tokens `4`, max_batch_tokens `128`)
+
+Output (partial before timeout):
+```
+<|channel|>analysis
+```
+
+Result: command timed out after ~124s (CLI timeout), inference still running.
+
+### Run: max_tokens=40
+
+```bash
+cargo run -p pylon --features gpt-oss-metal -- infer --prompt "1+1=" --max-tokens 40 --temperature 0
+```
+
+Logs (excerpt):
+- `GPT-OSS Metal inference started` (prompt_tokens `60`, max_tokens `40`)
+
+Output (partial before timeout):
+```
+<|channel|>analysis<|message|>The user
+```
+
+Result: command timed out after ~304s (CLI timeout), inference still running.
+
 ### Pending
 
 1. Parse Harmony output for `pylon infer` (strip channel tags, show final content).
 2. Tune speed/latency (GPU load time still heavy on first run).
+
+---
+
+## Update: 2026-01-04 21:20 - mlock Warning Fixed
+
+### Root Cause
+
+`libgptoss.a` always calls `mlock()` on the 13GB model mapping.
+On macOS, this fails with error 35 (resource unavailable) under default memlock limits,
+but it is **not** fatal.
+
+### Fix Applied
+
+- Patched the local `gpt-oss` metal source to only call `mlock()` when
+  `GPT_OSS_METAL_MLOCK` is explicitly set (otherwise skip silently).
+- Updated `crates/gpt-oss-metal/build.rs` to rerun when `libgptoss.a`,
+  `libmetal-kernels.a`, or `default.metallib` change.
+
+### Verified
+
+Rebuilt `libgptoss.a` and reran Metal inference: warning is gone.
   Used `gptoss_cli` for testing instead.
 - Harmony prompt prefill is slow on CPU (98 tokens). For now, testing done with `--no-harmony`.
   Need a longer run (or GPU) to verify full Harmony responses.

@@ -151,6 +151,13 @@ fn resolve_model_id(
         }
     }
 
+    if let Some((backend_id, info)) = models
+        .iter()
+        .find(|(backend_id, _)| backend_id == "gpt-oss-metal")
+    {
+        return Ok((backend_id.clone(), info.id.clone()));
+    }
+
     models
         .first()
         .map(|(backend_id, info)| (backend_id.clone(), info.id.clone()))

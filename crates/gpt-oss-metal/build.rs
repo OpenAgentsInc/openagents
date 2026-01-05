@@ -20,9 +20,12 @@ fn main() {
         .or_else(|_| env::var("GPT_OSS_METAL_BUILD_DIR"))
         .or_else(|_| env::var("GPT_OSS_METAL_LIB_DIR"))
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
+        .ok()
+        .or_else(default_metal_dir)
+        .unwrap_or_else(|| {
             panic!(
-                "GPT_OSS_METAL_DIR is not set. Point it at the gpt-oss metal build output \
+                "GPT_OSS_METAL_DIR is not set and no default build dir was found. \
+                Point it at the gpt-oss metal build output \
                 (contains libgptoss.a, libmetal-kernels.a, default.metallib)."
             )
         });
@@ -31,6 +34,7 @@ fn main() {
     if !libgptoss.exists() {
         panic!("GPT-OSS metal library not found at {}", libgptoss.display());
     }
+    println!("cargo:rerun-if-changed={}", libgptoss.display());
 
     let libkernels = base_dir.join("libmetal-kernels.a");
     if !libkernels.exists() {
@@ -39,6 +43,7 @@ fn main() {
             libkernels.display()
         );
     }
+    println!("cargo:rerun-if-changed={}", libkernels.display());
 
     let metallib = env::var("GPT_OSS_METAL_METALLIB")
         .map(PathBuf::from)
@@ -46,6 +51,7 @@ fn main() {
     if !metallib.exists() {
         panic!("GPT-OSS metallib not found at {}", metallib.display());
     }
+    println!("cargo:rerun-if-changed={}", metallib.display());
 
     println!("cargo:rustc-link-search=native={}", base_dir.display());
     println!("cargo:rustc-link-lib=static=gptoss");
@@ -57,4 +63,14 @@ fn main() {
         "cargo:rustc-link-arg=-Wl,-sectcreate,__METAL,__shaders,{}",
         metallib.display()
     );
+}
+
+fn default_metal_dir() -> Option<PathBuf> {
+    let home = env::var("HOME").ok()?;
+    let candidate = PathBuf::from(home).join("code/gpt-oss/gpt_oss/metal/build");
+    if candidate.exists() {
+        Some(candidate)
+    } else {
+        None
+    }
 }
