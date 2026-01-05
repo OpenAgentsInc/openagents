@@ -1623,3 +1623,20 @@ Bug fix:
 - `-b 256 -ub 32`: p50 ~**166ms**, p95 ~**217ms**.
 
 No clear win vs `-ub 256`; staying with defaults.
+
+### Long-run stability (50 runs)
+
+Default config (Q2_K + q8_0 KV + flash-attn + keepalive 1s, -b/-ub 256, -np 4):
+- runs=50, p50 **~162.5ms**, p95 **~216ms**, max **~249ms**.
+- No multi-second spikes observed.
+
+### Thread tuning (CPU)
+
+Test 10: `-t 4 -tb 4` (keepalive 1s)
+- **Bad**: p50 ~**298ms**, p95 ~**563ms**, max ~**9.7s**.
+
+Test 11: `-t 8 -tb 8` (keepalive 1s)
+- **Very bad**: p50 ~**284ms**, multi‑second spikes (10–16s).
+
+Conclusion:
+- Leave threads at defaults (auto). Manual thread limits hurt latency.
