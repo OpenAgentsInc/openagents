@@ -37,7 +37,7 @@ if [[ -z "$MODEL_PATH" ]]; then
     MODEL_PATH="$(default_model_path || true)"
 fi
 PORT="${GPT_OSS_PORT:-8000}"
-CTX="${GPT_OSS_CTX:-512}"
+CTX="${GPT_OSS_CTX:-384}"
 BATCH="${GPT_OSS_BATCH:-256}"
 UBATCH="${GPT_OSS_UBATCH:-256}"
 PARALLEL="${GPT_OSS_PARALLEL:-4}"

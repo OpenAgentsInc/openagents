@@ -1821,3 +1821,13 @@ Conclusion: `-c 384` is fine if you want a slightly smaller ctx, but `-c 512` is
 Config (Q4_0 + f16 KV + flash-attn + keepalive 1s, -c 384):
 - runs=1000, p50 **~153ms**, p95 **~174ms**, max **~335ms**.
 - No multi-second spikes observed.
+
+### Default ctx updated
+
+`gpt-oss-fast.sh` now defaults to `-c 384` for a small latency edge. Override with
+`GPT_OSS_CTX` if you need more context.
+
+### Default ctx run (100)
+
+With defaults (now `-c 384`):
+- runs=100, p50 **~153ms**, p95 **~172ms**, max **~188ms**.
