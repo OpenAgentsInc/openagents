@@ -1652,3 +1652,9 @@ Test 12: `--cache-reuse 128`
 Default config (Q2_K + q8_0 KV + flash-attn + keepalive 1s):
 - runs=100, p50 **~178.5ms**, p95 **~251ms**, max **~1063ms**.
 - One ~1s spike, otherwise stable.
+
+### Keepalive off (baseline check)
+
+Test 13: `GPT_OSS_KEEPALIVE_SECS=0`
+- runs=20, p50 **~170.5ms**, but **huge spike ~15s** (max 15429ms).
+- Conclusion: keepalive is **required** for consistent latency.
