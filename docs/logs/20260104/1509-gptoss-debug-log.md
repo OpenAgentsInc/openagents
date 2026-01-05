@@ -1773,3 +1773,21 @@ Test 27: `--swa-full`
 Test 28: `--cache-reuse 256`
 - runs=50, p50 **~153ms**, p95 **~178ms**, max **~187ms**.
 - Essentially same as baseline; no clear win.
+
+### Cache reuse + flash-attn + keepalive (Q4_0 + f16 KV)
+
+Test 29: `--cache-reuse 512`
+- runs=50, p50 **~152ms**, p95 **~173ms**, max **~205ms**.
+- No improvement vs baseline.
+
+Test 30: `--cache-reuse 1024`
+- runs=50, p50 **~152ms**, p95 **~180ms**, max **~244ms**.
+- Slightly worse tail.
+
+Test 31: `--flash-attn=0`
+- runs=100, p50 **~156ms**, p95 **~179ms**, max **~227ms**.
+- Slightly slower; keep flash-attn on.
+
+Test 32: `GPT_OSS_KEEPALIVE_SECS=2`
+- runs=100, p50 **~152ms**, p95 **~181ms**, max **~206ms**.
+- Comparable but not better than keepalive 1s.
