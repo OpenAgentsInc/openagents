@@ -94,12 +94,10 @@ pub fn build_pylon_ui(
         let has_tools = state.current_tool_call.is_some() || !state.apple_fm_tool_calls.is_empty();
 
         if has_frlm || has_rlm || has_tools {
-            eprintln!("[UI] 3-column layout: frlm={} rlm={} tools={}", has_frlm, has_rlm, has_tools);
             // 3-column layout: Jobs | Execution Viz | Chat
             let panel_width = (width - padding * 2.0 - gap * 2.0) / 3.0;
 
             // Left panel: Jobs
-            eprintln!("[UI] Drawing jobs panel");
             jobs_panel::draw_jobs_panel(scene, text, state, padding, y, panel_width, nostr_height);
 
             // Center panel: Visualization (stacked vertically)
@@ -113,30 +111,23 @@ pub fn build_pylon_ui(
                 } else {
                     nostr_height
                 };
-                eprintln!("[UI] Drawing FRLM panel (height={})", frlm_height);
                 frlm_panel::draw_frlm_panel(scene, text, state, center_x, y, center_width, frlm_height);
-                eprintln!("[UI] FRLM panel done");
 
                 // Apple FM Tools panel (if there are tool calls)
                 if has_tools {
                     let tools_y = y + frlm_height + gap;
                     let tools_height = nostr_height - frlm_height - gap;
-                    eprintln!("[UI] Drawing Apple FM tools panel");
                     apple_fm_panel::draw_apple_fm_tools_panel(
                         scene, text, state,
                         center_x, tools_y, center_width, tools_height,
                     );
-                    eprintln!("[UI] Apple FM tools panel done");
                 }
             } else if has_rlm {
                 // RLM execution - show RLM panel
-                eprintln!("[UI] Drawing RLM panel");
                 rlm_panel::draw_rlm_panel(scene, text, state, center_x, y, center_width, nostr_height);
-                eprintln!("[UI] RLM panel done");
             } else if has_tools {
                 // Only tools active - show Apple FM tools with topology below
                 let tools_height = nostr_height * 0.5;
-                eprintln!("[UI] Drawing Apple FM tools panel (no FRLM)");
                 apple_fm_panel::draw_apple_fm_tools_panel(
                     scene, text, state,
                     center_x, y, center_width, tools_height,
@@ -145,7 +136,6 @@ pub fn build_pylon_ui(
                 // Topology panel below
                 let topo_y = y + tools_height + gap;
                 let topo_height = nostr_height - tools_height - gap;
-                eprintln!("[UI] Drawing topology panel");
                 topology_panel::draw_topology_panel(
                     scene, text, state,
                     center_x, topo_y, center_width, topo_height,
@@ -153,9 +143,7 @@ pub fn build_pylon_ui(
             }
 
             // Right panel: Chat
-            eprintln!("[UI] Drawing chat panel");
             chat_panel::draw_chat_panel(scene, text, state, padding + panel_width * 2.0 + gap * 2.0, y, panel_width, nostr_height);
-            eprintln!("[UI] Chat panel done");
         } else {
             // 2-column layout: Jobs | Chat (original)
             let panel_width = (width - padding * 2.0 - gap) / 2.0;

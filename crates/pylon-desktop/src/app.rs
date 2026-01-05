@@ -634,7 +634,6 @@ fn update_frlm_panel(state: &mut FmVizState) {
 
     // Ensure panel exists
     if state.frlm_panel.is_none() {
-        eprintln!("[FRLM] Creating new FrlmPanel");
         state.frlm_panel = Some(viz::FrlmPanel::new());
     }
 
@@ -677,23 +676,17 @@ fn update_frlm_panel(state: &mut FmVizState) {
 fn toggle_demo_visualization(state: &mut FmVizState) {
     use crate::state::{AppleFmToolCall, FrlmRunState, RlmIteration, ToolCallStatus};
 
-    eprintln!("[DEMO] toggle_demo_visualization called");
-
     // If we have demo data, clear it
     if state.frlm_active_run.is_some() || !state.rlm_iterations.is_empty() || !state.apple_fm_tool_calls.is_empty() {
-        eprintln!("[DEMO] Clearing demo data");
         state.frlm_active_run = None;
         state.frlm_subquery_status.clear();
-        state.frlm_panel = None; // Also clear the panel
+        state.frlm_panel = None;
         state.rlm_iterations.clear();
         state.rlm_active = false;
         state.apple_fm_tool_calls.clear();
         state.current_tool_call = None;
-        eprintln!("[DEMO] Demo data cleared");
         return;
     }
-
-    eprintln!("[DEMO] Adding demo data");
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -796,12 +789,6 @@ fn toggle_demo_visualization(state: &mut FmVizState) {
         result: None,
     });
 
-    // Skip topology for now - it's expensive
-    // state.venue_topology.record_execution(ExecutionVenue::Local, Some("Apple FM"));
-    // state.venue_topology.record_execution(ExecutionVenue::Swarm, Some("provider-abc123"));
-    // state.venue_topology.record_execution(ExecutionVenue::Swarm, Some("provider-def456"));
-    // state.venue_topology.record_execution(ExecutionVenue::Datacenter, Some("datacenter-us-west"));
-    eprintln!("[DEMO] Demo data added successfully (topology disabled)");
 }
 
 /// Execute a command from the command palette
