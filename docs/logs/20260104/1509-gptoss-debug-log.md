@@ -1791,3 +1791,15 @@ Test 31: `--flash-attn=0`
 Test 32: `GPT_OSS_KEEPALIVE_SECS=2`
 - runs=100, p50 **~152ms**, p95 **~181ms**, max **~206ms**.
 - Comparable but not better than keepalive 1s.
+
+### Context length tuning (Q4_0 + f16 KV)
+
+Test 33: `-c 1024`
+- runs=100, p50 **~153ms**, p95 **~173ms**, max **~197ms**.
+- Similar to baseline.
+
+Test 34: `-c 2048`
+- runs=100, p50 **~153ms**, p95 **~188ms**, max **~318ms**.
+- Slightly worse tail; no benefit.
+
+Conclusion: keep `-c 512` default.
