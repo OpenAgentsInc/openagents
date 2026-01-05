@@ -1658,3 +1658,21 @@ Default config (Q2_K + q8_0 KV + flash-attn + keepalive 1s):
 Test 13: `GPT_OSS_KEEPALIVE_SECS=0`
 - runs=20, p50 **~170.5ms**, but **huge spike ~15s** (max 15429ms).
 - Conclusion: keepalive is **required** for consistent latency.
+
+### KV mix tests (Q2_K)
+
+Test 14: `-ctk q4_0 -ctv q8_0 --flash-attn`
+- runs=20, p50 **~373ms**, p95 **~421ms**.
+- **Much slower** than q8/q8.
+
+Test 15: `-ctk q8_0 -ctv q4_0 --flash-attn`
+- runs=20, p50 **~382ms**, p95 **~465ms**.
+- **Much slower** than q8/q8.
+
+Conclusion: stick with `-ctk q8_0 -ctv q8_0`.
+
+### Long-run stability (200 runs)
+
+Default config (Q2_K + q8_0 KV + flash-attn + keepalive 1s):
+- runs=200, p50 **~161ms**, p95 **~209ms**, max **~273ms**.
+- No multi‑second spikes observed.
