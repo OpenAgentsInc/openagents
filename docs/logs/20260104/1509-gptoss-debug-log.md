@@ -1646,3 +1646,9 @@ Conclusion:
 Test 12: `--cache-reuse 128`
 - runs=20, p50 **~173.5ms**, p95 **~208ms**.
 - No improvement vs defaults; keep `cache-reuse` disabled.
+
+### Long-run stability (100 runs)
+
+Default config (Q2_K + q8_0 KV + flash-attn + keepalive 1s):
+- runs=100, p50 **~178.5ms**, p95 **~251ms**, max **~1063ms**.
+- One ~1s spike, otherwise stable.
