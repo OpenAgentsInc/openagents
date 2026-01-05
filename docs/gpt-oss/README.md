@@ -40,7 +40,7 @@ Notes:
 - `scripts/gpt-oss-fast.sh` supports env overrides like `GPT_OSS_GGUF_MODEL_PATH`, `GPT_OSS_PORT`, and `GPT_OSS_WARMUP_COUNT`.
 - If your system pages out, set `GPT_OSS_KEEPALIVE_SECS=2` to keep the server hot (lower = more stable, more background load).
 - Keepalive PID file defaults to `/tmp/gpt-oss-keepalive.pid` (`GPT_OSS_KEEPALIVE_PID_FILE`).
-- Set `GPT_OSS_PARALLEL=2` to allow keepalive requests without blocking interactive prompts.
+- Set `GPT_OSS_PARALLEL=4` to allow keepalive requests without blocking interactive prompts.
 - Set `GPT_OSS_FORCE_WARMUP=1` to run warmup even if the server is already running.
 
 ## Configuration
