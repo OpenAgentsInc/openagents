@@ -307,11 +307,11 @@ pub fn parse_inline(text: &str) -> Vec<InlineSpan> {
 /// Get font size multiplier for header level
 pub fn header_font_scale(level: u8) -> f32 {
     match level {
-        1 => 2.0,
-        2 => 1.6,
-        3 => 1.3,
-        4 => 1.15,
-        5 => 1.1,
+        1 => 1.4,
+        2 => 1.25,
+        3 => 1.15,
+        4 => 1.1,
+        5 => 1.05,
         _ => 1.0,
     }
 }
