@@ -1,368 +1,265 @@
 # RLM Execution Visualization
 
-Interactive visualization page showing Recursive Language Model (RLM) execution as an "execution movie" at `/rlm`.
+Interactive visualization page at `/rlm` showing Recursive Language Model execution.
 
-## Overview
+## Current State: UI Demo Only
 
-The RLM visualization page displays the four-phase execution pipeline of Recursive Language Models:
+**The page is a visual mockup.** When you click RUN, it plays a canned animation that:
+- Ignores your query and document inputs completely
+- Shows 12 fake chunks with placeholder text
+- Advances through phases on a 2-second timer
+- Displays hardcoded "findings" and a canned final answer
 
-1. **Structure Discovery** - Analyzing document structure to understand hierarchy and sections
-2. **Chunking** - Splitting the document into semantic chunks based on structure
-3. **Extraction** - Processing each chunk through LLM to extract relevant information
-4. **Synthesis** - Combining extracted information into a final answer
+Nothing actually runs. No LLM is called. No document is processed.
 
-The page provides real-time visualization of this pipeline with a timeline, phase indicators, chunk grid, and streaming text display.
+---
 
-## Architecture
+## What's On The Page
+
+### Header Section
+- Title: "RLM EXECUTION VISUALIZER"
+- Status badge showing connection state (READY/STREAMING/COMPLETE/ERROR)
+- Subtitle describing the page
+
+### Input Section
+- **Query field**: Text input for user's question (currently ignored)
+- **Document field**: Textarea for pasting source document (currently ignored)
+- **RUN button**: Starts demo animation / STOP to halt it
+
+### Timeline Bar
+- Horizontal progress showing 4 phases:
+  1. Structure Discovery
+  2. Chunking
+  3. Extraction
+  4. Synthesis
+- Phase dots with color coding (gray=pending, orange=active, green=complete)
+- Current phase label and chunk progress counter
+
+### Left Panel: Execution Phases
+- Vertical list of all phases with status icons:
+  - `>` = currently processing (orange)
+  - `=` = completed (green)
+  - ` ` = pending (gray)
+- Description shown for active phase
+- **Chunk grid** during Extraction: grid of small squares, one per chunk, color-coded by status
+
+### Right Panel: Detail View
+- Shows info about the currently active chunk:
+  - Section title
+  - Content preview
+  - Extracted findings
+- Streaming LLM response text
+- Final answer display when complete
+
+---
+
+## What's Fake (Demo Mode)
+
+All in `tick_demo()` function in `views/rlm.rs`:
+
+```rust
+// Fake chunk data
+section_title: Some(format!("Section {}", i + 1)),
+content_preview: Some("Lorem ipsum dolor sit amet...".to_string()),
+findings: Some("Extracted key information from this section.".to_string()),
+
+// Fake streaming text
+streaming_text = format!("Processing chunk {}...", chunk_idx + 1);
+
+// Fake final answer
+final_answer = Some("Based on the analysis of all 12 document sections,
+the key findings are: [summary of extracted information]. The document
+primarily discusses [main topics] with emphasis on [key themes].".to_string());
+```
+
+The demo:
+1. Sets `total_chunks = 12` (hardcoded)
+2. Every 2 seconds advances `demo_phase_idx`
+3. Populates chunks with fake data
+4. Marks chunks complete one by one
+5. Shows canned final answer
+
+---
+
+## What's Needed To Make It Real
+
+### Option A: Backend SSE Service
+
+Create a backend service that:
+1. Receives POST to `/api/rlm/run` with `{ query, document }`
+2. Runs actual RLM pipeline from `crates/rlm/`
+3. Streams SSE events back to browser
+
+**Required files:**
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ RLM EXECUTION VISUALIZER                                        [READY] │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ Query: [_______________________________________]                    [RUN] │
-│ Document: [multiline textarea for document context...]                    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ TIMELINE: [Structure]──[Chunking]──[Extraction]──[Synthesis]              │
-│           [====●====]─────────────────────────────────────────            │
-│ Phase: Structure Discovery                        Chunks: 0/12            │
-├────────────────────────────┬────────────────────────────────────────────────┤
-│ EXECUTION PHASES           │ DETAIL VIEW                                    │
-│                            │                                                │
-│ > Structure Discovery      │ CHUNK 5 DETAIL                                 │
-│   Analyzing document...    │                                                │
-│                            │ Section: ## Methods                            │
-│ ○ Chunking (12)            │ "The model uses attention mechanisms..."       │
-│                            │                                                │
-│ ○ Extraction (0/12)        │ Findings:                                      │
-│   [□□□□□□□□□□□□]           │ "Uses multi-head attention with 8 heads..."    │
-│                            │                                                │
-│ ○ Synthesis                │ LLM Response:                                  │
-│                            │ "Based on this section, the key insight is..." │
-├────────────────────────────┴────────────────────────────────────────────────┤
-│ FINAL ANSWER (when complete)                                               │
-│ "Based on analysis of all 12 sections, the document describes..."          │
-└─────────────────────────────────────────────────────────────────────────────┘
+crates/web/worker/src/routes/rlm.rs
+  - Add POST /api/rlm/run endpoint
+  - Add GET /api/rlm/stream/:run_id SSE endpoint
+
+crates/web/client/src/rlm_runtime.rs (NEW)
+  - EventSource connection management
+  - Parse SSE events → update RlmVizState
+  - Handle reconnection/errors
 ```
+
+**SSE Event Schema:**
+
+```json
+{"type": "phase_start", "phase": "structure_discovery"}
+{"type": "phase_start", "phase": "chunking", "total_chunks": 45}
+{"type": "chunk_start", "chunk_id": 0, "section_title": "## Introduction"}
+{"type": "chunk_content", "chunk_id": 0, "preview": "This paper presents..."}
+{"type": "token", "text": "The"}
+{"type": "token", "text": " key"}
+{"type": "token", "text": " finding"}
+{"type": "chunk_complete", "chunk_id": 0, "findings": "Introduces the RLM concept..."}
+{"type": "phase_start", "phase": "synthesis"}
+{"type": "token", "text": "Based"}
+{"type": "final", "answer": "...", "processing_time_ms": 12400}
+{"type": "error", "message": "Rate limit exceeded"}
+```
+
+**Challenge:** RLM requires Python execution environment for code interpreter. Cloudflare Workers can't run Python. Options:
+- External RLM service (separate server/container)
+- Modal/Fly.io serverless function
+- WebSocket proxy to a GPU box
+
+### Option B: Simplified WASM-Only Mode
+
+Strip RLM down to work without Python code execution:
+1. Structure discovery via regex/heuristics in Rust
+2. Chunking via semantic boundaries (headers, paragraphs)
+3. Extraction via direct LLM API calls (Anthropic/OpenAI)
+4. Synthesis via final LLM call
+
+This loses the "recursive code execution" aspect but could run entirely client-side or in Workers.
+
+### Option C: Pre-recorded Traces
+
+Record real RLM executions as JSON trace files:
+```json
+{
+  "query": "What are the main contributions?",
+  "document_hash": "abc123",
+  "events": [
+    {"t": 0, "type": "phase_start", "phase": "structure_discovery"},
+    {"t": 150, "type": "phase_start", "phase": "chunking", "total_chunks": 8},
+    ...
+  ]
+}
+```
+
+Play back traces with realistic timing. Good for demos, not for real use.
+
+---
 
 ## File Structure
 
 ```
 crates/web/
 ├── worker/src/routes/
-│   ├── mod.rs              # Route module declarations
-│   └── rlm.rs              # Route handler serving /rlm page
+│   └── rlm.rs              # Route handler (currently just serves HTML)
 ├── client/src/
-│   ├── state.rs            # RlmVizState and related types
-│   ├── app.rs              # Flag detection, event handling, render dispatch
+│   ├── state.rs            # RlmVizState struct and enums
+│   ├── app.rs              # Event wiring (mouse, keyboard, paste)
 │   └── views/
-│       ├── mod.rs          # View module exports
-│       └── rlm.rs          # Main visualization rendering
+│       └── rlm.rs          # Rendering + demo mode logic
+└── docs/
+    └── rlm-visualization.md  # This file
 ```
 
-## State Management
+---
 
-### RlmVizState
-
-Located in `crates/web/client/src/state.rs`:
+## State Types
 
 ```rust
-pub(crate) struct RlmVizState {
-    // Frame/scroll (standard WGPUI pattern)
-    pub(crate) frame_animator: FrameAnimator,
-    pub(crate) frame_started: bool,
-    pub(crate) scroll_offset: f32,
-    pub(crate) content_bounds: Bounds,
-    pub(crate) content_height: f32,
+pub enum RlmConnectionStatus { Idle, Connecting, Streaming, Complete, Error }
+pub enum RlmPhase { Idle, StructureDiscovery, Chunking, Extraction, Synthesis, Complete }
+pub enum RlmStepStatus { Pending, Processing, Complete, Error }
 
-    // Connection status
-    pub(crate) connection_status: RlmConnectionStatus,
-    pub(crate) run_id: Option<String>,
+pub struct RlmChunkState {
+    pub chunk_id: usize,
+    pub section_title: Option<String>,
+    pub content_preview: Option<String>,
+    pub findings: Option<String>,
+    pub status: RlmStepStatus,
+}
 
-    // Input fields
-    pub(crate) query_input: TextInput,
-    pub(crate) query_input_bounds: Bounds,
-    pub(crate) context_input: TextInput,
-    pub(crate) context_input_bounds: Bounds,
-    pub(crate) run_button_bounds: Bounds,
-    pub(crate) run_button_hovered: bool,
+pub struct RlmVizState {
+    // Inputs
+    pub query_input: TextInput,
+    pub context_input: TextInput,
 
     // Execution state
-    pub(crate) current_phase: RlmPhase,
-    pub(crate) iterations: Vec<RlmIteration>,
-    pub(crate) chunks: Vec<RlmChunkState>,
-    pub(crate) total_chunks: usize,
-    pub(crate) processed_chunks: usize,
-    pub(crate) active_chunk_id: Option<usize>,
-    pub(crate) final_answer: Option<String>,
-    pub(crate) streaming_text: String,
-
-    // Timeline
-    pub(crate) timeline_events: Vec<RlmTimelineEvent>,
-    pub(crate) timeline_position: f32,
-    pub(crate) timeline_slider_bounds: Bounds,
-
-    // Error handling
-    pub(crate) error: Option<String>,
+    pub current_phase: RlmPhase,
+    pub chunks: Vec<RlmChunkState>,
+    pub total_chunks: usize,
+    pub processed_chunks: usize,
+    pub streaming_text: String,
+    pub final_answer: Option<String>,
 
     // Demo mode
-    pub(crate) demo_mode: bool,
-    pub(crate) demo_phase_idx: usize,
-    pub(crate) demo_chunk_idx: usize,
-    pub(crate) demo_last_tick: u64,
+    pub demo_mode: bool,
+    pub demo_phase_idx: usize,
+    pub demo_last_tick: u64,
 }
 ```
 
-### Supporting Types
-
-```rust
-pub(crate) enum RlmConnectionStatus {
-    Idle,       // Ready to start
-    Connecting, // Establishing SSE connection
-    Streaming,  // Receiving events
-    Complete,   // Execution finished
-    Error,      // Error occurred
-}
-
-pub(crate) enum RlmPhase {
-    Idle,               // Not started
-    StructureDiscovery, // Analyzing document
-    Chunking,           // Splitting into chunks
-    Extraction,         // Processing chunks
-    Synthesis,          // Combining results
-    Complete,           // Finished
-}
-
-pub(crate) enum RlmStepStatus {
-    Pending,    // Not yet processed
-    Processing, // Currently being processed
-    Complete,   // Finished successfully
-    Error,      // Failed
-}
-
-pub(crate) struct RlmChunkState {
-    pub(crate) chunk_id: usize,
-    pub(crate) section_title: Option<String>,
-    pub(crate) content_preview: Option<String>,
-    pub(crate) findings: Option<String>,
-    pub(crate) status: RlmStepStatus,
-}
-```
-
-## View Components
-
-### Header (`draw_header`)
-- Title: "RLM EXECUTION VISUALIZER"
-- Status badge showing connection state with color coding
-- Subtitle with description
-
-### Input Section (`draw_input_section`)
-- Query text input for user questions
-- Document context textarea for pasting source material
-- RUN/STOP button with hover effects
-
-### Timeline (`draw_timeline`)
-- Horizontal progress bar showing all four phases
-- Phase dots indicating current position
-- Current phase label and chunk progress counter
-
-### Phases Panel (`draw_phases_panel`)
-- Vertical list of all phases with status icons
-- `>` for current phase (orange)
-- `=` for completed phases (green)
-- ` ` for pending phases (gray)
-- Chunk grid visualization during Extraction phase
-
-### Chunk Grid (`draw_chunk_grid`)
-- Grid of small squares representing each chunk
-- Color-coded by status:
-  - Gray: Pending
-  - Orange: Processing
-  - Green: Complete
-  - Red: Error
-
-### Detail Panel (`draw_detail_panel`)
-- Shows current chunk information during extraction
-- Section title and content preview
-- Extracted findings
-- Streaming LLM response
-- Final answer display when complete
+---
 
 ## Event Handling
 
-### Mouse Events
+Currently wired up in `app.rs`:
 
-In `app.rs`:
+| Event | Handler |
+|-------|---------|
+| MouseMove | `handle_rlm_mouse_move()` + `state.rlm.handle_event()` |
+| MouseDown | `state.rlm.handle_event()` |
+| KeyDown | `state.rlm.handle_event()` |
+| Ctrl+V | `state.rlm.paste_text()` |
+| Click on RUN | `handle_rlm_click()` → toggles `demo_mode` |
+| Scroll | Updates `scroll_offset` |
 
-```rust
-// Mouse move - hover detection
-if state.view == AppView::RlmPage {
-    handle_rlm_mouse_move(&mut state, x, y);
-}
+---
 
-// Mouse click - button handling
-AppView::RlmPage => {
-    handle_rlm_click(&mut state, click_pos.x, click_pos.y);
-}
-```
+## To Actually Run RLM
 
-### Scroll Events
+The `crates/rlm/` crate contains the real implementation:
 
-```rust
-if state.view == AppView::RlmPage {
-    if state.rlm.content_bounds.contains(point) {
-        state.rlm.scroll_offset += delta;
-        let max_scroll = (state.rlm.content_height - state.rlm.content_bounds.size.height).max(0.0);
-        state.rlm.scroll_offset = state.rlm.scroll_offset.clamp(0.0, max_scroll);
-        return;
-    }
-}
-```
+- `engine.rs` - RlmEngine with code execution loop
+- `orchestrator.rs` - EngineOrchestrator with 4-phase pipeline
+- `chunking.rs` - Semantic document chunking
+- `subquery.rs` - Parallel chunk processing
 
-### Input Events
-
-Input handling is delegated to `RlmVizState::handle_event()`:
+Key integration points:
 
 ```rust
-pub(crate) fn handle_event(&mut self, event: &InputEvent) -> EventResult {
-    let mut handled = EventResult::Ignored;
-    handled = merge_event_result(
-        handled,
-        self.query_input.event(event, self.query_input_bounds, &mut self.input_event_ctx),
-    );
-    handled = merge_event_result(
-        handled,
-        self.context_input.event(event, self.context_input_bounds, &mut self.input_event_ctx),
-    );
-    handled
+// From crates/rlm/src/orchestrator.rs
+pub struct EngineOrchestrator {
+    pub async fn run_full_pipeline(&mut self, query: &str, context: &str) -> Result<String>
+}
+
+// From crates/rlm/src/engine.rs
+pub struct ExecutionLogEntry {
+    pub iteration: u32,
+    pub llm_response: String,
+    pub command_type: String,
+    pub executed: String,
+    pub result: String,
 }
 ```
 
-## Demo Mode
+These would need to emit events that the visualization can consume.
 
-The visualization includes a demo mode for testing without a backend connection. When the RUN button is clicked and no SSE endpoint is configured, it enters demo mode:
+---
 
-```rust
-pub(crate) fn handle_rlm_click(state: &mut AppState, x: f32, y: f32) -> bool {
-    if state.rlm.run_button_bounds.contains(point) {
-        if state.rlm.connection_status == RlmConnectionStatus::Streaming {
-            // Stop execution
-            state.rlm.connection_status = RlmConnectionStatus::Idle;
-            state.rlm.demo_mode = false;
-        } else {
-            // Start demo mode
-            state.rlm.reset_execution();
-            state.rlm.demo_mode = true;
-            state.rlm.demo_last_tick = 0;
-        }
-        return true;
-    }
-    false
-}
-```
+## Next Steps
 
-Demo mode progresses through phases every 2 seconds:
-1. Starts at Structure Discovery
-2. Moves to Chunking, populates 12 demo chunks
-3. Processes chunks one by one in Extraction phase
-4. Moves to Synthesis
-5. Displays final answer
-6. Resets and can restart
-
-## SSE Event Schema (Future Backend Integration)
-
-When connected to a real RLM backend, the page expects Server-Sent Events with this JSON schema:
-
-```json
-// Phase start
-{"type": "phase_start", "phase": "chunking", "total_chunks": 45}
-
-// Chunk processing start
-{"type": "chunk_start", "chunk_id": 12, "section_title": "## Methods"}
-
-// Chunk result
-{"type": "chunk_result", "chunk_id": 12, "findings": "Uses attention..."}
-
-// Streaming token
-{"type": "token", "token": "Based"}
-
-// Final answer
-{"type": "final", "answer": "...", "processing_time_ms": 12400}
-
-// Error
-{"type": "error", "error": "Connection lost"}
-```
-
-## Color Scheme
-
-Consistent with other visualization pages:
-
-| State | Color | Hsla |
-|-------|-------|------|
-| Pending | Gray | `Hsla::new(0.0, 0.0, 0.4, 1.0)` |
-| Processing | Orange | `#FF9900` / `Hsla::from_hex(0xff9900)` |
-| Complete | Green | `#00FF88` / `Hsla::from_hex(0x00ff88)` |
-| Error | Red | `#FF4444` / `Hsla::from_hex(0xff4444)` |
-| Accent | Cyan | `#7FD3E5` / `Hsla::from_hex(0x7fd3e5)` |
-
-## Route Configuration
-
-The route is configured in `crates/web/worker/src/lib.rs`:
-
-```rust
-(Method::Get, "/rlm") => routes::rlm::view_rlm(env).await,
-```
-
-The route handler in `routes/rlm.rs` serves HTML with the `window.RLM_PAGE = true` flag, which is detected in `app.rs`:
-
-```rust
-let is_rlm_page = web_sys::window()
-    .and_then(|w| js_sys::Reflect::get(&w, &"RLM_PAGE".into()).ok())
-    .map(|v| v.is_truthy())
-    .unwrap_or(false);
-
-if is_rlm_page {
-    let mut state_guard = state.borrow_mut();
-    state_guard.loading = false;
-    state_guard.view = AppView::RlmPage;
-    drop(state_guard);
-}
-```
-
-## Future Enhancements
-
-1. **Real SSE Backend Integration**
-   - Create `rlm_runtime.rs` module for EventSource handling
-   - Connect to `/api/rlm/run` endpoint
-   - Parse and dispatch SSE events to state updates
-
-2. **Timeline Scrubbing**
-   - Enable dragging on timeline to replay past events
-   - Store all events with timestamps for playback
-
-3. **Chunk Hover Details**
-   - Show tooltip on chunk grid hover
-   - Quick preview of chunk content and findings
-
-4. **Export Results**
-   - Copy final answer to clipboard
-   - Export full execution trace as JSON
-
-5. **Multiple Documents**
-   - Support for comparing RLM execution across documents
-   - Side-by-side visualization
-
-## Usage
-
-1. Navigate to `https://openagents.com/rlm`
-2. Enter a query in the Query field (e.g., "What are the main contributions?")
-3. Paste document content in the Document textarea
-4. Click RUN to start (currently triggers demo mode)
-5. Watch the execution progress through all phases
-6. View the final answer when synthesis completes
-
-## Related Documentation
-
-- [RLM Paper Synopsis](/docs/frlm/RLM_PAPER_SYNOPSIS.md) - Overview of Recursive Language Models
-- [FRLM Paper](/docs/frlm/paper.md) - Federated RLM extension
-- [Client UI Architecture](/crates/web/docs/client-ui.md) - General UI patterns
-- [WGPUI Components](/crates/wgpui/README.md) - GPU rendering framework
+1. **Decide on backend approach** (external service vs. simplified WASM)
+2. **Create `rlm_runtime.rs`** for SSE/WebSocket handling
+3. **Add API endpoints** in `routes/rlm.rs`
+4. **Wire up real inputs** - send query+document to backend
+5. **Replace demo mode** with real event processing
+6. **Add error handling** - connection drops, timeouts, rate limits
+7. **Add timeline scrubbing** - replay past executions
