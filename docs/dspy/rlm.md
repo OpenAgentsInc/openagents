@@ -1,4 +1,27 @@
-DSPy and RLMs fit together almost *too* cleanly, because they’re both “LLM systems as programs,” just attacking different pain points:
+# DSPy + RLM Integration
+
+## Implementation Status
+
+The conceptual integration described in this document is now implemented in the `rlm` crate.
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| DSRs integration | **Implemented** | `crates/rlm/Cargo.toml` (feature: `dspy`) |
+| DSPy bridge module | **Implemented** | `crates/rlm/src/dspy_bridge.rs` |
+| Typed signatures | **Implemented** | `crates/rlm/src/dspy_orchestrator.rs` |
+| Router module | **Implemented** | `RouterSignature` |
+| Extractor module | **Implemented** | `ExtractorSignature` (with CoT) |
+| Reducer module | **Implemented** | `ReducerSignature` |
+| Verifier module | **Implemented** | `VerifierSignature` |
+| Prompt optimization | Planned | Using COPRO/MIPROv2 |
+
+See [crates/rlm/docs/DSPY.md](../../crates/rlm/docs/DSPY.md) for usage documentation.
+
+---
+
+## Conceptual Background
+
+DSPy and RLMs fit together almost *too* cleanly, because they're both "LLM systems as programs," just attacking different pain points:
 
 * **RLM (paper):** how to *handle arbitrarily long inputs* by moving the prompt into an external environment (REPL) and letting the model slice/peek/compute + recurse.
 * **DSPy:** how to *build reliable multi-step LM programs* and then *optimize* (compile/teleprompt) them against metrics instead of hand-tuning prompts.

@@ -1,4 +1,22 @@
-Today, **there’s basically one real “DSPy-in-Rust” implementation**, and then a handful of small projects that *use* it.
+# DSPy in Rust
+
+## OpenAgents Integration
+
+DSRs (dspy-rs) is integrated into OpenAgents via the `rlm` crate's `dspy` feature.
+
+```bash
+cargo build -p rlm --features dspy
+```
+
+See:
+- [RLM DSPy Documentation](../../crates/rlm/docs/DSPY.md) - Usage guide
+- [DSPy + RLM Concepts](./rlm.md) - Conceptual background
+
+---
+
+## Ecosystem Overview
+
+Today, **there's basically one real "DSPy-in-Rust" implementation**, and then a handful of small projects that *use* it.
 
 ## 1) DSRs (crate: `dspy-rs`) — the main Rust DSPy rewrite
 

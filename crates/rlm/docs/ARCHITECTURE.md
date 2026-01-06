@@ -15,18 +15,25 @@ The RLM replication infrastructure is designed with modularity and reusability a
               ┌──────────────┼──────────────┐
               │              │              │
               ▼              ▼              ▼
-    ┌─────────────┐  ┌─────────────┐  ┌─────────┐
-    │bench-datasets│  │bench-harness│  │   rlm   │
-    │  (reusable) │  │  (reusable) │  │(existing)│
-    └──────┬──────┘  └──────┬──────┘  └─────────┘
-           │                │
-           └────────┬───────┘
-                    │
-                    ▼
-              ┌───────────┐
-              │ lm-router │
-              │ (reusable)│
-              └─────┬─────┘
+    ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐
+    │bench-datasets│  │bench-harness│  │          rlm            │
+    │  (reusable) │  │  (reusable) │  │      (core engine)      │
+    └──────┬──────┘  └──────┬──────┘  │                         │
+           │                │          │  ┌──────────────────┐  │
+           └────────┬───────┘          │  │ dspy_orchestrator│  │
+                    │                  │  │ (feature: dspy)  │  │
+                    │                  │  └────────┬─────────┘  │
+                    │                  │           │            │
+                    │                  │  ┌────────▼─────────┐  │
+                    │                  │  │   dspy_bridge    │  │
+                    │                  │  └────────┬─────────┘  │
+                    │                  └───────────┼────────────┘
+                    │                              │
+                    ▼                              ▼
+              ┌───────────┐                 ┌───────────┐
+              │ lm-router │                 │  dspy-rs  │
+              │ (reusable)│                 │ (external)│
+              └─────┬─────┘                 └───────────┘
                     │
          ┌──────────┼──────────┐
          │          │          │
@@ -35,6 +42,15 @@ The RLM replication infrastructure is designed with modularity and reusability a
     │fm-bridge│ │swarm-sim│ │ mock │
     └─────────┘ └────────┘ └──────┘
 ```
+
+### DSPy Integration (Optional Feature)
+
+When the `dspy` feature is enabled, RLM gains:
+
+- **`dspy_bridge`**: Re-exports dspy-rs types and LM configuration helpers
+- **`dspy_orchestrator`**: Multi-phase document analysis using typed DSPy signatures
+
+See [DSPY.md](./DSPY.md) for detailed documentation.
 
 ## Crate Descriptions
 
