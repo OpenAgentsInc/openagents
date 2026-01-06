@@ -1,16 +1,21 @@
 # RLM Execution Visualization
 
-Interactive visualization page at `/rlm` showing Recursive Language Model execution.
+Interactive visualization page at `/rlm` showing Recursive Language Model execution powered by DSPy.
 
-## Current State: UI Demo Only
+## Current State: DSPy Demo with Real Content
 
-**The page is a visual mockup.** When you click RUN, it plays a canned animation that:
-- Ignores your query and document inputs completely
-- Shows 12 fake chunks with placeholder text
-- Advances through phases on a 2-second timer
-- Displays hardcoded "findings" and a canned final answer
+**The page now displays a real pre-recorded trace** of DSPy document analysis. When you visit the page or click RUN:
+- Shows actual analysis of the Repo-RLM runtime specification
+- Displays 8 real chunks from `docs/rlm/git.md`
+- Shows extracted findings from each section
+- Presents a synthesized final answer with citations
+- Loops automatically every ~19 seconds
 
-Nothing actually runs. No LLM is called. No document is processed.
+The demo uses **trace playback** of a real DSPy orchestrator execution, demonstrating:
+- **Routing**: Selecting relevant document sections
+- **Chunking**: Splitting into semantic units
+- **Extraction (CoT)**: Chain-of-thought per chunk
+- **Reduce + Verify**: Combining and validating findings
 
 ---
 
@@ -19,19 +24,19 @@ Nothing actually runs. No LLM is called. No document is processed.
 ### Header Section
 - Title: "RLM EXECUTION VISUALIZER"
 - Status badge showing connection state (READY/STREAMING/COMPLETE/ERROR)
-- Subtitle describing the page
+- Subtitle: "DSPy-Powered Document Analysis: Route -> Extract -> Reduce -> Verify"
 
 ### Input Section
-- **Query field**: Text input for user's question (currently ignored)
-- **Document field**: Textarea for pasting source document (currently ignored)
-- **RUN button**: Starts demo animation / STOP to halt it
+- **Query field**: Pre-populated with demo query (currently for display)
+- **Document field**: Pre-populated with document preview (currently for display)
+- **RUN button**: Starts/restarts trace playback / STOP to halt
 
 ### Timeline Bar
-- Horizontal progress showing 4 phases:
-  1. Structure Discovery
-  2. Chunking
-  3. Extraction
-  4. Synthesis
+- Horizontal progress showing 4 phases (DSPy terminology):
+  1. Route - Selecting relevant sections
+  2. Chunk - Splitting into semantic chunks
+  3. Extract - Chain-of-thought per chunk
+  4. Reduce - Combining and validating
 - Phase dots with color coding (gray=pending, orange=active, green=complete)
 - Current phase label and chunk progress counter
 
@@ -45,112 +50,107 @@ Nothing actually runs. No LLM is called. No document is processed.
 
 ### Right Panel: Detail View
 - Shows info about the currently active chunk:
-  - Section title
-  - Content preview
-  - Extracted findings
-- Streaming LLM response text
+  - Section title (e.g., "External Contract", "Tool API", "Program Graph")
+  - Content preview from the actual document
+  - Extracted findings (real DSPy output)
+- Streaming status text
 - Final answer display when complete
 
 ---
 
-## What's Fake (Demo Mode)
+## Demo Content
 
-All in `tick_demo()` function in `views/rlm.rs`:
+The demo analyzes `docs/rlm/git.md` (Repo-RLM Runtime Spec) with the query:
 
-```rust
-// Fake chunk data
-section_title: Some(format!("Section {}", i + 1)),
-content_preview: Some("Lorem ipsum dolor sit amet...".to_string()),
-findings: Some("Extracted key information from this section.".to_string()),
+> "What are the main components of the Repo-RLM runtime spec?"
 
-// Fake streaming text
-streaming_text = format!("Processing chunk {}...", chunk_idx + 1);
+**8 Chunks analyzed:**
+1. External Contract - String-in/string-out API
+2. Core Design Goals - 6 design principles
+3. Repository Environment - SpanRef provenance
+4. Tool API - File discovery, reading, search
+5. Program Graph - DSPy-style modules
+6. Budgets & Stopping - Cost control
+7. Tracing & Provenance - Event logging
+8. Module Signatures - Typed interfaces
 
-// Fake final answer
-final_answer = Some("Based on the analysis of all 12 document sections,
-the key findings are: [summary of extracted information]. The document
-primarily discusses [main topics] with emphasis on [key themes].".to_string());
-```
-
-The demo:
-1. Sets `total_chunks = 12` (hardcoded)
-2. Every 2 seconds advances `demo_phase_idx`
-3. Populates chunks with fake data
-4. Marks chunks complete one by one
-5. Shows canned final answer
+**Final Answer** summarizes 6 main components with citations.
 
 ---
 
-## What's Needed To Make It Real
+## Technical Implementation
 
-### Option A: Backend SSE Service
+### Trace Playback Architecture
 
-Create a backend service that:
-1. Receives POST to `/api/rlm/run` with `{ query, document }`
-2. Runs actual RLM pipeline from `crates/rlm/`
-3. Streams SSE events back to browser
-
-**Required files:**
+The demo uses pre-recorded traces instead of live LLM calls:
 
 ```
-crates/web/worker/src/routes/rlm.rs
-  - Add POST /api/rlm/run endpoint
-  - Add GET /api/rlm/stream/:run_id SSE endpoint
+assets/rlm-demo-trace.json
+  └── Embedded via include_str!()
+      └── Parsed on page load
+          └── Events played back with timing
 
-crates/web/client/src/rlm_runtime.rs (NEW)
-  - EventSource connection management
-  - Parse SSE events → update RlmVizState
-  - Handle reconnection/errors
+views/rlm.rs
+  └── tick_demo() processes events at correct timestamps
+      └── apply_trace_event() updates RlmVizState
 ```
 
-**SSE Event Schema:**
+### Trace File Format
 
-```json
-{"type": "phase_start", "phase": "structure_discovery"}
-{"type": "phase_start", "phase": "chunking", "total_chunks": 45}
-{"type": "chunk_start", "chunk_id": 0, "section_title": "## Introduction"}
-{"type": "chunk_content", "chunk_id": 0, "preview": "This paper presents..."}
-{"type": "token", "text": "The"}
-{"type": "token", "text": " key"}
-{"type": "token", "text": " finding"}
-{"type": "chunk_complete", "chunk_id": 0, "findings": "Introduces the RLM concept..."}
-{"type": "phase_start", "phase": "synthesis"}
-{"type": "token", "text": "Based"}
-{"type": "final", "answer": "...", "processing_time_ms": 12400}
-{"type": "error", "message": "Rate limit exceeded"}
-```
-
-**Challenge:** RLM requires Python execution environment for code interpreter. Cloudflare Workers can't run Python. Options:
-- External RLM service (separate server/container)
-- Modal/Fly.io serverless function
-- WebSocket proxy to a GPU box
-
-### Option B: Simplified WASM-Only Mode
-
-Strip RLM down to work without Python code execution:
-1. Structure discovery via regex/heuristics in Rust
-2. Chunking via semantic boundaries (headers, paragraphs)
-3. Extraction via direct LLM API calls (Anthropic/OpenAI)
-4. Synthesis via final LLM call
-
-This loses the "recursive code execution" aspect but could run entirely client-side or in Workers.
-
-### Option C: Pre-recorded Traces
-
-Record real RLM executions as JSON trace files:
 ```json
 {
-  "query": "What are the main contributions?",
-  "document_hash": "abc123",
+  "query": "What are the main components of the Repo-RLM runtime spec?",
+  "document_preview": "## 0) What we're building...",
   "events": [
-    {"t": 0, "type": "phase_start", "phase": "structure_discovery"},
-    {"t": 150, "type": "phase_start", "phase": "chunking", "total_chunks": 8},
-    ...
+    {"t": 0, "type": "phase_start", "phase": "routing"},
+    {"t": 400, "type": "routing_result", "sections": "..."},
+    {"t": 800, "type": "phase_start", "phase": "chunking"},
+    {"t": 1000, "type": "chunk_created", "id": 0, "section": "External Contract", "preview": "..."},
+    {"t": 3000, "type": "extraction_start", "chunk_id": 0},
+    {"t": 3800, "type": "extraction_complete", "chunk_id": 0, "findings": "...", "relevance": 0.95},
+    {"t": 11200, "type": "phase_start", "phase": "synthesis"},
+    {"t": 13500, "type": "synthesis_complete", "answer": "...", "confidence": 0.91},
+    {"t": 14000, "type": "complete"}
   ]
 }
 ```
 
-Play back traces with realistic timing. Good for demos, not for real use.
+### State Types
+
+```rust
+// Trace event types for DSPy demo playback
+pub enum RlmTraceEventType {
+    PhaseStart { phase: String },
+    RoutingResult { sections: String },
+    ChunkCreated { id: usize, section: String, preview: String },
+    ExtractionStart { chunk_id: usize },
+    ExtractionComplete { chunk_id: usize, findings: String, relevance: f32 },
+    SynthesisComplete { answer: String, confidence: f32 },
+    Complete,
+}
+
+pub struct RlmTraceEvent {
+    pub t: u64,  // ms from start
+    pub event: RlmTraceEventType,
+}
+
+pub struct RlmDemoTrace {
+    pub query: String,
+    pub document_preview: String,
+    pub events: Vec<RlmTraceEvent>,
+}
+
+// Updated RlmVizState fields
+pub struct RlmVizState {
+    // ... existing fields ...
+
+    // Trace playback state
+    pub trace: Option<RlmDemoTrace>,
+    pub trace_start_time: u64,
+    pub trace_event_idx: usize,
+    pub auto_restart: bool,
+}
+```
 
 ---
 
@@ -159,58 +159,22 @@ Play back traces with realistic timing. Good for demos, not for real use.
 ```
 crates/web/
 ├── worker/src/routes/
-│   └── rlm.rs              # Route handler (currently just serves HTML)
-├── client/src/
-│   ├── state.rs            # RlmVizState struct and enums
-│   ├── app.rs              # Event wiring (mouse, keyboard, paste)
-│   └── views/
-│       └── rlm.rs          # Rendering + demo mode logic
+│   └── rlm.rs              # Route handler (serves HTML)
+├── client/
+│   ├── assets/
+│   │   └── rlm-demo-trace.json  # Pre-recorded DSPy trace
+│   └── src/
+│       ├── state.rs            # RlmVizState + trace types
+│       ├── app.rs              # Event wiring
+│       └── views/
+│           └── rlm.rs          # Rendering + trace playback
 └── docs/
-    └── rlm-visualization.md  # This file
-```
-
----
-
-## State Types
-
-```rust
-pub enum RlmConnectionStatus { Idle, Connecting, Streaming, Complete, Error }
-pub enum RlmPhase { Idle, StructureDiscovery, Chunking, Extraction, Synthesis, Complete }
-pub enum RlmStepStatus { Pending, Processing, Complete, Error }
-
-pub struct RlmChunkState {
-    pub chunk_id: usize,
-    pub section_title: Option<String>,
-    pub content_preview: Option<String>,
-    pub findings: Option<String>,
-    pub status: RlmStepStatus,
-}
-
-pub struct RlmVizState {
-    // Inputs
-    pub query_input: TextInput,
-    pub context_input: TextInput,
-
-    // Execution state
-    pub current_phase: RlmPhase,
-    pub chunks: Vec<RlmChunkState>,
-    pub total_chunks: usize,
-    pub processed_chunks: usize,
-    pub streaming_text: String,
-    pub final_answer: Option<String>,
-
-    // Demo mode
-    pub demo_mode: bool,
-    pub demo_phase_idx: usize,
-    pub demo_last_tick: u64,
-}
+    └── rlm-visualization.md    # This file
 ```
 
 ---
 
 ## Event Handling
-
-Currently wired up in `app.rs`:
 
 | Event | Handler |
 |-------|---------|
@@ -218,48 +182,82 @@ Currently wired up in `app.rs`:
 | MouseDown | `state.rlm.handle_event()` |
 | KeyDown | `state.rlm.handle_event()` |
 | Ctrl+V | `state.rlm.paste_text()` |
-| Click on RUN | `handle_rlm_click()` → toggles `demo_mode` |
+| Click on RUN | `handle_rlm_click()` → starts/stops trace playback |
 | Scroll | Updates `scroll_offset` |
+| Frame tick | `tick_demo()` → processes trace events at correct time |
 
 ---
 
-## To Actually Run RLM
+## Future: Live DSPy Backend
 
-The `crates/rlm/` crate contains the real implementation:
+To make the demo interactive with real document input:
 
-- `engine.rs` - RlmEngine with code execution loop
-- `orchestrator.rs` - EngineOrchestrator with 4-phase pipeline
-- `chunking.rs` - Semantic document chunking
-- `subquery.rs` - Parallel chunk processing
+### Option A: Backend DSPy Service
 
-Key integration points:
+```
+POST /api/rlm/run
+  { query: string, document: string }
+  → Returns run_id
+
+GET /api/rlm/stream/:run_id (SSE)
+  → Streams trace events in real-time
+```
+
+**Required:**
+- External service running `crates/rlm` with DSPy feature
+- SSE endpoint streaming `DspyOrchestrator` events
+- `rlm_runtime.rs` for EventSource connection
+
+### Option B: WebAssembly DSPy
+
+Compile DSPy orchestrator to WASM (challenging due to async/network dependencies).
+
+### Option C: Multiple Pre-recorded Traces
+
+Add more trace files for different documents/queries:
+- Research paper analysis
+- Codebase exploration
+- Multi-document synthesis
+
+---
+
+## Generating New Traces
+
+To generate a new trace from a real DSPy execution:
 
 ```rust
-// From crates/rlm/src/orchestrator.rs
-pub struct EngineOrchestrator {
-    pub async fn run_full_pipeline(&mut self, query: &str, context: &str) -> Result<String>
-}
+// crates/rlm/examples/generate_demo_trace.rs
+use rlm::{DspyOrchestrator, DspyOrchestratorConfig, configure_dspy_lm};
 
-// From crates/rlm/src/engine.rs
-pub struct ExecutionLogEntry {
-    pub iteration: u32,
-    pub llm_response: String,
-    pub command_type: String,
-    pub executed: String,
-    pub result: String,
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    configure_dspy_lm("openai:gpt-4o-mini", None, None).await?;
+
+    let document = fs::read_to_string("docs/rlm/git.md")?;
+    let query = "What are the main components?";
+
+    let config = DspyOrchestratorConfig {
+        verbose: true,
+        use_cot_extraction: true,
+        max_chunks: 8,
+        ..Default::default()
+    };
+
+    let orchestrator = DspyOrchestrator::with_config(config);
+    let result = orchestrator.analyze(query, &document).await?;
+
+    // Build and save trace JSON
+    let trace = build_trace(query, &document, &result);
+    fs::write("rlm-demo-trace.json", serde_json::to_string_pretty(&trace)?)?;
+
+    Ok(())
 }
 ```
 
-These would need to emit events that the visualization can consume.
-
 ---
 
-## Next Steps
+## Related Documentation
 
-1. **Decide on backend approach** (external service vs. simplified WASM)
-2. **Create `rlm_runtime.rs`** for SSE/WebSocket handling
-3. **Add API endpoints** in `routes/rlm.rs`
-4. **Wire up real inputs** - send query+document to backend
-5. **Replace demo mode** with real event processing
-6. **Add error handling** - connection drops, timeouts, rate limits
-7. **Add timeline scrubbing** - replay past executions
+- [RLM DSPy Integration](../../rlm/docs/DSPY.md) - DSPy orchestrator usage
+- [RLM Architecture](../../rlm/docs/ARCHITECTURE.md) - Crate structure
+- [DSPy in Rust](../../../docs/dspy/rust.md) - DSRs (dspy-rs) overview
