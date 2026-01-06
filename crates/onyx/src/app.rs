@@ -60,7 +60,7 @@ impl FileSidebar {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         // Background
         cx.scene.draw_quad(
-            Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.08, 1.0)),
+            Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 1.0)),
         );
 
         // File items
