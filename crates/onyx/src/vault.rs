@@ -104,9 +104,43 @@ impl Vault {
         Ok(())
     }
 
-    /// Generate a unique name based on current timestamp
+    /// Generate a unique "Untitled N" name by finding the next available number
     pub fn generate_unique_name(&self) -> String {
-        let now = chrono::Local::now();
-        now.format("note-%Y%m%d-%H%M%S").to_string()
+        let mut max_num = 0;
+
+        // Scan existing files for "Untitled N" pattern
+        if let Ok(entries) = fs::read_dir(&self.path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        if let Some(num_str) = stem.strip_prefix("Untitled ") {
+                            if let Ok(num) = num_str.parse::<u32>() {
+                                max_num = max_num.max(num);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Also check archive folder
+        let archive_dir = self.path.join(".archive");
+        if let Ok(entries) = fs::read_dir(&archive_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        if let Some(num_str) = stem.strip_prefix("Untitled ") {
+                            if let Ok(num) = num_str.parse::<u32>() {
+                                max_num = max_num.max(num);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        format!("Untitled {}", max_num + 1)
     }
 }

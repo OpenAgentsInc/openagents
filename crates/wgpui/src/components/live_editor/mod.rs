@@ -688,9 +688,9 @@ impl LiveEditor {
                 if i == line {
                     break;
                 }
-                parser.detect_block_type(l);
+                parser.detect_block_type_at(l, i);
             }
-            match parser.detect_block_type(line_text) {
+            match parser.detect_block_type_at(line_text, line) {
                 BlockType::Header(level) => {
                     self.mono_char_width * header_font_scale(level)
                 }
@@ -938,7 +938,8 @@ impl Component for LiveEditor {
         // Parse block types for all lines
         let mut block_parser = BlockParser::new();
         let block_types: Vec<BlockType> = self.lines.iter()
-            .map(|line| block_parser.detect_block_type(line))
+            .enumerate()
+            .map(|(i, line)| block_parser.detect_block_type_at(line, i))
             .collect();
 
         // Render visible lines

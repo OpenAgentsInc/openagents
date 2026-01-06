@@ -226,6 +226,8 @@ impl RenderState {
 
         let name = self.vault.generate_unique_name();
         if let Ok(path) = self.vault.create_file(&name) {
+            // Write the title as first line
+            let _ = self.vault.write_file(&path, &format!("{}\n\n", name));
             // Refresh file list
             if let Ok(files) = self.vault.list_files() {
                 self.sidebar.set_files(files);
@@ -402,10 +404,10 @@ impl ApplicationHandler for OnyxApp {
                 )
             } else {
                 // Create a welcome note
-                let welcome_content = "# Welcome to Onyx\n\nStart writing your notes here.\n\nPress **Cmd+N** to create a new note.\n\nUse **Cmd+Shift+Up/Down** to switch between notes.";
                 let name = vault.generate_unique_name();
+                let welcome_content = format!("{}\n\nStart writing your notes here.\n\nPress **Cmd+N** to create a new note.\n\nUse **Cmd+Shift+Up/Down** to switch between notes.", name);
                 if let Ok(path) = vault.create_file(&name) {
-                    let _ = vault.write_file(&path, welcome_content);
+                    let _ = vault.write_file(&path, &welcome_content);
                     // Refresh file list
                     let files = vault.list_files().unwrap_or_default();
                     sidebar.set_files(files);
