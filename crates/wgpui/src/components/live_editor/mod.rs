@@ -152,6 +152,7 @@ pub struct LiveEditorStyle {
     pub line_height: f32,
     pub gutter_width: f32,
     pub padding: f32,
+    pub wrap_text: bool,
 }
 
 impl Default for LiveEditorStyle {
@@ -166,6 +167,7 @@ impl Default for LiveEditorStyle {
             line_height: 1.5,
             gutter_width: 0.0, // No gutter - line numbers in status bar
             padding: 48.0, // Comfortable vertical padding
+            wrap_text: true, // Enable word wrapping by default
         }
     }
 }
@@ -1602,24 +1604,64 @@ impl LiveEditor {
 
     // === Rendering Helpers ===
 
-    fn line_y(&self, line: usize, bounds: &Bounds) -> f32 {
-        let line_height = self.style.font_size * self.style.line_height;
-        // Add extra spacing after title (line 0)
-        let title_margin = if line > 0 { line_height } else { 0.0 };
-        bounds.origin.y + self.style.padding + (line as f32 * line_height) + title_margin - self.scroll_offset
+    /// Wrap a line of text to fit within the given width.
+    /// Returns a vector of (start_col, text_segment) pairs.
+    fn wrap_line(&self, line: &str, max_chars: usize) -> Vec<(usize, String)> {
+        if max_chars == 0 || line.is_empty() {
+            return vec![(0, line.to_string())];
+        }
+
+        let chars: Vec<char> = line.chars().collect();
+        if chars.len() <= max_chars {
+            return vec![(0, line.to_string())];
+        }
+
+        let mut segments = Vec::new();
+        let mut start = 0;
+
+        while start < chars.len() {
+            let end = (start + max_chars).min(chars.len());
+
+            // Try to break at a word boundary (space) if not at end
+            let break_at = if end < chars.len() {
+                // Look backwards for a space to break at
+                let mut break_pos = end;
+                while break_pos > start && !chars[break_pos - 1].is_whitespace() {
+                    break_pos -= 1;
+                }
+                // If no space found, just break at max_chars
+                if break_pos == start {
+                    end
+                } else {
+                    break_pos
+                }
+            } else {
+                end
+            };
+
+            let segment: String = chars[start..break_at].iter().collect();
+            segments.push((start, segment));
+            start = break_at;
+        }
+
+        if segments.is_empty() {
+            segments.push((0, line.to_string()));
+        }
+
+        segments
+    }
+
+    /// Calculate max characters per line based on available width
+    fn max_chars_per_line(&self, available_width: f32, char_width: f32) -> usize {
+        if char_width <= 0.0 {
+            return usize::MAX;
+        }
+        ((available_width / char_width).floor() as usize).max(1)
     }
 
     fn cursor_position_from_point(&self, x: f32, y: f32, bounds: &Bounds) -> Cursor {
         let line_height = self.style.font_size * self.style.line_height;
         let content_y = y - bounds.origin.y - self.style.padding + self.scroll_offset;
-
-        // Account for title margin (extra line_height after line 0)
-        let line = if content_y < line_height {
-            0
-        } else {
-            // Subtract title margin from content_y for lines after title
-            ((content_y - line_height) / line_height).floor() as usize + 1
-        }.min(self.lines.len().saturating_sub(1));
 
         // Center content with max width 768px (must match paint)
         let max_content_width = 768.0;
@@ -1627,36 +1669,112 @@ impl LiveEditor {
         let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
         let text_x = content_x + self.style.padding;
 
-        // Check if clicked line is a header - need scaled char width
-        let char_width = if let Some(line_text) = self.lines.get(line) {
-            let mut parser = BlockParser::new();
-            // Need to parse up to this line to track code block state
-            for (i, l) in self.lines.iter().enumerate() {
-                if i == line {
-                    break;
-                }
-                parser.detect_block_type_at(l, i);
-            }
-            match parser.detect_block_type_at(line_text, line) {
-                BlockType::Header(level) => {
-                    self.mono_char_width * header_font_scale(level)
-                }
-                _ => self.mono_char_width,
-            }
+        // Calculate available width for text and max chars for wrapping
+        let available_text_width = content_width - self.style.padding * 2.0;
+        let max_chars = if self.style.wrap_text {
+            self.max_chars_per_line(available_text_width, self.mono_char_width)
         } else {
-            self.mono_char_width
+            usize::MAX
         };
 
-        let relative_x = (x - text_x).max(0.0);
-        let column = ((relative_x / char_width).round() as usize).min(self.line_len(line));
+        // Calculate clicked visual row
+        let clicked_visual_row = (content_y / line_height).floor() as usize;
 
-        Cursor::new(line, column)
+        // Build wrapped line mapping to find logical line and column
+        let mut visual_row = 0;
+
+        for (line_idx, line) in self.lines.iter().enumerate() {
+            // Add title margin (extra row) after line 0
+            if line_idx == 1 {
+                visual_row += 1;
+            }
+
+            let segments = if self.style.wrap_text {
+                self.wrap_line(line, max_chars)
+            } else {
+                vec![(0, line.clone())]
+            };
+
+            for (start_col, _) in segments.iter() {
+                if visual_row == clicked_visual_row {
+                    // Calculate column within this segment
+                    let mut parser = BlockParser::new();
+                    for (i, l) in self.lines.iter().enumerate() {
+                        if i == line_idx {
+                            break;
+                        }
+                        parser.detect_block_type_at(l, i);
+                    }
+                    let char_width = match parser.detect_block_type_at(line, line_idx) {
+                        BlockType::Header(level) => {
+                            self.mono_char_width * header_font_scale(level)
+                        }
+                        _ => self.mono_char_width,
+                    };
+
+                    let relative_x = (x - text_x).max(0.0);
+                    let col_in_segment = (relative_x / char_width).round() as usize;
+                    let column = (*start_col + col_in_segment).min(self.line_len(line_idx));
+                    return Cursor::new(line_idx, column);
+                }
+                visual_row += 1;
+            }
+        }
+
+        // Fallback: clicked below all content, go to end of last line
+        let last_line = self.lines.len().saturating_sub(1);
+        Cursor::new(last_line, self.line_len(last_line))
     }
 
     fn ensure_cursor_visible(&mut self, bounds: &Bounds) {
         let line_height = self.style.font_size * self.style.line_height;
-        let cursor_y = self.cursor.line as f32 * line_height;
-        let visible_height = bounds.size.height - self.style.padding * 2.0;
+        let status_bar_height = 24.0;
+        let visible_height = bounds.size.height - self.style.padding * 2.0 - status_bar_height;
+
+        // Calculate available width for text and max chars for wrapping
+        let max_content_width = 768.0;
+        let content_width = bounds.size.width.min(max_content_width);
+        let available_text_width = content_width - self.style.padding * 2.0;
+        let max_chars = if self.style.wrap_text {
+            self.max_chars_per_line(available_text_width, self.mono_char_width)
+        } else {
+            usize::MAX
+        };
+
+        // Calculate cursor's visual row
+        let mut cursor_visual_row = 0;
+        for (line_idx, line) in self.lines.iter().enumerate() {
+            if line_idx == 1 {
+                cursor_visual_row += 1;
+            }
+
+            if line_idx == self.cursor.line {
+                // Find which segment the cursor is in
+                let segments = if self.style.wrap_text {
+                    self.wrap_line(line, max_chars)
+                } else {
+                    vec![(0, line.clone())]
+                };
+
+                for (seg_idx, (start_col, segment)) in segments.iter().enumerate() {
+                    let segment_end = start_col + segment.chars().count();
+                    if self.cursor.column <= segment_end || seg_idx == segments.len() - 1 {
+                        break;
+                    }
+                    cursor_visual_row += 1;
+                }
+                break;
+            }
+
+            let segments = if self.style.wrap_text {
+                self.wrap_line(line, max_chars)
+            } else {
+                vec![(0, line.clone())]
+            };
+            cursor_visual_row += segments.len();
+        }
+
+        let cursor_y = cursor_visual_row as f32 * line_height;
 
         if cursor_y < self.scroll_offset {
             self.scroll_offset = cursor_y;
@@ -1877,10 +1995,13 @@ impl Component for LiveEditor {
         let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
         let text_x = content_x + self.style.padding;
 
-        // Calculate visible line range
-        let first_visible = (self.scroll_offset / line_height).floor() as usize;
-        let visible_lines = (visible_height / line_height).ceil() as usize + 1;
-        let last_visible = (first_visible + visible_lines).min(self.lines.len());
+        // Calculate available width for text (content width minus padding on both sides)
+        let available_text_width = content_width - self.style.padding * 2.0;
+        let max_chars = if self.style.wrap_text {
+            self.max_chars_per_line(available_text_width, self.mono_char_width)
+        } else {
+            usize::MAX
+        };
 
         // Parse block types for all lines
         let mut block_parser = BlockParser::new();
@@ -1889,22 +2010,66 @@ impl Component for LiveEditor {
             .map(|(i, line)| block_parser.detect_block_type_at(line, i))
             .collect();
 
-        // Render visible lines
-        for line_idx in first_visible..last_visible {
-            let y = self.line_y(line_idx, &bounds);
+        // Compute wrapped lines info: (logical_line_idx, segment_start_col, segment_text, visual_row)
+        let mut wrapped_info: Vec<(usize, usize, String, usize)> = Vec::new();
+        let mut visual_row = 0;
+        let mut cursor_visual_row = 0;
+        let mut cursor_visual_col = 0;
+
+        for (line_idx, line) in self.lines.iter().enumerate() {
+            // Add title margin (extra row) after line 0
+            if line_idx == 1 {
+                visual_row += 1;
+            }
+
+            let segments = if self.style.wrap_text {
+                self.wrap_line(line, max_chars)
+            } else {
+                vec![(0, line.clone())]
+            };
+
+            for (seg_idx, (start_col, segment)) in segments.iter().enumerate() {
+                // Track cursor position in visual coordinates
+                if line_idx == self.cursor.line {
+                    if self.cursor.column >= *start_col {
+                        let segment_end = start_col + segment.chars().count();
+                        if self.cursor.column <= segment_end || seg_idx == segments.len() - 1 {
+                            cursor_visual_row = visual_row;
+                            cursor_visual_col = self.cursor.column - start_col;
+                        }
+                    }
+                }
+
+                wrapped_info.push((line_idx, *start_col, segment.clone(), visual_row));
+                visual_row += 1;
+            }
+        }
+
+        let total_visual_rows = visual_row;
+
+        // Calculate visible row range
+        let first_visible_row = (self.scroll_offset / line_height).floor() as usize;
+        let visible_rows = (visible_height / line_height).ceil() as usize + 1;
+        let last_visible_row = (first_visible_row + visible_rows).min(total_visual_rows);
+
+        // Render visible wrapped segments
+        for (line_idx, start_col, segment, vis_row) in wrapped_info.iter() {
+            if *vis_row < first_visible_row || *vis_row >= last_visible_row {
+                continue;
+            }
+
+            let y = bounds.origin.y + self.style.padding + (*vis_row as f32 * line_height) - self.scroll_offset;
 
             // Skip if outside visible area
             if y + line_height < bounds.origin.y || y > bounds.origin.y + bounds.size.height {
                 continue;
             }
 
-            // Get line content and block type
-            let line = self.lines.get(line_idx).map(|s| s.as_str()).unwrap_or("");
-            let block_type = block_types.get(line_idx).copied().unwrap_or(BlockType::Paragraph);
-            let is_cursor_line = line_idx == self.cursor.line;
+            let block_type = block_types.get(*line_idx).copied().unwrap_or(BlockType::Paragraph);
+            let is_cursor_line = *line_idx == self.cursor.line;
 
-            if line.is_empty() {
-                // Empty line, nothing to render
+            if segment.is_empty() {
+                // Empty segment, nothing to render
             } else if is_cursor_line {
                 // Cursor line: render raw markdown but keep font size for headers
                 let font_size = match block_type {
@@ -1912,7 +2077,7 @@ impl Component for LiveEditor {
                     _ => self.style.font_size,
                 };
                 let text_run = cx.text.layout_styled_mono(
-                    line,
+                    segment,
                     Point::new(text_x, y),
                     font_size,
                     self.style.text_color,
@@ -1921,22 +2086,27 @@ impl Component for LiveEditor {
                 cx.scene.draw_text(text_run);
             } else {
                 // Non-cursor line: render formatted markdown
-                self.render_formatted_line(line, block_type, text_x, y, line_height, cx);
+                self.render_formatted_line(segment, block_type, text_x, y, line_height, cx);
             }
 
-            // Selection highlight for this line
+            // Selection highlight for this segment
             if let Some(sel) = &self.selection {
                 if !sel.is_empty() {
-                    let start = sel.start();
-                    let end = sel.end();
+                    let sel_start = sel.start();
+                    let sel_end = sel.end();
 
-                    if line_idx >= start.line && line_idx <= end.line {
-                        let line_len = self.line_len(line_idx);
-                        let sel_start_col = if line_idx == start.line { start.column } else { 0 };
-                        let sel_end_col = if line_idx == end.line { end.column } else { line_len };
+                    if *line_idx >= sel_start.line && *line_idx <= sel_end.line {
+                        let segment_end_col = start_col + segment.chars().count();
 
-                        if sel_start_col < sel_end_col {
-                            // Scale char width for headers
+                        // Calculate selection range within this segment
+                        let line_sel_start = if *line_idx == sel_start.line { sel_start.column } else { 0 };
+                        let line_sel_end = if *line_idx == sel_end.line { sel_end.column } else { self.line_len(*line_idx) };
+
+                        // Intersect with segment range
+                        let seg_sel_start = line_sel_start.max(*start_col).saturating_sub(*start_col);
+                        let seg_sel_end = line_sel_end.min(segment_end_col).saturating_sub(*start_col);
+
+                        if seg_sel_start < seg_sel_end {
                             let char_width = match block_type {
                                 BlockType::Header(level) => {
                                     let scale = header_font_scale(level);
@@ -1944,8 +2114,8 @@ impl Component for LiveEditor {
                                 }
                                 _ => self.mono_char_width,
                             };
-                            let sel_x = text_x + sel_start_col as f32 * char_width;
-                            let sel_width = (sel_end_col - sel_start_col) as f32 * char_width;
+                            let sel_x = text_x + seg_sel_start as f32 * char_width;
+                            let sel_width = (seg_sel_end - seg_sel_start) as f32 * char_width;
 
                             cx.scene.draw_quad(
                                 Quad::new(Bounds::new(sel_x, y, sel_width, line_height))
@@ -1963,7 +2133,7 @@ impl Component for LiveEditor {
             let cursor_visible = (elapsed / 500) % 2 == 0;
 
             if cursor_visible {
-                let cursor_y = self.line_y(self.cursor.line, &bounds);
+                let cursor_y = bounds.origin.y + self.style.padding + (cursor_visual_row as f32 * line_height) - self.scroll_offset;
 
                 // Get cursor char width - scale for headers
                 let cursor_block_type = block_types.get(self.cursor.line).copied().unwrap_or(BlockType::Paragraph);
@@ -1975,7 +2145,7 @@ impl Component for LiveEditor {
                     _ => self.mono_char_width,
                 };
 
-                let cursor_x = text_x + self.cursor.column as f32 * cursor_char_width;
+                let cursor_x = text_x + cursor_visual_col as f32 * cursor_char_width;
                 // Shift cursor up slightly to align with text
                 let cursor_offset_y = -2.0;
 
@@ -2004,7 +2174,7 @@ impl Component for LiveEditor {
         }
 
         // Scrollbar
-        let total_content_height = self.lines.len() as f32 * line_height;
+        let total_content_height = total_visual_rows as f32 * line_height;
         if total_content_height > visible_height {
             let scrollbar_width = 8.0;
             let scrollbar_x = bounds.origin.x + bounds.size.width - scrollbar_width - 2.0;
