@@ -86,10 +86,22 @@ impl Vault {
         Ok(path)
     }
 
-    /// Delete a file
-    #[allow(dead_code)] // Will be used for file deletion feature
+    /// Delete a file permanently
+    #[allow(dead_code)] // Prefer archive_file for recoverable deletion
     pub fn delete_file(&self, path: &PathBuf) -> io::Result<()> {
         fs::remove_file(path)
+    }
+
+    /// Archive a file (move to .archive subfolder)
+    pub fn archive_file(&self, path: &PathBuf) -> io::Result<()> {
+        let archive_dir = self.path.join(".archive");
+        fs::create_dir_all(&archive_dir)?;
+
+        if let Some(filename) = path.file_name() {
+            let archive_path = archive_dir.join(filename);
+            fs::rename(path, archive_path)?;
+        }
+        Ok(())
     }
 
     /// Generate a unique name based on current timestamp

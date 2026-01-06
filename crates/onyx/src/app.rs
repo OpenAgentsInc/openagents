@@ -242,6 +242,26 @@ impl RenderState {
         }
     }
 
+    fn archive_current_file(&mut self) {
+        if let Some(path) = self.current_file.take() {
+            // Archive the file
+            if self.vault.archive_file(&path).is_ok() {
+                // Refresh file list
+                if let Ok(files) = self.vault.list_files() {
+                    self.sidebar.set_files(files.clone());
+
+                    // Open another file if available
+                    if let Some(first) = files.first() {
+                        self.open_file(first.path.clone());
+                    } else {
+                        // No files left, create a new one
+                        self.create_new_file();
+                    }
+                }
+            }
+        }
+    }
+
     fn navigate_file(&mut self, direction: i32) {
         if self.sidebar.files.is_empty() {
             return;
@@ -460,7 +480,7 @@ impl ApplicationHandler for OnyxApp {
                         }
                     }
 
-                    // Handle Cmd+Shift+Up/Down for file navigation
+                    // Handle Cmd+Shift+Up/Down for file navigation, Ctrl+Shift+Backspace for archive
                     if let Key::Named(named) = &event.logical_key {
                         if (state.modifiers.control_key() || state.modifiers.super_key())
                             && state.modifiers.shift_key()
@@ -473,6 +493,11 @@ impl ApplicationHandler for OnyxApp {
                                 }
                                 NamedKey::ArrowDown => {
                                     state.navigate_file(1);
+                                    state.window.request_redraw();
+                                    return;
+                                }
+                                NamedKey::Backspace => {
+                                    state.archive_current_file();
                                     state.window.request_redraw();
                                     return;
                                 }
