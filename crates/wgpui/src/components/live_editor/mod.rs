@@ -5,12 +5,79 @@
 
 mod block;
 mod cursor;
-mod vim;
 
 pub use cursor::{Cursor, Selection};
-pub use vim::VimMode;
-use vim::VimState;
+pub use vim::Mode as VimMode;
 use block::{BlockParser, BlockType, parse_inline, header_font_scale, strip_header_prefix, strip_list_prefix, strip_blockquote_prefix, inline_code_background};
+
+/// Pending operator waiting for a motion
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PendingOperator {
+    Delete,
+    Change,
+    Yank,
+}
+
+/// Vim state for the editor (using vim crate's Mode)
+#[derive(Debug, Clone, Default)]
+pub struct VimState {
+    /// Current vim mode
+    pub mode: vim::Mode,
+    /// Count prefix (e.g., "3" in "3j")
+    pub count: Option<usize>,
+    /// Pending operator
+    pub pending_operator: Option<PendingOperator>,
+    /// Vim-specific register (for yanked text)
+    pub register: Option<String>,
+    /// Visual mode anchor
+    pub visual_anchor: Option<Cursor>,
+    /// Pending 'g' key for gg motion
+    pub pending_g: bool,
+}
+
+impl VimState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn reset_pending(&mut self) {
+        self.count = None;
+        self.pending_operator = None;
+        self.pending_g = false;
+    }
+
+    pub fn effective_count(&self) -> usize {
+        self.count.unwrap_or(1)
+    }
+
+    pub fn push_count_digit(&mut self, digit: u8) {
+        let current = self.count.unwrap_or(0);
+        self.count = Some(current * 10 + digit as usize);
+    }
+
+    pub fn enter_insert(&mut self) {
+        self.mode = vim::Mode::Insert;
+        self.reset_pending();
+    }
+
+    pub fn enter_normal(&mut self) {
+        self.mode = vim::Mode::Normal;
+        self.reset_pending();
+        self.visual_anchor = None;
+    }
+
+    pub fn enter_visual(&mut self, anchor: Cursor) {
+        self.mode = vim::Mode::Visual;
+        self.visual_anchor = Some(anchor);
+        self.reset_pending();
+    }
+
+    pub fn enter_visual_line(&mut self, anchor: Cursor) {
+        self.mode = vim::Mode::VisualLine;
+        self.visual_anchor = Some(anchor);
+        self.reset_pending();
+    }
+}
 
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
@@ -240,8 +307,8 @@ impl LiveEditor {
     ) -> EventResult {
         match self.vim.mode {
             VimMode::Normal => self.handle_vim_normal(key, modifiers, bounds, cx),
-            VimMode::Insert => self.handle_vim_insert(key, modifiers, bounds),
-            VimMode::Visual | VimMode::VisualLine => self.handle_vim_visual(key, modifiers, bounds, cx),
+            VimMode::Insert | VimMode::Replace => self.handle_vim_insert(key, modifiers, bounds),
+            VimMode::Visual | VimMode::VisualLine | VimMode::VisualBlock => self.handle_vim_visual(key, modifiers, bounds, cx),
         }
     }
 
@@ -398,32 +465,32 @@ impl LiveEditor {
 
                     // Operators
                     "d" => {
-                        if self.vim.pending_operator == Some(vim::PendingOperator::Delete) {
+                        if self.vim.pending_operator == Some(PendingOperator::Delete) {
                             // dd - delete line(s)
                             let count = self.vim.effective_count();
                             self.vim_delete_lines(count);
                             self.vim.reset_pending();
                         } else {
-                            self.vim.pending_operator = Some(vim::PendingOperator::Delete);
+                            self.vim.pending_operator = Some(PendingOperator::Delete);
                         }
                     }
                     "c" => {
-                        if self.vim.pending_operator == Some(vim::PendingOperator::Change) {
+                        if self.vim.pending_operator == Some(PendingOperator::Change) {
                             // cc - change line(s)
                             let count = self.vim.effective_count();
                             self.vim_change_lines(count);
                         } else {
-                            self.vim.pending_operator = Some(vim::PendingOperator::Change);
+                            self.vim.pending_operator = Some(PendingOperator::Change);
                         }
                     }
                     "y" => {
-                        if self.vim.pending_operator == Some(vim::PendingOperator::Yank) {
+                        if self.vim.pending_operator == Some(PendingOperator::Yank) {
                             // yy - yank line(s)
                             let count = self.vim.effective_count();
                             self.vim_yank_lines(count, cx);
                             self.vim.reset_pending();
                         } else {
-                            self.vim.pending_operator = Some(vim::PendingOperator::Yank);
+                            self.vim.pending_operator = Some(PendingOperator::Yank);
                         }
                     }
 
@@ -652,19 +719,19 @@ impl LiveEditor {
 
                     // Mode switches
                     "v" => {
-                        if self.vim.mode == VimMode::Visual {
+                        if self.vim.mode == vim::Mode::Visual {
                             self.vim.enter_normal();
                             self.selection = None;
                         } else {
-                            self.vim.mode = VimMode::Visual;
+                            self.vim.mode = vim::Mode::Visual;
                         }
                     }
                     "V" => {
-                        if self.vim.mode == VimMode::VisualLine {
+                        if self.vim.mode == vim::Mode::VisualLine {
                             self.vim.enter_normal();
                             self.selection = None;
                         } else {
-                            self.vim.mode = VimMode::VisualLine;
+                            self.vim.mode = vim::Mode::VisualLine;
                             self.update_visual_line_selection();
                         }
                     }
@@ -683,7 +750,7 @@ impl LiveEditor {
 
     fn update_visual_selection(&mut self) {
         if let Some(anchor) = self.vim.visual_anchor {
-            if self.vim.mode == VimMode::VisualLine {
+            if self.vim.mode == vim::Mode::VisualLine {
                 self.update_visual_line_selection();
             } else {
                 self.selection = Some(Selection::new(anchor, self.cursor));
@@ -943,10 +1010,6 @@ impl LiveEditor {
         }
     }
 
-    fn vim_delete_line(&mut self) {
-        self.vim_delete_lines(1);
-    }
-
     fn vim_delete_lines(&mut self, count: usize) {
         self.save_undo_state();
         let start_line = self.cursor.line;
@@ -972,10 +1035,6 @@ impl LiveEditor {
         self.notify_change();
     }
 
-    fn vim_change_line(&mut self) {
-        self.vim_change_lines(1);
-    }
-
     fn vim_change_lines(&mut self, count: usize) {
         self.save_undo_state();
         let start_line = self.cursor.line;
@@ -993,10 +1052,6 @@ impl LiveEditor {
         self.cursor.column = 0;
         self.vim.enter_insert();
         self.notify_change();
-    }
-
-    fn vim_yank_line(&mut self, cx: &mut EventContext) {
-        self.vim_yank_lines(1, cx);
     }
 
     fn vim_yank_lines(&mut self, count: usize, cx: &mut EventContext) {
@@ -1914,11 +1969,11 @@ impl Component for LiveEditor {
                 // Block cursor in vim normal/visual mode, line cursor otherwise
                 let (cursor_width, cursor_color) = if self.vim_enabled {
                     match self.vim.mode {
-                        VimMode::Normal | VimMode::Visual | VimMode::VisualLine => {
+                        VimMode::Normal | VimMode::Visual | VimMode::VisualLine | VimMode::VisualBlock => {
                             // Block cursor with semi-transparent background
                             (cursor_char_width, self.style.cursor_color.with_alpha(0.7))
                         }
-                        VimMode::Insert => {
+                        VimMode::Insert | VimMode::Replace => {
                             // Line cursor
                             (2.0, self.style.cursor_color)
                         }
@@ -1975,7 +2030,8 @@ impl Component for LiveEditor {
             let mode_color = match vim_mode {
                 VimMode::Normal => Hsla::new(210.0, 0.7, 0.6, 1.0),  // Blue
                 VimMode::Insert => Hsla::new(120.0, 0.6, 0.5, 1.0),  // Green
-                VimMode::Visual | VimMode::VisualLine => Hsla::new(280.0, 0.6, 0.6, 1.0), // Purple
+                VimMode::Replace => Hsla::new(30.0, 0.7, 0.6, 1.0),  // Orange
+                VimMode::Visual | VimMode::VisualLine | VimMode::VisualBlock => Hsla::new(280.0, 0.6, 0.6, 1.0), // Purple
             };
 
             let mode_x = bounds.origin.x + 12.0;
