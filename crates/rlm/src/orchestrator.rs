@@ -3,15 +3,14 @@
 //! Drives multi-phase analysis pipeline for large documents:
 //! 1. Structure Discovery - detect document type and sections
 //! 2. Chunk Generation - split on semantic boundaries
-//! 3. Targeted Extraction - analyze each chunk with FM
+//! 3. Targeted Extraction - analyze each chunk with LLM
 //! 4. Synthesis - combine findings into final answer
 
 use std::time::Instant;
 
-use fm_bridge::FMClient;
-
 use crate::chunking::{chunk_by_structure, detect_structure, Chunk};
-use crate::error::{Result, RlmError};
+use crate::client::LlmClient;
+use crate::error::Result;
 
 /// Configuration for engine-orchestrated analysis.
 #[derive(Debug, Clone)]
@@ -72,14 +71,16 @@ pub struct ChunkSummary {
 ///
 /// Orchestrates multi-phase analysis that works regardless of
 /// where relevant content appears in the document.
-pub struct EngineOrchestrator {
-    client: FMClient,
+///
+/// Generic over `C: LlmClient` to support any LLM backend.
+pub struct EngineOrchestrator<C: LlmClient> {
+    client: C,
     config: OrchestratorConfig,
 }
 
-impl EngineOrchestrator {
+impl<C: LlmClient> EngineOrchestrator<C> {
     /// Create a new orchestrator with default config.
-    pub fn new(client: FMClient) -> Self {
+    pub fn new(client: C) -> Self {
         Self {
             client,
             config: OrchestratorConfig::default(),
@@ -87,7 +88,7 @@ impl EngineOrchestrator {
     }
 
     /// Create a new orchestrator with custom config.
-    pub fn with_config(client: FMClient, config: OrchestratorConfig) -> Self {
+    pub fn with_config(client: C, config: OrchestratorConfig) -> Self {
         Self { client, config }
     }
 
@@ -206,11 +207,12 @@ impl EngineOrchestrator {
 
             match self.client.complete(&prompt, None).await {
                 Ok(response) => {
-                    let findings = response
-                        .choices
-                        .first()
-                        .map(|c| c.message.content.clone())
-                        .unwrap_or_else(|| "No response".to_string());
+                    let findings = response.content().to_string();
+                    let findings = if findings.is_empty() {
+                        "No response".to_string()
+                    } else {
+                        findings
+                    };
 
                     if self.config.verbose {
                         let preview: String = findings.chars().take(60).collect();
@@ -339,14 +341,14 @@ Start your response directly with the answer (no preamble like "Based on...")."#
         let response = self
             .client
             .complete(&prompt, None)
-            .await
-            .map_err(|e| RlmError::LlmError(e.to_string()))?;
+            .await?;
 
-        let answer = response
-            .choices
-            .first()
-            .map(|c| c.message.content.clone())
-            .unwrap_or_else(|| "Failed to synthesize answer.".to_string());
+        let answer = response.content().to_string();
+        let answer = if answer.is_empty() {
+            "Failed to synthesize answer.".to_string()
+        } else {
+            answer
+        };
 
         Ok(answer)
     }
@@ -392,11 +394,7 @@ Start your response directly with the summary."#,
 
             match self.client.complete(&prompt, None).await {
                 Ok(response) => {
-                    let summary = response
-                        .choices
-                        .first()
-                        .map(|c| c.message.content.clone())
-                        .unwrap_or_default();
+                    let summary = response.content().to_string();
 
                     if self.config.verbose {
                         let preview: String = summary.chars().take(60).collect();
@@ -448,14 +446,14 @@ Start your response directly with the answer."#,
         let response = self
             .client
             .complete(&final_prompt, None)
-            .await
-            .map_err(|e| RlmError::LlmError(e.to_string()))?;
+            .await?;
 
-        let answer = response
-            .choices
-            .first()
-            .map(|c| c.message.content.clone())
-            .unwrap_or_else(|| "Failed to synthesize answer.".to_string());
+        let answer = response.content().to_string();
+        let answer = if answer.is_empty() {
+            "Failed to synthesize answer.".to_string()
+        } else {
+            answer
+        };
 
         Ok(answer)
     }

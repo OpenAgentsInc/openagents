@@ -6,12 +6,13 @@
 //! This module:
 //! 1. Parses Python code for llm_query() calls
 //! 2. Extracts the arguments (prompt and text)
-//! 3. Executes the sub-queries via FM Bridge
+//! 3. Executes the sub-queries via LLM client
 //! 4. Replaces the calls with their results
 
 use regex::Regex;
 
-use crate::error::{Result, RlmError};
+use crate::client::LlmClient;
+use crate::error::Result;
 
 /// A parsed llm_query call from Python code.
 #[derive(Debug, Clone)]
@@ -41,39 +42,133 @@ pub struct LlmQueryBatchCall {
     pub queries: Vec<(String, String)>,
 }
 
+/// Find the comma that separates function arguments.
+///
+/// Skips commas inside quotes to find the argument separator.
+fn find_arg_separator(args: &str) -> Option<usize> {
+    let mut in_quotes = false;
+    let mut quote_char = ' ';
+
+    for (i, ch) in args.char_indices() {
+        if ch == '"' || ch == '\'' {
+            if !in_quotes {
+                in_quotes = true;
+                quote_char = ch;
+            } else if ch == quote_char {
+                in_quotes = false;
+            }
+        } else if ch == ',' && !in_quotes {
+            return Some(i);
+        }
+    }
+
+    None
+}
+
+/// Extract string content from f"...", r"...", or "..." format.
+///
+/// This is a simplified extractor - it doesn't handle all Python edge cases
+/// but works for the common patterns GPT-5 generates.
+fn extract_string_content(s: &str) -> String {
+    let trimmed = s.trim();
+
+    // Handle f"..." or f'...'
+    if trimmed.starts_with('f') || trimmed.starts_with('F') {
+        let without_prefix = &trimmed[1..];
+        return strip_quotes(without_prefix);
+    }
+
+    // Handle r"..." or r'...'
+    if trimmed.starts_with('r') || trimmed.starts_with('R') {
+        let without_prefix = &trimmed[1..];
+        return strip_quotes(without_prefix);
+    }
+
+    // Regular "..." or '...'
+    strip_quotes(trimmed)
+}
+
+fn strip_quotes(s: &str) -> String {
+    let trimmed = s.trim();
+    if (trimmed.starts_with('"') && trimmed.ends_with('"'))
+        || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+    {
+        trimmed[1..trimmed.len() - 1].to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 /// Parse llm_query() calls from Python code.
 ///
 /// Matches patterns like:
 /// - `llm_query("prompt", "text")`
-/// - `llm_query("prompt", context[0:100])`
+/// - `llm_query(f"prompt with {var}", context[0:100])`
 /// - `llm_query("prompt", some_variable)`
 pub fn parse_llm_query_calls(code: &str) -> Vec<LlmQueryCall> {
     let mut calls = Vec::new();
 
-    // Match llm_query("...", ...)
-    // This is a simplified parser - it handles common cases but not all Python edge cases
-    let re = Regex::new(r#"llm_query\s*\(\s*("[^"]*"|'[^']*')\s*,\s*([^)]+)\)"#).unwrap();
+    // Parse llm_query calls manually to handle f-strings with complex content
+    let mut search_pos = 0;
+    while let Some(call_start) = code[search_pos..].find("llm_query") {
+        let abs_call_start = search_pos + call_start;
+        let after_name = &code[abs_call_start + 9..]; // Skip "llm_query"
 
-    for cap in re.captures_iter(code) {
-        let full_match = cap.get(0).unwrap();
-        let prompt_match = cap.get(1).unwrap();
-        let text_match = cap.get(2).unwrap();
+        // Find opening paren
+        if let Some(paren_idx) = after_name.find('(') {
+            let args_start = abs_call_start + 9 + paren_idx + 1;
 
-        // Remove quotes from prompt
-        let prompt = prompt_match.as_str();
-        let prompt = &prompt[1..prompt.len() - 1]; // Remove surrounding quotes
+            // Find the matching closing paren by counting parens
+            let mut depth = 1;
+            let mut pos = args_start;
+            let mut close_paren = None;
 
-        calls.push(LlmQueryCall {
-            full_match: full_match.as_str().to_string(),
-            start: full_match.start(),
-            end: full_match.end(),
-            prompt: prompt.to_string(),
-            text_expr: text_match.as_str().trim().to_string(),
-        });
+            for (i, ch) in code[args_start..].char_indices() {
+                if ch == '(' {
+                    depth += 1;
+                } else if ch == ')' {
+                    depth -= 1;
+                    if depth == 0 {
+                        close_paren = Some(args_start + i);
+                        break;
+                    }
+                }
+            }
+
+            if let Some(close_pos) = close_paren {
+                // Extract the full call
+                let full_call = &code[abs_call_start..close_pos + 1];
+                let args = &code[args_start..close_pos];
+
+                // Find the comma that separates arguments (not commas inside quotes)
+                if let Some(comma_pos) = find_arg_separator(args) {
+                    let prompt_str = args[..comma_pos].trim();
+                    let text_expr = args[comma_pos + 1..].trim();
+
+                    // Extract prompt content (strip f" or " prefix/suffix)
+                    let prompt = extract_string_content(prompt_str);
+
+                    calls.push(LlmQueryCall {
+                        full_match: full_call.to_string(),
+                        start: abs_call_start,
+                        end: close_pos + 1,
+                        prompt,
+                        text_expr: text_expr.to_string(),
+                    });
+                }
+
+                search_pos = close_pos + 1;
+            } else {
+                search_pos = args_start;
+            }
+        } else {
+            break;
+        }
     }
 
     calls
 }
+
 
 /// Check if a text expression is a simple string literal.
 pub fn is_string_literal(expr: &str) -> bool {
@@ -95,13 +190,19 @@ pub fn extract_string_literal(expr: &str) -> Option<String> {
 /// Evaluate a context slice expression and return the text.
 ///
 /// Handles expressions like:
-/// - `context[0:100]`
-/// - `context[start:end]`
-/// - `context[:500]`
+/// - `context` - the full context
+/// - `context[0:100]` - a slice
+/// - `context[start:end]` - a slice with numeric bounds
+/// - `context[:500]` - from start to 500
 ///
 /// Returns None if the expression can't be evaluated statically.
 pub fn evaluate_context_slice(expr: &str, context: &str) -> Option<String> {
     let trimmed = expr.trim();
+
+    // Handle plain "context" - return full context
+    if trimmed == "context" {
+        return Some(context.to_string());
+    }
 
     // Check for context[start:end] pattern
     let re = Regex::new(r"^context\[(\d*):(\d*)\]$").unwrap();
@@ -215,9 +316,9 @@ pub fn process_code_for_queries(code: &str, context: Option<&str>) -> ProcessedC
     }
 }
 
-/// Execute a sub-query via FM Bridge and return the result.
-pub async fn execute_sub_query(
-    client: &fm_bridge::FMClient,
+/// Execute a sub-query via LLM client and return the result.
+pub async fn execute_sub_query<C: LlmClient>(
+    client: &C,
     prompt: &str,
     text: &str,
 ) -> Result<String> {
@@ -231,11 +332,7 @@ pub async fn execute_sub_query(
     );
 
     let response = client.complete(&sub_prompt, None).await?;
-    let result = response
-        .choices
-        .first()
-        .map(|c| c.message.content.clone())
-        .unwrap_or_default();
+    let result = response.content().to_string();
 
     Ok(result)
 }

@@ -7,19 +7,22 @@
 //! # Architecture
 //!
 //! ```text
-//! User Query → RlmEngine → FM Bridge (LLM) → Parse Commands → Executor
-//!                 ↑                                              ↓
-//!                 └──────────── Execution Result ←───────────────┘
+//! User Query → RlmEngine → LlmClient (any backend) → Parse Commands → Executor
+//!                 ↑                                                      ↓
+//!                 └──────────── Execution Result ←───────────────────────┘
 //!                               (loop until FINAL)
 //! ```
 //!
 //! # Example
 //!
 //! ```rust,ignore
-//! use rlm::{RlmEngine, MockExecutor};
-//! use fm_bridge::FMClient;
+//! use std::sync::Arc;
+//! use rlm::{RlmEngine, MockExecutor, LmRouterClient};
+//! use lm_router::LmRouter;
 //!
-//! let client = FMClient::new()?;
+//! // Configure router with any backend (OpenRouter, OpenAI, etc.)
+//! let router = Arc::new(LmRouter::builder().build());
+//! let client = LmRouterClient::new(router, "model-name");
 //! let executor = MockExecutor::new();
 //! let engine = RlmEngine::new(client, executor);
 //!
@@ -27,13 +30,14 @@
 //! ```
 
 pub mod chunking;
+mod client;
+#[cfg(feature = "fm-bridge")]
 pub mod cli;
 mod command;
 mod context;
 mod engine;
 mod error;
 mod executor;
-#[cfg(feature = "lm-router")]
 mod lm_router_adapter;
 mod mock_executor;
 pub mod orchestrator;
@@ -42,11 +46,13 @@ mod python_executor;
 mod subquery;
 
 pub use chunking::{chunk_by_structure, detect_structure, Chunk, DocumentStructure, DocumentType, Section};
+pub use client::{LlmChoice, LlmClient, LlmMessage, LlmResponse, LlmUsage};
 pub use command::{Command, RunArgs};
 pub use context::{Context, ContextType, FileEntry, SearchResult};
 pub use engine::{ExecutionLogEntry, RlmConfig, RlmEngine, RlmResult, StuckDetector, StuckType};
 pub use error::RlmError;
 pub use executor::{ExecutionEnvironment, ExecutionResult, ExecutorCapabilities};
+pub use lm_router_adapter::LmRouterClient;
 pub use mock_executor::MockExecutor;
 pub use orchestrator::{AnalysisResult, ChunkSummary, EngineOrchestrator, OrchestratorConfig};
 pub use prompts::{
@@ -56,8 +62,3 @@ pub use prompts::{
     SYSTEM_PROMPT,
 };
 pub use python_executor::PythonExecutor;
-
-#[cfg(feature = "lm-router")]
-pub use lm_router_adapter::{
-    LmRouterClient, LmRouterChoice, LmRouterMessage, LmRouterResponse, LmRouterUsage,
-};

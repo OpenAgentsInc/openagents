@@ -2,9 +2,9 @@
 
 use std::process::Command as ProcessCommand;
 
-use fm_bridge::FMClient;
 use tracing::{debug, info, warn};
 
+use crate::client::LlmClient;
 use crate::command::Command;
 use crate::context::Context;
 use crate::error::{Result, RlmError};
@@ -207,9 +207,20 @@ pub struct ExecutionLogEntry {
 /// 3. Execute commands in the REPL
 /// 4. Feed results back to LLM
 /// 5. Repeat until FINAL command
-pub struct RlmEngine<E: ExecutionEnvironment> {
-    /// The FM Bridge client for LLM inference.
-    client: FMClient,
+///
+/// The engine is generic over:
+/// - `C`: The LLM client (any type implementing `LlmClient`)
+/// - `E`: The execution environment (any type implementing `ExecutionEnvironment`)
+///
+/// Following the RLM paper, the engine supports using different models for:
+/// - Root LM: The main iterative loop (e.g., GPT-5)
+/// - Sub-LM: Recursive llm_query() calls (e.g., GPT-5-mini for cost efficiency)
+pub struct RlmEngine<C: LlmClient, E: ExecutionEnvironment> {
+    /// The LLM client for root-level inference.
+    client: C,
+    /// Optional separate client for sub-queries (llm_query calls).
+    /// If None, uses the same client as root.
+    sub_client: Option<C>,
     /// The execution environment for running code.
     executor: E,
     /// Loaded context for the REPL (file/directory content).
@@ -218,11 +229,12 @@ pub struct RlmEngine<E: ExecutionEnvironment> {
     config: RlmConfig,
 }
 
-impl<E: ExecutionEnvironment> RlmEngine<E> {
+impl<C: LlmClient + Clone, E: ExecutionEnvironment> RlmEngine<C, E> {
     /// Create a new RLM engine with default configuration.
-    pub fn new(client: FMClient, executor: E) -> Self {
+    pub fn new(client: C, executor: E) -> Self {
         Self {
             client,
+            sub_client: None,
             executor,
             loaded_context: None,
             config: RlmConfig::default(),
@@ -230,9 +242,24 @@ impl<E: ExecutionEnvironment> RlmEngine<E> {
     }
 
     /// Create a new RLM engine with custom configuration.
-    pub fn with_config(client: FMClient, executor: E, config: RlmConfig) -> Self {
+    pub fn with_config(client: C, executor: E, config: RlmConfig) -> Self {
         Self {
             client,
+            sub_client: None,
+            executor,
+            loaded_context: None,
+            config,
+        }
+    }
+
+    /// Create an RLM engine with separate models for root and sub-calls.
+    ///
+    /// Following the RLM paper: use a powerful model (GPT-5) for root
+    /// and a cheaper model (GPT-5-mini) for recursive sub-calls.
+    pub fn with_sub_client(client: C, sub_client: C, executor: E, config: RlmConfig) -> Self {
+        Self {
+            client,
+            sub_client: Some(sub_client),
             executor,
             loaded_context: None,
             config,
@@ -348,7 +375,9 @@ def search_context(pattern, max_results=10, window=200):
             );
         }
 
-        // Execute each sub-query
+        // Execute each sub-query using sub_client if available, otherwise use main client
+        let query_client = self.sub_client.as_ref().unwrap_or(&self.client);
+
         let mut results = Vec::new();
         for query in &processed.pending_queries {
             if self.config.verbose {
@@ -359,7 +388,7 @@ def search_context(pattern, max_results=10, window=200):
                 );
             }
 
-            let result = execute_sub_query(&self.client, &query.prompt, &query.text).await?;
+            let result = execute_sub_query(query_client, &query.prompt, &query.text).await?;
 
             if self.config.verbose {
                 let preview = if result.len() > 100 {
@@ -442,11 +471,7 @@ def search_context(pattern, max_results=10, window=200):
 
             // Get LLM response
             let response = self.client.complete(&prompt, None).await?;
-            let text = response
-                .choices
-                .first()
-                .map(|c| c.message.content.clone())
-                .unwrap_or_default();
+            let text = response.content().to_string();
 
             if self.config.verbose {
                 debug!("LLM response: {}", text);
@@ -473,16 +498,25 @@ def search_context(pattern, max_results=10, window=200):
             match &cmd {
                 Command::Final(result) => {
                     info!("FINAL received after {} iterations", iteration);
+
+                    // If FINAL_VAR used incorrectly (without code), warn and use raw value
+                    let final_output = if result.starts_with("VAR:") {
+                        warn!("FINAL_VAR used without code block - cannot extract variable. Using raw output.");
+                        result.clone()
+                    } else {
+                        result.clone()
+                    };
+
                     execution_log.push(ExecutionLogEntry {
                         iteration,
                         llm_response: text.clone(),
                         command_type: "FINAL".to_string(),
                         executed: String::new(),
-                        result: result.clone(),
+                        result: final_output.clone(),
                     });
 
                     return Ok(RlmResult {
-                        output: result.clone(),
+                        output: final_output,
                         iterations: iteration,
                         execution_log,
                     });
@@ -493,8 +527,16 @@ def search_context(pattern, max_results=10, window=200):
                     // Execute the code, then return the final result immediately
                     debug!("Executing code block (with pending FINAL)");
 
+                    // If FINAL_VAR, add code to print the variable value
+                    let code_to_execute = if final_result.starts_with("VAR:") {
+                        let var_name = &final_result[4..];
+                        format!("{}\nprint(\"__FINAL_VAR__:\", {})", code, var_name)
+                    } else {
+                        code.clone()
+                    };
+
                     // Process sub-queries (llm_query calls) if any
-                    let code_with_queries = self.process_sub_queries(code).await?;
+                    let code_with_queries = self.process_sub_queries(&code_to_execute).await?;
 
                     // Inject context variable if loaded
                     let code_with_context = self.inject_context(&code_with_queries);
@@ -529,11 +571,33 @@ def search_context(pattern, max_results=10, window=200):
                     // If code executed successfully, return the FINAL result
                     if exec_result.is_success() {
                         info!("FINAL received (with code) after {} iterations", iteration);
+
+                        // If FINAL_VAR, extract variable value from stdout
+                        let actual_output = if final_result.starts_with("VAR:") {
+                            // We injected print("__FINAL_VAR__:", varname) into the code
+                            // Extract the value from that line
+                            exec_result.stdout
+                                .lines()
+                                .find(|l| l.starts_with("__FINAL_VAR__:"))
+                                .map(|l| l.trim_start_matches("__FINAL_VAR__:").trim().to_string())
+                                .unwrap_or_else(|| {
+                                    // Fallback: use last non-empty line of stdout
+                                    exec_result.stdout
+                                        .lines()
+                                        .filter(|l| !l.trim().is_empty())
+                                        .last()
+                                        .unwrap_or("")
+                                        .to_string()
+                                })
+                        } else {
+                            final_result.clone()
+                        };
+
                         if self.config.verbose {
-                            eprintln!("[FINAL] {}", final_result);
+                            eprintln!("[FINAL] {}", actual_output);
                         }
                         return Ok(RlmResult {
-                            output: final_result.clone(),
+                            output: actual_output,
                             iterations: iteration,
                             execution_log,
                         });

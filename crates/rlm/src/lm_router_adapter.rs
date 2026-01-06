@@ -4,19 +4,18 @@
 //! instead of FMClient directly, enabling unified backend management and
 //! usage tracking across all methods.
 
-#[cfg(feature = "lm-router")]
 use std::sync::Arc;
 
-#[cfg(feature = "lm-router")]
+use async_trait::async_trait;
 use lm_router::LmRouter;
 
-#[cfg(feature = "lm-router")]
+use crate::client::{LlmChoice, LlmClient, LlmMessage, LlmResponse, LlmUsage};
 use crate::error::{Result, RlmError};
 
 /// Adapter to use LmRouter with RlmEngine.
 ///
-/// RlmEngine expects an FMClient-like interface, but we want to route through
-/// LmRouter for unified backend management and usage tracking.
+/// This client implements `LlmClient` and routes requests through `LmRouter`,
+/// enabling any configured backend (OpenAI, OpenRouter, FM Bridge, etc.).
 ///
 /// # Example
 ///
@@ -32,7 +31,6 @@ use crate::error::{Result, RlmError};
 /// let client = LmRouterClient::new(router, "model-name");
 /// let response = client.complete("Hello, world!", None).await?;
 /// ```
-#[cfg(feature = "lm-router")]
 #[derive(Clone)]
 pub struct LmRouterClient {
     router: Arc<LmRouter>,
@@ -40,7 +38,6 @@ pub struct LmRouterClient {
     default_max_tokens: usize,
 }
 
-#[cfg(feature = "lm-router")]
 impl LmRouterClient {
     /// Create a new LmRouterClient.
     pub fn new(router: Arc<LmRouter>, model: impl Into<String>) -> Self {
@@ -66,16 +63,15 @@ impl LmRouterClient {
     pub fn router(&self) -> &Arc<LmRouter> {
         &self.router
     }
+}
 
-    /// Complete a prompt.
-    ///
-    /// This method is designed to match the FMClient interface so it can be
-    /// used as a drop-in replacement in RlmEngine.
-    pub async fn complete(
+#[async_trait]
+impl LlmClient for LmRouterClient {
+    async fn complete(
         &self,
         prompt: &str,
         max_tokens: Option<usize>,
-    ) -> Result<LmRouterResponse> {
+    ) -> Result<LlmResponse> {
         let max = max_tokens.unwrap_or(self.default_max_tokens);
 
         let response = self
@@ -84,54 +80,23 @@ impl LmRouterClient {
             .await
             .map_err(|e| RlmError::LlmError(e.to_string()))?;
 
-        // Convert LmResponse to LmRouterResponse (FMClient-compatible format)
-        Ok(LmRouterResponse {
-            choices: vec![LmRouterChoice {
-                message: LmRouterMessage {
+        // Convert LmResponse to LlmResponse
+        Ok(LlmResponse {
+            choices: vec![LlmChoice {
+                message: LlmMessage {
                     content: response.text,
                 },
             }],
-            usage: LmRouterUsage {
+            usage: Some(LlmUsage {
                 prompt_tokens: response.usage.prompt_tokens,
                 completion_tokens: response.usage.completion_tokens,
                 total_tokens: response.usage.total_tokens,
-            },
+            }),
         })
     }
 }
 
-/// Response from LmRouterClient, matching FMClient format.
-#[cfg(feature = "lm-router")]
-#[derive(Debug, Clone)]
-pub struct LmRouterResponse {
-    pub choices: Vec<LmRouterChoice>,
-    pub usage: LmRouterUsage,
-}
-
-/// A choice in the response.
-#[cfg(feature = "lm-router")]
-#[derive(Debug, Clone)]
-pub struct LmRouterChoice {
-    pub message: LmRouterMessage,
-}
-
-/// A message in the response.
-#[cfg(feature = "lm-router")]
-#[derive(Debug, Clone)]
-pub struct LmRouterMessage {
-    pub content: String,
-}
-
-/// Usage statistics.
-#[cfg(feature = "lm-router")]
-#[derive(Debug, Clone)]
-pub struct LmRouterUsage {
-    pub prompt_tokens: usize,
-    pub completion_tokens: usize,
-    pub total_tokens: usize,
-}
-
-#[cfg(all(test, feature = "lm-router"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use lm_router::backends::MockBackend;
@@ -172,5 +137,24 @@ mod tests {
         let client = LmRouterClient::new(router, "test-model").with_max_tokens(2048);
 
         assert_eq!(client.default_max_tokens, 2048);
+    }
+
+    #[tokio::test]
+    async fn test_llm_client_trait() {
+        let mock = MockBackend::new()
+            .with_model("test-model")
+            .with_response("Trait test");
+
+        let router = Arc::new(
+            LmRouter::builder()
+                .add_backend(mock)
+                .default_backend("mock")
+                .build(),
+        );
+
+        let client: Box<dyn LlmClient> = Box::new(LmRouterClient::new(router, "test-model"));
+        let response = client.complete("Hello", None).await.unwrap();
+
+        assert_eq!(response.content(), "Trait test");
     }
 }

@@ -7,9 +7,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bench_harness::{Method, MethodResult, StepType, TaskInstance, Trajectory};
-use fm_bridge::FMClient;
 use lm_router::{LmRouter, LmUsage};
-use rlm::{Context, PromptTier, PythonExecutor, RlmConfig, RlmEngine, RlmResult};
+use rlm::{Context, LmRouterClient, PromptTier, PythonExecutor, RlmConfig, RlmEngine, RlmResult};
 
 /// RLM Full method - the core paper contribution.
 ///
@@ -33,6 +32,7 @@ use rlm::{Context, PromptTier, PythonExecutor, RlmConfig, RlmEngine, RlmResult};
 pub struct RlmFullMethod {
     router: Arc<LmRouter>,
     model: String,
+    sub_model: String,
     max_iterations: u32,
     prompt_tier: PromptTier,
     python_binary: String,
@@ -40,13 +40,32 @@ pub struct RlmFullMethod {
 
 impl RlmFullMethod {
     /// Create a new RLM Full method.
+    ///
+    /// Following the RLM paper: automatically uses a cheaper sub-model for recursive calls.
+    /// For GPT-5 -> uses GPT-5-mini for sub-calls.
     pub fn new(router: Arc<LmRouter>, model: impl Into<String>) -> Self {
+        let model = model.into();
+        let sub_model = Self::default_sub_model(&model);
         Self {
             router,
-            model: model.into(),
+            model,
+            sub_model,
             max_iterations: 10,
-            prompt_tier: PromptTier::Guided,
+            prompt_tier: PromptTier::Full, // Paper uses full RLM prompt with llm_query
             python_binary: "python3".to_string(),
+        }
+    }
+
+    /// Get the default sub-model for a given root model.
+    ///
+    /// Following the paper: GPT-5 -> GPT-5-mini for sub-calls.
+    fn default_sub_model(model: &str) -> String {
+        if model.contains("gpt-5") && !model.contains("mini") {
+            // GPT-5 -> GPT-5-mini
+            model.replace("gpt-5", "gpt-5-mini")
+        } else {
+            // For other models, use the same model
+            model.to_string()
         }
     }
 
@@ -117,11 +136,11 @@ impl Method for RlmFullMethod {
     }
 
     async fn solve(&self, task: &dyn TaskInstance) -> bench_harness::Result<MethodResult> {
-        // Create FMClient for the RlmEngine
-        // Note: RlmEngine currently requires FMClient directly
-        let client = FMClient::new().map_err(|e| {
-            bench_harness::Error::MethodError(format!("Failed to create FM client: {}", e))
-        })?;
+        // Following the RLM paper: use different models for root and sub-calls
+        // Root LM: GPT-5 (or specified model)
+        // Sub-LM: GPT-5-mini (or cheaper variant)
+        let root_client = LmRouterClient::new(self.router.clone(), &self.model);
+        let sub_client = LmRouterClient::new(self.router.clone(), &self.sub_model);
 
         // Create Python executor
         let executor = PythonExecutor::with_binary(&self.python_binary);
@@ -130,14 +149,14 @@ impl Method for RlmFullMethod {
         let config = RlmConfig {
             max_iterations: self.max_iterations,
             allow_shell: false,
-            verbose: false,
+            verbose: true, // Enable verbose to debug GPT-5 responses
             prompt_tier: self.prompt_tier,
             enable_stuck_detection: true,
             disable_subqueries: false, // Enable llm_query for full RLM
         };
 
-        // Create engine
-        let mut engine = RlmEngine::with_config(client, executor, config);
+        // Create engine with separate root and sub-clients (as per paper)
+        let mut engine = RlmEngine::with_sub_client(root_client, sub_client, executor, config);
 
         // Set context if available
         if let Some(context_str) = task.context() {
@@ -164,10 +183,9 @@ impl Method for RlmFullMethod {
     }
 
     async fn warmup(&mut self) -> bench_harness::Result<()> {
-        // Verify FM Bridge is available
-        let client = FMClient::new().map_err(|e| {
-            bench_harness::Error::MethodError(format!("FM Bridge not available: {}", e))
-        })?;
+        // Verify LLM backend is available via LmRouter
+        use rlm::LlmClient;
+        let client = LmRouterClient::new(self.router.clone(), &self.model);
 
         // Simple health check
         let _ = client

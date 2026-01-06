@@ -68,11 +68,37 @@ impl Command {
     }
 
     /// Find FINAL command anywhere in the text.
+    ///
+    /// Supports multiple syntaxes from the RLM paper:
+    /// - `FINAL answer here` - Space-separated
+    /// - `FINAL(answer here)` - Function-style (paper's preferred format)
+    /// - `FINAL_VAR(variable_name)` - Return a variable (paper format)
     fn find_final(input: &str) -> Option<String> {
-        // Look for "FINAL" at the start of a line
+        // Check for FINAL_VAR(variable_name) first
+        if let Some(var_start) = input.find("FINAL_VAR(") {
+            let after_paren = &input[var_start + 10..];
+            if let Some(close_paren) = after_paren.find(')') {
+                let var_name = &after_paren[..close_paren].trim();
+                // Return the variable name - the REPL will handle extracting its value
+                return Some(format!("VAR:{}", var_name));
+            }
+        }
+
+        // Check for FINAL(answer) style
+        if let Some(final_start) = input.find("FINAL(") {
+            let after_paren = &input[final_start + 6..];
+            if let Some(close_paren) = after_paren.find(')') {
+                let answer = &after_paren[..close_paren];
+                if !answer.trim().is_empty() {
+                    return Some(answer.to_string());
+                }
+            }
+        }
+
+        // Fallback: Look for "FINAL" at the start of a line (legacy format)
         for line in input.lines() {
             let line = line.trim();
-            if line.starts_with("FINAL") {
+            if line.starts_with("FINAL") && !line.starts_with("FINAL_VAR") {
                 let result = line
                     .split_ascii_whitespace()
                     .skip(1)
@@ -109,9 +135,31 @@ impl Command {
         // Look for FINAL after the code block ends
         if let Some(end_pos) = last_code_end {
             let after_code = &input[end_pos..];
+
+            // Check for FINAL_VAR(variable_name)
+            if let Some(var_start) = after_code.find("FINAL_VAR(") {
+                let after_paren = &after_code[var_start + 10..];
+                if let Some(close_paren) = after_paren.find(')') {
+                    let var_name = &after_paren[..close_paren].trim();
+                    return Some(format!("VAR:{}", var_name));
+                }
+            }
+
+            // Check for FINAL(answer)
+            if let Some(final_start) = after_code.find("FINAL(") {
+                let after_paren = &after_code[final_start + 6..];
+                if let Some(close_paren) = after_paren.find(')') {
+                    let answer = &after_paren[..close_paren];
+                    if !answer.trim().is_empty() {
+                        return Some(answer.to_string());
+                    }
+                }
+            }
+
+            // Legacy format fallback
             for line in after_code.lines() {
                 let line = line.trim();
-                if line.starts_with("FINAL") {
+                if line.starts_with("FINAL") && !line.starts_with("FINAL_VAR") {
                     let result = line
                         .split_ascii_whitespace()
                         .skip(1)
@@ -140,27 +188,64 @@ impl Command {
         })
     }
 
-    /// Extract code from a code block (```repl, ```python, or just ```).
+    /// Extract code from code blocks (```repl, ```python, or just ```).
+    ///
+    /// Following the paper: GPT-5 often outputs multiple ```repl blocks in one response.
+    /// We concatenate all blocks to support this pattern.
     fn extract_code_block(input: &str) -> Option<String> {
-        // Try multiple code block markers
-        let markers = ["```repl", "```python", "```py", "```"];
+        let mut all_code = Vec::new();
+        let mut pos = 0;
 
-        for start_marker in markers {
-            if let Some(start_idx) = input.find(start_marker) {
-                let code_start = start_idx + start_marker.len();
-                let remaining = &input[code_start..];
+        // Scan through input finding ANY code block marker
+        while pos < input.len() {
+            let remaining = &input[pos..];
 
-                // Find the closing ```
-                if let Some(end_idx) = remaining.find("```") {
-                    let code = remaining[..end_idx].trim();
+            // Find the next occurrence of "```" (opening marker)
+            if let Some(tick_idx) = remaining.find("```") {
+                let tick_pos = pos + tick_idx;
+                let after_ticks = &input[tick_pos + 3..];
+
+                // Check what language marker follows (if any)
+                let code_start = if after_ticks.starts_with("repl") {
+                    tick_pos + 3 + 4 // Skip "```repl"
+                } else if after_ticks.starts_with("python") {
+                    tick_pos + 3 + 6 // Skip "```python"
+                } else if after_ticks.starts_with("py") {
+                    tick_pos + 3 + 2 // Skip "```py"
+                } else {
+                    tick_pos + 3 // Just "```"
+                };
+
+                // Skip optional newline after marker
+                let code_start = if input[code_start..].starts_with('\n') {
+                    code_start + 1
+                } else if input[code_start..].starts_with("\r\n") {
+                    code_start + 2
+                } else {
+                    code_start
+                };
+
+                // Find closing ```
+                if let Some(end_idx) = input[code_start..].find("```") {
+                    let code = input[code_start..code_start + end_idx].trim();
                     if !code.is_empty() {
-                        return Some(code.to_string());
+                        all_code.push(code.to_string());
                     }
+                    pos = code_start + end_idx + 3;
+                } else {
+                    break;
                 }
+            } else {
+                break;
             }
         }
 
-        None
+        if all_code.is_empty() {
+            return None;
+        }
+
+        // Concatenate all blocks with newlines
+        Some(all_code.join("\n\n"))
     }
 
     /// Returns the run arguments if this is a Run command.
