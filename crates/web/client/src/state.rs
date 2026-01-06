@@ -465,6 +465,52 @@ pub(crate) struct RlmTimelineEvent {
     pub(crate) data: serde_json::Value,
 }
 
+/// Trace event types for DSPy demo playback
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(tag = "type")]
+pub(crate) enum RlmTraceEventType {
+    #[serde(rename = "phase_start")]
+    PhaseStart { phase: String },
+    #[serde(rename = "routing_result")]
+    RoutingResult { sections: String },
+    #[serde(rename = "chunk_created")]
+    ChunkCreated {
+        id: usize,
+        section: String,
+        preview: String,
+    },
+    #[serde(rename = "extraction_start")]
+    ExtractionStart { chunk_id: usize },
+    #[serde(rename = "extraction_complete")]
+    ExtractionComplete {
+        chunk_id: usize,
+        findings: String,
+        relevance: f32,
+    },
+    #[serde(rename = "synthesis_complete")]
+    SynthesisComplete { answer: String, confidence: f32 },
+    #[serde(rename = "complete")]
+    Complete,
+}
+
+/// A single event in the demo trace
+#[derive(Clone, Debug, serde::Deserialize)]
+pub(crate) struct RlmTraceEvent {
+    /// Milliseconds from start of trace
+    pub(crate) t: u64,
+    /// Event data (flattened with type tag)
+    #[serde(flatten)]
+    pub(crate) event: RlmTraceEventType,
+}
+
+/// Pre-recorded demo trace for DSPy playback
+#[derive(Clone, Debug, serde::Deserialize)]
+pub(crate) struct RlmDemoTrace {
+    pub(crate) query: String,
+    pub(crate) document_preview: String,
+    pub(crate) events: Vec<RlmTraceEvent>,
+}
+
 /// State for the RLM (Recursive Language Model) visualization page
 pub(crate) struct RlmVizState {
     // Frame/scroll (standard)
@@ -507,11 +553,17 @@ pub(crate) struct RlmVizState {
     // Error
     pub(crate) error: Option<String>,
 
-    // Demo mode
+    // Demo mode / Trace playback
     pub(crate) demo_mode: bool,
     pub(crate) demo_phase_idx: usize,
     pub(crate) demo_chunk_idx: usize,
     pub(crate) demo_last_tick: u64,
+
+    // Trace playback state
+    pub(crate) trace: Option<RlmDemoTrace>,
+    pub(crate) trace_start_time: u64,
+    pub(crate) trace_event_idx: usize,
+    pub(crate) auto_restart: bool,
 }
 
 impl Default for RlmVizState {
@@ -561,6 +613,12 @@ impl Default for RlmVizState {
             demo_phase_idx: 0,
             demo_chunk_idx: 0,
             demo_last_tick: 0,
+
+            // Trace playback (will be initialized from embedded JSON)
+            trace: None,
+            trace_start_time: 0,
+            trace_event_idx: 0,
+            auto_restart: true,
         }
     }
 }
@@ -616,10 +674,10 @@ impl RlmVizState {
     pub(crate) fn phase_label(&self) -> &'static str {
         match self.current_phase {
             RlmPhase::Idle => "Ready",
-            RlmPhase::StructureDiscovery => "Structure Discovery",
+            RlmPhase::StructureDiscovery => "Routing",
             RlmPhase::Chunking => "Chunking",
-            RlmPhase::Extraction => "Extraction",
-            RlmPhase::Synthesis => "Synthesis",
+            RlmPhase::Extraction => "Extraction (CoT)",
+            RlmPhase::Synthesis => "Reduce + Verify",
             RlmPhase::Complete => "Complete",
         }
     }

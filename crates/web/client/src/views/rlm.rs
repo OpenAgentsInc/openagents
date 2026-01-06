@@ -9,7 +9,13 @@ use wgpui::components::Component;
 use wgpui::PaintContext;
 use wgpui::{theme, Bounds, Hsla, Point, Quad, Scene, TextSystem};
 
-use crate::state::{AppState, RlmConnectionStatus, RlmPhase, RlmStepStatus};
+use crate::state::{
+    AppState, RlmChunkState, RlmConnectionStatus, RlmDemoTrace, RlmPhase, RlmStepStatus,
+    RlmTraceEventType,
+};
+
+/// Embedded trace JSON for demo playback
+const DEMO_TRACE_JSON: &str = include_str!("../../assets/rlm-demo-trace.json");
 
 // Color scheme
 fn accent_cyan() -> Hsla {
@@ -172,7 +178,7 @@ fn draw_header(
     scene.draw_text(status_run);
 
     // Subtitle
-    let subtitle = "Recursive Language Model - Document Analysis Pipeline";
+    let subtitle = "DSPy-Powered Document Analysis: Route -> Extract -> Reduce -> Verify";
     let subtitle_run = text_system.layout(subtitle, Point::new(x, y + 24.0), 11.0, theme::text::MUTED);
     scene.draw_text(subtitle_run);
 }
@@ -263,12 +269,12 @@ fn draw_timeline(
     y: f32,
     width: f32,
 ) {
-    // Phase labels and progress
+    // Phase labels and progress (DSPy terminology)
     let phases = [
-        ("Structure", RlmPhase::StructureDiscovery),
-        ("Chunking", RlmPhase::Chunking),
-        ("Extraction", RlmPhase::Extraction),
-        ("Synthesis", RlmPhase::Synthesis),
+        ("Route", RlmPhase::StructureDiscovery),
+        ("Chunk", RlmPhase::Chunking),
+        ("Extract", RlmPhase::Extraction),
+        ("Reduce", RlmPhase::Synthesis),
     ];
 
     let phase_width = width / phases.len() as f32;
@@ -389,12 +395,12 @@ fn draw_phases_panel(
     scene.draw_text(title_run);
     current_y += 24.0;
 
-    // Phase list
+    // Phase list (DSPy terminology)
     let phases = [
-        ("Structure Discovery", RlmPhase::StructureDiscovery, "Analyzing document structure"),
+        ("Routing", RlmPhase::StructureDiscovery, "Selecting relevant sections"),
         ("Chunking", RlmPhase::Chunking, "Splitting into semantic chunks"),
-        ("Extraction", RlmPhase::Extraction, "Processing each chunk"),
-        ("Synthesis", RlmPhase::Synthesis, "Combining results"),
+        ("Extraction (CoT)", RlmPhase::Extraction, "Chain-of-thought per chunk"),
+        ("Reduce + Verify", RlmPhase::Synthesis, "Combining and validating"),
     ];
 
     for (label, phase, desc) in phases {
@@ -619,70 +625,161 @@ fn is_phase_complete(current: RlmPhase, check: RlmPhase) -> bool {
     order(current) > order(check)
 }
 
+/// Load the embedded demo trace
+fn load_demo_trace() -> Option<RlmDemoTrace> {
+    serde_json::from_str(DEMO_TRACE_JSON).ok()
+}
+
+/// Initialize trace playback if not already loaded
+fn ensure_trace_loaded(state: &mut AppState) {
+    if state.rlm.trace.is_none() {
+        state.rlm.trace = load_demo_trace();
+        // Pre-populate query and document from trace
+        if let Some(trace) = &state.rlm.trace {
+            state.rlm.query_input.set_value(&trace.query);
+            state.rlm.context_input.set_value(&trace.document_preview);
+        }
+    }
+}
+
+/// Tick the demo using trace playback
 fn tick_demo(state: &mut AppState) {
     let now = web_sys::window()
         .and_then(|w| w.performance())
         .map(|p| p.now() as u64)
         .unwrap_or(0);
 
-    // Initialize demo
-    if state.rlm.demo_last_tick == 0 {
-        state.rlm.demo_last_tick = now;
+    // Ensure trace is loaded
+    ensure_trace_loaded(state);
+
+    // Initialize playback
+    if state.rlm.trace_start_time == 0 {
+        state.rlm.trace_start_time = now;
+        state.rlm.trace_event_idx = 0;
         state.rlm.connection_status = RlmConnectionStatus::Streaming;
-        state.rlm.current_phase = RlmPhase::StructureDiscovery;
-        state.rlm.total_chunks = 12;
         return;
     }
 
-    let elapsed = now.saturating_sub(state.rlm.demo_last_tick);
+    let Some(trace) = state.rlm.trace.as_ref() else {
+        return;
+    };
 
-    // Progress through phases every 2 seconds
-    if elapsed >= 2000 {
-        state.rlm.demo_last_tick = now;
-        state.rlm.demo_phase_idx += 1;
+    let elapsed = now.saturating_sub(state.rlm.trace_start_time);
+    let trace_len = trace.events.len();
+    let last_event_time = trace.events.last().map(|e| e.t).unwrap_or(0);
 
-        match state.rlm.demo_phase_idx {
-            1 => {
-                state.rlm.current_phase = RlmPhase::Chunking;
-                // Populate demo chunks
-                for i in 0..state.rlm.total_chunks {
-                    state.rlm.chunks.push(crate::state::RlmChunkState {
-                        chunk_id: i,
-                        section_title: Some(format!("Section {}", i + 1)),
-                        content_preview: Some("Lorem ipsum dolor sit amet...".to_string()),
-                        findings: None,
-                        status: RlmStepStatus::Pending,
-                    });
-                }
+    // Collect events to apply (clone to avoid borrow conflict)
+    let mut events_to_apply = Vec::new();
+    while state.rlm.trace_event_idx < trace_len {
+        let event = &trace.events[state.rlm.trace_event_idx];
+        if event.t > elapsed {
+            break;
+        }
+        events_to_apply.push(event.clone());
+        state.rlm.trace_event_idx += 1;
+    }
+
+    // Apply collected events
+    for event in events_to_apply {
+        apply_trace_event(state, &event);
+    }
+
+    // Auto-restart after completion + 5 second delay
+    if state.rlm.current_phase == RlmPhase::Complete && state.rlm.auto_restart {
+        if elapsed > last_event_time + 5000 {
+            reset_and_restart_trace(state);
+        }
+    }
+}
+
+/// Apply a single trace event to update state
+fn apply_trace_event(state: &mut AppState, event: &crate::state::RlmTraceEvent) {
+    match &event.event {
+        RlmTraceEventType::PhaseStart { phase } => {
+            state.rlm.current_phase = match phase.as_str() {
+                "routing" => RlmPhase::StructureDiscovery,
+                "chunking" => RlmPhase::Chunking,
+                "extraction" => RlmPhase::Extraction,
+                "synthesis" => RlmPhase::Synthesis,
+                _ => state.rlm.current_phase,
+            };
+            state.rlm.connection_status = RlmConnectionStatus::Streaming;
+        }
+        RlmTraceEventType::RoutingResult { sections } => {
+            state.rlm.streaming_text = format!("Identified sections: {}", sections);
+        }
+        RlmTraceEventType::ChunkCreated {
+            id,
+            section,
+            preview,
+        } => {
+            state.rlm.chunks.push(RlmChunkState {
+                chunk_id: *id,
+                section_title: Some(section.clone()),
+                content_preview: Some(preview.clone()),
+                findings: None,
+                status: RlmStepStatus::Pending,
+            });
+            state.rlm.total_chunks = state.rlm.chunks.len();
+        }
+        RlmTraceEventType::ExtractionStart { chunk_id } => {
+            if let Some(chunk) = state.rlm.chunks.get_mut(*chunk_id) {
+                chunk.status = RlmStepStatus::Processing;
             }
-            2..=13 => {
-                state.rlm.current_phase = RlmPhase::Extraction;
-                let chunk_idx = state.rlm.demo_phase_idx - 2;
-                if chunk_idx < state.rlm.chunks.len() {
-                    state.rlm.chunks[chunk_idx].status = RlmStepStatus::Complete;
-                    state.rlm.chunks[chunk_idx].findings = Some("Extracted key information from this section.".to_string());
-                    state.rlm.processed_chunks = chunk_idx + 1;
-                    state.rlm.active_chunk_id = Some(chunk_idx);
-                    state.rlm.streaming_text = format!("Processing chunk {}...", chunk_idx + 1);
-                }
-            }
-            14 => {
-                state.rlm.current_phase = RlmPhase::Synthesis;
-                state.rlm.streaming_text = "Synthesizing final answer from all chunks...".to_string();
-            }
-            15 => {
-                state.rlm.current_phase = RlmPhase::Complete;
-                state.rlm.connection_status = RlmConnectionStatus::Complete;
-                state.rlm.final_answer = Some("Based on the analysis of all 12 document sections, the key findings are: [summary of extracted information]. The document primarily discusses [main topics] with emphasis on [key themes].".to_string());
-                state.rlm.streaming_text.clear();
-            }
-            _ => {
-                // Reset demo
-                state.rlm.reset_execution();
-                state.rlm.demo_mode = true;
-                state.rlm.demo_phase_idx = 0;
+            state.rlm.active_chunk_id = Some(*chunk_id);
+            if let Some(chunk) = state.rlm.chunks.get(*chunk_id) {
+                state.rlm.streaming_text = format!(
+                    "Extracting from: {}",
+                    chunk.section_title.as_deref().unwrap_or("Unknown")
+                );
             }
         }
+        RlmTraceEventType::ExtractionComplete {
+            chunk_id,
+            findings,
+            relevance: _,
+        } => {
+            if let Some(chunk) = state.rlm.chunks.get_mut(*chunk_id) {
+                chunk.findings = Some(findings.clone());
+                chunk.status = RlmStepStatus::Complete;
+            }
+            state.rlm.processed_chunks += 1;
+            state.rlm.streaming_text = format!("Extracted: {}...", &findings.chars().take(80).collect::<String>());
+        }
+        RlmTraceEventType::SynthesisComplete {
+            answer,
+            confidence: _,
+        } => {
+            state.rlm.final_answer = Some(answer.clone());
+            state.rlm.streaming_text.clear();
+        }
+        RlmTraceEventType::Complete => {
+            state.rlm.current_phase = RlmPhase::Complete;
+            state.rlm.connection_status = RlmConnectionStatus::Complete;
+        }
+    }
+}
+
+/// Reset state and restart trace playback
+fn reset_and_restart_trace(state: &mut AppState) {
+    // Preserve trace data
+    let trace = state.rlm.trace.take();
+    let auto_restart = state.rlm.auto_restart;
+
+    // Reset execution state
+    state.rlm.reset_execution();
+
+    // Restore trace and restart
+    state.rlm.trace = trace;
+    state.rlm.auto_restart = auto_restart;
+    state.rlm.demo_mode = true;
+    state.rlm.trace_start_time = 0;
+    state.rlm.trace_event_idx = 0;
+
+    // Re-populate inputs from trace
+    if let Some(trace) = &state.rlm.trace {
+        state.rlm.query_input.set_value(&trace.query);
+        state.rlm.context_input.set_value(&trace.document_preview);
     }
 }
 
@@ -701,11 +798,10 @@ pub(crate) fn handle_rlm_click(state: &mut AppState, x: f32, y: f32) -> bool {
             // Stop
             state.rlm.connection_status = RlmConnectionStatus::Idle;
             state.rlm.demo_mode = false;
+            state.rlm.auto_restart = false;
         } else {
-            // Start demo mode for now
-            state.rlm.reset_execution();
-            state.rlm.demo_mode = true;
-            state.rlm.demo_last_tick = 0;
+            // Start trace playback demo
+            reset_and_restart_trace(state);
         }
         return true;
     }
