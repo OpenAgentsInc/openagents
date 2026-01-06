@@ -10,9 +10,16 @@ license = "CC-0"
 name = "rlm_test"
 path = "src/bin/rlm_test.rs"
 
+[features]
+default = []
+lm-router = ["dep:lm-router"]
+
 [dependencies]
 # FM Bridge for LLM inference
 fm-bridge = { path = "../fm-bridge" }
+
+# LM Router for multi-backend routing (optional)
+lm-router = { path = "../lm-router", optional = true }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -27,6 +34,7 @@ thiserror = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Regex for command parsing
 regex = "1"

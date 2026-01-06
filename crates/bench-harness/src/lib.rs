@@ -23,6 +23,7 @@ mod error;
 mod experiment;
 mod method;
 mod metrics;
+pub mod stats;
 mod task;
 mod trajectory;
 
@@ -33,6 +34,10 @@ pub use experiment::{
 pub use method::{Method, MethodResult};
 pub use metrics::{
     ExactMatchMetric, F1Metric, Metric, MetricValue, MultipleChoiceAccuracy, NumericDecayMetric,
+};
+pub use stats::{
+    bootstrap_ci, cohens_d, confidence_interval_95, independent_t_test, mean, paired_t_test,
+    standard_error, std_dev, variance, TTestResult,
 };
 pub use task::{GroundTruth, SimpleTask, TaskInstance, TaskMetadata};
 pub use trajectory::{StepType, Trajectory, TrajectoryStep, TrajectoryWriter};

@@ -156,6 +156,8 @@ pub struct RlmConfig {
     pub prompt_tier: PromptTier,
     /// Whether to enable stuck detection.
     pub enable_stuck_detection: bool,
+    /// Whether to disable llm_query() sub-calls (for ablation study).
+    pub disable_subqueries: bool,
 }
 
 impl Default for RlmConfig {
@@ -166,6 +168,7 @@ impl Default for RlmConfig {
             verbose: false,
             prompt_tier: PromptTier::Full,
             enable_stuck_detection: true,
+            disable_subqueries: false,
         }
     }
 }
@@ -323,6 +326,11 @@ def search_context(pattern, max_results=10, window=200):
     ///
     /// Returns the modified code with llm_query results injected as variables.
     async fn process_sub_queries(&self, code: &str) -> Result<String> {
+        // If subqueries are disabled (ablation study), return code unchanged
+        if self.config.disable_subqueries {
+            return Ok(code.to_string());
+        }
+
         // Get context content if available
         let context_content = self.loaded_context.as_ref().map(|c| c.content.as_str());
 
