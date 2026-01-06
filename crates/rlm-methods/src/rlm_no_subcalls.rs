@@ -7,9 +7,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bench_harness::{Method, MethodResult, StepType, TaskInstance, Trajectory};
-use fm_bridge::FMClient;
 use lm_router::{LmRouter, LmUsage};
-use rlm::{Context, PromptTier, PythonExecutor, RlmConfig, RlmEngine, RlmResult};
+use rlm::{Context, LmRouterClient, PromptTier, PythonExecutor, RlmConfig, RlmEngine, RlmResult};
 
 /// RLM No Sub-calls method - ablation study.
 ///
@@ -32,7 +31,6 @@ use rlm::{Context, PromptTier, PythonExecutor, RlmConfig, RlmEngine, RlmResult};
 /// let result = method.solve(&task).await?;
 /// ```
 pub struct RlmNoSubcallsMethod {
-    #[allow(dead_code)]
     router: Arc<LmRouter>,
     model: String,
     max_iterations: u32,
@@ -119,10 +117,8 @@ impl Method for RlmNoSubcallsMethod {
     }
 
     async fn solve(&self, task: &dyn TaskInstance) -> bench_harness::Result<MethodResult> {
-        // Create FMClient for the RlmEngine
-        let client = FMClient::new().map_err(|e| {
-            bench_harness::Error::MethodError(format!("Failed to create FM client: {}", e))
-        })?;
+        // Create LmRouterClient to route through configured backends
+        let client = LmRouterClient::new(self.router.clone(), &self.model);
 
         // Create Python executor
         let executor = PythonExecutor::with_binary(&self.python_binary);
@@ -137,7 +133,7 @@ impl Method for RlmNoSubcallsMethod {
             disable_subqueries: true, // KEY DIFFERENCE: Disable llm_query for ablation
         };
 
-        // Create engine
+        // Create engine with the LmRouter client
         let mut engine = RlmEngine::with_config(client, executor, config);
 
         // Set context if available
@@ -164,10 +160,9 @@ impl Method for RlmNoSubcallsMethod {
     }
 
     async fn warmup(&mut self) -> bench_harness::Result<()> {
-        // Verify FM Bridge is available
-        let client = FMClient::new().map_err(|e| {
-            bench_harness::Error::MethodError(format!("FM Bridge not available: {}", e))
-        })?;
+        // Verify LLM backend is available via LmRouter
+        use rlm::LlmClient;
+        let client = LmRouterClient::new(self.router.clone(), &self.model);
 
         // Simple health check
         let _ = client

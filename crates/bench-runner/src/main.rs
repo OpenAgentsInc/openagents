@@ -117,8 +117,8 @@ struct Args {
     #[arg(long, value_enum)]
     method: Option<MethodType>,
 
-    /// Model name for LLM backend
-    #[arg(long, default_value = "apple-fm")]
+    /// Model name for LLM backend (root model for RLM)
+    #[arg(long, default_value = "openai/gpt-5")]
     model: String,
 
     /// Output directory for results

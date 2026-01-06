@@ -9,17 +9,17 @@ license = "CC-0"
 [[bin]]
 name = "rlm_test"
 path = "src/bin/rlm_test.rs"
+required-features = ["fm-bridge"]
 
 [features]
 default = []
-lm-router = ["dep:lm-router"]
 
 [dependencies]
-# FM Bridge for LLM inference
-fm-bridge = { path = "../fm-bridge" }
+# LM Router for multi-backend routing (required)
+lm-router = { path = "../lm-router" }
 
-# LM Router for multi-backend routing (optional)
-lm-router = { path = "../lm-router", optional = true }
+# FM Bridge for LLM inference (optional, for backwards compatibility)
+fm-bridge = { path = "../fm-bridge", optional = true }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
