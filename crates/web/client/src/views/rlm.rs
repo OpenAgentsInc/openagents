@@ -6,6 +6,7 @@
 use wgpui::animation::AnimatorState;
 use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame};
 use wgpui::components::Component;
+use wgpui::markdown::{MarkdownParser, MarkdownRenderer};
 use wgpui::PaintContext;
 use wgpui::{Bounds, Hsla, Point, Quad, Scene, TextSystem};
 
@@ -323,17 +324,21 @@ fn render_top_bar(
     let restart_run = text_system.layout(restart_text, Point::new(restart_x + 8.0, button_y + 7.0), FONT_SMALL, text_muted());
     scene.draw_text(restart_run);
 
-    // Run/Stop button
-    let run_text = if state.rlm.connection_status == RlmConnectionStatus::Streaming { "STOP" } else { "RUN" };
+    // Run/Pause/Replay button - context-aware label
+    let run_text = match state.rlm.connection_status {
+        RlmConnectionStatus::Streaming => "PAUSE",
+        RlmConnectionStatus::Complete => "REPLAY",
+        _ => "RUN",
+    };
     let run_width = text_system.measure(run_text, FONT_SMALL) + 24.0;
     let run_x = restart_x - run_width - 8.0;
     state.rlm.run_button_bounds = Bounds::new(run_x, button_y, run_width, button_height);
     let (run_bg, run_border, run_text_color) = if state.rlm.run_button_hovered {
-        (state_active().with_alpha(0.3), state_active(), state_active())
+        (state_active().with_alpha(0.4), state_active(), text_primary())
     } else if state.rlm.connection_status == RlmConnectionStatus::Streaming {
-        (state_active().with_alpha(0.15), state_active(), state_active())
+        (state_active().with_alpha(0.25), state_active(), state_active())
     } else {
-        (state_complete().with_alpha(0.15), state_complete(), state_complete())
+        (state_complete().with_alpha(0.2), state_complete(), state_complete())
     };
     scene.draw_quad(
         Quad::new(state.rlm.run_button_bounds)
@@ -379,31 +384,24 @@ fn render_left_column(
 ) {
     let mut current_y = y;
 
-    // PIPELINE BOXES
+    // PIPELINE BOXES (with inline mini-map in EXTRACT)
     let pipeline_height = render_pipeline_boxes(scene, text_system, state, x, current_y, width);
-    current_y += pipeline_height + 16.0;
+    current_y += pipeline_height + 8.0;
+
+    // NOW: line - shows current activity
+    let now_height = render_now_line(scene, text_system, state, x, current_y, width);
+    current_y += now_height + 8.0;
 
     // Separator
     scene.draw_quad(
         Quad::new(Bounds::new(x, current_y, width, 1.0))
             .with_background(border_color()),
     );
-    current_y += 12.0;
+    current_y += 8.0;
 
-    // WORKSET TABLE
-    let table_height = height - (current_y - y) - 80.0; // Leave room for chunk grid
+    // WORKSET TABLE - fills remaining space (no chunk grid)
+    let table_height = height - (current_y - y) - 8.0;
     render_workset_table(scene, text_system, state, x, current_y, width, table_height);
-    current_y += table_height + 12.0;
-
-    // Separator
-    scene.draw_quad(
-        Quad::new(Bounds::new(x, current_y, width, 1.0))
-            .with_background(border_color()),
-    );
-    current_y += 12.0;
-
-    // CHUNK GRID
-    render_chunk_grid_v2(scene, text_system, state, x, current_y, width);
 }
 
 fn render_pipeline_boxes(
@@ -431,32 +429,130 @@ fn render_pipeline_boxes(
     for (i, (label, phase, metric)) in phases.iter().enumerate() {
         let box_x = x + (box_width + gap) * i as f32;
 
-        // Determine state
-        let (border_color_val, border_width) = if state.rlm.current_phase == *phase {
-            (state_active(), 2.0)
-        } else if is_phase_complete_v2(state.rlm.current_phase, *phase) {
-            (state_complete(), 2.0)
+        // Determine state - unified visual rules:
+        // RUN: 2px border + filled background
+        // OK: 1px border, no fill
+        // PEND: muted border/text
+        let is_active = state.rlm.current_phase == *phase;
+        let is_complete = is_phase_complete_v2(state.rlm.current_phase, *phase);
+
+        let (bg_color, border_color_val, border_width, text_color) = if is_active {
+            // RUN state - filled background, prominent
+            (state_active().with_alpha(0.2), state_active(), 2.0, state_active())
+        } else if is_complete {
+            // OK state - just border, no fill
+            (bg_panel(), state_complete(), 1.0, state_complete())
         } else {
-            (state_pending(), 1.0)
+            // PEND state - muted
+            (bg_panel(), state_pending(), 1.0, text_muted())
         };
 
         // Box background
         scene.draw_quad(
             Quad::new(Bounds::new(box_x, y, box_width, box_height))
-                .with_background(bg_panel())
+                .with_background(bg_color)
                 .with_border(border_color_val, border_width),
         );
 
         // Phase name
-        let label_run = text_system.layout(label, Point::new(box_x + 8.0, y + 12.0), FONT_HEADER, text_primary());
+        let label_run = text_system.layout(label, Point::new(box_x + 8.0, y + 10.0), FONT_HEADER, text_color);
         scene.draw_text(label_run);
 
-        // Metric
-        let metric_run = text_system.layout(metric, Point::new(box_x + 8.0, y + 34.0), FONT_SMALL, text_muted());
-        scene.draw_text(metric_run);
+        // For EXTRACT phase, show inline mini-map instead of just numbers
+        if *phase == RlmPhase::Extraction && state.rlm.total_chunks > 0 {
+            // Mini-map: small squares showing chunk status
+            let mini_size = 6.0;
+            let mini_gap = 2.0;
+            let mini_y = y + 32.0;
+            let max_visible = 8.min(state.rlm.total_chunks);
+
+            for j in 0..max_visible {
+                let mini_x = box_x + 8.0 + (mini_size + mini_gap) * j as f32;
+                let chunk_color = if let Some(chunk) = state.rlm.chunks.get(j) {
+                    match chunk.status {
+                        RlmStepStatus::Pending => state_pending(),
+                        RlmStepStatus::Processing => state_active(),
+                        RlmStepStatus::Complete => state_complete(),
+                        RlmStepStatus::Error => state_error(),
+                    }
+                } else {
+                    state_pending()
+                };
+
+                // Fill for processing, border-only for others
+                let is_processing = state.rlm.chunks.get(j).map(|c| c.status == RlmStepStatus::Processing).unwrap_or(false);
+                if is_processing {
+                    scene.draw_quad(
+                        Quad::new(Bounds::new(mini_x, mini_y, mini_size, mini_size))
+                            .with_background(chunk_color.with_alpha(0.5))
+                            .with_border(chunk_color, 1.0),
+                    );
+                } else {
+                    scene.draw_quad(
+                        Quad::new(Bounds::new(mini_x, mini_y, mini_size, mini_size))
+                            .with_border(chunk_color, 1.0),
+                    );
+                }
+            }
+
+            // Show count after mini-map
+            let count_x = box_x + 8.0 + (mini_size + mini_gap) * max_visible as f32 + 4.0;
+            let count_text = format!("{}/{}", state.rlm.processed_chunks, state.rlm.total_chunks);
+            let count_run = text_system.layout(&count_text, Point::new(count_x, mini_y - 2.0), FONT_SMALL, text_muted());
+            scene.draw_text(count_run);
+        } else {
+            // Metric for other phases
+            let metric_run = text_system.layout(metric, Point::new(box_x + 8.0, y + 34.0), FONT_SMALL, text_muted());
+            scene.draw_text(metric_run);
+        }
     }
 
     box_height
+}
+
+/// Render the NOW: line showing current activity
+fn render_now_line(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    state: &AppState,
+    x: f32,
+    y: f32,
+    width: f32,
+) -> f32 {
+    let line_height = 20.0;
+
+    // Background
+    scene.draw_quad(
+        Quad::new(Bounds::new(x, y, width, line_height))
+            .with_background(bg_dark()),
+    );
+
+    // Build the NOW: text based on current state
+    let now_text = if state.rlm.connection_status == RlmConnectionStatus::Complete {
+        "NOW: Complete".to_string()
+    } else if let Some(chunk_id) = state.rlm.active_chunk_id {
+        if let Some(chunk) = state.rlm.chunks.get(chunk_id) {
+            let section = chunk.section_title.as_deref().unwrap_or("--");
+            let section_short: String = section.chars().take(30).collect();
+            format!("NOW: EXTRACT chunk {}/{} — {}", chunk_id + 1, state.rlm.total_chunks, section_short)
+        } else {
+            format!("NOW: EXTRACT chunk {}/{}", chunk_id + 1, state.rlm.total_chunks)
+        }
+    } else {
+        match state.rlm.current_phase {
+            RlmPhase::Idle => "NOW: Ready".to_string(),
+            RlmPhase::StructureDiscovery => "NOW: ROUTE — discovering sections...".to_string(),
+            RlmPhase::Chunking => "NOW: CHUNK — splitting into semantic chunks...".to_string(),
+            RlmPhase::Extraction => "NOW: EXTRACT — waiting...".to_string(),
+            RlmPhase::Synthesis => "NOW: VERIFY — synthesizing answer...".to_string(),
+            RlmPhase::Complete => "NOW: Complete".to_string(),
+        }
+    };
+
+    let now_run = text_system.layout(&now_text, Point::new(x + 8.0, y + 3.0), FONT_SMALL, state_active());
+    scene.draw_text(now_run);
+
+    line_height
 }
 
 fn render_workset_table(
@@ -548,18 +644,33 @@ fn render_workset_table(
         let section_run = text_system.layout(&section_display, Point::new(x + col_id_width + 8.0, text_y), FONT_TABLE, text_primary());
         scene.draw_text(section_run);
 
-        // Status
+        // Status - with unified visual encoding
         let (status_text, status_color) = match chunk.status {
             RlmStepStatus::Pending => ("PEND", state_pending()),
             RlmStepStatus::Processing => ("RUN", state_active()),
             RlmStepStatus::Complete => ("OK", state_complete()),
             RlmStepStatus::Error => ("ERR", state_error()),
         };
+
+        // For RUN status, add background highlight to make it pop
+        if chunk.status == RlmStepStatus::Processing {
+            let status_bg_bounds = Bounds::new(
+                x + col_id_width + col_section_width + 4.0,
+                row_y + 2.0,
+                col_status_width - 4.0,
+                row_height - 4.0,
+            );
+            scene.draw_quad(
+                Quad::new(status_bg_bounds)
+                    .with_background(state_active().with_alpha(0.3)),
+            );
+        }
+
         let status_run = text_system.layout(status_text, Point::new(x + col_id_width + col_section_width + 8.0, text_y), FONT_TABLE, status_color);
         scene.draw_text(status_run);
 
-        // Relevance
-        let rel_text = chunk.relevance.map(|r| format!("{:.2}", r)).unwrap_or_else(|| "--".to_string());
+        // Relevance - show as percentage (91% not 0.91)
+        let rel_text = chunk.relevance.map(|r| format!("{}%", (r * 100.0).round() as i32)).unwrap_or_else(|| "--".to_string());
         let rel_run = text_system.layout(&rel_text, Point::new(x + col_id_width + col_section_width + col_status_width + 8.0, text_y), FONT_TABLE, text_muted());
         scene.draw_text(rel_run);
 
@@ -567,6 +678,8 @@ fn render_workset_table(
     }
 }
 
+// Chunk grid replaced by inline mini-map in EXTRACT box
+#[allow(dead_code)]
 fn render_chunk_grid_v2(
     scene: &mut Scene,
     text_system: &mut TextSystem,
@@ -669,14 +782,18 @@ fn render_inspector(
     scene.draw_text(title_run);
     current_y += 28.0;
 
-    // Calculate pane heights
+    // Calculate pane heights - now with 4 sections when answer is available
     let available_height = height - (current_y - y) - padding;
-    let pane_gap = 12.0;
+    let pane_gap = 8.0;
     let has_answer = state.rlm.final_answer.is_some();
+    let citations_height = 60.0; // Fixed small height for citations
 
     let (excerpt_height, findings_height, answer_height) = if has_answer {
-        let each = (available_height - pane_gap * 2.0) / 3.0;
-        (each, each, each)
+        let remaining = available_height - citations_height - pane_gap * 3.0;
+        let excerpt = remaining * 0.3;
+        let findings = remaining * 0.3;
+        let answer = remaining * 0.4;
+        (excerpt, findings, answer)
     } else {
         let each = (available_height - pane_gap) / 2.0;
         (each, each, 0.0)
@@ -710,6 +827,48 @@ fn render_inspector(
     );
     current_y += findings_height + pane_gap;
 
+    // CITATIONS PANE (shows all chunks with findings as clickable references)
+    if has_answer {
+        let citations_bounds = Bounds::new(x + padding, current_y, width - padding * 2.0, citations_height);
+
+        scene.draw_quad(
+            Quad::new(citations_bounds)
+                .with_background(bg_dark())
+                .with_border(border_color(), 1.0),
+        );
+
+        let header_run = text_system.layout("CITATIONS", Point::new(citations_bounds.x() + 8.0, citations_bounds.y() + 4.0), FONT_SMALL, text_muted());
+        scene.draw_text(header_run);
+
+        // List chunks with findings as citations
+        let mut citation_x = citations_bounds.x() + 8.0;
+        let citation_y = citations_bounds.y() + 22.0;
+
+        for chunk in state.rlm.chunks.iter() {
+            if chunk.findings.is_some() {
+                let section_short: String = chunk.section_title.as_deref().unwrap_or("--").chars().take(15).collect();
+                let citation_text = format!("[{}] {}", chunk.chunk_id, section_short);
+                let citation_width = text_system.measure(&citation_text, FONT_SMALL);
+
+                // Check if fits on current line
+                if citation_x + citation_width > citations_bounds.x() + citations_bounds.width() - 8.0 {
+                    break; // Don't wrap, just stop
+                }
+
+                // Highlight if this is the selected chunk
+                let is_selected = state.rlm.selected_chunk_id == Some(chunk.chunk_id);
+                let citation_color = if is_selected { state_active() } else { state_complete() };
+
+                let citation_run = text_system.layout(&citation_text, Point::new(citation_x, citation_y), FONT_SMALL, citation_color);
+                scene.draw_text(citation_run);
+
+                citation_x += citation_width + 12.0;
+            }
+        }
+
+        current_y += citations_height + pane_gap;
+    }
+
     // FINAL ANSWER PANE (only if available)
     if let Some(answer) = &state.rlm.final_answer {
         state.rlm.answer_bounds = Bounds::new(x + padding, current_y, width - padding * 2.0, answer_height);
@@ -725,20 +884,22 @@ fn render_inspector(
         let header_run = text_system.layout("FINAL ANSWER", Point::new(state.rlm.answer_bounds.x() + 8.0, state.rlm.answer_bounds.y() + 8.0), FONT_HEADER, state_complete());
         scene.draw_text(header_run);
 
-        // Content with wrapping
+        // Render markdown content
+        let content_x = state.rlm.answer_bounds.x() + 8.0;
         let content_y = state.rlm.answer_bounds.y() + 32.0;
         let content_width = state.rlm.answer_bounds.width() - 16.0;
-        let wrapped_lines = wrap_text(text_system, answer, content_width, FONT_BODY);
 
-        let line_height = 18.0;
-        let max_lines = ((state.rlm.answer_bounds.height() - 40.0) / line_height) as usize;
-        let start_line = (state.rlm.answer_scroll / line_height) as usize;
-
-        for (i, line) in wrapped_lines.iter().skip(start_line).take(max_lines).enumerate() {
-            let line_y = content_y + (i as f32 * line_height);
-            let line_run = text_system.layout(line, Point::new(state.rlm.answer_bounds.x() + 8.0, line_y), FONT_BODY, text_primary());
-            scene.draw_text(line_run);
-        }
+        // Parse and render markdown
+        let parser = MarkdownParser::new();
+        let doc = parser.parse(answer);
+        let renderer = MarkdownRenderer::new();
+        renderer.render_with_layout(
+            &doc,
+            Point::new(content_x, content_y),
+            content_width,
+            text_system,
+            scene,
+        );
     }
 }
 
