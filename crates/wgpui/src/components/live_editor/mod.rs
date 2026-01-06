@@ -1830,9 +1830,26 @@ impl Component for LiveEditor {
                 // Shift cursor up slightly to align with text
                 let cursor_offset_y = -2.0;
 
+                // Block cursor in vim normal/visual mode, line cursor otherwise
+                let (cursor_width, cursor_color) = if self.vim_enabled {
+                    match self.vim.mode {
+                        VimMode::Normal | VimMode::Visual | VimMode::VisualLine => {
+                            // Block cursor with semi-transparent background
+                            (cursor_char_width, self.style.cursor_color.with_alpha(0.7))
+                        }
+                        VimMode::Insert => {
+                            // Line cursor
+                            (2.0, self.style.cursor_color)
+                        }
+                    }
+                } else {
+                    // Standard line cursor when vim disabled
+                    (2.0, self.style.cursor_color)
+                };
+
                 cx.scene.draw_quad(
-                    Quad::new(Bounds::new(cursor_x, cursor_y + cursor_offset_y, 1.0, line_height))
-                        .with_background(self.style.cursor_color),
+                    Quad::new(Bounds::new(cursor_x, cursor_y + cursor_offset_y, cursor_width, line_height))
+                        .with_background(cursor_color),
                 );
             }
         }
