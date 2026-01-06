@@ -170,10 +170,72 @@ pub async fn view_fracking_apple_silicon(_env: Env) -> Result<Response> {
             <div>
                 <p class="episode-label">EPISODE 201</p>
                 <h1>Fracking Apple Silicon</h1>
-                <p class="episode-date">January 4, 2026</p>
+                <p class="episode-date">January 5, 2026</p>
             </div>
             <button class="copy-btn" id="copyMarkdownBtn"><span class="short-text">Copy</span><span class="full-text">Copy as markdown</span></button>
         </div>
+
+        <div class="tweet-embed">
+            <blockquote class="twitter-tweet" data-media-max-width="560"><p lang="en" dir="ltr">Episode 201: Fracking Apple Silicon<br><br>We plan to connect millions of Apple silicon chips into the world’s largest network for agentic compute. <a href="https://t.co/oumEA9cErO">https://t.co/oumEA9cErO</a> <a href="https://t.co/d8rTypdwOq">pic.twitter.com/d8rTypdwOq</a></p>&mdash; OpenAgents (@OpenAgentsInc) <a href="https://twitter.com/OpenAgentsInc/status/2008326849613476335?ref_src=twsrc%5Etfw">January 5, 2026</a></blockquote>
+        </div>
+        <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+        <script>
+        (function() {{
+            function resizeTweetEmbeds() {{
+                var wrappers = document.querySelectorAll(".tweet-embed");
+                wrappers.forEach(function(wrapper) {{
+                    var iframe = wrapper.querySelector("iframe.twitter-tweet");
+                    if (!iframe) {{
+                        return;
+                    }}
+                    var baseWidth = parseInt(iframe.getAttribute("width"), 10) || iframe.offsetWidth;
+                    var baseHeight = parseInt(iframe.getAttribute("height"), 10) || iframe.offsetHeight;
+                    var targetWidth = wrapper.clientWidth;
+                    if (!baseWidth || !targetWidth) {{
+                        return;
+                    }}
+                    var scale = targetWidth / baseWidth;
+                    if (scale <= 1) {{
+                        iframe.style.transform = "none";
+                        iframe.style.width = "100%";
+                        iframe.style.maxWidth = "100%";
+                        wrapper.style.height = "";
+                        return;
+                    }}
+                    iframe.style.transformOrigin = "top left";
+                    iframe.style.transform = "scale(" + scale + ")";
+                    iframe.style.width = baseWidth + "px";
+                    iframe.style.maxWidth = baseWidth + "px";
+                    if (baseHeight) {{
+                        wrapper.style.height = (baseHeight * scale) + "px";
+                    }}
+                }});
+            }}
+
+            function bindWidgetEvents() {{
+                if (window.twttr && window.twttr.events && window.twttr.events.bind) {{
+                    window.twttr.events.bind("rendered", resizeTweetEmbeds);
+                    return true;
+                }}
+                return false;
+            }}
+
+            window.addEventListener("load", function() {{
+                resizeTweetEmbeds();
+                bindWidgetEvents();
+                window.addEventListener("resize", resizeTweetEmbeds);
+
+                var attempts = 0;
+                var timer = setInterval(function() {{
+                    attempts += 1;
+                    resizeTweetEmbeds();
+                    if (bindWidgetEvents() || attempts > 20) {{
+                        clearInterval(timer);
+                    }}
+                }}, 250);
+            }});
+        }})();
+        </script>
 
         {}
 
@@ -186,7 +248,7 @@ pub async fn view_fracking_apple_silicon(_env: Env) -> Result<Response> {
 Title: Fracking Apple Silicon
 URL: https://openagents.com/fracking-apple-silicon
 Episode: 201
-Date: January 4, 2026
+Date: January 5, 2026
 Source: OpenAgents
 ---
 
