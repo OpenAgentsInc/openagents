@@ -1066,7 +1066,7 @@ impl Component for LiveEditor {
         // Status bar background
         cx.scene.draw_quad(
             Quad::new(Bounds::new(bounds.origin.x, status_bar_y, bounds.size.width, status_bar_height))
-                .with_background(Hsla::new(0.0, 0.0, 0.1, 1.0)),
+                .with_background(Hsla::new(0.0, 0.0, 0.0, 1.0)),
         );
 
         // Line:Col indicator
