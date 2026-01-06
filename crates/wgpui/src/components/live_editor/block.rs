@@ -65,6 +65,16 @@ impl BlockParser {
         }
     }
 
+    /// Detect the block type of a line, with line index for title detection
+    pub fn detect_block_type_at(&mut self, line: &str, line_index: usize) -> BlockType {
+        let block_type = self.detect_block_type(line);
+        // First line is always treated as H1 (title) unless it's a code block
+        if line_index == 0 && matches!(block_type, BlockType::Paragraph) {
+            return BlockType::Header(1);
+        }
+        block_type
+    }
+
     /// Detect the block type of a line
     pub fn detect_block_type(&mut self, line: &str) -> BlockType {
         let trimmed = line.trim_start();
