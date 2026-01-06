@@ -55,23 +55,44 @@ pub(crate) fn build_landing_page(
         // Create PaintContext for Frame component
         let mut cx = PaintContext::new(scene, text_system, scale_factor);
 
-        // Episode link - italic, centered above the hero frame
-        let episode_text = "Episode 200: The Agent Network";
+        // Episode links - italic, centered above the hero frame
         let episode_font_size = 13.0;
-        let episode_width = cx.text.measure_styled(episode_text, episode_font_size, FontStyle::italic());
-        let episode_x = card_x + (card_w - episode_width) / 2.0;
-        let episode_y = card_y - 36.0;
-        let episode_hovered = state.episode_link_bounds.contains(state.mouse_pos);
-        let episode_color = if episode_hovered { theme::text::PRIMARY } else { theme::text::MUTED };
-        let episode_run = cx.text.layout_styled(
-            episode_text,
-            Point::new(episode_x, episode_y),
+        let episode_200_text = "Episode 200: The Agent Network";
+        let episode_201_text = "Episode 201: Fracking Apple Silicon";
+        let episode_200_width =
+            cx.text.measure_styled(episode_200_text, episode_font_size, FontStyle::italic());
+        let episode_201_width =
+            cx.text.measure_styled(episode_201_text, episode_font_size, FontStyle::italic());
+        let episode_200_x = card_x + (card_w - episode_200_width) / 2.0;
+        let episode_201_x = card_x + (card_w - episode_201_width) / 2.0;
+        let episode_200_y = card_y - 52.0;
+        let episode_201_y = episode_200_y + 18.0;
+        let episode_200_hovered = state.episode_link_bounds.contains(state.mouse_pos);
+        let episode_201_hovered = state.episode_201_link_bounds.contains(state.mouse_pos);
+        let episode_200_color =
+            if episode_200_hovered { theme::text::PRIMARY } else { theme::text::MUTED };
+        let episode_201_color =
+            if episode_201_hovered { theme::text::PRIMARY } else { theme::text::MUTED };
+        let episode_200_run = cx.text.layout_styled(
+            episode_200_text,
+            Point::new(episode_200_x, episode_200_y),
             episode_font_size,
-            episode_color,
+            episode_200_color,
             FontStyle::italic(),
         );
-        cx.scene.draw_text(episode_run);
-        state.episode_link_bounds = Bounds::new(episode_x, episode_y, episode_width, episode_font_size + 4.0);
+        let episode_201_run = cx.text.layout_styled(
+            episode_201_text,
+            Point::new(episode_201_x, episode_201_y),
+            episode_font_size,
+            episode_201_color,
+            FontStyle::italic(),
+        );
+        cx.scene.draw_text(episode_200_run);
+        cx.scene.draw_text(episode_201_run);
+        state.episode_link_bounds =
+            Bounds::new(episode_200_x, episode_200_y, episode_200_width, episode_font_size + 4.0);
+        state.episode_201_link_bounds =
+            Bounds::new(episode_201_x, episode_201_y, episode_201_width, episode_font_size + 4.0);
 
         // Hero frame
         state.left_cta_bounds = Bounds::new(card_x, card_y, card_w, card_h);
@@ -166,6 +187,7 @@ pub(crate) fn build_landing_page(
         state.button_bounds = Bounds::ZERO;
         state.left_cta_bounds = Bounds::ZERO;
         state.episode_link_bounds = Bounds::ZERO;
+        state.episode_201_link_bounds = Bounds::ZERO;
         (scene, text_system)
     };
 
