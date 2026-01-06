@@ -1063,12 +1063,6 @@ impl Component for LiveEditor {
         // Status bar at bottom
         let status_bar_y = bounds.origin.y + bounds.size.height - status_bar_height;
 
-        // Status bar background
-        cx.scene.draw_quad(
-            Quad::new(Bounds::new(bounds.origin.x, status_bar_y, bounds.size.width, status_bar_height))
-                .with_background(Hsla::new(0.0, 0.0, 0.0, 1.0)),
-        );
-
         // Line:Col indicator
         let status_text = format!("Ln {}, Col {}", self.cursor.line + 1, self.cursor.column + 1);
         let status_x = bounds.origin.x + bounds.size.width - 120.0;
