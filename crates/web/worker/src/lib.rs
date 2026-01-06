@@ -226,6 +226,10 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
 
         // FRLM (Fracking Apple Silicon) power comparison page
         (Method::Get, "/frack") => routes::frlm::view_frlm(env).await,
+        // Episode 201 transcript
+        (Method::Get, "/fracking-apple-silicon") => {
+            routes::fracking_apple_silicon::view_fracking_apple_silicon(env).await
+        }
 
         // ML inference visualization page
         (Method::Get, "/ml-inference") => routes::ml_inference::view_ml_inference(env).await,
