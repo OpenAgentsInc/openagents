@@ -1931,8 +1931,16 @@ impl Component for LiveEditor {
                         let sel_end_col = if line_idx == end.line { end.column } else { line_len };
 
                         if sel_start_col < sel_end_col {
-                            let sel_x = text_x + sel_start_col as f32 * self.mono_char_width;
-                            let sel_width = (sel_end_col - sel_start_col) as f32 * self.mono_char_width;
+                            // Scale char width for headers
+                            let char_width = match block_type {
+                                BlockType::Header(level) => {
+                                    let scale = header_font_scale(level);
+                                    cx.text.measure_styled_mono("M", self.style.font_size * scale, FontStyle::default())
+                                }
+                                _ => self.mono_char_width,
+                            };
+                            let sel_x = text_x + sel_start_col as f32 * char_width;
+                            let sel_width = (sel_end_col - sel_start_col) as f32 * char_width;
 
                             cx.scene.draw_quad(
                                 Quad::new(Bounds::new(sel_x, y, sel_width, line_height))
