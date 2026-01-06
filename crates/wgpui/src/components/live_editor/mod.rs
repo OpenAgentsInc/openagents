@@ -134,7 +134,7 @@ impl LiveEditor {
             redo_stack: Vec::new(),
             style,
             mono_char_width,
-            vim_enabled: false,
+            vim_enabled: true,
             vim: VimState::new(),
             on_change: None,
             on_save: None,
