@@ -188,7 +188,7 @@ pub async fn view_fracking_apple_silicon(_env: Env) -> Result<Response> {
         </div>
 
         <div class="tweet-embed">
-            <blockquote class="twitter-tweet" data-media-max-width="560"><p lang="en" dir="ltr">Episode 201: Fracking Apple Silicon<br><br>We plan to connect millions of Apple silicon chips into the world’s largest network for agentic compute. <a href="https://t.co/oumEA9cErO">https://t.co/oumEA9cErO</a> <a href="https://t.co/d8rTypdwOq">pic.twitter.com/d8rTypdwOq</a></p>&mdash; OpenAgents (@OpenAgentsInc) <a href="https://twitter.com/OpenAgentsInc/status/2008326849613476335?ref_src=twsrc%5Etfw">January 5, 2026</a></blockquote>
+            <blockquote class="twitter-tweet" data-media-max-width="720"><p lang="en" dir="ltr">Episode 201: Fracking Apple Silicon<br><br>We plan to connect millions of Apple silicon chips into the world’s largest network for agentic compute. <a href="https://t.co/oumEA9cErO">https://t.co/oumEA9cErO</a> <a href="https://t.co/d8rTypdwOq">pic.twitter.com/d8rTypdwOq</a></p>&mdash; OpenAgents (@OpenAgentsInc) <a href="https://twitter.com/OpenAgentsInc/status/2008326849613476335?ref_src=twsrc%5Etfw">January 5, 2026</a></blockquote>
         </div>
         <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
         <script>
