@@ -22,11 +22,18 @@
 mod error;
 mod base;
 mod summary_agent;
+mod rlm_full;
+mod rlm_no_subcalls;
+mod codeact_bm25;
 pub mod prompts;
+pub mod retrieval;
 
 pub use error::{Error, Result};
 pub use base::BaseMethod;
 pub use summary_agent::SummaryAgentMethod;
+pub use rlm_full::RlmFullMethod;
+pub use rlm_no_subcalls::RlmNoSubcallsMethod;
+pub use codeact_bm25::CodeActBm25Method;
 
 // Re-export Method trait from bench-harness
 pub use bench_harness::{Method, MethodResult};

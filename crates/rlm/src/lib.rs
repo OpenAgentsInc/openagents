@@ -33,6 +33,8 @@ mod context;
 mod engine;
 mod error;
 mod executor;
+#[cfg(feature = "lm-router")]
+mod lm_router_adapter;
 mod mock_executor;
 pub mod orchestrator;
 mod prompts;
@@ -54,3 +56,8 @@ pub use prompts::{
     SYSTEM_PROMPT,
 };
 pub use python_executor::PythonExecutor;
+
+#[cfg(feature = "lm-router")]
+pub use lm_router_adapter::{
+    LmRouterClient, LmRouterChoice, LmRouterMessage, LmRouterResponse, LmRouterUsage,
+};

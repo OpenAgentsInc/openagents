@@ -10,13 +10,16 @@ description = "Method implementations for RLM paper replication"
 [dependencies]
 bench-harness = { path = "../bench-harness" }
 lm-router = { path = "../lm-router" }
-rlm = { path = "../rlm" }
+rlm = { path = "../rlm", features = ["lm-router"] }
+fm-bridge = { path = "../fm-bridge" }
+bm25 = "2.3"
 async-trait = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+regex = "1"
 
 [dev-dependencies]
 tempfile = { workspace = true }

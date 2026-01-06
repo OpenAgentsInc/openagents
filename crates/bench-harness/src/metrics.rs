@@ -55,7 +55,9 @@ impl Metric for ExactMatchMetric {
         let score = match truth {
             GroundTruth::ExactMatch(expected) => {
                 let exp_normalized = normalize_text(expected);
-                if pred_normalized == exp_normalized {
+                // Check for exact match OR if the expected answer is contained in prediction
+                // This handles cases where the LLM returns "The answer is: XYZ" when we expect "XYZ"
+                if pred_normalized == exp_normalized || pred_normalized.contains(&exp_normalized) {
                     1.0
                 } else {
                     0.0
@@ -87,14 +89,24 @@ impl Metric for MultipleChoiceAccuracy {
 
     fn compute(&self, prediction: &str, truth: &GroundTruth) -> MetricValue {
         let score = match truth {
-            GroundTruth::MultipleChoice { answer, .. } => {
+            GroundTruth::MultipleChoice { answer, choices } => {
                 let pred_normalized = normalize_text(prediction);
-                let pred_char = extract_answer_letter(&pred_normalized);
-                if pred_char == Some(*answer) {
-                    1.0
-                } else {
-                    0.0
+
+                // First try to extract letter directly
+                if let Some(pred_char) = extract_answer_letter(&pred_normalized) {
+                    if pred_char == *answer {
+                        return MetricValue::new(self.name(), 1.0);
+                    }
                 }
+
+                // If no letter found, try to match the answer content to choices
+                if let Some(matched) = match_answer_to_choices(prediction, choices) {
+                    if matched == *answer {
+                        return MetricValue::new(self.name(), 1.0);
+                    }
+                }
+
+                0.0
             }
             _ => 0.0,
         };
@@ -204,6 +216,49 @@ fn extract_answer_letter(text: &str) -> Option<char> {
         let second = text.chars().nth(1)?;
         if matches!(first, 'A' | 'B' | 'C' | 'D') && (second == ')' || second == '.') {
             return Some(first);
+        }
+    }
+
+    None
+}
+
+/// Try to match a prediction to one of the multiple choice options.
+/// Returns the letter (A, B, C, D) if the prediction contains or matches one of the choices.
+fn match_answer_to_choices(text: &str, choices: &[String]) -> Option<char> {
+    let text_lower = text.to_lowercase();
+    let letters = ['A', 'B', 'C', 'D'];
+
+    for (i, choice) in choices.iter().enumerate() {
+        if i >= 4 { break; }
+
+        // Extract the value part of the choice (after "A. ", "B. ", etc.)
+        let value = if choice.len() > 2 && choice.chars().nth(1) == Some('.') {
+            choice[2..].trim().to_lowercase()
+        } else {
+            choice.to_lowercase()
+        };
+
+        // Check if the prediction contains this value
+        if text_lower.contains(&value) {
+            return Some(letters[i]);
+        }
+
+        // Also try matching numbers directly
+        // e.g., if choice is "B. 1" and text says "returns 1"
+        if let Some(num_str) = value.split_whitespace().last() {
+            if text_lower.contains(num_str) {
+                // Be more careful here - only match if it's a clear value match
+                // Check if the number appears as a standalone word
+                let num_pattern = format!(" {} ", num_str);
+                let num_pattern_end = format!(" {}.", num_str);
+                let num_pattern_end2 = format!(" {}", num_str);
+                if text_lower.contains(&num_pattern)
+                    || text_lower.ends_with(num_str)
+                    || text_lower.contains(&num_pattern_end)
+                    || text_lower.ends_with(&num_pattern_end2) {
+                    return Some(letters[i]);
+                }
+            }
         }
     }
 
