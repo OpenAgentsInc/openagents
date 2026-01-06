@@ -38,6 +38,7 @@ toml = "0.8"
 dirs = "5"
 notify = "6"
 arboard = "3.4"
+chrono = "0.4"
 
 # Logging
 tracing = "0.1"
