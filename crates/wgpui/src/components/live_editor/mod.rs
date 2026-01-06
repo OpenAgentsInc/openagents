@@ -91,7 +91,7 @@ impl Default for LiveEditorStyle {
             font_size: theme::font_size::SM,
             line_height: 1.5,
             gutter_width: 0.0, // No gutter - line numbers in status bar
-            padding: 96.0, // Comfortable vertical padding
+            padding: 48.0, // Comfortable vertical padding
         }
     }
 }
