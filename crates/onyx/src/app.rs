@@ -502,6 +502,15 @@ impl ApplicationHandler for OnyxApp {
                             state.window.request_redraw();
                             return;
                         }
+                        // Handle Cmd+Shift+V for vim mode toggle
+                        if (state.modifiers.control_key() || state.modifiers.super_key())
+                            && state.modifiers.shift_key()
+                            && (c == "v" || c == "V")
+                        {
+                            state.editor.toggle_vim_mode();
+                            state.window.request_redraw();
+                            return;
+                        }
                     }
 
                     // Handle Cmd+Shift+Up/Down for file navigation, Ctrl+Shift+Backspace for archive
