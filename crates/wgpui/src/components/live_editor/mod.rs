@@ -264,6 +264,42 @@ impl LiveEditor {
                             self.ensure_cursor_visible(bounds);
                             return EventResult::Handled;
                         }
+                        "f" | "F" => {
+                            // Ctrl+F - page down
+                            let line_height = self.style.font_size * self.style.line_height;
+                            let visible_height = bounds.size.height - self.style.padding * 2.0;
+                            let visible_lines = (visible_height / line_height) as usize;
+                            self.vim_move_down(visible_lines);
+                            self.ensure_cursor_visible(bounds);
+                            return EventResult::Handled;
+                        }
+                        "b" | "B" => {
+                            // Ctrl+B - page up
+                            let line_height = self.style.font_size * self.style.line_height;
+                            let visible_height = bounds.size.height - self.style.padding * 2.0;
+                            let visible_lines = (visible_height / line_height) as usize;
+                            self.vim_move_up(visible_lines);
+                            self.ensure_cursor_visible(bounds);
+                            return EventResult::Handled;
+                        }
+                        "d" | "D" => {
+                            // Ctrl+D - half page down
+                            let line_height = self.style.font_size * self.style.line_height;
+                            let visible_height = bounds.size.height - self.style.padding * 2.0;
+                            let visible_lines = (visible_height / line_height) as usize / 2;
+                            self.vim_move_down(visible_lines.max(1));
+                            self.ensure_cursor_visible(bounds);
+                            return EventResult::Handled;
+                        }
+                        "u" | "U" => {
+                            // Ctrl+U - half page up
+                            let line_height = self.style.font_size * self.style.line_height;
+                            let visible_height = bounds.size.height - self.style.padding * 2.0;
+                            let visible_lines = (visible_height / line_height) as usize / 2;
+                            self.vim_move_up(visible_lines.max(1));
+                            self.ensure_cursor_visible(bounds);
+                            return EventResult::Handled;
+                        }
                         _ => return EventResult::Ignored,
                     }
                 }
@@ -363,8 +399,9 @@ impl LiveEditor {
                     // Operators
                     "d" => {
                         if self.vim.pending_operator == Some(vim::PendingOperator::Delete) {
-                            // dd - delete line
-                            self.vim_delete_line();
+                            // dd - delete line(s)
+                            let count = self.vim.effective_count();
+                            self.vim_delete_lines(count);
                             self.vim.reset_pending();
                         } else {
                             self.vim.pending_operator = Some(vim::PendingOperator::Delete);
@@ -372,16 +409,18 @@ impl LiveEditor {
                     }
                     "c" => {
                         if self.vim.pending_operator == Some(vim::PendingOperator::Change) {
-                            // cc - change line
-                            self.vim_change_line();
+                            // cc - change line(s)
+                            let count = self.vim.effective_count();
+                            self.vim_change_lines(count);
                         } else {
                             self.vim.pending_operator = Some(vim::PendingOperator::Change);
                         }
                     }
                     "y" => {
                         if self.vim.pending_operator == Some(vim::PendingOperator::Yank) {
-                            // yy - yank line
-                            self.vim_yank_line(cx);
+                            // yy - yank line(s)
+                            let count = self.vim.effective_count();
+                            self.vim_yank_lines(count, cx);
                             self.vim.reset_pending();
                         } else {
                             self.vim.pending_operator = Some(vim::PendingOperator::Yank);
@@ -903,24 +942,50 @@ impl LiveEditor {
     }
 
     fn vim_delete_line(&mut self) {
+        self.vim_delete_lines(1);
+    }
+
+    fn vim_delete_lines(&mut self, count: usize) {
         self.save_undo_state();
-        let line = self.cursor.line;
-        if self.lines.len() > 1 {
-            self.lines.remove(line);
+        let start_line = self.cursor.line;
+        let end_line = (start_line + count).min(self.lines.len());
+        let lines_to_delete = end_line - start_line;
+
+        if self.lines.len() > lines_to_delete {
+            for _ in 0..lines_to_delete {
+                if start_line < self.lines.len() {
+                    self.lines.remove(start_line);
+                }
+            }
             if self.cursor.line >= self.lines.len() {
                 self.cursor.line = self.lines.len().saturating_sub(1);
             }
         } else {
-            self.lines[0] = String::new();
+            // Deleting all lines, leave one empty
+            self.lines.clear();
+            self.lines.push(String::new());
+            self.cursor.line = 0;
         }
         self.cursor.column = 0;
         self.notify_change();
     }
 
     fn vim_change_line(&mut self) {
+        self.vim_change_lines(1);
+    }
+
+    fn vim_change_lines(&mut self, count: usize) {
         self.save_undo_state();
-        // Clear line but keep it
-        if let Some(line) = self.lines.get_mut(self.cursor.line) {
+        let start_line = self.cursor.line;
+        let end_line = (start_line + count).min(self.lines.len());
+
+        // Delete all but the first line, then clear the first
+        for _ in (start_line + 1)..end_line {
+            if start_line + 1 < self.lines.len() {
+                self.lines.remove(start_line + 1);
+            }
+        }
+        if let Some(line) = self.lines.get_mut(start_line) {
             line.clear();
         }
         self.cursor.column = 0;
@@ -929,8 +994,22 @@ impl LiveEditor {
     }
 
     fn vim_yank_line(&mut self, cx: &mut EventContext) {
-        if let Some(line) = self.lines.get(self.cursor.line) {
-            let text = format!("{}\n", line);
+        self.vim_yank_lines(1, cx);
+    }
+
+    fn vim_yank_lines(&mut self, count: usize, cx: &mut EventContext) {
+        let start_line = self.cursor.line;
+        let end_line = (start_line + count).min(self.lines.len());
+
+        let mut text = String::new();
+        for i in start_line..end_line {
+            if let Some(line) = self.lines.get(i) {
+                text.push_str(line);
+                text.push('\n');
+            }
+        }
+
+        if !text.is_empty() {
             self.vim.register = Some(text.clone());
             cx.write_clipboard(&text);
         }
