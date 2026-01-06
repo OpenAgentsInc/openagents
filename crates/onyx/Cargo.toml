@@ -1,0 +1,23 @@
+[package]
+name = "onyx"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Local-first Markdown note editor with live inline formatting"
+
+[dependencies]
+wgpui = { path = "../wgpui", features = ["desktop"] }
+editor = { path = "../editor" }
+# document = { path = "../document" }  # TODO: Add when document crate is created (Milestone 3)
+tracing = "0.1"
+tokio = { version = "1", features = ["rt", "sync", "fs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+dirs = "5"
+notify = "6"
+
+[[bin]]
+name = "onyx"
+path = "src/main.rs"
