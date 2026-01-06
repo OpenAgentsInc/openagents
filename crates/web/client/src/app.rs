@@ -409,9 +409,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     crate::views::handle_frlm_mouse_move(&mut state, x, y);
                 }
 
-                // Handle RLM page hover
+                // Handle RLM page hover and input events
                 if state.view == AppView::RlmPage {
                     handle_rlm_mouse_move(&mut state, x, y);
+                    let _ = state.rlm.handle_event(&InputEvent::MouseMove { x, y });
                 }
 
                 if state.view == AppView::GptOssPage {
@@ -1126,6 +1127,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.view == AppView::GptOssPage {
                     let _ = state.gptoss.handle_event(&input_event);
                 }
+                if state.view == AppView::RlmPage {
+                    let _ = state.rlm.handle_event(&input_event);
+                }
             }
             if overlay_active {
                 return;
@@ -1471,6 +1475,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                             Some("repo")
                         } else if state.view == AppView::GptOssPage && state.gptoss.input_focused() {
                             Some("gptoss")
+                        } else if state.view == AppView::RlmPage && state.rlm.input_focused() {
+                            Some("rlm")
                         } else {
                             None
                         }
@@ -1485,6 +1491,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                                     "repo" => state.editor_workspace.paste_text(&text),
                                     "gptoss" => {
                                         state.gptoss.paste_text(&text);
+                                    }
+                                    "rlm" => {
+                                        state.rlm.paste_text(&text);
                                     }
                                     _ => {}
                                 }
@@ -1513,6 +1522,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         {
                             start_gptoss = true;
                         }
+                    } else if state.view == AppView::RlmPage {
+                        handled = state.rlm.handle_event(&input_event);
                     }
                 }
                 if matches!(handled, EventResult::Ignored) {
