@@ -550,6 +550,16 @@ impl LiveEditor {
         self.cursor = end;
     }
 
+    /// Select an entire line
+    pub fn select_line(&mut self, line: usize) {
+        if line < self.lines.len() {
+            let start = Cursor::new(line, 0);
+            let end = Cursor::new(line, self.line_len(line));
+            self.selection = Some(Selection::new(start, end));
+            self.cursor = end;
+        }
+    }
+
     fn delete_selection(&mut self) -> bool {
         if self.selection.is_none() || self.selection.as_ref().is_some_and(|s| s.is_empty()) {
             return false;
@@ -666,13 +676,22 @@ impl LiveEditor {
 
     fn line_y(&self, line: usize, bounds: &Bounds) -> f32 {
         let line_height = self.style.font_size * self.style.line_height;
-        bounds.origin.y + self.style.padding + (line as f32 * line_height) - self.scroll_offset
+        // Add extra spacing after title (line 0)
+        let title_margin = if line > 0 { line_height } else { 0.0 };
+        bounds.origin.y + self.style.padding + (line as f32 * line_height) + title_margin - self.scroll_offset
     }
 
     fn cursor_position_from_point(&self, x: f32, y: f32, bounds: &Bounds) -> Cursor {
         let line_height = self.style.font_size * self.style.line_height;
         let content_y = y - bounds.origin.y - self.style.padding + self.scroll_offset;
-        let line = ((content_y / line_height).floor() as usize).min(self.lines.len().saturating_sub(1));
+
+        // Account for title margin (extra line_height after line 0)
+        let line = if content_y < line_height {
+            0
+        } else {
+            // Subtract title margin from content_y for lines after title
+            ((content_y - line_height) / line_height).floor() as usize + 1
+        }.min(self.lines.len().saturating_sub(1));
 
         // Center content with max width 768px (must match paint)
         let max_content_width = 768.0;
