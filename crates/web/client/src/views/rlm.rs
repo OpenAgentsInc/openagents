@@ -7,7 +7,7 @@ use wgpui::animation::AnimatorState;
 use wgpui::components::hud::{DotsGrid, DotsOrigin, Frame};
 use wgpui::components::Component;
 use wgpui::PaintContext;
-use wgpui::{theme, Bounds, Hsla, Point, Quad, Scene, TextSystem};
+use wgpui::{Bounds, Hsla, Point, Quad, Scene, TextSystem};
 
 use crate::state::{
     AppState, RlmChunkState, RlmConnectionStatus, RlmDemoTrace, RlmPhase, RlmStepStatus,
@@ -17,48 +17,156 @@ use crate::state::{
 /// Embedded trace JSON for demo playback
 const DEMO_TRACE_JSON: &str = include_str!("../../assets/rlm-demo-trace.json");
 
-// Color scheme
+// ============================================================================
+// V2 Color Palette (from spec)
+// ============================================================================
+
+// Background colors
+fn bg_dark() -> Hsla {
+    Hsla::from_hex(0x08090a)
+}
+
+fn bg_panel() -> Hsla {
+    Hsla::from_hex(0x0d0f11)
+}
+
+fn border_color() -> Hsla {
+    Hsla::from_hex(0x1d2328)
+}
+
+// Text colors
+fn text_primary() -> Hsla {
+    Hsla::from_hex(0xf7f8f8)
+}
+
+fn text_muted() -> Hsla {
+    Hsla::from_hex(0x9aa4ad)
+}
+
+// State colors
+fn state_pending() -> Hsla {
+    Hsla::from_hex(0x3a424a)
+}
+
+fn state_active() -> Hsla {
+    Hsla::from_hex(0xe6b450)
+}
+
+fn state_complete() -> Hsla {
+    Hsla::from_hex(0x23d18b)
+}
+
+fn state_error() -> Hsla {
+    Hsla::from_hex(0xf44747)
+}
+
+// ============================================================================
+// V2 Typography (from spec)
+// ============================================================================
+
+const FONT_TITLE: f32 = 20.0;
+const FONT_HEADER: f32 = 14.0;
+const FONT_BODY: f32 = 13.0;
+const FONT_TABLE: f32 = 13.0;
+const FONT_SMALL: f32 = 12.0;
+
+// ============================================================================
+// Legacy color helpers (for compatibility during transition)
+// ============================================================================
+
+#[allow(dead_code)]
 fn accent_cyan() -> Hsla {
     Hsla::from_hex(0x7fd3e5)
 }
 
+#[allow(dead_code)]
 fn accent_green() -> Hsla {
-    Hsla::from_hex(0x00ff88)
+    state_complete()
 }
 
+#[allow(dead_code)]
 fn accent_orange() -> Hsla {
-    Hsla::from_hex(0xff9900)
+    state_active()
 }
 
+#[allow(dead_code)]
 fn accent_red() -> Hsla {
-    Hsla::from_hex(0xff4444)
+    state_error()
 }
 
+#[allow(dead_code)]
 fn phase_pending() -> Hsla {
-    Hsla::new(0.0, 0.0, 0.4, 1.0)
+    state_pending()
 }
 
+#[allow(dead_code)]
 fn phase_processing() -> Hsla {
-    accent_orange()
+    state_active()
 }
 
+#[allow(dead_code)]
 fn phase_complete() -> Hsla {
-    accent_green()
+    state_complete()
 }
 
+#[allow(dead_code)]
 fn phase_error() -> Hsla {
-    accent_red()
+    state_error()
 }
 
+#[allow(dead_code)]
 fn panel_bg() -> Hsla {
-    Hsla::from_hex(0x05070b)
+    bg_panel()
 }
 
+#[allow(dead_code)]
 fn panel_border() -> Hsla {
-    Hsla::from_hex(0x2a3640)
+    border_color()
 }
 
-/// Build the RLM visualization page
+// ============================================================================
+// V2 Text Wrapping Helper
+// ============================================================================
+
+fn wrap_text(text_system: &mut TextSystem, text: &str, max_width: f32, font_size: f32) -> Vec<String> {
+    let mut lines = Vec::new();
+    for paragraph in text.split('\n') {
+        if paragraph.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        let words: Vec<&str> = paragraph.split_whitespace().collect();
+        if words.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        let mut current_line = String::new();
+        for word in words {
+            let test = if current_line.is_empty() {
+                word.to_string()
+            } else {
+                format!("{} {}", current_line, word)
+            };
+            let width = text_system.measure(&test, font_size);
+            if width > max_width && !current_line.is_empty() {
+                lines.push(current_line);
+                current_line = word.to_string();
+            } else {
+                current_line = test;
+            }
+        }
+        if !current_line.is_empty() {
+            lines.push(current_line);
+        }
+    }
+    lines
+}
+
+// ============================================================================
+// V2 Main Entry Point
+// ============================================================================
+
+/// Build the RLM visualization page (V2 Layout)
 pub(crate) fn build_rlm_page(
     scene: &mut Scene,
     text_system: &mut TextSystem,
@@ -73,13 +181,13 @@ pub(crate) fn build_rlm_page(
     }
 
     // Background
-    scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+    scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(bg_dark()));
 
-    // Dots grid background
+    // Dots grid background (subtle)
     let mut cx = PaintContext::new(scene, text_system, scale_factor);
     state.dots_grid = DotsGrid::new()
-        .color(Hsla::new(0.0, 0.0, 1.0, 0.18))
-        .distance(34.0)
+        .color(Hsla::new(0.0, 0.0, 1.0, 0.08))
+        .distance(40.0)
         .size(1.0)
         .origin(DotsOrigin::Center);
     state.dots_grid.update(AnimatorState::Entered);
@@ -88,12 +196,11 @@ pub(crate) fn build_rlm_page(
     let text_system = cx.text;
 
     // Layout
-    let padding = 22.0;
-    let content_width = (width - padding * 2.0).min(1200.0);
+    let padding = 20.0;
+    let content_width = (width - padding * 2.0).min(1400.0);
     let content_x = (width - content_width) / 2.0;
-    let card_y = padding;
-    let card_height = height - padding * 2.0;
-    let card_bounds = Bounds::new(content_x, card_y, content_width, card_height);
+    let content_y = padding;
+    let content_height = height - padding * 2.0;
 
     // Frame animation
     if !state.rlm.frame_started {
@@ -104,514 +211,580 @@ pub(crate) fn build_rlm_page(
     // Main frame
     let mut cx = PaintContext::new(scene, text_system, scale_factor);
     Frame::corners()
-        .line_color(Hsla::new(0.0, 0.0, 1.0, 0.75))
-        .bg_color(Hsla::new(0.0, 0.0, 0.0, 0.4))
-        .glow_color(Hsla::new(0.0, 0.0, 1.0, 0.16))
-        .border_color(Hsla::new(0.0, 0.0, 1.0, 0.1))
+        .line_color(border_color())
+        .bg_color(bg_panel())
+        .glow_color(Hsla::new(0.0, 0.0, 1.0, 0.05))
+        .border_color(border_color())
         .stroke_width(1.0)
-        .corner_length(26.0)
+        .corner_length(20.0)
         .animation_progress(frame_progress)
-        .paint(card_bounds, &mut cx);
+        .paint(Bounds::new(content_x, content_y, content_width, content_height), &mut cx);
     let scene = cx.scene;
     let text_system = cx.text;
 
-    let inner_padding = 26.0;
+    let inner_padding = 16.0;
     let inner_x = content_x + inner_padding;
     let inner_width = content_width - inner_padding * 2.0;
-    let mut y = card_y + inner_padding;
+    let mut y = content_y + inner_padding;
 
     // ========================================================================
-    // Header
+    // TOP BAR (60px)
     // ========================================================================
-    draw_header(scene, text_system, state, inner_x, y, inner_width);
-    y += 50.0;
+    let top_bar_height = render_top_bar(scene, text_system, state, inner_x, y, inner_width);
+    y += top_bar_height + 16.0;
 
     // ========================================================================
-    // Input Section
+    // MAIN CONTENT: Two-column layout
     // ========================================================================
-    let input_height = draw_input_section(scene, text_system, state, inner_x, y, inner_width, scale_factor);
-    y += input_height + 20.0;
+    let remaining_height = content_y + content_height - y - inner_padding;
+    let left_width = inner_width * 0.45;
+    let right_width = inner_width * 0.55 - 16.0;
+    let gap = 16.0;
 
-    // ========================================================================
-    // Timeline / Progress Bar
-    // ========================================================================
-    draw_timeline(scene, text_system, state, inner_x, y, inner_width);
-    y += 50.0;
+    // LEFT COLUMN: Pipeline + Workset + Chunk Grid
+    render_left_column(scene, text_system, state, inner_x, y, left_width, remaining_height);
 
-    // ========================================================================
-    // Main Content Area (two-column layout)
-    // ========================================================================
-    let remaining_height = card_y + card_height - y - inner_padding;
-    draw_main_content(scene, text_system, state, inner_x, y, inner_width, remaining_height);
+    // RIGHT COLUMN: Inspector
+    render_inspector(scene, text_system, state, inner_x + left_width + gap, y, right_width, remaining_height);
 }
 
-fn draw_header(
+// ============================================================================
+// V2 Top Bar
+// ============================================================================
+
+fn render_top_bar(
     scene: &mut Scene,
     text_system: &mut TextSystem,
-    state: &AppState,
+    state: &mut AppState,
     x: f32,
     y: f32,
     width: f32,
-) {
+) -> f32 {
+    let bar_height = 50.0;
+
     // Title
-    let title = "RLM EXECUTION VISUALIZER";
-    let title_run = text_system.layout(title, Point::new(x, y), 18.0, accent_cyan());
+    let title = "RLM VISUALIZER";
+    let title_run = text_system.layout(title, Point::new(x, y + 8.0), FONT_TITLE, text_primary());
     scene.draw_text(title_run);
+
+    // Scenario info (query preview)
+    let query_preview = if let Some(trace) = &state.rlm.trace {
+        let truncated: String = trace.query.chars().take(60).collect();
+        if trace.query.len() > 60 {
+            format!("{}...", truncated)
+        } else {
+            truncated
+        }
+    } else {
+        "No scenario loaded".to_string()
+    };
+    let scenario_x = x + 180.0;
+    let scenario_run = text_system.layout(&query_preview, Point::new(scenario_x, y + 12.0), FONT_BODY, text_muted());
+    scene.draw_text(scenario_run);
+
+    // Controls (right side)
+    let controls_right = x + width;
+    let button_height = 28.0;
+    let button_y = y + 6.0;
+
+    // Speed button
+    let speed_text = format!("SPEED: {:.1}x", state.rlm.playback_speed);
+    let speed_width = text_system.measure(&speed_text, FONT_SMALL) + 16.0;
+    let speed_x = controls_right - speed_width;
+    state.rlm.speed_button_bounds = Bounds::new(speed_x, button_y, speed_width, button_height);
+    let speed_bg = if state.rlm.speed_button_hovered {
+        border_color()
+    } else {
+        bg_panel()
+    };
+    scene.draw_quad(
+        Quad::new(state.rlm.speed_button_bounds)
+            .with_background(speed_bg)
+            .with_border(border_color(), 1.0),
+    );
+    let speed_run = text_system.layout(&speed_text, Point::new(speed_x + 8.0, button_y + 7.0), FONT_SMALL, text_muted());
+    scene.draw_text(speed_run);
+
+    // Restart button
+    let restart_text = "RESTART";
+    let restart_width = text_system.measure(restart_text, FONT_SMALL) + 16.0;
+    let restart_x = speed_x - restart_width - 8.0;
+    state.rlm.restart_button_bounds = Bounds::new(restart_x, button_y, restart_width, button_height);
+    let restart_bg = if state.rlm.restart_button_hovered {
+        border_color()
+    } else {
+        bg_panel()
+    };
+    scene.draw_quad(
+        Quad::new(state.rlm.restart_button_bounds)
+            .with_background(restart_bg)
+            .with_border(border_color(), 1.0),
+    );
+    let restart_run = text_system.layout(restart_text, Point::new(restart_x + 8.0, button_y + 7.0), FONT_SMALL, text_muted());
+    scene.draw_text(restart_run);
+
+    // Run/Stop button
+    let run_text = if state.rlm.connection_status == RlmConnectionStatus::Streaming { "STOP" } else { "RUN" };
+    let run_width = text_system.measure(run_text, FONT_SMALL) + 24.0;
+    let run_x = restart_x - run_width - 8.0;
+    state.rlm.run_button_bounds = Bounds::new(run_x, button_y, run_width, button_height);
+    let (run_bg, run_border, run_text_color) = if state.rlm.run_button_hovered {
+        (state_active().with_alpha(0.3), state_active(), state_active())
+    } else if state.rlm.connection_status == RlmConnectionStatus::Streaming {
+        (state_active().with_alpha(0.15), state_active(), state_active())
+    } else {
+        (state_complete().with_alpha(0.15), state_complete(), state_complete())
+    };
+    scene.draw_quad(
+        Quad::new(state.rlm.run_button_bounds)
+            .with_background(run_bg)
+            .with_border(run_border, 1.0),
+    );
+    let run_run = text_system.layout(run_text, Point::new(run_x + 12.0, button_y + 7.0), FONT_SMALL, run_text_color);
+    scene.draw_text(run_run);
 
     // Status badge
     let (status_text, status_color) = match state.rlm.connection_status {
-        RlmConnectionStatus::Idle => ("READY", phase_pending()),
-        RlmConnectionStatus::Connecting => ("CONNECTING", accent_orange()),
-        RlmConnectionStatus::Streaming => ("STREAMING", accent_green()),
-        RlmConnectionStatus::Complete => ("COMPLETE", accent_green()),
-        RlmConnectionStatus::Error => ("ERROR", accent_red()),
+        RlmConnectionStatus::Idle => ("READY", state_pending()),
+        RlmConnectionStatus::Connecting => ("CONNECTING", state_active()),
+        RlmConnectionStatus::Streaming => ("STREAMING", state_active()),
+        RlmConnectionStatus::Complete => ("COMPLETE", state_complete()),
+        RlmConnectionStatus::Error => ("ERROR", state_error()),
     };
-
-    let badge_width = text_system.measure(status_text, 10.0) + 12.0;
-    let badge_x = x + width - badge_width;
+    let badge_width = text_system.measure(status_text, FONT_SMALL) + 16.0;
+    let badge_x = run_x - badge_width - 16.0;
     scene.draw_quad(
-        Quad::new(Bounds::new(badge_x, y, badge_width, 18.0))
-            .with_background(status_color.with_alpha(0.2))
+        Quad::new(Bounds::new(badge_x, button_y, badge_width, button_height))
+            .with_background(status_color.with_alpha(0.15))
             .with_border(status_color, 1.0),
     );
-    let status_run = text_system.layout(status_text, Point::new(badge_x + 6.0, y + 3.0), 10.0, status_color);
+    let status_run = text_system.layout(status_text, Point::new(badge_x + 8.0, button_y + 7.0), FONT_SMALL, status_color);
     scene.draw_text(status_run);
 
-    // Subtitle
-    let subtitle = "DSPy-Powered Document Analysis: Route -> Extract -> Reduce -> Verify";
-    let subtitle_run = text_system.layout(subtitle, Point::new(x, y + 24.0), 11.0, theme::text::MUTED);
-    scene.draw_text(subtitle_run);
+    bar_height
 }
 
-fn draw_input_section(
+// ============================================================================
+// V2 Left Column: Pipeline + Workset + Chunk Grid
+// ============================================================================
+
+fn render_left_column(
     scene: &mut Scene,
     text_system: &mut TextSystem,
     state: &mut AppState,
     x: f32,
     y: f32,
     width: f32,
-    scale_factor: f32,
-) -> f32 {
-    let query_height = 32.0;
-    let context_height = 60.0;
-    let button_width = 80.0;
-    let gap = 12.0;
-
-    // Query input label
-    let query_label = "Query:";
-    let label_run = text_system.layout(query_label, Point::new(x, y), 11.0, theme::text::SECONDARY);
-    scene.draw_text(label_run);
-
-    // Query input field
-    let query_input_x = x + 50.0;
-    let query_input_width = width - 50.0 - button_width - gap;
-    state.rlm.query_input_bounds = Bounds::new(query_input_x, y - 2.0, query_input_width, query_height);
-
-    // Query input background
-    scene.draw_quad(
-        Quad::new(state.rlm.query_input_bounds)
-            .with_background(panel_bg())
-            .with_border(if state.rlm.query_input.is_focused() { accent_cyan() } else { panel_border() }, 1.0),
-    );
-
-    // Render query input
-    let mut cx = PaintContext::new(scene, text_system, scale_factor);
-    state.rlm.query_input.paint(state.rlm.query_input_bounds, &mut cx);
-    let scene = cx.scene;
-    let text_system = cx.text;
-
-    // Run button
-    let button_x = x + width - button_width;
-    state.rlm.run_button_bounds = Bounds::new(button_x, y - 2.0, button_width, query_height);
-    let button_bg = if state.rlm.run_button_hovered { accent_cyan().with_alpha(0.3) } else { accent_cyan().with_alpha(0.15) };
-    scene.draw_quad(
-        Quad::new(state.rlm.run_button_bounds)
-            .with_background(button_bg)
-            .with_border(accent_cyan(), 1.0),
-    );
-    let run_text = if state.rlm.connection_status == RlmConnectionStatus::Streaming { "STOP" } else { "RUN" };
-    let run_width = text_system.measure(run_text, 12.0);
-    let run_x = button_x + (button_width - run_width) / 2.0;
-    let run_run = text_system.layout(run_text, Point::new(run_x, y + 7.0), 12.0, accent_cyan());
-    scene.draw_text(run_run);
-
-    let current_y = y + query_height + gap;
-
-    // Context input label
-    let context_label = "Document:";
-    let label_run = text_system.layout(context_label, Point::new(x, current_y), 11.0, theme::text::SECONDARY);
-    scene.draw_text(label_run);
-
-    // Context input field
-    let context_input_x = x + 70.0;
-    let context_input_width = width - 70.0;
-    state.rlm.context_input_bounds = Bounds::new(context_input_x, current_y - 2.0, context_input_width, context_height);
-
-    // Context input background
-    scene.draw_quad(
-        Quad::new(state.rlm.context_input_bounds)
-            .with_background(panel_bg())
-            .with_border(if state.rlm.context_input.is_focused() { accent_cyan() } else { panel_border() }, 1.0),
-    );
-
-    // Render context input
-    let mut cx = PaintContext::new(scene, text_system, scale_factor);
-    state.rlm.context_input.paint(state.rlm.context_input_bounds, &mut cx);
-
-    query_height + gap + context_height
-}
-
-fn draw_timeline(
-    scene: &mut Scene,
-    text_system: &mut TextSystem,
-    state: &mut AppState,
-    x: f32,
-    y: f32,
-    width: f32,
+    height: f32,
 ) {
-    // Phase labels and progress (DSPy terminology)
+    let mut current_y = y;
+
+    // PIPELINE BOXES
+    let pipeline_height = render_pipeline_boxes(scene, text_system, state, x, current_y, width);
+    current_y += pipeline_height + 16.0;
+
+    // Separator
+    scene.draw_quad(
+        Quad::new(Bounds::new(x, current_y, width, 1.0))
+            .with_background(border_color()),
+    );
+    current_y += 12.0;
+
+    // WORKSET TABLE
+    let table_height = height - (current_y - y) - 80.0; // Leave room for chunk grid
+    render_workset_table(scene, text_system, state, x, current_y, width, table_height);
+    current_y += table_height + 12.0;
+
+    // Separator
+    scene.draw_quad(
+        Quad::new(Bounds::new(x, current_y, width, 1.0))
+            .with_background(border_color()),
+    );
+    current_y += 12.0;
+
+    // CHUNK GRID
+    render_chunk_grid_v2(scene, text_system, state, x, current_y, width);
+}
+
+fn render_pipeline_boxes(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    state: &AppState,
+    x: f32,
+    y: f32,
+    width: f32,
+) -> f32 {
+    let box_height = 60.0;
+    let gap = 8.0;
+    // Check if routing is complete (we're at or past chunking)
+    let routing_complete = is_phase_complete_v2(state.rlm.current_phase, RlmPhase::StructureDiscovery);
+
     let phases = [
-        ("Route", RlmPhase::StructureDiscovery),
-        ("Chunk", RlmPhase::Chunking),
-        ("Extract", RlmPhase::Extraction),
-        ("Reduce", RlmPhase::Synthesis),
+        ("ROUTE", RlmPhase::StructureDiscovery, format!("sections: {}", if routing_complete { "8" } else { "--" })),
+        ("CHUNK", RlmPhase::Chunking, format!("chunks: {}", state.rlm.total_chunks)),
+        ("EXTRACT", RlmPhase::Extraction, format!("{}/{}", state.rlm.processed_chunks, state.rlm.total_chunks)),
+        ("VERIFY", RlmPhase::Synthesis, if state.rlm.current_phase == RlmPhase::Complete { "PASS".to_string() } else { "--".to_string() }),
     ];
 
-    let phase_width = width / phases.len() as f32;
-    let bar_height = 6.0;
-    let bar_y = y + 20.0;
+    let box_width = (width - gap * 3.0) / 4.0;
 
-    // Track background
-    scene.draw_quad(
-        Quad::new(Bounds::new(x, bar_y, width, bar_height))
-            .with_background(Hsla::new(0.0, 0.0, 0.15, 1.0)),
-    );
+    for (i, (label, phase, metric)) in phases.iter().enumerate() {
+        let box_x = x + (box_width + gap) * i as f32;
 
-    for (i, (label, phase)) in phases.iter().enumerate() {
-        let phase_x = x + phase_width * i as f32;
-
-        // Determine phase status
-        let (color, filled) = if state.rlm.current_phase == *phase {
-            (phase_processing(), true)
-        } else if is_phase_complete(state.rlm.current_phase, *phase) {
-            (phase_complete(), true)
+        // Determine state
+        let (border_color_val, border_width) = if state.rlm.current_phase == *phase {
+            (state_active(), 2.0)
+        } else if is_phase_complete_v2(state.rlm.current_phase, *phase) {
+            (state_complete(), 2.0)
         } else {
-            (phase_pending(), false)
+            (state_pending(), 1.0)
         };
 
-        // Phase segment
-        if filled {
+        // Box background
+        scene.draw_quad(
+            Quad::new(Bounds::new(box_x, y, box_width, box_height))
+                .with_background(bg_panel())
+                .with_border(border_color_val, border_width),
+        );
+
+        // Phase name
+        let label_run = text_system.layout(label, Point::new(box_x + 8.0, y + 12.0), FONT_HEADER, text_primary());
+        scene.draw_text(label_run);
+
+        // Metric
+        let metric_run = text_system.layout(metric, Point::new(box_x + 8.0, y + 34.0), FONT_SMALL, text_muted());
+        scene.draw_text(metric_run);
+    }
+
+    box_height
+}
+
+fn render_workset_table(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    state: &mut AppState,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+) {
+    // Table header
+    let header_height = 24.0;
+    let col_id_width = 30.0;
+    let col_section_width = width - col_id_width - 80.0;
+    let col_status_width = 40.0;
+    let _col_rel_width = 40.0;
+
+    // Header background
+    scene.draw_quad(
+        Quad::new(Bounds::new(x, y, width, header_height))
+            .with_background(bg_dark()),
+    );
+
+    // Header text
+    let header_y = y + 5.0;
+    let id_run = text_system.layout("ID", Point::new(x + 8.0, header_y), FONT_TABLE, text_muted());
+    scene.draw_text(id_run);
+    let section_run = text_system.layout("SECTION", Point::new(x + col_id_width + 8.0, header_y), FONT_TABLE, text_muted());
+    scene.draw_text(section_run);
+    let st_run = text_system.layout("ST", Point::new(x + col_id_width + col_section_width + 8.0, header_y), FONT_TABLE, text_muted());
+    scene.draw_text(st_run);
+    let rel_run = text_system.layout("REL", Point::new(x + col_id_width + col_section_width + col_status_width + 8.0, header_y), FONT_TABLE, text_muted());
+    scene.draw_text(rel_run);
+
+    // Clear and rebuild row bounds
+    state.rlm.table_row_bounds.clear();
+
+    // Table rows
+    let row_height = 24.0;
+    let mut row_y = y + header_height;
+    let max_rows = ((height - header_height) / row_height) as usize;
+
+    for (i, chunk) in state.rlm.chunks.iter().enumerate().take(max_rows) {
+        let row_bounds = Bounds::new(x, row_y, width, row_height);
+        state.rlm.table_row_bounds.push(row_bounds);
+
+        // Row background
+        let is_selected = state.rlm.selected_chunk_id == Some(i);
+        let is_active = state.rlm.active_chunk_id == Some(i);
+        let row_bg = if is_selected {
+            state_active().with_alpha(0.15)
+        } else if is_active {
+            state_active().with_alpha(0.08)
+        } else if i % 2 == 0 {
+            bg_panel()
+        } else {
+            bg_dark()
+        };
+        scene.draw_quad(Quad::new(row_bounds).with_background(row_bg));
+
+        // Active indicator
+        if is_active {
             scene.draw_quad(
-                Quad::new(Bounds::new(phase_x, bar_y, phase_width - 2.0, bar_height))
-                    .with_background(color),
+                Quad::new(Bounds::new(x, row_y, 3.0, row_height))
+                    .with_background(state_active()),
             );
         }
 
-        // Phase label
-        let label_width = text_system.measure(label, 10.0);
-        let label_x = phase_x + (phase_width - label_width) / 2.0;
-        let label_run = text_system.layout(label, Point::new(label_x, y), 10.0, color);
-        scene.draw_text(label_run);
-
-        // Phase indicator dot
-        let dot_x = phase_x + phase_width / 2.0 - 4.0;
-        let dot_y = bar_y + bar_height + 6.0;
-        scene.draw_quad(
-            Quad::new(Bounds::new(dot_x, dot_y, 8.0, 8.0))
-                .with_background(color)
-                .with_corner_radius(4.0),
-        );
-    }
-
-    // Current phase label
-    let current_label = state.rlm.phase_label();
-    let current_run = text_system.layout(
-        &format!("Phase: {}", current_label),
-        Point::new(x, bar_y + bar_height + 20.0),
-        11.0,
-        theme::text::SECONDARY,
-    );
-    scene.draw_text(current_run);
-
-    // Progress info
-    if state.rlm.total_chunks > 0 {
-        let progress = format!("Chunks: {}/{}", state.rlm.processed_chunks, state.rlm.total_chunks);
-        let progress_width = text_system.measure(&progress, 11.0);
-        let progress_run = text_system.layout(
-            &progress,
-            Point::new(x + width - progress_width, bar_y + bar_height + 20.0),
-            11.0,
-            accent_cyan(),
-        );
-        scene.draw_text(progress_run);
-    }
-
-    // Store timeline bounds for interaction
-    state.rlm.timeline_slider_bounds = Bounds::new(x, bar_y, width, bar_height);
-}
-
-fn draw_main_content(
-    scene: &mut Scene,
-    text_system: &mut TextSystem,
-    state: &AppState,
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-) {
-    let left_width = width * 0.35;
-    let right_width = width * 0.65 - 16.0;
-    let gap = 16.0;
-
-    // Left panel: Phase & Chunk Overview
-    draw_phases_panel(scene, text_system, state, x, y, left_width, height);
-
-    // Right panel: Detail View
-    draw_detail_panel(scene, text_system, state, x + left_width + gap, y, right_width, height);
-}
-
-fn draw_phases_panel(
-    scene: &mut Scene,
-    text_system: &mut TextSystem,
-    state: &AppState,
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-) {
-    // Panel background
-    scene.draw_quad(
-        Quad::new(Bounds::new(x, y, width, height))
-            .with_background(panel_bg())
-            .with_border(panel_border(), 1.0),
-    );
-
-    let padding = 12.0;
-    let mut current_y = y + padding;
-
-    // Panel title
-    let title = "EXECUTION PHASES";
-    let title_run = text_system.layout(title, Point::new(x + padding, current_y), 11.0, accent_cyan());
-    scene.draw_text(title_run);
-    current_y += 24.0;
-
-    // Phase list (DSPy terminology)
-    let phases = [
-        ("Routing", RlmPhase::StructureDiscovery, "Selecting relevant sections"),
-        ("Chunking", RlmPhase::Chunking, "Splitting into semantic chunks"),
-        ("Extraction (CoT)", RlmPhase::Extraction, "Chain-of-thought per chunk"),
-        ("Reduce + Verify", RlmPhase::Synthesis, "Combining and validating"),
-    ];
-
-    for (label, phase, desc) in phases {
-        let (icon, color) = get_phase_status_icon(state.rlm.current_phase, phase);
-
-        // Phase row
-        let icon_run = text_system.layout(icon, Point::new(x + padding, current_y), 11.0, color);
-        scene.draw_text(icon_run);
-
-        let label_run = text_system.layout(label, Point::new(x + padding + 18.0, current_y), 11.0, color);
-        scene.draw_text(label_run);
-        current_y += 16.0;
-
-        // Description (when active)
-        if state.rlm.current_phase == phase {
-            let desc_run = text_system.layout(desc, Point::new(x + padding + 18.0, current_y), 9.0, theme::text::MUTED);
-            scene.draw_text(desc_run);
-            current_y += 14.0;
-
-            // Show chunk progress for extraction phase
-            if phase == RlmPhase::Extraction && state.rlm.total_chunks > 0 {
-                draw_chunk_grid(scene, state, x + padding, current_y, width - padding * 2.0, 60.0);
-                current_y += 70.0;
-            }
+        // Selection border
+        if is_selected {
+            scene.draw_quad(
+                Quad::new(row_bounds)
+                    .with_border(state_active(), 1.0),
+            );
         }
 
-        current_y += 8.0;
-    }
+        let text_y = row_y + 5.0;
 
-    // Error display
-    if let Some(error) = &state.rlm.error {
-        current_y += 8.0;
-        scene.draw_quad(
-            Quad::new(Bounds::new(x + padding, current_y, width - padding * 2.0, 40.0))
-                .with_background(accent_red().with_alpha(0.1))
-                .with_border(accent_red(), 1.0),
-        );
-        let error_run = text_system.layout(error, Point::new(x + padding + 8.0, current_y + 12.0), 10.0, accent_red());
-        scene.draw_text(error_run);
+        // ID
+        let id_text = format!("{}", chunk.chunk_id);
+        let id_run = text_system.layout(&id_text, Point::new(x + 8.0, text_y), FONT_TABLE, text_primary());
+        scene.draw_text(id_run);
+
+        // Section (truncated)
+        let section = chunk.section_title.as_deref().unwrap_or("--");
+        let section_truncated: String = section.chars().take(25).collect();
+        let section_display = if section.len() > 25 { format!("{}...", section_truncated) } else { section_truncated };
+        let section_run = text_system.layout(&section_display, Point::new(x + col_id_width + 8.0, text_y), FONT_TABLE, text_primary());
+        scene.draw_text(section_run);
+
+        // Status
+        let (status_text, status_color) = match chunk.status {
+            RlmStepStatus::Pending => ("PEND", state_pending()),
+            RlmStepStatus::Processing => ("RUN", state_active()),
+            RlmStepStatus::Complete => ("OK", state_complete()),
+            RlmStepStatus::Error => ("ERR", state_error()),
+        };
+        let status_run = text_system.layout(status_text, Point::new(x + col_id_width + col_section_width + 8.0, text_y), FONT_TABLE, status_color);
+        scene.draw_text(status_run);
+
+        // Relevance
+        let rel_text = chunk.relevance.map(|r| format!("{:.2}", r)).unwrap_or_else(|| "--".to_string());
+        let rel_run = text_system.layout(&rel_text, Point::new(x + col_id_width + col_section_width + col_status_width + 8.0, text_y), FONT_TABLE, text_muted());
+        scene.draw_text(rel_run);
+
+        row_y += row_height;
     }
 }
 
-fn draw_chunk_grid(
+fn render_chunk_grid_v2(
     scene: &mut Scene,
-    state: &AppState,
+    text_system: &mut TextSystem,
+    state: &mut AppState,
     x: f32,
     y: f32,
-    width: f32,
-    _height: f32,
+    _width: f32,
 ) {
-    let chunk_size = 10.0;
-    let gap = 3.0;
-    let cols = ((width - gap) / (chunk_size + gap)) as usize;
-    let total = state.rlm.total_chunks.max(1);
+    let cell_size = 28.0;
+    let gap = 6.0;
+    let total_chunks = state.rlm.total_chunks.max(8);
 
-    for (i, chunk) in state.rlm.chunks.iter().enumerate() {
-        let col = i % cols;
-        let row = i / cols;
-        let chunk_x = x + (col as f32) * (chunk_size + gap);
-        let chunk_y = y + (row as f32) * (chunk_size + gap);
+    // Clear and rebuild grid bounds
+    state.rlm.chunk_grid_bounds.clear();
 
-        let color = match chunk.status {
-            RlmStepStatus::Pending => phase_pending(),
-            RlmStepStatus::Processing => phase_processing(),
-            RlmStepStatus::Complete => phase_complete(),
-            RlmStepStatus::Error => phase_error(),
+    for i in 0..total_chunks {
+        let col = i % 8;
+        let cell_x = x + (cell_size + gap) * col as f32;
+        let cell_bounds = Bounds::new(cell_x, y, cell_size, cell_size);
+
+        // Store bounds for click detection
+        state.rlm.chunk_grid_bounds.push(cell_bounds);
+
+        // Determine state
+        let (border_color_val, fill) = if let Some(chunk) = state.rlm.chunks.get(i) {
+            match chunk.status {
+                RlmStepStatus::Pending => (state_pending(), false),
+                RlmStepStatus::Processing => (state_active(), true),
+                RlmStepStatus::Complete => (state_complete(), false),
+                RlmStepStatus::Error => (state_error(), false),
+            }
+        } else {
+            (state_pending(), false)
+        };
+
+        // Is selected?
+        let is_selected = state.rlm.selected_chunk_id == Some(i);
+
+        // Cell background
+        let bg = if fill {
+            border_color_val.with_alpha(0.3)
+        } else if is_selected {
+            state_active().with_alpha(0.2)
+        } else {
+            bg_panel()
         };
 
         scene.draw_quad(
-            Quad::new(Bounds::new(chunk_x, chunk_y, chunk_size, chunk_size))
-                .with_background(color)
-                .with_corner_radius(2.0),
+            Quad::new(cell_bounds)
+                .with_background(bg)
+                .with_border(border_color_val, if is_selected { 2.0 } else { 1.0 }),
         );
-    }
 
-    // Fill remaining slots with pending
-    for i in state.rlm.chunks.len()..total {
-        let col = i % cols;
-        let row = i / cols;
-        let chunk_x = x + (col as f32) * (chunk_size + gap);
-        let chunk_y = y + (row as f32) * (chunk_size + gap);
-
-        scene.draw_quad(
-            Quad::new(Bounds::new(chunk_x, chunk_y, chunk_size, chunk_size))
-                .with_background(phase_pending())
-                .with_corner_radius(2.0),
-        );
+        // Cell ID
+        let id_text = format!("{}", i);
+        let id_width = text_system.measure(&id_text, FONT_TABLE);
+        let id_x = cell_x + (cell_size - id_width) / 2.0;
+        let id_run = text_system.layout(&id_text, Point::new(id_x, y + 7.0), FONT_TABLE, text_primary());
+        scene.draw_text(id_run);
     }
 }
 
-fn draw_detail_panel(
+// ============================================================================
+// V2 Inspector (Right Column)
+// ============================================================================
+
+fn render_inspector(
     scene: &mut Scene,
     text_system: &mut TextSystem,
-    state: &AppState,
+    state: &mut AppState,
     x: f32,
     y: f32,
     width: f32,
     height: f32,
 ) {
+    let padding = 12.0;
+    let mut current_y = y;
+
     // Panel background
     scene.draw_quad(
         Quad::new(Bounds::new(x, y, width, height))
-            .with_background(panel_bg())
-            .with_border(panel_border(), 1.0),
+            .with_background(bg_panel())
+            .with_border(border_color(), 1.0),
     );
 
-    let padding = 12.0;
-    let mut current_y = y + padding;
+    current_y += padding;
 
-    // Panel title
-    let title = if state.rlm.current_phase == RlmPhase::Extraction {
-        if let Some(chunk_id) = state.rlm.active_chunk_id {
-            format!("CHUNK {} DETAIL", chunk_id + 1)
+    // Title: Selected chunk info
+    let title = if let Some(chunk_id) = state.rlm.selected_chunk_id {
+        if let Some(chunk) = state.rlm.chunks.get(chunk_id) {
+            let section = chunk.section_title.as_deref().unwrap_or("Unknown");
+            format!("Selected: Chunk {} \"{}\"", chunk_id, section)
         } else {
-            "DETAIL VIEW".to_string()
+            format!("Selected: Chunk {}", chunk_id)
         }
     } else {
-        "DETAIL VIEW".to_string()
+        "INSPECTOR".to_string()
     };
-    let title_run = text_system.layout(&title, Point::new(x + padding, current_y), 11.0, accent_cyan());
+    let title_run = text_system.layout(&title, Point::new(x + padding, current_y), FONT_HEADER, text_primary());
     scene.draw_text(title_run);
     current_y += 28.0;
 
-    // Active chunk info
-    if let Some(chunk_id) = state.rlm.active_chunk_id {
-        if let Some(chunk) = state.rlm.chunks.get(chunk_id) {
-            if let Some(title) = &chunk.section_title {
-                let section_label = format!("Section: {}", title);
-                let section_run = text_system.layout(&section_label, Point::new(x + padding, current_y), 11.0, theme::text::SECONDARY);
-                scene.draw_text(section_run);
-                current_y += 20.0;
-            }
+    // Calculate pane heights
+    let available_height = height - (current_y - y) - padding;
+    let pane_gap = 12.0;
+    let has_answer = state.rlm.final_answer.is_some();
 
-            if let Some(preview) = &chunk.content_preview {
-                let preview_truncated: String = preview.chars().take(200).collect();
-                let preview_run = text_system.layout(&preview_truncated, Point::new(x + padding, current_y), 10.0, theme::text::MUTED);
-                scene.draw_text(preview_run);
-                current_y += 40.0;
-            }
+    let (excerpt_height, findings_height, answer_height) = if has_answer {
+        let each = (available_height - pane_gap * 2.0) / 3.0;
+        (each, each, each)
+    } else {
+        let each = (available_height - pane_gap) / 2.0;
+        (each, each, 0.0)
+    };
 
-            if let Some(findings) = &chunk.findings {
-                current_y += 8.0;
-                let findings_label = "Findings:";
-                let findings_label_run = text_system.layout(findings_label, Point::new(x + padding, current_y), 10.0, accent_green());
-                scene.draw_text(findings_label_run);
-                current_y += 16.0;
+    // EXCERPT PANE
+    state.rlm.excerpt_bounds = Bounds::new(x + padding, current_y, width - padding * 2.0, excerpt_height);
+    render_scrollable_pane(
+        scene, text_system, state,
+        "EXCERPT",
+        state.rlm.selected_chunk_id
+            .and_then(|id| state.rlm.chunks.get(id))
+            .and_then(|c| c.content_preview.as_deref())
+            .unwrap_or("Select a chunk to view its content"),
+        state.rlm.excerpt_scroll,
+        state.rlm.excerpt_bounds,
+    );
+    current_y += excerpt_height + pane_gap;
 
-                let findings_truncated: String = findings.chars().take(500).collect();
-                let findings_run = text_system.layout(&findings_truncated, Point::new(x + padding, current_y), 10.0, theme::text::PRIMARY);
-                scene.draw_text(findings_run);
-                current_y += 60.0;
-            }
+    // FINDINGS PANE
+    state.rlm.findings_bounds = Bounds::new(x + padding, current_y, width - padding * 2.0, findings_height);
+    render_scrollable_pane(
+        scene, text_system, state,
+        "FINDINGS",
+        state.rlm.selected_chunk_id
+            .and_then(|id| state.rlm.chunks.get(id))
+            .and_then(|c| c.findings.as_deref())
+            .unwrap_or("Extraction results will appear here"),
+        state.rlm.findings_scroll,
+        state.rlm.findings_bounds,
+    );
+    current_y += findings_height + pane_gap;
+
+    // FINAL ANSWER PANE (only if available)
+    if let Some(answer) = &state.rlm.final_answer {
+        state.rlm.answer_bounds = Bounds::new(x + padding, current_y, width - padding * 2.0, answer_height);
+
+        // Answer pane with special styling
+        scene.draw_quad(
+            Quad::new(state.rlm.answer_bounds)
+                .with_background(state_complete().with_alpha(0.05))
+                .with_border(state_complete().with_alpha(0.3), 1.0),
+        );
+
+        // Header
+        let header_run = text_system.layout("FINAL ANSWER", Point::new(state.rlm.answer_bounds.x() + 8.0, state.rlm.answer_bounds.y() + 8.0), FONT_HEADER, state_complete());
+        scene.draw_text(header_run);
+
+        // Content with wrapping
+        let content_y = state.rlm.answer_bounds.y() + 32.0;
+        let content_width = state.rlm.answer_bounds.width() - 16.0;
+        let wrapped_lines = wrap_text(text_system, answer, content_width, FONT_BODY);
+
+        let line_height = 18.0;
+        let max_lines = ((state.rlm.answer_bounds.height() - 40.0) / line_height) as usize;
+        let start_line = (state.rlm.answer_scroll / line_height) as usize;
+
+        for (i, line) in wrapped_lines.iter().skip(start_line).take(max_lines).enumerate() {
+            let line_y = content_y + (i as f32 * line_height);
+            let line_run = text_system.layout(line, Point::new(state.rlm.answer_bounds.x() + 8.0, line_y), FONT_BODY, text_primary());
+            scene.draw_text(line_run);
         }
     }
+}
 
-    // Streaming text
-    if !state.rlm.streaming_text.is_empty() {
-        current_y += 8.0;
-        let stream_label = "LLM Response:";
-        let stream_label_run = text_system.layout(stream_label, Point::new(x + padding, current_y), 10.0, accent_orange());
-        scene.draw_text(stream_label_run);
-        current_y += 16.0;
+fn render_scrollable_pane(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    _state: &AppState,
+    title: &str,
+    content: &str,
+    scroll_offset: f32,
+    bounds: Bounds,
+) {
+    // Pane background
+    scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(bg_dark())
+            .with_border(border_color(), 1.0),
+    );
 
-        // Streaming text box
-        let box_height = height - (current_y - y) - padding * 2.0;
-        scene.draw_quad(
-            Quad::new(Bounds::new(x + padding, current_y, width - padding * 2.0, box_height.max(60.0)))
-                .with_background(Hsla::new(0.0, 0.0, 0.0, 0.3))
-                .with_border(panel_border(), 1.0),
-        );
+    // Header
+    let header_color = match title {
+        "EXCERPT" => text_muted(),
+        "FINDINGS" => state_active(),
+        _ => text_primary(),
+    };
+    let header_run = text_system.layout(title, Point::new(bounds.x() + 8.0, bounds.y() + 8.0), FONT_HEADER, header_color);
+    scene.draw_text(header_run);
 
-        let text_truncated: String = state.rlm.streaming_text.chars().take(1000).collect();
-        let text_run = text_system.layout(&text_truncated, Point::new(x + padding + 8.0, current_y + 8.0), 10.0, theme::text::PRIMARY);
-        scene.draw_text(text_run);
-    }
+    // Content with wrapping
+    let content_y = bounds.y() + 32.0;
+    let content_width = bounds.width() - 16.0;
+    let wrapped_lines = wrap_text(text_system, content, content_width, FONT_BODY);
 
-    // Final answer
-    if let Some(answer) = &state.rlm.final_answer {
-        current_y += 8.0;
+    let line_height = 18.0;
+    let max_lines = ((bounds.height() - 40.0) / line_height) as usize;
+    let start_line = (scroll_offset / line_height) as usize;
 
-        // Final answer header
-        let answer_label = "FINAL ANSWER";
-        let answer_label_run = text_system.layout(answer_label, Point::new(x + padding, current_y), 11.0, accent_green());
-        scene.draw_text(answer_label_run);
-        current_y += 20.0;
-
-        // Answer box
-        let box_height = height - (current_y - y) - padding;
-        scene.draw_quad(
-            Quad::new(Bounds::new(x + padding, current_y, width - padding * 2.0, box_height.max(80.0)))
-                .with_background(accent_green().with_alpha(0.05))
-                .with_border(accent_green().with_alpha(0.3), 1.0),
-        );
-
-        let answer_truncated: String = answer.chars().take(2000).collect();
-        let answer_run = text_system.layout(&answer_truncated, Point::new(x + padding + 8.0, current_y + 8.0), 11.0, theme::text::PRIMARY);
-        scene.draw_text(answer_run);
+    for (i, line) in wrapped_lines.iter().skip(start_line).take(max_lines).enumerate() {
+        let line_y = content_y + (i as f32 * line_height);
+        let line_run = text_system.layout(line, Point::new(bounds.x() + 8.0, line_y), FONT_BODY, text_primary());
+        scene.draw_text(line_run);
     }
 }
 
-fn get_phase_status_icon(current: RlmPhase, phase: RlmPhase) -> (&'static str, Hsla) {
-    if current == phase {
-        (">", phase_processing())
-    } else if is_phase_complete(current, phase) {
-        ("=", phase_complete())
-    } else {
-        (" ", phase_pending())
-    }
-}
-
-fn is_phase_complete(current: RlmPhase, check: RlmPhase) -> bool {
+/// Helper to check if a phase is complete relative to current phase
+fn is_phase_complete_v2(current: RlmPhase, check: RlmPhase) -> bool {
     let order = |p: RlmPhase| -> u8 {
         match p {
             RlmPhase::Idle => 0,
@@ -664,7 +837,9 @@ fn tick_demo(state: &mut AppState) {
         return;
     };
 
-    let elapsed = now.saturating_sub(state.rlm.trace_start_time);
+    // Apply playback speed to elapsed time
+    let raw_elapsed = now.saturating_sub(state.rlm.trace_start_time);
+    let elapsed = (raw_elapsed as f32 * state.rlm.playback_speed) as u64;
     let trace_len = trace.events.len();
     let last_event_time = trace.events.last().map(|e| e.t).unwrap_or(0);
 
@@ -718,6 +893,7 @@ fn apply_trace_event(state: &mut AppState, event: &crate::state::RlmTraceEvent) 
                 section_title: Some(section.clone()),
                 content_preview: Some(preview.clone()),
                 findings: None,
+                relevance: None,
                 status: RlmStepStatus::Pending,
             });
             state.rlm.total_chunks = state.rlm.chunks.len();
@@ -737,14 +913,17 @@ fn apply_trace_event(state: &mut AppState, event: &crate::state::RlmTraceEvent) 
         RlmTraceEventType::ExtractionComplete {
             chunk_id,
             findings,
-            relevance: _,
+            relevance,
         } => {
             if let Some(chunk) = state.rlm.chunks.get_mut(*chunk_id) {
                 chunk.findings = Some(findings.clone());
+                chunk.relevance = Some(*relevance);
                 chunk.status = RlmStepStatus::Complete;
             }
             state.rlm.processed_chunks += 1;
             state.rlm.streaming_text = format!("Extracted: {}...", &findings.chars().take(80).collect::<String>());
+            // Auto-select completed chunk for inspector display
+            state.rlm.selected_chunk_id = Some(*chunk_id);
         }
         RlmTraceEventType::SynthesisComplete {
             answer,
@@ -785,14 +964,17 @@ fn reset_and_restart_trace(state: &mut AppState) {
 
 /// Handle mouse move for hover detection
 pub(crate) fn handle_rlm_mouse_move(state: &mut AppState, x: f32, y: f32) {
-    state.rlm.run_button_hovered = state.rlm.run_button_bounds.contains(Point::new(x, y));
+    let point = Point::new(x, y);
+    state.rlm.run_button_hovered = state.rlm.run_button_bounds.contains(point);
+    state.rlm.restart_button_hovered = state.rlm.restart_button_bounds.contains(point);
+    state.rlm.speed_button_hovered = state.rlm.speed_button_bounds.contains(point);
 }
 
 /// Handle mouse click
 pub(crate) fn handle_rlm_click(state: &mut AppState, x: f32, y: f32) -> bool {
     let point = Point::new(x, y);
 
-    // Run button click
+    // Run button click - toggle playback
     if state.rlm.run_button_bounds.contains(point) {
         if state.rlm.connection_status == RlmConnectionStatus::Streaming {
             // Stop
@@ -803,6 +985,110 @@ pub(crate) fn handle_rlm_click(state: &mut AppState, x: f32, y: f32) -> bool {
             // Start trace playback demo
             reset_and_restart_trace(state);
         }
+        return true;
+    }
+
+    // Restart button click
+    if state.rlm.restart_button_bounds.contains(point) {
+        reset_and_restart_trace(state);
+        return true;
+    }
+
+    // Speed button click - cycle through speeds
+    if state.rlm.speed_button_bounds.contains(point) {
+        state.rlm.playback_speed = match state.rlm.playback_speed {
+            s if s < 0.75 => 1.0,
+            s if s < 1.25 => 1.5,
+            s if s < 1.75 => 2.0,
+            _ => 0.5,
+        };
+        return true;
+    }
+
+    // Workset table row clicks
+    for (i, bounds) in state.rlm.table_row_bounds.iter().enumerate() {
+        if bounds.contains(point) {
+            state.rlm.selected_chunk_id = Some(i);
+            return true;
+        }
+    }
+
+    // Chunk grid clicks
+    for (i, bounds) in state.rlm.chunk_grid_bounds.iter().enumerate() {
+        if bounds.contains(point) {
+            state.rlm.selected_chunk_id = Some(i);
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Handle keyboard events
+pub(crate) fn handle_rlm_keydown(state: &mut AppState, key: &str) -> bool {
+    match key {
+        "ArrowUp" => {
+            // Select previous chunk
+            if let Some(current) = state.rlm.selected_chunk_id {
+                if current > 0 {
+                    state.rlm.selected_chunk_id = Some(current - 1);
+                }
+            } else if !state.rlm.chunks.is_empty() {
+                state.rlm.selected_chunk_id = Some(state.rlm.chunks.len() - 1);
+            }
+            true
+        }
+        "ArrowDown" => {
+            // Select next chunk
+            if let Some(current) = state.rlm.selected_chunk_id {
+                if current + 1 < state.rlm.chunks.len() {
+                    state.rlm.selected_chunk_id = Some(current + 1);
+                }
+            } else if !state.rlm.chunks.is_empty() {
+                state.rlm.selected_chunk_id = Some(0);
+            }
+            true
+        }
+        "r" | "R" => {
+            // Restart trace playback
+            reset_and_restart_trace(state);
+            true
+        }
+        " " => {
+            // Toggle playback (space key)
+            if state.rlm.connection_status == RlmConnectionStatus::Streaming {
+                state.rlm.connection_status = RlmConnectionStatus::Idle;
+                state.rlm.demo_mode = false;
+                state.rlm.auto_restart = false;
+            } else {
+                reset_and_restart_trace(state);
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Handle scroll events for Inspector panes
+pub(crate) fn handle_rlm_scroll(state: &mut AppState, x: f32, y: f32, delta_y: f32) -> bool {
+    let point = Point::new(x, y);
+    let scroll_amount = delta_y * 20.0; // Scroll sensitivity
+
+    // Excerpt pane scroll
+    if state.rlm.excerpt_bounds.contains(point) {
+        state.rlm.excerpt_scroll = (state.rlm.excerpt_scroll + scroll_amount).max(0.0);
+        return true;
+    }
+
+    // Findings pane scroll
+    if state.rlm.findings_bounds.contains(point) {
+        state.rlm.findings_scroll = (state.rlm.findings_scroll + scroll_amount).max(0.0);
+        return true;
+    }
+
+    // Answer pane scroll
+    if state.rlm.answer_bounds.contains(point) {
+        state.rlm.answer_scroll = (state.rlm.answer_scroll + scroll_amount).max(0.0);
         return true;
     }
 

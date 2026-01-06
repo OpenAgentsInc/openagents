@@ -76,6 +76,30 @@ Issues are NOT done unless:
 2. Code actually works (tested)
 3. SDK integrations are real, not stubbed
 
+## Onyx Deployment (macOS)
+
+Build and install Onyx.app to /Applications:
+
+```bash
+# Full build, bundle, sign, and install in one command
+./script/bundle-mac --sign --install
+xattr -cr /Applications/Onyx.app  # Clear quarantine
+open /Applications/Onyx.app
+```
+
+**Quick rebuild after code changes:**
+```bash
+./script/bundle-mac --sign --install && open /Applications/Onyx.app
+```
+
+**Prerequisites:**
+- `cargo install cargo-bundle --git https://github.com/zed-industries/cargo-bundle.git --branch zed-deploy`
+- App icons in `crates/onyx/resources/` (app-icon.png, app-icon@2x.png)
+
+**Update checking:** Cmd+Shift+U checks GitHub releases. See `crates/onyx/docs/auto-update.md`.
+
+**Voice transcription:** Hold backtick (`) to record, release to transcribe. Uses Whisper base.en model with Metal GPU.
+
 ## crates/web Deployment
 
 **ALWAYS use Cloudflare Workers, NEVER Cloudflare Pages.**

@@ -11,13 +11,24 @@ use wgpui::components::{Component, EventContext, LiveEditor, PaintContext};
 use wgpui::renderer::Renderer;
 use wgpui::text::FontStyle;
 use wgpui::{Bounds, Hsla, Point, Quad, Scene, Size, TextSystem, theme};
+
+// Voice status colors
+const VOICE_RECORDING_COLOR: Hsla = Hsla::new(0.0, 0.8, 0.5, 1.0);      // Red
+const VOICE_TRANSCRIBING_COLOR: Hsla = Hsla::new(45.0, 0.9, 0.5, 1.0);  // Orange
+const VOICE_SUCCESS_COLOR: Hsla = Hsla::new(120.0, 0.6, 0.5, 1.0);      // Green
+
+// Update status colors
+const UPDATE_CHECKING_COLOR: Hsla = Hsla::new(200.0, 0.6, 0.5, 1.0);    // Blue
+const UPDATE_AVAILABLE_COLOR: Hsla = Hsla::new(280.0, 0.6, 0.6, 1.0);   // Purple
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
-use winit::keyboard::{Key, ModifiersState, NamedKey};
+use winit::keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey};
 use winit::window::{Window, WindowId};
 
+use crate::update_checker::{self, UpdateCheckResult};
 use crate::vault::{FileEntry, Vault};
+use crate::voice::VoiceState;
 
 // Layout constants
 const SIDEBAR_WIDTH: f32 = 200.0;
@@ -203,6 +214,10 @@ pub struct RenderState {
 
     // Editor
     pub editor: LiveEditor,
+
+    // Voice transcription
+    pub voice: Option<VoiceState>,
+    voice_loading_shown: bool,
 }
 
 impl RenderState {
@@ -316,6 +331,53 @@ impl RenderState {
         if let Some(file) = self.sidebar.files.get(new_index) {
             let path = file.path.clone();
             self.open_file(path);
+        }
+    }
+
+    fn check_for_updates(&mut self) {
+        self.editor.set_status("Checking for updates...", UPDATE_CHECKING_COLOR);
+
+        // Create a tokio runtime to run the async check
+        let rt = match tokio::runtime::Runtime::new() {
+            Ok(rt) => rt,
+            Err(e) => {
+                self.editor.set_status(&format!("Update check failed: {}", e), VOICE_RECORDING_COLOR);
+                return;
+            }
+        };
+
+        let result = rt.block_on(update_checker::check_for_updates());
+
+        match result {
+            UpdateCheckResult::UpToDate => {
+                self.editor.set_status(
+                    &format!("Onyx {} is up to date", update_checker::CURRENT_VERSION),
+                    VOICE_SUCCESS_COLOR,
+                );
+            }
+            UpdateCheckResult::UpdateAvailable { version, url, release_name } => {
+                let name = release_name.as_deref().unwrap_or(version.as_str());
+                self.editor.set_status(
+                    &format!("Update available: {} - visit github.com/OpenAgentsInc/openagents/releases", name),
+                    UPDATE_AVAILABLE_COLOR,
+                );
+                // Try to open the release URL in the browser
+                #[cfg(target_os = "macos")]
+                {
+                    let _ = std::process::Command::new("open").arg(&url).spawn();
+                }
+                #[cfg(target_os = "linux")]
+                {
+                    let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    let _ = std::process::Command::new("cmd").args(["/c", "start", &url]).spawn();
+                }
+            }
+            UpdateCheckResult::Error(e) => {
+                self.editor.set_status(&format!("Update check failed: {}", e), VOICE_RECORDING_COLOR);
+            }
         }
     }
 }
@@ -438,6 +500,30 @@ impl ApplicationHandler for OnyxApp {
             let mut editor = LiveEditor::new(&initial_content).with_id(1);
             editor.focus();
 
+            // Initialize voice transcription
+            let voice = match VoiceState::new() {
+                Ok(v) => {
+                    tracing::info!("Voice transcription initialized");
+                    Some(v)
+                }
+                Err(e) => {
+                    tracing::warn!("Voice transcription unavailable: {}", e);
+                    None
+                }
+            };
+
+            // Show loading status if voice is initializing
+            let voice_loading_shown = if let Some(ref v) = voice {
+                if v.is_loading() {
+                    editor.set_status("Loading voice model...", VOICE_TRANSCRIBING_COLOR);
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
             RenderState {
                 window,
                 surface,
@@ -456,6 +542,8 @@ impl ApplicationHandler for OnyxApp {
                 current_file,
                 last_saved_content,
                 editor,
+                voice,
+                voice_loading_shown,
             }
         });
 
@@ -492,6 +580,52 @@ impl ApplicationHandler for OnyxApp {
             }
 
             WindowEvent::KeyboardInput { event, .. } => {
+                // Handle backtick (`) for voice transcription (hold to record, release to transcribe)
+                // Backtick is the key below Escape - single key, no modifiers needed
+                let is_voice_key = matches!(
+                    event.physical_key,
+                    PhysicalKey::Code(KeyCode::Backquote)
+                );
+
+                if is_voice_key {
+                    tracing::info!("Voice key detected: {:?} state={:?}", event.physical_key, event.state);
+                    if let Some(voice) = &mut state.voice {
+                        match event.state {
+                            ElementState::Pressed => {
+                                // Start recording on press
+                                if !voice.recording {
+                                    if let Err(e) = voice.start_recording() {
+                                        tracing::error!("Failed to start recording: {}", e);
+                                        state.editor.set_status(&format!("Mic error: {}", e), VOICE_RECORDING_COLOR);
+                                    } else {
+                                        state.editor.set_status("● Recording...", VOICE_RECORDING_COLOR);
+                                    }
+                                    state.window.request_redraw();
+                                }
+                            }
+                            ElementState::Released => {
+                                // Stop recording and start background transcription
+                                match voice.stop_recording() {
+                                    Ok(true) => {
+                                        // Transcription started in background
+                                        state.editor.set_status("⟳ Transcribing...", VOICE_TRANSCRIBING_COLOR);
+                                    }
+                                    Ok(false) => {
+                                        // Quick tap or no audio - discarded
+                                        state.editor.clear_status();
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Recording stop failed: {}", e);
+                                        state.editor.set_status(&format!("Error: {}", e), VOICE_RECORDING_COLOR);
+                                    }
+                                }
+                                state.window.request_redraw();
+                            }
+                        }
+                    }
+                    return;
+                }
+
                 if event.state == ElementState::Pressed {
                     // Handle Cmd+N for new file
                     if let Key::Character(c) = &event.logical_key {
@@ -508,6 +642,15 @@ impl ApplicationHandler for OnyxApp {
                             && (c == "v" || c == "V")
                         {
                             state.editor.toggle_vim_mode();
+                            state.window.request_redraw();
+                            return;
+                        }
+                        // Handle Cmd+Shift+U for update check
+                        if (state.modifiers.control_key() || state.modifiers.super_key())
+                            && state.modifiers.shift_key()
+                            && (c == "u" || c == "U")
+                        {
+                            state.check_for_updates();
                             state.window.request_redraw();
                             return;
                         }
@@ -610,6 +753,48 @@ impl ApplicationHandler for OnyxApp {
                 let physical_height = state.config.height as f32;
 
                 state.last_tick = Instant::now();
+
+                // Check voice model loading status
+                if state.voice_loading_shown {
+                    if let Some(ref voice) = state.voice {
+                        if !voice.is_loading() {
+                            // Model finished loading
+                            state.voice_loading_shown = false;
+                            if voice.is_ready() {
+                                state.editor.set_status("Voice ready (` to record)", VOICE_SUCCESS_COLOR);
+                            } else if let Some(msg) = voice.status_message() {
+                                state.editor.set_status(&msg, VOICE_RECORDING_COLOR);
+                            }
+                        }
+                    }
+                }
+
+                // Poll for transcription results from background thread
+                if let Some(ref mut voice) = state.voice {
+                    if let Some(result) = voice.take_transcription_result() {
+                        match result {
+                            Ok(text) if !text.is_empty() => {
+                                // Show the transcribed text briefly
+                                let preview = if text.len() > 50 {
+                                    format!("\"{}...\"", &text[..47])
+                                } else {
+                                    format!("\"{}\"", text)
+                                };
+                                state.editor.set_status(&preview, VOICE_SUCCESS_COLOR);
+                                state.editor.insert_str(&text);
+                                tracing::info!("Inserted transcription: {}", text);
+                            }
+                            Ok(_) => {
+                                // Empty transcription
+                                state.editor.clear_status();
+                            }
+                            Err(e) => {
+                                tracing::error!("Transcription failed: {}", e);
+                                state.editor.set_status(&format!("Error: {}", e), VOICE_RECORDING_COLOR);
+                            }
+                        }
+                    }
+                }
 
                 // Build scene
                 let mut scene = Scene::new();

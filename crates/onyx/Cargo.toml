@@ -27,7 +27,7 @@ pollster = { workspace = true }
 web-time = "1.1.0"
 
 # Async
-tokio = { version = "1", features = ["rt", "sync", "fs"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "fs"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -42,6 +42,16 @@ chrono = "0.4"
 
 # Logging
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Update checking
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+semver = "1"
+
+# Voice transcription
+whisper-rs = { version = "0.14", features = ["metal"] }
+cpal = "0.15"
+hf-hub = "0.3"
 
 [package.metadata.bundle]
 name = "Onyx"

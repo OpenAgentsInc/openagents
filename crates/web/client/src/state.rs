@@ -454,6 +454,7 @@ pub(crate) struct RlmChunkState {
     pub(crate) section_title: Option<String>,
     pub(crate) content_preview: Option<String>,
     pub(crate) findings: Option<String>,
+    pub(crate) relevance: Option<f32>,  // 0.00-1.00 from extraction
     pub(crate) status: RlmStepStatus,
 }
 
@@ -564,6 +565,33 @@ pub(crate) struct RlmVizState {
     pub(crate) trace_start_time: u64,
     pub(crate) trace_event_idx: usize,
     pub(crate) auto_restart: bool,
+
+    // V2 UI state
+    pub(crate) selected_chunk_id: Option<usize>,  // User-selected chunk (independent of active)
+    pub(crate) playback_speed: f32,               // 0.5, 1.0, 1.5, 2.0
+    pub(crate) show_log: bool,                    // Toggle trace log panel
+
+    // Scroll offsets for Inspector panes
+    pub(crate) excerpt_scroll: f32,
+    pub(crate) findings_scroll: f32,
+    pub(crate) answer_scroll: f32,
+
+    // Button bounds for v2 UI
+    pub(crate) restart_button_bounds: Bounds,
+    pub(crate) restart_button_hovered: bool,
+    pub(crate) speed_button_bounds: Bounds,
+    pub(crate) speed_button_hovered: bool,
+
+    // Table row bounds for click detection
+    pub(crate) table_row_bounds: Vec<Bounds>,
+
+    // Chunk grid bounds for click detection
+    pub(crate) chunk_grid_bounds: Vec<Bounds>,
+
+    // Inspector pane bounds for scroll detection
+    pub(crate) excerpt_bounds: Bounds,
+    pub(crate) findings_bounds: Bounds,
+    pub(crate) answer_bounds: Bounds,
 }
 
 impl Default for RlmVizState {
@@ -619,6 +647,33 @@ impl Default for RlmVizState {
             trace_start_time: 0,
             trace_event_idx: 0,
             auto_restart: true,
+
+            // V2 UI state
+            selected_chunk_id: None,
+            playback_speed: 1.0,
+            show_log: false,
+
+            // Scroll offsets for Inspector panes
+            excerpt_scroll: 0.0,
+            findings_scroll: 0.0,
+            answer_scroll: 0.0,
+
+            // Button bounds for v2 UI
+            restart_button_bounds: Bounds::ZERO,
+            restart_button_hovered: false,
+            speed_button_bounds: Bounds::ZERO,
+            speed_button_hovered: false,
+
+            // Table row bounds for click detection
+            table_row_bounds: Vec::new(),
+
+            // Chunk grid bounds for click detection
+            chunk_grid_bounds: Vec::new(),
+
+            // Inspector pane bounds for scroll detection
+            excerpt_bounds: Bounds::ZERO,
+            findings_bounds: Bounds::ZERO,
+            answer_bounds: Bounds::ZERO,
         }
     }
 }
@@ -669,6 +724,14 @@ impl RlmVizState {
         self.timeline_events.clear();
         self.timeline_position = 0.0;
         self.error = None;
+
+        // V2 UI state
+        self.selected_chunk_id = None;
+        self.excerpt_scroll = 0.0;
+        self.findings_scroll = 0.0;
+        self.answer_scroll = 0.0;
+        self.table_row_bounds.clear();
+        self.chunk_grid_bounds.clear();
     }
 
     pub(crate) fn phase_label(&self) -> &'static str {
