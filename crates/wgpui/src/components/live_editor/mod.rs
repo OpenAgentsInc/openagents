@@ -588,15 +588,15 @@ impl Component for LiveEditor {
             }
         }
 
-        // Cursor - center vertically within line height, use font_size for height
+        // Cursor
         if self.focused {
             let cursor_y = self.line_y(self.cursor.line, &bounds);
             let cursor_x = text_x + self.cursor.column as f32 * self.mono_char_width;
-            // Center cursor vertically within the line
-            let cursor_offset_y = (line_height - self.style.font_size) / 2.0;
+            // Shift cursor up slightly to align with text
+            let cursor_offset_y = -2.0;
 
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(cursor_x, cursor_y + cursor_offset_y, 2.0, self.style.font_size))
+                Quad::new(Bounds::new(cursor_x, cursor_y + cursor_offset_y, 2.0, line_height))
                     .with_background(self.style.cursor_color),
             );
         }
