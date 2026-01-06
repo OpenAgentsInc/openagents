@@ -42,3 +42,18 @@ chrono = "0.4"
 
 # Logging
 tracing = "0.1"
+
+[package.metadata.bundle]
+name = "Onyx"
+identifier = "com.openagents.onyx"
+icon = ["resources/app-icon@2x.png", "resources/app-icon.png"]
+version = "0.1.0"
+copyright = "Copyright 2024-2025 OpenAgents"
+category = "public.app-category.productivity"
+short_description = "Local-first Markdown note editor"
+long_description = """
+Onyx is a GPU-rendered Markdown note editor with live inline formatting,
+vim mode, and local-first storage.
+"""
+osx_minimum_system_version = "10.15"
+osx_url_schemes = ["onyx"]
