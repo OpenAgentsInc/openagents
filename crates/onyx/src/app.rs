@@ -103,10 +103,23 @@ impl FileSidebar {
                 Hsla::new(0.0, 0.0, 0.6, 1.0)
             };
 
+            // Truncate title to fit sidebar width
+            let font_size = theme::font_size::SM * 0.9;
+            let char_width = font_size * 0.6; // Approximate mono char width
+            let available_width = bounds.size.width - SIDEBAR_PADDING * 2.0;
+            let max_chars = (available_width / char_width) as usize;
+            let char_count = file.title.chars().count();
+            let display_title = if char_count > max_chars && max_chars > 3 {
+                let truncated: String = file.title.chars().take(max_chars - 3).collect();
+                format!("{}...", truncated)
+            } else {
+                file.title.clone()
+            };
+
             let text_run = cx.text.layout_styled_mono(
-                &file.title,
+                &display_title,
                 Point::new(item_bounds.origin.x + SIDEBAR_PADDING, y + 6.0),
-                theme::font_size::SM * 0.9,
+                font_size,
                 text_color,
                 FontStyle::default(),
             );
