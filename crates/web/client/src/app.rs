@@ -901,6 +901,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             }
 
+            // Handle RLM page button clicks
+            if state.view == AppView::RlmPage {
+                handle_rlm_click(&mut state, click_pos.x, click_pos.y);
+            }
+
             if state.button_bounds.contains(click_pos) {
                 if let Some(window) = web_sys::window() {
                     match state.view {
@@ -919,30 +924,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                             track_cta_click("github_connect", None);
                             let _ = window.location().set_href("/api/auth/github/start");
                         }
-                        AppView::GfnPage => {
-                            // No button action on GFN page
-                        }
-                        AppView::MlVizPage => {
-                            // No button action on ML viz page
-                        }
-                        AppView::GptOssPage => {
-                            // No button action on GPT-OSS page
-                        }
-                        AppView::FmPage => {
-                            // No button action on FM Bridge page
-                        }
-                        AppView::FrlmPage => {
-                            // No button action on FRLM page
-                        }
-                        AppView::RlmPage => {
-                            // Handle RLM page clicks
-                            handle_rlm_click(&mut state, click_pos.x, click_pos.y);
-                        }
-                        AppView::Y2026Page => {
-                            // No button action on 2026 page
-                        }
-                        AppView::BrbPage => {
-                            // No button action on BRB page
+                        AppView::GfnPage | AppView::MlVizPage | AppView::GptOssPage
+                        | AppView::FmPage | AppView::FrlmPage | AppView::RlmPage
+                        | AppView::Y2026Page | AppView::BrbPage => {
+                            // No logout button action on visualization pages
                         }
                     }
                 }
