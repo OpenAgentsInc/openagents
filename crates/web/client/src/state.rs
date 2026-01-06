@@ -140,6 +140,7 @@ pub(crate) enum AppView {
     FrlmPage,
     Y2026Page,
     BrbPage,
+    RlmPage,
 }
 
 /// State for the GFN (Group Forming Networks) page
@@ -399,6 +400,227 @@ impl Default for FmVizState {
             ],
             demo_token_idx: 0,
             demo_last_tick: 0,
+        }
+    }
+}
+
+/// Connection status for RLM visualization
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub(crate) enum RlmConnectionStatus {
+    #[default]
+    Idle,
+    Connecting,
+    Streaming,
+    Complete,
+    Error,
+}
+
+/// Phase of RLM execution
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub(crate) enum RlmPhase {
+    #[default]
+    Idle,
+    StructureDiscovery,
+    Chunking,
+    Extraction,
+    Synthesis,
+    Complete,
+}
+
+/// Status of an individual RLM step
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub(crate) enum RlmStepStatus {
+    #[default]
+    Pending,
+    Processing,
+    Complete,
+    Error,
+}
+
+/// A single iteration in RLM execution
+#[derive(Clone, Debug)]
+pub(crate) struct RlmIteration {
+    pub(crate) iteration: u32,
+    pub(crate) command_type: String,
+    pub(crate) code: Option<String>,
+    pub(crate) result: Option<String>,
+    pub(crate) status: RlmStepStatus,
+}
+
+/// State of a chunk being processed
+#[derive(Clone, Debug)]
+pub(crate) struct RlmChunkState {
+    pub(crate) chunk_id: usize,
+    pub(crate) section_title: Option<String>,
+    pub(crate) content_preview: Option<String>,
+    pub(crate) findings: Option<String>,
+    pub(crate) status: RlmStepStatus,
+}
+
+/// Timeline event for replay
+#[derive(Clone, Debug)]
+pub(crate) struct RlmTimelineEvent {
+    pub(crate) timestamp_ms: u64,
+    pub(crate) event_type: String,
+    pub(crate) data: serde_json::Value,
+}
+
+/// State for the RLM (Recursive Language Model) visualization page
+pub(crate) struct RlmVizState {
+    // Frame/scroll (standard)
+    pub(crate) frame_animator: FrameAnimator,
+    pub(crate) frame_started: bool,
+    pub(crate) scroll_offset: f32,
+    pub(crate) content_bounds: Bounds,
+    pub(crate) content_height: f32,
+
+    // Connection
+    pub(crate) connection_status: RlmConnectionStatus,
+    pub(crate) run_id: Option<String>,
+
+    // Input
+    pub(crate) query_input: TextInput,
+    pub(crate) query_input_bounds: Bounds,
+    pub(crate) context_input: TextInput,
+    pub(crate) context_input_bounds: Bounds,
+    pub(crate) run_button_bounds: Bounds,
+    pub(crate) run_button_hovered: bool,
+    pub(crate) input_event_ctx: EventContext,
+    pub(crate) inputs_initialized: bool,
+
+    // Execution state
+    pub(crate) current_phase: RlmPhase,
+    pub(crate) iterations: Vec<RlmIteration>,
+    pub(crate) chunks: Vec<RlmChunkState>,
+    pub(crate) total_chunks: usize,
+    pub(crate) processed_chunks: usize,
+    pub(crate) active_chunk_id: Option<usize>,
+    pub(crate) final_answer: Option<String>,
+    pub(crate) streaming_text: String,
+
+    // Timeline
+    pub(crate) timeline_events: Vec<RlmTimelineEvent>,
+    pub(crate) timeline_position: f32,
+    pub(crate) timeline_slider_bounds: Bounds,
+    pub(crate) timeline_dragging: bool,
+
+    // Error
+    pub(crate) error: Option<String>,
+
+    // Demo mode
+    pub(crate) demo_mode: bool,
+    pub(crate) demo_phase_idx: usize,
+    pub(crate) demo_chunk_idx: usize,
+    pub(crate) demo_last_tick: u64,
+}
+
+impl Default for RlmVizState {
+    fn default() -> Self {
+        Self {
+            frame_animator: FrameAnimator::new(),
+            frame_started: false,
+            scroll_offset: 0.0,
+            content_bounds: Bounds::ZERO,
+            content_height: 0.0,
+
+            connection_status: RlmConnectionStatus::Idle,
+            run_id: None,
+
+            query_input: TextInput::new()
+                .placeholder("Enter your query...")
+                .font_size(12.0)
+                .padding(8.0, 6.0),
+            query_input_bounds: Bounds::ZERO,
+            context_input: TextInput::new()
+                .placeholder("Paste document context here...")
+                .font_size(11.0)
+                .padding(8.0, 6.0),
+            context_input_bounds: Bounds::ZERO,
+            run_button_bounds: Bounds::ZERO,
+            run_button_hovered: false,
+            input_event_ctx: EventContext::new(),
+            inputs_initialized: false,
+
+            current_phase: RlmPhase::Idle,
+            iterations: Vec::new(),
+            chunks: Vec::new(),
+            total_chunks: 0,
+            processed_chunks: 0,
+            active_chunk_id: None,
+            final_answer: None,
+            streaming_text: String::new(),
+
+            timeline_events: Vec::new(),
+            timeline_position: 0.0,
+            timeline_slider_bounds: Bounds::ZERO,
+            timeline_dragging: false,
+
+            error: None,
+
+            demo_mode: false,
+            demo_phase_idx: 0,
+            demo_chunk_idx: 0,
+            demo_last_tick: 0,
+        }
+    }
+}
+
+impl RlmVizState {
+    pub(crate) fn handle_event(&mut self, event: &InputEvent) -> EventResult {
+        let mut handled = EventResult::Ignored;
+        handled = merge_event_result(
+            handled,
+            self.query_input
+                .event(event, self.query_input_bounds, &mut self.input_event_ctx),
+        );
+        handled = merge_event_result(
+            handled,
+            self.context_input
+                .event(event, self.context_input_bounds, &mut self.input_event_ctx),
+        );
+        handled
+    }
+
+    pub(crate) fn input_focused(&self) -> bool {
+        self.query_input.is_focused() || self.context_input.is_focused()
+    }
+
+    pub(crate) fn paste_text(&mut self, text: &str) -> bool {
+        if self.query_input.is_focused() {
+            self.query_input.insert_text(text);
+            return true;
+        }
+        if self.context_input.is_focused() {
+            self.context_input.insert_text(text);
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn reset_execution(&mut self) {
+        self.connection_status = RlmConnectionStatus::Idle;
+        self.run_id = None;
+        self.current_phase = RlmPhase::Idle;
+        self.iterations.clear();
+        self.chunks.clear();
+        self.total_chunks = 0;
+        self.processed_chunks = 0;
+        self.active_chunk_id = None;
+        self.final_answer = None;
+        self.streaming_text.clear();
+        self.timeline_events.clear();
+        self.timeline_position = 0.0;
+        self.error = None;
+    }
+
+    pub(crate) fn phase_label(&self) -> &'static str {
+        match self.current_phase {
+            RlmPhase::Idle => "Ready",
+            RlmPhase::StructureDiscovery => "Structure Discovery",
+            RlmPhase::Chunking => "Chunking",
+            RlmPhase::Extraction => "Extraction",
+            RlmPhase::Synthesis => "Synthesis",
+            RlmPhase::Complete => "Complete",
         }
     }
 }
@@ -1605,6 +1827,8 @@ pub(crate) struct AppState {
     pub(crate) fm_viz: FmVizState,
     // FRLM (Fracking Apple Silicon) power comparison page state
     pub(crate) frlm: FrlmState,
+    // RLM (Recursive Language Model) visualization page state
+    pub(crate) rlm: RlmVizState,
 }
 
 impl Default for AppState {
@@ -1684,6 +1908,7 @@ impl Default for AppState {
             gptoss: GptOssVizState::default(),
             fm_viz: FmVizState::default(),
             frlm: FrlmState::default(),
+            rlm: RlmVizState::default(),
         }
     }
 }
