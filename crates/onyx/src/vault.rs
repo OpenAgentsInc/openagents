@@ -10,9 +10,7 @@ use std::time::SystemTime;
 pub struct FileEntry {
     /// Full path to the file
     pub path: PathBuf,
-    /// File name without .md extension
-    pub name: String,
-    /// Title (first line of file content)
+    /// Title (first line of file content, or filename if empty)
     pub title: String,
     /// Last modified time
     pub modified: SystemTime,
@@ -49,23 +47,22 @@ impl Vault {
 
             // Only include .md files
             if path.extension().and_then(|e| e.to_str()) == Some("md") {
-                let name = path
+                let fallback_name = path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("untitled")
                     .to_string();
 
-                // Read first line as title
+                // Read first line as title, fall back to filename
                 let title = fs::read_to_string(&path)
                     .ok()
                     .and_then(|content| content.lines().next().map(|s| s.to_string()))
-                    .unwrap_or_else(|| name.clone());
+                    .unwrap_or(fallback_name);
 
                 let modified = entry.metadata()?.modified()?;
 
                 files.push(FileEntry {
                     path,
-                    name,
                     title,
                     modified,
                 });
