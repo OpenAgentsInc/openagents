@@ -45,6 +45,12 @@ mod prompts;
 mod python_executor;
 mod subquery;
 
+// DSPy integration (optional)
+#[cfg(feature = "dspy")]
+pub mod dspy_bridge;
+#[cfg(feature = "dspy")]
+mod dspy_orchestrator;
+
 pub use chunking::{chunk_by_structure, detect_structure, Chunk, DocumentStructure, DocumentType, Section};
 pub use client::{LlmChoice, LlmClient, LlmMessage, LlmResponse, LlmUsage};
 pub use command::{Command, RunArgs};
@@ -62,3 +68,18 @@ pub use prompts::{
     SYSTEM_PROMPT,
 };
 pub use python_executor::PythonExecutor;
+
+// DSPy re-exports (optional)
+#[cfg(feature = "dspy")]
+pub use dspy_bridge::{
+    configure_dspy_lm, configure_dspy_with_lm, create_lm_for_local, create_lm_for_openrouter,
+    get_dspy_lm, example, prediction, sign, field, hashmap,
+    Example, LM, Module, Optimizable, Optimizer, Predict, Prediction, Predictor,
+    COPRO, MIPROv2, Evaluator, Signature,
+    ChatAdapter, configure, get_lm, LMResponse, LmUsage, Chat, Message, MetaSignature,
+};
+#[cfg(feature = "dspy")]
+pub use dspy_orchestrator::{
+    ChunkExtraction, DspyAnalysisResult, DspyOrchestrator, DspyOrchestratorConfig,
+    VerificationResult,
+};
