@@ -12,6 +12,51 @@ This project implements a benchmarking framework for evaluating language model m
 | `bench-harness` | Generic experiment infrastructure |
 | `bench-datasets` | Dataset loaders for benchmarks |
 | `rlm-methods` | Paper-specific method implementations |
+| `rlm` | Core engine with DSPy integration, provenance tracking, and tools |
+
+## Key Features
+
+### DSPy Integration (Feature: `dspy`)
+
+The RLM crate integrates with [dspy-rs](https://github.com/dspy-rs/dspy-rs) for declarative LLM programming:
+
+- **Provenance-first signatures** - All signatures track evidence origins via SpanRef
+- **LmRouter bridge** - Per-request LM routing with unified cost tracking
+- **Environment tools** - Repository traversal tools that return SpanRefs
+- **4-phase orchestrator** - Router → Extractor → Reducer → Verifier pipeline
+
+### Provenance Tracking
+
+Every piece of evidence can be traced to its exact source:
+
+```rust
+use rlm::SpanRef;
+
+let span = SpanRef::from_chunk(
+    chunk_id,
+    "docs/spec.md",
+    Some("abc123def"),  // Git commit
+    10, 25,             // Line range
+    500, 1200,          // Byte range
+    &content,           // For hash computation
+);
+
+// Verify content hasn't changed
+if span.verify_content(&current_content) {
+    println!("Evidence verified");
+}
+```
+
+### Environment Tools
+
+Tools for repository exploration that return provenance-tracked results:
+
+| Tool | Purpose |
+|------|---------|
+| `GrepTool` | Pattern search with SpanRef results |
+| `ReadLinesTool` | Read file ranges with provenance |
+| `ListFilesTool` | Directory traversal with metadata |
+| `SymbolsTool` | Extract code symbols (functions, classes, etc.) |
 
 ## Quick Start
 
@@ -55,10 +100,62 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### DSPy Quick Start
+
+```rust
+use rlm::{DspyOrchestrator, SpanRef, GrepTool};
+use lm_router::LmRouter;
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Set up LmRouter
+    let router = Arc::new(LmRouter::builder()
+        .add_backend(/* your backend */)
+        .build());
+
+    // 2. Create orchestrator with per-request LM
+    let orchestrator = DspyOrchestrator::with_lm_router(router.clone(), "model-name")
+        .await?
+        .with_document_path("docs/spec.md")
+        .with_commit("abc123");
+
+    // 3. Analyze a document
+    let result = orchestrator.analyze(
+        "What authentication methods are supported?",
+        &document_content
+    ).await?;
+
+    // 4. Results include provenance
+    for extraction in &result.extractions {
+        println!("Finding: {}", extraction.findings);
+        if let Some(span) = &extraction.span_ref {
+            println!("  Source: {}:{}-{}", span.path, span.start_line, span.end_line);
+        }
+    }
+
+    // 5. Use tools for additional exploration
+    let grep = GrepTool::new(repo_path);
+    let hits = grep.search("TODO", &["**/*.rs"], 20).await?;
+    for hit in hits {
+        println!("{}:{} - {}", hit.span.path, hit.span.start_line, hit.line);
+    }
+
+    Ok(())
+}
+```
+
 ## Documentation Index
 
-- [Architecture](./ARCHITECTURE.md) - Crate structure and design decisions
+### Core Documentation
+
+- [Architecture](./ARCHITECTURE.md) - Crate structure, module organization, and design decisions
 - [DSPy Integration](./DSPY.md) - DSPy (dspy-rs) for declarative LLM programming
+- [Provenance Tracking](./PROVENANCE.md) - SpanRef type for Git-aware evidence tracking
+- [Environment Tools](./TOOLS.md) - Repository traversal tools (grep, read, list, symbols)
+
+### Benchmarking Infrastructure
+
 - [LM Router](./LM_ROUTER.md) - Multi-backend LM routing
 - [Bench Harness](./BENCH_HARNESS.md) - Experiment infrastructure
 - [Datasets](./DATASETS.md) - Dataset formats and loaders
@@ -90,6 +187,45 @@ The RLM paper compares 5 methods:
 ## Primary Backend
 
 The primary LLM backend is **FM Bridge** (Apple Foundation Models). A swarm simulator is also available for testing distributed NIP-90 scenarios.
+
+## Feature Flags
+
+The `rlm` crate uses feature flags to control optional functionality:
+
+```toml
+[dependencies]
+rlm = { path = "crates/rlm" }  # Core only
+
+# With DSPy integration
+rlm = { path = "crates/rlm", features = ["dspy"] }
+```
+
+| Feature | Description |
+|---------|-------------|
+| `dspy` | DSPy integration: signatures, orchestrator, LmRouter bridge, tools |
+
+## Module Summary
+
+### Always Available
+
+| Module | Description |
+|--------|-------------|
+| `engine` | RlmEngine execution loop |
+| `client` | LlmClient trait and response types |
+| `chunking` | Structure-aware document chunking |
+| `span` | SpanRef for provenance tracking |
+| `context` | Context management |
+| `command` | Command parsing |
+| `orchestrator` | High-level analysis orchestration |
+
+### With `dspy` Feature
+
+| Module | Description |
+|--------|-------------|
+| `dspy_bridge` | Global LM config + LmRouter bridge |
+| `dspy_orchestrator` | 4-phase document analysis pipeline |
+| `signatures` | Provenance-first DSPy signatures |
+| `tools` | Environment tools (grep, read, list, symbols) |
 
 ## License
 
