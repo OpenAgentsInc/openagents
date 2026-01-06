@@ -101,9 +101,16 @@ Expected behavior:
 - Mouse wheel scrolls
 - Ctrl+S prints "Save requested!" to console
 
+### Bugfixes
+
+**Cursor alignment fix** - Cursor was getting ahead of text because:
+1. Text was rendering with proportional (sans) font but cursor position used fixed-width estimate
+2. Fixed by switching all text to mono font (`layout_styled_mono`) and caching the actual measured char width via `measure_styled_mono("M", ...)`
+3. Now cursor, selection, and mouse click positioning all use consistent mono char width
+
 ### Known Limitations (to address in future milestones)
 
-- No mouse click to position cursor (winit event not fully wired)
+- ~~No mouse click to position cursor~~ (now works!)
 - No cursor blinking animation
 - No line wrapping
 - No undo/redo (editor crate has this, not yet integrated)
