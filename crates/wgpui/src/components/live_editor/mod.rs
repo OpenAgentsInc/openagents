@@ -138,6 +138,9 @@ pub struct LiveEditor {
     // Callbacks
     on_change: Option<Box<dyn FnMut(&str)>>,
     on_save: Option<Box<dyn FnMut()>>,
+
+    // Status message (for voice transcription, etc.)
+    status_message: Option<(String, Hsla)>,
 }
 
 /// Styling options for LiveEditor
@@ -207,6 +210,7 @@ impl LiveEditor {
             vim: VimState::new(),
             on_change: None,
             on_save: None,
+            status_message: None,
         }
     }
 
@@ -296,6 +300,16 @@ impl LiveEditor {
         } else {
             None
         }
+    }
+
+    /// Set a status message to display in the status bar
+    pub fn set_status(&mut self, message: &str, color: Hsla) {
+        self.status_message = Some((message.to_string(), color));
+    }
+
+    /// Clear the status message
+    pub fn clear_status(&mut self) {
+        self.status_message = None;
     }
 
     // === Vim Key Handling ===
@@ -1339,7 +1353,8 @@ impl LiveEditor {
         self.notify_change();
     }
 
-    fn insert_str(&mut self, s: &str) {
+    /// Insert a string at the current cursor position
+    pub fn insert_str(&mut self, s: &str) {
         self.save_undo_state();
         for c in s.chars() {
             if c == '\n' {
@@ -2226,6 +2241,19 @@ impl Component for LiveEditor {
                 FontStyle::default(),
             );
             cx.scene.draw_text(mode_run);
+        }
+
+        // Status message (center-left, after vim mode)
+        if let Some((message, color)) = &self.status_message {
+            let status_msg_x = bounds.origin.x + 100.0; // After vim mode indicator
+            let status_msg_run = cx.text.layout_styled_mono(
+                message,
+                Point::new(status_msg_x, status_y),
+                self.style.font_size * 0.85,
+                *color,
+                FontStyle::default(),
+            );
+            cx.scene.draw_text(status_msg_run);
         }
 
         // Line:Col indicator (right side)
