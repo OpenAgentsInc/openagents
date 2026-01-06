@@ -674,7 +674,12 @@ impl LiveEditor {
         let content_y = y - bounds.origin.y - self.style.padding + self.scroll_offset;
         let line = ((content_y / line_height).floor() as usize).min(self.lines.len().saturating_sub(1));
 
-        let text_x = bounds.origin.x + self.style.gutter_width + self.style.padding;
+        // Center content with max width 768px (must match paint)
+        let max_content_width = 768.0;
+        let content_width = bounds.size.width.min(max_content_width);
+        let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
+        let text_x = content_x + self.style.padding;
+
         let relative_x = (x - text_x).max(0.0);
         let column = ((relative_x / self.mono_char_width).round() as usize).min(self.line_len(line));
 
@@ -896,9 +901,14 @@ impl Component for LiveEditor {
         );
 
         let line_height = self.style.font_size * self.style.line_height;
-        let text_x = bounds.origin.x + self.style.gutter_width + self.style.padding;
         let status_bar_height = 24.0;
         let visible_height = bounds.size.height - self.style.padding * 2.0 - status_bar_height;
+
+        // Center content with max width 768px
+        let max_content_width = 768.0;
+        let content_width = bounds.size.width.min(max_content_width);
+        let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
+        let text_x = content_x + self.style.padding;
 
         // Calculate visible line range
         let first_visible = (self.scroll_offset / line_height).floor() as usize;
