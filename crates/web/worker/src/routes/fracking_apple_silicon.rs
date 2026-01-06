@@ -136,6 +136,18 @@ pub async fn view_fracking_apple_silicon(_env: Env) -> Result<Response> {
             padding-left: 16px;
             color: #aaa;
         }}
+        .tweet-embed {{
+            width: 100%;
+            margin: 24px 0 32px;
+        }}
+        .twitter-tweet,
+        iframe.twitter-tweet {{
+            max-width: 100% !important;
+            width: 100% !important;
+        }}
+        iframe.twitter-tweet {{
+            display: block;
+        }}
         code {{
             background: #111;
             padding: 2px 6px;
