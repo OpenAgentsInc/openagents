@@ -1122,6 +1122,8 @@ impl Component for LiveEditor {
                             }
                             _ => {}
                         }
+                        // Reset blink timer so cursor shows immediately after movement
+                        self.cursor_blink_start = Instant::now();
                         self.ensure_cursor_visible(&bounds);
                         return EventResult::Handled;
                     }
