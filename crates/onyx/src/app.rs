@@ -244,18 +244,25 @@ impl RenderState {
 
     fn archive_current_file(&mut self) {
         if let Some(path) = self.current_file.take() {
+            // Find current index before archiving
+            let current_index = self.sidebar.files.iter().position(|f| f.path == path);
+
             // Archive the file
             if self.vault.archive_file(&path).is_ok() {
                 // Refresh file list
                 if let Ok(files) = self.vault.list_files() {
                     self.sidebar.set_files(files.clone());
 
-                    // Open another file if available
-                    if let Some(first) = files.first() {
-                        self.open_file(first.path.clone());
-                    } else {
+                    if files.is_empty() {
                         // No files left, create a new one
                         self.create_new_file();
+                    } else if let Some(idx) = current_index {
+                        // Open the file at the same position (or previous if at end)
+                        let new_idx = idx.min(files.len() - 1);
+                        self.open_file(files[new_idx].path.clone());
+                    } else {
+                        // Fallback to first file
+                        self.open_file(files[0].path.clone());
                     }
                 }
             }
