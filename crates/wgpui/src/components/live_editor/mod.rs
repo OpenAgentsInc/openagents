@@ -680,8 +680,28 @@ impl LiveEditor {
         let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
         let text_x = content_x + self.style.padding;
 
+        // Check if clicked line is a header - need scaled char width
+        let char_width = if let Some(line_text) = self.lines.get(line) {
+            let mut parser = BlockParser::new();
+            // Need to parse up to this line to track code block state
+            for (i, l) in self.lines.iter().enumerate() {
+                if i == line {
+                    break;
+                }
+                parser.detect_block_type(l);
+            }
+            match parser.detect_block_type(line_text) {
+                BlockType::Header(level) => {
+                    self.mono_char_width * header_font_scale(level)
+                }
+                _ => self.mono_char_width,
+            }
+        } else {
+            self.mono_char_width
+        };
+
         let relative_x = (x - text_x).max(0.0);
-        let column = ((relative_x / self.mono_char_width).round() as usize).min(self.line_len(line));
+        let column = ((relative_x / char_width).round() as usize).min(self.line_len(line));
 
         Cursor::new(line, column)
     }
@@ -988,7 +1008,18 @@ impl Component for LiveEditor {
 
             if cursor_visible {
                 let cursor_y = self.line_y(self.cursor.line, &bounds);
-                let cursor_x = text_x + self.cursor.column as f32 * self.mono_char_width;
+
+                // Get cursor char width - scale for headers
+                let cursor_block_type = block_types.get(self.cursor.line).copied().unwrap_or(BlockType::Paragraph);
+                let cursor_char_width = match cursor_block_type {
+                    BlockType::Header(level) => {
+                        let scale = header_font_scale(level);
+                        cx.text.measure_styled_mono("M", self.style.font_size * scale, FontStyle::default())
+                    }
+                    _ => self.mono_char_width,
+                };
+
+                let cursor_x = text_x + self.cursor.column as f32 * cursor_char_width;
                 // Shift cursor up slightly to align with text
                 let cursor_offset_y = -2.0;
 
