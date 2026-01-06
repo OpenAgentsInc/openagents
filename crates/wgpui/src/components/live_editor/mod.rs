@@ -84,7 +84,7 @@ impl Default for LiveEditorStyle {
             background: theme::bg::APP,
             text_color: theme::text::PRIMARY,
             cursor_color: theme::accent::PRIMARY,
-            selection_color: Hsla::new(210.0, 0.6, 0.4, 0.3),
+            selection_color: Hsla::new(210.0, 0.6, 0.5, 0.5),
             line_number_color: Hsla::new(0.0, 0.0, 0.18, 1.0), // Very dark gray
             font_size: theme::font_size::SM,
             line_height: 1.5,
