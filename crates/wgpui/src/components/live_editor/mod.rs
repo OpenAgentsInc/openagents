@@ -3,9 +3,11 @@
 //! This is the core editor component for Onyx and can be reused across
 //! the codebase for any multi-line text editing needs.
 
+mod block;
 mod cursor;
 
 pub use cursor::{Cursor, Selection};
+use block::{BlockParser, BlockType, parse_inline, header_font_scale, strip_header_prefix, strip_list_prefix, strip_blockquote_prefix, inline_code_background};
 
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
@@ -88,7 +90,7 @@ impl Default for LiveEditorStyle {
             line_number_color: Hsla::new(0.0, 0.0, 0.18, 1.0), // Very dark gray
             font_size: theme::font_size::SM,
             line_height: 1.5,
-            gutter_width: 56.0, // More spacing after line numbers
+            gutter_width: 0.0, // No gutter - line numbers in status bar
             padding: theme::spacing::SM,
         }
     }
@@ -690,6 +692,197 @@ impl LiveEditor {
             self.scroll_offset = cursor_y + line_height - visible_height;
         }
     }
+
+    /// Render a line with markdown formatting
+    fn render_formatted_line(
+        &self,
+        line: &str,
+        block_type: BlockType,
+        x: f32,
+        y: f32,
+        _line_height: f32,
+        cx: &mut PaintContext,
+    ) {
+        let mut current_x = x;
+
+        match block_type {
+            BlockType::Header(level) => {
+                // Render header with larger font
+                let content = strip_header_prefix(line);
+                let font_size = self.style.font_size * header_font_scale(level);
+                let spans = parse_inline(content);
+
+                for span in spans {
+                    let mut style = FontStyle::default();
+                    if span.bold {
+                        style.bold = true;
+                    }
+                    if span.italic {
+                        style.italic = true;
+                    }
+
+                    let text_run = cx.text.layout_styled_mono(
+                        &span.text,
+                        Point::new(current_x, y),
+                        font_size,
+                        self.style.text_color,
+                        style,
+                    );
+                    current_x += span.text.chars().count() as f32 * (font_size * 0.6);
+                    cx.scene.draw_text(text_run);
+                }
+            }
+
+            BlockType::CodeBlock | BlockType::CodeFence => {
+                // Render code with monospace, slightly dimmed
+                let code_color = Hsla::new(0.0, 0.0, 0.7, 1.0);
+                let text_run = cx.text.layout_styled_mono(
+                    line,
+                    Point::new(x, y),
+                    self.style.font_size,
+                    code_color,
+                    FontStyle::default(),
+                );
+                cx.scene.draw_text(text_run);
+            }
+
+            BlockType::UnorderedList => {
+                // Render bullet point then content
+                let content = strip_list_prefix(line);
+                let bullet = "\u{2022} "; // bullet character
+                let bullet_run = cx.text.layout_styled_mono(
+                    bullet,
+                    Point::new(current_x, y),
+                    self.style.font_size,
+                    self.style.text_color,
+                    FontStyle::default(),
+                );
+                cx.scene.draw_text(bullet_run);
+                current_x += self.mono_char_width * 2.0;
+
+                // Render content with inline formatting
+                self.render_inline_formatted(content, current_x, y, cx);
+            }
+
+            BlockType::OrderedList => {
+                // Render number then content
+                let content = strip_list_prefix(line);
+                // Extract the number from original line
+                let num: String = line.chars().take_while(|c| c.is_ascii_digit()).collect();
+                let prefix = format!("{}. ", num);
+                let prefix_run = cx.text.layout_styled_mono(
+                    &prefix,
+                    Point::new(current_x, y),
+                    self.style.font_size,
+                    self.style.text_color,
+                    FontStyle::default(),
+                );
+                cx.scene.draw_text(prefix_run);
+                current_x += self.mono_char_width * prefix.len() as f32;
+
+                // Render content with inline formatting
+                self.render_inline_formatted(content, current_x, y, cx);
+            }
+
+            BlockType::Blockquote => {
+                // Render blockquote bar and content
+                let content = strip_blockquote_prefix(line);
+                let bar_color = Hsla::new(210.0, 0.5, 0.5, 0.7);
+
+                // Draw vertical bar
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(x, y, 3.0, self.style.font_size * self.style.line_height))
+                        .with_background(bar_color),
+                );
+
+                // Render content with italic style
+                let text_run = cx.text.layout_styled_mono(
+                    content,
+                    Point::new(x + 12.0, y),
+                    self.style.font_size,
+                    Hsla::new(0.0, 0.0, 0.7, 1.0),
+                    FontStyle::italic(),
+                );
+                cx.scene.draw_text(text_run);
+            }
+
+            BlockType::HorizontalRule => {
+                // Draw a horizontal line
+                let rule_y = y + (self.style.font_size * self.style.line_height) / 2.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(x, rule_y, 200.0, 1.0))
+                        .with_background(Hsla::new(0.0, 0.0, 0.3, 1.0)),
+                );
+            }
+
+            BlockType::Empty => {
+                // Nothing to render
+            }
+
+            BlockType::Paragraph => {
+                // Render paragraph with inline formatting
+                self.render_inline_formatted(line, x, y, cx);
+            }
+        }
+    }
+
+    /// Render text with inline formatting (bold, italic, code, etc.)
+    fn render_inline_formatted(&self, text: &str, x: f32, y: f32, cx: &mut PaintContext) {
+        let spans = parse_inline(text);
+        let mut current_x = x;
+
+        for span in spans {
+            if span.text.is_empty() {
+                continue;
+            }
+
+            if span.code {
+                // Inline code with background
+                let bg_padding = 2.0;
+                let code_width = span.text.chars().count() as f32 * self.mono_char_width;
+
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        current_x - bg_padding,
+                        y,
+                        code_width + bg_padding * 2.0,
+                        self.style.font_size * self.style.line_height,
+                    ))
+                    .with_background(inline_code_background())
+                    .with_corner_radius(3.0),
+                );
+
+                let text_run = cx.text.layout_styled_mono(
+                    &span.text,
+                    Point::new(current_x, y),
+                    self.style.font_size,
+                    Hsla::new(30.0, 0.8, 0.7, 1.0), // Orange-ish for code
+                    FontStyle::default(),
+                );
+                cx.scene.draw_text(text_run);
+                current_x += code_width;
+            } else {
+                // Regular text with bold/italic
+                let mut style = FontStyle::default();
+                if span.bold {
+                    style.bold = true;
+                }
+                if span.italic {
+                    style.italic = true;
+                }
+
+                let text_run = cx.text.layout_styled_mono(
+                    &span.text,
+                    Point::new(current_x, y),
+                    self.style.font_size,
+                    self.style.text_color,
+                    style,
+                );
+                cx.scene.draw_text(text_run);
+                current_x += span.text.chars().count() as f32 * self.mono_char_width;
+            }
+        }
+    }
 }
 
 impl Component for LiveEditor {
@@ -704,12 +897,19 @@ impl Component for LiveEditor {
 
         let line_height = self.style.font_size * self.style.line_height;
         let text_x = bounds.origin.x + self.style.gutter_width + self.style.padding;
-        let visible_height = bounds.size.height - self.style.padding * 2.0;
+        let status_bar_height = 24.0;
+        let visible_height = bounds.size.height - self.style.padding * 2.0 - status_bar_height;
 
         // Calculate visible line range
         let first_visible = (self.scroll_offset / line_height).floor() as usize;
         let visible_lines = (visible_height / line_height).ceil() as usize + 1;
         let last_visible = (first_visible + visible_lines).min(self.lines.len());
+
+        // Parse block types for all lines
+        let mut block_parser = BlockParser::new();
+        let block_types: Vec<BlockType> = self.lines.iter()
+            .map(|line| block_parser.detect_block_type(line))
+            .collect();
 
         // Render visible lines
         for line_idx in first_visible..last_visible {
@@ -720,30 +920,26 @@ impl Component for LiveEditor {
                 continue;
             }
 
-            // Line number (also mono)
-            let line_num = format!("{:>4}", line_idx + 1);
-            let gutter_x = bounds.origin.x + self.style.padding;
-            let line_num_run = cx.text.layout_styled_mono(
-                &line_num,
-                Point::new(gutter_x, y),
-                self.style.font_size,
-                self.style.line_number_color,
-                FontStyle::default(),
-            );
-            cx.scene.draw_text(line_num_run);
+            // Get line content and block type
+            let line = self.lines.get(line_idx).map(|s| s.as_str()).unwrap_or("");
+            let block_type = block_types.get(line_idx).copied().unwrap_or(BlockType::Paragraph);
+            let is_cursor_line = line_idx == self.cursor.line;
 
-            // Line content (mono font)
-            if let Some(line) = self.lines.get(line_idx) {
-                if !line.is_empty() {
-                    let text_run = cx.text.layout_styled_mono(
-                        line,
-                        Point::new(text_x, y),
-                        self.style.font_size,
-                        self.style.text_color,
-                        FontStyle::default(),
-                    );
-                    cx.scene.draw_text(text_run);
-                }
+            if line.is_empty() {
+                // Empty line, nothing to render
+            } else if is_cursor_line {
+                // Cursor line: render raw markdown
+                let text_run = cx.text.layout_styled_mono(
+                    line,
+                    Point::new(text_x, y),
+                    self.style.font_size,
+                    self.style.text_color,
+                    FontStyle::default(),
+                );
+                cx.scene.draw_text(text_run);
+            } else {
+                // Non-cursor line: render formatted markdown
+                self.render_formatted_line(line, block_type, text_x, y, line_height, cx);
             }
 
             // Selection highlight for this line
@@ -818,6 +1014,28 @@ impl Component for LiveEditor {
                     .with_corner_radius(4.0),
             );
         }
+
+        // Status bar at bottom
+        let status_bar_y = bounds.origin.y + bounds.size.height - status_bar_height;
+
+        // Status bar background
+        cx.scene.draw_quad(
+            Quad::new(Bounds::new(bounds.origin.x, status_bar_y, bounds.size.width, status_bar_height))
+                .with_background(Hsla::new(0.0, 0.0, 0.1, 1.0)),
+        );
+
+        // Line:Col indicator
+        let status_text = format!("Ln {}, Col {}", self.cursor.line + 1, self.cursor.column + 1);
+        let status_x = bounds.origin.x + bounds.size.width - 120.0;
+        let status_y = status_bar_y + 4.0;
+        let status_run = cx.text.layout_styled_mono(
+            &status_text,
+            Point::new(status_x, status_y),
+            self.style.font_size * 0.85,
+            Hsla::new(0.0, 0.0, 0.5, 1.0),
+            FontStyle::default(),
+        );
+        cx.scene.draw_text(status_run);
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
