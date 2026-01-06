@@ -12,6 +12,8 @@ pub struct FileEntry {
     pub path: PathBuf,
     /// File name without .md extension
     pub name: String,
+    /// Title (first line of file content)
+    pub title: String,
     /// Last modified time
     pub modified: SystemTime,
 }
@@ -53,11 +55,18 @@ impl Vault {
                     .unwrap_or("untitled")
                     .to_string();
 
+                // Read first line as title
+                let title = fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|content| content.lines().next().map(|s| s.to_string()))
+                    .unwrap_or_else(|| name.clone());
+
                 let modified = entry.metadata()?.modified()?;
 
                 files.push(FileEntry {
                     path,
                     name,
+                    title,
                     modified,
                 });
             }

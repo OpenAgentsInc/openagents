@@ -104,7 +104,7 @@ impl FileSidebar {
             };
 
             let text_run = cx.text.layout_styled_mono(
-                &file.name,
+                &file.title,
                 Point::new(item_bounds.origin.x + SIDEBAR_PADDING, y + 6.0),
                 theme::font_size::SM * 0.9,
                 text_color,
