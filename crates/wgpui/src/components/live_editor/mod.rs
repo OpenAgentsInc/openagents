@@ -928,11 +928,15 @@ impl Component for LiveEditor {
             if line.is_empty() {
                 // Empty line, nothing to render
             } else if is_cursor_line {
-                // Cursor line: render raw markdown
+                // Cursor line: render raw markdown but keep font size for headers
+                let font_size = match block_type {
+                    BlockType::Header(level) => self.style.font_size * header_font_scale(level),
+                    _ => self.style.font_size,
+                };
                 let text_run = cx.text.layout_styled_mono(
                     line,
                     Point::new(text_x, y),
-                    self.style.font_size,
+                    font_size,
                     self.style.text_color,
                     FontStyle::default(),
                 );
