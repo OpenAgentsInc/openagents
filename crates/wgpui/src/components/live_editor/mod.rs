@@ -569,10 +569,15 @@ impl LiveEditor {
                     NamedKey::Escape => {
                         self.vim.reset_pending();
                         self.selection = None;
-                        EventResult::Handled
                     }
-                    _ => EventResult::Ignored,
+                    NamedKey::Enter => {
+                        // Enter in normal mode moves down (like j)
+                        self.vim_move_down(1);
+                    }
+                    _ => {}
                 }
+                self.ensure_cursor_visible(bounds);
+                EventResult::Handled
             }
         }
     }
