@@ -1,0 +1,155 @@
+#!/bin/bash
+set -euo pipefail
+
+# Onyx macOS Bundle Script
+# Creates a .app bundle for distribution
+
+APP_NAME="Onyx"
+BUNDLE_ID="com.openagents.onyx"
+
+# Parse arguments
+BUILD_TYPE="release"
+SIGN_APP=false
+INSTALL_APP=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -d|--debug) BUILD_TYPE="debug"; shift ;;
+        -s|--sign) SIGN_APP=true; shift ;;
+        -i|--install) INSTALL_APP=true; shift ;;
+        -h|--help)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  -d, --debug    Build debug version"
+            echo "  -s, --sign     Sign the app with ad-hoc signature"
+            echo "  -i, --install  Install to /Applications after building"
+            echo "  -h, --help     Show this help"
+            exit 0
+            ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+echo "=== Building ${APP_NAME} (${BUILD_TYPE}) ==="
+
+# Check for cargo-bundle
+if ! cargo bundle --help &>/dev/null; then
+    echo "cargo-bundle not found. Installing..."
+    cargo install cargo-bundle --git https://github.com/zed-industries/cargo-bundle.git --branch zed-deploy
+fi
+
+# Check for app icons
+ICON_PATH="crates/onyx/resources/app-icon.png"
+if [ ! -f "$ICON_PATH" ]; then
+    echo ""
+    echo "Warning: App icon not found at $ICON_PATH"
+    echo "Creating placeholder icon..."
+
+    # Create a simple placeholder icon using sips (built into macOS)
+    mkdir -p crates/onyx/resources
+
+    # Create a 1024x1024 black image with "O" text as placeholder
+    # Using a heredoc to create a simple SVG, then convert
+    cat > /tmp/onyx-icon.svg << 'SVGEOF'
+<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" fill="#1a1a1a"/>
+  <text x="512" y="680" font-family="Helvetica" font-size="600" fill="#00ff88" text-anchor="middle">O</text>
+</svg>
+SVGEOF
+
+    # Try to convert SVG to PNG using various tools
+    if command -v rsvg-convert &>/dev/null; then
+        rsvg-convert -w 1024 -h 1024 /tmp/onyx-icon.svg > crates/onyx/resources/app-icon@2x.png
+        rsvg-convert -w 512 -h 512 /tmp/onyx-icon.svg > crates/onyx/resources/app-icon.png
+    elif command -v convert &>/dev/null; then
+        convert /tmp/onyx-icon.svg -resize 1024x1024 crates/onyx/resources/app-icon@2x.png
+        convert /tmp/onyx-icon.svg -resize 512x512 crates/onyx/resources/app-icon.png
+    else
+        echo "Warning: No SVG converter found (rsvg-convert or ImageMagick convert)"
+        echo "Please create app icons manually at:"
+        echo "  - crates/onyx/resources/app-icon.png (512x512)"
+        echo "  - crates/onyx/resources/app-icon@2x.png (1024x1024)"
+        echo ""
+        echo "Continuing without icons..."
+    fi
+    rm -f /tmp/onyx-icon.svg
+fi
+
+# Get the repo root
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Build
+echo ""
+echo "Building..."
+if [ "$BUILD_TYPE" = "release" ]; then
+    cargo build --release -p onyx
+else
+    cargo build -p onyx
+fi
+
+# Bundle (cargo-bundle must run from the crate directory)
+echo ""
+echo "Creating app bundle..."
+pushd "${REPO_ROOT}/crates/onyx" > /dev/null
+if [ "$BUILD_TYPE" = "release" ]; then
+    cargo bundle --release
+else
+    cargo bundle
+fi
+popd > /dev/null
+
+# Locate the bundle
+if [ "$BUILD_TYPE" = "release" ]; then
+    APP_PATH="target/release/bundle/osx/${APP_NAME}.app"
+else
+    APP_PATH="target/debug/bundle/osx/${APP_NAME}.app"
+fi
+
+if [ ! -d "$APP_PATH" ]; then
+    echo "Error: Bundle not found at $APP_PATH"
+    exit 1
+fi
+
+echo "Bundle created at: $APP_PATH"
+
+# Code sign
+if [ "$SIGN_APP" = true ]; then
+    echo ""
+    echo "Code signing..."
+    ENTITLEMENTS="crates/onyx/resources/onyx.entitlements"
+
+    if [ -f "$ENTITLEMENTS" ]; then
+        /usr/bin/codesign --force --deep --timestamp --options runtime \
+            --entitlements "$ENTITLEMENTS" \
+            --sign - "$APP_PATH"
+    else
+        /usr/bin/codesign --force --deep --timestamp --options runtime \
+            --sign - "$APP_PATH"
+    fi
+    echo "Signed with ad-hoc signature"
+fi
+
+# Install
+if [ "$INSTALL_APP" = true ]; then
+    echo ""
+    echo "Installing to /Applications..."
+    rm -rf "/Applications/${APP_NAME}.app"
+    cp -r "$APP_PATH" /Applications/
+    echo "Installed to /Applications/${APP_NAME}.app"
+fi
+
+echo ""
+echo "=== Done ==="
+echo ""
+echo "Bundle location: $APP_PATH"
+if [ "$INSTALL_APP" = false ]; then
+    echo ""
+    echo "To install:"
+    echo "  cp -r \"$APP_PATH\" /Applications/"
+fi
+echo ""
+echo "To run:"
+echo "  open /Applications/${APP_NAME}.app"
+echo "  # or"
+echo "  open \"$APP_PATH\""
