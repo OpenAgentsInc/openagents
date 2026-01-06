@@ -10,6 +10,7 @@ pub use cursor::{Cursor, Selection};
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::input::{Key, NamedKey};
+use crate::text::FontStyle;
 use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
 
 /// Multi-line text editor with live markdown formatting
@@ -29,6 +30,9 @@ pub struct LiveEditor {
 
     // Styling
     style: LiveEditorStyle,
+
+    // Cached mono char width (computed during paint)
+    mono_char_width: f32,
 
     // Callbacks
     on_change: Option<Box<dyn FnMut(&str)>>,
@@ -74,6 +78,10 @@ impl LiveEditor {
             content.lines().map(String::from).collect()
         };
 
+        let style = LiveEditorStyle::default();
+        // Initial estimate for mono char width (will be updated in paint)
+        let mono_char_width = style.font_size * 0.6;
+
         Self {
             id: None,
             lines,
@@ -81,7 +89,8 @@ impl LiveEditor {
             selection: None,
             focused: false,
             scroll_offset: 0.0,
-            style: LiveEditorStyle::default(),
+            style,
+            mono_char_width,
             on_change: None,
             on_save: None,
         }
@@ -470,8 +479,7 @@ impl LiveEditor {
 
         let text_x = bounds.origin.x + self.style.gutter_width + self.style.padding;
         let relative_x = (x - text_x).max(0.0);
-        let char_width = self.style.font_size * 0.6; // Approximate monospace width
-        let column = ((relative_x / char_width).round() as usize).min(self.line_len(line));
+        let column = ((relative_x / self.mono_char_width).round() as usize).min(self.line_len(line));
 
         Cursor::new(line, column)
     }
@@ -491,6 +499,9 @@ impl LiveEditor {
 
 impl Component for LiveEditor {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        // Update cached mono char width
+        self.mono_char_width = cx.text.measure_styled_mono("M", self.style.font_size, FontStyle::default());
+
         // Background
         cx.scene.draw_quad(
             Quad::new(bounds).with_background(self.style.background),
@@ -514,25 +525,27 @@ impl Component for LiveEditor {
                 continue;
             }
 
-            // Line number
+            // Line number (also mono)
             let line_num = format!("{:>4}", line_idx + 1);
             let gutter_x = bounds.origin.x + self.style.padding;
-            let line_num_run = cx.text.layout(
+            let line_num_run = cx.text.layout_styled_mono(
                 &line_num,
                 Point::new(gutter_x, y),
                 self.style.font_size,
                 self.style.line_number_color,
+                FontStyle::default(),
             );
             cx.scene.draw_text(line_num_run);
 
-            // Line content
+            // Line content (mono font)
             if let Some(line) = self.lines.get(line_idx) {
                 if !line.is_empty() {
-                    let text_run = cx.text.layout(
+                    let text_run = cx.text.layout_styled_mono(
                         line,
                         Point::new(text_x, y),
                         self.style.font_size,
                         self.style.text_color,
+                        FontStyle::default(),
                     );
                     cx.scene.draw_text(text_run);
                 }
@@ -550,9 +563,8 @@ impl Component for LiveEditor {
                         let sel_end_col = if line_idx == end.line { end.column } else { line_len };
 
                         if sel_start_col < sel_end_col {
-                            let char_width = self.style.font_size * 0.6;
-                            let sel_x = text_x + sel_start_col as f32 * char_width;
-                            let sel_width = (sel_end_col - sel_start_col) as f32 * char_width;
+                            let sel_x = text_x + sel_start_col as f32 * self.mono_char_width;
+                            let sel_width = (sel_end_col - sel_start_col) as f32 * self.mono_char_width;
 
                             cx.scene.draw_quad(
                                 Quad::new(Bounds::new(sel_x, y, sel_width, line_height))
@@ -567,8 +579,7 @@ impl Component for LiveEditor {
         // Cursor
         if self.focused {
             let cursor_y = self.line_y(self.cursor.line, &bounds);
-            let char_width = self.style.font_size * 0.6;
-            let cursor_x = text_x + self.cursor.column as f32 * char_width;
+            let cursor_x = text_x + self.cursor.column as f32 * self.mono_char_width;
 
             cx.scene.draw_quad(
                 Quad::new(Bounds::new(cursor_x, cursor_y, 2.0, line_height))
