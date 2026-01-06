@@ -17,6 +17,13 @@ const BLOG_POSTS: Record<string, BlogPostMeta> = {
     description:
       "Predictions for 2026, Reed's Law of group-forming networks, and how agent networks will pay you",
   },
+  "fracking-apple-silicon": {
+    title: "Fracking Apple Silicon",
+    episode: 201,
+    date: "January 4, 2026",
+    description:
+      "Stranded compute, compute fracking, wildcatters, and why 110M Macs matter",
+  },
   // Add future blog posts here
 };
 

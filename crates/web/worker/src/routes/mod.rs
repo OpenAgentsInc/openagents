@@ -12,6 +12,7 @@ pub mod container;
 pub mod early;
 pub mod fm;
 pub mod frlm;
+pub mod fracking_apple_silicon;
 pub mod gfn;
 pub mod gptoss;
 pub mod github_explore;
