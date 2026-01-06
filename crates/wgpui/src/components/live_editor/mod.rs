@@ -2319,7 +2319,34 @@ impl Component for LiveEditor {
             InputEvent::Scroll { dy, .. } => {
                 if self.focused {
                     let line_height = self.style.font_size * self.style.line_height;
-                    let max_scroll = (self.lines.len() as f32 * line_height - bounds.size.height + self.style.padding * 2.0).max(0.0);
+                    let status_bar_height = 24.0;
+                    let visible_height = bounds.size.height - self.style.padding * 2.0 - status_bar_height;
+
+                    // Calculate total visual rows accounting for wrapped lines
+                    let max_content_width = 768.0;
+                    let content_width = bounds.size.width.min(max_content_width);
+                    let available_text_width = content_width - self.style.padding * 2.0;
+                    let max_chars = if self.style.wrap_text {
+                        self.max_chars_per_line(available_text_width, self.mono_char_width)
+                    } else {
+                        usize::MAX
+                    };
+
+                    let mut total_visual_rows = 0;
+                    for (line_idx, line) in self.lines.iter().enumerate() {
+                        if line_idx == 1 {
+                            total_visual_rows += 1; // Title margin
+                        }
+                        let segments = if self.style.wrap_text {
+                            self.wrap_line(line, max_chars)
+                        } else {
+                            vec![(0, line.clone())]
+                        };
+                        total_visual_rows += segments.len();
+                    }
+
+                    let total_content_height = total_visual_rows as f32 * line_height;
+                    let max_scroll = (total_content_height - visible_height).max(0.0);
                     self.scroll_offset = (self.scroll_offset - dy * line_height * 3.0).clamp(0.0, max_scroll);
                     return EventResult::Handled;
                 }
