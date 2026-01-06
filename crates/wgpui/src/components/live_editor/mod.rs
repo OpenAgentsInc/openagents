@@ -236,6 +236,18 @@ impl LiveEditor {
         self.cursor.clear_preferred_column();
     }
 
+    fn move_cursor_to_document_start(&mut self) {
+        self.cursor.line = 0;
+        self.cursor.column = 0;
+        self.cursor.clear_preferred_column();
+    }
+
+    fn move_cursor_to_document_end(&mut self) {
+        self.cursor.line = self.lines.len().saturating_sub(1);
+        self.cursor.column = self.current_line_len();
+        self.cursor.clear_preferred_column();
+    }
+
     // === Text Editing ===
 
     fn insert_char(&mut self, c: char) {
@@ -576,13 +588,15 @@ impl Component for LiveEditor {
             }
         }
 
-        // Cursor
+        // Cursor - center vertically within line height, use font_size for height
         if self.focused {
             let cursor_y = self.line_y(self.cursor.line, &bounds);
             let cursor_x = text_x + self.cursor.column as f32 * self.mono_char_width;
+            // Center cursor vertically within the line
+            let cursor_offset_y = (line_height - self.style.font_size) / 2.0;
 
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(cursor_x, cursor_y, 2.0, line_height))
+                Quad::new(Bounds::new(cursor_x, cursor_y + cursor_offset_y, 2.0, self.style.font_size))
                     .with_background(self.style.cursor_color),
             );
         }
@@ -677,11 +691,19 @@ impl Component for LiveEditor {
                                     if self.selection.is_none() {
                                         self.start_selection();
                                     }
-                                    self.move_cursor_left();
+                                    if modifiers.meta {
+                                        self.move_cursor_to_line_start();
+                                    } else {
+                                        self.move_cursor_left();
+                                    }
                                     self.extend_selection();
                                 } else {
                                     self.clear_selection();
-                                    self.move_cursor_left();
+                                    if modifiers.meta {
+                                        self.move_cursor_to_line_start();
+                                    } else {
+                                        self.move_cursor_left();
+                                    }
                                 }
                             }
                             NamedKey::ArrowRight => {
@@ -689,11 +711,19 @@ impl Component for LiveEditor {
                                     if self.selection.is_none() {
                                         self.start_selection();
                                     }
-                                    self.move_cursor_right();
+                                    if modifiers.meta {
+                                        self.move_cursor_to_line_end();
+                                    } else {
+                                        self.move_cursor_right();
+                                    }
                                     self.extend_selection();
                                 } else {
                                     self.clear_selection();
-                                    self.move_cursor_right();
+                                    if modifiers.meta {
+                                        self.move_cursor_to_line_end();
+                                    } else {
+                                        self.move_cursor_right();
+                                    }
                                 }
                             }
                             NamedKey::ArrowUp => {
@@ -701,11 +731,19 @@ impl Component for LiveEditor {
                                     if self.selection.is_none() {
                                         self.start_selection();
                                     }
-                                    self.move_cursor_up();
+                                    if modifiers.meta {
+                                        self.move_cursor_to_document_start();
+                                    } else {
+                                        self.move_cursor_up();
+                                    }
                                     self.extend_selection();
                                 } else {
                                     self.clear_selection();
-                                    self.move_cursor_up();
+                                    if modifiers.meta {
+                                        self.move_cursor_to_document_start();
+                                    } else {
+                                        self.move_cursor_up();
+                                    }
                                 }
                             }
                             NamedKey::ArrowDown => {
@@ -713,11 +751,19 @@ impl Component for LiveEditor {
                                     if self.selection.is_none() {
                                         self.start_selection();
                                     }
-                                    self.move_cursor_down();
+                                    if modifiers.meta {
+                                        self.move_cursor_to_document_end();
+                                    } else {
+                                        self.move_cursor_down();
+                                    }
                                     self.extend_selection();
                                 } else {
                                     self.clear_selection();
-                                    self.move_cursor_down();
+                                    if modifiers.meta {
+                                        self.move_cursor_to_document_end();
+                                    } else {
+                                        self.move_cursor_down();
+                                    }
                                 }
                             }
                             NamedKey::Home => {
