@@ -52,7 +52,7 @@ impl ApplicationHandler for OnyxApp {
         }
 
         let window_attrs = Window::default_attributes()
-            .with_title("Onyx - Markdown Editor")
+            .with_title("Onyx")
             .with_maximized(true);
 
         let window = Arc::new(
