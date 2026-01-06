@@ -54,7 +54,9 @@ members = [
     "crates/bench-harness",
     "crates/bench-datasets",
     "crates/rlm-methods",
+    "crates/bench-runner",
     "crates/onyx",
+    "crates/vim",
 ]
 
 # Unified OpenAgents binary
