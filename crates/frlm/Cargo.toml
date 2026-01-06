@@ -4,7 +4,13 @@ version = "0.1.0"
 edition = "2024"
 description = "Federated Recursive Language Models - distributed RLM execution"
 
+[features]
+default = []
+dspy = ["dspy-rs", "rlm/dspy"]
+
 [dependencies]
+# DSPy (DSRs) for declarative LLM programming (optional)
+dspy-rs = { version = "0.7.3", optional = true }
 # Core async runtime
 tokio = { version = "1", features = ["sync", "time", "macros"] }
 async-trait = "0.1"

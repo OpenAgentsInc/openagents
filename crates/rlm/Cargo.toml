@@ -13,10 +13,15 @@ required-features = ["fm-bridge"]
 
 [features]
 default = []
+dspy = ["dspy-rs", "anyhow"]
 
 [dependencies]
 # LM Router for multi-backend routing (required)
 lm-router = { path = "../lm-router" }
+
+# DSPy (DSRs) for declarative LLM programming (optional)
+dspy-rs = { version = "0.7.3", optional = true }
+anyhow = { version = "1", optional = true }
 
 # FM Bridge for LLM inference (optional, for backwards compatibility)
 fm-bridge = { path = "../fm-bridge", optional = true }
