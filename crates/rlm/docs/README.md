@@ -58,6 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Documentation Index
 
 - [Architecture](./ARCHITECTURE.md) - Crate structure and design decisions
+- [DSPy Integration](./DSPY.md) - DSPy (dspy-rs) for declarative LLM programming
 - [LM Router](./LM_ROUTER.md) - Multi-backend LM routing
 - [Bench Harness](./BENCH_HARNESS.md) - Experiment infrastructure
 - [Datasets](./DATASETS.md) - Dataset formats and loaders
