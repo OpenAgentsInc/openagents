@@ -12,6 +12,15 @@ use crate::components::{Component, ComponentId, EventResult};
 use crate::input::{Key, NamedKey};
 use crate::text::FontStyle;
 use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
+use web_time::Instant;
+
+/// Snapshot of editor state for undo/redo
+#[derive(Clone)]
+struct EditorSnapshot {
+    lines: Vec<String>,
+    cursor: Cursor,
+    selection: Option<Selection>,
+}
 
 /// Multi-line text editor with live markdown formatting
 pub struct LiveEditor {
@@ -27,6 +36,22 @@ pub struct LiveEditor {
     // UI state
     focused: bool,
     scroll_offset: f32,
+
+    // Cursor blink
+    cursor_blink_start: Instant,
+
+    // Mouse drag selection
+    is_dragging: bool,
+    drag_start_pos: Option<Cursor>,
+
+    // Click detection for double/triple click
+    last_click_time: Instant,
+    click_count: u32,
+    last_click_pos: (f32, f32),
+
+    // Undo/redo
+    undo_stack: Vec<EditorSnapshot>,
+    redo_stack: Vec<EditorSnapshot>,
 
     // Styling
     style: LiveEditorStyle,
@@ -81,6 +106,7 @@ impl LiveEditor {
         let style = LiveEditorStyle::default();
         // Initial estimate for mono char width (will be updated in paint)
         let mono_char_width = style.font_size * 0.6;
+        let now = Instant::now();
 
         Self {
             id: None,
@@ -89,6 +115,14 @@ impl LiveEditor {
             selection: None,
             focused: false,
             scroll_offset: 0.0,
+            cursor_blink_start: now,
+            is_dragging: false,
+            drag_start_pos: None,
+            last_click_time: now,
+            click_count: 0,
+            last_click_pos: (0.0, 0.0),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
             style,
             mono_char_width,
             on_change: None,
@@ -248,10 +282,119 @@ impl LiveEditor {
         self.cursor.clear_preferred_column();
     }
 
+    fn move_cursor_page_up(&mut self, visible_lines: usize) {
+        let jump = visible_lines.saturating_sub(2).max(1);
+        self.cursor.line = self.cursor.line.saturating_sub(jump);
+        self.cursor.column = self.cursor.column.min(self.current_line_len());
+    }
+
+    fn move_cursor_page_down(&mut self, visible_lines: usize) {
+        let jump = visible_lines.saturating_sub(2).max(1);
+        self.cursor.line = (self.cursor.line + jump).min(self.lines.len().saturating_sub(1));
+        self.cursor.column = self.cursor.column.min(self.current_line_len());
+    }
+
+    // === Word/Line Selection ===
+
+    fn select_word_at_cursor(&mut self) {
+        let line = match self.lines.get(self.cursor.line) {
+            Some(l) => l,
+            None => return,
+        };
+
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() {
+            return;
+        }
+
+        let col = self.cursor.column.min(chars.len().saturating_sub(1));
+
+        // Find word boundaries
+        let mut start = col;
+        while start > 0 && chars[start - 1].is_alphanumeric() {
+            start -= 1;
+        }
+
+        let mut end = col;
+        while end < chars.len() && chars[end].is_alphanumeric() {
+            end += 1;
+        }
+
+        // If we're not on a word, select at least one character
+        if start == end && end < chars.len() {
+            end += 1;
+        }
+
+        let start_cursor = Cursor::new(self.cursor.line, start);
+        let end_cursor = Cursor::new(self.cursor.line, end);
+        self.selection = Some(Selection::new(start_cursor, end_cursor));
+        self.cursor = end_cursor;
+    }
+
+    fn select_line_at_cursor(&mut self) {
+        let line_len = self.current_line_len();
+        let start_cursor = Cursor::new(self.cursor.line, 0);
+        let end_cursor = Cursor::new(self.cursor.line, line_len);
+        self.selection = Some(Selection::new(start_cursor, end_cursor));
+        self.cursor = end_cursor;
+    }
+
+    // === Undo/Redo ===
+
+    fn save_undo_state(&mut self) {
+        let snapshot = EditorSnapshot {
+            lines: self.lines.clone(),
+            cursor: self.cursor,
+            selection: self.selection,
+        };
+        self.undo_stack.push(snapshot);
+        // Clear redo stack on new edit
+        self.redo_stack.clear();
+        // Limit undo stack size
+        if self.undo_stack.len() > 100 {
+            self.undo_stack.remove(0);
+        }
+    }
+
+    fn undo(&mut self) {
+        if let Some(snapshot) = self.undo_stack.pop() {
+            // Save current state to redo stack
+            let current = EditorSnapshot {
+                lines: self.lines.clone(),
+                cursor: self.cursor,
+                selection: self.selection,
+            };
+            self.redo_stack.push(current);
+
+            // Restore previous state
+            self.lines = snapshot.lines;
+            self.cursor = snapshot.cursor;
+            self.selection = snapshot.selection;
+        }
+    }
+
+    fn redo(&mut self) {
+        if let Some(snapshot) = self.redo_stack.pop() {
+            // Save current state to undo stack
+            let current = EditorSnapshot {
+                lines: self.lines.clone(),
+                cursor: self.cursor,
+                selection: self.selection,
+            };
+            self.undo_stack.push(current);
+
+            // Restore redo state
+            self.lines = snapshot.lines;
+            self.cursor = snapshot.cursor;
+            self.selection = snapshot.selection;
+        }
+    }
+
     // === Text Editing ===
 
     fn insert_char(&mut self, c: char) {
-        self.delete_selection();
+        self.save_undo_state();
+        self.delete_selection_internal();
         if let Some(line) = self.lines.get_mut(self.cursor.line) {
             let byte_idx = line
                 .char_indices()
@@ -260,21 +403,45 @@ impl LiveEditor {
             line.insert(byte_idx, c);
             self.cursor.column += 1;
         }
+        self.cursor_blink_start = Instant::now();
         self.notify_change();
     }
 
     fn insert_str(&mut self, s: &str) {
+        self.save_undo_state();
         for c in s.chars() {
             if c == '\n' {
-                self.insert_newline();
+                self.insert_newline_internal();
             } else {
-                self.insert_char(c);
+                self.insert_char_internal(c);
             }
+        }
+        self.cursor_blink_start = Instant::now();
+        self.notify_change();
+    }
+
+    // Internal methods that don't save undo state (for batched operations)
+    fn insert_char_internal(&mut self, c: char) {
+        self.delete_selection_internal();
+        if let Some(line) = self.lines.get_mut(self.cursor.line) {
+            let byte_idx = line
+                .char_indices()
+                .nth(self.cursor.column)
+                .map_or(line.len(), |(i, _)| i);
+            line.insert(byte_idx, c);
+            self.cursor.column += 1;
         }
     }
 
     fn insert_newline(&mut self) {
-        self.delete_selection();
+        self.save_undo_state();
+        self.insert_newline_internal();
+        self.cursor_blink_start = Instant::now();
+        self.notify_change();
+    }
+
+    fn insert_newline_internal(&mut self) {
+        self.delete_selection_internal();
         if let Some(line) = self.lines.get_mut(self.cursor.line) {
             let byte_idx = line
                 .char_indices()
@@ -285,7 +452,6 @@ impl LiveEditor {
             self.cursor.line += 1;
             self.cursor.column = 0;
         }
-        self.notify_change();
     }
 
     fn delete_backward(&mut self) {
@@ -293,6 +459,7 @@ impl LiveEditor {
             return;
         }
 
+        self.save_undo_state();
         if self.cursor.column > 0 {
             if let Some(line) = self.lines.get_mut(self.cursor.line) {
                 let byte_idx = line
@@ -306,6 +473,7 @@ impl LiveEditor {
                 line.replace_range(byte_idx..next_byte_idx, "");
                 self.cursor.column -= 1;
             }
+            self.cursor_blink_start = Instant::now();
             self.notify_change();
         } else if self.cursor.line > 0 {
             // Merge with previous line
@@ -315,6 +483,7 @@ impl LiveEditor {
             if let Some(line) = self.lines.get_mut(self.cursor.line) {
                 line.push_str(&current_line);
             }
+            self.cursor_blink_start = Instant::now();
             self.notify_change();
         }
     }
@@ -324,6 +493,7 @@ impl LiveEditor {
             return;
         }
 
+        self.save_undo_state();
         let line_len = self.current_line_len();
         if self.cursor.column < line_len {
             if let Some(line) = self.lines.get_mut(self.cursor.line) {
@@ -337,6 +507,7 @@ impl LiveEditor {
                     .map_or(line.len(), |(i, _)| i);
                 line.replace_range(byte_idx..next_byte_idx, "");
             }
+            self.cursor_blink_start = Instant::now();
             self.notify_change();
         } else if self.cursor.line < self.lines.len() - 1 {
             // Merge with next line
@@ -344,6 +515,7 @@ impl LiveEditor {
             if let Some(line) = self.lines.get_mut(self.cursor.line) {
                 line.push_str(&next_line);
             }
+            self.cursor_blink_start = Instant::now();
             self.notify_change();
         }
     }
@@ -377,6 +549,18 @@ impl LiveEditor {
     }
 
     fn delete_selection(&mut self) -> bool {
+        if self.selection.is_none() || self.selection.as_ref().is_some_and(|s| s.is_empty()) {
+            return false;
+        }
+        self.save_undo_state();
+        self.delete_selection_internal();
+        self.cursor_blink_start = Instant::now();
+        self.notify_change();
+        true
+    }
+
+    // Internal version that doesn't save undo state
+    fn delete_selection_internal(&mut self) -> bool {
         let Some(sel) = self.selection.take() else {
             return false;
         };
@@ -423,7 +607,6 @@ impl LiveEditor {
         }
 
         self.cursor = start;
-        self.notify_change();
         true
     }
 
@@ -588,16 +771,51 @@ impl Component for LiveEditor {
             }
         }
 
-        // Cursor
+        // Cursor with blinking (500ms on, 500ms off)
         if self.focused {
-            let cursor_y = self.line_y(self.cursor.line, &bounds);
-            let cursor_x = text_x + self.cursor.column as f32 * self.mono_char_width;
-            // Shift cursor up slightly to align with text
-            let cursor_offset_y = -2.0;
+            let elapsed = self.cursor_blink_start.elapsed().as_millis();
+            let cursor_visible = (elapsed / 500) % 2 == 0;
+
+            if cursor_visible {
+                let cursor_y = self.line_y(self.cursor.line, &bounds);
+                let cursor_x = text_x + self.cursor.column as f32 * self.mono_char_width;
+                // Shift cursor up slightly to align with text
+                let cursor_offset_y = -2.0;
+
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(cursor_x, cursor_y + cursor_offset_y, 2.0, line_height))
+                        .with_background(self.style.cursor_color),
+                );
+            }
+        }
+
+        // Scrollbar
+        let total_content_height = self.lines.len() as f32 * line_height;
+        if total_content_height > visible_height {
+            let scrollbar_width = 8.0;
+            let scrollbar_x = bounds.origin.x + bounds.size.width - scrollbar_width - 2.0;
+
+            // Track
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(
+                    scrollbar_x,
+                    bounds.origin.y + self.style.padding,
+                    scrollbar_width,
+                    visible_height,
+                ))
+                .with_background(Hsla::new(0.0, 0.0, 0.3, 0.2)),
+            );
+
+            // Thumb
+            let thumb_ratio = visible_height / total_content_height;
+            let thumb_height = (visible_height * thumb_ratio).max(20.0);
+            let scroll_ratio = self.scroll_offset / (total_content_height - visible_height);
+            let thumb_y = bounds.origin.y + self.style.padding + scroll_ratio * (visible_height - thumb_height);
 
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(cursor_x, cursor_y + cursor_offset_y, 2.0, line_height))
-                    .with_background(self.style.cursor_color),
+                Quad::new(Bounds::new(scrollbar_x, thumb_y, scrollbar_width, thumb_height))
+                    .with_background(Hsla::new(0.0, 0.0, 0.5, 0.5))
+                    .with_corner_radius(4.0),
             );
         }
     }
@@ -607,15 +825,72 @@ impl Component for LiveEditor {
             InputEvent::MouseDown { button, x, y } => {
                 if *button == MouseButton::Left && bounds.contains(Point::new(*x, *y)) {
                     self.focused = true;
-                    self.cursor = self.cursor_position_from_point(*x, *y, &bounds);
-                    self.clear_selection();
+                    self.cursor_blink_start = Instant::now();
+
+                    let new_cursor = self.cursor_position_from_point(*x, *y, &bounds);
+
+                    // Detect double/triple click
+                    let now = Instant::now();
+                    let time_since_last = now.duration_since(self.last_click_time).as_millis();
+                    let distance = ((x - self.last_click_pos.0).powi(2) + (y - self.last_click_pos.1).powi(2)).sqrt();
+
+                    if time_since_last < 400 && distance < 5.0 {
+                        self.click_count += 1;
+                    } else {
+                        self.click_count = 1;
+                    }
+                    self.last_click_time = now;
+                    self.last_click_pos = (*x, *y);
+
+                    match self.click_count {
+                        1 => {
+                            // Single click - position cursor and start drag
+                            self.cursor = new_cursor;
+                            self.clear_selection();
+                            self.is_dragging = true;
+                            self.drag_start_pos = Some(new_cursor);
+                        }
+                        2 => {
+                            // Double click - select word
+                            self.cursor = new_cursor;
+                            self.select_word_at_cursor();
+                            self.is_dragging = false;
+                        }
+                        _ => {
+                            // Triple+ click - select line
+                            self.cursor = new_cursor;
+                            self.select_line_at_cursor();
+                            self.is_dragging = false;
+                            self.click_count = 3; // Cap at 3
+                        }
+                    }
+
                     if let Some(id) = self.id {
                         cx.set_focus(id);
                     }
                     return EventResult::Handled;
                 } else if self.focused {
                     self.blur();
+                    self.is_dragging = false;
                     cx.clear_focus();
+                    return EventResult::Handled;
+                }
+            }
+
+            InputEvent::MouseMove { x, y } => {
+                if self.is_dragging && self.focused {
+                    if let Some(start) = self.drag_start_pos {
+                        let new_cursor = self.cursor_position_from_point(*x, *y, &bounds);
+                        self.cursor = new_cursor;
+                        self.selection = Some(Selection::new(start, new_cursor));
+                    }
+                    return EventResult::Handled;
+                }
+            }
+
+            InputEvent::MouseUp { button, .. } => {
+                if *button == MouseButton::Left {
+                    self.is_dragging = false;
                     return EventResult::Handled;
                 }
             }
@@ -658,6 +933,21 @@ impl Component for LiveEditor {
                                 }
                                 "s" | "S" => {
                                     self.notify_save();
+                                }
+                                "z" => {
+                                    // Ctrl+Z = undo
+                                    self.undo();
+                                    self.cursor_blink_start = Instant::now();
+                                }
+                                "Z" => {
+                                    // Ctrl+Shift+Z = redo
+                                    self.redo();
+                                    self.cursor_blink_start = Instant::now();
+                                }
+                                "y" | "Y" => {
+                                    // Ctrl+Y = redo (alternative)
+                                    self.redo();
+                                    self.cursor_blink_start = Instant::now();
                                 }
                                 _ => {}
                             }
@@ -789,6 +1079,38 @@ impl Component for LiveEditor {
                                     self.clear_selection();
                                     self.move_cursor_to_line_end();
                                 }
+                            }
+                            NamedKey::PageUp => {
+                                let line_height = self.style.font_size * self.style.line_height;
+                                let visible_height = bounds.size.height - self.style.padding * 2.0;
+                                let visible_lines = (visible_height / line_height) as usize;
+                                if shift {
+                                    if self.selection.is_none() {
+                                        self.start_selection();
+                                    }
+                                    self.move_cursor_page_up(visible_lines);
+                                    self.extend_selection();
+                                } else {
+                                    self.clear_selection();
+                                    self.move_cursor_page_up(visible_lines);
+                                }
+                                self.cursor_blink_start = Instant::now();
+                            }
+                            NamedKey::PageDown => {
+                                let line_height = self.style.font_size * self.style.line_height;
+                                let visible_height = bounds.size.height - self.style.padding * 2.0;
+                                let visible_lines = (visible_height / line_height) as usize;
+                                if shift {
+                                    if self.selection.is_none() {
+                                        self.start_selection();
+                                    }
+                                    self.move_cursor_page_down(visible_lines);
+                                    self.extend_selection();
+                                } else {
+                                    self.clear_selection();
+                                    self.move_cursor_page_down(visible_lines);
+                                }
+                                self.cursor_blink_start = Instant::now();
                             }
                             NamedKey::Tab => {
                                 self.delete_selection();

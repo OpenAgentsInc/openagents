@@ -40,6 +40,7 @@ pub struct RenderState {
     #[allow(dead_code)] // Used by EventContext closures
     pub clipboard: Rc<RefCell<Option<Clipboard>>>,
     pub event_context: EventContext,
+    pub last_mouse_pos: (f32, f32),
 
     // Editor
     pub editor: LiveEditor,
@@ -177,6 +178,7 @@ Happy writing!
                 modifiers: ModifiersState::empty(),
                 clipboard,
                 event_context,
+                last_mouse_pos: (0.0, 0.0),
                 editor,
             }
         });
@@ -217,17 +219,43 @@ Happy writing!
                 }
             }
 
-            WindowEvent::MouseInput { state: button_state, button: _, .. } => {
-                if button_state == ElementState::Pressed {
-                    // For simplicity, we'll handle mouse events in a future iteration
-                }
+            WindowEvent::MouseInput { state: button_state, button, .. } => {
+                let scale_factor = state.window.scale_factor() as f32;
+                let logical_width = state.config.width as f32 / scale_factor;
+                let logical_height = state.config.height as f32 / scale_factor;
+                let bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
+
+                let wgpui_button = match button {
+                    winit::event::MouseButton::Left => wgpui::MouseButton::Left,
+                    winit::event::MouseButton::Right => wgpui::MouseButton::Right,
+                    winit::event::MouseButton::Middle => wgpui::MouseButton::Middle,
+                    _ => wgpui::MouseButton::Left,
+                };
+
+                // Get cursor position from state
+                let (x, y) = state.last_mouse_pos;
+
+                let event = if button_state == ElementState::Pressed {
+                    wgpui::InputEvent::MouseDown { button: wgpui_button, x, y }
+                } else {
+                    wgpui::InputEvent::MouseUp { button: wgpui_button, x, y }
+                };
+                state.editor.event(&event, bounds, &mut state.event_context);
+                state.window.request_redraw();
             }
 
             WindowEvent::CursorMoved { position, .. } => {
-                let scale_factor = state.window.scale_factor();
-                let _logical_x = position.x as f32 / scale_factor as f32;
-                let _logical_y = position.y as f32 / scale_factor as f32;
-                // Mouse move handling will be added later
+                let scale_factor = state.window.scale_factor() as f32;
+                let logical_x = position.x as f32 / scale_factor;
+                let logical_y = position.y as f32 / scale_factor;
+                state.last_mouse_pos = (logical_x, logical_y);
+
+                let logical_width = state.config.width as f32 / scale_factor;
+                let logical_height = state.config.height as f32 / scale_factor;
+                let bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
+
+                let event = wgpui::InputEvent::MouseMove { x: logical_x, y: logical_y };
+                state.editor.event(&event, bounds, &mut state.event_context);
             }
 
             WindowEvent::MouseWheel { delta, .. } => {
