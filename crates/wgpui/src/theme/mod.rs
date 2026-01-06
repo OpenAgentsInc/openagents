@@ -229,8 +229,8 @@ pub mod duration {
 pub mod bg {
     use crate::color::Hsla;
 
-    /// Main app background - matches `bg-background` (#0a0a0a)
-    pub const APP: Hsla = Hsla::new(0.0, 0.0, 0.039, 1.0);
+    /// Main app background (#101010)
+    pub const APP: Hsla = Hsla::new(0.0, 0.0, 0.063, 1.0);
 
     /// Surface/card background - matches `bg-card` (#1a1a1a)
     pub const SURFACE: Hsla = Hsla::new(0.0, 0.0, 0.102, 1.0);
