@@ -1,0 +1,22 @@
+[package]
+name = "rlm-methods"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Method implementations for RLM paper replication"
+
+[dependencies]
+bench-harness = { path = "../bench-harness" }
+lm-router = { path = "../lm-router" }
+rlm = { path = "../rlm" }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
