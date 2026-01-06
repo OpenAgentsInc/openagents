@@ -50,6 +50,10 @@ members = [
     "crates/pylon-desktop",
     "crates/rlm",
     "crates/frlm",
+    "crates/lm-router",
+    "crates/bench-harness",
+    "crates/bench-datasets",
+    "crates/rlm-methods",
 ]
 
 # Unified OpenAgents binary
