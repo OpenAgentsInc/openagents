@@ -45,11 +45,18 @@ mod prompts;
 mod python_executor;
 mod subquery;
 
+// Provenance tracking
+pub mod span;
+
 // DSPy integration (optional)
 #[cfg(feature = "dspy")]
 pub mod dspy_bridge;
 #[cfg(feature = "dspy")]
 mod dspy_orchestrator;
+#[cfg(feature = "dspy")]
+pub mod signatures;
+#[cfg(feature = "dspy")]
+pub mod tools;
 
 pub use chunking::{chunk_by_structure, detect_structure, Chunk, DocumentStructure, DocumentType, Section};
 pub use client::{LlmChoice, LlmClient, LlmMessage, LlmResponse, LlmUsage};
@@ -69,6 +76,9 @@ pub use prompts::{
 };
 pub use python_executor::PythonExecutor;
 
+// Provenance exports (always available)
+pub use span::{SpanRef, SpanRefBuilder};
+
 // DSPy re-exports (optional)
 #[cfg(feature = "dspy")]
 pub use dspy_bridge::{
@@ -77,9 +87,21 @@ pub use dspy_bridge::{
     Example, LM, Module, Optimizable, Optimizer, Predict, Prediction, Predictor,
     COPRO, MIPROv2, Evaluator, Signature,
     ChatAdapter, configure, get_lm, LMResponse, LmUsage, Chat, Message, MetaSignature,
+    // LmRouter bridge
+    LmRouterDspyBridge, LmRouterDspyConfig,
 };
 #[cfg(feature = "dspy")]
 pub use dspy_orchestrator::{
     ChunkExtraction, DspyAnalysisResult, DspyOrchestrator, DspyOrchestratorConfig,
     VerificationResult,
+};
+// Signature types are internal (the macro generates private structs)
+// Export only the helper types for parsing signature outputs
+#[cfg(feature = "dspy")]
+pub use signatures::{CandidateSpan, MissingSpanRequest};
+#[cfg(feature = "dspy")]
+pub use tools::{
+    RlmTool, ToolConfig, ToolError, ToolResult,
+    GrepTool, GrepHit, ReadLinesTool, ReadResult,
+    ListFilesTool, FileInfo, SymbolsTool, SymbolInfo, SymbolKind,
 };

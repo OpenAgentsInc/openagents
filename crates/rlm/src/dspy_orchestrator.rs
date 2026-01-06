@@ -24,11 +24,28 @@
 //! println!("Answer: {}", result.answer);
 //! println!("Confidence: {:.2}", result.confidence);
 //! ```
+//!
+//! # Per-Request LM Configuration
+//!
+//! For production use with LmRouter integration, use `with_lm()`:
+//!
+//! ```rust,ignore
+//! use rlm::dspy_bridge::LmRouterDspyBridge;
+//! use lm_router::LmRouter;
+//!
+//! let router = Arc::new(LmRouter::builder().build());
+//! let bridge = LmRouterDspyBridge::new(router, "gpt-4o-mini");
+//! let lm = bridge.create_lm().await?;
+//!
+//! let orchestrator = DspyOrchestrator::with_lm(lm);
+//! ```
 
 use crate::chunking::{chunk_by_structure, detect_structure};
 use crate::error::Result;
+use crate::span::SpanRef;
 
-use dspy_rs::{example, Example, Predict, Predictor, Signature};
+use dspy_rs::{example, Example, LM, Predict, Predictor, Signature};
+use std::sync::Arc;
 
 // ============================================================================
 // Signature Definitions (defined inline since the macro doesn't preserve `pub`)
@@ -208,6 +225,8 @@ pub struct ChunkExtraction {
     pub evidence: String,
     /// Relevance score 0-1.
     pub relevance: f32,
+    /// SpanRef for provenance tracking (optional).
+    pub span_ref: Option<SpanRef>,
 }
 
 /// Result from verification pass.
@@ -239,15 +258,25 @@ pub struct DspyOrchestrator {
     reducer: Predict,
     verifier: Predict,
     config: DspyOrchestratorConfig,
+    /// Optional per-request LM (if None, uses global configuration).
+    lm: Option<Arc<LM>>,
+    /// Path for SpanRef generation (for provenance tracking).
+    document_path: Option<String>,
+    /// Git commit for SpanRef generation.
+    commit: Option<String>,
 }
 
 impl DspyOrchestrator {
     /// Create a new orchestrator with default configuration.
+    ///
+    /// Uses the globally configured LM (via `configure_dspy_lm()`).
     pub fn new() -> Self {
         Self::with_config(DspyOrchestratorConfig::default())
     }
 
     /// Create a new orchestrator with custom configuration.
+    ///
+    /// Uses the globally configured LM (via `configure_dspy_lm()`).
     pub fn with_config(config: DspyOrchestratorConfig) -> Self {
         Self {
             router: Predict::new(RouterSignature::new()),
@@ -256,7 +285,55 @@ impl DspyOrchestrator {
             reducer: Predict::new(ReducerSignature::new()),
             verifier: Predict::new(VerifierSignature::new()),
             config,
+            lm: None,
+            document_path: None,
+            commit: None,
         }
+    }
+
+    /// Create a new orchestrator with a specific LM instance.
+    ///
+    /// This enables per-request LM configuration for production use:
+    /// - Unified cost tracking via LmRouter
+    /// - Dynamic backend selection
+    /// - Per-request model selection
+    ///
+    /// Note: The LM is stored but the current DSRs implementation
+    /// uses the global LM. Configure the global LM before calling
+    /// `analyze()` if using this constructor.
+    pub fn with_lm(lm: Arc<LM>) -> Self {
+        Self {
+            router: Predict::new(RouterSignature::new()),
+            extractor: Predict::new(ExtractorSignature::new()),
+            simple_extractor: Predict::new(SimpleExtractorSignature::new()),
+            reducer: Predict::new(ReducerSignature::new()),
+            verifier: Predict::new(VerifierSignature::new()),
+            config: DspyOrchestratorConfig::default(),
+            lm: Some(lm),
+            document_path: None,
+            commit: None,
+        }
+    }
+
+    /// Set document path for SpanRef generation.
+    ///
+    /// When set, extractions will include SpanRefs with this path.
+    pub fn with_document_path(mut self, path: impl Into<String>) -> Self {
+        self.document_path = Some(path.into());
+        self
+    }
+
+    /// Set git commit for SpanRef generation.
+    ///
+    /// When set, SpanRefs will be pinned to this commit for reproducibility.
+    pub fn with_commit(mut self, commit: impl Into<String>) -> Self {
+        self.commit = Some(commit.into());
+        self
+    }
+
+    /// Get the LM instance if one was provided.
+    pub fn lm(&self) -> Option<&Arc<LM>> {
+        self.lm.as_ref()
     }
 
     /// Main entry point for document analysis.
@@ -396,12 +473,28 @@ impl DspyOrchestrator {
                 0.5
             };
 
+            // Generate SpanRef for provenance tracking if path is set
+            let span_ref = self.document_path.as_ref().map(|path| {
+                // Use byte positions from Chunk (line numbers would require original doc)
+                SpanRef::from_chunk(
+                    chunk.id,
+                    path.clone(),
+                    self.commit.as_deref(),
+                    1, // Line number tracking requires original document
+                    1, // Would need to count newlines to get accurate line numbers
+                    chunk.start_pos as u64,
+                    chunk.end_pos as u64,
+                    &chunk.content,
+                )
+            });
+
             extractions.push(ChunkExtraction {
                 chunk_id: i,
                 section,
                 findings,
                 evidence,
                 relevance,
+                span_ref,
             });
 
             if self.config.verbose && i < 3 {
@@ -576,5 +669,41 @@ mod tests {
         let _orchestrator = DspyOrchestrator::new();
         let _orchestrator_with_config =
             DspyOrchestrator::with_config(DspyOrchestratorConfig::default());
+    }
+
+    #[test]
+    fn test_orchestrator_with_provenance() {
+        let orchestrator = DspyOrchestrator::new()
+            .with_document_path("docs/test.md")
+            .with_commit("abc123");
+
+        assert_eq!(orchestrator.document_path, Some("docs/test.md".to_string()));
+        assert_eq!(orchestrator.commit, Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn test_chunk_extraction_with_span_ref() {
+        let span = SpanRef::from_chunk(
+            0,
+            "test.md",
+            Some("abc123"),
+            1,
+            10,
+            0,
+            100,
+            "test content",
+        );
+
+        let extraction = ChunkExtraction {
+            chunk_id: 0,
+            section: "Test Section".to_string(),
+            findings: "Found something".to_string(),
+            evidence: "The evidence".to_string(),
+            relevance: 0.9,
+            span_ref: Some(span.clone()),
+        };
+
+        assert_eq!(extraction.span_ref.as_ref().unwrap().path, "test.md");
+        assert!(extraction.span_ref.as_ref().unwrap().content_hash.is_some());
     }
 }
