@@ -83,7 +83,7 @@ impl Default for LiveEditorStyle {
         Self {
             background: theme::bg::APP,
             text_color: theme::text::PRIMARY,
-            cursor_color: theme::accent::PRIMARY,
+            cursor_color: Hsla::new(0.0, 0.0, 1.0, 1.0), // White
             selection_color: Hsla::new(210.0, 0.6, 0.5, 0.5),
             line_number_color: Hsla::new(0.0, 0.0, 0.18, 1.0), // Very dark gray
             font_size: theme::font_size::SM,
@@ -783,7 +783,7 @@ impl Component for LiveEditor {
                 let cursor_offset_y = -2.0;
 
                 cx.scene.draw_quad(
-                    Quad::new(Bounds::new(cursor_x, cursor_y + cursor_offset_y, 2.0, line_height))
+                    Quad::new(Bounds::new(cursor_x, cursor_y + cursor_offset_y, 1.0, line_height))
                         .with_background(self.style.cursor_color),
                 );
             }
