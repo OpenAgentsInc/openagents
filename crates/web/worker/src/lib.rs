@@ -237,6 +237,9 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // GPT-OSS pipeline visualization page
         (Method::Get, "/gptoss") => routes::gptoss::view_gptoss(env).await,
 
+        // RLM (Recursive Language Model) visualization page
+        (Method::Get, "/rlm") => routes::rlm::view_rlm(env).await,
+
         // FM Bridge (Apple Foundation Models) visualization page
         (Method::Get, "/fm") => routes::fm::view_fm(env).await,
 

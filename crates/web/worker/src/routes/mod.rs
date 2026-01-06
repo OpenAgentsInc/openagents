@@ -15,6 +15,7 @@ pub mod frlm;
 pub mod fracking_apple_silicon;
 pub mod gfn;
 pub mod gptoss;
+pub mod rlm;
 pub mod github_explore;
 pub mod hud;
 pub mod ml_inference;

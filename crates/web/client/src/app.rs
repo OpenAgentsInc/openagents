@@ -21,7 +21,7 @@ use crate::telemetry::{TelemetryCollector, set_panic_hook, track_cta_click};
 use crate::views::{
     build_2026_page, build_brb_page, build_fm_page, build_frlm_page, build_gfn_page,
     build_gptoss_page, build_landing_page, build_ml_inference_page, build_repo_selector,
-    build_repo_view,
+    build_repo_view, build_rlm_page, handle_rlm_mouse_move, handle_rlm_click,
 };
 use crate::fs_access::{self, FileKind};
 use crate::gptoss_viz::{flush_gptoss_events, init_gptoss_viz_runtime};
@@ -95,6 +95,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         .map(|v| v.is_truthy())
         .unwrap_or(false);
 
+    // Check for RLM visualization page flag
+    let is_rlm_page = web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &"RLM_PAGE".into()).ok())
+        .map(|v| v.is_truthy())
+        .unwrap_or(false);
+
     // Check for 2026 page flag
     let is_2026_page = web_sys::window()
         .and_then(|w| js_sys::Reflect::get(&w, &"Y2026_PAGE".into()).ok())
@@ -140,6 +146,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         let mut state_guard = state.borrow_mut();
         state_guard.loading = false;
         state_guard.view = AppView::FrlmPage;
+        drop(state_guard);
+    } else if is_rlm_page {
+        let mut state_guard = state.borrow_mut();
+        state_guard.loading = false;
+        state_guard.view = AppView::RlmPage;
         drop(state_guard);
     } else if is_2026_page {
         let mut state_guard = state.borrow_mut();
@@ -396,6 +407,11 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 // Handle FRLM page bar hover
                 if state.view == AppView::FrlmPage {
                     crate::views::handle_frlm_mouse_move(&mut state, x, y);
+                }
+
+                // Handle RLM page hover
+                if state.view == AppView::RlmPage {
+                    handle_rlm_mouse_move(&mut state, x, y);
                 }
 
                 if state.view == AppView::GptOssPage {
@@ -917,6 +933,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         AppView::FrlmPage => {
                             // No button action on FRLM page
                         }
+                        AppView::RlmPage => {
+                            // Handle RLM page clicks
+                            handle_rlm_click(&mut state, click_pos.x, click_pos.y);
+                        }
                         AppView::Y2026Page => {
                             // No button action on 2026 page
                         }
@@ -1245,7 +1265,21 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
 
                 if state.frlm.content_bounds.contains(point) {
                     state.frlm.scroll_offset += delta;
-                    state.frlm.scroll_offset = state.frlm.scroll_offset.max(0.0);
+                    let max_scroll = (state.frlm.content_height - state.frlm.content_bounds.size.height).max(0.0);
+                    state.frlm.scroll_offset = state.frlm.scroll_offset.clamp(0.0, max_scroll);
+                    return;
+                }
+            }
+
+            // Handle scrolling for RLM page
+            if state.view == AppView::RlmPage {
+                let point = Point::new(event.offset_x() as f32, event.offset_y() as f32);
+                let delta = event.delta_y() as f32 * 0.5;
+
+                if state.rlm.content_bounds.contains(point) {
+                    state.rlm.scroll_offset += delta;
+                    let max_scroll = (state.rlm.content_height - state.rlm.content_bounds.size.height).max(0.0);
+                    state.rlm.scroll_offset = state.rlm.scroll_offset.clamp(0.0, max_scroll);
                     return;
                 }
             }
@@ -1649,6 +1683,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             }
             AppView::FrlmPage => {
                 build_frlm_page(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
+            }
+            AppView::RlmPage => {
+                build_rlm_page(
                     &mut scene,
                     platform.text_system(),
                     &mut state,
