@@ -241,6 +241,39 @@ impl RenderState {
             self.save_current();
         }
     }
+
+    fn navigate_file(&mut self, direction: i32) {
+        if self.sidebar.files.is_empty() {
+            return;
+        }
+
+        // Find current index
+        let current_index = self.current_file.as_ref().and_then(|current| {
+            self.sidebar.files.iter().position(|f| &f.path == current)
+        }).unwrap_or(0);
+
+        // Calculate new index
+        let new_index = if direction < 0 {
+            // Up - go to previous (earlier in list = more recent)
+            if current_index == 0 {
+                self.sidebar.files.len() - 1
+            } else {
+                current_index - 1
+            }
+        } else {
+            // Down - go to next (later in list = older)
+            if current_index >= self.sidebar.files.len() - 1 {
+                0
+            } else {
+                current_index + 1
+            }
+        };
+
+        if let Some(file) = self.sidebar.files.get(new_index) {
+            let path = file.path.clone();
+            self.open_file(path);
+        }
+    }
 }
 
 impl ApplicationHandler for OnyxApp {
@@ -342,7 +375,7 @@ impl ApplicationHandler for OnyxApp {
                 )
             } else {
                 // Create a welcome note
-                let welcome_content = "# Welcome to Onyx\n\nStart writing your notes here.\n\nPress **Ctrl+N** to create a new note.";
+                let welcome_content = "# Welcome to Onyx\n\nStart writing your notes here.\n\nPress **Cmd+N** to create a new note.\n\nUse **Cmd+Shift+Up/Down** to switch between notes.";
                 let name = vault.generate_unique_name();
                 if let Ok(path) = vault.create_file(&name) {
                     let _ = vault.write_file(&path, welcome_content);
@@ -416,7 +449,7 @@ impl ApplicationHandler for OnyxApp {
 
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
-                    // Handle Ctrl+N for new file
+                    // Handle Cmd+N for new file
                     if let Key::Character(c) = &event.logical_key {
                         if (state.modifiers.control_key() || state.modifiers.super_key())
                             && (c == "n" || c == "N")
@@ -424,6 +457,27 @@ impl ApplicationHandler for OnyxApp {
                             state.create_new_file();
                             state.window.request_redraw();
                             return;
+                        }
+                    }
+
+                    // Handle Cmd+Shift+Up/Down for file navigation
+                    if let Key::Named(named) = &event.logical_key {
+                        if (state.modifiers.control_key() || state.modifiers.super_key())
+                            && state.modifiers.shift_key()
+                        {
+                            match named {
+                                NamedKey::ArrowUp => {
+                                    state.navigate_file(-1);
+                                    state.window.request_redraw();
+                                    return;
+                                }
+                                NamedKey::ArrowDown => {
+                                    state.navigate_file(1);
+                                    state.window.request_redraw();
+                                    return;
+                                }
+                                _ => {}
+                            }
                         }
                     }
 
