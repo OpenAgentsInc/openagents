@@ -37,6 +37,7 @@ pub struct RenderState {
     pub text_system: TextSystem,
     pub last_tick: Instant,
     pub modifiers: ModifiersState,
+    #[allow(dead_code)] // Used by EventContext closures
     pub clipboard: Rc<RefCell<Option<Clipboard>>>,
     pub event_context: EventContext,
 

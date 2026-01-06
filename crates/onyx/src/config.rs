@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// User preferences for Onyx
+#[allow(dead_code)] // Scaffolding for future use
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     /// Path to the vault directory
