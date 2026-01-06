@@ -489,7 +489,8 @@ impl LiveEditor {
                         self.select_line(self.cursor.line);
                     }
 
-                    _ => return EventResult::Ignored,
+                    // Ignore all other characters in normal mode (don't insert them!)
+                    _ => {}
                 }
 
                 self.ensure_cursor_visible(bounds);
@@ -668,14 +669,15 @@ impl LiveEditor {
                         }
                     }
 
-                    _ => return EventResult::Ignored,
+                    // Ignore all other characters in visual mode (don't insert them!)
+                    _ => {}
                 }
 
                 self.ensure_cursor_visible(bounds);
                 EventResult::Handled
             }
 
-            _ => EventResult::Ignored,
+            _ => EventResult::Handled,
         }
     }
 
