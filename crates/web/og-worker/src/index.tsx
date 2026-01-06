@@ -22,7 +22,7 @@ const BLOG_POSTS: Record<string, BlogPostMeta> = {
     episode: 201,
     date: "January 5, 2026",
     description:
-      "Stranded compute, compute fracking, wildcatters, and why 110M Macs matter",
+      "We plan to connect millions of Apple silicon chips into the world's largest network for agentic compute",
   },
   // Add future blog posts here
 };
