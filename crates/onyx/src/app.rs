@@ -234,6 +234,8 @@ impl RenderState {
             }
             // Open the new file
             self.open_file(path);
+            // Select the title so user can immediately type to replace it
+            self.editor.select_line(0);
         }
     }
 
