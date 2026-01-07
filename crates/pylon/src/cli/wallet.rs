@@ -1,20 +1,20 @@
-//! Neobank CLI commands
+//! Wallet CLI commands
 //!
-//! Commands for managing multi-currency treasury via neobank.
+//! Commands for managing Cashu ecash wallet.
 
 use crate::daemon::{ControlClient, DaemonResponse};
 use clap::{Parser, Subcommand};
 
-/// Neobank treasury management commands
+/// Wallet management commands
 #[derive(Parser)]
-pub struct NeobankArgs {
+pub struct WalletArgs {
     #[command(subcommand)]
-    pub command: NeobankCommand,
+    pub command: WalletCommand,
 }
 
-/// Available neobank commands
+/// Available wallet commands
 #[derive(Subcommand)]
-pub enum NeobankCommand {
+pub enum WalletCommand {
     /// Check wallet balance
     Balance {
         /// Currency to check (btc or usd)
@@ -43,8 +43,8 @@ pub enum NeobankCommand {
     },
 }
 
-/// Execute a neobank command
-pub async fn run(args: NeobankArgs) -> anyhow::Result<()> {
+/// Execute a wallet command
+pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
     let socket_path = crate::socket_path()?;
 
     if !socket_path.exists() {
@@ -55,7 +55,7 @@ pub async fn run(args: NeobankArgs) -> anyhow::Result<()> {
     let client = ControlClient::new(socket_path);
 
     match args.command {
-        NeobankCommand::Balance { currency } => match client.neobank_balance(&currency)? {
+        WalletCommand::Balance { currency } => match client.neobank_balance(&currency)? {
             DaemonResponse::NeobankBalance { sats } => {
                 let currency_upper = currency.to_uppercase();
                 if currency_upper == "BTC" {
@@ -75,15 +75,15 @@ pub async fn run(args: NeobankArgs) -> anyhow::Result<()> {
                 println!("Unexpected response from daemon");
             }
         },
-        NeobankCommand::Status => match client.neobank_status()? {
+        WalletCommand::Status => match client.neobank_status()? {
             DaemonResponse::NeobankStatus {
                 btc_balance_sats,
                 usd_balance_cents,
                 treasury_active,
                 btc_usd_rate,
             } => {
-                println!("Neobank Treasury Status");
-                println!("=======================");
+                println!("Wallet Status");
+                println!("=============");
                 println!();
                 println!(
                     "BTC Balance: {} sats ({:.8} BTC)",
@@ -115,7 +115,7 @@ pub async fn run(args: NeobankArgs) -> anyhow::Result<()> {
                 println!("Unexpected response from daemon");
             }
         },
-        NeobankCommand::Pay { bolt11 } => {
+        WalletCommand::Pay { bolt11 } => {
             println!("Paying invoice...");
             match client.neobank_pay(&bolt11)? {
                 DaemonResponse::NeobankPayment { preimage } => {
@@ -130,7 +130,7 @@ pub async fn run(args: NeobankArgs) -> anyhow::Result<()> {
                 }
             }
         }
-        NeobankCommand::Send { amount, currency } => {
+        WalletCommand::Send { amount, currency } => {
             println!("Sending {} sats ({})...", amount, currency.to_uppercase());
             match client.neobank_send(amount, &currency)? {
                 DaemonResponse::NeobankSend { token } => {
@@ -147,7 +147,7 @@ pub async fn run(args: NeobankArgs) -> anyhow::Result<()> {
                 }
             }
         }
-        NeobankCommand::Receive { token } => {
+        WalletCommand::Receive { token } => {
             println!("Receiving tokens...");
             match client.neobank_receive(&token)? {
                 DaemonResponse::NeobankReceive { amount_sats } => {

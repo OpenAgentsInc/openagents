@@ -8,10 +8,10 @@ mod doctor;
 mod earnings;
 mod infer;
 mod init;
-mod neobank;
 mod start;
 mod status;
 mod stop;
+mod wallet;
 
 use clap::{Parser, Subcommand};
 
@@ -49,8 +49,8 @@ pub enum Commands {
     Compute(compute::ComputeArgs),
     /// Connect a Claude tunnel session
     Connect(connect::ConnectArgs),
-    /// Manage neobank treasury
-    Neobank(neobank::NeobankArgs),
+    /// Manage wallet (Cashu ecash)
+    Wallet(wallet::WalletArgs),
 }
 
 /// Execute a CLI command
@@ -67,6 +67,6 @@ pub async fn execute(cli: PylonCli) -> anyhow::Result<()> {
         Commands::Infer(args) => infer::run(args).await,
         Commands::Compute(args) => compute::run(args).await,
         Commands::Connect(args) => connect::run(args).await,
-        Commands::Neobank(args) => neobank::run(args).await,
+        Commands::Wallet(args) => wallet::run(args).await,
     }
 }
