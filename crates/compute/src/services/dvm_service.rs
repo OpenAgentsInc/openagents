@@ -17,7 +17,7 @@ use nostr::nip90::{
     JobFeedback, JobStatus, KIND_JOB_CODE_REVIEW, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX,
     KIND_JOB_SANDBOX_RUN, create_job_feedback_event,
 };
-use spark::{PaymentDetails, PaymentStatus, SparkWallet};
+use spark::{Payment, PaymentDetails, PaymentStatus, PaymentType, SparkWallet};
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
@@ -44,6 +44,36 @@ pub const SUPPORTED_KINDS: &[u16] = &[
     KIND_JOB_PATCH_GEN,       // 5932
     KIND_JOB_CODE_REVIEW,     // 5933
 ];
+
+fn job_targets_pubkey(event: &nostr::Event, pubkey: &str) -> bool {
+    let tagged_pubkeys: Vec<&str> = event
+        .tags
+        .iter()
+        .filter(|tag| tag.len() >= 2 && tag[0] == "p")
+        .map(|tag| tag[1].as_str())
+        .collect();
+
+    if tagged_pubkeys.is_empty() {
+        return true;
+    }
+
+    tagged_pubkeys.iter().any(|tagged| *tagged == pubkey)
+}
+
+fn payment_matches_invoice(payment: &Payment, invoice: &str) -> bool {
+    match &payment.details {
+        Some(PaymentDetails::Lightning { invoice: inv, .. }) => inv == invoice,
+        Some(PaymentDetails::Spark { invoice_details, .. }) => invoice_details
+            .as_ref()
+            .map(|details| details.invoice == invoice)
+            .unwrap_or(false),
+        Some(PaymentDetails::Token { invoice_details, .. }) => invoice_details
+            .as_ref()
+            .map(|details| details.invoice == invoice)
+            .unwrap_or(false),
+        _ => false,
+    }
+}
 
 /// Errors from the DVM service
 #[derive(Debug, Error)]
@@ -272,6 +302,7 @@ impl DvmService {
 
         // Spawn task to process incoming job events
         let running = self.running.clone();
+        let provider_pubkey = pubkey.clone();
         let identity_for_task = self.identity.clone();
         let relay_service = self.relay_service.clone();
         let backend_registry = self.backend_registry.clone();
@@ -294,6 +325,14 @@ impl DvmService {
                     event.id,
                     event.kind
                 );
+
+                if !job_targets_pubkey(&event, &provider_pubkey) {
+                    log::debug!(
+                        "Skipping job {} not targeted to this provider",
+                        event.id
+                    );
+                    continue;
+                }
 
                 // Parse the job request from the event
                 match nostr::JobRequest::from_event(&event) {
@@ -599,15 +638,11 @@ impl DvmService {
                             match w.list_payments(Some(50), None).await {
                                 Ok(payments) => {
                                     for payment in payments {
-                                        // Match by invoice string for reliability
-                                        let invoice_matches = match &payment.details {
-                                            Some(PaymentDetails::Lightning { invoice, .. }) => {
-                                                invoice == &bolt11
-                                            }
-                                            _ => false,
-                                        };
+                                        let invoice_matches =
+                                            payment_matches_invoice(&payment, &bolt11);
 
                                         if payment.status == PaymentStatus::Completed
+                                            && payment.payment_type == PaymentType::Receive
                                             && invoice_matches
                                         {
                                             let amount_sats = amount_msats / 1000;
@@ -970,7 +1005,7 @@ impl DvmService {
         let wallet = wallet_guard.as_ref().ok_or(DvmError::NoWalletConfigured)?;
 
         // Get the invoice for this job
-        let (_bolt11, amount_msats) = self
+        let (bolt11, _amount_msats) = self
             .pending_invoices
             .read()
             .await
@@ -985,12 +1020,11 @@ impl DvmService {
             .await
             .map_err(|e| DvmError::PaymentError(e.to_string()))?;
 
-        let amount_sats = amount_msats / 1000;
-
         for payment in payments {
-            // Check if this payment matches our amount and is completed
-            // Note: This is a simplified check. Production code should match by invoice/payment_hash.
-            if payment.status == PaymentStatus::Completed && payment.amount as u64 == amount_sats {
+            if payment.status == PaymentStatus::Completed
+                && payment.payment_type == PaymentType::Receive
+                && payment_matches_invoice(&payment, &bolt11)
+            {
                 // Payment received! Confirm and process
                 drop(wallet_guard); // Release lock before calling confirm_payment
                 self.confirm_payment(job_id).await?;

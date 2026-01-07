@@ -10,7 +10,7 @@ use tracing::{debug, info, warn};
 
 /// Default Nostr relays for the compute provider
 pub const DEFAULT_RELAYS: &[&str] = &[
-    "wss://relay.openagents.com",
+    "wss://nexus.openagents.com",
     "wss://relay.damus.io",
     "wss://nos.lol",
 ];
@@ -176,10 +176,9 @@ impl RelayService {
 
         // Build NIP-90 job request filter
         // Job requests are kinds 5000-5999 (range 5xxx)
-        // They should have a "p" tag with the provider's pubkey
+        // We subscribe broadly and filter targeted jobs in the DVM service.
         let filters = vec![serde_json::json!({
             "kinds": [5000, 5001, 5002, 5003, 5004, 5005, 5050, 5100, 5250],
-            "#p": [pubkey],
             "limit": 100
         })];
 
@@ -264,6 +263,11 @@ mod tests {
     fn test_default_relays() {
         let service = RelayService::new();
         assert_eq!(service.relay_urls().len(), 3);
+        assert!(
+            service
+                .relay_urls()
+                .contains(&"wss://nexus.openagents.com".to_string())
+        );
         assert!(
             service
                 .relay_urls()
