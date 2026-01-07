@@ -249,6 +249,9 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // The Agent Network - Episode 200 transcript
         (Method::Get, "/the-agent-network") => routes::the_agent_network::view_the_agent_network(env).await,
 
+        // Recursive Language Models - Episode 202 transcript
+        (Method::Get, "/recursive-language-models") => routes::recursive_language_models::view_recursive_language_models(env).await,
+
         // OG image proxy - forward to og-worker
         (Method::Get, path) if path.starts_with("/og/") => {
             let og_url = format!("https://openagents-og.openagents.workers.dev{}", path);

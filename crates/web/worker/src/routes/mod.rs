@@ -24,5 +24,6 @@ pub mod stripe;
 pub mod telemetry;
 pub mod tunnel;
 pub mod the_agent_network;
+pub mod recursive_language_models;
 pub mod y2026;
 // pub mod wallet;  // Moved to separate worker for size
