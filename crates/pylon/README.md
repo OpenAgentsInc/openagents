@@ -208,25 +208,24 @@ Everything is embedded:
 
 | Command | Description |
 |---------|-------------|
-| `pylon wallet balance` | Show wallet balance (Spark, Lightning, on-chain) |
+| `pylon wallet balance` | Show balance and addresses (Spark + Bitcoin) |
 | `pylon wallet status` | Show wallet status and network connectivity |
 | `pylon wallet address` | Get Spark address for receiving payments |
 | `pylon wallet invoice <amount>` | Create invoice to receive payment |
 | `pylon wallet pay <invoice>` | Pay a Lightning invoice or Spark address |
-| `pylon wallet history` | List recent payments |
+| `pylon wallet history` | List recent payments (with timestamps) |
+| `pylon wallet history --completed` | List only completed payments |
 | `pylon wallet fund` | Get regtest sats from faucet (regtest only) |
 
-The wallet uses Spark (Breez SDK) for Lightning payments. On regtest, you can get test sats via the Lightspark faucet:
+The wallet uses Spark (Breez SDK) for Lightning payments. On regtest, get test sats from the web faucet:
 
 ```bash
-# Request 100,000 sats (default)
-pylon wallet fund
+# Show your addresses
+pylon wallet balance
 
-# Request specific amount
-pylon wallet fund --amount 50000
+# Then visit https://app.lightspark.com/regtest-faucet
+# Paste your Bitcoin address (up to 50,000 sats)
 ```
-
-**Note**: The faucet may require authentication. Set `FAUCET_USERNAME` and `FAUCET_PASSWORD` environment variables if needed.
 
 See [Spark Regtest Guide](../spark/docs/REGTEST.md) for details.
 
