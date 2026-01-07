@@ -1,0 +1,13 @@
+{
+  "name": "nexus",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build:client": "cd client && wasm-pack build --target web --out-dir ../pkg",
+    "build:dist": "bun run build.ts",
+    "build:worker": "cd worker && cargo install -q worker-build && worker-build --release",
+    "build": "bun run build:client && bun run build:dist && bun run build:worker",
+    "deploy": "bun run build && cd worker && npx wrangler deploy",
+    "deploy:preview": "bun run build && cd worker && npx wrangler deploy --env preview"
+  }
+}
