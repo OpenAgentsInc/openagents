@@ -1,0 +1,41 @@
+# OpenAgents Nexus - Cloudflare Workers configuration
+# Deploy with: bun run deploy
+
+name = "nexus"
+main = "build/index.js"
+compatibility_date = "2024-12-01"
+
+# Keep workers.dev subdomain enabled
+workers_dev = true
+
+# Worker build configuration
+[build]
+command = "cargo install -q worker-build && worker-build --release"
+
+# D1 Database for persistent event storage
+[[d1_databases]]
+binding = "DB"
+database_name = "nexus"
+database_id = ""
+
+# Durable Objects for WebSocket relay
+[durable_objects]
+bindings = [
+    { name = "NEXUS_RELAY", class_name = "NexusRelay" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["NexusRelay"]
+
+# Environment variables (non-secret)
+[vars]
+RELAY_NAME = "nexus.openagents.com"
+RELAY_DESCRIPTION = "OpenAgents Nexus relay"
+RELAY_PUBKEY = ""
+SUPPORTED_NIPS = "1,11,42,89,90"
+
+# Local development settings
+[dev]
+port = 8788
+local_protocol = "http"
