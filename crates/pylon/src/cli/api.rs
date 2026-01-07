@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
+#[cfg(feature = "gpt-oss-gguf")]
 use tokio::sync::RwLock;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
@@ -30,6 +31,7 @@ pub struct ApiArgs {
 }
 
 pub async fn run(args: ApiArgs) -> anyhow::Result<()> {
+    #[allow(unused_mut)]
     let mut registry = BackendRegistry::detect().await;
 
     #[cfg(feature = "gpt-oss-gguf")]

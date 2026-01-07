@@ -49,7 +49,7 @@ pub enum Commands {
     Compute(compute::ComputeArgs),
     /// Connect a Claude tunnel session
     Connect(connect::ConnectArgs),
-    /// Manage wallet (Cashu ecash)
+    /// Manage wallet (Spark/Lightning)
     Wallet(wallet::WalletArgs),
 }
 

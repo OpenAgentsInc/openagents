@@ -127,9 +127,7 @@ You can run provider mode with various backends:
 ├── pylon.db                 # SQLite database (jobs, earnings, etc.)
 ├── pylon.pid                # Daemon process ID
 ├── control.sock             # IPC control socket
-└── neobank/
-    ├── btc_wallet.redb      # BTC Cashu wallet
-    └── usd_wallet.redb      # USD Cashu wallet (optional)
+└── spark/                   # Spark wallet data
 ```
 
 ### Core Components
@@ -206,15 +204,31 @@ Everything is embedded:
 |---------|-------------|
 | `pylon earnings` | View earnings breakdown (provider mode) |
 
-### Wallet
+### Wallet (Spark/Lightning)
 
 | Command | Description |
 |---------|-------------|
-| `pylon wallet balance --currency <btc\|usd>` | Show wallet balance |
-| `pylon wallet status` | Show wallet status |
-| `pylon wallet pay <bolt11>` | Pay a Lightning invoice |
-| `pylon wallet send <amount> --currency <btc\|usd>` | Send Cashu tokens |
-| `pylon wallet receive <token>` | Receive Cashu tokens |
+| `pylon wallet balance` | Show wallet balance (Spark, Lightning, on-chain) |
+| `pylon wallet status` | Show wallet status and network connectivity |
+| `pylon wallet address` | Get Spark address for receiving payments |
+| `pylon wallet invoice <amount>` | Create invoice to receive payment |
+| `pylon wallet pay <invoice>` | Pay a Lightning invoice or Spark address |
+| `pylon wallet history` | List recent payments |
+| `pylon wallet fund` | Get regtest sats from faucet (regtest only) |
+
+The wallet uses Spark (Breez SDK) for Lightning payments. On regtest, you can get test sats via the Lightspark faucet:
+
+```bash
+# Request 100,000 sats (default)
+pylon wallet fund
+
+# Request specific amount
+pylon wallet fund --amount 50000
+```
+
+**Note**: The faucet may require authentication. Set `FAUCET_USERNAME` and `FAUCET_PASSWORD` environment variables if needed.
+
+See [Spark Regtest Guide](../spark/docs/REGTEST.md) for details.
 
 ## Configuration
 
@@ -387,7 +401,7 @@ cargo build --release -p pylon
 - [Agent Philosophy](../agent/docs/PHILOSOPHY.md) - Why dormancy over death
 - [Agent Spawning](../agent/docs/SPAWNING.md) - Creating new agents
 - [Agent Registry](../agent/docs/REGISTRY.md) - Agent configuration storage
-- [Neobank Storage](../neobank/docs/STORAGE.md) - Cashu wallet storage
+- [Spark Regtest](../spark/docs/REGTEST.md) - Setting up regtest wallet
 - [Autopilot Sessions](../autopilot/docs/SESSIONS.md) - Session management
 
 ## Status
@@ -396,11 +410,11 @@ Pylon is under active development. Current status:
 
 - [x] Architecture design
 - [x] Provider mode (NIP-90 inference serving)
-- [x] Payment integration (Spark Lightning + Cashu via Neobank)
+- [x] Payment integration (Spark/Lightning)
 - [x] Daemon mode (background process with PID file)
-- [x] CLI commands (init, start, stop, status, doctor, agent, etc.)
+- [x] CLI commands (init, start, stop, status, doctor, agent, wallet, etc.)
 - [x] Claude tunnel integration
-- [x] Neobank treasury (Cashu ecash)
+- [x] Wallet CLI (balance, status, address, invoice, pay, history, fund)
 - [x] Configuration system
 - [ ] Host mode (full agent lifecycle management)
 - [ ] SQLite persistence
