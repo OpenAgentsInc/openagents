@@ -252,6 +252,10 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // Recursive Language Models - Episode 202 transcript
         (Method::Get, "/recursive-language-models") => routes::recursive_language_models::view_recursive_language_models(env).await,
 
+        // Blog posts
+        (Method::Get, "/blog/pylon-v0.1-release") => routes::pylon_v0_1_release::view_pylon_v0_1_release(env).await,
+        (Method::Get, "/blog/nexus-v0.1-release") => routes::nexus_v0_1_release::view_nexus_v0_1_release(env).await,
+
         // OG image proxy - forward to og-worker
         (Method::Get, path) if path.starts_with("/og/") => {
             let og_url = format!("https://openagents-og.openagents.workers.dev{}", path);
