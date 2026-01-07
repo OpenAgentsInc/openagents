@@ -28,6 +28,12 @@ use winit::window::{Window, WindowId};
 
 use crate::file_watcher::{FileChange, FileWatcher};
 use crate::update_checker::{self, UpdateCheckResult};
+
+// Platform-specific imports for macOS transparency
+#[cfg(target_os = "macos")]
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+#[cfg(target_os = "macos")]
+use objc2_app_kit::NSColor;
 use crate::vault::{FileEntry, Vault};
 use crate::voice::VoiceState;
 
@@ -69,11 +75,13 @@ impl FileSidebar {
         self.files = files;
     }
 
-    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        // Background
-        cx.scene.draw_quad(
-            Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 1.0)),
-        );
+    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext, opacity: f32) {
+        // Background with configurable opacity
+        if opacity > 0.0 {
+            cx.scene.draw_quad(
+                Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, opacity)),
+            );
+        }
 
         // File items
         let mut y = bounds.origin.y + SIDEBAR_PADDING - self.scroll_offset;
@@ -222,9 +230,41 @@ pub struct RenderState {
 
     // File watcher for external changes
     pub file_watcher: Option<FileWatcher>,
+
+    // UI state
+    pub sidebar_visible: bool,
+    pub background_opacity: f32, // 0.0 = fully transparent, 1.0 = fully opaque
 }
 
 impl RenderState {
+    /// Set macOS window transparency based on opacity (0.0 = transparent, 1.0 = opaque)
+    #[cfg(target_os = "macos")]
+    fn set_macos_transparency(&self, opacity: f32) {
+        if let Ok(handle) = self.window.window_handle() {
+            if let RawWindowHandle::AppKit(appkit_handle) = handle.as_raw() {
+                // Safety: We're accessing the NSWindow from the AppKit handle
+                let ns_view = appkit_handle.ns_view.as_ptr() as *mut objc2::runtime::AnyObject;
+                unsafe {
+                    let view: &objc2_app_kit::NSView = &*(ns_view as *const _);
+                    if let Some(window) = view.window() {
+                        // Window is non-opaque when opacity < 1.0
+                        window.setOpaque(opacity >= 1.0);
+                        if opacity < 1.0 {
+                            window.setBackgroundColor(Some(&NSColor::clearColor()));
+                        } else {
+                            window.setBackgroundColor(Some(&NSColor::windowBackgroundColor()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn set_macos_transparency(&self, _opacity: f32) {
+        // No-op on non-macOS platforms
+    }
+
     fn open_file(&mut self, path: PathBuf) {
         // Save current file first
         self.save_current();
@@ -446,7 +486,8 @@ impl ApplicationHandler for OnyxApp {
 
         let window_attrs = Window::default_attributes()
             .with_title("Onyx")
-            .with_maximized(true);
+            .with_maximized(true)
+            .with_transparent(true);
 
         let window = Arc::new(
             event_loop
@@ -487,13 +528,22 @@ impl ApplicationHandler for OnyxApp {
                 .copied()
                 .unwrap_or(surface_caps.formats[0]);
 
+            // Prefer PreMultiplied alpha for transparency support
+            let alpha_mode = if surface_caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
+                wgpu::CompositeAlphaMode::PreMultiplied
+            } else if surface_caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PostMultiplied) {
+                wgpu::CompositeAlphaMode::PostMultiplied
+            } else {
+                surface_caps.alpha_modes[0]
+            };
+
             let config = wgpu::SurfaceConfiguration {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 format: surface_format,
                 width: size.width.max(1),
                 height: size.height.max(1),
                 present_mode: wgpu::PresentMode::AutoVsync,
-                alpha_mode: surface_caps.alpha_modes[0],
+                alpha_mode,
                 view_formats: vec![],
                 desired_maximum_frame_latency: 2,
             };
@@ -613,6 +663,8 @@ impl ApplicationHandler for OnyxApp {
                 voice,
                 voice_loading_shown,
                 file_watcher,
+                sidebar_visible: true,
+                background_opacity: 1.0,
             }
         });
 
@@ -628,8 +680,9 @@ impl ApplicationHandler for OnyxApp {
         let logical_width = state.config.width as f32 / scale_factor;
         let logical_height = state.config.height as f32 / scale_factor;
 
-        let sidebar_bounds = Bounds::new(0.0, 0.0, SIDEBAR_WIDTH, logical_height);
-        let editor_bounds = Bounds::new(SIDEBAR_WIDTH, 0.0, logical_width - SIDEBAR_WIDTH, logical_height);
+        let sidebar_width = if state.sidebar_visible { SIDEBAR_WIDTH } else { 0.0 };
+        let sidebar_bounds = Bounds::new(0.0, 0.0, sidebar_width, logical_height);
+        let editor_bounds = Bounds::new(sidebar_width, 0.0, logical_width - sidebar_width, logical_height);
 
         match event {
             WindowEvent::CloseRequested => {
@@ -649,6 +702,10 @@ impl ApplicationHandler for OnyxApp {
             }
 
             WindowEvent::KeyboardInput { event, .. } => {
+                // Debug: log all key events to diagnose voice key issues
+                tracing::debug!("KeyboardInput: physical={:?} logical={:?} state={:?} repeat={}",
+                    event.physical_key, event.logical_key, event.state, event.repeat);
+
                 // Handle backtick (`) for voice transcription (hold to record, release to transcribe)
                 // Backtick is the key below Escape - single key, no modifiers needed
                 let is_voice_key = matches!(
@@ -656,7 +713,7 @@ impl ApplicationHandler for OnyxApp {
                     PhysicalKey::Code(KeyCode::Backquote)
                 );
 
-                if is_voice_key {
+                if is_voice_key && !event.repeat {
                     tracing::info!("Voice key detected: {:?} state={:?}", event.physical_key, event.state);
                     if let Some(voice) = &mut state.voice {
                         match event.state {
@@ -735,6 +792,71 @@ impl ApplicationHandler for OnyxApp {
                             && (c == "u" || c == "U")
                         {
                             state.check_for_updates();
+                            state.window.request_redraw();
+                            return;
+                        }
+                        // Handle Cmd+B for sidebar toggle
+                        if (state.modifiers.control_key() || state.modifiers.super_key())
+                            && (c == "b" || c == "B")
+                        {
+                            state.sidebar_visible = !state.sidebar_visible;
+                            state.window.request_redraw();
+                            return;
+                        }
+                        // Handle Cmd++ or Cmd+= for zoom in
+                        if (state.modifiers.control_key() || state.modifiers.super_key())
+                            && (c == "+" || c == "=")
+                        {
+                            state.editor.zoom_in();
+                            state.window.request_redraw();
+                            return;
+                        }
+                        // Handle Cmd+- for zoom out
+                        if (state.modifiers.control_key() || state.modifiers.super_key())
+                            && c == "-"
+                        {
+                            state.editor.zoom_out();
+                            state.window.request_redraw();
+                            return;
+                        }
+                        // Handle Cmd+0 for zoom reset
+                        if (state.modifiers.control_key() || state.modifiers.super_key())
+                            && c == "0"
+                        {
+                            state.editor.zoom_reset();
+                            state.window.request_redraw();
+                            return;
+                        }
+                        // Handle Cmd+Y to reset opacity to 100%
+                        if (state.modifiers.control_key() || state.modifiers.super_key())
+                            && (c == "y" || c == "Y")
+                        {
+                            state.background_opacity = 1.0;
+                            tracing::info!("Background opacity reset to 100%");
+                            state.set_macos_transparency(state.background_opacity);
+                            state.editor.set_background_opacity(state.background_opacity);
+                            state.window.request_redraw();
+                            return;
+                        }
+                        // Handle Cmd+, to decrease opacity (more transparent)
+                        if (state.modifiers.control_key() || state.modifiers.super_key())
+                            && c == ","
+                        {
+                            state.background_opacity = (state.background_opacity - 0.1).max(0.0);
+                            tracing::info!("Background opacity: {:.0}%", state.background_opacity * 100.0);
+                            state.set_macos_transparency(state.background_opacity);
+                            state.editor.set_background_opacity(state.background_opacity);
+                            state.window.request_redraw();
+                            return;
+                        }
+                        // Handle Cmd+. to increase opacity (more opaque)
+                        if (state.modifiers.control_key() || state.modifiers.super_key())
+                            && c == "."
+                        {
+                            state.background_opacity = (state.background_opacity + 0.1).min(1.0);
+                            tracing::info!("Background opacity: {:.0}%", state.background_opacity * 100.0);
+                            state.set_macos_transparency(state.background_opacity);
+                            state.editor.set_background_opacity(state.background_opacity);
                             state.window.request_redraw();
                             return;
                         }
@@ -884,8 +1006,10 @@ impl ApplicationHandler for OnyxApp {
                 let mut scene = Scene::new();
                 let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
 
-                // Paint sidebar
-                state.sidebar.paint(sidebar_bounds, &mut paint_cx);
+                // Paint sidebar (if visible)
+                if state.sidebar_visible {
+                    state.sidebar.paint(sidebar_bounds, &mut paint_cx, state.background_opacity);
+                }
 
                 // Paint editor
                 state.editor.paint(editor_bounds, &mut paint_cx);
@@ -921,7 +1045,14 @@ impl ApplicationHandler for OnyxApp {
                 }
 
                 state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
-                state.renderer.render(&mut encoder, &view);
+
+                // Use transparent clear color when opacity < 1.0
+                if state.background_opacity < 1.0 {
+                    let transparent = wgpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+                    state.renderer.render_with_clear(&mut encoder, &view, transparent);
+                } else {
+                    state.renderer.render(&mut encoder, &view);
+                }
 
                 state.queue.submit(std::iter::once(encoder.finish()));
                 output.present();
