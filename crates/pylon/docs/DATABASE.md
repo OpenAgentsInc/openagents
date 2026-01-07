@@ -4,7 +4,7 @@ Pylon uses SQLite for persistent storage. This document describes the complete d
 
 ## Overview
 
-The database is located at `~/.pylon/pylon.db` and uses WAL (Write-Ahead Logging) mode for better concurrency.
+The database is located at `~/.openagents/pylon/pylon.db` and uses WAL (Write-Ahead Logging) mode for better concurrency.
 
 ```sql
 PRAGMA journal_mode=WAL;
@@ -200,7 +200,7 @@ CREATE INDEX idx_tick_history_date ON tick_history(created_at);
 use pylon::db::PylonDb;
 
 // Open database (creates if doesn't exist)
-let db = PylonDb::open("~/.pylon/pylon.db")?;
+let db = PylonDb::open("~/.openagents/pylon/pylon.db")?;
 
 // Open in-memory database (for testing)
 let db = PylonDb::open_in_memory()?;
@@ -371,12 +371,12 @@ fn migrate(&self) -> anyhow::Result<()> {
 
 ```bash
 # While daemon is running (WAL mode is safe for this)
-cp ~/.pylon/pylon.db ~/.pylon/pylon.db.backup
-cp ~/.pylon/pylon.db-wal ~/.pylon/pylon.db-wal.backup
-cp ~/.pylon/pylon.db-shm ~/.pylon/pylon.db-shm.backup
+cp ~/.openagents/pylon/pylon.db ~/.openagents/pylon/pylon.db.backup
+cp ~/.openagents/pylon/pylon.db-wal ~/.openagents/pylon/pylon.db-wal.backup
+cp ~/.openagents/pylon/pylon.db-shm ~/.openagents/pylon/pylon.db-shm.backup
 
 # Or using sqlite3
-sqlite3 ~/.pylon/pylon.db ".backup backup.db"
+sqlite3 ~/.openagents/pylon/pylon.db ".backup backup.db"
 ```
 
 ### Recovery
@@ -386,7 +386,7 @@ sqlite3 ~/.pylon/pylon.db ".backup backup.db"
 pylon stop
 
 # Restore
-cp backup.db ~/.pylon/pylon.db
+cp backup.db ~/.openagents/pylon/pylon.db
 
 # Restart
 pylon start
@@ -417,7 +417,7 @@ SQLite doesn't automatically reclaim space. For long-running instances:
 
 ```bash
 # While daemon is stopped
-sqlite3 ~/.pylon/pylon.db "VACUUM;"
+sqlite3 ~/.openagents/pylon/pylon.db "VACUUM;"
 ```
 
 ## Querying the Database
@@ -426,7 +426,7 @@ sqlite3 ~/.pylon/pylon.db "VACUUM;"
 
 ```bash
 # Open database
-sqlite3 ~/.pylon/pylon.db
+sqlite3 ~/.openagents/pylon/pylon.db
 
 # Example queries
 .tables                          -- List tables
@@ -439,10 +439,10 @@ SELECT SUM(amount_msats) FROM earnings;  -- Total earnings
 
 ```bash
 # Export as CSV
-sqlite3 -header -csv ~/.pylon/pylon.db "SELECT * FROM earnings" > earnings.csv
+sqlite3 -header -csv ~/.openagents/pylon/pylon.db "SELECT * FROM earnings" > earnings.csv
 
 # Export as JSON
-sqlite3 ~/.pylon/pylon.db "SELECT json_group_array(json_object(
+sqlite3 ~/.openagents/pylon/pylon.db "SELECT json_group_array(json_object(
     'id', id,
     'amount_msats', amount_msats,
     'source', source

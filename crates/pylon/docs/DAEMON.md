@@ -14,11 +14,11 @@ Pylon implements Unix-style daemonization, allowing it to:
 
 | File | Purpose | Created By |
 |------|---------|------------|
-| `~/.pylon/pylon.pid` | Process ID file | `daemonize()` or `run_daemon()` |
-| `~/.pylon/control.sock` | Unix domain socket for IPC | `run_daemon()` |
-| `~/.pylon/pylon.db` | SQLite database | `run_daemon()` |
+| `~/.openagents/pylon/pylon.pid` | Process ID file | `daemonize()` or `run_daemon()` |
+| `~/.openagents/pylon/control.sock` | Unix domain socket for IPC | `run_daemon()` |
+| `~/.openagents/pylon/pylon.db` | SQLite database | `run_daemon()` |
 
-The `~/.pylon/` directory is created automatically if it doesn't exist.
+The `~/.openagents/pylon/` directory is created automatically if it doesn't exist.
 
 ## PID File Management
 
@@ -388,7 +388,7 @@ Skips graceful shutdown, immediately sends SIGKILL.
 
 | Error | Cause | Resolution |
 |-------|-------|------------|
-| Can't create directory | Permission denied | Check ~/.pylon permissions |
+| Can't create directory | Permission denied | Check ~/.openagents/pylon permissions |
 | Can't write PID file | Disk full or permissions | Free space or fix permissions |
 | Stale PID file | Previous crash | Remove manually or use `pylon stop --force` |
 
@@ -396,8 +396,8 @@ Skips graceful shutdown, immediately sends SIGKILL.
 
 | Error | Cause | Resolution |
 |-------|-------|------------|
-| Address already in use | Old socket file exists | Remove `~/.pylon/control.sock` |
-| Permission denied | Wrong ownership | Fix permissions on ~/.pylon |
+| Address already in use | Old socket file exists | Remove `~/.openagents/pylon/control.sock` |
+| Permission denied | Wrong ownership | Fix permissions on ~/.openagents/pylon |
 | Connection refused | Daemon not running | Start daemon first |
 
 ## Best Practices
@@ -422,7 +422,7 @@ pylon start -f 2>&1 | tee pylon.log
 pylon stop --force
 
 # Clean up stale files
-rm ~/.pylon/pylon.pid ~/.pylon/control.sock
+rm ~/.openagents/pylon/pylon.pid ~/.openagents/pylon/control.sock
 
 # Restart
 pylon start

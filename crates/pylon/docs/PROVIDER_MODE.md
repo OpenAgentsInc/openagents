@@ -283,10 +283,10 @@ SATS     SOURCE     TIME AGO
 
 ```bash
 # Total earnings
-sqlite3 ~/.pylon/pylon.db "SELECT SUM(amount_msats)/1000 FROM earnings"
+sqlite3 ~/.openagents/pylon/pylon.db "SELECT SUM(amount_msats)/1000 FROM earnings"
 
 # Earnings by day
-sqlite3 ~/.pylon/pylon.db "
+sqlite3 ~/.openagents/pylon/pylon.db "
   SELECT date(earned_at, 'unixepoch') as day, SUM(amount_msats)/1000 as sats
   FROM earnings
   GROUP BY day
@@ -295,7 +295,7 @@ sqlite3 ~/.pylon/pylon.db "
 "
 
 # Job success rate
-sqlite3 ~/.pylon/pylon.db "
+sqlite3 ~/.openagents/pylon/pylon.db "
   SELECT status, COUNT(*) as count
   FROM jobs
   GROUP BY status
@@ -458,7 +458,7 @@ relays = [
 
 ```bash
 # Check job history
-sqlite3 ~/.pylon/pylon.db "SELECT * FROM jobs WHERE status = 'failed' LIMIT 5"
+sqlite3 ~/.openagents/pylon/pylon.db "SELECT * FROM jobs WHERE status = 'failed' LIMIT 5"
 
 # Check backend directly
 curl http://localhost:11434/api/tags  # Ollama
@@ -476,7 +476,7 @@ Possible causes:
 
 ```bash
 # Check earnings table
-sqlite3 ~/.pylon/pylon.db "SELECT * FROM earnings ORDER BY earned_at DESC LIMIT 5"
+sqlite3 ~/.openagents/pylon/pylon.db "SELECT * FROM earnings ORDER BY earned_at DESC LIMIT 5"
 ```
 
 ## Security

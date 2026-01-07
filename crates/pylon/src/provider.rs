@@ -1,5 +1,6 @@
 //! Pylon provider - wraps compute primitives
 
+use crate::bridge_manager::BridgeManager;
 use crate::config::PylonConfig;
 use crate::neobank_service::{NeobankConfig, NeobankService, TreasuryStatus};
 use compute::backends::{
@@ -11,7 +12,7 @@ use ml::{MlProvider, MlProviderConfig};
 use ml::GptOssGgufBackend;
 use compute::domain::DomainEvent;
 use openagents_runtime::UnifiedIdentity;
-use compute::services::{DvmService, RelayService};
+use compute::services::{DvmConfig, DvmService, RelayService};
 use neobank::Currency;
 use spark::{Network as SparkNetwork, SparkWallet, WalletConfig};
 use std::sync::Arc;
@@ -115,6 +116,8 @@ pub struct PylonProvider {
     wallet: Option<Arc<SparkWallet>>,
     /// Neobank service for multi-currency treasury
     neobank: Option<NeobankService>,
+    /// FM Bridge manager (for Apple Foundation Models)
+    bridge_manager: Option<BridgeManager>,
     /// Event broadcaster
     event_tx: broadcast::Sender<DomainEvent>,
     /// Whether the provider is running
@@ -128,7 +131,10 @@ pub struct PylonProvider {
 impl PylonProvider {
     /// Create a new provider with the given config
     pub async fn new(config: PylonConfig) -> Result<Self, ProviderError> {
-        // Auto-detect inference backends
+        // Try to start FM Bridge for Apple Foundation Models (macOS only)
+        let bridge_manager = Self::try_start_fm_bridge().await;
+
+        // Auto-detect inference backends (will now find Apple FM if bridge started)
         let mut registry = BackendRegistry::detect().await;
 
         #[cfg(feature = "ml-native")]
@@ -198,11 +204,59 @@ impl PylonProvider {
             dvm_service: None,
             wallet: None,
             neobank: None,
+            bridge_manager,
             event_tx,
             running: false,
             jobs_processed: 0,
             total_earnings_msats: 0,
         })
+    }
+
+    /// Try to start the FM Bridge for Apple Foundation Models
+    async fn try_start_fm_bridge() -> Option<BridgeManager> {
+        // Check if FM Bridge binary is available
+        if !BridgeManager::is_available() {
+            tracing::debug!("FM Bridge binary not found, Apple FM will not be available");
+            return None;
+        }
+
+        tracing::info!("FM Bridge binary found, attempting to start...");
+
+        // Run blocking bridge startup in a blocking task
+        let result = tokio::task::spawn_blocking(|| {
+            let mut bridge = BridgeManager::new();
+
+            // Try to start the bridge
+            if let Err(e) = bridge.start() {
+                tracing::warn!("Failed to start FM Bridge: {}", e);
+                return None;
+            }
+
+            // Wait for it to become ready (blocking)
+            if let Err(e) = bridge.wait_ready() {
+                tracing::warn!("FM Bridge failed to become ready: {}", e);
+                return None;
+            }
+
+            let url = bridge.url();
+            Some((bridge, url))
+        })
+        .await
+        .ok()
+        .flatten();
+
+        if let Some((bridge, url)) = result {
+            // Set environment variable so BackendRegistry::detect() finds it
+            // SAFETY: We're setting an env var before spawning other threads, and this is
+            // the only place we modify FM_BRIDGE_URL
+            unsafe {
+                std::env::set_var("FM_BRIDGE_URL", &url);
+            }
+            tracing::info!("FM Bridge started at {}", url);
+            Some(bridge)
+        } else {
+            None
+        }
     }
 
     /// Set the provider identity
@@ -231,8 +285,14 @@ impl PylonProvider {
             self.event_tx.clone(),
         );
 
-        // Configure network for NIP-89 discovery
-        dvm_service.set_network(&self.config.network);
+        // Configure DVM service with payment settings from Pylon config
+        let dvm_config = DvmConfig {
+            min_price_msats: self.config.min_price_msats,
+            require_payment: self.config.require_payment,
+            network: self.config.network.clone(),
+            default_model: self.config.default_model.clone(),
+        };
+        dvm_service.set_config(dvm_config);
 
         // Set identity on DVM service
         dvm_service.set_identity(identity.clone()).await;

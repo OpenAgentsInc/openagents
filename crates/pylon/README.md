@@ -120,7 +120,7 @@ You can run provider mode with various backends:
 ## Architecture
 
 ```
-~/.pylon/
+~/.openagents/pylon/
 ├── pylon.db                 # SQLite database
 │   ├── agents               # Agent metadata + encrypted state
 │   ├── jobs                 # Provider job history
@@ -213,11 +213,11 @@ Everything is embedded:
 ## Configuration
 
 ```toml
-# ~/.pylon/config.toml
+# ~/.openagents/pylon/config.toml
 
 [daemon]
 log_level = "info"
-data_dir = "~/.pylon"
+data_dir = "~/.openagents/pylon"
 
 [relays]
 urls = [

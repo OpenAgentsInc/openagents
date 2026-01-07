@@ -1,7 +1,7 @@
 //! Pylon daemon infrastructure
 //!
 //! Provides self-daemonizing capabilities for Pylon:
-//! - PID file management at ~/.pylon/pylon.pid
+//! - PID file management at ~/.openagents/pylon/pylon.pid
 //! - fork()/setsid() process daemonization
 //! - Unix socket IPC for daemon control
 
@@ -13,13 +13,12 @@ pub use control::{ControlClient, ControlSocket, DaemonCommand, DaemonResponse};
 pub use pid::PidFile;
 pub use process::{daemonize, is_daemon_running};
 
+use crate::config::PylonConfig;
 use std::path::PathBuf;
 
-/// Get the pylon runtime directory (~/.pylon)
+/// Get the pylon runtime directory (~/.openagents/pylon)
 pub fn runtime_dir() -> anyhow::Result<PathBuf> {
-    let home =
-        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
-    let dir = home.join(".pylon");
+    let dir = PylonConfig::pylon_dir()?;
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
 }

@@ -284,7 +284,7 @@ Records each tick execution:
 
 ```bash
 # Query tick history
-sqlite3 ~/.pylon/pylon.db \
+sqlite3 ~/.openagents/pylon/pylon.db \
   "SELECT tick_number, cost_sats, actions_json FROM tick_history
    WHERE agent_npub = 'npub1...' ORDER BY tick_number DESC LIMIT 5"
 ```
@@ -354,7 +354,7 @@ pylon agent info myagent
 
 ```bash
 # Check tick history
-sqlite3 ~/.pylon/pylon.db \
+sqlite3 ~/.openagents/pylon/pylon.db \
   "SELECT * FROM tick_history WHERE agent_npub = 'npub1...' ORDER BY id DESC LIMIT 1"
 
 # Run single tick manually

@@ -14,6 +14,7 @@
 //! - Llama.cpp/GPT-OSS (localhost:8080) - any platform
 //! - Apple Foundation Models (localhost:11435) - macOS Apple Silicon only
 
+pub mod bridge_manager;
 pub mod cli;
 pub mod claude_tunnel;
 pub mod config;

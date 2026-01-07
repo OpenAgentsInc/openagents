@@ -33,8 +33,12 @@ pub struct NeobankConfig {
 
 impl Default for NeobankConfig {
     fn default() -> Self {
+        // Default to ~/.openagents/pylon/neobank
+        let data_dir = dirs::home_dir()
+            .map(|h| h.join(".openagents/pylon/neobank"))
+            .unwrap_or_else(|| PathBuf::from(".openagents/pylon/neobank"));
         Self {
-            data_dir: PathBuf::from(".pylon/neobank"),
+            data_dir,
             btc_mint_url: MintConfig::default_btc_mint().url,
             usd_mint_url: None,
             treasury_enabled: false,

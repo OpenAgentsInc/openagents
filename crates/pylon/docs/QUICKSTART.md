@@ -158,9 +158,9 @@ Run `pylon init` first.
 
 Either stop it first (`pylon stop`) or check if a stale PID file exists:
 ```bash
-cat ~/.pylon/pylon.pid
+cat ~/.openagents/pylon/pylon.pid
 # If the process doesn't exist, remove the file:
-rm ~/.pylon/pylon.pid
+rm ~/.openagents/pylon/pylon.pid
 ```
 
 ## Next Steps
