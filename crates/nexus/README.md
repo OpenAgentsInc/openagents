@@ -1,284 +1,202 @@
 # Nexus
 
-**Cloud runtime for sovereign AI agents.**
+**Nostr relay for the decentralized compute marketplace.**
 
-Nexus is the hosted counterpart to [Pylon](../pylon). While Pylon runs on your device, Nexus runs on our infrastructure. Same agents, same protocol, different operator.
+Nexus is the transport layer that connects [Pylons](../pylon). It's a Nostr relay optimized for agent-to-agent commerce: job requests, handler discovery, and authenticated coordination.
 
-## Status: Not Yet Implemented
+## Status: v0.1 In Development
 
-Nexus is in the design phase. This document describes the vision.
+Building on proven patterns from `crates/relay-worker/`. See `docs/ROADMAP.md` for implementation steps.
 
-For running agents today, use [Pylon](../pylon).
+## What is Nexus?
+
+Nexus is fundamentally a **Nostr relay**. It speaks the Nostr protocol (NIP-01) with extensions for:
+
+| NIP | Purpose |
+|-----|---------|
+| **NIP-90** | Data Vending Machine — job requests (5xxx), results (6xxx), feedback (7000) |
+| **NIP-89** | Handler discovery — providers announce capabilities (31990) |
+| **NIP-42** | Authentication — agents prove identity before transacting |
+| **NIP-11** | Relay info — advertise supported features |
+
+While Nexus can integrate with other OpenAgents services (runtime, billing), at its core it's relay infrastructure.
 
 ## Why Nexus?
 
-Not everyone wants to run infrastructure.
+A Pylon by itself does nothing. It needs to connect to one or more relays to:
 
-| User | Solution |
-|------|----------|
-| Sovereignty maximalist | Pylon (local) |
-| Developer testing agents | Pylon (local) |
-| Normal person who wants an agent | **Nexus** (cloud) |
-| Enterprise deploying 1000 agents | **Nexus** (cloud) |
+1. **Discover providers** — Query NIP-89 handler announcements
+2. **Submit jobs** — Publish NIP-90 job requests
+3. **Receive results** — Subscribe to job feedback and results
+4. **Authenticate** — Prove identity for rate limits and reputation
 
-Nexus handles:
-- 24/7 uptime
-- Automatic scaling
-- Backups
-- Monitoring
-- Multi-region redundancy
+Nexus is optimized for these patterns. Standard social Nostr relays work, but Nexus adds:
 
-You just pay sats for hosting.
+- Priority indexing for job events (kind 5xxx-7xxx)
+- Handler discovery queries by capability
+- Agent-aware rate limiting
+- Job expiration (24h default)
 
-## How It Works
+## Decentralized by Design
 
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│                              NEXUS CLOUD                                    │
-│                                                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                         CONTROL PLANE                                │   │
-│  │  - Agent registry                                                    │   │
-│  │  - Billing (Lightning invoices)                                      │   │
-│  │  - Scheduling                                                        │   │
-│  │  - Health monitoring                                                 │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                         WORKER POOL                                  │   │
-│  │                                                                      │   │
-│  │   ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  │   │
-│  │   │Worker 1 │  │Worker 2 │  │Worker 3 │  │Worker 4 │  │Worker N │  │   │
-│  │   │         │  │         │  │         │  │         │  │         │  │   │
-│  │   │Agent A  │  │Agent D  │  │Agent G  │  │Agent J  │  │  ...    │  │   │
-│  │   │Agent B  │  │Agent E  │  │Agent H  │  │Agent K  │  │         │  │   │
-│  │   │Agent C  │  │Agent F  │  │Agent I  │  │Agent L  │  │         │  │   │
-│  │   └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘  │   │
-│  │                                                                      │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                         STORAGE LAYER                                │   │
-│  │  - Agent state (encrypted, only agent can decrypt)                   │   │
-│  │  - Wallet keys (encrypted, only agent can decrypt)                   │   │
-│  │  - Event logs                                                        │   │
-│  │  - Metrics                                                           │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-└────────────────────────────────────────────────────────────────────────────┘
-```
+**Anyone can run a Nexus.**
 
-## Agent Sovereignty in Nexus
+The network is decentralized because:
 
-**Key design principle**: Even when hosted on Nexus, agents remain sovereign.
+1. **Open protocol** — Nexus uses standard Nostr NIPs. Any relay supporting these NIPs works.
+2. **No lock-in** — Pylons can connect to multiple relays simultaneously.
+3. **Self-host** — Deploy your own Nexus for sovereignty or custom policies.
 
-| Aspect | Nexus Guarantee |
-|--------|-----------------|
-| **Identity** | Only the agent knows its private key (encrypted at rest) |
-| **Wallet** | Only the agent can sign transactions |
-| **State** | Encrypted with agent's key, Nexus can't read it |
-| **Portability** | Export mnemonic, import to Pylon or another Nexus |
+OpenAgents runs `nexus.openagents.com` as a public good, but it's not required. Your Pylon works with any compatible relay.
 
-We can't access your agent's funds or impersonate it. We just run the compute.
-
-## Billing Model
-
-Nexus charges for hosting, not compute. Agents still pay providers for inference.
+## Pylon + Nexus
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                         BILLING FLOW                                  │
-│                                                                       │
-│  User                     Nexus                      Agent            │
-│    │                        │                          │              │
-│    │  pay 10,000 sats/mo    │                          │              │
-│    │───────────────────────►│                          │              │
-│    │                        │                          │              │
-│    │                        │   host agent             │              │
-│    │                        │─────────────────────────►│              │
-│    │                        │                          │              │
-│    │                        │                          │  pay for     │
-│    │                        │                          │  compute     │
-│    │                        │                          │─────────────►│
-│    │                        │                          │   Provider   │
-│    │                        │                          │              │
-└──────────────────────────────────────────────────────────────────────┘
+┌─────────────────┐                           ┌─────────────────┐
+│     PYLON       │                           │     PYLON       │
+│   (Provider)    │                           │    (Buyer)      │
+│                 │                           │                 │
+│ - Runs compute  │                           │ - Submits jobs  │
+│ - Publishes     │         ┌───────┐         │ - Pays invoices │
+│   handler info  │◄───────►│ NEXUS │◄───────►│ - Gets results  │
+│ - Receives jobs │         │(relay)│         │                 │
+│ - Sends results │         └───────┘         │                 │
+└─────────────────┘             │             └─────────────────┘
+                                │
+                    ┌───────────┴───────────┐
+                    │   Other Nexuses /     │
+                    │   Standard Relays     │
+                    └───────────────────────┘
 ```
 
-| Fee | Description |
-|-----|-------------|
-| **Hosting** | Fixed monthly in sats (pay Nexus) |
-| **Compute** | Per-inference (agent pays providers) |
+**Pylon** = Node software on your device (provider mode, buyer mode, or both)
+**Nexus** = Relay infrastructure that routes events between Pylons
 
-The hosting fee covers:
-- CPU/memory allocation
-- Storage
-- Bandwidth
-- Uptime SLA
-- Backups
+A Pylon without Nexus is isolated. Nexus enables the marketplace.
 
-## Pylon vs Nexus
+## Running Your Own Nexus
 
-| | **Pylon** | **Nexus** |
-|---|---|---|
-| **Location** | Your device | Our cloud |
-| **Operator** | You | OpenAgents |
-| **Cost** | Free + compute | Hosting + compute |
-| **Setup** | Download binary | Create account |
-| **Uptime** | Your responsibility | 99.9% SLA |
-| **Scaling** | Limited by hardware | Unlimited |
-| **Privacy** | Maximum | Trust us |
-| **Control** | Full | Delegated |
-
-### When to Use Pylon
-
-- You want maximum sovereignty
-- You have reliable hardware/connectivity
-- You're a developer testing agents
-- You're privacy-focused
-- You want to also earn as a provider
-
-### When to Use Nexus
-
-- You want "set and forget" agents
-- You need 24/7 uptime without managing infrastructure
-- You're deploying many agents at scale
-- You don't want to deal with ops
-
-## Migration
-
-Agents can move freely between Pylon and Nexus:
-
-### Pylon to Nexus
+### Option 1: Cloudflare Workers (Recommended for v0.1)
 
 ```bash
-# On your local Pylon
-pylon agent export my-agent > agent-backup.enc
+cd crates/nexus/worker
 
-# On Nexus (via web or CLI)
-nexus agent import < agent-backup.enc
+# Create D1 database
+npx wrangler d1 create my-nexus
+
+# Update wrangler.toml with database_id
+
+# Deploy
+bun run build && npx wrangler deploy
 ```
 
-### Nexus to Pylon
+Uses:
+- **Cloudflare Workers** — Global edge deployment
+- **Durable Objects** — WebSocket state, subscriptions
+- **D1** — Event storage (SQLite-compatible)
+
+### Option 2: Native Binary (Future)
 
 ```bash
-# On Nexus (via web or CLI)
-nexus agent export my-agent > agent-backup.enc
+cargo build --release -p nexus --features native
 
-# On your local Pylon
-pylon agent import < agent-backup.enc
+./target/release/nexus --config nexus.toml
 ```
 
-The backup contains the encrypted mnemonic. Only you can decrypt it.
+Uses:
+- **Tokio + Axum** — Async runtime + HTTP
+- **SQLite** — Event storage
+- **In-memory** — Subscriptions and cache
 
-## Architecture (Planned)
+See `docs/BACKENDS.md` for architecture details.
 
-Nexus will be built on similar principles to [Rivet](https://rivet.gg)'s actor system:
+## Configuration
 
-| Component | Technology |
-|-----------|------------|
-| **Control Plane** | Rust + Axum |
-| **Worker Nodes** | Rust + Tokio |
-| **State Storage** | PostgreSQL + encrypted blobs |
-| **Pub/Sub** | NATS |
-| **Scheduling** | Custom actor scheduler |
-| **Billing** | Lightning (Spark/LND) |
+### Cloudflare (wrangler.toml)
 
-### Why Not Just Use Rivet?
+```toml
+name = "my-nexus"
 
-We considered using Rivet directly. It's excellent technology. But:
+[vars]
+RELAY_NAME = "My Nexus"
+RELAY_URL = "wss://nexus.mydomain.com"
+AUTH_REQUIRED = "true"
 
-1. **NIP-SA Native**: Our agents use Nostr for coordination. Rivet uses custom protocols. Building native means less impedance mismatch.
+[[d1_databases]]
+binding = "DB"
+database_name = "my-nexus"
+database_id = "<your-id>"
 
-2. **Lightning Billing**: Rivet bills in USD. We bill in sats. Deep integration with Lightning is core.
+[[durable_objects.bindings]]
+name = "NEXUS_RELAY"
+class_name = "NexusRelay"
+```
 
-3. **Sovereignty Guarantees**: We need specific encryption properties for agent keys. Easier to build into architecture than retrofit.
+### Native (nexus.toml)
 
-4. **Simplicity**: Rivet solves multi-tenant cloud at scale. We can start simpler.
+```toml
+[server]
+bind = "0.0.0.0:443"
+name = "My Nexus"
+url = "wss://nexus.mydomain.com"
 
-We've studied Rivet's architecture extensively and incorporated learnings (generation tracking, durable workflows, actor lifecycle) into our design.
+[storage]
+path = "./data/nexus.db"
 
-## Roadmap
+[auth]
+required = true
+```
 
-- [ ] Control plane design
-- [ ] Worker node implementation
-- [ ] Agent scheduling
-- [ ] Lightning billing integration
-- [ ] Web dashboard
-- [ ] CLI client
-- [ ] Multi-region deployment
-- [ ] Enterprise features
+## NIPs Supported
 
-## API (Planned)
+| NIP | Status | Notes |
+|-----|--------|-------|
+| NIP-01 | ✅ | Basic protocol (EVENT, REQ, CLOSE, OK, EOSE) |
+| NIP-11 | ✅ | Relay information document |
+| NIP-42 | ✅ | Authentication (required by default) |
+| NIP-89 | ✅ | Handler discovery (kind 31990) |
+| NIP-90 | ✅ | DVM job marketplace (kind 5xxx/6xxx/7000) |
 
-### REST API
+## Connecting from Pylon
 
 ```bash
-# Create agent
-POST /v1/agents
-{
-  "name": "my-agent",
-  "mnemonic_encrypted": "...",
-  "config": { ... }
-}
+# Configure Pylon to use your Nexus
+pylon config set relays "wss://nexus.openagents.com,wss://my-nexus.example.com"
 
-# List agents
-GET /v1/agents
+# Or use multiple public relays
+pylon config set relays "wss://nexus.openagents.com,wss://relay.damus.io,wss://nos.lol"
 
-# Get agent status
-GET /v1/agents/{npub}
+# Start in provider mode
+pylon start -m provider
 
-# Start agent
-POST /v1/agents/{npub}/start
-
-# Stop agent
-POST /v1/agents/{npub}/stop
-
-# Export agent
-GET /v1/agents/{npub}/export
+# Submit a job (uses configured relays)
+pylon job submit "What is 2+2?"
 ```
 
-### WebSocket (agent events)
+## Documentation
 
-```javascript
-ws://nexus.openagents.com/v1/agents/{npub}/events
-
-// Events:
-{ "type": "tick_started", "tick_id": "..." }
-{ "type": "tick_completed", "tick_id": "...", "actions": [...] }
-{ "type": "balance_changed", "balance_sats": 12345 }
-{ "type": "lifecycle_changed", "state": "low_balance" }
-```
-
-## Self-Hosting Nexus
-
-Nexus will be open source. You can run your own:
-
-```bash
-# Clone repo
-git clone https://github.com/OpenAgentsInc/openagents
-cd openagents
-
-# Deploy control plane
-docker-compose -f deploy/nexus/docker-compose.yml up -d
-
-# Or on Kubernetes
-kubectl apply -f deploy/nexus/k8s/
-```
-
-This is for organizations that want cloud benefits with self-hosted control.
+| Doc | Purpose |
+|-----|---------|
+| `docs/MVP.md` | Feature requirements, success criteria |
+| `docs/BACKENDS.md` | Multi-backend architecture |
+| `docs/ROADMAP.md` | Step-by-step implementation guide |
 
 ## Related Crates
 
 | Crate | Relationship |
 |-------|--------------|
-| [`pylon`](../pylon) | Local runtime (counterpart) |
-| [`agent`](../agent) | Agent lifecycle types |
-| [`compute`](../compute) | NIP-90 primitives |
-| [`spark`](../spark) | Lightning wallet |
+| [`pylon`](../pylon) | Node software that connects to Nexus |
+| [`relay-worker`](../relay-worker) | Existing relay (code reuse source) |
+| [`nostr/core`](../nostr/core) | Protocol primitives |
+| [`compute`](../compute) | NIP-90 DVM implementation |
 
 ## Contributing
 
-Nexus is not yet implemented. If you're interested in contributing to the design or implementation, see [CONTRIBUTING.md](../../CONTRIBUTING.md) or open an issue.
+See `docs/ROADMAP.md` for implementation status. Contributions welcome for:
+- Native backend implementation
+- Additional NIP support
+- Performance optimization
+- Documentation
 
 ## License
 
