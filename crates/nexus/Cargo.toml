@@ -10,6 +10,11 @@ name = "nexus"
 path = "src/lib.rs"
 
 [dependencies]
-# TODO: Add dependencies when implementation begins
+getrandom = "0.2"
+hex = { workspace = true }
+nostr = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
