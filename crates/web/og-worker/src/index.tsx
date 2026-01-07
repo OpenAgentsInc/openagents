@@ -27,7 +27,7 @@ const BLOG_POSTS: Record<string, BlogPostMeta> = {
   "recursive-language-models": {
     title: "Recursive Language Models",
     episode: 202,
-    date: "January 7, 2026",
+    date: "January 6, 2026",
     description:
       "We discuss recursive language models (RLMs) and their importance to our swarm compute network",
   },

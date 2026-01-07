@@ -59,20 +59,28 @@ pub(crate) fn build_landing_page(
         let episode_font_size = 13.0;
         let episode_200_text = "Episode 200: The Agent Network";
         let episode_201_text = "Episode 201: Fracking Apple Silicon";
+        let episode_202_text = "Episode 202: Recursive Language Models";
         let episode_200_width =
             cx.text.measure_styled(episode_200_text, episode_font_size, FontStyle::italic());
         let episode_201_width =
             cx.text.measure_styled(episode_201_text, episode_font_size, FontStyle::italic());
+        let episode_202_width =
+            cx.text.measure_styled(episode_202_text, episode_font_size, FontStyle::italic());
         let episode_200_x = card_x + (card_w - episode_200_width) / 2.0;
         let episode_201_x = card_x + (card_w - episode_201_width) / 2.0;
-        let episode_200_y = card_y - 52.0;
+        let episode_202_x = card_x + (card_w - episode_202_width) / 2.0;
+        let episode_200_y = card_y - 70.0;
         let episode_201_y = episode_200_y + 18.0;
+        let episode_202_y = episode_201_y + 18.0;
         let episode_200_hovered = state.episode_link_bounds.contains(state.mouse_pos);
         let episode_201_hovered = state.episode_201_link_bounds.contains(state.mouse_pos);
+        let episode_202_hovered = state.episode_202_link_bounds.contains(state.mouse_pos);
         let episode_200_color =
             if episode_200_hovered { theme::text::PRIMARY } else { theme::text::MUTED };
         let episode_201_color =
             if episode_201_hovered { theme::text::PRIMARY } else { theme::text::MUTED };
+        let episode_202_color =
+            if episode_202_hovered { theme::text::PRIMARY } else { theme::text::MUTED };
         let episode_200_run = cx.text.layout_styled(
             episode_200_text,
             Point::new(episode_200_x, episode_200_y),
@@ -87,12 +95,22 @@ pub(crate) fn build_landing_page(
             episode_201_color,
             FontStyle::italic(),
         );
+        let episode_202_run = cx.text.layout_styled(
+            episode_202_text,
+            Point::new(episode_202_x, episode_202_y),
+            episode_font_size,
+            episode_202_color,
+            FontStyle::italic(),
+        );
         cx.scene.draw_text(episode_200_run);
         cx.scene.draw_text(episode_201_run);
+        cx.scene.draw_text(episode_202_run);
         state.episode_link_bounds =
             Bounds::new(episode_200_x, episode_200_y, episode_200_width, episode_font_size + 4.0);
         state.episode_201_link_bounds =
             Bounds::new(episode_201_x, episode_201_y, episode_201_width, episode_font_size + 4.0);
+        state.episode_202_link_bounds =
+            Bounds::new(episode_202_x, episode_202_y, episode_202_width, episode_font_size + 4.0);
 
         // Hero frame
         state.left_cta_bounds = Bounds::new(card_x, card_y, card_w, card_h);
@@ -188,6 +206,7 @@ pub(crate) fn build_landing_page(
         state.left_cta_bounds = Bounds::ZERO;
         state.episode_link_bounds = Bounds::ZERO;
         state.episode_201_link_bounds = Bounds::ZERO;
+        state.episode_202_link_bounds = Bounds::ZERO;
         (scene, text_system)
     };
 
