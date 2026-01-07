@@ -6,6 +6,15 @@
 mod block;
 mod cursor;
 
+/// Fixed font size for the status bar (doesn't scale with zoom)
+const STATUS_BAR_FONT_SIZE: f32 = 12.0;
+
+/// Default font size used as baseline for scaling calculations
+const DEFAULT_FONT_SIZE: f32 = 14.0;
+
+/// Base max content width at default font size
+const BASE_MAX_CONTENT_WIDTH: f32 = 768.0;
+
 pub use cursor::{Cursor, Selection};
 pub use vim::Mode as VimMode;
 use block::{BlockParser, BlockType, parse_inline, header_font_scale, strip_header_prefix, strip_list_prefix, strip_blockquote_prefix, inline_code_background};
@@ -141,6 +150,9 @@ pub struct LiveEditor {
 
     // Status message (for voice transcription, etc.)
     status_message: Option<(String, Hsla)>,
+
+    // Background opacity (0.0 = transparent, 1.0 = opaque)
+    background_opacity: f32,
 }
 
 /// Styling options for LiveEditor
@@ -211,6 +223,7 @@ impl LiveEditor {
             on_change: None,
             on_save: None,
             status_message: None,
+            background_opacity: 1.0,
         }
     }
 
@@ -230,6 +243,35 @@ impl LiveEditor {
     pub fn font_size(mut self, size: f32) -> Self {
         self.style.font_size = size;
         self
+    }
+
+    /// Zoom in (increase font size)
+    pub fn zoom_in(&mut self) {
+        self.style.font_size = (self.style.font_size + 2.0).min(48.0);
+        self.mono_char_width = self.style.font_size * 0.6;
+    }
+
+    /// Zoom out (decrease font size)
+    pub fn zoom_out(&mut self) {
+        self.style.font_size = (self.style.font_size - 2.0).max(8.0);
+        self.mono_char_width = self.style.font_size * 0.6;
+    }
+
+    /// Reset zoom to default
+    pub fn zoom_reset(&mut self) {
+        self.style.font_size = theme::font_size::SM;
+        self.mono_char_width = self.style.font_size * 0.6;
+    }
+
+    /// Set background opacity (0.0 = transparent, 1.0 = opaque)
+    pub fn set_background_opacity(&mut self, opacity: f32) {
+        self.background_opacity = opacity;
+    }
+
+    /// Get the max content width scaled by current font size
+    fn scaled_max_content_width(&self) -> f32 {
+        let scale = self.style.font_size / DEFAULT_FONT_SIZE;
+        BASE_MAX_CONTENT_WIDTH * scale
     }
 
     /// Set change callback
@@ -433,39 +475,55 @@ impl LiveEditor {
                     // Word motions
                     "w" => {
                         let count = self.vim.effective_count();
-                        self.vim_word_forward(count);
+                        if !self.vim_execute_motion_with_operator("w", count, cx) {
+                            self.vim_word_forward(count);
+                        }
                         self.vim.reset_pending();
                     }
                     "b" => {
                         let count = self.vim.effective_count();
-                        self.vim_word_backward(count);
+                        if !self.vim_execute_motion_with_operator("b", count, cx) {
+                            self.vim_word_backward(count);
+                        }
                         self.vim.reset_pending();
                     }
                     "e" => {
                         let count = self.vim.effective_count();
-                        self.vim_word_end(count);
+                        if !self.vim_execute_motion_with_operator("e", count, cx) {
+                            self.vim_word_end(count);
+                        }
                         self.vim.reset_pending();
                     }
 
                     // Line motions
                     "$" => {
-                        self.vim_line_end();
+                        let count = self.vim.effective_count();
+                        if !self.vim_execute_motion_with_operator("$", count, cx) {
+                            self.vim_line_end();
+                        }
                         self.vim.reset_pending();
                     }
                     "^" => {
-                        self.vim_first_non_blank();
+                        let count = self.vim.effective_count();
+                        if !self.vim_execute_motion_with_operator("^", count, cx) {
+                            self.vim_first_non_blank();
+                        }
                         self.vim.reset_pending();
                     }
 
                     // Paragraph motions
                     "{" => {
                         let count = self.vim.effective_count();
-                        self.vim_paragraph_backward(count);
+                        if !self.vim_execute_motion_with_operator("{", count, cx) {
+                            self.vim_paragraph_backward(count);
+                        }
                         self.vim.reset_pending();
                     }
                     "}" => {
                         let count = self.vim.effective_count();
-                        self.vim_paragraph_forward(count);
+                        if !self.vim_execute_motion_with_operator("}", count, cx) {
+                            self.vim_paragraph_forward(count);
+                        }
                         self.vim.reset_pending();
                     }
 
@@ -1166,6 +1224,170 @@ impl LiveEditor {
         }
     }
 
+    /// Delete text from start cursor to end cursor (exclusive)
+    fn vim_delete_range(&mut self, start: Cursor, end: Cursor, cx: &mut EventContext) {
+        self.save_undo_state();
+
+        // Normalize so start <= end
+        let (start, end) = if (start.line, start.column) <= (end.line, end.column) {
+            (start, end)
+        } else {
+            (end, start)
+        };
+
+        // Extract and yank the text being deleted
+        let deleted_text = self.extract_text_range(start, end);
+        if !deleted_text.is_empty() {
+            self.vim.register = Some(deleted_text.clone());
+            cx.write_clipboard(&deleted_text);
+        }
+
+        // Delete the range
+        if start.line == end.line {
+            // Same line deletion
+            if let Some(line) = self.lines.get_mut(start.line) {
+                let chars: Vec<char> = line.chars().collect();
+                let start_col = start.column.min(chars.len());
+                let end_col = end.column.min(chars.len());
+                let new_line: String = chars[..start_col].iter().chain(chars[end_col..].iter()).collect();
+                *line = new_line;
+            }
+        } else {
+            // Multi-line deletion
+            let start_line_text: String = self.lines.get(start.line)
+                .map(|l| l.chars().take(start.column).collect())
+                .unwrap_or_default();
+            let end_line_text: String = self.lines.get(end.line)
+                .map(|l| l.chars().skip(end.column).collect())
+                .unwrap_or_default();
+
+            // Remove lines between start and end
+            for _ in start.line..=end.line.min(self.lines.len().saturating_sub(1)) {
+                if start.line < self.lines.len() {
+                    self.lines.remove(start.line);
+                }
+            }
+
+            // Insert merged line
+            let merged = format!("{}{}", start_line_text, end_line_text);
+            if start.line <= self.lines.len() {
+                self.lines.insert(start.line, merged);
+            } else {
+                self.lines.push(merged);
+            }
+        }
+
+        self.cursor = start;
+        // Clamp cursor to valid position
+        self.cursor.line = self.cursor.line.min(self.lines.len().saturating_sub(1));
+        self.cursor.column = self.cursor.column.min(self.current_line_len());
+        self.notify_change();
+    }
+
+    /// Extract text between two cursor positions
+    fn extract_text_range(&self, start: Cursor, end: Cursor) -> String {
+        if start.line == end.line {
+            self.lines.get(start.line)
+                .map(|l| {
+                    let chars: Vec<char> = l.chars().collect();
+                    let start_col = start.column.min(chars.len());
+                    let end_col = end.column.min(chars.len());
+                    chars[start_col..end_col].iter().collect()
+                })
+                .unwrap_or_default()
+        } else {
+            let mut text = String::new();
+            // First line (from start.column to end)
+            if let Some(line) = self.lines.get(start.line) {
+                let chars: Vec<char> = line.chars().collect();
+                text.extend(chars.iter().skip(start.column));
+                text.push('\n');
+            }
+            // Middle lines (full lines)
+            for i in (start.line + 1)..end.line {
+                if let Some(line) = self.lines.get(i) {
+                    text.push_str(line);
+                    text.push('\n');
+                }
+            }
+            // Last line (from start to end.column)
+            if let Some(line) = self.lines.get(end.line) {
+                let chars: Vec<char> = line.chars().collect();
+                let end_col = end.column.min(chars.len());
+                text.extend(chars.iter().take(end_col));
+            }
+            text
+        }
+    }
+
+    /// Change text from start cursor to end cursor (delete and enter insert mode)
+    fn vim_change_range(&mut self, start: Cursor, end: Cursor, cx: &mut EventContext) {
+        self.vim_delete_range(start, end, cx);
+        self.vim.enter_insert();
+    }
+
+    /// Yank text from start cursor to end cursor
+    fn vim_yank_range(&mut self, start: Cursor, end: Cursor, cx: &mut EventContext) {
+        let (start, end) = if (start.line, start.column) <= (end.line, end.column) {
+            (start, end)
+        } else {
+            (end, start)
+        };
+
+        let text = self.extract_text_range(start, end);
+        if !text.is_empty() {
+            self.vim.register = Some(text.clone());
+            cx.write_clipboard(&text);
+        }
+    }
+
+    /// Execute pending operator with a motion
+    /// Returns true if an operator was executed, false if just a motion
+    fn vim_execute_motion_with_operator(&mut self, motion: &str, count: usize, cx: &mut EventContext) -> bool {
+        let pending_op = self.vim.pending_operator;
+
+        if pending_op.is_none() {
+            // No pending operator, just execute the motion
+            return false;
+        }
+
+        // Record start position
+        let start = self.cursor;
+
+        // Execute the motion to find end position
+        match motion {
+            "w" => self.vim_word_forward(count),
+            "b" => self.vim_word_backward(count),
+            "e" => self.vim_word_end(count),
+            "$" => self.vim_line_end(),
+            "^" | "0" => self.vim_first_non_blank(),
+            "}" => self.vim_paragraph_forward(count),
+            "{" => self.vim_paragraph_backward(count),
+            _ => return false,
+        }
+
+        let end = self.cursor;
+
+        // Execute the operator on the range
+        match pending_op {
+            Some(PendingOperator::Delete) => {
+                self.vim_delete_range(start, end, cx);
+            }
+            Some(PendingOperator::Change) => {
+                self.vim_change_range(start, end, cx);
+            }
+            Some(PendingOperator::Yank) => {
+                self.vim_yank_range(start, end, cx);
+                // Restore cursor position after yank
+                self.cursor = start;
+            }
+            None => unreachable!(),
+        }
+
+        self.vim.reset_pending();
+        true
+    }
+
     /// Get length of current line
     fn current_line_len(&self) -> usize {
         self.lines.get(self.cursor.line).map_or(0, |l| l.chars().count())
@@ -1710,7 +1932,7 @@ impl LiveEditor {
         let content_y = y - bounds.origin.y - self.style.padding + self.scroll_offset;
 
         // Center content with max width 768px (must match paint)
-        let max_content_width = 768.0;
+        let max_content_width = self.scaled_max_content_width();
         let content_width = bounds.size.width.min(max_content_width);
         let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
         let text_x = content_x + self.style.padding;
@@ -1778,7 +2000,7 @@ impl LiveEditor {
         let visible_height = bounds.size.height - self.style.padding * 2.0 - status_bar_height;
 
         // Calculate available width for text and max chars for wrapping
-        let max_content_width = 768.0;
+        let max_content_width = self.scaled_max_content_width();
         let content_width = bounds.size.width.min(max_content_width);
         let available_text_width = content_width - self.style.padding * 2.0;
         let max_chars = if self.style.wrap_text {
@@ -2044,17 +2266,21 @@ impl Component for LiveEditor {
         // Update cached mono char width
         self.mono_char_width = cx.text.measure_styled_mono("M", self.style.font_size, FontStyle::default());
 
-        // Background
-        cx.scene.draw_quad(
-            Quad::new(bounds).with_background(self.style.background),
-        );
+        // Background with configurable opacity
+        if self.background_opacity > 0.0 {
+            let bg = self.style.background;
+            let bg_with_opacity = Hsla::new(bg.h, bg.s, bg.l, bg.a * self.background_opacity);
+            cx.scene.draw_quad(
+                Quad::new(bounds).with_background(bg_with_opacity),
+            );
+        }
 
         let line_height = self.style.font_size * self.style.line_height;
         let status_bar_height = 24.0;
         let visible_height = bounds.size.height - self.style.padding * 2.0 - status_bar_height;
 
         // Center content with max width 768px
-        let max_content_width = 768.0;
+        let max_content_width = self.scaled_max_content_width();
         let content_width = bounds.size.width.min(max_content_width);
         let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
         let text_x = content_x + self.style.padding;
@@ -2287,7 +2513,7 @@ impl Component for LiveEditor {
             let mode_run = cx.text.layout_styled_mono(
                 mode_text,
                 Point::new(mode_x, status_y),
-                self.style.font_size * 0.85,
+                STATUS_BAR_FONT_SIZE,
                 mode_color,
                 FontStyle::default(),
             );
@@ -2300,7 +2526,7 @@ impl Component for LiveEditor {
             let status_msg_run = cx.text.layout_styled_mono(
                 message,
                 Point::new(status_msg_x, status_y),
-                self.style.font_size * 0.85,
+                STATUS_BAR_FONT_SIZE,
                 *color,
                 FontStyle::default(),
             );
@@ -2313,7 +2539,7 @@ impl Component for LiveEditor {
         let status_run = cx.text.layout_styled_mono(
             &status_text,
             Point::new(status_x, status_y),
-            self.style.font_size * 0.85,
+            STATUS_BAR_FONT_SIZE,
             Hsla::new(0.0, 0.0, 0.5, 1.0),
             FontStyle::default(),
         );
@@ -2402,7 +2628,7 @@ impl Component for LiveEditor {
                     let visible_height = bounds.size.height - self.style.padding * 2.0 - status_bar_height;
 
                     // Calculate total visual rows accounting for wrapped lines
-                    let max_content_width = 768.0;
+                    let max_content_width = self.scaled_max_content_width();
                     let content_width = bounds.size.width.min(max_content_width);
                     let available_text_width = content_width - self.style.padding * 2.0;
                     let max_chars = if self.style.wrap_text {
