@@ -7,7 +7,7 @@ This document describes Pylon's configuration file format and options.
 The main configuration file is located at:
 
 ```
-~/.config/pylon/config.toml
+~/.openagents/pylon/config.toml
 ```
 
 On first run (`pylon init`), a default configuration is created.
@@ -17,7 +17,7 @@ On first run (`pylon init`), a default configuration is created.
 Pylon uses TOML format for configuration.
 
 ```toml
-# ~/.config/pylon/config.toml
+# ~/.openagents/pylon/config.toml
 
 # Nostr relays for provider mode
 relays = [
@@ -26,7 +26,7 @@ relays = [
     "wss://relay.nostr.band",
 ]
 
-# Data directory (optional, defaults to ~/.config/pylon)
+# Data directory (optional, defaults to ~/.openagents/pylon)
 # data_dir = "/custom/path"
 ```
 
@@ -55,7 +55,7 @@ relays = [
 ### data_dir
 
 **Type**: String (path)
-**Default**: `~/.config/pylon`
+**Default**: `~/.openagents/pylon`
 **Required**: No
 
 Directory for Pylon data files (identity, etc.).
@@ -152,7 +152,7 @@ executable_path = "/usr/local/bin/claude"
 
 ```toml
 # Pylon Configuration
-# ~/.config/pylon/config.toml
+# ~/.openagents/pylon/config.toml
 
 # Provider name shown in NIP-89 handler info
 name = "My Pylon Provider"
@@ -194,7 +194,7 @@ approval_required_tools = ["Write", "Edit", "Bash"]
 ### Identity File
 
 ```
-~/.config/pylon/identity.mnemonic
+~/.openagents/pylon/identity.mnemonic
 ```
 
 Contains the 12-word BIP-39 mnemonic for the provider identity.
@@ -347,7 +347,7 @@ relays = [
 Configuration is loaded in this order:
 
 1. Built-in defaults
-2. Configuration file (`~/.config/pylon/config.toml`)
+2. Configuration file (`~/.openagents/pylon/config.toml`)
 3. Command-line arguments (e.g., `--config`)
 
 ## Validation
