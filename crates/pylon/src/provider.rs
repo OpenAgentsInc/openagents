@@ -192,7 +192,11 @@ impl PylonProvider {
         }
 
         // Create relay service
-        let relay_service = Arc::new(RelayService::new());
+        let relay_service = if config.relays.is_empty() {
+            Arc::new(RelayService::new())
+        } else {
+            Arc::new(RelayService::with_relays(config.relays.clone()))
+        };
 
         // Create event channel
         let (event_tx, _) = broadcast::channel(100);

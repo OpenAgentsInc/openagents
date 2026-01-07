@@ -212,7 +212,7 @@ async fn run_daemon(
             .relays
             .first()
             .cloned()
-            .unwrap_or_else(|| "wss://relay.damus.io".to_string());
+            .unwrap_or_else(|| "wss://nexus.openagents.com".to_string());
 
         match AgentRunner::new(Arc::new(PylonDb::open(db_path()?)?), relay_url) {
             Ok(runner) => {

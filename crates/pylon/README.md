@@ -236,14 +236,14 @@ See [Spark Regtest Guide](../spark/docs/REGTEST.md) for details.
 
 # Nostr relays for provider mode
 relays = [
+    "wss://nexus.openagents.com",
     "wss://relay.damus.io",
     "wss://nos.lol",
-    "wss://relay.nostr.band",
 ]
 
 # Bitcoin network for Lightning payments
 # Options: "mainnet", "testnet", "signet", "regtest"
-network = "testnet"
+network = "regtest"
 
 # Payment settings (provider mode)
 enable_payments = true

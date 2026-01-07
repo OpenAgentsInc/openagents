@@ -232,7 +232,7 @@ mod tests {
             "test123".to_string(),
             5050,
             "What is 2+2?".to_string(),
-            "wss://relay.damus.io".to_string(),
+            "wss://nexus.openagents.com".to_string(),
         ).with_bid(1000);
 
         store.insert(&job).unwrap();

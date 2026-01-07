@@ -216,7 +216,9 @@ Backends:
   Available: ollama (default)
 
 Relays:
+  wss://nexus.openagents.com
   wss://relay.damus.io
+  wss://nos.lol
 ```
 
 #### Output (JSON)
@@ -236,7 +238,7 @@ Relays:
   },
   "backends": ["ollama"],
   "default_backend": "ollama",
-  "relays": ["wss://relay.damus.io"]
+  "relays": ["wss://nexus.openagents.com", "wss://relay.damus.io", "wss://nos.lol"]
 }
 ```
 
@@ -289,7 +291,9 @@ Backends:
   ✗ llamacpp: Not available
 
 Relays:
+  wss://nexus.openagents.com
   wss://relay.damus.io
+  wss://nos.lol
 
 Warnings:
   None
@@ -423,7 +427,7 @@ pylon agent spawn [OPTIONS]
 | `--name` | `-n` | Agent name (required) | - |
 | `--network` | - | Bitcoin network | regtest |
 | `--heartbeat` | - | Tick interval (seconds) | 900 |
-| `--relay` | - | Relay URL | wss://relay.damus.io |
+| `--relay` | - | Relay URL | wss://nexus.openagents.com |
 
 #### Networks
 
@@ -443,7 +447,7 @@ pylon agent spawn \
   --name research-bot \
   --network regtest \
   --heartbeat 600 \
-  --relay wss://relay.damus.io
+  --relay wss://nexus.openagents.com
 ```
 
 #### Output

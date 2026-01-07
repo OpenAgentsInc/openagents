@@ -76,7 +76,7 @@ Agents are stored in the file-based registry at `~/.config/openagents/agents/`.
   "mnemonic_encrypted": "word1 word2 ... word12",
   "spark_address": "sp1...",
   "network": "regtest",
-  "relays": ["wss://relay.damus.io"],
+  "relays": ["wss://nexus.openagents.com", "wss://relay.damus.io", "wss://nos.lol"],
   "created_at": 1703980800,
   "state": "active",
   "last_active_at": 1703984400,
@@ -116,7 +116,7 @@ pylon agent spawn \
   --name research-bot \
   --network regtest \
   --heartbeat 600 \
-  --relay wss://relay.damus.io
+  --relay wss://nexus.openagents.com
 ```
 
 ### Spawn Process

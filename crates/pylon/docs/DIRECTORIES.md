@@ -70,9 +70,9 @@ description = "AI compute provider"
 
 # Nostr relays
 relays = [
+    "wss://nexus.openagents.com",
     "wss://relay.damus.io",
     "wss://nos.lol",
-    "wss://relay.nostr.band",
 ]
 
 # Payment configuration
