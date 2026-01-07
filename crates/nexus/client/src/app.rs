@@ -282,49 +282,89 @@ fn render_hud(
 
     y += 180.0;
 
-    // Bottom section: Handler Registry
+    // Bottom section: Swarm Compute (RLM)
     scene.draw_quad(
         Quad::new(Bounds::new(inner_x, y, inner_width, 1.0))
             .with_background(Hsla::new(0.0, 0.0, 1.0, 0.1)),
     );
     y += 16.0;
 
-    let handler_label = "HANDLER REGISTRY";
-    let handler_run = text_system.layout(handler_label, Point::new(inner_x, y), 12.0, theme::text::PRIMARY);
-    scene.draw_text(handler_run);
-    y += 20.0;
-
-    let handler_total = format!("Total: {} handlers", state.stats.handlers.total);
-    let handler_run = text_system.layout(&handler_total, Point::new(inner_x, y), 11.0, theme::text::MUTED);
-    scene.draw_text(handler_run);
+    let swarm_label = "SWARM COMPUTE";
+    let swarm_run = text_system.layout(swarm_label, Point::new(inner_x, y), 12.0, theme::text::PRIMARY);
+    scene.draw_text(swarm_run);
     y += 24.0;
 
-    // Handler bars by kind
+    // Providers Online (orange accent)
+    render_stat_row(
+        scene,
+        text_system,
+        inner_x,
+        y,
+        inner_width,
+        "Providers Online",
+        &format!("{}", state.stats.rlm.providers_active),
+        Hsla::new(0.09, 0.9, 0.55, 1.0), // Orange
+    );
+    y += 22.0;
+
+    // RLM Queries (24h)
+    render_stat_row(
+        scene,
+        text_system,
+        inner_x,
+        y,
+        inner_width,
+        "RLM Queries (24h)",
+        &format!("{}", state.stats.rlm.subqueries_24h),
+        theme::text::PRIMARY,
+    );
+    y += 22.0;
+
+    // Success Rate
+    let success_rate = if state.stats.rlm.subqueries_total > 0 {
+        (state.stats.rlm.results_total as f32 / state.stats.rlm.subqueries_total as f32 * 100.0) as u64
+    } else {
+        0
+    };
+    render_stat_row(
+        scene,
+        text_system,
+        inner_x,
+        y,
+        inner_width,
+        "Success Rate",
+        &format!("{}%", success_rate),
+        theme::text::PRIMARY,
+    );
+    y += 28.0;
+
+    // Progress bar showing completed vs total
     let bar_height = 16.0;
-    let max_handlers = state.stats.handlers.by_kind.iter().map(|k| k.count).max().unwrap_or(1).max(1);
-    for kc in state.stats.handlers.by_kind.iter().take(4) {
-        let kind_label = format!("Kind {}: {}", kc.kind, kc.count);
-        let label_run = text_system.layout(&kind_label, Point::new(inner_x, y + 2.0), 10.0, theme::text::MUTED);
-        scene.draw_text(label_run);
+    let bar_width = inner_width;
+    let total = state.stats.rlm.subqueries_24h.max(1);
+    let fill = state.stats.rlm.results_24h as f32 / total as f32;
 
-        let bar_x = inner_x + 100.0;
-        let bar_width = inner_width - 100.0;
-        let fill_ratio = kc.count as f32 / max_handlers as f32;
+    // Background bar
+    scene.draw_quad(
+        Quad::new(Bounds::new(inner_x, y, bar_width, bar_height))
+            .with_background(Hsla::new(0.0, 0.0, 1.0, 0.1)),
+    );
 
-        // Background bar
-        scene.draw_quad(
-            Quad::new(Bounds::new(bar_x, y, bar_width, bar_height))
-                .with_background(Hsla::new(0.0, 0.0, 1.0, 0.1)),
-        );
+    // Filled bar (orange)
+    scene.draw_quad(
+        Quad::new(Bounds::new(inner_x, y, bar_width * fill.min(1.0), bar_height))
+            .with_background(Hsla::new(0.09, 0.8, 0.55, 0.9)),
+    );
 
-        // Filled bar
-        scene.draw_quad(
-            Quad::new(Bounds::new(bar_x, y, bar_width * fill_ratio, bar_height))
-                .with_background(Hsla::new(0.55, 0.6, 0.5, 0.8)),
-        );
+    // Label on bar
+    let bar_label = format!(
+        "{}/{} completed",
+        state.stats.rlm.results_24h, state.stats.rlm.subqueries_24h
+    );
+    let bar_label_run = text_system.layout(&bar_label, Point::new(inner_x + 4.0, y + 2.0), 10.0, Hsla::new(0.0, 0.0, 0.0, 0.9));
+    scene.draw_text(bar_label_run);
 
-        y += bar_height + 8.0;
-    }
+    y += bar_height + 8.0;
 
     // Footer with timestamp
     let footer_y = card_y + card_height - inner_padding - 12.0;

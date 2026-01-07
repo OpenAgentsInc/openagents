@@ -37,12 +37,19 @@ pub struct JobStats {
     pub by_kind: Vec<KindCount>,
 }
 
-/// Handler stats from API
+/// RLM (Recursive Language Model) stats from API
 #[derive(Clone, Debug, Default, Deserialize)]
-pub struct HandlerStats {
-    pub total: u64,
+pub struct RlmStats {
     #[serde(default)]
-    pub by_kind: Vec<KindCount>,
+    pub subqueries_total: u64,
+    #[serde(default)]
+    pub subqueries_24h: u64,
+    #[serde(default)]
+    pub results_total: u64,
+    #[serde(default)]
+    pub results_24h: u64,
+    #[serde(default)]
+    pub providers_active: u64,
 }
 
 /// Full stats response from /api/stats
@@ -53,7 +60,7 @@ pub struct RelayStats {
     #[serde(default)]
     pub jobs: JobStats,
     #[serde(default)]
-    pub handlers: HandlerStats,
+    pub rlm: RlmStats,
     #[serde(default)]
     pub timestamp: u64,
 }

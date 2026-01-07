@@ -53,7 +53,7 @@ struct RelayLimitation {
 struct RelayStats {
     events: EventStats,
     jobs: JobStats,
-    handlers: HandlerStats,
+    rlm: RlmStats,
     timestamp: u64,
 }
 
@@ -72,9 +72,12 @@ struct JobStats {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct HandlerStats {
-    total: u64,
-    by_kind: Vec<KindCount>,
+struct RlmStats {
+    subqueries_total: u64,
+    subqueries_24h: u64,
+    results_total: u64,
+    results_24h: u64,
+    providers_active: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -241,27 +244,49 @@ async fn query_relay_stats(env: &Env) -> Result<RelayStats> {
     // Pending = requests without corresponding results (simplified: requests - results)
     let pending = job_requests.saturating_sub(job_results);
 
-    // Handler announcements (kind 31990)
-    let handlers_total: u64 = db
-        .prepare("SELECT COUNT(DISTINCT pubkey) as cnt FROM events WHERE kind = 31990")
+    // RLM sub-queries (kind 5940) - total
+    let rlm_subqueries_total: u64 = db
+        .prepare("SELECT COUNT(*) as cnt FROM events WHERE kind = 5940")
         .first::<CountRow>(None)
         .await?
         .map(|r| r.cnt as u64)
         .unwrap_or(0);
 
-    // Handlers supporting each job kind (parse from content/tags - simplified to count by pubkey)
-    let handlers_by_kind_rows = db
-        .prepare("SELECT 5050 as kind, COUNT(DISTINCT pubkey) as cnt FROM events WHERE kind = 31990")
-        .all()
-        .await?;
-    let handlers_by_kind: Vec<KindCount> = handlers_by_kind_rows
-        .results::<KindRow>()?
-        .into_iter()
-        .map(|r| KindCount {
-            kind: r.kind as u16,
-            count: r.cnt as u64,
-        })
-        .collect();
+    // RLM sub-queries in last 24h
+    let rlm_subqueries_24h: u64 = db
+        .prepare("SELECT COUNT(*) as cnt FROM events WHERE kind = 5940 AND created_at > ?")
+        .bind(&[(day_ago as f64).into()])?
+        .first::<CountRow>(None)
+        .await?
+        .map(|r| r.cnt as u64)
+        .unwrap_or(0);
+
+    // RLM results (kind 6940) - total
+    let rlm_results_total: u64 = db
+        .prepare("SELECT COUNT(*) as cnt FROM events WHERE kind = 6940")
+        .first::<CountRow>(None)
+        .await?
+        .map(|r| r.cnt as u64)
+        .unwrap_or(0);
+
+    // RLM results in last 24h
+    let rlm_results_24h: u64 = db
+        .prepare("SELECT COUNT(*) as cnt FROM events WHERE kind = 6940 AND created_at > ?")
+        .bind(&[(day_ago as f64).into()])?
+        .first::<CountRow>(None)
+        .await?
+        .map(|r| r.cnt as u64)
+        .unwrap_or(0);
+
+    // Active providers (unique pubkeys returning results in last hour)
+    let hour_ago = now - 3600;
+    let providers_active: u64 = db
+        .prepare("SELECT COUNT(DISTINCT pubkey) as cnt FROM events WHERE kind >= 6000 AND kind < 7000 AND created_at > ?")
+        .bind(&[(hour_ago as f64).into()])?
+        .first::<CountRow>(None)
+        .await?
+        .map(|r| r.cnt as u64)
+        .unwrap_or(0);
 
     Ok(RelayStats {
         events: EventStats {
@@ -274,9 +299,12 @@ async fn query_relay_stats(env: &Env) -> Result<RelayStats> {
             completed_24h: job_results,
             by_kind: jobs_by_kind,
         },
-        handlers: HandlerStats {
-            total: handlers_total,
-            by_kind: handlers_by_kind,
+        rlm: RlmStats {
+            subqueries_total: rlm_subqueries_total,
+            subqueries_24h: rlm_subqueries_24h,
+            results_total: rlm_results_total,
+            results_24h: rlm_results_24h,
+            providers_active,
         },
         timestamp: now,
     })
