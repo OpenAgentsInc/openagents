@@ -380,11 +380,8 @@ impl PylonProvider {
             self.init_services().await?;
         }
 
-        // Ensure relay connections are established before subscribing to jobs.
-        self.relay_service
-            .connect()
-            .await
-            .map_err(|e| ProviderError::ServiceError(e.to_string()))?;
+        // Note: dvm.start() handles relay connection with proper auth key setup
+        // Do NOT call relay_service.connect() here - it would connect without auth
 
         // Start DVM service
         if let Some(ref dvm) = self.dvm_service {

@@ -10751,6 +10751,7 @@ dependencies = [
  "toml 0.8.2",
  "tower-http",
  "tracing",
+ "tracing-log",
  "tracing-subscriber",
  "url",
  "uuid",
