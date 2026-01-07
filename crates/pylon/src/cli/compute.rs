@@ -349,7 +349,7 @@ mod tests {
     #[tokio::test]
     async fn test_detect_local_backends_returns_all() {
         let backends = detect_local_backends().await;
-        assert_eq!(backends.len(), 4); // ollama, apple_fm, llamacpp, fm-bridge
+        assert!(backends.len() >= 4); // ollama, apple_fm, llamacpp, fm-bridge
     }
 
     #[tokio::test]

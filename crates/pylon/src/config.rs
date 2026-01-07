@@ -54,9 +54,9 @@ impl Default for PylonConfig {
             name: "Pylon Provider".to_string(),
             description: None,
             relays: vec![
+                "wss://nexus.openagents.com".to_string(),
                 "wss://relay.damus.io".to_string(),
                 "wss://nos.lol".to_string(),
-                "wss://relay.nostr.band".to_string(),
             ],
             min_price_msats: 1000, // 1 sat minimum
             require_payment: true,

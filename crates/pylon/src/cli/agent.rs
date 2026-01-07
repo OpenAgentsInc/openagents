@@ -203,10 +203,13 @@ async fn run_spawn(args: SpawnArgs) -> anyhow::Result<()> {
     };
 
     // Create spawn request
-    let relays = args
-        .relay
-        .map(|r| vec![r])
-        .unwrap_or_else(|| vec!["wss://relay.damus.io".to_string()]);
+    let relays = args.relay.map(|r| vec![r]).unwrap_or_else(|| {
+        vec![
+            "wss://nexus.openagents.com".to_string(),
+            "wss://relay.damus.io".to_string(),
+            "wss://nos.lol".to_string(),
+        ]
+    });
 
     let request = SpawnRequest {
         name: args.name.clone(),

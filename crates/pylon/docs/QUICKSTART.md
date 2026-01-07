@@ -84,7 +84,7 @@ pylon doctor
 # Backends:
 #   ollama: Available (default)
 # Relays:
-#   wss://relay.damus.io: OK
+#   wss://nexus.openagents.com: OK
 ```
 
 ## What's Next?

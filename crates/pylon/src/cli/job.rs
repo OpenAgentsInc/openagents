@@ -35,7 +35,7 @@ pub enum JobCommand {
         #[arg(long, default_value = "1000")]
         bid: u64,
         /// Relay URLs (comma-separated, or specify multiple times)
-        #[arg(long, default_value = "wss://relay.damus.io,wss://nos.lol")]
+        #[arg(long, default_value = "wss://nexus.openagents.com,wss://relay.damus.io,wss://nos.lol")]
         relay: String,
         /// Target provider pubkey (optional)
         #[arg(long)]
@@ -165,6 +165,12 @@ pub async fn run(args: JobArgs) -> anyhow::Result<()> {
             }
 
             request = request.with_bid(bid);
+
+            for relay_url in &relays {
+                if !relay_url.is_empty() {
+                    request = request.add_relay(*relay_url);
+                }
+            }
 
             if let Some(provider_pk) = &provider {
                 request = request.add_service_provider(provider_pk);

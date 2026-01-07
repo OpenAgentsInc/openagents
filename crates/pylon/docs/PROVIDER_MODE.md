@@ -185,9 +185,9 @@ The provider identity is used for:
 # ~/.config/pylon/config.toml
 
 relays = [
+    "wss://nexus.openagents.com",
     "wss://relay.damus.io",
-    "wss://nos.lol",
-    "wss://relay.nostr.band"
+    "wss://nos.lol"
 ]
 ```
 
@@ -380,7 +380,7 @@ pylon status
 #   Supported Bazaar Kinds: 5930, 5932, 5933
 #
 # Relays:
-#   wss://relay.damus.io
+#   wss://nexus.openagents.com
 ```
 
 ### Diagnostics
@@ -426,8 +426,9 @@ When multiple backends are available:
 ```toml
 # config.toml
 relays = [
-    "wss://relay.damus.io",    # Primary
-    "wss://nos.lol",           # Backup
+    "wss://nexus.openagents.com", # Primary
+    "wss://relay.damus.io",       # Backup
+    "wss://nos.lol",              # Additional coverage
 ]
 
 # More relays = more visibility but more bandwidth

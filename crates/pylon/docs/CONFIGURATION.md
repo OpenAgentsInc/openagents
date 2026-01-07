@@ -21,9 +21,9 @@ Pylon uses TOML format for configuration.
 
 # Nostr relays for provider mode
 relays = [
+    "wss://nexus.openagents.com",
     "wss://relay.damus.io",
     "wss://nos.lol",
-    "wss://relay.nostr.band",
 ]
 
 # Data directory (optional, defaults to ~/.openagents/pylon)
@@ -35,13 +35,14 @@ relays = [
 ### relays
 
 **Type**: Array of strings
-**Default**: `["wss://relay.damus.io"]`
+**Default**: `["wss://nexus.openagents.com", "wss://relay.damus.io", "wss://nos.lol"]`
 **Required**: No
 
 List of Nostr relay WebSocket URLs to connect to.
 
 ```toml
 relays = [
+    "wss://nexus.openagents.com",
     "wss://relay.damus.io",
     "wss://nos.lol",
 ]
@@ -77,7 +78,7 @@ These settings control the Spark wallet and payment behavior for provider mode.
 Bitcoin network for Lightning payments.
 
 ```toml
-network = "testnet"  # Options: "mainnet", "testnet", "signet", "regtest"
+network = "regtest"  # Options: "mainnet", "testnet", "signet", "regtest"
 ```
 
 **Notes**:
@@ -161,13 +162,13 @@ description = "AI compute provider for NIP-90 jobs"
 # Nostr Relays
 # Connect to these relays for NIP-90 job requests
 relays = [
-    "wss://relay.damus.io",      # Primary relay
-    "wss://nos.lol",             # Backup
-    "wss://relay.nostr.band",    # Additional coverage
+    "wss://nexus.openagents.com", # Primary relay
+    "wss://relay.damus.io",       # Backup
+    "wss://nos.lol",              # Additional coverage
 ]
 
 # Payment settings
-network = "testnet"              # testnet for alpha, mainnet for production
+network = "regtest"              # regtest for alpha, mainnet for production
 enable_payments = true           # Enable Spark wallet
 require_payment = true           # Require payment before processing
 min_price_msats = 1000           # 1 sat minimum per job
@@ -338,7 +339,9 @@ When `pylon init` runs, it creates:
 # Default config.toml
 
 relays = [
+    "wss://nexus.openagents.com",
     "wss://relay.damus.io",
+    "wss://nos.lol",
 ]
 ```
 
@@ -377,13 +380,14 @@ Future versions may support hot reload via control socket.
 ### Minimal (Default)
 
 ```toml
-relays = ["wss://relay.damus.io"]
+relays = ["wss://nexus.openagents.com", "wss://relay.damus.io", "wss://nos.lol"]
 ```
 
 ### Multiple Relays
 
 ```toml
 relays = [
+    "wss://nexus.openagents.com",
     "wss://relay.damus.io",
     "wss://nos.lol",
     "wss://relay.nostr.band",
@@ -394,7 +398,7 @@ relays = [
 ### Custom Data Directory
 
 ```toml
-relays = ["wss://relay.damus.io"]
+relays = ["wss://nexus.openagents.com"]
 data_dir = "/data/pylon"
 ```
 
