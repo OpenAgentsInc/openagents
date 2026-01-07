@@ -5,3 +5,4 @@
 - Ported relay-worker Cloudflare code into `crates/nexus/worker/src/` with Nexus naming, env parsing, and updated NIP-11 output.
 - Renamed the Durable Object to `NexusRelay` and aligned it with `NEXUS_RELAY` bindings.
 - Removed placeholder gitkeep files once real sources landed.
+- Generated `crates/nexus/worker/Cargo.lock` and verified `bun run build` for the worker.
