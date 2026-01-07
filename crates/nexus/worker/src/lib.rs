@@ -48,6 +48,41 @@ struct RelayLimitation {
     payment_required: bool,
 }
 
+/// Stats API response
+#[derive(Debug, Clone, Serialize)]
+struct RelayStats {
+    events: EventStats,
+    jobs: JobStats,
+    handlers: HandlerStats,
+    timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct EventStats {
+    total: u64,
+    last_24h: u64,
+    by_kind: Vec<KindCount>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct JobStats {
+    pending: u64,
+    completed_24h: u64,
+    by_kind: Vec<KindCount>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct HandlerStats {
+    total: u64,
+    by_kind: Vec<KindCount>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct KindCount {
+    kind: u16,
+    count: u64,
+}
+
 impl Default for RelayInfo {
     fn default() -> Self {
         Self {
@@ -123,6 +158,130 @@ fn is_websocket_upgrade(req: &Request) -> bool {
         .unwrap_or(false)
 }
 
+/// Query aggregate stats from D1 database
+async fn query_relay_stats(env: &Env) -> Result<RelayStats> {
+    let db = env.d1("DB")?;
+    let now = (js_sys::Date::now() / 1000.0) as u64;
+    let day_ago = now - 86400;
+
+    // Total events
+    #[derive(serde::Deserialize)]
+    struct CountRow {
+        cnt: f64,
+    }
+
+    let total: u64 = db
+        .prepare("SELECT COUNT(*) as cnt FROM events")
+        .first::<CountRow>(None)
+        .await?
+        .map(|r| r.cnt as u64)
+        .unwrap_or(0);
+
+    // Events in last 24h
+    let last_24h: u64 = db
+        .prepare("SELECT COUNT(*) as cnt FROM events WHERE created_at > ?")
+        .bind(&[(day_ago as f64).into()])?
+        .first::<CountRow>(None)
+        .await?
+        .map(|r| r.cnt as u64)
+        .unwrap_or(0);
+
+    // Events by kind
+    #[derive(serde::Deserialize)]
+    struct KindRow {
+        kind: f64,
+        cnt: f64,
+    }
+
+    let by_kind_rows = db
+        .prepare("SELECT kind, COUNT(*) as cnt FROM events GROUP BY kind ORDER BY cnt DESC LIMIT 20")
+        .all()
+        .await?;
+    let events_by_kind: Vec<KindCount> = by_kind_rows
+        .results::<KindRow>()?
+        .into_iter()
+        .map(|r| KindCount {
+            kind: r.kind as u16,
+            count: r.cnt as u64,
+        })
+        .collect();
+
+    // Job requests (kinds 5000-5999)
+    let job_requests: u64 = db
+        .prepare("SELECT COUNT(*) as cnt FROM events WHERE kind >= 5000 AND kind < 6000 AND created_at > ?")
+        .bind(&[(day_ago as f64).into()])?
+        .first::<CountRow>(None)
+        .await?
+        .map(|r| r.cnt as u64)
+        .unwrap_or(0);
+
+    // Job results (kinds 6000-6999)
+    let job_results: u64 = db
+        .prepare("SELECT COUNT(*) as cnt FROM events WHERE kind >= 6000 AND kind < 7000 AND created_at > ?")
+        .bind(&[(day_ago as f64).into()])?
+        .first::<CountRow>(None)
+        .await?
+        .map(|r| r.cnt as u64)
+        .unwrap_or(0);
+
+    // Jobs by kind (5000-5999)
+    let jobs_by_kind_rows = db
+        .prepare("SELECT kind, COUNT(*) as cnt FROM events WHERE kind >= 5000 AND kind < 6000 GROUP BY kind ORDER BY cnt DESC LIMIT 10")
+        .all()
+        .await?;
+    let jobs_by_kind: Vec<KindCount> = jobs_by_kind_rows
+        .results::<KindRow>()?
+        .into_iter()
+        .map(|r| KindCount {
+            kind: r.kind as u16,
+            count: r.cnt as u64,
+        })
+        .collect();
+
+    // Pending = requests without corresponding results (simplified: requests - results)
+    let pending = job_requests.saturating_sub(job_results);
+
+    // Handler announcements (kind 31990)
+    let handlers_total: u64 = db
+        .prepare("SELECT COUNT(DISTINCT pubkey) as cnt FROM events WHERE kind = 31990")
+        .first::<CountRow>(None)
+        .await?
+        .map(|r| r.cnt as u64)
+        .unwrap_or(0);
+
+    // Handlers supporting each job kind (parse from content/tags - simplified to count by pubkey)
+    let handlers_by_kind_rows = db
+        .prepare("SELECT 5050 as kind, COUNT(DISTINCT pubkey) as cnt FROM events WHERE kind = 31990")
+        .all()
+        .await?;
+    let handlers_by_kind: Vec<KindCount> = handlers_by_kind_rows
+        .results::<KindRow>()?
+        .into_iter()
+        .map(|r| KindCount {
+            kind: r.kind as u16,
+            count: r.cnt as u64,
+        })
+        .collect();
+
+    Ok(RelayStats {
+        events: EventStats {
+            total,
+            last_24h,
+            by_kind: events_by_kind,
+        },
+        jobs: JobStats {
+            pending,
+            completed_24h: job_results,
+            by_kind: jobs_by_kind,
+        },
+        handlers: HandlerStats {
+            total: handlers_total,
+            by_kind: handlers_by_kind,
+        },
+        timestamp: now,
+    })
+}
+
 #[event(fetch)]
 async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     console_error_panic_hook::set_once();
@@ -131,11 +290,12 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let path = url.path();
 
     match path {
-        // NIP-11: Relay Information Document (non-WebSocket requests to root)
+        // NIP-11 or HUD: Non-WebSocket requests to root
         "/" if !is_websocket_upgrade(&req) => {
-            // Check Accept header for application/nostr+json
+            // Check Accept header for application/nostr+json (NIP-11)
             let accept = req.headers().get("Accept")?.unwrap_or_default();
             if accept.contains("application/nostr+json") {
+                // NIP-11: Relay Information Document
                 let info = get_relay_info(&env);
                 let mut headers = Headers::new();
                 headers.set("Content-Type", "application/nostr+json")?;
@@ -143,21 +303,9 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
                 let json = serde_json::to_string(&info)?;
                 Ok(Response::from_body(ResponseBody::Body(json.into_bytes()))?.with_headers(headers))
             } else {
-                // Return simple HTML for browsers
-                let html = r#"<!DOCTYPE html>
-<html>
-<head><title>OpenAgents Nexus</title></head>
-<body>
-<h1>OpenAgents Nexus Relay</h1>
-<p>This is a Nostr relay for the OpenAgents compute marketplace.</p>
-<p>Connect with a Nostr client: <code>wss://nexus.openagents.com</code></p>
-<p>Supported NIPs: 1, 11, 42, 89, 90</p>
-<p><strong>Note:</strong> Authentication (NIP-42) is required for all operations.</p>
-</body>
-</html>"#;
-                let mut headers = Headers::new();
-                headers.set("Content-Type", "text/html")?;
-                Ok(Response::from_body(ResponseBody::Body(html.as_bytes().to_vec()))?.with_headers(headers))
+                // Browser request: Let asset binding serve index.html (HUD)
+                // Return 404 to trigger SPA fallback
+                Response::error("", 404)
             }
         }
 
@@ -172,6 +320,16 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // Health check endpoint
         "/health" => {
             Response::ok("ok")
+        }
+
+        // Stats API endpoint
+        "/api/stats" => {
+            let stats = query_relay_stats(&env).await?;
+            let mut headers = Headers::new();
+            headers.set("Content-Type", "application/json")?;
+            headers.set("Access-Control-Allow-Origin", "*")?;
+            headers.set("Cache-Control", "public, max-age=5")?;
+            Ok(Response::from_json(&stats)?.with_headers(headers))
         }
 
         // CORS preflight

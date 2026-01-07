@@ -8515,6 +8515,14 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 [[package]]
 name = "nexus"
 version = "0.1.0"
+dependencies = [
+ "getrandom 0.2.16",
+ "hex",
+ "nostr 0.1.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
 
 [[package]]
 name = "nix"
