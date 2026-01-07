@@ -5,10 +5,11 @@ name = "nexus"
 main = "build/index.js"
 compatibility_date = "2024-12-01"
 
-# Static asset serving (HUD)
+# Static asset serving (HUD) - worker runs first for WebSocket/NIP-11 routing
 [assets]
 directory = "../dist"
-not_found_handling = "single-page-application"
+binding = "ASSETS"
+run_worker_first = true
 
 # Keep workers.dev subdomain enabled
 workers_dev = true

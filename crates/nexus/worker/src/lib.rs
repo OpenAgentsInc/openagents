@@ -303,9 +303,11 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
                 let json = serde_json::to_string(&info)?;
                 Ok(Response::from_body(ResponseBody::Body(json.into_bytes()))?.with_headers(headers))
             } else {
-                // Browser request: Let asset binding serve index.html (HUD)
-                // Return 404 to trigger SPA fallback
-                Response::error("", 404)
+                // Browser request: Serve HUD from assets binding
+                let assets: Fetcher = env.get_binding("ASSETS")?;
+                let asset_req = Request::new("https://assets/index.html", Method::Get)?;
+                let http_resp = assets.fetch_request(asset_req).await?;
+                Response::try_from(http_resp)
             }
         }
 
@@ -341,6 +343,25 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             Ok(Response::empty()?.with_headers(headers))
         }
 
-        _ => Response::error("Not Found", 404),
+        // Static assets (pkg/, static/)
+        _ if path.starts_with("/pkg/") || path.starts_with("/static/") => {
+            let assets: Fetcher = env.get_binding("ASSETS")?;
+            let asset_req = Request::new(&format!("https://assets{}", path), Method::Get)?;
+            let http_resp = assets.fetch_request(asset_req).await?;
+            Response::try_from(http_resp)
+        }
+
+        // SPA fallback for browser requests, 404 for others
+        _ => {
+            let accept = req.headers().get("Accept")?.unwrap_or_default();
+            if accept.contains("text/html") {
+                let assets: Fetcher = env.get_binding("ASSETS")?;
+                let asset_req = Request::new("https://assets/index.html", Method::Get)?;
+                let http_resp = assets.fetch_request(asset_req).await?;
+                Response::try_from(http_resp)
+            } else {
+                Response::error("Not Found", 404)
+            }
+        }
     }
 }
