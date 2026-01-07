@@ -105,7 +105,7 @@ I think that this model we've been talking about of, when you have millions of M
 **[07:03]**
 **[Visual: The speaker continues to talk over the "Power at Scale" chart.]**
 
-So all of that is going to be enabled by the software that we launch tomorrow. To be clear, for the first week, we're going to be using only testnet funds for Bitcoin. The live money version will go live the following Tuesday, January 14th.
+So all of that is going to be enabled by the software that we launch tomorrow. To be clear, for the first week, we're going to be using only testnet funds for Bitcoin. The live money version will go live the following Wednesday, January 14th.
 
 **[07:19]**
 **[Visual: The screen switches to a blog post by "Prime Intellect" titled "Recursive Language Models: the paradigm of 2026".]**
