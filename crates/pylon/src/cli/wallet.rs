@@ -103,6 +103,16 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to get balance: {}", e))?;
 
+            // Get addresses
+            let spark_address = wallet
+                .get_spark_address()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to get Spark address: {}", e))?;
+            let bitcoin_address = wallet
+                .get_bitcoin_address()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to get Bitcoin address: {}", e))?;
+
             println!("\nWallet Balance");
             println!("==============");
             println!(
@@ -123,6 +133,11 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
                 format_sats(balance.total_sats()),
                 balance.total_sats() as f64 / 100_000_000.0
             );
+
+            println!("\nAddresses");
+            println!("=========");
+            println!("Spark:   {}", spark_address);
+            println!("Bitcoin: {}", bitcoin_address);
         }
 
         WalletCommand::Status => {
@@ -225,13 +240,14 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
 
         WalletCommand::Fund { amount } => {
             let wallet = create_wallet().await?;
+            // Use Bitcoin address for faucet (on-chain deposit)
             let address = wallet
-                .get_spark_address()
+                .get_bitcoin_address()
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to get address: {}", e))?;
 
             println!("\nRequesting {} sats from regtest faucet...", format_sats(amount));
-            println!("Address: {}", address);
+            println!("Bitcoin address: {}", address);
 
             // Check for faucet credentials
             let faucet_url = std::env::var("FAUCET_URL")
@@ -274,10 +290,11 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
                     if msg.contains("Not logged in") || msg.contains("auth") {
                         anyhow::bail!(
                             "Faucet error: {}\n\n\
-                            The regtest faucet requires authentication.\n\
-                            Set environment variables:\n  \
-                            FAUCET_USERNAME=<your-username>\n  \
-                            FAUCET_PASSWORD=<your-password>\n\n\
+                            The Lightspark regtest faucet requires authentication.\n\n\
+                            Options:\n  \
+                            1. Use the web faucet: https://app.lightspark.com/regtest-faucet\n     \
+                               Copy your Bitcoin address above and paste it there.\n  \
+                            2. Set FAUCET_USERNAME and FAUCET_PASSWORD if you have API credentials.\n\n\
                             See: crates/spark/docs/REGTEST.md",
                             msg
                         );
