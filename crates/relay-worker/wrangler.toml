@@ -31,7 +31,7 @@ new_sqlite_classes = ["NostrRelay"]
 
 # Environment variables (non-secret)
 [vars]
-RELAY_NAME = "relay.openagents.com"
+RELAY_NAME = "nexus.openagents.com"
 RELAY_DESCRIPTION = "OpenAgents NIP-90 inference relay"
 RELAY_PUBKEY = ""
 SUPPORTED_NIPS = "1,11,28,32,42,90"

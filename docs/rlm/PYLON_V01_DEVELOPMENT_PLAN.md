@@ -35,7 +35,7 @@ All payments via Spark (Breez SDK) on **testnet/regtest**.
 ### 1. Provider Node (`pylon node up`)
 
 **What it does:**
-- Connects to relay (default: `wss://relay.openagents.com`)
+- Connects to relay (default: `wss://nexus.openagents.com`)
 - Announces capabilities via NIP-89 (kind 31990)
 - Subscribes to job requests (kind 5050 for text generation)
 - Executes jobs via local backend (Apple FM, Ollama, or Llama.cpp)
@@ -238,7 +238,7 @@ pylon
 pylon init --testnet
 pylon wallet balance  # Should be 0
 # Fund from faucet...
-pylon node up --relay wss://relay.openagents.com
+pylon node up --relay wss://nexus.openagents.com
 
 # Terminal 2: Submit job as buyer
 pylon init --testnet  # Different identity
@@ -326,7 +326,7 @@ chacha20poly1305 = "0.10"  # For identity encryption
 
 ## Relay Infrastructure
 
-**Primary relay:** `wss://relay.openagents.com`
+**Primary relay:** `wss://nexus.openagents.com`
 
 **NIP-90 subscription filters:**
 ```json
@@ -390,7 +390,7 @@ let result = wallet.send_payment_simple(&bolt11, None).await?;
 let request = JobRequest::new(KIND_JOB_TEXT_GENERATION)?
     .add_input(JobInput::text("Summarize this..."))
     .with_bid(1000)
-    .add_relay("wss://relay.openagents.com");
+    .add_relay("wss://nexus.openagents.com");
 
 let submission = client.submit_job(&request, &relays).await?;
 let result = client.await_result(&submission.event_id, Duration::from_secs(60)).await?;

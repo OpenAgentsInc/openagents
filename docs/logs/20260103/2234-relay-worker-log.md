@@ -5,12 +5,12 @@
 
 ## Summary
 
-Deployed a Nostr relay on Cloudflare Workers at `relay.openagents.com` using Durable Objects with WebSocket hibernation API. The relay implements NIP-01, NIP-11, NIP-28, NIP-32, NIP-42, and NIP-90.
+Deployed a Nostr relay on Cloudflare Workers at `nexus.openagents.com` using Durable Objects with WebSocket hibernation API. The relay implements NIP-01, NIP-11, NIP-28, NIP-32, NIP-42, and NIP-90.
 
 ## Live Endpoints
 
-- **WebSocket**: `wss://relay.openagents.com/`
-- **NIP-11 Info**: `https://relay.openagents.com/`
+- **WebSocket**: `wss://nexus.openagents.com/`
+- **NIP-11 Info**: `https://nexus.openagents.com/`
 - **Workers.dev**: `https://openagents-relay.openagents.workers.dev/`
 
 ## Architecture
@@ -29,7 +29,7 @@ Deployed a Nostr relay on Cloudflare Workers at `relay.openagents.com` using Dur
 ### Infrastructure
 - **D1 Database**: `openagents-relay` (ID: `df30de4e-7dcd-4037-81fe-e67f1a80889c`)
 - **Durable Object**: `NostrRelay` class with SQLite storage
-- **Custom Domain**: `relay.openagents.com` (configured in Cloudflare dashboard)
+- **Custom Domain**: `nexus.openagents.com` (configured in Cloudflare dashboard)
 
 ## Connecting from Pylon MVP
 
@@ -37,7 +37,7 @@ Deployed a Nostr relay on Cloudflare Workers at `relay.openagents.com` using Dur
 
 ```rust
 // Connect to the relay
-let url = "wss://relay.openagents.com/";
+let url = "wss://nexus.openagents.com/";
 let (ws, _) = tokio_tungstenite::connect_async(url).await?;
 ```
 
@@ -56,7 +56,7 @@ let (ws, _) = tokio_tungstenite::connect_async(url).await?;
      "created_at": <unix-timestamp>,
      "kind": 22242,
      "tags": [
-       ["relay", "wss://relay.openagents.com/"],
+       ["relay", "wss://nexus.openagents.com/"],
        ["challenge", "<challenge-from-step-1>"]
      ],
      "content": "",
@@ -80,13 +80,13 @@ Any message before authentication returns:
 ### NIP-11 Relay Info
 
 ```bash
-curl -H "Accept: application/nostr+json" https://relay.openagents.com/
+curl -H "Accept: application/nostr+json" https://nexus.openagents.com/
 ```
 
 Returns:
 ```json
 {
-  "name": "relay.openagents.com",
+  "name": "nexus.openagents.com",
   "description": "OpenAgents NIP-90 inference relay",
   "supported_nips": [1, 11, 28, 32, 42, 90],
   "limitation": {

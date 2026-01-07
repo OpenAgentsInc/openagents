@@ -1,4 +1,4 @@
-//! Test connection to live relay.openagents.com
+//! Test connection to live nexus.openagents.com
 
 use nostr::{finalize_event, EventTemplate};
 use nostr_client::RelayConnection;
@@ -17,7 +17,7 @@ async fn test_live_relay_auth() {
     let secret_key: [u8; 32] = rand::random();
 
     // Connect to live relay
-    let relay_url = "wss://relay.openagents.com/";
+    let relay_url = "wss://nexus.openagents.com/";
     let conn = RelayConnection::new(relay_url).expect("create connection");
     conn.connect().await.expect("connect to relay");
 
