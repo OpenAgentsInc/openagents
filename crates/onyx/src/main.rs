@@ -4,6 +4,7 @@
 
 mod app;
 mod config;
+mod file_watcher;
 mod update_checker;
 mod vault;
 mod voice;
