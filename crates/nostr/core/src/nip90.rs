@@ -168,6 +168,13 @@ pub const KIND_JOB_PATCH_GEN: u16 = 5932;
 /// Code review - review code changes and provide feedback
 pub const KIND_JOB_CODE_REVIEW: u16 = 5933;
 
+// RLM (Recursive Language Models) job kinds
+/// RLM sub-query - a sub-task in a recursive language model execution
+/// Result kind: 6940
+pub const KIND_JOB_RLM_SUBQUERY: u16 = 5940;
+/// RLM sub-query result
+pub const KIND_RESULT_RLM_SUBQUERY: u16 = 6940;
+
 /// Errors that can occur during NIP-90 operations.
 #[derive(Debug, Error)]
 pub enum Nip90Error {

@@ -68,9 +68,30 @@ pylon wallet balance          # Check balance
 pylon start -f -m provider    # Start as provider
 pylon job submit "prompt"     # Submit a job
 pylon job submit "prompt" --auto-pay  # Submit and auto-pay
+pylon rlm "query"             # Run RLM query across swarm
+pylon rlm "query" --local-only  # Run RLM locally
 pylon infer --prompt "Hello"  # Local inference test
 pylon doctor                  # Check system status
 ```
+
+## RLM: Recursive Queries Across the Network
+
+The killer feature: run recursive language model queries that fan out to providers.
+
+```bash
+# Simple query - fans out to swarm providers
+pylon rlm "What is the best approach for implementing auth?"
+
+# Analyze a document - chunks it and processes in parallel
+pylon rlm "Summarize the key points" --file paper.pdf --fanout 20
+
+# Local only (no network, uses your Apple FM/Ollama)
+pylon rlm "Explain this code" --file main.rs --local-only
+```
+
+This is the [RLM paper](https://openagents.com/recursive-language-models) in practice: one coordinating model breaks down tasks, fans out to the swarm, and synthesizes results.
+
+Run as a provider to earn sats. Submit queries to use other providers. The more people running pylon, the more powerful the network becomes.
 
 ## What's Next
 
