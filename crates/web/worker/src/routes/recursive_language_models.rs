@@ -11,7 +11,7 @@ pub async fn view_recursive_language_models(_env: Env) -> Result<Response> {
         number: 202,
         title: "Recursive Language Models",
         slug: "recursive-language-models",
-        date: "January 7, 2026",
+        date: "January 6, 2026",
         description: "We discuss recursive language models (RLMs) and their importance to our swarm compute network",
         tweet_embed: TWEET_EMBED,
     };
