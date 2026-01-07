@@ -43,6 +43,9 @@ pub enum WalletCommand {
         /// Number of payments to show
         #[arg(short, long, default_value = "10")]
         limit: u32,
+        /// Only show completed payments
+        #[arg(long)]
+        completed: bool,
     },
     /// Get regtest sats from faucet
     Fund {
@@ -215,12 +218,22 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
             println!("Status: {:?}", response.payment.status);
         }
 
-        WalletCommand::History { limit } => {
+        WalletCommand::History { limit, completed } => {
             let wallet = create_wallet().await?;
             let payments = wallet
                 .list_payments(Some(limit), None)
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to list payments: {}", e))?;
+
+            // Filter if --completed flag is set
+            let payments: Vec<_> = if completed {
+                payments
+                    .into_iter()
+                    .filter(|p| p.status == spark::PaymentStatus::Completed)
+                    .collect()
+            } else {
+                payments
+            };
 
             println!("\nPayment History");
             println!("===============");
@@ -233,14 +246,35 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
                         spark::PaymentType::Send => "→",
                         spark::PaymentType::Receive => "←",
                     };
+                    let status = match payment.status {
+                        spark::PaymentStatus::Completed => "[done]",
+                        spark::PaymentStatus::Pending => "[pend]",
+                        spark::PaymentStatus::Failed => "[fail]",
+                    };
+                    // Format timestamp
+                    let time = chrono::DateTime::from_timestamp(payment.timestamp as i64, 0)
+                        .map(|dt| dt.format("%m/%d %H:%M").to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+
                     println!(
-                        "{} {:>10} sats  {:?}  {}",
+                        "{} {:>10} sats  {}  {}  {}",
                         direction,
                         format_sats(payment.amount as u64),
-                        payment.status,
+                        status,
+                        time,
                         &payment.id[..16]
                     );
                 }
+            }
+
+            // Show hint about pending if there are any
+            let pending_count = wallet
+                .list_payments(Some(50), None)
+                .await
+                .map(|p| p.iter().filter(|p| p.status == spark::PaymentStatus::Pending).count())
+                .unwrap_or(0);
+            if pending_count > 0 && !completed {
+                println!("\n{} pending payments. Use --completed to hide.", pending_count);
             }
         }
 
