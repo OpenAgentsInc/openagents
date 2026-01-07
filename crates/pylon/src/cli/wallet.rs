@@ -138,6 +138,12 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
             println!("=========");
             println!("Spark:   {}", spark_address);
             println!("Bitcoin: {}", bitcoin_address);
+
+            // Hint for regtest funding if balance is 0
+            if balance.total_sats() == 0 {
+                println!("\nGet regtest sats: https://app.lightspark.com/regtest-faucet");
+                println!("Paste your Bitcoin address above (up to 50,000 sats)");
+            }
         }
 
         WalletCommand::Status => {
