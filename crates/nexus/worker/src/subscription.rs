@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use worker::*;
 
+use crate::relay_do::ConnectionMeta;
+
 /// NIP-01 filter for querying events
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Filter {
@@ -217,8 +219,16 @@ impl<'a> SubscriptionManager<'a> {
         ws: &WebSocket,
         event: &nostr::Event,
     ) -> Result<Vec<String>> {
-        let ws_id = ws.as_ref() as *const _ as usize;
-        let prefix = format!("sub:{}:", ws_id);
+        // Use stable conn_id from attachment (not pointer address which changes)
+        let meta: ConnectionMeta = ws
+            .deserialize_attachment()?
+            .unwrap_or_else(|| ConnectionMeta {
+                conn_id: String::new(),
+                pubkey: None,
+                challenge: String::new(),
+                authenticated: false,
+            });
+        let prefix = format!("sub:{}:", meta.conn_id);
 
         // List all subscriptions for this WebSocket
         let list_result = self.state.storage().list().await?;
