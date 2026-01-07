@@ -192,54 +192,54 @@ kind:31990      → forever (addressable, replaced not duplicated)
 ## Implementation Checklist
 
 ### Phase 0: Project Setup (Cloudflare)
-- [ ] Create `crates/nexus/worker/` directory structure
-- [ ] Set up wrangler.toml with D1 + Durable Objects
-- [ ] Create D1 schema (events table + indexes)
-- [ ] Reuse protocol code from `crates/relay-worker/`:
-  - [ ] `nip01.rs` (ClientMessage, RelayMessage)
-  - [ ] `subscription.rs` (Filter matching)
-  - [ ] `storage.rs` (adapt for D1)
-- [ ] Basic worker entry point
+- [x] Create `crates/nexus/worker/` directory structure
+- [x] Set up wrangler.toml with D1 + Durable Objects
+- [x] Create D1 schema (events table + indexes)
+- [x] Reuse protocol code from `crates/relay-worker/`:
+  - [x] `nip01.rs` (ClientMessage, RelayMessage)
+  - [x] `subscription.rs` (Filter matching)
+  - [x] `storage.rs` (adapt for D1)
+- [x] Basic worker entry point
 
 ### Phase 1: Basic Relay
-- [ ] Durable Object for WebSocket handling
-- [ ] NIP-01: Basic protocol (EVENT, REQ, CLOSE, OK, EOSE)
-- [ ] Event signature validation (stub for WASM, real for native)
-- [ ] D1 storage backend
-- [ ] Subscription management with DO state
+- [x] Durable Object for WebSocket handling
+- [x] NIP-01: Basic protocol (EVENT, REQ, CLOSE, OK, EOSE)
+- [x] Event signature validation (stub for WASM, real for native)
+- [x] D1 storage backend
+- [x] Subscription management with DO state
 
 ### Phase 2: NIP-90 Support
-- [ ] Accept kind:5000-5999 (job requests)
-- [ ] Accept kind:6000-6999 (job results)
-- [ ] Accept kind:7000 (job feedback)
-- [ ] Filter by `#e` tag (job reference)
-- [ ] Filter by `#p` tag (pubkey targeting)
+- [x] Accept kind:5000-5999 (job requests)
+- [x] Accept kind:6000-6999 (job results)
+- [x] Accept kind:7000 (job feedback)
+- [x] Filter by `#e` tag (job reference)
+- [x] Filter by `#p` tag (pubkey targeting)
 - [ ] 24h auto-expiry for jobs/feedback
 
 ### Phase 3: NIP-89 Support
-- [ ] Accept kind:31990 (handler announcements)
+- [x] Accept kind:31990 (handler announcements)
 - [ ] Handle addressable event replacement (same `d` tag)
 - [ ] Filter by `#k` tag (supported job kinds)
 
 ### Phase 4: NIP-42 Authentication
-- [ ] Generate random challenge on connect
-- [ ] Send `["AUTH", "<challenge>"]` to new connections
-- [ ] Parse incoming `["AUTH", <event>]` messages
+- [x] Generate random challenge on connect
+- [x] Send `["AUTH", "<challenge>"]` to new connections
+- [x] Parse incoming `["AUTH", <event>]` messages
 - [ ] Validate kind:22242 auth events:
   - [ ] Verify signature
-  - [ ] Check `relay` tag matches our URL
-  - [ ] Check `challenge` tag matches sent challenge
-  - [ ] Check `created_at` within 10 minutes
-- [ ] Track authenticated pubkey per connection
-- [ ] Return `["OK", "<event-id>", true, ""]` on success
-- [ ] Return `["OK", "<event-id>", false, "auth-required: <reason>"]` on failure
+  - [x] Check `relay` tag matches our URL
+  - [x] Check `challenge` tag matches sent challenge
+  - [x] Check `created_at` within 10 minutes
+- [x] Track authenticated pubkey per connection
+- [x] Return `["OK", "<event-id>", true, ""]` on success
+- [x] Return `["OK", "<event-id>", false, "auth-required: <reason>"]` on failure
 
 ### Phase 5: Production Ready
-- [ ] NIP-11 relay information document
+- [x] NIP-11 relay information document
 - [ ] Rate limiting (higher limits for authenticated connections)
 - [ ] Metrics endpoint
 - [ ] TLS termination
-- [ ] Health check endpoint
+- [x] Health check endpoint
 
 ---
 
