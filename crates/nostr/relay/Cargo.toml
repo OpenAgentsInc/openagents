@@ -45,6 +45,9 @@ governor = "0.6"
 nonzero_ext = "0.3"
 hex.workspace = true
 
+# Random generation for NIP-42 challenges
+rand = "0.9"
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3"

@@ -8,5 +8,6 @@ pub mod autopilot;
 pub mod gitafter;
 pub mod marketplace;
 pub mod pylon;
+#[cfg(feature = "fm-bridge")]
 pub mod rlm;
 pub mod wallet;

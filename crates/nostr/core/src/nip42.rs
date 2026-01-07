@@ -54,7 +54,7 @@
 //! # }
 //! ```
 
-use crate::nip01::Event;
+use crate::nip01::{Event, EventTemplate};
 use thiserror::Error;
 
 /// Event kind for authentication events
@@ -188,6 +188,42 @@ pub fn create_auth_event_tags(relay_url: &str, challenge: &str) -> Vec<Vec<Strin
         vec![RELAY_TAG.to_string(), relay_url.to_string()],
         vec![CHALLENGE_TAG.to_string(), challenge.to_string()],
     ]
+}
+
+/// Create an authentication event template.
+///
+/// This creates an `EventTemplate` that can be signed with `finalize_event`
+/// to create a valid NIP-42 authentication event.
+///
+/// # Arguments
+///
+/// * `relay_url` - The relay's WebSocket URL
+/// * `challenge` - The challenge string received from the relay
+///
+/// # Example
+///
+/// ```
+/// use nostr_core::nip42::create_auth_event_template;
+/// use nostr_core::nip01::finalize_event;
+///
+/// let template = create_auth_event_template(
+///     "wss://relay.example.com/",
+///     "random-challenge-string"
+/// );
+///
+/// // Sign with private key to create the event
+/// // let event = finalize_event(&template, &private_key)?;
+/// ```
+pub fn create_auth_event_template(relay_url: &str, challenge: &str) -> EventTemplate {
+    EventTemplate {
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        kind: AUTH_KIND,
+        tags: create_auth_event_tags(relay_url, challenge),
+        content: String::new(),
+    }
 }
 
 /// Validate an authentication event.
