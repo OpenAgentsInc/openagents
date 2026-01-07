@@ -233,7 +233,16 @@ impl DvmClient {
         let event_id = event.id.clone();
         info!("Submitting job {} (kind {})", event_id, request.kind);
 
+        // Set auth key for NIP-42 authentication before connecting
+        self.pool.set_auth_key(self.private_key).await;
+
         self.pool.connect_all().await?;
+
+        // Subscribe to responses BEFORE publishing to avoid race condition
+        // where feedback arrives before subscription is active
+        self.subscribe_to_job_events(&event_id, request.kind)
+            .await?;
+
         let confirmations = self.pool.publish(&event).await?;
 
         let accepted_count = confirmations.iter().filter(|c| c.accepted).count();
@@ -246,9 +255,6 @@ impl DvmClient {
         }
 
         info!("Job {} published to {} relays", event_id, accepted_count);
-
-        self.subscribe_to_job_events(&event_id, request.kind)
-            .await?;
 
         Ok(JobSubmission::new(event_id, request, connected_relays))
     }
@@ -366,6 +372,9 @@ impl DvmClient {
             }
         }
 
+        // Set auth key for NIP-42 authentication before connecting
+        self.pool.set_auth_key(self.private_key).await;
+
         self.pool.connect_all().await?;
 
         let filter = json!({
@@ -425,7 +434,8 @@ impl DvmClient {
             }),
         ];
 
-        let subscription_id = format!("dvm-job-{}", job_id);
+        // Use shorter subscription ID - many relays have 64 char limit
+        let subscription_id = format!("dvm-{}", &job_id[..16]);
 
         {
             let mut active = self.active_jobs.write().await;

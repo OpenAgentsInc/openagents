@@ -10,9 +10,9 @@ use tracing::{debug, info, warn};
 
 /// Default Nostr relays for the compute provider
 pub const DEFAULT_RELAYS: &[&str] = &[
+    "wss://relay.openagents.com",
     "wss://relay.damus.io",
     "wss://nos.lol",
-    "wss://relay.nostr.band",
 ];
 
 /// Errors from the relay service
@@ -51,6 +51,8 @@ pub struct RelayService {
     pool: Arc<RwLock<Option<RelayPool>>>,
     /// Currently connected relays
     connected: Arc<RwLock<Vec<String>>>,
+    /// Optional auth key for NIP-42 authentication
+    auth_key: Arc<RwLock<Option<[u8; 32]>>>,
 }
 
 impl RelayService {
@@ -65,7 +67,21 @@ impl RelayService {
             relay_urls: urls,
             pool: Arc::new(RwLock::new(None)),
             connected: Arc::new(RwLock::new(Vec::new())),
+            auth_key: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Set the authentication key for NIP-42 auth
+    ///
+    /// This should be called before connecting to relays.
+    /// The key will be used to automatically respond to AUTH challenges.
+    pub async fn set_auth_key(&self, key: [u8; 32]) {
+        *self.auth_key.write().await = Some(key);
+        // If already connected, also set on the pool
+        if let Some(ref pool) = *self.pool.read().await {
+            pool.set_auth_key(key).await;
+        }
+        info!("Auth key set for relay service");
     }
 
     /// Get the relay URLs
@@ -90,6 +106,12 @@ impl RelayService {
             if let Err(e) = pool.add_relay(url).await {
                 warn!("Failed to add relay {}: {}", url, e);
             }
+        }
+
+        // Set auth key if configured (must be done before connect)
+        if let Some(key) = *self.auth_key.read().await {
+            info!("Setting NIP-42 auth key on relay pool");
+            pool.set_auth_key(key).await;
         }
 
         // Connect to all relays

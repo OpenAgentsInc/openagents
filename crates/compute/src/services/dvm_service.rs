@@ -14,7 +14,8 @@ use nostr::{
     KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION, PricingInfo, finalize_event,
 };
 use nostr::nip90::{
-    KIND_JOB_CODE_REVIEW, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX, KIND_JOB_SANDBOX_RUN,
+    JobFeedback, JobStatus, KIND_JOB_CODE_REVIEW, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX,
+    KIND_JOB_SANDBOX_RUN, create_job_feedback_event,
 };
 use spark::{PaymentDetails, PaymentStatus, SparkWallet};
 use std::collections::HashMap;
@@ -248,6 +249,11 @@ impl DvmService {
             .clone()
             .ok_or(DvmError::NotInitialized)?;
 
+        // Set auth key on relay service for NIP-42 authentication
+        self.relay_service
+            .set_auth_key(*identity.private_key_bytes())
+            .await;
+
         // Connect to relays
         self.relay_service
             .connect()
@@ -351,10 +357,36 @@ impl DvmService {
 
                                         let _ = event_tx.send(DomainEvent::InvoiceCreated {
                                             job_id: job_id.clone(),
-                                            bolt11,
+                                            bolt11: bolt11.clone(),
                                             amount_msats,
                                             timestamp: Utc::now(),
                                         });
+
+                                        // Publish kind:7000 payment-required feedback to relay
+                                        let identity_guard = identity_for_task.read().await;
+                                        if let Some(ref identity) = *identity_guard {
+                                            let feedback = JobFeedback::new(
+                                                JobStatus::PaymentRequired,
+                                                event.id.clone(),
+                                                event.pubkey.clone(),
+                                            )
+                                            .with_amount(amount_msats, Some(bolt11));
+
+                                            let template = create_job_feedback_event(&feedback);
+                                            match finalize_event(&template, identity.private_key_bytes()) {
+                                                Ok(feedback_event) => {
+                                                    if let Err(e) = relay_service.publish(feedback_event).await {
+                                                        log::error!("Failed to publish payment-required feedback: {}", e);
+                                                    } else {
+                                                        log::info!("Published payment-required feedback for job {}", job_id);
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    log::error!("Failed to sign feedback event: {}", e);
+                                                }
+                                            }
+                                        }
+                                        drop(identity_guard);
                                         continue;
                                     }
                                     Err(e) => {

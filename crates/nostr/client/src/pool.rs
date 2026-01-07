@@ -34,7 +34,7 @@ impl Default for PoolConfig {
         Self {
             max_relays: 10,
             connection_timeout: Duration::from_secs(10),
-            min_write_confirmations: 2,
+            min_write_confirmations: 1,
             auto_reconnect: true,
             relay_config: RelayConfig::default(),
         }
@@ -164,6 +164,26 @@ impl RelayPool {
         }
 
         Ok(())
+    }
+
+    /// Set the authentication key for NIP-42 auth on all relays
+    ///
+    /// This should be called before connecting to relays that require authentication.
+    /// The key will be used to automatically respond to AUTH challenges.
+    pub async fn set_auth_key(&self, key: [u8; 32]) {
+        let relays = self.relays.read().await;
+        for relay in relays.values() {
+            relay.set_auth_key(key).await;
+        }
+        info!("Set auth key for {} relays", relays.len());
+    }
+
+    /// Clear the authentication key from all relays
+    pub async fn clear_auth_key(&self) {
+        let relays = self.relays.read().await;
+        for relay in relays.values() {
+            relay.clear_auth_key().await;
+        }
     }
 
     /// Connect to all relays in the pool

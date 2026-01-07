@@ -559,7 +559,7 @@ pub use nip40::{
 // NIP-42: Authentication of Clients to Relays
 pub use nip42::{
     AUTH_KIND, AUTH_REQUIRED_PREFIX, CHALLENGE_TAG, MAX_TIME_DIFF, Nip42Error, RELAY_TAG,
-    RESTRICTED_PREFIX, create_auth_event_tags, create_auth_required_message,
+    RESTRICTED_PREFIX, create_auth_event_tags, create_auth_event_template, create_auth_required_message,
     create_restricted_message, get_challenge, get_relay_url, is_auth_event, is_auth_required_error,
     is_restricted_error, normalize_relay_url, validate_auth_event,
 };

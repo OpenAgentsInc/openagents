@@ -17,8 +17,9 @@ use crate::relay_info::RelayInformation;
 use crate::subscription::{Filter, SubscriptionManager};
 use crate::validation;
 use futures::{SinkExt, StreamExt};
-use nostr::Event;
+use nostr::{Event, AUTH_KIND};
 use nostr::nip77::{NegentropyMessage, Record};
+use rand::Rng;
 use serde_json::{Value, json};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -27,6 +28,13 @@ use tokio::sync::broadcast;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
 use warp::Filter as WarpFilter;
+
+/// Generate a random challenge string for NIP-42 AUTH
+fn generate_auth_challenge() -> String {
+    let mut rng = rand::rng();
+    let bytes: [u8; 16] = rng.random();
+    hex::encode(bytes)
+}
 
 /// Relay server configuration
 #[derive(Debug, Clone)]
@@ -39,6 +47,10 @@ pub struct RelayConfig {
     pub rate_limit: RateLimitConfig,
     /// Relay information (NIP-11)
     pub relay_info: RelayInformation,
+    /// Require NIP-42 authentication for writes
+    pub auth_required: bool,
+    /// Relay URL for NIP-42 AUTH validation
+    pub relay_url: String,
 }
 
 impl Default for RelayConfig {
@@ -53,11 +65,22 @@ impl Default for RelayConfig {
             .parse()
             .expect("Failed to parse relay bind address");
 
+        // Read auth requirement from environment
+        let auth_required = std::env::var("NOSTR_RELAY_AUTH_REQUIRED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+
+        // Read relay URL from environment
+        let relay_url = std::env::var("NOSTR_RELAY_URL")
+            .unwrap_or_else(|_| format!("wss://localhost:{}", port));
+
         Self {
             bind_addr,
             max_message_size: 512 * 1024, // 512 KB
             rate_limit: RateLimitConfig::default(),
             relay_info: RelayInformation::default(),
+            auth_required,
+            relay_url,
         }
     }
 }
@@ -125,6 +148,8 @@ impl RelayServer {
                     let metrics = Arc::clone(&self.metrics);
 
                     let max_message_size = self.config.max_message_size;
+                    let auth_required = self.config.auth_required;
+                    let relay_url = self.config.relay_url.clone();
                     tokio::spawn(async move {
                         let result = handle_connection(
                             stream,
@@ -134,6 +159,8 @@ impl RelayServer {
                             rate_limiter.clone(),
                             metrics.clone(),
                             max_message_size,
+                            auth_required,
+                            relay_url,
                         )
                         .await;
 
@@ -203,6 +230,8 @@ async fn handle_connection(
     rate_limiter: Arc<RateLimiter>,
     metrics: Arc<RelayMetrics>,
     max_message_size: usize,
+    auth_required: bool,
+    relay_url: String,
 ) -> Result<()> {
     let ws_stream = accept_async(stream)
         .await
@@ -215,6 +244,22 @@ async fn handle_connection(
     let mut negentropy_sessions = NegentropySessionManager::new();
     let connection_id = addr.to_string();
     let mut broadcast_rx = broadcast_tx.subscribe();
+
+    // NIP-42 AUTH state
+    let auth_challenge = generate_auth_challenge();
+    let mut authenticated_pubkey: Option<String> = None;
+
+    // Send AUTH challenge if auth is required
+    if auth_required {
+        let auth_msg = json!(["AUTH", auth_challenge.clone()]);
+        let auth_text = auth_msg.to_string();
+        metrics.bytes_out(auth_text.len() as u64);
+        if let Err(e) = write.send(Message::Text(auth_text)).await {
+            error!("Failed to send AUTH challenge to {}: {}", addr, e);
+            return Err(RelayError::WebSocket(e.to_string()));
+        }
+        debug!("Sent AUTH challenge to {}: {}", addr, &auth_challenge[..8]);
+    }
 
     // Spawn task to handle broadcasts
     let subscriptions_clone = Arc::new(tokio::sync::Mutex::new(SubscriptionManager::new()));
@@ -274,6 +319,10 @@ async fn handle_connection(
                                     broadcast_tx: &broadcast_tx,
                                     rate_limiter: &rate_limiter,
                                     metrics: &metrics,
+                                    auth_required,
+                                    relay_url: &relay_url,
+                                    auth_challenge: &auth_challenge,
+                                    authenticated_pubkey: &mut authenticated_pubkey,
                                 };
                                 let responses = handle_nostr_message(&value, &mut ctx).await;
 
@@ -341,6 +390,11 @@ struct MessageContext<'a> {
     broadcast_tx: &'a broadcast::Sender<BroadcastEvent>,
     rate_limiter: &'a RateLimiter,
     metrics: &'a RelayMetrics,
+    // NIP-42 AUTH state
+    auth_required: bool,
+    relay_url: &'a str,
+    auth_challenge: &'a str,
+    authenticated_pubkey: &'a mut Option<String>,
 }
 
 /// Handle a Nostr protocol message, returns multiple responses
@@ -407,6 +461,14 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
                 ctx.metrics.event_rejected_signature();
                 responses.push(json!(["OK", event.id.clone(), false, e.to_string()]));
                 return responses;
+            }
+
+            // Check authentication for non-auth events
+            if ctx.auth_required && event.kind != AUTH_KIND {
+                if ctx.authenticated_pubkey.is_none() {
+                    responses.push(json!(["OK", event.id, false, "auth-required: authentication required"]));
+                    return responses;
+                }
             }
 
             // Store the event
@@ -814,6 +876,83 @@ async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<
             }
             // No response needed for NEG-CLOSE
         }
+        "AUTH" => {
+            // ["AUTH", <signed event JSON>]
+            // NIP-42 authentication response from client
+            if msg_array.len() != 2 {
+                responses.push(json!([
+                    "NOTICE",
+                    "invalid: AUTH message must have 2 elements"
+                ]));
+                return responses;
+            }
+
+            // Parse auth event
+            let auth_event: Event = match serde_json::from_value(msg_array[1].clone()) {
+                Ok(e) => e,
+                Err(e) => {
+                    warn!("Failed to parse AUTH event: {}", e);
+                    responses.push(json!(["OK", "", false, format!("invalid: failed to parse auth event: {}", e)]));
+                    return responses;
+                }
+            };
+
+            // Validate event structure and cryptography
+            if let Err(e) = validation::validate_event(&auth_event) {
+                responses.push(json!(["OK", auth_event.id.clone(), false, format!("invalid: {}", e)]));
+                return responses;
+            }
+
+            // Verify this is a kind 22242 auth event
+            if auth_event.kind != AUTH_KIND {
+                responses.push(json!(["OK", auth_event.id, false, format!("invalid: expected kind {}, got {}", AUTH_KIND, auth_event.kind)]));
+                return responses;
+            }
+
+            // Verify the relay and challenge tags
+            let mut has_relay_tag = false;
+            let mut has_challenge_tag = false;
+
+            for tag in &auth_event.tags {
+                if tag.len() >= 2 {
+                    match tag[0].as_str() {
+                        "relay" => {
+                            // Relay URL should match (allow with or without trailing slash)
+                            let tag_url = tag[1].trim_end_matches('/');
+                            let our_url = ctx.relay_url.trim_end_matches('/');
+                            if tag_url == our_url {
+                                has_relay_tag = true;
+                            } else {
+                                debug!("AUTH relay mismatch: {} != {}", tag_url, our_url);
+                            }
+                        }
+                        "challenge" => {
+                            if tag[1] == ctx.auth_challenge {
+                                has_challenge_tag = true;
+                            } else {
+                                debug!("AUTH challenge mismatch: {} != {}", tag[1], ctx.auth_challenge);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            if !has_relay_tag {
+                responses.push(json!(["OK", auth_event.id, false, "invalid: missing or incorrect relay tag"]));
+                return responses;
+            }
+
+            if !has_challenge_tag {
+                responses.push(json!(["OK", auth_event.id, false, "invalid: missing or incorrect challenge tag"]));
+                return responses;
+            }
+
+            // Authentication successful!
+            *ctx.authenticated_pubkey = Some(auth_event.pubkey.clone());
+            info!("Client authenticated as {}", &auth_event.pubkey[..16]);
+            responses.push(json!(["OK", auth_event.id, true, ""]));
+        }
         _ => {
             warn!("Unknown message type: {}", msg_type);
             responses.push(json!([
@@ -859,6 +998,7 @@ mod tests {
 
         let msg = json!(["EVENT", event_json]);
         let metrics = RelayMetrics::new();
+        let mut auth_pubkey = None;
         let mut ctx = MessageContext {
             db: &db,
             subscriptions: &mut subs,
@@ -867,6 +1007,10 @@ mod tests {
             broadcast_tx: &broadcast_tx,
             rate_limiter: &rate_limiter,
             metrics: &metrics,
+            auth_required: false,
+            relay_url: "wss://localhost:7000",
+            auth_challenge: "test_challenge",
+            authenticated_pubkey: &mut auth_pubkey,
         };
         let responses = handle_nostr_message(&msg, &mut ctx).await;
 
@@ -892,6 +1036,7 @@ mod tests {
         let metrics = RelayMetrics::new();
 
         let msg = json!(["REQ", "sub_123", {"kinds": [1]}]);
+        let mut auth_pubkey = None;
         let mut ctx = MessageContext {
             db: &db,
             subscriptions: &mut subs,
@@ -900,6 +1045,10 @@ mod tests {
             broadcast_tx: &broadcast_tx,
             rate_limiter: &rate_limiter,
             metrics: &metrics,
+            auth_required: false,
+            relay_url: "wss://localhost:7000",
+            auth_challenge: "test_challenge",
+            authenticated_pubkey: &mut auth_pubkey,
         };
         let responses = handle_nostr_message(&msg, &mut ctx).await;
 
@@ -931,6 +1080,7 @@ mod tests {
 
         // First create a subscription
         let msg1 = json!(["REQ", "sub_123", {"kinds": [1]}]);
+        let mut auth_pubkey = None;
         {
             let mut ctx = MessageContext {
                 db: &db,
@@ -940,6 +1090,10 @@ mod tests {
                 broadcast_tx: &broadcast_tx,
                 rate_limiter: &rate_limiter,
                 metrics: &metrics,
+                auth_required: false,
+                relay_url: "wss://localhost:7000",
+                auth_challenge: "test_challenge",
+                authenticated_pubkey: &mut auth_pubkey,
             };
             handle_nostr_message(&msg1, &mut ctx).await;
         }
@@ -955,6 +1109,10 @@ mod tests {
             broadcast_tx: &broadcast_tx,
             rate_limiter: &rate_limiter,
             metrics: &metrics,
+            auth_required: false,
+            relay_url: "wss://localhost:7000",
+            auth_challenge: "test_challenge",
+            authenticated_pubkey: &mut auth_pubkey,
         };
         let responses = handle_nostr_message(&msg2, &mut ctx).await;
 
@@ -979,6 +1137,7 @@ mod tests {
         let metrics = RelayMetrics::new();
 
         let msg = json!(["UNKNOWN", "data"]);
+        let mut auth_pubkey = None;
         let mut ctx = MessageContext {
             db: &db,
             subscriptions: &mut subs,
@@ -987,6 +1146,10 @@ mod tests {
             broadcast_tx: &broadcast_tx,
             rate_limiter: &rate_limiter,
             metrics: &metrics,
+            auth_required: false,
+            relay_url: "wss://localhost:7000",
+            auth_challenge: "test_challenge",
+            authenticated_pubkey: &mut auth_pubkey,
         };
         let responses = handle_nostr_message(&msg, &mut ctx).await;
 

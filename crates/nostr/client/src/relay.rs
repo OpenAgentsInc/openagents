@@ -9,7 +9,7 @@ use crate::queue::{MessageQueue, QueueConfig};
 use crate::recovery::{CircuitBreaker, ExponentialBackoff, HealthMetrics};
 use crate::subscription::Subscription;
 use futures::{SinkExt, StreamExt};
-use nostr::Event;
+use nostr::{Event, create_auth_event_template, finalize_event};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -130,6 +130,8 @@ pub struct RelayConnection {
     health_metrics: Arc<RwLock<HealthMetrics>>,
     /// Connection start time (for uptime tracking)
     connected_at: Arc<RwLock<Option<Instant>>>,
+    /// Optional private key for NIP-42 authentication
+    auth_key: Arc<RwLock<Option<[u8; 32]>>>,
 }
 
 impl RelayConnection {
@@ -203,6 +205,7 @@ impl RelayConnection {
             backoff,
             health_metrics,
             connected_at: Arc::new(RwLock::new(None)),
+            auth_key: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -295,6 +298,12 @@ impl RelayConnection {
         // Start background receive loop
         self.start_recv_loop().await;
 
+        // If auth key is set, wait briefly for AUTH handshake to complete
+        // This allows the relay to send AUTH challenge and us to respond before publishing
+        if self.auth_key.read().await.is_some() {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+
         Ok(())
     }
 
@@ -306,6 +315,8 @@ impl RelayConnection {
         let subscriptions = Arc::clone(&self.subscriptions);
         let msg_tx = self.msg_tx.clone();
         let url = self.url.to_string();
+        let auth_key = Arc::clone(&self.auth_key);
+        let relay_url_for_auth = self.url.to_string();
 
         let handle = tokio::spawn(async move {
             loop {
@@ -347,10 +358,11 @@ impl RelayConnection {
                 };
 
                 // Process received message outside of lock
-                if let Some(text) = msg
-                    && let Ok(Some(relay_msg)) = Self::parse_relay_message(&text)
-                {
-                    let _ = msg_tx.send(relay_msg.clone());
+                if let Some(text) = msg {
+                    debug!("Raw message from {}: {}...", url, &text[..text.len().min(100)]);
+                    if let Ok(Some(relay_msg)) = Self::parse_relay_message(&text)
+                    {
+                        let _ = msg_tx.send(relay_msg.clone());
 
                     // Handle OK messages for pending confirmations
                     if let RelayMessage::Ok(event_id, accepted, message) = &relay_msg {
@@ -367,10 +379,19 @@ impl RelayConnection {
 
                     // Route EVENT messages to subscriptions
                     if let RelayMessage::Event(sub_id, event) = &relay_msg {
+                        debug!(
+                            "Received EVENT from {} for sub {}: kind={}, id={}...",
+                            url,
+                            sub_id,
+                            event.kind,
+                            &event.id[..16]
+                        );
                         let mut should_remove = false;
                         {
                             let subs = subscriptions.lock().await;
+                            debug!("Active subscriptions: {:?}", subs.keys().collect::<Vec<_>>());
                             if let Some(subscription) = subs.get(sub_id) {
+                                debug!("Found matching subscription {}, routing event", sub_id);
                                 if let Err(e) = subscription.handle_event(event.clone()) {
                                     let err_str = e.to_string();
                                     // Only warn once if channel closed, then remove subscription
@@ -398,7 +419,44 @@ impl RelayConnection {
                             subscription.mark_eose();
                         }
                     }
-                }
+
+                    // Handle AUTH challenges (NIP-42)
+                    if let RelayMessage::Auth(challenge) = &relay_msg {
+                        info!("Received AUTH challenge from {}", url);
+
+                        // Check if we have an auth key configured
+                        let key_opt = auth_key.read().await.clone();
+                        if let Some(key) = key_opt {
+                            // Create and sign auth event
+                            let template = create_auth_event_template(&relay_url_for_auth, challenge);
+                            match finalize_event(&template, &key) {
+                                Ok(auth_event) => {
+                                    // Send AUTH response: ["AUTH", <signed-event>]
+                                    let auth_msg = json!(["AUTH", auth_event]);
+                                    let auth_text = serde_json::to_string(&auth_msg).unwrap();
+
+                                    let mut ws_guard = ws.lock().await;
+                                    if let Some(stream) = ws_guard.as_mut() {
+                                        match stream.send(Message::Text(auth_text)).await {
+                                            Ok(()) => {
+                                                info!("Sent AUTH response to {}", url);
+                                            }
+                                            Err(e) => {
+                                                warn!("Failed to send AUTH response to {}: {}", url, e);
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!("Failed to sign AUTH event for {}: {}", url, e);
+                                }
+                            }
+                        } else {
+                            warn!("Received AUTH challenge from {} but no auth key configured", url);
+                        }
+                    }
+                    } // End of parse_relay_message if block
+                } // End of Some(text) if block
             }
         });
 
@@ -445,6 +503,20 @@ impl RelayConnection {
     /// Check if connected
     pub async fn is_connected(&self) -> bool {
         *self.state.read().await == ConnectionState::Connected
+    }
+
+    /// Set the authentication key for NIP-42 auth
+    ///
+    /// If set, the relay connection will automatically respond to AUTH
+    /// challenges from the relay using this private key.
+    pub async fn set_auth_key(&self, key: [u8; 32]) {
+        *self.auth_key.write().await = Some(key);
+        info!("Auth key set for relay {}", self.url);
+    }
+
+    /// Clear the authentication key
+    pub async fn clear_auth_key(&self) {
+        *self.auth_key.write().await = None;
     }
 
     /// Send an event to the relay

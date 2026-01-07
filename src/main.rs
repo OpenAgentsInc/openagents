@@ -55,6 +55,7 @@ enum Commands {
     Pylon(cli::pylon::PylonCommands),
 
     /// RLM commands (Recursive Language Model)
+    #[cfg(feature = "fm-bridge")]
     #[command(subcommand)]
     Rlm(cli::rlm::RlmCommands),
 }
@@ -88,6 +89,7 @@ fn main() {
         Some(Commands::Gitafter(cmd)) => cli::gitafter::run(cmd),
         Some(Commands::Auth(cmd)) => cli::auth::run(cmd),
         Some(Commands::Pylon(cmd)) => cli::pylon::run(cmd),
+        #[cfg(feature = "fm-bridge")]
         Some(Commands::Rlm(cmd)) => cli::rlm::run(cmd),
     };
 

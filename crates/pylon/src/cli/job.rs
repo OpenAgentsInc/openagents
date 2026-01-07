@@ -5,10 +5,11 @@
 use crate::jobs::{JobRecord, JobStore};
 use clap::{Parser, Subcommand};
 use compute::domain::identity::UnifiedIdentity;
-use nostr::{JobInput, JobRequest};
+use nostr::{JobInput, JobRequest, JobStatus};
 use nostr_client::dvm::DvmClient;
+use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Job management commands (buyer mode)
 #[derive(Parser)]
@@ -33,8 +34,8 @@ pub enum JobCommand {
         /// Bid amount in millisats
         #[arg(long, default_value = "1000")]
         bid: u64,
-        /// Relay URL
-        #[arg(long, default_value = "wss://relay.damus.io")]
+        /// Relay URLs (comma-separated, or specify multiple times)
+        #[arg(long, default_value = "wss://relay.damus.io,wss://nos.lol")]
         relay: String,
         /// Target provider pubkey (optional)
         #[arg(long)]
@@ -42,6 +43,9 @@ pub enum JobCommand {
         /// Wait for result (don't return immediately)
         #[arg(long)]
         wait: bool,
+        /// Auto-pay invoice when provider requests payment
+        #[arg(long)]
+        auto_pay: bool,
         /// Timeout in seconds when waiting
         #[arg(long, default_value = "60")]
         timeout: u64,
@@ -102,6 +106,26 @@ fn create_dvm_client() -> anyhow::Result<DvmClient> {
     DvmClient::new(private_key).map_err(|e| anyhow::anyhow!("Failed to create DVM client: {}", e))
 }
 
+/// Create a Spark wallet from the stored identity
+async fn create_wallet() -> anyhow::Result<SparkWallet> {
+    let mnemonic = load_mnemonic()?;
+
+    let signer = SparkSigner::from_mnemonic(&mnemonic, "")
+        .map_err(|e| anyhow::anyhow!("Failed to create signer: {}", e))?;
+
+    let config = WalletConfig {
+        network: Network::Regtest,
+        api_key: None,
+        storage_dir: data_dir()?.join("spark"),
+    };
+
+    let wallet = SparkWallet::new(signer, config)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to initialize wallet: {}", e))?;
+
+    Ok(wallet)
+}
+
 /// Execute a job command
 pub async fn run(args: JobArgs) -> anyhow::Result<()> {
     match args.command {
@@ -113,14 +137,24 @@ pub async fn run(args: JobArgs) -> anyhow::Result<()> {
             relay,
             provider,
             wait,
+            auto_pay,
             timeout,
         } => {
             let client = create_dvm_client()?;
             let store = get_job_store()?;
 
-            println!("Submitting job to {}...", relay);
+            // Parse comma-separated relays
+            let relays: Vec<&str> = relay.split(',').map(|s| s.trim()).collect();
+
+            println!("Submitting job to {} relays...", relays.len());
+            for r in &relays {
+                println!("  - {}", r);
+            }
             println!("Kind: {}", kind);
             println!("Prompt: {}", if prompt.len() > 50 { format!("{}...", &prompt[..50]) } else { prompt.clone() });
+            if auto_pay {
+                println!("Auto-pay: enabled");
+            }
 
             // Build job request
             let mut request = JobRequest::new(kind)?;
@@ -136,8 +170,8 @@ pub async fn run(args: JobArgs) -> anyhow::Result<()> {
                 request = request.add_service_provider(provider_pk);
             }
 
-            // Submit to relay
-            let submission = client.submit_job(request, &[&relay]).await?;
+            // Submit to relays
+            let submission = client.submit_job(request, &relays).await?;
             let job_id = submission.event_id.clone();
 
             println!("\nJob Submitted");
@@ -145,20 +179,97 @@ pub async fn run(args: JobArgs) -> anyhow::Result<()> {
             println!("ID:     {}", job_id);
             println!("Pubkey: {}", client.pubkey());
 
-            // Store in local DB
-            let mut record = JobRecord::new(job_id.clone(), kind, prompt, relay);
+            // Store in local DB (use first relay for record)
+            let mut record = JobRecord::new(job_id.clone(), kind, prompt, relays.first().copied().unwrap_or("unknown").to_string());
             if let Some(p) = provider {
                 record = record.with_provider(p);
             }
             record = record.with_bid(bid);
             store.insert(&record)?;
 
-            // Optionally wait for result
-            if wait {
-                println!("\nWaiting for result ({}s timeout)...", timeout);
+            // Optionally wait for result (with optional auto-pay)
+            if wait || auto_pay {
+                // Subscribe to feedback to catch payment-required
+                let mut feedback_rx = client.subscribe_to_feedback(&job_id).await?;
+
+                let total_timeout = Duration::from_secs(timeout);
+                let start = Instant::now();
+                let mut payment_made = false;
+
+                // Wait for payment-required feedback if auto_pay is enabled
+                if auto_pay {
+                    println!("\nWaiting for payment request...");
+
+                    let feedback_timeout = Duration::from_secs(30);
+                    let feedback_start = Instant::now();
+
+                    while feedback_start.elapsed() < feedback_timeout {
+                        match tokio::time::timeout(Duration::from_millis(500), feedback_rx.recv()).await {
+                            Ok(Some(feedback_event)) => {
+                                println!("Received feedback: {:?}", feedback_event.feedback.status);
+
+                                if feedback_event.feedback.status == JobStatus::PaymentRequired {
+                                    if let Some(bolt11) = &feedback_event.feedback.bolt11 {
+                                        let amount = feedback_event.feedback.amount.unwrap_or(0);
+                                        println!("\nPayment Required");
+                                        println!("================");
+                                        println!("Amount: {} msats", amount);
+
+                                        // Connect to Spark wallet and pay
+                                        println!("\nConnecting to Spark wallet...");
+                                        let wallet = create_wallet().await?;
+
+                                        println!("Preparing payment...");
+                                        let prepare = wallet
+                                            .prepare_send_payment(bolt11, None)
+                                            .await
+                                            .map_err(|e| anyhow::anyhow!("Failed to prepare payment: {}", e))?;
+
+                                        println!("Sending payment...");
+                                        let response = wallet
+                                            .send_payment(prepare, None)
+                                            .await
+                                            .map_err(|e| anyhow::anyhow!("Payment failed: {}", e))?;
+
+                                        println!("Payment sent! ID: {}", response.payment.id);
+                                        payment_made = true;
+                                        break;
+                                    } else {
+                                        println!("Warning: payment-required but no bolt11 invoice");
+                                    }
+                                } else if feedback_event.feedback.status == JobStatus::Error {
+                                    let error_msg = feedback_event.feedback.status_extra
+                                        .unwrap_or_else(|| "Unknown error".to_string());
+                                    anyhow::bail!("Job failed: {}", error_msg);
+                                }
+                            }
+                            Ok(None) => {
+                                // Channel closed
+                                break;
+                            }
+                            Err(_) => {
+                                // Timeout, continue waiting
+                                continue;
+                            }
+                        }
+                    }
+
+                    if !payment_made && auto_pay {
+                        println!("\nNo payment request received within 30s.");
+                        println!("The provider may not have seen the job or may offer free service.");
+                    }
+                }
+
+                // Now wait for the result
+                let remaining_timeout = total_timeout.saturating_sub(start.elapsed());
+                if remaining_timeout.is_zero() {
+                    anyhow::bail!("Timeout waiting for result");
+                }
+
+                println!("\nWaiting for result ({:.0}s remaining)...", remaining_timeout.as_secs_f64());
 
                 match client
-                    .await_result(&job_id, Duration::from_secs(timeout))
+                    .await_result(&job_id, remaining_timeout)
                     .await
                 {
                     Ok(result) => {
@@ -174,12 +285,14 @@ pub async fn run(args: JobArgs) -> anyhow::Result<()> {
                             result.amount,
                         )?;
 
-                        if let Some(bolt11) = &result.bolt11 {
-                            println!("\nPayment Required");
-                            println!("================");
-                            println!("Amount: {} msats", result.amount.unwrap_or(0));
-                            println!("Invoice: {}", bolt11);
-                            println!("\nPay with: pylon wallet pay {}", bolt11);
+                        if !payment_made {
+                            if let Some(bolt11) = &result.bolt11 {
+                                println!("\nPayment Required");
+                                println!("================");
+                                println!("Amount: {} msats", result.amount.unwrap_or(0));
+                                println!("Invoice: {}", bolt11);
+                                println!("\nPay with: pylon wallet pay {}", bolt11);
+                            }
                         }
                     }
                     Err(e) => {
