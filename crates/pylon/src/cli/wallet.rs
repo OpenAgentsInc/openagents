@@ -3,6 +3,7 @@
 //! Commands for managing Spark wallet (Lightning payments).
 
 use clap::{Parser, Subcommand};
+use compute::domain::identity::UnifiedIdentity;
 use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
 use std::path::PathBuf;
 
@@ -53,6 +54,8 @@ pub enum WalletCommand {
         #[arg(short, long, default_value = "100000")]
         amount: u64,
     },
+    /// Show wallet identities (Nostr + Bitcoin pubkeys)
+    Whoami,
 }
 
 /// Get pylon data directory
@@ -352,6 +355,22 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
             } else {
                 println!("\nFaucet response: {}", serde_json::to_string_pretty(&result)?);
             }
+        }
+
+        WalletCommand::Whoami => {
+            let mnemonic = load_mnemonic()?;
+            let identity = UnifiedIdentity::from_mnemonic(&mnemonic, "")
+                .map_err(|e| anyhow::anyhow!("Failed to create identity: {}", e))?;
+
+            let nostr_hex = identity.public_key_hex();
+            let nostr_npub = identity.npub()
+                .map_err(|e| anyhow::anyhow!("Failed to get npub: {}", e))?;
+
+            println!("\nWallet Identity");
+            println!("===============");
+            println!("Nostr (hex):  {}", nostr_hex);
+            println!("Nostr (npub): {}", nostr_npub);
+            println!("Spark:        {}", identity.spark_public_key_hex());
         }
     }
 
