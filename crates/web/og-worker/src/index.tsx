@@ -24,6 +24,13 @@ const BLOG_POSTS: Record<string, BlogPostMeta> = {
     description:
       "We plan to connect millions of Apple silicon chips into the world's largest network for agentic compute",
   },
+  "recursive-language-models": {
+    title: "Recursive Language Models",
+    episode: 202,
+    date: "January 7, 2026",
+    description:
+      "We discuss recursive language models (RLMs) and their importance to our swarm compute network",
+  },
   // Add future blog posts here
 };
 
