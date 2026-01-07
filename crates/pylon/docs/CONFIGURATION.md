@@ -64,6 +64,70 @@ Directory for Pylon data files (identity, etc.).
 data_dir = "/home/user/.pylon-data"
 ```
 
+### Payment Configuration
+
+These settings control the Spark wallet and payment behavior for provider mode.
+
+#### network
+
+**Type**: String
+**Default**: `"regtest"`
+**Required**: No
+
+Bitcoin network for Lightning payments.
+
+```toml
+network = "testnet"  # Options: "mainnet", "testnet", "signet", "regtest"
+```
+
+**Notes**:
+- `testnet` and `signet` map to Regtest internally (Spark SDK limitation)
+- Use `mainnet` for real Bitcoin payments (requires Spark API key)
+
+#### enable_payments
+
+**Type**: Boolean
+**Default**: `true`
+**Required**: No
+
+Whether to enable the Spark wallet for payments.
+
+```toml
+enable_payments = true
+```
+
+**Notes**:
+- When `false`, provider runs in "free mode" (no invoices)
+- Wallet initialization errors also result in free mode
+
+#### require_payment
+
+**Type**: Boolean
+**Default**: `true`
+**Required**: No
+
+Whether to require payment before processing jobs.
+
+```toml
+require_payment = true
+```
+
+**Notes**:
+- When `true`, creates an invoice and waits for payment before processing
+- When `false`, processes jobs immediately (for testing)
+
+#### min_price_msats
+
+**Type**: Integer (millisatoshis)
+**Default**: `1000` (1 sat)
+**Required**: No
+
+Minimum price per job in millisatoshis.
+
+```toml
+min_price_msats = 5000  # 5 sats
+```
+
 ### claude
 
 **Type**: Table
@@ -90,6 +154,10 @@ executable_path = "/usr/local/bin/claude"
 # Pylon Configuration
 # ~/.config/pylon/config.toml
 
+# Provider name shown in NIP-89 handler info
+name = "My Pylon Provider"
+description = "AI compute provider for NIP-90 jobs"
+
 # Nostr Relays
 # Connect to these relays for NIP-90 job requests
 relays = [
@@ -97,6 +165,18 @@ relays = [
     "wss://nos.lol",             # Backup
     "wss://relay.nostr.band",    # Additional coverage
 ]
+
+# Payment settings
+network = "testnet"              # testnet for alpha, mainnet for production
+enable_payments = true           # Enable Spark wallet
+require_payment = true           # Require payment before processing
+min_price_msats = 1000           # 1 sat minimum per job
+
+# Default inference model
+default_model = "llama3.2"
+
+# Backend preference order
+backend_preference = ["ollama", "llamacpp", "apple_fm"]
 
 # Claude tunnel defaults
 [claude]
@@ -134,9 +214,9 @@ word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12
 
 | File | Location | Purpose |
 |------|----------|---------|
-| PID file | `~/.pylon/pylon.pid` | Process tracking |
-| Control socket | `~/.pylon/control.sock` | IPC |
-| Database | `~/.pylon/pylon.db` | Persistence |
+| PID file | `~/.openagents/pylon/pylon.pid` | Process tracking |
+| Control socket | `~/.openagents/pylon/control.sock` | IPC |
+| Database | `~/.openagents/pylon/pylon.db` | Persistence |
 
 ## Agent Configuration
 
@@ -369,7 +449,7 @@ enabled = false
 # Host settings
 [host]
 auto_start_agents = true
-agent_log_dir = "~/.pylon/agent-logs"
+agent_log_dir = "~/.openagents/pylon/agent-logs"
 
 # Pricing (for provider mode)
 [pricing]

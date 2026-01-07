@@ -164,21 +164,29 @@ impl PylonConfig {
         Ok(())
     }
 
-    /// Get config file path
-    pub fn config_path() -> anyhow::Result<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
-        Ok(config_dir.join("pylon").join("config.toml"))
+    /// Get the OpenAgents base directory (~/.openagents)
+    pub fn openagents_dir() -> anyhow::Result<PathBuf> {
+        let home = dirs::home_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+        Ok(home.join(".openagents"))
     }
 
-    /// Get data directory path
+    /// Get the pylon directory (~/.openagents/pylon)
+    pub fn pylon_dir() -> anyhow::Result<PathBuf> {
+        Ok(Self::openagents_dir()?.join("pylon"))
+    }
+
+    /// Get config file path (~/.openagents/pylon/config.toml)
+    pub fn config_path() -> anyhow::Result<PathBuf> {
+        Ok(Self::pylon_dir()?.join("config.toml"))
+    }
+
+    /// Get data directory path (~/.openagents/pylon)
     pub fn data_path(&self) -> anyhow::Result<PathBuf> {
         if let Some(ref path) = self.data_dir {
             Ok(path.clone())
         } else {
-            let data_dir = dirs::data_dir()
-                .ok_or_else(|| anyhow::anyhow!("Could not determine data directory"))?;
-            Ok(data_dir.join("pylon"))
+            Self::pylon_dir()
         }
     }
 

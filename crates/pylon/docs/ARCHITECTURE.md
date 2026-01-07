@@ -110,7 +110,7 @@ pylon start
 
 #### Control Socket Protocol
 
-The daemon accepts commands via Unix socket at `~/.pylon/control.sock`:
+The daemon accepts commands via Unix socket at `~/.openagents/pylon/control.sock`:
 
 **Commands (JSON-encoded):**
 ```json
@@ -306,7 +306,7 @@ Pylon uses Tokio for async I/O with a multi-threaded runtime:
 
 ### Unix Socket
 
-- Control socket at `~/.pylon/control.sock`
+- Control socket at `~/.openagents/pylon/control.sock`
 - Protected by filesystem permissions
 - Only accessible to the user who started the daemon
 

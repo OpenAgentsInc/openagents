@@ -1,7 +1,7 @@
 //! Unix socket IPC for Pylon daemon control
 //!
 //! Provides communication between CLI commands and the running daemon
-//! via ~/.pylon/control.sock
+//! via ~/.openagents/pylon/control.sock
 
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};

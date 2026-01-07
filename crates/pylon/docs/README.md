@@ -36,7 +36,7 @@ Both modes can run simultaneously on the same machine.
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         PYLON DAEMON                            │
-│  ~/.pylon/pylon.pid    ~/.pylon/control.sock    ~/.pylon/pylon.db│
+│  ~/.openagents/pylon/pylon.pid    ~/.openagents/pylon/control.sock    ~/.openagents/pylon/pylon.db│
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌─────────────────────┐       ┌─────────────────────────────┐  │
@@ -89,9 +89,9 @@ Pylon is a single binary that can:
 
 | Path | Description |
 |------|-------------|
-| `~/.pylon/pylon.pid` | Daemon process ID |
-| `~/.pylon/control.sock` | Unix socket for IPC |
-| `~/.pylon/pylon.db` | SQLite database |
+| `~/.openagents/pylon/pylon.pid` | Daemon process ID |
+| `~/.openagents/pylon/control.sock` | Unix socket for IPC |
+| `~/.openagents/pylon/pylon.db` | SQLite database |
 | `~/.config/pylon/config.toml` | Configuration file |
 | `~/.config/pylon/identity.mnemonic` | Provider identity seed |
 | `~/.config/openagents/agents/` | Agent configurations |

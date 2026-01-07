@@ -1,6 +1,6 @@
 //! PID file management for Pylon daemon
 //!
-//! Manages ~/.pylon/pylon.pid for tracking the running daemon process.
+//! Manages ~/.openagents/pylon/pylon.pid for tracking the running daemon process.
 
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
