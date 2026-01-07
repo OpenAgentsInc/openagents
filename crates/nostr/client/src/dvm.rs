@@ -170,7 +170,10 @@ impl DvmClient {
     /// Returns error if the private key is invalid
     pub fn new(private_key: [u8; 32]) -> Result<Self> {
         let pubkey = derive_pubkey(&private_key)?;
-        let pool = Arc::new(RelayPool::new(PoolConfig::default()));
+        // Disable queue for DVM clients to avoid SQLite contention with multiple relays
+        let mut config = PoolConfig::default();
+        config.relay_config.enable_queue = false;
+        let pool = Arc::new(RelayPool::new(config));
 
         Ok(Self {
             private_key,
