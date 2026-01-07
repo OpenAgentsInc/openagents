@@ -16,7 +16,7 @@ command = "cargo install -q worker-build && worker-build --release"
 [[d1_databases]]
 binding = "DB"
 database_name = "nexus"
-database_id = ""
+database_id = "1ea35a12-6061-4280-887c-5d8ea30a8f26"
 
 # Durable Objects for WebSocket relay
 [durable_objects]
