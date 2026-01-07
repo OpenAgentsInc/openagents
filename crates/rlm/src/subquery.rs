@@ -18,6 +18,7 @@ use crate::error::Result;
 #[derive(Debug, Clone)]
 pub struct LlmQueryCall {
     /// The full matched text (e.g., `llm_query("prompt", context[0:100])`)
+    #[allow(dead_code)]
     pub full_match: String,
     /// Start position in the original code.
     pub start: usize,
@@ -31,6 +32,7 @@ pub struct LlmQueryCall {
 
 /// A batch of llm_query calls (for llm_query_batch).
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LlmQueryBatchCall {
     /// The full matched text.
     pub full_match: String,
@@ -120,7 +122,7 @@ pub fn parse_llm_query_calls(code: &str) -> Vec<LlmQueryCall> {
 
             // Find the matching closing paren by counting parens
             let mut depth = 1;
-            let mut pos = args_start;
+            let _pos = args_start;
             let mut close_paren = None;
 
             for (i, ch) in code[args_start..].char_indices() {
@@ -241,6 +243,7 @@ pub struct ProcessedCode {
     /// The sub-queries that need to be executed.
     pub pending_queries: Vec<PendingQuery>,
     /// Whether any dynamic expressions couldn't be resolved.
+    #[allow(dead_code)]
     pub has_unresolved: bool,
 }
 

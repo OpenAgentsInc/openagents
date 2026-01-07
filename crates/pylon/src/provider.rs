@@ -117,6 +117,7 @@ pub struct PylonProvider {
     /// Neobank service for multi-currency treasury
     neobank: Option<NeobankService>,
     /// FM Bridge manager (for Apple Foundation Models)
+    #[allow(dead_code)]
     bridge_manager: Option<BridgeManager>,
     /// Event broadcaster
     event_tx: broadcast::Sender<DomainEvent>,
@@ -135,6 +136,7 @@ impl PylonProvider {
         let bridge_manager = Self::try_start_fm_bridge().await;
 
         // Auto-detect inference backends (will now find Apple FM if bridge started)
+        #[allow(unused_mut)]
         let mut registry = BackendRegistry::detect().await;
 
         #[cfg(feature = "ml-native")]

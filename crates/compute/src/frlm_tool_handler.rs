@@ -73,7 +73,7 @@ impl FrlmToolHandler {
             sub_query = sub_query.with_max_tokens(b as u32);
         }
         if let Some(m) = model {
-            sub_query = sub_query.with_model(m);
+            let _ = sub_query.with_model(m);
         }
 
         // For now, we return a placeholder - in production this would
@@ -373,6 +373,7 @@ struct SubQueryInput {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ResultInput {
     query_id: String,
     content: String,

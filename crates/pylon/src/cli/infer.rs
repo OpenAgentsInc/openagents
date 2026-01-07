@@ -48,6 +48,7 @@ pub struct InferArgs {
 }
 
 pub async fn run(args: InferArgs) -> anyhow::Result<()> {
+    #[allow(unused_mut)]
     let mut registry = BackendRegistry::detect().await;
 
     #[cfg(feature = "gpt-oss-gguf")]
