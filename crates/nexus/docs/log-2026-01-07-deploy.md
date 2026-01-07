@@ -4,3 +4,4 @@
 - Applied schema to the remote D1 database (`schema.sql`).
 - Deployed Nexus worker to Cloudflare at `https://nexus.openagents.workers.dev`.
 - Verified NIP-11 info via `Accept: application/nostr+json`.
+- Added the `nexus.openagents.com` route to `wrangler.toml` and verified the custom domain response.
