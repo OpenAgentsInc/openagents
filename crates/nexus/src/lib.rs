@@ -1,24 +1,29 @@
 //! # Nexus
 //!
-//! Cloud runtime for sovereign AI agents.
+//! Nostr relay for the decentralized compute marketplace.
 //!
-//! **Status: Not yet implemented.**
+//! **Status: v0.1 in development.**
 //!
-//! Nexus is the hosted counterpart to [Pylon](../pylon). While Pylon runs on
-//! your device, Nexus runs on OpenAgents infrastructure.
+//! Nexus is fundamentally a Nostr relay. It speaks NIP-01, stores events, and
+//! handles subscriptions. It's optimized for agent-to-agent commerce: job
+//! requests (NIP-90), handler discovery (NIP-89), and authentication (NIP-42).
 //!
-//! See [README.md](../README.md) for the design vision.
+//! ## Decentralized Network
 //!
-//! ## When to Use Nexus
+//! Anyone can run a Nexus. The network is decentralized:
 //!
-//! - You want "set and forget" agents
-//! - You need 24/7 uptime without managing infrastructure
-//! - You're deploying many agents at scale
+//! - **Open protocol** — Standard Nostr NIPs. Any compatible relay works.
+//! - **No lock-in** — Pylons connect to multiple relays simultaneously.
+//! - **Self-host** — Deploy your own for sovereignty or custom policies.
 //!
-//! ## When to Use Pylon
+//! OpenAgents runs `nexus.openagents.com`, but it's not required.
 //!
-//! - You want maximum sovereignty
-//! - You're a developer testing agents
-//! - You want to also earn as a provider
+//! ## Pylon + Nexus
+//!
+//! A Pylon by itself does nothing. It must connect to at least one Nexus
+//! (or compatible Nostr relay) to discover providers, submit jobs, and
+//! receive results.
+//!
+//! See [README.md](../README.md) for deployment options and documentation.
 
-// Placeholder - implementation coming soon
+// TODO: Implementation - see docs/ROADMAP.md for steps
