@@ -1,0 +1,16 @@
+{
+  "name": "nexus",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "cargo install -q worker-build && worker-build --release",
+    "dev": "npx wrangler dev",
+    "deploy": "bun run build && npx wrangler deploy",
+    "deploy:preview": "bun run build && npx wrangler deploy --env preview",
+    "d1:create": "npx wrangler d1 create nexus",
+    "d1:migrate": "npx wrangler d1 execute nexus --file=schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
