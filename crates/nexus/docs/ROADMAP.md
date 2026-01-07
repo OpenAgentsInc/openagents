@@ -13,6 +13,15 @@ Nexus v0.1 is a **Nostr relay** optimized for:
 
 ---
 
+## Current Status (2026-01-07)
+
+- Cloudflare worker for Nexus is deployed and serving `nexus.openagents.com`.
+- Phase 0-6 completed for the v0.1 worker path; adapter extraction into core traits is deferred.
+- WebSocket AUTH challenge verified on the custom domain.
+- End-to-end Pylon auth/subscribe and broadcast tests are still pending.
+
+---
+
 ## Code Reuse Strategy
 
 We have a working relay at `crates/relay-worker/`. Most code transfers directly to Nexus.
@@ -33,8 +42,8 @@ We have a working relay at `crates/relay-worker/`. Most code transfers directly 
 | Source | Target | Changes |
 |--------|--------|---------|
 | `relay-worker/src/subscription.rs` | `nexus/src/filter.rs` | Keep `Filter` struct, remove DO-specific `SubscriptionManager` |
-| `relay-worker/src/storage.rs` | `nexus/src/adapters/cloudflare/storage.rs` | Extract D1-specific code into adapter |
-| `relay-worker/src/relay_do.rs` | `nexus/src/relay.rs` + adapters | Extract handler logic from DO wrapper |
+| `relay-worker/src/storage.rs` | `nexus/worker/src/storage.rs` | Reused for v0.1 worker; adapter extraction deferred |
+| `relay-worker/src/relay_do.rs` | `nexus/worker/src/relay_do.rs` | Reused for v0.1 worker; core relay extraction deferred |
 | `relay-worker/src/lib.rs` | `nexus/worker/src/lib.rs` | Update config, keep routing pattern |
 
 ### Config Files
@@ -75,8 +84,9 @@ crates/nexus/
     ├── package.json
     └── src/
         ├── lib.rs                # Worker main, routing
-        ├── durable_object.rs     # NexusRelay DO
-        └── storage.rs            # D1 + DO cache adapter
+        ├── relay_do.rs           # NexusRelay DO
+        ├── storage.rs            # D1 + DO cache adapter
+        └── subscription.rs       # Subscription matching
 ```
 
 ---
@@ -126,6 +136,8 @@ console_error_panic_hook = "0.1"
 
 **Verification:** `cd crates/nexus/worker && bun run build` compiles
 
+**Status:** ✅ Completed (2026-01-07)
+
 ---
 
 ### Phase 1: Copy Protocol Code (30 min)
@@ -155,6 +167,8 @@ pub use nip90::{is_job_request_kind, is_job_result_kind, JOB_FEEDBACK_KIND};
 ```
 
 **Verification:** Code compiles with `cargo check -p nexus`
+
+**Status:** ✅ Completed (2026-01-07)
 
 ---
 
@@ -187,6 +201,8 @@ impl Filter {
     pub fn to_sql_conditions(&self) -> (String, Vec<String>) { ... }
 }
 ```
+
+**Status:** ✅ Completed (2026-01-07)
 
 ---
 
@@ -229,6 +245,8 @@ impl<'a> D1Storage<'a> {
 - Keep the `EventRow` struct for deserialization
 - Keep the f64 → i64 conversion (D1 quirk)
 - Remove DO cache layer (handle separately)
+
+**Status:** ✅ Completed for v0.1 worker (2026-01-07); adapter extraction deferred
 
 ---
 
@@ -282,6 +300,8 @@ impl DurableObject for NexusRelay {
 - Connection metadata as attachment
 - Subscription storage in DO state
 - Broadcast to matching subscriptions
+
+**Status:** ✅ Completed (2026-01-07)
 
 ---
 
@@ -344,6 +364,8 @@ fn serve_relay_info(env: &Env) -> Result<Response> {
 }
 ```
 
+**Status:** ✅ Completed (2026-01-07)
+
 ---
 
 ### Phase 6: Build & Deploy (30 min)
@@ -372,6 +394,8 @@ npx wrangler deploy
 2. `wscat -c wss://nexus.openagents.com/` connects, receives AUTH challenge
 3. Pylon can connect and authenticate
 
+**Status:** ✅ Deployed (2026-01-07)
+
 ---
 
 ## Testing Strategy
@@ -395,13 +419,13 @@ npx wrangler deploy
 
 ## Deployment Checklist
 
-- [ ] D1 database created and migrated
-- [ ] wrangler.toml configured with correct database_id
-- [ ] Environment variables set (RELAY_NAME, RELAY_URL)
-- [ ] Build succeeds (`bun run build`)
-- [ ] Deploy succeeds (`npx wrangler deploy`)
-- [ ] NIP-11 endpoint works (`curl https://nexus.openagents.com/`)
-- [ ] WebSocket connects and sends AUTH challenge
+- [x] D1 database created and migrated
+- [x] wrangler.toml configured with correct database_id
+- [x] Environment variables set (RELAY_NAME, RELAY_URL)
+- [x] Build succeeds (`bun run build`)
+- [x] Deploy succeeds (`npx wrangler deploy`)
+- [x] NIP-11 endpoint works (`curl https://nexus.openagents.com/`)
+- [x] WebSocket connects and sends AUTH challenge
 - [ ] Pylon can authenticate and subscribe
 - [ ] Events are stored and queryable
 - [ ] Subscriptions receive broadcasts
