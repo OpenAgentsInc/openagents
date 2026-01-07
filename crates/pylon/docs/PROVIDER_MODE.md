@@ -44,6 +44,12 @@ Customer                    Nostr Relays                    Provider (Pylon)
 | 6000-6999 | Result | Job result events |
 | 7000 | Status | Job status/feedback |
 
+### Job Targeting
+
+- If a job request includes a `#p` tag, Pylon only processes it when the pubkey matches the provider identity.
+- Jobs without a `#p` tag are treated as broadcast and are eligible for processing.
+- Pylon subscribes broadly to kind:5xxx on its configured relays to catch both cases.
+
 ### Supported Job Kinds
 
 **Inference Jobs:**
