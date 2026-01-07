@@ -15,7 +15,7 @@ use nostr::{
 };
 use nostr::nip90::{
     JobFeedback, JobStatus, KIND_JOB_CODE_REVIEW, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX,
-    KIND_JOB_SANDBOX_RUN, create_job_feedback_event,
+    KIND_JOB_RLM_SUBQUERY, KIND_JOB_SANDBOX_RUN, create_job_feedback_event,
 };
 use spark::{Payment, PaymentDetails, PaymentStatus, PaymentType, SparkWallet};
 use std::collections::HashMap;
@@ -26,6 +26,7 @@ use tokio::sync::{RwLock, broadcast};
 /// Supported NIP-90 job kinds - inference
 pub const INFERENCE_KINDS: &[u16] = &[
     KIND_JOB_TEXT_GENERATION, // 5050
+    KIND_JOB_RLM_SUBQUERY,    // 5940 - RLM sub-query
 ];
 
 /// Supported NIP-90 job kinds - agent (Bazaar)
@@ -43,6 +44,7 @@ pub const SUPPORTED_KINDS: &[u16] = &[
     KIND_JOB_REPO_INDEX,      // 5931
     KIND_JOB_PATCH_GEN,       // 5932
     KIND_JOB_CODE_REVIEW,     // 5933
+    KIND_JOB_RLM_SUBQUERY,    // 5940 - RLM sub-query
 ];
 
 fn job_targets_pubkey(event: &nostr::Event, pubkey: &str) -> bool {
@@ -1408,6 +1410,7 @@ impl DvmService {
         )
         .add_capability("text-generation")
         .add_capability("nip90-kind-5050")
+        .add_capability("nip90-kind-5940") // RLM sub-query
         .add_custom_tag("network", &self.config.network);
 
         // Add capabilities for agent backends (Bazaar kinds)

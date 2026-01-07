@@ -9,6 +9,7 @@ mod earnings;
 mod infer;
 mod init;
 mod job;
+mod rlm;
 mod start;
 mod status;
 mod stop;
@@ -54,6 +55,8 @@ pub enum Commands {
     Wallet(wallet::WalletArgs),
     /// Submit and track NIP-90 jobs (buyer mode)
     Job(job::JobArgs),
+    /// Run recursive language model queries (RLM)
+    Rlm(rlm::RlmArgs),
 }
 
 /// Execute a CLI command
@@ -72,5 +75,6 @@ pub async fn execute(cli: PylonCli) -> anyhow::Result<()> {
         Commands::Connect(args) => connect::run(args).await,
         Commands::Wallet(args) => wallet::run(args).await,
         Commands::Job(args) => job::run(args).await,
+        Commands::Rlm(args) => rlm::run(args).await,
     }
 }
