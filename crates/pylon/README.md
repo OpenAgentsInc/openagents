@@ -24,20 +24,21 @@ Sovereign agents need to run somewhere. Pylon is that somewhere.
 ## Quick Start
 
 ```bash
-# Install
-curl -sSL https://openagents.com/install.sh | sh
+# From source (in openagents repo)
+cargo pylon init                  # Initialize identity + wallet
+cargo pylon start                 # Start daemon in foreground
+cargo pylon status                # Check daemon status
 
-# Initialize (creates identity + wallet)
-pylon init
+# Or after building
+cargo build -p pylon --release
+./target/release/pylon init
+./target/release/pylon start
 
-# Start the daemon
-pylon start
+# Spawn an agent
+cargo pylon agent spawn --name "my-agent"
 
-# Spawn your first agent
-pylon agent spawn --name "my-agent" --bootstrap-sats 10000
-
-# Check status
-pylon status
+# Run diagnostics
+cargo pylon doctor
 ```
 
 ## Two Modes
@@ -121,15 +122,14 @@ You can run provider mode with various backends:
 
 ```
 ~/.openagents/pylon/
-├── pylon.db                 # SQLite database
-│   ├── agents               # Agent metadata + encrypted state
-│   ├── jobs                 # Provider job history
-│   ├── invoices             # Lightning invoice tracking
-│   └── earnings             # Sats earned as provider
 ├── config.toml              # Pylon configuration
-├── identity.enc             # Pylon's own encrypted identity
-└── logs/
-    └── 2024-01-15.log       # Daily log files
+├── identity.mnemonic        # 12-word BIP-39 mnemonic (chmod 600!)
+├── pylon.db                 # SQLite database (jobs, earnings, etc.)
+├── pylon.pid                # Daemon process ID
+├── control.sock             # IPC control socket
+└── neobank/
+    ├── btc_wallet.redb      # BTC Cashu wallet
+    └── usd_wallet.redb      # USD Cashu wallet (optional)
 ```
 
 ### Core Components
@@ -161,6 +161,13 @@ Everything is embedded:
 
 ## CLI Commands
 
+### Setup & Diagnostics
+
+| Command | Description |
+|---------|-------------|
+| `pylon init` | Initialize pylon identity and config |
+| `pylon doctor` | Run health checks and diagnostics |
+
 ### Daemon
 
 | Command | Description |
@@ -169,84 +176,85 @@ Everything is embedded:
 | `pylon start -d` | Start daemon in background |
 | `pylon stop` | Stop background daemon |
 | `pylon status` | Show daemon and agent status |
-| `pylon logs` | Tail daemon logs |
-
-### Claude Tunnel
-
-| Command | Description |
-|---------|-------------|
-| `pylon connect --tunnel-url <url>` | Connect local Claude tunnel for the web UI |
 
 ### Agent Management
 
 | Command | Description |
 |---------|-------------|
-| `pylon agent spawn --name X` | Create new agent |
 | `pylon agent list` | List all agents |
-| `pylon agent start <npub>` | Start agent ticks |
-| `pylon agent stop <npub>` | Stop agent ticks |
-| `pylon agent fund <npub>` | Show funding address |
-| `pylon agent balance <npub>` | Show wallet balance |
-| `pylon agent export <npub>` | Export agent (mnemonic) |
-| `pylon agent import` | Import agent from mnemonic |
-| `pylon agent destroy <npub>` | Delete agent (irreversible) |
+| `pylon agent info <name>` | Show agent details |
+| `pylon agent spawn --name X` | Create new agent |
+| `pylon agent delete <name>` | Delete agent (irreversible) |
 
-### Provider Management
+### Compute & Inference
 
 | Command | Description |
 |---------|-------------|
-| `pylon provider enable` | Enable provider mode |
-| `pylon provider disable` | Disable provider mode |
-| `pylon provider status` | Show provider stats |
-| `pylon provider earnings` | Show earnings breakdown |
-| `pylon provider backends` | List available backends |
+| `pylon compute` | Show compute mix (available backends) |
+| `pylon infer` | Run a local inference request |
+| `pylon api` | Run local HTTP API for completions |
 
-### Diagnostics
+### Claude Tunnel
 
 | Command | Description |
 |---------|-------------|
-| `pylon doctor` | Run health checks |
-| `pylon relay list` | Show connected relays |
-| `pylon relay add <url>` | Add relay |
-| `pylon relay remove <url>` | Remove relay |
+| `pylon connect --tunnel-url <url>` | Connect local Claude tunnel for web UI |
+
+### Provider Mode
+
+| Command | Description |
+|---------|-------------|
+| `pylon earnings` | View earnings breakdown (provider mode) |
+
+### Wallet
+
+| Command | Description |
+|---------|-------------|
+| `pylon wallet balance --currency <btc\|usd>` | Show wallet balance |
+| `pylon wallet status` | Show wallet status |
+| `pylon wallet pay <bolt11>` | Pay a Lightning invoice |
+| `pylon wallet send <amount> --currency <btc\|usd>` | Send Cashu tokens |
+| `pylon wallet receive <token>` | Receive Cashu tokens |
 
 ## Configuration
 
 ```toml
 # ~/.openagents/pylon/config.toml
 
-[daemon]
-log_level = "info"
-data_dir = "~/.openagents/pylon"
-
-[relays]
-urls = [
+# Nostr relays for provider mode
+relays = [
     "wss://relay.damus.io",
-    "wss://relay.nostr.band",
     "wss://nos.lol",
+    "wss://relay.nostr.band",
 ]
 
-[network]
-# "mainnet", "testnet", or "regtest"
-bitcoin = "mainnet"
+# Bitcoin network for Lightning payments
+# Options: "mainnet", "testnet", "signet", "regtest"
+network = "testnet"
 
-[provider]
+# Payment settings (provider mode)
+enable_payments = true
+require_payment = true
+min_price_msats = 1000  # 1 sat minimum per job
+
+# Default inference model
+default_model = "llama3.2"
+
+# Backend preference order
+backend_preference = ["ollama", "llamacpp", "apple_fm"]
+
+# Claude tunnel settings
+[claude]
 enabled = true
-base_price_sats = 100
-price_per_1k_tokens = 10
+model = "claude-sonnet-4-20250514"
+autonomy = "supervised"  # full | supervised | restricted | read_only
+approval_required_tools = ["Write", "Edit", "Bash"]
 
-[provider.backends.apple_fm]
-enabled = true
-
-[provider.backends.llamacpp]
-enabled = true
-server_url = "http://localhost:8080"
-model = "llama-3.1-8b"
-
-[agents.defaults]
-heartbeat_seconds = 900
-low_balance_days = 7
+# Data directory (optional, defaults to ~/.openagents/pylon)
+# data_dir = "/custom/path"
 ```
+
+See [Configuration Documentation](docs/CONFIGURATION.md) for full details.
 
 ## Agent Lifecycle in Pylon
 
@@ -369,11 +377,18 @@ cargo build --release -p pylon
 
 ## Documentation
 
+### Pylon Docs
+
+- [Configuration](docs/CONFIGURATION.md) - Config file format and options
+- [Host Mode](docs/HOST_MODE.md) - Running your own agents
+
+### Related Docs
+
 - [Agent Philosophy](../agent/docs/PHILOSOPHY.md) - Why dormancy over death
 - [Agent Spawning](../agent/docs/SPAWNING.md) - Creating new agents
-- [Agent Lifecycle](../agent/docs/LIFECYCLE.md) - State transitions
-- [Compute Client](../agent/docs/COMPUTE.md) - Paying for inference
-- [NIP-SA Protocol](../agent/docs/NIP-SA.md) - Nostr event types
+- [Agent Registry](../agent/docs/REGISTRY.md) - Agent configuration storage
+- [Neobank Storage](../neobank/docs/STORAGE.md) - Cashu wallet storage
+- [Autopilot Sessions](../autopilot/docs/SESSIONS.md) - Session management
 
 ## Status
 
@@ -381,10 +396,13 @@ Pylon is under active development. Current status:
 
 - [x] Architecture design
 - [x] Provider mode (NIP-90 inference serving)
-- [x] Payment integration (Spark Lightning)
-- [ ] Host mode (agent lifecycle management)
-- [ ] Daemon mode (background process)
-- [ ] CLI commands
+- [x] Payment integration (Spark Lightning + Cashu via Neobank)
+- [x] Daemon mode (background process with PID file)
+- [x] CLI commands (init, start, stop, status, doctor, agent, etc.)
+- [x] Claude tunnel integration
+- [x] Neobank treasury (Cashu ecash)
+- [x] Configuration system
+- [ ] Host mode (full agent lifecycle management)
 - [ ] SQLite persistence
 - [ ] Agent migration (export/import)
 
