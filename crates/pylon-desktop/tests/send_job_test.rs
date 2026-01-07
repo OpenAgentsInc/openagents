@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Test pubkey: {}", &pubkey[..16]);
 
     // Connect to relay
-    let relay_url = "wss://relay.openagents.com/";
+    let relay_url = "wss://nexus.openagents.com/";
     println!("Connecting to {}...", relay_url);
     let relay = RelayConnection::new(relay_url)?;
     relay.connect().await?;

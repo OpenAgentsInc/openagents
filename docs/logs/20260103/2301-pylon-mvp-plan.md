@@ -25,7 +25,7 @@ The Pylon MVP is fully functional. Both CLI and GUI modes can:
 Added relay URL to "e" tags in `nostr_runtime.rs:397-404` for NIP-28 compliance.
 
 **Before:** `vec!["e", channel_id, "", "root"]`
-**After:** `vec!["e", channel_id, "wss://relay.openagents.com/", "root"]`
+**After:** `vec!["e", channel_id, "wss://nexus.openagents.com/", "root"]`
 
 ### Step 2: Add Self-Echo for Chat [DONE]
 Added optimistic UI - chat messages appear immediately in local state in `app.rs:526-553`.
@@ -100,7 +100,7 @@ Updated `ui/jobs_panel.rs` to show:
 Pylon CLI Provider starting...
 
 Bridge:  localhost:11435
-Relay:   wss://relay.openagents.com/
+Relay:   wss://nexus.openagents.com/
 Pubkey:  6eceae4dedc96ed8432df4a92dd210c5ca440e60da266ebf9f30f854070aa83f
 
 Connecting to FM Bridge...
@@ -163,7 +163,7 @@ pylon-desktop
 pylon-desktop --cli
 
 # CLI with custom relay
-pylon-desktop --cli --relay wss://relay.openagents.com
+pylon-desktop --cli --relay wss://nexus.openagents.com
 
 # Help
 pylon-desktop --help

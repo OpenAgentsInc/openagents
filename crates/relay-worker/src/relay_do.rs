@@ -183,7 +183,7 @@ impl NostrRelay {
             .env
             .var("RELAY_NAME")
             .map(|v| format!("wss://{}", v.to_string()))
-            .unwrap_or_else(|_| "wss://relay.openagents.com".to_string());
+            .unwrap_or_else(|_| "wss://nexus.openagents.com".to_string());
 
         match nip42::validate_auth_event(&event, &meta.challenge, &relay_url) {
             Ok(pubkey) => {

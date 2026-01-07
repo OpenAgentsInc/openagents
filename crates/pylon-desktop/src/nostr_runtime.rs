@@ -574,7 +574,7 @@ async fn handle_publish_chat_message(
         kind: 42, // Channel message
         content: content.to_string(),
         tags: vec![
-            vec!["e".to_string(), channel_id.to_string(), "wss://relay.openagents.com/".to_string(), "root".to_string()],
+            vec!["e".to_string(), channel_id.to_string(), "wss://nexus.openagents.com/".to_string(), "root".to_string()],
         ],
         created_at: now(),
     };
@@ -613,7 +613,7 @@ async fn handle_create_or_find_channel(
     let metadata = serde_json::json!({
         "name": name,
         "about": "Provider chat for the OpenAgents inference network",
-        "relays": ["wss://relay.openagents.com/"]
+        "relays": ["wss://nexus.openagents.com/"]
     });
 
     let template = EventTemplate {

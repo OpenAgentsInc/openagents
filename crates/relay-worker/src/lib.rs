@@ -52,7 +52,7 @@ struct RelayLimitation {
 impl Default for RelayInfo {
     fn default() -> Self {
         Self {
-            name: "relay.openagents.com".to_string(),
+            name: "nexus.openagents.com".to_string(),
             description: "OpenAgents NIP-90 inference relay".to_string(),
             pubkey: String::new(),
             contact: "hello@openagents.com".to_string(),
@@ -124,7 +124,7 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 <body>
 <h1>OpenAgents Nostr Relay</h1>
 <p>This is a Nostr relay for the OpenAgents inference network.</p>
-<p>Connect with a Nostr client: <code>wss://relay.openagents.com</code></p>
+<p>Connect with a Nostr client: <code>wss://nexus.openagents.com</code></p>
 <p>Supported NIPs: 1, 11, 28, 32, 42, 90</p>
 <p><strong>Note:</strong> Authentication (NIP-42) is required for all operations.</p>
 </body>
