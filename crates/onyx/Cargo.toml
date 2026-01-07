@@ -67,3 +67,6 @@ vim mode, and local-first storage.
 """
 osx_minimum_system_version = "10.15"
 osx_url_schemes = ["onyx"]
+
+[dev-dependencies]
+tempfile = "3"

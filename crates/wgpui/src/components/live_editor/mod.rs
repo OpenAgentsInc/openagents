@@ -302,6 +302,13 @@ impl LiveEditor {
         }
     }
 
+    /// Enter vim insert mode (if vim is enabled)
+    pub fn enter_insert_mode(&mut self) {
+        if self.vim_enabled {
+            self.vim.enter_insert();
+        }
+    }
+
     /// Set a status message to display in the status bar
     pub fn set_status(&mut self, message: &str, color: Hsla) {
         self.status_message = Some((message.to_string(), color));
@@ -581,6 +588,17 @@ impl LiveEditor {
             }
 
             Key::Named(named) => {
+                // Let Cmd/Ctrl+Arrow keys pass through to standard handler
+                if modifiers.meta || modifiers.ctrl {
+                    match named {
+                        NamedKey::ArrowUp | NamedKey::ArrowDown |
+                        NamedKey::ArrowLeft | NamedKey::ArrowRight => {
+                            return EventResult::Ignored;
+                        }
+                        _ => {}
+                    }
+                }
+
                 match named {
                     NamedKey::Escape => {
                         self.vim.reset_pending();
@@ -622,11 +640,24 @@ impl LiveEditor {
     fn handle_vim_visual(
         &mut self,
         key: &Key,
-        _modifiers: &Modifiers,
+        modifiers: &Modifiers,
         bounds: &Bounds,
         cx: &mut EventContext,
     ) -> EventResult {
         self.cursor_blink_start = Instant::now();
+
+        // Let Cmd/Ctrl+Arrow keys pass through to standard handler
+        if modifiers.meta || modifiers.ctrl {
+            if let Key::Named(named) = key {
+                match named {
+                    NamedKey::ArrowUp | NamedKey::ArrowDown |
+                    NamedKey::ArrowLeft | NamedKey::ArrowRight => {
+                        return EventResult::Ignored;
+                    }
+                    _ => {}
+                }
+            }
+        }
 
         match key {
             Key::Named(NamedKey::Escape) => {
@@ -1799,6 +1830,7 @@ impl LiveEditor {
     }
 
     /// Render a line with markdown formatting
+    /// `is_continuation` indicates this is a wrapped continuation (not the start of the line)
     fn render_formatted_line(
         &self,
         line: &str,
@@ -1806,6 +1838,7 @@ impl LiveEditor {
         x: f32,
         y: f32,
         _line_height: f32,
+        is_continuation: bool,
         cx: &mut PaintContext,
     ) {
         let mut current_x = x;
@@ -1852,41 +1885,57 @@ impl LiveEditor {
             }
 
             BlockType::UnorderedList => {
-                // Render bullet point then content
-                let content = strip_list_prefix(line);
-                let bullet = "\u{2022} "; // bullet character
-                let bullet_run = cx.text.layout_styled_mono(
-                    bullet,
-                    Point::new(current_x, y),
-                    self.style.font_size,
-                    self.style.text_color,
-                    FontStyle::default(),
-                );
-                cx.scene.draw_text(bullet_run);
-                current_x += self.mono_char_width * 2.0;
+                // Only render bullet on first segment, not continuations
+                let content = if is_continuation {
+                    // Continuation: indent to align with content after bullet
+                    current_x += self.mono_char_width * 2.0;
+                    line
+                } else {
+                    // First segment: render bullet point then content
+                    let content = strip_list_prefix(line);
+                    let bullet = "\u{2022} "; // bullet character
+                    let bullet_run = cx.text.layout_styled_mono(
+                        bullet,
+                        Point::new(current_x, y),
+                        self.style.font_size,
+                        self.style.text_color,
+                        FontStyle::default(),
+                    );
+                    cx.scene.draw_text(bullet_run);
+                    current_x += self.mono_char_width * 2.0;
+                    content
+                };
 
                 // Render content with inline formatting
                 self.render_inline_formatted(content, current_x, y, cx);
             }
 
             BlockType::OrderedList => {
-                // Render number then content
-                let content = strip_list_prefix(line);
-                // Extract the number from original line
-                let num: String = line.chars().take_while(|c| c.is_ascii_digit()).collect();
-                let prefix = format!("{}. ", num);
-                let prefix_run = cx.text.layout_styled_mono(
-                    &prefix,
-                    Point::new(current_x, y),
-                    self.style.font_size,
-                    self.style.text_color,
-                    FontStyle::default(),
-                );
-                cx.scene.draw_text(prefix_run);
-                current_x += self.mono_char_width * prefix.len() as f32;
+                // Only render number on first segment, not continuations
+                if is_continuation {
+                    // Continuation: indent to align with content after number
+                    // Use a fixed indent (4 chars: "N. " padding)
+                    current_x += self.mono_char_width * 4.0;
+                    self.render_inline_formatted(line, current_x, y, cx);
+                } else {
+                    // First segment: render number then content
+                    let content = strip_list_prefix(line);
+                    // Extract the number from original line
+                    let num: String = line.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    let prefix = format!("{}. ", num);
+                    let prefix_run = cx.text.layout_styled_mono(
+                        &prefix,
+                        Point::new(current_x, y),
+                        self.style.font_size,
+                        self.style.text_color,
+                        FontStyle::default(),
+                    );
+                    cx.scene.draw_text(prefix_run);
+                    current_x += self.mono_char_width * prefix.len() as f32;
 
-                // Render content with inline formatting
-                self.render_inline_formatted(content, current_x, y, cx);
+                    // Render content with inline formatting
+                    self.render_inline_formatted(content, current_x, y, cx);
+                }
             }
 
             BlockType::Blockquote => {
@@ -2101,7 +2150,9 @@ impl Component for LiveEditor {
                 cx.scene.draw_text(text_run);
             } else {
                 // Non-cursor line: render formatted markdown
-                self.render_formatted_line(segment, block_type, text_x, y, line_height, cx);
+                // is_continuation is true when start_col > 0 (wrapped segment, not start of line)
+                let is_continuation = *start_col > 0;
+                self.render_formatted_line(segment, block_type, text_x, y, line_height, is_continuation, cx);
             }
 
             // Selection highlight for this segment

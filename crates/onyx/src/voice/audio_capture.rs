@@ -58,13 +58,22 @@ impl AudioCapture {
 
     /// Start recording audio
     pub fn start(&mut self) -> Result<(), String> {
-        if self.is_recording.load(Ordering::SeqCst) {
+        let already_recording = self.is_recording.load(Ordering::SeqCst);
+        tracing::info!("AudioCapture::start() called, already_recording={}", already_recording);
+
+        if already_recording {
+            tracing::debug!("Already recording, returning early");
             return Ok(());
         }
 
         // Clear buffer
         if let Ok(mut buffer) = self.buffer.lock() {
+            let old_len = buffer.len();
             buffer.clear();
+            tracing::debug!("Cleared audio buffer (had {} samples)", old_len);
+        } else {
+            tracing::error!("Failed to lock buffer for clearing");
+            return Err("Failed to lock audio buffer".to_string());
         }
 
         let buffer = Arc::clone(&self.buffer);
@@ -119,6 +128,8 @@ impl AudioCapture {
             })
             .map_err(|e| format!("Failed to build input stream: {}", e))?;
 
+        tracing::info!("Built audio stream, attempting to play...");
+
         stream
             .play()
             .map_err(|e| format!("Failed to play stream: {}", e))?;
@@ -126,33 +137,53 @@ impl AudioCapture {
         self.is_recording.store(true, Ordering::SeqCst);
         self.stream = Some(stream);
 
-        tracing::info!("Voice recording started at {}Hz", self.device_sample_rate);
+        tracing::info!("Voice recording started at {}Hz, is_recording={}",
+            self.device_sample_rate,
+            self.is_recording.load(Ordering::SeqCst));
         Ok(())
     }
 
     /// Stop recording and return the audio data (resampled to 16kHz for Whisper)
     pub fn stop(&mut self) -> Option<Vec<f32>> {
-        if !self.is_recording.load(Ordering::SeqCst) {
+        let was_recording = self.is_recording.load(Ordering::SeqCst);
+        tracing::info!("AudioCapture::stop() called, was_recording={}", was_recording);
+
+        if !was_recording {
+            tracing::warn!("AudioCapture::stop() called but not recording");
             return None;
         }
 
         self.is_recording.store(false, Ordering::SeqCst);
+        tracing::debug!("Set is_recording to false");
 
         // Drop stream to stop recording
+        let had_stream = self.stream.is_some();
         self.stream = None;
+        tracing::debug!("Dropped stream (had_stream={})", had_stream);
 
         // Get audio data
-        let audio = self.buffer.lock().ok().map(|b| b.clone())?;
+        let audio = match self.buffer.lock() {
+            Ok(b) => {
+                let data = b.clone();
+                tracing::info!("Got {} samples from buffer", data.len());
+                data
+            }
+            Err(e) => {
+                tracing::error!("Failed to lock buffer in stop(): {}", e);
+                return None;
+            }
+        };
 
         if audio.is_empty() {
-            tracing::warn!("No audio data captured");
+            tracing::warn!("No audio data captured (buffer was empty)");
             return None;
         }
 
         tracing::info!(
-            "Voice recording stopped: {} samples at {}Hz",
+            "Voice recording stopped: {} samples at {}Hz ({:.2}s of audio)",
             audio.len(),
-            self.device_sample_rate
+            self.device_sample_rate,
+            audio.len() as f32 / self.device_sample_rate as f32
         );
 
         // Resample to 16kHz if needed

@@ -26,6 +26,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey};
 use winit::window::{Window, WindowId};
 
+use crate::file_watcher::{FileChange, FileWatcher};
 use crate::update_checker::{self, UpdateCheckResult};
 use crate::vault::{FileEntry, Vault};
 use crate::voice::VoiceState;
@@ -218,6 +219,9 @@ pub struct RenderState {
     // Voice transcription
     pub voice: Option<VoiceState>,
     voice_loading_shown: bool,
+
+    // File watcher for external changes
+    pub file_watcher: Option<FileWatcher>,
 }
 
 impl RenderState {
@@ -234,12 +238,22 @@ impl RenderState {
     }
 
     fn save_current(&mut self) {
-        if let Some(path) = &self.current_file {
+        if let Some(path) = &self.current_file.clone() {
             let content = self.editor.content();
             if content != self.last_saved_content {
                 if self.vault.write_file(path, &content).is_ok() {
-                    self.last_saved_content = content;
-                    // Refresh file list to update modified times
+                    self.last_saved_content = content.clone();
+
+                    // Check if title changed and rename file if needed
+                    if let Some(title) = content.lines().next() {
+                        if let Ok(Some(new_path)) = self.vault.rename_file(path, title) {
+                            // Update internal state with new path
+                            self.current_file = Some(new_path.clone());
+                            self.sidebar.selected_path = Some(new_path);
+                        }
+                    }
+
+                    // Refresh file list to update modified times and names
                     if let Ok(files) = self.vault.list_files() {
                         self.sidebar.set_files(files);
                     }
@@ -264,6 +278,8 @@ impl RenderState {
             self.open_file(path);
             // Select the title so user can immediately type to replace it
             self.editor.select_line(0);
+            // Enter insert mode so user can immediately type
+            self.editor.enter_insert_mode();
         }
     }
 
@@ -377,6 +393,46 @@ impl RenderState {
             }
             UpdateCheckResult::Error(e) => {
                 self.editor.set_status(&format!("Update check failed: {}", e), VOICE_RECORDING_COLOR);
+            }
+        }
+    }
+
+    fn handle_external_changes(&mut self, changes: &[FileChange]) {
+        let mut should_refresh_sidebar = false;
+        let mut should_reload_current = false;
+
+        for change in changes {
+            match change {
+                FileChange::Modified(path) => {
+                    if self.current_file.as_ref() == Some(path) {
+                        should_reload_current = true;
+                    }
+                    should_refresh_sidebar = true;
+                }
+                FileChange::Created(_) | FileChange::Deleted(_) => {
+                    should_refresh_sidebar = true;
+                }
+            }
+        }
+
+        if should_refresh_sidebar {
+            if let Ok(files) = self.vault.list_files() {
+                self.sidebar.set_files(files);
+            }
+        }
+
+        if should_reload_current {
+            if let Some(path) = &self.current_file {
+                // Only reload if content differs from what we have
+                // to avoid losing cursor position during our own saves
+                if let Ok(disk_content) = self.vault.read_file(path) {
+                    if disk_content != self.last_saved_content {
+                        // External change detected - reload
+                        self.editor.set_content(&disk_content);
+                        self.last_saved_content = disk_content;
+                        tracing::info!("Reloaded externally modified file");
+                    }
+                }
             }
         }
     }
@@ -524,6 +580,18 @@ impl ApplicationHandler for OnyxApp {
                 false
             };
 
+            // Initialize file watcher for external changes
+            let file_watcher = match FileWatcher::new(vault.path.clone()) {
+                Ok(fw) => {
+                    tracing::info!("File watcher initialized");
+                    Some(fw)
+                }
+                Err(e) => {
+                    tracing::warn!("File watcher unavailable: {}", e);
+                    None
+                }
+            };
+
             RenderState {
                 window,
                 surface,
@@ -544,6 +612,7 @@ impl ApplicationHandler for OnyxApp {
                 editor,
                 voice,
                 voice_loading_shown,
+                file_watcher,
             }
         });
 
@@ -594,34 +663,49 @@ impl ApplicationHandler for OnyxApp {
                             ElementState::Pressed => {
                                 // Start recording on press
                                 if !voice.recording {
-                                    if let Err(e) = voice.start_recording() {
-                                        tracing::error!("Failed to start recording: {}", e);
-                                        state.editor.set_status(&format!("Mic error: {}", e), VOICE_RECORDING_COLOR);
-                                    } else {
-                                        state.editor.set_status("● Recording...", VOICE_RECORDING_COLOR);
+                                    tracing::info!("Starting recording...");
+                                    match voice.start_recording() {
+                                        Ok(()) => {
+                                            tracing::info!("Recording started successfully");
+                                            state.editor.set_status("● Recording...", VOICE_RECORDING_COLOR);
+                                        }
+                                        Err(e) => {
+                                            tracing::error!("Failed to start recording: {}", e);
+                                            state.editor.set_status(&format!("Mic error: {}", e), VOICE_RECORDING_COLOR);
+                                        }
                                     }
                                     state.window.request_redraw();
+                                } else {
+                                    tracing::debug!("Already recording, ignoring press");
                                 }
                             }
                             ElementState::Released => {
+                                tracing::info!("Release detected, stopping recording...");
                                 // Stop recording and start background transcription
                                 match voice.stop_recording() {
                                     Ok(true) => {
                                         // Transcription started in background
+                                        tracing::info!("Transcription started in background");
                                         state.editor.set_status("⟳ Transcribing...", VOICE_TRANSCRIBING_COLOR);
                                     }
                                     Ok(false) => {
                                         // Quick tap or no audio - discarded
-                                        state.editor.clear_status();
+                                        tracing::info!("Recording discarded (quick tap or no audio)");
+                                        state.editor.set_status("Recording discarded", VOICE_TRANSCRIBING_COLOR);
+                                        // Clear after a moment (will be cleared on next redraw cycle)
                                     }
                                     Err(e) => {
                                         tracing::error!("Recording stop failed: {}", e);
-                                        state.editor.set_status(&format!("Error: {}", e), VOICE_RECORDING_COLOR);
+                                        state.editor.set_status(&format!("Voice error: {}", e), VOICE_RECORDING_COLOR);
                                     }
                                 }
                                 state.window.request_redraw();
                             }
                         }
+                    } else {
+                        tracing::warn!("Voice not available");
+                        state.editor.set_status("Voice not available", VOICE_RECORDING_COLOR);
+                        state.window.request_redraw();
                     }
                     return;
                 }
@@ -851,6 +935,15 @@ impl ApplicationHandler for OnyxApp {
         if let Some(state) = &mut self.state {
             // Autosave on idle
             state.check_autosave();
+
+            // Check for external file changes
+            if let Some(ref mut watcher) = state.file_watcher {
+                let changes = watcher.take_changes();
+                if !changes.is_empty() {
+                    state.handle_external_changes(&changes);
+                }
+            }
+
             state.window.request_redraw();
         }
     }

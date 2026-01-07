@@ -5,6 +5,7 @@
 
 pub mod app;
 pub mod config;
+pub mod file_watcher;
 pub mod update_checker;
 pub mod vault;
 pub mod voice;

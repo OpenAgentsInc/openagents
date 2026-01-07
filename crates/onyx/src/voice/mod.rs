@@ -137,7 +137,14 @@ impl VoiceState {
 
     /// Start recording audio
     pub fn start_recording(&mut self) -> Result<(), String> {
+        // Recovery: if we think we're recording but audio capture disagrees, reset state
+        if self.recording && !self.audio_capture.is_recording() {
+            tracing::warn!("Recording state was stuck (recording=true but audio_capture=false), resetting");
+            self.recording = false;
+        }
+
         if self.recording {
+            tracing::debug!("Already recording, ignoring start request");
             return Ok(());
         }
 
@@ -150,15 +157,25 @@ impl VoiceState {
             }
         }
 
+        tracing::info!("Starting audio capture...");
+
+        // Start audio capture FIRST - only set recording state if it succeeds
+        self.audio_capture.start()?;
+
+        // Only mark as recording after audio capture successfully started
         self.recording = true;
         self.press_time = Some(web_time::Instant::now());
-        self.audio_capture.start()
+        tracing::info!("Recording started, press_time set");
+        Ok(())
     }
 
     /// Stop recording and start background transcription
     /// Returns Ok(true) if transcription started, Ok(false) if discarded (quick tap)
     pub fn stop_recording(&mut self) -> Result<bool, String> {
+        tracing::info!("stop_recording called, recording={}", self.recording);
+
         if !self.recording {
+            tracing::info!("Not recording, returning Ok(false)");
             return Ok(false);
         }
 
@@ -169,20 +186,26 @@ impl VoiceState {
             .press_time
             .map(|t| t.elapsed().as_millis())
             .unwrap_or(0);
+        tracing::info!("Recording held for {}ms", held_ms);
 
         let audio = self.audio_capture.stop();
+        tracing::info!("Audio capture stopped, got {} samples", audio.as_ref().map(|a| a.len()).unwrap_or(0));
 
         // Quick tap (<200ms) - discard
         if held_ms < 200 {
-            tracing::debug!("Quick tap ({}ms) - discarding", held_ms);
+            tracing::info!("Quick tap ({}ms) - discarding", held_ms);
             return Ok(false);
         }
 
         // Get audio data
         let audio = match audio {
             Some(a) if !a.is_empty() => a,
-            _ => {
-                tracing::debug!("No audio data captured");
+            Some(_) => {
+                tracing::info!("Audio buffer was empty");
+                return Ok(false);
+            }
+            None => {
+                tracing::info!("No audio data captured (None returned)");
                 return Ok(false);
             }
         };
@@ -195,15 +218,26 @@ impl VoiceState {
 
         // Validate audio
         if !Self::validate_audio(&audio) {
-            tracing::debug!("Audio validation failed");
+            tracing::info!("Audio validation failed");
             return Ok(false);
         }
+        tracing::info!("Audio validation passed");
 
         // Get transcriber reference
         let transcriber = {
-            let s = self.state.lock().map_err(|e| e.to_string())?;
-            s.transcriber.clone().ok_or("Transcriber not ready")?
+            let s = self.state.lock().map_err(|e| {
+                tracing::error!("Failed to lock state: {}", e);
+                e.to_string()
+            })?;
+            match s.transcriber.clone() {
+                Some(t) => t,
+                None => {
+                    tracing::error!("Transcriber not ready");
+                    return Err("Transcriber not ready".to_string());
+                }
+            }
         };
+        tracing::info!("Got transcriber reference");
 
         // Mark as transcribing
         {
@@ -214,16 +248,21 @@ impl VoiceState {
         // Start background transcription
         let state_clone = Arc::clone(&self.state);
         thread::spawn(move || {
-            tracing::info!("Background: Starting transcription...");
+            tracing::info!("Background: Starting transcription with {} samples...", audio.len());
             let result = transcriber.transcribe(&audio);
+            tracing::info!("Background: Transcription finished, result={:?}", result.as_ref().map(|s| s.len()));
 
             if let Ok(mut s) = state_clone.lock() {
                 s.transcribing = false;
                 s.transcription_result = Some(result);
+                tracing::info!("Background: Result stored in state");
+            } else {
+                tracing::error!("Background: Failed to lock state to store result");
             }
             tracing::info!("Background: Transcription complete");
         });
 
+        tracing::info!("Background transcription thread spawned, returning Ok(true)");
         Ok(true)
     }
 
