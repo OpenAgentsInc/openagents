@@ -14,6 +14,8 @@ use crate::subscription::SubscriptionManager;
 /// Connection metadata stored in WebSocket tags
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionMeta {
+    /// Unique connection ID (stable across hibernation)
+    pub conn_id: String,
     /// Authenticated pubkey (None if not yet authenticated)
     pub pubkey: Option<String>,
     /// Auth challenge sent to client
@@ -53,7 +55,9 @@ impl DurableObject for NexusRelay {
         let challenge = nip42::generate_challenge();
 
         // Store connection metadata as attachment (for hibernation)
+        // Use challenge as conn_id since it's already unique per connection
         let meta = ConnectionMeta {
+            conn_id: challenge.clone(),
             pubkey: None,
             challenge: challenge.clone(),
             authenticated: false,
@@ -93,6 +97,7 @@ impl DurableObject for NexusRelay {
         let meta: ConnectionMeta = ws
             .deserialize_attachment()?
             .unwrap_or_else(|| ConnectionMeta {
+                conn_id: String::new(),
                 pubkey: None,
                 challenge: String::new(),
                 authenticated: false,
@@ -144,7 +149,7 @@ impl DurableObject for NexusRelay {
                 self.handle_req(&ws, &meta, subscription_id, filters).await?;
             }
             ClientMessage::Close { subscription_id } => {
-                self.handle_close(&ws, subscription_id).await?;
+                self.handle_close(&ws, &meta, subscription_id).await?;
             }
         }
 
@@ -293,8 +298,8 @@ impl NexusRelay {
             }
         }
 
-        // Store subscription for future events
-        let sub_key = format!("sub:{}:{}", ws.as_ref() as *const _ as usize, subscription_id);
+        // Store subscription for future events using stable conn_id (not pointer address)
+        let sub_key = format!("sub:{}:{}", meta.conn_id, subscription_id);
         self.state
             .storage()
             .put(&sub_key, &filters)
@@ -310,8 +315,9 @@ impl NexusRelay {
     }
 
     /// Handle CLOSE message
-    async fn handle_close(&self, ws: &WebSocket, subscription_id: String) -> Result<()> {
-        let sub_key = format!("sub:{}:{}", ws.as_ref() as *const _ as usize, subscription_id);
+    async fn handle_close(&self, ws: &WebSocket, meta: &ConnectionMeta, subscription_id: String) -> Result<()> {
+        // Use stable conn_id (not pointer address) to find subscription
+        let sub_key = format!("sub:{}:{}", meta.conn_id, subscription_id);
         self.state.storage().delete(&sub_key).await?;
 
         let msg = RelayMessage::Closed {
