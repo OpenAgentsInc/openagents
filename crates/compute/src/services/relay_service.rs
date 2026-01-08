@@ -178,7 +178,7 @@ impl RelayService {
         // Job requests are kinds 5000-5999 (range 5xxx)
         // We subscribe broadly and filter targeted jobs in the DVM service.
         let filters = vec![serde_json::json!({
-            "kinds": [5000, 5001, 5002, 5003, 5004, 5005, 5050, 5100, 5250],
+            "kinds": [5000, 5001, 5002, 5003, 5004, 5005, 5050, 5100, 5250, 5940],
             "limit": 100
         })];
 
