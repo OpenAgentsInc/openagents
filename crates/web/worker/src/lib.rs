@@ -199,9 +199,9 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             .await
         }
         (Method::Post, "/api/rlm/experiments") => {
-            with_auth(&req, &env, |user| async move {
-                let body = req.text().await?;
-                routes::rlm::create_experiment(user, env.clone(), body).await
+            let body = req.text().await?;
+            with_auth(&req, &env, |user| {
+                routes::rlm::create_experiment(user, env.clone(), body.clone())
             })
             .await
         }
@@ -254,9 +254,14 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
                     .await
                 }
                 (Method::Post, Some("runs"), None) => {
-                    with_auth(&req, &env, |user| async move {
-                        let body = req.text().await?;
-                        routes::rlm::add_experiment_runs(user, env.clone(), experiment_id.clone(), body).await
+                    let body = req.text().await?;
+                    with_auth(&req, &env, |user| {
+                        routes::rlm::add_experiment_runs(
+                            user,
+                            env.clone(),
+                            experiment_id.clone(),
+                            body.clone(),
+                        )
                     })
                     .await
                 }

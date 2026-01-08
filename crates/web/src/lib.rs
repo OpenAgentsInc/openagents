@@ -10,9 +10,10 @@ use wasm_bindgen_futures::{JsFuture, spawn_local};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use wgpui::{
-    Boundary, Bounds, Cursor, EventContext, EventResult, InputEvent, LineFragment, LineWrapper,
-    MarkdownDocument, MarkdownView, MouseButton, PaintContext, Platform, Point, Quad, Scene,
-    StreamingMarkdown, TextSystem, TruncateFrom, WebPlatform, run_animation_loop,
+    Boundary, Bounds, Component, Cursor, EventContext, EventResult, InputEvent, LineFragment,
+    LineWrapper, MarkdownDocument, MarkdownView, Modifiers, MouseButton, PaintContext, Platform,
+    Point, Quad, Scene, StreamingMarkdown, TextSystem, TruncateFrom, WebPlatform,
+    run_animation_loop,
     setup_resize_observer, theme,
 };
 
@@ -203,9 +204,20 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             };
             let x = event.offset_x() as f32;
             let y = event.offset_y() as f32;
+            let modifiers = Modifiers {
+                shift: event.shift_key(),
+                ctrl: event.ctrl_key(),
+                alt: event.alt_key(),
+                meta: event.meta_key(),
+            };
             let cursor = {
                 let mut demo = demo_clone.borrow_mut();
-                let _ = demo.handle_input_event(InputEvent::MouseDown { button, x, y, .. });
+                let _ = demo.handle_input_event(InputEvent::MouseDown {
+                    button,
+                    x,
+                    y,
+                    modifiers,
+                });
                 demo.markdown_cursor()
             };
             platform_clone.borrow().set_cursor(cursor);

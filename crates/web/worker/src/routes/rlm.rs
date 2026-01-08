@@ -62,7 +62,7 @@ fn render_rlm_page(mode: &str, run_id: Option<&str>, experiment_id: Option<&str>
     <meta property="og:url" content="https://openagents.com/rlm">
     <link rel="stylesheet" href="/static/MyWebfontsKit.css">
     <style>
-        html, body {
+        html, body {{
             margin: 0;
             padding: 0;
             background: #0a0a0a;
@@ -71,17 +71,17 @@ fn render_rlm_page(mode: &str, run_id: Option<&str>, experiment_id: Option<&str>
             overflow: hidden;
             width: 100%;
             height: 100%;
-        }
-        #hud-container {
+        }}
+        #hud-container {{
             width: 100vw;
             height: 100vh;
             overflow: hidden;
-        }
-        canvas {
+        }}
+        canvas {{
             width: 100%;
             height: 100%;
             display: block;
-        }
+        }}
     </style>
 </head>
 <body>
@@ -96,17 +96,17 @@ fn render_rlm_page(mode: &str, run_id: Option<&str>, experiment_id: Option<&str>
             window.RLM_PAGE = true;
         }}
 
-        import init, { start_demo } from '/pkg/openagents_web_client.js';
+        import init, {{ start_demo }} from '/pkg/openagents_web_client.js';
 
-        async function run() {
+        async function run() {{
             await init();
             await start_demo('canvas');
-        }
+        }}
 
         run().catch(console.error);
 </script>
 </body>
-</html>"#;
+</html>"#);
 
     let headers = Headers::new();
     headers.set("Content-Type", "text/html; charset=utf-8")?;
