@@ -23,7 +23,12 @@ pub(crate) use brb::build_brb_page;
 pub(crate) use fm::build_fm_page;
 pub(crate) use frlm::{build_frlm_page, handle_frlm_mouse_move};
 pub(crate) use gfn::build_gfn_page;
-pub(crate) use rlm::{build_rlm_page, handle_rlm_mouse_move, handle_rlm_click};
+pub(crate) use rlm::{
+    build_rlm_demo_page, build_rlm_detail_page, build_rlm_list_page, handle_rlm_demo_click,
+    handle_rlm_demo_keydown, handle_rlm_demo_mouse_move, handle_rlm_demo_scroll,
+    handle_rlm_detail_click, handle_rlm_detail_mouse_move, handle_rlm_detail_scroll,
+    handle_rlm_list_click, handle_rlm_list_mouse_move, handle_rlm_list_scroll,
+};
 pub(crate) use gptoss::build_gptoss_page;
 pub(crate) use landing::build_landing_page;
 pub(crate) use ml_inference::build_ml_inference_page;

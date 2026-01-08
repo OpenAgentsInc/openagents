@@ -222,3 +222,11 @@ To keep a reliable trail, all agents should update this file while working on th
 - Commands/Tests: not run (not requested)
 - Decisions/Notes: Sync payload signed with Nostr key over JSON string; browser WS requires session + run ownership; pylon WS requires signature over run_id
 - Follow-ups: consider pagination cursors and streaming client integration in pylon
+
+### Log - 2026-01-08 - codex
+- Scope: Phase 3 dashboard UI (list/detail/demo) and client runtime wiring
+- Changes: Split RLM views into list/detail/demo modules; added list view with run rows and empty/error states; added detail view with run summary, output, and trace log + live status; added client runtime fetchers for /api/rlm runs and traces plus WebSocket listener; updated app routing and input handling for RLM modes; updated worker HTML to set RLM_MODE and RLM_RUN_ID; added routes for /rlm/demo and /rlm/runs/:id
+- Files: crates/web/client/src/views/rlm/mod.rs, crates/web/client/src/views/rlm/list.rs, crates/web/client/src/views/rlm/detail.rs, crates/web/client/src/views/rlm/demo.rs, crates/web/client/src/views/mod.rs, crates/web/client/src/rlm_runtime.rs, crates/web/client/src/app.rs, crates/web/client/src/lib.rs, crates/web/client/src/state.rs, crates/web/worker/src/routes/rlm.rs, crates/web/worker/src/lib.rs
+- Commands/Tests: not run (not requested)
+- Decisions/Notes: preserved existing RLM visualization as demo-only route; live detail view shows trace log entries with summarized FRLM events; WebSocket handler accepts either raw TraceEvent JSON or {event,...} payloads
+- Follow-ups: map FRLM trace events into the demo visualization for richer playback; consider explicit WS event schema/versioning

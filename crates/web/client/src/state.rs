@@ -138,9 +138,11 @@ pub(crate) enum AppView {
     GptOssPage,
     FmPage,
     FrlmPage,
+    RlmList,
+    RlmDetail,
+    RlmDemo,
     Y2026Page,
     BrbPage,
-    RlmPage,
 }
 
 /// State for the GFN (Group Forming Networks) page
@@ -742,6 +744,116 @@ impl RlmVizState {
             RlmPhase::Extraction => "Extraction (CoT)",
             RlmPhase::Synthesis => "Reduce + Verify",
             RlmPhase::Complete => "Complete",
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+pub(crate) struct RlmRunSummary {
+    pub(crate) id: String,
+    pub(crate) query: String,
+    pub(crate) status: String,
+    pub(crate) fragment_count: i64,
+    pub(crate) budget_sats: i64,
+    pub(crate) total_cost_sats: i64,
+    pub(crate) total_duration_ms: i64,
+    pub(crate) output: Option<String>,
+    pub(crate) error_message: Option<String>,
+    pub(crate) created_at: i64,
+    pub(crate) completed_at: Option<i64>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+pub(crate) struct RlmTraceEventRecord {
+    pub(crate) seq: i64,
+    pub(crate) event_type: String,
+    pub(crate) timestamp_ms: i64,
+    pub(crate) event_json: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct RlmTraceEventView {
+    pub(crate) seq: i64,
+    pub(crate) event_type: String,
+    pub(crate) timestamp_ms: i64,
+    pub(crate) summary: String,
+    pub(crate) event_json: String,
+}
+
+pub(crate) struct RlmRunListState {
+    pub(crate) frame_animator: FrameAnimator,
+    pub(crate) frame_started: bool,
+    pub(crate) runs: Vec<RlmRunSummary>,
+    pub(crate) loading: bool,
+    pub(crate) error: Option<String>,
+    pub(crate) scroll_offset: f32,
+    pub(crate) content_bounds: Bounds,
+    pub(crate) content_height: f32,
+    pub(crate) row_bounds: Vec<Bounds>,
+    pub(crate) hovered_run_idx: Option<usize>,
+}
+
+impl Default for RlmRunListState {
+    fn default() -> Self {
+        Self {
+            frame_animator: FrameAnimator::new(),
+            frame_started: false,
+            runs: Vec::new(),
+            loading: false,
+            error: None,
+            scroll_offset: 0.0,
+            content_bounds: Bounds::ZERO,
+            content_height: 0.0,
+            row_bounds: Vec::new(),
+            hovered_run_idx: None,
+        }
+    }
+}
+
+pub(crate) struct RlmRunDetailState {
+    pub(crate) frame_animator: FrameAnimator,
+    pub(crate) frame_started: bool,
+    pub(crate) run_id: Option<String>,
+    pub(crate) run: Option<RlmRunSummary>,
+    pub(crate) trace_events: Vec<RlmTraceEventView>,
+    pub(crate) loading: bool,
+    pub(crate) trace_loading: bool,
+    pub(crate) error: Option<String>,
+    pub(crate) live_connected: bool,
+    pub(crate) live_error: Option<String>,
+    pub(crate) ws: Option<WebSocket>,
+    pub(crate) scroll_offset: f32,
+    pub(crate) content_bounds: Bounds,
+    pub(crate) content_height: f32,
+    pub(crate) trace_scroll: f32,
+    pub(crate) trace_bounds: Bounds,
+    pub(crate) trace_content_height: f32,
+    pub(crate) back_button_bounds: Bounds,
+    pub(crate) back_button_hovered: bool,
+}
+
+impl Default for RlmRunDetailState {
+    fn default() -> Self {
+        Self {
+            frame_animator: FrameAnimator::new(),
+            frame_started: false,
+            run_id: None,
+            run: None,
+            trace_events: Vec::new(),
+            loading: false,
+            trace_loading: false,
+            error: None,
+            live_connected: false,
+            live_error: None,
+            ws: None,
+            scroll_offset: 0.0,
+            content_bounds: Bounds::ZERO,
+            content_height: 0.0,
+            trace_scroll: 0.0,
+            trace_bounds: Bounds::ZERO,
+            trace_content_height: 0.0,
+            back_button_bounds: Bounds::ZERO,
+            back_button_hovered: false,
         }
     }
 }
@@ -1950,6 +2062,10 @@ pub(crate) struct AppState {
     pub(crate) fm_viz: FmVizState,
     // FRLM (Fracking Apple Silicon) power comparison page state
     pub(crate) frlm: FrlmState,
+    // RLM dashboard list page state
+    pub(crate) rlm_list: RlmRunListState,
+    // RLM dashboard detail page state
+    pub(crate) rlm_detail: RlmRunDetailState,
     // RLM (Recursive Language Model) visualization page state
     pub(crate) rlm: RlmVizState,
 }
@@ -2033,6 +2149,8 @@ impl Default for AppState {
             gptoss: GptOssVizState::default(),
             fm_viz: FmVizState::default(),
             frlm: FrlmState::default(),
+            rlm_list: RlmRunListState::default(),
+            rlm_detail: RlmRunDetailState::default(),
             rlm: RlmVizState::default(),
         }
     }

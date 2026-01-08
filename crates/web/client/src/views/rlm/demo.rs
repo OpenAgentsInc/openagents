@@ -1,4 +1,4 @@
-//! RLM (Recursive Language Model) visualization page
+//! RLM (Recursive Language Model) demo visualization page
 //!
 //! Interactive "execution movie" showing RLM processing documents through
 //! structure discovery, chunking, extraction, and synthesis phases.
@@ -14,161 +14,21 @@ use crate::state::{
     AppState, RlmChunkState, RlmConnectionStatus, RlmDemoTrace, RlmPhase, RlmStepStatus,
     RlmTraceEventType,
 };
+use super::{
+    bg_dark, bg_panel, border_color, state_active, state_complete, state_error, state_pending,
+    text_muted, text_primary, wrap_text, FONT_BODY, FONT_HEADER, FONT_SMALL, FONT_TABLE,
+    FONT_TITLE,
+};
 
 /// Embedded trace JSON for demo playback
-const DEMO_TRACE_JSON: &str = include_str!("../../assets/rlm-demo-trace.json");
-
-// ============================================================================
-// V2 Color Palette (from spec)
-// ============================================================================
-
-// Background colors
-fn bg_dark() -> Hsla {
-    Hsla::from_hex(0x08090a)
-}
-
-fn bg_panel() -> Hsla {
-    Hsla::from_hex(0x0d0f11)
-}
-
-fn border_color() -> Hsla {
-    Hsla::from_hex(0x1d2328)
-}
-
-// Text colors
-fn text_primary() -> Hsla {
-    Hsla::from_hex(0xf7f8f8)
-}
-
-fn text_muted() -> Hsla {
-    Hsla::from_hex(0x9aa4ad)
-}
-
-// State colors
-fn state_pending() -> Hsla {
-    Hsla::from_hex(0x3a424a)
-}
-
-fn state_active() -> Hsla {
-    Hsla::from_hex(0xe6b450)
-}
-
-fn state_complete() -> Hsla {
-    Hsla::from_hex(0x23d18b)
-}
-
-fn state_error() -> Hsla {
-    Hsla::from_hex(0xf44747)
-}
-
-// ============================================================================
-// V2 Typography (from spec)
-// ============================================================================
-
-const FONT_TITLE: f32 = 20.0;
-const FONT_HEADER: f32 = 14.0;
-const FONT_BODY: f32 = 13.0;
-const FONT_TABLE: f32 = 13.0;
-const FONT_SMALL: f32 = 12.0;
-
-// ============================================================================
-// Legacy color helpers (for compatibility during transition)
-// ============================================================================
-
-#[allow(dead_code)]
-fn accent_cyan() -> Hsla {
-    Hsla::from_hex(0x7fd3e5)
-}
-
-#[allow(dead_code)]
-fn accent_green() -> Hsla {
-    state_complete()
-}
-
-#[allow(dead_code)]
-fn accent_orange() -> Hsla {
-    state_active()
-}
-
-#[allow(dead_code)]
-fn accent_red() -> Hsla {
-    state_error()
-}
-
-#[allow(dead_code)]
-fn phase_pending() -> Hsla {
-    state_pending()
-}
-
-#[allow(dead_code)]
-fn phase_processing() -> Hsla {
-    state_active()
-}
-
-#[allow(dead_code)]
-fn phase_complete() -> Hsla {
-    state_complete()
-}
-
-#[allow(dead_code)]
-fn phase_error() -> Hsla {
-    state_error()
-}
-
-#[allow(dead_code)]
-fn panel_bg() -> Hsla {
-    bg_panel()
-}
-
-#[allow(dead_code)]
-fn panel_border() -> Hsla {
-    border_color()
-}
-
-// ============================================================================
-// V2 Text Wrapping Helper
-// ============================================================================
-
-fn wrap_text(text_system: &mut TextSystem, text: &str, max_width: f32, font_size: f32) -> Vec<String> {
-    let mut lines = Vec::new();
-    for paragraph in text.split('\n') {
-        if paragraph.is_empty() {
-            lines.push(String::new());
-            continue;
-        }
-        let words: Vec<&str> = paragraph.split_whitespace().collect();
-        if words.is_empty() {
-            lines.push(String::new());
-            continue;
-        }
-        let mut current_line = String::new();
-        for word in words {
-            let test = if current_line.is_empty() {
-                word.to_string()
-            } else {
-                format!("{} {}", current_line, word)
-            };
-            let width = text_system.measure(&test, font_size);
-            if width > max_width && !current_line.is_empty() {
-                lines.push(current_line);
-                current_line = word.to_string();
-            } else {
-                current_line = test;
-            }
-        }
-        if !current_line.is_empty() {
-            lines.push(current_line);
-        }
-    }
-    lines
-}
+const DEMO_TRACE_JSON: &str = include_str!("../../../assets/rlm-demo-trace.json");
 
 // ============================================================================
 // V2 Main Entry Point
 // ============================================================================
 
 /// Build the RLM visualization page (V2 Layout)
-pub(crate) fn build_rlm_page(
+pub(crate) fn build_rlm_demo_page(
     scene: &mut Scene,
     text_system: &mut TextSystem,
     state: &mut AppState,
@@ -1124,7 +984,7 @@ fn reset_and_restart_trace(state: &mut AppState) {
 }
 
 /// Handle mouse move for hover detection
-pub(crate) fn handle_rlm_mouse_move(state: &mut AppState, x: f32, y: f32) {
+pub(crate) fn handle_rlm_demo_mouse_move(state: &mut AppState, x: f32, y: f32) {
     let point = Point::new(x, y);
     state.rlm.run_button_hovered = state.rlm.run_button_bounds.contains(point);
     state.rlm.restart_button_hovered = state.rlm.restart_button_bounds.contains(point);
@@ -1132,7 +992,7 @@ pub(crate) fn handle_rlm_mouse_move(state: &mut AppState, x: f32, y: f32) {
 }
 
 /// Handle mouse click
-pub(crate) fn handle_rlm_click(state: &mut AppState, x: f32, y: f32) -> bool {
+pub(crate) fn handle_rlm_demo_click(state: &mut AppState, x: f32, y: f32) -> bool {
     let point = Point::new(x, y);
 
     // Run button click - toggle playback
@@ -1186,7 +1046,7 @@ pub(crate) fn handle_rlm_click(state: &mut AppState, x: f32, y: f32) -> bool {
 }
 
 /// Handle keyboard events
-pub(crate) fn handle_rlm_keydown(state: &mut AppState, key: &str) -> bool {
+pub(crate) fn handle_rlm_demo_keydown(state: &mut AppState, key: &str) -> bool {
     match key {
         "ArrowUp" => {
             // Select previous chunk
@@ -1231,7 +1091,7 @@ pub(crate) fn handle_rlm_keydown(state: &mut AppState, key: &str) -> bool {
 }
 
 /// Handle scroll events for Inspector panes
-pub(crate) fn handle_rlm_scroll(state: &mut AppState, x: f32, y: f32, delta_y: f32) -> bool {
+pub(crate) fn handle_rlm_demo_scroll(state: &mut AppState, x: f32, y: f32, delta_y: f32) -> bool {
     let point = Point::new(x, y);
     let scroll_amount = delta_y * 20.0; // Scroll sensitivity
 
