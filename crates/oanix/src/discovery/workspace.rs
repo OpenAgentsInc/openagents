@@ -177,6 +177,8 @@ async fn parse_issues(openagents_dir: &Path) -> Vec<IssueSummary> {
         priority: String,
         #[serde(default)]
         is_blocked: bool,
+        #[serde(default)]
+        blocked_reason: Option<String>,
     }
 
     let issues: Vec<IssueJson> = match serde_json::from_str(&content) {
@@ -192,6 +194,7 @@ async fn parse_issues(openagents_dir: &Path) -> Vec<IssueSummary> {
             status: i.status,
             priority: i.priority,
             is_blocked: i.is_blocked,
+            blocked_reason: i.blocked_reason,
         })
         .collect()
 }

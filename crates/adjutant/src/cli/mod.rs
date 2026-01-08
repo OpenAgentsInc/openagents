@@ -2,6 +2,8 @@
 //!
 //! These are the user-facing commands for the autopilot system.
 
+pub mod blocker;
+pub mod directive;
 pub mod issue;
 pub mod run;
 pub mod status;

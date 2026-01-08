@@ -1,8 +1,10 @@
 //! Run command - start the autopilot loop
 
+use crate::cli::blocker::{analyze_blockers, print_blocker_summary};
+use crate::cli::directive::work_on_directive;
 use crate::{Adjutant, Task};
 use clap::Args;
-use oanix::boot;
+use oanix::{boot, WorkspaceManifest};
 
 /// Run command arguments
 #[derive(Args)]
@@ -105,11 +107,14 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     } else {
         // Single issue mode
         let issue = if let Some(number) = args.issue {
-            workspace
-                .issues
-                .iter()
-                .find(|i| i.number == number)
-                .ok_or_else(|| anyhow::anyhow!("Issue #{} not found", number))?
+            // Specific issue requested
+            Some(
+                workspace
+                    .issues
+                    .iter()
+                    .find(|i| i.number == number)
+                    .ok_or_else(|| anyhow::anyhow!("Issue #{} not found", number))?,
+            )
         } else {
             // Find next available issue
             workspace
@@ -123,22 +128,29 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
                     "low" => 3,
                     _ => 4,
                 })
-                .ok_or_else(|| anyhow::anyhow!("No actionable issues available"))?
         };
 
-        println!();
-        println!("Working on issue #{}: {}", issue.number, issue.title);
-        println!();
+        match issue {
+            Some(issue) => {
+                println!();
+                println!("Working on issue #{}: {}", issue.number, issue.title);
+                println!();
 
-        // Create task from issue
-        let task = Task::new(
-            format!("#{}", issue.number),
-            &issue.title,
-            format!("Issue #{}: {}", issue.number, issue.title),
-        );
+                // Create task from issue
+                let task = Task::new(
+                    format!("#{}", issue.number),
+                    &issue.title,
+                    format!("Issue #{}: {}", issue.number, issue.title),
+                );
 
-        let result = adjutant.execute(&task).await?;
-        print_result(&result);
+                let result = adjutant.execute(&task).await?;
+                print_result(&result);
+            }
+            None => {
+                // No actionable issues - use smart fallback
+                find_work_when_blocked(workspace, &mut adjutant).await?;
+            }
+        }
     }
 
     Ok(())
@@ -174,4 +186,101 @@ fn print_result(result: &crate::TaskResult) {
         println!();
         println!("Error: {}", error);
     }
+}
+
+/// Find work when all issues are blocked.
+///
+/// This function analyzes WHY issues are blocked and either:
+/// 1. Suggests unblocking work (e.g., implementing a missing crate)
+/// 2. Falls back to working on the active directive
+async fn find_work_when_blocked(
+    workspace: &WorkspaceManifest,
+    adjutant: &mut Adjutant,
+) -> anyhow::Result<()> {
+    println!();
+    println!("No actionable issues. Analyzing blockers...");
+    println!();
+
+    // Collect blocked issues
+    let blocked: Vec<_> = workspace
+        .issues
+        .iter()
+        .filter(|i| i.is_blocked)
+        .collect();
+
+    if blocked.is_empty() {
+        println!("No blocked issues found. All issues may be completed or in progress.");
+        return Ok(());
+    }
+
+    // Print blocked issue summary
+    print_blocker_summary(&blocked);
+    println!();
+
+    // Analyze blockers
+    let analysis = analyze_blockers(&blocked);
+
+    println!("Blocker analysis:");
+    if analysis.needs_code > 0 {
+        println!("  {} need code implemented first", analysis.needs_code);
+    }
+    if analysis.needs_infra > 0 {
+        println!("  {} need infrastructure/setup", analysis.needs_infra);
+    }
+    if analysis.token_budget > 0 {
+        println!("  {} are token budget issues", analysis.token_budget);
+    }
+    if analysis.needs_env > 0 {
+        println!("  {} need special environment (GUI, etc.)", analysis.needs_env);
+    }
+    if analysis.architectural > 0 {
+        println!("  {} have architectural concerns", analysis.architectural);
+    }
+    if analysis.dependencies > 0 {
+        println!("  {} are waiting on dependencies", analysis.dependencies);
+    }
+
+    // Show suggested work if we have one
+    if let Some(suggestion) = &analysis.suggested_work {
+        println!();
+        println!("Suggested unblocking work: {}", suggestion);
+
+        // Create an ad-hoc task for the unblocking work
+        let task = Task::new(
+            "unblock",
+            "Unblocking Work",
+            format!(
+                "Autopilot has determined that the following work would unblock multiple issues:\n\n\
+                 {}\n\n\
+                 Please analyze what's needed and implement it.",
+                suggestion
+            ),
+        );
+
+        println!();
+        println!("Starting unblocking work...");
+        println!();
+
+        let result = adjutant.execute(&task).await?;
+        print_result(&result);
+        return Ok(());
+    }
+
+    // Fall back to directive-based work
+    println!();
+    println!("No clear unblocking path. Checking active directive...");
+
+    if let Some(directive_id) = &workspace.active_directive {
+        work_on_directive(workspace, directive_id, adjutant).await?;
+    } else {
+        println!();
+        println!("No active directive set.");
+        println!();
+        println!("To proceed, either:");
+        println!("  1. Unblock an issue manually");
+        println!("  2. Set an active directive in .openagents/");
+        println!("  3. Run with an ad-hoc task: autopilot run \"your task here\"");
+    }
+
+    Ok(())
 }
