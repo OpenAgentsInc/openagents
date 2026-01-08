@@ -29,6 +29,15 @@ The autopilot-shell crate is the WGPUI desktop shell that renders the docked HUD
 ## autopilot-wasm
 The autopilot-wasm crate provides WASM bindings for replay viewing, including JSONL parsing, replay bundle construction, secret redaction, and timeline querying.
 
+## bench-datasets
+The bench-datasets crate provides async loaders and configuration for benchmark datasets. It implements dataset-specific loaders (S-NIAH, BrowseComp-Plus, OOLONG, CodeQA), exposes a shared Dataset trait, and re-exports bench-harness task types for consistent evaluation.
+
+## bench-harness
+The bench-harness crate is the experiment backbone for benchmark replication. It defines task and method traits, experiment runners with checkpointing, trajectory logging in JSONL, and metrics/statistics helpers for aggregating results and usage.
+
+## bench-runner
+The bench-runner crate is a CLI for running RLM paper replication experiments. It wires bench-harness, bench-datasets, and rlm-methods together with lm-router backends, supports dataset/method selection, and can emit tables or ablation analyses from stored results.
+
 ## claude-agent-sdk
 The claude-agent-sdk crate is a Rust SDK for the Claude Code CLI. It manages sessions and streaming, exposes permission and budget controls, and supports interrupt/abort flows for UI-driven stop behavior.
 
@@ -56,6 +65,9 @@ The fm-bridge crate is a Rust client for the Apple Foundation Models HTTP bridge
 ## fm-bridge-agent
 The fm-bridge-agent crate wraps fm-bridge in an agent-style interface. It adds session state, tool execution plumbing, and error handling so FM-backed sessions can participate like other agent backends.
 
+## frlm
+The frlm crate implements Federated Recursive Language Models, orchestrating distributed sub-queries across local, swarm, and datacenter backends. It provides a conductor, scheduler, policy, verification, and trace emission to coordinate fanout execution and aggregate results.
+
 ## frostr
 The frostr crate implements FROSTR threshold Schnorr signing for Nostr identities, including key sharing and signing flows for k-of-n setups.
 
@@ -68,11 +80,17 @@ The gpt-oss crate is a Rust client for the GPT-OSS Responses API. It defines req
 ## gpt-oss-agent
 The gpt-oss-agent crate wraps gpt-oss in an agent abstraction compatible with ACP tooling. It manages sessions, tool calls, and rlog recording, and includes builtin tools like browser, python, and apply_patch implementations.
 
+## gpt-oss-metal
+The gpt-oss-metal crate provides Metal-backed bindings and an inference engine for GPT-OSS models. It loads local model binaries, renders Harmony prompts, streams token callbacks, and exposes configuration via environment variables.
+
 ## issue-tool
 The issue-tool crate is a lightweight CLI wrapper over the issues database for create, list, claim, complete, and block workflows.
 
 ## issues
 The issues crate provides the SQLite-backed issue tracking core with migrations and lifecycle transitions. It stores projects, sessions, and issue state used by Autopilot and CLI tooling.
+
+## lm-router
+The lm-router crate routes LLM calls across multiple backends. It exposes a router/builder, backend traits, usage tracking, and built-in backends like FM Bridge, swarm simulation, and mocks for benchmarking.
 
 ## local-inference
 The local-inference crate defines the `LocalModelBackend` trait and shared request/response types for local inference engines. It standardizes streaming, model metadata, and readiness checks across backends like gpt-oss and fm-bridge.
@@ -80,11 +98,23 @@ The local-inference crate defines the `LocalModelBackend` trait and shared reque
 ## marketplace
 The marketplace crate implements the agent economy layer: skills listings, compute provider profiles, reputations, data marketplace primitives, and payment/credit accounting. It is the shared domain model for routing and pricing agent work.
 
+## ml
+The ml crate is a unified inference library built on Candle with browser-first support. It handles GGUF/GPT-OSS model loading, sampling, tokenizer utilities, optional WebGPU paths, and NIP-90 DVM provider plumbing for native and WASM targets.
+
+## ml/candle-wgpu
+The ml/candle-wgpu crate implements a WebGPU backend for Candle. It provides a WGPU device/storage bridge with CPU fallback, shader-backed ops, and pipeline caching for browser and native targets.
+
 ## neobank
 The neobank crate defines treasury and payment routing primitives for agent budgets across multiple rails. It models amounts, assets, quotes, policy checks, and exchange flows (including NIP-69 order concepts) and serves as the foundation for higher-level wallet and marketplace integrations.
 
 ## nexus
 The nexus crate holds the planned cloud runtime for sovereign agents. It is the design counterpart to Pylon and captures the intended hosting model and APIs.
+
+## nexus/client
+The nexus/client crate is a WASM WGPUI dashboard for Nexus relay stats. It renders the HUD, polls `/api/stats`, and surfaces event/job/rlm metrics in a browser canvas.
+
+## nexus/worker
+The nexus/worker crate is the Cloudflare Worker implementation of the Nexus relay. It handles NIP-01/11/42/89/90 flows, serves the HUD assets and stats API, and uses Durable Objects plus D1 storage for relay state.
 
 ## nostr/core
 The nostr/core crate implements core Nostr protocol types and cryptography, including events, filters, signing, and key derivation.
@@ -98,6 +128,9 @@ The nostr/relay crate is a Nostr relay server with WebSocket endpoints, filterin
 ## nostr/tests
 The nostr/tests crate contains integration tests that exercise core, client, and relay behavior together.
 
+## onyx
+The onyx crate is the local-first Markdown editor app. It uses WGPUI and the editor primitives to render inline formatting, manages vault/config persistence and file watching, and includes update checks plus optional voice transcription.
+
 ## opencode-sdk
 The opencode-sdk crate is a generated Rust SDK for OpenCode servers. It provides REST and SSE clients for session control, event streaming, and file operations.
 
@@ -107,11 +140,23 @@ The orderbook crate is a NIP-69 orderbook viewer library with an optional GUI. I
 ## pylon
 The pylon crate is the local runtime for sovereign agents. It supports host mode for running agents and provider mode for selling NIP-90 compute, manages relays and wallets, and exposes CLI commands including tunnel connect for the web UI.
 
+## pylon-desktop
+The pylon-desktop crate is the desktop GUI and CLI wrapper around Pylon. It embeds WGPUI and viz for FM Bridge visualization, runs a NIP-90 provider runtime, and can operate in headless CLI mode.
+
 ## recorder
 The recorder crate parses, validates, and repairs rlog session logs. It also ships a CLI for stats, parsing, and formatting so trajectories remain auditable.
 
 ## relay
 The relay crate defines the WebSocket protocol shared by the browser, worker, and tunnel client. It includes session registration/status structs and message envelopes for StartTask, Autopilot streaming, and Claude tunnel session control.
+
+## relay-worker
+The relay-worker crate is a Cloudflare Worker Nostr relay focused on the inference network. It implements NIP-01/11/28/32/42/90 routing with Durable Objects and D1 storage, and serves a minimal HTTP info page.
+
+## rlm
+The rlm crate is the Recursive Language Model execution engine. It provides the orchestration loop, command parsing, executor interfaces, span provenance tracking, and optional DSPy integration for recursive tool-driven reasoning over documents.
+
+## rlm-methods
+The rlm-methods crate implements the method variants used in the RLM paper (Base, Summary Agent, CodeAct+BM25, full RLM, and ablations). It adapts lm-router clients to bench-harness Method traits and bundles prompts/retrieval helpers.
 
 ## runtime
 The runtime crate provides a pluggable execution environment for autonomous agents. It defines the tick model, identity/storage abstractions, filesystem-style mounts for compute/containers/Claude, and HUD event streaming, and ships adapters like `SparkWalletService` plus the NIP-90 `DvmProvider` for decentralized compute. Backends target local, browser, and cloud deployments.
@@ -121,6 +166,12 @@ The spark crate integrates Breez Spark payments for OpenAgents. It derives Bitco
 
 ## testing
 The testing crate centralizes shared fixtures and helpers for integration tests across the workspace.
+
+## vim
+The vim crate is an editor-agnostic Vim emulation layer. It defines the VimEditor trait plus handlers for modes, motions, operators, and key parsing so UI surfaces can plug in Vim behavior.
+
+## viz
+The viz crate defines the visualization grammar for execution HUDs. It provides primitives for fill/pulse/flow/heat/topology, trace event rendering, and FRLM-specific panels for budget/timeline visualizations.
 
 ## wallet
 The wallet crate provides the unified OpenAgents wallet types tying Nostr identity to Bitcoin/Spark payments. It handles key derivation, storage helpers, and CLI-facing wallet models used by runtimes and web services.
