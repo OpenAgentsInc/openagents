@@ -5,14 +5,115 @@ mod macos {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    // FFI declaration for getting modifier flags state
-    #[link(name = "CoreGraphics", kind = "framework")]
-    extern "C" {
-        fn CGEventSourceFlagsState(stateID: i32) -> u64;
+    /// Wrapper to allow sending raw pointers across threads
+    /// SAFETY: The pointer is allocated via Box::into_raw and only accessed
+    /// from the CGEventTap callback which runs on the spawned thread's run loop
+    /// We use usize to avoid the compiler seeing the raw pointer type
+    struct SendPtr(usize);
+    unsafe impl Send for SendPtr {}
+
+    impl SendPtr {
+        fn new(ptr: *mut std::ffi::c_void) -> Self {
+            Self(ptr as usize)
+        }
+
+        fn as_ptr(&self) -> *mut std::ffi::c_void {
+            self.0 as *mut std::ffi::c_void
+        }
     }
 
-    /// Combined session state
-    const COMBINED_SESSION_STATE: i32 = 0;
+    // Right Command keycode on macOS
+    const RIGHT_COMMAND_KEYCODE: i64 = 54;
+
+    // CGEventTap constants
+    const K_CGEVENT_TAP_LOCATION_HID: u32 = 0;
+    const K_CGEVENT_TAP_OPTION_DEFAULT: u32 = 0;
+    const K_CGEVENT_TAP_PLACEMENT_HEAD: u32 = 0;
+    const K_CGEVENT_FLAGS_CHANGED: u32 = 12;
+
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGEventTapCreate(
+            tap: u32,
+            place: u32,
+            options: u32,
+            eventsOfInterest: u64,
+            callback: extern "C" fn(
+                proxy: *mut std::ffi::c_void,
+                event_type: u32,
+                event: *mut std::ffi::c_void,
+                user_info: *mut std::ffi::c_void,
+            ) -> *mut std::ffi::c_void,
+            userInfo: *mut std::ffi::c_void,
+        ) -> *mut std::ffi::c_void;
+
+        fn CGEventTapEnable(tap: *mut std::ffi::c_void, enable: bool);
+        fn CGEventGetIntegerValueField(event: *mut std::ffi::c_void, field: u32) -> i64;
+        fn CGEventGetFlags(event: *mut std::ffi::c_void) -> u64;
+        fn CFMachPortCreateRunLoopSource(
+            allocator: *const std::ffi::c_void,
+            port: *mut std::ffi::c_void,
+            order: i64,
+        ) -> *mut std::ffi::c_void;
+        fn CFRunLoopGetCurrent() -> *mut std::ffi::c_void;
+        fn CFRunLoopAddSource(
+            rl: *mut std::ffi::c_void,
+            source: *mut std::ffi::c_void,
+            mode: *const std::ffi::c_void,
+        );
+        fn CFRunLoopRun();
+    }
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        static kCFRunLoopCommonModes: *const std::ffi::c_void;
+    }
+
+    // Event field for keycode
+    const K_CGKEYBOARD_EVENT_KEYCODE: u32 = 9;
+
+    // Command flag bit
+    const K_CGEVENT_FLAG_COMMAND: u64 = 0x100000;
+
+    /// Callback context passed to CGEventTap
+    struct CallbackContext {
+        on_press: Arc<dyn Fn() + Send + Sync>,
+        on_release: Arc<dyn Fn() + Send + Sync>,
+        right_cmd_pressed: AtomicBool,
+    }
+
+    /// CGEventTap callback - called for every flags changed event
+    extern "C" fn event_tap_callback(
+        _proxy: *mut std::ffi::c_void,
+        _event_type: u32,
+        event: *mut std::ffi::c_void,
+        user_info: *mut std::ffi::c_void,
+    ) -> *mut std::ffi::c_void {
+        unsafe {
+            let ctx = &*(user_info as *const CallbackContext);
+
+            // Get the keycode that triggered this flags change
+            let keycode = CGEventGetIntegerValueField(event, K_CGKEYBOARD_EVENT_KEYCODE);
+
+            // Only care about Right Command key
+            if keycode == RIGHT_COMMAND_KEYCODE {
+                let flags = CGEventGetFlags(event);
+                let cmd_down = (flags & K_CGEVENT_FLAG_COMMAND) != 0;
+                let was_pressed = ctx.right_cmd_pressed.load(Ordering::SeqCst);
+
+                if cmd_down && !was_pressed {
+                    ctx.right_cmd_pressed.store(true, Ordering::SeqCst);
+                    (ctx.on_press)();
+                } else if !cmd_down && was_pressed {
+                    ctx.right_cmd_pressed.store(false, Ordering::SeqCst);
+                    (ctx.on_release)();
+                }
+            }
+        }
+
+        // Return the event unchanged (don't consume it)
+        event
+    }
 
     /// Global hotkey listener
     pub struct HotkeyListener {
@@ -21,10 +122,7 @@ mod macos {
 
     impl HotkeyListener {
         /// Create a new hotkey listener
-        ///
-        /// Requires Accessibility permissions for full functionality.
         pub fn new() -> Result<Self, String> {
-            // Check accessibility permissions
             if !check_accessibility() {
                 return Err(
                     "Accessibility permission required. Please grant access in System Settings > Privacy & Security > Accessibility".to_string()
@@ -36,10 +134,7 @@ mod macos {
             })
         }
 
-        /// Start listening for Right Command key
-        ///
-        /// Calls `on_press` when key is pressed, `on_release` when released.
-        /// Note: This detects ANY Command key press, not specifically Right Command.
+        /// Start listening for Right Command key specifically
         pub fn listen_right_command<F1, F2>(
             &mut self,
             on_press: F1,
@@ -49,45 +144,60 @@ mod macos {
             F1: Fn() + Send + Sync + 'static,
             F2: Fn() + Send + Sync + 'static,
         {
-            let on_press = Arc::new(on_press);
-            let on_release = Arc::new(on_release);
+            let ctx = Box::new(CallbackContext {
+                on_press: Arc::new(on_press),
+                on_release: Arc::new(on_release),
+                right_cmd_pressed: AtomicBool::new(false),
+            });
 
-            // Track command state
-            let was_pressed = Arc::new(AtomicBool::new(false));
+            let send_ptr = SendPtr::new(Box::into_raw(ctx) as *mut std::ffi::c_void);
 
-            // Spawn thread to poll modifier state
             std::thread::spawn(move || {
-                tracing::info!("Hotkey polling thread started");
+                let ctx_ptr = send_ptr.as_ptr();
+                unsafe {
+                    // Create event tap for flags changed events (modifier keys)
+                    let event_mask: u64 = 1 << K_CGEVENT_FLAGS_CHANGED;
 
-                loop {
-                    // Get current modifier flags
-                    let flags = unsafe { CGEventSourceFlagsState(COMBINED_SESSION_STATE) };
+                    let tap = CGEventTapCreate(
+                        K_CGEVENT_TAP_LOCATION_HID,
+                        K_CGEVENT_TAP_PLACEMENT_HEAD,
+                        K_CGEVENT_TAP_OPTION_DEFAULT,
+                        event_mask,
+                        event_tap_callback,
+                        ctx_ptr,
+                    );
 
-                    // Check if Command flag is set (bit 20)
-                    let cmd_pressed = (flags & 0x100000) != 0;
-                    let was = was_pressed.load(Ordering::SeqCst);
-
-                    if cmd_pressed && !was {
-                        was_pressed.store(true, Ordering::SeqCst);
-                        tracing::debug!("Command key pressed");
-                        on_press();
-                    } else if !cmd_pressed && was {
-                        was_pressed.store(false, Ordering::SeqCst);
-                        tracing::debug!("Command key released");
-                        on_release();
+                    if tap.is_null() {
+                        tracing::error!("Failed to create event tap - check accessibility permissions");
+                        return;
                     }
 
-                    // Poll every 10ms for responsive feel
-                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    // Create run loop source
+                    let source = CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
+                    if source.is_null() {
+                        tracing::error!("Failed to create run loop source");
+                        return;
+                    }
+
+                    // Add to current run loop
+                    let run_loop = CFRunLoopGetCurrent();
+                    CFRunLoopAddSource(run_loop, source, kCFRunLoopCommonModes);
+
+                    // Enable the tap
+                    CGEventTapEnable(tap, true);
+
+                    tracing::info!("Hotkey listener started - listening for Right Command key");
+
+                    // Run the loop (blocks forever)
+                    CFRunLoopRun();
                 }
             });
 
-            tracing::info!("Hotkey listener started (polling mode)");
             Ok(())
         }
     }
 
-    /// Check if we have accessibility permissions, prompting user if not
+    /// Check accessibility permissions with prompt
     fn check_accessibility() -> bool {
         use core_foundation::base::TCFType;
         use core_foundation::boolean::CFBoolean;
@@ -95,15 +205,6 @@ mod macos {
 
         extern "C" {
             fn AXIsProcessTrustedWithOptions(options: *const std::ffi::c_void) -> bool;
-        }
-
-        // Create options dictionary with kAXTrustedCheckOptionPrompt = true
-        // This will show the system prompt asking user to grant accessibility
-        let key = CFString::new("AXTrustedCheckOptionPrompt");
-        let value = CFBoolean::true_value();
-
-        // Create CFDictionary manually using Core Foundation
-        extern "C" {
             fn CFDictionaryCreate(
                 allocator: *const std::ffi::c_void,
                 keys: *const *const std::ffi::c_void,
@@ -112,10 +213,12 @@ mod macos {
                 keyCallBacks: *const std::ffi::c_void,
                 valueCallBacks: *const std::ffi::c_void,
             ) -> *const std::ffi::c_void;
-
             static kCFTypeDictionaryKeyCallBacks: std::ffi::c_void;
             static kCFTypeDictionaryValueCallBacks: std::ffi::c_void;
         }
+
+        let key = CFString::new("AXTrustedCheckOptionPrompt");
+        let value = CFBoolean::true_value();
 
         unsafe {
             let keys = [key.as_concrete_TypeRef() as *const std::ffi::c_void];
