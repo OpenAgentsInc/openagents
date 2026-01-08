@@ -87,13 +87,51 @@ mod macos {
         }
     }
 
-    /// Check if we have accessibility permissions
+    /// Check if we have accessibility permissions, prompting user if not
     fn check_accessibility() -> bool {
+        use core_foundation::base::TCFType;
+        use core_foundation::boolean::CFBoolean;
+        use core_foundation::string::CFString;
+
         extern "C" {
-            fn AXIsProcessTrusted() -> bool;
+            fn AXIsProcessTrustedWithOptions(options: *const std::ffi::c_void) -> bool;
         }
 
-        unsafe { AXIsProcessTrusted() }
+        // Create options dictionary with kAXTrustedCheckOptionPrompt = true
+        // This will show the system prompt asking user to grant accessibility
+        let key = CFString::new("AXTrustedCheckOptionPrompt");
+        let value = CFBoolean::true_value();
+
+        // Create CFDictionary manually using Core Foundation
+        extern "C" {
+            fn CFDictionaryCreate(
+                allocator: *const std::ffi::c_void,
+                keys: *const *const std::ffi::c_void,
+                values: *const *const std::ffi::c_void,
+                numValues: isize,
+                keyCallBacks: *const std::ffi::c_void,
+                valueCallBacks: *const std::ffi::c_void,
+            ) -> *const std::ffi::c_void;
+
+            static kCFTypeDictionaryKeyCallBacks: std::ffi::c_void;
+            static kCFTypeDictionaryValueCallBacks: std::ffi::c_void;
+        }
+
+        unsafe {
+            let keys = [key.as_concrete_TypeRef() as *const std::ffi::c_void];
+            let values = [value.as_concrete_TypeRef() as *const std::ffi::c_void];
+
+            let dict = CFDictionaryCreate(
+                std::ptr::null(),
+                keys.as_ptr(),
+                values.as_ptr(),
+                1,
+                &kCFTypeDictionaryKeyCallBacks,
+                &kCFTypeDictionaryValueCallBacks,
+            );
+
+            AXIsProcessTrustedWithOptions(dict)
+        }
     }
 }
 
