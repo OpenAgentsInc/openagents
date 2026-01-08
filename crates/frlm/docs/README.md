@@ -24,10 +24,10 @@ FRLM extends the RLM (Recursive Language Model) execution model with federation 
                     ┌────────────┼────────────┐
                     │            │            │
                     ▼            ▼            ▼
-              ┌──────────┐ ┌──────────┐ ┌──────────┐
-              │  Local   │ │  Swarm   │ │  Remote  │
-              │ (FM/RLM) │ │ (NIP-90) │ │  (API)   │
-              └──────────┘ └──────────┘ └──────────┘
+              ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+              │  Local   │ │  Swarm   │ │  Remote  │ │  Claude  │
+              │ (FM/RLM) │ │ (NIP-90) │ │  (API)   │ │  (SDK)   │
+              └──────────┘ └──────────┘ └──────────┘ └──────────┘
 ```
 
 ## Core Concepts
@@ -126,7 +126,7 @@ Every operation emits structured trace events for observability:
 | `RunInit` | FRLM run started |
 | `EnvLoadFragment` | Fragment loaded into environment |
 | `SubQuerySubmit` | Sub-query submitted to provider |
-| `SubQueryExecute` | Sub-query execution started |
+| `SubQueryExecute` | Sub-query execution started (includes `venue`, `model_id`) |
 | `SubQueryReturn` | Sub-query completed |
 | `SubQueryTimeout` | Sub-query timed out |
 | `VerifyRedundant` | Redundancy verification result |
@@ -135,6 +135,10 @@ Every operation emits structured trace events for observability:
 | `Aggregate` | Results aggregated |
 | `FallbackLocal` | Fell back to local execution |
 | `RunDone` | FRLM run completed |
+
+The `SubQueryExecute` event includes:
+- `venue`: Execution venue (`Local`, `Swarm`, `Datacenter`, `Claude`)
+- `model_id`: Optional model identifier (e.g., `claude-opus-4-5-20251101`)
 
 ## Integration
 
@@ -177,22 +181,70 @@ impl LocalExecutor for FmLocalExecutor {
 }
 ```
 
+### Claude Backend (Feature: `claude`)
+
+Use Claude (Pro/Max) as the execution backend via `ClaudeLocalExecutor`:
+
+```rust
+use frlm::ClaudeLocalExecutor;  // Requires `claude` feature
+
+let executor = ClaudeLocalExecutor::new("/path/to/workspace")
+    .with_model("claude-opus-4-5-20251101");
+
+let mut conductor = FrlmConductor::with_defaults();
+let result = conductor.run(program, &submitter, Some(&executor)).await?;
+```
+
+Enable the feature in `Cargo.toml`:
+
+```toml
+[dependencies]
+frlm = { path = "../frlm", features = ["claude"] }
+```
+
+The `ClaudeLocalExecutor`:
+- Wraps `ClaudeLlmClient` from the `rlm` crate
+- Uses structured outputs to enforce the RLM response format
+- Reports `Venue::Claude` for trace events
+
+## Execution Venues
+
+FRLM supports multiple execution venues tracked in trace events:
+
+| Venue | Description |
+|-------|-------------|
+| `Local` | Local inference via FM Bridge, Ollama, or llama.cpp |
+| `Swarm` | Distributed execution via NIP-90 |
+| `Datacenter` | Remote API (e.g., Crusoe) |
+| `Claude` | Claude via claude-agent-sdk |
+| `Unknown` | Fallback for unknown venues |
+
 ## Module Structure
 
 ```
 crates/frlm/
 ├── src/
-│   ├── lib.rs           # Module exports
-│   ├── conductor.rs     # FrlmConductor orchestrator
-│   ├── scheduler.rs     # Async fanout scheduler
-│   ├── policy.rs        # Budget, timeout, quorum policies
-│   ├── verification.rs  # Result verification
-│   ├── trace.rs         # Trace event taxonomy
-│   ├── types.rs         # Core types
-│   └── error.rs         # Error types
+│   ├── lib.rs             # Module exports
+│   ├── conductor.rs       # FrlmConductor orchestrator
+│   ├── scheduler.rs       # Async fanout scheduler
+│   ├── policy.rs          # Budget, timeout, quorum policies
+│   ├── verification.rs    # Result verification
+│   ├── trace.rs           # Trace event taxonomy
+│   ├── trace_db.rs        # SQLite persistence for traces
+│   ├── types.rs           # Core types (Fragment, SubQuery, Venue)
+│   ├── claude_executor.rs # Claude backend (feature: claude)
+│   └── error.rs           # Error types
 └── docs/
-    └── README.md        # This file
+    └── README.md          # This file
 ```
+
+## Feature Flags
+
+| Feature | Description |
+|---------|-------------|
+| `trace-db` | SQLite persistence for trace events |
+| `claude` | Claude as execution backend via claude-agent-sdk |
+| `dspy` | DSPy integration for declarative LLM programming |
 
 ## Example Flow
 

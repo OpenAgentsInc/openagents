@@ -8,6 +8,7 @@ description = "Federated Recursive Language Models - distributed RLM execution"
 default = []
 dspy = ["dspy-rs", "rlm/dspy"]
 trace-db = ["rusqlite"]
+claude = ["rlm/claude"]
 
 [dependencies]
 # DSPy (DSRs) for declarative LLM programming (optional)

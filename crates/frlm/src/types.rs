@@ -197,6 +197,8 @@ pub enum Venue {
     Swarm,
     /// Datacenter API (e.g., Crusoe).
     Datacenter,
+    /// Claude via claude-agent-sdk.
+    Claude,
     /// Unknown venue.
     #[default]
     Unknown,
@@ -208,6 +210,7 @@ impl std::fmt::Display for Venue {
             Venue::Local => write!(f, "local"),
             Venue::Swarm => write!(f, "swarm"),
             Venue::Datacenter => write!(f, "datacenter"),
+            Venue::Claude => write!(f, "claude"),
             Venue::Unknown => write!(f, "unknown"),
         }
     }

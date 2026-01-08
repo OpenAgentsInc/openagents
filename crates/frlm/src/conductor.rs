@@ -143,7 +143,7 @@ impl FrlmConductor {
     /// Run an FRLM program.
     ///
     /// This is the main entry point for federated execution.
-    pub async fn run<S: SubQuerySubmitter, L: LocalExecutor>(
+    pub async fn run<S: SubQuerySubmitter, L: LocalExecutor + ?Sized>(
         &mut self,
         program: FrlmProgram,
         submitter: &S,
@@ -202,7 +202,7 @@ impl FrlmConductor {
     }
 
     /// Run with fanout across swarm.
-    async fn run_fanout<S: SubQuerySubmitter, L: LocalExecutor>(
+    async fn run_fanout<S: SubQuerySubmitter, L: LocalExecutor + ?Sized>(
         &mut self,
         program: FrlmProgram,
         sub_queries: Vec<SubQuery>,
@@ -300,7 +300,7 @@ impl FrlmConductor {
     }
 
     /// Run a single query (no fragments).
-    async fn run_single_query<S: SubQuerySubmitter, L: LocalExecutor>(
+    async fn run_single_query<S: SubQuerySubmitter, L: LocalExecutor + ?Sized>(
         &mut self,
         program: FrlmProgram,
         submitter: &S,
@@ -369,7 +369,7 @@ impl FrlmConductor {
     }
 
     /// Run locally using the local executor (fallback).
-    async fn run_local<L: LocalExecutor>(
+    async fn run_local<L: LocalExecutor + ?Sized>(
         &mut self,
         program: FrlmProgram,
         executor: &L,
@@ -378,7 +378,7 @@ impl FrlmConductor {
 
         let query_id = format!("local-{}", uuid::Uuid::new_v4());
         self.trace.subquery_submit(&query_id, &program.query, None);
-        self.trace.subquery_execute(&query_id, "local", Venue::Local);
+        self.trace.subquery_execute(&query_id, "local", Venue::Local, None);
 
         let start = web_time::Instant::now();
         let output = executor.execute(&program.query).await?;

@@ -17,6 +17,8 @@ use frlm::error::{FrlmError, Result as FrlmResult};
 use frlm::policy::FrlmPolicy;
 use frlm::trace_db::TraceDbWriter;
 use frlm::types::{Fragment, FrlmProgram, SubQuery, SubQueryResult, Venue};
+#[cfg(feature = "claude")]
+use frlm::ClaudeLocalExecutor;
 use k256::schnorr::signature::Signer;
 use k256::schnorr::SigningKey;
 use nostr::nip90::KIND_JOB_RLM_SUBQUERY;
@@ -55,6 +57,11 @@ pub struct RlmArgs {
     /// Use local model only (no swarm)
     #[arg(long)]
     pub local_only: bool,
+
+    /// Local backend: auto, ollama, llama-cpp, fm, claude
+    /// (claude requires --features claude)
+    #[arg(long, default_value = "auto")]
+    pub backend: String,
 
     /// Relay URLs (comma-separated)
     #[arg(long, default_value = "wss://nexus.openagents.com,wss://relay.damus.io,wss://nos.lol")]
@@ -237,20 +244,20 @@ impl LocalExecutor for LocalBackendExecutor {
     }
 }
 
-/// Submitter that runs all sub-queries locally.
-struct LocalSubmitter<L: LocalExecutor + Send + Sync + 'static> {
-    executor: Arc<L>,
+/// Submitter that runs all sub-queries locally using dynamic dispatch.
+struct LocalSubmitter {
+    executor: Arc<dyn LocalExecutor>,
     result_tx: tokio_mpsc::Sender<SubQueryResult>,
 }
 
-impl<L: LocalExecutor + Send + Sync + 'static> LocalSubmitter<L> {
-    fn new(executor: Arc<L>, result_tx: tokio_mpsc::Sender<SubQueryResult>) -> Self {
+impl LocalSubmitter {
+    fn new(executor: Arc<dyn LocalExecutor>, result_tx: tokio_mpsc::Sender<SubQueryResult>) -> Self {
         Self { executor, result_tx }
     }
 }
 
 #[async_trait]
-impl<L: LocalExecutor + Send + Sync + 'static> SubQuerySubmitter for LocalSubmitter<L> {
+impl SubQuerySubmitter for LocalSubmitter {
     async fn submit_batch(&self, queries: Vec<SubQuery>) -> FrlmResult<Vec<(String, String)>> {
         for query in &queries {
             let result_tx = self.result_tx.clone();
@@ -646,7 +653,21 @@ pub async fn run(args: RlmArgs) -> anyhow::Result<()> {
         None
     };
 
-    let local_executor = if args.local_only {
+    let local_executor: Option<Arc<dyn LocalExecutor>> = if args.backend == "claude" {
+        #[cfg(feature = "claude")]
+        {
+            let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            println!("Using Claude backend");
+            Some(Arc::new(ClaudeLocalExecutor::new(workspace)))
+        }
+        #[cfg(not(feature = "claude"))]
+        {
+            anyhow::bail!(
+                "Claude backend requested but 'claude' feature not enabled.\n\
+                 Rebuild with: cargo build -p pylon --features claude"
+            );
+        }
+    } else if args.local_only || args.backend != "auto" {
         Some(Arc::new(LocalBackendExecutor::new().await?))
     } else {
         match LocalBackendExecutor::new().await {
@@ -658,7 +679,7 @@ pub async fn run(args: RlmArgs) -> anyhow::Result<()> {
         }
     };
 
-    let run_result = if args.local_only {
+    let run_result = if args.local_only || args.backend == "claude" {
         let executor = local_executor
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Local execution requested but no backend available"))?;
