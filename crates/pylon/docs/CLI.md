@@ -606,6 +606,101 @@ pylon connect --tunnel-url wss://... --model claude-sonnet-4-20250514 --autonomy
 
 ---
 
+### pylon rlm
+
+Run recursive language model (RLM) queries on the swarm compute network.
+
+```bash
+pylon rlm [OPTIONS] <QUERY>
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `<QUERY>` | The question or prompt to process |
+
+#### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--file` | File to analyze (loaded as fragments) | - |
+| `--fanout` | Maximum concurrent sub-queries | 10 |
+| `--budget` | Maximum sats to spend | 1000 |
+| `--local-only` | Use local model only (no swarm) | false |
+| `--relay` | Relay URLs (comma-separated) | wss://nexus.openagents.com,wss://relay.damus.io,wss://nos.lol |
+| `--chunk-size` | Chunk size in characters (for file processing) | 2000 |
+| `--timeout` | Timeout per sub-query in seconds | 60 |
+
+#### Description
+
+RLM (Recursive Language Model) enables distributed AI queries across the OpenAgents swarm network. Queries are submitted as NIP-90 jobs (kind 5940) and processed by providers running on the network.
+
+The workflow:
+1. Query is submitted to Nexus relay (or specified relays)
+2. Providers pick up the job and process it
+3. Results (kind 6940) are returned to the client
+4. For file analysis, content is chunked and queries run in parallel (up to fanout limit)
+
+#### Examples
+
+```bash
+# Simple query
+pylon rlm "What is 2+2?"
+
+# Query with specific relay
+pylon rlm "Explain quantum computing" --relay wss://nexus.openagents.com
+
+# Analyze a file
+pylon rlm "Summarize this code" --file src/main.rs
+
+# Higher fanout for faster parallel processing
+pylon rlm "What does this do?" --file large-file.rs --fanout 20
+
+# Longer timeout for complex queries
+pylon rlm "Write a detailed analysis" --timeout 120
+
+# Local-only mode (no swarm, uses local inference)
+pylon rlm "Quick question" --local-only
+```
+
+#### Output
+
+```
+RLM Query
+=========
+Query: What is 2+2?
+Budget: 1000 sats
+Relays: 1
+Sub-queries: 1 (fanout: 1)
+Bid per query: 1000000 msats
+
+Submitting jobs to swarm...
+  [1/1] Submitted: 14aea1e9f86b65c2
+
+Waiting for results...
+.
+
+Completed: 1/1 sub-queries
+
+The result of 2 + 2 is 4.
+```
+
+#### Job Kinds
+
+| Kind | Description |
+|------|-------------|
+| 5940 | RLM sub-query request |
+| 6940 | RLM result |
+
+#### Related
+
+- Provider mode handles kind 5940 jobs
+- Results are published as kind 6940 events
+- Uses NIP-90 Data Vending Machine protocol
+
+---
+
 ## Environment Variables
 
 | Variable | Description | Default |

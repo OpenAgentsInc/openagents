@@ -122,6 +122,8 @@ pub struct RelayConnection {
     queue_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// Receive loop task handle
     recv_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    /// Ping task handle for keep-alive
+    ping_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// Circuit breaker for fault tolerance
     circuit_breaker: Arc<CircuitBreaker>,
     /// Exponential backoff for reconnection
@@ -201,6 +203,7 @@ impl RelayConnection {
             queue,
             queue_task: Arc::new(Mutex::new(None)),
             recv_task: Arc::new(Mutex::new(None)),
+            ping_task: Arc::new(Mutex::new(None)),
             circuit_breaker,
             backoff,
             health_metrics,
@@ -298,6 +301,9 @@ impl RelayConnection {
         // Start background receive loop
         self.start_recv_loop().await;
 
+        // Start ping loop for keep-alive
+        self.start_ping_loop().await;
+
         // If auth key is set, wait briefly for AUTH handshake to complete
         // This allows the relay to send AUTH challenge and us to respond before publishing
         if self.auth_key.read().await.is_some() {
@@ -380,7 +386,7 @@ impl RelayConnection {
                     // Route EVENT messages to subscriptions
                     if let RelayMessage::Event(sub_id, event) = &relay_msg {
                         debug!(
-                            "Received EVENT from {} for sub {}: kind={}, id={}...",
+                            "Parsed EVENT from {} for sub {}: kind={}, id={}...",
                             url,
                             sub_id,
                             event.kind,
@@ -391,7 +397,7 @@ impl RelayConnection {
                             let subs = subscriptions.lock().await;
                             debug!("Active subscriptions: {:?}", subs.keys().collect::<Vec<_>>());
                             if let Some(subscription) = subs.get(sub_id) {
-                                debug!("Found matching subscription {}, routing event", sub_id);
+                                debug!("Found matching subscription {}, routing event kind={}", sub_id, event.kind);
                                 if let Err(e) = subscription.handle_event(event.clone()) {
                                     let err_str = e.to_string();
                                     // Only warn once if channel closed, then remove subscription
@@ -470,6 +476,50 @@ impl RelayConnection {
         }
     }
 
+    /// Start ping loop for keep-alive (sends text "ping" messages)
+    async fn start_ping_loop(&self) {
+        let ws = Arc::clone(&self.ws);
+        let state = Arc::clone(&self.state);
+        let ping_interval = self.config.ping_interval;
+        let url = self.url.to_string();
+
+        let handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(ping_interval);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+            loop {
+                interval.tick().await;
+
+                // Check if still connected
+                if *state.read().await != ConnectionState::Connected {
+                    break;
+                }
+
+                // Send text "ping" message (for Cloudflare auto-response)
+                let mut ws_guard = ws.lock().await;
+                if let Some(stream) = ws_guard.as_mut() {
+                    if let Err(e) = stream.send(Message::Text("ping".to_string().into())).await {
+                        info!("Failed to send ping to {}: {}", url, e);
+                        // Don't break - the recv loop will handle disconnect
+                    } else {
+                        info!("Sent keep-alive ping to {}", url);
+                    }
+                } else {
+                    break;
+                }
+            }
+        });
+
+        *self.ping_task.lock().await = Some(handle);
+    }
+
+    /// Stop ping loop
+    async fn stop_ping_loop(&self) {
+        if let Some(handle) = self.ping_task.lock().await.take() {
+            handle.abort();
+        }
+    }
+
     /// Disconnect from the relay
     pub async fn disconnect(&self) -> Result<()> {
         let mut state = self.state.write().await;
@@ -481,6 +531,9 @@ impl RelayConnection {
 
         // Stop receive loop first
         self.stop_recv_loop().await;
+
+        // Stop ping loop
+        self.stop_ping_loop().await;
 
         // Stop queue processing task
         self.stop_queue_task().await;

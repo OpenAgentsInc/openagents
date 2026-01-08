@@ -156,6 +156,8 @@ pub struct DvmClient {
     active_jobs: Arc<RwLock<HashMap<String, String>>>,
     /// Pending results (event_id -> sender)
     pending_results: Arc<Mutex<HashMap<String, mpsc::Sender<JobResult>>>>,
+    /// Result receivers (event_id -> receiver) - created during subscribe, used by await_result
+    result_receivers: Arc<Mutex<HashMap<String, mpsc::Receiver<JobResult>>>>,
     /// Pending feedback (event_id -> sender)
     pending_feedback: Arc<Mutex<HashMap<String, mpsc::Sender<JobFeedbackEvent>>>>,
 }
@@ -181,6 +183,7 @@ impl DvmClient {
             pool,
             active_jobs: Arc::new(RwLock::new(HashMap::new())),
             pending_results: Arc::new(Mutex::new(HashMap::new())),
+            result_receivers: Arc::new(Mutex::new(HashMap::new())),
             pending_feedback: Arc::new(Mutex::new(HashMap::new())),
         })
     }
@@ -195,6 +198,7 @@ impl DvmClient {
             pool: Arc::new(pool),
             active_jobs: Arc::new(RwLock::new(HashMap::new())),
             pending_results: Arc::new(Mutex::new(HashMap::new())),
+            result_receivers: Arc::new(Mutex::new(HashMap::new())),
             pending_feedback: Arc::new(Mutex::new(HashMap::new())),
         })
     }
@@ -276,25 +280,29 @@ impl DvmClient {
     /// # Returns
     /// The `JobResult` containing the computation output
     pub async fn await_result(&self, job_id: &str, timeout: Duration) -> Result<JobResult> {
-        let (tx, mut rx) = mpsc::channel(1);
+        // Get the pre-created receiver from subscribe_to_job_events
+        // This receiver was created BEFORE subscribing, so it won't miss early events
+        let mut rx = {
+            let mut receivers = self.result_receivers.lock().await;
+            receivers.remove(job_id).ok_or_else(|| {
+                ClientError::Internal(format!("No result receiver found for job {}", job_id))
+            })?
+        };
 
-        {
-            let mut pending = self.pending_results.lock().await;
-            pending.insert(job_id.to_string(), tx);
-        }
-
-        let job_id_owned = job_id.to_string();
-        let pending_results = Arc::clone(&self.pending_results);
-
+        debug!("await_result: waiting for job {} with timeout {:?}", job_id, timeout);
         let result = tokio::time::timeout(timeout, rx.recv()).await;
 
+        // Clean up pending result sender
         {
-            let mut pending = pending_results.lock().await;
-            pending.remove(&job_id_owned);
+            let mut pending = self.pending_results.lock().await;
+            pending.remove(job_id);
         }
 
         match result {
-            Ok(Some(job_result)) => Ok(job_result),
+            Ok(Some(job_result)) => {
+                debug!("await_result: received result for job {}", job_id);
+                Ok(job_result)
+            }
             Ok(None) => Err(ClientError::Internal("Result channel closed".to_string())),
             Err(_) => Err(ClientError::Timeout(format!(
                 "Job result timeout after {:?}",
@@ -343,6 +351,10 @@ impl DvmClient {
         {
             let mut pending = self.pending_results.lock().await;
             pending.remove(job_id);
+        }
+        {
+            let mut receivers = self.result_receivers.lock().await;
+            receivers.remove(job_id);
         }
         {
             let mut pending = self.pending_feedback.lock().await;
@@ -445,14 +457,28 @@ impl DvmClient {
             active.insert(job_id.to_string(), subscription_id.clone());
         }
 
+        // CRITICAL: Create result channel and insert sender BEFORE subscribing
+        // This prevents race condition where result arrives before await_result is called
+        let (result_tx, result_rx) = mpsc::channel(1);
+        {
+            let mut pending = self.pending_results.lock().await;
+            pending.insert(job_id.to_string(), result_tx);
+        }
+        {
+            let mut receivers = self.result_receivers.lock().await;
+            receivers.insert(job_id.to_string(), result_rx);
+        }
+
         let mut rx = self.pool.subscribe(&subscription_id, &filters).await?;
         let pending_results = Arc::clone(&self.pending_results);
         let pending_feedback = Arc::clone(&self.pending_feedback);
         let job_id_owned = job_id.to_string();
 
         tokio::spawn(async move {
+            debug!("DvmClient event handler started for job {}", job_id_owned);
             while let Some(event) = rx.recv().await {
                 let job_id = job_id_owned.clone();
+                debug!("DvmClient received event kind={} for job {}", event.kind, job_id);
 
                 if is_job_result_kind(event.kind) {
                     match JobResult::from_event(&event) {
@@ -461,6 +487,8 @@ impl DvmClient {
                             let pending = pending_results.lock().await;
                             if let Some(tx) = pending.get(&job_id) {
                                 let _ = tx.send(result).await;
+                            } else {
+                                warn!("No pending sender found for job {}", job_id);
                             }
                         }
                         Err(e) => {

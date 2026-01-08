@@ -11,6 +11,15 @@ use crate::nip42;
 use crate::storage::Storage;
 use crate::subscription::SubscriptionManager;
 
+/// Configure WebSocket auto-response for ping/pong keep-alive
+fn setup_websocket_auto_response(state: &State) {
+    // Set up auto-response for ping/pong to prevent idle timeouts
+    // This runs at the edge without waking the Durable Object
+    if let Ok(pair) = WebSocketRequestResponsePair::new("ping", "pong") {
+        state.set_websocket_auto_response(&pair);
+    }
+}
+
 /// Connection metadata stored in WebSocket tags
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionMeta {
@@ -36,6 +45,8 @@ pub struct NexusRelay {
 
 impl DurableObject for NexusRelay {
     fn new(state: State, env: Env) -> Self {
+        // Set up WebSocket auto-response for keep-alive (runs at edge, no DO wake)
+        setup_websocket_auto_response(&state);
         Self { state, env }
     }
 
@@ -86,6 +97,61 @@ impl DurableObject for NexusRelay {
         ws: WebSocket,
         message: WebSocketIncomingMessage,
     ) -> Result<()> {
+        // CRITICAL: Wrap everything in error handling to prevent connection crashes
+        // Any unhandled error in this function will close the WebSocket
+        if let Err(e) = self.handle_websocket_message_inner(&ws, message).await {
+            console_log!("websocket_message error (non-fatal): {:?}", e);
+            // Send notice to client but don't propagate error
+            if let Ok(json) = serde_json::to_string(&RelayMessage::Notice {
+                message: "internal error".to_string(),
+            }) {
+                let _ = ws.send_with_str(&json);
+            }
+        }
+        Ok(()) // Always return Ok to keep connection alive
+    }
+
+    /// Handle WebSocket close
+    async fn websocket_close(
+        &self,
+        ws: WebSocket,
+        code: usize,
+        reason: String,
+        was_clean: bool,
+    ) -> Result<()> {
+        // Log the close for debugging
+        let meta: ConnectionMeta = ws.deserialize_attachment()?.unwrap_or_else(|| ConnectionMeta {
+            conn_id: String::new(),
+            pubkey: None,
+            challenge: String::new(),
+            authenticated: false,
+        });
+        console_log!(
+            "websocket_close: conn_id={}, code={}, reason={}, was_clean={}",
+            &meta.conn_id[..16.min(meta.conn_id.len())],
+            code,
+            reason,
+            was_clean
+        );
+        // Clean up subscriptions for this connection
+        // Subscriptions are tracked per-WebSocket in tags, so they're automatically cleaned up
+        Ok(())
+    }
+
+    /// Handle WebSocket errors
+    async fn websocket_error(&self, _ws: WebSocket, error: Error) -> Result<()> {
+        console_log!("WebSocket error: {:?}", error);
+        Ok(())
+    }
+}
+
+impl NexusRelay {
+    /// Inner message handler that can return errors
+    async fn handle_websocket_message_inner(
+        &self,
+        ws: &WebSocket,
+        message: WebSocketIncomingMessage,
+    ) -> Result<()> {
         let msg_text = match message {
             WebSocketIncomingMessage::String(s) => s,
             WebSocketIncomingMessage::Binary(b) => {
@@ -110,7 +176,9 @@ impl DurableObject for NexusRelay {
                 let notice = RelayMessage::Notice {
                     message: format!("Invalid message: {}", e),
                 };
-                let _ = ws.send_with_str(&serde_json::to_string(&notice)?);
+                if let Ok(json) = serde_json::to_string(&notice) {
+                    let _ = ws.send_with_str(&json);
+                }
                 return Ok(());
             }
         };
@@ -118,7 +186,7 @@ impl DurableObject for NexusRelay {
         // Handle message based on auth state
         match client_msg {
             ClientMessage::Auth { event } => {
-                self.handle_auth(&ws, meta, event).await?;
+                self.handle_auth(ws, meta, event).await?;
             }
             _ if !meta.authenticated => {
                 // Reject all non-AUTH messages if not authenticated
@@ -137,46 +205,27 @@ impl DurableObject for NexusRelay {
                     },
                     ClientMessage::Auth { .. } => unreachable!(),
                 };
-                let _ = ws.send_with_str(&serde_json::to_string(&msg)?);
+                if let Ok(json) = serde_json::to_string(&msg) {
+                    let _ = ws.send_with_str(&json);
+                }
             }
             ClientMessage::Event { event } => {
-                self.handle_event(&ws, &meta, event).await?;
+                self.handle_event(ws, &meta, event).await?;
             }
             ClientMessage::Req {
                 subscription_id,
                 filters,
             } => {
-                self.handle_req(&ws, &meta, subscription_id, filters).await?;
+                self.handle_req(ws, &meta, subscription_id, filters).await?;
             }
             ClientMessage::Close { subscription_id } => {
-                self.handle_close(&ws, &meta, subscription_id).await?;
+                self.handle_close(ws, &meta, subscription_id).await?;
             }
         }
 
         Ok(())
     }
 
-    /// Handle WebSocket close
-    async fn websocket_close(
-        &self,
-        _ws: WebSocket,
-        _code: usize,
-        _reason: String,
-        _was_clean: bool,
-    ) -> Result<()> {
-        // Clean up subscriptions for this connection
-        // Subscriptions are tracked per-WebSocket in tags, so they're automatically cleaned up
-        Ok(())
-    }
-
-    /// Handle WebSocket errors
-    async fn websocket_error(&self, _ws: WebSocket, error: Error) -> Result<()> {
-        console_log!("WebSocket error: {:?}", error);
-        Ok(())
-    }
-}
-
-impl NexusRelay {
     /// Handle AUTH message
     async fn handle_auth(
         &self,
@@ -286,24 +335,48 @@ impl NexusRelay {
     ) -> Result<()> {
         let storage = Storage::new(&self.state, &self.env);
 
-        // Query historical events matching filters
-        for filter in &filters {
-            let events = storage.query_events(filter).await?;
-            for event in events {
-                let msg = RelayMessage::Event {
-                    subscription_id: subscription_id.clone(),
-                    event,
-                };
-                let _ = ws.send_with_str(&serde_json::to_string(&msg)?);
-            }
+        console_log!(
+            "handle_req: sub_id={}, conn_id={}, {} filters",
+            subscription_id,
+            &meta.conn_id[..16.min(meta.conn_id.len())],
+            filters.len()
+        );
+        for (i, f) in filters.iter().enumerate() {
+            console_log!(
+                "  Filter[{}]: kinds={:?}, e_tags={:?}",
+                i,
+                f.kinds,
+                f.e_tags
+            );
         }
 
-        // Store subscription for future events using stable conn_id (not pointer address)
+        // CRITICAL: Store subscription FIRST before querying historical events
+        // This ensures we don't miss real-time events while querying history
         let sub_key = format!("sub:{}:{}", meta.conn_id, subscription_id);
+        console_log!("  Storing subscription with key: {}", sub_key);
         self.state
             .storage()
             .put(&sub_key, &filters)
             .await?;
+
+        // Query historical events matching filters (don't fail the whole request on D1 error)
+        for filter in &filters {
+            match storage.query_events(filter).await {
+                Ok(events) => {
+                    for event in events {
+                        let msg = RelayMessage::Event {
+                            subscription_id: subscription_id.clone(),
+                            event,
+                        };
+                        let _ = ws.send_with_str(&serde_json::to_string(&msg)?);
+                    }
+                }
+                Err(e) => {
+                    console_log!("  Warning: query_events failed: {:?}", e);
+                    // Continue - subscription is still stored for future events
+                }
+            }
+        }
 
         // Send EOSE
         let msg = RelayMessage::Eose {
@@ -334,15 +407,40 @@ impl NexusRelay {
         let subs = SubscriptionManager::new(&self.state);
         let websockets = self.state.get_websockets();
 
+        console_log!(
+            "broadcast_event: kind={}, id={}..., {} websockets connected",
+            event.kind,
+            &event.id[..16.min(event.id.len())],
+            websockets.len()
+        );
+
         for ws in websockets {
             // Check if this WebSocket has matching subscriptions
-            let matching_subs = subs.get_matching_subscriptions(&ws, event).await?;
+            // CRITICAL: Don't let errors in one WebSocket crash all connections
+            let matching_subs = match subs.get_matching_subscriptions(&ws, event).await {
+                Ok(subs) => subs,
+                Err(e) => {
+                    console_log!("  Error getting subscriptions for WebSocket: {:?}", e);
+                    continue; // Skip this WebSocket, try others
+                }
+            };
+            console_log!(
+                "  WebSocket has {} matching subscriptions for event {}",
+                matching_subs.len(),
+                &event.id[..16.min(event.id.len())]
+            );
             for sub_id in matching_subs {
+                console_log!("    Sending to subscription: {}", sub_id);
                 let msg = RelayMessage::Event {
                     subscription_id: sub_id,
                     event: event.clone(),
                 };
-                let _ = ws.send_with_str(&serde_json::to_string(&msg)?);
+                if let Ok(json) = serde_json::to_string(&msg) {
+                    match ws.send_with_str(&json) {
+                        Ok(_) => console_log!("    -> Send succeeded for {}", &event.id[..16.min(event.id.len())]),
+                        Err(e) => console_log!("    -> Send FAILED for {}: {:?}", &event.id[..16.min(event.id.len())], e),
+                    }
+                }
             }
         }
 
