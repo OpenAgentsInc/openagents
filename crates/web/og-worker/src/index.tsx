@@ -31,6 +31,13 @@ const BLOG_POSTS: Record<string, BlogPostMeta> = {
     description:
       "We discuss recursive language models (RLMs) and their importance to our swarm compute network",
   },
+  "pylon-and-nexus": {
+    title: "Pylon and Nexus",
+    episode: 203,
+    date: "January 7, 2026",
+    description:
+      "We release the first versions of our swarm compute software for client (Pylon) and server (Nexus)",
+  },
   // Add future blog posts here
 };
 
