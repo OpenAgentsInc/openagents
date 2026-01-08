@@ -3,7 +3,12 @@
 //! Note: Tests that use the actual FMClient require the FM Bridge to be running.
 //! These tests use the MockExecutor for isolated testing.
 
-use rlm::{Command, MockExecutor, RlmEngine, RlmConfig};
+use rlm::{Command, MockExecutor, RlmConfig};
+
+#[cfg(all(feature = "fm-bridge", target_os = "macos"))]
+use rlm::RlmEngine;
+
+#[cfg(all(feature = "fm-bridge", target_os = "macos"))]
 use fm_bridge::FMClient;
 
 /// Test that the command parser works correctly.
@@ -103,6 +108,7 @@ fn test_prompts() {
 /// 2. A working model loaded
 ///
 /// Run with: cargo test -p rlm -- --ignored
+#[cfg(all(feature = "fm-bridge", target_os = "macos"))]
 #[tokio::test]
 #[ignore]
 async fn test_rlm_with_fm_bridge() {
@@ -147,4 +153,11 @@ async fn test_rlm_with_fm_bridge() {
             // Don't fail the test - LLM might give unexpected responses
         }
     }
+}
+
+#[cfg(not(all(feature = "fm-bridge", target_os = "macos")))]
+#[tokio::test]
+#[ignore]
+async fn test_rlm_with_fm_bridge() {
+    eprintln!("Skipping test - FM Bridge only supported on macOS with fm-bridge feature");
 }

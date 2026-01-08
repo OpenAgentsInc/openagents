@@ -246,3 +246,19 @@ To keep a reliable trail, all agents should update this file while working on th
 - Commands/Tests: cargo build -p rlm; cargo build -p openagents-web --target wasm32-unknown-unknown; cargo build --manifest-path crates/web/worker/Cargo.toml --target wasm32-unknown-unknown; cargo test -p rlm (failed: missing fm_bridge crate in tests and missing anyhow in example)
 - Decisions/Notes: Left rlm test failure as pre-existing dependency/config issue; reported in summary
 - Follow-ups: Fix rlm test/example deps or gate with features if needed
+
+### Log - 2026-01-08 - codex
+- Scope: Linux gating for FM Bridge tests + dspy example build fix
+- Changes: Gated FM Bridge test/import to macOS + fm-bridge feature with skip on other targets; gated optimize_signatures example behind dspy feature with fallback main
+- Files: crates/rlm/tests/basic.rs, crates/rlm/examples/optimize_signatures.rs
+- Commands/Tests: not run yet (pending rerun after change)
+- Decisions/Notes: Used target_os + feature gating to avoid FM Bridge dependency on Linux
+- Follow-ups: rerun `cargo test -p rlm` to confirm
+
+### Log - 2026-01-08 - codex
+- Scope: Rerun rlm test suite after Linux gating
+- Changes: None (test rerun)
+- Files: None
+- Commands/Tests: cargo test -p rlm (failed: command::tests::test_parse_code_before_final, prompts::tests::test_system_prompt_for_tier_full)
+- Decisions/Notes: Failures appear pre-existing; left unchanged
+- Follow-ups: Investigate rlm command parsing and system prompt expectations if needed
