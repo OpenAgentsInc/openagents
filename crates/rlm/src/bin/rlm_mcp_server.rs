@@ -20,6 +20,17 @@
 //! ```bash
 //! claude --mcp-server "rlm:stdio:rlm-mcp-server"
 //! ```
+//!
+//! # Backend Selection
+//!
+//! Set `RLM_BACKEND` environment variable:
+//! - `claude` - Use Claude via claude-agent-sdk (recommended, requires `claude` feature)
+//! - `ollama` - Use Ollama at localhost:11434 (default)
+//!
+//! Example:
+//! ```bash
+//! RLM_BACKEND=claude rlm-mcp-server
+//! ```
 
 use lm_router::backends::OllamaBackend;
 use lm_router::LmBackend;
@@ -28,6 +39,24 @@ use rlm::{Context, LmRouterClient, PythonExecutor, RlmConfig, RlmEngine};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;
+
+/// Backend type for RLM execution.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum RlmBackend {
+    /// Use Ollama at localhost:11434
+    Ollama,
+    /// Use Claude via claude-agent-sdk (requires `claude` feature)
+    Claude,
+}
+
+impl RlmBackend {
+    fn from_env() -> Self {
+        match std::env::var("RLM_BACKEND").as_deref() {
+            Ok("claude") => RlmBackend::Claude,
+            _ => RlmBackend::Ollama,
+        }
+    }
+}
 
 /// Create an LmRouter with auto-detected backends.
 async fn create_router_with_backends() -> (Arc<lm_router::LmRouter>, String) {
@@ -124,6 +153,73 @@ async fn handle_tools_call(request: &Value) -> Value {
     }
 }
 
+/// Execute RLM query using Ollama backend.
+async fn execute_rlm_query_ollama(
+    input: &RlmQueryInput,
+    config: RlmConfig,
+) -> Result<rlm::RlmResult, rlm::RlmError> {
+    // Create LmRouter with auto-detected backends
+    let (router, model) = create_router_with_backends().await;
+
+    let client = LmRouterClient::new(router, &model);
+    let executor = PythonExecutor::new();
+
+    let mut engine = RlmEngine::with_config(client, executor, config);
+
+    // Set context if provided
+    if let Some(ref ctx) = input.context {
+        engine.set_context(Context::from_text(ctx.clone()));
+    }
+
+    // Choose execution mode
+    if input.orchestrated.unwrap_or(false)
+        || input
+            .context
+            .as_ref()
+            .map(|c| c.len() > 50_000)
+            .unwrap_or(false)
+    {
+        engine.run_orchestrated(&input.query).await
+    } else {
+        engine.run(&input.query).await
+    }
+}
+
+/// Execute RLM query using Claude backend (requires `claude` feature).
+#[cfg(feature = "claude")]
+async fn execute_rlm_query_claude(
+    input: &RlmQueryInput,
+    config: RlmConfig,
+) -> Result<rlm::RlmResult, rlm::RlmError> {
+    use rlm::ClaudeLlmClient;
+
+    // Get workspace root from current directory
+    let workspace_root = std::env::current_dir().unwrap_or_else(|_| "/tmp".into());
+
+    let client = ClaudeLlmClient::new(workspace_root);
+    let executor = PythonExecutor::new();
+
+    let mut engine = RlmEngine::with_config(client, executor, config);
+
+    // Set context if provided
+    if let Some(ref ctx) = input.context {
+        engine.set_context(Context::from_text(ctx.clone()));
+    }
+
+    // Choose execution mode
+    if input.orchestrated.unwrap_or(false)
+        || input
+            .context
+            .as_ref()
+            .map(|c| c.len() > 50_000)
+            .unwrap_or(false)
+    {
+        engine.run_orchestrated(&input.query).await
+    } else {
+        engine.run(&input.query).await
+    }
+}
+
 async fn execute_rlm_query(args: &Value) -> Value {
     // Parse input
     let input: RlmQueryInput = match serde_json::from_value(args.clone()) {
@@ -139,11 +235,8 @@ async fn execute_rlm_query(args: &Value) -> Value {
         }
     };
 
-    // Create LmRouter with auto-detected backends
-    let (router, model) = create_router_with_backends().await;
-
-    let client = LmRouterClient::new(router, &model);
-    let executor = PythonExecutor::new();
+    let backend = RlmBackend::from_env();
+    eprintln!("[rlm-mcp-server] Using backend: {:?}", backend);
 
     // Build config
     let mut config = RlmConfig::default();
@@ -151,24 +244,26 @@ async fn execute_rlm_query(args: &Value) -> Value {
         config.max_iterations = max_iter;
     }
 
-    let mut engine = RlmEngine::with_config(client, executor, config);
-
-    // Set context if provided
-    if let Some(ref ctx) = input.context {
-        engine.set_context(Context::from_text(ctx.clone()));
-    }
-
-    // Choose execution mode
-    let result = if input.orchestrated.unwrap_or(false)
-        || input
-            .context
-            .as_ref()
-            .map(|c| c.len() > 50_000)
-            .unwrap_or(false)
-    {
-        engine.run_orchestrated(&input.query).await
-    } else {
-        engine.run(&input.query).await
+    // Execute with appropriate backend
+    let result = match backend {
+        #[cfg(feature = "claude")]
+        RlmBackend::Claude => {
+            execute_rlm_query_claude(&input, config).await
+        }
+        #[cfg(not(feature = "claude"))]
+        RlmBackend::Claude => {
+            return json!({
+                "content": [{
+                    "type": "text",
+                    "text": "Claude backend requested but 'claude' feature not enabled. \
+                            Rebuild with: cargo build -p rlm --features claude"
+                }],
+                "isError": true
+            });
+        }
+        RlmBackend::Ollama => {
+            execute_rlm_query_ollama(&input, config).await
+        }
     };
 
     match result {
