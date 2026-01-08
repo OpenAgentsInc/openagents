@@ -37,6 +37,18 @@ impl Transcriber {
     /// # Returns
     /// Transcribed text
     pub fn transcribe(&self, audio: &[f32]) -> Result<String, String> {
+        self.transcribe_with_language(audio, Some("en"))
+    }
+
+    /// Transcribe audio data to text with specified language
+    ///
+    /// # Arguments
+    /// * `audio` - Audio samples as f32, 16kHz mono
+    /// * `language` - Language code (e.g., "en") or None for auto-detect
+    ///
+    /// # Returns
+    /// Transcribed text
+    pub fn transcribe_with_language(&self, audio: &[f32], language: Option<&str>) -> Result<String, String> {
         // Get or create state (first call will be slow due to GPU init)
         let mut state_guard = self.state.lock().map_err(|e| format!("Lock error: {}", e))?;
 
@@ -54,8 +66,8 @@ impl Transcriber {
         // Configure transcription parameters
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
 
-        // English-only, no language detection
-        params.set_language(Some("en"));
+        // Set language
+        params.set_language(language);
 
         // Disable translation (we want transcription)
         params.set_translate(false);
