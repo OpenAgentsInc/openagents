@@ -238,3 +238,11 @@ To keep a reliable trail, all agents should update this file while working on th
 - Commands/Tests: not run (not requested)
 - Decisions/Notes: Provider leaderboard derived from subquery_execute/subquery_return events; export JSON includes per-run trace events
 - Follow-ups: consider pagination and server-side sort filters for experiment list/provider stats
+
+### Log - 2026-01-08 - codex
+- Scope: Build fixes + smoke builds for web/worker/rlm
+- Changes: Escaped HTML template braces in worker RLM page; fixed with_auth body handling; updated web demo input event modifiers + Component import for MarkdownView
+- Files: crates/web/worker/src/routes/rlm.rs, crates/web/worker/src/lib.rs, crates/web/src/lib.rs
+- Commands/Tests: cargo build -p rlm; cargo build -p openagents-web --target wasm32-unknown-unknown; cargo build --manifest-path crates/web/worker/Cargo.toml --target wasm32-unknown-unknown; cargo test -p rlm (failed: missing fm_bridge crate in tests and missing anyhow in example)
+- Decisions/Notes: Left rlm test failure as pre-existing dependency/config issue; reported in summary
+- Follow-ups: Fix rlm test/example deps or gate with features if needed
