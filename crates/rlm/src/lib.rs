@@ -30,6 +30,7 @@
 //! ```
 
 pub mod chunking;
+pub mod experiment;
 mod client;
 #[cfg(feature = "fm-bridge")]
 pub mod cli;
@@ -65,6 +66,7 @@ pub use context::{Context, ContextType, FileEntry, SearchResult};
 pub use engine::{ExecutionLogEntry, RlmConfig, RlmEngine, RlmResult, StuckDetector, StuckType};
 pub use error::RlmError;
 pub use executor::{ExecutionEnvironment, ExecutionResult, ExecutorCapabilities};
+pub use experiment::{ExperimentGroup, ExperimentMetrics, ExperimentRunSummary};
 pub use lm_router_adapter::LmRouterClient;
 pub use mock_executor::MockExecutor;
 pub use orchestrator::{AnalysisResult, ChunkSummary, EngineOrchestrator, OrchestratorConfig};

@@ -230,3 +230,11 @@ To keep a reliable trail, all agents should update this file while working on th
 - Commands/Tests: not run (not requested)
 - Decisions/Notes: preserved existing RLM visualization as demo-only route; live detail view shows trace log entries with summarized FRLM events; WebSocket handler accepts either raw TraceEvent JSON or {event,...} payloads
 - Follow-ups: map FRLM trace events into the demo visualization for richer playback; consider explicit WS event schema/versioning
+
+### Log - 2026-01-08 - codex
+- Scope: Phase 4 experiment comparison, export, provider leaderboard
+- Changes: Added experiment-run mapping table and DB helpers; added experiment list/detail/provider endpoints and HTML routes; added experiment comparison/leaderboard views and runtime fetchers; added experiment export (CSV metrics, JSON with trace events); added client state + routing for new views; added local experiment grouping types in rlm crate
+- Files: crates/web/migrations/0010_rlm_experiment_runs.sql, crates/web/worker/src/db/rlm.rs, crates/web/worker/src/routes/rlm.rs, crates/web/worker/src/routes/export.rs, crates/web/worker/src/lib.rs, crates/web/client/src/state.rs, crates/web/client/src/rlm_runtime.rs, crates/web/client/src/app.rs, crates/web/client/src/views/rlm/experiments.rs, crates/web/client/src/views/rlm/experiment_detail.rs, crates/web/client/src/views/rlm/providers.rs, crates/web/client/src/views/rlm/mod.rs, crates/web/client/src/views/mod.rs, crates/rlm/src/experiment.rs, crates/rlm/src/lib.rs
+- Commands/Tests: not run (not requested)
+- Decisions/Notes: Provider leaderboard derived from subquery_execute/subquery_return events; export JSON includes per-run trace events
+- Follow-ups: consider pagination and server-side sort filters for experiment list/provider stats

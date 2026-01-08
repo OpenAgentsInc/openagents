@@ -141,6 +141,9 @@ pub(crate) enum AppView {
     RlmList,
     RlmDetail,
     RlmDemo,
+    RlmExperiments,
+    RlmExperimentDetail,
+    RlmProviders,
     Y2026Page,
     BrbPage,
 }
@@ -780,6 +783,41 @@ pub(crate) struct RlmTraceEventView {
     pub(crate) event_json: String,
 }
 
+#[derive(Clone, Debug, serde::Deserialize)]
+pub(crate) struct RlmExperimentSummary {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) description: Option<String>,
+    pub(crate) created_at: i64,
+    pub(crate) updated_at: i64,
+    pub(crate) run_count: i64,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+pub(crate) struct RlmExperimentRun {
+    pub(crate) run: RlmRunSummary,
+    pub(crate) label: Option<String>,
+    pub(crate) added_at: i64,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+pub(crate) struct RlmExperimentDetail {
+    pub(crate) experiment: RlmExperimentSummary,
+    pub(crate) runs: Vec<RlmExperimentRun>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+pub(crate) struct RlmProviderStat {
+    pub(crate) provider_id: String,
+    pub(crate) venue: Option<String>,
+    pub(crate) total_queries: i64,
+    pub(crate) success_count: i64,
+    pub(crate) success_rate: f64,
+    pub(crate) total_cost_sats: i64,
+    pub(crate) total_duration_ms: i64,
+    pub(crate) avg_duration_ms: f64,
+}
+
 pub(crate) struct RlmRunListState {
     pub(crate) frame_animator: FrameAnimator,
     pub(crate) frame_started: bool,
@@ -854,6 +892,114 @@ impl Default for RlmRunDetailState {
             trace_content_height: 0.0,
             back_button_bounds: Bounds::ZERO,
             back_button_hovered: false,
+        }
+    }
+}
+
+pub(crate) struct RlmExperimentListState {
+    pub(crate) frame_animator: FrameAnimator,
+    pub(crate) frame_started: bool,
+    pub(crate) experiments: Vec<RlmExperimentSummary>,
+    pub(crate) loading: bool,
+    pub(crate) error: Option<String>,
+    pub(crate) scroll_offset: f32,
+    pub(crate) content_bounds: Bounds,
+    pub(crate) content_height: f32,
+    pub(crate) row_bounds: Vec<Bounds>,
+    pub(crate) hovered_experiment_idx: Option<usize>,
+}
+
+impl Default for RlmExperimentListState {
+    fn default() -> Self {
+        Self {
+            frame_animator: FrameAnimator::new(),
+            frame_started: false,
+            experiments: Vec::new(),
+            loading: false,
+            error: None,
+            scroll_offset: 0.0,
+            content_bounds: Bounds::ZERO,
+            content_height: 0.0,
+            row_bounds: Vec::new(),
+            hovered_experiment_idx: None,
+        }
+    }
+}
+
+pub(crate) struct RlmExperimentDetailState {
+    pub(crate) frame_animator: FrameAnimator,
+    pub(crate) frame_started: bool,
+    pub(crate) experiment_id: Option<String>,
+    pub(crate) experiment: Option<RlmExperimentSummary>,
+    pub(crate) runs: Vec<RlmExperimentRun>,
+    pub(crate) loading: bool,
+    pub(crate) error: Option<String>,
+    pub(crate) scroll_offset: f32,
+    pub(crate) content_bounds: Bounds,
+    pub(crate) content_height: f32,
+    pub(crate) table_bounds: Bounds,
+    pub(crate) row_bounds: Vec<Bounds>,
+    pub(crate) hovered_run_idx: Option<usize>,
+    pub(crate) back_button_bounds: Bounds,
+    pub(crate) back_button_hovered: bool,
+    pub(crate) export_csv_bounds: Bounds,
+    pub(crate) export_csv_hovered: bool,
+    pub(crate) export_json_bounds: Bounds,
+    pub(crate) export_json_hovered: bool,
+}
+
+impl Default for RlmExperimentDetailState {
+    fn default() -> Self {
+        Self {
+            frame_animator: FrameAnimator::new(),
+            frame_started: false,
+            experiment_id: None,
+            experiment: None,
+            runs: Vec::new(),
+            loading: false,
+            error: None,
+            scroll_offset: 0.0,
+            content_bounds: Bounds::ZERO,
+            content_height: 0.0,
+            table_bounds: Bounds::ZERO,
+            row_bounds: Vec::new(),
+            hovered_run_idx: None,
+            back_button_bounds: Bounds::ZERO,
+            back_button_hovered: false,
+            export_csv_bounds: Bounds::ZERO,
+            export_csv_hovered: false,
+            export_json_bounds: Bounds::ZERO,
+            export_json_hovered: false,
+        }
+    }
+}
+
+pub(crate) struct RlmProviderLeaderboardState {
+    pub(crate) frame_animator: FrameAnimator,
+    pub(crate) frame_started: bool,
+    pub(crate) providers: Vec<RlmProviderStat>,
+    pub(crate) loading: bool,
+    pub(crate) error: Option<String>,
+    pub(crate) scroll_offset: f32,
+    pub(crate) content_bounds: Bounds,
+    pub(crate) content_height: f32,
+    pub(crate) row_bounds: Vec<Bounds>,
+    pub(crate) hovered_provider_idx: Option<usize>,
+}
+
+impl Default for RlmProviderLeaderboardState {
+    fn default() -> Self {
+        Self {
+            frame_animator: FrameAnimator::new(),
+            frame_started: false,
+            providers: Vec::new(),
+            loading: false,
+            error: None,
+            scroll_offset: 0.0,
+            content_bounds: Bounds::ZERO,
+            content_height: 0.0,
+            row_bounds: Vec::new(),
+            hovered_provider_idx: None,
         }
     }
 }
@@ -2066,6 +2212,12 @@ pub(crate) struct AppState {
     pub(crate) rlm_list: RlmRunListState,
     // RLM dashboard detail page state
     pub(crate) rlm_detail: RlmRunDetailState,
+    // RLM experiments list state
+    pub(crate) rlm_experiments: RlmExperimentListState,
+    // RLM experiment detail state
+    pub(crate) rlm_experiment_detail: RlmExperimentDetailState,
+    // RLM provider leaderboard state
+    pub(crate) rlm_providers: RlmProviderLeaderboardState,
     // RLM (Recursive Language Model) visualization page state
     pub(crate) rlm: RlmVizState,
 }
@@ -2151,6 +2303,9 @@ impl Default for AppState {
             frlm: FrlmState::default(),
             rlm_list: RlmRunListState::default(),
             rlm_detail: RlmRunDetailState::default(),
+            rlm_experiments: RlmExperimentListState::default(),
+            rlm_experiment_detail: RlmExperimentDetailState::default(),
+            rlm_providers: RlmProviderLeaderboardState::default(),
             rlm: RlmVizState::default(),
         }
     }
