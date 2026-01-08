@@ -707,25 +707,11 @@ impl ApplicationHandler for OnyxApp {
                 tracing::debug!("KeyboardInput: physical={:?} logical={:?} state={:?} repeat={}",
                     event.physical_key, event.logical_key, event.state, event.repeat);
 
-                // Handle backtick (`) for voice transcription (hold to record, release to transcribe)
-                // Check physical key codes (Backquote, IntlBackslash, Section) AND logical character
-                let is_voice_key_physical = matches!(
+                // Handle Right Command key for voice transcription (hold to record, release to transcribe)
+                let is_voice_key = matches!(
                     event.physical_key,
-                    PhysicalKey::Code(KeyCode::Backquote) |
-                    PhysicalKey::Code(KeyCode::IntlBackslash) |
-                    PhysicalKey::Code(KeyCode::F13)  // Some keyboards map backtick here
+                    PhysicalKey::Code(KeyCode::SuperRight)
                 );
-                let is_voice_key_logical = matches!(
-                    &event.logical_key,
-                    Key::Character(c) if c == "`" || c == "§" || c == "±"
-                );
-                let is_voice_key = is_voice_key_physical || is_voice_key_logical;
-
-                // Debug: log any potential voice key detection
-                if is_voice_key_physical || is_voice_key_logical {
-                    tracing::info!("Potential voice key: physical={:?} logical={:?}",
-                        event.physical_key, event.logical_key);
-                }
 
                 // Block ALL voice key events from reaching the editor (including repeats)
                 if is_voice_key {
@@ -792,7 +778,7 @@ impl ApplicationHandler for OnyxApp {
                     } else {
                         tracing::debug!("Skipping repeat voice key press");
                     }
-                    // Always return for voice key to prevent backticks in editor
+                    // Always return for voice key to prevent it from triggering other actions
                     return;
                 }
 
@@ -1002,7 +988,7 @@ impl ApplicationHandler for OnyxApp {
                             // Model finished loading
                             state.voice_loading_shown = false;
                             if voice.is_ready() {
-                                state.editor.set_status("Voice ready (` to record)", VOICE_SUCCESS_COLOR);
+                                state.editor.set_status("Voice ready (Right ⌘ to record)", VOICE_SUCCESS_COLOR);
                             } else if let Some(msg) = voice.status_message() {
                                 state.editor.set_status(&msg, VOICE_RECORDING_COLOR);
                             }
