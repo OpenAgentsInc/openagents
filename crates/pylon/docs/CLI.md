@@ -701,12 +701,182 @@ The result of 2 + 2 is 4.
 
 ---
 
+### pylon gateway
+
+Interact with external AI gateways (Cerebras, OpenAI, etc.).
+
+```bash
+pylon gateway <SUBCOMMAND>
+```
+
+#### Subcommands
+
+- `chat` - Send a chat message to a gateway
+- `models` - List available models
+- `health` - Check gateway health
+
+---
+
+### pylon gateway chat
+
+Send a chat message to an external AI gateway.
+
+```bash
+pylon gateway chat [OPTIONS] <MESSAGE>
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `<MESSAGE>` | The message to send |
+
+#### Options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--model` | `-m` | Model to use | zai-glm-4.7 |
+| `--system` | `-s` | System prompt | - |
+| `--temperature` | `-t` | Temperature (0.0 - 2.0) | - |
+| `--max-tokens` | - | Maximum tokens to generate | - |
+| `--provider` | `-p` | Gateway provider | cerebras |
+
+#### Providers
+
+| Provider | Description | API Key Env Var |
+|----------|-------------|-----------------|
+| `cerebras` | Cerebras Cloud (default) | `CEREBRAS_API_KEY` |
+
+#### Examples
+
+```bash
+# Simple chat
+pylon gateway chat "What is 2+2?"
+
+# Use specific model
+pylon gateway chat "Hello" -m llama3.1-8b
+
+# With system prompt
+pylon gateway chat "Write a poem" -s "You are a poet"
+
+# With temperature
+pylon gateway chat "Be creative" -t 1.5
+
+# With max tokens
+pylon gateway chat "Write a story" --max-tokens 500
+```
+
+#### Output
+
+```
+The answer is 4.
+[gateway] Using provider=cerebras model=zai-glm-4.7
+
+[gateway] tokens: prompt=17 completion=10 total=27
+```
+
+---
+
+### pylon gateway models
+
+List available models from a gateway.
+
+```bash
+pylon gateway models [OPTIONS]
+```
+
+#### Options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--provider` | `-p` | Gateway provider | cerebras |
+
+#### Examples
+
+```bash
+# List Cerebras models
+pylon gateway models
+
+# Explicit provider
+pylon gateway models -p cerebras
+```
+
+#### Output
+
+```
+Available models for cerebras:
+
+  zai-glm-4.7 (Z.ai GLM 4.7)
+    Context: 131072 tokens
+    Pricing: $2.25/M input, $2.75/M output
+    Capabilities: [ChatCompletion, Streaming, FunctionCalling, Reasoning]
+
+  llama-3.3-70b (Llama 3.3 70B)
+    Context: 128000 tokens
+    Pricing: $0.85/M input, $1.20/M output
+    Capabilities: [ChatCompletion, Streaming]
+
+  llama3.1-8b (Llama 3.1 8B)
+    Context: 128000 tokens
+    Pricing: $0.10/M input, $0.10/M output
+    Capabilities: [ChatCompletion, Streaming]
+```
+
+---
+
+### pylon gateway health
+
+Check gateway availability and latency.
+
+```bash
+pylon gateway health [OPTIONS]
+```
+
+#### Options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--provider` | `-p` | Gateway provider | cerebras |
+
+#### Examples
+
+```bash
+# Check Cerebras health
+pylon gateway health
+```
+
+#### Output
+
+```
+[gateway] Checking cerebras health... OK
+Gateway: Cerebras Cloud (cerebras)
+Status: Available
+Latency: 245ms
+```
+
+---
+
 ## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `RUST_LOG` | Log level (error, warn, info, debug, trace) | info |
 | `PYLON_AGENT_RUNNER` | Path to agent-runner binary | auto-detect |
+| `CEREBRAS_API_KEY` | Cerebras API key for gateway commands | - |
+
+### Gateway API Keys
+
+The gateway commands require API keys for external providers. These can be set via environment variables or in a `.env.local` file (automatically loaded).
+
+```bash
+# Option 1: Environment variable
+export CEREBRAS_API_KEY="csk-your-key-here"
+
+# Option 2: .env.local file
+echo 'CEREBRAS_API_KEY="csk-your-key-here"' >> .env.local
+```
+
+Get your Cerebras API key at: https://cloud.cerebras.ai
 
 ### Log Levels
 

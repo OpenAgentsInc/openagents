@@ -18,6 +18,7 @@ path = "src/lib.rs"
 # Internal crates
 agent = { path = "../agent" }
 compute = { path = "../compute" }
+gateway = { path = "../gateway" }
 frlm = { path = "../frlm", features = ["trace-db"] }
 neobank = { path = "../neobank" }
 nostr = { path = "../nostr/core", features = ["full"] }
@@ -72,6 +73,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 bip39 = "2.1"
 uuid = { version = "1.11", features = ["v4"] }
 url = "2.5"
+dotenvy = "0.15"
 
 # HTTP client for compute detection
 reqwest = { version = "0.12", features = ["json", "blocking"] }
