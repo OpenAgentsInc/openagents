@@ -187,13 +187,25 @@ impl AudioCapture {
         );
 
         // Resample to 16kHz if needed
-        if self.device_sample_rate != WHISPER_SAMPLE_RATE {
+        let mut output = if self.device_sample_rate != WHISPER_SAMPLE_RATE {
             let resampled = resample(&audio, self.device_sample_rate, WHISPER_SAMPLE_RATE);
             tracing::info!("Resampled to {} samples at 16kHz", resampled.len());
-            Some(resampled)
+            resampled
         } else {
-            Some(audio)
+            audio
+        };
+
+        // Pad to minimum 1.5 seconds (24000 samples at 16kHz) for Whisper
+        // Whisper needs >1s and has rounding issues, so we use 1.5s to be safe
+        const MIN_SAMPLES: usize = 24000;
+        if output.len() < MIN_SAMPLES {
+            let padding_needed = MIN_SAMPLES - output.len();
+            tracing::info!("Padding audio with {} samples of silence (was {} -> {})",
+                padding_needed, output.len(), MIN_SAMPLES);
+            output.extend(std::iter::repeat(0.0).take(padding_needed));
         }
+
+        Some(output)
     }
 
     /// Check if currently recording

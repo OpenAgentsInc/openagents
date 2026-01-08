@@ -605,6 +605,7 @@ impl ApplicationHandler for OnyxApp {
 
             let mut editor = LiveEditor::new(&initial_content).with_id(1);
             editor.focus();
+            editor.clear_status(); // Clear any stale status on startup
 
             // Initialize voice transcription
             let voice = match VoiceState::new() {
@@ -715,9 +716,19 @@ impl ApplicationHandler for OnyxApp {
 
                 // Block ALL voice key events from reaching the editor (including repeats)
                 if is_voice_key {
-                    // Only process non-repeat events for actual recording control
-                    if !event.repeat {
-                        tracing::info!("Voice key detected: {:?} state={:?}", event.physical_key, event.state);
+                    // Log ALL voice key events for debugging (before any filtering)
+                    tracing::info!("VOICE KEY: state={:?} repeat={}", event.state, event.repeat);
+
+                    // For Pressed: skip repeats. For Released: always process (releases don't repeat logically)
+                    let should_process = match event.state {
+                        ElementState::Pressed => !event.repeat,
+                        ElementState::Released => true, // Always process release
+                    };
+
+                    if should_process {
+                        // Handle voice recording WITHOUT catch_unwind - let's see actual errors
+                        tracing::info!("Processing voice event: {:?}", event.state);
+
                         if let Some(voice) = &mut state.voice {
                             match event.state {
                                 ElementState::Pressed => {
@@ -734,7 +745,6 @@ impl ApplicationHandler for OnyxApp {
                                                 state.editor.set_status(&format!("Mic error: {}", e), VOICE_RECORDING_COLOR);
                                             }
                                         }
-                                        state.window.request_redraw();
                                     } else {
                                         tracing::debug!("Already recording, ignoring press");
                                     }
@@ -752,21 +762,22 @@ impl ApplicationHandler for OnyxApp {
                                             // Quick tap or no audio - discarded
                                             tracing::info!("Recording discarded (quick tap or no audio)");
                                             state.editor.set_status("Recording discarded", VOICE_TRANSCRIBING_COLOR);
-                                            // Clear after a moment (will be cleared on next redraw cycle)
                                         }
                                         Err(e) => {
                                             tracing::error!("Recording stop failed: {}", e);
                                             state.editor.set_status(&format!("Voice error: {}", e), VOICE_RECORDING_COLOR);
                                         }
                                     }
-                                    state.window.request_redraw();
                                 }
                             }
                         } else {
                             tracing::warn!("Voice not available");
                             state.editor.set_status("Voice not available", VOICE_RECORDING_COLOR);
-                            state.window.request_redraw();
                         }
+
+                        state.window.request_redraw();
+                    } else {
+                        tracing::debug!("Skipping repeat voice key press");
                     }
                     // Always return for voice key to prevent backticks in editor
                     return;
@@ -983,6 +994,7 @@ impl ApplicationHandler for OnyxApp {
                 // Poll for transcription results from background thread
                 if let Some(ref mut voice) = state.voice {
                     if let Some(result) = voice.take_transcription_result() {
+                        tracing::info!("Got transcription result from background thread");
                         match result {
                             Ok(text) if !text.is_empty() => {
                                 // Show the transcribed text briefly
@@ -991,13 +1003,14 @@ impl ApplicationHandler for OnyxApp {
                                 } else {
                                     format!("\"{}\"", text)
                                 };
+                                tracing::info!("Transcription success: {}", preview);
                                 state.editor.set_status(&preview, VOICE_SUCCESS_COLOR);
                                 state.editor.insert_str(&text);
-                                tracing::info!("Inserted transcription: {}", text);
                             }
                             Ok(_) => {
-                                // Empty transcription
-                                state.editor.clear_status();
+                                // Empty transcription - audio too short or no speech detected
+                                tracing::info!("Transcription returned empty (no speech detected)");
+                                state.editor.set_status("No speech detected", VOICE_TRANSCRIBING_COLOR);
                             }
                             Err(e) => {
                                 tracing::error!("Transcription failed: {}", e);
