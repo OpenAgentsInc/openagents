@@ -1,5 +1,6 @@
 //! Task execution - do the actual work using tools.
 
+use crate::tiered::TieredExecutor;
 use crate::{AdjutantError, Task, TaskPlan, ToolRegistry};
 use std::path::Path;
 
@@ -45,11 +46,10 @@ impl TaskResult {
 /// Execute a task using local tools.
 ///
 /// This is where Adjutant does the actual work:
-/// 1. Read relevant files
-/// 2. Understand the context
-/// 3. Make edits
-/// 4. Run tests
-/// 5. Commit if successful
+/// 1. Read relevant files to build context
+/// 2. Use TieredExecutor (Cerebras) to plan and execute
+/// 3. Apply edits and run tests
+/// 4. Commit if successful
 pub async fn execute_with_tools(
     tools: &mut ToolRegistry,
     _workspace_root: &Path,
@@ -58,17 +58,8 @@ pub async fn execute_with_tools(
 ) -> Result<TaskResult, AdjutantError> {
     tracing::info!("Executing task: {}", task.title);
 
-    // For now, this is a simplified implementation.
-    // In the full version, this would:
-    // 1. Use Claude API to understand the task
-    // 2. Generate edits based on the plan
-    // 3. Apply edits using the Edit tool
-    // 4. Run tests
-    // 5. Commit changes
-
-    let mut context = String::new();
-
     // 1. Read relevant files to build context
+    let mut context = String::new();
     tracing::info!("Reading {} relevant files", plan.files.len());
     for file in &plan.files {
         let result = tools.read(file).await?;
@@ -77,28 +68,36 @@ pub async fn execute_with_tools(
         }
     }
 
-    // 2. Log what we found
     tracing::info!(
         "Built context: {} bytes from {} files",
         context.len(),
         plan.files.len()
     );
 
-    // 3. For now, return a placeholder result indicating human review needed
-    // The full implementation would use Claude to generate and apply edits
-
-    Ok(TaskResult {
-        success: true,
-        summary: format!(
-            "Analyzed task '{}'. Found {} relevant files totaling {} tokens. Ready for implementation.",
-            task.title,
-            plan.files.len(),
-            plan.estimated_tokens
-        ),
-        modified_files: Vec::new(),
-        commit_hash: None,
-        error: None,
-    })
+    // 2. Try to use TieredExecutor (Cerebras GLM 4.7 + Qwen-3-32B)
+    match TieredExecutor::new() {
+        Ok(executor) => {
+            tracing::info!("Using TieredExecutor (Cerebras)");
+            executor.execute(task, &context, tools).await
+        }
+        Err(e) => {
+            // Fall back to stub behavior if Cerebras not configured
+            tracing::warn!("TieredExecutor unavailable: {}. Using fallback.", e);
+            Ok(TaskResult {
+                success: true,
+                summary: format!(
+                    "Analyzed task '{}'. Found {} relevant files totaling {} tokens. \
+                     Set CEREBRAS_API_KEY to enable AI-powered execution.",
+                    task.title,
+                    plan.files.len(),
+                    plan.estimated_tokens
+                ),
+                modified_files: Vec::new(),
+                commit_hash: None,
+                error: None,
+            })
+        }
+    }
 }
 
 /// Run tests in the workspace.
