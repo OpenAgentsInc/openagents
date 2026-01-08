@@ -98,13 +98,21 @@ pub fn run_foreground() -> Result<(), String> {
                     tracing::info!("Transcribing...");
                 }
                 VoiceEvent::TranscriptionComplete { text } => {
-                    if !text.is_empty() {
-                        tracing::info!("Transcribed: {}", text);
-                        if let Err(e) = insert_text(&text) {
+                    // Filter out Whisper artifacts like [BLANK_AUDIO], (silence), etc.
+                    let cleaned = text.trim();
+                    let is_artifact = cleaned.is_empty()
+                        || cleaned.starts_with('[')
+                        || cleaned.starts_with('(')
+                        || cleaned.to_lowercase().contains("blank")
+                        || cleaned.to_lowercase().contains("silence");
+
+                    if !is_artifact {
+                        tracing::info!("Transcribed: {}", cleaned);
+                        if let Err(e) = insert_text(cleaned) {
                             tracing::error!("Failed to insert text: {}", e);
                         }
                     } else {
-                        tracing::info!("No speech detected");
+                        tracing::debug!("Filtered out artifact: {}", text);
                     }
                 }
                 VoiceEvent::TranscriptionError(e) => {
