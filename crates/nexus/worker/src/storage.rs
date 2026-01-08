@@ -169,20 +169,43 @@ impl<'a> Storage<'a> {
     /// Query events from D1 database
     async fn query_d1(&self, filter: &Filter) -> Result<Vec<nostr::Event>> {
         let db = self.db()?;
-
-        let (where_clause, _params) = filter.to_sql_conditions();
         let limit = filter.limit.unwrap_or(100).min(500);
 
-        // Build query
+        // Build query with inline conditions (D1 parameter binding is tricky)
+        // We fetch a broad set and filter in Rust for correctness
+        let mut conditions = Vec::new();
+
+        // Kind filter - use IN clause with literal values
+        if !filter.kinds.is_empty() {
+            let kinds_str = filter
+                .kinds
+                .iter()
+                .map(|k| k.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            conditions.push(format!("kind IN ({})", kinds_str));
+        }
+
+        // Time filters
+        if let Some(since) = filter.since {
+            conditions.push(format!("created_at >= {}", since));
+        }
+        if let Some(until) = filter.until {
+            conditions.push(format!("created_at <= {}", until));
+        }
+
+        let where_clause = if conditions.is_empty() {
+            "1=1".to_string()
+        } else {
+            conditions.join(" AND ")
+        };
+
         let query = format!(
             "SELECT id, pubkey, kind, created_at, content, tags, sig FROM events WHERE {} ORDER BY created_at DESC LIMIT {}",
             where_clause, limit
         );
 
         let statement = db.prepare(&query);
-
-        // Note: D1 binding is limited, we need to handle params carefully
-        // For now, we'll use a simpler approach without parameterized queries for complex filters
         let result = statement.all().await?;
 
         let mut events = Vec::new();
@@ -198,7 +221,7 @@ impl<'a> Storage<'a> {
                 sig: row.sig,
             };
 
-            // Double-check filter match (for tag filters that aren't in SQL)
+            // Filter match in Rust (handles IDs, authors, tags, etc.)
             if filter.matches(&event) {
                 events.push(event);
             }
