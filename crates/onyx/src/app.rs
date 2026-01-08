@@ -35,7 +35,8 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::NSColor;
 use crate::vault::{FileEntry, Vault};
-use crate::voice::VoiceState;
+use std::sync::mpsc;
+use voice::{VoiceEvent, VoiceSession};
 
 // Layout constants
 const SIDEBAR_WIDTH: f32 = 200.0;
@@ -225,7 +226,8 @@ pub struct RenderState {
     pub editor: LiveEditor,
 
     // Voice transcription
-    pub voice: Option<VoiceState>,
+    pub voice: Option<VoiceSession>,
+    voice_event_rx: Option<mpsc::Receiver<VoiceEvent>>,
     voice_loading_shown: bool,
 
     // File watcher for external changes
@@ -607,15 +609,19 @@ impl ApplicationHandler for OnyxApp {
             editor.focus();
             editor.clear_status(); // Clear any stale status on startup
 
-            // Initialize voice transcription
-            let voice = match VoiceState::new() {
-                Ok(v) => {
+            // Initialize voice transcription with event channel
+            let (voice, voice_event_rx) = match VoiceSession::new() {
+                Ok(mut session) => {
                     tracing::info!("Voice transcription initialized");
-                    Some(v)
+                    let (tx, rx) = mpsc::channel();
+                    session.on_event(move |event| {
+                        let _ = tx.send(event);
+                    });
+                    (Some(session), Some(rx))
                 }
                 Err(e) => {
                     tracing::warn!("Voice transcription unavailable: {}", e);
-                    None
+                    (None, None)
                 }
             };
 
@@ -662,6 +668,7 @@ impl ApplicationHandler for OnyxApp {
                 last_saved_content,
                 editor,
                 voice,
+                voice_event_rx,
                 voice_loading_shown,
                 file_watcher,
                 sidebar_visible: true,
@@ -732,7 +739,7 @@ impl ApplicationHandler for OnyxApp {
                             match event.state {
                                 ElementState::Pressed => {
                                     // Start recording on press
-                                    if !voice.recording {
+                                    if !voice.is_recording() {
                                         tracing::info!("Starting recording...");
                                         match voice.start_recording() {
                                             Ok(()) => {
@@ -750,23 +757,12 @@ impl ApplicationHandler for OnyxApp {
                                 }
                                 ElementState::Released => {
                                     tracing::info!("Release detected, stopping recording...");
-                                    // Stop recording and start background transcription
-                                    match voice.stop_recording() {
-                                        Ok(true) => {
-                                            // Transcription started in background
-                                            tracing::info!("Transcription started in background");
-                                            state.editor.set_status("⟳ Transcribing...", VOICE_TRANSCRIBING_COLOR);
-                                        }
-                                        Ok(false) => {
-                                            // Quick tap or no audio - discarded
-                                            tracing::info!("Recording discarded (quick tap or no audio)");
-                                            state.editor.set_status("Recording discarded", VOICE_TRANSCRIBING_COLOR);
-                                        }
-                                        Err(e) => {
-                                            tracing::error!("Recording stop failed: {}", e);
-                                            state.editor.set_status(&format!("Voice error: {}", e), VOICE_RECORDING_COLOR);
-                                        }
+                                    // Stop recording - results come through event channel
+                                    if let Err(e) = voice.stop_recording() {
+                                        tracing::error!("Recording stop failed: {}", e);
+                                        state.editor.set_status(&format!("Voice error: {}", e), VOICE_RECORDING_COLOR);
                                     }
+                                    // Note: status updates now come via voice events
                                 }
                             }
                         } else {
@@ -996,28 +992,47 @@ impl ApplicationHandler for OnyxApp {
                     }
                 }
 
-                // Poll for transcription results from background thread
-                if let Some(ref mut voice) = state.voice {
-                    if let Some(result) = voice.take_transcription_result() {
-                        tracing::info!("Got transcription result from background thread");
-                        match result {
-                            Ok(text) if !text.is_empty() => {
-                                // Show the transcribed text briefly
-                                let preview = if text.len() > 50 {
-                                    format!("\"{}...\"", &text[..47])
+                // Poll for voice events from background thread
+                if let Some(ref rx) = state.voice_event_rx {
+                    while let Ok(event) = rx.try_recv() {
+                        match event {
+                            VoiceEvent::ModelLoading => {
+                                state.editor.set_status("Loading voice model...", VOICE_TRANSCRIBING_COLOR);
+                            }
+                            VoiceEvent::ModelReady => {
+                                state.voice_loading_shown = false;
+                                state.editor.set_status("Voice ready (Right ⌘ to record)", VOICE_SUCCESS_COLOR);
+                            }
+                            VoiceEvent::ModelError(e) => {
+                                state.voice_loading_shown = false;
+                                state.editor.set_status(&format!("Voice error: {}", e), VOICE_RECORDING_COLOR);
+                            }
+                            VoiceEvent::RecordingStarted => {
+                                // Already handled in key handler
+                            }
+                            VoiceEvent::TranscriptionStarted => {
+                                state.editor.set_status("⟳ Transcribing...", VOICE_TRANSCRIBING_COLOR);
+                            }
+                            VoiceEvent::RecordingDiscarded { reason } => {
+                                tracing::info!("Recording discarded: {}", reason);
+                                state.editor.set_status(&format!("Discarded: {}", reason), VOICE_TRANSCRIBING_COLOR);
+                            }
+                            VoiceEvent::TranscriptionComplete { text } => {
+                                if !text.is_empty() {
+                                    let preview = if text.len() > 50 {
+                                        format!("\"{}...\"", &text[..47])
+                                    } else {
+                                        format!("\"{}\"", &text)
+                                    };
+                                    tracing::info!("Transcription success: {}", preview);
+                                    state.editor.set_status(&preview, VOICE_SUCCESS_COLOR);
+                                    state.editor.insert_str(&text);
                                 } else {
-                                    format!("\"{}\"", text)
-                                };
-                                tracing::info!("Transcription success: {}", preview);
-                                state.editor.set_status(&preview, VOICE_SUCCESS_COLOR);
-                                state.editor.insert_str(&text);
+                                    tracing::info!("Transcription returned empty");
+                                    state.editor.set_status("No speech detected", VOICE_TRANSCRIBING_COLOR);
+                                }
                             }
-                            Ok(_) => {
-                                // Empty transcription - audio too short or no speech detected
-                                tracing::info!("Transcription returned empty (no speech detected)");
-                                state.editor.set_status("No speech detected", VOICE_TRANSCRIBING_COLOR);
-                            }
-                            Err(e) => {
+                            VoiceEvent::TranscriptionError(e) => {
                                 tracing::error!("Transcription failed: {}", e);
                                 state.editor.set_status(&format!("Error: {}", e), VOICE_RECORDING_COLOR);
                             }

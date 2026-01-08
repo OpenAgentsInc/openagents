@@ -256,6 +256,8 @@ dependencies = [
  "async-trait",
  "chrono",
  "clap",
+ "claude-agent-sdk",
+ "dirs 5.0.1",
  "futures",
  "gateway",
  "glob",
@@ -8962,6 +8964,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "which 8.0.0",
 ]
 
 [[package]]
@@ -9414,10 +9417,8 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "chrono",
- "cpal",
  "dirs 5.0.1",
  "editor",
- "hf-hub 0.3.2",
  "notify",
  "objc2 0.5.2",
  "objc2-app-kit 0.2.2",
@@ -9433,10 +9434,10 @@ dependencies = [
  "toml 0.8.2",
  "tracing",
  "tracing-subscriber",
+ "voice",
  "web-time",
  "wgpu",
  "wgpui",
- "whisper-rs",
  "winit",
 ]
 
@@ -15190,6 +15191,39 @@ dependencies = [
  "serde",
  "serde_json",
  "wgpui",
+]
+
+[[package]]
+name = "voice"
+version = "0.1.0"
+dependencies = [
+ "cpal",
+ "dirs 5.0.1",
+ "hf-hub 0.3.2",
+ "thiserror 2.0.17",
+ "tracing",
+ "whisper-rs",
+]
+
+[[package]]
+name = "voice-daemon"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "clap",
+ "core-foundation 0.10.1",
+ "core-graphics 0.24.0",
+ "dirs 5.0.1",
+ "nix 0.29.0",
+ "objc2 0.5.2",
+ "objc2-app-kit 0.2.2",
+ "objc2-foundation 0.2.2",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "voice",
 ]
 
 [[package]]

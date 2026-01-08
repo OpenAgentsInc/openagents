@@ -57,6 +57,8 @@ members = [
     "crates/bench-runner",
     "crates/onyx",
     "crates/vim",
+    "crates/voice",
+    "crates/voice-daemon",
     "crates/oanix",
     "crates/adjutant",
     "crates/gateway",

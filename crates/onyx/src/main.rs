@@ -7,7 +7,6 @@ mod config;
 mod file_watcher;
 mod update_checker;
 mod vault;
-mod voice;
 
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
