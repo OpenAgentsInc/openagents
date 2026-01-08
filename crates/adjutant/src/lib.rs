@@ -33,6 +33,7 @@ pub mod cli;
 pub mod delegate;
 pub mod executor;
 pub mod planner;
+pub mod tiered;
 pub mod tools;
 
 use oanix::{OanixManifest, WorkspaceManifest};
@@ -41,6 +42,7 @@ use thiserror::Error;
 
 pub use executor::TaskResult;
 pub use planner::{Complexity, TaskPlan};
+pub use tiered::TieredExecutor;
 pub use tools::{Tool, ToolRegistry};
 
 /// Errors that can occur during Adjutant operations.
