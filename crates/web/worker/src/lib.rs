@@ -12,6 +12,7 @@ mod db;
 mod identity;
 mod middleware;
 mod relay;
+mod rlm_do;
 mod routes;
 mod services;
 
@@ -19,6 +20,7 @@ pub use agent_do::AgentDo;
 pub use autopilot_container::AutopilotContainer;
 pub use db::sessions::Session;
 pub use middleware::auth::AuthenticatedUser;
+pub use rlm_do::RlmRunDO;
 
 /// Main worker entry point
 #[event(fetch)]
@@ -162,6 +164,48 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             } else {
                 Response::error("Invalid agent path", 400)
             }
+        }
+        // RLM routes (require auth except sync)
+        (Method::Get, "/api/rlm/runs") => {
+            let url = req.url()?;
+            let mut limit = 20u32;
+            let mut before = None;
+            for (key, value) in url.query_pairs() {
+                match key.as_ref() {
+                    "limit" => limit = value.parse::<u32>().unwrap_or(20).min(100),
+                    "before" => before = value.parse::<i64>().ok(),
+                    _ => {}
+                }
+            }
+            with_auth(&req, &env, |user| {
+                routes::rlm::list_runs(user, env.clone(), limit, before)
+            })
+            .await
+        }
+        (Method::Post, "/api/rlm/runs/sync") => {
+            let body = req.text().await?;
+            routes::rlm::sync(env, body).await
+        }
+        (Method::Get, path) if path.starts_with("/api/rlm/runs/") => {
+            let segments: Vec<&str> = path.trim_start_matches("/api/rlm/runs/").split('/').collect();
+            if segments.len() == 1 {
+                let run_id = segments[0].to_string();
+                with_auth(&req, &env, |user| {
+                    routes::rlm::get_run(user, env.clone(), run_id.clone())
+                })
+                .await
+            } else if segments.len() == 2 && segments[1] == "trace" {
+                let run_id = segments[0].to_string();
+                with_auth(&req, &env, |user| {
+                    routes::rlm::get_trace(user, env.clone(), run_id.clone())
+                })
+                .await
+            } else {
+                Response::error("Invalid RLM path", 400)
+            }
+        }
+        (Method::Get, path) if path.starts_with("/api/rlm/ws/") => {
+            routes::rlm::websocket(req, env).await
         }
         (Method::Delete, path) if path.starts_with("/api/agents/") => {
             let segments: Vec<&str> = path.trim_start_matches("/api/agents/").split('/').collect();

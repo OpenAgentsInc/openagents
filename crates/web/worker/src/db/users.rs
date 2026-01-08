@@ -138,6 +138,17 @@ pub async fn get_by_id(db: &D1Database, user_id: &str) -> Result<User> {
     result.ok_or_else(|| Error::RustError("User not found".to_string()))
 }
 
+/// Get user id by nostr public key (hex).
+pub async fn get_user_id_by_nostr_pubkey(db: &D1Database, pubkey_hex: &str) -> Result<Option<String>> {
+    db.prepare(
+        "SELECT user_id FROM users
+         WHERE nostr_public_key = ? AND deleted_at IS NULL",
+    )
+    .bind(&[pubkey_hex.into()])?
+    .first::<String>(Some("user_id"))
+    .await
+}
+
 /// Get decrypted GitHub access token for API calls
 pub async fn get_github_access_token(
     db: &D1Database,

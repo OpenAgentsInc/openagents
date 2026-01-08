@@ -17,13 +17,17 @@ use frlm::error::{FrlmError, Result as FrlmResult};
 use frlm::policy::FrlmPolicy;
 use frlm::trace_db::TraceDbWriter;
 use frlm::types::{Fragment, FrlmProgram, SubQuery, SubQueryResult, Venue};
+use k256::schnorr::signature::Signer;
+use k256::schnorr::SigningKey;
 use nostr::nip90::KIND_JOB_RLM_SUBQUERY;
 use nostr::{JobInput, JobRequest, JobStatus};
 use nostr_client::dvm::DvmClient;
+use reqwest::Client;
+use serde::Serialize;
 use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
 use tokio::sync::mpsc as tokio_mpsc;
 
-use crate::db::rlm::RlmStore;
+use crate::db::rlm::{RlmStore, RlmTraceEventRecord};
 
 /// Arguments for the rlm command
 #[derive(Args)]
@@ -77,6 +81,14 @@ pub enum RlmCommand {
         /// Number of runs to show
         #[arg(long, default_value = "20")]
         limit: u32,
+    },
+    /// Sync a local run to the cloud dashboard
+    Sync {
+        /// Run ID to sync
+        run_id: String,
+        /// API base URL
+        #[arg(long, default_value = "https://openagents.com")]
+        api: String,
     },
 }
 
@@ -460,11 +472,114 @@ async fn run_history(limit: u32) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+struct RlmSyncRequest {
+    pubkey: String,
+    sig: String,
+    payload: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RlmSyncPayload {
+    run: RlmSyncRun,
+    trace_events: Vec<RlmSyncTraceEvent>,
+}
+
+#[derive(Debug, Serialize)]
+struct RlmSyncRun {
+    id: String,
+    query: String,
+    status: String,
+    fragment_count: i64,
+    budget_sats: i64,
+    total_cost_sats: i64,
+    total_duration_ms: i64,
+    output: Option<String>,
+    error_message: Option<String>,
+    created_at: i64,
+    completed_at: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+struct RlmSyncTraceEvent {
+    seq: i64,
+    event_type: String,
+    timestamp_ms: i64,
+    event_json: String,
+}
+
+async fn run_sync(run_id: String, api: String) -> anyhow::Result<()> {
+    let db_path = rlm_db_path()?;
+    let store = RlmStore::new(&db_path)?;
+    let run = store
+        .get_run(&run_id)?
+        .ok_or_else(|| anyhow::anyhow!("Run not found: {}", run_id))?;
+    let trace_events = store.list_trace_events(&run_id)?;
+
+    let payload = RlmSyncPayload {
+        run: RlmSyncRun {
+            id: run.id,
+            query: run.query,
+            status: run.status,
+            fragment_count: run.fragment_count,
+            budget_sats: run.budget_sats,
+            total_cost_sats: run.total_cost_sats,
+            total_duration_ms: run.total_duration_ms,
+            output: run.output,
+            error_message: run.error_message,
+            created_at: run.created_at,
+            completed_at: run.completed_at,
+        },
+        trace_events: trace_events
+            .into_iter()
+            .map(to_sync_trace_event)
+            .collect(),
+    };
+    let event_count = payload.trace_events.len();
+    let payload_run_id = payload.run.id.clone();
+
+    let payload_json = serde_json::to_string(&payload)?;
+    let identity = UnifiedIdentity::from_mnemonic(&load_mnemonic()?, "")
+        .map_err(|e| anyhow::anyhow!("Failed to load identity: {}", e))?;
+    let signing_key = SigningKey::from_bytes(identity.private_key_bytes())
+        .map_err(|_| anyhow::anyhow!("Invalid nostr private key"))?;
+    let signature = signing_key.sign(payload_json.as_bytes());
+
+    let request = RlmSyncRequest {
+        pubkey: identity.public_key_hex(),
+        sig: hex::encode(signature.to_bytes()),
+        payload: payload_json,
+    };
+
+    let base = api.trim_end_matches('/');
+    let url = format!("{}/api/rlm/runs/sync", base);
+    let client = Client::new();
+    let response = client.post(url).json(&request).send().await?;
+
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("Sync failed: {}", body);
+    }
+
+    println!("Synced run {} ({} events)", payload_run_id, event_count);
+    Ok(())
+}
+
+fn to_sync_trace_event(event: RlmTraceEventRecord) -> RlmSyncTraceEvent {
+    RlmSyncTraceEvent {
+        seq: event.seq,
+        event_type: event.event_type,
+        timestamp_ms: event.timestamp_ms,
+        event_json: event.event_json,
+    }
+}
+
 /// Execute the rlm command
 pub async fn run(args: RlmArgs) -> anyhow::Result<()> {
     if let Some(command) = args.command {
         return match command {
             RlmCommand::History { limit } => run_history(limit).await,
+            RlmCommand::Sync { run_id, api } => run_sync(run_id, api).await,
         };
     }
 

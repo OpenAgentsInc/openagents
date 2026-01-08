@@ -31,7 +31,8 @@ id = "0aa10501fe834f84ad33672acf4ed741"
 bindings = [
     { name = "TUNNEL_RELAY", class_name = "TunnelRelay" },
     { name = "AUTOPILOT_CONTAINER", class_name = "AutopilotContainer" },
-    { name = "AGENT_DO", class_name = "AgentDo" }
+    { name = "AGENT_DO", class_name = "AgentDo" },
+    { name = "RLM_RUN_DO", class_name = "RlmRunDO" }
 ]
 
 [[migrations]]
@@ -45,6 +46,10 @@ new_sqlite_classes = ["AutopilotContainer"]
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["AgentDo"]
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["RlmRunDO"]
 
 # Container configuration (requires paid plan + containers:write scope)
 # [[containers]]
