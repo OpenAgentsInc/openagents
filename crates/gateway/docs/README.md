@@ -109,7 +109,7 @@ pub trait InferenceGateway: Gateway {
 ### Cerebras (Implemented)
 
 - **API**: OpenAI-compatible at `https://api.cerebras.ai/v1`
-- **Models**: zai-glm-4.7, llama-3.3-70b, llama3.1-8b
+- **Models**: zai-glm-4.7, qwen-3-32b, llama-3.3-70b, llama3.1-8b
 - **Features**: Chat completion, streaming, function calling, reasoning
 - **Auth**: `CEREBRAS_API_KEY` environment variable
 

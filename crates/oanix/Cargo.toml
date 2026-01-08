@@ -36,6 +36,9 @@ dirs = "5.0"
 # Hardware detection
 sysinfo = "0.32"
 
+# CLI detection
+which = "8.0"
+
 # HTTP client for probing
 reqwest = { workspace = true }
 

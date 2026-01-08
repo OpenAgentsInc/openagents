@@ -39,23 +39,56 @@ fn print_hardware(manifest: &OanixManifest) {
     }
 }
 
+/// Check if Claude CLI is available at known locations.
+fn has_claude_cli() -> bool {
+    // First try PATH lookup
+    if which::which("claude").is_ok() {
+        return true;
+    }
+
+    // Check known installation locations
+    if let Some(home) = dirs::home_dir() {
+        let claude_path = home.join(".claude/local/claude");
+        if claude_path.exists() && claude_path.is_file() {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn print_compute(manifest: &OanixManifest) {
     println!("Compute Backends");
 
-    if manifest.compute.backends.is_empty() {
-        println!("  [--] No backends running");
-        // Give context-aware suggestions based on hardware
-        let has_gpu = !manifest.hardware.gpus.is_empty();
-        let is_apple_silicon = manifest.hardware.gpus.iter()
-            .any(|g| g.backend.contains("Metal"));
+    // Check for Claude CLI (PRIORITY - uses Pro/Max subscription)
+    let has_claude = has_claude_cli();
+    if has_claude {
+        println!("  [OK] Claude CLI (Pro/Max) - PRIORITY");
+    }
 
-        if is_apple_silicon {
-            println!("       Start Ollama: `ollama serve`");
-        } else if has_gpu {
-            println!("       Start Ollama: `ollama serve`");
-            println!("       Or llama.cpp: `llama-server -m <model.gguf>`");
-        } else {
-            println!("       Install Ollama: https://ollama.com");
+    // Check for Cerebras API key
+    let has_cerebras = std::env::var("CEREBRAS_API_KEY").is_ok();
+    if has_cerebras {
+        println!("  [OK] Cerebras API (tiered inference)");
+    }
+
+    if manifest.compute.backends.is_empty() {
+        if !has_claude && !has_cerebras {
+            println!("  [--] No local backends running");
+            // Give context-aware suggestions based on hardware
+            let has_gpu = !manifest.hardware.gpus.is_empty();
+            let is_apple_silicon = manifest.hardware.gpus.iter()
+                .any(|g| g.backend.contains("Metal"));
+
+            if is_apple_silicon {
+                println!("       Start Ollama: `ollama serve`");
+            } else if has_gpu {
+                println!("       Start Ollama: `ollama serve`");
+                println!("       Or llama.cpp: `llama-server -m <model.gguf>`");
+            } else {
+                println!("       Install Ollama: https://ollama.com");
+            }
+            println!("       Or install Claude CLI: https://claude.ai/claude-code");
         }
     } else {
         for backend in &manifest.compute.backends {
@@ -82,6 +115,18 @@ fn print_compute(manifest: &OanixManifest) {
             } else {
                 println!("  [--] {} not ready", backend.name);
             }
+        }
+    }
+
+    // Summary of execution priority
+    if has_claude || has_cerebras || !manifest.compute.backends.is_empty() {
+        println!();
+        if has_claude {
+            println!("  Execution: Claude Pro/Max (priority)");
+        } else if has_cerebras {
+            println!("  Execution: Cerebras tiered inference");
+        } else {
+            println!("  Execution: Analysis-only (no AI backend configured)");
         }
     }
 }

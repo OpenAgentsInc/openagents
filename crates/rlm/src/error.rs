@@ -41,6 +41,10 @@ pub enum RlmError {
     /// Model is stuck in a loop.
     #[error("Model stuck: {0}")]
     Stuck(String),
+
+    /// Client error (e.g., Claude SDK error).
+    #[error("Client error: {0}")]
+    ClientError(String),
 }
 
 /// Result type for RLM operations.

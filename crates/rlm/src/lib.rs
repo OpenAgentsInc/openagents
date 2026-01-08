@@ -34,12 +34,15 @@ pub mod experiment;
 mod client;
 #[cfg(feature = "fm-bridge")]
 pub mod cli;
+#[cfg(feature = "claude")]
+mod claude_client;
 mod command;
 mod context;
 mod engine;
 mod error;
 mod executor;
 mod lm_router_adapter;
+pub mod mcp_tools;
 mod mock_executor;
 pub mod orchestrator;
 mod prompts;
@@ -77,6 +80,16 @@ pub use prompts::{
     SYSTEM_PROMPT,
 };
 pub use python_executor::PythonExecutor;
+
+// Claude client (optional)
+#[cfg(feature = "claude")]
+pub use claude_client::ClaudeLlmClient;
+
+// MCP tools for Claude integration
+pub use mcp_tools::{
+    rlm_tool_definitions, RlmFanoutInput, RlmFanoutOutput, RlmQueryInput, RlmQueryOutput,
+    WorkerResult,
+};
 
 // Provenance exports (always available)
 pub use span::{SpanRef, SpanRefBuilder};

@@ -1,5 +1,10 @@
 //! Task execution - do the actual work using tools.
+//!
+//! Prioritizes Claude (via claude-agent-sdk) if the CLI is available,
+//! falls back to Cerebras TieredExecutor, then to analysis-only mode.
 
+use crate::auth::has_claude_cli;
+use crate::claude_executor::ClaudeExecutor;
 use crate::tiered::TieredExecutor;
 use crate::{AdjutantError, Task, TaskPlan, ToolRegistry};
 use std::path::Path;
@@ -47,12 +52,12 @@ impl TaskResult {
 ///
 /// This is where Adjutant does the actual work:
 /// 1. Read relevant files to build context
-/// 2. Use TieredExecutor (Cerebras) to plan and execute
-/// 3. Apply edits and run tests
-/// 4. Commit if successful
+/// 2. Use ClaudeExecutor (Claude Pro/Max) if available - PRIORITY
+/// 3. Fall back to TieredExecutor (Cerebras) if Claude unavailable
+/// 4. Fall back to analysis-only if neither is available
 pub async fn execute_with_tools(
     tools: &mut ToolRegistry,
-    _workspace_root: &Path,
+    workspace_root: &Path,
     task: &Task,
     plan: &TaskPlan,
 ) -> Result<TaskResult, AdjutantError> {
@@ -74,20 +79,35 @@ pub async fn execute_with_tools(
         plan.files.len()
     );
 
-    // 2. Try to use TieredExecutor (Cerebras GLM 4.7 + Qwen-3-32B)
+    // PRIORITY 1: Use Claude if CLI is available (Pro/Max subscription)
+    if has_claude_cli() {
+        tracing::info!("Claude CLI detected - using ClaudeExecutor (Pro/Max)");
+        let executor = ClaudeExecutor::new(workspace_root);
+        match executor.execute(task, &context, tools).await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                // Claude failed (maybe not authenticated), fall through to Cerebras
+                tracing::warn!("ClaudeExecutor failed: {}. Falling back to Cerebras.", e);
+            }
+        }
+    } else {
+        tracing::info!("Claude CLI not found, checking Cerebras...");
+    }
+
+    // PRIORITY 2: Use TieredExecutor (Cerebras GLM 4.7 + Qwen-3-32B)
     match TieredExecutor::new() {
         Ok(executor) => {
             tracing::info!("Using TieredExecutor (Cerebras)");
             executor.execute(task, &context, tools).await
         }
         Err(e) => {
-            // Fall back to stub behavior if Cerebras not configured
-            tracing::warn!("TieredExecutor unavailable: {}. Using fallback.", e);
+            // PRIORITY 3: Fall back to analysis-only mode
+            tracing::warn!("No inference backend available: {}. Using analysis-only mode.", e);
             Ok(TaskResult {
                 success: true,
                 summary: format!(
-                    "Analyzed task '{}'. Found {} relevant files totaling {} tokens. \
-                     Set CEREBRAS_API_KEY to enable AI-powered execution.",
+                    "Analyzed task '{}'. Found {} relevant files totaling {} tokens.\n\
+                     Install Claude CLI for Pro/Max execution, or set CEREBRAS_API_KEY for tiered inference.",
                     task.title,
                     plan.files.len(),
                     plan.estimated_tokens
