@@ -357,10 +357,11 @@ fn render_hud(
             .with_background(Hsla::new(0.09, 0.8, 0.55, 0.9)),
     );
 
-    // Label on bar
+    // Label on bar - show completed queries (capped at total queries)
+    let completed = state.stats.rlm.results_24h.min(state.stats.rlm.subqueries_24h);
     let bar_label = format!(
         "{}/{} completed",
-        state.stats.rlm.results_24h, state.stats.rlm.subqueries_24h
+        completed, state.stats.rlm.subqueries_24h
     );
     let bar_label_run = text_system.layout(&bar_label, Point::new(inner_x + 4.0, y + 2.0), 10.0, Hsla::new(0.0, 0.0, 0.0, 0.9));
     scene.draw_text(bar_label_run);
