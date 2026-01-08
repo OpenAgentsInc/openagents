@@ -28,6 +28,7 @@ Get your API key at: https://cloud.cerebras.ai
 | Model ID | Name | Context | Input $/M | Output $/M |
 |----------|------|---------|-----------|------------|
 | `zai-glm-4.7` | Z.ai GLM 4.7 | 131k | $2.25 | $2.75 |
+| `qwen-3-32b` | Qwen 3 32B | 128k | $0.15 | $0.30 |
 | `llama-3.3-70b` | Llama 3.3 70B | 128k | $0.85 | $1.20 |
 | `llama3.1-8b` | Llama 3.1 8B | 128k | $0.10 | $0.10 |
 

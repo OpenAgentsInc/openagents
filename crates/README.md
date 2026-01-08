@@ -5,6 +5,9 @@ This directory contains the Rust crates that power OpenAgents. Each section belo
 ## acp-adapter
 The acp-adapter crate implements the Agent Client Protocol (ACP) adapter used to talk to external coding agents over JSON-RPC 2.0. It wraps SDKs like claude-agent-sdk and codex-agent-sdk, manages sessions and permission handling, and converts ACP notifications to and from rlog streams for recorder and UI replay.
 
+## adjutant
+The adjutant crate is the autonomous task execution agent, named after StarCraft's command & control AI. It prioritizes Claude Pro/Max via claude-agent-sdk, falls back to Cerebras TieredExecutor, and uses tools directly (Read, Edit, Bash, Glob, Grep). For complex analysis it integrates RLM for large context processing, and can delegate to Claude Code for very complex work. It owns task planning, complexity assessment, and execution routing logic.
+
 ## agent
 The agent crate defines the core data model for sovereign agents: configs, lifecycle states, spawn requests, and registry persistence. It owns identity and wallet metadata but does not schedule or execute agents itself; runtimes like Pylon and Nexus build on these types.
 
@@ -90,7 +93,7 @@ The issue-tool crate is a lightweight CLI wrapper over the issues database for c
 The issues crate provides the SQLite-backed issue tracking core with migrations and lifecycle transitions. It stores projects, sessions, and issue state used by Autopilot and CLI tooling.
 
 ## lm-router
-The lm-router crate routes LLM calls across multiple backends. It exposes a router/builder, backend traits, usage tracking, and built-in backends like FM Bridge, swarm simulation, and mocks for benchmarking.
+The lm-router crate routes LLM calls across multiple backends. It exposes a router/builder, backend traits, usage tracking, and built-in backends including Ollama (localhost inference), FM Bridge (Apple Foundation Models), OpenAI, OpenRouter, swarm simulation, and mocks for benchmarking.
 
 ## local-inference
 The local-inference crate defines the `LocalModelBackend` trait and shared request/response types for local inference engines. It standardizes streaming, model metadata, and readiness checks across backends like gpt-oss and fm-bridge.
@@ -128,6 +131,9 @@ The nostr/relay crate is a Nostr relay server with WebSocket endpoints, filterin
 ## nostr/tests
 The nostr/tests crate contains integration tests that exercise core, client, and relay behavior together.
 
+## oanix
+The oanix crate is the agent operating system runtime (OpenAgents NIX). It handles environment discovery during boot, including hardware detection (CPU, GPU, memory), inference backend discovery (Ollama, FM Bridge, GPT-OSS), network probing (relay connectivity), and workspace/project config loading. It produces an OanixManifest summarizing the agent's capabilities and provides situation assessment with recommended actions.
+
 ## onyx
 The onyx crate is the local-first Markdown editor app. It uses WGPUI and the editor primitives to render inline formatting, manages vault/config persistence and file watching, and includes update checks plus optional voice transcription.
 
@@ -153,7 +159,7 @@ The relay crate defines the WebSocket protocol shared by the browser, worker, an
 The relay-worker crate is a Cloudflare Worker Nostr relay focused on the inference network. It implements NIP-01/11/28/32/42/90 routing with Durable Objects and D1 storage, and serves a minimal HTTP info page.
 
 ## rlm
-The rlm crate is the Recursive Language Model execution engine. It provides the orchestration loop, command parsing, executor interfaces, span provenance tracking, and optional DSPy integration for recursive tool-driven reasoning over documents.
+The rlm crate is the Recursive Language Model execution engine. It provides the orchestration loop, command parsing, executor interfaces, span provenance tracking, and optional DSPy integration for recursive tool-driven reasoning over documents. It includes an MCP server binary (`rlm-mcp-server`) exposing `rlm_query` and `rlm_fanout` tools for Claude integration, and supports Claude as an LlmClient backend for RLM execution.
 
 ## rlm-methods
 The rlm-methods crate implements the method variants used in the RLM paper (Base, Summary Agent, CodeAct+BM25, full RLM, and ablations). It adapts lm-router clients to bench-harness Method traits and bundles prompts/retrieval helpers.
@@ -169,6 +175,12 @@ The testing crate centralizes shared fixtures and helpers for integration tests 
 
 ## vim
 The vim crate is an editor-agnostic Vim emulation layer. It defines the VimEditor trait plus handlers for modes, motions, operators, and key parsing so UI surfaces can plug in Vim behavior.
+
+## voice
+The voice crate provides voice recording and transcription functionality using whisper.cpp via whisper-rs bindings. It includes audio capture, model management (auto-download of Whisper models), and a VoiceSession API with event callbacks for transcription progress and completion.
+
+## voice-daemon
+The voice-daemon crate is a macOS menu bar daemon for system-wide voice transcription. It registers global hotkeys (hold Right Command to record), transcribes via the voice crate, and pastes the result into any application. It supports start/stop/status subcommands and runs as a background daemon.
 
 ## viz
 The viz crate defines the visualization grammar for execution HUDs. It provides primitives for fill/pulse/flow/heat/topology, trace event rendering, and FRLM-specific panels for budget/timeline visualizations.

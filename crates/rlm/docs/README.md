@@ -188,6 +188,48 @@ The RLM paper compares 5 methods:
 
 The primary LLM backend is **FM Bridge** (Apple Foundation Models). A swarm simulator is also available for testing distributed NIP-90 scenarios.
 
+## Claude Integration
+
+RLM integrates with Claude in two ways:
+
+### Mode A: Claude Calls RLM (MCP Tools)
+
+RLM exposes tools via an MCP server that Claude can invoke:
+
+```bash
+# Configure in Claude Code settings
+{
+  "mcpServers": {
+    "rlm": {
+      "type": "stdio",
+      "command": "rlm-mcp-server"
+    }
+  }
+}
+
+# Or via CLI
+claude --mcp-server "rlm:stdio:rlm-mcp-server"
+```
+
+Available tools:
+
+| Tool | Description |
+|------|-------------|
+| `rlm_query` | Deep recursive analysis using prompt-execute loop |
+| `rlm_fanout` | Distribute query across workers (local/swarm/datacenter) |
+
+### Mode B: Claude AS the RLM Backend
+
+Use Claude (Pro/Max) as the LlmClient for RLM execution:
+
+```rust
+use rlm::ClaudeLlmClient;  // Requires `claude` feature
+
+let client = ClaudeLlmClient::new("/path/to/workspace");
+let engine = RlmEngine::new(client, PythonExecutor::new());
+let result = engine.run("Analyze this code").await?;
+```
+
 ## Feature Flags
 
 The `rlm` crate uses feature flags to control optional functionality:
@@ -198,11 +240,15 @@ rlm = { path = "crates/rlm" }  # Core only
 
 # With DSPy integration
 rlm = { path = "crates/rlm", features = ["dspy"] }
+
+# With Claude as LlmClient backend
+rlm = { path = "crates/rlm", features = ["claude"] }
 ```
 
 | Feature | Description |
 |---------|-------------|
 | `dspy` | DSPy integration: signatures, orchestrator, LmRouter bridge, tools |
+| `claude` | Claude as RLM backend via claude-agent-sdk |
 
 ## Module Summary
 
@@ -217,6 +263,13 @@ rlm = { path = "crates/rlm", features = ["dspy"] }
 | `context` | Context management |
 | `command` | Command parsing |
 | `orchestrator` | High-level analysis orchestration |
+| `mcp_tools` | MCP tool definitions (rlm_query, rlm_fanout) |
+
+### With `claude` Feature
+
+| Module | Description |
+|--------|-------------|
+| `claude_client` | ClaudeLlmClient implementing LlmClient |
 
 ### With `dspy` Feature
 
