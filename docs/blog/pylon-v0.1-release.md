@@ -35,10 +35,14 @@ Pylon implements the NIP-90 DVM protocol:
 
 ### Inference Backends
 
-We support three backends, auto-detected in order:
-1. **Apple Foundation Models** - Zero-download inference on M-series Macs
-2. **Ollama** - Local Ollama installations
-3. **llama.cpp** - GGUF model support
+Pylon auto-detects backends at startup. Works on **any platform** with Ollama or llama.cpp:
+
+| Backend | Platform | Notes |
+|---------|----------|-------|
+| **Ollama** | Any (Linux, macOS, Windows) | Run `ollama serve` on :11434 |
+| **llama.cpp** | Any | Run `llama-server` on :8080 |
+| **Apple FM** | macOS only | Auto-starts FM Bridge if available |
+| **GPT-OSS Metal** | macOS only | Embedded, needs model.bin |
 
 ### Multi-Relay Architecture
 
