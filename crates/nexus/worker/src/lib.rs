@@ -92,7 +92,7 @@ impl Default for RelayInfo {
             name: "nexus.openagents.com".to_string(),
             description: "OpenAgents Nexus relay".to_string(),
             pubkey: String::new(),
-            contact: "nexus@openagents.com".to_string(),
+            contact: "chris@openagents.com".to_string(),
             supported_nips: vec![1, 11, 42, 89, 90],
             software: "https://github.com/OpenAgentsInc/openagents".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
