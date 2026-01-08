@@ -70,6 +70,8 @@ pub struct IssueSummary {
     pub priority: String,
     /// Whether the issue is blocked
     pub is_blocked: bool,
+    /// Reason for being blocked (if any)
+    pub blocked_reason: Option<String>,
 }
 
 /// Hardware manifest - CPU, RAM, GPU.
