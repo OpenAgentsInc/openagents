@@ -146,7 +146,7 @@ impl Component for CheckpointRestore {
                 }
                 self.hovered_index = None;
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left && *y >= items_y && *y < items_y + item_height {
                     let relative_x = *x - bounds.origin.x - padding;
                     if relative_x >= 0.0 {

@@ -400,11 +400,7 @@ impl ApplicationHandler for App {
                 };
 
                 let input_event = match mouse_state {
-                    ElementState::Pressed => InputEvent::MouseDown {
-                        button,
-                        x: self.cursor_position.x,
-                        y: self.cursor_position.y,
-                    },
+                    ElementState::Pressed => InputEvent::MouseDown { button, x: self.cursor_position.x, y: self.cursor_position.y, modifiers: Modifiers::default() },
                     ElementState::Released => InputEvent::MouseUp {
                         button,
                         x: self.cursor_position.x,
@@ -958,7 +954,7 @@ impl Storybook {
                     return true;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left && bounds.contains(Point::new(*x, *y)) {
                     let rel_y = *y - bounds.origin.y - pad;
                     if rel_y >= 0.0 {
@@ -1807,7 +1803,7 @@ impl Storybook {
             &mut self.event_context,
         );
 
-        if let InputEvent::MouseDown { button, x, y } = event {
+        if let InputEvent::MouseDown { button, x, y, .. } = event {
             if *button == MouseButton::Left
                 && permission.contains(Point::new(*x, *y))
                 && !self.permission_dialog.is_open()
@@ -1896,7 +1892,7 @@ impl Storybook {
             }
         }
 
-        if let InputEvent::MouseDown { button, x, y } = event {
+        if let InputEvent::MouseDown { button, x, y, .. } = event {
             if *button == MouseButton::Left && stream_inner.contains(Point::new(*x, *y)) {
                 let active = self.streaming_indicator.is_active();
                 self.streaming_indicator.set_active(!active);
@@ -9291,7 +9287,7 @@ impl FocusDemo {
                     return true;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left {
                     for i in 0..self.items.len() {
                         let item_bounds = Bounds::new(

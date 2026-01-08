@@ -266,7 +266,7 @@ impl Component for ApmLeaderboard {
                     return EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left {
                     let point = Point::new(*x, *y);
                     for idx in 0..self.entries.len() {

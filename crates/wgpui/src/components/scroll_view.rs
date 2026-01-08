@@ -205,7 +205,7 @@ impl Component for ScrollView {
                 self.scroll.scroll_by(Point::new(*dx, *dy));
                 return EventResult::Handled;
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left
                     && self.show_scrollbar
                     && self.is_on_scrollbar(bounds, *x, *y)

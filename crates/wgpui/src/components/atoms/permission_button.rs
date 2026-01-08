@@ -130,7 +130,7 @@ impl Component for PermissionButton {
                     return EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left && bounds.contains(Point::new(*x, *y)) {
                     self.pressed = true;
                     return EventResult::Handled;

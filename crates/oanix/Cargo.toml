@@ -1,0 +1,42 @@
+[package]
+name = "oanix"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "OANIX - OpenAgents NIX: Agent operating system runtime"
+
+[lib]
+name = "oanix"
+path = "src/lib.rs"
+
+[[bin]]
+name = "oanix"
+path = "src/bin/main.rs"
+
+[dependencies]
+# OpenAgents internal crates
+openagents-runtime = { path = "../runtime", default-features = false }
+compute = { path = "../compute" }
+nostr = { path = "../nostr/core", features = ["full"] }
+nostr-client = { path = "../nostr/client" }
+openagents-spark = { path = "../spark" }
+
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dirs = "5.0"
+
+# Hardware detection
+sysinfo = "0.32"
+
+# HTTP client for probing
+reqwest = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

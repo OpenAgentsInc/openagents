@@ -2548,12 +2548,27 @@ impl Component for LiveEditor {
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
         match event {
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, modifiers } => {
                 if *button == MouseButton::Left && bounds.contains(Point::new(*x, *y)) {
                     self.focused = true;
                     self.cursor_blink_start = Instant::now();
 
                     let new_cursor = self.cursor_position_from_point(*x, *y, &bounds);
+
+                    // Shift+click extends selection from current cursor to click position
+                    if modifiers.shift {
+                        let anchor = self.selection.as_ref()
+                            .map(|s| s.anchor)
+                            .unwrap_or(self.cursor);
+                        self.selection = Some(Selection::new(anchor, new_cursor));
+                        self.cursor = new_cursor;
+                        self.is_dragging = true;
+                        self.drag_start_pos = Some(anchor);
+                        if let Some(id) = self.id {
+                            cx.set_focus(id);
+                        }
+                        return EventResult::Handled;
+                    }
 
                     // Detect double/triple click
                     let now = Instant::now();

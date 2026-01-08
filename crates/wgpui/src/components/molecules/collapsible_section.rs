@@ -245,7 +245,7 @@ impl Component for CollapsibleSection {
                     return EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left && header_bounds.contains(Point::new(*x, *y)) {
                     self.toggle();
                     return EventResult::Handled;

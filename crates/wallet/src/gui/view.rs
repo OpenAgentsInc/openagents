@@ -1304,7 +1304,7 @@ impl Component for WalletView {
                     result = EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left {
                     let point = Point::new(*x, *y);
                     if layout.send_tab.contains(point) {

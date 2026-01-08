@@ -269,7 +269,7 @@ impl Component for MarkdownView {
                     return EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left && self.show_copy_button {
                     let point = Point::new(*x, *y);
                     if let Some(index) = self.hit_copy_button(point) {

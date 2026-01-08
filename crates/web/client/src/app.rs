@@ -1113,7 +1113,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let x = event.offset_x() as f32;
             let y = event.offset_y() as f32;
             let button = mouse_button_from_event(&event);
-            let input_event = InputEvent::MouseDown { button, x, y };
+            let input_event = InputEvent::MouseDown { button, x, y, .. };
             let mut overlay_active = false;
             if let Ok(mut state) = state_clone.try_borrow_mut() {
                 if state.claude_chat.visible {

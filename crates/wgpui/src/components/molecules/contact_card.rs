@@ -376,7 +376,7 @@ impl Component for ContactCard {
                     return EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left {
                     let point = Point::new(*x, *y);
 

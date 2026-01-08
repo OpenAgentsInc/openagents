@@ -192,7 +192,7 @@ impl Component for EntryActions {
                 }
                 self.hovered_action = None;
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left {
                     let click = Point::new(*x, *y);
 

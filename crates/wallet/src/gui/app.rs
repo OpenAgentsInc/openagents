@@ -178,11 +178,7 @@ impl ApplicationHandler for WalletAppHandler {
                 };
 
                 let input_event = match mouse_state {
-                    ElementState::Pressed => InputEvent::MouseDown {
-                        button,
-                        x: self.cursor_position.x,
-                        y: self.cursor_position.y,
-                    },
+                    ElementState::Pressed => InputEvent::MouseDown { button, x: self.cursor_position.x, y: self.cursor_position.y, modifiers: Modifiers::default() },
                     ElementState::Released => InputEvent::MouseUp {
                         button,
                         x: self.cursor_position.x,

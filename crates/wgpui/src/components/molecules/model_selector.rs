@@ -151,7 +151,7 @@ impl Component for ModelSelector {
                     self.hovered_index = None;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left {
                     let click = Point::new(*x, *y);
 

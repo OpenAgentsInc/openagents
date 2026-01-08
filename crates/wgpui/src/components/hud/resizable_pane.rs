@@ -525,7 +525,7 @@ impl Component for ResizablePane {
                 }
             }
 
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left {
                     let point = Point::new(*x, *y);
                     let edge = self.hit_test(actual_bounds, point);

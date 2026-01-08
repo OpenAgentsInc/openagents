@@ -126,7 +126,7 @@ impl Component for CheckpointBadge {
                     return EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left && bounds.contains(Point::new(*x, *y)) {
                     if let Some(on_click) = &mut self.on_click {
                         on_click();

@@ -284,7 +284,7 @@ impl Component for Dropdown {
                 }
             }
 
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left {
                     let point = Point::new(*x, *y);
 
