@@ -65,15 +65,11 @@ impl LocalExecutor for ClaudeLocalExecutor {
         let response = self.client.complete(query, None).await?;
         Ok(response.content().to_string())
     }
-}
 
-/// Extension trait for LocalExecutor to get the venue type.
-pub trait LocalExecutorExt: LocalExecutor {
-    /// Get the execution venue for this executor.
-    fn venue(&self) -> Venue;
-}
+    fn model_id(&self) -> Option<&str> {
+        self.model.as_deref()
+    }
 
-impl LocalExecutorExt for ClaudeLocalExecutor {
     fn venue(&self) -> Venue {
         Venue::Claude
     }

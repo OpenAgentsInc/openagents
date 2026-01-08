@@ -242,6 +242,10 @@ impl LocalExecutor for LocalBackendExecutor {
 
         Ok(response.text)
     }
+
+    fn model_id(&self) -> Option<&str> {
+        Some(&self.model_id)
+    }
 }
 
 /// Submitter that runs all sub-queries locally using dynamic dispatch.

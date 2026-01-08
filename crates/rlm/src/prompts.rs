@@ -347,7 +347,7 @@ mod tests {
         let prompt = system_prompt_for_tier(PromptTier::Full, &ctx);
         assert!(prompt.contains("llm_query"));
         assert!(prompt.contains("FINAL_VAR"));
-        assert!(prompt.contains("12 characters"));
+        assert!(prompt.contains("12 total characters"));
     }
 
     #[test]

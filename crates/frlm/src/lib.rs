@@ -61,4 +61,4 @@ pub use types::*;
 #[cfg(feature = "trace-db")]
 pub use trace_db::TraceDbWriter;
 #[cfg(feature = "claude")]
-pub use claude_executor::{ClaudeLocalExecutor, LocalExecutorExt};
+pub use claude_executor::ClaudeLocalExecutor;
