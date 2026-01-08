@@ -19,6 +19,7 @@ pub mod gfn;
 pub mod github_explore;
 pub mod gptoss;
 pub mod hud;
+pub mod install;
 pub mod ml_inference;
 pub mod nexus_v0_1_release;
 pub mod pylon_v0_1_release;
