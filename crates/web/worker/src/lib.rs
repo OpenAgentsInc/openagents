@@ -252,6 +252,9 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // Recursive Language Models - Episode 202 transcript
         (Method::Get, "/recursive-language-models") => routes::recursive_language_models::view_recursive_language_models(env).await,
 
+        // Pylon and Nexus - Episode 203 transcript
+        (Method::Get, "/pylon-and-nexus") => routes::pylon_and_nexus::view_pylon_and_nexus(env).await,
+
         // Install page
         (Method::Get, "/install") => routes::install::view_install(env).await,
 

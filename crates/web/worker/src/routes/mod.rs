@@ -22,6 +22,7 @@ pub mod hud;
 pub mod install;
 pub mod ml_inference;
 pub mod nexus_v0_1_release;
+pub mod pylon_and_nexus;
 pub mod pylon_v0_1_release;
 pub mod recursive_language_models;
 pub mod repo_knowledge;
