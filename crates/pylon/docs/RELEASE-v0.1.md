@@ -24,9 +24,14 @@ Pylon v0.1 is the first release of the node software that connects user compute 
 
 ### Inference Backends
 
-- **Apple Foundation Models:** Zero-download inference on M-series Macs via FM Bridge
-- **Ollama:** Supports local Ollama installations
-- **llama.cpp:** GGUF model support (planned)
+Works on **any platform** with Ollama or llama.cpp:
+
+| Backend | Platform | Port | Notes |
+|---------|----------|------|-------|
+| **Ollama** | Any (Linux, macOS, Windows) | :11434 | Run `ollama serve` |
+| **llama.cpp** | Any | :8080 | Run `llama-server` |
+| **Apple FM** | macOS only | :11435 | Auto-starts FM Bridge |
+| **GPT-OSS Metal** | macOS only | embedded | Needs model.bin |
 
 ### Spark Wallet Integration
 
