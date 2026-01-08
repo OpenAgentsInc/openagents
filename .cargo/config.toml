@@ -1,6 +1,6 @@
 [alias]
 openagents = "run --bin openagents --"
-autopilot = "run --bin autopilot --"
+autopilot = "run -p adjutant --bin autopilot --"
 desktop = "run -p desktop"
 storybook = "run -p wgpui --example storybook --features desktop"
 pylon = "run -p pylon --release --"
