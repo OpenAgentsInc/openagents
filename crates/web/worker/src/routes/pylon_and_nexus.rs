@@ -3,7 +3,7 @@
 use worker::*;
 use super::episode_template::{EpisodeMetadata, render_episode_page};
 
-const TWEET_EMBED: &str = r#"<!-- Tweet embed will be added -->"#;
+const TWEET_EMBED: &str = r#"<blockquote class="twitter-tweet" data-media-max-width="720"><a href="https://twitter.com/OpenAgentsInc/status/2009142870775644644"></a></blockquote>"#;
 
 /// View the pylon and nexus episode: /pylon-and-nexus
 pub async fn view_pylon_and_nexus(_env: Env) -> Result<Response> {
