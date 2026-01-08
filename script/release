@@ -1,0 +1,281 @@
+#!/bin/bash
+set -euo pipefail
+
+# Release script for OpenAgents monorepo
+# Creates app-specific git tags and GitHub releases
+
+APPS=("pylon" "nexus" "onyx" "autopilot")
+
+help_info() {
+    echo "
+Usage: ${0##*/} <app> <version> [OPTIONS]
+
+Create a GitHub release for a specific app in the monorepo.
+
+Arguments:
+  app         App name: ${APPS[*]}
+  version     Version number (e.g., 0.1.0, 1.0.0)
+
+Options:
+  --draft     Create as draft release (default)
+  --publish   Publish immediately (skip draft)
+  --tag-only  Only create the git tag, no GitHub release
+  --list      List existing releases for an app
+  -h, --help  Show this help
+
+Examples:
+  # Create draft release for Pylon v0.1.0
+  ./script/release pylon 0.1.0
+
+  # Create draft release for Nexus v0.1.0
+  ./script/release nexus 0.1.0
+
+  # Publish immediately
+  ./script/release pylon 0.1.0 --publish
+
+  # List existing Pylon releases
+  ./script/release pylon --list
+
+Tag format: <app>-v<version> (e.g., pylon-v0.1.0, nexus-v0.1.0)
+"
+}
+
+list_releases() {
+    local app="$1"
+    echo "Existing ${app} releases:"
+    echo ""
+    echo "Tags:"
+    git tag -l "${app}-v*" --sort=-v:refname | head -10 || echo "  (none)"
+    echo ""
+    echo "GitHub Releases:"
+    gh release list --limit 10 | grep -i "$app" || echo "  (none)"
+}
+
+# Check for help first
+if [[ $# -lt 1 ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    help_info
+    [[ $# -lt 1 ]] && exit 1
+    exit 0
+fi
+
+APP="$1"
+shift
+
+# Validate app name
+APP_LOWER=$(echo "$APP" | tr '[:upper:]' '[:lower:]')
+APP_TITLE=$(echo "$APP_LOWER" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')  # Capitalize first letter
+VALID_APP=false
+for valid in "${APPS[@]}"; do
+    if [[ "$APP_LOWER" == "$valid" ]]; then
+        VALID_APP=true
+        break
+    fi
+done
+
+if [[ "$VALID_APP" == false ]]; then
+    echo "Error: Unknown app '$APP'"
+    echo "Valid apps: ${APPS[*]}"
+    exit 1
+fi
+
+# Check for --list
+if [[ $# -ge 1 ]] && [[ "$1" == "--list" ]]; then
+    list_releases "$APP_LOWER"
+    exit 0
+fi
+
+# Need version now
+if [[ $# -lt 1 ]]; then
+    echo "Error: Version required"
+    help_info
+    exit 1
+fi
+
+VERSION="$1"
+shift
+
+# Validate version format
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: Version must be in format X.Y.Z (e.g., 0.1.0)"
+    exit 1
+fi
+
+TAG="${APP_LOWER}-v${VERSION}"
+DRAFT=true
+TAG_ONLY=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --draft) DRAFT=true; shift ;;
+        --publish) DRAFT=false; shift ;;
+        --tag-only) TAG_ONLY=true; shift ;;
+        -h|--help) help_info; exit 0 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+# Check if tag already exists
+if git rev-parse "$TAG" >/dev/null 2>&1; then
+    echo "Error: Tag $TAG already exists"
+    echo ""
+    list_releases "$APP_LOWER"
+    exit 1
+fi
+
+# Get repo root
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
+
+echo "=== Creating ${APP_TITLE} release $TAG ==="
+echo ""
+
+# Get commits since last tag for this app
+LAST_TAG=$(git tag -l "${APP_LOWER}-v*" --sort=-v:refname | head -1 || echo "")
+
+# Get relevant commits (those touching the app's crate)
+APP_PATH="crates/${APP_LOWER}"
+if [ -n "$LAST_TAG" ]; then
+    echo "Changes since $LAST_TAG:"
+    COMMITS=$(git log --oneline "$LAST_TAG"..HEAD -- "$APP_PATH" "crates/nostr" 2>/dev/null || git log --oneline "$LAST_TAG"..HEAD | head -20)
+else
+    echo "Changes (first release):"
+    COMMITS=$(git log --oneline -20 -- "$APP_PATH" 2>/dev/null || git log --oneline -20)
+fi
+
+if [ -z "$COMMITS" ]; then
+    # If no app-specific commits, show recent general commits
+    COMMITS=$(git log --oneline -10)
+fi
+
+echo "$COMMITS"
+echo ""
+
+# Create release notes file
+NOTES_FILE=$(mktemp)
+
+# App-specific release notes templates
+case "$APP_LOWER" in
+    pylon)
+        INSTALL_INSTRUCTIONS="
+### Installation
+
+\`\`\`bash
+# Build from source
+git clone https://github.com/OpenAgentsInc/openagents.git
+cd openagents
+cargo build --release -p pylon
+
+# Run provider
+./target/release/pylon start -m provider
+
+# Run buyer
+./target/release/pylon start -m buyer
+\`\`\`
+
+See [Pylon CLI docs](https://github.com/OpenAgentsInc/openagents/blob/main/crates/pylon/docs/CLI.md) for full usage."
+        ;;
+    nexus)
+        INSTALL_INSTRUCTIONS="
+### Deployment
+
+Nexus is deployed as a Cloudflare Worker:
+
+\`\`\`bash
+cd crates/nexus/worker
+bun run deploy
+\`\`\`
+
+**Live at:** https://nexus.openagents.com"
+        ;;
+    onyx)
+        INSTALL_INSTRUCTIONS="
+### Installation
+
+\`\`\`bash
+# macOS
+git clone https://github.com/OpenAgentsInc/openagents.git
+cd openagents
+./script/bundle-mac --sign --install
+\`\`\`"
+        ;;
+    *)
+        INSTALL_INSTRUCTIONS="
+### Installation
+
+\`\`\`bash
+git clone https://github.com/OpenAgentsInc/openagents.git
+cd openagents
+cargo build --release -p ${APP_LOWER}
+\`\`\`"
+        ;;
+esac
+
+cat > "$NOTES_FILE" << EOF
+## ${APP_TITLE} v${VERSION}
+
+### Highlights
+
+<!-- Add 2-3 key highlights here -->
+
+### Changes
+
+$(echo "$COMMITS" | sed 's/^/- /')
+${INSTALL_INSTRUCTIONS}
+
+### Full Changelog
+
+https://github.com/OpenAgentsInc/openagents/compare/${LAST_TAG:-main}...${TAG}
+EOF
+
+echo "Release notes:"
+echo "---"
+cat "$NOTES_FILE"
+echo "---"
+echo ""
+
+# Create tag
+echo "Creating tag $TAG..."
+git tag -a "$TAG" -m "${APP_TITLE} ${VERSION}"
+
+if [ "$TAG_ONLY" = true ]; then
+    echo "Pushing tag..."
+    git push origin "$TAG"
+    echo ""
+    echo "=== Done ==="
+    echo "Tag $TAG created and pushed."
+    echo "Create release manually at: https://github.com/OpenAgentsInc/openagents/releases/new?tag=$TAG"
+    rm "$NOTES_FILE"
+    exit 0
+fi
+
+# Push tag
+echo "Pushing tag..."
+git push origin "$TAG"
+
+# Create GitHub release
+echo "Creating GitHub release..."
+if [ "$DRAFT" = true ]; then
+    gh release create "$TAG" \
+        --title "${APP_TITLE} v${VERSION}" \
+        --notes-file "$NOTES_FILE" \
+        --draft
+    echo ""
+    echo "=== Done ==="
+    echo "Draft release created!"
+    echo ""
+    echo "Edit at: https://github.com/OpenAgentsInc/openagents/releases"
+    echo ""
+    echo "Next steps:"
+    echo "1. Edit the release notes"
+    echo "2. Add any binary assets"
+    echo "3. Click 'Publish release' when ready"
+else
+    gh release create "$TAG" \
+        --title "${APP_TITLE} v${VERSION}" \
+        --notes-file "$NOTES_FILE"
+    echo ""
+    echo "=== Done ==="
+    echo "Release published: https://github.com/OpenAgentsInc/openagents/releases/tag/$TAG"
+fi
+
+rm "$NOTES_FILE"
