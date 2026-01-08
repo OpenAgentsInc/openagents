@@ -3,10 +3,14 @@
 use crate::discovery::{
     discover_compute, discover_hardware, discover_identity, discover_network, discover_workspace,
 };
-use crate::manifest::OanixManifest;
+use crate::manifest::{
+    BootConfig, ComputeManifest, HardwareManifest, IdentityManifest, NetworkManifest,
+    OanixManifest,
+};
 use std::time::Instant;
+use tracing::{debug, warn};
 
-/// Boot OANIX - discover the environment and return a manifest.
+/// Boot OANIX with default configuration.
 ///
 /// This runs all discovery phases in sequence:
 /// 1. Hardware (CPU, RAM, GPU)
@@ -15,22 +19,54 @@ use std::time::Instant;
 /// 4. Identity (keys, wallet)
 /// 5. Workspace (.openagents/ folder)
 pub async fn boot() -> anyhow::Result<OanixManifest> {
+    boot_with_config(BootConfig::default()).await
+}
+
+/// Boot OANIX with custom configuration.
+///
+/// Respects skip flags and retry settings from the config.
+pub async fn boot_with_config(config: BootConfig) -> anyhow::Result<OanixManifest> {
     let start = Instant::now();
 
     // Phase 1: Hardware discovery
-    let hardware = discover_hardware().await?;
+    let hardware = if config.skip_hardware {
+        debug!("Skipping hardware discovery");
+        HardwareManifest::unknown()
+    } else {
+        retry_discovery("hardware", config.retries, || discover_hardware()).await?
+    };
 
     // Phase 2: Compute backend discovery
-    let compute = discover_compute().await?;
+    let compute = if config.skip_compute {
+        debug!("Skipping compute discovery");
+        ComputeManifest::empty()
+    } else {
+        retry_discovery("compute", config.retries, || discover_compute()).await?
+    };
 
     // Phase 3: Network discovery
-    let network = discover_network().await?;
+    let network = if config.skip_network {
+        debug!("Skipping network discovery");
+        NetworkManifest::offline()
+    } else {
+        retry_discovery("network", config.retries, || discover_network()).await?
+    };
 
     // Phase 4: Identity discovery
-    let identity = discover_identity().await?;
+    let identity = if config.skip_identity {
+        debug!("Skipping identity discovery");
+        IdentityManifest::unknown()
+    } else {
+        retry_discovery("identity", config.retries, || discover_identity()).await?
+    };
 
     // Phase 5: Workspace discovery
-    let workspace = discover_workspace().await?;
+    let workspace = if config.skip_workspace {
+        debug!("Skipping workspace discovery");
+        None
+    } else {
+        retry_discovery("workspace", config.retries, || discover_workspace()).await?
+    };
 
     Ok(OanixManifest {
         hardware,
@@ -40,4 +76,30 @@ pub async fn boot() -> anyhow::Result<OanixManifest> {
         workspace,
         discovered_at: start,
     })
+}
+
+/// Retry a discovery function with exponential backoff.
+async fn retry_discovery<T, F, Fut>(name: &str, retries: u32, f: F) -> anyhow::Result<T>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<T>>,
+{
+    let mut attempts = 0;
+    loop {
+        match f().await {
+            Ok(result) => return Ok(result),
+            Err(e) if attempts < retries => {
+                attempts += 1;
+                warn!(
+                    "{} discovery failed (attempt {}/{}): {}",
+                    name,
+                    attempts,
+                    retries + 1,
+                    e
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(250 * (1 << attempts))).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
 }

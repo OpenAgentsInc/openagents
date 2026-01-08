@@ -41,6 +41,16 @@ pub trait SubQuerySubmitter: Send + Sync {
 pub trait LocalExecutor: Send + Sync {
     /// Execute a query locally.
     async fn execute(&self, query: &str) -> Result<String>;
+
+    /// Return the model ID used by this executor, if known.
+    fn model_id(&self) -> Option<&str> {
+        None
+    }
+
+    /// Return the execution venue for this executor.
+    fn venue(&self) -> Venue {
+        Venue::Local
+    }
 }
 
 /// The FRLM Conductor - main orchestrator for federated execution.
@@ -377,8 +387,10 @@ impl FrlmConductor {
         info!("Running locally: {}", program.run_id);
 
         let query_id = format!("local-{}", uuid::Uuid::new_v4());
+        let venue = executor.venue();
+        let model_id = executor.model_id();
         self.trace.subquery_submit(&query_id, &program.query, None);
-        self.trace.subquery_execute(&query_id, "local", Venue::Local, None);
+        self.trace.subquery_execute(&query_id, "local", venue, model_id);
 
         let start = web_time::Instant::now();
         let output = executor.execute(&program.query).await?;
@@ -396,7 +408,7 @@ impl FrlmConductor {
             sub_query_results: vec![SubQueryResult::success(
                 query_id,
                 String::new(),
-                Venue::Local,
+                venue,
                 duration_ms,
             )],
         };

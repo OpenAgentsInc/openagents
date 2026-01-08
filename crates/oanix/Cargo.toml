@@ -31,6 +31,8 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4.5", features = ["derive"] }
+uuid = { version = "1.8", features = ["v4"] }
 dirs = "5.0"
 
 # Hardware detection

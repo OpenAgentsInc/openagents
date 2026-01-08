@@ -2,7 +2,63 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+/// Configuration for the boot sequence.
+#[derive(Debug, Clone)]
+pub struct BootConfig {
+    /// Skip hardware discovery
+    pub skip_hardware: bool,
+    /// Skip compute backend discovery
+    pub skip_compute: bool,
+    /// Skip network discovery
+    pub skip_network: bool,
+    /// Skip identity discovery
+    pub skip_identity: bool,
+    /// Skip workspace discovery
+    pub skip_workspace: bool,
+    /// Timeout for network operations
+    pub timeout: Duration,
+    /// Number of retries for transient failures
+    pub retries: u32,
+}
+
+impl Default for BootConfig {
+    fn default() -> Self {
+        Self {
+            skip_hardware: false,
+            skip_compute: false,
+            skip_network: false,
+            skip_identity: false,
+            skip_workspace: false,
+            timeout: Duration::from_secs(5),
+            retries: 2,
+        }
+    }
+}
+
+impl BootConfig {
+    /// Create a minimal config that only discovers what's fast and local.
+    pub fn minimal() -> Self {
+        Self {
+            skip_hardware: false,
+            skip_compute: true,
+            skip_network: true,
+            skip_identity: true,
+            skip_workspace: false,
+            timeout: Duration::from_secs(2),
+            retries: 0,
+        }
+    }
+
+    /// Create a config for offline mode (no network).
+    pub fn offline() -> Self {
+        Self {
+            skip_network: true,
+            ..Default::default()
+        }
+    }
+}
 
 /// Complete manifest of discovered environment.
 #[derive(Debug, Clone)]
@@ -89,6 +145,19 @@ pub struct HardwareManifest {
     pub gpus: Vec<GpuDevice>,
 }
 
+impl HardwareManifest {
+    /// Create an unknown hardware manifest (when discovery is skipped).
+    pub fn unknown() -> Self {
+        Self {
+            cpu_cores: 0,
+            cpu_model: "unknown".to_string(),
+            ram_bytes: 0,
+            ram_available: 0,
+            gpus: vec![],
+        }
+    }
+}
+
 /// GPU device information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpuDevice {
@@ -107,6 +176,16 @@ pub struct ComputeManifest {
     pub backends: Vec<InferenceBackend>,
     /// Total models available across all backends
     pub total_models: usize,
+}
+
+impl ComputeManifest {
+    /// Create an empty compute manifest (when discovery is skipped).
+    pub fn empty() -> Self {
+        Self {
+            backends: vec![],
+            total_models: 0,
+        }
+    }
 }
 
 /// An inference backend.
@@ -141,6 +220,20 @@ pub struct NetworkManifest {
     pub pylon_pubkeys: Vec<String>,
 }
 
+impl NetworkManifest {
+    /// Create an offline network manifest (when discovery is skipped).
+    pub fn offline() -> Self {
+        Self {
+            has_internet: false,
+            relays: vec![],
+            total_providers: 0,
+            pylon_count: 0,
+            pylons_online: 0,
+            pylon_pubkeys: vec![],
+        }
+    }
+}
+
 /// Status of a Nostr relay.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelayStatus {
@@ -163,4 +256,16 @@ pub struct IdentityManifest {
     pub wallet_balance_sats: Option<u64>,
     /// Bitcoin network (mainnet, regtest, etc.)
     pub network: Option<String>,
+}
+
+impl IdentityManifest {
+    /// Create an unknown identity manifest (when discovery is skipped).
+    pub fn unknown() -> Self {
+        Self {
+            initialized: false,
+            npub: None,
+            wallet_balance_sats: None,
+            network: None,
+        }
+    }
 }

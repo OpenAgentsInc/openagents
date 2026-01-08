@@ -266,12 +266,12 @@ impl Command {
         }
     }
 
-    /// Returns the code if this is a RunCode command.
+    /// Returns the code if this is a RunCode or RunCodeThenFinal command.
     pub fn as_code(&self) -> Option<&str> {
-        if let Self::RunCode(code) = self {
-            Some(code)
-        } else {
-            None
+        match self {
+            Self::RunCode(code) => Some(code),
+            Self::RunCodeThenFinal(code, _) => Some(code),
+            _ => None,
         }
     }
 

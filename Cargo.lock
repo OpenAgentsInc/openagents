@@ -8948,6 +8948,7 @@ name = "oanix"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
  "compute",
  "dirs 5.0.1",
  "nostr 0.1.0",
@@ -8964,6 +8965,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "which 8.0.0",
 ]
 

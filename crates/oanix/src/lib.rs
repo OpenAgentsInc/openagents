@@ -43,13 +43,20 @@ pub mod discovery;
 pub mod display;
 pub mod manifest;
 pub mod situation;
+pub mod state;
+pub mod tick;
 
-pub use boot::boot;
+pub use boot::{boot, boot_with_config};
 pub use manifest::{
-    ComputeManifest, DirectiveSummary, GpuDevice, HardwareManifest, IdentityManifest,
+    BootConfig, ComputeManifest, DirectiveSummary, GpuDevice, HardwareManifest, IdentityManifest,
     InferenceBackend, IssueSummary, NetworkManifest, OanixManifest, RelayStatus,
     WorkspaceManifest,
 };
 pub use situation::{
     Connectivity, ComputePower, Environment, RecommendedAction, SituationAssessment,
+};
+pub use state::{ActiveTask, OanixMode, OanixState, PersistedState};
+pub use tick::{
+    run_tick_loop, oanix_tick, HousekeepingTask, IssueWork, JobWork, TickConfig, TickResult,
+    UserAction, WorkItem,
 };
