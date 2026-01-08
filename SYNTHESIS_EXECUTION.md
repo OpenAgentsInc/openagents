@@ -76,6 +76,23 @@ cargo build --release -p pylon
 - Apple Foundation Models (macOS + Apple Silicon)
 - Ollama (any platform, port 11434)
 - llama.cpp (any platform, port 8080)
+- Claude (via claude-agent-sdk, requires `--features claude`)
+
+**RLM (Recursive Language Model) queries:**
+```bash
+# Basic query (swarm)
+pylon rlm "What is 2+2?"
+
+# Local only with auto-detected backend
+pylon rlm "Explain this" --local-only
+
+# Use Claude as backend (requires cargo build -p pylon --features claude)
+pylon rlm "Analyze this code" --backend claude
+
+# View trace history and sync to dashboard
+pylon rlm history
+pylon rlm sync <run-id>
+```
 
 ---
 
@@ -236,7 +253,20 @@ cargo build -p wgpui --target wasm32-unknown-unknown    # WASM
 | `spark` | Lightning wallet (Breez SDK) |
 | `compute` | NIP-90 DVM primitives |
 | `claude-agent-sdk` | Rust SDK for Claude Code |
+| `rlm` | Recursive Language Model engine |
+| `frlm` | Federated RLM (distributed execution) |
 | `frostr` | FROST threshold signatures |
+
+**RLM/FRLM execution venues:**
+
+| Venue | Description |
+|-------|-------------|
+| `Local` | FM Bridge, Ollama, llama.cpp |
+| `Swarm` | NIP-90 distributed to providers |
+| `Datacenter` | Remote API (Crusoe, etc.) |
+| `Claude` | Claude via claude-agent-sdk |
+
+Traces flow to SQLite (`~/.openagents/pylon/rlm.db`) → cloud sync → W&B-style dashboard.
 
 ---
 
@@ -270,6 +300,9 @@ EOF
 ```bash
 # Pylon
 cargo build --release -p pylon
+
+# Pylon with Claude backend support
+cargo build --release -p pylon --features claude
 
 # Nexus (Cloudflare Worker)
 cd crates/nexus/worker && bun run deploy
@@ -356,7 +389,8 @@ Issues are NOT done unless:
 | Runtime | In progress | Tick engine, filesystem, /compute, /containers, /claude |
 | Autopilot | Alpha | Claude SDK integration, tunnel mode |
 | WGPUI | Phase 16 | 377 tests, full component library |
-| RLM | Experimental | Recursive Language Model queries |
+| RLM | Working | Claude + Ollama backends, MCP tools |
+| FRLM | Working | Claude venue, trace persistence, dashboard sync |
 | OANIX | Design | Agent OS runtime (future) |
 
 **Bitcoin network:** Default is `regtest` for testing. Mainnet available.

@@ -70,6 +70,8 @@ pub enum TraceEvent {
         query_id: String,
         provider_id: String,
         venue: Venue,
+        /// Model ID used for this execution (e.g., "claude-opus-4-5-20251101").
+        model_id: Option<String>,
         timestamp_ms: u64,
     },
 
@@ -320,12 +322,19 @@ impl TraceEmitter {
     }
 
     /// Emit sub-query execute event.
-    pub fn subquery_execute(&mut self, query_id: &str, provider_id: &str, venue: Venue) {
+    pub fn subquery_execute(
+        &mut self,
+        query_id: &str,
+        provider_id: &str,
+        venue: Venue,
+        model_id: Option<&str>,
+    ) {
         self.emit(TraceEvent::SubQueryExecute {
             run_id: self.run_id.clone(),
             query_id: query_id.to_string(),
             provider_id: provider_id.to_string(),
             venue,
+            model_id: model_id.map(String::from),
             timestamp_ms: self.now_ms(),
         });
     }

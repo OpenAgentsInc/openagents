@@ -85,6 +85,7 @@ gui = []
 ml-native = ["ml/native"]
 gpt-oss-metal = ["compute/gpt-oss-metal"]
 gpt-oss-gguf = ["ml-native"]
+claude = ["frlm/claude"]
 
 [dev-dependencies]
 tempfile = "3.10"
