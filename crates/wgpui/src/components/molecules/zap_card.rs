@@ -192,7 +192,7 @@ impl Component for ZapCard {
                     return EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == crate::MouseButton::Left && bounds.contains(Point::new(*x, *y)) {
                     if let Some(callback) = &mut self.on_click {
                         callback(self.zap.id.clone());

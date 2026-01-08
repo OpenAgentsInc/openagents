@@ -205,7 +205,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let y = event.offset_y() as f32;
             let cursor = {
                 let mut demo = demo_clone.borrow_mut();
-                let _ = demo.handle_input_event(InputEvent::MouseDown { button, x, y });
+                let _ = demo.handle_input_event(InputEvent::MouseDown { button, x, y, .. });
                 demo.markdown_cursor()
             };
             platform_clone.borrow().set_cursor(cursor);

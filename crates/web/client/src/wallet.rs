@@ -268,7 +268,7 @@ impl WalletUi {
     }
 
     pub(crate) fn handle_event(&mut self, event: &InputEvent) -> EventResult {
-        if let InputEvent::MouseDown { button, x, y } = event {
+        if let InputEvent::MouseDown { button, x, y, .. } = event {
             if *button == MouseButton::Left {
                 let point = Point::new(*x, *y);
                 if self.layout.tab_overview.contains(point) {

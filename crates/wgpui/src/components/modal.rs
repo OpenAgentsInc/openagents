@@ -222,7 +222,7 @@ impl Component for Modal {
                 }
             }
 
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left {
                     let modal_bounds = self.modal_bounds(bounds);
                     let click_point = Point::new(*x, *y);

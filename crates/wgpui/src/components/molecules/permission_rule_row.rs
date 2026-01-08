@@ -329,7 +329,7 @@ impl Component for PermissionRuleRow {
                     return EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left && self.hovered {
                     let point = Point::new(*x, *y);
 

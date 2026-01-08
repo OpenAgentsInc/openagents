@@ -140,13 +140,9 @@ fn test_bounds_with_padding() {
 
 #[test]
 fn test_mouse_down_event_creation() {
-    let event = InputEvent::MouseDown {
-        button: MouseButton::Left,
-        x: 50.0,
-        y: 75.0,
-    };
+    let event = InputEvent::MouseDown { button: MouseButton::Left, x: 50.0, y: 75.0, modifiers: Modifiers::default() };
 
-    if let InputEvent::MouseDown { button, x, y } = event {
+    if let InputEvent::MouseDown { button, x, y, .. } = event {
         assert_eq!(button, MouseButton::Left);
         assert_eq!(x, 50.0);
         assert_eq!(y, 75.0);
@@ -174,11 +170,7 @@ fn test_mouse_up_event_creation() {
 
 #[test]
 fn test_right_click_event() {
-    let event = InputEvent::MouseDown {
-        button: MouseButton::Right,
-        x: 100.0,
-        y: 100.0,
-    };
+    let event = InputEvent::MouseDown { button: MouseButton::Right, x: 100.0, y: 100.0, modifiers: Modifiers::default() };
 
     if let InputEvent::MouseDown { button, .. } = event {
         assert_eq!(button, MouseButton::Right);

@@ -932,7 +932,13 @@ impl ApplicationHandler for OnyxApp {
                 };
 
                 let event = if button_state == ElementState::Pressed {
-                    wgpui::InputEvent::MouseDown { button: wgpui_button, x, y }
+                    let mods = wgpui::input::Modifiers {
+                        shift: state.modifiers.shift_key(),
+                        ctrl: state.modifiers.control_key(),
+                        alt: state.modifiers.alt_key(),
+                        meta: state.modifiers.super_key(),
+                    };
+                    wgpui::InputEvent::MouseDown { button: wgpui_button, x, y, modifiers: mods }
                 } else {
                     wgpui::InputEvent::MouseUp { button: wgpui_button, x, y }
                 };

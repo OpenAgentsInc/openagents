@@ -249,7 +249,7 @@ impl Component for TransactionRow {
                     return EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left && bounds.contains(Point::new(*x, *y)) {
                     if let Some(callback) = &mut self.on_click {
                         callback(self.transaction.id.clone());

@@ -465,7 +465,7 @@ impl Component for ToolCallCard {
                     return EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left && header_bounds.contains(Point::new(*x, *y)) {
                     self.expanded = !self.expanded;
                     return EventResult::Handled;

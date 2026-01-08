@@ -70,7 +70,7 @@ impl TestRecorder {
             InputEvent::MouseMove { x, y } => {
                 self.cursor = Point::new(*x, *y);
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 self.flush_text();
                 self.cursor = Point::new(*x, *y);
                 self.steps.push(TestStep::Click {
@@ -134,11 +134,7 @@ mod tests {
         let mut recorder = TestRecorder::new();
         recorder.start();
 
-        recorder.record_event(&InputEvent::MouseDown {
-            button: MouseButton::Left,
-            x: 120.0,
-            y: 80.0,
-        });
+        recorder.record_event(&InputEvent::MouseDown { button: MouseButton::Left, x: 120.0, y: 80.0, modifiers: Modifiers::default() });
         recorder.record_event(&InputEvent::Scroll { dx: 0.0, dy: 40.0 });
         recorder.stop();
 

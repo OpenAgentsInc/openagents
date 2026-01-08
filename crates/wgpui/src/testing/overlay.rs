@@ -203,7 +203,7 @@ impl InputOverlay {
             InputEvent::MouseMove { x, y } => {
                 self.mouse_position = Point::new(*x, *y);
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 self.mouse_position = Point::new(*x, *y);
                 self.add_ripple(Point::new(*x, *y), *button);
             }
@@ -459,11 +459,7 @@ mod tests {
     #[test]
     fn test_overlay_observe_click() {
         let mut overlay = InputOverlay::new();
-        overlay.observe_event(&InputEvent::MouseDown {
-            button: MouseButton::Left,
-            x: 100.0,
-            y: 200.0,
-        });
+        overlay.observe_event(&InputEvent::MouseDown { button: MouseButton::Left, x: 100.0, y: 200.0, modifiers: Modifiers::default() });
         assert_eq!(overlay.ripples.len(), 1);
     }
 

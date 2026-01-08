@@ -82,7 +82,7 @@ impl EventSequence {
         let mut seq = Self::new();
         seq.push_immediate(InputEvent::MouseMove { x, y });
         seq.push(
-            InputEvent::MouseDown { button, x, y },
+            InputEvent::MouseDown { button, x, y, .. },
             Duration::from_millis(10),
         );
         seq.push(
@@ -98,7 +98,7 @@ impl EventSequence {
         seq.push_immediate(InputEvent::MouseMove { x, y });
         // First click
         seq.push(
-            InputEvent::MouseDown { button, x, y },
+            InputEvent::MouseDown { button, x, y, .. },
             Duration::from_millis(10),
         );
         seq.push(
@@ -107,7 +107,7 @@ impl EventSequence {
         );
         // Second click
         seq.push(
-            InputEvent::MouseDown { button, x, y },
+            InputEvent::MouseDown { button, x, y, .. },
             Duration::from_millis(100),
         );
         seq.push(

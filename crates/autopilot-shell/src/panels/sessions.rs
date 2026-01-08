@@ -481,7 +481,7 @@ impl Panel for SessionsPanel {
 
                 EventResult::Handled
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button != MouseButton::Left {
                     return EventResult::Ignored;
                 }

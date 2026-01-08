@@ -318,7 +318,7 @@ impl Component for TextInput {
                 }
             }
 
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left {
                     let clicked_inside = bounds.contains(Point::new(*x, *y));
 

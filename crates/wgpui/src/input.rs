@@ -65,7 +65,7 @@ pub enum Key {
 #[derive(Clone, Debug)]
 pub enum InputEvent {
     MouseMove { x: f32, y: f32 },
-    MouseDown { button: MouseButton, x: f32, y: f32 },
+    MouseDown { button: MouseButton, x: f32, y: f32, modifiers: Modifiers },
     MouseUp { button: MouseButton, x: f32, y: f32 },
     Scroll { dx: f32, dy: f32 },
     KeyDown { key: Key, modifiers: Modifiers },

@@ -158,7 +158,7 @@ impl Component for SessionBreadcrumb {
                     return EventResult::Handled;
                 }
             }
-            InputEvent::MouseDown { button, x, y } => {
+            InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left {
                     let point = Point::new(*x, *y);
                     for (idx, bounds) in item_bounds.iter().enumerate() {
