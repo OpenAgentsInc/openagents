@@ -177,8 +177,16 @@ impl RelayService {
         // Build NIP-90 job request filter
         // Job requests are kinds 5000-5999 (range 5xxx)
         // We subscribe broadly and filter targeted jobs in the DVM service.
+        // Use "since" to only get recent jobs (last 5 minutes) to avoid processing stale backlog
+        let since = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .saturating_sub(300); // 5 minutes ago
+
         let filters = vec![serde_json::json!({
             "kinds": [5000, 5001, 5002, 5003, 5004, 5005, 5050, 5100, 5250, 5940],
+            "since": since,
             "limit": 100
         })];
 

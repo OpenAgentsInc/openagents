@@ -313,11 +313,9 @@ impl ApplicationHandler for App {
                             label: Some("Render Encoder"),
                         });
 
-                let physical_width = state.config.width as f32;
-                let physical_height = state.config.height as f32;
                 state.renderer.resize(
                     &state.queue,
-                    Size::new(physical_width, physical_height),
+                    Size::new(width, height),  // Pass logical size, resize() multiplies by scale
                     scale_factor,
                 );
 

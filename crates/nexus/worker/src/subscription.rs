@@ -220,31 +220,77 @@ impl<'a> SubscriptionManager<'a> {
         event: &nostr::Event,
     ) -> Result<Vec<String>> {
         // Use stable conn_id from attachment (not pointer address which changes)
-        let meta: ConnectionMeta = ws
-            .deserialize_attachment()?
-            .unwrap_or_else(|| ConnectionMeta {
-                conn_id: String::new(),
-                pubkey: None,
-                challenge: String::new(),
-                authenticated: false,
-            });
+        // Handle deserialization errors gracefully
+        let meta: ConnectionMeta = match ws.deserialize_attachment() {
+            Ok(Some(m)) => m,
+            Ok(None) | Err(_) => {
+                return Ok(Vec::new()); // No attachment = no subscriptions
+            }
+        };
+
+        if meta.conn_id.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let prefix = format!("sub:{}:", meta.conn_id);
 
+        console_log!(
+            "get_matching_subscriptions: conn_id={}, looking for prefix={}",
+            &meta.conn_id[..16.min(meta.conn_id.len())],
+            prefix
+        );
+
         // List all subscriptions for this WebSocket
-        let list_result = self.state.storage().list().await?;
+        let list_result = match self.state.storage().list().await {
+            Ok(r) => r,
+            Err(e) => {
+                console_log!("  Storage list error: {:?}", e);
+                return Ok(Vec::new());
+            }
+        };
         let mut matching = Vec::new();
+        let mut total_subs = 0;
 
         for key in list_result.keys() {
-            let key_str: String = key?.as_string().unwrap_or_default();
+            let key_str: String = match key {
+                Ok(k) => k.as_string().unwrap_or_default(),
+                Err(_) => continue,
+            };
+            if key_str.starts_with("sub:") {
+                total_subs += 1;
+                console_log!("  Found subscription key: {}", key_str);
+            }
             if key_str.starts_with(&prefix) {
                 let sub_id = key_str.strip_prefix(&prefix).unwrap_or("").to_string();
                 if let Ok(Some(filters)) = self.state.storage().get::<Vec<Filter>>(&key_str).await {
+                    console_log!(
+                        "    Checking {} filters for sub_id={}, event kind={}",
+                        filters.len(),
+                        sub_id,
+                        event.kind
+                    );
+                    for (i, f) in filters.iter().enumerate() {
+                        let matches = f.matches(event);
+                        console_log!(
+                            "      Filter[{}]: kinds={:?}, e_tags={:?}, matches={}",
+                            i,
+                            f.kinds,
+                            f.e_tags,
+                            matches
+                        );
+                    }
                     if filters.iter().any(|f| f.matches(event)) {
                         matching.push(sub_id);
                     }
                 }
             }
         }
+
+        console_log!(
+            "get_matching_subscriptions: total_subs={}, matched={}",
+            total_subs,
+            matching.len()
+        );
 
         Ok(matching)
     }
