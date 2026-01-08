@@ -43,7 +43,7 @@ RELAY_NAME = "nexus.openagents.com"
 RELAY_DESCRIPTION = "OpenAgents Nexus relay"
 RELAY_PUBKEY = ""
 RELAY_URL = "wss://nexus.openagents.com"
-RELAY_CONTACT = "nexus@openagents.com"
+RELAY_CONTACT = "chris@openagents.com"
 SUPPORTED_NIPS = "1,11,42,89,90"
 
 # Local development settings
