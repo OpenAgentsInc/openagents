@@ -4,10 +4,12 @@
 //! - Job history (provider mode)
 //! - Earnings tracking
 //! - Agent state (host mode)
+//! - RLM runs and trace events
 
 pub mod agents;
 pub mod earnings;
 pub mod jobs;
+pub mod rlm;
 
 use rusqlite::Connection;
 use std::path::Path;

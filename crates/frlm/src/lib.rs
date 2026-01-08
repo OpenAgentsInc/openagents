@@ -43,6 +43,8 @@ pub mod scheduler;
 pub mod trace;
 pub mod types;
 pub mod verification;
+#[cfg(feature = "trace-db")]
+pub mod trace_db;
 
 #[cfg(test)]
 mod bench_stats;
@@ -54,3 +56,5 @@ pub use policy::{FrlmPolicy, Quorum, QuorumPolicy};
 pub use scheduler::SubQueryScheduler;
 pub use trace::{TraceEmitter, TraceEvent};
 pub use types::*;
+#[cfg(feature = "trace-db")]
+pub use trace_db::TraceDbWriter;
