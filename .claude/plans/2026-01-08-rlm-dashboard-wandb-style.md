@@ -214,3 +214,11 @@ To keep a reliable trail, all agents should update this file while working on th
 - Commands/Tests: not run (not requested)
 - Decisions/Notes: FRLM trace logging uses a background thread with a dedicated connection; local-only uses LocalSubmitter to preserve fragment fanout
 - Follow-ups: consider surfacing fanout/quorum controls; verify local fallback behavior with real swarm and backends
+
+### Log - 2026-01-08 - codex
+- Scope: Phase 2 cloud sync + API + live relay DO
+- Changes: Added D1 migration for rlm runs/trace/experiments; added worker DB helpers and RLM API endpoints; added RlmRunDO and WebSocket route; added pylon rlm sync command with Nostr-signed payload
+- Files: crates/web/migrations/0009_rlm_runs.sql, crates/web/worker/src/db/rlm.rs, crates/web/worker/src/db/mod.rs, crates/web/worker/src/db/users.rs, crates/web/worker/src/routes/rlm.rs, crates/web/worker/src/rlm_do.rs, crates/web/worker/src/lib.rs, crates/web/wrangler.toml, crates/pylon/src/db/rlm.rs, crates/pylon/src/cli/rlm.rs, crates/pylon/Cargo.toml
+- Commands/Tests: not run (not requested)
+- Decisions/Notes: Sync payload signed with Nostr key over JSON string; browser WS requires session + run ownership; pylon WS requires signature over run_id
+- Follow-ups: consider pagination cursors and streaming client integration in pylon

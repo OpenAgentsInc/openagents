@@ -14,6 +14,8 @@ pub struct RlmRunRecord {
     pub budget_sats: i64,
     pub total_cost_sats: i64,
     pub total_duration_ms: i64,
+    pub output: Option<String>,
+    pub error_message: Option<String>,
     pub created_at: i64,
     pub completed_at: Option<i64>,
 }
@@ -105,7 +107,7 @@ impl RlmStore {
     pub fn list_runs(&self, limit: u32) -> anyhow::Result<Vec<RlmRunRecord>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, query, status, fragment_count, budget_sats, total_cost_sats,
-                    total_duration_ms, created_at, completed_at
+                    total_duration_ms, output, error_message, created_at, completed_at
              FROM runs
              ORDER BY created_at DESC
              LIMIT ?1",
@@ -120,8 +122,10 @@ impl RlmStore {
                 budget_sats: row.get(4)?,
                 total_cost_sats: row.get(5)?,
                 total_duration_ms: row.get(6)?,
-                created_at: row.get(7)?,
-                completed_at: row.get(8)?,
+                output: row.get(7)?,
+                error_message: row.get(8)?,
+                created_at: row.get(9)?,
+                completed_at: row.get(10)?,
             })
         })?;
 
@@ -131,4 +135,69 @@ impl RlmStore {
         }
         Ok(runs)
     }
+
+    /// Get a run by ID.
+    pub fn get_run(&self, run_id: &str) -> anyhow::Result<Option<RlmRunRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, query, status, fragment_count, budget_sats, total_cost_sats,
+                    total_duration_ms, output, error_message, created_at, completed_at
+             FROM runs
+             WHERE id = ?1",
+        )?;
+
+        let mut rows = stmt.query(params![run_id])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(RlmRunRecord {
+                id: row.get(0)?,
+                query: row.get(1)?,
+                status: row.get(2)?,
+                fragment_count: row.get(3)?,
+                budget_sats: row.get(4)?,
+                total_cost_sats: row.get(5)?,
+                total_duration_ms: row.get(6)?,
+                output: row.get(7)?,
+                error_message: row.get(8)?,
+                created_at: row.get(9)?,
+                completed_at: row.get(10)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// List trace events for a run.
+    pub fn list_trace_events(&self, run_id: &str) -> anyhow::Result<Vec<RlmTraceEventRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT run_id, seq, event_type, timestamp_ms, event_json
+             FROM trace_events
+             WHERE run_id = ?1
+             ORDER BY seq ASC",
+        )?;
+
+        let rows = stmt.query_map(params![run_id], |row| {
+            Ok(RlmTraceEventRecord {
+                run_id: row.get(0)?,
+                seq: row.get(1)?,
+                event_type: row.get(2)?,
+                timestamp_ms: row.get(3)?,
+                event_json: row.get(4)?,
+            })
+        })?;
+
+        let mut events = Vec::new();
+        for row in rows {
+            events.push(row?);
+        }
+        Ok(events)
+    }
+}
+
+/// Trace event record stored in the database.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RlmTraceEventRecord {
+    pub run_id: String,
+    pub seq: i64,
+    pub event_type: String,
+    pub timestamp_ms: i64,
+    pub event_json: String,
 }
