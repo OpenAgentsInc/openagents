@@ -159,7 +159,7 @@ The relay crate defines the WebSocket protocol shared by the browser, worker, an
 The relay-worker crate is a Cloudflare Worker Nostr relay focused on the inference network. It implements NIP-01/11/28/32/42/90 routing with Durable Objects and D1 storage, and serves a minimal HTTP info page.
 
 ## rlm
-The rlm crate is the Recursive Language Model execution engine. It provides the orchestration loop, command parsing, executor interfaces, span provenance tracking, and optional DSPy integration for recursive tool-driven reasoning over documents. It includes an MCP server binary (`rlm-mcp-server`) exposing `rlm_query` and `rlm_fanout` tools for Claude integration, and supports Claude as an LlmClient backend for RLM execution.
+The rlm crate is the Recursive Language Model execution engine. It provides the orchestration loop, command parsing, executor interfaces, span provenance tracking, and optional DSPy integration for recursive tool-driven reasoning over documents. It includes an MCP server binary (`rlm-mcp-server`) exposing `rlm_query` and `rlm_fanout` tools for Claude integration (with configurable Ollama or Claude backends via `RLM_BACKEND` env var), and supports Claude as an LlmClient backend using structured outputs to enforce the RLM response format.
 
 ## rlm-methods
 The rlm-methods crate implements the method variants used in the RLM paper (Base, Summary Agent, CodeAct+BM25, full RLM, and ablations). It adapts lm-router clients to bench-harness Method traits and bundles prompts/retrieval helpers.

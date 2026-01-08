@@ -211,6 +211,19 @@ RLM exposes tools via an MCP server that Claude can invoke:
 claude --mcp-server "rlm:stdio:rlm-mcp-server"
 ```
 
+**MCP Server Backend Selection:**
+
+The MCP server can use different backends for RLM execution:
+
+```bash
+# Use Ollama (default) - requires Ollama at localhost:11434
+RLM_BACKEND=ollama rlm-mcp-server
+
+# Use Claude CLI - requires claude CLI installed
+# Build with: cargo build -p rlm --features claude --bin rlm-mcp-server
+RLM_BACKEND=claude rlm-mcp-server
+```
+
 Available tools:
 
 | Tool | Description |
@@ -220,7 +233,9 @@ Available tools:
 
 ### Mode B: Claude AS the RLM Backend
 
-Use Claude (Pro/Max) as the LlmClient for RLM execution:
+Use Claude (Pro/Max) as the LlmClient for RLM execution. This mode uses Claude's
+**structured outputs** to enforce the RLM response format, ensuring Claude always
+responds with either code to execute or a final answer:
 
 ```rust
 use rlm::ClaudeLlmClient;  // Requires `claude` feature
@@ -229,6 +244,10 @@ let client = ClaudeLlmClient::new("/path/to/workspace");
 let engine = RlmEngine::new(client, PythonExecutor::new());
 let result = engine.run("Analyze this code").await?;
 ```
+
+The ClaudeLlmClient uses a JSON schema to constrain Claude's output:
+- `action: "execute"` - with `code` field containing Python to run
+- `action: "final"` - with `answer` field containing the final response
 
 ## Feature Flags
 
