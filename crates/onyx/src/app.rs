@@ -708,11 +708,24 @@ impl ApplicationHandler for OnyxApp {
                     event.physical_key, event.logical_key, event.state, event.repeat);
 
                 // Handle backtick (`) for voice transcription (hold to record, release to transcribe)
-                // Backtick is the key below Escape - single key, no modifiers needed
-                let is_voice_key = matches!(
+                // Check physical key codes (Backquote, IntlBackslash, Section) AND logical character
+                let is_voice_key_physical = matches!(
                     event.physical_key,
-                    PhysicalKey::Code(KeyCode::Backquote)
+                    PhysicalKey::Code(KeyCode::Backquote) |
+                    PhysicalKey::Code(KeyCode::IntlBackslash) |
+                    PhysicalKey::Code(KeyCode::F13)  // Some keyboards map backtick here
                 );
+                let is_voice_key_logical = matches!(
+                    &event.logical_key,
+                    Key::Character(c) if c == "`" || c == "§" || c == "±"
+                );
+                let is_voice_key = is_voice_key_physical || is_voice_key_logical;
+
+                // Debug: log any potential voice key detection
+                if is_voice_key_physical || is_voice_key_logical {
+                    tracing::info!("Potential voice key: physical={:?} logical={:?}",
+                        event.physical_key, event.logical_key);
+                }
 
                 // Block ALL voice key events from reaching the editor (including repeats)
                 if is_voice_key {
