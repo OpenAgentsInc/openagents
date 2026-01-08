@@ -320,9 +320,10 @@ fn render_hud(
     );
     y += 22.0;
 
-    // Success Rate
+    // Success Rate (capped at 100% since multiple providers can respond to same query)
     let success_rate = if state.stats.rlm.subqueries_total > 0 {
-        (state.stats.rlm.results_total as f32 / state.stats.rlm.subqueries_total as f32 * 100.0) as u64
+        let rate = (state.stats.rlm.results_total as f32 / state.stats.rlm.subqueries_total as f32 * 100.0) as u64;
+        rate.min(100)
     } else {
         0
     };
@@ -338,11 +339,11 @@ fn render_hud(
     );
     y += 28.0;
 
-    // Progress bar showing completed vs total
+    // Progress bar showing completed vs total (capped at 100%)
     let bar_height = 16.0;
     let bar_width = inner_width;
     let total = state.stats.rlm.subqueries_24h.max(1);
-    let fill = state.stats.rlm.results_24h as f32 / total as f32;
+    let fill = (state.stats.rlm.results_24h as f32 / total as f32).min(1.0);
 
     // Background bar
     scene.draw_quad(

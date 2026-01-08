@@ -13,12 +13,15 @@ Nexus v0.1 is a **Nostr relay** optimized for:
 
 ---
 
-## Current Status (2026-01-07)
+## Current Status (2026-01-08)
 
-- Cloudflare worker for Nexus is deployed and serving `nexus.openagents.com`.
-- Phase 0-6 completed for the v0.1 worker path; adapter extraction into core traits is deferred.
-- WebSocket AUTH challenge verified on the custom domain.
-- End-to-end Pylon auth/subscribe and broadcast tests are still pending.
+- ✅ Cloudflare worker for Nexus is deployed and serving `nexus.openagents.com`
+- ✅ Phase 0-6 completed for the v0.1 worker path; adapter extraction into core traits is deferred
+- ✅ WebSocket AUTH challenge verified on the custom domain
+- ✅ WebSocket ping/pong keep-alive implemented (prevents Cloudflare idle timeouts)
+- ✅ End-to-end RLM queries working (kind 5940 → 6940)
+- ✅ Pylon can authenticate, subscribe, and receive broadcast events
+- ✅ SWARM COMPUTE section added to HUD with RLM stats
 
 ---
 
@@ -426,9 +429,10 @@ npx wrangler deploy
 - [x] Deploy succeeds (`npx wrangler deploy`)
 - [x] NIP-11 endpoint works (`curl https://nexus.openagents.com/`)
 - [x] WebSocket connects and sends AUTH challenge
-- [ ] Pylon can authenticate and subscribe
-- [ ] Events are stored and queryable
-- [ ] Subscriptions receive broadcasts
+- [x] Pylon can authenticate and subscribe
+- [x] Events are stored and queryable
+- [x] Subscriptions receive broadcasts
+- [x] RLM end-to-end working (kind 5940 → 6940)
 
 ---
 

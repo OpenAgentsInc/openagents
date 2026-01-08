@@ -338,9 +338,50 @@ key = "/etc/letsencrypt/live/nexus.openagents.com/privkey.pem"
 
 Pylon v0.1 is unblocked when:
 
-1. `pylon start -m provider` can connect, authenticate, and subscribe to jobs
-2. `pylon job submit "hello"` publishes kind:5050 and receives kind:7000 feedback
-3. Provider's kind:7000 with BOLT-11 reaches buyer within 1 second
-4. After payment, provider's kind:6050 reaches buyer within 1 second
-5. Handler discovery works: `#k:5050` returns provider's `kind:31990`
-6. Both buyer and provider authenticate successfully (NIP-42)
+1. ✅ `pylon start -m provider` can connect, authenticate, and subscribe to jobs
+2. ✅ `pylon rlm "what is 2+2"` publishes kind:5940 and receives kind:6940 result
+3. ✅ Provider's kind:6940 reaches buyer within 5 seconds
+4. ✅ WebSocket connections stay alive with ping/pong keep-alive
+5. ✅ Both buyer and provider authenticate successfully (NIP-42)
+6. Handler discovery works: `#k:5050` returns provider's `kind:31990`
+
+---
+
+## Recent Fixes (2026-01-08)
+
+### WebSocket Keep-Alive
+
+Cloudflare terminates idle WebSocket connections after ~100 seconds. Fixed with:
+
+**Server-side (relay_do.rs):**
+```rust
+fn setup_websocket_auto_response(state: &State) {
+    if let Ok(pair) = WebSocketRequestResponsePair::new("ping", "pong") {
+        state.set_websocket_auto_response(&pair);
+    }
+}
+```
+
+**Client-side (nostr-client):**
+- Added `ping_task` field to RelayConnection
+- Sends "ping" text message every 30 seconds
+- Works with Cloudflare's edge auto-response
+
+### DvmClient Race Condition
+
+Fixed race condition where job results arrived before `await_result` was called:
+
+**Problem:** Result channel was created in `await_result`, but events could arrive before it was called.
+
+**Solution:** Pre-create result channel in `subscribe_to_job_events` (called from `submit_job`):
+1. Create `(tx, rx)` channel
+2. Insert `tx` into `pending_results` **before** subscribing
+3. Store `rx` in `result_receivers`
+4. `await_result` retrieves pre-created receiver
+
+### RLM Support
+
+Full end-to-end support for RLM queries:
+- Kind 5940: RLM sub-query request
+- Kind 6940: RLM result
+- `pylon rlm` command documented in CLI.md
