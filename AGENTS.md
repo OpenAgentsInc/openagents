@@ -1,146 +1,122 @@
-# Agent Instructions
+# OpenAgents
 
-OpenAgents desktop repo.
+Decentralized AI compute marketplace. Run inference, earn Bitcoin.
 
-## Tech Stack
+## Products
 
-- **Rust** edition 2024, **WGPUI** for GPU-rendered UI, **Nostr** for NIP-90, **claude-agent-sdk** for Claude Code
-- Crates: `wgpui` (UI), `compute` (NIP-90), `nostr/core` (protocol)
-- UI: Sharp corners, inline styling, **Vera Mono font ONLY**
+| Product | Description | Status |
+|---------|-------------|--------|
+| **Pylon** | Node software for the compute marketplace | v0.1 |
+| **Nexus** | Agent-centric Nostr relay | v0.1 |
+| **Onyx** | Local-first Markdown editor | Alpha |
 
-## Git Rules
+## Quick Start: Pylon
 
-**Safety:**
-- NEVER `push --force` to main
-- NEVER use `-i` flag (interactive not supported)
-- NEVER destructive commands (`reset --hard`, `checkout -- .`, `restore .`) without asking
-- NEVER use `git stash` - it interferes with other agents' uncommitted work
+Pylon connects your compute to the AI marketplace via Nostr.
 
-**Commit Often:**
-- COMMIT working code frequently (every 15-30 minutes of work)
-- Don't let code sit uncommitted - it can be lost or cause merge conflicts
-- Small, frequent commits are better than large, infrequent ones
-- If you've made progress that works, commit it immediately
-
-**Multi-agent coordination:** Other agents may have uncommitted work. Before discarding changes in files you didn't modify, run `git diff <file>` and ASK first.
-**Clarification:** You can always continue work in your own files without asking permission, even if other files are dirty. You do not need permission to ignore other agents' changes.
-**Commits:** When committing, stage only your own files explicitly. Do not assume all changes in the worktree should be committed.
-
-**Autopilot commits:** Add `Co-Authored-By: Autopilot <autopilot@openagents.com>` after Claude's co-author line.
-
-**Conflict resolution:**
-```bash
-git stash push -m "my-work" && git pull --rebase origin main && git stash pop && git push
-```
-
-## Database
-
-**NEVER raw sqlite3 for writes.** Use APIs:
-- `cargo autopilot issue create` / `claim` / `complete` / `block`
-- Read-only queries are fine for debugging
-
-## Crates
-
-- All crates: `edition = "2024"`
-- Tests go in respective crates (`crates/foo/src/tests/`)
-
-## Nostr
-
-NIP specs are in `~/code/nips/`. Read locally, don't web search.
-
-## CLI
+### Install
 
 ```bash
-cargo run --bin openagents -- <cmd>
-
-openagents                          # GUI (default)
-openagents wallet init|whoami|balance|send
-openagents marketplace compute|skills|data|trajectories
-openagents autopilot run|dashboard|replay
-openagents daemon start|status|stop
+git clone https://github.com/OpenAgentsInc/openagents.git
+cd openagents
+cargo build --release -p pylon
 ```
 
-## Autopilot Daemon
-
-See [docs/autopilot/DAEMON.md](docs/autopilot/DAEMON.md).
-
-**Known-good binary:** Daemon uses `~/.autopilot/bin/autopilot`. After successful builds:
-```bash
-cargo build -p autopilot && cp target/debug/autopilot ~/.autopilot/bin/
-```
-
-## Completion Standards
-
-Issues are NOT done unless:
-1. No stubs, mocks, TODOs, NotImplemented errors
-2. Code actually works (tested)
-3. SDK integrations are real, not stubbed
-
-## Onyx Deployment (macOS)
-
-Build and install Onyx.app to /Applications:
+### Run as Provider (earn Bitcoin)
 
 ```bash
-# Full build, bundle, sign, and install in one command
-./script/bundle-mac --sign --install
-xattr -cr /Applications/Onyx.app  # Clear quarantine
-open /Applications/Onyx.app
+# Initialize identity
+./target/release/pylon init
+
+# Check what backends are available
+./target/release/pylon doctor
+
+# Get regtest sats for testing
+./target/release/pylon wallet fund
+
+# Start provider
+./target/release/pylon start -f -m provider
 ```
 
-**Quick rebuild after code changes:**
-```bash
-./script/bundle-mac --sign --install && open /Applications/Onyx.app
-```
-
-**Prerequisites:**
-- `cargo install cargo-bundle --git https://github.com/zed-industries/cargo-bundle.git --branch zed-deploy`
-- App icons in `crates/onyx/resources/` (app-icon.png, app-icon@2x.png)
-
-**Update checking:** Cmd+Shift+U checks GitHub releases. See `crates/onyx/docs/auto-update.md`.
-
-**Voice transcription:** Hold backtick (`) to record, release to transcribe. Uses Whisper base.en model with Metal GPU.
-
-## crates/web Deployment
-
-**ALWAYS use Cloudflare Workers, NEVER Cloudflare Pages.**
+### Run as Buyer (use the network)
 
 ```bash
-cd crates/web
-bun run deploy          # Production deploy to Workers
-bun run deploy:preview  # Preview environment
+# Submit a job
+./target/release/pylon job submit "What is 2+2?" --auto-pay
+
+# Run RLM query (fans out to swarm)
+./target/release/pylon rlm "Explain this concept"
 ```
 
-This runs `bun run build && bun run build:worker && npx wrangler deploy`. Check `package.json` for scripts.
+### Inference Backends
 
-**NEVER run:**
-- `npx wrangler pages deploy` - WRONG, we use Workers not Pages
-- `npx wrangler deploy` directly without build steps
+Pylon auto-detects backends at startup:
 
-## WASM Compatibility
+| Backend | Platform | How to run |
+|---------|----------|------------|
+| **Ollama** | Any | `ollama serve` on :11434 |
+| **llama.cpp** | Any | `llama-server` on :8080 |
+| **Apple FM** | macOS | Auto-starts if available |
 
-**NEVER use `std::time::Instant` in wgpui or web client code** - it doesn't work in WASM.
+See [crates/pylon/docs/CLI.md](crates/pylon/docs/CLI.md) for full CLI reference.
 
-Use `web_time::Instant` instead (from the `web-time` crate). This provides cross-platform time that works on both native and WASM.
+## Quick Start: Nexus
 
-Example: `wgpui::animation::AnimationController` uses `web_time::Instant` for delta time calculations.
+Nexus is a Nostr relay optimized for AI agent coordination.
 
-## Rules
+### Live Instance
 
-- **No placeholder data** - Connect to real sources or show empty state
-- **No GitHub workflows**
+**wss://nexus.openagents.com** - Requires NIP-42 authentication
 
-## Design Philosophy
+### Deploy Your Own
 
-Dense. Give me the information. Dial down your whitespace. Dial up your contrast. Allow text to span more than 56 characters, allow spacing below 1.7, allow black borders between columns, scroll bars, tables with alternating background tints.
+```bash
+cd crates/nexus/worker
+bun install
+bun run deploy
+```
 
-Fast. Local-first or optimistic writes on the client. Few if any animations. Smart use of fonts, images, and assets to prioritize quick loads and transitions.
+See [crates/nexus/docs/MVP.md](crates/nexus/docs/MVP.md) for architecture.
 
-Present. Do not navigate me if I don’t need to be navigated, but orient your design from the start for multiple views. Allow multiple panes. Look at high-pressure applications (trading, IDEs, medical, emergency, military) and take inspiration. Don’t take me away from my task.
+## Architecture
 
-File over app. Open file format that many apps can view. Skip the spec until things harden, but keep it open anyway. Let my bots read it.
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        NOSTR RELAYS                         │
+│  (nexus.openagents.com, relay.damus.io, nos.lol)           │
+└─────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+        ┌──────────┐   ┌──────────┐   ┌──────────┐
+        │  PYLON   │   │  PYLON   │   │  PYLON   │
+        │ Provider │   │ Provider │   │  Buyer   │
+        └──────────┘   └──────────┘   └──────────┘
+              │               │
+              ▼               ▼
+        ┌──────────┐   ┌──────────┐
+        │  Ollama  │   │ llama.cpp│
+        └──────────┘   └──────────┘
+```
 
-Moldable. Decompose your app into lower primitives that can be loosely recomposed by the user to form many types of documents, dashboards, reports, etc. Start me at a good set of constructions. I’ll make the software into what I need it to be whether you like it or not, so make it easy for me and my bots.
+## Key Protocols
 
-BYOAI. Let me bring my own services and information, either because the application is open enough for the bots to interact with directly (see File over app) or via an exposed host / tunnel or some other dangerous route.
+- **NIP-90**: Data Vending Machines (job requests/results)
+- **NIP-42**: Authentication (required for Nexus)
+- **NIP-89**: Handler discovery
 
-Above all remember that making software is getting easier so businesses will be making software on top of your software. Design for this!
+## Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [crates/pylon/docs/](crates/pylon/docs/) | Pylon documentation |
+| [crates/nexus/docs/](crates/nexus/docs/) | Nexus documentation |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Contributing / coding agents |
+
+## For Coding Agents
+
+If you're a coding agent working on this repo, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for:
+- Git rules and commit standards
+- Crate structure
+- Build instructions
+- Design philosophy
