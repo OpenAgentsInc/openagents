@@ -1,6 +1,7 @@
 //! OANIX manifest types - the discovered environment.
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::time::Instant;
 
 /// Complete manifest of discovered environment.
@@ -14,8 +15,61 @@ pub struct OanixManifest {
     pub network: NetworkManifest,
     /// Identity and wallet status
     pub identity: IdentityManifest,
+    /// Workspace context (.openagents/)
+    pub workspace: Option<WorkspaceManifest>,
     /// When discovery completed
     pub discovered_at: Instant,
+}
+
+/// Workspace manifest - project context from .openagents/ folder.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceManifest {
+    /// Project root directory
+    pub root: PathBuf,
+    /// Project name (from directory name)
+    pub project_name: Option<String>,
+    /// Whether .openagents/ folder exists
+    pub has_openagents: bool,
+    /// Discovered directives
+    pub directives: Vec<DirectiveSummary>,
+    /// Discovered issues
+    pub issues: Vec<IssueSummary>,
+    /// Number of open issues
+    pub open_issues: u32,
+    /// Number of pending issues (not yet triaged)
+    pub pending_issues: u32,
+    /// Currently active directive ID
+    pub active_directive: Option<String>,
+}
+
+/// Summary of a directive from .openagents/directives/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DirectiveSummary {
+    /// Directive ID (e.g., "d-027")
+    pub id: String,
+    /// Directive title
+    pub title: String,
+    /// Status (active, completed, paused, etc.)
+    pub status: String,
+    /// Priority (urgent, high, medium, low)
+    pub priority: Option<String>,
+    /// Progress percentage (0-100)
+    pub progress_pct: Option<u8>,
+}
+
+/// Summary of an issue from .openagents/issues.json
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueSummary {
+    /// Issue number
+    pub number: u32,
+    /// Issue title
+    pub title: String,
+    /// Status (open, in_progress, completed)
+    pub status: String,
+    /// Priority
+    pub priority: String,
+    /// Whether the issue is blocked
+    pub is_blocked: bool,
 }
 
 /// Hardware manifest - CPU, RAM, GPU.

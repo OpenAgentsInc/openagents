@@ -1,6 +1,7 @@
 # OpenAgents: Execution Guide
 
 Practical guide to the current implementation. For the full vision, see [SYNTHESIS.md](./SYNTHESIS.md).
+For the agent OS vision, see [OANIX.md](./docs/OANIX.md).
 
 ---
 
@@ -356,6 +357,7 @@ Issues are NOT done unless:
 | Autopilot | Alpha | Claude SDK integration, tunnel mode |
 | WGPUI | Phase 16 | 377 tests, full component library |
 | RLM | Experimental | Recursive Language Model queries |
+| OANIX | Design | Agent OS runtime (future) |
 
 **Bitcoin network:** Default is `regtest` for testing. Mainnet available.
 

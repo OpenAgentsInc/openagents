@@ -46,7 +46,10 @@ pub mod situation;
 
 pub use boot::boot;
 pub use manifest::{
-    ComputeManifest, GpuDevice, HardwareManifest, IdentityManifest, InferenceBackend,
-    NetworkManifest, OanixManifest, RelayStatus,
+    ComputeManifest, DirectiveSummary, GpuDevice, HardwareManifest, IdentityManifest,
+    InferenceBackend, IssueSummary, NetworkManifest, OanixManifest, RelayStatus,
+    WorkspaceManifest,
 };
-pub use situation::{Connectivity, ComputePower, Environment, RecommendedAction, SituationAssessment};
+pub use situation::{
+    Connectivity, ComputePower, Environment, RecommendedAction, SituationAssessment,
+};

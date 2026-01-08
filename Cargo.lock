@@ -249,6 +249,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "adjutant"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "clap",
+ "glob",
+ "issues",
+ "oanix",
+ "rlm",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "walkdir",
+ "which 8.0.0",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4787,6 +4810,7 @@ dependencies = [
  "nostr 0.1.0",
  "rand 0.8.5",
  "rlm",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",
@@ -8738,6 +8762,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ntapi"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c70f219e21142367c70c0b30c6a9e3a14d55b4d12a204d897fbec83a0363f081"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8891,6 +8924,29 @@ name = "number_prefix"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
+
+[[package]]
+name = "oanix"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "compute",
+ "dirs 5.0.1",
+ "nostr 0.1.0",
+ "nostr-client",
+ "openagents-runtime",
+ "openagents-spark",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sysinfo",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "objc"
@@ -10732,8 +10788,10 @@ dependencies = [
  "claude-agent-sdk",
  "compute",
  "dirs 5.0.1",
+ "frlm",
  "futures-util",
  "hex",
+ "k256",
  "ml",
  "neobank",
  "nix 0.29.0",
@@ -13574,6 +13632,20 @@ dependencies = [
  "libc",
  "thiserror 1.0.69",
  "walkdir",
+]
+
+[[package]]
+name = "sysinfo"
+version = "0.32.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c33cd241af0f2e9e3b5c32163b873b29956890b5342e6745b917ce9d490f4af"
+dependencies = [
+ "core-foundation-sys",
+ "libc",
+ "memchr",
+ "ntapi",
+ "rayon",
+ "windows 0.54.0",
 ]
 
 [[package]]

@@ -1,6 +1,8 @@
 //! OANIX boot sequence - environment discovery and initialization.
 
-use crate::discovery::{discover_compute, discover_hardware, discover_identity, discover_network};
+use crate::discovery::{
+    discover_compute, discover_hardware, discover_identity, discover_network, discover_workspace,
+};
 use crate::manifest::OanixManifest;
 use std::time::Instant;
 
@@ -11,6 +13,7 @@ use std::time::Instant;
 /// 2. Compute backends (Ollama, Apple FM, llama.cpp)
 /// 3. Network (internet, relays, swarm)
 /// 4. Identity (keys, wallet)
+/// 5. Workspace (.openagents/ folder)
 pub async fn boot() -> anyhow::Result<OanixManifest> {
     let start = Instant::now();
 
@@ -26,11 +29,15 @@ pub async fn boot() -> anyhow::Result<OanixManifest> {
     // Phase 4: Identity discovery
     let identity = discover_identity().await?;
 
+    // Phase 5: Workspace discovery
+    let workspace = discover_workspace().await?;
+
     Ok(OanixManifest {
         hardware,
         compute,
         network,
         identity,
+        workspace,
         discovered_at: start,
     })
 }
