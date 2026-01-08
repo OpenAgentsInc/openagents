@@ -94,6 +94,19 @@ Published event 0289d6b7284612cc6b3711ae145e1cd58c55cb06ae2f6e7d2d38ebdfec27ed0f
 2. Verify events are being matched against subscriptions
 3. Test with wscat/websocat to manually query for results
 
+## Results Summary
+
+### What's Working
+- ✅ Provider receives and processes kind:5940 RLM jobs
+- ✅ Provider publishes results (kind:6940) to 3/3 relays
+- ✅ Results stored in Nexus D1 database
+- ✅ Stats API shows correct RLM counts
+- ✅ All 9 pending jobs resolved (23+ completed)
+
+### What Needs Investigation
+- ❌ Client subscription doesn't receive results in real-time
+- The issue is likely in Nexus Durable Object broadcast_event() or subscription storage
+
 ## Commits
 
-- Added kind:5940 to relay service subscription filter
+- 6103903 - Added kind:5940 to relay service subscription filter
