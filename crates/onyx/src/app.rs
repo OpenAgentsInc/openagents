@@ -43,6 +43,45 @@ const SIDEBAR_WIDTH: f32 = 200.0;
 const FILE_ITEM_HEIGHT: f32 = 28.0;
 const SIDEBAR_PADDING: f32 = 8.0;
 
+/// Check if voice-daemon is running by checking PID file
+/// If daemon is active, Onyx should not handle voice to avoid duplicates
+fn is_voice_daemon_running() -> bool {
+    let pid_path = dirs::home_dir()
+        .map(|h| h.join(".openagents").join("voice").join("voice-daemon.pid"));
+
+    let Some(path) = pid_path else {
+        return false;
+    };
+
+    if !path.exists() {
+        return false;
+    }
+
+    // Read PID and check if process exists
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return false;
+    };
+
+    let Ok(pid) = content.trim().parse::<i32>() else {
+        return false;
+    };
+
+    // Check if process is alive using kill(pid, 0)
+    #[cfg(unix)]
+    {
+        // Signal 0 checks if process exists without sending actual signal
+        unsafe {
+            libc::kill(pid, 0) == 0
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        // Assume running if PID file exists on non-Unix
+        true
+    }
+}
+
 /// Main application state
 pub struct OnyxApp {
     state: Option<RenderState>,
@@ -610,18 +649,24 @@ impl ApplicationHandler for OnyxApp {
             editor.clear_status(); // Clear any stale status on startup
 
             // Initialize voice transcription with event channel
-            let (voice, voice_event_rx) = match VoiceSession::new() {
-                Ok(mut session) => {
-                    tracing::info!("Voice transcription initialized");
-                    let (tx, rx) = mpsc::channel();
-                    session.on_event(move |event| {
-                        let _ = tx.send(event);
-                    });
-                    (Some(session), Some(rx))
-                }
-                Err(e) => {
-                    tracing::warn!("Voice transcription unavailable: {}", e);
-                    (None, None)
+            // Skip if voice-daemon is running to avoid duplicate transcriptions
+            let (voice, voice_event_rx) = if is_voice_daemon_running() {
+                tracing::info!("Voice daemon is running, disabling Onyx voice handling");
+                (None, None)
+            } else {
+                match VoiceSession::new() {
+                    Ok(mut session) => {
+                        tracing::info!("Voice transcription initialized");
+                        let (tx, rx) = mpsc::channel();
+                        session.on_event(move |event| {
+                            let _ = tx.send(event);
+                        });
+                        (Some(session), Some(rx))
+                    }
+                    Err(e) => {
+                        tracing::warn!("Voice transcription unavailable: {}", e);
+                        (None, None)
+                    }
                 }
             };
 

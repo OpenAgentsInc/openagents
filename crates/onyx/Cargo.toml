@@ -51,6 +51,10 @@ objc2-foundation = "0.2"
 objc2-app-kit = { version = "0.2", features = ["NSWindow", "NSColor", "NSResponder", "NSView"] }
 raw-window-handle = "0.6"
 
+# Unix process checking
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # Update checking
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 semver = "1"
