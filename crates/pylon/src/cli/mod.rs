@@ -6,6 +6,7 @@ mod connect;
 mod compute;
 mod doctor;
 mod earnings;
+mod gateway;
 mod infer;
 mod init;
 mod job;
@@ -57,6 +58,8 @@ pub enum Commands {
     Job(job::JobArgs),
     /// Run recursive language model queries (RLM)
     Rlm(rlm::RlmArgs),
+    /// Interact with external AI gateways (Cerebras, etc.)
+    Gateway(gateway::GatewayArgs),
 }
 
 /// Execute a CLI command
@@ -76,5 +79,6 @@ pub async fn execute(cli: PylonCli) -> anyhow::Result<()> {
         Commands::Wallet(args) => wallet::run(args).await,
         Commands::Job(args) => job::run(args).await,
         Commands::Rlm(args) => rlm::run(args).await,
+        Commands::Gateway(args) => gateway::run(args).await,
     }
 }

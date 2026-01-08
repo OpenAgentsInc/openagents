@@ -59,6 +59,7 @@ members = [
     "crates/vim",
     "crates/oanix",
     "crates/adjutant",
+    "crates/gateway",
 ]
 
 # Unified OpenAgents binary

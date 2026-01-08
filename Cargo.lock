@@ -5145,6 +5145,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "312d2295c7302019c395cfb90dacd00a82a2eabd700429bba9c7a3f38dbbe11b"
 
 [[package]]
+name = "gateway"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+]
+
+[[package]]
 name = "gdk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10788,8 +10802,10 @@ dependencies = [
  "claude-agent-sdk",
  "compute",
  "dirs 5.0.1",
+ "dotenvy",
  "frlm",
  "futures-util",
+ "gateway",
  "hex",
  "k256",
  "ml",
