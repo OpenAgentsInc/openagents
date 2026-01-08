@@ -13,6 +13,8 @@ pub fn print_manifest(manifest: &OanixManifest) {
     println!();
     print_identity(&manifest);
     println!();
+    print_workspace(&manifest);
+    println!();
     print_situation(&manifest);
 }
 
@@ -154,6 +156,100 @@ fn print_identity(manifest: &OanixManifest) {
     } else {
         println!("  [--] Not initialized");
         println!("       Run 'pylon init' to create identity");
+    }
+}
+
+fn print_workspace(manifest: &OanixManifest) {
+    println!("Workspace");
+
+    match &manifest.workspace {
+        Some(ws) => {
+            // Project name
+            if let Some(name) = &ws.project_name {
+                println!("  [OK] Project: {}", name);
+            } else {
+                println!("  [OK] Project root: {}", ws.root.display());
+            }
+
+            // Active directive
+            if let Some(directive_id) = &ws.active_directive {
+                if let Some(directive) = ws.directives.iter().find(|d| &d.id == directive_id) {
+                    let progress = directive
+                        .progress_pct
+                        .map(|p| format!(" ({}%)", p))
+                        .unwrap_or_default();
+                    println!(
+                        "  Active: {} - {}{}",
+                        directive.id, directive.title, progress
+                    );
+                } else {
+                    println!("  Active: {}", directive_id);
+                }
+            }
+
+            // Issue counts
+            let blocked_count = ws.issues.iter().filter(|i| i.is_blocked).count();
+            let unblocked_open = ws.open_issues as usize - blocked_count.min(ws.open_issues as usize);
+
+            if ws.open_issues > 0 || ws.pending_issues > 0 {
+                let mut parts = Vec::new();
+                if unblocked_open > 0 {
+                    parts.push(format!("{} actionable", unblocked_open));
+                }
+                if blocked_count > 0 {
+                    parts.push(format!("{} blocked", blocked_count));
+                }
+                if ws.pending_issues > 0 {
+                    parts.push(format!("{} pending", ws.pending_issues));
+                }
+                println!("  Issues: {}", parts.join(", "));
+            } else {
+                println!("  Issues: none");
+            }
+
+            // Directive summary
+            let active_count = ws.directives.iter().filter(|d| d.status == "active").count();
+            let completed_count = ws
+                .directives
+                .iter()
+                .filter(|d| d.status == "completed")
+                .count();
+            if !ws.directives.is_empty() {
+                println!(
+                    "  Directives: {} total ({} active, {} completed)",
+                    ws.directives.len(),
+                    active_count,
+                    completed_count
+                );
+            }
+
+            // Suggest next action if there are actionable issues
+            if unblocked_open > 0 {
+                // Find highest priority unblocked issue
+                let next_issue = ws
+                    .issues
+                    .iter()
+                    .filter(|i| i.status == "open" && !i.is_blocked)
+                    .min_by_key(|i| match i.priority.as_str() {
+                        "urgent" => 0,
+                        "high" => 1,
+                        "medium" => 2,
+                        "low" => 3,
+                        _ => 4,
+                    });
+
+                if let Some(issue) = next_issue {
+                    println!(
+                        "\n  Next: Issue #{} ({}) - {}",
+                        issue.number, issue.priority, issue.title
+                    );
+                }
+            }
+        }
+        None => {
+            println!("  [--] No .openagents/ folder found");
+            println!("       Run in a project directory with .openagents/");
+        }
     }
 }
 

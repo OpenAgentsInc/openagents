@@ -57,6 +57,8 @@ members = [
     "crates/bench-runner",
     "crates/onyx",
     "crates/vim",
+    "crates/oanix",
+    "crates/adjutant",
 ]
 
 # Unified OpenAgents binary
@@ -78,7 +80,7 @@ name = "openagents"
 path = "src/main.rs"
 
 [[bin]]
-name = "autopilot"
+name = "autopilot-gui"
 path = "src/bin/autopilot.rs"
 
 [[bin]]

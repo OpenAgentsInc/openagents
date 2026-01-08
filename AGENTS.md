@@ -9,6 +9,7 @@ Decentralized AI compute marketplace. Run inference, earn Bitcoin.
 | **Pylon** | Node software for the compute marketplace | v0.1 |
 | **Nexus** | Agent-centric Nostr relay | v0.1 |
 | **Onyx** | Local-first Markdown editor | Alpha |
+| **OANIX** | Agent operating system runtime | Design |
 
 ## Quick Start: Pylon
 
@@ -111,6 +112,7 @@ See [crates/nexus/docs/MVP.md](crates/nexus/docs/MVP.md) for architecture.
 |-----|-------------|
 | [crates/pylon/docs/](crates/pylon/docs/) | Pylon documentation |
 | [crates/nexus/docs/](crates/nexus/docs/) | Nexus documentation |
+| [docs/OANIX.md](docs/OANIX.md) | OANIX vision (agent OS runtime) |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Contributing / coding agents |
 
 ## For Coding Agents
