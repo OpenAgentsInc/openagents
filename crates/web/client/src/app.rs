@@ -21,11 +21,16 @@ use crate::telemetry::{TelemetryCollector, set_panic_hook, track_cta_click};
 use crate::views::{
     build_2026_page, build_brb_page, build_fm_page, build_frlm_page, build_gfn_page,
     build_gptoss_page, build_landing_page, build_ml_inference_page, build_repo_selector,
-    build_repo_view, build_rlm_demo_page, build_rlm_detail_page, build_rlm_list_page,
-    handle_rlm_demo_click, handle_rlm_demo_keydown, handle_rlm_demo_mouse_move,
-    handle_rlm_demo_scroll, handle_rlm_detail_click, handle_rlm_detail_mouse_move,
-    handle_rlm_detail_scroll, handle_rlm_list_click, handle_rlm_list_mouse_move,
-    handle_rlm_list_scroll,
+    build_repo_view, build_rlm_demo_page, build_rlm_detail_page,
+    build_rlm_experiment_detail_page, build_rlm_experiments_page, build_rlm_list_page,
+    build_rlm_providers_page, handle_rlm_demo_click, handle_rlm_demo_keydown,
+    handle_rlm_demo_mouse_move, handle_rlm_demo_scroll, handle_rlm_detail_click,
+    handle_rlm_detail_mouse_move, handle_rlm_detail_scroll,
+    handle_rlm_experiment_detail_click, handle_rlm_experiment_detail_mouse_move,
+    handle_rlm_experiment_detail_scroll, handle_rlm_experiments_click,
+    handle_rlm_experiments_mouse_move, handle_rlm_experiments_scroll,
+    handle_rlm_list_click, handle_rlm_list_mouse_move, handle_rlm_list_scroll,
+    handle_rlm_providers_mouse_move, handle_rlm_providers_scroll,
 };
 use crate::fs_access::{self, FileKind};
 use crate::gptoss_viz::{flush_gptoss_events, init_gptoss_viz_runtime};
@@ -33,7 +38,10 @@ use crate::gptoss_runtime::{
     gguf_file_input_label, gguf_file_label, start_gptoss_file_pick, start_gptoss_load,
 };
 use crate::ml_viz::init_ml_viz_runtime;
-use crate::rlm_runtime::{init_rlm_detail_runtime, init_rlm_list_runtime};
+use crate::rlm_runtime::{
+    init_rlm_detail_runtime, init_rlm_experiment_detail_runtime, init_rlm_experiments_runtime,
+    init_rlm_list_runtime, init_rlm_providers_runtime,
+};
 use crate::utils::{copy_to_clipboard, read_clipboard_text, track_funnel_event};
 // Wallet disabled
 // use crate::wallet::{dispatch_wallet_event, queue_wallet_actions, WalletAction};
@@ -106,6 +114,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         .and_then(|v| v.as_string());
     let rlm_run_id = web_sys::window()
         .and_then(|w| js_sys::Reflect::get(&w, &"RLM_RUN_ID".into()).ok())
+        .and_then(|v| v.as_string());
+    let rlm_experiment_id = web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &"RLM_EXPERIMENT_ID".into()).ok())
         .and_then(|v| v.as_string());
 
     // Legacy RLM visualization page flag (demo-only)
@@ -191,6 +202,36 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 state_guard.view = AppView::RlmDemo;
                 state_guard.rlm.demo_mode = true;
                 drop(state_guard);
+            }
+            "experiments" => {
+                let mut state_guard = state.borrow_mut();
+                state_guard.loading = false;
+                state_guard.view = AppView::RlmExperiments;
+                drop(state_guard);
+                init_rlm_experiments_runtime(state.clone());
+            }
+            "experiment_detail" => {
+                let experiment_id = rlm_experiment_id.unwrap_or_default();
+                let mut state_guard = state.borrow_mut();
+                state_guard.loading = false;
+                state_guard.view = AppView::RlmExperimentDetail;
+                if experiment_id.is_empty() {
+                    state_guard.rlm_experiment_detail.error = Some("Missing experiment id".to_string());
+                    state_guard.rlm_experiment_detail.experiment_id = None;
+                } else {
+                    state_guard.rlm_experiment_detail.experiment_id = Some(experiment_id.clone());
+                }
+                drop(state_guard);
+                if !experiment_id.is_empty() {
+                    init_rlm_experiment_detail_runtime(state.clone(), experiment_id);
+                }
+            }
+            "providers" => {
+                let mut state_guard = state.borrow_mut();
+                state_guard.loading = false;
+                state_guard.view = AppView::RlmProviders;
+                drop(state_guard);
+                init_rlm_providers_runtime(state.clone());
             }
             _ => {}
         }
@@ -465,6 +506,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 } else if state.view == AppView::RlmDemo {
                     handle_rlm_demo_mouse_move(&mut state, x, y);
                     let _ = state.rlm.handle_event(&InputEvent::MouseMove { x, y });
+                } else if state.view == AppView::RlmExperiments {
+                    handle_rlm_experiments_mouse_move(&mut state, x, y);
+                } else if state.view == AppView::RlmExperimentDetail {
+                    handle_rlm_experiment_detail_mouse_move(&mut state, x, y);
+                } else if state.view == AppView::RlmProviders {
+                    handle_rlm_providers_mouse_move(&mut state, x, y);
                 }
 
                 if state.view == AppView::GptOssPage {
@@ -959,6 +1006,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let mut pick_gptoss_file = false;
             let mut copy_gptoss_logs = false;
             let mut rlm_nav: Option<String> = None;
+            let mut rlm_export: Option<String> = None;
             if state.view == AppView::GptOssPage
                 && state.gptoss.copy_button_bounds.contains(click_pos)
             {
@@ -983,6 +1031,31 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             } else if state.view == AppView::RlmDemo {
                 handle_rlm_demo_click(&mut state, click_pos.x, click_pos.y);
+            } else if state.view == AppView::RlmExperiments {
+                if let Some(exp_id) = handle_rlm_experiments_click(&mut state, click_pos.x, click_pos.y) {
+                    rlm_nav = Some(format!("/rlm/experiments/{}", exp_id));
+                }
+            } else if state.view == AppView::RlmExperimentDetail {
+                if let Some(action) = handle_rlm_experiment_detail_click(&mut state, click_pos.x, click_pos.y) {
+                    match action {
+                        crate::views::ExperimentDetailAction::Back => {
+                            rlm_nav = Some("/rlm/experiments".to_string());
+                        }
+                        crate::views::ExperimentDetailAction::ExportCsv => {
+                            if let Some(exp_id) = state.rlm_experiment_detail.experiment_id.clone() {
+                                rlm_export = Some(format!("/api/rlm/experiments/{}/export?format=csv", exp_id));
+                            }
+                        }
+                        crate::views::ExperimentDetailAction::ExportJson => {
+                            if let Some(exp_id) = state.rlm_experiment_detail.experiment_id.clone() {
+                                rlm_export = Some(format!("/api/rlm/experiments/{}/export?format=json", exp_id));
+                            }
+                        }
+                        crate::views::ExperimentDetailAction::OpenRun(run_id) => {
+                            rlm_nav = Some(format!("/rlm/runs/{}", run_id));
+                        }
+                    }
+                }
             }
 
             if state.button_bounds.contains(click_pos) {
@@ -1005,8 +1078,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         }
                         AppView::GfnPage | AppView::MlVizPage | AppView::GptOssPage
                         | AppView::FmPage | AppView::FrlmPage | AppView::RlmList
-                        | AppView::RlmDetail | AppView::RlmDemo | AppView::Y2026Page
-                        | AppView::BrbPage => {
+                        | AppView::RlmDetail | AppView::RlmDemo | AppView::RlmExperiments
+                        | AppView::RlmExperimentDetail | AppView::RlmProviders
+                        | AppView::Y2026Page | AppView::BrbPage => {
                             // No logout button action on visualization pages
                         }
                     }
@@ -1017,6 +1091,14 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 drop(state);
                 if let Some(window) = web_sys::window() {
                     let _ = window.location().set_href(&url);
+                }
+                return;
+            }
+
+            if let Some(url) = rlm_export {
+                drop(state);
+                if let Some(window) = web_sys::window() {
+                    let _ = window.open_with_url_and_target(&url, "_blank");
                 }
                 return;
             }
@@ -1373,6 +1455,18 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     state.rlm.scroll_offset = state.rlm.scroll_offset.clamp(0.0, max_scroll);
                     return;
                 }
+            } else if state.view == AppView::RlmExperiments {
+                if handle_rlm_experiments_scroll(&mut state, event.offset_x() as f32, event.offset_y() as f32, event.delta_y() as f32) {
+                    return;
+                }
+            } else if state.view == AppView::RlmExperimentDetail {
+                if handle_rlm_experiment_detail_scroll(&mut state, event.offset_x() as f32, event.offset_y() as f32, event.delta_y() as f32) {
+                    return;
+                }
+            } else if state.view == AppView::RlmProviders {
+                if handle_rlm_providers_scroll(&mut state, event.offset_x() as f32, event.offset_y() as f32, event.delta_y() as f32) {
+                    return;
+                }
             }
 
             // Handle scrolling for DVM marketplace on Landing page
@@ -1519,7 +1613,16 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 || (state.view == AppView::RlmDemo
                     && (state.rlm.run_button_hovered
                         || state.rlm.restart_button_hovered
-                        || state.rlm.speed_button_hovered));
+                        || state.rlm.speed_button_hovered))
+                || (state.view == AppView::RlmExperiments
+                    && state.rlm_experiments.hovered_experiment_idx.is_some())
+                || (state.view == AppView::RlmExperimentDetail
+                    && (state.rlm_experiment_detail.back_button_hovered
+                        || state.rlm_experiment_detail.export_csv_hovered
+                        || state.rlm_experiment_detail.export_json_hovered
+                        || state.rlm_experiment_detail.hovered_run_idx.is_some()))
+                || (state.view == AppView::RlmProviders
+                    && state.rlm_providers.hovered_provider_idx.is_some());
             let editor_cursor = if state.view == AppView::RepoSelector {
                 state.editor_workspace.cursor()
             } else {
@@ -1825,6 +1928,36 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             }
             AppView::RlmDemo => {
                 build_rlm_demo_page(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
+            }
+            AppView::RlmExperiments => {
+                build_rlm_experiments_page(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
+            }
+            AppView::RlmExperimentDetail => {
+                build_rlm_experiment_detail_page(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
+            }
+            AppView::RlmProviders => {
+                build_rlm_providers_page(
                     &mut scene,
                     platform.text_system(),
                     &mut state,

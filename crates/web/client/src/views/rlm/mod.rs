@@ -1,6 +1,9 @@
 mod demo;
 mod detail;
+mod experiment_detail;
+mod experiments;
 mod list;
+mod providers;
 
 pub(crate) use demo::{
     build_rlm_demo_page, handle_rlm_demo_click, handle_rlm_demo_keydown,
@@ -10,9 +13,21 @@ pub(crate) use detail::{
     build_rlm_detail_page, handle_rlm_detail_click, handle_rlm_detail_mouse_move,
     handle_rlm_detail_scroll,
 };
+pub(crate) use experiment_detail::{
+    build_rlm_experiment_detail_page, handle_rlm_experiment_detail_click,
+    handle_rlm_experiment_detail_mouse_move, handle_rlm_experiment_detail_scroll,
+    ExperimentDetailAction,
+};
+pub(crate) use experiments::{
+    build_rlm_experiments_page, handle_rlm_experiments_click, handle_rlm_experiments_mouse_move,
+    handle_rlm_experiments_scroll,
+};
 pub(crate) use list::{
     build_rlm_list_page, handle_rlm_list_click, handle_rlm_list_mouse_move,
     handle_rlm_list_scroll,
+};
+pub(crate) use providers::{
+    build_rlm_providers_page, handle_rlm_providers_mouse_move, handle_rlm_providers_scroll,
 };
 
 use js_sys::Date;

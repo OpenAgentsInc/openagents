@@ -12,6 +12,7 @@ pub mod claude_auth;
 pub mod container;
 pub mod early;
 pub mod episode_template;
+pub mod export;
 pub mod fm;
 pub mod fracking_apple_silicon;
 pub mod frlm;

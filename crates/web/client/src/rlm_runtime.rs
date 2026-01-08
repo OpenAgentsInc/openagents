@@ -6,7 +6,10 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Event, MessageEvent, WebSocket};
 
-use crate::state::{AppState, RlmRunSummary, RlmTraceEventRecord, RlmTraceEventView};
+use crate::state::{
+    AppState, RlmExperimentDetail, RlmExperimentSummary, RlmProviderStat, RlmRunSummary,
+    RlmTraceEventRecord, RlmTraceEventView,
+};
 
 #[derive(serde::Deserialize)]
 struct TraceResponse {
@@ -29,6 +32,71 @@ pub(crate) fn init_rlm_list_runtime(state: Rc<RefCell<AppState>>) {
             if let Ok(mut state) = state.try_borrow_mut() {
                 state.rlm_list.loading = false;
                 state.rlm_list.error = Some(format_js_error("Failed to load runs", err));
+            }
+        }
+    });
+}
+
+pub(crate) fn init_rlm_experiments_runtime(state: Rc<RefCell<AppState>>) {
+    {
+        let mut state = state.borrow_mut();
+        state.rlm_experiments.loading = true;
+        state.rlm_experiments.error = None;
+        state.rlm_experiments.scroll_offset = 0.0;
+        state.rlm_experiments.experiments.clear();
+        state.rlm_experiments.row_bounds.clear();
+    }
+
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Err(err) = fetch_experiments(&state).await {
+            if let Ok(mut state) = state.try_borrow_mut() {
+                state.rlm_experiments.loading = false;
+                state.rlm_experiments.error = Some(format_js_error("Failed to load experiments", err));
+            }
+        }
+    });
+}
+
+pub(crate) fn init_rlm_experiment_detail_runtime(
+    state: Rc<RefCell<AppState>>,
+    experiment_id: String,
+) {
+    {
+        let mut state = state.borrow_mut();
+        state.rlm_experiment_detail.loading = true;
+        state.rlm_experiment_detail.error = None;
+        state.rlm_experiment_detail.scroll_offset = 0.0;
+        state.rlm_experiment_detail.runs.clear();
+        state.rlm_experiment_detail.experiment = None;
+        state.rlm_experiment_detail.experiment_id = Some(experiment_id.clone());
+    }
+
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Err(err) = fetch_experiment_detail(&state, &experiment_id).await {
+            if let Ok(mut state) = state.try_borrow_mut() {
+                state.rlm_experiment_detail.loading = false;
+                state.rlm_experiment_detail.error =
+                    Some(format_js_error("Failed to load experiment", err));
+            }
+        }
+    });
+}
+
+pub(crate) fn init_rlm_providers_runtime(state: Rc<RefCell<AppState>>) {
+    {
+        let mut state = state.borrow_mut();
+        state.rlm_providers.loading = true;
+        state.rlm_providers.error = None;
+        state.rlm_providers.scroll_offset = 0.0;
+        state.rlm_providers.providers.clear();
+        state.rlm_providers.row_bounds.clear();
+    }
+
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Err(err) = fetch_providers(&state).await {
+            if let Ok(mut state) = state.try_borrow_mut() {
+                state.rlm_providers.loading = false;
+                state.rlm_providers.error = Some(format_js_error("Failed to load providers", err));
             }
         }
     });
@@ -137,6 +205,73 @@ async fn fetch_trace(state: &Rc<RefCell<AppState>>, run_id: &str) -> Result<(), 
     if let Ok(mut state) = state.try_borrow_mut() {
         state.rlm_detail.trace_loading = false;
         state.rlm_detail.trace_events = events;
+    }
+
+    Ok(())
+}
+
+async fn fetch_experiments(state: &Rc<RefCell<AppState>>) -> Result<(), JsValue> {
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("window not available"))?;
+    let url = "/api/rlm/experiments?limit=50";
+    let resp_value = JsFuture::from(window.fetch_with_str(url)).await?;
+    let resp: web_sys::Response = resp_value.dyn_into()?;
+    if !resp.ok() {
+        return Err(JsValue::from_str(&format!("rlm experiments fetch failed: {}", resp.status())));
+    }
+
+    let json = JsFuture::from(resp.json()?).await?;
+    let experiments: Vec<RlmExperimentSummary> = serde_wasm_bindgen::from_value(json)
+        .map_err(|e| JsValue::from_str(&format!("rlm experiments decode failed: {}", e)))?;
+
+    if let Ok(mut state) = state.try_borrow_mut() {
+        state.rlm_experiments.loading = false;
+        state.rlm_experiments.experiments = experiments;
+    }
+
+    Ok(())
+}
+
+async fn fetch_experiment_detail(
+    state: &Rc<RefCell<AppState>>,
+    experiment_id: &str,
+) -> Result<(), JsValue> {
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("window not available"))?;
+    let url = format!("/api/rlm/experiments/{}", experiment_id);
+    let resp_value = JsFuture::from(window.fetch_with_str(&url)).await?;
+    let resp: web_sys::Response = resp_value.dyn_into()?;
+    if !resp.ok() {
+        return Err(JsValue::from_str(&format!("rlm experiment fetch failed: {}", resp.status())));
+    }
+
+    let json = JsFuture::from(resp.json()?).await?;
+    let detail: RlmExperimentDetail = serde_wasm_bindgen::from_value(json)
+        .map_err(|e| JsValue::from_str(&format!("rlm experiment decode failed: {}", e)))?;
+
+    if let Ok(mut state) = state.try_borrow_mut() {
+        state.rlm_experiment_detail.loading = false;
+        state.rlm_experiment_detail.experiment = Some(detail.experiment);
+        state.rlm_experiment_detail.runs = detail.runs;
+    }
+
+    Ok(())
+}
+
+async fn fetch_providers(state: &Rc<RefCell<AppState>>) -> Result<(), JsValue> {
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("window not available"))?;
+    let url = "/api/rlm/providers?limit=5000";
+    let resp_value = JsFuture::from(window.fetch_with_str(url)).await?;
+    let resp: web_sys::Response = resp_value.dyn_into()?;
+    if !resp.ok() {
+        return Err(JsValue::from_str(&format!("rlm providers fetch failed: {}", resp.status())));
+    }
+
+    let json = JsFuture::from(resp.json()?).await?;
+    let providers: Vec<RlmProviderStat> = serde_wasm_bindgen::from_value(json)
+        .map_err(|e| JsValue::from_str(&format!("rlm providers decode failed: {}", e)))?;
+
+    if let Ok(mut state) = state.try_borrow_mut() {
+        state.rlm_providers.loading = false;
+        state.rlm_providers.providers = providers;
     }
 
     Ok(())

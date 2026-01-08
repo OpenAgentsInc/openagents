@@ -182,6 +182,29 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             })
             .await
         }
+        (Method::Get, "/api/rlm/experiments") => {
+            let url = req.url()?;
+            let mut limit = 20u32;
+            let mut before = None;
+            for (key, value) in url.query_pairs() {
+                match key.as_ref() {
+                    "limit" => limit = value.parse::<u32>().unwrap_or(20).min(100),
+                    "before" => before = value.parse::<i64>().ok(),
+                    _ => {}
+                }
+            }
+            with_auth(&req, &env, |user| {
+                routes::rlm::list_experiments(user, env.clone(), limit, before)
+            })
+            .await
+        }
+        (Method::Post, "/api/rlm/experiments") => {
+            with_auth(&req, &env, |user| async move {
+                let body = req.text().await?;
+                routes::rlm::create_experiment(user, env.clone(), body).await
+            })
+            .await
+        }
         (Method::Post, "/api/rlm/runs/sync") => {
             let body = req.text().await?;
             routes::rlm::sync(env, body).await
@@ -202,6 +225,64 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
                 .await
             } else {
                 Response::error("Invalid RLM path", 400)
+            }
+        }
+        (Method::Get, "/api/rlm/providers") => {
+            let url = req.url()?;
+            let mut limit = 2000u32;
+            for (key, value) in url.query_pairs() {
+                if key == "limit" {
+                    limit = value.parse::<u32>().unwrap_or(2000).min(10000);
+                }
+            }
+            with_auth(&req, &env, |user| {
+                routes::rlm::list_providers(user, env.clone(), limit)
+            })
+            .await
+        }
+        (method, path) if path.starts_with("/api/rlm/experiments/") => {
+            let segments: Vec<&str> = path.trim_start_matches("/api/rlm/experiments/").split('/').collect();
+            if segments.is_empty() || segments[0].is_empty() {
+                return Response::error("Missing experiment id", 400);
+            }
+            let experiment_id = segments[0].to_string();
+            match (method, segments.get(1).copied(), segments.get(2).copied()) {
+                (Method::Get, None, None) => {
+                    with_auth(&req, &env, |user| {
+                        routes::rlm::get_experiment(user, env.clone(), experiment_id.clone())
+                    })
+                    .await
+                }
+                (Method::Post, Some("runs"), None) => {
+                    with_auth(&req, &env, |user| async move {
+                        let body = req.text().await?;
+                        routes::rlm::add_experiment_runs(user, env.clone(), experiment_id.clone(), body).await
+                    })
+                    .await
+                }
+                (Method::Delete, Some("runs"), Some(run_id)) => {
+                    with_auth(&req, &env, |user| {
+                        routes::rlm::remove_experiment_run(
+                            user,
+                            env.clone(),
+                            experiment_id.clone(),
+                            run_id.to_string(),
+                        )
+                    })
+                    .await
+                }
+                (Method::Get, Some("export"), None) => {
+                    with_auth(&req, &env, |user| {
+                        let format = req
+                            .url()
+                            .ok()
+                            .and_then(|url| url.query_pairs().find(|(k, _)| k == "format").map(|(_, v)| v.to_string()));
+                        let format = routes::export::ExportFormat::from_param(format);
+                        routes::export::export_experiment(user, env.clone(), experiment_id.clone(), format)
+                    })
+                    .await
+                }
+                _ => Response::error("Invalid experiment path", 400),
             }
         }
         (Method::Get, path) if path.starts_with("/api/rlm/ws/") => {
@@ -289,6 +370,12 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             let run_id = path.trim_start_matches("/rlm/runs/").to_string();
             routes::rlm::view_rlm_detail(env, run_id).await
         }
+        (Method::Get, "/rlm/experiments") => routes::rlm::view_rlm_experiments(env).await,
+        (Method::Get, path) if path.starts_with("/rlm/experiments/") => {
+            let experiment_id = path.trim_start_matches("/rlm/experiments/").to_string();
+            routes::rlm::view_rlm_experiment_detail(env, experiment_id).await
+        }
+        (Method::Get, "/rlm/providers") => routes::rlm::view_rlm_providers(env).await,
 
         // FM Bridge (Apple Foundation Models) visualization page
         (Method::Get, "/fm") => routes::fm::view_fm(env).await,
