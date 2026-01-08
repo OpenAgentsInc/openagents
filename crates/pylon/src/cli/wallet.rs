@@ -176,13 +176,19 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
 
         WalletCommand::Address => {
             let wallet = create_wallet().await?;
-            let address = wallet
+            let spark_address = wallet
                 .get_spark_address()
                 .await
-                .map_err(|e| anyhow::anyhow!("Failed to get address: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Failed to get Spark address: {}", e))?;
+            let bitcoin_address = wallet
+                .get_bitcoin_address()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to get Bitcoin address: {}", e))?;
 
-            println!("\nSpark Address (for receiving payments):");
-            println!("{}", address);
+            println!("\nAddresses");
+            println!("=========");
+            println!("Spark:   {}", spark_address);
+            println!("Bitcoin: {}", bitcoin_address);
         }
 
         WalletCommand::Invoice { amount, description } => {
