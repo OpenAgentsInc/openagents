@@ -182,3 +182,35 @@ If we want a faster first deliverable, we can ship **Phase 1 only**:
 - ~3-5 days of work
 
 Then iterate from there.
+
+---
+
+## Agent Documentation / Execution Log
+
+To keep a reliable trail, all agents should update this file while working on this plan.
+
+**Rules:**
+- Append new log entries at the end of this file (do not rewrite earlier entries).
+- If a task or decision deviates from this plan, add a short inline note in the relevant section using `[NOTE YYYY-MM-DD]` and reference the log entry.
+- Always record tests run; if none, write `not run` with a short reason.
+
+**Log template (copy/paste):**
+```
+### Log - YYYY-MM-DD - <agent>
+- Scope:
+- Changes:
+- Files:
+- Commands/Tests:
+- Decisions/Notes:
+- Follow-ups:
+```
+
+**Log (append entries below):**
+
+### Log - 2026-01-08 - codex
+- Scope: Phase 1 local RLM storage + FRLM integration for pylon rlm
+- Changes: Added FRLM SQLite trace writer; added RLM SQLite schema/store; refactored pylon rlm to use FRLM with local/swarm submitters, trace logging, and history subcommand
+- Files: crates/frlm/src/trace_db.rs, crates/frlm/src/lib.rs, crates/frlm/Cargo.toml, crates/pylon/src/db/migrations/004_rlm.sql, crates/pylon/src/db/rlm.rs, crates/pylon/src/db/mod.rs, crates/pylon/src/cli/rlm.rs, crates/pylon/Cargo.toml
+- Commands/Tests: not run (not requested)
+- Decisions/Notes: FRLM trace logging uses a background thread with a dedicated connection; local-only uses LocalSubmitter to preserve fragment fanout
+- Follow-ups: consider surfacing fanout/quorum controls; verify local fallback behavior with real swarm and backends

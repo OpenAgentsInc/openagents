@@ -7,6 +7,7 @@ description = "Federated Recursive Language Models - distributed RLM execution"
 [features]
 default = []
 dspy = ["dspy-rs", "rlm/dspy"]
+trace-db = ["rusqlite"]
 
 [dependencies]
 # DSPy (DSRs) for declarative LLM programming (optional)
@@ -31,6 +32,7 @@ uuid = { version = "1", features = ["v4"] }
 thiserror = "1"
 tracing = "0.1"
 web-time = "1"
+rusqlite = { version = "0.32", features = ["bundled"], optional = true }
 
 # Verification (hash checking)
 sha2 = "0.10"
