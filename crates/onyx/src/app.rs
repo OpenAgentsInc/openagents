@@ -713,57 +713,62 @@ impl ApplicationHandler for OnyxApp {
                     PhysicalKey::Code(KeyCode::Backquote)
                 );
 
-                if is_voice_key && !event.repeat {
-                    tracing::info!("Voice key detected: {:?} state={:?}", event.physical_key, event.state);
-                    if let Some(voice) = &mut state.voice {
-                        match event.state {
-                            ElementState::Pressed => {
-                                // Start recording on press
-                                if !voice.recording {
-                                    tracing::info!("Starting recording...");
-                                    match voice.start_recording() {
-                                        Ok(()) => {
-                                            tracing::info!("Recording started successfully");
-                                            state.editor.set_status("● Recording...", VOICE_RECORDING_COLOR);
+                // Block ALL voice key events from reaching the editor (including repeats)
+                if is_voice_key {
+                    // Only process non-repeat events for actual recording control
+                    if !event.repeat {
+                        tracing::info!("Voice key detected: {:?} state={:?}", event.physical_key, event.state);
+                        if let Some(voice) = &mut state.voice {
+                            match event.state {
+                                ElementState::Pressed => {
+                                    // Start recording on press
+                                    if !voice.recording {
+                                        tracing::info!("Starting recording...");
+                                        match voice.start_recording() {
+                                            Ok(()) => {
+                                                tracing::info!("Recording started successfully");
+                                                state.editor.set_status("● Recording...", VOICE_RECORDING_COLOR);
+                                            }
+                                            Err(e) => {
+                                                tracing::error!("Failed to start recording: {}", e);
+                                                state.editor.set_status(&format!("Mic error: {}", e), VOICE_RECORDING_COLOR);
+                                            }
+                                        }
+                                        state.window.request_redraw();
+                                    } else {
+                                        tracing::debug!("Already recording, ignoring press");
+                                    }
+                                }
+                                ElementState::Released => {
+                                    tracing::info!("Release detected, stopping recording...");
+                                    // Stop recording and start background transcription
+                                    match voice.stop_recording() {
+                                        Ok(true) => {
+                                            // Transcription started in background
+                                            tracing::info!("Transcription started in background");
+                                            state.editor.set_status("⟳ Transcribing...", VOICE_TRANSCRIBING_COLOR);
+                                        }
+                                        Ok(false) => {
+                                            // Quick tap or no audio - discarded
+                                            tracing::info!("Recording discarded (quick tap or no audio)");
+                                            state.editor.set_status("Recording discarded", VOICE_TRANSCRIBING_COLOR);
+                                            // Clear after a moment (will be cleared on next redraw cycle)
                                         }
                                         Err(e) => {
-                                            tracing::error!("Failed to start recording: {}", e);
-                                            state.editor.set_status(&format!("Mic error: {}", e), VOICE_RECORDING_COLOR);
+                                            tracing::error!("Recording stop failed: {}", e);
+                                            state.editor.set_status(&format!("Voice error: {}", e), VOICE_RECORDING_COLOR);
                                         }
                                     }
                                     state.window.request_redraw();
-                                } else {
-                                    tracing::debug!("Already recording, ignoring press");
                                 }
                             }
-                            ElementState::Released => {
-                                tracing::info!("Release detected, stopping recording...");
-                                // Stop recording and start background transcription
-                                match voice.stop_recording() {
-                                    Ok(true) => {
-                                        // Transcription started in background
-                                        tracing::info!("Transcription started in background");
-                                        state.editor.set_status("⟳ Transcribing...", VOICE_TRANSCRIBING_COLOR);
-                                    }
-                                    Ok(false) => {
-                                        // Quick tap or no audio - discarded
-                                        tracing::info!("Recording discarded (quick tap or no audio)");
-                                        state.editor.set_status("Recording discarded", VOICE_TRANSCRIBING_COLOR);
-                                        // Clear after a moment (will be cleared on next redraw cycle)
-                                    }
-                                    Err(e) => {
-                                        tracing::error!("Recording stop failed: {}", e);
-                                        state.editor.set_status(&format!("Voice error: {}", e), VOICE_RECORDING_COLOR);
-                                    }
-                                }
-                                state.window.request_redraw();
-                            }
+                        } else {
+                            tracing::warn!("Voice not available");
+                            state.editor.set_status("Voice not available", VOICE_RECORDING_COLOR);
+                            state.window.request_redraw();
                         }
-                    } else {
-                        tracing::warn!("Voice not available");
-                        state.editor.set_status("Voice not available", VOICE_RECORDING_COLOR);
-                        state.window.request_redraw();
                     }
+                    // Always return for voice key to prevent backticks in editor
                     return;
                 }
 
