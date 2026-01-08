@@ -2,6 +2,8 @@
 
 Instructions for coding agents and contributors working on the OpenAgents codebase.
 
+**START HERE:** Read [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md) first. It explains how Pylon, Nexus, Runtime, Autopilot, and WGPUI fit together with data flow diagrams, key paths, and build commands.
+
 ## Tech Stack
 
 - **Rust** edition 2024, **WGPUI** for GPU-rendered UI, **Nostr** for NIP-90

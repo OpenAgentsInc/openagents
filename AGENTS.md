@@ -115,8 +115,8 @@ See [crates/nexus/docs/MVP.md](crates/nexus/docs/MVP.md) for architecture.
 
 ## For Coding Agents
 
-If you're a coding agent working on this repo, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for:
-- Git rules and commit standards
-- Crate structure
-- Build instructions
-- Design philosophy
+**READ THIS FIRST:** [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md) — The essential guide to understanding how Pylon, Nexus, Runtime, Autopilot, and WGPUI fit together. Contains data flow diagrams, key paths, build commands, and completion standards. **Do not start coding until you've read it.**
+
+Also see:
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — Git rules, commit standards, design philosophy
+- [SYNTHESIS.md](./SYNTHESIS.md) — Full vision document (long, read if you need context on *why*)
