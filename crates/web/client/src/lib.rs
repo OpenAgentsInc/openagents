@@ -13,6 +13,7 @@ mod gptoss_runtime;
 mod gptoss_tokenizer;
 mod ml_gate;
 mod nostr;
+mod rlm_runtime;
 mod state;
 mod telemetry;
 mod utils;

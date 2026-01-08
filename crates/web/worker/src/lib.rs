@@ -281,8 +281,14 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // GPT-OSS pipeline visualization page
         (Method::Get, "/gptoss") => routes::gptoss::view_gptoss(env).await,
 
-        // RLM (Recursive Language Model) visualization page
+        // RLM (Recursive Language Model) dashboard
         (Method::Get, "/rlm") => routes::rlm::view_rlm(env).await,
+        (Method::Get, "/rlm/demo") => routes::rlm::view_rlm_demo(env).await,
+        (Method::Get, "/rlm/runs") => routes::rlm::view_rlm(env).await,
+        (Method::Get, path) if path.starts_with("/rlm/runs/") => {
+            let run_id = path.trim_start_matches("/rlm/runs/").to_string();
+            routes::rlm::view_rlm_detail(env, run_id).await
+        }
 
         // FM Bridge (Apple Foundation Models) visualization page
         (Method::Get, "/fm") => routes::fm::view_fm(env).await,

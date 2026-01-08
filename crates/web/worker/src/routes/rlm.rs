@@ -8,11 +8,28 @@ use worker::*;
 use crate::db::{rlm, users};
 use crate::AuthenticatedUser;
 
-/// View the RLM page: /rlm
-/// Interactive visualization of Recursive Language Model execution showing
-/// structure discovery, chunking, extraction, and synthesis phases.
+/// View the RLM dashboard: /rlm
 pub async fn view_rlm(_env: Env) -> Result<Response> {
-    let html = r#"<!DOCTYPE html>
+    render_rlm_page("list", None)
+}
+
+/// View the RLM demo page: /rlm/demo
+pub async fn view_rlm_demo(_env: Env) -> Result<Response> {
+    render_rlm_page("demo", None)
+}
+
+/// View the RLM run detail page: /rlm/runs/:id
+pub async fn view_rlm_detail(_env: Env, run_id: String) -> Result<Response> {
+    render_rlm_page("detail", Some(&run_id))
+}
+
+fn render_rlm_page(mode: &str, run_id: Option<&str>) -> Result<Response> {
+    let mode_json = serde_json::to_string(mode).unwrap_or_else(|_| "\"list\"".to_string());
+    let run_id_json = run_id
+        .map(|id| serde_json::to_string(id).unwrap_or_else(|_| "null".to_string()))
+        .unwrap_or_else(|| "null".to_string());
+
+    let html = format!(r#"<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -52,7 +69,11 @@ pub async fn view_rlm(_env: Env) -> Result<Response> {
         <canvas id="canvas"></canvas>
     </div>
     <script type="module">
-        window.RLM_PAGE = true;
+        window.RLM_MODE = {mode_json};
+        window.RLM_RUN_ID = {run_id_json};
+        if (window.RLM_MODE === "demo") {{
+            window.RLM_PAGE = true;
+        }}
 
         import init, { start_demo } from '/pkg/openagents_web_client.js';
 
@@ -62,7 +83,7 @@ pub async fn view_rlm(_env: Env) -> Result<Response> {
         }
 
         run().catch(console.error);
-    </script>
+</script>
 </body>
 </html>"#;
 

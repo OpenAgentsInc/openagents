@@ -21,7 +21,11 @@ use crate::telemetry::{TelemetryCollector, set_panic_hook, track_cta_click};
 use crate::views::{
     build_2026_page, build_brb_page, build_fm_page, build_frlm_page, build_gfn_page,
     build_gptoss_page, build_landing_page, build_ml_inference_page, build_repo_selector,
-    build_repo_view, build_rlm_page, handle_rlm_mouse_move, handle_rlm_click,
+    build_repo_view, build_rlm_demo_page, build_rlm_detail_page, build_rlm_list_page,
+    handle_rlm_demo_click, handle_rlm_demo_keydown, handle_rlm_demo_mouse_move,
+    handle_rlm_demo_scroll, handle_rlm_detail_click, handle_rlm_detail_mouse_move,
+    handle_rlm_detail_scroll, handle_rlm_list_click, handle_rlm_list_mouse_move,
+    handle_rlm_list_scroll,
 };
 use crate::fs_access::{self, FileKind};
 use crate::gptoss_viz::{flush_gptoss_events, init_gptoss_viz_runtime};
@@ -29,6 +33,7 @@ use crate::gptoss_runtime::{
     gguf_file_input_label, gguf_file_label, start_gptoss_file_pick, start_gptoss_load,
 };
 use crate::ml_viz::init_ml_viz_runtime;
+use crate::rlm_runtime::{init_rlm_detail_runtime, init_rlm_list_runtime};
 use crate::utils::{copy_to_clipboard, read_clipboard_text, track_funnel_event};
 // Wallet disabled
 // use crate::wallet::{dispatch_wallet_event, queue_wallet_actions, WalletAction};
@@ -95,7 +100,15 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         .map(|v| v.is_truthy())
         .unwrap_or(false);
 
-    // Check for RLM visualization page flag
+    // Check for RLM dashboard mode flag
+    let rlm_mode = web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &"RLM_MODE".into()).ok())
+        .and_then(|v| v.as_string());
+    let rlm_run_id = web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &"RLM_RUN_ID".into()).ok())
+        .and_then(|v| v.as_string());
+
+    // Legacy RLM visualization page flag (demo-only)
     let is_rlm_page = web_sys::window()
         .and_then(|w| js_sys::Reflect::get(&w, &"RLM_PAGE".into()).ok())
         .map(|v| v.is_truthy())
@@ -147,10 +160,45 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         state_guard.loading = false;
         state_guard.view = AppView::FrlmPage;
         drop(state_guard);
+    } else if let Some(mode) = rlm_mode {
+        match mode.as_str() {
+            "list" => {
+                let mut state_guard = state.borrow_mut();
+                state_guard.loading = false;
+                state_guard.view = AppView::RlmList;
+                drop(state_guard);
+                init_rlm_list_runtime(state.clone());
+            }
+            "detail" => {
+                let run_id = rlm_run_id.unwrap_or_default();
+                let mut state_guard = state.borrow_mut();
+                state_guard.loading = false;
+                state_guard.view = AppView::RlmDetail;
+                if run_id.is_empty() {
+                    state_guard.rlm_detail.error = Some("Missing run id".to_string());
+                    state_guard.rlm_detail.run_id = None;
+                } else {
+                    state_guard.rlm_detail.run_id = Some(run_id.clone());
+                }
+                drop(state_guard);
+                if !run_id.is_empty() {
+                    init_rlm_detail_runtime(state.clone(), run_id);
+                }
+            }
+            "demo" => {
+                let mut state_guard = state.borrow_mut();
+                state_guard.loading = false;
+                state_guard.view = AppView::RlmDemo;
+                state_guard.rlm.demo_mode = true;
+                drop(state_guard);
+            }
+            _ => {}
+        }
     } else if is_rlm_page {
         let mut state_guard = state.borrow_mut();
         state_guard.loading = false;
-        state_guard.view = AppView::RlmPage;
+        state_guard.view = AppView::RlmDemo;
+        state_guard.rlm.demo_mode = true;
         drop(state_guard);
     } else if is_2026_page {
         let mut state_guard = state.borrow_mut();
@@ -409,9 +457,13 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     crate::views::handle_frlm_mouse_move(&mut state, x, y);
                 }
 
-                // Handle RLM page hover and input events
-                if state.view == AppView::RlmPage {
-                    handle_rlm_mouse_move(&mut state, x, y);
+                // Handle RLM dashboard hover and input events
+                if state.view == AppView::RlmList {
+                    handle_rlm_list_mouse_move(&mut state, x, y);
+                } else if state.view == AppView::RlmDetail {
+                    handle_rlm_detail_mouse_move(&mut state, x, y);
+                } else if state.view == AppView::RlmDemo {
+                    handle_rlm_demo_mouse_move(&mut state, x, y);
                     let _ = state.rlm.handle_event(&InputEvent::MouseMove { x, y });
                 }
 
@@ -906,6 +958,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let mut start_gptoss = false;
             let mut pick_gptoss_file = false;
             let mut copy_gptoss_logs = false;
+            let mut rlm_nav: Option<String> = None;
             if state.view == AppView::GptOssPage
                 && state.gptoss.copy_button_bounds.contains(click_pos)
             {
@@ -919,9 +972,17 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             }
 
-            // Handle RLM page button clicks
-            if state.view == AppView::RlmPage {
-                handle_rlm_click(&mut state, click_pos.x, click_pos.y);
+            // Handle RLM dashboard clicks
+            if state.view == AppView::RlmList {
+                if let Some(run_id) = handle_rlm_list_click(&mut state, click_pos.x, click_pos.y) {
+                    rlm_nav = Some(format!("/rlm/runs/{}", run_id));
+                }
+            } else if state.view == AppView::RlmDetail {
+                if handle_rlm_detail_click(&mut state, click_pos.x, click_pos.y) {
+                    rlm_nav = Some("/rlm".to_string());
+                }
+            } else if state.view == AppView::RlmDemo {
+                handle_rlm_demo_click(&mut state, click_pos.x, click_pos.y);
             }
 
             if state.button_bounds.contains(click_pos) {
@@ -943,12 +1004,21 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                             let _ = window.location().set_href("/api/auth/github/start");
                         }
                         AppView::GfnPage | AppView::MlVizPage | AppView::GptOssPage
-                        | AppView::FmPage | AppView::FrlmPage | AppView::RlmPage
-                        | AppView::Y2026Page | AppView::BrbPage => {
+                        | AppView::FmPage | AppView::FrlmPage | AppView::RlmList
+                        | AppView::RlmDetail | AppView::RlmDemo | AppView::Y2026Page
+                        | AppView::BrbPage => {
                             // No logout button action on visualization pages
                         }
                     }
                 }
+            }
+
+            if let Some(url) = rlm_nav {
+                drop(state);
+                if let Some(window) = web_sys::window() {
+                    let _ = window.location().set_href(&url);
+                }
+                return;
             }
 
             if pick_gptoss_file {
@@ -1130,7 +1200,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 if state.view == AppView::GptOssPage {
                     let _ = state.gptoss.handle_event(&input_event);
                 }
-                if state.view == AppView::RlmPage {
+                if state.view == AppView::RlmDemo {
                     let _ = state.rlm.handle_event(&input_event);
                 }
             }
@@ -1278,11 +1348,25 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 }
             }
 
-            // Handle scrolling for RLM page
-            if state.view == AppView::RlmPage {
-                let point = Point::new(event.offset_x() as f32, event.offset_y() as f32);
-                let delta = event.delta_y() as f32 * 0.5;
+            // Handle scrolling for RLM pages
+            if state.view == AppView::RlmList {
+                if handle_rlm_list_scroll(&mut state, event.offset_x() as f32, event.offset_y() as f32, event.delta_y() as f32) {
+                    return;
+                }
+            } else if state.view == AppView::RlmDetail {
+                if handle_rlm_detail_scroll(&mut state, event.offset_x() as f32, event.offset_y() as f32, event.delta_y() as f32) {
+                    return;
+                }
+            } else if state.view == AppView::RlmDemo {
+                let x = event.offset_x() as f32;
+                let y = event.offset_y() as f32;
+                let delta = event.delta_y() as f32;
+                if handle_rlm_demo_scroll(&mut state, x, y, delta) {
+                    return;
+                }
 
+                let point = Point::new(x, y);
+                let delta = delta * 0.5;
                 if state.rlm.content_bounds.contains(point) {
                     state.rlm.scroll_offset += delta;
                     let max_scroll = (state.rlm.content_height - state.rlm.content_bounds.size.height).max(0.0);
@@ -1430,6 +1514,12 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let ml_viz_slider_hover = state.view == AppView::MlVizPage
                 && (state.ml_viz.layer_slider_bounds.contains(state.mouse_pos)
                     || state.ml_viz.head_slider_bounds.contains(state.mouse_pos));
+            let rlm_hover = (state.view == AppView::RlmList && state.rlm_list.hovered_run_idx.is_some())
+                || (state.view == AppView::RlmDetail && state.rlm_detail.back_button_hovered)
+                || (state.view == AppView::RlmDemo
+                    && (state.rlm.run_button_hovered
+                        || state.rlm.restart_button_hovered
+                        || state.rlm.speed_button_hovered));
             let editor_cursor = if state.view == AppView::RepoSelector {
                 state.editor_workspace.cursor()
             } else {
@@ -1451,6 +1541,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 || y2026_link_hover
                 || gfn_cta_hover
                 || ml_viz_slider_hover
+                || rlm_hover
             {
                 "pointer"
             } else if matches!(editor_cursor, Cursor::Text) {
@@ -1480,7 +1571,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                             Some("repo")
                         } else if state.view == AppView::GptOssPage && state.gptoss.input_focused() {
                             Some("gptoss")
-                        } else if state.view == AppView::RlmPage && state.rlm.input_focused() {
+                        } else if state.view == AppView::RlmDemo && state.rlm.input_focused() {
                             Some("rlm")
                         } else {
                             None
@@ -1527,8 +1618,13 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                         {
                             start_gptoss = true;
                         }
-                    } else if state.view == AppView::RlmPage {
+                    } else if state.view == AppView::RlmDemo {
                         handled = state.rlm.handle_event(&input_event);
+                        if matches!(handled, EventResult::Ignored) {
+                            if handle_rlm_demo_keydown(&mut state, event.key().as_str()) {
+                                handled = EventResult::Handled;
+                            }
+                        }
                     }
                 }
                 if matches!(handled, EventResult::Ignored) {
@@ -1707,8 +1803,28 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     scale_factor,
                 );
             }
-            AppView::RlmPage => {
-                build_rlm_page(
+            AppView::RlmList => {
+                build_rlm_list_page(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
+            }
+            AppView::RlmDetail => {
+                build_rlm_detail_page(
+                    &mut scene,
+                    platform.text_system(),
+                    &mut state,
+                    width,
+                    height,
+                    scale_factor,
+                );
+            }
+            AppView::RlmDemo => {
+                build_rlm_demo_page(
                     &mut scene,
                     platform.text_system(),
                     &mut state,
