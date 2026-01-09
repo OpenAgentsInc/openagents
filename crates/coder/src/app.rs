@@ -7384,6 +7384,18 @@ impl CoderApp {
         let chat_line_height = chat_layout.chat_line_height;
         let streaming_height = chat_layout.streaming_height;
 
+        let chat_clip_height = (viewport_bottom - viewport_top).max(0.0);
+        let chat_clip_bounds = Bounds::new(
+            sidebar_layout.main.origin.x,
+            viewport_top,
+            sidebar_layout.main.size.width,
+            chat_clip_height,
+        );
+        let chat_clip_active = chat_clip_height > 0.0;
+        if chat_clip_active {
+            scene.push_clip(chat_clip_bounds);
+        }
+
         if let Some(selection) = state.chat_selection {
             if !selection.is_empty() {
                 let (start, end) = selection.normalized();
@@ -7465,9 +7477,8 @@ impl CoderApp {
                 }
                 MessageRole::Assistant => {
                     if let Some(doc) = &msg.document {
-                        let content_fits = y + msg_height <= viewport_bottom;
-                        let content_visible = y + msg_height > viewport_top;
-                        if content_fits && content_visible {
+                        let content_visible = y + msg_height > viewport_top && y < viewport_bottom;
+                        if content_visible {
                             state.markdown_renderer.render(
                                 doc,
                                 Point::new(content_x, y),
@@ -7499,9 +7510,8 @@ impl CoderApp {
 
         if !state.streaming_markdown.source().is_empty() {
             let doc = state.streaming_markdown.document();
-            let content_fits = y + streaming_height <= viewport_bottom;
-            let content_visible = y + streaming_height > viewport_top;
-            if content_fits && content_visible {
+            let content_visible = y + streaming_height > viewport_top && y < viewport_bottom;
+            if content_visible {
                 state.markdown_renderer.render(
                     doc,
                     Point::new(content_x, y),
@@ -7521,6 +7531,10 @@ impl CoderApp {
                 );
                 scene.draw_text(text_run);
             }
+        }
+
+        if chat_clip_active {
+            scene.pop_clip();
         }
 
         if let Some(layout) = tool_layout {
