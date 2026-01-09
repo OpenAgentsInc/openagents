@@ -391,15 +391,15 @@ query.rewind_files(message_id).await?;
 ```
 
 ### Tasks
-- [ ] Create session list modal with SessionCard
-- [ ] Implement session metadata storage
-- [ ] Wire up `continue_session()` for resumption
-- [ ] Wire up `resume(session_id)` from list
-- [ ] Wire up `fork_session()` for forking
-- [ ] Implement session export to markdown
-- [ ] Integrate CheckpointRestore component
-- [ ] Wire up `rewind_files()` for checkpoint restore
-- [ ] Add session indicator to status bar
+- [x] Create session list modal with SessionCard
+- [x] Implement session metadata storage
+- [x] Wire up `continue_session()` for resumption
+- [x] Wire up `resume(session_id)` from list
+- [x] Wire up `fork_session()` for forking
+- [x] Implement session export to markdown
+- [x] Integrate CheckpointRestore component
+- [x] Wire up `rewind_files()` for checkpoint restore
+- [x] Add session indicator to status bar
 
 ---
 
@@ -896,3 +896,4 @@ pub enum SettingsTab {
 - 2026-01-09 08:38 UTC - Added custom command loading, @file and !command prompt expansion, and updated prompt submission to inject file/command contents; ran `cargo check -p coder`.
 - 2026-01-09 09:06 UTC - Added permission config persistence, Bash rule patterns, permission queue/history state, and permission handler plumbing for prompts.
 - 2026-01-09 09:08 UTC - Wired PermissionDialog UI/input flow, status bar permission mode cycling, permission history display, and re-exported PermissionType; ran `cargo check -p coder`.
+- 2026-01-09 09:31 UTC - Implemented SessionCard modal layout, session metadata/checkpoint persistence, checkpoint restore UI with rewind_files control, session indicator updates, and user message id capture; ran `cargo check -p coder`.
