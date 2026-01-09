@@ -3078,6 +3078,7 @@ impl ApplicationHandler for CoderApp {
             state.left_sidebar_open,
             state.right_sidebar_open,
         );
+        let content_x = sidebar_layout.main.origin.x + OUTPUT_PADDING;
         // Input bounds above status bar
         let input_bounds = Bounds::new(
             sidebar_layout.main.origin.x + INPUT_PADDING,
@@ -3551,7 +3552,7 @@ impl ApplicationHandler for CoderApp {
                     let mode_text = format!("[{}]", state.session_info.permission_mode);
                     let mode_width = mode_text.len() as f32 * 6.6;
                     let mode_bounds = Bounds::new(
-                        OUTPUT_PADDING,
+                        content_x,
                         status_y - 4.0,
                         mode_width,
                         STATUS_BAR_HEIGHT + 8.0,
@@ -3706,6 +3707,14 @@ impl ApplicationHandler for CoderApp {
                                 KeyAction::OpenRightSidebar => state.open_right_sidebar(),
                                 KeyAction::ToggleSidebars => state.toggle_sidebars(),
                             }
+                            state.window.request_redraw();
+                            return;
+                        }
+                    }
+
+                    if let WinitKey::Named(WinitNamedKey::Tab) = &key_event.logical_key {
+                        if state.modifiers.shift_key() {
+                            state.cycle_permission_mode();
                             state.window.request_redraw();
                             return;
                         }
@@ -6150,6 +6159,24 @@ impl CoderApp {
         );
         scene.draw_text(prompt_run);
 
+        let permission_label = state
+            .permission_mode
+            .as_ref()
+            .map(permission_mode_display)
+            .unwrap_or("default");
+        let permission_text = format!("Permissions: {}", permission_label);
+        let permission_run = state.text_system.layout_styled_mono(
+            &permission_text,
+            Point::new(
+                input_bounds.origin.x,
+                input_bounds.origin.y + input_bounds.size.height + 2.0,
+            ),
+            10.0,
+            palette.text_faint,
+            wgpui::text::FontStyle::default(),
+        );
+        scene.draw_text(permission_run);
+
         // Draw status bar at very bottom (centered vertically)
         let status_y = logical_height - STATUS_BAR_HEIGHT - 2.0;
 
@@ -7794,6 +7821,7 @@ impl CoderApp {
                         vec![
                             "F1 - Help".to_string(),
                             format!("Enter - Send message"),
+                            "Shift+Tab - Cycle permission mode".to_string(),
                             format!("{} - Interrupt request", interrupt),
                             format!("{} - Command palette", palette_key),
                             format!("{} - Settings", settings_key),
@@ -9887,6 +9915,16 @@ fn permission_mode_label(mode: &PermissionMode) -> &'static str {
         PermissionMode::AcceptEdits => "acceptEdits",
         PermissionMode::BypassPermissions => "bypassPermissions",
         PermissionMode::DontAsk => "dontAsk",
+    }
+}
+
+fn permission_mode_display(mode: &PermissionMode) -> &'static str {
+    match mode {
+        PermissionMode::Default => "default",
+        PermissionMode::Plan => "plan mode",
+        PermissionMode::AcceptEdits => "accept edits",
+        PermissionMode::BypassPermissions => "bypass permissions",
+        PermissionMode::DontAsk => "dont ask",
     }
 }
 
