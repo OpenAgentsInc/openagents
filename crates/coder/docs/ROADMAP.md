@@ -329,14 +329,14 @@ query_with_permissions(prompt, options, handler).await;
 ```
 
 ### Tasks
-- [ ] Remove `dangerously_skip_permissions(true)` default
-- [ ] Integrate `PermissionDialog` from wgpui
-- [ ] Implement permission mode switcher in status bar
-- [ ] Create permission rules modal
-- [ ] Implement `CallbackPermissionHandler` with UI
-- [ ] Support rule patterns for Bash commands
-- [ ] Persist permission rules to config
-- [ ] Show permission history
+- [x] Remove `dangerously_skip_permissions(true)` default
+- [x] Integrate `PermissionDialog` from wgpui
+- [x] Implement permission mode switcher in status bar
+- [x] Create permission rules modal
+- [x] Implement `CallbackPermissionHandler` with UI
+- [x] Support rule patterns for Bash commands
+- [x] Persist permission rules to config
+- [x] Show permission history
 
 ---
 
@@ -894,3 +894,5 @@ pub enum SettingsTab {
 - 2026-01-09 08:20 UTC - Added session tracking scaffolding, session index/message persistence helpers, and captured tools/output-style metadata from SystemInit.
 - 2026-01-09 08:34 UTC - Implemented Phase 2 command handlers, session/tool/permission/config modals, output-style wiring, resume/fork/export logic, and permission/tool state plumbing.
 - 2026-01-09 08:38 UTC - Added custom command loading, @file and !command prompt expansion, and updated prompt submission to inject file/command contents; ran `cargo check -p coder`.
+- 2026-01-09 09:06 UTC - Added permission config persistence, Bash rule patterns, permission queue/history state, and permission handler plumbing for prompts.
+- 2026-01-09 09:08 UTC - Wired PermissionDialog UI/input flow, status bar permission mode cycling, permission history display, and re-exported PermissionType; ran `cargo check -p coder`.
