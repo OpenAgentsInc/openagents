@@ -66,6 +66,8 @@ members = [
     # DSPy integration (dsrs)
     "crates/dsrs",
     "crates/dsrs-macros",
+    # Protocol layer for typed job schemas
+    "crates/protocol",
 ]
 
 # Unified OpenAgents binary
