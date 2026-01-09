@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use web_time::Instant;
+use wgpui::input::{Key as UiKey, Modifiers as UiModifiers, NamedKey as UiNamedKey};
 use wgpui::components::{Component, EventContext, PaintContext};
 use wgpui::markdown::{MarkdownDocument, MarkdownRenderer as MdRenderer, StreamingMarkdown};
 use wgpui::renderer::Renderer;
@@ -12,12 +13,16 @@ use wgpui::{Bounds, Hsla, InputEvent, Point, Quad, Scene, Size, TextInput, TextS
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
-use winit::keyboard::Key;
+use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey};
 use winit::window::{Window, WindowId};
 
 use claude_agent_sdk::{query, QueryOptions, SdkMessage};
 use futures::StreamExt;
 use serde_json::Value;
+
+use crate::commands::{command_specs, execute_command, parse_command, CommandContext};
+use crate::keybindings::{default_keybindings, match_action, Action as KeyAction, Keybinding};
+use crate::panels::PanelLayout;
 
 /// Wrap text to fit within a given character width
 fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
@@ -103,6 +108,11 @@ enum ResponseEvent {
     },
 }
 
+enum QueryControl {
+    Interrupt,
+    Abort,
+}
+
 /// Session info from SystemInit
 #[derive(Default)]
 struct SessionInfo {
@@ -163,6 +173,7 @@ impl ModelOption {
 enum ModalState {
     None,
     ModelPicker { selected: usize },
+    CommandPalette { selected: usize },
 }
 
 /// Get the config directory path
@@ -200,8 +211,8 @@ fn save_model(model: ModelOption) {
     }
 }
 
-/// Render state holding all GPU and UI resources
-struct RenderState {
+/// Application state holding GPU and UI resources
+struct AppState {
     window: Arc<Window>,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -212,6 +223,7 @@ struct RenderState {
     event_context: EventContext,
     input: TextInput,
     mouse_pos: (f32, f32),
+    modifiers: ModifiersState,
     #[allow(dead_code)]
     last_tick: Instant,
     // Chat state
@@ -220,6 +232,7 @@ struct RenderState {
     markdown_renderer: MdRenderer,
     is_thinking: bool,
     response_rx: Option<mpsc::UnboundedReceiver<ResponseEvent>>,
+    query_control_tx: Option<mpsc::UnboundedSender<QueryControl>>,
     // Scroll state
     scroll_offset: f32,
     // Current tool call being streamed
@@ -229,13 +242,16 @@ struct RenderState {
     session_info: SessionInfo,
     // Modal state for slash commands
     modal_state: ModalState,
+    panel_layout: PanelLayout,
+    keybindings: Vec<Keybinding>,
+    command_history: Vec<String>,
     // Selected model for queries
     selected_model: ModelOption,
 }
 
 /// Main application
 pub struct CoderApp {
-    state: Option<RenderState>,
+    state: Option<AppState>,
     runtime_handle: tokio::runtime::Handle,
 }
 
@@ -328,7 +344,7 @@ impl ApplicationHandler for CoderApp {
             // Load saved model preference
             let saved_model = load_saved_model();
 
-            RenderState {
+            AppState {
                 window,
                 surface,
                 device,
@@ -339,12 +355,14 @@ impl ApplicationHandler for CoderApp {
                 event_context,
                 input,
                 mouse_pos: (0.0, 0.0),
+                modifiers: ModifiersState::default(),
                 last_tick: Instant::now(),
                 messages: Vec::new(),
                 streaming_markdown: StreamingMarkdown::new(),
                 markdown_renderer: MdRenderer::new(),
                 is_thinking: false,
                 response_rx: None,
+                query_control_tx: None,
                 scroll_offset: 0.0,
                 current_tool_name: None,
                 current_tool_input: String::new(),
@@ -353,6 +371,9 @@ impl ApplicationHandler for CoderApp {
                     ..Default::default()
                 },
                 modal_state: ModalState::None,
+                panel_layout: PanelLayout::Single,
+                keybindings: default_keybindings(),
+                command_history: Vec::new(),
                 selected_model: saved_model,
             }
         });
@@ -455,12 +476,12 @@ impl ApplicationHandler for CoderApp {
                     if let ModalState::ModelPicker { selected } = &state.modal_state {
                         let selected = *selected;
                         match &key_event.logical_key {
-                            Key::Named(winit::keyboard::NamedKey::Escape) => {
+                            WinitKey::Named(WinitNamedKey::Escape) => {
                                 state.modal_state = ModalState::None;
                                 state.window.request_redraw();
                                 return;
                             }
-                            Key::Named(winit::keyboard::NamedKey::Enter) => {
+                            WinitKey::Named(WinitNamedKey::Enter) => {
                                 let models = ModelOption::all();
                                 state.selected_model = models[selected];
                                 state.modal_state = ModalState::None;
@@ -470,21 +491,21 @@ impl ApplicationHandler for CoderApp {
                                 state.window.request_redraw();
                                 return;
                             }
-                            Key::Named(winit::keyboard::NamedKey::ArrowUp) => {
+                            WinitKey::Named(WinitNamedKey::ArrowUp) => {
                                 if selected > 0 {
                                     state.modal_state = ModalState::ModelPicker { selected: selected - 1 };
                                 }
                                 state.window.request_redraw();
                                 return;
                             }
-                            Key::Named(winit::keyboard::NamedKey::ArrowDown) => {
+                            WinitKey::Named(WinitNamedKey::ArrowDown) => {
                                 if selected < 2 {
                                     state.modal_state = ModalState::ModelPicker { selected: selected + 1 };
                                 }
                                 state.window.request_redraw();
                                 return;
                             }
-                            Key::Character(c) => {
+                            WinitKey::Character(c) => {
                                 match c.as_str() {
                                     "1" => {
                                         state.selected_model = ModelOption::Opus;
@@ -516,7 +537,7 @@ impl ApplicationHandler for CoderApp {
                     let modifiers = wgpui::Modifiers::default();
 
                     // Check for Enter key to submit
-                    if let Key::Named(winit::keyboard::NamedKey::Enter) = &key_event.logical_key {
+                    if let WinitKey::Named(WinitNamedKey::Enter) = &key_event.logical_key {
                         let prompt = state.input.get_value().to_string();
                         if !prompt.is_empty() && !state.is_thinking {
                             // Check for slash commands
@@ -542,9 +563,9 @@ impl ApplicationHandler for CoderApp {
                     }
 
                     let key = match &key_event.logical_key {
-                        Key::Character(c) => wgpui::input::Key::Character(c.to_string()),
-                        Key::Named(named) => {
-                            wgpui::input::Key::Named(convert_named_key(*named))
+                        WinitKey::Character(c) => UiKey::Character(c.to_string()),
+                        WinitKey::Named(named) => {
+                            UiKey::Named(convert_named_key(*named))
                         }
                         _ => return,
                     };
@@ -1375,25 +1396,22 @@ fn convert_mouse_button(button: winit::event::MouseButton) -> wgpui::MouseButton
     }
 }
 
-fn convert_named_key(key: winit::keyboard::NamedKey) -> wgpui::input::NamedKey {
-    use wgpui::input::NamedKey;
-    use winit::keyboard::NamedKey as WinitKey;
-
+fn convert_named_key(key: WinitNamedKey) -> UiNamedKey {
     match key {
-        WinitKey::Enter => NamedKey::Enter,
-        WinitKey::Tab => NamedKey::Tab,
-        WinitKey::Space => NamedKey::Space,
-        WinitKey::Backspace => NamedKey::Backspace,
-        WinitKey::Delete => NamedKey::Delete,
-        WinitKey::Escape => NamedKey::Escape,
-        WinitKey::ArrowUp => NamedKey::ArrowUp,
-        WinitKey::ArrowDown => NamedKey::ArrowDown,
-        WinitKey::ArrowLeft => NamedKey::ArrowLeft,
-        WinitKey::ArrowRight => NamedKey::ArrowRight,
-        WinitKey::Home => NamedKey::Home,
-        WinitKey::End => NamedKey::End,
-        WinitKey::PageUp => NamedKey::PageUp,
-        WinitKey::PageDown => NamedKey::PageDown,
-        _ => NamedKey::Tab, // fallback
+        WinitNamedKey::Enter => UiNamedKey::Enter,
+        WinitNamedKey::Tab => UiNamedKey::Tab,
+        WinitNamedKey::Space => UiNamedKey::Space,
+        WinitNamedKey::Backspace => UiNamedKey::Backspace,
+        WinitNamedKey::Delete => UiNamedKey::Delete,
+        WinitNamedKey::Escape => UiNamedKey::Escape,
+        WinitNamedKey::ArrowUp => UiNamedKey::ArrowUp,
+        WinitNamedKey::ArrowDown => UiNamedKey::ArrowDown,
+        WinitNamedKey::ArrowLeft => UiNamedKey::ArrowLeft,
+        WinitNamedKey::ArrowRight => UiNamedKey::ArrowRight,
+        WinitNamedKey::Home => UiNamedKey::Home,
+        WinitNamedKey::End => UiNamedKey::End,
+        WinitNamedKey::PageUp => UiNamedKey::PageUp,
+        WinitNamedKey::PageDown => UiNamedKey::PageDown,
+        _ => UiNamedKey::Tab, // fallback
     }
 }

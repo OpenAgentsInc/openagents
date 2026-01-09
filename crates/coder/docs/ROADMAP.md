@@ -887,3 +887,6 @@ pub enum SettingsTab {
 ---
 
 *Last updated: 2026-01-09*
+
+## Execution Log
+- 2026-01-09 07:58 UTC - Added command, panel, and keybinding modules; refactored Coder state to AppState with new core fields.
