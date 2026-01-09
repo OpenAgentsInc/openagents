@@ -21,7 +21,7 @@
 //! println!("Next action: {:?}", result.next_action);
 //! ```
 
-use dspy_rs::{example, LM, Predict, Predictor, Signature};
+use dsrs::{example, LM, Predict, Predictor, Signature};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -288,7 +288,7 @@ impl ExecutionPipeline {
     }
 
     /// Helper to get string from prediction value.
-    fn get_string(prediction: &dspy_rs::Prediction, key: &str) -> String {
+    fn get_string(prediction: &dsrs::Prediction, key: &str) -> String {
         let val = prediction.get(key, None);
         if let Some(s) = val.as_str() {
             s.to_string()
@@ -298,7 +298,7 @@ impl ExecutionPipeline {
     }
 
     /// Helper to get f32 from prediction value.
-    fn get_f32(prediction: &dspy_rs::Prediction, key: &str) -> f32 {
+    fn get_f32(prediction: &dsrs::Prediction, key: &str) -> f32 {
         let val = prediction.get(key, None);
         if let Some(n) = val.as_f64() {
             n as f32

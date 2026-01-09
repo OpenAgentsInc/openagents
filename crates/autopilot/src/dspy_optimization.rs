@@ -10,7 +10,7 @@
 //! 3. Graduate to GEPA for complex signatures
 //! 4. Store optimized modules in ~/.openagents/dspy/optimized/
 
-use dspy_rs::{Example, Prediction};
+use dsrs::{Example, Prediction};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================

@@ -44,7 +44,7 @@ use crate::chunking::{chunk_by_structure, detect_structure};
 use crate::error::Result;
 use crate::span::SpanRef;
 
-use dspy_rs::{example, Example, LM, Predict, Predictor, Signature};
+use dsrs::{example, Example, LM, Predict, Predictor, Signature};
 use std::sync::Arc;
 
 // ============================================================================
