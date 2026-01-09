@@ -6,10 +6,11 @@
 use anyhow::Result;
 use dsrs::core::signature::MetaSignature;
 use dsrs::data::example::Example;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// Estimated complexity for an issue or task.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Complexity {
     /// Simple task, can be done quickly.
     Low,

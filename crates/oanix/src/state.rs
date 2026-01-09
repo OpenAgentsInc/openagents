@@ -9,6 +9,15 @@ use std::time::Instant;
 use tokio::fs;
 use tracing::{debug, warn};
 
+// DSPy pipeline integration (native-only)
+#[cfg(not(target_arch = "wasm32"))]
+use crate::dspy_pipelines::{
+    IssueSelectionInput, IssueSelectionPipeline, SituationInput, SituationPipeline,
+    SituationResult,
+};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::dspy_situation::PriorityAction;
+
 /// OANIX operating mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum OanixMode {
@@ -65,6 +74,12 @@ pub struct OanixState {
     pub last_refresh: Instant,
     /// Path to state file
     state_path: PathBuf,
+    /// DSPy situation assessment pipeline (native-only)
+    #[cfg(not(target_arch = "wasm32"))]
+    situation_pipeline: SituationPipeline,
+    /// DSPy issue selection pipeline (native-only)
+    #[cfg(not(target_arch = "wasm32"))]
+    issue_selection_pipeline: IssueSelectionPipeline,
 }
 
 impl OanixState {
@@ -80,6 +95,10 @@ impl OanixState {
             active_task: None,
             last_refresh: Instant::now(),
             state_path,
+            #[cfg(not(target_arch = "wasm32"))]
+            situation_pipeline: SituationPipeline::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            issue_selection_pipeline: IssueSelectionPipeline::new(),
         }
     }
 
@@ -123,6 +142,10 @@ impl OanixState {
             active_task: persisted.active_task,
             last_refresh: Instant::now(),
             state_path: path.clone(),
+            #[cfg(not(target_arch = "wasm32"))]
+            situation_pipeline: SituationPipeline::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            issue_selection_pipeline: IssueSelectionPipeline::new(),
         })
     }
 
@@ -212,6 +235,188 @@ impl OanixState {
     /// Check if paused.
     pub fn is_paused(&self) -> bool {
         self.mode == OanixMode::Paused
+    }
+
+    /// Assess the current situation using DSPy (native-only).
+    ///
+    /// Returns the recommended priority action based on system state,
+    /// pending events, and recent history.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn assess_situation(&self) -> anyhow::Result<SituationResult> {
+        let input = SituationInput {
+            system_state: self.get_system_state_json(),
+            pending_events: self.get_pending_events_json(),
+            recent_history: self.get_recent_history_json(),
+        };
+
+        self.situation_pipeline.assess(&input).await
+    }
+
+    /// Get recommended action from DSPy situation assessment (native-only).
+    ///
+    /// Returns the priority action if confidence is above threshold,
+    /// otherwise returns None to fall back to legacy logic.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn get_dspy_recommended_action(&self) -> Option<PriorityAction> {
+        match self.assess_situation().await {
+            Ok(result) if result.confidence > 0.5 => {
+                debug!(
+                    "DSPy situation assessment: {:?} (confidence: {:.2})",
+                    result.priority_action, result.confidence
+                );
+                Some(result.priority_action)
+            }
+            Ok(result) => {
+                debug!(
+                    "DSPy assessment confidence too low: {:.2}, falling back to legacy",
+                    result.confidence
+                );
+                None
+            }
+            Err(e) => {
+                warn!("DSPy situation assessment failed: {}", e);
+                None
+            }
+        }
+    }
+
+    /// Select the best issue to work on using DSPy (native-only).
+    ///
+    /// Returns the selected issue if confidence is above threshold,
+    /// otherwise returns None to fall back to legacy first-match.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn select_best_issue(&self) -> Option<&crate::manifest::IssueSummary> {
+        let open_issues: Vec<_> = self
+            .manifest
+            .workspace
+            .as_ref()?
+            .issues
+            .iter()
+            .filter(|i| i.status == "open" && !i.is_blocked)
+            .collect();
+
+        if open_issues.is_empty() {
+            return None;
+        }
+
+        let input = IssueSelectionInput {
+            available_issues: serde_json::to_string(&open_issues).unwrap_or_default(),
+            agent_capabilities: self.get_capabilities_summary(),
+            current_context: self.get_repo_context(),
+        };
+
+        match self.issue_selection_pipeline.select(&input).await {
+            Ok(result) if result.confidence > 0.5 => {
+                debug!(
+                    "DSPy issue selection: {} (confidence: {:.2})",
+                    result.selected_issue, result.confidence
+                );
+                // Find the issue by number
+                self.manifest.workspace.as_ref()?.issues.iter().find(|i| {
+                    i.number.to_string() == result.selected_issue
+                        || i.title.contains(&result.selected_issue)
+                })
+            }
+            Ok(result) => {
+                debug!(
+                    "DSPy issue selection confidence too low: {:.2}, falling back to first-match",
+                    result.confidence
+                );
+                // Fall back to first open issue
+                open_issues.first().copied()
+            }
+            Err(e) => {
+                warn!("DSPy issue selection failed: {}, using first-match", e);
+                open_issues.first().copied()
+            }
+        }
+    }
+
+    // =========================================================================
+    // Helper methods for DSPy inputs
+    // =========================================================================
+
+    /// Get system state as JSON for DSPy input.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn get_system_state_json(&self) -> String {
+        serde_json::json!({
+            "mode": format!("{:?}", self.mode),
+            "has_active_task": self.active_task.is_some(),
+            "session_id": &self.session_id,
+            "hardware": {
+                "cpu_cores": self.manifest.hardware.cpu_cores,
+                "memory_gb": self.manifest.hardware.ram_bytes / (1024 * 1024 * 1024),
+                "has_gpu": !self.manifest.hardware.gpus.is_empty(),
+            },
+            "compute": {
+                "backends": self.manifest.compute.backends.len(),
+            },
+            "network": {
+                "online": self.manifest.network.relays.iter().any(|r| r.connected),
+            },
+        })
+        .to_string()
+    }
+
+    /// Get pending events as JSON for DSPy input.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn get_pending_events_json(&self) -> String {
+        // For now, return issues as pending events
+        if let Some(ws) = &self.manifest.workspace {
+            let open_issues: Vec<_> = ws
+                .issues
+                .iter()
+                .filter(|i| i.status == "open")
+                .take(5)
+                .collect();
+            serde_json::to_string(&open_issues).unwrap_or_else(|_| "[]".to_string())
+        } else {
+            "[]".to_string()
+        }
+    }
+
+    /// Get recent history as JSON for DSPy input.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn get_recent_history_json(&self) -> String {
+        // For now, just include active task if any
+        if let Some(task) = &self.active_task {
+            serde_json::json!([{
+                "type": "task_started",
+                "task_id": task.id,
+                "task_type": task.task_type,
+                "progress": task.progress,
+            }])
+            .to_string()
+        } else {
+            "[]".to_string()
+        }
+    }
+
+    /// Get agent capabilities summary for DSPy input.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn get_capabilities_summary(&self) -> String {
+        serde_json::json!({
+            "backends": self.manifest.compute.backends.iter()
+                .map(|b| b.name.clone())
+                .collect::<Vec<_>>(),
+            "has_gpu": !self.manifest.hardware.gpus.is_empty(),
+            "online": self.manifest.network.relays.iter().any(|r| r.connected),
+        })
+        .to_string()
+    }
+
+    /// Get current repo context for DSPy input.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn get_repo_context(&self) -> String {
+        if let Some(ws) = &self.manifest.workspace {
+            format!(
+                "Repository with {} open issues, {} directives",
+                ws.issues.iter().filter(|i| i.status == "open").count(),
+                ws.directives.len()
+            )
+        } else {
+            "No workspace context available".to_string()
+        }
     }
 }
 
