@@ -575,7 +575,9 @@ struct UiPalette {
     assistant_text: Hsla,
     thinking_text: Hsla,
     selection_bg: Hsla,
+    #[allow(dead_code)]
     tool_panel_bg: Hsla,
+    #[allow(dead_code)]
     tool_panel_border: Hsla,
     tool_progress_bg: Hsla,
     tool_progress_fg: Hsla,
@@ -716,10 +718,6 @@ const HOOK_LOG_LIMIT: usize = 200;
 const HOOK_SCRIPT_TIMEOUT_SECS: u64 = 12;
 const HOOK_OUTPUT_TRUNCATE: usize = 2000;
 const HOOK_BLOCK_PATTERNS: [&str; 3] = ["rm -rf /", "sudo", "> /dev/"];
-const TOOL_PANEL_MAX_HEIGHT: f32 = 260.0;
-const TOOL_PANEL_MAX_CARDS: usize = 4;
-const TOOL_PANEL_PADDING: f32 = 12.0;
-const TOOL_PANEL_HEADER_HEIGHT: f32 = 20.0;
 const TOOL_PANEL_GAP: f32 = 8.0;
 const TOOL_HISTORY_LIMIT: usize = 100;
 const TOOL_SEARCH_MATCH_LIMIT: usize = 200;
@@ -784,6 +782,14 @@ struct MessageLayout {
     lines: Vec<ChatLineLayout>,
 }
 
+/// Layout for tools shown inline after a specific message
+struct InlineToolsLayout {
+    message_index: usize,
+    y_offset: f32,  // Y position in content coordinates (before scroll adjustment)
+    height: f32,
+    blocks: Vec<ToolPanelBlock>,
+}
+
 struct ChatLayout {
     viewport_top: f32,
     viewport_bottom: f32,
@@ -793,8 +799,8 @@ struct ChatLayout {
     chat_line_height: f32,
     message_layouts: Vec<MessageLayout>,
     streaming_height: f32,
-    /// Tool panel layout positioned after messages (if any tools)
-    tool_panel: Option<ToolPanelLayout>,
+    /// Inline tool layouts positioned after their associated messages
+    inline_tools: Vec<InlineToolsLayout>,
 }
 
 struct MessageLayoutBuilder {
@@ -942,10 +948,12 @@ struct ToolVisualization {
     card_expanded: bool,
     card: ToolCallCard,
     detail: ToolDetail,
+    /// Index of the message this tool is associated with (for inline rendering)
+    message_index: usize,
 }
 
 impl ToolVisualization {
-    fn new(tool_use_id: String, name: String, tool_type: ToolType) -> Self {
+    fn new(tool_use_id: String, name: String, tool_type: ToolType, message_index: usize) -> Self {
         let card = ToolCallCard::new(tool_type, name.clone());
         let mut tool = Self {
             tool_use_id,
@@ -961,6 +969,7 @@ impl ToolVisualization {
             card_expanded: false,
             card,
             detail: ToolDetail::None,
+            message_index,
         };
         tool.refresh_components();
         tool
@@ -3867,19 +3876,20 @@ impl ApplicationHandler for CoderApp {
                         }
                     }
                 }
-                if let Some(ref layout) = chat_layout.tool_panel {
-                    let mut handled = false;
-                    for block in &layout.blocks {
+                // Handle events for inline tools
+                let mut tools_handled = false;
+                for inline_layout in &chat_layout.inline_tools {
+                    for block in &inline_layout.blocks {
                         if let Some(tool) = state.tool_history.get_mut(block.index) {
                             if matches!(
                                 tool.card
                                     .event(&input_event, block.card_bounds, &mut state.event_context),
                                 EventResult::Handled
                             ) {
-                                handled = true;
+                                tools_handled = true;
                             }
                             if tool.sync_expanded_from_card() {
-                                handled = true;
+                                tools_handled = true;
                             }
                             if let Some(detail_bounds) = block.detail_bounds {
                                 if matches!(
@@ -3887,14 +3897,14 @@ impl ApplicationHandler for CoderApp {
                                         .event(&input_event, detail_bounds, &mut state.event_context),
                                     EventResult::Handled
                                 ) {
-                                    handled = true;
+                                    tools_handled = true;
                                 }
                             }
                         }
                     }
-                    if handled {
-                        state.window.request_redraw();
-                    }
+                }
+                if tools_handled {
+                    state.window.request_redraw();
                 }
                 state
                     .input
@@ -4175,28 +4185,20 @@ impl ApplicationHandler for CoderApp {
                         return;
                     }
                 }
-                if let Some(ref layout) = chat_layout.tool_panel {
-                    if button_state == ElementState::Released {
-                        if let Some(cancel_bounds) = layout.cancel_bounds {
-                            if cancel_bounds.contains(Point::new(x, y)) {
-                                state.abort_query();
-                                state.window.request_redraw();
-                                return;
-                            }
-                        }
-                    }
-                    let mut handled = false;
-                    for block in &layout.blocks {
+                // Handle mouse events for inline tools
+                let mut tools_handled = false;
+                for inline_layout in &chat_layout.inline_tools {
+                    for block in &inline_layout.blocks {
                         if let Some(tool) = state.tool_history.get_mut(block.index) {
                             if matches!(
                                 tool.card
                                     .event(&input_event, block.card_bounds, &mut state.event_context),
                                 EventResult::Handled
                             ) {
-                                handled = true;
+                                tools_handled = true;
                             }
                             if tool.sync_expanded_from_card() {
-                                handled = true;
+                                tools_handled = true;
                             }
                             if let Some(detail_bounds) = block.detail_bounds {
                                 if matches!(
@@ -4204,14 +4206,14 @@ impl ApplicationHandler for CoderApp {
                                         .event(&input_event, detail_bounds, &mut state.event_context),
                                     EventResult::Handled
                                 ) {
-                                    handled = true;
+                                    tools_handled = true;
                                 }
                             }
                         }
                     }
-                    if handled {
-                        state.window.request_redraw();
-                    }
+                }
+                if tools_handled {
+                    state.window.request_redraw();
                 }
                 if button_state == ElementState::Released
                     && !state.session_info.permission_mode.is_empty()
@@ -4304,36 +4306,37 @@ impl ApplicationHandler for CoderApp {
                     }
                 }
                 let chat_layout = state.build_chat_layout(&sidebar_layout, logical_height);
-                if let Some(ref layout) = chat_layout.tool_panel {
-                    let mouse_point = Point::new(state.mouse_pos.0, state.mouse_pos.1);
-                    if layout.bounds.contains(mouse_point) {
-                        let input_event = InputEvent::Scroll { dx: 0.0, dy: dy * 40.0 };
-                        let mut handled = false;
-                        for block in &layout.blocks {
+                // Handle scroll events for inline tools
+                let mouse_point = Point::new(state.mouse_pos.0, state.mouse_pos.1);
+                let scroll_input_event = InputEvent::Scroll { dx: 0.0, dy: dy * 40.0 };
+                let mut scroll_handled = false;
+                for inline_layout in &chat_layout.inline_tools {
+                    for block in &inline_layout.blocks {
+                        if block.card_bounds.contains(mouse_point) {
                             if let Some(tool) = state.tool_history.get_mut(block.index) {
                                 if matches!(
                                     tool.card
-                                        .event(&input_event, block.card_bounds, &mut state.event_context),
+                                        .event(&scroll_input_event, block.card_bounds, &mut state.event_context),
                                     EventResult::Handled
                                 ) {
-                                    handled = true;
+                                    scroll_handled = true;
                                 }
                                 if let Some(detail_bounds) = block.detail_bounds {
                                     if matches!(
                                         tool.detail
-                                            .event(&input_event, detail_bounds, &mut state.event_context),
+                                            .event(&scroll_input_event, detail_bounds, &mut state.event_context),
                                         EventResult::Handled
                                     ) {
-                                        handled = true;
+                                        scroll_handled = true;
                                     }
                                 }
                             }
                         }
-                        if handled {
-                            state.window.request_redraw();
-                            return;
-                        }
                     }
+                }
+                if scroll_handled {
+                    state.window.request_redraw();
+                    return;
                 }
                 // Scroll the message area (positive dy = scroll up, negative = scroll down)
                 state.scroll_offset = (state.scroll_offset - dy * 40.0).max(0.0);
@@ -5609,6 +5612,7 @@ impl AppState {
         }
     }
 
+    #[allow(dead_code)]
     fn abort_query(&mut self) {
         if let Some(tx) = &self.query_control_tx {
             let _ = tx.send(QueryControl::Abort);
@@ -5635,7 +5639,9 @@ impl AppState {
             return;
         }
 
-        let tool = ToolVisualization::new(tool_use_id, name, tool_type);
+        // Associate tool with the current (last) message
+        let message_index = self.messages.len().saturating_sub(1);
+        let tool = ToolVisualization::new(tool_use_id, name, tool_type, message_index);
         self.tool_history.push(tool);
         if self.tool_history.len() > TOOL_HISTORY_LIMIT {
             let overflow = self.tool_history.len() - TOOL_HISTORY_LIMIT;
@@ -5963,7 +5969,18 @@ impl AppState {
         let max_chars = (available_width / char_width).max(1.0) as usize;
 
         let mut message_layouts = Vec::with_capacity(self.messages.len());
+        let mut inline_tools_layouts: Vec<InlineToolsLayout> = Vec::new();
         let mut total_content_height = 0.0_f32;
+
+        // Group tools by message_index
+        let mut tools_by_message: std::collections::HashMap<usize, Vec<usize>> =
+            std::collections::HashMap::new();
+        for (tool_idx, tool) in self.tool_history.iter().enumerate() {
+            tools_by_message
+                .entry(tool.message_index)
+                .or_default()
+                .push(tool_idx);
+        }
 
         for index in 0..self.messages.len() {
             let (role, content, document) = {
@@ -5991,6 +6008,21 @@ impl AppState {
             };
             total_content_height += layout.height;
             message_layouts.push(layout);
+
+            // Add inline tools for this message
+            if let Some(tool_indices) = tools_by_message.get(&index) {
+                if !tool_indices.is_empty() {
+                    let inline_layout = self.build_inline_tools_layout(
+                        index,
+                        tool_indices,
+                        content_x,
+                        available_width,
+                        total_content_height,
+                    );
+                    total_content_height += inline_layout.height + TOOL_PANEL_GAP;
+                    inline_tools_layouts.push(inline_layout);
+                }
+            }
         }
 
         let streaming_height = if !self.streaming_markdown.source().is_empty() {
@@ -6006,107 +6038,25 @@ impl AppState {
         };
         total_content_height += streaming_height;
 
-        // Calculate tool panel layout positioned after messages
-        let tool_panel = if !self.tool_history.is_empty() {
-            let panel_width = available_width;
-            let panel_x = content_x;
-            let show_cancel = self.tool_history_has_running();
-
-            let mut selected_indices = Vec::new();
-            let mut panel_content_height = TOOL_PANEL_PADDING * 2.0 + TOOL_PANEL_HEADER_HEIGHT;
-
-            for index in (0..self.tool_history.len()).rev() {
-                if selected_indices.len() >= TOOL_PANEL_MAX_CARDS {
-                    break;
-                }
-                let tool = &self.tool_history[index];
-                let card_height = tool.card.size_hint().1.unwrap_or(22.0);
-                let detail_height = tool.detail.height();
-                let mut block_height = card_height;
-                if detail_height > 0.0 {
-                    block_height += TOOL_PANEL_GAP + detail_height;
-                }
-                let gap = if selected_indices.is_empty() { 0.0 } else { TOOL_PANEL_GAP };
-                if panel_content_height + gap + block_height <= TOOL_PANEL_MAX_HEIGHT || selected_indices.is_empty() {
-                    panel_content_height += gap + block_height;
-                    selected_indices.push(index);
-                }
-            }
-            selected_indices.reverse();
-
-            let panel_height = panel_content_height.min(TOOL_PANEL_MAX_HEIGHT);
-            // Position after messages + streaming + gap
-            let panel_y_in_content = total_content_height + TOOL_PANEL_GAP;
-            total_content_height += TOOL_PANEL_GAP + panel_height;
-
-            let bounds = Bounds::new(panel_x, panel_y_in_content, panel_width, panel_height);
-            let header_bounds = Bounds::new(
-                panel_x + TOOL_PANEL_PADDING,
-                panel_y_in_content + TOOL_PANEL_PADDING,
-                panel_width - TOOL_PANEL_PADDING * 2.0,
-                TOOL_PANEL_HEADER_HEIGHT,
-            );
-            let cancel_bounds = if show_cancel {
-                let button_width = 68.0;
-                let button_height = 18.0;
-                Some(Bounds::new(
-                    header_bounds.origin.x + header_bounds.size.width - button_width,
-                    header_bounds.origin.y + (TOOL_PANEL_HEADER_HEIGHT - button_height) * 0.5,
-                    button_width,
-                    button_height,
-                ))
-            } else {
-                None
-            };
-
-            let mut blocks = Vec::new();
-            let mut block_y = header_bounds.origin.y + TOOL_PANEL_HEADER_HEIGHT + TOOL_PANEL_GAP;
-            for (i, index) in selected_indices.iter().enumerate() {
-                let tool = &self.tool_history[*index];
-                let card_height = tool.card.size_hint().1.unwrap_or(22.0);
-                let card_bounds = Bounds::new(
-                    panel_x + TOOL_PANEL_PADDING,
-                    block_y,
-                    panel_width - TOOL_PANEL_PADDING * 2.0,
-                    card_height,
+        // Add inline tools for streaming/current message (last message index or beyond)
+        let streaming_msg_index = self.messages.len().saturating_sub(1);
+        if let Some(tool_indices) = tools_by_message.get(&streaming_msg_index) {
+            // Check if we already added tools for this message above
+            let already_added = inline_tools_layouts
+                .iter()
+                .any(|l| l.message_index == streaming_msg_index);
+            if !already_added && !tool_indices.is_empty() {
+                let inline_layout = self.build_inline_tools_layout(
+                    streaming_msg_index,
+                    tool_indices,
+                    content_x,
+                    available_width,
+                    total_content_height,
                 );
-                block_y += card_height;
-
-                let detail_height = tool.detail.height();
-                let detail_bounds = if detail_height > 0.0 {
-                    block_y += TOOL_PANEL_GAP;
-                    let db = Bounds::new(
-                        panel_x + TOOL_PANEL_PADDING,
-                        block_y,
-                        panel_width - TOOL_PANEL_PADDING * 2.0,
-                        detail_height,
-                    );
-                    block_y += detail_height;
-                    Some(db)
-                } else {
-                    None
-                };
-
-                blocks.push(ToolPanelBlock {
-                    index: *index,
-                    card_bounds,
-                    detail_bounds,
-                });
-
-                if i + 1 < selected_indices.len() {
-                    block_y += TOOL_PANEL_GAP;
-                }
+                total_content_height += inline_layout.height + TOOL_PANEL_GAP;
+                inline_tools_layouts.push(inline_layout);
             }
-
-            Some(ToolPanelLayout {
-                bounds,
-                header_bounds,
-                cancel_bounds,
-                blocks,
-            })
-        } else {
-            None
-        };
+        }
 
         let max_scroll = (total_content_height - viewport_height).max(0.0);
         self.scroll_offset = self.scroll_offset.clamp(0.0, max_scroll);
@@ -6124,30 +6074,44 @@ impl AppState {
         }
 
         // Apply scroll offset to message Y positions
-        let mut y = viewport_top - self.scroll_offset;
-        for layout in &mut message_layouts {
+        let scroll_adjust = viewport_top - self.scroll_offset;
+        let mut y = scroll_adjust;
+        let mut inline_tools_idx = 0;
+        for (msg_idx, layout) in message_layouts.iter_mut().enumerate() {
             for line in &mut layout.lines {
                 line.y += y;
             }
             y += layout.height;
+
+            // Adjust inline tools Y positions for this message
+            if inline_tools_idx < inline_tools_layouts.len()
+                && inline_tools_layouts[inline_tools_idx].message_index == msg_idx
+            {
+                let itl = &mut inline_tools_layouts[inline_tools_idx];
+                itl.y_offset += scroll_adjust;
+                for block in &mut itl.blocks {
+                    block.card_bounds.origin.y += scroll_adjust;
+                    if let Some(ref mut db) = block.detail_bounds {
+                        db.origin.y += scroll_adjust;
+                    }
+                }
+                y += itl.height + TOOL_PANEL_GAP;
+                inline_tools_idx += 1;
+            }
         }
 
-        // Apply scroll offset to tool panel
-        let tool_panel = tool_panel.map(|mut tp| {
-            let offset = viewport_top - self.scroll_offset;
-            tp.bounds.origin.y += offset;
-            tp.header_bounds.origin.y += offset;
-            if let Some(ref mut cb) = tp.cancel_bounds {
-                cb.origin.y += offset;
-            }
-            for block in &mut tp.blocks {
-                block.card_bounds.origin.y += offset;
+        // Handle any remaining inline tools (for streaming message)
+        while inline_tools_idx < inline_tools_layouts.len() {
+            let itl = &mut inline_tools_layouts[inline_tools_idx];
+            itl.y_offset += scroll_adjust;
+            for block in &mut itl.blocks {
+                block.card_bounds.origin.y += scroll_adjust;
                 if let Some(ref mut db) = block.detail_bounds {
-                    db.origin.y += offset;
+                    db.origin.y += scroll_adjust;
                 }
             }
-            tp
-        });
+            inline_tools_idx += 1;
+        }
 
         ChatLayout {
             viewport_top,
@@ -6158,7 +6122,71 @@ impl AppState {
             chat_line_height,
             message_layouts,
             streaming_height,
-            tool_panel,
+            inline_tools: inline_tools_layouts,
+        }
+    }
+
+    fn build_inline_tools_layout(
+        &self,
+        message_index: usize,
+        tool_indices: &[usize],
+        content_x: f32,
+        available_width: f32,
+        y_offset: f32,
+    ) -> InlineToolsLayout {
+        let panel_x = content_x;
+        let panel_width = available_width;
+
+        let mut blocks = Vec::new();
+        let mut block_y = y_offset + TOOL_PANEL_GAP;
+        let mut total_height = TOOL_PANEL_GAP;
+
+        for (i, &tool_idx) in tool_indices.iter().enumerate() {
+            let tool = &self.tool_history[tool_idx];
+            let card_height = tool.card.size_hint().1.unwrap_or(22.0);
+            let card_bounds = Bounds::new(
+                panel_x,
+                block_y,
+                panel_width,
+                card_height,
+            );
+            block_y += card_height;
+            total_height += card_height;
+
+            let detail_height = tool.detail.height();
+            let detail_bounds = if detail_height > 0.0 {
+                block_y += TOOL_PANEL_GAP;
+                total_height += TOOL_PANEL_GAP;
+                let db = Bounds::new(
+                    panel_x,
+                    block_y,
+                    panel_width,
+                    detail_height,
+                );
+                block_y += detail_height;
+                total_height += detail_height;
+                Some(db)
+            } else {
+                None
+            };
+
+            blocks.push(ToolPanelBlock {
+                index: tool_idx,
+                card_bounds,
+                detail_bounds,
+            });
+
+            if i + 1 < tool_indices.len() {
+                block_y += TOOL_PANEL_GAP;
+                total_height += TOOL_PANEL_GAP;
+            }
+        }
+
+        InlineToolsLayout {
+            message_index,
+            y_offset,
+            height: total_height,
+            blocks,
         }
     }
 
@@ -7609,82 +7637,54 @@ impl CoderApp {
             }
         }
 
-        // Render tool panel INSIDE chat clip region (scrolls with messages)
-        if let Some(ref layout) = chat_layout.tool_panel {
-            scene.draw_quad(
-                Quad::new(layout.bounds)
-                    .with_background(palette.tool_panel_bg)
-                    .with_border(palette.tool_panel_border, 1.0),
-            );
-
-            let header_run = state.text_system.layout_styled_mono(
-                "Tool history",
-                Point::new(layout.header_bounds.origin.x, layout.header_bounds.origin.y),
-                12.0,
-                palette.text_secondary,
-                wgpui::text::FontStyle::default(),
-            );
-            scene.draw_text(header_run);
-
-            if let Some(cancel_bounds) = layout.cancel_bounds {
-                let hovered = cancel_bounds.contains(Point::new(state.mouse_pos.0, state.mouse_pos.1));
-                let bg = if hovered {
-                    Hsla::new(5.0, 0.75, 0.45, 1.0)
-                } else {
-                    Hsla::new(5.0, 0.65, 0.35, 1.0)
-                };
-                scene.draw_quad(
-                    Quad::new(cancel_bounds)
-                        .with_background(bg)
-                        .with_border(Hsla::new(5.0, 0.5, 0.6, 1.0), 1.0),
-                );
-                let label_run = state.text_system.layout_styled_mono(
-                    "Cancel",
-                    Point::new(cancel_bounds.origin.x + 8.0, cancel_bounds.origin.y + 3.0),
-                    11.0,
-                    Hsla::new(0.0, 0.0, 0.95, 1.0),
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(label_run);
-            }
-
-            scene.push_clip(layout.bounds);
+        // Render inline tools (scrolls with messages, no panel background)
+        {
             let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
-            for block in &layout.blocks {
-                if let Some(tool) = state.tool_history.get_mut(block.index) {
-                    tool.card.paint(block.card_bounds, &mut paint_cx);
-                    if tool.status == ToolStatus::Running {
-                        let ratio = tool
-                            .elapsed_secs
-                            .map(|elapsed| (elapsed / 6.0).min(1.0).max(0.1) as f32)
-                            .unwrap_or(0.2_f32);
-                        let bar_height = 2.0;
-                        let bar_bounds = Bounds::new(
-                            block.card_bounds.origin.x,
-                            block.card_bounds.origin.y + block.card_bounds.size.height - bar_height,
-                            block.card_bounds.size.width,
-                            bar_height,
-                        );
-                        paint_cx.scene.draw_quad(
-                            Quad::new(bar_bounds)
-                                .with_background(palette.tool_progress_bg),
-                        );
-                        paint_cx.scene.draw_quad(
-                            Quad::new(Bounds::new(
-                                bar_bounds.origin.x,
-                                bar_bounds.origin.y,
-                                bar_bounds.size.width * ratio,
-                                bar_bounds.size.height,
-                            ))
-                            .with_background(palette.tool_progress_fg),
-                        );
-                    }
-                    if let Some(detail_bounds) = block.detail_bounds {
-                        tool.detail.paint(detail_bounds, &mut paint_cx);
+            for inline_layout in &chat_layout.inline_tools {
+                for block in &inline_layout.blocks {
+                    // Check if the tool block is visible in the viewport
+                    let block_top = block.card_bounds.origin.y;
+                    let block_bottom = block.detail_bounds
+                        .as_ref()
+                        .map(|db| db.origin.y + db.size.height)
+                        .unwrap_or(block.card_bounds.origin.y + block.card_bounds.size.height);
+
+                    if block_bottom > viewport_top && block_top < viewport_bottom {
+                        if let Some(tool) = state.tool_history.get_mut(block.index) {
+                            tool.card.paint(block.card_bounds, &mut paint_cx);
+                            if tool.status == ToolStatus::Running {
+                                let ratio = tool
+                                    .elapsed_secs
+                                    .map(|elapsed| (elapsed / 6.0).min(1.0).max(0.1) as f32)
+                                    .unwrap_or(0.2_f32);
+                                let bar_height = 2.0;
+                                let bar_bounds = Bounds::new(
+                                    block.card_bounds.origin.x,
+                                    block.card_bounds.origin.y + block.card_bounds.size.height - bar_height,
+                                    block.card_bounds.size.width,
+                                    bar_height,
+                                );
+                                paint_cx.scene.draw_quad(
+                                    Quad::new(bar_bounds)
+                                        .with_background(palette.tool_progress_bg),
+                                );
+                                paint_cx.scene.draw_quad(
+                                    Quad::new(Bounds::new(
+                                        bar_bounds.origin.x,
+                                        bar_bounds.origin.y,
+                                        bar_bounds.size.width * ratio,
+                                        bar_bounds.size.height,
+                                    ))
+                                    .with_background(palette.tool_progress_fg),
+                                );
+                            }
+                            if let Some(detail_bounds) = block.detail_bounds {
+                                tool.detail.paint(detail_bounds, &mut paint_cx);
+                            }
+                        }
                     }
                 }
             }
-            scene.pop_clip();
         }
 
         if chat_clip_active {
@@ -10077,12 +10077,6 @@ struct ToolPanelBlock {
     detail_bounds: Option<Bounds>,
 }
 
-struct ToolPanelLayout {
-    bounds: Bounds,
-    header_bounds: Bounds,
-    cancel_bounds: Option<Bounds>,
-    blocks: Vec<ToolPanelBlock>,
-}
 
 fn session_list_layout(
     logical_width: f32,
