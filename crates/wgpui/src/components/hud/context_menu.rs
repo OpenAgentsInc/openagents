@@ -357,14 +357,41 @@ impl Component for ContextMenu {
 
         let menu_bounds = self.calculate_bounds(bounds);
 
-        // Draw menu background - use a more visible dark gray
-        let menu_bg = Hsla::new(0.0, 0.0, 0.12, 1.0); // #1f1f1f - more visible than ELEVATED
-        let menu_border = Hsla::new(0.0, 0.0, 0.25, 1.0); // lighter border
+        // Draw shadow/backdrop first for depth
+        let shadow_offset = 4.0;
+        let shadow_bounds = Bounds::new(
+            menu_bounds.origin.x + shadow_offset,
+            menu_bounds.origin.y + shadow_offset,
+            menu_bounds.size.width,
+            menu_bounds.size.height,
+        );
+        cx.scene.draw_quad(
+            Quad::new(shadow_bounds)
+                .with_background(Hsla::new(0.0, 0.0, 0.0, 0.5))
+                .with_corner_radius(4.0),
+        );
+
+        // Draw solid menu background - fully opaque black
+        let menu_bg = Hsla::new(0.0, 0.0, 0.0, 1.0); // Pure black, fully opaque
+        let menu_border = Hsla::new(0.0, 0.0, 0.35, 1.0); // Visible border
         cx.scene.draw_quad(
             Quad::new(menu_bounds)
                 .with_background(menu_bg)
                 .with_border(menu_border, 1.0)
                 .with_corner_radius(4.0),
+        );
+
+        // Draw inner fill slightly lighter for visual depth
+        let inner_bounds = Bounds::new(
+            menu_bounds.origin.x + 1.0,
+            menu_bounds.origin.y + 1.0,
+            menu_bounds.size.width - 2.0,
+            menu_bounds.size.height - 2.0,
+        );
+        cx.scene.draw_quad(
+            Quad::new(inner_bounds)
+                .with_background(Hsla::new(0.0, 0.0, 0.12, 1.0))
+                .with_corner_radius(3.0),
         );
 
         // Draw items
