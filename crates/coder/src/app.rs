@@ -849,7 +849,7 @@ impl CoderApp {
         // Calculate viewport bounds for message area
         // Add extra buffer to ensure text never reaches input area
         let viewport_top = OUTPUT_PADDING;
-        let viewport_bottom = logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 20.0;
+        let viewport_bottom = logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 80.0;
         let viewport_height = viewport_bottom - viewport_top;
         let available_width = logical_width - OUTPUT_PADDING * 2.0;
 
