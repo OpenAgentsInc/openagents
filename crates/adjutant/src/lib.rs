@@ -192,24 +192,34 @@ impl Adjutant {
         // 2. Determine if RLM mode should be used
         let use_rlm = self.should_use_rlm(task, &plan);
 
-        // 3. Check if Claude CLI is available
-        if has_claude_cli() {
-            // Build context from relevant files
-            let context = self.build_context(&plan).await?;
+        // 3. Check which LM provider to use (respects priority: LlamaCpp > Claude > others)
+        let provider = dspy::lm_config::detect_provider();
+        tracing::info!("Adjutant: using LM provider: {:?}", provider);
 
-            let executor = ClaudeExecutor::new(&self.workspace_root);
-
-            if use_rlm {
-                tracing::info!("Using Claude with RLM support for complex analysis");
-                // Enable RLM tools based on environment variable
-                let enable_rlm_tools = std::env::var("ADJUTANT_ENABLE_RLM")
-                    .map(|v| v == "1" || v.to_lowercase() == "true")
-                    .unwrap_or(true);
-                return executor.execute_with_rlm(task, &context, enable_rlm_tools).await;
+        match provider {
+            // Use local LlamaCpp/GPT-OSS - execute with local LM
+            Some(dspy::lm_config::LmProvider::LlamaCpp) => {
+                tracing::info!("Executing with local llama.cpp/GPT-OSS");
+                return self.execute_with_local_lm(task, &plan).await;
             }
+            // Use Claude SDK
+            Some(dspy::lm_config::LmProvider::ClaudeSdk) => {
+                let context = self.build_context(&plan).await?;
+                let executor = ClaudeExecutor::new(&self.workspace_root);
 
-            tracing::info!("Using Claude standard execution");
-            return executor.execute(task, &context, &mut self.tools).await;
+                if use_rlm {
+                    tracing::info!("Using Claude with RLM support for complex analysis");
+                    let enable_rlm_tools = std::env::var("ADJUTANT_ENABLE_RLM")
+                        .map(|v| v == "1" || v.to_lowercase() == "true")
+                        .unwrap_or(true);
+                    return executor.execute_with_rlm(task, &context, enable_rlm_tools).await;
+                }
+
+                tracing::info!("Using Claude standard execution");
+                return executor.execute(task, &context, &mut self.tools).await;
+            }
+            // Other providers - use local tools
+            _ => {}
         }
 
         // 4. Fallback: Check complexity for delegation or RLM
@@ -226,6 +236,53 @@ impl Adjutant {
         // 5. Do the work myself using tools
         tracing::info!("Executing with local tools");
         self.execute_with_tools(task, &plan).await
+    }
+
+    /// Execute task using local LM (llama.cpp/GPT-OSS).
+    async fn execute_with_local_lm(
+        &mut self,
+        task: &Task,
+        plan: &TaskPlan,
+    ) -> Result<TaskResult, AdjutantError> {
+        // Build context from relevant files
+        let context = self.build_context(plan).await?;
+
+        // Create LM and execute
+        let lm = dspy::lm_config::create_lm(&dspy::lm_config::LmProvider::LlamaCpp)
+            .await
+            .map_err(|e| AdjutantError::ExecutionFailed(format!("Failed to create LM: {}", e)))?;
+
+        // Build prompt with context
+        let prompt = format!(
+            "You are an AI coding assistant. Complete the following task.\n\n\
+             ## Task\n{}\n\n\
+             ## Context\n{}\n\n\
+             Provide a clear, helpful response.",
+            task.to_prompt(),
+            context
+        );
+
+        // Execute with local LM using Chat API
+        use dsrs::{Chat, Message};
+        let chat = Chat::new(vec![
+            Message::system("You are an AI coding assistant."),
+            Message::user(&prompt),
+        ]);
+
+        let response = lm.call(chat, vec![])
+            .await
+            .map_err(|e| AdjutantError::ExecutionFailed(format!("LM call failed: {}", e)))?;
+
+        // Extract text from response
+        let summary = response.output.content().to_string();
+
+        Ok(TaskResult {
+            success: true,
+            summary,
+            modified_files: Vec::new(),
+            commit_hash: None,
+            error: None,
+        })
     }
 
     /// Determine if RLM mode should be used for a task.

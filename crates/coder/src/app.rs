@@ -3683,6 +3683,23 @@ impl ApplicationHandler for CoderApp {
             let available_providers = adjutant::dspy::lm_config::detect_all_providers();
             tracing::info!("Available LM providers: {:?}", available_providers);
 
+            // Boot OANIX on startup (async, will be cached when ready)
+            tracing::info!("Booting OANIX runtime...");
+            let (oanix_tx, oanix_rx) = mpsc::unbounded_channel();
+            let oanix_manifest_rx = Some(oanix_rx);
+            tokio::spawn(async move {
+                match oanix::boot().await {
+                    Ok(manifest) => {
+                        tracing::info!("OANIX booted on startup, workspace: {:?}",
+                            manifest.workspace.as_ref().map(|w| &w.root));
+                        let _ = oanix_tx.send(manifest);
+                    }
+                    Err(e) => {
+                        tracing::warn!("OANIX boot failed on startup: {}", e);
+                    }
+                }
+            });
+
             AppState {
                 window,
                 surface,
@@ -3786,7 +3803,7 @@ impl ApplicationHandler for CoderApp {
                 mcp_project_path,
                 selected_model,
                 oanix_manifest: None,
-                oanix_manifest_rx: None,
+                oanix_manifest_rx,
                 available_providers,
                 llama_server_process,
             }
