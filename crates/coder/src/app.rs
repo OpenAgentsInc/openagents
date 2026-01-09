@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{mpsc, oneshot};
 use web_time::Instant;
 use wgpui::input::{Key as UiKey, Modifiers as UiModifiers, NamedKey as UiNamedKey};
-use wgpui::components::{Component, EventContext, PaintContext};
+use wgpui::components::{Component, EventContext, EventResult, PaintContext};
 use wgpui::markdown::{MarkdownDocument, MarkdownRenderer as MdRenderer, StreamingMarkdown};
 use wgpui::renderer::Renderer;
 use wgpui::{Bounds, Hsla, InputEvent, Point, Quad, Scene, Size, TextInput, TextSystem};
@@ -26,7 +26,10 @@ use claude_agent_sdk::{query_with_permissions, QueryOptions, SdkMessage};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use wgpui::components::atoms::PermissionAction;
+use wgpui::components::atoms::{PermissionAction, SessionStatus};
+use wgpui::components::molecules::{
+    CheckpointRestore, SessionAction, SessionCard, SessionInfo as SessionCardInfo,
+};
 use wgpui::components::organisms::{PermissionDialog, PermissionType};
 
 use crate::commands::{command_specs, parse_command, Command};
@@ -97,6 +100,11 @@ const STATUS_BAR_FONT_SIZE: f32 = 11.0;
 const BUG_REPORT_URL: &str = "https://github.com/OpenAgentsInc/openagents/issues/new";
 const MAX_FILE_BYTES: usize = 200_000;
 const MAX_COMMAND_BYTES: usize = 120_000;
+const SESSION_MODAL_WIDTH: f32 = 760.0;
+const SESSION_MODAL_HEIGHT: f32 = 520.0;
+const SESSION_CARD_HEIGHT: f32 = 100.0;
+const SESSION_CARD_GAP: f32 = 12.0;
+const SESSION_MODAL_PADDING: f32 = 16.0;
 
 /// Message role in the conversation
 #[derive(Clone, Copy, PartialEq)]
@@ -111,6 +119,7 @@ struct ChatMessage {
     content: String,
     /// Parsed markdown document for assistant messages
     document: Option<MarkdownDocument>,
+    uuid: Option<String>,
 }
 
 /// Events from the async query task
@@ -120,6 +129,8 @@ enum ResponseEvent {
     ToolCallInput { json: String },
     ToolCallEnd,
     ToolResult { content: String, is_error: bool },
+    UserMessageId { uuid: String },
+    SystemMessage(String),
     Complete,
     Error(String),
     SystemInit {
@@ -140,6 +151,7 @@ struct PermissionPending {
 
 enum QueryControl {
     Interrupt,
+    RewindFiles { user_message_id: String },
     #[allow(dead_code)]
     Abort,
 }
@@ -171,6 +183,12 @@ struct SessionEntry {
     last_message: String,
     message_count: usize,
     model: String,
+}
+
+#[derive(Clone, Debug)]
+struct SessionCardEvent {
+    action: SessionAction,
+    session_id: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -205,10 +223,18 @@ struct PermissionHistoryEntry {
     detail: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+struct CheckpointEntry {
+    user_message_id: String,
+    label: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct StoredMessage {
     role: String,
     content: String,
+    #[serde(default)]
+    uuid: Option<String>,
 }
 
 /// Available models for selection
@@ -302,6 +328,10 @@ fn session_messages_file(session_id: &str) -> PathBuf {
     session_messages_dir(session_id).join("messages.jsonl")
 }
 
+fn session_metadata_file(session_id: &str) -> PathBuf {
+    session_messages_dir(session_id).join("metadata.json")
+}
+
 fn load_permission_config() -> PermissionConfig {
     let path = permission_config_file();
     if let Ok(content) = fs::read_to_string(path) {
@@ -363,10 +393,20 @@ fn write_session_messages(session_id: &str, messages: &[ChatMessage]) -> io::Res
         let stored = StoredMessage {
             role: role.to_string(),
             content: msg.content.clone(),
+            uuid: msg.uuid.clone(),
         };
         serde_json::to_writer(&mut file, &stored)?;
         writeln!(&mut file)?;
     }
+    Ok(())
+}
+
+fn write_session_metadata(session_id: &str, entry: &SessionEntry) -> io::Result<()> {
+    let dir = session_messages_dir(session_id);
+    fs::create_dir_all(&dir)?;
+    let data = serde_json::to_string_pretty(entry)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    fs::write(session_metadata_file(session_id), data)?;
     Ok(())
 }
 
@@ -391,6 +431,7 @@ fn read_session_messages(session_id: &str) -> io::Result<Vec<ChatMessage>> {
             role,
             content: stored.content,
             document,
+            uuid: stored.uuid,
         });
     }
     Ok(messages)
@@ -450,6 +491,13 @@ struct AppState {
     session_index: Vec<SessionEntry>,
     pending_resume_session: Option<String>,
     pending_fork_session: bool,
+    session_cards: Vec<SessionCard>,
+    session_action_tx: Option<mpsc::UnboundedSender<SessionCardEvent>>,
+    session_action_rx: Option<mpsc::UnboundedReceiver<SessionCardEvent>>,
+    checkpoint_restore: CheckpointRestore,
+    checkpoint_entries: Vec<CheckpointEntry>,
+    checkpoint_action_tx: Option<mpsc::UnboundedSender<usize>>,
+    checkpoint_action_rx: Option<mpsc::UnboundedReceiver<usize>>,
     // Modal state for slash commands
     modal_state: ModalState,
     #[allow(dead_code)]
@@ -611,6 +659,13 @@ impl ApplicationHandler for CoderApp {
                 session_index,
                 pending_resume_session: None,
                 pending_fork_session: false,
+                session_cards: Vec::new(),
+                session_action_tx: None,
+                session_action_rx: None,
+                checkpoint_restore: CheckpointRestore::new(),
+                checkpoint_entries: Vec::new(),
+                checkpoint_action_tx: None,
+                checkpoint_action_rx: None,
                 modal_state: ModalState::None,
                 panel_layout: PanelLayout::Single,
                 keybindings: default_keybindings(),
@@ -652,6 +707,7 @@ impl ApplicationHandler for CoderApp {
         // Poll for SDK responses first
         self.poll_responses();
         self.poll_permissions();
+        self.poll_session_actions();
 
         let Some(state) = &mut self.state else {
             return;
@@ -703,6 +759,53 @@ impl ApplicationHandler for CoderApp {
                     state.window.request_redraw();
                     return;
                 }
+                if matches!(state.modal_state, ModalState::SessionList { .. }) {
+                    let selected = match &state.modal_state {
+                        ModalState::SessionList { selected } => *selected,
+                        _ => 0,
+                    };
+                    if state.session_cards.len() != state.session_index.len() {
+                        state.refresh_session_cards();
+                    }
+                    let checkpoint_height = if state.checkpoint_entries.is_empty() {
+                        0.0
+                    } else {
+                        state.checkpoint_restore.size_hint().1.unwrap_or(0.0)
+                    };
+                    let layout = session_list_layout(
+                        logical_width,
+                        logical_height,
+                        state.session_cards.len(),
+                        selected,
+                        checkpoint_height,
+                    );
+                    let input_event = InputEvent::MouseMove { x, y };
+                    let mut handled = false;
+                    for (index, bounds) in layout.card_bounds {
+                        if let Some(card) = state.session_cards.get_mut(index) {
+                            if matches!(
+                                card.event(&input_event, bounds, &mut state.event_context),
+                                EventResult::Handled
+                            ) {
+                                handled = true;
+                            }
+                        }
+                    }
+                    if let Some(bounds) = layout.checkpoint_bounds {
+                        if matches!(
+                            state
+                                .checkpoint_restore
+                                .event(&input_event, bounds, &mut state.event_context),
+                            EventResult::Handled
+                        ) {
+                            handled = true;
+                        }
+                    }
+                    if handled {
+                        state.window.request_redraw();
+                    }
+                    return;
+                }
                 let input_event = InputEvent::MouseMove { x, y };
                 state
                     .input
@@ -735,6 +838,52 @@ impl ApplicationHandler for CoderApp {
                             dialog.event(&input_event, permission_bounds, &mut state.event_context);
                     }
                     state.window.request_redraw();
+                    return;
+                }
+                if matches!(state.modal_state, ModalState::SessionList { .. }) {
+                    let selected = match &state.modal_state {
+                        ModalState::SessionList { selected } => *selected,
+                        _ => 0,
+                    };
+                    if state.session_cards.len() != state.session_index.len() {
+                        state.refresh_session_cards();
+                    }
+                    let checkpoint_height = if state.checkpoint_entries.is_empty() {
+                        0.0
+                    } else {
+                        state.checkpoint_restore.size_hint().1.unwrap_or(0.0)
+                    };
+                    let layout = session_list_layout(
+                        logical_width,
+                        logical_height,
+                        state.session_cards.len(),
+                        selected,
+                        checkpoint_height,
+                    );
+                    let mut handled = false;
+                    for (index, bounds) in layout.card_bounds {
+                        if let Some(card) = state.session_cards.get_mut(index) {
+                            if matches!(
+                                card.event(&input_event, bounds, &mut state.event_context),
+                                EventResult::Handled
+                            ) {
+                                handled = true;
+                            }
+                        }
+                    }
+                    if let Some(bounds) = layout.checkpoint_bounds {
+                        if matches!(
+                            state
+                                .checkpoint_restore
+                                .event(&input_event, bounds, &mut state.event_context),
+                            EventResult::Handled
+                        ) {
+                            handled = true;
+                        }
+                    }
+                    if handled {
+                        state.window.request_redraw();
+                    }
                     return;
                 }
                 if button_state == ElementState::Released
@@ -862,7 +1011,20 @@ impl AppState {
     }
 
     fn open_session_list(&mut self) {
-        self.modal_state = ModalState::SessionList { selected: 0 };
+        let (action_tx, action_rx) = mpsc::unbounded_channel();
+        let (checkpoint_tx, checkpoint_rx) = mpsc::unbounded_channel();
+        self.session_action_tx = Some(action_tx);
+        self.session_action_rx = Some(action_rx);
+        self.checkpoint_action_tx = Some(checkpoint_tx);
+        self.checkpoint_action_rx = Some(checkpoint_rx);
+        self.refresh_session_cards();
+        self.refresh_checkpoint_restore();
+        let selected = self
+            .session_index
+            .iter()
+            .position(|entry| entry.id == self.session_info.session_id)
+            .unwrap_or(0);
+        self.modal_state = ModalState::SessionList { selected };
     }
 
     fn open_tool_list(&mut self) {
@@ -875,6 +1037,143 @@ impl AppState {
 
     fn open_config(&mut self) {
         self.modal_state = ModalState::Config;
+    }
+
+    fn refresh_session_cards(&mut self) {
+        let action_tx = self.session_action_tx.clone();
+        self.session_cards = self
+            .session_index
+            .iter()
+            .map(|entry| {
+                let is_active = entry.id == self.session_info.session_id;
+                let status = if is_active {
+                    if self.is_thinking {
+                        SessionStatus::Running
+                    } else {
+                        SessionStatus::Paused
+                    }
+                } else {
+                    SessionStatus::Completed
+                };
+                let title = if entry.last_message.trim().is_empty() {
+                    format!("Session {}", truncate_preview(&entry.id, 8))
+                } else {
+                    truncate_preview(&entry.last_message, 64)
+                };
+                let duration = entry.updated_at.saturating_sub(entry.created_at);
+                let timestamp = format_relative_time(entry.updated_at);
+                let model = entry
+                    .model
+                    .replace("claude-", "")
+                    .replace("-2025", "");
+                let info = SessionCardInfo::new(entry.id.clone(), title)
+                    .status(status)
+                    .duration(duration)
+                    .task_count(entry.message_count as u32)
+                    .timestamp(timestamp)
+                    .model(model);
+                let mut card = SessionCard::new(info).show_actions(true);
+                if let Some(tx) = action_tx.clone() {
+                    card = card.on_action(move |action, session_id| {
+                        let _ = tx.send(SessionCardEvent { action, session_id });
+                    });
+                }
+                card
+            })
+            .collect();
+    }
+
+    fn refresh_checkpoint_restore(&mut self) {
+        let entries = build_checkpoint_entries(&self.messages);
+        let labels = entries.iter().map(|entry| entry.label.clone()).collect();
+        let action_tx = self.checkpoint_action_tx.clone();
+        let mut restore = CheckpointRestore::new().checkpoints(labels);
+        if let Some(tx) = action_tx {
+            let tx = tx.clone();
+            restore = restore.on_restore(move |index, _label| {
+                let _ = tx.send(index);
+            });
+        }
+        self.checkpoint_entries = entries;
+        self.checkpoint_restore = restore;
+    }
+
+    fn handle_session_card_action(&mut self, action: SessionAction, session_id: String) {
+        match action {
+            SessionAction::Select | SessionAction::Resume => {
+                self.begin_session_resume(session_id);
+                self.modal_state = ModalState::None;
+            }
+            SessionAction::Fork => {
+                self.begin_session_fork_from(session_id);
+                self.modal_state = ModalState::None;
+            }
+            SessionAction::Delete => {
+                self.push_system_message("Session delete not implemented yet.".to_string());
+            }
+        }
+    }
+
+    fn handle_checkpoint_restore(&mut self, index: usize) {
+        if let Some(entry) = self.checkpoint_entries.get(index) {
+            self.request_rewind_files(entry.user_message_id.clone());
+        }
+    }
+
+    fn begin_session_fork_from(&mut self, session_id: String) {
+        let session_id = session_id.trim().to_string();
+        if session_id.is_empty() {
+            self.push_system_message("Session id is required to fork.".to_string());
+            return;
+        }
+        self.pending_resume_session = Some(session_id.clone());
+        self.pending_fork_session = true;
+        self.session_info.session_id = session_id.clone();
+        if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
+            self.session_info.model = entry.model.clone();
+        }
+        match self.restore_session(&session_id) {
+            Ok(()) => self.push_system_message(format!(
+                "Loaded cached history for session {}.",
+                session_id
+            )),
+            Err(_) => {
+                self.messages.clear();
+                self.push_system_message(format!(
+                    "No local history for session {} yet.",
+                    session_id
+                ));
+            }
+        }
+        self.push_system_message(format!(
+            "Next message will fork session {}.",
+            session_id
+        ));
+        self.refresh_session_cards();
+    }
+
+    fn attach_user_message_id(&mut self, uuid: String) {
+        if let Some(message) = self
+            .messages
+            .iter_mut()
+            .rev()
+            .find(|msg| matches!(msg.role, MessageRole::User) && msg.uuid.is_none())
+        {
+            message.uuid = Some(uuid);
+            self.refresh_checkpoint_restore();
+        }
+    }
+
+    fn request_rewind_files(&mut self, user_message_id: String) {
+        if let Some(tx) = &self.query_control_tx {
+            let _ = tx.send(QueryControl::RewindFiles { user_message_id: user_message_id.clone() });
+            self.push_system_message(format!(
+                "Requested checkpoint restore for message {}.",
+                truncate_preview(&user_message_id, 12)
+            ));
+        } else {
+            self.push_system_message("No active request to rewind.".to_string());
+        }
     }
 
     fn enqueue_permission_prompt(&mut self, pending: PermissionPending) {
@@ -1008,6 +1307,9 @@ impl AppState {
         self.session_info.tools.clear();
         self.pending_resume_session = None;
         self.pending_fork_session = false;
+        self.checkpoint_entries.clear();
+        self.checkpoint_restore = CheckpointRestore::new();
+        self.refresh_session_cards();
     }
 
     fn undo_last_exchange(&mut self) {
@@ -1030,6 +1332,8 @@ impl AppState {
 
         if removed == 0 {
             self.push_system_message("Nothing to undo.".to_string());
+        } else {
+            self.refresh_checkpoint_restore();
         }
     }
 
@@ -1180,6 +1484,9 @@ impl AppState {
         self.pending_resume_session = Some(session_id.clone());
         self.pending_fork_session = false;
         self.session_info.session_id = session_id.clone();
+        if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
+            self.session_info.model = entry.model.clone();
+        }
         match self.restore_session(&session_id) {
             Ok(()) => self.push_system_message(format!(
                 "Loaded cached history for session {}.",
@@ -1193,6 +1500,7 @@ impl AppState {
                 ));
             }
         }
+        self.refresh_session_cards();
     }
 
     fn begin_session_fork(&mut self) {
@@ -1227,6 +1535,7 @@ impl AppState {
             role: MessageRole::Assistant,
             content: message,
             document: None,
+            uuid: None,
         });
     }
 }
@@ -1272,6 +1581,13 @@ impl AppState {
         if let Err(err) = write_session_messages(session_id, &self.messages) {
             tracing::error!("Failed to write session messages: {}", err);
         }
+        if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
+            if let Err(err) = write_session_metadata(session_id, entry) {
+                tracing::error!("Failed to write session metadata: {}", err);
+            }
+        }
+        self.refresh_session_cards();
+        self.refresh_checkpoint_restore();
     }
 
     fn restore_session(&mut self, session_id: &str) -> io::Result<()> {
@@ -1280,6 +1596,7 @@ impl AppState {
         self.scroll_offset = 0.0;
         self.current_tool_name = None;
         self.current_tool_input.clear();
+        self.refresh_checkpoint_restore();
         Ok(())
     }
 }
@@ -1297,6 +1614,7 @@ impl CoderApp {
             role: MessageRole::User,
             content: prompt.clone(),
             document: None,
+            uuid: None,
         });
 
         let cwd = std::env::current_dir().unwrap_or_default();
@@ -1514,6 +1832,21 @@ impl CoderApp {
                                     QueryControl::Interrupt => {
                                         interrupt_requested = true;
                                     }
+                                    QueryControl::RewindFiles { user_message_id } => {
+                                        match stream.rewind_files(&user_message_id).await {
+                                            Ok(()) => {
+                                                let _ = tx.send(ResponseEvent::SystemMessage(
+                                                    "Checkpoint restore requested.".to_string(),
+                                                ));
+                                            }
+                                            Err(err) => {
+                                                let _ = tx.send(ResponseEvent::SystemMessage(
+                                                    format!("Checkpoint restore failed: {}", err),
+                                                ));
+                                            }
+                                        }
+                                        window.request_redraw();
+                                    }
                                     QueryControl::Abort => {
                                         if let Err(e) = stream.abort().await {
                                             tracing::error!("Abort failed: {}", e);
@@ -1579,6 +1912,10 @@ impl CoderApp {
                                     }
                                     Some(Ok(SdkMessage::User(u))) => {
                                         tracing::info!("USER: {:?}", u.message);
+                                        if let Some(uuid) = u.uuid.clone() {
+                                            let _ = tx.send(ResponseEvent::UserMessageId { uuid });
+                                            window.request_redraw();
+                                        }
                                         // Extract tool results from USER messages
                                         if let Some(content) = u.message.get("content").and_then(|c| c.as_array()) {
                                             for item in content {
@@ -1642,13 +1979,18 @@ impl CoderApp {
             return;
         };
 
-        let Some(rx) = &mut state.response_rx else {
+        let mut events = Vec::new();
+        if let Some(rx) = &mut state.response_rx {
+            while let Ok(event) = rx.try_recv() {
+                events.push(event);
+            }
+        } else {
             return;
-        };
+        }
 
         let mut needs_redraw = false;
 
-        while let Ok(event) = rx.try_recv() {
+        for event in events {
             match event {
                 ResponseEvent::Chunk(text) => {
                     state.streaming_markdown.append(&text);
@@ -1697,6 +2039,14 @@ impl CoderApp {
                     state.streaming_markdown.tick();
                     needs_redraw = true;
                 }
+                ResponseEvent::UserMessageId { uuid } => {
+                    state.attach_user_message_id(uuid);
+                    needs_redraw = true;
+                }
+                ResponseEvent::SystemMessage(message) => {
+                    state.push_system_message(message);
+                    needs_redraw = true;
+                }
                 ResponseEvent::Complete => {
                     // Complete and move to messages
                     state.streaming_markdown.complete();
@@ -1707,6 +2057,7 @@ impl CoderApp {
                             role: MessageRole::Assistant,
                             content: source,
                             document: Some(doc),
+                            uuid: None,
                         });
                     }
                     state.streaming_markdown.reset();
@@ -1730,6 +2081,7 @@ impl CoderApp {
                         role: MessageRole::Assistant,
                         content: format!("Error: {}", e),
                         document: None,
+                        uuid: None,
                     });
                     state.streaming_markdown.reset();
                     state.record_session();
@@ -1771,6 +2123,7 @@ impl CoderApp {
                         state.permission_default_allow =
                             default_allow_for_mode(Some(&parsed_mode), state.permission_default_allow);
                     }
+                    state.refresh_session_cards();
                     needs_redraw = true;
                 }
             }
@@ -1807,6 +2160,40 @@ impl CoderApp {
         }
         for action in pending_actions {
             state.handle_permission_action(action);
+            needs_redraw = true;
+        }
+
+        if needs_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    fn poll_session_actions(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut needs_redraw = false;
+
+        let mut session_events = Vec::new();
+        if let Some(rx) = &mut state.session_action_rx {
+            while let Ok(event) = rx.try_recv() {
+                session_events.push(event);
+            }
+        }
+        for event in session_events {
+            state.handle_session_card_action(event.action, event.session_id);
+            needs_redraw = true;
+        }
+
+        let mut checkpoint_events = Vec::new();
+        if let Some(rx) = &mut state.checkpoint_action_rx {
+            while let Ok(index) = rx.try_recv() {
+                checkpoint_events.push(index);
+            }
+        }
+        for index in checkpoint_events {
+            state.handle_checkpoint_restore(index);
             needs_redraw = true;
         }
 
@@ -2070,7 +2457,7 @@ impl CoderApp {
                 &state.session_info.session_id
             };
             let right_text = format!(
-                "{} | {} tools | {}",
+                "{} | {} tools | session {}",
                 model_short,
                 state.session_info.tool_count,
                 session_short
@@ -2089,6 +2476,11 @@ impl CoderApp {
         }
 
         // Draw modal if active
+        let should_refresh_sessions = matches!(state.modal_state, ModalState::SessionList { .. })
+            && state.session_cards.len() != state.session_index.len();
+        if should_refresh_sessions {
+            state.refresh_session_cards();
+        }
         match &state.modal_state {
             ModalState::None => {}
             ModalState::ModelPicker { selected } => {
@@ -2308,18 +2700,31 @@ impl CoderApp {
                 let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
                 scene.draw_quad(overlay);
 
-                let modal_width = 720.0;
-                let modal_height = 360.0;
-                let modal_x = (logical_width - modal_width) / 2.0;
-                let modal_y = (logical_height - modal_height) / 2.0;
-                let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
+                let selected = (*selected).min(sessions.len().saturating_sub(1));
+                let checkpoint_height = if state.checkpoint_entries.is_empty() {
+                    0.0
+                } else {
+                    state.checkpoint_restore.size_hint().1.unwrap_or(0.0)
+                };
+                let layout = session_list_layout(
+                    logical_width,
+                    logical_height,
+                    sessions.len(),
+                    selected,
+                    checkpoint_height,
+                );
+                let modal_bounds = layout.modal_bounds;
+                let modal_x = modal_bounds.origin.x;
+                let modal_y = modal_bounds.origin.y;
+                let _modal_width = modal_bounds.size.width;
+                let modal_height = modal_bounds.size.height;
 
                 let modal_bg = Quad::new(modal_bounds)
                     .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
                     .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
                 scene.draw_quad(modal_bg);
 
-                let mut y = modal_y + 16.0;
+                let mut y = modal_y + SESSION_MODAL_PADDING;
                 let title_run = state.text_system.layout_styled_mono(
                     "Sessions",
                     Point::new(modal_x + 16.0, y),
@@ -2331,16 +2736,16 @@ impl CoderApp {
                 y += 20.0;
 
                 let desc_run = state.text_system.layout_styled_mono(
-                    "Select a session to resume. Cached history loads into the view.",
+                    "Click a card to resume, or fork from a previous session.",
                     Point::new(modal_x + 16.0, y),
                     12.0,
                     Hsla::new(0.0, 0.0, 0.5, 1.0),
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(desc_run);
-                y += 26.0;
 
                 if sessions.is_empty() {
+                    y += 26.0;
                     let empty_run = state.text_system.layout_styled_mono(
                         "No sessions recorded yet.",
                         Point::new(modal_x + 16.0, y),
@@ -2350,68 +2755,29 @@ impl CoderApp {
                     );
                     scene.draw_text(empty_run);
                 } else {
-                    let selected = (*selected).min(sessions.len().saturating_sub(1));
-                    let visible = sessions.iter().take(12);
-                    for (i, entry) in visible.enumerate() {
-                        let is_selected = i == selected;
-                        let indicator = if is_selected { ">" } else { " " };
-                        let indicator_run = state.text_system.layout_styled_mono(
-                            indicator,
-                            Point::new(modal_x + 16.0, y),
-                            13.0,
-                            Hsla::new(120.0, 0.6, 0.5, 1.0),
-                            wgpui::text::FontStyle::default(),
-                        );
-                        scene.draw_text(indicator_run);
-
-                        let short_id = if entry.id.len() > 8 {
-                            &entry.id[..8]
-                        } else {
-                            &entry.id
-                        };
-                        let meta_text = format!(
-                            "{} · {} msgs",
-                            entry.model.replace("claude-", ""),
-                            entry.message_count
-                        );
-                        let id_run = state.text_system.layout_styled_mono(
-                            short_id,
-                            Point::new(modal_x + 32.0, y),
-                            13.0,
-                            if is_selected {
-                                Hsla::new(120.0, 0.6, 0.6, 1.0)
-                            } else {
-                                Hsla::new(0.0, 0.0, 0.7, 1.0)
-                            },
-                            wgpui::text::FontStyle::default(),
-                        );
-                        scene.draw_text(id_run);
-
-                        let meta_run = state.text_system.layout_styled_mono(
-                            &meta_text,
-                            Point::new(modal_x + 110.0, y),
-                            13.0,
-                            Hsla::new(0.0, 0.0, 0.5, 1.0),
-                            wgpui::text::FontStyle::default(),
-                        );
-                        scene.draw_text(meta_run);
-
-                        let preview_run = state.text_system.layout_styled_mono(
-                            &entry.last_message,
-                            Point::new(modal_x + 260.0, y),
-                            13.0,
-                            Hsla::new(0.0, 0.0, 0.55, 1.0),
-                            wgpui::text::FontStyle::default(),
-                        );
-                        scene.draw_text(preview_run);
-
-                        y += 20.0;
+                    let mut paint_cx =
+                        PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+                    for (index, bounds) in &layout.card_bounds {
+                        if let Some(card) = state.session_cards.get_mut(*index) {
+                            card.paint(*bounds, &mut paint_cx);
+                        }
+                        if *index == selected {
+                            let outline = Quad::new(*bounds)
+                                .with_border(Hsla::new(120.0, 0.6, 0.5, 1.0), 1.0);
+                            paint_cx.scene.draw_quad(outline);
+                        }
                     }
+                }
+
+                if let Some(bounds) = layout.checkpoint_bounds {
+                    let mut paint_cx =
+                        PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+                    state.checkpoint_restore.paint(bounds, &mut paint_cx);
                 }
 
                 y = modal_y + modal_height - 24.0;
                 let footer_run = state.text_system.layout_styled_mono(
-                    "Enter to resume · Esc to exit",
+                    "Enter to resume · Esc to exit · Fork with button",
                     Point::new(modal_x + 16.0, y),
                     12.0,
                     Hsla::new(0.0, 0.0, 0.4, 1.0),
@@ -2980,6 +3346,80 @@ fn extract_tool_input_delta(event: &Value) -> Option<String> {
     delta.get("partial_json")?.as_str().map(|s| s.to_string())
 }
 
+struct SessionListLayout {
+    modal_bounds: Bounds,
+    card_bounds: Vec<(usize, Bounds)>,
+    checkpoint_bounds: Option<Bounds>,
+}
+
+fn session_list_layout(
+    logical_width: f32,
+    logical_height: f32,
+    session_count: usize,
+    selected: usize,
+    checkpoint_height: f32,
+) -> SessionListLayout {
+    let modal_width = SESSION_MODAL_WIDTH;
+    let modal_height = SESSION_MODAL_HEIGHT;
+    let modal_x = (logical_width - modal_width) / 2.0;
+    let modal_y = (logical_height - modal_height) / 2.0;
+    let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
+
+    let content_top = modal_y + SESSION_MODAL_PADDING + 46.0;
+    let footer_y = modal_y + modal_height - 24.0;
+    let checkpoint_height = checkpoint_height.max(0.0);
+    let checkpoint_bounds = if checkpoint_height > 0.0 {
+        let y = footer_y - 12.0 - checkpoint_height;
+        Some(Bounds::new(
+            modal_x + SESSION_MODAL_PADDING,
+            y,
+            modal_width - SESSION_MODAL_PADDING * 2.0,
+            checkpoint_height,
+        ))
+    } else {
+        None
+    };
+
+    let card_area_bottom = checkpoint_bounds
+        .as_ref()
+        .map(|bounds| bounds.origin.y - 16.0)
+        .unwrap_or(footer_y - 16.0);
+    let available_height = (card_area_bottom - content_top).max(0.0);
+    let max_cards = if available_height <= 0.0 {
+        0
+    } else {
+        ((available_height + SESSION_CARD_GAP) / (SESSION_CARD_HEIGHT + SESSION_CARD_GAP)) as usize
+    };
+
+    let visible_count = session_count.min(max_cards);
+    let mut card_bounds = Vec::new();
+    if visible_count > 0 {
+        let selected = selected.min(session_count.saturating_sub(1));
+        let mut start = selected.saturating_sub(visible_count / 2);
+        if start + visible_count > session_count {
+            start = session_count.saturating_sub(visible_count);
+        }
+
+        for i in 0..visible_count {
+            let index = start + i;
+            let y = content_top + i as f32 * (SESSION_CARD_HEIGHT + SESSION_CARD_GAP);
+            let bounds = Bounds::new(
+                modal_x + SESSION_MODAL_PADDING,
+                y,
+                modal_width - SESSION_MODAL_PADDING * 2.0,
+                SESSION_CARD_HEIGHT,
+            );
+            card_bounds.push((index, bounds));
+        }
+    }
+
+    SessionListLayout {
+        modal_bounds,
+        card_bounds,
+        checkpoint_bounds,
+    }
+}
+
 fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
     match command {
         Command::Help => {
@@ -3241,25 +3681,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 }
                 WinitKey::Named(WinitNamedKey::Enter) => {
                     if let Some(entry) = state.session_index.get(*selected).cloned() {
-                        state.pending_resume_session = Some(entry.id.clone());
-                        state.pending_fork_session = false;
-                        state.session_info.session_id = entry.id.clone();
-                        state.session_info.model = entry.model.clone();
-                        match state.restore_session(&entry.id) {
-                            Ok(()) => {
-                                state.push_system_message(format!(
-                                    "Loaded cached history for session {}.",
-                                    entry.id
-                                ));
-                            }
-                            Err(_) => {
-                                state.messages.clear();
-                                state.push_system_message(format!(
-                                    "No local history for session {} yet.",
-                                    entry.id
-                                ));
-                            }
-                        }
+                        state.begin_session_resume(entry.id);
                     }
                     state.modal_state = ModalState::None;
                 }
@@ -3410,6 +3832,39 @@ fn parse_permission_mode(input: &str) -> Option<PermissionMode> {
         "dontask" => Some(PermissionMode::DontAsk),
         _ => None,
     }
+}
+
+fn format_relative_time(timestamp: u64) -> String {
+    let now = now_timestamp();
+    if timestamp >= now {
+        return "just now".to_string();
+    }
+    let delta = now - timestamp;
+    if delta < 60 {
+        format!("{}s ago", delta)
+    } else if delta < 3600 {
+        format!("{}m ago", delta / 60)
+    } else if delta < 86_400 {
+        format!("{}h ago", delta / 3600)
+    } else {
+        format!("{}d ago", delta / 86_400)
+    }
+}
+
+fn build_checkpoint_entries(messages: &[ChatMessage]) -> Vec<CheckpointEntry> {
+    let mut entries = Vec::new();
+    for (idx, message) in messages.iter().enumerate() {
+        if matches!(message.role, MessageRole::User) {
+            if let Some(uuid) = &message.uuid {
+                let label = format!("{}: {}", idx + 1, truncate_preview(&message.content, 32));
+                entries.push(CheckpointEntry {
+                    user_message_id: uuid.clone(),
+                    label,
+                });
+            }
+        }
+    }
+    entries
 }
 
 fn default_allow_for_mode(mode: Option<&PermissionMode>, fallback: bool) -> bool {
