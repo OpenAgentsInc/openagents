@@ -9,15 +9,18 @@
 //! Separate from the Pylon LM provider, as sandbox jobs have different
 //! resource profiles and verification characteristics.
 
-use anyhow::Result;
-use nostr::{Keypair, generate_secret_key, get_public_key};
-use protocol::jobs::{SandboxRunRequest, SandboxRunResponse};
+use anyhow::{Context, Result};
+use nostr::{JobInput, JobRequest as NostrJobRequest, Keypair, generate_secret_key, get_public_key};
+use nostr_client::dvm::DvmClient;
+use protocol::jobs::{JobRequest, SandboxRunRequest, SandboxRunResponse};
 use protocol::jobs::sandbox::{
     CommandResult, EnvInfo, NetworkPolicy, RepoMount, ResourceLimits, SandboxCommand,
     SandboxConfig, SandboxStatus,
 };
 use protocol::provenance::Provenance;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::Duration;
 
 /// Resource profile for sandbox execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -91,8 +94,8 @@ impl Default for PylonSandboxConfig {
 
 /// Pylon sandbox provider for executing commands in sandboxed environments.
 ///
-/// This provider submits NIP-90 kind:5050 jobs for sandbox execution
-/// and waits for kind:6050 results.
+/// This provider submits NIP-90 kind:5102 jobs for sandbox execution
+/// and waits for kind:6102 results.
 ///
 /// # Example
 ///
@@ -100,9 +103,14 @@ impl Default for PylonSandboxConfig {
 /// use dsrs::adapter::PylonSandboxProvider;
 /// use dsrs::adapter::pylon_sandbox::SandboxProfile;
 ///
+/// // Offline mode (for testing)
 /// let provider = PylonSandboxProvider::generate()
 ///     .with_profile(SandboxProfile::Large)
 ///     .with_image("sha256:abc123...");
+///
+/// // Online mode (actual job submission)
+/// let provider = PylonSandboxProvider::with_private_key(key)?
+///     .with_profile(SandboxProfile::Large);
 ///
 /// let result = provider.run_commands(vec![
 ///     "cargo build --release",
@@ -112,20 +120,23 @@ impl Default for PylonSandboxConfig {
 pub struct PylonSandboxProvider {
     /// Nostr keypair for signing.
     keypair: Keypair,
+    /// DVM client for actual job submission (None = offline/mock mode).
+    dvm_client: Option<Arc<DvmClient>>,
     /// Configuration.
     config: PylonSandboxConfig,
 }
 
 impl PylonSandboxProvider {
-    /// Create a new sandbox provider with a keypair.
+    /// Create a new sandbox provider with a keypair (offline mode).
     pub fn new(keypair: Keypair) -> Self {
         Self {
             keypair,
+            dvm_client: None,
             config: PylonSandboxConfig::default(),
         }
     }
 
-    /// Create a new sandbox provider with a random keypair.
+    /// Create a new sandbox provider with a random keypair (offline mode).
     pub fn generate() -> Self {
         let secret_key = generate_secret_key();
         let keypair = Keypair {
@@ -133,6 +144,46 @@ impl PylonSandboxProvider {
             public_key: get_public_key(&secret_key).expect("valid secret key"),
         };
         Self::new(keypair)
+    }
+
+    /// Create a new sandbox provider with private key (online mode - connected to relays).
+    ///
+    /// This variant creates a DvmClient for actual job submission to the swarm.
+    pub fn with_private_key(private_key: [u8; 32]) -> Result<Self> {
+        let dvm_client = DvmClient::new(private_key)
+            .map_err(|e| anyhow::anyhow!("Failed to create DVM client: {}", e))?;
+
+        let public_key = get_public_key(&private_key)
+            .map_err(|e| anyhow::anyhow!("Failed to derive public key: {:?}", e))?;
+        let keypair = Keypair {
+            private_key,
+            public_key,
+        };
+
+        Ok(Self {
+            keypair,
+            dvm_client: Some(Arc::new(dvm_client)),
+            config: PylonSandboxConfig::default(),
+        })
+    }
+
+    /// Create from BIP-39 mnemonic (online mode).
+    pub fn from_mnemonic(mnemonic: &str) -> Result<Self> {
+        use bip39::Mnemonic;
+
+        let mnemonic =
+            Mnemonic::parse(mnemonic).map_err(|e| anyhow::anyhow!("Invalid mnemonic: {}", e))?;
+
+        let seed = mnemonic.to_seed("");
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&seed[0..32]);
+
+        Self::with_private_key(key)
+    }
+
+    /// Check if provider is connected (has DvmClient).
+    pub fn is_connected(&self) -> bool {
+        self.dvm_client.is_some()
     }
 
     /// Set the configuration.
@@ -200,14 +251,94 @@ impl PylonSandboxProvider {
         request
     }
 
-    /// Run commands in the sandbox (local execution for testing).
+    /// Run commands in the sandbox.
     ///
-    /// In production, this would submit a NIP-90 job to the relay.
-    /// This implementation provides a local mock for testing.
+    /// If connected (online mode), submits a NIP-90 job to the relay.
+    /// If not connected (offline mode), returns a mock response for testing.
     pub async fn run(&self, request: SandboxRunRequest) -> Result<SandboxRunResponse> {
-        // For now, return a mock response
-        // TODO: Implement actual NIP-90 job submission
-        let response = SandboxRunResponse {
+        // Check if we have a DVM client for actual submission
+        let dvm_client = match &self.dvm_client {
+            Some(client) => client,
+            None => {
+                // Offline mode - return mock response
+                return Ok(self.mock_response(&request));
+            }
+        };
+
+        // Compute job hash for tracking
+        let job_hash = request.compute_hash().context("Failed to compute job hash")?;
+
+        // NIP-90 kind for sandbox jobs
+        const KIND_JOB_SANDBOX: u16 = 5102;
+
+        // Serialize request content
+        let content = serde_json::to_string(&request).context("Failed to serialize request")?;
+
+        // Build NIP-90 job request
+        let mut nostr_request = NostrJobRequest::new(KIND_JOB_SANDBOX)
+            .map_err(|e| anyhow::anyhow!("Failed to create job request: {}", e))?;
+
+        // Add the serialized request as input
+        nostr_request = nostr_request.add_input(JobInput::text(&content));
+        nostr_request = nostr_request.with_bid(self.estimate_cost(&request));
+
+        // Add job type and hash as parameters
+        nostr_request = nostr_request.add_param("job_type", SandboxRunRequest::JOB_TYPE);
+        nostr_request = nostr_request.add_param("job_hash", &job_hash);
+
+        // Add relay
+        if !self.config.relay_url.is_empty() {
+            nostr_request = nostr_request.add_relay(&self.config.relay_url);
+        }
+
+        // Submit job to relay
+        let relay_refs: Vec<&str> = vec![self.config.relay_url.as_str()];
+        let submission = dvm_client
+            .submit_job(nostr_request, &relay_refs)
+            .await
+            .map_err(|e| anyhow::anyhow!("Job submission failed: {}", e))?;
+
+        // Await result with timeout
+        let timeout = Duration::from_millis(self.config.result_timeout_ms);
+        let result = dvm_client
+            .await_result(&submission.event_id, timeout)
+            .await
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Sandbox job timed out or failed after {:?}: {}",
+                    timeout,
+                    e
+                )
+            })?;
+
+        // Parse the result content back into the response type
+        let response: SandboxRunResponse = serde_json::from_str(&result.content).context(
+            format!(
+                "Failed to parse sandbox result: {}",
+                &result.content[..100.min(result.content.len())]
+            ),
+        )?;
+
+        Ok(response)
+    }
+
+    /// Estimate cost for a sandbox job in millisatoshis.
+    fn estimate_cost(&self, request: &SandboxRunRequest) -> u64 {
+        // Base cost + per-command cost + resource multiplier
+        let base_cost = 100; // 100 msats base
+        let per_command = 50 * request.commands.len() as u64;
+        let resource_multiplier = match self.config.profile {
+            SandboxProfile::Small => 1,
+            SandboxProfile::Medium => 2,
+            SandboxProfile::Large => 4,
+        };
+
+        (base_cost + per_command) * resource_multiplier
+    }
+
+    /// Create a mock response for offline testing.
+    fn mock_response(&self, request: &SandboxRunRequest) -> SandboxRunResponse {
+        SandboxRunResponse {
             env_info: EnvInfo {
                 image_digest: request.sandbox.image_digest.clone(),
                 hostname: Some("sandbox-mock".to_string()),
@@ -229,11 +360,9 @@ impl PylonSandboxProvider {
             artifacts: Vec::new(),
             status: SandboxStatus::Success,
             error: None,
-            provenance: Provenance::new("sandbox-executor")
+            provenance: Provenance::new("sandbox-executor-mock")
                 .with_provider(&self.keypair.public_key_hex()),
-        };
-
-        Ok(response)
+        }
     }
 
     /// Run a single command.

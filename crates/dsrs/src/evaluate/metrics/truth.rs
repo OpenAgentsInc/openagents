@@ -4,9 +4,11 @@
 //! They should only be run after proxy metrics pass.
 
 use super::{Metric, MetricScore, MetricTier};
+use crate::adapter::pylon_sandbox::{PylonSandboxProvider, SandboxProfile};
 use crate::data::example::Example;
 use anyhow::Result;
 use async_trait::async_trait;
+use std::sync::Arc;
 
 /// Metric that uses an LLM as a judge to evaluate quality.
 #[derive(Debug, Clone)]
@@ -116,26 +118,52 @@ impl Metric for LlmJudgeMetric {
 }
 
 /// Metric that runs code in a sandbox and checks execution success.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SandboxMetric {
     /// Name of the metric.
     name: String,
     /// Commands to run for verification.
     commands: Vec<String>,
-    /// Timeout in seconds.
-    timeout_secs: u64,
+    /// Sandbox profile for resource allocation.
+    profile: SandboxProfile,
     /// Estimated cost per evaluation in msats.
     cost_msats: u64,
+    /// Optional sandbox provider (if None, uses mock).
+    sandbox_provider: Option<Arc<PylonSandboxProvider>>,
+}
+
+impl std::fmt::Debug for SandboxMetric {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SandboxMetric")
+            .field("name", &self.name)
+            .field("commands", &self.commands)
+            .field("profile", &self.profile)
+            .field("cost_msats", &self.cost_msats)
+            .field("has_provider", &self.sandbox_provider.is_some())
+            .finish()
+    }
 }
 
 impl SandboxMetric {
-    /// Create a new sandbox metric.
+    /// Create a new sandbox metric (offline/mock mode).
     pub fn new() -> Self {
         Self {
             name: "sandbox".into(),
             commands: vec!["cargo test".into()],
-            timeout_secs: 120,
+            profile: SandboxProfile::Medium,
             cost_msats: 500, // ~500 msats for sandbox execution
+            sandbox_provider: None,
+        }
+    }
+
+    /// Create with a specific sandbox provider (online mode).
+    pub fn with_provider(provider: Arc<PylonSandboxProvider>) -> Self {
+        Self {
+            name: "sandbox".into(),
+            commands: vec!["cargo test".into()],
+            profile: SandboxProfile::Medium,
+            cost_msats: 500,
+            sandbox_provider: Some(provider),
         }
     }
 
@@ -145,9 +173,9 @@ impl SandboxMetric {
         self
     }
 
-    /// Set timeout.
-    pub fn with_timeout(mut self, secs: u64) -> Self {
-        self.timeout_secs = secs;
+    /// Set sandbox profile.
+    pub fn with_profile(mut self, profile: SandboxProfile) -> Self {
+        self.profile = profile;
         self
     }
 
@@ -185,20 +213,43 @@ impl Metric for SandboxMetric {
     }
 
     async fn evaluate(&self, _input: &Example, _output: &Example) -> Result<MetricScore> {
-        // In a real implementation, this would:
-        // 1. Create a sandbox with the output code
-        // 2. Run the verification commands
-        // 3. Check exit codes
+        // Get or create a sandbox provider
+        let provider = match &self.sandbox_provider {
+            Some(p) => p.clone(),
+            None => {
+                // Create an offline provider for mock execution
+                Arc::new(PylonSandboxProvider::generate().with_profile(self.profile))
+            }
+        };
 
-        // TODO: Integrate with PylonSandboxProvider
-        // let sandbox = PylonSandboxProvider::generate()
-        //     .with_timeout(Duration::from_secs(self.timeout_secs));
-        // let result = sandbox.run_commands(self.commands.clone()).await?;
+        // Create and run the sandbox request
+        let request = provider.create_request(self.commands.clone());
+        let response = provider.run(request).await?;
 
-        // For now, return a mock score
-        Ok(MetricScore::new(0.5)
-            .with_confidence(0.5)
-            .with_details("Sandbox metric not yet integrated - returning placeholder")
+        // Check if all commands succeeded
+        let all_passed = PylonSandboxProvider::all_succeeded(&response);
+        let total_duration: u64 = response.runs.iter().map(|r| r.duration_ms).sum();
+
+        // Build details string
+        let details = if all_passed {
+            format!(
+                "All {} commands passed in {}ms",
+                response.runs.len(),
+                total_duration
+            )
+        } else {
+            let failed: Vec<_> = response
+                .runs
+                .iter()
+                .filter(|r| r.exit_code != 0)
+                .map(|r| format!("{} (exit {})", r.cmd, r.exit_code))
+                .collect();
+            format!("Failed commands: {}", failed.join(", "))
+        };
+
+        Ok(MetricScore::new(if all_passed { 1.0 } else { 0.0 })
+            .with_confidence(if all_passed { 1.0 } else { 0.8 })
+            .with_details(&details)
             .with_cost(self.cost_msats))
     }
 }
@@ -366,26 +417,52 @@ impl Metric for DiffMetric {
 }
 
 /// Metric that checks if unit tests pass.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TestPassMetric {
     /// Name of the metric.
     name: String,
     /// Test command to run.
     test_command: String,
-    /// Timeout in seconds.
-    timeout_secs: u64,
+    /// Sandbox profile for resource allocation.
+    profile: SandboxProfile,
     /// Estimated cost per evaluation in msats.
     cost_msats: u64,
+    /// Optional sandbox provider (if None, uses mock).
+    sandbox_provider: Option<Arc<PylonSandboxProvider>>,
+}
+
+impl std::fmt::Debug for TestPassMetric {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TestPassMetric")
+            .field("name", &self.name)
+            .field("test_command", &self.test_command)
+            .field("profile", &self.profile)
+            .field("cost_msats", &self.cost_msats)
+            .field("has_provider", &self.sandbox_provider.is_some())
+            .finish()
+    }
 }
 
 impl TestPassMetric {
-    /// Create a new test pass metric.
+    /// Create a new test pass metric (offline/mock mode).
     pub fn new() -> Self {
         Self {
             name: "tests_pass".into(),
             test_command: "cargo test".into(),
-            timeout_secs: 300,
+            profile: SandboxProfile::Medium,
             cost_msats: 500,
+            sandbox_provider: None,
+        }
+    }
+
+    /// Create with a specific sandbox provider (online mode).
+    pub fn with_provider(provider: Arc<PylonSandboxProvider>) -> Self {
+        Self {
+            name: "tests_pass".into(),
+            test_command: "cargo test".into(),
+            profile: SandboxProfile::Medium,
+            cost_msats: 500,
+            sandbox_provider: Some(provider),
         }
     }
 
@@ -395,9 +472,9 @@ impl TestPassMetric {
         self
     }
 
-    /// Set timeout.
-    pub fn with_timeout(mut self, secs: u64) -> Self {
-        self.timeout_secs = secs;
+    /// Set sandbox profile.
+    pub fn with_profile(mut self, profile: SandboxProfile) -> Self {
+        self.profile = profile;
         self
     }
 
@@ -435,15 +512,44 @@ impl Metric for TestPassMetric {
     }
 
     async fn evaluate(&self, _input: &Example, _output: &Example) -> Result<MetricScore> {
-        // In a real implementation, this would:
-        // 1. Apply the output code changes
-        // 2. Run the test command in a sandbox
-        // 3. Parse test results
+        // Get or create a sandbox provider
+        let provider = match &self.sandbox_provider {
+            Some(p) => p.clone(),
+            None => {
+                // Create an offline provider for mock execution
+                Arc::new(PylonSandboxProvider::generate().with_profile(self.profile))
+            }
+        };
 
-        // TODO: Integrate with sandbox execution
-        Ok(MetricScore::new(0.5)
-            .with_confidence(0.5)
-            .with_details("Test pass metric not yet integrated - returning placeholder")
+        // Run the test command
+        let request = provider.create_request(vec![self.test_command.clone()]);
+        let response = provider.run(request).await?;
+
+        // Check if tests passed
+        let tests_passed = PylonSandboxProvider::all_succeeded(&response);
+
+        // Get test output for details
+        let details = if let Some(run) = response.runs.first() {
+            if tests_passed {
+                format!("Tests passed in {}ms", run.duration_ms)
+            } else {
+                format!(
+                    "Tests failed (exit {}): {}",
+                    run.exit_code,
+                    run.stderr_preview
+                        .as_ref()
+                        .or(run.stdout_preview.as_ref())
+                        .map(|s| s.chars().take(200).collect::<String>())
+                        .unwrap_or_else(|| "No output".to_string())
+                )
+            }
+        } else {
+            "No test run results".to_string()
+        };
+
+        Ok(MetricScore::new(if tests_passed { 1.0 } else { 0.0 })
+            .with_confidence(if tests_passed { 1.0 } else { 0.9 })
+            .with_details(&details)
             .with_cost(self.cost_msats))
     }
 }
