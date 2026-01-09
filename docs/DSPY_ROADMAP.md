@@ -48,14 +48,49 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
 - [x] `crates/autopilot/src/dspy_verify.rs` - Verification + ExecutionReviewSignature
 - [x] `crates/autopilot/src/dspy_optimization.rs` - Metrics + training data infrastructure
 
-### Wave 2.5: Adjutant Multi-Provider LM (Complete)
+### Wave 2.5: LaneMux (Multi-Provider LM) (Complete)
 - [x] `crates/dsrs/src/core/lm/claude_sdk.rs` - Claude Code headless via claude-agent-sdk
 - [x] `crates/dsrs/src/core/lm/pylon.rs` - Pylon LM provider (local/swarm/hybrid)
 - [x] `crates/adjutant/src/dspy/lm_config.rs` - Multi-provider with auto-detection
 
 ---
 
-## The Cursor-Grade Agent Module Graph
+## Wave 0: Protocol + Schema Registry (NEW)
+
+**Why first:** If you don't do this, every client/provider will drift and "replayability" collapses.
+
+### Deliverables
+
+- `crates/protocol/src/jobs/{chunk_analysis,rerank,sandbox}.jsonschema` — request/response schemas
+- `crates/protocol/src/hash.rs` — canonical JSON + stable hashing
+- `crates/protocol/src/versioning.md` — how to bump `v1 → v2`
+
+### Job Schema Contract
+
+For every job type, include:
+- `job_type` — e.g., `oa.code_chunk_analysis.v1`
+- `schema_version` — e.g., `1.0.0`
+- `job_hash` — server computed, deterministic, included in receipt
+
+### Canonical Hashing
+
+```rust
+pub fn canonical_hash(input: &Value) -> String {
+    // 1. Serialize to canonical JSON (sorted keys, no whitespace)
+    // 2. SHA-256 hash
+    // 3. Return hex string
+}
+```
+
+### Version Bump Rules
+
+- **Patch** (`v1.0.0` → `v1.0.1`): Bug fixes, no schema changes
+- **Minor** (`v1.0.0` → `v1.1.0`): New optional fields, backward compatible
+- **Major** (`v1` → `v2`): Breaking changes, new job type name
+
+---
+
+## Agent Module Graph
 
 The minimal set of modules for "real agent for real repos" — optimizable (DSPy-style) and swarm-parallelizable (OpenAgents-style):
 
@@ -96,6 +131,13 @@ User Task (issue / prompt)
            └──────────────┬────────────────┘
                           ▼
                  ┌─────────────────────┐
+                 │ 4.5) State / Memory │ (NEW)
+                 │ - already tried     │
+                 │ - already opened    │
+                 │ - hypotheses failed │
+                 └──────────┬──────────┘
+                            ▼
+                 ┌─────────────────────┐
                  │ 5) Patch Planner     │ (DSPy)
                  │ - minimal plan       │
                  │ - tests to run       │
@@ -124,6 +166,8 @@ User Task (issue / prompt)
                         FINAL PATCH
 ```
 
+**State/Memory module** is critical for stopping repeated wasted probes and is very optimizable.
+
 **DSPy modules** drive *routing decisions, query rewriting, evidence ranking policies, planning policies, failure interpretation* — anything you want to **optimize/compile** against an eval suite.
 
 **Tool-driven modules** do *actually editing files, running tests, calling LSP, running grep*, etc.
@@ -151,7 +195,16 @@ pub struct CompiledModuleManifest {
     pub compatibility: Compatibility, // Model lane, tool availability
     pub created_at: u64,
 }
+
+pub struct Compatibility {
+    pub required_tools: Vec<String>,     // e.g., ["ripgrep", "node", "pytest"]
+    pub required_lanes: Vec<String>,     // e.g., ["lsp", "semantic"]
+    pub privacy_modes_allowed: Vec<PrivacyMode>,
+    pub min_provider_reputation: Option<f32>,
+}
 ```
+
+**Compatibility is machine-checkable** at runtime — the router can reject "this compiled module is invalid for this environment."
 
 #### TraceContract (dsrs DAG → OA spans)
 Map dsrs execution nodes to OpenAgents trace spans:
@@ -160,6 +213,10 @@ pub fn graph_to_spans(graph: &Graph) -> Vec<OASpan> {
     // session → turn → module → retrieval → swarm.job → patch → verify
 }
 ```
+
+Add to spans for OTel alignment (without requiring OTel):
+- `span_kind`: `"client" | "server" | "internal"`
+- `resource`: `{ "service.name": "...", "service.version": "...", "host.arch": "...", ... }`
 
 #### TraceExtractorSpec (OA trace → dsrs Examples)
 Extract training examples from successful runs.
@@ -265,11 +322,67 @@ pub struct Refine<M: Module> {
 
 ---
 
-## Wave 4: Swarm Job Types & Retrieval Policy
+## Wave 4: Swarm Job Types, Retrieval Policy & Indexing
+
+### 4.0 Repo Indexing Layer (NEW)
+
+**Why:** Without this, "retrieval router" compiles policies on sand.
+
+**Deliverables:**
+
+#### RepoIndex Abstraction
+```rust
+pub trait RepoIndex: Send + Sync {
+    async fn build(&mut self, repo_path: &Path) -> Result<()>;
+    async fn update(&mut self, changed_files: &[PathBuf]) -> Result<()>;
+    async fn query(&self, lane: &str, query: &str, k: usize) -> Result<Vec<Candidate>>;
+}
+```
+
+#### Pluggable Backends
+- `ripgrep` / lexical — fast text search
+- `lsp` symbol index — definitions, references, implementations
+- `vector` embedding store (local first) — semantic search
+- `git` signals — blame/log/diff for history-aware retrieval
+
+#### Commands
+- `index build` — full index from scratch
+- `index update` — incremental update from git diff
+
+#### Trace Spans
+- `index.build` — full index build
+- `index.update` — incremental update
+
+**Files to Create:**
+- `crates/dsrs/src/retrieval/index.rs`
+- `crates/dsrs/src/retrieval/backends/{ripgrep,lsp,vector,git}.rs`
 
 ### 4.1 Canonical Swarm Job Types
 
-These become the "map-reduce primitives" DSPy compiles against:
+These become the "map-reduce primitives" DSPy compiles against.
+
+#### Verification Mode (NEW)
+
+**Every swarm job request includes:**
+```json
+{
+  "verification": {
+    "mode": "objective" | "subjective",
+    "redundancy": 1,
+    "adjudication": "none" | "majority_vote" | "judge_model"
+  }
+}
+```
+
+- **Objective** (verifiable): tests, lint, typecheck, deterministic commands
+- **Subjective** (not strictly verifiable): summaries, hypotheses, reranks
+
+**Defaults:**
+- `oa.sandbox_run.v1` → `objective`, redundancy=1 (or 2 for anti-cheat)
+- `oa.code_chunk_analysis.v1` → `subjective`, redundancy=2-3, adjudication=`judge_model`
+- `oa.retrieval_rerank.v1` → `subjective`, redundancy=2, adjudication=`majority_vote`
+
+This makes the economics and trust model legible immediately.
 
 #### `oa.code_chunk_analysis.v1`
 Parallel "map" work over candidate files/chunks:
@@ -282,6 +395,13 @@ Parallel "map" work over candidate files/chunks:
 **Request:**
 ```json
 {
+  "job_type": "oa.code_chunk_analysis.v1",
+  "schema_version": "1.0.0",
+  "verification": {
+    "mode": "subjective",
+    "redundancy": 2,
+    "adjudication": "judge_model"
+  },
   "task": "bug_hypothesis",
   "user_task": "Fix failing tests for empty prompt handling",
   "chunk": { "path": "src/service.py", "start_line": 1, "end_line": 160, "content": "..." },
@@ -292,11 +412,18 @@ Parallel "map" work over candidate files/chunks:
 **Response:**
 ```json
 {
+  "job_hash": "sha256:...",
   "summary": "...",
   "symbols": [{"name": "SuggestionService", "kind": "class", "line": 120}],
   "suspected_faults": [{"line": 244, "reason": "..."}],
   "recommended_next_probes": [{"lane": "lsp_refs", "query": "normalize_prompt"}],
-  "confidence": 0.85
+  "confidence": 0.85,
+  "provenance": {
+    "model_id": "...",
+    "sampling": {"temperature": 0.7, "top_p": 0.95},
+    "input_sha256": "...",
+    "output_sha256": "..."
+  }
 }
 ```
 
@@ -306,6 +433,13 @@ LLM-based reranking of candidate set:
 **Request:**
 ```json
 {
+  "job_type": "oa.retrieval_rerank.v1",
+  "schema_version": "1.0.0",
+  "verification": {
+    "mode": "subjective",
+    "redundancy": 2,
+    "adjudication": "majority_vote"
+  },
   "user_task": "...",
   "candidates": [{"candidate_id": "c1", "lane": "semantic", "path": "...", "snippet": "..."}],
   "k": 10,
@@ -316,7 +450,14 @@ LLM-based reranking of candidate set:
 **Response:**
 ```json
 {
-  "topk": [{"rank": 1, "candidate_id": "c1", "score": 0.92, "why": "..."}]
+  "job_hash": "sha256:...",
+  "topk": [{"rank": 1, "candidate_id": "c1", "score": 0.92, "why": "..."}],
+  "provenance": {
+    "model_id": "...",
+    "sampling": {"temperature": 0.7, "top_p": 0.95},
+    "input_sha256": "...",
+    "output_sha256": "..."
+  }
 }
 ```
 
@@ -326,19 +467,55 @@ Concurrent sandbox execution (builds/tests/lints):
 **Request:**
 ```json
 {
-  "sandbox": { "provider": "daytona", "resources": {"vcpus": 2, "memory_mb": 4096} },
-  "repo": { "fetch": {"kind": "git", "git_url": "...", "git_commit": "..."} },
-  "commands": [{"name": "test", "cmd": "pytest -q", "timeout_ms": 300000}]
+  "job_type": "oa.sandbox_run.v1",
+  "schema_version": "1.0.0",
+  "verification": {
+    "mode": "objective",
+    "redundancy": 1,
+    "adjudication": "none"
+  },
+  "sandbox": {
+    "provider": "daytona",
+    "container_image_digest": "sha256:...",
+    "network_policy": "none" | "egress_only" | "full",
+    "resources": {"vcpus": 2, "memory_mb": 4096, "disk_gb": 10}
+  },
+  "repo": {
+    "fetch_policy": "git_clone" | "tarball" | "preloaded",
+    "git_url": "...",
+    "git_commit": "..."
+  },
+  "commands": [
+    {"name": "test", "cmd": "pytest -q", "timeout_ms": 300000, "max_output_bytes": 1048576}
+  ]
 }
 ```
 
 **Response:**
 ```json
 {
-  "runs": [{"name": "test", "exit_code": 0, "duration_ms": 12000}],
+  "job_hash": "sha256:...",
+  "env": {
+    "image_digest": "sha256:...",
+    "runner_version": "pylon-x.y.z"
+  },
+  "runs": [
+    {
+      "name": "test",
+      "exit_code": 0,
+      "duration_ms": 12000,
+      "stdout_sha256": "...",
+      "stderr_sha256": "..."
+    }
+  ],
+  "artifacts": {
+    "junit_sha256": "..."
+  },
   "overall": { "status": "pass" }
 }
 ```
+
+**Security:** This is the backbone of "receipts" and "trust."
 
 ### 4.2 Retrieval Policy Signatures (NEW)
 
@@ -479,17 +656,141 @@ struct LaneBudgeterSignature {
 }
 ```
 
+### 4.6 State / Memory Signatures (NEW)
+
+#### AgentMemorySignature
+```rust
+#[Signature]
+struct AgentMemorySignature {
+    /// Track what we've already tried to avoid repeated wasted probes.
+
+    #[input] session_history: String,    // JSON: files opened, hypotheses tested, patches tried
+    #[input] current_goal: String,
+    #[input] proposed_action: String,
+
+    #[output] is_redundant: bool,        // Have we tried this before?
+    #[output] similar_attempts: String,  // JSON: previous similar attempts
+    #[output] recommended_alternative: String,
+}
+```
+
 **Files to Create:**
 - `crates/dsrs/src/signatures/retrieval_policy.rs`
 - `crates/dsrs/src/signatures/chunk_analysis.rs`
 - `crates/dsrs/src/signatures/sandbox.rs`
 - `crates/dsrs/src/signatures/budgeting.rs`
+- `crates/dsrs/src/signatures/memory.rs`
 
 ---
 
-## Wave 5: Swarm-Backed Optimization
+## Wave 5: Eval Harness & Promotion Gates
 
-### 5.1 SwarmCompiler
+**Why before compiler:** You can't compile anything without an eval harness.
+
+### 5.1 Eval Task Format
+
+```json
+{
+  "task_id": "py-0007",
+  "repo": {
+    "git_url": "...",
+    "commit_bad": "BAD_SHA",
+    "commit_fix": "FIX_SHA"
+  },
+  "goal": "Fix failing tests for empty prompt handling",
+  "setup_cmds": ["pip install -e ."],
+  "fail_cmd": "pytest -q",
+  "gold": {
+    "files_touched": ["src/service.py", "tests/test_service.py"],
+    "symbols": ["SuggestionService.predict"]
+  },
+  "constraints": {
+    "max_files_touched": 4,
+    "no_new_deps": true
+  }
+}
+```
+
+**Why include `commit_fix`?** Auto-generate gold files/symbols by diffing, validate "your patch is in the right neighborhood."
+
+### 5.2 Two-Tier Metrics (NEW)
+
+#### Proxy Metrics (cheap, frequent)
+- Retrieval recall@k vs gold file list
+- Evidence relevance score
+- Number of files opened / bytes read
+- Loop count
+- Sats spent
+
+#### Truth Metrics (expensive, definitive)
+- Tests pass in sandbox
+- Minimal diff size / no regressions
+- No policy violations
+
+**Strategy:** Compile using proxy metrics most of the time, **validate candidates** on truth metrics.
+
+### 5.3 Scoring Function (Robust)
+
+```
+score =
+  median(score over N rollouts)  // Multi-rollout aggregation
+  where single_score =
+    1.0 * pass_tests
+    - 0.25 * min(1, total_cost_msats / budget_msats)
+    - 0.15 * min(1, total_time_ms / time_budget_ms)
+    - 0.10 * min(1, diff_lines_changed / diff_budget_lines)
+    - 0.10 * min(1, sandbox_runs / sandbox_budget_runs)
+    - 0.10 * min(1, bytes_opened / bytes_budget)         // Evidence efficiency
+    - 0.10 * min(1, evidence_workers_fanout / fanout_budget)  // Evidence efficiency
+```
+
+Also track: `p_fail` (fail rate across rollouts) — reduces optimizer overfitting to lucky sampling.
+
+This makes the optimizer learn "don't brute force."
+
+### 5.4 Promotion Gates (NEW)
+
+A compiled policy should not roll out globally unless it passes:
+
+1. **Regression suite** — All existing tasks still pass
+2. **Budget cap sanity** — No runaway cost
+3. **Failure mode checks** — Timeouts, runaway loops
+
+#### Policy Registry
+```
+candidate → staged → shadow → promoted → rolled_back
+```
+
+#### Shadow Mode Gate (NEW)
+
+For a period:
+- Run *both* old and new policy on the same tasks
+- Only ship the old result
+- Compare success/cost/time metrics
+- Promote only if new beats old
+
+This avoids "we promoted a policy that looked good offline but fails live."
+
+#### A/B Routing
+Route by `compiled_id` in production.
+
+### 5.5 Compile Order
+
+Start compiling **only policies**, not everything:
+
+1. **RetrievalRouter policy** — How much semantic vs grep vs LSP, K, chunking, dedupe
+2. **EvidenceRanker rubric** — Choose best 10 chunks to analyze
+3. **FailureInterpreter** — What to do after failed test run (where most agents waste money)
+
+Then:
+4. PatchPlanner style / constraints
+5. PatchWriter strategies (multi-candidate vs single)
+
+---
+
+## Wave 6: Swarm-Backed Optimization
+
+### 6.1 SwarmCompiler
 **File:** `crates/autopilot/src/dspy_compiler.rs`
 
 ```rust
@@ -516,36 +817,7 @@ impl SwarmCompiler {
 - Claude alone: ~$15 for 1,800 calls
 - With swarm optimization: ~$0.10 (96.7% reduction)
 
-### 5.2 Two-Tier Metrics (NEW)
-
-#### Proxy Metrics (cheap, frequent)
-- Retrieval recall@k vs gold file list
-- Evidence relevance score
-- Number of files opened / bytes read
-- Loop count
-- Sats spent
-
-#### Truth Metrics (expensive, definitive)
-- Tests pass in sandbox
-- Minimal diff size / no regressions
-- No policy violations
-
-**Strategy:** Compile using proxy metrics most of the time, **validate candidates** on truth metrics.
-
-### 5.3 Scoring Function
-
-```
-score =
-  1.0 * pass_tests
-  - 0.25 * min(1, total_cost_msats / budget_msats)
-  - 0.15 * min(1, total_time_ms / time_budget_ms)
-  - 0.10 * min(1, diff_lines_changed / diff_budget_lines)
-  - 0.10 * min(1, sandbox_runs / sandbox_budget_runs)
-```
-
-This makes the optimizer learn "don't brute force."
-
-### 5.4 TraceExtractor
+### 6.2 TraceExtractor
 **File:** `crates/autopilot/src/trace_extraction.rs`
 
 Extract training examples from successful sessions:
@@ -561,63 +833,6 @@ impl TraceExtractor {
     }
 }
 ```
-
----
-
-## Wave 6: Eval Harness & Promotion Gates
-
-### 6.1 Eval Task Format
-
-```json
-{
-  "task_id": "py-0007",
-  "repo": {
-    "git_url": "...",
-    "commit_bad": "BAD_SHA",
-    "commit_fix": "FIX_SHA"
-  },
-  "goal": "Fix failing tests for empty prompt handling",
-  "setup_cmds": ["pip install -e ."],
-  "fail_cmd": "pytest -q",
-  "gold": {
-    "files_touched": ["src/service.py", "tests/test_service.py"],
-    "symbols": ["SuggestionService.predict"]
-  },
-  "constraints": {
-    "max_files_touched": 4,
-    "no_new_deps": true
-  }
-}
-```
-
-**Why include `commit_fix`?** Auto-generate gold files/symbols by diffing, validate "your patch is in the right neighborhood."
-
-### 6.2 Promotion Gates (NEW)
-
-A compiled policy should not roll out globally unless it passes:
-
-1. **Regression suite** - All existing tasks still pass
-2. **Budget cap sanity** - No runaway cost
-3. **Failure mode checks** - Timeouts, runaway loops
-
-**Policy Registry:**
-```
-candidate → staged → promoted → rolled_back
-```
-
-A/B routing by compiled_id in production.
-
-### 6.3 Compile Order
-
-Start compiling **only policies**, not everything:
-
-1. **RetrievalRouter policy** - How much semantic vs grep vs LSP, K, chunking, dedupe
-2. **EvidenceRanker rubric** - Choose best 10 chunks to analyze
-3. **FailureInterpreter** - What to do after failed test run (where most agents waste money)
-
-Then:
-4. PatchPlanner style / constraints
-5. PatchWriter strategies (multi-candidate vs single)
 
 ---
 
@@ -918,10 +1133,15 @@ struct FRLMAggregateSignature {
 | `turn` | prompt_chars, budget_msats, target_slo_ms |
 | `module` | module_name, compiled_id, model_lane |
 | `retrieval` | lane (grep/semantic/lsp/git), k, candidates_returned, latency_ms |
-| `swarm.dispatch` | job_type, fanout, max_msats |
-| `swarm.job` | job_id, provider_pubkey, charged_msats, latency_ms, status |
+| `swarm.dispatch` | job_type, fanout, max_msats, fanout_plan_id |
+| `swarm.job` | job_id, job_hash, provider_pubkey, provider_quote_msats, provider_quote_expiry_ms, settlement_msats, latency_ms, status |
 | `patch.apply` | files_touched, diff_bytes, diff_lines_added/removed |
 | `verify` | strategy (fast/full/matrix), sandbox_profile, pass_fail |
+
+### OTel-Compatible Fields (optional)
+
+- `span_kind`: `"client" | "server" | "internal"`
+- `resource`: `{ "service.name": "...", "service.version": "...", "host.arch": "...", ... }`
 
 ### Trace Record Format
 
@@ -931,14 +1151,18 @@ struct FRLMAggregateSignature {
   "span_id": "s-200",
   "parent_span_id": "s-100",
   "name": "swarm.job",
+  "span_kind": "client",
   "start_ms": 1736410001000,
   "end_ms": 1736410004200,
   "status": "ok",
   "attrs": {
     "job_type": "oa.code_chunk_analysis.v1",
     "job_id": "1a2b...",
+    "job_hash": "sha256:...",
     "provider_pubkey": "npub1...",
-    "charged_msats": 2100
+    "provider_quote_msats": 2500,
+    "provider_quote_expiry_ms": 60000,
+    "settlement_msats": 2100
   }
 }
 ```
@@ -984,6 +1208,7 @@ Every job output includes:
 6. **Promotion Gates**
    - Regression suite pass
    - Budget cap sanity
+   - Shadow mode comparison
    - A/B test before full rollout
 
 ---
@@ -994,6 +1219,14 @@ Every job output includes:
 ┌────────────────────────────────────────────────────────────────────┐
 │                        OPENAGENTS + DSRS                            │
 ├────────────────────────────────────────────────────────────────────┤
+│  PROTOCOL LAYER (Wave 0)                                            │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │
+│  │ Job Schemas  │  │  Canonical   │  │  Versioning  │              │
+│  │  (JSON)      │  │   Hashing    │  │    Rules     │              │
+│  └──────────────┘  └──────────────┘  └──────────────┘              │
+│           │                │                │                       │
+│           └────────────────┴────────────────┘                       │
+│                            │                                        │
 │  COMPILER LAYER (dsrs)                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │
 │  │  Signatures  │  │  Optimizers  │  │   Refine     │              │
@@ -1007,6 +1240,7 @@ Every job output includes:
 │  │  PylonInference (LM)  │  PylonSandbox (tests)                 │ │
 │  │  NostrBridge (DAG ↔ events)  │  TraceExtractor (examples)     │ │
 │  │  HudCallback (streaming)     │  CompiledManifest (versioning) │ │
+│  │  RepoIndex (retrieval)       │  Verification (obj/subj)       │ │
 │  └───────────────────────────────────────────────────────────────┘ │
 │                            │                                        │
 │  EXECUTION LAYER (OpenAgents)                                       │
@@ -1036,7 +1270,7 @@ Every job output includes:
 │  VALIDATION (Refine pattern + Promotion Gates)                   │
 │  Multiple rollouts → reward eval → feedback hints → retry        │
 │  Premium model for final validation                              │
-│  Regression suite + A/B test before promotion                    │
+│  Shadow mode comparison → Regression suite → A/B test            │
 ├─────────────────────────────────────────────────────────────────┤
 │  IMPROVED AGENTS                                                 │
 │  Optimized signatures have better prompts/demos                  │
@@ -1067,6 +1301,7 @@ Different signatures benefit from different models:
 | Retrieval Router | Pylon Local | Fast, cheap policy |
 | Evidence Ranker | Pylon Swarm | Parallelizable |
 | Failure Triage | Claude Sonnet | Needs reasoning |
+| State/Memory | Pylon Local | Fast, always-on |
 
 ---
 
@@ -1082,6 +1317,8 @@ For each signature, track:
 - **Retrieval Recall@K**: Did we find the right files?
 - **Diff Size**: How minimal is the patch?
 - **Sandbox Runs**: How many verification attempts?
+- **Evidence Efficiency**: Bytes opened / bytes budget
+- **Rollout Fail Rate**: p_fail across multiple rollouts
 
 ---
 
