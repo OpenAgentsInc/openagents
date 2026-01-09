@@ -3,6 +3,7 @@ use crate::components::{Component, ComponentId, EventResult};
 use crate::input::{Key, NamedKey};
 use crate::text::FontStyle;
 use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
+use web_time::Instant;
 
 pub struct TextInput {
     id: Option<ComponentId>,
@@ -20,7 +21,7 @@ pub struct TextInput {
     text_color: Hsla,
     placeholder_color: Hsla,
     cursor_color: Hsla,
-    cursor_visible: bool,
+    cursor_blink_start: Instant,
     mono: bool,
     on_change: Option<Box<dyn FnMut(&str)>>,
     on_submit: Option<Box<dyn FnMut(&str)>>,
@@ -44,7 +45,7 @@ impl TextInput {
             text_color: theme::text::PRIMARY,
             placeholder_color: theme::text::MUTED,
             cursor_color: theme::text::PRIMARY,
-            cursor_visible: true,
+            cursor_blink_start: Instant::now(),
             mono: false,
             on_change: None,
             on_submit: None,
@@ -151,7 +152,12 @@ impl TextInput {
 
     pub fn focus(&mut self) {
         self.focused = true;
-        self.cursor_visible = true;
+        self.cursor_blink_start = Instant::now();
+    }
+
+    /// Reset the cursor blink timer (call on user interaction)
+    fn reset_cursor_blink(&mut self) {
+        self.cursor_blink_start = Instant::now();
     }
 
     pub fn blur(&mut self) {
@@ -338,15 +344,21 @@ impl Component for TextInput {
             cx.scene.draw_text(text_run);
         }
 
-        if self.focused && self.cursor_visible {
-            let cursor_x = text_x + self.cursor_x_offset();
-            let cursor_y = bounds.origin.y + self.padding.1;
-            let cursor_height = bounds.size.height - self.padding.1 * 2.0;
+        if self.focused {
+            // Blink cursor: 500ms on, 500ms off
+            let elapsed = self.cursor_blink_start.elapsed().as_millis();
+            let cursor_visible = (elapsed / 500) % 2 == 0;
 
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(cursor_x, cursor_y, 2.0, cursor_height))
-                    .with_background(self.cursor_color),
-            );
+            if cursor_visible {
+                let cursor_x = text_x + self.cursor_x_offset();
+                let cursor_y = bounds.origin.y + self.padding.1;
+                let cursor_height = bounds.size.height - self.padding.1 * 2.0;
+
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(cursor_x, cursor_y, 2.0, cursor_height))
+                        .with_background(self.cursor_color),
+                );
+            }
         }
     }
 
@@ -366,7 +378,7 @@ impl Component for TextInput {
 
                     if clicked_inside {
                         self.focused = true;
-                        self.cursor_visible = true;
+                        self.reset_cursor_blink();
 
                         let text_x = bounds.origin.x + self.padding.0;
                         self.cursor_pos = self.char_index_at_x(*x, text_x);
@@ -388,6 +400,9 @@ impl Component for TextInput {
                 if !self.focused {
                     return EventResult::Ignored;
                 }
+
+                // Reset cursor blink on any key press for immediate visibility
+                self.reset_cursor_blink();
 
                 match key {
                     Key::Character(c) => {

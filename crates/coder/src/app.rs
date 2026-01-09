@@ -4508,6 +4508,15 @@ impl ApplicationHandler for CoderApp {
             _ => {}
         }
     }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        // Continuously request redraws when input is focused for cursor blinking
+        if let Some(state) = &self.state {
+            if state.input.is_focused() {
+                state.window.request_redraw();
+            }
+        }
+    }
 }
 
 impl AppState {
