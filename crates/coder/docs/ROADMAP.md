@@ -686,15 +686,15 @@ pub enum SettingsTab {
 ```
 
 ### Tasks
-- [ ] Create settings panel with tabs
-- [ ] Implement general settings (theme, font)
-- [ ] Implement model settings (default, thinking)
-- [ ] Implement permission settings
-- [ ] Implement session settings
-- [ ] Implement MCP settings
-- [ ] Implement hook settings
-- [ ] Implement keyboard shortcut editor
-- [ ] Add settings search
+- [x] Create settings panel with tabs
+- [x] Implement general settings (theme, font)
+- [x] Implement model settings (default, thinking)
+- [x] Implement permission settings
+- [x] Implement session settings
+- [x] Implement MCP settings
+- [x] Implement hook settings
+- [x] Implement keyboard shortcut editor
+- [x] Add settings search
 
 ---
 
@@ -902,3 +902,5 @@ pub enum SettingsTab {
 - 2026-01-09 10:28 UTC - Implemented MCP config loading with env expansion, runtime add/remove commands, status polling, status bar summary, and MCP configuration modal; ran `cargo check -p coder`.
 - 2026-01-09 11:08 UTC - Added agent/skill loading with frontmatter parsing, agent/skill modals + commands, active agent status/prompt wiring, and skills setting_sources; ran `cargo check -p coder`.
 - 2026-01-09 12:02 UTC - Implemented hooks runtime (built-ins + scripts), wired hook logging/inspector, connected hooks to query options, and ran `cargo check -p coder`.
+- 2026-01-09 13:10 UTC - Added settings persistence (config.toml + keybindings.json), wired theme/font/auto-scroll/session limits into runtime and query options, and ran `cargo check -p coder`.
+- 2026-01-09 13:24 UTC - Built tabbed settings modal with search, permissions/MCP/hooks/keyboard controls, keybinding capture, and theme-aware UI updates.
