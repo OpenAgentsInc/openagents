@@ -26,11 +26,14 @@ use claude_agent_sdk::{query_with_permissions, QueryOptions, SdkMessage};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use wgpui::components::atoms::{PermissionAction, SessionStatus};
+use wgpui::components::atoms::{PermissionAction, SessionStatus, ToolStatus, ToolType};
 use wgpui::components::molecules::{
     CheckpointRestore, SessionAction, SessionCard, SessionInfo as SessionCardInfo,
 };
-use wgpui::components::organisms::{PermissionDialog, PermissionType};
+use wgpui::components::organisms::{
+    DiffLine, DiffLineKind, DiffToolCall, PermissionDialog, PermissionType, SearchMatch,
+    SearchToolCall, TerminalToolCall, ToolCallCard,
+};
 
 use crate::commands::{command_specs, parse_command, Command};
 use crate::keybindings::{default_keybindings, match_action, Action as KeyAction, Keybinding};
@@ -105,6 +108,13 @@ const SESSION_MODAL_HEIGHT: f32 = 520.0;
 const SESSION_CARD_HEIGHT: f32 = 100.0;
 const SESSION_CARD_GAP: f32 = 12.0;
 const SESSION_MODAL_PADDING: f32 = 16.0;
+const TOOL_PANEL_MAX_HEIGHT: f32 = 260.0;
+const TOOL_PANEL_MAX_CARDS: usize = 4;
+const TOOL_PANEL_PADDING: f32 = 12.0;
+const TOOL_PANEL_HEADER_HEIGHT: f32 = 20.0;
+const TOOL_PANEL_GAP: f32 = 8.0;
+const TOOL_HISTORY_LIMIT: usize = 100;
+const TOOL_SEARCH_MATCH_LIMIT: usize = 200;
 
 /// Message role in the conversation
 #[derive(Clone, Copy, PartialEq)]
@@ -125,10 +135,21 @@ struct ChatMessage {
 /// Events from the async query task
 enum ResponseEvent {
     Chunk(String),
-    ToolCallStart { name: String },
+    ToolCallStart { name: String, tool_use_id: String },
     ToolCallInput { json: String },
     ToolCallEnd,
-    ToolResult { content: String, is_error: bool },
+    ToolResult {
+        content: String,
+        is_error: bool,
+        tool_use_id: Option<String>,
+        exit_code: Option<i32>,
+        output_value: Option<Value>,
+    },
+    ToolProgress {
+        tool_use_id: String,
+        tool_name: String,
+        elapsed_secs: f64,
+    },
     UserMessageId { uuid: String },
     SystemMessage(String),
     Complete,
@@ -142,6 +163,117 @@ enum ResponseEvent {
         output_style: String,
         slash_commands: Vec<String>,
     },
+}
+
+enum ToolDetail {
+    None,
+    Search(SearchToolCall),
+    Terminal(TerminalToolCall),
+    Diff(DiffToolCall),
+}
+
+impl ToolDetail {
+    fn height(&self) -> f32 {
+        match self {
+            ToolDetail::None => 0.0,
+            ToolDetail::Search(detail) => detail.size_hint().1.unwrap_or(0.0),
+            ToolDetail::Terminal(detail) => detail.size_hint().1.unwrap_or(0.0),
+            ToolDetail::Diff(detail) => detail.size_hint().1.unwrap_or(0.0),
+        }
+    }
+
+    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        match self {
+            ToolDetail::None => {}
+            ToolDetail::Search(detail) => detail.paint(bounds, cx),
+            ToolDetail::Terminal(detail) => detail.paint(bounds, cx),
+            ToolDetail::Diff(detail) => detail.paint(bounds, cx),
+        }
+    }
+
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
+        match self {
+            ToolDetail::None => EventResult::Ignored,
+            ToolDetail::Search(detail) => detail.event(event, bounds, cx),
+            ToolDetail::Terminal(detail) => detail.event(event, bounds, cx),
+            ToolDetail::Diff(detail) => detail.event(event, bounds, cx),
+        }
+    }
+}
+
+struct ToolVisualization {
+    tool_use_id: String,
+    name: String,
+    tool_type: ToolType,
+    status: ToolStatus,
+    input: Option<String>,
+    input_value: Option<Value>,
+    output: Option<String>,
+    output_value: Option<Value>,
+    elapsed_secs: Option<f64>,
+    exit_code: Option<i32>,
+    card_expanded: bool,
+    card: ToolCallCard,
+    detail: ToolDetail,
+}
+
+impl ToolVisualization {
+    fn new(tool_use_id: String, name: String, tool_type: ToolType) -> Self {
+        let card = ToolCallCard::new(tool_type, name.clone());
+        let mut tool = Self {
+            tool_use_id,
+            name,
+            tool_type,
+            status: ToolStatus::Running,
+            input: None,
+            input_value: None,
+            output: None,
+            output_value: None,
+            elapsed_secs: None,
+            exit_code: None,
+            card_expanded: false,
+            card,
+            detail: ToolDetail::None,
+        };
+        tool.refresh_components();
+        tool
+    }
+
+    fn refresh_components(&mut self) {
+        self.refresh_card();
+        self.refresh_detail();
+    }
+
+    fn refresh_card(&mut self) {
+        let mut card = ToolCallCard::new(self.tool_type, self.name.clone())
+            .status(self.status)
+            .expanded(self.card_expanded);
+        if let Some(input) = &self.input {
+            card = card.input(input.clone());
+        }
+        if let Some(output) = &self.output {
+            card = card.output(output.clone());
+        }
+        if let Some(elapsed) = self.elapsed_secs {
+            card = card.elapsed_secs(elapsed);
+        }
+        self.card = card;
+    }
+
+    fn refresh_detail(&mut self) {
+        self.detail = build_tool_detail(self);
+    }
+
+    fn sync_expanded_from_card(&mut self) -> bool {
+        let expanded = self.card.is_expanded();
+        if expanded != self.card_expanded {
+            self.card_expanded = expanded;
+            self.refresh_detail();
+            true
+        } else {
+            false
+        }
+    }
 }
 
 struct PermissionPending {
@@ -486,6 +618,8 @@ struct AppState {
     // Current tool call being streamed
     current_tool_name: Option<String>,
     current_tool_input: String,
+    current_tool_use_id: Option<String>,
+    tool_history: Vec<ToolVisualization>,
     // Session info from SystemInit
     session_info: SessionInfo,
     session_index: Vec<SessionEntry>,
@@ -651,6 +785,8 @@ impl ApplicationHandler for CoderApp {
                 scroll_offset: 0.0,
                 current_tool_name: None,
                 current_tool_input: String::new(),
+                current_tool_use_id: None,
+                tool_history: Vec::new(),
                 session_info: SessionInfo {
                     model: saved_model.model_id().to_string(),
                     permission_mode: permission_mode_label,
@@ -807,6 +943,40 @@ impl ApplicationHandler for CoderApp {
                     return;
                 }
                 let input_event = InputEvent::MouseMove { x, y };
+                if let Some(layout) = tool_panel_layout(
+                    logical_width,
+                    logical_height,
+                    &state.tool_history,
+                    state.tool_history_has_running(),
+                ) {
+                    let mut handled = false;
+                    for block in layout.blocks {
+                        if let Some(tool) = state.tool_history.get_mut(block.index) {
+                            if matches!(
+                                tool.card
+                                    .event(&input_event, block.card_bounds, &mut state.event_context),
+                                EventResult::Handled
+                            ) {
+                                handled = true;
+                            }
+                            if tool.sync_expanded_from_card() {
+                                handled = true;
+                            }
+                            if let Some(detail_bounds) = block.detail_bounds {
+                                if matches!(
+                                    tool.detail
+                                        .event(&input_event, detail_bounds, &mut state.event_context),
+                                    EventResult::Handled
+                                ) {
+                                    handled = true;
+                                }
+                            }
+                        }
+                    }
+                    if handled {
+                        state.window.request_redraw();
+                    }
+                }
                 state
                     .input
                     .event(&input_event, input_bounds, &mut state.event_context);
@@ -886,6 +1056,49 @@ impl ApplicationHandler for CoderApp {
                     }
                     return;
                 }
+                if let Some(layout) = tool_panel_layout(
+                    logical_width,
+                    logical_height,
+                    &state.tool_history,
+                    state.tool_history_has_running(),
+                ) {
+                    if button_state == ElementState::Released {
+                        if let Some(cancel_bounds) = layout.cancel_bounds {
+                            if cancel_bounds.contains(Point::new(x, y)) {
+                                state.abort_query();
+                                state.window.request_redraw();
+                                return;
+                            }
+                        }
+                    }
+                    let mut handled = false;
+                    for block in layout.blocks {
+                        if let Some(tool) = state.tool_history.get_mut(block.index) {
+                            if matches!(
+                                tool.card
+                                    .event(&input_event, block.card_bounds, &mut state.event_context),
+                                EventResult::Handled
+                            ) {
+                                handled = true;
+                            }
+                            if tool.sync_expanded_from_card() {
+                                handled = true;
+                            }
+                            if let Some(detail_bounds) = block.detail_bounds {
+                                if matches!(
+                                    tool.detail
+                                        .event(&input_event, detail_bounds, &mut state.event_context),
+                                    EventResult::Handled
+                                ) {
+                                    handled = true;
+                                }
+                            }
+                        }
+                    }
+                    if handled {
+                        state.window.request_redraw();
+                    }
+                }
                 if button_state == ElementState::Released
                     && !state.session_info.permission_mode.is_empty()
                 {
@@ -917,6 +1130,42 @@ impl ApplicationHandler for CoderApp {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 20.0,
                 };
+                if let Some(layout) = tool_panel_layout(
+                    logical_width,
+                    logical_height,
+                    &state.tool_history,
+                    state.tool_history_has_running(),
+                ) {
+                    let mouse_point = Point::new(state.mouse_pos.0, state.mouse_pos.1);
+                    if layout.bounds.contains(mouse_point) {
+                        let input_event = InputEvent::Scroll { dx: 0.0, dy: dy * 40.0 };
+                        let mut handled = false;
+                        for block in layout.blocks {
+                            if let Some(tool) = state.tool_history.get_mut(block.index) {
+                                if matches!(
+                                    tool.card
+                                        .event(&input_event, block.card_bounds, &mut state.event_context),
+                                    EventResult::Handled
+                                ) {
+                                    handled = true;
+                                }
+                                if let Some(detail_bounds) = block.detail_bounds {
+                                    if matches!(
+                                        tool.detail
+                                            .event(&input_event, detail_bounds, &mut state.event_context),
+                                        EventResult::Handled
+                                    ) {
+                                        handled = true;
+                                    }
+                                }
+                            }
+                        }
+                        if handled {
+                            state.window.request_redraw();
+                            return;
+                        }
+                    }
+                }
                 // Scroll the message area (positive dy = scroll up, negative = scroll down)
                 state.scroll_offset = (state.scroll_offset - dy * 40.0).max(0.0);
                 state.window.request_redraw();
@@ -1302,6 +1551,8 @@ impl AppState {
         self.scroll_offset = 0.0;
         self.current_tool_name = None;
         self.current_tool_input.clear();
+        self.current_tool_use_id = None;
+        self.tool_history.clear();
         self.session_info.session_id.clear();
         self.session_info.tool_count = 0;
         self.session_info.tools.clear();
@@ -1343,6 +1594,150 @@ impl AppState {
         } else {
             self.push_system_message("No active request to interrupt.".to_string());
         }
+    }
+
+    fn abort_query(&mut self) {
+        if let Some(tx) = &self.query_control_tx {
+            let _ = tx.send(QueryControl::Abort);
+        } else {
+            self.push_system_message("No active request to cancel.".to_string());
+        }
+    }
+
+    fn start_tool_call(&mut self, name: String, tool_use_id: String) {
+        self.current_tool_name = Some(name.clone());
+        self.current_tool_input.clear();
+        self.current_tool_use_id = Some(tool_use_id.clone());
+
+        let tool_type = tool_type_for_name(&name);
+        if let Some(tool) = self
+            .tool_history
+            .iter_mut()
+            .find(|tool| tool.tool_use_id == tool_use_id)
+        {
+            tool.name = name;
+            tool.tool_type = tool_type;
+            tool.status = ToolStatus::Running;
+            tool.refresh_components();
+            return;
+        }
+
+        let tool = ToolVisualization::new(tool_use_id, name, tool_type);
+        self.tool_history.push(tool);
+        if self.tool_history.len() > TOOL_HISTORY_LIMIT {
+            let overflow = self.tool_history.len() - TOOL_HISTORY_LIMIT;
+            self.tool_history.drain(0..overflow);
+        }
+    }
+
+    fn finalize_tool_input(&mut self) {
+        let Some(tool_use_id) = self.current_tool_use_id.clone() else {
+            self.current_tool_input.clear();
+            self.current_tool_name = None;
+            return;
+        };
+        let input_json = std::mem::take(&mut self.current_tool_input);
+        let input_value = serde_json::from_str::<Value>(&input_json).ok();
+
+        if let Some(tool) = self
+            .tool_history
+            .iter_mut()
+            .find(|tool| tool.tool_use_id == tool_use_id)
+        {
+            let display = format_tool_input(&tool.name, &input_json);
+            tool.input = Some(display);
+            tool.input_value = input_value;
+            tool.refresh_components();
+        }
+        self.current_tool_name = None;
+    }
+
+    fn update_tool_progress(&mut self, tool_use_id: String, tool_name: String, elapsed_secs: f64) {
+        if self
+            .tool_history
+            .iter()
+            .all(|tool| tool.tool_use_id != tool_use_id)
+        {
+            self.start_tool_call(tool_name.clone(), tool_use_id.clone());
+        }
+
+        if let Some(tool) = self
+            .tool_history
+            .iter_mut()
+            .find(|tool| tool.tool_use_id == tool_use_id)
+        {
+            tool.name = tool_name;
+            tool.status = ToolStatus::Running;
+            tool.elapsed_secs = Some(elapsed_secs);
+            tool.refresh_card();
+        }
+    }
+
+    fn apply_tool_result(
+        &mut self,
+        tool_use_id: Option<String>,
+        content: String,
+        is_error: bool,
+        exit_code: Option<i32>,
+        output_value: Option<Value>,
+    ) {
+        let mut resolved_id = tool_use_id.clone();
+        if resolved_id.is_none() {
+            resolved_id = self.current_tool_use_id.clone();
+        }
+        if resolved_id.is_none() {
+            resolved_id = self
+                .tool_history
+                .iter()
+                .rev()
+                .find(|tool| matches!(tool.status, ToolStatus::Running | ToolStatus::Pending))
+                .map(|tool| tool.tool_use_id.clone());
+        }
+
+        let Some(tool_id) = resolved_id else {
+            return;
+        };
+
+        let status = if is_error || exit_code.map(|code| code != 0).unwrap_or(false) {
+            ToolStatus::Error
+        } else {
+            ToolStatus::Success
+        };
+
+        if let Some(tool) = self
+            .tool_history
+            .iter_mut()
+            .find(|tool| tool.tool_use_id == tool_id)
+        {
+            tool.status = status;
+            tool.output = if content.trim().is_empty() {
+                None
+            } else {
+                Some(content)
+            };
+            tool.output_value = output_value;
+            tool.exit_code = exit_code;
+            tool.refresh_components();
+        }
+
+        if self.current_tool_use_id.as_deref() == Some(&tool_id) {
+            self.current_tool_use_id = None;
+        }
+    }
+
+    fn cancel_running_tools(&mut self) {
+        for tool in &mut self.tool_history {
+            if matches!(tool.status, ToolStatus::Running | ToolStatus::Pending) {
+                tool.status = ToolStatus::Cancelled;
+                tool.refresh_components();
+            }
+        }
+    }
+
+    fn tool_history_has_running(&self) -> bool {
+        self.tool_history
+            .iter()
+            .any(|tool| matches!(tool.status, ToolStatus::Running | ToolStatus::Pending))
     }
 
     fn persist_permission_config(&self) {
@@ -1870,9 +2265,12 @@ impl CoderApp {
                                     Some(Ok(SdkMessage::StreamEvent(e))) => {
                                         tracing::info!("STREAM_EVENT: {:?}", e.event);
                                         // Check for tool call start
-                                        if let Some((tool_name, _tool_id)) = extract_tool_call_start(&e.event) {
+                                        if let Some((tool_name, tool_id)) = extract_tool_call_start(&e.event) {
                                             tracing::info!("  -> tool call start: {}", tool_name);
-                                            let _ = tx.send(ResponseEvent::ToolCallStart { name: tool_name });
+                                            let _ = tx.send(ResponseEvent::ToolCallStart {
+                                                name: tool_name,
+                                                tool_use_id: tool_id,
+                                            });
                                             window.request_redraw();
                                         }
                                         // Check for tool input delta
@@ -1920,16 +2318,27 @@ impl CoderApp {
                                         if let Some(content) = u.message.get("content").and_then(|c| c.as_array()) {
                                             for item in content {
                                                 if item.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
-                                                    let result_content = item.get("content")
-                                                        .and_then(|c| c.as_str())
-                                                        .unwrap_or("")
-                                                        .to_string();
-                                                    let is_error = item.get("is_error")
+                                                    let tool_use_id = item
+                                                        .get("tool_use_id")
+                                                        .or_else(|| item.get("toolUseId"))
+                                                        .or_else(|| item.get("toolUseID"))
+                                                        .and_then(|v| v.as_str())
+                                                        .map(|v| v.to_string())
+                                                        .or_else(|| u.parent_tool_use_id.clone());
+                                                    let is_error = item
+                                                        .get("is_error")
+                                                        .or_else(|| item.get("isError"))
                                                         .and_then(|e| e.as_bool())
                                                         .unwrap_or(false);
+                                                    let content_value = item.get("content").cloned().unwrap_or(Value::Null);
+                                                    let (result_content, exit_code, output_value) =
+                                                        tool_result_output(&content_value, u.tool_use_result.as_ref());
                                                     let _ = tx.send(ResponseEvent::ToolResult {
                                                         content: result_content,
-                                                        is_error
+                                                        is_error,
+                                                        tool_use_id,
+                                                        exit_code,
+                                                        output_value,
                                                     });
                                                     window.request_redraw();
                                                 }
@@ -1937,7 +2346,17 @@ impl CoderApp {
                                         }
                                     }
                                     Some(Ok(SdkMessage::ToolProgress(tp))) => {
-                                        tracing::info!("TOOL_PROGRESS: {} - {:.1}s", tp.tool_name, tp.elapsed_time_seconds);
+                                        tracing::info!(
+                                            "TOOL_PROGRESS: {} - {:.1}s",
+                                            tp.tool_name,
+                                            tp.elapsed_time_seconds
+                                        );
+                                        let _ = tx.send(ResponseEvent::ToolProgress {
+                                            tool_use_id: tp.tool_use_id.clone(),
+                                            tool_name: tp.tool_name.clone(),
+                                            elapsed_secs: tp.elapsed_time_seconds,
+                                        });
+                                        window.request_redraw();
                                     }
                                     Some(Ok(SdkMessage::AuthStatus(a))) => {
                                         tracing::info!("AUTH_STATUS: {:?}", a);
@@ -1997,46 +2416,34 @@ impl CoderApp {
                     state.streaming_markdown.tick();
                     needs_redraw = true;
                 }
-                ResponseEvent::ToolCallStart { name } => {
-                    // Start tracking a new tool call
-                    state.current_tool_name = Some(name.clone());
-                    state.current_tool_input.clear();
-                    // Add tool call header to markdown
-                    let tool_text = format!("\n\n**[{}]** ", name);
-                    state.streaming_markdown.append(&tool_text);
-                    state.streaming_markdown.tick();
+                ResponseEvent::ToolCallStart { name, tool_use_id } => {
+                    state.start_tool_call(name, tool_use_id);
                     needs_redraw = true;
                 }
                 ResponseEvent::ToolCallInput { json } => {
-                    // Accumulate tool input JSON
                     state.current_tool_input.push_str(&json);
                     needs_redraw = true;
                 }
                 ResponseEvent::ToolCallEnd => {
-                    // Format and display the complete tool call
-                    if let Some(tool_name) = state.current_tool_name.take() {
-                        let input = std::mem::take(&mut state.current_tool_input);
-                        // Parse the JSON to extract key info
-                        let display = format_tool_input(&tool_name, &input);
-                        let tool_text = format!("`{}`\n", display);
-                        state.streaming_markdown.append(&tool_text);
-                        state.streaming_markdown.tick();
-                    }
+                    state.finalize_tool_input();
                     needs_redraw = true;
                 }
-                ResponseEvent::ToolResult { content, is_error } => {
-                    // Format tool result as a code block (limited to 5 lines)
-                    let lines: Vec<&str> = content.lines().collect();
-                    let truncated = if lines.len() > 5 {
-                        let first_lines: String = lines[..5].join("\n");
-                        format!("{}\n... ({} more lines)", first_lines, lines.len() - 5)
-                    } else {
-                        content.clone()
-                    };
-                    let prefix = if is_error { "ERROR: " } else { "" };
-                    let result_text = format!("\n```\n{}{}\n```\n\n", prefix, truncated);
-                    state.streaming_markdown.append(&result_text);
-                    state.streaming_markdown.tick();
+                ResponseEvent::ToolResult {
+                    content,
+                    is_error,
+                    tool_use_id,
+                    exit_code,
+                    output_value,
+                } => {
+                    state.apply_tool_result(tool_use_id, content, is_error, exit_code, output_value);
+                    needs_redraw = true;
+                }
+                ResponseEvent::ToolProgress {
+                    tool_use_id,
+                    tool_name,
+                    elapsed_secs,
+                } => {
+                    state.update_tool_progress(tool_use_id, tool_name, elapsed_secs);
                     needs_redraw = true;
                 }
                 ResponseEvent::UserMessageId { uuid } => {
@@ -2062,6 +2469,7 @@ impl CoderApp {
                     }
                     state.streaming_markdown.reset();
                     state.record_session();
+                    state.cancel_running_tools();
                     state.is_thinking = false;
                     state.response_rx = None;
                     state.query_control_tx = None;
@@ -2073,6 +2481,7 @@ impl CoderApp {
                     state.permission_queue.clear();
                     state.current_tool_name = None;
                     state.current_tool_input.clear();
+                    state.current_tool_use_id = None;
                     needs_redraw = true;
                     break;
                 }
@@ -2085,6 +2494,7 @@ impl CoderApp {
                     });
                     state.streaming_markdown.reset();
                     state.record_session();
+                    state.cancel_running_tools();
                     state.is_thinking = false;
                     state.response_rx = None;
                     state.query_control_tx = None;
@@ -2096,6 +2506,7 @@ impl CoderApp {
                     state.permission_queue.clear();
                     state.current_tool_name = None;
                     state.current_tool_input.clear();
+                    state.current_tool_use_id = None;
                     needs_redraw = true;
                     break;
                 }
@@ -2235,11 +2646,22 @@ impl CoderApp {
         // Dark terminal background
         scene.draw_quad(Quad::new(bounds).with_background(Hsla::new(220.0, 0.15, 0.10, 1.0)));
 
+        let tool_layout = tool_panel_layout(
+            logical_width,
+            logical_height,
+            &state.tool_history,
+            state.tool_history_has_running(),
+        );
         // Calculate viewport bounds for message area
         // Small buffer to ensure text never touches input area
         let viewport_top = OUTPUT_PADDING;
-        let viewport_bottom = logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 8.0;
-        let viewport_height = viewport_bottom - viewport_top;
+        let viewport_bottom = tool_layout
+            .as_ref()
+            .map(|layout| layout.bounds.origin.y - TOOL_PANEL_GAP)
+            .unwrap_or(
+                logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 8.0,
+            );
+        let viewport_height = (viewport_bottom - viewport_top).max(0.0);
         let available_width = logical_width - OUTPUT_PADDING * 2.0;
 
         // Calculate max chars for user message wrapping
@@ -2394,6 +2816,83 @@ impl CoderApp {
             }
         }
         let _ = y; // Suppress unused warning
+
+        if let Some(layout) = tool_layout {
+            scene.draw_quad(
+                Quad::new(layout.bounds)
+                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
+                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0),
+            );
+
+            let header_run = state.text_system.layout_styled_mono(
+                "Tool history",
+                Point::new(layout.header_bounds.origin.x, layout.header_bounds.origin.y),
+                12.0,
+                Hsla::new(0.0, 0.0, 0.7, 1.0),
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(header_run);
+
+            if let Some(cancel_bounds) = layout.cancel_bounds {
+                let hovered = cancel_bounds.contains(Point::new(state.mouse_pos.0, state.mouse_pos.1));
+                let bg = if hovered {
+                    Hsla::new(5.0, 0.75, 0.45, 1.0)
+                } else {
+                    Hsla::new(5.0, 0.65, 0.35, 1.0)
+                };
+                scene.draw_quad(
+                    Quad::new(cancel_bounds)
+                        .with_background(bg)
+                        .with_border(Hsla::new(5.0, 0.5, 0.6, 1.0), 1.0),
+                );
+                let label_run = state.text_system.layout_styled_mono(
+                    "Cancel",
+                    Point::new(cancel_bounds.origin.x + 8.0, cancel_bounds.origin.y + 3.0),
+                    11.0,
+                    Hsla::new(0.0, 0.0, 0.95, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(label_run);
+            }
+
+            scene.push_clip(layout.bounds);
+            let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+            for block in layout.blocks {
+                if let Some(tool) = state.tool_history.get_mut(block.index) {
+                    tool.card.paint(block.card_bounds, &mut paint_cx);
+                    if tool.status == ToolStatus::Running {
+                        let ratio = tool
+                            .elapsed_secs
+                            .map(|elapsed| (elapsed / 6.0).min(1.0).max(0.1) as f32)
+                            .unwrap_or(0.2_f32);
+                        let bar_height = 2.0;
+                        let bar_bounds = Bounds::new(
+                            block.card_bounds.origin.x,
+                            block.card_bounds.origin.y + block.card_bounds.size.height - bar_height,
+                            block.card_bounds.size.width,
+                            bar_height,
+                        );
+                        paint_cx.scene.draw_quad(
+                            Quad::new(bar_bounds)
+                                .with_background(Hsla::new(220.0, 0.15, 0.20, 1.0)),
+                        );
+                        paint_cx.scene.draw_quad(
+                            Quad::new(Bounds::new(
+                                bar_bounds.origin.x,
+                                bar_bounds.origin.y,
+                                bar_bounds.size.width * ratio,
+                                bar_bounds.size.height,
+                            ))
+                            .with_background(Hsla::new(200.0, 0.8, 0.6, 1.0)),
+                        );
+                    }
+                    if let Some(detail_bounds) = block.detail_bounds {
+                        tool.detail.paint(detail_bounds, &mut paint_cx);
+                    }
+                }
+            }
+            scene.pop_clip();
+        }
 
         // Input area background - starts just above the input box
         let input_area_y = logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT;
@@ -3282,12 +3781,26 @@ fn format_tool_input(tool_name: &str, json_input: &str) -> String {
                     return cmd.to_string();
                 }
             }
+            "BashOutput" | "KillBash" => {
+                if let Some(id) = value
+                    .get("bash_id")
+                    .or_else(|| value.get("shell_id"))
+                    .and_then(|v| v.as_str())
+                {
+                    return format!("shell {}", id);
+                }
+            }
             "Edit" | "Write" => {
                 if let Some(path) = value.get("file_path").and_then(|v| v.as_str()) {
                     if path.len() > 60 {
                         return format!("...{}", &path[path.len()-57..]);
                     }
                     return path.to_string();
+                }
+            }
+            "WebFetch" => {
+                if let Some(url) = value.get("url").and_then(|v| v.as_str()) {
+                    return url.to_string();
                 }
             }
             "Task" => {
@@ -3310,6 +3823,421 @@ fn format_tool_input(tool_name: &str, json_input: &str) -> String {
     } else {
         json_input.to_string()
     }
+}
+
+fn tool_type_for_name(name: &str) -> ToolType {
+    let normalized = name.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "read" => ToolType::Read,
+        "write" | "todowrite" => ToolType::Write,
+        "edit" | "notebookedit" => ToolType::Edit,
+        "bash" | "bashoutput" | "killbash" => ToolType::Bash,
+        "glob" => ToolType::Glob,
+        "grep" => ToolType::Grep,
+        "search" => ToolType::Search,
+        "list" => ToolType::List,
+        "task" => ToolType::Task,
+        "webfetch" | "web_fetch" | "fetch" => ToolType::WebFetch,
+        _ => ToolType::Unknown,
+    }
+}
+
+fn extract_exit_code(value: &Value) -> Option<i32> {
+    let obj = value.as_object()?;
+    let code = obj
+        .get("exit_code")
+        .or_else(|| obj.get("exitCode"))
+        .or_else(|| obj.get("exitcode"))
+        .and_then(|v| v.as_i64())?;
+    Some(code as i32)
+}
+
+fn value_to_string(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(text) => Some(text.clone()),
+        _ => serde_json::to_string_pretty(value).ok(),
+    }
+}
+
+fn tool_result_output(
+    content: &Value,
+    tool_use_result: Option<&Value>,
+) -> (String, Option<i32>, Option<Value>) {
+    let mut output_value = tool_use_result.cloned();
+    let mut exit_code = tool_use_result.and_then(extract_exit_code);
+    if exit_code.is_none() {
+        exit_code = extract_exit_code(content);
+    }
+
+    let mut output = value_to_string(content).unwrap_or_default();
+    if output.trim().is_empty() {
+        if let Some(result) = tool_use_result {
+            if let Some(text) = result.get("output").and_then(|v| v.as_str()) {
+                output = text.to_string();
+            } else {
+                let stdout = result.get("stdout").and_then(|v| v.as_str()).unwrap_or("");
+                let stderr = result.get("stderr").and_then(|v| v.as_str()).unwrap_or("");
+                if !stdout.is_empty() || !stderr.is_empty() {
+                    if stdout.is_empty() {
+                        output = stderr.to_string();
+                    } else if stderr.is_empty() {
+                        output = stdout.to_string();
+                    } else {
+                        output = format!("{}\n{}", stdout, stderr);
+                    }
+                }
+            }
+        }
+    }
+
+    if output.trim().is_empty() {
+        if output_value.is_none() {
+            if let Some(text) = content.as_str() {
+                if let Ok(parsed) = serde_json::from_str::<Value>(text) {
+                    output_value = Some(parsed);
+                }
+            } else if !content.is_null() {
+                output_value = Some(content.clone());
+            }
+        }
+        if let Some(value) = output_value.as_ref() {
+            output = serde_json::to_string_pretty(value).unwrap_or_default();
+        }
+    }
+
+    let output = truncate_lines(&output, 200, 8_000);
+    (output, exit_code, output_value)
+}
+
+fn truncate_lines(text: &str, max_lines: usize, max_chars: usize) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+    let mut lines: Vec<&str> = text.lines().collect();
+    if lines.len() > max_lines {
+        lines.truncate(max_lines);
+    }
+    let mut result = lines.join("\n");
+    if result.len() > max_chars {
+        result.truncate(max_chars);
+        result.push_str("...");
+    }
+    result
+}
+
+fn parse_search_matches(output_value: Option<&Value>, output: &str) -> Vec<SearchMatch> {
+    if let Some(value) = output_value {
+        if let Some(matches) = parse_search_matches_from_value(value) {
+            return matches;
+        }
+    }
+
+    if let Ok(parsed) = serde_json::from_str::<Value>(output) {
+        if let Some(matches) = parse_search_matches_from_value(&parsed) {
+            return matches;
+        }
+    }
+
+    parse_search_matches_from_text(output)
+}
+
+fn parse_search_matches_from_value(value: &Value) -> Option<Vec<SearchMatch>> {
+    let mut matches = Vec::new();
+    if let Some(array) = value.as_array() {
+        for entry in array {
+            if let Some(path) = entry.as_str() {
+                matches.push(SearchMatch {
+                    file: path.to_string(),
+                    line: 1,
+                    content: String::new(),
+                });
+            }
+            if matches.len() >= TOOL_SEARCH_MATCH_LIMIT {
+                break;
+            }
+        }
+    } else if let Some(obj) = value.as_object() {
+        if let Some(array) = obj.get("matches").and_then(|v| v.as_array()) {
+            for entry in array {
+                if let Some(path) = entry.as_str() {
+                    matches.push(SearchMatch {
+                        file: path.to_string(),
+                        line: 1,
+                        content: String::new(),
+                    });
+                    continue;
+                }
+                if let Some(match_obj) = entry.as_object() {
+                    let file = match_obj
+                        .get("file")
+                        .or_else(|| match_obj.get("file_path"))
+                        .or_else(|| match_obj.get("path"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let line = match_obj
+                        .get("line_number")
+                        .or_else(|| match_obj.get("line"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(1) as u32;
+                    let content = match_obj
+                        .get("line")
+                        .or_else(|| match_obj.get("content"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    matches.push(SearchMatch {
+                        file: file.to_string(),
+                        line,
+                        content,
+                    });
+                }
+                if matches.len() >= TOOL_SEARCH_MATCH_LIMIT {
+                    break;
+                }
+            }
+        } else if let Some(array) = obj.get("files").and_then(|v| v.as_array()) {
+            for entry in array {
+                if let Some(path) = entry.as_str() {
+                    matches.push(SearchMatch {
+                        file: path.to_string(),
+                        line: 1,
+                        content: String::new(),
+                    });
+                }
+                if matches.len() >= TOOL_SEARCH_MATCH_LIMIT {
+                    break;
+                }
+            }
+        } else if let Some(array) = obj.get("counts").and_then(|v| v.as_array()) {
+            for entry in array {
+                if let Some(match_obj) = entry.as_object() {
+                    let file = match_obj
+                        .get("file")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let count = match_obj
+                        .get("count")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    matches.push(SearchMatch {
+                        file: file.to_string(),
+                        line: 1,
+                        content: format!("{} matches", count),
+                    });
+                }
+                if matches.len() >= TOOL_SEARCH_MATCH_LIMIT {
+                    break;
+                }
+            }
+        }
+    }
+
+    if matches.is_empty() {
+        None
+    } else {
+        Some(matches)
+    }
+}
+
+fn parse_search_matches_from_text(output: &str) -> Vec<SearchMatch> {
+    let mut matches = Vec::new();
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some((file, rest)) = line.split_once(':') {
+            if let Some((line_no, content)) = rest.split_once(':') {
+                if let Ok(number) = line_no.trim().parse::<u32>() {
+                    matches.push(SearchMatch {
+                        file: file.trim().to_string(),
+                        line: number,
+                        content: content.trim().to_string(),
+                    });
+                    continue;
+                }
+            }
+        }
+        matches.push(SearchMatch {
+            file: line.to_string(),
+            line: 1,
+            content: String::new(),
+        });
+        if matches.len() >= TOOL_SEARCH_MATCH_LIMIT {
+            break;
+        }
+    }
+    matches
+}
+
+fn parse_diff_lines(diff_text: &str) -> Vec<DiffLine> {
+    let mut lines = Vec::new();
+    for line in diff_text.lines() {
+        if line.starts_with("diff --git") || line.starts_with("index ") {
+            continue;
+        }
+        let (kind, content) = if line.starts_with("+++ ") || line.starts_with("--- ") {
+            (DiffLineKind::Header, line.to_string())
+        } else if line.starts_with("@@") {
+            (DiffLineKind::Header, line.to_string())
+        } else if line.starts_with('+') {
+            (DiffLineKind::Addition, line[1..].to_string())
+        } else if line.starts_with('-') {
+            (DiffLineKind::Deletion, line[1..].to_string())
+        } else if line.starts_with(' ') {
+            (DiffLineKind::Context, line[1..].to_string())
+        } else {
+            (DiffLineKind::Context, line.to_string())
+        };
+        lines.push(DiffLine {
+            kind,
+            content,
+            old_line: None,
+            new_line: None,
+        });
+        if lines.len() >= 200 {
+            break;
+        }
+    }
+    lines
+}
+
+fn build_simple_diff(old_text: &str, new_text: &str) -> Vec<DiffLine> {
+    let mut lines = Vec::new();
+    lines.push(DiffLine {
+        kind: DiffLineKind::Header,
+        content: "@@ -1 +1 @@".to_string(),
+        old_line: None,
+        new_line: None,
+    });
+    for line in old_text.lines() {
+        lines.push(DiffLine {
+            kind: DiffLineKind::Deletion,
+            content: line.to_string(),
+            old_line: None,
+            new_line: None,
+        });
+    }
+    for line in new_text.lines() {
+        lines.push(DiffLine {
+            kind: DiffLineKind::Addition,
+            content: line.to_string(),
+            old_line: None,
+            new_line: None,
+        });
+    }
+    lines
+}
+
+fn build_tool_detail(tool: &ToolVisualization) -> ToolDetail {
+    if !tool.card_expanded {
+        return ToolDetail::None;
+    }
+
+    let status = tool.status;
+
+    if tool.tool_type == ToolType::Bash {
+        let command = tool
+            .input_value
+            .as_ref()
+            .and_then(|value| {
+                value
+                    .get("command")
+                    .or_else(|| value.get("cmd"))
+                    .or_else(|| value.get("bash_id"))
+                    .or_else(|| value.get("shell_id"))
+                    .and_then(|v| v.as_str())
+            })
+            .unwrap_or("bash")
+            .to_string();
+        let mut detail = TerminalToolCall::new(command).status(status).expanded(true);
+        if let Some(output) = tool.output.as_ref() {
+            if !output.is_empty() {
+                detail = detail.output(output.clone());
+            }
+        }
+        if let Some(code) = tool.exit_code {
+            detail = detail.exit_code(code);
+        }
+        return ToolDetail::Terminal(detail);
+    }
+
+    if matches!(tool.tool_type, ToolType::Glob | ToolType::Grep | ToolType::Search) {
+        let query = tool
+            .input_value
+            .as_ref()
+            .and_then(|value| {
+                value
+                    .get("pattern")
+                    .or_else(|| value.get("query"))
+                    .or_else(|| value.get("regex"))
+                    .and_then(|v| v.as_str())
+            })
+            .unwrap_or("")
+            .to_string();
+        let output_text = tool.output.as_deref().unwrap_or("");
+        let matches = parse_search_matches(tool.output_value.as_ref(), output_text);
+        let detail = SearchToolCall::new(query)
+            .matches(matches)
+            .status(status)
+            .expanded(true);
+        return ToolDetail::Search(detail);
+    }
+
+    if tool.tool_type == ToolType::Edit {
+        let file_path = tool
+            .input_value
+            .as_ref()
+            .and_then(|value| value.get("file_path").and_then(|v| v.as_str()))
+            .unwrap_or("file")
+            .to_string();
+        let mut output_text = tool.output.as_deref();
+        let mut output_storage = None::<String>;
+        if output_text.map(|text| text.is_empty()).unwrap_or(true) {
+            if let Some(value) = tool.output_value.as_ref() {
+                if let Some(diff) = value
+                    .get("diff")
+                    .or_else(|| value.get("patch"))
+                    .or_else(|| value.get("content"))
+                    .and_then(|v| v.as_str())
+                {
+                    output_storage = Some(diff.to_string());
+                } else if let Some(text) = value.as_str() {
+                    output_storage = Some(text.to_string());
+                }
+            }
+        }
+        if output_text.map(|text| text.is_empty()).unwrap_or(true) {
+            output_text = output_storage.as_deref();
+        }
+        let mut diff_lines = parse_diff_lines(output_text.unwrap_or(""));
+        if diff_lines.is_empty() {
+            if let Some(value) = tool.input_value.as_ref() {
+                let old_text = value
+                    .get("old_string")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let new_text = value
+                    .get("new_string")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if !old_text.is_empty() || !new_text.is_empty() {
+                    diff_lines = build_simple_diff(old_text, new_text);
+                }
+            }
+        }
+        if diff_lines.is_empty() {
+            return ToolDetail::None;
+        }
+        let detail = DiffToolCall::new(file_path)
+            .lines(diff_lines)
+            .status(status)
+            .expanded(true);
+        return ToolDetail::Diff(detail);
+    }
+
+    ToolDetail::None
 }
 
 /// Extract tool call start info from content_block_start event
@@ -3350,6 +4278,19 @@ struct SessionListLayout {
     modal_bounds: Bounds,
     card_bounds: Vec<(usize, Bounds)>,
     checkpoint_bounds: Option<Bounds>,
+}
+
+struct ToolPanelBlock {
+    index: usize,
+    card_bounds: Bounds,
+    detail_bounds: Option<Bounds>,
+}
+
+struct ToolPanelLayout {
+    bounds: Bounds,
+    header_bounds: Bounds,
+    cancel_bounds: Option<Bounds>,
+    blocks: Vec<ToolPanelBlock>,
 }
 
 fn session_list_layout(
@@ -3418,6 +4359,114 @@ fn session_list_layout(
         card_bounds,
         checkpoint_bounds,
     }
+}
+
+fn tool_panel_layout(
+    logical_width: f32,
+    logical_height: f32,
+    tools: &[ToolVisualization],
+    show_cancel: bool,
+) -> Option<ToolPanelLayout> {
+    if tools.is_empty() {
+        return None;
+    }
+
+    let panel_width = logical_width - OUTPUT_PADDING * 2.0;
+    let panel_x = OUTPUT_PADDING;
+
+    let mut selected_indices = Vec::new();
+    let mut total_height = TOOL_PANEL_PADDING * 2.0 + TOOL_PANEL_HEADER_HEIGHT;
+
+    for index in (0..tools.len()).rev() {
+        if selected_indices.len() >= TOOL_PANEL_MAX_CARDS {
+            break;
+        }
+        let tool = &tools[index];
+        let card_height = tool.card.size_hint().1.unwrap_or(22.0);
+        let detail_height = tool.detail.height();
+        let mut block_height = card_height;
+        if detail_height > 0.0 {
+            block_height += TOOL_PANEL_GAP + detail_height;
+        }
+        let gap = if selected_indices.is_empty() { 0.0 } else { TOOL_PANEL_GAP };
+        if total_height + gap + block_height <= TOOL_PANEL_MAX_HEIGHT || selected_indices.is_empty() {
+            total_height += gap + block_height;
+            selected_indices.push(index);
+        }
+    }
+
+    selected_indices.reverse();
+
+    let panel_height = total_height.min(TOOL_PANEL_MAX_HEIGHT);
+    let input_top = logical_height - INPUT_HEIGHT - INPUT_PADDING - STATUS_BAR_HEIGHT;
+    let panel_y = input_top - TOOL_PANEL_GAP - panel_height;
+    let bounds = Bounds::new(panel_x, panel_y, panel_width, panel_height);
+
+    let header_bounds = Bounds::new(
+        panel_x + TOOL_PANEL_PADDING,
+        panel_y + TOOL_PANEL_PADDING,
+        panel_width - TOOL_PANEL_PADDING * 2.0,
+        TOOL_PANEL_HEADER_HEIGHT,
+    );
+
+    let cancel_bounds = if show_cancel {
+        let button_width = 68.0;
+        let button_height = 18.0;
+        Some(Bounds::new(
+            header_bounds.origin.x + header_bounds.size.width - button_width,
+            header_bounds.origin.y + (TOOL_PANEL_HEADER_HEIGHT - button_height) * 0.5,
+            button_width,
+            button_height,
+        ))
+    } else {
+        None
+    };
+
+    let mut blocks = Vec::new();
+    let mut y = header_bounds.origin.y + TOOL_PANEL_HEADER_HEIGHT + TOOL_PANEL_GAP;
+    for (i, index) in selected_indices.iter().enumerate() {
+        let tool = &tools[*index];
+        let card_height = tool.card.size_hint().1.unwrap_or(22.0);
+        let card_bounds = Bounds::new(
+            panel_x + TOOL_PANEL_PADDING,
+            y,
+            panel_width - TOOL_PANEL_PADDING * 2.0,
+            card_height,
+        );
+        y += card_height;
+
+        let detail_height = tool.detail.height();
+        let detail_bounds = if detail_height > 0.0 {
+            y += TOOL_PANEL_GAP;
+            let bounds = Bounds::new(
+                panel_x + TOOL_PANEL_PADDING,
+                y,
+                panel_width - TOOL_PANEL_PADDING * 2.0,
+                detail_height,
+            );
+            y += detail_height;
+            Some(bounds)
+        } else {
+            None
+        };
+
+        blocks.push(ToolPanelBlock {
+            index: *index,
+            card_bounds,
+            detail_bounds,
+        });
+
+        if i + 1 < selected_indices.len() {
+            y += TOOL_PANEL_GAP;
+        }
+    }
+
+    Some(ToolPanelLayout {
+        bounds,
+        header_bounds,
+        cancel_bounds,
+        blocks,
+    })
 }
 
 fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
