@@ -170,12 +170,12 @@ pub enum Action {
 ```
 
 ### Tasks
-- [ ] Create `src/commands.rs` with command parsing
-- [ ] Refactor `RenderState` -> `AppState`
-- [ ] Implement `PanelLayout` system
-- [ ] Add keyboard shortcut registry
-- [ ] Wire up `Ctrl+C` for interrupt
-- [ ] Wire up `Ctrl+K` for command palette (or `/`)
+- [x] Create `src/commands.rs` with command parsing
+- [x] Refactor `RenderState` -> `AppState`
+- [x] Implement `PanelLayout` system
+- [x] Add keyboard shortcut registry
+- [x] Wire up `Ctrl+C` for interrupt
+- [x] Wire up `Ctrl+K` for command palette (or `/`)
 
 ---
 
@@ -890,3 +890,4 @@ pub enum SettingsTab {
 
 ## Execution Log
 - 2026-01-09 07:58 UTC - Added command, panel, and keybinding modules; refactored Coder state to AppState with new core fields.
+- 2026-01-09 08:07 UTC - Wired command parsing/execution, command palette modal, keybindings for Ctrl+C/Ctrl+K, and interrupt plumbing; ran `cargo check -p coder`.

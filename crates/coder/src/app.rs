@@ -110,6 +110,7 @@ enum ResponseEvent {
 
 enum QueryControl {
     Interrupt,
+    #[allow(dead_code)]
     Abort,
 }
 
@@ -242,6 +243,7 @@ struct AppState {
     session_info: SessionInfo,
     // Modal state for slash commands
     modal_state: ModalState,
+    #[allow(dead_code)]
     panel_layout: PanelLayout,
     keybindings: Vec<Keybinding>,
     command_history: Vec<String>,
@@ -421,6 +423,9 @@ impl ApplicationHandler for CoderApp {
                 state.surface.configure(&state.device, &state.config);
                 state.window.request_redraw();
             }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                state.modifiers = modifiers.state();
+            }
             WindowEvent::RedrawRequested => {
                 self.render();
             }
@@ -472,113 +477,131 @@ impl ApplicationHandler for CoderApp {
                 event: key_event, ..
             } => {
                 if key_event.state == ElementState::Pressed {
-                    // Handle modal input first
-                    if let ModalState::ModelPicker { selected } = &state.modal_state {
-                        let selected = *selected;
-                        match &key_event.logical_key {
-                            WinitKey::Named(WinitNamedKey::Escape) => {
-                                state.modal_state = ModalState::None;
-                                state.window.request_redraw();
-                                return;
-                            }
-                            WinitKey::Named(WinitNamedKey::Enter) => {
-                                let models = ModelOption::all();
-                                state.selected_model = models[selected];
-                                state.modal_state = ModalState::None;
-                                // Update session info display and persist
-                                state.session_info.model = state.selected_model.model_id().to_string();
-                                save_model(state.selected_model);
-                                state.window.request_redraw();
-                                return;
-                            }
-                            WinitKey::Named(WinitNamedKey::ArrowUp) => {
-                                if selected > 0 {
-                                    state.modal_state = ModalState::ModelPicker { selected: selected - 1 };
-                                }
-                                state.window.request_redraw();
-                                return;
-                            }
-                            WinitKey::Named(WinitNamedKey::ArrowDown) => {
-                                if selected < 2 {
-                                    state.modal_state = ModalState::ModelPicker { selected: selected + 1 };
-                                }
-                                state.window.request_redraw();
-                                return;
-                            }
-                            WinitKey::Character(c) => {
-                                match c.as_str() {
-                                    "1" => {
-                                        state.selected_model = ModelOption::Opus;
-                                        state.modal_state = ModalState::None;
-                                        state.session_info.model = state.selected_model.model_id().to_string();
-                                        save_model(state.selected_model);
-                                    }
-                                    "2" => {
-                                        state.selected_model = ModelOption::Sonnet;
-                                        state.modal_state = ModalState::None;
-                                        state.session_info.model = state.selected_model.model_id().to_string();
-                                        save_model(state.selected_model);
-                                    }
-                                    "3" => {
-                                        state.selected_model = ModelOption::Haiku;
-                                        state.modal_state = ModalState::None;
-                                        state.session_info.model = state.selected_model.model_id().to_string();
-                                        save_model(state.selected_model);
-                                    }
-                                    _ => {}
-                                }
-                                state.window.request_redraw();
-                                return;
-                            }
-                            _ => return,
-                        }
+                    if handle_modal_input(state, &key_event.logical_key) {
+                        return;
                     }
 
-                    let modifiers = wgpui::Modifiers::default();
+                    let modifiers = convert_modifiers(&state.modifiers);
 
-                    // Check for Enter key to submit
-                    if let WinitKey::Named(WinitNamedKey::Enter) = &key_event.logical_key {
-                        let prompt = state.input.get_value().to_string();
-                        if !prompt.is_empty() && !state.is_thinking {
-                            // Check for slash commands
-                            if prompt.trim() == "/model" {
-                                state.input.set_value("");
-                                // Find current model index
-                                let current_idx = ModelOption::all()
-                                    .iter()
-                                    .position(|m| *m == state.selected_model)
-                                    .unwrap_or(0);
-                                state.modal_state = ModalState::ModelPicker { selected: current_idx };
-                                state.window.request_redraw();
-                                return;
+                    if let Some(key) = convert_key_for_binding(&key_event.logical_key) {
+                        if let Some(action) = match_action(&key, modifiers, &state.keybindings) {
+                            match action {
+                                KeyAction::Interrupt => state.interrupt_query(),
+                                KeyAction::OpenCommandPalette => {
+                                    state.open_command_palette();
+                                }
                             }
-
-                            state.input.set_value("");
-                            self.submit_prompt(prompt);
-                            if let Some(s) = &self.state {
-                                s.window.request_redraw();
-                            }
+                            state.window.request_redraw();
                             return;
                         }
                     }
 
-                    let key = match &key_event.logical_key {
-                        WinitKey::Character(c) => UiKey::Character(c.to_string()),
-                        WinitKey::Named(named) => {
-                            UiKey::Named(convert_named_key(*named))
+                    // Check for Enter key to submit
+                    if let WinitKey::Named(WinitNamedKey::Enter) = &key_event.logical_key {
+                        let prompt = state.input.get_value().to_string();
+                        if prompt.trim().is_empty() {
+                            return;
                         }
-                        _ => return,
-                    };
 
-                    let input_event = InputEvent::KeyDown { key, modifiers };
-                    state
-                        .input
-                        .event(&input_event, input_bounds, &mut state.event_context);
-                    state.window.request_redraw();
+                        if let Some(command) = parse_command(&prompt) {
+                            state.command_history.push(prompt);
+                            state.input.set_value("");
+                            execute_command(command, state);
+                            state.window.request_redraw();
+                            return;
+                        }
+
+                        if state.is_thinking {
+                            return;
+                        }
+
+                        state.command_history.push(prompt.clone());
+                        state.input.set_value("");
+                        self.submit_prompt(prompt);
+                        if let Some(s) = &self.state {
+                            s.window.request_redraw();
+                        }
+                        return;
+                    }
+
+                    if let Some(key) = convert_key_for_input(&key_event.logical_key) {
+                        let input_event = InputEvent::KeyDown { key, modifiers };
+                        state
+                            .input
+                            .event(&input_event, input_bounds, &mut state.event_context);
+                        state.window.request_redraw();
+                    }
                 }
             }
             _ => {}
         }
+    }
+}
+
+impl CommandContext for AppState {
+    fn open_command_palette(&mut self) {
+        self.modal_state = ModalState::CommandPalette { selected: 0 };
+    }
+
+    fn open_model_picker(&mut self) {
+        let current_idx = ModelOption::all()
+            .iter()
+            .position(|m| *m == self.selected_model)
+            .unwrap_or(0);
+        self.modal_state = ModalState::ModelPicker { selected: current_idx };
+    }
+
+    fn clear_conversation(&mut self) {
+        if self.is_thinking {
+            self.push_system_message(
+                "Cannot clear while a response is in progress.".to_string(),
+            );
+            return;
+        }
+        self.messages.clear();
+        self.streaming_markdown.reset();
+        self.scroll_offset = 0.0;
+        self.current_tool_name = None;
+        self.current_tool_input.clear();
+    }
+
+    fn undo_last_exchange(&mut self) {
+        if self.is_thinking {
+            self.push_system_message(
+                "Cannot undo while a response is in progress.".to_string(),
+            );
+            return;
+        }
+
+        let mut removed = 0;
+        while matches!(self.messages.last(), Some(ChatMessage { role: MessageRole::Assistant, .. })) {
+            self.messages.pop();
+            removed += 1;
+        }
+        if matches!(self.messages.last(), Some(ChatMessage { role: MessageRole::User, .. })) {
+            self.messages.pop();
+            removed += 1;
+        }
+
+        if removed == 0 {
+            self.push_system_message("Nothing to undo.".to_string());
+        }
+    }
+
+    fn interrupt_query(&mut self) {
+        if let Some(tx) = &self.query_control_tx {
+            let _ = tx.send(QueryControl::Interrupt);
+        } else {
+            self.push_system_message("No active request to interrupt.".to_string());
+        }
+    }
+
+    fn push_system_message(&mut self, message: String) {
+        self.messages.push(ChatMessage {
+            role: MessageRole::Assistant,
+            content: message,
+            document: None,
+        });
     }
 }
 
@@ -599,7 +622,9 @@ impl CoderApp {
 
         // Create channel for receiving responses
         let (tx, rx) = mpsc::unbounded_channel();
+        let (control_tx, mut control_rx) = mpsc::unbounded_channel();
         state.response_rx = Some(rx);
+        state.query_control_tx = Some(control_tx);
         state.is_thinking = true;
         state.streaming_markdown.reset();
 
@@ -621,93 +646,131 @@ impl CoderApp {
             match query(&prompt, options).await {
                 Ok(mut stream) => {
                     tracing::info!("Query stream started");
-                    while let Some(msg) = stream.next().await {
-                        match msg {
-                            Ok(SdkMessage::Assistant(m)) => {
-                                // Don't extract text here - we get it from STREAM_EVENT deltas
-                                // The ASSISTANT message contains the full text which would duplicate
-                                tracing::info!("ASSISTANT: (skipping text extraction, using stream events)");
-                                tracing::debug!("  full message: {:?}", m.message);
+                    let mut interrupt_requested = false;
+
+                    loop {
+                        if interrupt_requested {
+                            if let Err(e) = stream.interrupt().await {
+                                tracing::error!("Interrupt failed: {}", e);
+                                let _ = tx.send(ResponseEvent::Error(e.to_string()));
+                                window.request_redraw();
+                                break;
                             }
-                            Ok(SdkMessage::StreamEvent(e)) => {
-                                tracing::info!("STREAM_EVENT: {:?}", e.event);
-                                // Check for tool call start
-                                if let Some((tool_name, _tool_id)) = extract_tool_call_start(&e.event) {
-                                    tracing::info!("  -> tool call start: {}", tool_name);
-                                    let _ = tx.send(ResponseEvent::ToolCallStart { name: tool_name });
-                                    window.request_redraw();
-                                }
-                                // Check for tool input delta
-                                else if let Some(json) = extract_tool_input_delta(&e.event) {
-                                    let _ = tx.send(ResponseEvent::ToolCallInput { json });
-                                    window.request_redraw();
-                                }
-                                // Check for content_block_stop (tool call end)
-                                else if e.event.get("type").and_then(|t| t.as_str()) == Some("content_block_stop") {
-                                    let _ = tx.send(ResponseEvent::ToolCallEnd);
-                                    window.request_redraw();
-                                }
-                                // Extract streaming text delta
-                                else if let Some(text) = extract_stream_text(&e.event) {
-                                    tracing::info!("  -> stream text: {}", text);
-                                    if tx.send(ResponseEvent::Chunk(text)).is_err() {
+                            interrupt_requested = false;
+                        }
+
+                        tokio::select! {
+                            Some(control) = control_rx.recv() => {
+                                match control {
+                                    QueryControl::Interrupt => {
+                                        interrupt_requested = true;
+                                    }
+                                    QueryControl::Abort => {
+                                        if let Err(e) = stream.abort().await {
+                                            tracing::error!("Abort failed: {}", e);
+                                            let _ = tx.send(ResponseEvent::Error(e.to_string()));
+                                        } else {
+                                            let _ = tx.send(ResponseEvent::Error("Request aborted.".to_string()));
+                                        }
+                                        window.request_redraw();
                                         break;
                                     }
-                                    window.request_redraw();
                                 }
                             }
-                            Ok(SdkMessage::System(s)) => {
-                                tracing::info!("SYSTEM: {:?}", s);
-                                // Extract init info
-                                if let claude_agent_sdk::SdkSystemMessage::Init(init) = s {
-                                    let _ = tx.send(ResponseEvent::SystemInit {
-                                        model: init.model.clone(),
-                                        permission_mode: init.permission_mode.clone(),
-                                        session_id: init.session_id.clone(),
-                                        tool_count: init.tools.len(),
-                                    });
-                                    window.request_redraw();
-                                }
-                            }
-                            Ok(SdkMessage::User(u)) => {
-                                tracing::info!("USER: {:?}", u.message);
-                                // Extract tool results from USER messages
-                                if let Some(content) = u.message.get("content").and_then(|c| c.as_array()) {
-                                    for item in content {
-                                        if item.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
-                                            let result_content = item.get("content")
-                                                .and_then(|c| c.as_str())
-                                                .unwrap_or("")
-                                                .to_string();
-                                            let is_error = item.get("is_error")
-                                                .and_then(|e| e.as_bool())
-                                                .unwrap_or(false);
-                                            let _ = tx.send(ResponseEvent::ToolResult {
-                                                content: result_content,
-                                                is_error
+                            msg = stream.next() => {
+                                match msg {
+                                    Some(Ok(SdkMessage::Assistant(m))) => {
+                                        // Don't extract text here - we get it from STREAM_EVENT deltas
+                                        // The ASSISTANT message contains the full text which would duplicate
+                                        tracing::info!("ASSISTANT: (skipping text extraction, using stream events)");
+                                        tracing::debug!("  full message: {:?}", m.message);
+                                    }
+                                    Some(Ok(SdkMessage::StreamEvent(e))) => {
+                                        tracing::info!("STREAM_EVENT: {:?}", e.event);
+                                        // Check for tool call start
+                                        if let Some((tool_name, _tool_id)) = extract_tool_call_start(&e.event) {
+                                            tracing::info!("  -> tool call start: {}", tool_name);
+                                            let _ = tx.send(ResponseEvent::ToolCallStart { name: tool_name });
+                                            window.request_redraw();
+                                        }
+                                        // Check for tool input delta
+                                        else if let Some(json) = extract_tool_input_delta(&e.event) {
+                                            let _ = tx.send(ResponseEvent::ToolCallInput { json });
+                                            window.request_redraw();
+                                        }
+                                        // Check for content_block_stop (tool call end)
+                                        else if e.event.get("type").and_then(|t| t.as_str()) == Some("content_block_stop") {
+                                            let _ = tx.send(ResponseEvent::ToolCallEnd);
+                                            window.request_redraw();
+                                        }
+                                        // Extract streaming text delta
+                                        else if let Some(text) = extract_stream_text(&e.event) {
+                                            tracing::info!("  -> stream text: {}", text);
+                                            if tx.send(ResponseEvent::Chunk(text)).is_err() {
+                                                break;
+                                            }
+                                            window.request_redraw();
+                                        }
+                                    }
+                                    Some(Ok(SdkMessage::System(s))) => {
+                                        tracing::info!("SYSTEM: {:?}", s);
+                                        // Extract init info
+                                        if let claude_agent_sdk::SdkSystemMessage::Init(init) = s {
+                                            let _ = tx.send(ResponseEvent::SystemInit {
+                                                model: init.model.clone(),
+                                                permission_mode: init.permission_mode.clone(),
+                                                session_id: init.session_id.clone(),
+                                                tool_count: init.tools.len(),
                                             });
                                             window.request_redraw();
                                         }
                                     }
+                                    Some(Ok(SdkMessage::User(u))) => {
+                                        tracing::info!("USER: {:?}", u.message);
+                                        // Extract tool results from USER messages
+                                        if let Some(content) = u.message.get("content").and_then(|c| c.as_array()) {
+                                            for item in content {
+                                                if item.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
+                                                    let result_content = item.get("content")
+                                                        .and_then(|c| c.as_str())
+                                                        .unwrap_or("")
+                                                        .to_string();
+                                                    let is_error = item.get("is_error")
+                                                        .and_then(|e| e.as_bool())
+                                                        .unwrap_or(false);
+                                                    let _ = tx.send(ResponseEvent::ToolResult {
+                                                        content: result_content,
+                                                        is_error
+                                                    });
+                                                    window.request_redraw();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Some(Ok(SdkMessage::ToolProgress(tp))) => {
+                                        tracing::info!("TOOL_PROGRESS: {} - {:.1}s", tp.tool_name, tp.elapsed_time_seconds);
+                                    }
+                                    Some(Ok(SdkMessage::AuthStatus(a))) => {
+                                        tracing::info!("AUTH_STATUS: {:?}", a);
+                                    }
+                                    Some(Ok(SdkMessage::Result(r))) => {
+                                        tracing::info!("RESULT: {:?}", r);
+                                        let _ = tx.send(ResponseEvent::Complete);
+                                        window.request_redraw();
+                                        break;
+                                    }
+                                    Some(Err(e)) => {
+                                        tracing::error!("ERROR: {}", e);
+                                        let _ = tx.send(ResponseEvent::Error(e.to_string()));
+                                        window.request_redraw();
+                                        break;
+                                    }
+                                    None => {
+                                        let _ = tx.send(ResponseEvent::Complete);
+                                        window.request_redraw();
+                                        break;
+                                    }
                                 }
-                            }
-                            Ok(SdkMessage::ToolProgress(tp)) => {
-                                tracing::info!("TOOL_PROGRESS: {} - {:.1}s", tp.tool_name, tp.elapsed_time_seconds);
-                            }
-                            Ok(SdkMessage::AuthStatus(a)) => {
-                                tracing::info!("AUTH_STATUS: {:?}", a);
-                            }
-                            Ok(SdkMessage::Result(r)) => {
-                                tracing::info!("RESULT: {:?}", r);
-                                let _ = tx.send(ResponseEvent::Complete);
-                                window.request_redraw();
-                                break;
-                            }
-                            Err(e) => {
-                                tracing::error!("ERROR: {}", e);
-                                let _ = tx.send(ResponseEvent::Error(e.to_string()));
-                                window.request_redraw();
-                                break;
                             }
                         }
                     }
@@ -797,6 +860,9 @@ impl CoderApp {
                     state.streaming_markdown.reset();
                     state.is_thinking = false;
                     state.response_rx = None;
+                    state.query_control_tx = None;
+                    state.current_tool_name = None;
+                    state.current_tool_input.clear();
                     needs_redraw = true;
                     break;
                 }
@@ -809,6 +875,9 @@ impl CoderApp {
                     state.streaming_markdown.reset();
                     state.is_thinking = false;
                     state.response_rx = None;
+                    state.query_control_tx = None;
+                    state.current_tool_name = None;
+                    state.current_tool_input.clear();
                     needs_redraw = true;
                     break;
                 }
@@ -1108,126 +1177,219 @@ impl CoderApp {
         }
 
         // Draw modal if active
-        if let ModalState::ModelPicker { selected } = state.modal_state {
-            // Semi-transparent overlay
-            let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
-            scene.draw_quad(overlay);
+        match &state.modal_state {
+            ModalState::None => {}
+            ModalState::ModelPicker { selected } => {
+                // Semi-transparent overlay
+                let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
+                scene.draw_quad(overlay);
 
-            // Modal box
-            let modal_width = 700.0;
-            let modal_height = 200.0;
-            let modal_x = (logical_width - modal_width) / 2.0;
-            let modal_y = (logical_height - modal_height) / 2.0;
-            let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
+                // Modal box
+                let modal_width = 700.0;
+                let modal_height = 200.0;
+                let modal_x = (logical_width - modal_width) / 2.0;
+                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
 
-            // Modal background
-            let modal_bg = Quad::new(modal_bounds)
-                .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
-                .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
-            scene.draw_quad(modal_bg);
+                // Modal background
+                let modal_bg = Quad::new(modal_bounds)
+                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
+                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
+                scene.draw_quad(modal_bg);
 
-            let mut y = modal_y + 16.0;
+                let mut y = modal_y + 16.0;
 
-            // Title
-            let title_run = state.text_system.layout_styled_mono(
-                "Select model",
-                Point::new(modal_x + 16.0, y),
-                14.0,
-                Hsla::new(0.0, 0.0, 0.9, 1.0), // White
-                wgpui::text::FontStyle::default(),
-            );
-            scene.draw_text(title_run);
-            y += 20.0;
-
-            // Description
-            let desc_run = state.text_system.layout_styled_mono(
-                "Switch between Claude models. Applies to this session and future Claude Code sessions.",
-                Point::new(modal_x + 16.0, y),
-                12.0,
-                Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
-                wgpui::text::FontStyle::default(),
-            );
-            scene.draw_text(desc_run);
-            y += 30.0;
-
-            // Model options
-            let models = ModelOption::all();
-            for (i, model) in models.iter().enumerate() {
-                let is_selected = i == selected;
-                let is_current = *model == state.selected_model;
-
-                // Selection indicator
-                let indicator = if is_selected { ">" } else { " " };
-                let indicator_run = state.text_system.layout_styled_mono(
-                    indicator,
+                // Title
+                let title_run = state.text_system.layout_styled_mono(
+                    "Select model",
                     Point::new(modal_x + 16.0, y),
                     14.0,
-                    Hsla::new(120.0, 0.6, 0.5, 1.0), // Green
+                    Hsla::new(0.0, 0.0, 0.9, 1.0), // White
                     wgpui::text::FontStyle::default(),
                 );
-                scene.draw_text(indicator_run);
-
-                // Number
-                let num_text = format!("{}.", i + 1);
-                let num_run = state.text_system.layout_styled_mono(
-                    &num_text,
-                    Point::new(modal_x + 32.0, y),
-                    14.0,
-                    Hsla::new(0.0, 0.0, 0.5, 1.0),
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(num_run);
-
-                // Name
-                let name_color = if is_selected {
-                    Hsla::new(120.0, 0.6, 0.6, 1.0) // Green for selected
-                } else {
-                    Hsla::new(0.0, 0.0, 0.7, 1.0) // White-ish
-                };
-                let name_run = state.text_system.layout_styled_mono(
-                    model.name(),
-                    Point::new(modal_x + 56.0, y),
-                    14.0,
-                    name_color,
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(name_run);
-
-                // Checkmark if current
-                if is_current {
-                    let check_run = state.text_system.layout_styled_mono(
-                        "✓",
-                        Point::new(modal_x + 220.0, y),
-                        14.0,
-                        Hsla::new(120.0, 0.6, 0.5, 1.0), // Green
-                        wgpui::text::FontStyle::default(),
-                    );
-                    scene.draw_text(check_run);
-                }
+                scene.draw_text(title_run);
+                y += 20.0;
 
                 // Description
                 let desc_run = state.text_system.layout_styled_mono(
-                    model.description(),
-                    Point::new(modal_x + 240.0, y),
-                    14.0,
+                    "Switch between Claude models. Applies to this session and future Claude Code sessions.",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
                     Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(desc_run);
+                y += 30.0;
 
-                y += 24.0;
+                // Model options
+                let models = ModelOption::all();
+                for (i, model) in models.iter().enumerate() {
+                    let is_selected = i == *selected;
+                    let is_current = *model == state.selected_model;
+
+                    // Selection indicator
+                    let indicator = if is_selected { ">" } else { " " };
+                    let indicator_run = state.text_system.layout_styled_mono(
+                        indicator,
+                        Point::new(modal_x + 16.0, y),
+                        14.0,
+                        Hsla::new(120.0, 0.6, 0.5, 1.0), // Green
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(indicator_run);
+
+                    // Number
+                    let num_text = format!("{}.", i + 1);
+                    let num_run = state.text_system.layout_styled_mono(
+                        &num_text,
+                        Point::new(modal_x + 32.0, y),
+                        14.0,
+                        Hsla::new(0.0, 0.0, 0.5, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(num_run);
+
+                    // Name
+                    let name_color = if is_selected {
+                        Hsla::new(120.0, 0.6, 0.6, 1.0) // Green for selected
+                    } else {
+                        Hsla::new(0.0, 0.0, 0.7, 1.0) // White-ish
+                    };
+                    let name_run = state.text_system.layout_styled_mono(
+                        model.name(),
+                        Point::new(modal_x + 56.0, y),
+                        14.0,
+                        name_color,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(name_run);
+
+                    // Checkmark if current
+                    if is_current {
+                        let check_run = state.text_system.layout_styled_mono(
+                            "✓",
+                            Point::new(modal_x + 220.0, y),
+                            14.0,
+                            Hsla::new(120.0, 0.6, 0.5, 1.0), // Green
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(check_run);
+                    }
+
+                    // Description
+                    let desc_run = state.text_system.layout_styled_mono(
+                        model.description(),
+                        Point::new(modal_x + 240.0, y),
+                        14.0,
+                        Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(desc_run);
+
+                    y += 24.0;
+                }
+
+                // Footer
+                y = modal_y + modal_height - 24.0;
+                let footer_run = state.text_system.layout_styled_mono(
+                    "Enter to confirm · Esc to exit",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.4, 1.0), // Dim gray
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(footer_run);
             }
+            ModalState::CommandPalette { selected } => {
+                let commands = command_specs();
+                // Semi-transparent overlay
+                let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
+                scene.draw_quad(overlay);
 
-            // Footer
-            y = modal_y + modal_height - 24.0;
-            let footer_run = state.text_system.layout_styled_mono(
-                "Enter to confirm · Esc to exit",
-                Point::new(modal_x + 16.0, y),
-                12.0,
-                Hsla::new(0.0, 0.0, 0.4, 1.0), // Dim gray
-                wgpui::text::FontStyle::default(),
-            );
-            scene.draw_text(footer_run);
+                // Modal box
+                let modal_width = 720.0;
+                let modal_height = 320.0;
+                let modal_x = (logical_width - modal_width) / 2.0;
+                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
+
+                // Modal background
+                let modal_bg = Quad::new(modal_bounds)
+                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
+                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
+                scene.draw_quad(modal_bg);
+
+                let mut y = modal_y + 16.0;
+
+                // Title
+                let title_run = state.text_system.layout_styled_mono(
+                    "Command palette",
+                    Point::new(modal_x + 16.0, y),
+                    14.0,
+                    Hsla::new(0.0, 0.0, 0.9, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(title_run);
+                y += 20.0;
+
+                let desc_run = state.text_system.layout_styled_mono(
+                    "Select a command to insert into the prompt.",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.5, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(desc_run);
+                y += 26.0;
+
+                for (i, command) in commands.iter().enumerate() {
+                    let is_selected = i == *selected;
+                    let indicator = if is_selected { ">" } else { " " };
+                    let indicator_run = state.text_system.layout_styled_mono(
+                        indicator,
+                        Point::new(modal_x + 16.0, y),
+                        13.0,
+                        Hsla::new(120.0, 0.6, 0.5, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(indicator_run);
+
+                    let usage_color = if is_selected {
+                        Hsla::new(120.0, 0.6, 0.6, 1.0)
+                    } else {
+                        Hsla::new(0.0, 0.0, 0.75, 1.0)
+                    };
+                    let usage_run = state.text_system.layout_styled_mono(
+                        command.usage,
+                        Point::new(modal_x + 32.0, y),
+                        13.0,
+                        usage_color,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(usage_run);
+
+                    let desc_run = state.text_system.layout_styled_mono(
+                        command.description,
+                        Point::new(modal_x + 240.0, y),
+                        13.0,
+                        Hsla::new(0.0, 0.0, 0.5, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(desc_run);
+
+                    y += 20.0;
+                }
+
+                y = modal_y + modal_height - 24.0;
+                let footer_run = state.text_system.layout_styled_mono(
+                    "Enter to insert · Esc to exit",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.4, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(footer_run);
+            }
         }
 
         // Render
@@ -1387,6 +1549,100 @@ fn extract_tool_input_delta(event: &Value) -> Option<String> {
     delta.get("partial_json")?.as_str().map(|s| s.to_string())
 }
 
+fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
+    match &mut state.modal_state {
+        ModalState::ModelPicker { selected } => {
+            let selected = *selected;
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::Enter) => {
+                    let models = ModelOption::all();
+                    state.selected_model = models[selected];
+                    state.session_info.model = state.selected_model.model_id().to_string();
+                    save_model(state.selected_model);
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::ArrowUp) => {
+                    if selected > 0 {
+                        state.modal_state = ModalState::ModelPicker { selected: selected - 1 };
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowDown) => {
+                    if selected + 1 < ModelOption::all().len() {
+                        state.modal_state = ModalState::ModelPicker { selected: selected + 1 };
+                    }
+                }
+                WinitKey::Character(c) => {
+                    match c.as_str() {
+                        "1" => {
+                            state.selected_model = ModelOption::Opus;
+                        }
+                        "2" => {
+                            state.selected_model = ModelOption::Sonnet;
+                        }
+                        "3" => {
+                            state.selected_model = ModelOption::Haiku;
+                        }
+                        _ => {}
+                    }
+                    if matches!(c.as_str(), "1" | "2" | "3") {
+                        state.session_info.model = state.selected_model.model_id().to_string();
+                        save_model(state.selected_model);
+                        state.modal_state = ModalState::None;
+                    }
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::CommandPalette { selected } => {
+            let commands = command_specs();
+            if commands.is_empty() {
+                state.modal_state = ModalState::None;
+                state.window.request_redraw();
+                return true;
+            }
+
+            if *selected >= commands.len() {
+                *selected = commands.len() - 1;
+            }
+
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::Enter) => {
+                    let command = commands[*selected];
+                    let mut value = command.usage.to_string();
+                    if command.requires_args {
+                        value.push(' ');
+                    }
+                    state.input.set_value(value);
+                    state.input.focus();
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::ArrowUp) => {
+                    if *selected > 0 {
+                        *selected -= 1;
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowDown) => {
+                    if *selected + 1 < commands.len() {
+                        *selected += 1;
+                    }
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::None => false,
+    }
+}
+
 fn convert_mouse_button(button: winit::event::MouseButton) -> wgpui::MouseButton {
     match button {
         winit::event::MouseButton::Left => wgpui::MouseButton::Left,
@@ -1413,5 +1669,33 @@ fn convert_named_key(key: WinitNamedKey) -> UiNamedKey {
         WinitNamedKey::PageUp => UiNamedKey::PageUp,
         WinitNamedKey::PageDown => UiNamedKey::PageDown,
         _ => UiNamedKey::Tab, // fallback
+    }
+}
+
+fn convert_modifiers(mods: &ModifiersState) -> UiModifiers {
+    UiModifiers {
+        shift: mods.shift_key(),
+        ctrl: mods.control_key(),
+        alt: mods.alt_key(),
+        meta: mods.super_key(),
+    }
+}
+
+fn convert_key_for_input(key: &WinitKey) -> Option<UiKey> {
+    match key {
+        WinitKey::Named(named) => Some(UiKey::Named(convert_named_key(*named))),
+        WinitKey::Character(c) => Some(UiKey::Character(c.to_string())),
+        _ => None,
+    }
+}
+
+fn convert_key_for_binding(key: &WinitKey) -> Option<UiKey> {
+    match key {
+        WinitKey::Named(named) => Some(UiKey::Named(convert_named_key(*named))),
+        WinitKey::Character(c) => {
+            let lowered = c.as_str().to_ascii_lowercase();
+            Some(UiKey::Character(lowered))
+        }
+        _ => None,
     }
 }
