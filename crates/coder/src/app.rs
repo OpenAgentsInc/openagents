@@ -3409,6 +3409,9 @@ struct AppState {
     mcp_project_path: Option<PathBuf>,
     // Selected model for queries
     selected_model: ModelOption,
+    // Cached OANIX manifest for Autopilot (avoid re-booting every prompt)
+    oanix_manifest: Option<oanix::OanixManifest>,
+    oanix_manifest_rx: Option<mpsc::UnboundedReceiver<oanix::OanixManifest>>,
 }
 
 /// Main application
@@ -3634,6 +3637,8 @@ impl ApplicationHandler for CoderApp {
                 mcp_status_error: None,
                 mcp_project_path,
                 selected_model,
+                oanix_manifest: None,
+                oanix_manifest_rx: None,
             }
         });
 
@@ -3659,6 +3664,7 @@ impl ApplicationHandler for CoderApp {
         self.poll_agent_actions();
         self.poll_skill_actions();
         self.poll_hook_inspector_actions();
+        self.poll_oanix_manifest();
 
         let Some(state) = &mut self.state else {
             return;
@@ -6561,6 +6567,12 @@ impl CoderApp {
 
         // Handle Autopilot mode - use Adjutant instead of Claude SDK
         if matches!(state.coder_mode, CoderMode::Autopilot) {
+            tracing::info!("Autopilot mode: starting Adjutant execution");
+
+            // Check which LM provider will be used
+            let provider = adjutant::dspy::lm_config::detect_provider();
+            tracing::info!("Autopilot: detected LM provider: {:?}", provider);
+
             // Create channels for receiving responses (same pattern as Claude)
             let (tx, rx) = mpsc::unbounded_channel();
             state.response_rx = Some(rx);
@@ -6570,58 +6582,97 @@ impl CoderApp {
             let window = state.window.clone();
             let prompt_clone = prompt.clone();
 
+            // Use cached manifest or boot OANIX
+            let cached_manifest = state.oanix_manifest.clone();
+            let needs_cache = cached_manifest.is_none();
+
+            // Create channel to send manifest back for caching
+            let manifest_tx = if needs_cache {
+                let (tx, rx) = mpsc::unbounded_channel();
+                state.oanix_manifest_rx = Some(rx);
+                Some(tx)
+            } else {
+                None
+            };
+
             self.runtime_handle.spawn(async move {
-                // Boot OANIX to get workspace manifest
-                match oanix::boot().await {
-                    Ok(manifest) => {
-                        match Adjutant::new(manifest) {
-                            Ok(mut adjutant) => {
-                                // Create task from user prompt
-                                let task = AdjutantTask::new(
-                                    "prompt",
-                                    "User Request",
-                                    &prompt_clone,
-                                );
-
-                                // Send "thinking" indicator
-                                let _ = tx.send(ResponseEvent::Chunk("Adjutant analyzing...\n\n".to_string()));
-                                window.request_redraw();
-
-                                // Execute task
-                                match adjutant.execute(&task).await {
-                                    Ok(result) => {
-                                        // Stream the result summary
-                                        let _ = tx.send(ResponseEvent::Chunk(result.summary));
-
-                                        // Add modified files info if any
-                                        if !result.modified_files.is_empty() {
-                                            let files = result.modified_files.join(", ");
-                                            let _ = tx.send(ResponseEvent::Chunk(
-                                                format!("\n\n**Modified files:** {}", files)
-                                            ));
-                                        }
-
-                                        let _ = tx.send(ResponseEvent::Complete);
-                                    }
-                                    Err(e) => {
-                                        let _ = tx.send(ResponseEvent::Error(format!("Adjutant error: {}", e)));
-                                    }
-                                }
+                // Get manifest (cached or fresh boot)
+                let manifest = if let Some(m) = cached_manifest {
+                    tracing::info!("Autopilot: using cached OANIX manifest");
+                    m
+                } else {
+                    tracing::info!("Autopilot: booting OANIX (first time)...");
+                    match oanix::boot().await {
+                        Ok(m) => {
+                            tracing::info!("Autopilot: OANIX booted, workspace: {:?}",
+                                m.workspace.as_ref().map(|w| &w.root));
+                            // Send manifest back for caching
+                            if let Some(mtx) = &manifest_tx {
+                                let _ = mtx.send(m.clone());
                             }
-                            Err(adjutant::AdjutantError::NoWorkspace) => {
-                                let _ = tx.send(ResponseEvent::Chunk(
-                                    "Autopilot requires an OpenAgents workspace.\n\n\
-                                     Run `oanix init` in your project directory to create one.".to_string()
-                                ));
+                            m
+                        }
+                        Err(e) => {
+                            tracing::error!("Autopilot: OANIX boot failed: {}", e);
+                            let _ = tx.send(ResponseEvent::Error(format!("OANIX boot failed: {}", e)));
+                            window.request_redraw();
+                            return;
+                        }
+                    }
+                };
+
+                match Adjutant::new(manifest.clone()) {
+                    Ok(mut adjutant) => {
+                        tracing::info!("Autopilot: Adjutant initialized");
+
+                        // Create task from user prompt
+                        let task = AdjutantTask::new(
+                            "prompt",
+                            "User Request",
+                            &prompt_clone,
+                        );
+
+                        // Send "thinking" indicator
+                        let _ = tx.send(ResponseEvent::Chunk("Adjutant analyzing...\n\n".to_string()));
+                        window.request_redraw();
+
+                        // Execute task
+                        tracing::info!("Autopilot: executing task...");
+                        match adjutant.execute(&task).await {
+                            Ok(result) => {
+                                tracing::info!("Autopilot: task completed, success={}", result.success);
+
+                                // Stream the result summary
+                                let _ = tx.send(ResponseEvent::Chunk(result.summary));
+
+                                // Add modified files info if any
+                                if !result.modified_files.is_empty() {
+                                    let files = result.modified_files.join(", ");
+                                    tracing::info!("Autopilot: modified files: {}", files);
+                                    let _ = tx.send(ResponseEvent::Chunk(
+                                        format!("\n\n**Modified files:** {}", files)
+                                    ));
+                                }
+
                                 let _ = tx.send(ResponseEvent::Complete);
                             }
                             Err(e) => {
-                                let _ = tx.send(ResponseEvent::Error(format!("Failed to initialize Adjutant: {}", e)));
+                                tracing::error!("Autopilot: task execution failed: {}", e);
+                                let _ = tx.send(ResponseEvent::Error(format!("Adjutant error: {}", e)));
                             }
                         }
                     }
+                    Err(adjutant::AdjutantError::NoWorkspace) => {
+                        tracing::warn!("Autopilot: no workspace found");
+                        let _ = tx.send(ResponseEvent::Chunk(
+                            "Autopilot requires an OpenAgents workspace.\n\n\
+                             Run `oanix init` in your project directory to create one.".to_string()
+                        ));
+                        let _ = tx.send(ResponseEvent::Complete);
+                    }
                     Err(e) => {
-                        let _ = tx.send(ResponseEvent::Error(format!("OANIX boot failed: {}", e)));
+                        tracing::error!("Autopilot: failed to initialize Adjutant: {}", e);
+                        let _ = tx.send(ResponseEvent::Error(format!("Failed to initialize Adjutant: {}", e)));
                     }
                 }
                 window.request_redraw();
@@ -7394,6 +7445,21 @@ impl CoderApp {
 
         if needs_redraw {
             state.window.request_redraw();
+        }
+    }
+
+    fn poll_oanix_manifest(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        // Check if we received a manifest to cache
+        if let Some(rx) = &mut state.oanix_manifest_rx {
+            if let Ok(manifest) = rx.try_recv() {
+                tracing::info!("Autopilot: cached OANIX manifest");
+                state.oanix_manifest = Some(manifest);
+                state.oanix_manifest_rx = None; // Done receiving
+            }
         }
     }
 
