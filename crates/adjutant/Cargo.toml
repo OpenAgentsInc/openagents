@@ -23,6 +23,12 @@ rlm = { path = "../rlm" }
 issues = { path = "../issues" }
 gateway = { path = "../gateway" }
 claude-agent-sdk = { path = "../claude-agent-sdk" }
+dsrs = { path = "../dsrs" }
+dsrs-macros = { path = "../dsrs-macros" }
+
+# Builder pattern
+bon = "3"
+indexmap = "2"
 
 # Workspace dependencies
 tokio = { workspace = true }

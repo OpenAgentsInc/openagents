@@ -142,6 +142,48 @@ Adjutant uses a two-tier model architecture for cost-effective execution:
 
 See [TIERED-EXECUTOR.md](./TIERED-EXECUTOR.md) for detailed documentation.
 
+## DSPy Integration
+
+Adjutant integrates with [dsrs](../../dsrs/) (Rust DSPy implementation) for optimizable prompt engineering:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      TieredExecutor                          │
+│                                                              │
+│  ExecutionMode::Gateway ──► Original hardcoded prompts       │
+│  ExecutionMode::Dsrs    ──► Optimizable DSPy signatures      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Key Features
+
+- **Typed Signatures**: Replace string prompts with `#[Signature]` structs
+- **Automatic Optimization**: MIPROv2 improves prompts from training data
+- **Training Collection**: Records successful executions for optimization
+- **Evaluation Metrics**: Quantitative assessment of output quality
+
+### Quick Start
+
+```rust
+use adjutant::{Task, TieredExecutor, ExecutionMode, ToolRegistry};
+
+// Create DSPy-powered executor
+let mut executor = TieredExecutor::with_mode(ExecutionMode::Dsrs)?;
+
+// Execute with training collection
+let result = executor.execute_dsrs(&task, &context, &mut tools).await?;
+```
+
+### Signatures
+
+| Signature | Replaces | Purpose |
+|-----------|----------|---------|
+| `SubtaskPlanningSignature` | `PLANNER_SYSTEM_PROMPT` | Break tasks into subtasks |
+| `SubtaskExecutionSignature` | `EXECUTOR_SYSTEM_PROMPT` | Execute individual subtasks |
+| `ResultSynthesisSignature` | `SYNTHESIZER_SYSTEM_PROMPT` | Synthesize final results |
+
+See [DSPY-INTEGRATION.md](./DSPY-INTEGRATION.md) for detailed documentation.
+
 ## Configuration
 
 ### Execution Backends
@@ -212,14 +254,22 @@ crates/adjutant/
 │   ├── executor.rs      # Task execution coordination
 │   ├── claude_executor.rs # Claude Pro/Max execution via SDK
 │   ├── rlm_agent.rs     # RLM custom agent definition
-│   ├── tiered.rs        # TieredExecutor (GLM 4.7 + Qwen-3-32B)
+│   ├── tiered.rs        # TieredExecutor (Gateway + DSPy modes)
 │   ├── delegate.rs      # Claude Code and RLM delegation
 │   ├── tools.rs         # Tool registry (Read, Edit, Bash, etc.)
+│   ├── auth.rs          # Claude CLI detection
 │   ├── cli.rs           # CLI argument parsing
+│   ├── dspy/            # DSPy integration
+│   │   ├── mod.rs       # Module exports
+│   │   ├── lm_config.rs # Cerebras LM configuration
+│   │   ├── module.rs    # AdjutantModule + signatures
+│   │   ├── metrics.rs   # Evaluation metrics for MIPROv2
+│   │   └── training.rs  # Training data collection
 │   └── bin/main.rs      # Autopilot binary entry point
 └── docs/
-    ├── README.md        # This file
-    └── TIERED-EXECUTOR.md
+    ├── README.md            # This file
+    ├── TIERED-EXECUTOR.md   # Tiered inference details
+    └── DSPY-INTEGRATION.md  # DSPy integration guide
 ```
 
 ## RLM Integration
@@ -278,5 +328,7 @@ export RLM_BACKEND=claude  # Use Claude as RLM LlmClient
 ## See Also
 
 - [TIERED-EXECUTOR.md](./TIERED-EXECUTOR.md) - Detailed tiered inference documentation
+- [DSPY-INTEGRATION.md](./DSPY-INTEGRATION.md) - DSPy integration and optimization guide
+- [../../dsrs/README.md](../../dsrs/README.md) - dsrs (Rust DSPy) documentation
 - [../../gateway/docs/README.md](../../gateway/docs/README.md) - Gateway crate (Cerebras integration)
 - [../../oanix/README.md](../../oanix/README.md) - OANIX environment discovery

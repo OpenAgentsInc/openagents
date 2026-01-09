@@ -41,6 +41,7 @@ pub mod auth;
 pub mod cli;
 pub mod claude_executor;
 pub mod delegate;
+pub mod dspy;
 pub mod executor;
 pub mod planner;
 pub mod rlm_agent;
