@@ -25,6 +25,12 @@ pub enum Command {
     McpRemove(String),
     McpReload,
     McpStatus,
+    Agents,
+    AgentSelect(String),
+    AgentClear,
+    AgentReload,
+    Skills,
+    SkillsReload,
     Custom(String, Vec<String>),
 }
 
@@ -161,6 +167,36 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         description: "Refresh MCP server status from the SDK",
         requires_args: false,
     },
+    CommandSpec {
+        usage: "/agents",
+        description: "List available agents",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/agent <name>",
+        description: "Set the active agent",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/agent clear",
+        description: "Clear the active agent",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/agent reload",
+        description: "Reload agents from disk",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/skills",
+        description: "List available skills",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/skills reload",
+        description: "Reload skills from disk",
+        requires_args: false,
+    },
 ];
 
 pub fn command_specs() -> &'static [CommandSpec] {
@@ -196,6 +232,9 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "config" => Command::Config,
         "output-style" => parse_output_style_command(args),
         "mcp" => parse_mcp_command(args),
+        "agents" => Command::Agents,
+        "agent" => parse_agent_command(args),
+        "skills" => parse_skills_command(args),
         _ => Command::Custom(command, args),
     };
 
@@ -264,5 +303,34 @@ fn parse_mcp_command(args: Vec<String>) -> Command {
             Command::McpAdd { name, config }
         }
         Some(other) => Command::Custom(format!("mcp {}", other), parts.collect()),
+    }
+}
+
+fn parse_agent_command(args: Vec<String>) -> Command {
+    if args.is_empty() {
+        return Command::Agents;
+    }
+
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        Some("list") => Command::Agents,
+        Some("clear") => Command::AgentClear,
+        Some("reload") => Command::AgentReload,
+        Some(name) => {
+            let mut rest = vec![name.to_string()];
+            rest.extend(parts);
+            Command::AgentSelect(rest.join(" "))
+        }
+        None => Command::Agents,
+    }
+}
+
+fn parse_skills_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::Skills,
+        Some("list") => Command::Skills,
+        Some("reload") => Command::SkillsReload,
+        Some(other) => Command::Custom(format!("skills {}", other), parts.collect()),
     }
 }
