@@ -37,3 +37,8 @@ enum_dispatch = "0.3.13"
 nostr = { path = "../nostr/core" }
 nostr-client = { path = "../nostr/client" }
 bip39 = "2.2"
+
+# Claude SDK integration (headless mode)
+claude-agent-sdk = { path = "../claude-agent-sdk" }
+which = "7.0"
+dirs = "5.0"

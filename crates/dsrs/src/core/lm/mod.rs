@@ -1,9 +1,11 @@
 pub mod chat;
+pub mod claude_sdk;
 pub mod client_registry;
 pub mod pylon;
 pub mod usage;
 
 pub use chat::*;
+pub use claude_sdk::*;
 pub use client_registry::*;
 pub use pylon::*;
 pub use usage::*;
