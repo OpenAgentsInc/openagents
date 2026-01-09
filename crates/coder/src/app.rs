@@ -1,7 +1,7 @@
 //! Main application state and event handling.
 
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command as ProcessCommand, Stdio};
 use std::sync::Arc;
@@ -92,6 +92,8 @@ const OUTPUT_PADDING: f32 = 12.0;
 const STATUS_BAR_HEIGHT: f32 = 20.0;
 const STATUS_BAR_FONT_SIZE: f32 = 11.0;
 const BUG_REPORT_URL: &str = "https://github.com/OpenAgentsInc/openagents/issues/new";
+const MAX_FILE_BYTES: usize = 200_000;
+const MAX_COMMAND_BYTES: usize = 120_000;
 
 /// Message role in the conversation
 #[derive(Clone, Copy, PartialEq)]
@@ -899,6 +901,10 @@ impl AppState {
     }
 
     fn export_session(&mut self) {
+        if self.messages.is_empty() {
+            self.push_system_message("No messages to export yet.".to_string());
+            return;
+        }
         match export_session_markdown(self) {
             Ok(path) => self.push_system_message(format!(
                 "Exported session to {}.",
@@ -988,6 +994,16 @@ impl CoderApp {
             document: None,
         });
 
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let expanded_prompt = match expand_prompt_text(&prompt, &cwd) {
+            Ok(result) => result,
+            Err(err) => {
+                state.push_system_message(err);
+                state.window.request_redraw();
+                return;
+            }
+        };
+
         // Create channel for receiving responses
         let (tx, rx) = mpsc::unbounded_channel();
         let (control_tx, mut control_rx) = mpsc::unbounded_channel();
@@ -1023,7 +1039,7 @@ impl CoderApp {
         let handle = self.runtime_handle.clone();
         handle.spawn(async move {
             let mut options = QueryOptions::new()
-                .cwd(std::env::current_dir().unwrap_or_default())
+                .cwd(cwd)
                 .include_partial_messages(true) // Enable streaming deltas
                 .model(&model_id);
 
@@ -1059,7 +1075,7 @@ impl CoderApp {
 
             tracing::info!("Starting query...");
 
-            match query_with_permissions(&prompt, options, permissions).await {
+            match query_with_permissions(&expanded_prompt, options, permissions).await {
                 Ok(mut stream) => {
                     tracing::info!("Query stream started");
                     let mut interrupt_requested = false;
@@ -2512,13 +2528,35 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
             CommandAction::None
         }
         Command::Custom(name, args) => {
-            let mut message = format!("Unknown command: /{}", name);
-            if !args.is_empty() {
-                message.push(' ');
-                message.push_str(&args.join(" "));
+            if state.is_thinking {
+                state.push_system_message(
+                    "Cannot run custom commands during an active request.".to_string(),
+                );
+                return CommandAction::None;
             }
-            state.push_system_message(message);
-            CommandAction::None
+
+            match load_custom_command(&name) {
+                Ok(Some(template)) => {
+                    let prompt = apply_custom_command_args(&template, &args);
+                    CommandAction::SubmitPrompt(prompt)
+                }
+                Ok(None) => {
+                    let mut message = format!("Unknown command: /{}", name);
+                    if !args.is_empty() {
+                        message.push(' ');
+                        message.push_str(&args.join(" "));
+                    }
+                    state.push_system_message(message);
+                    CommandAction::None
+                }
+                Err(err) => {
+                    state.push_system_message(format!(
+                        "Failed to load custom command /{}: {}.",
+                        name, err
+                    ));
+                    CommandAction::None
+                }
+            }
         }
     }
 }
@@ -2855,6 +2893,55 @@ fn resolve_output_style(name: &str) -> io::Result<Option<PathBuf>> {
     Ok(None)
 }
 
+fn resolve_custom_command_path(name: &str) -> io::Result<Option<PathBuf>> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    let file_name = if trimmed.ends_with(".md") {
+        trimmed.to_string()
+    } else {
+        format!("{}.md", trimmed)
+    };
+
+    let mut candidates = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join(".claude").join("commands").join(&file_name));
+    }
+    if let Some(home) = dirs::home_dir() {
+        candidates.push(home.join(".claude").join("commands").join(&file_name));
+    }
+
+    for path in candidates {
+        if path.is_file() {
+            return Ok(Some(path));
+        }
+    }
+
+    Ok(None)
+}
+
+fn load_custom_command(name: &str) -> io::Result<Option<String>> {
+    let Some(path) = resolve_custom_command_path(name)? else {
+        return Ok(None);
+    };
+    let content = fs::read_to_string(path)?;
+    Ok(Some(content))
+}
+
+fn apply_custom_command_args(template: &str, args: &[String]) -> String {
+    if args.is_empty() {
+        return template.to_string();
+    }
+    let joined = args.join(" ");
+    if template.contains("{{args}}") {
+        template.replace("{{args}}", &joined)
+    } else {
+        format!("{}\n\n{}", template.trim_end(), joined)
+    }
+}
+
 fn export_session_markdown(state: &AppState) -> io::Result<PathBuf> {
     let export_dir = config_dir().join("exports");
     fs::create_dir_all(&export_dir)?;
@@ -2890,6 +2977,161 @@ fn export_session_markdown(state: &AppState) -> io::Result<PathBuf> {
     }
 
     Ok(path)
+}
+
+fn expand_prompt_text(prompt: &str, cwd: &PathBuf) -> Result<String, String> {
+    let with_commands = expand_command_lines(prompt, cwd)?;
+    expand_file_references(&with_commands, cwd)
+}
+
+fn expand_command_lines(prompt: &str, cwd: &PathBuf) -> Result<String, String> {
+    let mut output = String::new();
+    for line in prompt.lines() {
+        let trimmed = line.trim_start();
+        if let Some(command) = trimmed.strip_prefix('!') {
+            let command = command.trim();
+            if command.is_empty() {
+                output.push_str(line);
+                output.push('\n');
+                continue;
+            }
+            let command_output = run_shell_command(command, cwd)?;
+            output.push_str("--- BEGIN COMMAND: ");
+            output.push_str(command);
+            output.push_str(" ---\n");
+            output.push_str(&command_output);
+            if !command_output.ends_with('\n') {
+                output.push('\n');
+            }
+            output.push_str("--- END COMMAND ---\n");
+        } else {
+            output.push_str(line);
+            output.push('\n');
+        }
+    }
+    Ok(output.trim_end_matches('\n').to_string())
+}
+
+fn run_shell_command(command: &str, cwd: &PathBuf) -> Result<String, String> {
+    let output = ProcessCommand::new("bash")
+        .arg("-lc")
+        .arg(command)
+        .current_dir(cwd)
+        .output()
+        .map_err(|err| format!("Failed to run command '{}': {}", command, err))?;
+
+    let mut combined = String::new();
+    if !output.stdout.is_empty() {
+        combined.push_str(&String::from_utf8_lossy(&output.stdout));
+    }
+    if !output.stderr.is_empty() {
+        if !combined.is_empty() {
+            combined.push('\n');
+        }
+        combined.push_str(&String::from_utf8_lossy(&output.stderr));
+    }
+
+    if combined.is_empty() {
+        combined.push_str("(command produced no output)");
+    }
+
+    if !output.status.success() {
+        let code = output.status.code().unwrap_or(-1);
+        combined = format!("(exit code {})\n{}", code, combined);
+    }
+
+    Ok(truncate_bytes(combined, MAX_COMMAND_BYTES))
+}
+
+fn expand_file_references(prompt: &str, cwd: &PathBuf) -> Result<String, String> {
+    let mut output = String::new();
+    let mut chars = prompt.chars().peekable();
+    let mut last_was_space = true;
+
+    while let Some(ch) = chars.next() {
+        if ch == '@' && last_was_space {
+            let mut token = String::new();
+            while let Some(&next) = chars.peek() {
+                if next.is_whitespace() {
+                    break;
+                }
+                token.push(next);
+                chars.next();
+            }
+
+            if token.is_empty() {
+                output.push('@');
+                last_was_space = false;
+                continue;
+            }
+
+            let (path_token, trailing) = split_trailing_punct(&token);
+            let path = cwd.join(&path_token);
+            if !path.is_file() {
+                return Err(format!("File not found: {}", path_token));
+            }
+            let contents = read_file_limited(&path)
+                .map_err(|err| format!("Failed to read {}: {}", path_token, err))?;
+            output.push_str("\n\n--- BEGIN FILE: ");
+            output.push_str(&path_token);
+            output.push_str(" ---\n");
+            output.push_str(&contents);
+            if !contents.ends_with('\n') {
+                output.push('\n');
+            }
+            output.push_str("--- END FILE ---\n\n");
+            output.push_str(&trailing);
+            last_was_space = true;
+            continue;
+        }
+
+        output.push(ch);
+        last_was_space = ch.is_whitespace();
+    }
+
+    Ok(output)
+}
+
+fn split_trailing_punct(token: &str) -> (String, String) {
+    let mut path = token.to_string();
+    let mut trailing = String::new();
+    loop {
+        let last = path.chars().last();
+        match last {
+            Some(ch) if matches!(ch, ',' | '.' | ':' | ';' | ')' | ']' | '}') => {
+                path.pop();
+                trailing.insert(0, ch);
+            }
+            _ => break,
+        }
+    }
+    (path, trailing)
+}
+
+fn read_file_limited(path: &PathBuf) -> io::Result<String> {
+    let file = fs::File::open(path)?;
+    let file_len = file.metadata().map(|meta| meta.len()).unwrap_or(0);
+    let mut buffer = Vec::new();
+    let mut handle = file.take(MAX_FILE_BYTES as u64);
+    handle.read_to_end(&mut buffer)?;
+    let mut text = String::from_utf8_lossy(&buffer).to_string();
+    if file_len as usize > MAX_FILE_BYTES {
+        text.push_str("\n... [truncated]");
+    }
+    Ok(text)
+}
+
+fn truncate_bytes(input: String, max_bytes: usize) -> String {
+    if input.len() <= max_bytes {
+        return input;
+    }
+    let mut truncated = input.as_bytes()[..max_bytes].to_vec();
+    while !truncated.is_empty() && std::str::from_utf8(&truncated).is_err() {
+        truncated.pop();
+    }
+    let mut result = String::from_utf8_lossy(&truncated).to_string();
+    result.push_str("\n... [truncated]");
+    result
 }
 
 fn open_url(url: &str) -> io::Result<()> {

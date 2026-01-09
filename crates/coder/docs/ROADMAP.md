@@ -239,24 +239,24 @@ pub enum Action {
 | Bash execution | `!command` syntax | Run and inject output |
 
 ### Tasks
-- [ ] Implement `/help` with command list modal
-- [ ] Implement `/clear` (reset session)
-- [ ] Implement `/compact` with SDK call
-- [ ] Implement `/undo` (remove last exchange)
-- [ ] Implement `/cancel` (interrupt query)
-- [ ] Implement `/bug` (open URL)
-- [ ] Implement `/session list` with SessionCard
-- [ ] Implement `/session resume <id>`
-- [ ] Implement `/session fork`
-- [ ] Implement `/session export`
-- [ ] Implement `/permission mode`
-- [ ] Implement `/permission rules`
-- [ ] Implement `/tools` listing
-- [ ] Implement `/config` panel
-- [ ] Implement `/output-style`
-- [ ] Load custom commands from `.claude/commands/`
-- [ ] Support `@filename` file references
-- [ ] Support `!command` bash execution
+- [x] Implement `/help` with command list modal
+- [x] Implement `/clear` (reset session)
+- [x] Implement `/compact` with SDK call
+- [x] Implement `/undo` (remove last exchange)
+- [x] Implement `/cancel` (interrupt query)
+- [x] Implement `/bug` (open URL)
+- [x] Implement `/session list` with SessionCard
+- [x] Implement `/session resume <id>`
+- [x] Implement `/session fork`
+- [x] Implement `/session export`
+- [x] Implement `/permission mode`
+- [x] Implement `/permission rules`
+- [x] Implement `/tools` listing
+- [x] Implement `/config` panel
+- [x] Implement `/output-style`
+- [x] Load custom commands from `.claude/commands/`
+- [x] Support `@filename` file references
+- [x] Support `!command` bash execution
 
 ---
 
@@ -893,3 +893,4 @@ pub enum SettingsTab {
 - 2026-01-09 08:07 UTC - Wired command parsing/execution, command palette modal, keybindings for Ctrl+C/Ctrl+K, and interrupt plumbing; ran `cargo check -p coder`.
 - 2026-01-09 08:20 UTC - Added session tracking scaffolding, session index/message persistence helpers, and captured tools/output-style metadata from SystemInit.
 - 2026-01-09 08:34 UTC - Implemented Phase 2 command handlers, session/tool/permission/config modals, output-style wiring, resume/fork/export logic, and permission/tool state plumbing.
+- 2026-01-09 08:38 UTC - Added custom command loading, @file and !command prompt expansion, and updated prompt submission to inject file/command contents; ran `cargo check -p coder`.
