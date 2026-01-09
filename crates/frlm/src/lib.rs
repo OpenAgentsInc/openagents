@@ -37,6 +37,7 @@
 //! - [`FrlmPolicy`]: Budget, timeout, and verification policies
 
 pub mod conductor;
+pub mod dspy_signatures;
 pub mod error;
 pub mod policy;
 pub mod scheduler;
@@ -62,3 +63,8 @@ pub use types::*;
 pub use trace_db::TraceDbWriter;
 #[cfg(feature = "claude")]
 pub use claude_executor::ClaudeLocalExecutor;
+
+// DSPy signatures for FRLM
+pub use dspy_signatures::{
+    FRLMAggregateSignature, FRLMDecomposeSignature, SpanSelector, StoppingRule,
+};

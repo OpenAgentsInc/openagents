@@ -6,13 +6,12 @@ description = "Federated Recursive Language Models - distributed RLM execution"
 
 [features]
 default = []
-dspy = ["dsrs", "rlm/dspy"]
 trace-db = ["rusqlite"]
 claude = ["rlm/claude"]
 
 [dependencies]
-# DSPy (DSRs) for declarative LLM programming (optional)
-dsrs = { path = "../dsrs", optional = true }
+# DSPy (DSRs) for declarative LLM programming
+dsrs = { path = "../dsrs" }
 # Core async runtime
 tokio = { version = "1", features = ["sync", "time", "macros"] }
 async-trait = "0.1"
@@ -29,6 +28,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Utils
+anyhow = "1"
 uuid = { version = "1", features = ["v4"] }
 thiserror = "1"
 tracing = "0.1"

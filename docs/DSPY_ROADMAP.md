@@ -1053,39 +1053,48 @@ pub use dspy_training::{ExtractedExamples, SavedTrainingPaths, SuccessCriteria, 
 
 ---
 
-## Wave 12: FRLM Integration
+## Wave 12: FRLM Integration - COMPLETE
 
-FRLM-specific signatures for the flagship RLM narrative.
+*Implemented in `crates/frlm/`*
+
+FRLM-specific signatures for the flagship RLM narrative. Map-reduce pattern for distributed document processing. All signatures implement `MetaSignature` trait manually for public API compatibility.
+
+### Implemented Signatures
+
+| Signature | File | Purpose |
+|-----------|------|---------|
+| `FRLMDecomposeSignature` | `dspy_signatures.rs` | Root decides what subcalls to spawn (map phase) |
+| `FRLMAggregateSignature` | `dspy_signatures.rs` | Merge worker results into final answer (reduce phase) |
+
+### Helper Enums
+
+- `StoppingRule`: EXHAUSTIVE, SUFFICIENT_EVIDENCE, BUDGET_EXHAUSTED, CONFIDENCE_THRESHOLD
+- `SpanSelector`: All, ByType(String), ByRelevance, ByPosition { start, end }
 
 ### FRLMDecomposeSignature
 ```rust
-#[Signature]
-struct FRLMDecomposeSignature {
-    /// Root decides what subcalls to spawn over which spans.
-
-    #[input] query: String,
-    #[input] env_summary: String,
-    #[input] progress: String,
-
-    #[output] subqueries: String,         // JSON: [{span_selector, question, schema}]
-    #[output] stopping_rule: String,
+pub struct FRLMDecomposeSignature {
+    instruction: String,
+    demos: Vec<Example>,
 }
+
+// Inputs: query, env_summary, progress
+// Outputs: subqueries (JSON array), stopping_rule
 ```
 
 ### FRLMAggregateSignature
 ```rust
-#[Signature]
-struct FRLMAggregateSignature {
-    /// Reduce step: merge worker results into final answer.
-
-    #[input] query: String,
-    #[input] worker_results: String,
-
-    #[output] answer: String,
-    #[output] citations: String,          // SpanRefs or doc ids
-    #[output] confidence: f32,
+pub struct FRLMAggregateSignature {
+    instruction: String,
+    demos: Vec<Example>,
 }
+
+// Inputs: query, worker_results
+// Outputs: answer, citations, confidence
 ```
+
+### Files Created
+- `crates/frlm/src/dspy_signatures.rs` - 2 FRLM signatures + 2 enums
 
 ---
 

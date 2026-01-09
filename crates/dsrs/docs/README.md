@@ -107,7 +107,7 @@ println!("Answer: {}", result.get("answer", None));
 | 9 | Complete | Agent Orchestrator Signatures (in `crates/agent-orchestrator/`) |
 | 10 | Complete | Tool Invocation Signatures (in `crates/runtime/`) |
 | 11 | Complete | Optimization Infrastructure (in `crates/autopilot/`) |
-| 12+ | Planned | FRLM Integration |
+| 12 | Complete | FRLM Integration (in `crates/frlm/`) |
 
 ## Key Paths
 
