@@ -1,9 +1,11 @@
 pub mod chat;
 pub mod client_registry;
+pub mod pylon;
 pub mod usage;
 
 pub use chat::*;
 pub use client_registry::*;
+pub use pylon::*;
 pub use usage::*;
 
 use anyhow::Result;

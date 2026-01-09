@@ -8,6 +8,8 @@ use rig::{
 };
 use std::borrow::Cow;
 
+use super::pylon::{PylonCompletionModel, PylonConfig};
+
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
 pub trait CompletionProvider {
@@ -32,6 +34,7 @@ pub enum LMClient {
     Mistral(mistral::completion::CompletionModel),
     Together(together::completion::CompletionModel),
     Deepseek(deepseek::CompletionModel<reqwest::Client>),
+    Pylon(PylonCompletionModel),
 }
 
 // Implement the trait for each concrete provider type using the CompletionModel trait from rig
@@ -296,9 +299,32 @@ impl LMClient {
                 let client = groq::Client::builder().api_key(key.as_ref()).build()?;
                 Ok(LMClient::Groq(groq::CompletionModel::new(client, model_id)))
             }
+            "pylon" => {
+                // model_id: "local", "swarm", "hybrid", or "local:ollama", etc.
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async {
+                    if model_id == "swarm" {
+                        let mnemonic = api_key.ok_or_else(|| {
+                            anyhow::anyhow!("pylon:swarm requires mnemonic as api_key")
+                        })?;
+                        Self::pylon_swarm(mnemonic).await
+                    } else if model_id == "hybrid" {
+                        let mnemonic = api_key.ok_or_else(|| {
+                            anyhow::anyhow!("pylon:hybrid requires mnemonic as api_key")
+                        })?;
+                        Self::pylon_hybrid(mnemonic).await
+                    } else if model_id.starts_with("local:") {
+                        let backend = model_id.strip_prefix("local:").unwrap();
+                        Self::pylon_local_with(backend).await
+                    } else {
+                        // Default to local (model_id == "local" or anything else)
+                        Self::pylon_local().await
+                    }
+                })
+            }
             _ => {
                 anyhow::bail!(
-                    "Unsupported provider: {}. Supported providers are: openai, anthropic, gemini, groq, openrouter, ollama",
+                    "Unsupported provider: {}. Supported providers are: openai, anthropic, gemini, groq, openrouter, ollama, pylon",
                     provider
                 );
             }
@@ -312,5 +338,50 @@ impl LMClient {
     /// each variant type, so you can use this with any concrete completion model.
     pub fn from_custom<T: Into<LMClient>>(client: T) -> Self {
         client.into()
+    }
+
+    // ============ Pylon factory methods ============
+
+    /// Create Pylon client with local-only mode using Ollama (no network cost)
+    ///
+    /// Uses llama3.2 as the default model
+    pub async fn pylon_local() -> Result<Self> {
+        let model = PylonCompletionModel::local(PylonConfig::local()).await?;
+        Ok(LMClient::Pylon(model))
+    }
+
+    /// Create Pylon client with specific Ollama model
+    ///
+    /// Model options: any model available in Ollama (e.g., "llama3.2", "mistral", "codellama")
+    pub async fn pylon_local_with(model_name: &str) -> Result<Self> {
+        let model = PylonCompletionModel::local(PylonConfig::local_with(model_name)).await?;
+        Ok(LMClient::Pylon(model))
+    }
+
+    /// Create Pylon client with swarm mode (distributed, paid via NIP-90)
+    ///
+    /// Requires mnemonic for signing NIP-90 jobs
+    pub async fn pylon_swarm(mnemonic: &str) -> Result<Self> {
+        let model = PylonCompletionModel::from_mnemonic(mnemonic, PylonConfig::swarm()).await?;
+        Ok(LMClient::Pylon(model))
+    }
+
+    /// Create Pylon client with hybrid mode (local first, swarm fallback)
+    ///
+    /// Requires mnemonic for signing NIP-90 jobs when falling back to swarm
+    pub async fn pylon_hybrid(mnemonic: &str) -> Result<Self> {
+        let model = PylonCompletionModel::from_mnemonic(mnemonic, PylonConfig::hybrid()).await?;
+        Ok(LMClient::Pylon(model))
+    }
+
+    /// Create Pylon client with custom configuration
+    ///
+    /// Pass None for mnemonic if using local-only mode
+    pub async fn pylon(mnemonic: Option<&str>, config: PylonConfig) -> Result<Self> {
+        let model = match mnemonic {
+            Some(m) => PylonCompletionModel::from_mnemonic(m, config).await?,
+            None => PylonCompletionModel::local(config).await?,
+        };
+        Ok(LMClient::Pylon(model))
     }
 }

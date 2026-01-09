@@ -7,6 +7,26 @@ pub struct LmUsage {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
+    /// Cost in millisatoshis (for Pylon swarm inference, 0 for local/API providers)
+    #[serde(default)]
+    pub cost_msats: u64,
+}
+
+impl LmUsage {
+    /// Get cost in satoshis (rounded up from millisatoshis)
+    pub fn cost_sats(&self) -> u64 {
+        (self.cost_msats + 999) / 1000
+    }
+
+    /// Create usage from Pylon result (no token counts, just cost)
+    pub fn from_pylon_cost(cost_msats: u64) -> Self {
+        Self {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+            cost_msats,
+        }
+    }
 }
 
 impl From<Usage> for LmUsage {
@@ -15,6 +35,7 @@ impl From<Usage> for LmUsage {
             prompt_tokens: usage.input_tokens,
             completion_tokens: usage.output_tokens,
             total_tokens: usage.total_tokens,
+            cost_msats: 0,
         }
     }
 }
@@ -27,6 +48,7 @@ impl Add for LmUsage {
             prompt_tokens: self.prompt_tokens + other.prompt_tokens,
             completion_tokens: self.completion_tokens + other.completion_tokens,
             total_tokens: self.total_tokens + other.total_tokens,
+            cost_msats: self.cost_msats + other.cost_msats,
         }
     }
 }
