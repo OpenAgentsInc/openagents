@@ -1,8 +1,10 @@
 //! Main application state and event handling.
 
 use std::fs;
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use web_time::Instant;
 use wgpui::input::{Key as UiKey, Modifiers as UiModifiers, NamedKey as UiNamedKey};
@@ -16,8 +18,11 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey};
 use winit::window::{Window, WindowId};
 
-use claude_agent_sdk::{query, QueryOptions, SdkMessage};
+use claude_agent_sdk::permissions::PermissionRules;
+use claude_agent_sdk::protocol::PermissionMode;
+use claude_agent_sdk::{query_with_permissions, QueryOptions, SdkMessage};
 use futures::StreamExt;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::commands::{command_specs, execute_command, parse_command, CommandContext};
@@ -69,6 +74,16 @@ fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
     lines
 }
 
+fn truncate_preview(text: &str, max_chars: usize) -> String {
+    let trimmed = text.trim().replace('\n', " ");
+    if trimmed.len() <= max_chars {
+        return trimmed;
+    }
+    let mut result = trimmed.chars().take(max_chars.saturating_sub(3)).collect::<String>();
+    result.push_str("...");
+    result
+}
+
 const INPUT_HEIGHT: f32 = 40.0;
 const INPUT_PADDING: f32 = 12.0;
 const LINE_HEIGHT: f32 = 20.0;
@@ -105,6 +120,9 @@ enum ResponseEvent {
         permission_mode: String,
         session_id: String,
         tool_count: usize,
+        tools: Vec<String>,
+        output_style: String,
+        slash_commands: Vec<String>,
     },
 }
 
@@ -121,6 +139,25 @@ struct SessionInfo {
     permission_mode: String,
     session_id: String,
     tool_count: usize,
+    tools: Vec<String>,
+    output_style: String,
+    slash_commands: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SessionEntry {
+    id: String,
+    created_at: u64,
+    updated_at: u64,
+    last_message: String,
+    message_count: usize,
+    model: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct StoredMessage {
+    role: String,
+    content: String,
 }
 
 /// Available models for selection
@@ -190,6 +227,97 @@ fn config_file() -> PathBuf {
     config_dir().join("config.toml")
 }
 
+fn sessions_dir() -> PathBuf {
+    config_dir().join("sessions")
+}
+
+fn session_index_file() -> PathBuf {
+    sessions_dir().join("index.json")
+}
+
+fn session_messages_dir(session_id: &str) -> PathBuf {
+    sessions_dir().join(session_id)
+}
+
+fn session_messages_file(session_id: &str) -> PathBuf {
+    session_messages_dir(session_id).join("messages.jsonl")
+}
+
+fn now_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn load_session_index() -> Vec<SessionEntry> {
+    let path = session_index_file();
+    let Ok(data) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    serde_json::from_str::<Vec<SessionEntry>>(&data).unwrap_or_default()
+}
+
+fn save_session_index(entries: &[SessionEntry]) -> io::Result<()> {
+    let dir = sessions_dir();
+    fs::create_dir_all(&dir)?;
+    let data = serde_json::to_string_pretty(entries).unwrap_or_else(|_| "[]".to_string());
+    fs::write(session_index_file(), data)?;
+    Ok(())
+}
+
+fn build_markdown_document(source: &str) -> MarkdownDocument {
+    let mut parser = StreamingMarkdown::new();
+    parser.append(source);
+    parser.complete();
+    parser.document().clone()
+}
+
+fn write_session_messages(session_id: &str, messages: &[ChatMessage]) -> io::Result<()> {
+    let dir = session_messages_dir(session_id);
+    fs::create_dir_all(&dir)?;
+    let mut file = fs::File::create(session_messages_file(session_id))?;
+    for msg in messages {
+        let role = match msg.role {
+            MessageRole::User => "user",
+            MessageRole::Assistant => "assistant",
+        };
+        let stored = StoredMessage {
+            role: role.to_string(),
+            content: msg.content.clone(),
+        };
+        serde_json::to_writer(&mut file, &stored)?;
+        writeln!(&mut file)?;
+    }
+    Ok(())
+}
+
+fn read_session_messages(session_id: &str) -> io::Result<Vec<ChatMessage>> {
+    let path = session_messages_file(session_id);
+    let data = fs::read_to_string(path)?;
+    let mut messages = Vec::new();
+    for line in data.lines() {
+        let stored: StoredMessage = serde_json::from_str(line)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let role = if stored.role == "user" {
+            MessageRole::User
+        } else {
+            MessageRole::Assistant
+        };
+        let document = if role == MessageRole::Assistant {
+            Some(build_markdown_document(&stored.content))
+        } else {
+            None
+        };
+        messages.push(ChatMessage {
+            role,
+            content: stored.content,
+            document,
+        });
+    }
+    Ok(messages)
+}
+
 /// Load saved model from config
 fn load_saved_model() -> ModelOption {
     let path = config_file();
@@ -241,12 +369,22 @@ struct AppState {
     current_tool_input: String,
     // Session info from SystemInit
     session_info: SessionInfo,
+    session_index: Vec<SessionEntry>,
+    pending_resume_session: Option<String>,
+    pending_fork_session: bool,
     // Modal state for slash commands
     modal_state: ModalState,
     #[allow(dead_code)]
     panel_layout: PanelLayout,
     keybindings: Vec<Keybinding>,
     command_history: Vec<String>,
+    permission_mode: Option<PermissionMode>,
+    permission_default_allow: bool,
+    permission_allow_tools: Vec<String>,
+    permission_deny_tools: Vec<String>,
+    tools_allowed: Vec<String>,
+    tools_disallowed: Vec<String>,
+    output_style: Option<String>,
     // Selected model for queries
     selected_model: ModelOption,
 }
@@ -345,6 +483,7 @@ impl ApplicationHandler for CoderApp {
 
             // Load saved model preference
             let saved_model = load_saved_model();
+            let session_index = load_session_index();
 
             AppState {
                 window,
@@ -372,10 +511,20 @@ impl ApplicationHandler for CoderApp {
                     model: saved_model.model_id().to_string(),
                     ..Default::default()
                 },
+                session_index,
+                pending_resume_session: None,
+                pending_fork_session: false,
                 modal_state: ModalState::None,
                 panel_layout: PanelLayout::Single,
                 keybindings: default_keybindings(),
                 command_history: Vec::new(),
+                permission_mode: None,
+                permission_default_allow: true,
+                permission_allow_tools: Vec::new(),
+                permission_deny_tools: Vec::new(),
+                tools_allowed: Vec::new(),
+                tools_disallowed: Vec::new(),
+                output_style: None,
                 selected_model: saved_model,
             }
         });
@@ -605,6 +754,59 @@ impl CommandContext for AppState {
     }
 }
 
+impl AppState {
+    fn record_session(&mut self) {
+        let session_id = self.session_info.session_id.trim();
+        if session_id.is_empty() {
+            return;
+        }
+
+        let now = now_timestamp();
+        let last_message = self
+            .messages
+            .iter()
+            .rev()
+            .find(|msg| !msg.content.trim().is_empty())
+            .map(|msg| truncate_preview(&msg.content, 140))
+            .unwrap_or_default();
+
+        if let Some(entry) = self.session_index.iter_mut().find(|entry| entry.id == session_id) {
+            entry.updated_at = now;
+            entry.last_message = last_message;
+            entry.message_count = self.messages.len();
+            entry.model = self.session_info.model.clone();
+        } else {
+            self.session_index.push(SessionEntry {
+                id: session_id.to_string(),
+                created_at: now,
+                updated_at: now,
+                last_message,
+                message_count: self.messages.len(),
+                model: self.session_info.model.clone(),
+            });
+        }
+
+        self.session_index
+            .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+
+        if let Err(err) = save_session_index(&self.session_index) {
+            tracing::error!("Failed to save session index: {}", err);
+        }
+        if let Err(err) = write_session_messages(session_id, &self.messages) {
+            tracing::error!("Failed to write session messages: {}", err);
+        }
+    }
+
+    fn restore_session(&mut self, session_id: &str) -> io::Result<()> {
+        self.messages = read_session_messages(session_id)?;
+        self.streaming_markdown.reset();
+        self.scroll_offset = 0.0;
+        self.current_tool_name = None;
+        self.current_tool_input.clear();
+        Ok(())
+    }
+}
+
 impl CoderApp {
     fn submit_prompt(&mut self, prompt: String) {
         let Some(state) = &mut self.state else {
@@ -716,14 +918,17 @@ impl CoderApp {
                                         tracing::info!("SYSTEM: {:?}", s);
                                         // Extract init info
                                         if let claude_agent_sdk::SdkSystemMessage::Init(init) = s {
-                                            let _ = tx.send(ResponseEvent::SystemInit {
-                                                model: init.model.clone(),
-                                                permission_mode: init.permission_mode.clone(),
-                                                session_id: init.session_id.clone(),
-                                                tool_count: init.tools.len(),
-                                            });
-                                            window.request_redraw();
-                                        }
+                                    let _ = tx.send(ResponseEvent::SystemInit {
+                                        model: init.model.clone(),
+                                        permission_mode: init.permission_mode.clone(),
+                                        session_id: init.session_id.clone(),
+                                        tool_count: init.tools.len(),
+                                        tools: init.tools.clone(),
+                                        output_style: init.output_style.clone(),
+                                        slash_commands: init.slash_commands.clone(),
+                                    });
+                                    window.request_redraw();
+                                }
                                     }
                                     Some(Ok(SdkMessage::User(u))) => {
                                         tracing::info!("USER: {:?}", u.message);
@@ -858,6 +1063,7 @@ impl CoderApp {
                         });
                     }
                     state.streaming_markdown.reset();
+                    state.record_session();
                     state.is_thinking = false;
                     state.response_rx = None;
                     state.query_control_tx = None;
@@ -873,6 +1079,7 @@ impl CoderApp {
                         document: None,
                     });
                     state.streaming_markdown.reset();
+                    state.record_session();
                     state.is_thinking = false;
                     state.response_rx = None;
                     state.query_control_tx = None;
@@ -886,12 +1093,18 @@ impl CoderApp {
                     permission_mode,
                     session_id,
                     tool_count,
+                    tools,
+                    output_style,
+                    slash_commands,
                 } => {
                     state.session_info = SessionInfo {
                         model,
                         permission_mode,
                         session_id,
                         tool_count,
+                        tools,
+                        output_style,
+                        slash_commands,
                     };
                     needs_redraw = true;
                 }

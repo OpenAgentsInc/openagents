@@ -891,3 +891,4 @@ pub enum SettingsTab {
 ## Execution Log
 - 2026-01-09 07:58 UTC - Added command, panel, and keybinding modules; refactored Coder state to AppState with new core fields.
 - 2026-01-09 08:07 UTC - Wired command parsing/execution, command palette modal, keybindings for Ctrl+C/Ctrl+K, and interrupt plumbing; ran `cargo check -p coder`.
+- 2026-01-09 08:20 UTC - Added session tracking scaffolding, session index/message persistence helpers, and captured tools/output-style metadata from SystemInit.
