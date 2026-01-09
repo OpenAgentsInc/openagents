@@ -48,6 +48,9 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use claude_agent_sdk::protocol::McpServerStatus;
+
+// Autopilot/Adjutant
+use adjutant::{Adjutant, Task as AdjutantTask};
 use wgpui::components::atoms::{
     AgentStatus, AgentType, PermissionAction, SessionStatus, ToolStatus, ToolType,
 };
@@ -6556,14 +6559,74 @@ impl CoderApp {
             uuid: None,
         });
 
-        // Handle Autopilot mode - bypass SDK entirely
+        // Handle Autopilot mode - use Adjutant instead of Claude SDK
         if matches!(state.coder_mode, CoderMode::Autopilot) {
-            state.messages.push(ChatMessage {
-                role: MessageRole::Assistant,
-                content: "Autopilot online".to_string(),
-                document: None,
-                uuid: None,
+            // Create channels for receiving responses (same pattern as Claude)
+            let (tx, rx) = mpsc::unbounded_channel();
+            state.response_rx = Some(rx);
+            state.is_thinking = true;
+            state.streaming_markdown.reset();
+
+            let window = state.window.clone();
+            let prompt_clone = prompt.clone();
+
+            self.runtime_handle.spawn(async move {
+                // Boot OANIX to get workspace manifest
+                match oanix::boot().await {
+                    Ok(manifest) => {
+                        match Adjutant::new(manifest) {
+                            Ok(mut adjutant) => {
+                                // Create task from user prompt
+                                let task = AdjutantTask::new(
+                                    "prompt",
+                                    "User Request",
+                                    &prompt_clone,
+                                );
+
+                                // Send "thinking" indicator
+                                let _ = tx.send(ResponseEvent::Chunk("Adjutant analyzing...\n\n".to_string()));
+                                window.request_redraw();
+
+                                // Execute task
+                                match adjutant.execute(&task).await {
+                                    Ok(result) => {
+                                        // Stream the result summary
+                                        let _ = tx.send(ResponseEvent::Chunk(result.summary));
+
+                                        // Add modified files info if any
+                                        if !result.modified_files.is_empty() {
+                                            let files = result.modified_files.join(", ");
+                                            let _ = tx.send(ResponseEvent::Chunk(
+                                                format!("\n\n**Modified files:** {}", files)
+                                            ));
+                                        }
+
+                                        let _ = tx.send(ResponseEvent::Complete);
+                                    }
+                                    Err(e) => {
+                                        let _ = tx.send(ResponseEvent::Error(format!("Adjutant error: {}", e)));
+                                    }
+                                }
+                            }
+                            Err(adjutant::AdjutantError::NoWorkspace) => {
+                                let _ = tx.send(ResponseEvent::Chunk(
+                                    "Autopilot requires an OpenAgents workspace.\n\n\
+                                     Run `oanix init` in your project directory to create one.".to_string()
+                                ));
+                                let _ = tx.send(ResponseEvent::Complete);
+                            }
+                            Err(e) => {
+                                let _ = tx.send(ResponseEvent::Error(format!("Failed to initialize Adjutant: {}", e)));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(ResponseEvent::Error(format!("OANIX boot failed: {}", e)));
+                    }
+                }
+                window.request_redraw();
             });
+
             state.window.request_redraw();
             return;
         }

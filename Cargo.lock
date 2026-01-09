@@ -2611,11 +2611,13 @@ dependencies = [
 name = "coder"
 version = "0.1.0"
 dependencies = [
+ "adjutant",
  "arboard",
  "async-trait",
  "claude-agent-sdk",
  "dirs 6.0.0",
  "futures",
+ "oanix",
  "pollster",
  "serde",
  "serde_json",
