@@ -3,7 +3,8 @@
 //! Provides a right-click context menu with hierarchical items.
 
 use crate::components::{Component, ComponentId, EventContext, EventResult, PaintContext};
-use crate::{Bounds, InputEvent, Key, MouseButton, Point, Quad, theme};
+use crate::text::FontStyle;
+use crate::{Bounds, Hsla, InputEvent, Key, MouseButton, Point, Quad, theme};
 
 /// Menu item separator
 pub const SEPARATOR: &str = "---";
@@ -141,11 +142,11 @@ impl ContextMenu {
             selected: None,
             hovered: None,
             open_submenu: None,
-            item_height: 28.0,
+            item_height: 32.0,
             separator_height: 9.0,
-            padding: 4.0,
-            min_width: 150.0,
-            max_width: 300.0,
+            padding: 6.0,
+            min_width: 180.0,
+            max_width: 320.0,
             last_selected: None,
         }
     }
@@ -279,15 +280,19 @@ impl ContextMenu {
     fn calculate_bounds(&self, viewport: Bounds) -> Bounds {
         let mut width = self.min_width;
 
+        // Monospace char width at font_size::SM (14)
+        let mono_char_width = 8.4;
+
         // Calculate width based on longest item
         for item in &self.items {
-            let label_width = item.label.len() as f32 * 8.0;
+            let label_width = item.label.len() as f32 * mono_char_width;
             let shortcut_width = item
                 .shortcut
                 .as_ref()
-                .map(|s| s.len() as f32 * 8.0 + 20.0)
+                .map(|s| s.len() as f32 * mono_char_width + 32.0) // gap between label and shortcut
                 .unwrap_or(0.0);
-            let item_width = label_width + shortcut_width + self.padding * 4.0 + 40.0;
+            // 24 for left padding + 16 for right padding + checkbox/icon space
+            let item_width = label_width + shortcut_width + 48.0;
             width = width.max(item_width);
         }
         width = width.min(self.max_width);
@@ -352,11 +357,14 @@ impl Component for ContextMenu {
 
         let menu_bounds = self.calculate_bounds(bounds);
 
-        // Draw menu background
+        // Draw menu background - use a more visible dark gray
+        let menu_bg = Hsla::new(0.0, 0.0, 0.12, 1.0); // #1f1f1f - more visible than ELEVATED
+        let menu_border = Hsla::new(0.0, 0.0, 0.25, 1.0); // lighter border
         cx.scene.draw_quad(
             Quad::new(menu_bounds)
-                .with_background(theme::bg::ELEVATED)
-                .with_border(theme::border::DEFAULT, 1.0),
+                .with_background(menu_bg)
+                .with_border(menu_border, 1.0)
+                .with_corner_radius(4.0),
         );
 
         // Draw items
@@ -367,14 +375,15 @@ impl Component for ContextMenu {
             if item.is_separator {
                 // Draw separator line
                 let sep_y = y + self.separator_height / 2.0;
+                let sep_color = Hsla::new(0.0, 0.0, 0.30, 1.0); // visible separator
                 cx.scene.draw_quad(
                     Quad::new(Bounds::new(
-                        menu_bounds.origin.x + self.padding,
+                        menu_bounds.origin.x + self.padding + 8.0,
                         sep_y,
-                        content_width,
+                        content_width - 16.0,
                         1.0,
                     ))
-                    .with_background(theme::border::DEFAULT),
+                    .with_background(sep_color),
                 );
                 y += self.separator_height;
                 continue;
@@ -390,23 +399,31 @@ impl Component for ContextMenu {
 
             // Draw selection highlight
             if is_selected && !item.disabled {
-                cx.scene
-                    .draw_quad(Quad::new(item_bounds).with_background(theme::bg::MUTED));
+                let hover_bg = Hsla::new(0.0, 0.0, 0.22, 1.0); // lighter than menu bg
+                cx.scene.draw_quad(
+                    Quad::new(item_bounds)
+                        .with_background(hover_bg)
+                        .with_corner_radius(3.0),
+                );
             }
 
             // Draw checkbox/radio if present
-            let mut text_x = item_bounds.origin.x + 8.0;
+            let mut text_x = item_bounds.origin.x + 12.0;
+            let text_y = y + self.item_height * 0.5 + theme::font_size::SM * 0.35;
+
             if let Some(checked) = item.checked {
                 let check_char = if checked { "✓" } else { " " };
-                let check_run = cx.text.layout(
+                let check_color = if item.disabled {
+                    theme::text::MUTED
+                } else {
+                    theme::accent::PRIMARY
+                };
+                let check_run = cx.text.layout_styled_mono(
                     check_char,
-                    Point::new(text_x, y + self.item_height * 0.65),
+                    Point::new(text_x, text_y),
                     theme::font_size::SM,
-                    if item.disabled {
-                        theme::text::MUTED
-                    } else {
-                        theme::accent::PRIMARY
-                    },
+                    check_color,
+                    FontStyle::default(),
                 );
                 cx.scene.draw_text(check_run);
                 text_x += 20.0;
@@ -414,15 +431,17 @@ impl Component for ContextMenu {
 
             // Draw icon if present
             if let Some(ref icon) = item.icon {
-                let icon_run = cx.text.layout(
+                let icon_color = if item.disabled {
+                    theme::text::MUTED
+                } else {
+                    theme::text::SECONDARY
+                };
+                let icon_run = cx.text.layout_styled_mono(
                     icon,
-                    Point::new(text_x, y + self.item_height * 0.65),
+                    Point::new(text_x, text_y),
                     theme::font_size::SM,
-                    if item.disabled {
-                        theme::text::MUTED
-                    } else {
-                        theme::text::SECONDARY
-                    },
+                    icon_color,
+                    FontStyle::default(),
                 );
                 cx.scene.draw_text(icon_run);
                 text_x += 20.0;
@@ -434,40 +453,44 @@ impl Component for ContextMenu {
             } else {
                 theme::text::PRIMARY
             };
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_styled_mono(
                 &item.label,
-                Point::new(text_x, y + self.item_height * 0.65),
+                Point::new(text_x, text_y),
                 theme::font_size::SM,
                 text_color,
+                FontStyle::default(),
             );
             cx.scene.draw_text(label_run);
 
             // Draw shortcut on right side
             if let Some(ref shortcut) = item.shortcut {
                 let shortcut_x = item_bounds.origin.x + item_bounds.size.width
-                    - 8.0
-                    - shortcut.len() as f32 * 7.0;
-                let shortcut_run = cx.text.layout(
+                    - 12.0
+                    - shortcut.len() as f32 * 7.5;
+                let shortcut_run = cx.text.layout_styled_mono(
                     shortcut,
-                    Point::new(shortcut_x, y + self.item_height * 0.65),
+                    Point::new(shortcut_x, text_y),
                     theme::font_size::XS,
                     theme::text::MUTED,
+                    FontStyle::default(),
                 );
                 cx.scene.draw_text(shortcut_run);
             }
 
             // Draw submenu arrow if has submenu
             if item.has_submenu() {
-                let arrow_x = item_bounds.origin.x + item_bounds.size.width - 16.0;
-                let arrow_run = cx.text.layout(
+                let arrow_x = item_bounds.origin.x + item_bounds.size.width - 18.0;
+                let arrow_color = if item.disabled {
+                    theme::text::MUTED
+                } else {
+                    theme::text::PRIMARY
+                };
+                let arrow_run = cx.text.layout_styled_mono(
                     "›",
-                    Point::new(arrow_x, y + self.item_height * 0.65),
+                    Point::new(arrow_x, text_y),
                     theme::font_size::SM,
-                    if item.disabled {
-                        theme::text::MUTED
-                    } else {
-                        theme::text::PRIMARY
-                    },
+                    arrow_color,
+                    FontStyle::default(),
                 );
                 cx.scene.draw_text(arrow_run);
             }

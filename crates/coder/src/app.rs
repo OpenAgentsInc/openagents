@@ -6823,20 +6823,27 @@ impl CoderApp {
                             &prompt_clone,
                         );
 
-                        // Send "thinking" indicator
-                        let _ = tx.send(ResponseEvent::Chunk("Adjutant analyzing...\n\n".to_string()));
-                        window.request_redraw();
+                        // Create a channel for streaming tokens
+                        let (token_tx, mut token_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
-                        // Execute task with timing
+                        // Execute task with streaming
                         let start_time = std::time::Instant::now();
-                        tracing::info!("Autopilot: executing task...");
-                        match adjutant.execute(&task).await {
+                        tracing::info!("Autopilot: executing task with streaming...");
+
+                        // Spawn a task to forward tokens to the response channel
+                        let tx_clone = tx.clone();
+                        let window_clone = window.clone();
+                        tokio::spawn(async move {
+                            while let Some(token) = token_rx.recv().await {
+                                let _ = tx_clone.send(ResponseEvent::Chunk(token));
+                                window_clone.request_redraw();
+                            }
+                        });
+
+                        match adjutant.execute_streaming(&task, token_tx).await {
                             Ok(result) => {
                                 let duration_ms = start_time.elapsed().as_millis() as u64;
                                 tracing::info!("Autopilot: task completed, success={}", result.success);
-
-                                // Stream the result summary
-                                let _ = tx.send(ResponseEvent::Chunk(result.summary));
 
                                 // Add modified files info if any
                                 if !result.modified_files.is_empty() {
@@ -8187,8 +8194,10 @@ impl CoderApp {
                     truncate_preview(active_agent, 12)
                 ));
             }
-            parts.push(format!("{} tools", state.session_info.tool_count));
-            parts.push(format!("session {}", session_short));
+            // Only show session if we have an actual session ID
+            if !state.session_info.session_id.is_empty() {
+                parts.push(format!("session {}", session_short));
+            }
             let right_text = parts.join(" | ");
             // Measure and right-align
             let text_width = right_text.len() as f32 * 7.8; // Approx char width at 13pt
