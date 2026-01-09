@@ -165,6 +165,49 @@ struct SolutionVerifierSignature {
     confidence: f32,
 }
 
+/// Execution review signature - verifies execution matched the plan.
+#[Signature(cot)]
+struct ExecutionReviewSignature {
+    /// Execution Review: Verify that execution matched the plan and assess quality.
+    /// Use chain-of-thought to carefully compare plan vs actual execution.
+
+    /// The implementation plan that was being followed
+    #[input]
+    original_plan: String,
+
+    /// JSON array of tool calls and their results during execution
+    #[input]
+    execution_trace: String,
+
+    /// Git diff summary of files changed
+    #[input]
+    files_changed: String,
+
+    /// Plan adherence: FULL, PARTIAL, or DEVIATED
+    #[output]
+    plan_adherence: String,
+
+    /// Changes made that weren't part of the plan
+    #[output]
+    unexpected_changes: String,
+
+    /// Plan steps that weren't executed
+    #[output]
+    missing_steps: String,
+
+    /// Notes on code quality and best practices
+    #[output]
+    quality_assessment: String,
+
+    /// Final verdict: APPROVE, REVISE, or REJECT
+    #[output]
+    verdict: String,
+
+    /// Confidence in the review (0.0-1.0)
+    #[output]
+    confidence: f32,
+}
+
 // ============================================================================
 // Pipeline Types
 // ============================================================================
@@ -231,6 +274,76 @@ pub struct VerificationResult {
     /// Build analysis (if build failed)
     pub build_analysis: Option<String>,
     /// Overall confidence
+    pub confidence: f32,
+}
+
+/// Plan adherence level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlanAdherence {
+    /// Execution followed plan completely
+    Full,
+    /// Some plan steps were skipped or modified
+    Partial,
+    /// Execution significantly deviated from plan
+    Deviated,
+}
+
+impl From<&str> for PlanAdherence {
+    fn from(s: &str) -> Self {
+        match s.to_uppercase().as_str() {
+            "FULL" | "COMPLETE" | "FOLLOWED" => Self::Full,
+            "DEVIATED" | "DIVERGED" | "DIFFERENT" => Self::Deviated,
+            _ => Self::Partial,
+        }
+    }
+}
+
+/// Review verdict for execution review.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReviewVerdict {
+    /// Approve the execution as-is
+    Approve,
+    /// Revise some aspects of the execution
+    Revise,
+    /// Reject and start over
+    Reject,
+}
+
+impl From<&str> for ReviewVerdict {
+    fn from(s: &str) -> Self {
+        match s.to_uppercase().as_str() {
+            "APPROVE" | "APPROVED" | "ACCEPT" | "OK" => Self::Approve,
+            "REJECT" | "REJECTED" | "FAIL" | "FAILED" => Self::Reject,
+            _ => Self::Revise,
+        }
+    }
+}
+
+/// Input for execution review.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionReviewInput {
+    /// The plan that was being executed
+    pub original_plan: String,
+    /// Trace of tool calls and results (JSON)
+    pub execution_trace: String,
+    /// Git diff of changes made
+    pub files_changed: String,
+}
+
+/// Result from execution review.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionReviewResult {
+    /// How well execution followed the plan
+    pub plan_adherence: PlanAdherence,
+    /// Unexpected changes (not in plan)
+    pub unexpected_changes: Vec<String>,
+    /// Plan steps that weren't executed
+    pub missing_steps: Vec<String>,
+    /// Code quality notes
+    pub quality_assessment: String,
+    /// Review verdict
+    pub verdict: ReviewVerdict,
+    /// Confidence in the review
     pub confidence: f32,
 }
 
@@ -432,6 +545,53 @@ impl VerificationPipeline {
             confidence: Self::get_f32(&prediction, "confidence"),
         })
     }
+
+    /// Parse JSON array string into Vec<String>.
+    fn parse_json_array(s: &str) -> Vec<String> {
+        serde_json::from_str::<Vec<String>>(s).unwrap_or_else(|_| {
+            // Fallback: split by newlines if not valid JSON
+            s.lines()
+                .map(|l| l.trim().trim_start_matches('-').trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect()
+        })
+    }
+
+    /// Review execution against the original plan.
+    pub async fn review_execution(
+        &self,
+        input: &ExecutionReviewInput,
+    ) -> anyhow::Result<ExecutionReviewResult> {
+        let reviewer = Predict::new(ExecutionReviewSignature::new());
+
+        let example = example! {
+            "original_plan": "input" => input.original_plan.clone(),
+            "execution_trace": "input" => input.execution_trace.clone(),
+            "files_changed": "input" => input.files_changed.clone(),
+        };
+
+        let prediction = if let Some(lm) = &self.lm {
+            reviewer.forward_with_config(example, lm.clone()).await?
+        } else {
+            reviewer.forward(example).await?
+        };
+
+        let adherence_str = Self::get_string(&prediction, "plan_adherence");
+        let verdict_str = Self::get_string(&prediction, "verdict");
+
+        let unexpected_changes =
+            Self::parse_json_array(&Self::get_string(&prediction, "unexpected_changes"));
+        let missing_steps = Self::parse_json_array(&Self::get_string(&prediction, "missing_steps"));
+
+        Ok(ExecutionReviewResult {
+            plan_adherence: PlanAdherence::from(adherence_str.as_str()),
+            unexpected_changes,
+            missing_steps,
+            quality_assessment: Self::get_string(&prediction, "quality_assessment"),
+            verdict: ReviewVerdict::from(verdict_str.as_str()),
+            confidence: Self::get_f32(&prediction, "confidence"),
+        })
+    }
 }
 
 // ============================================================================
@@ -499,5 +659,50 @@ mod tests {
 
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("SATISFIED"));
+    }
+
+    #[test]
+    fn test_plan_adherence_parsing() {
+        assert_eq!(PlanAdherence::from("FULL"), PlanAdherence::Full);
+        assert_eq!(PlanAdherence::from("full"), PlanAdherence::Full);
+        assert_eq!(PlanAdherence::from("COMPLETE"), PlanAdherence::Full);
+        assert_eq!(PlanAdherence::from("PARTIAL"), PlanAdherence::Partial);
+        assert_eq!(PlanAdherence::from("DEVIATED"), PlanAdherence::Deviated);
+        assert_eq!(PlanAdherence::from("unknown"), PlanAdherence::Partial);
+    }
+
+    #[test]
+    fn test_review_verdict_parsing() {
+        assert_eq!(ReviewVerdict::from("APPROVE"), ReviewVerdict::Approve);
+        assert_eq!(ReviewVerdict::from("approved"), ReviewVerdict::Approve);
+        assert_eq!(ReviewVerdict::from("REVISE"), ReviewVerdict::Revise);
+        assert_eq!(ReviewVerdict::from("REJECT"), ReviewVerdict::Reject);
+        assert_eq!(ReviewVerdict::from("unknown"), ReviewVerdict::Revise);
+    }
+
+    #[test]
+    fn test_execution_review_input_serialization() {
+        let input = ExecutionReviewInput {
+            original_plan: "1. Add button\n2. Test it".to_string(),
+            execution_trace: "[]".to_string(),
+            files_changed: "M src/ui.rs".to_string(),
+        };
+
+        let json = serde_json::to_string(&input).unwrap();
+        let parsed: ExecutionReviewInput = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.original_plan, input.original_plan);
+    }
+
+    #[test]
+    fn test_json_array_parsing() {
+        // Valid JSON
+        let valid = r#"["step1", "step2"]"#;
+        let parsed = VerificationPipeline::parse_json_array(valid);
+        assert_eq!(parsed, vec!["step1", "step2"]);
+
+        // Fallback for non-JSON
+        let lines = "- step1\n- step2";
+        let parsed = VerificationPipeline::parse_json_array(lines);
+        assert_eq!(parsed, vec!["step1", "step2"]);
     }
 }

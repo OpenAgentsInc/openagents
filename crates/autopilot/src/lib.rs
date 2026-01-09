@@ -38,8 +38,14 @@ pub mod verification;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod workflow;
 
-// DSPy verification module (native + dspy feature)
-#[cfg(all(not(target_arch = "wasm32"), feature = "dspy"))]
+// DSPy modules (native-only)
+#[cfg(not(target_arch = "wasm32"))]
+pub mod dspy_execution;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod dspy_optimization;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod dspy_planning;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod dspy_verify;
 
 // Native-only re-exports
@@ -113,11 +119,26 @@ pub use report::{
 #[cfg(not(target_arch = "wasm32"))]
 pub use checkpoint::{CHECKPOINT_VERSION, SessionCheckpoint, SessionSummary};
 
-// DSPy verification exports (native + dspy feature)
-#[cfg(all(not(target_arch = "wasm32"), feature = "dspy"))]
+// DSPy exports (native-only)
+#[cfg(not(target_arch = "wasm32"))]
+pub use dspy_execution::{
+    ExecutionAction, ExecutionDecision, ExecutionInput, ExecutionPipeline, RecoveryInput,
+    RecoveryResult, RecoveryStrategy, ToolSelectionInput, ToolSelectionResult,
+};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use dspy_optimization::{
+    ExecutionExample, OptimizationDataset, OptimizerType, PlanningExample, VerificationExample,
+    execution_metric, planning_metric, verification_metric,
+};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use dspy_planning::{Complexity, PlanningInput, PlanningPipeline, PlanningResult};
+
+#[cfg(not(target_arch = "wasm32"))]
 pub use dspy_verify::{
-    RequirementResult, VerificationInput, VerificationPipeline, VerificationResult,
-    VerificationVerdict,
+    ExecutionReviewInput, ExecutionReviewResult, PlanAdherence, RequirementResult, ReviewVerdict,
+    VerificationInput, VerificationPipeline, VerificationResult, VerificationVerdict,
 };
 
 // Agent exports - available on all platforms
