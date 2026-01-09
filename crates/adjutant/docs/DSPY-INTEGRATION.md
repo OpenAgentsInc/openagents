@@ -234,19 +234,27 @@ collector.record_synthesis(example)?;
 
 ### LM Configuration
 
-Located in `src/dspy/lm_config.rs`. Configures dsrs for Cerebras models.
+Located in `src/dspy/lm_config.rs`. Multi-provider support with smart priority/fallback.
 
 ```rust
-// Models
-pub const PLANNING_MODEL: &str = "zai-glm-4.7";
-pub const EXECUTION_MODEL: &str = "qwen-3-32b";
-
-// Create LM instances
+// Auto-detect best available provider
 let planning_lm = get_planning_lm().await?;
 let execution_lm = get_execution_lm().await?;
+
+// Check what provider is being used
+if let Some(provider) = get_active_provider() {
+    println!("Using: {}", provider);  // e.g., "Claude SDK (headless)"
+}
+
+// Force specific provider
+let lm = create_lm(&LmProvider::Cerebras).await?;
 ```
 
-Requires `CEREBRAS_API_KEY` environment variable.
+**Provider Priority:**
+1. **Claude SDK** - Uses Claude Code headless mode (requires `claude` CLI)
+2. **Pylon Swarm** - Distributed inference via NIP-90 (requires `PYLON_MNEMONIC`)
+3. **Cerebras** - Fast, cheap execution (requires `CEREBRAS_API_KEY`)
+4. **Pylon Local** - Ollama fallback (requires Ollama running on :11434)
 
 ## Usage
 
@@ -333,7 +341,12 @@ crates/adjutant/src/dspy/
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `CEREBRAS_API_KEY` | Yes | Cerebras API key for LM calls |
+| (none) | Claude SDK | Uses `claude` CLI authentication |
+| `PYLON_MNEMONIC` | Pylon Swarm | BIP-39 mnemonic for NIP-90 signing |
+| `CEREBRAS_API_KEY` | Cerebras | Cerebras API key |
+| (none) | Pylon Local | Auto-detects Ollama on :11434 |
+
+At least one provider must be available for DSPy mode to work.
 
 ## Comparison: Gateway vs DSPy Mode
 
