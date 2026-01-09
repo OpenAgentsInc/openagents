@@ -6,6 +6,25 @@ The TieredExecutor uses a two-model architecture for cost-effective AI-powered t
 > If the `claude` CLI is installed (Pro/Max subscription), Adjutant uses `ClaudeExecutor` instead.
 > See [README.md](./README.md) for the full execution priority.
 
+## Execution Modes
+
+TieredExecutor supports two execution modes:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `Gateway` | Original hardcoded prompts via CerebrasGateway | Default, stable |
+| `Dsrs` | DSPy-powered with typed signatures and training | Optimization, A/B testing |
+
+```rust
+// Default: Gateway mode (hardcoded prompts)
+let executor = TieredExecutor::new()?;
+
+// DSPy mode (optimizable signatures)
+let executor = TieredExecutor::with_mode(ExecutionMode::Dsrs)?;
+```
+
+See [DSPY-INTEGRATION.md](./DSPY-INTEGRATION.md) for full DSPy documentation.
+
 ## Architecture
 
 ```
@@ -229,14 +248,64 @@ const EXECUTION_MODEL: &str = "qwen-3-32b";    // Cheaper, for subtasks
 3. **Edit Precision**: old_string must match exactly (including whitespace)
 4. **Max Subtasks**: Planner is instructed to limit to 5 subtasks per task
 
+## DSPy Execution Path
+
+When using `ExecutionMode::Dsrs`, the TieredExecutor uses typed DSPy signatures instead of hardcoded prompts:
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                execute_dsrs() Flow                          │
+├────────────────────────────────────────────────────────────┤
+│  1. AdjutantModule.plan()                                   │
+│     └── SubtaskPlanningSignature via dsrs Predict           │
+│                                                              │
+│  2. For each subtask:                                        │
+│     └── AdjutantModule.execute_subtask()                     │
+│         └── SubtaskExecutionSignature via dsrs Predict       │
+│     └── apply_dsrs_action() → ToolRegistry                   │
+│                                                              │
+│  3. AdjutantModule.synthesize()                              │
+│     └── ResultSynthesisSignature via dsrs Predict            │
+│                                                              │
+│  4. TrainingCollector records successful executions          │
+│     └── Stored at ~/.openagents/adjutant/training/           │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Benefits of DSPy Mode
+
+| Aspect | Gateway Mode | DSPy Mode |
+|--------|--------------|-----------|
+| Prompts | Hardcoded `const` strings | Typed `#[Signature]` structs |
+| Optimization | Manual edit-test cycle | Automatic via MIPROv2 |
+| Training | None | Records successes for optimization |
+| Metrics | None | Built-in evaluation (0.0-1.0) |
+| Validation | Runtime parsing | Compile-time type checking |
+
+### Usage
+
+```rust
+use adjutant::{Task, TieredExecutor, ExecutionMode, ToolRegistry};
+
+// Create DSPy-powered executor
+let mut executor = TieredExecutor::with_mode(ExecutionMode::Dsrs)?;
+
+// Execute (training data automatically collected)
+let result = executor.execute_dsrs(&task, &context, &mut tools).await?;
+```
+
 ## Future Improvements
 
 - Parallel subtask execution for independent actions
 - Streaming responses for real-time progress
 - Retry logic for transient failures
 - Model selection based on subtask complexity
+- A/B testing between Gateway and DSPy modes
+- Automatic MIPROv2 optimization pipeline
 
 ## See Also
 
 - [README.md](./README.md) - Adjutant overview
+- [DSPY-INTEGRATION.md](./DSPY-INTEGRATION.md) - Full DSPy integration guide
+- [../../dsrs/README.md](../../dsrs/README.md) - dsrs (Rust DSPy) documentation
 - [../../gateway/docs/PROVIDERS.md](../../gateway/docs/PROVIDERS.md) - Cerebras model details

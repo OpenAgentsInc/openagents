@@ -1,0 +1,360 @@
+# DSPy Integration
+
+Adjutant now integrates with [dsrs](../../dsrs/) (Rust DSPy implementation) for optimizable prompt engineering. This enables automatic prompt improvement via MIPROv2 optimization.
+
+## Overview
+
+The DSPy integration replaces hardcoded string prompts with typed, optimizable signatures. Instead of:
+
+```rust
+const PLANNER_SYSTEM_PROMPT: &str = "You are a task planner...";
+```
+
+We now use:
+
+```rust
+#[Signature]
+struct SubtaskPlanningSignature {
+    /// Task Planner: Break the given task into concrete, atomic subtasks.
+
+    #[input]
+    pub task_title: String,
+    #[input]
+    pub task_description: String,
+    #[input]
+    pub context: String,
+
+    #[output]
+    pub subtasks: String,
+    #[output]
+    pub reasoning: String,
+    #[output]
+    pub confidence: f32,
+}
+```
+
+This enables:
+- **Automatic prompt optimization** via MIPROv2
+- **Training data collection** from successful executions
+- **Type-safe inputs/outputs** with validation
+- **Evaluation metrics** for quality assessment
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      TieredExecutor                          │
+│                                                              │
+│  ExecutionMode::Gateway ──────► Original gateway execution   │
+│  ExecutionMode::Dsrs    ──────► DSPy-powered execution       │
+└──────────────────────────────────┬───────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     AdjutantModule                           │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │             SubtaskPlanningSignature                 │    │
+│  │  GLM 4.7 · Breaks tasks into atomic subtasks        │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                           │                                  │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │            SubtaskExecutionSignature                 │    │
+│  │  Qwen-3-32B · Executes individual subtasks          │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                           │                                  │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │            ResultSynthesisSignature                  │    │
+│  │  GLM 4.7 · Synthesizes results into final outcome   │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    TrainingCollector                         │
+│  Records successful executions for MIPROv2 optimization      │
+│  Storage: ~/.openagents/adjutant/training/dataset.json       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Components
+
+### Signatures
+
+Located in `src/dspy/module.rs`:
+
+#### SubtaskPlanningSignature
+
+Replaces `PLANNER_SYSTEM_PROMPT`. Breaks a task into atomic subtasks.
+
+| Field | Type | Direction | Description |
+|-------|------|-----------|-------------|
+| `task_title` | String | input | Title of the task |
+| `task_description` | String | input | Detailed description |
+| `context` | String | input | Repository context (file contents) |
+| `subtasks` | String | output | JSON array of subtasks |
+| `reasoning` | String | output | Explanation of planning approach |
+| `confidence` | f32 | output | Confidence score (0.0-1.0) |
+
+#### SubtaskExecutionSignature
+
+Replaces `EXECUTOR_SYSTEM_PROMPT`. Executes a single subtask.
+
+| Field | Type | Direction | Description |
+|-------|------|-----------|-------------|
+| `action` | String | input | Action type: read, edit, bash |
+| `target` | String | input | Target file path |
+| `instruction` | String | input | What to do |
+| `file_context` | String | input | Current file content |
+| `result` | String | output | JSON result with action-specific fields |
+| `reasoning` | String | output | Explanation of what was done |
+| `success` | bool | output | Whether action completed |
+
+#### ResultSynthesisSignature
+
+Replaces `SYNTHESIZER_SYSTEM_PROMPT`. Synthesizes results into final outcome.
+
+| Field | Type | Direction | Description |
+|-------|------|-----------|-------------|
+| `task_title` | String | input | Original task title |
+| `subtask_results` | String | input | Formatted results from subtasks |
+| `success` | bool | output | Overall success status |
+| `summary` | String | output | What was accomplished/failed |
+| `modified_files` | String | output | JSON array of modified files |
+| `confidence` | f32 | output | Confidence in assessment (0.0-1.0) |
+
+### AdjutantModule
+
+The composite dsrs module implementing `Module`, `Evaluator`, and `Optimizable` traits:
+
+```rust
+#[derive(Builder)]
+pub struct AdjutantModule {
+    pub planner: Predict,      // SubtaskPlanningSignature
+    pub executor: Predict,     // SubtaskExecutionSignature
+    pub synthesizer: Predict,  // ResultSynthesisSignature
+}
+```
+
+Key methods:
+- `plan(title, description, context)` - Execute planning phase
+- `execute_subtask(action, target, instruction, file_context)` - Execute one subtask
+- `synthesize(title, subtask_results)` - Execute synthesis phase
+- `forward(inputs)` - Full three-phase execution (for Module trait)
+
+### Metrics
+
+Located in `src/dspy/metrics.rs`. Used by MIPROv2 for optimization.
+
+#### subtask_planning_metric
+
+Evaluates planning quality (score 0.0-1.0):
+- 25%: Valid JSON array with required fields
+- 25%: Valid action types (read/edit/bash)
+- 25%: Valid target paths
+- 25%: Actionable instructions (start with verb)
+
+#### subtask_execution_metric
+
+Evaluates execution quality (score 0.0-1.0):
+- 33%: Valid result JSON
+- 33%: Well-formed edit strings or command
+- 34%: Substantive reasoning
+
+#### synthesis_metric
+
+Evaluates synthesis quality (score 0.0-1.0):
+- 25%: Valid success boolean
+- 25%: Substantive summary (15+ chars)
+- 25%: Valid modified_files JSON array
+- 25%: Calibrated confidence (0.0-1.0)
+
+#### combined_metric
+
+Weighted combination for overall AdjutantModule evaluation:
+- 60% planning score
+- 40% synthesis score
+
+### Training Data
+
+Located in `src/dspy/training.rs`. Collects training examples for optimization.
+
+#### Storage
+
+Training data is stored at:
+```
+~/.openagents/adjutant/training/dataset.json
+```
+
+#### Example Types
+
+**PlanningTrainingExample:**
+```rust
+{
+    task_title: String,
+    task_description: String,
+    context: String,
+    expected_subtasks: Vec<SubtaskData>,
+    success: bool,
+}
+```
+
+**ExecutionTrainingExample:**
+```rust
+{
+    action: String,
+    target: String,
+    instruction: String,
+    file_context: String,
+    expected_result: Value,
+    success: bool,
+}
+```
+
+**SynthesisTrainingExample:**
+```rust
+{
+    task_title: String,
+    subtask_results: String,
+    expected_success: bool,
+    expected_summary: String,
+    expected_modified_files: Vec<String>,
+}
+```
+
+#### TrainingCollector
+
+Auto-saves successful executions:
+
+```rust
+let mut collector = TrainingCollector::new(auto_save: true)?;
+collector.record_planning(example)?;
+collector.record_execution(example)?;
+collector.record_synthesis(example)?;
+```
+
+### LM Configuration
+
+Located in `src/dspy/lm_config.rs`. Configures dsrs for Cerebras models.
+
+```rust
+// Models
+pub const PLANNING_MODEL: &str = "zai-glm-4.7";
+pub const EXECUTION_MODEL: &str = "qwen-3-32b";
+
+// Create LM instances
+let planning_lm = get_planning_lm().await?;
+let execution_lm = get_execution_lm().await?;
+```
+
+Requires `CEREBRAS_API_KEY` environment variable.
+
+## Usage
+
+### Execution Modes
+
+The TieredExecutor supports two execution modes:
+
+```rust
+// Default: Original gateway-based execution
+let executor = TieredExecutor::new()?;
+
+// DSPy-powered execution with training collection
+let executor = TieredExecutor::with_mode(ExecutionMode::Dsrs)?;
+```
+
+### DSPy Execution
+
+```rust
+let mut executor = TieredExecutor::with_mode(ExecutionMode::Dsrs)?;
+
+let task = Task::new("#123", "Add error handling", "Add Result types to auth");
+let context = "--- src/auth.rs ---\n...";
+let mut tools = ToolRegistry::new(&workspace_root);
+
+// Uses DSPy signatures with training collection
+let result = executor.execute_dsrs(&task, &context, &mut tools).await?;
+```
+
+### Programmatic Module Usage
+
+```rust
+use adjutant::dspy::AdjutantModule;
+
+let module = AdjutantModule::new();
+
+// Plan a task
+let plan = module.plan("Add feature", "Add new API endpoint", "// context...").await?;
+let subtasks = plan.get("subtasks", None);
+
+// Execute a subtask
+let result = module.execute_subtask("edit", "src/api.rs", "Add endpoint", "// file...").await?;
+
+// Synthesize results
+let final_result = module.synthesize("Add feature", "- [OK] 1: Added endpoint").await?;
+```
+
+### Optimization with MIPROv2
+
+After collecting training data:
+
+```rust
+use adjutant::dspy::{AdjutantModule, AdjutantTrainingDataset};
+use dsrs::{MIPROv2, Optimizer};
+
+// Load training data
+let dataset = AdjutantTrainingDataset::load()?;
+let examples = dataset.planning_as_examples();
+
+// Create and optimize module
+let mut module = AdjutantModule::new();
+let optimizer = MIPROv2::builder()
+    .num_candidates(10)
+    .num_trials(20)
+    .build();
+
+optimizer.compile(&mut module, examples).await?;
+
+// Module now has optimized instructions
+println!("Optimized: {}", module.planner.get_signature().instruction());
+```
+
+## File Structure
+
+```
+crates/adjutant/src/dspy/
+├── mod.rs           # Module exports
+├── lm_config.rs     # Cerebras LM configuration
+├── module.rs        # AdjutantModule + signatures
+├── metrics.rs       # Evaluation metrics
+└── training.rs      # Training data collection
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `CEREBRAS_API_KEY` | Yes | Cerebras API key for LM calls |
+
+## Comparison: Gateway vs DSPy Mode
+
+| Aspect | Gateway Mode | DSPy Mode |
+|--------|--------------|-----------|
+| Prompts | Hardcoded strings | Typed signatures |
+| Optimization | Manual tuning | Automatic via MIPROv2 |
+| Training | None | Automatic collection |
+| Metrics | None | Built-in evaluation |
+| Flexibility | Fixed | Optimizable |
+
+## Future Improvements
+
+1. **Parallel Optimization** - Optimize all three signatures simultaneously
+2. **Few-Shot Learning** - Include demos in signature context
+3. **A/B Testing** - Compare gateway vs DSPy performance
+4. **Custom Metrics** - Task-specific evaluation functions
+5. **Model Selection** - Dynamic model routing based on complexity
+
+## See Also
+
+- [README.md](./README.md) - Adjutant overview
+- [TIERED-EXECUTOR.md](./TIERED-EXECUTOR.md) - Tiered execution details
+- [../../dsrs/README.md](../../dsrs/README.md) - dsrs (Rust DSPy) documentation

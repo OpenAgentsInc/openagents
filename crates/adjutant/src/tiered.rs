@@ -4,9 +4,23 @@
 //! This provides a cost-effective approach: smart model for planning, cheaper model for work.
 
 use crate::{AdjutantError, Task, TaskResult, ToolRegistry};
+use crate::dspy::{
+    AdjutantModule, ExecutionTrainingExample, PlanningTrainingExample, SubtaskData,
+    SynthesisTrainingExample, TrainingCollector,
+};
 use gateway::{CerebrasGateway, ChatRequest, InferenceGateway, Message};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+/// Execution mode for the tiered executor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExecutionMode {
+    /// Use the original gateway-based execution.
+    #[default]
+    Gateway,
+    /// Use dsrs-powered execution with optimizable signatures.
+    Dsrs,
+}
 
 /// Models for different tiers
 const PLANNING_MODEL: &str = "zai-glm-4.7"; // Smart, for planning
@@ -49,17 +63,45 @@ pub struct SubtaskResult {
 pub struct TieredExecutor {
     /// Single Cerebras gateway, uses different models
     gateway: Arc<CerebrasGateway>,
+    /// Execution mode (Gateway or Dsrs)
+    mode: ExecutionMode,
+    /// DSPy module for optimizable execution
+    dsrs_module: Option<AdjutantModule>,
+    /// Training data collector
+    training_collector: Option<TrainingCollector>,
 }
 
 impl TieredExecutor {
-    /// Create a new tiered executor.
+    /// Create a new tiered executor with default (Gateway) mode.
     pub fn new() -> Result<Self, AdjutantError> {
+        Self::with_mode(ExecutionMode::Gateway)
+    }
+
+    /// Create a tiered executor with a specific execution mode.
+    pub fn with_mode(mode: ExecutionMode) -> Result<Self, AdjutantError> {
         let gateway = CerebrasGateway::from_env()
             .map_err(|e| AdjutantError::ExecutionFailed(format!("Failed to create gateway: {}", e)))?;
 
+        let (dsrs_module, training_collector) = match mode {
+            ExecutionMode::Dsrs => {
+                let collector = TrainingCollector::new(true)
+                    .map_err(|e| AdjutantError::ExecutionFailed(format!("Failed to create training collector: {}", e)))?;
+                (Some(AdjutantModule::new()), Some(collector))
+            }
+            ExecutionMode::Gateway => (None, None),
+        };
+
         Ok(Self {
             gateway: Arc::new(gateway),
+            mode,
+            dsrs_module,
+            training_collector,
         })
+    }
+
+    /// Get the current execution mode.
+    pub fn mode(&self) -> ExecutionMode {
+        self.mode
     }
 
     /// Execute a task using tiered inference.
@@ -282,6 +324,254 @@ impl TieredExecutor {
 
         let content = response.content().unwrap_or("");
         parse_synthesis_result(content, results)
+    }
+
+    // =========================================================================
+    // DSPy-powered execution (new optimizable path)
+    // =========================================================================
+
+    /// Execute a task using DSPy-powered signatures.
+    ///
+    /// This is an alternative to the gateway-based `execute` method that uses
+    /// typed, optimizable signatures via dsrs. Training data is collected
+    /// for MIPROv2 optimization.
+    pub async fn execute_dsrs(
+        &mut self,
+        task: &Task,
+        context: &str,
+        tools: &mut ToolRegistry,
+    ) -> Result<TaskResult, AdjutantError> {
+        tracing::info!("TieredExecutor (DSPy): Starting task '{}'", task.title);
+
+        let module = self.dsrs_module.as_ref().ok_or_else(|| {
+            AdjutantError::ExecutionFailed("DSPy module not initialized. Use ExecutionMode::Dsrs".to_string())
+        })?;
+
+        // PHASE 1: Plan with DSPy signature
+        tracing::info!("Phase 1: Planning with DSPy SubtaskPlanningSignature");
+        let plan_prediction = module
+            .plan(&task.title, &task.description, context)
+            .await
+            .map_err(|e| AdjutantError::PlanningFailed(format!("DSPy planning failed: {}", e)))?;
+
+        let subtasks_json = plan_prediction.get("subtasks", None);
+        let subtasks: Vec<Subtask> = serde_json::from_str(
+            subtasks_json.as_str().unwrap_or("[]")
+        ).unwrap_or_default();
+
+        tracing::info!("Generated {} subtasks via DSPy", subtasks.len());
+
+        // Record planning training example
+        if let Some(ref mut collector) = self.training_collector {
+            let example = PlanningTrainingExample {
+                task_title: task.title.clone(),
+                task_description: task.description.clone(),
+                context: context.to_string(),
+                expected_subtasks: subtasks.iter().map(|s| SubtaskData {
+                    id: s.id.clone(),
+                    action: s.action.clone(),
+                    target: s.target.clone(),
+                    instruction: s.instruction.clone(),
+                }).collect(),
+                success: !subtasks.is_empty(),
+            };
+            let _ = collector.record_planning(example);
+        }
+
+        if subtasks.is_empty() {
+            return Ok(TaskResult {
+                success: true,
+                summary: "No subtasks generated - task may already be complete.".to_string(),
+                modified_files: Vec::new(),
+                commit_hash: None,
+                error: None,
+            });
+        }
+
+        // PHASE 2: Execute subtasks with DSPy signature
+        tracing::info!("Phase 2: Executing {} subtasks with DSPy SubtaskExecutionSignature", subtasks.len());
+        let mut results = Vec::new();
+        let mut modified_files = Vec::new();
+
+        for subtask in &subtasks {
+            tracing::info!("Executing subtask {}: {} on {}", subtask.id, subtask.action, subtask.target);
+
+            // Get file context for edit/read operations
+            let target_path = std::path::Path::new(&subtask.target);
+            let file_context = if subtask.action == "edit" || subtask.action == "read" {
+                match tools.read(target_path).await {
+                    Ok(r) if r.success => r.content,
+                    _ => String::new(),
+                }
+            } else {
+                String::new()
+            };
+
+            // Execute with DSPy signature
+            let exec_prediction = module
+                .execute_subtask(&subtask.action, &subtask.target, &subtask.instruction, &file_context)
+                .await
+                .map_err(|e| AdjutantError::ExecutionFailed(format!("DSPy execution failed: {}", e)))?;
+
+            let result_json = exec_prediction.get("result", None);
+            let _exec_success = exec_prediction.get("success", None)
+                .as_bool()
+                .unwrap_or(false);
+
+            // Apply the action using tools
+            let subtask_result = self.apply_dsrs_action(subtask, &result_json, tools).await?;
+
+            // Track modified files
+            if subtask_result.success && subtask.action == "edit" {
+                modified_files.push(subtask.target.clone());
+            }
+
+            // Record execution training example
+            if let Some(ref mut collector) = self.training_collector {
+                let example = ExecutionTrainingExample {
+                    action: subtask.action.clone(),
+                    target: subtask.target.clone(),
+                    instruction: subtask.instruction.clone(),
+                    file_context: file_context.clone(),
+                    expected_result: result_json.clone(),
+                    success: subtask_result.success,
+                };
+                let _ = collector.record_execution(example);
+            }
+
+            results.push(subtask_result);
+        }
+
+        // PHASE 3: Synthesize with DSPy signature
+        tracing::info!("Phase 3: Synthesizing results with DSPy ResultSynthesisSignature");
+
+        let results_summary = results
+            .iter()
+            .map(|r| {
+                if r.success {
+                    format!("- [OK] {}: {}", r.id, r.output)
+                } else {
+                    format!("- [FAIL] {}: {}", r.id, r.error.as_deref().unwrap_or("unknown"))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let synth_prediction = module
+            .synthesize(&task.title, &results_summary)
+            .await
+            .map_err(|e| AdjutantError::ExecutionFailed(format!("DSPy synthesis failed: {}", e)))?;
+
+        let success = synth_prediction.get("success", None)
+            .as_bool()
+            .unwrap_or_else(|| results.iter().all(|r| r.success));
+        let summary = synth_prediction.get("summary", None)
+            .as_str()
+            .unwrap_or("Task completed.")
+            .to_string();
+
+        // Record synthesis training example
+        if let Some(ref mut collector) = self.training_collector {
+            let example = SynthesisTrainingExample {
+                task_title: task.title.clone(),
+                subtask_results: results_summary,
+                expected_success: success,
+                expected_summary: summary.clone(),
+                expected_modified_files: modified_files.clone(),
+            };
+            let _ = collector.record_synthesis(example);
+        }
+
+        Ok(TaskResult {
+            success,
+            summary,
+            modified_files,
+            commit_hash: None,
+            error: None,
+        })
+    }
+
+    /// Apply a subtask action from DSPy output.
+    async fn apply_dsrs_action(
+        &self,
+        subtask: &Subtask,
+        result_json: &serde_json::Value,
+        tools: &mut ToolRegistry,
+    ) -> Result<SubtaskResult, AdjutantError> {
+        match subtask.action.as_str() {
+            "read" => {
+                Ok(SubtaskResult {
+                    id: subtask.id.clone(),
+                    success: true,
+                    output: format!("Read and analyzed: {}", subtask.target),
+                    error: None,
+                })
+            }
+            "edit" => {
+                // Parse result JSON for old_string/new_string
+                let obj = if let Some(s) = result_json.as_str() {
+                    serde_json::from_str::<serde_json::Value>(s).unwrap_or_default()
+                } else {
+                    result_json.clone()
+                };
+
+                let old_string = obj.get("old_string").and_then(|v| v.as_str());
+                let new_string = obj.get("new_string").and_then(|v| v.as_str());
+
+                match (old_string, new_string) {
+                    (Some(old), Some(new)) => {
+                        let target_path = std::path::Path::new(&subtask.target);
+                        let result = tools.edit(target_path, old, new).await?;
+                        if result.success {
+                            Ok(SubtaskResult {
+                                id: subtask.id.clone(),
+                                success: true,
+                                output: format!("Edited: {}", subtask.target),
+                                error: None,
+                            })
+                        } else {
+                            Ok(SubtaskResult {
+                                id: subtask.id.clone(),
+                                success: false,
+                                output: String::new(),
+                                error: result.error,
+                            })
+                        }
+                    }
+                    _ => Ok(SubtaskResult {
+                        id: subtask.id.clone(),
+                        success: false,
+                        output: String::new(),
+                        error: Some("Missing old_string/new_string in DSPy result".to_string()),
+                    }),
+                }
+            }
+            "bash" => {
+                let obj = if let Some(s) = result_json.as_str() {
+                    serde_json::from_str::<serde_json::Value>(s).unwrap_or_default()
+                } else {
+                    result_json.clone()
+                };
+
+                let command = obj.get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                let result = tools.bash(command).await?;
+                Ok(SubtaskResult {
+                    id: subtask.id.clone(),
+                    success: result.success,
+                    output: result.content,
+                    error: result.error,
+                })
+            }
+            _ => Ok(SubtaskResult {
+                id: subtask.id.clone(),
+                success: false,
+                output: String::new(),
+                error: Some(format!("Unknown action: {}", subtask.action)),
+            }),
+        }
     }
 }
 
