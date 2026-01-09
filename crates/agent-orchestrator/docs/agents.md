@@ -309,3 +309,132 @@ let librarian_task = bg.spawn(session, "librarian", "Find JWT docs", "JWT docs")
 let explore_result = bg.get_output(&explore_task, true).await?;
 let librarian_result = bg.get_output(&librarian_task, true).await?;
 ```
+
+## DSPy Signatures (Wave 9)
+
+Each agent has a corresponding DSPy signature that can replace static prompt-based delegation with learned, optimizable behavior.
+
+### DelegationSignature (Sisyphus)
+
+Decides which subagent should handle a task.
+
+```rust
+use agent_orchestrator::{DelegationSignature, TargetAgent};
+use dsrs::predictors::Predict;
+
+let sig = DelegationSignature::new();
+let predictor = Predict::new(sig);
+
+// Inputs: task_description, available_agents, current_workload
+// Outputs: assigned_agent, task_refinement, expected_deliverables, fallback_agent
+```
+
+### ArchitectureSignature (Oracle) - CoT
+
+Chain-of-thought reasoning for architecture decisions.
+
+```rust
+use agent_orchestrator::{ArchitectureSignature, ArchitectureComplexity};
+
+let sig = ArchitectureSignature::new();
+
+// Inputs: requirements, existing_architecture, constraints
+// Outputs: reasoning (CoT), proposed_changes, tradeoffs, risks, complexity
+```
+
+### LibraryLookupSignature (Librarian)
+
+Finds documentation and usage examples.
+
+```rust
+use agent_orchestrator::LibraryLookupSignature;
+
+let sig = LibraryLookupSignature::new();
+
+// Inputs: query, library_name, context
+// Outputs: findings, sources, code_examples, confidence
+```
+
+### CodeExplorationSignature (Explore)
+
+Fast codebase navigation and pattern search.
+
+```rust
+use agent_orchestrator::{CodeExplorationSignature, SearchType};
+
+let sig = CodeExplorationSignature::new();
+
+// SearchType: Definition, References, Pattern, Usage, CallGraph
+// Inputs: query, search_type, scope
+// Outputs: locations, code_snippets, related_files, confidence
+```
+
+### UIDesignSignature (Frontend)
+
+UI/UX design with accessibility focus.
+
+```rust
+use agent_orchestrator::UIDesignSignature;
+
+let sig = UIDesignSignature::new();
+
+// Inputs: design_request, existing_styles, constraints
+// Outputs: css_changes, component_structure, design_rationale, accessibility_notes
+```
+
+### DocumentationSignature (DocWriter)
+
+Technical documentation generation.
+
+```rust
+use agent_orchestrator::{DocumentationSignature, DocType};
+
+let sig = DocumentationSignature::new();
+
+// DocType: Readme, ApiRef, Guide, Comment, Changelog
+// Inputs: doc_type, subject, audience, existing_docs
+// Outputs: content, structure, examples, cross_references
+```
+
+### MediaAnalysisSignature (Multimodal)
+
+Visual content analysis.
+
+```rust
+use agent_orchestrator::{MediaAnalysisSignature, MediaType};
+
+let sig = MediaAnalysisSignature::new();
+
+// MediaType: Image, Pdf, Diagram, Screenshot, Video
+// Inputs: media_type, content_description, analysis_focus
+// Outputs: description, extracted_data, structured_output, uncertainties
+```
+
+### Signature Integration
+
+All signatures implement `MetaSignature` and can be used with dsrs predictors:
+
+```rust
+use dsrs::predictors::Predict;
+use dsrs::data::example::Example;
+use agent_orchestrator::DelegationSignature;
+
+let sig = DelegationSignature::new();
+let predictor = Predict::new(sig);
+
+let example = Example::from([
+    ("task_description", "Add a dark mode toggle to settings"),
+    ("available_agents", r#"{"frontend": "available", "oracle": "available"}"#),
+    ("current_workload", "{}"),
+]);
+
+// Run with LM
+let result = predictor.forward(&example, &lm).await?;
+let agent = result.get("assigned_agent", None); // "frontend"
+```
+
+## See Also
+
+- [hooks.md](./hooks.md) - Hook system
+- [integrations.md](./integrations.md) - External integrations
+- [advanced.md](./advanced.md) - Advanced patterns
