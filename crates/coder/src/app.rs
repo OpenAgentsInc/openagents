@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use web_time::Instant;
 use wgpui::input::{Key as UiKey, Modifiers as UiModifiers, NamedKey as UiNamedKey};
 use wgpui::components::{Component, EventContext, EventResult, PaintContext};
-use wgpui::markdown::{MarkdownDocument, MarkdownRenderer as MdRenderer, StreamingMarkdown};
+use wgpui::markdown::{MarkdownConfig, MarkdownDocument, MarkdownRenderer as MdRenderer, StreamingMarkdown};
 use wgpui::renderer::Renderer;
 use wgpui::{Bounds, Hsla, InputEvent, Point, Quad, Scene, Size, TextInput, TextSystem};
 use winit::application::ApplicationHandler;
@@ -111,19 +111,147 @@ fn truncate_preview(text: &str, max_chars: usize) -> String {
 
 const INPUT_HEIGHT: f32 = 40.0;
 const INPUT_PADDING: f32 = 12.0;
-const LINE_HEIGHT: f32 = 20.0;
 const OUTPUT_PADDING: f32 = 12.0;
 const STATUS_BAR_HEIGHT: f32 = 20.0;
 const STATUS_BAR_FONT_SIZE: f32 = 11.0;
 const BUG_REPORT_URL: &str = "https://github.com/OpenAgentsInc/openagents/issues/new";
 const MAX_FILE_BYTES: usize = 200_000;
 const MAX_COMMAND_BYTES: usize = 120_000;
+
+fn default_font_size() -> f32 {
+    14.0
+}
+
+fn default_auto_scroll() -> bool {
+    true
+}
+
+fn default_session_auto_save() -> bool {
+    true
+}
+
+fn default_session_history_limit() -> usize {
+    50
+}
+
+fn clamp_font_size(size: f32) -> f32 {
+    size.clamp(12.0, 18.0)
+}
+
+fn normalize_settings(settings: &mut CoderSettings) {
+    settings.font_size = clamp_font_size(settings.font_size);
+}
+
+fn theme_label(theme: ThemeSetting) -> &'static str {
+    match theme {
+        ThemeSetting::Dark => "Dark",
+        ThemeSetting::Light => "Light",
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct UiPalette {
+    background: Hsla,
+    panel: Hsla,
+    panel_border: Hsla,
+    panel_highlight: Hsla,
+    overlay: Hsla,
+    input_bg: Hsla,
+    input_border: Hsla,
+    input_border_focused: Hsla,
+    text_primary: Hsla,
+    text_secondary: Hsla,
+    text_muted: Hsla,
+    text_dim: Hsla,
+    text_faint: Hsla,
+    prompt: Hsla,
+    status_left: Hsla,
+    status_right: Hsla,
+    user_text: Hsla,
+    assistant_text: Hsla,
+    thinking_text: Hsla,
+    tool_panel_bg: Hsla,
+    tool_panel_border: Hsla,
+    tool_progress_bg: Hsla,
+    tool_progress_fg: Hsla,
+    code_bg: Hsla,
+    inline_code_bg: Hsla,
+    link: Hsla,
+    blockquote: Hsla,
+}
+
+fn palette_for(theme: ThemeSetting) -> UiPalette {
+    match theme {
+        ThemeSetting::Dark => UiPalette {
+            background: Hsla::new(220.0, 0.15, 0.10, 1.0),
+            panel: Hsla::new(220.0, 0.15, 0.12, 1.0),
+            panel_border: Hsla::new(220.0, 0.15, 0.25, 1.0),
+            panel_highlight: Hsla::new(220.0, 0.2, 0.18, 1.0),
+            overlay: Hsla::new(0.0, 0.0, 0.0, 0.7),
+            input_bg: Hsla::new(220.0, 0.15, 0.08, 1.0),
+            input_border: Hsla::new(220.0, 0.15, 0.25, 1.0),
+            input_border_focused: Hsla::new(0.0, 0.0, 1.0, 1.0),
+            text_primary: Hsla::new(0.0, 0.0, 0.9, 1.0),
+            text_secondary: Hsla::new(0.0, 0.0, 0.7, 1.0),
+            text_muted: Hsla::new(0.0, 0.0, 0.6, 1.0),
+            text_dim: Hsla::new(0.0, 0.0, 0.5, 1.0),
+            text_faint: Hsla::new(0.0, 0.0, 0.4, 1.0),
+            prompt: Hsla::new(0.0, 0.0, 0.6, 1.0),
+            status_left: Hsla::new(35.0, 0.8, 0.65, 1.0),
+            status_right: Hsla::new(0.0, 0.0, 0.55, 1.0),
+            user_text: Hsla::new(0.0, 0.0, 0.6, 1.0),
+            assistant_text: Hsla::new(180.0, 0.5, 0.7, 1.0),
+            thinking_text: Hsla::new(0.0, 0.0, 0.5, 1.0),
+            tool_panel_bg: Hsla::new(220.0, 0.15, 0.12, 1.0),
+            tool_panel_border: Hsla::new(220.0, 0.15, 0.25, 1.0),
+            tool_progress_bg: Hsla::new(220.0, 0.15, 0.20, 1.0),
+            tool_progress_fg: Hsla::new(200.0, 0.8, 0.6, 1.0),
+            code_bg: Hsla::new(220.0, 0.18, 0.14, 1.0),
+            inline_code_bg: Hsla::new(220.0, 0.12, 0.18, 1.0),
+            link: Hsla::new(200.0, 0.7, 0.6, 1.0),
+            blockquote: Hsla::new(200.0, 0.6, 0.6, 1.0),
+        },
+        ThemeSetting::Light => UiPalette {
+            background: Hsla::new(210.0, 0.2, 0.96, 1.0),
+            panel: Hsla::new(0.0, 0.0, 1.0, 1.0),
+            panel_border: Hsla::new(210.0, 0.1, 0.78, 1.0),
+            panel_highlight: Hsla::new(210.0, 0.4, 0.9, 1.0),
+            overlay: Hsla::new(0.0, 0.0, 0.0, 0.3),
+            input_bg: Hsla::new(0.0, 0.0, 1.0, 1.0),
+            input_border: Hsla::new(210.0, 0.1, 0.72, 1.0),
+            input_border_focused: Hsla::new(210.0, 0.8, 0.4, 1.0),
+            text_primary: Hsla::new(0.0, 0.0, 0.12, 1.0),
+            text_secondary: Hsla::new(0.0, 0.0, 0.25, 1.0),
+            text_muted: Hsla::new(0.0, 0.0, 0.35, 1.0),
+            text_dim: Hsla::new(0.0, 0.0, 0.45, 1.0),
+            text_faint: Hsla::new(0.0, 0.0, 0.55, 1.0),
+            prompt: Hsla::new(0.0, 0.0, 0.35, 1.0),
+            status_left: Hsla::new(25.0, 0.85, 0.35, 1.0),
+            status_right: Hsla::new(0.0, 0.0, 0.4, 1.0),
+            user_text: Hsla::new(0.0, 0.0, 0.35, 1.0),
+            assistant_text: Hsla::new(200.0, 0.6, 0.35, 1.0),
+            thinking_text: Hsla::new(0.0, 0.0, 0.4, 1.0),
+            tool_panel_bg: Hsla::new(0.0, 0.0, 0.98, 1.0),
+            tool_panel_border: Hsla::new(210.0, 0.1, 0.82, 1.0),
+            tool_progress_bg: Hsla::new(210.0, 0.2, 0.88, 1.0),
+            tool_progress_fg: Hsla::new(200.0, 0.8, 0.45, 1.0),
+            code_bg: Hsla::new(210.0, 0.15, 0.92, 1.0),
+            inline_code_bg: Hsla::new(210.0, 0.15, 0.9, 1.0),
+            link: Hsla::new(210.0, 0.7, 0.35, 1.0),
+            blockquote: Hsla::new(210.0, 0.5, 0.4, 1.0),
+        },
+    }
+}
 const SESSION_MODAL_WIDTH: f32 = 760.0;
 const SESSION_MODAL_HEIGHT: f32 = 520.0;
 const SESSION_CARD_HEIGHT: f32 = 100.0;
 const SESSION_CARD_GAP: f32 = 12.0;
 const SESSION_MODAL_PADDING: f32 = 16.0;
 const SKILL_CARD_HEIGHT: f32 = 110.0;
+const SETTINGS_MODAL_WIDTH: f32 = 760.0;
+const SETTINGS_MODAL_HEIGHT: f32 = 480.0;
+const SETTINGS_ROW_HEIGHT: f32 = 24.0;
+const SETTINGS_TAB_HEIGHT: f32 = 22.0;
 const HOOK_MODAL_WIDTH: f32 = 860.0;
 const HOOK_MODAL_HEIGHT: f32 = 520.0;
 const HOOK_EVENT_ROW_HEIGHT: f32 = 20.0;
@@ -470,6 +598,51 @@ impl ModelOption {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ThemeSetting {
+    Dark,
+    Light,
+}
+
+impl Default for ThemeSetting {
+    fn default() -> Self {
+        ThemeSetting::Dark
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CoderSettings {
+    #[serde(default)]
+    theme: ThemeSetting,
+    #[serde(default = "default_font_size")]
+    font_size: f32,
+    #[serde(default = "default_auto_scroll")]
+    auto_scroll: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max_thinking_tokens: Option<u32>,
+    #[serde(default = "default_session_auto_save")]
+    session_auto_save: bool,
+    #[serde(default = "default_session_history_limit")]
+    session_history_limit: usize,
+}
+
+impl Default for CoderSettings {
+    fn default() -> Self {
+        Self {
+            theme: ThemeSetting::Dark,
+            font_size: default_font_size(),
+            auto_scroll: default_auto_scroll(),
+            model: None,
+            max_thinking_tokens: None,
+            session_auto_save: default_session_auto_save(),
+            session_history_limit: default_session_history_limit(),
+        }
+    }
+}
+
 /// Modal state for slash commands
 enum ModalState {
     None,
@@ -481,8 +654,391 @@ enum ModalState {
     Hooks { view: HookModalView, selected: usize },
     ToolList { selected: usize },
     PermissionRules,
-    Config,
+    Config {
+        tab: SettingsTab,
+        selected: usize,
+        search: String,
+        input_mode: SettingsInputMode,
+    },
     McpConfig { selected: usize },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SettingsTab {
+    General,
+    Model,
+    Permissions,
+    Sessions,
+    Mcp,
+    Hooks,
+    Keyboard,
+}
+
+impl SettingsTab {
+    fn all() -> &'static [SettingsTab] {
+        &[
+            SettingsTab::General,
+            SettingsTab::Model,
+            SettingsTab::Permissions,
+            SettingsTab::Sessions,
+            SettingsTab::Mcp,
+            SettingsTab::Hooks,
+            SettingsTab::Keyboard,
+        ]
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            SettingsTab::General => "General",
+            SettingsTab::Model => "Model",
+            SettingsTab::Permissions => "Permissions",
+            SettingsTab::Sessions => "Sessions",
+            SettingsTab::Mcp => "MCP",
+            SettingsTab::Hooks => "Hooks",
+            SettingsTab::Keyboard => "Keyboard",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SettingsInputMode {
+    Normal,
+    Search,
+    Capture(KeyAction),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SettingsItem {
+    Theme,
+    FontSize,
+    AutoScroll,
+    DefaultModel,
+    MaxThinkingTokens,
+    PermissionMode,
+    PermissionDefaultAllow,
+    PermissionRules,
+    PermissionAllowList,
+    PermissionDenyList,
+    PermissionBashAllowList,
+    PermissionBashDenyList,
+    SessionAutoSave,
+    SessionHistoryLimit,
+    SessionStoragePath,
+    McpSummary,
+    McpOpenConfig,
+    McpReloadProject,
+    McpRefreshStatus,
+    HookToolBlocker,
+    HookToolLogger,
+    HookOutputTruncator,
+    HookContextInjection,
+    HookTodoEnforcer,
+    HookOpenPanel,
+    Keybinding(KeyAction),
+    KeybindingReset,
+}
+
+struct SettingsRow {
+    item: SettingsItem,
+    label: String,
+    value: String,
+    hint: Option<String>,
+}
+
+#[derive(Clone)]
+struct SettingsSnapshot {
+    settings: CoderSettings,
+    selected_model: ModelOption,
+    permission_mode: Option<PermissionMode>,
+    permission_default_allow: bool,
+    permission_allow_count: usize,
+    permission_deny_count: usize,
+    permission_bash_allow_count: usize,
+    permission_bash_deny_count: usize,
+    mcp_project_count: usize,
+    mcp_runtime_count: usize,
+    mcp_disabled_count: usize,
+    hook_config: HookConfig,
+    keybindings: Vec<Keybinding>,
+}
+
+impl SettingsSnapshot {
+    fn from_state(state: &AppState) -> Self {
+        Self {
+            settings: state.settings.clone(),
+            selected_model: state.selected_model,
+            permission_mode: state.permission_mode.clone(),
+            permission_default_allow: state.permission_default_allow,
+            permission_allow_count: state.permission_allow_tools.len(),
+            permission_deny_count: state.permission_deny_tools.len(),
+            permission_bash_allow_count: state.permission_allow_bash_patterns.len(),
+            permission_bash_deny_count: state.permission_deny_bash_patterns.len(),
+            mcp_project_count: state.mcp_project_servers.len(),
+            mcp_runtime_count: state.mcp_runtime_servers.len(),
+            mcp_disabled_count: state.mcp_disabled_servers.len(),
+            hook_config: state.hook_config.clone(),
+            keybindings: state.keybindings.clone(),
+        }
+    }
+}
+
+fn settings_rows(snapshot: &SettingsSnapshot, tab: SettingsTab, search: &str) -> Vec<SettingsRow> {
+    let mut rows = Vec::new();
+    match tab {
+        SettingsTab::General => {
+            rows.push(SettingsRow {
+                item: SettingsItem::Theme,
+                label: "Theme".to_string(),
+                value: theme_label(snapshot.settings.theme).to_string(),
+                hint: Some("Enter/Left/Right to cycle".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::FontSize,
+                label: "Chat font size".to_string(),
+                value: format!("{:.0}px", snapshot.settings.font_size),
+                hint: Some("Left/Right to adjust".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::AutoScroll,
+                label: "Auto-scroll".to_string(),
+                value: if snapshot.settings.auto_scroll {
+                    "On".to_string()
+                } else {
+                    "Off".to_string()
+                },
+                hint: Some("Scroll on new output".to_string()),
+            });
+        }
+        SettingsTab::Model => {
+            rows.push(SettingsRow {
+                item: SettingsItem::DefaultModel,
+                label: "Default model".to_string(),
+                value: snapshot.selected_model.name().to_string(),
+                hint: Some("Left/Right to cycle".to_string()),
+            });
+            let thinking_value = snapshot
+                .settings
+                .max_thinking_tokens
+                .map(|tokens| tokens.to_string())
+                .unwrap_or_else(|| "Auto".to_string());
+            rows.push(SettingsRow {
+                item: SettingsItem::MaxThinkingTokens,
+                label: "Max thinking tokens".to_string(),
+                value: thinking_value,
+                hint: Some("Left/Right to adjust".to_string()),
+            });
+        }
+        SettingsTab::Permissions => {
+            let mode_text = snapshot
+                .permission_mode
+                .as_ref()
+                .map(permission_mode_label)
+                .unwrap_or("default")
+                .to_string();
+            rows.push(SettingsRow {
+                item: SettingsItem::PermissionMode,
+                label: "Permission mode".to_string(),
+                value: mode_text,
+                hint: Some("Left/Right to cycle".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::PermissionDefaultAllow,
+                label: "Default allow".to_string(),
+                value: if snapshot.permission_default_allow {
+                    "On".to_string()
+                } else {
+                    "Off".to_string()
+                },
+                hint: Some("Enter to toggle".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::PermissionAllowList,
+                label: "Allowed tools".to_string(),
+                value: format!("{} tools", snapshot.permission_allow_count),
+                hint: Some("Use /permission allow".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::PermissionDenyList,
+                label: "Denied tools".to_string(),
+                value: format!("{} tools", snapshot.permission_deny_count),
+                hint: Some("Use /permission deny".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::PermissionBashAllowList,
+                label: "Bash allow patterns".to_string(),
+                value: format!("{} patterns", snapshot.permission_bash_allow_count),
+                hint: Some("Use /permission allow".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::PermissionBashDenyList,
+                label: "Bash deny patterns".to_string(),
+                value: format!("{} patterns", snapshot.permission_bash_deny_count),
+                hint: Some("Use /permission deny".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::PermissionRules,
+                label: "Permission rules".to_string(),
+                value: "Open rules".to_string(),
+                hint: Some("Enter to open".to_string()),
+            });
+        }
+        SettingsTab::Sessions => {
+            rows.push(SettingsRow {
+                item: SettingsItem::SessionAutoSave,
+                label: "Auto-save sessions".to_string(),
+                value: if snapshot.settings.session_auto_save {
+                    "On".to_string()
+                } else {
+                    "Off".to_string()
+                },
+                hint: Some("Enter to toggle".to_string()),
+            });
+            let history_value = if snapshot.settings.session_history_limit == 0 {
+                "Unlimited".to_string()
+            } else {
+                snapshot.settings.session_history_limit.to_string()
+            };
+            rows.push(SettingsRow {
+                item: SettingsItem::SessionHistoryLimit,
+                label: "History limit".to_string(),
+                value: history_value,
+                hint: Some("0 = unlimited".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::SessionStoragePath,
+                label: "Session storage".to_string(),
+                value: sessions_dir().display().to_string(),
+                hint: None,
+            });
+        }
+        SettingsTab::Mcp => {
+            rows.push(SettingsRow {
+                item: SettingsItem::McpSummary,
+                label: "Configured servers".to_string(),
+                value: format!(
+                    "{} project · {} runtime · {} disabled",
+                    snapshot.mcp_project_count,
+                    snapshot.mcp_runtime_count,
+                    snapshot.mcp_disabled_count
+                ),
+                hint: None,
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::McpOpenConfig,
+                label: "Open MCP config".to_string(),
+                value: "Enter to open".to_string(),
+                hint: Some("Manage servers".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::McpReloadProject,
+                label: "Reload project MCP".to_string(),
+                value: "Enter to reload".to_string(),
+                hint: Some("Reads .mcp.json".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::McpRefreshStatus,
+                label: "Refresh MCP status".to_string(),
+                value: "Enter to refresh".to_string(),
+                hint: Some("Pulls live status".to_string()),
+            });
+        }
+        SettingsTab::Hooks => {
+            rows.push(SettingsRow {
+                item: SettingsItem::HookToolBlocker,
+                label: "ToolBlocker".to_string(),
+                value: if snapshot.hook_config.tool_blocker {
+                    "On".to_string()
+                } else {
+                    "Off".to_string()
+                },
+                hint: Some("Block dangerous tools".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::HookToolLogger,
+                label: "ToolLogger".to_string(),
+                value: if snapshot.hook_config.tool_logger {
+                    "On".to_string()
+                } else {
+                    "Off".to_string()
+                },
+                hint: Some("Log tool events".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::HookOutputTruncator,
+                label: "OutputTruncator".to_string(),
+                value: if snapshot.hook_config.output_truncator {
+                    "On".to_string()
+                } else {
+                    "Off".to_string()
+                },
+                hint: Some("Trim large outputs".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::HookContextInjection,
+                label: "ContextInjection".to_string(),
+                value: if snapshot.hook_config.context_injection {
+                    "On".to_string()
+                } else {
+                    "Off".to_string()
+                },
+                hint: Some("Inject CLAUDE.md".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::HookTodoEnforcer,
+                label: "TodoEnforcer".to_string(),
+                value: if snapshot.hook_config.todo_enforcer {
+                    "On".to_string()
+                } else {
+                    "Off".to_string()
+                },
+                hint: Some("Require TODO completion".to_string()),
+            });
+            rows.push(SettingsRow {
+                item: SettingsItem::HookOpenPanel,
+                label: "Open hook panel".to_string(),
+                value: "Enter to open".to_string(),
+                hint: Some("View hook events".to_string()),
+            });
+        }
+        SettingsTab::Keyboard => {
+            for action in KeyAction::all() {
+                let value = snapshot
+                    .keybindings
+                    .iter()
+                    .find(|binding| binding.action == *action)
+                    .map(format_keybinding)
+                    .unwrap_or_else(|| "Unbound".to_string());
+                rows.push(SettingsRow {
+                    item: SettingsItem::Keybinding(*action),
+                    label: action.label().to_string(),
+                    value,
+                    hint: Some("Enter to rebind".to_string()),
+                });
+            }
+            rows.push(SettingsRow {
+                item: SettingsItem::KeybindingReset,
+                label: "Reset keybindings".to_string(),
+                value: "Restore defaults".to_string(),
+                hint: None,
+            });
+        }
+    }
+
+    if search.trim().is_empty() {
+        return rows;
+    }
+    let needle = search.trim().to_ascii_lowercase();
+    rows.into_iter()
+        .filter(|row| {
+            row.label.to_ascii_lowercase().contains(&needle)
+                || row.value.to_ascii_lowercase().contains(&needle)
+                || row
+                    .hint
+                    .as_ref()
+                    .map(|hint| hint.to_ascii_lowercase().contains(&needle))
+                    .unwrap_or(false)
+        })
+        .collect()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -726,6 +1282,10 @@ fn config_file() -> PathBuf {
     config_dir().join("config.toml")
 }
 
+fn keybindings_file() -> PathBuf {
+    config_dir().join("keybindings.json")
+}
+
 fn permission_config_file() -> PathBuf {
     config_dir().join("permissions.json")
 }
@@ -752,6 +1312,212 @@ fn session_messages_file(session_id: &str) -> PathBuf {
 
 fn mcp_project_file(cwd: &Path) -> PathBuf {
     cwd.join(".mcp.json")
+}
+
+fn parse_legacy_model_setting(content: &str) -> Option<String> {
+    for line in content.lines() {
+        if let Some(model_id) = line.strip_prefix("model = \"").and_then(|s| s.strip_suffix("\"")) {
+            return Some(model_id.to_string());
+        }
+    }
+    None
+}
+
+fn load_settings() -> CoderSettings {
+    let path = config_file();
+    if let Ok(content) = fs::read_to_string(&path) {
+        if let Ok(mut settings) = toml::from_str::<CoderSettings>(&content) {
+            normalize_settings(&mut settings);
+            return settings;
+        }
+        let mut settings = CoderSettings::default();
+        settings.model = parse_legacy_model_setting(&content);
+        normalize_settings(&mut settings);
+        return settings;
+    }
+    CoderSettings::default()
+}
+
+fn save_settings(settings: &CoderSettings) {
+    let dir = config_dir();
+    if fs::create_dir_all(&dir).is_ok() {
+        if let Ok(content) = toml::to_string_pretty(settings) {
+            let _ = fs::write(config_file(), content);
+        }
+    }
+}
+
+fn settings_model_option(settings: &CoderSettings) -> ModelOption {
+    settings
+        .model
+        .as_deref()
+        .map(ModelOption::from_id)
+        .unwrap_or(ModelOption::Opus)
+}
+
+fn update_settings_model(settings: &mut CoderSettings, model: ModelOption) {
+    settings.model = Some(model.model_id().to_string());
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredModifiers {
+    shift: bool,
+    ctrl: bool,
+    alt: bool,
+    meta: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredKeybinding {
+    action: String,
+    key: String,
+    modifiers: StoredModifiers,
+}
+
+fn key_to_string(key: &UiKey) -> String {
+    match key {
+        UiKey::Named(named) => match named {
+            UiNamedKey::Enter => "Enter".to_string(),
+            UiNamedKey::Escape => "Escape".to_string(),
+            UiNamedKey::Backspace => "Backspace".to_string(),
+            UiNamedKey::Delete => "Delete".to_string(),
+            UiNamedKey::Tab => "Tab".to_string(),
+            UiNamedKey::Space => "Space".to_string(),
+            UiNamedKey::Home => "Home".to_string(),
+            UiNamedKey::End => "End".to_string(),
+            UiNamedKey::PageUp => "PageUp".to_string(),
+            UiNamedKey::PageDown => "PageDown".to_string(),
+            UiNamedKey::ArrowUp => "ArrowUp".to_string(),
+            UiNamedKey::ArrowDown => "ArrowDown".to_string(),
+            UiNamedKey::ArrowLeft => "ArrowLeft".to_string(),
+            UiNamedKey::ArrowRight => "ArrowRight".to_string(),
+            UiNamedKey::Unidentified => "Unidentified".to_string(),
+        },
+        UiKey::Character(text) => text.to_string(),
+    }
+}
+
+fn key_from_string(value: &str) -> Option<UiKey> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let named = match trimmed.to_ascii_lowercase().as_str() {
+        "enter" => Some(UiNamedKey::Enter),
+        "escape" => Some(UiNamedKey::Escape),
+        "backspace" => Some(UiNamedKey::Backspace),
+        "delete" => Some(UiNamedKey::Delete),
+        "tab" => Some(UiNamedKey::Tab),
+        "space" => Some(UiNamedKey::Space),
+        "home" => Some(UiNamedKey::Home),
+        "end" => Some(UiNamedKey::End),
+        "pageup" => Some(UiNamedKey::PageUp),
+        "pagedown" => Some(UiNamedKey::PageDown),
+        "arrowup" => Some(UiNamedKey::ArrowUp),
+        "arrowdown" => Some(UiNamedKey::ArrowDown),
+        "arrowleft" => Some(UiNamedKey::ArrowLeft),
+        "arrowright" => Some(UiNamedKey::ArrowRight),
+        _ => None,
+    };
+    if let Some(named) = named {
+        return Some(UiKey::Named(named));
+    }
+    Some(UiKey::Character(trimmed.to_ascii_lowercase()))
+}
+
+fn format_keybinding(binding: &Keybinding) -> String {
+    let mut parts = Vec::new();
+    if binding.modifiers.ctrl {
+        parts.push("Ctrl");
+    }
+    if binding.modifiers.alt {
+        parts.push("Alt");
+    }
+    if binding.modifiers.shift {
+        parts.push("Shift");
+    }
+    if binding.modifiers.meta {
+        parts.push("Meta");
+    }
+    let key_label = match &binding.key {
+        UiKey::Named(named) => match named {
+            UiNamedKey::Enter => "Enter".to_string(),
+            UiNamedKey::Escape => "Escape".to_string(),
+            UiNamedKey::Backspace => "Backspace".to_string(),
+            UiNamedKey::Delete => "Delete".to_string(),
+            UiNamedKey::Tab => "Tab".to_string(),
+            UiNamedKey::Space => "Space".to_string(),
+            UiNamedKey::Home => "Home".to_string(),
+            UiNamedKey::End => "End".to_string(),
+            UiNamedKey::PageUp => "PageUp".to_string(),
+            UiNamedKey::PageDown => "PageDown".to_string(),
+            UiNamedKey::ArrowUp => "ArrowUp".to_string(),
+            UiNamedKey::ArrowDown => "ArrowDown".to_string(),
+            UiNamedKey::ArrowLeft => "ArrowLeft".to_string(),
+            UiNamedKey::ArrowRight => "ArrowRight".to_string(),
+            UiNamedKey::Unidentified => "Key".to_string(),
+        },
+        UiKey::Character(text) => text.to_uppercase(),
+    };
+    parts.push(&key_label);
+    parts.join("+")
+}
+
+fn load_keybindings() -> Vec<Keybinding> {
+    let path = keybindings_file();
+    let Ok(content) = fs::read_to_string(&path) else {
+        return default_keybindings();
+    };
+    let Ok(entries) = serde_json::from_str::<Vec<StoredKeybinding>>(&content) else {
+        return default_keybindings();
+    };
+    let mut bindings = Vec::new();
+    for entry in entries {
+        let Some(action) = KeyAction::from_id(&entry.action) else {
+            continue;
+        };
+        let Some(key) = key_from_string(&entry.key) else {
+            continue;
+        };
+        let modifiers = UiModifiers {
+            shift: entry.modifiers.shift,
+            ctrl: entry.modifiers.ctrl,
+            alt: entry.modifiers.alt,
+            meta: entry.modifiers.meta,
+        };
+        bindings.push(Keybinding {
+            key,
+            modifiers,
+            action,
+        });
+    }
+    if bindings.is_empty() {
+        default_keybindings()
+    } else {
+        bindings
+    }
+}
+
+fn save_keybindings(bindings: &[Keybinding]) {
+    let dir = config_dir();
+    if fs::create_dir_all(&dir).is_ok() {
+        let entries: Vec<StoredKeybinding> = bindings
+            .iter()
+            .map(|binding| StoredKeybinding {
+                action: binding.action.id().to_string(),
+                key: key_to_string(&binding.key),
+                modifiers: StoredModifiers {
+                    shift: binding.modifiers.shift,
+                    ctrl: binding.modifiers.ctrl,
+                    alt: binding.modifiers.alt,
+                    meta: binding.modifiers.meta,
+                },
+            })
+            .collect();
+        if let Ok(content) = serde_json::to_string_pretty(&entries) {
+            let _ = fs::write(keybindings_file(), content);
+        }
+    }
 }
 
 fn expand_env_var_string(input: &str) -> String {
@@ -1790,11 +2556,59 @@ fn save_session_index(entries: &[SessionEntry]) -> io::Result<()> {
     Ok(())
 }
 
+fn apply_session_history_limit(entries: &mut Vec<SessionEntry>, limit: usize) -> Vec<String> {
+    entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    if limit == 0 {
+        return Vec::new();
+    }
+    if entries.len() <= limit {
+        return Vec::new();
+    }
+    entries
+        .drain(limit..)
+        .map(|entry| entry.id)
+        .collect()
+}
+
 fn build_markdown_document(source: &str) -> MarkdownDocument {
     let mut parser = StreamingMarkdown::new();
     parser.append(source);
     parser.complete();
     parser.document().clone()
+}
+
+fn build_markdown_config(settings: &CoderSettings) -> MarkdownConfig {
+    let palette = palette_for(settings.theme);
+    let mut config = MarkdownConfig::default();
+    config.base_font_size = settings.font_size;
+    config.text_color = palette.text_primary;
+    config.header_color = palette.text_primary;
+    config.code_background = palette.code_bg;
+    config.inline_code_background = palette.inline_code_bg;
+    config.link_color = palette.link;
+    config.blockquote_color = palette.blockquote;
+    config
+}
+
+fn build_markdown_renderer(settings: &CoderSettings) -> MdRenderer {
+    MdRenderer::with_config(build_markdown_config(settings))
+}
+
+fn build_input(settings: &CoderSettings) -> TextInput {
+    let palette = palette_for(settings.theme);
+    let mut input = TextInput::new()
+        .with_id(1)
+        .font_size(settings.font_size)
+        .padding(28.0, 10.0)
+        .background(palette.input_bg)
+        .border_color(palette.input_border)
+        .border_color_focused(palette.input_border_focused)
+        .text_color(palette.text_primary)
+        .placeholder_color(palette.text_dim)
+        .cursor_color(palette.text_primary)
+        .mono(true);
+    input.focus();
+    input
 }
 
 fn write_session_messages(session_id: &str, messages: &[ChatMessage]) -> io::Result<()> {
@@ -1851,28 +2665,6 @@ fn read_session_messages(session_id: &str) -> io::Result<Vec<ChatMessage>> {
         });
     }
     Ok(messages)
-}
-
-/// Load saved model from config
-fn load_saved_model() -> ModelOption {
-    let path = config_file();
-    if let Ok(content) = fs::read_to_string(&path) {
-        for line in content.lines() {
-            if let Some(model_id) = line.strip_prefix("model = \"").and_then(|s| s.strip_suffix("\"")) {
-                return ModelOption::from_id(model_id);
-            }
-        }
-    }
-    ModelOption::Opus // Default
-}
-
-/// Save model to config
-fn save_model(model: ModelOption) {
-    let dir = config_dir();
-    if fs::create_dir_all(&dir).is_ok() {
-        let content = format!("model = \"{}\"\n", model.model_id());
-        let _ = fs::write(config_file(), content);
-    }
 }
 
 /// Application state holding GPU and UI resources
@@ -1945,6 +2737,7 @@ struct AppState {
     modal_state: ModalState,
     #[allow(dead_code)]
     panel_layout: PanelLayout,
+    settings: CoderSettings,
     keybindings: Vec<Keybinding>,
     command_history: Vec<String>,
     permission_mode: Option<PermissionMode>,
@@ -2054,21 +2847,16 @@ impl ApplicationHandler for CoderApp {
             let scale_factor = window.scale_factor() as f32;
             let text_system = TextSystem::new(scale_factor);
             let event_context = EventContext::new();
+            let settings = load_settings();
+            let input = build_input(&settings);
 
-            // Create input with terminal styling - extra left padding for ">" prompt
-            let mut input = TextInput::new()
-                .with_id(1)
-                .font_size(14.0)
-                .padding(28.0, 10.0) // Extra left padding for prompt character
-                .background(Hsla::new(220.0, 0.15, 0.08, 1.0))
-                .border_color(Hsla::new(220.0, 0.15, 0.25, 1.0)) // Unfocused: dark gray
-                .border_color_focused(Hsla::new(0.0, 0.0, 1.0, 1.0)) // Focused: white
-                .mono(true);
-            input.focus();
-
-            // Load saved model preference
-            let saved_model = load_saved_model();
-            let session_index = load_session_index();
+            let selected_model = settings_model_option(&settings);
+            let mut session_index = load_session_index();
+            let removed_sessions =
+                apply_session_history_limit(&mut session_index, settings.session_history_limit);
+            if !removed_sessions.is_empty() {
+                let _ = save_session_index(&session_index);
+            }
             let permission_config = load_permission_config();
             let permission_default_allow =
                 default_allow_for_mode(permission_config.mode.as_ref(), permission_config.default_allow);
@@ -2101,7 +2889,7 @@ impl ApplicationHandler for CoderApp {
                 last_tick: Instant::now(),
                 messages: Vec::new(),
                 streaming_markdown: StreamingMarkdown::new(),
-                markdown_renderer: MdRenderer::new(),
+                markdown_renderer: build_markdown_renderer(&settings),
                 is_thinking: false,
                 response_rx: None,
                 query_control_tx: None,
@@ -2111,7 +2899,7 @@ impl ApplicationHandler for CoderApp {
                 current_tool_use_id: None,
                 tool_history: Vec::new(),
                 session_info: SessionInfo {
-                    model: saved_model.model_id().to_string(),
+                    model: selected_model.model_id().to_string(),
                     permission_mode: permission_mode_label,
                     ..Default::default()
                 },
@@ -2152,7 +2940,8 @@ impl ApplicationHandler for CoderApp {
                 hook_inspector_action_rx: None,
                 modal_state: ModalState::None,
                 panel_layout: PanelLayout::Single,
-                keybindings: default_keybindings(),
+                settings,
+                keybindings: load_keybindings(),
                 command_history: Vec::new(),
                 permission_mode: permission_config.mode,
                 permission_default_allow,
@@ -2177,7 +2966,7 @@ impl ApplicationHandler for CoderApp {
                 mcp_project_error,
                 mcp_status_error: None,
                 mcp_project_path,
-                selected_model: saved_model,
+                selected_model,
             }
         });
 
@@ -2824,6 +3613,7 @@ impl ApplicationHandler for CoderApp {
                                 KeyAction::OpenCommandPalette => {
                                     state.open_command_palette();
                                 }
+                                KeyAction::OpenSettings => state.open_config(),
                             }
                             state.window.request_redraw();
                             return;
@@ -2944,7 +3734,47 @@ impl AppState {
     }
 
     fn open_config(&mut self) {
-        self.modal_state = ModalState::Config;
+        self.modal_state = ModalState::Config {
+            tab: SettingsTab::General,
+            selected: 0,
+            search: String::new(),
+            input_mode: SettingsInputMode::Normal,
+        };
+    }
+
+    fn persist_settings(&self) {
+        save_settings(&self.settings);
+    }
+
+    fn apply_settings(&mut self) {
+        normalize_settings(&mut self.settings);
+        let current_value = self.input.get_value().to_string();
+        let focused = self.input.is_focused();
+        self.input = build_input(&self.settings);
+        self.input.set_value(current_value);
+        if focused {
+            self.input.focus();
+        }
+        self.markdown_renderer = build_markdown_renderer(&self.settings);
+    }
+
+    fn update_selected_model(&mut self, model: ModelOption) {
+        self.selected_model = model;
+        self.session_info.model = self.selected_model.model_id().to_string();
+        update_settings_model(&mut self.settings, self.selected_model);
+        self.persist_settings();
+    }
+
+    fn apply_session_history_limit(&mut self) {
+        let removed =
+            apply_session_history_limit(&mut self.session_index, self.settings.session_history_limit);
+        if !removed.is_empty() {
+            let _ = save_session_index(&self.session_index);
+            for removed_id in removed {
+                let _ = fs::remove_dir_all(session_messages_dir(&removed_id));
+            }
+            self.refresh_session_cards();
+        }
     }
 
     fn open_mcp_config(&mut self) {
@@ -4015,6 +4845,9 @@ impl AppState {
 
 impl AppState {
     fn record_session(&mut self) {
+        if !self.settings.session_auto_save {
+            return;
+        }
         let session_id = self.session_info.session_id.trim();
         if session_id.is_empty() {
             return;
@@ -4045,8 +4878,8 @@ impl AppState {
             });
         }
 
-        self.session_index
-            .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        let removed_sessions =
+            apply_session_history_limit(&mut self.session_index, self.settings.session_history_limit);
 
         if let Err(err) = save_session_index(&self.session_index) {
             tracing::error!("Failed to save session index: {}", err);
@@ -4058,6 +4891,9 @@ impl AppState {
             if let Err(err) = write_session_metadata(session_id, entry) {
                 tracing::error!("Failed to write session metadata: {}", err);
             }
+        }
+        for removed_id in removed_sessions {
+            let _ = fs::remove_dir_all(session_messages_dir(&removed_id));
         }
         self.refresh_session_cards();
         self.refresh_checkpoint_restore();
@@ -4152,6 +4988,8 @@ impl CoderApp {
         let setting_sources = state.setting_sources_for_query();
         let hook_config = state.hook_config.clone();
         let hook_scripts = state.hook_scripts.clone();
+        let max_thinking_tokens = state.settings.max_thinking_tokens;
+        let persist_session = state.settings.session_auto_save;
 
         // Spawn async query task
         let handle = self.runtime_handle.clone();
@@ -4161,6 +4999,9 @@ impl CoderApp {
                 .cwd(cwd)
                 .include_partial_messages(true) // Enable streaming deltas
                 .model(&model_id);
+
+            options.max_thinking_tokens = max_thinking_tokens;
+            options.persist_session = persist_session;
 
             if let Some(mode) = permission_mode.clone() {
                 options = options.permission_mode(mode);
@@ -4851,9 +5692,10 @@ impl CoderApp {
         // Build scene
         let mut scene = Scene::new();
         let bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
+        let palette = palette_for(state.settings.theme);
 
         // Dark terminal background
-        scene.draw_quad(Quad::new(bounds).with_background(Hsla::new(220.0, 0.15, 0.10, 1.0)));
+        scene.draw_quad(Quad::new(bounds).with_background(palette.background));
 
         let tool_layout = tool_panel_layout(
             logical_width,
@@ -4874,7 +5716,9 @@ impl CoderApp {
         let available_width = logical_width - OUTPUT_PADDING * 2.0;
 
         // Calculate max chars for user message wrapping
-        let char_width = 8.4;
+        let chat_font_size = state.settings.font_size;
+        let chat_line_height = (chat_font_size * 1.4).round();
+        let char_width = chat_font_size * 0.6;
         let max_chars = (available_width / char_width) as usize;
 
         // First pass: calculate heights for each message (compute once, use for both total and rendering)
@@ -4885,16 +5729,18 @@ impl CoderApp {
                 MessageRole::User => {
                     let content_with_prefix = format!("> {}", &msg.content);
                     let wrapped_lines = wrap_text(&content_with_prefix, max_chars);
-                    LINE_HEIGHT * 0.5 + wrapped_lines.len() as f32 * LINE_HEIGHT + LINE_HEIGHT * 0.5
+                    chat_line_height * 0.5
+                        + wrapped_lines.len() as f32 * chat_line_height
+                        + chat_line_height * 0.5
                 }
                 MessageRole::Assistant => {
                     if let Some(doc) = &msg.document {
                         let size = state.markdown_renderer.measure(doc, available_width, &mut state.text_system);
                         // Small buffer for measurement variance
-                        size.height + LINE_HEIGHT
+                        size.height + chat_line_height
                     } else {
                         let wrapped_lines = wrap_text(&msg.content, max_chars);
-                        wrapped_lines.len() as f32 * LINE_HEIGHT
+                        wrapped_lines.len() as f32 * chat_line_height
                     }
                 }
             };
@@ -4905,9 +5751,9 @@ impl CoderApp {
         let streaming_height = if !state.streaming_markdown.source().is_empty() {
             let doc = state.streaming_markdown.document();
             let size = state.markdown_renderer.measure(doc, available_width, &mut state.text_system);
-            size.height + LINE_HEIGHT
+            size.height + chat_line_height
         } else if state.is_thinking {
-            LINE_HEIGHT
+            chat_line_height
         } else {
             0.0
         };
@@ -4918,8 +5764,8 @@ impl CoderApp {
         state.scroll_offset = state.scroll_offset.clamp(0.0, max_scroll);
 
         // Auto-scroll to bottom when new content arrives and we were near the bottom
-        let was_near_bottom = state.scroll_offset >= max_scroll - LINE_HEIGHT * 2.0;
-        if state.is_thinking && was_near_bottom {
+        let was_near_bottom = state.scroll_offset >= max_scroll - chat_line_height * 2.0;
+        if state.settings.auto_scroll && state.is_thinking && was_near_bottom {
             state.scroll_offset = max_scroll;
         }
 
@@ -4938,24 +5784,24 @@ impl CoderApp {
             match msg.role {
                 MessageRole::User => {
                     // User messages: plain text with "> " prefix
-                    y += LINE_HEIGHT * 0.5; // Padding above user messages
+                    y += chat_line_height * 0.5; // Padding above user messages
                     let content_with_prefix = format!("> {}", &msg.content);
                     let wrapped_lines = wrap_text(&content_with_prefix, max_chars);
                     for line in &wrapped_lines {
                         // Only render if line ENDS before viewport_bottom
-                        if y + LINE_HEIGHT <= viewport_bottom && y + LINE_HEIGHT > viewport_top {
+                        if y + chat_line_height <= viewport_bottom && y + chat_line_height > viewport_top {
                             let text_run = state.text_system.layout_styled_mono(
                                 line,
                                 Point::new(OUTPUT_PADDING, y),
-                                14.0,
-                                Hsla::new(0.0, 0.0, 0.6, 1.0), // Gray
+                                chat_font_size,
+                                palette.user_text,
                                 wgpui::text::FontStyle::default(),
                             );
                             scene.draw_text(text_run);
                         }
-                        y += LINE_HEIGHT;
+                        y += chat_line_height;
                     }
-                    y += LINE_HEIGHT * 0.5; // Padding below user messages
+                    y += chat_line_height * 0.5; // Padding below user messages
                 }
                 MessageRole::Assistant => {
                     // Assistant messages: render with markdown
@@ -4978,17 +5824,19 @@ impl CoderApp {
                         let wrapped_lines = wrap_text(&msg.content, max_chars);
                         for line in &wrapped_lines {
                             // Only render if line ENDS before viewport_bottom
-                            if y + LINE_HEIGHT <= viewport_bottom && y + LINE_HEIGHT > viewport_top {
+                            if y + chat_line_height <= viewport_bottom
+                                && y + chat_line_height > viewport_top
+                            {
                                 let text_run = state.text_system.layout_styled_mono(
                                     line,
                                     Point::new(OUTPUT_PADDING, y),
-                                    14.0,
-                                    Hsla::new(180.0, 0.5, 0.7, 1.0), // Cyan
+                                    chat_font_size,
+                                    palette.assistant_text,
                                     wgpui::text::FontStyle::default(),
                                 );
                                 scene.draw_text(text_run);
                             }
-                            y += LINE_HEIGHT;
+                            y += chat_line_height;
                         }
                     }
                 }
@@ -5013,12 +5861,12 @@ impl CoderApp {
             y += streaming_height;
         } else if state.is_thinking {
             // Show thinking indicator
-            if y + LINE_HEIGHT <= viewport_bottom && y + LINE_HEIGHT > viewport_top {
+            if y + chat_line_height <= viewport_bottom && y + chat_line_height > viewport_top {
                 let text_run = state.text_system.layout_styled_mono(
                     "...",
                     Point::new(OUTPUT_PADDING, y),
-                    14.0,
-                    Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray
+                    chat_font_size,
+                    palette.thinking_text,
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(text_run);
@@ -5029,15 +5877,15 @@ impl CoderApp {
         if let Some(layout) = tool_layout {
             scene.draw_quad(
                 Quad::new(layout.bounds)
-                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
-                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0),
+                    .with_background(palette.tool_panel_bg)
+                    .with_border(palette.tool_panel_border, 1.0),
             );
 
             let header_run = state.text_system.layout_styled_mono(
                 "Tool history",
                 Point::new(layout.header_bounds.origin.x, layout.header_bounds.origin.y),
                 12.0,
-                Hsla::new(0.0, 0.0, 0.7, 1.0),
+                palette.text_secondary,
                 wgpui::text::FontStyle::default(),
             );
             scene.draw_text(header_run);
@@ -5083,7 +5931,7 @@ impl CoderApp {
                         );
                         paint_cx.scene.draw_quad(
                             Quad::new(bar_bounds)
-                                .with_background(Hsla::new(220.0, 0.15, 0.20, 1.0)),
+                                .with_background(palette.tool_progress_bg),
                         );
                         paint_cx.scene.draw_quad(
                             Quad::new(Bounds::new(
@@ -5092,7 +5940,7 @@ impl CoderApp {
                                 bar_bounds.size.width * ratio,
                                 bar_bounds.size.height,
                             ))
-                            .with_background(Hsla::new(200.0, 0.8, 0.6, 1.0)),
+                            .with_background(palette.tool_progress_fg),
                         );
                     }
                     if let Some(detail_bounds) = block.detail_bounds {
@@ -5111,7 +5959,7 @@ impl CoderApp {
             logical_width,
             logical_height - input_area_y,
         );
-        scene.draw_quad(Quad::new(input_area_bounds).with_background(Hsla::new(220.0, 0.15, 0.08, 1.0)));
+        scene.draw_quad(Quad::new(input_area_bounds).with_background(palette.input_bg));
 
         // Input box
         let input_bounds = Bounds::new(
@@ -5125,14 +5973,15 @@ impl CoderApp {
         state.input.paint(input_bounds, &mut paint_cx);
 
         // Draw ">" prompt inside input
+        let prompt_font = state.settings.font_size;
         let prompt_run = state.text_system.layout_styled_mono(
             ">",
             Point::new(
                 input_bounds.origin.x + 12.0,
-                input_bounds.origin.y + input_bounds.size.height * 0.5 - 7.0,
+                input_bounds.origin.y + input_bounds.size.height * 0.5 - prompt_font * 0.5,
             ),
-            14.0,
-            Hsla::new(0.0, 0.0, 0.6, 1.0), // Gray prompt
+            prompt_font,
+            palette.prompt,
             wgpui::text::FontStyle::default(),
         );
         scene.draw_text(prompt_run);
@@ -5147,7 +5996,7 @@ impl CoderApp {
                 &mode_text,
                 Point::new(OUTPUT_PADDING, status_y),
                 STATUS_BAR_FONT_SIZE,
-                Hsla::new(35.0, 0.8, 0.65, 1.0), // Brighter orange/yellow
+                palette.status_left,
                 wgpui::text::FontStyle::default(),
             );
             scene.draw_text(mode_run);
@@ -5185,7 +6034,7 @@ impl CoderApp {
                 &right_text,
                 Point::new(right_x, status_y),
                 STATUS_BAR_FONT_SIZE,
-                Hsla::new(0.0, 0.0, 0.55, 1.0), // Lighter gray
+                palette.status_right,
                 wgpui::text::FontStyle::default(),
             );
             scene.draw_text(right_run);
@@ -6369,19 +7218,24 @@ impl CoderApp {
                 );
                 scene.draw_text(footer_run);
             }
-            ModalState::Config => {
-                let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
+            ModalState::Config {
+                tab,
+                selected,
+                search,
+                input_mode,
+            } => {
+                let overlay = Quad::new(bounds).with_background(palette.overlay);
                 scene.draw_quad(overlay);
 
-                let modal_width = 600.0;
-                let modal_height = 320.0;
+                let modal_width = SETTINGS_MODAL_WIDTH;
+                let modal_height = SETTINGS_MODAL_HEIGHT;
                 let modal_x = (logical_width - modal_width) / 2.0;
                 let modal_y = (logical_height - modal_height) / 2.0;
                 let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
 
                 let modal_bg = Quad::new(modal_bounds)
-                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
-                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
+                    .with_background(palette.panel)
+                    .with_border(palette.panel_border, 1.0);
                 scene.draw_quad(modal_bg);
 
                 let mut y = modal_y + 16.0;
@@ -6389,96 +7243,170 @@ impl CoderApp {
                     "Settings",
                     Point::new(modal_x + 16.0, y),
                     14.0,
-                    Hsla::new(0.0, 0.0, 0.9, 1.0),
+                    palette.text_primary,
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(title_run);
                 y += 20.0;
 
-                let model_run = state.text_system.layout_styled_mono(
-                    &format!("Model: {}", state.selected_model.model_id()),
-                    Point::new(modal_x + 16.0, y),
-                    12.0,
-                    Hsla::new(0.0, 0.0, 0.6, 1.0),
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(model_run);
-                y += 18.0;
-
-                let mode_text = state
-                    .permission_mode
-                    .as_ref()
-                    .map(permission_mode_label)
-                    .unwrap_or("default");
-                let perm_run = state.text_system.layout_styled_mono(
-                    &format!("Permission mode: {}", mode_text),
-                    Point::new(modal_x + 16.0, y),
-                    12.0,
-                    Hsla::new(0.0, 0.0, 0.6, 1.0),
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(perm_run);
-                y += 18.0;
-
-                let output_style_text = state
-                    .output_style
-                    .clone()
-                    .unwrap_or_else(|| "default".to_string());
-                let output_run = state.text_system.layout_styled_mono(
-                    &format!("Output style: {}", output_style_text),
-                    Point::new(modal_x + 16.0, y),
-                    12.0,
-                    Hsla::new(0.0, 0.0, 0.6, 1.0),
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(output_run);
-                y += 18.0;
-
-                let session_run = state.text_system.layout_styled_mono(
-                    &format!("Session storage: {}", sessions_dir().display()),
-                    Point::new(modal_x + 16.0, y),
-                    12.0,
-                    Hsla::new(0.0, 0.0, 0.6, 1.0),
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(session_run);
-                y += 18.0;
-
-                let allowed_text = if state.tools_allowed.is_empty() {
-                    "Allowed tools: default".to_string()
+                let search_label = if matches!(input_mode, SettingsInputMode::Search) {
+                    format!("Search: {}_", search)
+                } else if search.trim().is_empty() {
+                    "Search: /".to_string()
                 } else {
-                    format!("Allowed tools: {}", state.tools_allowed.join(", "))
+                    format!("Search: {}", search)
                 };
-                let allowed_run = state.text_system.layout_styled_mono(
-                    &allowed_text,
+                let search_run = state.text_system.layout_styled_mono(
+                    &search_label,
                     Point::new(modal_x + 16.0, y),
                     12.0,
-                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    if matches!(input_mode, SettingsInputMode::Search) {
+                        palette.text_primary
+                    } else {
+                        palette.text_muted
+                    },
                     wgpui::text::FontStyle::default(),
                 );
-                scene.draw_text(allowed_run);
+                scene.draw_text(search_run);
                 y += 18.0;
 
-                let disallowed_text = if state.tools_disallowed.is_empty() {
-                    "Disallowed tools: none".to_string()
+                let tabs = SettingsTab::all();
+                let mut tab_x = modal_x + 16.0;
+                let tab_y = y;
+                for entry in tabs {
+                    let label = entry.label();
+                    let tab_width = (label.len() as f32 * 7.0).max(48.0);
+                    if *entry == *tab {
+                        let highlight = Quad::new(Bounds::new(
+                            tab_x - 6.0,
+                            tab_y - 2.0,
+                            tab_width + 12.0,
+                            SETTINGS_TAB_HEIGHT,
+                        ))
+                        .with_background(palette.panel_highlight);
+                        scene.draw_quad(highlight);
+                    }
+                    let tab_run = state.text_system.layout_styled_mono(
+                        label,
+                        Point::new(tab_x, tab_y),
+                        12.0,
+                        if *entry == *tab {
+                            palette.text_primary
+                        } else {
+                            palette.text_muted
+                        },
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(tab_run);
+                    tab_x += tab_width + 16.0;
+                }
+                y += SETTINGS_TAB_HEIGHT + 8.0;
+
+                let snapshot = SettingsSnapshot::from_state(state);
+                let rows = settings_rows(&snapshot, *tab, search);
+                let list_top = y;
+                let list_bottom = modal_y + modal_height - 48.0;
+                let max_visible =
+                    ((list_bottom - list_top) / SETTINGS_ROW_HEIGHT).floor().max(0.0) as usize;
+
+                if rows.is_empty() {
+                    let empty_run = state.text_system.layout_styled_mono(
+                        "No settings match this search.",
+                        Point::new(modal_x + 16.0, list_top),
+                        12.0,
+                        palette.text_dim,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(empty_run);
                 } else {
-                    format!("Disallowed tools: {}", state.tools_disallowed.join(", "))
-                };
-                let disallowed_run = state.text_system.layout_styled_mono(
-                    &disallowed_text,
-                    Point::new(modal_x + 16.0, y),
-                    12.0,
-                    Hsla::new(0.0, 0.0, 0.6, 1.0),
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(disallowed_run);
+                    let visible = rows.len().min(max_visible.max(1));
+                    let selected = (*selected).min(rows.len().saturating_sub(1));
+                    let mut start = selected.saturating_sub(visible / 2);
+                    if start + visible > rows.len() {
+                        start = rows.len().saturating_sub(visible);
+                    }
+                    let value_x = modal_x + modal_width * 0.55;
+                    let hint_x = modal_x + modal_width * 0.75;
+                    let capture_action = match input_mode {
+                        SettingsInputMode::Capture(action) => Some(*action),
+                        _ => None,
+                    };
+
+                    for idx in 0..visible {
+                        let index = start + idx;
+                        let row = &rows[index];
+                        let row_y = list_top + idx as f32 * SETTINGS_ROW_HEIGHT;
+                        let is_selected = index == selected;
+                        if is_selected {
+                            let highlight = Quad::new(Bounds::new(
+                                modal_x + 12.0,
+                                row_y - 2.0,
+                                modal_width - 24.0,
+                                SETTINGS_ROW_HEIGHT,
+                            ))
+                            .with_background(palette.panel_highlight);
+                            scene.draw_quad(highlight);
+                        }
+
+                        let label_run = state.text_system.layout_styled_mono(
+                            &row.label,
+                            Point::new(modal_x + 20.0, row_y),
+                            12.0,
+                            if is_selected {
+                                palette.text_primary
+                            } else {
+                                palette.text_muted
+                            },
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(label_run);
+
+                        let value_text = if let Some(action) = capture_action {
+                            if is_selected
+                                && matches!(row.item, SettingsItem::Keybinding(a) if a == action)
+                            {
+                                "Press keys...".to_string()
+                            } else {
+                                row.value.clone()
+                            }
+                        } else {
+                            row.value.clone()
+                        };
+                        let value_run = state.text_system.layout_styled_mono(
+                            &value_text,
+                            Point::new(value_x, row_y),
+                            12.0,
+                            palette.text_secondary,
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(value_run);
+
+                        if let Some(hint) = &row.hint {
+                            let hint_run = state.text_system.layout_styled_mono(
+                                hint,
+                                Point::new(hint_x, row_y),
+                                11.0,
+                                palette.text_faint,
+                                wgpui::text::FontStyle::default(),
+                            );
+                            scene.draw_text(hint_run);
+                        }
+                    }
+                }
 
                 y = modal_y + modal_height - 24.0;
+                let footer_text = match input_mode {
+                    SettingsInputMode::Search => "Type to search · Enter/Esc to finish",
+                    SettingsInputMode::Capture(_) => "Press new shortcut · Esc to cancel",
+                    SettingsInputMode::Normal => {
+                        "Tab to switch · / to search · Enter/Left/Right to change · Esc to close"
+                    }
+                };
                 let footer_run = state.text_system.layout_styled_mono(
-                    "Enter to close · Esc to exit",
+                    footer_text,
                     Point::new(modal_x + 16.0, y),
                     12.0,
-                    Hsla::new(0.0, 0.0, 0.4, 1.0),
+                    palette.text_faint,
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(footer_run);
@@ -7918,6 +8846,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
     } else {
         None
     };
+    let settings_snapshot = SettingsSnapshot::from_state(state);
     match &mut state.modal_state {
         ModalState::ModelPicker { selected } => {
             let selected = *selected;
@@ -7927,9 +8856,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 }
                 WinitKey::Named(WinitNamedKey::Enter) => {
                     let models = ModelOption::all();
-                    state.selected_model = models[selected];
-                    state.session_info.model = state.selected_model.model_id().to_string();
-                    save_model(state.selected_model);
+                    state.update_selected_model(models[selected]);
                     state.modal_state = ModalState::None;
                 }
                 WinitKey::Named(WinitNamedKey::ArrowUp) => {
@@ -7956,8 +8883,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                         _ => {}
                     }
                     if matches!(c.as_str(), "1" | "2" | "3") {
-                        state.session_info.model = state.selected_model.model_id().to_string();
-                        save_model(state.selected_model);
+                        state.update_selected_model(state.selected_model);
                         state.modal_state = ModalState::None;
                     }
                 }
@@ -8288,12 +9214,255 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             state.window.request_redraw();
             true
         }
-        ModalState::PermissionRules | ModalState::Config => {
+        ModalState::PermissionRules => {
             match key {
                 WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
                     state.modal_state = ModalState::None;
                 }
                 _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Config {
+            tab,
+            selected,
+            search,
+            input_mode,
+        } => {
+            let rows = settings_rows(&settings_snapshot, *tab, search);
+            if rows.is_empty() {
+                *selected = 0;
+            } else if *selected >= rows.len() {
+                *selected = rows.len().saturating_sub(1);
+            }
+            let current_item = rows.get(*selected).map(|row| row.item);
+            let shift = state.modifiers.shift_key();
+            let ctrl = state.modifiers.control_key();
+
+            let mut change_tab = |forward: bool| {
+                let tabs = SettingsTab::all();
+                let current_index = tabs.iter().position(|entry| entry == tab).unwrap_or(0);
+                let next_index = if forward {
+                    (current_index + 1) % tabs.len()
+                } else {
+                    (current_index + tabs.len() - 1) % tabs.len()
+                };
+                *tab = tabs[next_index];
+                *selected = 0;
+            };
+
+            match input_mode {
+                SettingsInputMode::Search => match key {
+                    WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                        *input_mode = SettingsInputMode::Normal;
+                    }
+                    WinitKey::Named(WinitNamedKey::Backspace) => {
+                        search.pop();
+                        *selected = 0;
+                    }
+                    WinitKey::Character(c) => {
+                        search.push_str(c.as_str());
+                        *selected = 0;
+                    }
+                    WinitKey::Named(WinitNamedKey::Tab) => {
+                        *input_mode = SettingsInputMode::Normal;
+                        change_tab(!shift);
+                    }
+                    _ => {}
+                },
+                SettingsInputMode::Capture(action) => match key {
+                    WinitKey::Named(WinitNamedKey::Escape) => {
+                        *input_mode = SettingsInputMode::Normal;
+                    }
+                    WinitKey::Named(WinitNamedKey::Backspace | WinitNamedKey::Delete) => {
+                        state.keybindings.retain(|binding| binding.action != *action);
+                        save_keybindings(&state.keybindings);
+                        *input_mode = SettingsInputMode::Normal;
+                    }
+                    _ => {
+                        if let Some(binding_key) = convert_key_for_binding(key) {
+                            let modifiers = convert_modifiers(&state.modifiers);
+                            state.keybindings.retain(|binding| {
+                                binding.action != *action
+                                    && !(binding.key == binding_key && binding.modifiers == modifiers)
+                            });
+                            state.keybindings.push(Keybinding {
+                                key: binding_key,
+                                modifiers,
+                                action: *action,
+                            });
+                            save_keybindings(&state.keybindings);
+                        }
+                        *input_mode = SettingsInputMode::Normal;
+                    }
+                },
+                SettingsInputMode::Normal => match key {
+                    WinitKey::Named(WinitNamedKey::Escape) => {
+                        state.modal_state = ModalState::None;
+                    }
+                    WinitKey::Named(WinitNamedKey::Tab) => {
+                        change_tab(!shift);
+                    }
+                    WinitKey::Named(WinitNamedKey::ArrowUp) => {
+                        if *selected > 0 {
+                            *selected -= 1;
+                        }
+                    }
+                    WinitKey::Named(WinitNamedKey::ArrowDown) => {
+                        if *selected + 1 < rows.len() {
+                            *selected += 1;
+                        }
+                    }
+                    WinitKey::Character(c) if (ctrl && c.eq_ignore_ascii_case("f")) || c == "/" => {
+                        *input_mode = SettingsInputMode::Search;
+                    }
+                    WinitKey::Named(WinitNamedKey::ArrowLeft)
+                    | WinitKey::Named(WinitNamedKey::ArrowRight)
+                    | WinitKey::Named(WinitNamedKey::Enter) => {
+                        let forward = !matches!(key, WinitKey::Named(WinitNamedKey::ArrowLeft));
+                        if let Some(item) = current_item {
+                            match item {
+                                SettingsItem::Theme => {
+                                    state.settings.theme = if state.settings.theme == ThemeSetting::Dark {
+                                        ThemeSetting::Light
+                                    } else {
+                                        ThemeSetting::Dark
+                                    };
+                                    state.apply_settings();
+                                    state.persist_settings();
+                                }
+                                SettingsItem::FontSize => {
+                                    let delta = if forward { 1.0 } else { -1.0 };
+                                    state.settings.font_size =
+                                        clamp_font_size(state.settings.font_size + delta);
+                                    state.apply_settings();
+                                    state.persist_settings();
+                                }
+                                SettingsItem::AutoScroll => {
+                                    state.settings.auto_scroll = !state.settings.auto_scroll;
+                                    state.persist_settings();
+                                }
+                                SettingsItem::DefaultModel => {
+                                    let next = cycle_model(state.selected_model, forward);
+                                    state.update_selected_model(next);
+                                }
+                                SettingsItem::MaxThinkingTokens => {
+                                    const THINKING_STEP: u32 = 256;
+                                    const THINKING_MAX: u32 = 8192;
+                                    let current = state.settings.max_thinking_tokens.unwrap_or(0);
+                                    let next = if forward {
+                                        let value = current.saturating_add(THINKING_STEP).min(THINKING_MAX);
+                                        Some(value)
+                                    } else if current <= THINKING_STEP {
+                                        None
+                                    } else {
+                                        Some(current - THINKING_STEP)
+                                    };
+                                    state.settings.max_thinking_tokens = next;
+                                    state.persist_settings();
+                                }
+                                SettingsItem::PermissionMode => {
+                                    let next = cycle_permission_mode(state.permission_mode.clone(), forward);
+                                    state.permission_mode = Some(next.clone());
+                                    state.permission_default_allow =
+                                        default_allow_for_mode(Some(&next), state.permission_default_allow);
+                                    state.session_info.permission_mode =
+                                        permission_mode_label(&next).to_string();
+                                    state.persist_permission_config();
+                                }
+                                SettingsItem::PermissionDefaultAllow => {
+                                    state.permission_default_allow = !state.permission_default_allow;
+                                    state.persist_permission_config();
+                                }
+                                SettingsItem::PermissionRules
+                                | SettingsItem::PermissionAllowList
+                                | SettingsItem::PermissionDenyList
+                                | SettingsItem::PermissionBashAllowList
+                                | SettingsItem::PermissionBashDenyList => {
+                                    state.open_permission_rules();
+                                }
+                                SettingsItem::SessionAutoSave => {
+                                    state.settings.session_auto_save = !state.settings.session_auto_save;
+                                    state.persist_settings();
+                                    if state.settings.session_auto_save {
+                                        state.apply_session_history_limit();
+                                    }
+                                }
+                                SettingsItem::SessionHistoryLimit => {
+                                    const HISTORY_STEP: usize = 10;
+                                    const HISTORY_MAX: usize = 500;
+                                    let current = state.settings.session_history_limit;
+                                    let next = if forward {
+                                        if current == 0 {
+                                            HISTORY_STEP
+                                        } else {
+                                            (current + HISTORY_STEP).min(HISTORY_MAX)
+                                        }
+                                    } else if current <= HISTORY_STEP {
+                                        0
+                                    } else {
+                                        current - HISTORY_STEP
+                                    };
+                                    state.settings.session_history_limit = next;
+                                    state.persist_settings();
+                                    state.apply_session_history_limit();
+                                }
+                                SettingsItem::SessionStoragePath | SettingsItem::McpSummary => {}
+                                SettingsItem::McpOpenConfig => {
+                                    state.open_mcp_config();
+                                }
+                                SettingsItem::McpReloadProject => {
+                                    state.reload_mcp_project_servers();
+                                    if let Some(err) = &state.mcp_project_error {
+                                        state.push_system_message(format!(
+                                            "MCP reload warning: {}",
+                                            err
+                                        ));
+                                    } else {
+                                        state.push_system_message(
+                                            "Reloaded MCP project config.".to_string(),
+                                        );
+                                    }
+                                }
+                                SettingsItem::McpRefreshStatus => {
+                                    state.request_mcp_status();
+                                }
+                                SettingsItem::HookToolBlocker => {
+                                    state.toggle_hook_setting(HookSetting::ToolBlocker);
+                                    save_hook_config(&state.hook_config);
+                                }
+                                SettingsItem::HookToolLogger => {
+                                    state.toggle_hook_setting(HookSetting::ToolLogger);
+                                    save_hook_config(&state.hook_config);
+                                }
+                                SettingsItem::HookOutputTruncator => {
+                                    state.toggle_hook_setting(HookSetting::OutputTruncator);
+                                    save_hook_config(&state.hook_config);
+                                }
+                                SettingsItem::HookContextInjection => {
+                                    state.toggle_hook_setting(HookSetting::ContextInjection);
+                                    save_hook_config(&state.hook_config);
+                                }
+                                SettingsItem::HookTodoEnforcer => {
+                                    state.toggle_hook_setting(HookSetting::TodoEnforcer);
+                                    save_hook_config(&state.hook_config);
+                                }
+                                SettingsItem::HookOpenPanel => {
+                                    state.open_hooks();
+                                }
+                                SettingsItem::Keybinding(action) => {
+                                    *input_mode = SettingsInputMode::Capture(action);
+                                }
+                                SettingsItem::KeybindingReset => {
+                                    state.keybindings = default_keybindings();
+                                    save_keybindings(&state.keybindings);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                },
             }
             state.window.request_redraw();
             true
@@ -8357,6 +9526,44 @@ fn convert_key_for_binding(key: &WinitKey) -> Option<UiKey> {
         }
         _ => None,
     }
+}
+
+fn cycle_model(current: ModelOption, forward: bool) -> ModelOption {
+    let models = ModelOption::all();
+    let idx = models
+        .iter()
+        .position(|model| *model == current)
+        .unwrap_or(0);
+    let next = if forward {
+        (idx + 1) % models.len()
+    } else {
+        (idx + models.len() - 1) % models.len()
+    };
+    models[next]
+}
+
+fn cycle_permission_mode(current: Option<PermissionMode>, forward: bool) -> PermissionMode {
+    let modes = [
+        PermissionMode::Default,
+        PermissionMode::Plan,
+        PermissionMode::AcceptEdits,
+        PermissionMode::BypassPermissions,
+        PermissionMode::DontAsk,
+    ];
+    let idx = match current {
+        Some(PermissionMode::Default) => 0,
+        Some(PermissionMode::Plan) => 1,
+        Some(PermissionMode::AcceptEdits) => 2,
+        Some(PermissionMode::BypassPermissions) => 3,
+        Some(PermissionMode::DontAsk) => 4,
+        None => 0,
+    };
+    let next = if forward {
+        (idx + 1) % modes.len()
+    } else {
+        (idx + modes.len() - 1) % modes.len()
+    };
+    modes[next].clone()
 }
 
 fn permission_mode_label(mode: &PermissionMode) -> &'static str {
