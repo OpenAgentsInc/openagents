@@ -256,6 +256,31 @@ impl NostrBridge {
         self.keypair.public_key_hex()
     }
 
+    /// Create a generic event with specified kind, content, and tags.
+    ///
+    /// This is useful for creating custom events outside of the standard trace flow.
+    pub fn create_event(
+        &self,
+        kind: u16,
+        content: &str,
+        tags: Vec<Vec<String>>,
+    ) -> Result<Event> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let template = EventTemplate {
+            created_at: now,
+            kind,
+            tags,
+            content: content.to_string(),
+        };
+
+        let event = finalize_event(&template, &self.keypair.private_key)?;
+        Ok(event)
+    }
+
     /// Get the public key bytes.
     pub fn public_key(&self) -> [u8; 32] {
         self.keypair.public_key

@@ -1,8 +1,10 @@
 pub mod chat;
 pub mod pylon_sandbox;
+pub mod swarm_dispatch;
 
 pub use chat::*;
 pub use pylon_sandbox::*;
+pub use swarm_dispatch::*;
 
 use crate::{Chat, Example, LM, Message, MetaSignature, Prediction};
 use anyhow::Result;

@@ -455,6 +455,70 @@ let refined = Refine::new(predictor)
 
 ---
 
+## Retrieval & Swarm Integration (Wave 4)
+
+**What it is:** Multi-lane retrieval system and optimizable signatures for agent exploration, plus swarm job dispatch for parallel execution.
+
+**Key paths:**
+- `crates/dsrs/src/retrieval/` — Multi-lane retrieval backends
+- `crates/dsrs/src/signatures/` — 9 optimizable DSPy signatures
+- `crates/dsrs/src/adapter/swarm_dispatch.rs` — NIP-90 job dispatch
+
+**Retrieval Backends:**
+```rust
+use dsrs::retrieval::{LaneRouter, RetrievalConfig};
+
+// Auto-detect available backends
+let router = LaneRouter::auto_detect("/path/to/repo").await?;
+
+// Query specific lane
+let (results, stats) = router.query_lane("ripgrep", "fn main", &config).await?;
+
+// Query all lanes in parallel
+let all_results = router.query_all("error handling", &config).await?;
+```
+
+| Lane | Backend | Best For |
+|------|---------|----------|
+| `ripgrep` | rg | Text/regex search, error messages, identifiers |
+| `lsp` | ctags/rg | Function/struct definitions, symbol navigation |
+| `semantic` | Ollama/OpenAI | Conceptual queries, natural language |
+| `git` | git log/blame | Who changed what, recent modifications |
+
+**Signatures (9 total):**
+
+| Signature | Purpose |
+|-----------|---------|
+| `QueryComposerSignature` | Turn goals + failures into search queries |
+| `RetrievalRouterSignature` | Pick lane and K for queries |
+| `CandidateRerankSignature` | Rerank results (maps to `oa.retrieval_rerank.v1`) |
+| `ChunkTaskSelectorSignature` | Decide analysis tasks per chunk |
+| `ChunkAnalysisToActionSignature` | Aggregate findings into actions |
+| `SandboxProfileSelectionSignature` | Choose S/M/L resources |
+| `FailureTriageSignature` | Diagnose failures, suggest fixes |
+| `LaneBudgeterSignature` | Allocate budget across lanes |
+| `AgentMemorySignature` | Detect redundant queries |
+
+**Swarm Dispatch:**
+```rust
+use dsrs::adapter::SwarmDispatcher;
+
+let dispatcher = SwarmDispatcher::generate()
+    .with_relays(vec!["wss://nexus.openagents.com".into()])
+    .with_budget(5000);
+
+// Dispatch chunk analysis to swarm
+let result = dispatcher.dispatch_chunk_analysis(
+    "Summarize this code",
+    Some("User is debugging authentication"),
+    chunk,
+).await?;
+```
+
+**Documentation:** See [crates/dsrs/docs/](./crates/dsrs/docs/README.md) for full API reference.
+
+---
+
 ## WGPUI
 
 **What it is:** GPU-accelerated UI rendering library. WebGPU/Vulkan/Metal/DX12 via wgpu.
@@ -636,7 +700,7 @@ Issues are NOT done unless:
 | Runtime | In progress | Tick engine, filesystem, /compute, /containers, /claude |
 | Autopilot | Alpha | Claude SDK integration, tunnel mode |
 | Autopilot DSPy | Wave 3 | Planning, Execution, Verification + Compiler Contract |
-| dsrs | **Wave 3** | Callbacks, Manifest, TraceContract, NostrBridge, Sandbox |
+| dsrs | **Wave 4** | Retrieval, Signatures, Swarm Dispatch (see Wave 3 + Wave 4) |
 | WGPUI | Phase 16 | 377 tests, full component library |
 | RLM | Working | Claude + Ollama backends, MCP tools |
 | RLM DSPy | Wave 1 | DspyOrchestrator, provenance signatures |

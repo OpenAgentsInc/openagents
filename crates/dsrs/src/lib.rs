@@ -6,6 +6,8 @@ pub mod evaluate;
 pub mod manifest;
 pub mod optimizer;
 pub mod predictors;
+pub mod retrieval;
+pub mod signatures;
 pub mod trace;
 pub mod utils;
 
