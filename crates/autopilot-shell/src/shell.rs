@@ -17,7 +17,8 @@ use wgpui::{
     components::hud::{Frame, StatusBar, StatusItem, StatusItemContent},
     components::molecules::{CollapsibleSection, SectionStatus},
     components::organisms::{ChildTool, ThreadEntry, ThreadEntryType, ToolCallCard},
-    components::sections::ThreadView,
+    components::sections::{MessageEditor, ThreadView},
+    input::{Key, NamedKey},
     keymap::{KeyContext, Keymap},
 };
 
@@ -36,6 +37,8 @@ struct ShellLayout {
     center: Bounds,
     right: Bounds,
     status: Bounds,
+    /// Bounds for the message editor at bottom of center area
+    editor: Bounds,
 }
 
 /// Main shell component combining HUD effects with dock-based layout
@@ -53,6 +56,9 @@ pub struct AutopilotShell {
 
     // Center content
     thread_view: ThreadView,
+
+    // Prompt input editor (at bottom of center area)
+    message_editor: MessageEditor,
 
     // HUD layers
     background: HudBackground,
@@ -168,6 +174,11 @@ impl AutopilotShell {
                 .copyable_text("Autopilot ready."),
         );
 
+        // Message editor for prompt input
+        let message_editor = MessageEditor::new()
+            .placeholder("Enter a task or select an issue...")
+            .show_mode_badge(false);
+
         // Status bar
         let status_bar = StatusBar::new().items(vec![
             StatusItem::text("phase", "Idle").left(),
@@ -246,10 +257,11 @@ impl AutopilotShell {
             sessions_panel,
             system_panel,
             thread_view,
+            message_editor,
             background: HudBackground::new(),
             startup: None, // Skip startup animation, show UI immediately
             status_bar,
-            runtime: AutopilotRuntime::new(ClaudeModel::Sonnet),
+            runtime: AutopilotRuntime::new_idle(ClaudeModel::Sonnet),
             last_line_count: 0,
             last_section_count: 0,
             expanded_sections: HashSet::new(), // All sections start collapsed
@@ -306,6 +318,11 @@ impl AutopilotShell {
             ThreadEntry::new(ThreadEntryType::System, Text::new("Session resumed."))
                 .copyable_text("Session resumed."),
         );
+
+        // Message editor for prompt input
+        let message_editor = MessageEditor::new()
+            .placeholder("Enter a task or select an issue...")
+            .show_mode_badge(false);
 
         // Status bar
         let status_bar = StatusBar::new().items(vec![
@@ -378,6 +395,7 @@ impl AutopilotShell {
             sessions_panel,
             system_panel,
             thread_view,
+            message_editor,
             background: HudBackground::new(),
             startup: None,
             status_bar,
@@ -862,30 +880,42 @@ impl AutopilotShell {
 
     fn calculate_layout(&self, bounds: Bounds) -> ShellLayout {
         let status_h = 28.0;
+        let editor_h = 64.0; // MessageEditor height
 
         let left_w = self.left_dock.effective_size();
         let right_w = self.right_dock.effective_size();
         let bottom_h = self.bottom_dock.effective_size();
 
+        // Total height reserved at bottom: status + editor + bottom dock
+        let reserved_h = status_h + editor_h + bottom_h;
+
         let left = Bounds::new(
             bounds.origin.x,
             bounds.origin.y,
             left_w,
-            bounds.size.height - status_h - bottom_h,
+            bounds.size.height - reserved_h,
         );
 
         let right = Bounds::new(
             bounds.origin.x + bounds.size.width - right_w,
             bounds.origin.y,
             right_w,
-            bounds.size.height - status_h - bottom_h,
+            bounds.size.height - reserved_h,
         );
 
         let center = Bounds::new(
             bounds.origin.x + left_w,
             bounds.origin.y,
             bounds.size.width - left_w - right_w,
-            bounds.size.height - status_h - bottom_h,
+            bounds.size.height - reserved_h,
+        );
+
+        // Editor at bottom of center area, above status bar
+        let editor = Bounds::new(
+            bounds.origin.x + left_w,
+            bounds.origin.y + bounds.size.height - status_h - editor_h - bottom_h,
+            bounds.size.width - left_w - right_w,
+            editor_h,
         );
 
         let status = Bounds::new(
@@ -900,6 +930,7 @@ impl AutopilotShell {
             center,
             right,
             status,
+            editor,
         }
     }
 
@@ -1540,6 +1571,16 @@ impl Component for AutopilotShell {
         );
         self.thread_view.paint(thread_bounds, cx);
 
+        // 6b. Paint message editor (with padding to match center area)
+        let editor_padding = 24.0;
+        let editor_bounds = Bounds::new(
+            layout.editor.origin.x + editor_padding,
+            layout.editor.origin.y,
+            layout.editor.size.width - editor_padding * 2.0,
+            layout.editor.size.height,
+        );
+        self.message_editor.paint(editor_bounds, cx);
+
         // 7. Paint status bar
         self.status_bar.paint(layout.status, cx);
     }
@@ -1613,6 +1654,45 @@ impl Component for AutopilotShell {
             if let EventResult::Handled = self.system_panel.event(event, panel_bounds, cx) {
                 return EventResult::Handled;
             }
+        }
+
+        // Route to message editor (with padding)
+        let editor_padding = 24.0;
+        let editor_bounds = Bounds::new(
+            layout.editor.origin.x + editor_padding,
+            layout.editor.origin.y,
+            layout.editor.size.width - editor_padding * 2.0,
+            layout.editor.size.height,
+        );
+
+        // Handle Enter key press to start a run when editor is focused
+        if let InputEvent::KeyDown { key, .. } = event {
+            if let Key::Named(NamedKey::Enter) = key {
+                if self.message_editor.is_focused() && !self.message_editor.is_streaming() {
+                    let value = self.message_editor.value().trim().to_string();
+                    if !value.is_empty() {
+                        // Start the autopilot run
+                        self.runtime.start_run(value.clone());
+                        self.message_editor.clear();
+
+                        // Add user message to thread view
+                        self.thread_view.push_entry(
+                            ThreadEntry::new(ThreadEntryType::User, Text::new(&value))
+                                .copyable_text(&value),
+                        );
+
+                        // Enable full auto to start ticking
+                        self.full_auto_toggle.set_enabled(true);
+
+                        return EventResult::Handled;
+                    }
+                }
+            }
+        }
+
+        // Route other events to message editor
+        if let EventResult::Handled = self.message_editor.event(event, editor_bounds, cx) {
+            return EventResult::Handled;
         }
 
         // Route to thread view

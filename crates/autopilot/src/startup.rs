@@ -134,6 +134,8 @@ impl StartupSection {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub enum StartupPhase {
+    /// Idle - waiting for user to provide a prompt or select an issue
+    Idle,
     CheckingOpenCode,
     CheckingOpenAgents,
     CopyingAuth,
@@ -166,6 +168,8 @@ impl StartupPhase {
     /// Map a phase to its logical section for UI grouping.
     pub fn section(&self) -> StartupSection {
         match self {
+            StartupPhase::Idle => StartupSection::Claude, // Idle shows in main area
+
             StartupPhase::CheckingOpenCode
             | StartupPhase::CheckingOpenAgents
             | StartupPhase::CopyingAuth
@@ -228,6 +232,8 @@ pub struct StartupState {
     pylon_started: bool,
     // Session usage tracking (accumulated from ClaudeToken::Usage)
     pub session_usage: ClaudeUsageData,
+    /// User-provided prompt for this session (if started from UI)
+    pub user_prompt: Option<String>,
 }
 
 impl StartupState {
@@ -281,7 +287,85 @@ impl StartupState {
             compute_mix: None,
             pylon_started: false,
             session_usage: ClaudeUsageData::default(),
+            user_prompt: None,
         }
+    }
+
+    /// Create a new state in Idle mode, waiting for user input.
+    pub fn new_idle(model: ClaudeModel) -> Self {
+        let session_id = generate_session_id();
+        let session_logger = SessionLogger::new(&session_id).ok();
+        let start_time = Local::now();
+        let start_instant = Instant::now();
+
+        Self {
+            lines: vec![],
+            phase: StartupPhase::Idle,
+            phase_started: 0.0,
+            preflight_config: None,
+            model,
+            stream_receiver: None,
+            gpt_oss_buffer: String::new(),
+            issue_summary: None,
+            gpt_oss_assessment: None,
+            claude_receiver: None,
+            claude_session_id: None,
+            claude_events: Vec::new(),
+            claude_full_text: String::new(),
+            plan_path: None,
+            exec_receiver: None,
+            exec_session_id: None,
+            exec_events: Vec::new(),
+            exec_full_text: String::new(),
+            review_receiver: None,
+            review_session_id: None,
+            review_events: Vec::new(),
+            review_full_text: String::new(),
+            iteration: 1,
+            session_logger,
+            session_id,
+            start_time,
+            start_instant,
+            verification_runner: None,
+            last_checklist: None,
+            fix_receiver: None,
+            fix_session_id: None,
+            fix_events: Vec::new(),
+            fix_full_text: String::new(),
+            force_stopped: false,
+            force_stop_reason: None,
+            report_path: None,
+            compute_mix: None,
+            pylon_started: false,
+            session_usage: ClaudeUsageData::default(),
+            user_prompt: None,
+        }
+    }
+
+    /// Create a new state with a specific prompt, ready to start execution.
+    pub fn new_with_prompt(prompt: String, model: ClaudeModel) -> Self {
+        let mut state = Self::with_model(model);
+        state.user_prompt = Some(prompt);
+        state
+    }
+
+    /// Start execution from Idle state with a prompt.
+    pub fn start_with_prompt(&mut self, prompt: String) {
+        self.user_prompt = Some(prompt);
+        if self.phase == StartupPhase::Idle {
+            self.phase = StartupPhase::CheckingOpenCode;
+            self.phase_started = self.start_instant.elapsed().as_secs_f32();
+        }
+    }
+
+    /// Check if currently in idle state.
+    pub fn is_idle(&self) -> bool {
+        self.phase == StartupPhase::Idle
+    }
+
+    /// Check if the session is running (not idle and not complete).
+    pub fn is_running(&self) -> bool {
+        !matches!(self.phase, StartupPhase::Idle | StartupPhase::Complete)
     }
 
     pub fn add_line(&mut self, text: &str, status: LogStatus, elapsed: f32) {
@@ -313,6 +397,10 @@ impl StartupState {
         let phase_time = elapsed - self.phase_started;
 
         match self.phase {
+            StartupPhase::Idle => {
+                // Do nothing in Idle - waiting for user input via start_with_prompt()
+            }
+
             StartupPhase::CheckingOpenCode => {
                 if self.lines.is_empty() {
                     self.add_line("Checking OpenCode auth...", LogStatus::Pending, elapsed);
@@ -2623,6 +2711,7 @@ impl StartupState {
             compute_mix: None,
             pylon_started: false,
             session_usage: ClaudeUsageData::default(), // Not persisted in checkpoint yet
+            user_prompt: None, // Not persisted in checkpoint yet
         }
     }
 
