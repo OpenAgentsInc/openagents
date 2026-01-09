@@ -22,14 +22,20 @@ use winit::window::{Window, WindowId};
 
 use claude_agent_sdk::permissions::{CallbackPermissionHandler, PermissionRequest};
 use claude_agent_sdk::protocol::{PermissionMode, PermissionResult};
-use claude_agent_sdk::{query_with_permissions, McpServerConfig, QueryOptions, SdkMessage};
+use claude_agent_sdk::{
+    query_with_permissions, AgentDefinition, AgentModel, McpServerConfig, QueryOptions, SdkMessage,
+    SettingSource,
+};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use claude_agent_sdk::protocol::McpServerStatus;
-use wgpui::components::atoms::{PermissionAction, SessionStatus, ToolStatus, ToolType};
+use wgpui::components::atoms::{
+    AgentStatus, AgentType, PermissionAction, SessionStatus, ToolStatus, ToolType,
+};
 use wgpui::components::molecules::{
-    CheckpointRestore, SessionAction, SessionCard, SessionInfo as SessionCardInfo,
+    AgentProfileCard, AgentProfileInfo, CheckpointRestore, SessionAction, SessionCard,
+    SessionInfo as SessionCardInfo, SkillCard, SkillCategory, SkillInfo, SkillInstallStatus,
 };
 use wgpui::components::organisms::{
     DiffLine, DiffLineKind, DiffToolCall, PermissionDialog, PermissionType, SearchMatch,
@@ -109,6 +115,7 @@ const SESSION_MODAL_HEIGHT: f32 = 520.0;
 const SESSION_CARD_HEIGHT: f32 = 100.0;
 const SESSION_CARD_GAP: f32 = 12.0;
 const SESSION_MODAL_PADDING: f32 = 16.0;
+const SKILL_CARD_HEIGHT: f32 = 110.0;
 const TOOL_PANEL_MAX_HEIGHT: f32 = 260.0;
 const TOOL_PANEL_MAX_CARDS: usize = 4;
 const TOOL_PANEL_PADDING: f32 = 12.0;
@@ -330,6 +337,30 @@ struct SessionCardEvent {
     session_id: String,
 }
 
+#[derive(Clone, Debug)]
+struct AgentCardEvent {
+    action: AgentCardAction,
+    agent_id: String,
+}
+
+#[derive(Clone, Debug)]
+enum AgentCardAction {
+    Select,
+    ToggleActive,
+}
+
+#[derive(Clone, Debug)]
+struct SkillCardEvent {
+    action: SkillCardAction,
+    skill_id: String,
+}
+
+#[derive(Clone, Debug)]
+enum SkillCardAction {
+    View,
+    Install,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct PermissionConfig {
@@ -429,6 +460,8 @@ enum ModalState {
     ModelPicker { selected: usize },
     CommandPalette { selected: usize },
     SessionList { selected: usize },
+    AgentList { selected: usize },
+    SkillList { selected: usize },
     ToolList { selected: usize },
     PermissionRules,
     Config,
@@ -447,6 +480,47 @@ struct McpServerEntry {
     config: Option<McpServerConfig>,
     status: Option<String>,
     disabled: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum AgentSource {
+    Project,
+    User,
+}
+
+#[derive(Clone, Debug)]
+struct AgentEntry {
+    name: String,
+    definition: AgentDefinition,
+    source: AgentSource,
+    created_at: Option<u64>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SkillSource {
+    Project,
+    User,
+}
+
+#[derive(Clone, Debug)]
+struct SkillEntry {
+    info: SkillInfo,
+    source: SkillSource,
+    path: PathBuf,
+}
+
+struct AgentCatalog {
+    entries: Vec<AgentEntry>,
+    error: Option<String>,
+    project_path: Option<PathBuf>,
+    user_path: Option<PathBuf>,
+}
+
+struct SkillCatalog {
+    entries: Vec<SkillEntry>,
+    error: Option<String>,
+    project_path: Option<PathBuf>,
+    user_path: Option<PathBuf>,
 }
 
 /// Get the config directory path
@@ -715,6 +789,506 @@ fn load_mcp_project_servers(cwd: &Path) -> (HashMap<String, McpServerConfig>, Op
     (servers, error)
 }
 
+#[derive(Default)]
+struct Frontmatter {
+    scalars: HashMap<String, String>,
+    lists: HashMap<String, Vec<String>>,
+}
+
+fn normalize_frontmatter_key(key: &str) -> String {
+    key.trim()
+        .to_ascii_lowercase()
+        .replace('-', "_")
+        .replace(' ', "_")
+}
+
+fn strip_quotes(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.len() >= 2 {
+        let bytes = trimmed.as_bytes();
+        let first = bytes[0] as char;
+        let last = bytes[bytes.len() - 1] as char;
+        if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+            return trimmed[1..trimmed.len() - 1].to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
+fn is_list_key(key: &str) -> bool {
+    matches!(
+        key,
+        "tools"
+            | "allowed_tools"
+            | "disallowed_tools"
+            | "tags"
+            | "categories"
+            | "capabilities"
+            | "skills"
+    )
+}
+
+fn parse_list_values(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(|item| strip_quotes(item).trim().to_string())
+        .filter(|item| !item.is_empty())
+        .collect()
+}
+
+fn parse_inline_list(value: &str) -> Option<Vec<String>> {
+    let trimmed = value.trim();
+    if trimmed.starts_with('[') && trimmed.ends_with(']') && trimmed.len() >= 2 {
+        let inner = &trimmed[1..trimmed.len() - 1];
+        return Some(parse_list_values(inner));
+    }
+    None
+}
+
+fn parse_frontmatter(contents: &str) -> (Frontmatter, String) {
+    let mut frontmatter = Frontmatter::default();
+    let mut lines = contents.lines();
+    let Some(first) = lines.next() else {
+        return (frontmatter, contents.to_string());
+    };
+    if first.trim() != "---" {
+        return (frontmatter, contents.to_string());
+    }
+
+    let mut frontmatter_lines = Vec::new();
+    let mut body_lines = Vec::new();
+    let mut in_frontmatter = true;
+
+    for line in lines {
+        if in_frontmatter && line.trim() == "---" {
+            in_frontmatter = false;
+            continue;
+        }
+        if in_frontmatter {
+            frontmatter_lines.push(line);
+        } else {
+            body_lines.push(line);
+        }
+    }
+
+    if in_frontmatter {
+        return (Frontmatter::default(), contents.to_string());
+    }
+
+    let mut current_list_key: Option<String> = None;
+    for raw_line in frontmatter_lines {
+        let line = raw_line.trim_end();
+        if line.trim().is_empty() {
+            continue;
+        }
+        let stripped = line.trim_start();
+        if stripped.starts_with('-') {
+            if let Some(key) = current_list_key.as_ref() {
+                let item = stripped.trim_start_matches('-').trim();
+                if !item.is_empty() {
+                    frontmatter
+                        .lists
+                        .entry(key.clone())
+                        .or_default()
+                        .push(strip_quotes(item));
+                }
+                continue;
+            }
+        }
+        current_list_key = None;
+        let Some((raw_key, raw_value)) = line.split_once(':') else {
+            continue;
+        };
+        let key = normalize_frontmatter_key(raw_key);
+        let value = raw_value.trim();
+        if value.is_empty() {
+            current_list_key = Some(key.clone());
+            frontmatter.lists.entry(key).or_default();
+            continue;
+        }
+        if let Some(list) = parse_inline_list(value) {
+            frontmatter.lists.insert(key, list);
+            continue;
+        }
+        if is_list_key(&key) {
+            frontmatter.lists.insert(key, parse_list_values(value));
+        } else {
+            frontmatter
+                .scalars
+                .insert(key, strip_quotes(value));
+        }
+    }
+
+    (frontmatter, body_lines.join("\n"))
+}
+
+fn frontmatter_scalar(frontmatter: &Frontmatter, key: &str) -> Option<String> {
+    let normalized = normalize_frontmatter_key(key);
+    frontmatter.scalars.get(&normalized).cloned()
+}
+
+fn frontmatter_list(frontmatter: &Frontmatter, key: &str) -> Option<Vec<String>> {
+    let normalized = normalize_frontmatter_key(key);
+    frontmatter.lists.get(&normalized).cloned()
+}
+
+fn first_nonempty_line(text: &str) -> Option<String> {
+    text.lines()
+        .map(|line| line.trim())
+        .find(|line| !line.is_empty())
+        .map(|line| line.to_string())
+}
+
+fn parse_agent_model(value: &str) -> Option<AgentModel> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "sonnet" => Some(AgentModel::Sonnet),
+        "opus" => Some(AgentModel::Opus),
+        "haiku" => Some(AgentModel::Haiku),
+        "inherit" => Some(AgentModel::Inherit),
+        _ => None,
+    }
+}
+
+fn parse_price_sats(value: &str) -> Option<u64> {
+    let digits: String = value.chars().filter(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        None
+    } else {
+        digits.parse().ok()
+    }
+}
+
+fn parse_u32(value: &str) -> Option<u32> {
+    value.trim().parse().ok()
+}
+
+fn parse_f32(value: &str) -> Option<f32> {
+    value.trim().parse().ok()
+}
+
+fn parse_skill_category(frontmatter: &Frontmatter) -> SkillCategory {
+    let mut candidates = Vec::new();
+    if let Some(value) = frontmatter_scalar(frontmatter, "category") {
+        candidates.push(value);
+    }
+    if let Some(list) = frontmatter_list(frontmatter, "categories") {
+        candidates.extend(list);
+    }
+    if let Some(list) = frontmatter_list(frontmatter, "tags") {
+        candidates.extend(list);
+    }
+
+    for candidate in candidates {
+        let normalized = candidate.to_ascii_lowercase();
+        if normalized.contains("code") || normalized.contains("generation") {
+            return SkillCategory::CodeGeneration;
+        }
+        if normalized.contains("data")
+            || normalized.contains("analysis")
+            || normalized.contains("analytics")
+        {
+            return SkillCategory::DataAnalysis;
+        }
+        if normalized.contains("web")
+            || normalized.contains("browser")
+            || normalized.contains("automation")
+            || normalized.contains("scrape")
+        {
+            return SkillCategory::WebAutomation;
+        }
+        if normalized.contains("file")
+            || normalized.contains("filesystem")
+            || normalized.contains("document")
+        {
+            return SkillCategory::FileProcessing;
+        }
+        if normalized.contains("api") || normalized.contains("integration") || normalized.contains("http") {
+            return SkillCategory::ApiIntegration;
+        }
+        if normalized.contains("text") || normalized.contains("nlp") || normalized.contains("writing") {
+            return SkillCategory::TextProcessing;
+        }
+        if normalized.contains("image") || normalized.contains("vision") || normalized.contains("ocr") {
+            return SkillCategory::ImageProcessing;
+        }
+    }
+
+    SkillCategory::Other
+}
+
+fn agent_project_dir(cwd: &Path) -> PathBuf {
+    cwd.join(".claude").join("agents")
+}
+
+fn agent_user_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|home| home.join(".claude").join("agents"))
+}
+
+fn skill_project_dir(cwd: &Path) -> PathBuf {
+    cwd.join(".claude").join("skills")
+}
+
+fn skill_user_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|home| home.join(".claude").join("skills"))
+}
+
+fn file_timestamp(path: &Path) -> Option<u64> {
+    fs::metadata(path)
+        .ok()
+        .and_then(|meta| meta.modified().ok())
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs())
+}
+
+fn load_agent_entries(cwd: &Path) -> AgentCatalog {
+    let project_dir = agent_project_dir(cwd);
+    let user_dir = agent_user_dir();
+    let mut errors = Vec::new();
+    let mut map: HashMap<String, AgentEntry> = HashMap::new();
+
+    if let Some(user_dir) = user_dir.as_ref() {
+        for entry in load_agent_dir(user_dir, AgentSource::User, &mut errors) {
+            map.insert(entry.name.clone(), entry);
+        }
+    }
+    for entry in load_agent_dir(&project_dir, AgentSource::Project, &mut errors) {
+        map.insert(entry.name.clone(), entry);
+    }
+
+    let mut entries: Vec<AgentEntry> = map.into_values().collect();
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+
+    AgentCatalog {
+        entries,
+        error: if errors.is_empty() {
+            None
+        } else {
+            Some(errors.join(" | "))
+        },
+        project_path: Some(project_dir),
+        user_path: user_dir,
+    }
+}
+
+fn load_agent_dir(dir: &Path, source: AgentSource, errors: &mut Vec<String>) -> Vec<AgentEntry> {
+    if !dir.is_dir() {
+        return Vec::new();
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            errors.push(format!("Failed to read {}: {}", dir.display(), err));
+            return Vec::new();
+        }
+    };
+
+    let mut agents = Vec::new();
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                errors.push(format!("Failed to read agent entry: {}", err));
+                continue;
+            }
+        };
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let is_md = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("md"))
+            .unwrap_or(false);
+        if !is_md {
+            continue;
+        }
+        match parse_agent_file(&path, source) {
+            Ok(Some(agent)) => agents.push(agent),
+            Ok(None) => {}
+            Err(err) => errors.push(err),
+        }
+    }
+    agents
+}
+
+fn parse_agent_file(path: &Path, source: AgentSource) -> Result<Option<AgentEntry>, String> {
+    let content = fs::read_to_string(path)
+        .map_err(|err| format!("Failed to read {}: {}", path.display(), err))?;
+    let (frontmatter, body) = parse_frontmatter(&content);
+    let name = frontmatter_scalar(&frontmatter, "name")
+        .or_else(|| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(|stem| stem.to_string())
+        })
+        .unwrap_or_default();
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(format!("Agent file {} missing name.", path.display()));
+    }
+
+    let description = frontmatter_scalar(&frontmatter, "description")
+        .unwrap_or_else(|| format!("Agent {}", name));
+    let prompt = body.trim();
+    let prompt = if !prompt.is_empty() {
+        prompt.to_string()
+    } else if !description.trim().is_empty() {
+        description.clone()
+    } else {
+        format!("You are {}.", name)
+    };
+
+    let tools = frontmatter_list(&frontmatter, "tools")
+        .or_else(|| frontmatter_list(&frontmatter, "allowed_tools"))
+        .map(sanitize_tokens)
+        .filter(|list| !list.is_empty());
+    let disallowed_tools = frontmatter_list(&frontmatter, "disallowed_tools")
+        .map(sanitize_tokens)
+        .filter(|list| !list.is_empty());
+    let model = frontmatter_scalar(&frontmatter, "model").and_then(|value| parse_agent_model(&value));
+
+    let definition = AgentDefinition {
+        description: description.clone(),
+        prompt,
+        tools,
+        disallowed_tools,
+        model,
+        critical_system_reminder_experimental: None,
+    };
+
+    Ok(Some(AgentEntry {
+        name,
+        definition,
+        source,
+        created_at: file_timestamp(path),
+    }))
+}
+
+fn load_skill_entries(cwd: &Path) -> SkillCatalog {
+    let project_dir = skill_project_dir(cwd);
+    let user_dir = skill_user_dir();
+    let mut errors = Vec::new();
+    let mut entries = Vec::new();
+
+    if let Some(user_dir) = user_dir.as_ref() {
+        entries.extend(load_skill_dir(user_dir, SkillSource::User, &mut errors));
+    }
+    entries.extend(load_skill_dir(&project_dir, SkillSource::Project, &mut errors));
+
+    entries.sort_by(|a, b| a.info.name.cmp(&b.info.name));
+
+    SkillCatalog {
+        entries,
+        error: if errors.is_empty() {
+            None
+        } else {
+            Some(errors.join(" | "))
+        },
+        project_path: Some(project_dir),
+        user_path: user_dir,
+    }
+}
+
+fn load_skill_dir(dir: &Path, source: SkillSource, errors: &mut Vec<String>) -> Vec<SkillEntry> {
+    if !dir.is_dir() {
+        return Vec::new();
+    }
+
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            errors.push(format!("Failed to read {}: {}", dir.display(), err));
+            return Vec::new();
+        }
+    };
+
+    let mut skills = Vec::new();
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                errors.push(format!("Failed to read skill entry: {}", err));
+                continue;
+            }
+        };
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let skill_file = path.join("SKILL.md");
+        let skill_file = if skill_file.is_file() {
+            skill_file
+        } else {
+            let alt = path.join("skill.md");
+            if alt.is_file() {
+                alt
+            } else {
+                continue;
+            }
+        };
+        match parse_skill_file(&skill_file, source) {
+            Ok(Some(skill)) => skills.push(skill),
+            Ok(None) => {}
+            Err(err) => errors.push(err),
+        }
+    }
+    skills
+}
+
+fn parse_skill_file(path: &Path, source: SkillSource) -> Result<Option<SkillEntry>, String> {
+    let content = fs::read_to_string(path)
+        .map_err(|err| format!("Failed to read {}: {}", path.display(), err))?;
+    let (frontmatter, body) = parse_frontmatter(&content);
+    let folder_name = path
+        .parent()
+        .and_then(|parent| parent.file_name())
+        .and_then(|name| name.to_str())
+        .unwrap_or("skill");
+    let name = frontmatter_scalar(&frontmatter, "name")
+        .unwrap_or_else(|| folder_name.to_string());
+    let description = frontmatter_scalar(&frontmatter, "description")
+        .or_else(|| first_nonempty_line(&body))
+        .unwrap_or_else(|| "No description provided.".to_string());
+
+    let category = parse_skill_category(&frontmatter);
+    let author =
+        frontmatter_scalar(&frontmatter, "author").unwrap_or_else(|| "unknown".to_string());
+    let version =
+        frontmatter_scalar(&frontmatter, "version").unwrap_or_else(|| "1.0.0".to_string());
+    let price = frontmatter_scalar(&frontmatter, "price_sats")
+        .or_else(|| frontmatter_scalar(&frontmatter, "price"))
+        .and_then(|value| parse_price_sats(&value));
+    let downloads = frontmatter_scalar(&frontmatter, "downloads").and_then(|value| parse_u32(&value));
+    let rating = frontmatter_scalar(&frontmatter, "rating").and_then(|value| parse_f32(&value));
+
+    let id = match source {
+        SkillSource::Project => format!("project:{}", folder_name),
+        SkillSource::User => format!("user:{}", folder_name),
+    };
+
+    let mut info = SkillInfo::new(id, name, description)
+        .status(SkillInstallStatus::Installed)
+        .category(category)
+        .author(author)
+        .version(version);
+    if let Some(price) = price {
+        info = info.price(price);
+    }
+    if let Some(downloads) = downloads {
+        info = info.downloads(downloads);
+    }
+    if let Some(rating) = rating {
+        info = info.rating(rating);
+    }
+
+    Ok(Some(SkillEntry {
+        info,
+        source,
+        path: path.to_path_buf(),
+    }))
+}
+
 fn parse_mcp_status(value: &Value) -> Result<Vec<McpServerStatus>, String> {
     if let Some(servers_value) = value
         .get("mcp_servers")
@@ -902,6 +1476,21 @@ struct AppState {
     checkpoint_entries: Vec<CheckpointEntry>,
     checkpoint_action_tx: Option<mpsc::UnboundedSender<usize>>,
     checkpoint_action_rx: Option<mpsc::UnboundedReceiver<usize>>,
+    agent_entries: Vec<AgentEntry>,
+    agent_cards: Vec<AgentProfileCard>,
+    agent_action_tx: Option<mpsc::UnboundedSender<AgentCardEvent>>,
+    agent_action_rx: Option<mpsc::UnboundedReceiver<AgentCardEvent>>,
+    active_agent: Option<String>,
+    agent_project_path: Option<PathBuf>,
+    agent_user_path: Option<PathBuf>,
+    agent_load_error: Option<String>,
+    skill_entries: Vec<SkillEntry>,
+    skill_cards: Vec<SkillCard>,
+    skill_action_tx: Option<mpsc::UnboundedSender<SkillCardEvent>>,
+    skill_action_rx: Option<mpsc::UnboundedReceiver<SkillCardEvent>>,
+    skill_project_path: Option<PathBuf>,
+    skill_user_path: Option<PathBuf>,
+    skill_load_error: Option<String>,
     // Modal state for slash commands
     modal_state: ModalState,
     #[allow(dead_code)]
@@ -1042,6 +1631,8 @@ impl ApplicationHandler for CoderApp {
             let cwd = std::env::current_dir().unwrap_or_default();
             let (mcp_project_servers, mcp_project_error) = load_mcp_project_servers(&cwd);
             let mcp_project_path = Some(mcp_project_file(&cwd));
+            let agent_catalog = load_agent_entries(&cwd);
+            let skill_catalog = load_skill_entries(&cwd);
 
             AppState {
                 window,
@@ -1082,6 +1673,21 @@ impl ApplicationHandler for CoderApp {
                 checkpoint_entries: Vec::new(),
                 checkpoint_action_tx: None,
                 checkpoint_action_rx: None,
+                agent_entries: agent_catalog.entries,
+                agent_cards: Vec::new(),
+                agent_action_tx: None,
+                agent_action_rx: None,
+                active_agent: None,
+                agent_project_path: agent_catalog.project_path,
+                agent_user_path: agent_catalog.user_path,
+                agent_load_error: agent_catalog.error,
+                skill_entries: skill_catalog.entries,
+                skill_cards: Vec::new(),
+                skill_action_tx: None,
+                skill_action_rx: None,
+                skill_project_path: skill_catalog.project_path,
+                skill_user_path: skill_catalog.user_path,
+                skill_load_error: skill_catalog.error,
                 modal_state: ModalState::None,
                 panel_layout: PanelLayout::Single,
                 keybindings: default_keybindings(),
@@ -1131,6 +1737,8 @@ impl ApplicationHandler for CoderApp {
         self.poll_responses();
         self.poll_permissions();
         self.poll_session_actions();
+        self.poll_agent_actions();
+        self.poll_skill_actions();
 
         let Some(state) = &mut self.state else {
             return;
@@ -1222,6 +1830,74 @@ impl ApplicationHandler for CoderApp {
                             EventResult::Handled
                         ) {
                             handled = true;
+                        }
+                    }
+                    if handled {
+                        state.window.request_redraw();
+                    }
+                    return;
+                }
+                if matches!(state.modal_state, ModalState::AgentList { .. }) {
+                    let selected = match &state.modal_state {
+                        ModalState::AgentList { selected } => *selected,
+                        _ => 0,
+                    };
+                    if state.agent_cards.len() != state.agent_entries.len() {
+                        state.refresh_agent_cards();
+                    }
+                    let modal_y = (logical_height - SESSION_MODAL_HEIGHT) / 2.0;
+                    let content_top = agent_modal_content_top(modal_y, state);
+                    let layout = agent_list_layout(
+                        logical_width,
+                        logical_height,
+                        state.agent_cards.len(),
+                        selected,
+                        content_top,
+                    );
+                    let input_event = InputEvent::MouseMove { x, y };
+                    let mut handled = false;
+                    for (index, bounds) in layout.card_bounds {
+                        if let Some(card) = state.agent_cards.get_mut(index) {
+                            if matches!(
+                                card.event(&input_event, bounds, &mut state.event_context),
+                                EventResult::Handled
+                            ) {
+                                handled = true;
+                            }
+                        }
+                    }
+                    if handled {
+                        state.window.request_redraw();
+                    }
+                    return;
+                }
+                if matches!(state.modal_state, ModalState::SkillList { .. }) {
+                    let selected = match &state.modal_state {
+                        ModalState::SkillList { selected } => *selected,
+                        _ => 0,
+                    };
+                    if state.skill_cards.len() != state.skill_entries.len() {
+                        state.refresh_skill_cards();
+                    }
+                    let modal_y = (logical_height - SESSION_MODAL_HEIGHT) / 2.0;
+                    let content_top = skill_modal_content_top(modal_y, state);
+                    let layout = skill_list_layout(
+                        logical_width,
+                        logical_height,
+                        state.skill_cards.len(),
+                        selected,
+                        content_top,
+                    );
+                    let input_event = InputEvent::MouseMove { x, y };
+                    let mut handled = false;
+                    for (index, bounds) in layout.card_bounds {
+                        if let Some(card) = state.skill_cards.get_mut(index) {
+                            if matches!(
+                                card.event(&input_event, bounds, &mut state.event_context),
+                                EventResult::Handled
+                            ) {
+                                handled = true;
+                            }
                         }
                     }
                     if handled {
@@ -1336,6 +2012,72 @@ impl ApplicationHandler for CoderApp {
                             EventResult::Handled
                         ) {
                             handled = true;
+                        }
+                    }
+                    if handled {
+                        state.window.request_redraw();
+                    }
+                    return;
+                }
+                if matches!(state.modal_state, ModalState::AgentList { .. }) {
+                    let selected = match &state.modal_state {
+                        ModalState::AgentList { selected } => *selected,
+                        _ => 0,
+                    };
+                    if state.agent_cards.len() != state.agent_entries.len() {
+                        state.refresh_agent_cards();
+                    }
+                    let modal_y = (logical_height - SESSION_MODAL_HEIGHT) / 2.0;
+                    let content_top = agent_modal_content_top(modal_y, state);
+                    let layout = agent_list_layout(
+                        logical_width,
+                        logical_height,
+                        state.agent_cards.len(),
+                        selected,
+                        content_top,
+                    );
+                    let mut handled = false;
+                    for (index, bounds) in layout.card_bounds {
+                        if let Some(card) = state.agent_cards.get_mut(index) {
+                            if matches!(
+                                card.event(&input_event, bounds, &mut state.event_context),
+                                EventResult::Handled
+                            ) {
+                                handled = true;
+                            }
+                        }
+                    }
+                    if handled {
+                        state.window.request_redraw();
+                    }
+                    return;
+                }
+                if matches!(state.modal_state, ModalState::SkillList { .. }) {
+                    let selected = match &state.modal_state {
+                        ModalState::SkillList { selected } => *selected,
+                        _ => 0,
+                    };
+                    if state.skill_cards.len() != state.skill_entries.len() {
+                        state.refresh_skill_cards();
+                    }
+                    let modal_y = (logical_height - SESSION_MODAL_HEIGHT) / 2.0;
+                    let content_top = skill_modal_content_top(modal_y, state);
+                    let layout = skill_list_layout(
+                        logical_width,
+                        logical_height,
+                        state.skill_cards.len(),
+                        selected,
+                        content_top,
+                    );
+                    let mut handled = false;
+                    for (index, bounds) in layout.card_bounds {
+                        if let Some(card) = state.skill_cards.get_mut(index) {
+                            if matches!(
+                                card.event(&input_event, bounds, &mut state.event_context),
+                                EventResult::Handled
+                            ) {
+                                handled = true;
+                            }
                         }
                     }
                     if handled {
@@ -1563,6 +2305,31 @@ impl AppState {
         self.modal_state = ModalState::SessionList { selected };
     }
 
+    fn open_agent_list(&mut self) {
+        let (action_tx, action_rx) = mpsc::unbounded_channel();
+        self.agent_action_tx = Some(action_tx);
+        self.agent_action_rx = Some(action_rx);
+        self.refresh_agent_cards();
+        let selected = self
+            .active_agent
+            .as_ref()
+            .and_then(|name| {
+                self.agent_entries
+                    .iter()
+                    .position(|entry| entry.name == *name)
+            })
+            .unwrap_or(0);
+        self.modal_state = ModalState::AgentList { selected };
+    }
+
+    fn open_skill_list(&mut self) {
+        let (action_tx, action_rx) = mpsc::unbounded_channel();
+        self.skill_action_tx = Some(action_tx);
+        self.skill_action_rx = Some(action_rx);
+        self.refresh_skill_cards();
+        self.modal_state = ModalState::SkillList { selected: 0 };
+    }
+
     fn open_tool_list(&mut self) {
         self.modal_state = ModalState::ToolList { selected: 0 };
     }
@@ -1577,6 +2344,35 @@ impl AppState {
 
     fn open_mcp_config(&mut self) {
         self.modal_state = ModalState::McpConfig { selected: 0 };
+    }
+
+    fn reload_agents(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let catalog = load_agent_entries(&cwd);
+        self.agent_entries = catalog.entries;
+        self.agent_project_path = catalog.project_path;
+        self.agent_user_path = catalog.user_path;
+        self.agent_load_error = catalog.error;
+        if let Some(active) = self.active_agent.clone() {
+            if !self.agent_entries.iter().any(|entry| entry.name == active) {
+                self.active_agent = None;
+                self.push_system_message(format!(
+                    "Active agent {} no longer available.",
+                    active
+                ));
+            }
+        }
+        self.refresh_agent_cards();
+    }
+
+    fn reload_skills(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let catalog = load_skill_entries(&cwd);
+        self.skill_entries = catalog.entries;
+        self.skill_project_path = catalog.project_path;
+        self.skill_user_path = catalog.user_path;
+        self.skill_load_error = catalog.error;
+        self.refresh_skill_cards();
     }
 
     fn reload_mcp_project_servers(&mut self) {
@@ -1725,6 +2521,94 @@ impl AppState {
             .collect();
     }
 
+    fn refresh_agent_cards(&mut self) {
+        let action_tx = self.agent_action_tx.clone();
+        let active_agent = self.active_agent.clone();
+        let is_thinking = self.is_thinking;
+        self.agent_cards = self
+            .agent_entries
+            .iter()
+            .map(|entry| {
+                let status = if active_agent
+                    .as_ref()
+                    .map(|name| name == &entry.name)
+                    .unwrap_or(false)
+                {
+                    if is_thinking {
+                        AgentStatus::Busy
+                    } else {
+                        AgentStatus::Online
+                    }
+                } else {
+                    AgentStatus::Idle
+                };
+                let agent_type = match entry.source {
+                    AgentSource::Project => AgentType::Sovereign,
+                    AgentSource::User => AgentType::Custodial,
+                };
+                let created_at = entry
+                    .created_at
+                    .map(format_relative_time)
+                    .unwrap_or_else(|| "unknown".to_string());
+                let info = AgentProfileInfo::new(&entry.name, &entry.name, agent_type)
+                    .status(status)
+                    .description(entry.definition.description.clone())
+                    .capabilities(agent_capabilities(entry))
+                    .created_at(created_at);
+                let mut card = AgentProfileCard::new(info);
+                if let Some(tx) = action_tx.clone() {
+                    let tx_view = tx.clone();
+                    let agent_id_view = entry.name.clone();
+                    let agent_id_action = entry.name.clone();
+                    card = card
+                        .on_view(move |_id| {
+                            let _ = tx_view.send(AgentCardEvent {
+                                action: AgentCardAction::Select,
+                                agent_id: agent_id_view.clone(),
+                            });
+                        })
+                        .on_action(move |_id| {
+                            let _ = tx.send(AgentCardEvent {
+                                action: AgentCardAction::ToggleActive,
+                                agent_id: agent_id_action.clone(),
+                            });
+                        });
+                }
+                card
+            })
+            .collect();
+    }
+
+    fn refresh_skill_cards(&mut self) {
+        let action_tx = self.skill_action_tx.clone();
+        self.skill_cards = self
+            .skill_entries
+            .iter()
+            .map(|entry| {
+                let mut card = SkillCard::new(entry.info.clone());
+                if let Some(tx) = action_tx.clone() {
+                    let view_tx = tx.clone();
+                    let skill_id_view = entry.info.id.clone();
+                    let skill_id_action = entry.info.id.clone();
+                    card = card
+                        .on_view(move |_id| {
+                            let _ = view_tx.send(SkillCardEvent {
+                                action: SkillCardAction::View,
+                                skill_id: skill_id_view.clone(),
+                            });
+                        })
+                        .on_install(move |_id| {
+                            let _ = tx.send(SkillCardEvent {
+                                action: SkillCardAction::Install,
+                                skill_id: skill_id_action.clone(),
+                            });
+                        });
+                }
+                card
+            })
+            .collect();
+    }
+
     fn refresh_checkpoint_restore(&mut self) {
         let entries = build_checkpoint_entries(&self.messages);
         let labels = entries.iter().map(|entry| entry.label.clone()).collect();
@@ -1754,6 +2638,120 @@ impl AppState {
                 self.push_system_message("Session delete not implemented yet.".to_string());
             }
         }
+    }
+
+    fn handle_agent_card_action(&mut self, action: AgentCardAction, agent_id: String) {
+        match action {
+            AgentCardAction::Select => {
+                self.set_active_agent_by_name(&agent_id);
+                self.modal_state = ModalState::None;
+            }
+            AgentCardAction::ToggleActive => {
+                if self.active_agent.as_deref() == Some(agent_id.as_str()) {
+                    self.clear_active_agent();
+                } else {
+                    self.set_active_agent_by_name(&agent_id);
+                }
+            }
+        }
+    }
+
+    fn handle_skill_card_action(&mut self, action: SkillCardAction, skill_id: String) {
+        match action {
+            SkillCardAction::View => {
+                if let Some(index) = self
+                    .skill_entries
+                    .iter()
+                    .position(|entry| entry.info.id == skill_id)
+                {
+                    if matches!(self.modal_state, ModalState::SkillList { .. }) {
+                        self.modal_state = ModalState::SkillList { selected: index };
+                    }
+                }
+            }
+            SkillCardAction::Install => {
+                if let Some(entry) = self
+                    .skill_entries
+                    .iter()
+                    .find(|entry| entry.info.id == skill_id)
+                {
+                    self.push_system_message(format!(
+                        "Skill {} is already installed at {}.",
+                        entry.info.name,
+                        entry.path.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    fn set_active_agent_by_name(&mut self, name: &str) {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            self.push_system_message("Agent name is required.".to_string());
+            return;
+        }
+        if let Some(entry) = self
+            .agent_entries
+            .iter()
+            .find(|entry| entry.name.eq_ignore_ascii_case(trimmed))
+        {
+            self.set_active_agent(Some(entry.name.clone()));
+        } else {
+            self.push_system_message(format!("Unknown agent: {}.", trimmed));
+        }
+    }
+
+    fn clear_active_agent(&mut self) {
+        self.set_active_agent(None);
+    }
+
+    fn set_active_agent(&mut self, agent: Option<String>) {
+        let next = agent.and_then(|name| {
+            let trimmed = name.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        });
+        if next == self.active_agent {
+            return;
+        }
+        self.active_agent = next.clone();
+        if let Some(name) = next {
+            self.push_system_message(format!("Active agent set to {}.", name));
+        } else {
+            self.push_system_message("Active agent cleared.".to_string());
+        }
+        self.refresh_agent_cards();
+    }
+
+    fn agent_definitions_for_query(&self) -> HashMap<String, AgentDefinition> {
+        let mut agents = HashMap::new();
+        for entry in &self.agent_entries {
+            agents.insert(entry.name.clone(), entry.definition.clone());
+        }
+        agents
+    }
+
+    fn setting_sources_for_query(&self) -> Vec<SettingSource> {
+        let mut sources = Vec::new();
+        if self
+            .skill_entries
+            .iter()
+            .any(|entry| entry.source == SkillSource::Project)
+        {
+            sources.push(SettingSource::Project);
+        }
+        if self
+            .skill_entries
+            .iter()
+            .any(|entry| entry.source == SkillSource::User)
+        {
+            sources.push(SettingSource::User);
+        }
+        sources
     }
 
     fn handle_checkpoint_restore(&mut self, index: usize) {
@@ -2406,6 +3404,7 @@ impl CoderApp {
         });
 
         let cwd = std::env::current_dir().unwrap_or_default();
+        let active_agent = state.active_agent.clone();
         let expanded_prompt = match expand_prompt_text(&prompt, &cwd) {
             Ok(result) => result,
             Err(err) => {
@@ -2413,6 +3412,11 @@ impl CoderApp {
                 state.window.request_redraw();
                 return;
             }
+        };
+        let expanded_prompt = if let Some(agent) = active_agent.as_ref() {
+            format!("Use the {} subagent for this request.\n\n{}", agent, expanded_prompt)
+        } else {
+            expanded_prompt
         };
 
         // Create channel for receiving responses
@@ -2430,6 +3434,7 @@ impl CoderApp {
         state.permission_dialog = None;
         state.is_thinking = true;
         state.streaming_markdown.reset();
+        state.refresh_agent_cards();
 
         // Get window handle for triggering redraws from async task
         let window = state.window.clone();
@@ -2456,6 +3461,8 @@ impl CoderApp {
         let permission_deny_bash_patterns = state.permission_deny_bash_patterns.clone();
         let permission_default_allow = state.permission_default_allow;
         let mcp_servers = state.merged_mcp_servers();
+        let agent_definitions = state.agent_definitions_for_query();
+        let setting_sources = state.setting_sources_for_query();
 
         // Spawn async query task
         let handle = self.runtime_handle.clone();
@@ -2487,6 +3494,12 @@ impl CoderApp {
             }
             if !mcp_servers.is_empty() {
                 options.mcp_servers = mcp_servers;
+            }
+            if !agent_definitions.is_empty() {
+                options.agents = agent_definitions;
+            }
+            if !setting_sources.is_empty() {
+                options.setting_sources = setting_sources;
             }
 
             let permission_window = window.clone();
@@ -2896,6 +3909,7 @@ impl CoderApp {
                     state.record_session();
                     state.cancel_running_tools();
                     state.is_thinking = false;
+                    state.refresh_agent_cards();
                     state.response_rx = None;
                     state.query_control_tx = None;
                     state.permission_requests_rx = None;
@@ -2921,6 +3935,7 @@ impl CoderApp {
                     state.record_session();
                     state.cancel_running_tools();
                     state.is_thinking = false;
+                    state.refresh_agent_cards();
                     state.response_rx = None;
                     state.query_control_tx = None;
                     state.permission_requests_rx = None;
@@ -3036,6 +4051,50 @@ impl CoderApp {
         }
         for index in checkpoint_events {
             state.handle_checkpoint_restore(index);
+            needs_redraw = true;
+        }
+
+        if needs_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    fn poll_agent_actions(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut needs_redraw = false;
+        let mut agent_events = Vec::new();
+        if let Some(rx) = &mut state.agent_action_rx {
+            while let Ok(event) = rx.try_recv() {
+                agent_events.push(event);
+            }
+        }
+        for event in agent_events {
+            state.handle_agent_card_action(event.action, event.agent_id);
+            needs_redraw = true;
+        }
+
+        if needs_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    fn poll_skill_actions(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut needs_redraw = false;
+        let mut skill_events = Vec::new();
+        if let Some(rx) = &mut state.skill_action_rx {
+            while let Ok(event) = rx.try_recv() {
+                skill_events.push(event);
+            }
+        }
+        for event in skill_events {
+            state.handle_skill_card_action(event.action, event.skill_id);
             needs_redraw = true;
         }
 
@@ -3391,6 +4450,12 @@ impl CoderApp {
             if let Some(summary) = state.mcp_status_summary() {
                 parts.push(summary);
             }
+            if let Some(active_agent) = &state.active_agent {
+                parts.push(format!(
+                    "agent {}",
+                    truncate_preview(active_agent, 12)
+                ));
+            }
             parts.push(format!("{} tools", state.session_info.tool_count));
             parts.push(format!("session {}", session_short));
             let right_text = parts.join(" | ");
@@ -3412,6 +4477,16 @@ impl CoderApp {
             && state.session_cards.len() != state.session_index.len();
         if should_refresh_sessions {
             state.refresh_session_cards();
+        }
+        let should_refresh_agents = matches!(state.modal_state, ModalState::AgentList { .. })
+            && state.agent_cards.len() != state.agent_entries.len();
+        if should_refresh_agents {
+            state.refresh_agent_cards();
+        }
+        let should_refresh_skills = matches!(state.modal_state, ModalState::SkillList { .. })
+            && state.skill_cards.len() != state.skill_entries.len();
+        if should_refresh_skills {
+            state.refresh_skill_cards();
         }
         match &state.modal_state {
             ModalState::None => {}
@@ -3710,6 +4785,310 @@ impl CoderApp {
                 y = modal_y + modal_height - 24.0;
                 let footer_run = state.text_system.layout_styled_mono(
                     "Enter to resume · Esc to exit · Fork with button",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.4, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(footer_run);
+            }
+            ModalState::AgentList { selected } => {
+                // Semi-transparent overlay
+                let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
+                scene.draw_quad(overlay);
+
+                let modal_width = SESSION_MODAL_WIDTH;
+                let modal_height = SESSION_MODAL_HEIGHT;
+                let modal_x = (logical_width - modal_width) / 2.0;
+                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
+
+                let modal_bg = Quad::new(modal_bounds)
+                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
+                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
+                scene.draw_quad(modal_bg);
+
+                let mut y = modal_y + 16.0;
+                let title_run = state.text_system.layout_styled_mono(
+                    "Agents",
+                    Point::new(modal_x + 16.0, y),
+                    14.0,
+                    Hsla::new(0.0, 0.0, 0.9, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(title_run);
+                y += 20.0;
+
+                let desc_run = state.text_system.layout_styled_mono(
+                    "Select an agent to focus the next request.",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.5, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(desc_run);
+                y += 18.0;
+
+                if let Some(active) = &state.active_agent {
+                    let active_line = format!("Active agent: {}", active);
+                    let active_run = state.text_system.layout_styled_mono(
+                        &truncate_preview(&active_line, 90),
+                        Point::new(modal_x + 16.0, y),
+                        12.0,
+                        Hsla::new(120.0, 0.6, 0.6, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(active_run);
+                    y += 18.0;
+                }
+
+                let project_path = state
+                    .agent_project_path
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                let project_line = format!("Project agents: {}", project_path);
+                let project_run = state.text_system.layout_styled_mono(
+                    &truncate_preview(&project_line, 90),
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(project_run);
+                y += 18.0;
+
+                if let Some(user_path) = &state.agent_user_path {
+                    let user_line = format!("User agents: {}", user_path.display());
+                    let user_run = state.text_system.layout_styled_mono(
+                        &truncate_preview(&user_line, 90),
+                        Point::new(modal_x + 16.0, y),
+                        12.0,
+                        Hsla::new(0.0, 0.0, 0.6, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(user_run);
+                    y += 18.0;
+                }
+
+                if let Some(error) = &state.agent_load_error {
+                    let error_line = format!("Load warning: {}", error);
+                    let error_run = state.text_system.layout_styled_mono(
+                        &truncate_preview(&error_line, 100),
+                        Point::new(modal_x + 16.0, y),
+                        12.0,
+                        Hsla::new(15.0, 0.7, 0.6, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(error_run);
+                    y += 18.0;
+                }
+
+                let project_count = state
+                    .agent_entries
+                    .iter()
+                    .filter(|entry| entry.source == AgentSource::Project)
+                    .count();
+                let user_count = state
+                    .agent_entries
+                    .iter()
+                    .filter(|entry| entry.source == AgentSource::User)
+                    .count();
+                let counts_line = format!(
+                    "Agents: {} project · {} user",
+                    project_count, user_count
+                );
+                let counts_run = state.text_system.layout_styled_mono(
+                    &counts_line,
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(counts_run);
+
+                let list_top = agent_modal_content_top(modal_y, state);
+                let layout = agent_list_layout(
+                    logical_width,
+                    logical_height,
+                    state.agent_entries.len(),
+                    *selected,
+                    list_top,
+                );
+
+                if state.agent_entries.is_empty() {
+                    let empty_run = state.text_system.layout_styled_mono(
+                        "No agents found.",
+                        Point::new(modal_x + 16.0, list_top),
+                        12.0,
+                        Hsla::new(0.0, 0.0, 0.5, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(empty_run);
+                } else {
+                    let selected = (*selected).min(state.agent_entries.len().saturating_sub(1));
+                    let mut paint_cx =
+                        PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+                    for (index, bounds) in &layout.card_bounds {
+                        if let Some(card) = state.agent_cards.get_mut(*index) {
+                            card.paint(*bounds, &mut paint_cx);
+                        }
+                        if *index == selected {
+                            let outline = Quad::new(*bounds)
+                                .with_border(Hsla::new(120.0, 0.6, 0.5, 1.0), 1.0);
+                            paint_cx.scene.draw_quad(outline);
+                        }
+                    }
+                }
+
+                y = modal_y + modal_height - 24.0;
+                let footer_run = state.text_system.layout_styled_mono(
+                    "Enter to activate · R to reload · Esc to exit",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.4, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(footer_run);
+            }
+            ModalState::SkillList { selected } => {
+                let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
+                scene.draw_quad(overlay);
+
+                let modal_width = SESSION_MODAL_WIDTH;
+                let modal_height = SESSION_MODAL_HEIGHT;
+                let modal_x = (logical_width - modal_width) / 2.0;
+                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
+
+                let modal_bg = Quad::new(modal_bounds)
+                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
+                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
+                scene.draw_quad(modal_bg);
+
+                let mut y = modal_y + 16.0;
+                let title_run = state.text_system.layout_styled_mono(
+                    "Skills",
+                    Point::new(modal_x + 16.0, y),
+                    14.0,
+                    Hsla::new(0.0, 0.0, 0.9, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(title_run);
+                y += 20.0;
+
+                let desc_run = state.text_system.layout_styled_mono(
+                    "Filesystem skills available to Claude.",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.5, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(desc_run);
+                y += 18.0;
+
+                let project_path = state
+                    .skill_project_path
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                let project_line = format!("Project skills: {}", project_path);
+                let project_run = state.text_system.layout_styled_mono(
+                    &truncate_preview(&project_line, 90),
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(project_run);
+                y += 18.0;
+
+                if let Some(user_path) = &state.skill_user_path {
+                    let user_line = format!("User skills: {}", user_path.display());
+                    let user_run = state.text_system.layout_styled_mono(
+                        &truncate_preview(&user_line, 90),
+                        Point::new(modal_x + 16.0, y),
+                        12.0,
+                        Hsla::new(0.0, 0.0, 0.6, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(user_run);
+                    y += 18.0;
+                }
+
+                if let Some(error) = &state.skill_load_error {
+                    let error_line = format!("Load warning: {}", error);
+                    let error_run = state.text_system.layout_styled_mono(
+                        &truncate_preview(&error_line, 100),
+                        Point::new(modal_x + 16.0, y),
+                        12.0,
+                        Hsla::new(15.0, 0.7, 0.6, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(error_run);
+                    y += 18.0;
+                }
+
+                let project_count = state
+                    .skill_entries
+                    .iter()
+                    .filter(|entry| entry.source == SkillSource::Project)
+                    .count();
+                let user_count = state
+                    .skill_entries
+                    .iter()
+                    .filter(|entry| entry.source == SkillSource::User)
+                    .count();
+                let counts_line = format!(
+                    "Skills: {} project · {} user",
+                    project_count, user_count
+                );
+                let counts_run = state.text_system.layout_styled_mono(
+                    &counts_line,
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(counts_run);
+
+                let list_top = skill_modal_content_top(modal_y, state);
+                let layout = skill_list_layout(
+                    logical_width,
+                    logical_height,
+                    state.skill_entries.len(),
+                    *selected,
+                    list_top,
+                );
+
+                if state.skill_entries.is_empty() {
+                    let empty_run = state.text_system.layout_styled_mono(
+                        "No skills found.",
+                        Point::new(modal_x + 16.0, list_top),
+                        12.0,
+                        Hsla::new(0.0, 0.0, 0.5, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(empty_run);
+                } else {
+                    let selected = (*selected).min(state.skill_entries.len().saturating_sub(1));
+                    let mut paint_cx =
+                        PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+                    for (index, bounds) in &layout.card_bounds {
+                        if let Some(card) = state.skill_cards.get_mut(*index) {
+                            card.paint(*bounds, &mut paint_cx);
+                        }
+                        if *index == selected {
+                            let outline = Quad::new(*bounds)
+                                .with_border(Hsla::new(120.0, 0.6, 0.5, 1.0), 1.0);
+                            paint_cx.scene.draw_quad(outline);
+                        }
+                    }
+                }
+
+                y = modal_y + modal_height - 24.0;
+                let footer_run = state.text_system.layout_styled_mono(
+                    "Enter to close · R to reload · Esc to exit",
                     Point::new(modal_x + 16.0, y),
                     12.0,
                     Hsla::new(0.0, 0.0, 0.4, 1.0),
@@ -4899,6 +6278,14 @@ struct SessionListLayout {
     checkpoint_bounds: Option<Bounds>,
 }
 
+struct AgentListLayout {
+    card_bounds: Vec<(usize, Bounds)>,
+}
+
+struct SkillListLayout {
+    card_bounds: Vec<(usize, Bounds)>,
+}
+
 struct ToolPanelBlock {
     index: usize,
     card_bounds: Bounds,
@@ -4978,6 +6365,127 @@ fn session_list_layout(
         card_bounds,
         checkpoint_bounds,
     }
+}
+
+fn agent_modal_content_top(modal_y: f32, state: &AppState) -> f32 {
+    let mut y = modal_y + 16.0;
+    y += 20.0;
+    y += 18.0;
+    if state.active_agent.is_some() {
+        y += 18.0;
+    }
+    y += 18.0;
+    if state.agent_user_path.is_some() {
+        y += 18.0;
+    }
+    if state.agent_load_error.is_some() {
+        y += 18.0;
+    }
+    y + 20.0
+}
+
+fn skill_modal_content_top(modal_y: f32, state: &AppState) -> f32 {
+    let mut y = modal_y + 16.0;
+    y += 20.0;
+    y += 18.0;
+    y += 18.0;
+    if state.skill_user_path.is_some() {
+        y += 18.0;
+    }
+    if state.skill_load_error.is_some() {
+        y += 18.0;
+    }
+    y + 20.0
+}
+
+fn agent_list_layout(
+    logical_width: f32,
+    logical_height: f32,
+    agent_count: usize,
+    selected: usize,
+    content_top: f32,
+) -> AgentListLayout {
+    let modal_width = SESSION_MODAL_WIDTH;
+    let modal_height = SESSION_MODAL_HEIGHT;
+    let modal_x = (logical_width - modal_width) / 2.0;
+    let modal_y = (logical_height - modal_height) / 2.0;
+    let footer_y = modal_y + modal_height - 24.0;
+    let card_area_bottom = footer_y - 16.0;
+    let available_height = (card_area_bottom - content_top).max(0.0);
+    let max_cards = if available_height <= 0.0 {
+        0
+    } else {
+        ((available_height + SESSION_CARD_GAP) / (SESSION_CARD_HEIGHT + SESSION_CARD_GAP)) as usize
+    };
+
+    let visible_count = agent_count.min(max_cards);
+    let mut card_bounds = Vec::new();
+    if visible_count > 0 {
+        let selected = selected.min(agent_count.saturating_sub(1));
+        let mut start = selected.saturating_sub(visible_count / 2);
+        if start + visible_count > agent_count {
+            start = agent_count.saturating_sub(visible_count);
+        }
+
+        for i in 0..visible_count {
+            let index = start + i;
+            let y = content_top + i as f32 * (SESSION_CARD_HEIGHT + SESSION_CARD_GAP);
+            let bounds = Bounds::new(
+                modal_x + SESSION_MODAL_PADDING,
+                y,
+                modal_width - SESSION_MODAL_PADDING * 2.0,
+                SESSION_CARD_HEIGHT,
+            );
+            card_bounds.push((index, bounds));
+        }
+    }
+
+    AgentListLayout { card_bounds }
+}
+
+fn skill_list_layout(
+    logical_width: f32,
+    logical_height: f32,
+    skill_count: usize,
+    selected: usize,
+    content_top: f32,
+) -> SkillListLayout {
+    let modal_width = SESSION_MODAL_WIDTH;
+    let modal_height = SESSION_MODAL_HEIGHT;
+    let modal_x = (logical_width - modal_width) / 2.0;
+    let modal_y = (logical_height - modal_height) / 2.0;
+    let footer_y = modal_y + modal_height - 24.0;
+    let card_area_bottom = footer_y - 16.0;
+    let available_height = (card_area_bottom - content_top).max(0.0);
+    let max_cards = if available_height <= 0.0 {
+        0
+    } else {
+        ((available_height + SESSION_CARD_GAP) / (SKILL_CARD_HEIGHT + SESSION_CARD_GAP)) as usize
+    };
+
+    let visible_count = skill_count.min(max_cards);
+    let mut card_bounds = Vec::new();
+    if visible_count > 0 {
+        let selected = selected.min(skill_count.saturating_sub(1));
+        let mut start = selected.saturating_sub(visible_count / 2);
+        if start + visible_count > skill_count {
+            start = skill_count.saturating_sub(visible_count);
+        }
+
+        for i in 0..visible_count {
+            let index = start + i;
+            let y = content_top + i as f32 * (SKILL_CARD_HEIGHT + SESSION_CARD_GAP);
+            let bounds = Bounds::new(
+                modal_x + SESSION_MODAL_PADDING,
+                y,
+                modal_width - SESSION_MODAL_PADDING * 2.0,
+                SKILL_CARD_HEIGHT,
+            );
+            card_bounds.push((index, bounds));
+        }
+    }
+
+    SkillListLayout { card_bounds }
 }
 
 fn tool_panel_layout(
@@ -5267,6 +6775,40 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
             ));
             CommandAction::None
         }
+        Command::Agents => {
+            state.open_agent_list();
+            CommandAction::None
+        }
+        Command::AgentSelect(name) => {
+            state.set_active_agent_by_name(&name);
+            CommandAction::None
+        }
+        Command::AgentClear => {
+            state.clear_active_agent();
+            CommandAction::None
+        }
+        Command::AgentReload => {
+            state.reload_agents();
+            if let Some(err) = &state.agent_load_error {
+                state.push_system_message(format!("Agent reload warning: {}", err));
+            } else {
+                state.push_system_message("Reloaded agents from disk.".to_string());
+            }
+            CommandAction::None
+        }
+        Command::Skills => {
+            state.open_skill_list();
+            CommandAction::None
+        }
+        Command::SkillsReload => {
+            state.reload_skills();
+            if let Some(err) = &state.skill_load_error {
+                state.push_system_message(format!("Skill reload warning: {}", err));
+            } else {
+                state.push_system_message("Reloaded skills from disk.".to_string());
+            }
+            CommandAction::None
+        }
         Command::Custom(name, args) => {
             if state.is_thinking {
                 state.push_system_message(
@@ -5433,6 +6975,100 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     if *selected + 1 < session_count {
                         *selected += 1;
                     }
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::AgentList { selected } => {
+            let agent_count = state.agent_entries.len();
+            if agent_count == 0 {
+                match key {
+                    WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                        state.modal_state = ModalState::None;
+                    }
+                    WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                        state.reload_agents();
+                    }
+                    _ => {}
+                }
+                state.window.request_redraw();
+                return true;
+            }
+
+            if *selected >= agent_count {
+                *selected = agent_count - 1;
+            }
+
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::Enter) => {
+                    let selected_name = state
+                        .agent_entries
+                        .get(*selected)
+                        .map(|entry| entry.name.clone());
+                    if let Some(name) = selected_name {
+                        state.set_active_agent_by_name(&name);
+                    }
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::ArrowUp) => {
+                    if *selected > 0 {
+                        *selected -= 1;
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowDown) => {
+                    if *selected + 1 < agent_count {
+                        *selected += 1;
+                    }
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.reload_agents();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::SkillList { selected } => {
+            let skill_count = state.skill_entries.len();
+            if skill_count == 0 {
+                match key {
+                    WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                        state.modal_state = ModalState::None;
+                    }
+                    WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                        state.reload_skills();
+                    }
+                    _ => {}
+                }
+                state.window.request_redraw();
+                return true;
+            }
+
+            if *selected >= skill_count {
+                *selected = skill_count - 1;
+            }
+
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::ArrowUp) => {
+                    if *selected > 0 {
+                        *selected -= 1;
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowDown) => {
+                    if *selected + 1 < skill_count {
+                        *selected += 1;
+                    }
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.reload_skills();
                 }
                 _ => {}
             }
@@ -5818,6 +7454,31 @@ fn add_unique(target: &mut Vec<String>, items: &[String]) {
 
 fn remove_items(target: &mut Vec<String>, items: &[String]) {
     target.retain(|entry| !items.iter().any(|item| item == entry));
+}
+
+fn agent_model_label(model: AgentModel) -> &'static str {
+    match model {
+        AgentModel::Opus => "opus",
+        AgentModel::Sonnet => "sonnet",
+        AgentModel::Haiku => "haiku",
+        AgentModel::Inherit => "inherit",
+    }
+}
+
+fn agent_capabilities(entry: &AgentEntry) -> Vec<String> {
+    let mut caps = Vec::new();
+    if let Some(model) = entry.definition.model {
+        caps.push(format!("model {}", agent_model_label(model)));
+    }
+    if let Some(tools) = &entry.definition.tools {
+        caps.extend(tools.clone());
+    } else if let Some(disallowed) = &entry.definition.disallowed_tools {
+        caps.extend(disallowed.iter().map(|tool| format!("no {}", tool)));
+    }
+    if caps.is_empty() {
+        caps.push("all tools".to_string());
+    }
+    caps
 }
 
 fn resolve_output_style(name: &str) -> io::Result<Option<PathBuf>> {
