@@ -37,6 +37,19 @@ impl std::fmt::Display for LmProvider {
     }
 }
 
+impl LmProvider {
+    /// Short name for status bar display.
+    pub fn short_name(&self) -> &'static str {
+        match self {
+            LmProvider::LlamaCpp => "gptoss",
+            LmProvider::ClaudeSdk => "claude-sdk",
+            LmProvider::PylonSwarm => "swarm",
+            LmProvider::Cerebras => "cerebras",
+            LmProvider::PylonLocal => "ollama",
+        }
+    }
+}
+
 /// Detect best available provider based on environment.
 ///
 /// Priority order:
@@ -74,8 +87,33 @@ pub fn detect_provider() -> Option<LmProvider> {
     None
 }
 
+/// Detect all available providers (not just highest priority).
+///
+/// Returns a Vec of all providers that are currently available.
+pub fn detect_all_providers() -> Vec<LmProvider> {
+    let mut providers = Vec::new();
+
+    if check_llamacpp_available() {
+        providers.push(LmProvider::LlamaCpp);
+    }
+    if has_claude_cli() {
+        providers.push(LmProvider::ClaudeSdk);
+    }
+    if std::env::var("PYLON_MNEMONIC").is_ok() {
+        providers.push(LmProvider::PylonSwarm);
+    }
+    if std::env::var("CEREBRAS_API_KEY").is_ok() {
+        providers.push(LmProvider::Cerebras);
+    }
+    if check_ollama_available() {
+        providers.push(LmProvider::PylonLocal);
+    }
+
+    providers
+}
+
 /// Check if llama.cpp/GPT-OSS server is running locally.
-fn check_llamacpp_available() -> bool {
+pub fn check_llamacpp_available() -> bool {
     // Check custom endpoint first via environment variable
     if let Ok(endpoint) = std::env::var("LLAMACPP_URL") {
         // Try to extract host:port from URL
@@ -122,7 +160,7 @@ fn check_llamacpp_available() -> bool {
 }
 
 /// Check if Ollama is running locally.
-fn check_ollama_available() -> bool {
+pub fn check_ollama_available() -> bool {
     std::net::TcpStream::connect_timeout(
         &"127.0.0.1:11434".parse().unwrap(),
         std::time::Duration::from_millis(100),
