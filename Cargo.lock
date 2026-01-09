@@ -2609,7 +2609,10 @@ name = "coder"
 version = "0.1.0"
 dependencies = [
  "claude-agent-sdk",
+ "dirs 6.0.0",
+ "futures",
  "pollster",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
