@@ -53,6 +53,36 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
 - [x] `crates/dsrs/src/core/lm/pylon.rs` - Pylon LM provider (local/swarm/hybrid)
 - [x] `crates/adjutant/src/dspy/lm_config.rs` - Multi-provider with auto-detection
 
+### Wave 3-6: Core Infrastructure (Complete)
+- [x] Compiler Contract (manifest, callbacks, trace, sandbox)
+- [x] Retrieval, Signatures, Swarm Dispatch
+- [x] Eval Harness & Promotion Gates
+- [x] SwarmCompiler
+
+### Wave 7: Privacy Module (Complete)
+- [x] `crates/dsrs/src/privacy/redaction.rs` - PathRedactor, IdentifierRedactor
+- [x] `crates/dsrs/src/privacy/chunking.rs` - ChunkingPolicy, ContentChunk
+- [x] `crates/dsrs/src/privacy/policy.rs` - PrivacyPolicy, PolicyViolation
+- [x] `crates/dsrs/docs/PRIVACY.md` - Comprehensive documentation
+
+### Wave 8: OANIX DSPy Signatures (Complete)
+- [x] `crates/oanix/src/dspy_situation.rs` - SituationAssessmentSignature
+- [x] `crates/oanix/src/dspy_lifecycle.rs` - IssueSelectionSignature, WorkPrioritizationSignature, LifecycleDecisionSignature (CoT)
+- [x] All signatures implement MetaSignature trait
+- [x] 18 tests passing
+
+### Wave 9: Agent Orchestrator DSPy Signatures (Complete)
+- [x] `crates/agent-orchestrator/src/dspy_delegation.rs` - DelegationSignature, TargetAgent
+- [x] `crates/agent-orchestrator/src/dspy_agents.rs` - 6 agent signatures:
+  - ArchitectureSignature (Oracle) - CoT for design decisions
+  - LibraryLookupSignature (Librarian) - External docs lookup
+  - CodeExplorationSignature (Explore) - Codebase navigation
+  - UIDesignSignature (Frontend) - UI/UX design
+  - DocumentationSignature (DocWriter) - Technical docs
+  - MediaAnalysisSignature (Multimodal) - PDF/image analysis
+- [x] Helper enums: ArchitectureComplexity, SearchType, DocType, MediaType
+- [x] 152 tests passing in agent-orchestrator
+
 ---
 
 ## Wave 0: Protocol + Schema Registry (NEW)
@@ -861,139 +891,75 @@ pub enum PrivacyMode {
 
 ---
 
-## Wave 8: OANIX (Agent OS Runtime)
+## Wave 8: OANIX (Agent OS Runtime) - COMPLETE
 
-Transform OANIX's rule-based decision making into DSPy signatures.
+*Implemented in `crates/oanix/`*
 
-### Signatures
+Transform OANIX's rule-based decision making into DSPy signatures. All signatures implement `MetaSignature` trait manually for public API compatibility.
 
-```rust
-#[Signature]
-struct SituationAssessmentSignature {
-    /// Situation Assessment: Analyze current system state and determine priorities.
+### Implemented Signatures
 
-    #[input] system_state: String,        // Current process states, resources
-    #[input] pending_events: String,      // Events in queue
-    #[input] recent_history: String,      // Last N decisions and outcomes
+| Signature | File | Purpose |
+|-----------|------|---------|
+| `SituationAssessmentSignature` | `dspy_situation.rs` | Analyze system state, determine priorities |
+| `IssueSelectionSignature` | `dspy_lifecycle.rs` | Choose best issue to work on |
+| `WorkPrioritizationSignature` | `dspy_lifecycle.rs` | Order tasks by importance/dependencies |
+| `LifecycleDecisionSignature` | `dspy_lifecycle.rs` | CoT for agent state transitions |
 
-    #[output] priority_action: String,    // What to do next
-    #[output] urgency: String,            // IMMEDIATE, NORMAL, DEFERRED
-    #[output] reasoning: String,          // Why this action
-    #[output] confidence: f32,
-}
+### Enums
 
-#[Signature]
-struct IssueSelectionSignature {
-    /// Issue Selection: Choose the best issue to work on from available options.
+- `PriorityAction`: AWAIT_USER, WORK_ISSUE, ACCEPT_JOB, START_PROVIDER, INITIALIZE_IDENTITY, CONNECT_NETWORK, HOUSEKEEPING, IDLE
+- `Urgency`: IMMEDIATE, NORMAL, DEFERRED
+- `LifecycleState`: IDLE, WORKING, BLOCKED, PROVIDER, TERMINATING
+- `Complexity`: LOW, MEDIUM, HIGH
 
-    #[input] available_issues: String,    // JSON array of issues
-    #[input] agent_capabilities: String,  // What this agent can do
-    #[input] current_context: String,     // Repository state, recent work
-
-    #[output] selected_issue: String,     // Issue ID or number
-    #[output] rationale: String,          // Why this issue
-    #[output] estimated_complexity: String,
-    #[output] confidence: f32,
-}
-
-#[Signature]
-struct WorkPrioritizationSignature {
-    /// Work Prioritization: Order tasks by importance and dependencies.
-
-    #[input] task_list: String,           // JSON array of tasks
-    #[input] dependencies: String,        // Task dependency graph
-    #[input] deadlines: String,           // Any time constraints
-
-    #[output] ordered_tasks: String,      // JSON array, priority order
-    #[output] blocking_tasks: String,     // Tasks blocking others
-    #[output] parallel_groups: String,    // Tasks that can run together
-}
-
-#[Signature(cot)]
-struct LifecycleDecisionSignature {
-    /// Lifecycle Decision: Determine agent state transitions.
-    /// Use chain-of-thought to reason about state changes.
-
-    #[input] current_state: String,       // Agent's current lifecycle state
-    #[input] recent_events: String,       // What just happened
-    #[input] resource_status: String,     // Memory, CPU, network
-
-    #[output] next_state: String,         // IDLE, WORKING, BLOCKED, TERMINATING
-    #[output] transition_reason: String,  // Why transition
-    #[output] cleanup_needed: String,     // Any cleanup before transition
-}
-```
-
-**Files to Create:**
-- `crates/oanix/src/dspy_situation.rs`
-- `crates/oanix/src/dspy_lifecycle.rs`
+### Files Created
+- `crates/oanix/src/dspy_situation.rs` - SituationAssessmentSignature
+- `crates/oanix/src/dspy_lifecycle.rs` - 3 lifecycle signatures
 
 ---
 
-## Wave 9: Agent Orchestrator
+## Wave 9: Agent Orchestrator - COMPLETE
 
-Convert the 7 specialized agent prompts into DSPy Signatures.
+*Implemented in `crates/agent-orchestrator/`*
 
-### Current Agents (in `agent-orchestrator`)
-1. **Sisyphus** - Master orchestrator
-2. **Oracle** - Information retrieval
-3. **Architect** - System design
-4. **Coder** - Implementation
-5. **Reviewer** - Code review
-6. **DevOps** - Deployment
-7. **Documenter** - Documentation
+Convert the 7 specialized agent prompts into DSPy Signatures for learned, optimizable delegation and agent behavior.
 
-### Signatures
+### Actual Agents (in `agent-orchestrator`)
 
-```rust
-#[Signature]
-struct DelegationSignature {
-    /// Delegation: Sisyphus decides which sub-agent should handle a task.
+| Agent | Model | Role | Mode |
+|-------|-------|------|------|
+| **Sisyphus** | claude-opus-4-5 | Primary orchestrator | Primary |
+| **Oracle** | gpt-5.2 | Architecture, debugging | Subagent |
+| **Librarian** | claude-sonnet-4 | External docs, OSS | Subagent |
+| **Explore** | grok-3 | Codebase navigation | Subagent |
+| **Frontend** | gemini-2.5-pro | UI/UX design | Subagent |
+| **DocWriter** | gemini-2.5-pro | Documentation | Subagent |
+| **Multimodal** | gemini-2.5-flash | PDF/image analysis | Subagent |
 
-    #[input] task_description: String,
-    #[input] available_agents: String,    // JSON with agent capabilities
-    #[input] current_workload: String,    // What each agent is doing
+### Implemented Signatures
 
-    #[output] assigned_agent: String,
-    #[output] task_refinement: String,    // Refined instructions for agent
-    #[output] expected_deliverables: String,
-    #[output] fallback_agent: String,
-}
+| Signature | File | Purpose |
+|-----------|------|---------|
+| `DelegationSignature` | `dspy_delegation.rs` | Sisyphus decides which subagent handles task |
+| `ArchitectureSignature` | `dspy_agents.rs` | CoT for Oracle architecture decisions |
+| `LibraryLookupSignature` | `dspy_agents.rs` | Librarian external docs lookup |
+| `CodeExplorationSignature` | `dspy_agents.rs` | Explore codebase navigation |
+| `UIDesignSignature` | `dspy_agents.rs` | Frontend UI/UX design |
+| `DocumentationSignature` | `dspy_agents.rs` | DocWriter technical docs |
+| `MediaAnalysisSignature` | `dspy_agents.rs` | Multimodal PDF/image analysis |
 
-#[Signature]
-struct OracleQuerySignature {
-    /// Oracle: Find and synthesize information from various sources.
+### Helper Enums
 
-    #[input] query: String,
-    #[input] search_scope: String,        // Codebase, docs, web
-    #[input] relevance_criteria: String,
+- `TargetAgent`: oracle, librarian, explore, frontend, docwriter, multimodal, direct
+- `ArchitectureComplexity`: LOW, MEDIUM, HIGH, CRITICAL
+- `SearchType`: Definition, References, Pattern, Usage, CallGraph
+- `DocType`: Readme, ApiRef, Guide, Comment, Changelog
+- `MediaType`: Image, Pdf, Diagram, Screenshot, Video
 
-    #[output] findings: String,           // JSON array of findings
-    #[output] sources: String,            // Where info came from
-    #[output] confidence: f32,
-    #[output] gaps: String,               // What couldn't be found
-}
-
-#[Signature(cot)]
-struct ArchitectureSignature {
-    /// Architecture: Design system changes with careful reasoning.
-
-    #[input] requirements: String,
-    #[input] existing_architecture: String,
-    #[input] constraints: String,
-
-    #[output] proposed_changes: String,
-    #[output] component_diagram: String,
-    #[output] migration_path: String,
-    #[output] risks: String,
-}
-
-// Similar signatures for Coder, Reviewer, DevOps, Documenter...
-```
-
-**Files to Create:**
-- `crates/agent-orchestrator/src/dspy_delegation.rs`
-- `crates/agent-orchestrator/src/dspy_agents.rs`
+### Files Created
+- `crates/agent-orchestrator/src/dspy_delegation.rs` - DelegationSignature + TargetAgent
+- `crates/agent-orchestrator/src/dspy_agents.rs` - 6 agent signatures + enums
 
 ---
 

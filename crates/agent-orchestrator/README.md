@@ -77,6 +77,15 @@ The agent-orchestrator crate provides the control plane for **sovereign AI agent
 - **Multi-backend** — Route to Claude, OpenAI, Codex, GPT-OSS, local
 - **Cost tracking** — Budget enforcement with daily/session limits
 
+### DSPy Signatures (Wave 9)
+- **DelegationSignature** — Sisyphus decides which subagent handles task
+- **ArchitectureSignature** — CoT for Oracle architecture decisions
+- **LibraryLookupSignature** — Librarian external docs lookup
+- **CodeExplorationSignature** — Explore codebase navigation
+- **UIDesignSignature** — Frontend UI/UX design
+- **DocumentationSignature** — DocWriter technical docs
+- **MediaAnalysisSignature** — Multimodal PDF/image analysis
+
 ## Installation
 
 Add to your `Cargo.toml`:
