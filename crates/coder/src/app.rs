@@ -117,6 +117,8 @@ const STATUS_BAR_FONT_SIZE: f32 = 11.0;
 const BUG_REPORT_URL: &str = "https://github.com/OpenAgentsInc/openagents/issues/new";
 const MAX_FILE_BYTES: usize = 200_000;
 const MAX_COMMAND_BYTES: usize = 120_000;
+const SIDEBAR_WIDTH: f32 = 220.0;
+const SIDEBAR_MIN_MAIN: f32 = 320.0;
 
 fn default_font_size() -> f32 {
     14.0
@@ -241,6 +243,54 @@ fn palette_for(theme: ThemeSetting) -> UiPalette {
             blockquote: Hsla::new(210.0, 0.5, 0.4, 1.0),
         },
     }
+}
+
+struct SidebarLayout {
+    left: Option<Bounds>,
+    right: Option<Bounds>,
+    main: Bounds,
+}
+
+fn sidebar_layout(
+    logical_width: f32,
+    logical_height: f32,
+    left_open: bool,
+    right_open: bool,
+) -> SidebarLayout {
+    let mut left_width = if left_open { SIDEBAR_WIDTH } else { 0.0 };
+    let mut right_width = if right_open { SIDEBAR_WIDTH } else { 0.0 };
+    let available_main = logical_width - left_width - right_width;
+    if available_main < SIDEBAR_MIN_MAIN {
+        let overflow = SIDEBAR_MIN_MAIN - available_main;
+        if left_width > 0.0 && right_width > 0.0 {
+            let reduce = overflow / 2.0;
+            left_width = (left_width - reduce).max(120.0);
+            right_width = (right_width - reduce).max(120.0);
+        } else if left_width > 0.0 {
+            left_width = (left_width - overflow).max(120.0);
+        } else if right_width > 0.0 {
+            right_width = (right_width - overflow).max(120.0);
+        }
+    }
+    let main_width = (logical_width - left_width - right_width).max(1.0);
+    let main = Bounds::new(left_width, 0.0, main_width, logical_height);
+    let left = if left_width > 0.0 {
+        Some(Bounds::new(0.0, 0.0, left_width, logical_height))
+    } else {
+        None
+    };
+    let right = if right_width > 0.0 {
+        Some(Bounds::new(
+            logical_width - right_width,
+            0.0,
+            right_width,
+            logical_height,
+        ))
+    } else {
+        None
+    };
+
+    SidebarLayout { left, right, main }
 }
 const SESSION_MODAL_WIDTH: f32 = 760.0;
 const SESSION_MODAL_HEIGHT: f32 = 520.0;
@@ -2737,6 +2787,8 @@ struct AppState {
     modal_state: ModalState,
     #[allow(dead_code)]
     panel_layout: PanelLayout,
+    left_sidebar_open: bool,
+    right_sidebar_open: bool,
     settings: CoderSettings,
     keybindings: Vec<Keybinding>,
     command_history: Vec<String>,
@@ -2940,6 +2992,8 @@ impl ApplicationHandler for CoderApp {
                 hook_inspector_action_rx: None,
                 modal_state: ModalState::None,
                 panel_layout: PanelLayout::Single,
+                left_sidebar_open: false,
+                right_sidebar_open: false,
                 settings,
                 keybindings: load_keybindings(),
                 command_history: Vec::new(),
@@ -3000,11 +3054,17 @@ impl ApplicationHandler for CoderApp {
         let logical_width = state.config.width as f32 / scale_factor;
         let logical_height = state.config.height as f32 / scale_factor;
 
+        let sidebar_layout = sidebar_layout(
+            logical_width,
+            logical_height,
+            state.left_sidebar_open,
+            state.right_sidebar_open,
+        );
         // Input bounds above status bar
         let input_bounds = Bounds::new(
-            INPUT_PADDING,
+            sidebar_layout.main.origin.x + INPUT_PADDING,
             logical_height - INPUT_HEIGHT - INPUT_PADDING - STATUS_BAR_HEIGHT,
-            logical_width - INPUT_PADDING * 2.0,
+            sidebar_layout.main.size.width - INPUT_PADDING * 2.0,
             INPUT_HEIGHT,
         );
         let permission_open = state
@@ -3195,7 +3255,7 @@ impl ApplicationHandler for CoderApp {
                 }
                 let input_event = InputEvent::MouseMove { x, y };
                 if let Some(layout) = tool_panel_layout(
-                    logical_width,
+                    sidebar_layout.main,
                     logical_height,
                     &state.tool_history,
                     state.tool_history_has_running(),
@@ -3424,7 +3484,7 @@ impl ApplicationHandler for CoderApp {
                     return;
                 }
                 if let Some(layout) = tool_panel_layout(
-                    logical_width,
+                    sidebar_layout.main,
                     logical_height,
                     &state.tool_history,
                     state.tool_history_has_running(),
@@ -3554,7 +3614,7 @@ impl ApplicationHandler for CoderApp {
                     }
                 }
                 if let Some(layout) = tool_panel_layout(
-                    logical_width,
+                    sidebar_layout.main,
                     logical_height,
                     &state.tool_history,
                     state.tool_history_has_running(),
@@ -3614,6 +3674,9 @@ impl ApplicationHandler for CoderApp {
                                     state.open_command_palette();
                                 }
                                 KeyAction::OpenSettings => state.open_config(),
+                                KeyAction::OpenLeftSidebar => state.open_left_sidebar(),
+                                KeyAction::OpenRightSidebar => state.open_right_sidebar(),
+                                KeyAction::ToggleSidebars => state.toggle_sidebars(),
                             }
                             state.window.request_redraw();
                             return;
@@ -3763,6 +3826,20 @@ impl AppState {
         self.session_info.model = self.selected_model.model_id().to_string();
         update_settings_model(&mut self.settings, self.selected_model);
         self.persist_settings();
+    }
+
+    fn open_left_sidebar(&mut self) {
+        self.left_sidebar_open = true;
+    }
+
+    fn open_right_sidebar(&mut self) {
+        self.right_sidebar_open = true;
+    }
+
+    fn toggle_sidebars(&mut self) {
+        let should_open = !(self.left_sidebar_open && self.right_sidebar_open);
+        self.left_sidebar_open = should_open;
+        self.right_sidebar_open = should_open;
     }
 
     fn apply_session_history_limit(&mut self) {
@@ -5693,12 +5770,66 @@ impl CoderApp {
         let mut scene = Scene::new();
         let bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
         let palette = palette_for(state.settings.theme);
+        let sidebar_layout = sidebar_layout(
+            logical_width,
+            logical_height,
+            state.left_sidebar_open,
+            state.right_sidebar_open,
+        );
 
         // Dark terminal background
         scene.draw_quad(Quad::new(bounds).with_background(palette.background));
 
+        if let Some(left_bounds) = sidebar_layout.left {
+            scene.draw_quad(
+                Quad::new(left_bounds)
+                    .with_background(palette.panel)
+                    .with_border(palette.panel_border, 1.0),
+            );
+            let title_run = state.text_system.layout_styled_mono(
+                "Left sidebar",
+                Point::new(left_bounds.origin.x + 16.0, left_bounds.origin.y + 16.0),
+                12.0,
+                palette.text_primary,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(title_run);
+            let placeholder_run = state.text_system.layout_styled_mono(
+                "Placeholder content",
+                Point::new(left_bounds.origin.x + 16.0, left_bounds.origin.y + 34.0),
+                11.0,
+                palette.text_dim,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(placeholder_run);
+        }
+
+        if let Some(right_bounds) = sidebar_layout.right {
+            scene.draw_quad(
+                Quad::new(right_bounds)
+                    .with_background(palette.panel)
+                    .with_border(palette.panel_border, 1.0),
+            );
+            let title_run = state.text_system.layout_styled_mono(
+                "Right sidebar",
+                Point::new(right_bounds.origin.x + 16.0, right_bounds.origin.y + 16.0),
+                12.0,
+                palette.text_primary,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(title_run);
+            let placeholder_run = state.text_system.layout_styled_mono(
+                "Placeholder content",
+                Point::new(right_bounds.origin.x + 16.0, right_bounds.origin.y + 34.0),
+                11.0,
+                palette.text_dim,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(placeholder_run);
+        }
+
         let tool_layout = tool_panel_layout(
-            logical_width,
+            sidebar_layout.main,
             logical_height,
             &state.tool_history,
             state.tool_history_has_running(),
@@ -5706,6 +5837,7 @@ impl CoderApp {
         // Calculate viewport bounds for message area
         // Small buffer to ensure text never touches input area
         let viewport_top = OUTPUT_PADDING;
+        let content_x = sidebar_layout.main.origin.x + OUTPUT_PADDING;
         let viewport_bottom = tool_layout
             .as_ref()
             .map(|layout| layout.bounds.origin.y - TOOL_PANEL_GAP)
@@ -5713,7 +5845,7 @@ impl CoderApp {
                 logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 8.0,
             );
         let viewport_height = (viewport_bottom - viewport_top).max(0.0);
-        let available_width = logical_width - OUTPUT_PADDING * 2.0;
+        let available_width = sidebar_layout.main.size.width - OUTPUT_PADDING * 2.0;
 
         // Calculate max chars for user message wrapping
         let chat_font_size = state.settings.font_size;
@@ -5792,7 +5924,7 @@ impl CoderApp {
                         if y + chat_line_height <= viewport_bottom && y + chat_line_height > viewport_top {
                             let text_run = state.text_system.layout_styled_mono(
                                 line,
-                                Point::new(OUTPUT_PADDING, y),
+                                Point::new(content_x, y),
                                 chat_font_size,
                                 palette.user_text,
                                 wgpui::text::FontStyle::default(),
@@ -5812,7 +5944,7 @@ impl CoderApp {
                         if content_fits && content_visible {
                             state.markdown_renderer.render(
                                 doc,
-                                Point::new(OUTPUT_PADDING, y),
+                                Point::new(content_x, y),
                                 available_width,
                                 &mut state.text_system,
                                 &mut scene,
@@ -5829,7 +5961,7 @@ impl CoderApp {
                             {
                                 let text_run = state.text_system.layout_styled_mono(
                                     line,
-                                    Point::new(OUTPUT_PADDING, y),
+                                    Point::new(content_x, y),
                                     chat_font_size,
                                     palette.assistant_text,
                                     wgpui::text::FontStyle::default(),
@@ -5852,7 +5984,7 @@ impl CoderApp {
             if content_fits && content_visible {
                 state.markdown_renderer.render(
                     doc,
-                    Point::new(OUTPUT_PADDING, y),
+                    Point::new(content_x, y),
                     available_width,
                     &mut state.text_system,
                     &mut scene,
@@ -5864,7 +5996,7 @@ impl CoderApp {
             if y + chat_line_height <= viewport_bottom && y + chat_line_height > viewport_top {
                 let text_run = state.text_system.layout_styled_mono(
                     "...",
-                    Point::new(OUTPUT_PADDING, y),
+                    Point::new(content_x, y),
                     chat_font_size,
                     palette.thinking_text,
                     wgpui::text::FontStyle::default(),
@@ -5954,18 +6086,18 @@ impl CoderApp {
         // Input area background - starts just above the input box
         let input_area_y = logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT;
         let input_area_bounds = Bounds::new(
-            0.0,
+            sidebar_layout.main.origin.x,
             input_area_y,
-            logical_width,
+            sidebar_layout.main.size.width,
             logical_height - input_area_y,
         );
         scene.draw_quad(Quad::new(input_area_bounds).with_background(palette.input_bg));
 
         // Input box
         let input_bounds = Bounds::new(
-            INPUT_PADDING,
+            sidebar_layout.main.origin.x + INPUT_PADDING,
             logical_height - INPUT_HEIGHT - INPUT_PADDING - STATUS_BAR_HEIGHT,
-            logical_width - INPUT_PADDING * 2.0,
+            sidebar_layout.main.size.width - INPUT_PADDING * 2.0,
             INPUT_HEIGHT,
         );
 
@@ -5994,7 +6126,7 @@ impl CoderApp {
             let mode_text = format!("[{}]", state.session_info.permission_mode);
             let mode_run = state.text_system.layout_styled_mono(
                 &mode_text,
-                Point::new(OUTPUT_PADDING, status_y),
+                Point::new(content_x, status_y),
                 STATUS_BAR_FONT_SIZE,
                 palette.status_left,
                 wgpui::text::FontStyle::default(),
@@ -6029,7 +6161,10 @@ impl CoderApp {
             let right_text = parts.join(" | ");
             // Measure and right-align
             let text_width = right_text.len() as f32 * 6.6; // Approx char width at 11pt
-            let right_x = logical_width - text_width - OUTPUT_PADDING;
+            let right_x = sidebar_layout.main.origin.x
+                + sidebar_layout.main.size.width
+                - text_width
+                - OUTPUT_PADDING;
             let right_run = state.text_system.layout_styled_mono(
                 &right_text,
                 Point::new(right_x, status_y),
@@ -8472,7 +8607,7 @@ fn hook_event_layout(
 }
 
 fn tool_panel_layout(
-    logical_width: f32,
+    main_bounds: Bounds,
     logical_height: f32,
     tools: &[ToolVisualization],
     show_cancel: bool,
@@ -8481,8 +8616,8 @@ fn tool_panel_layout(
         return None;
     }
 
-    let panel_width = logical_width - OUTPUT_PADDING * 2.0;
-    let panel_x = OUTPUT_PADDING;
+    let panel_width = main_bounds.size.width - OUTPUT_PADDING * 2.0;
+    let panel_x = main_bounds.origin.x + OUTPUT_PADDING;
 
     let mut selected_indices = Vec::new();
     let mut total_height = TOOL_PANEL_PADDING * 2.0 + TOOL_PANEL_HEADER_HEIGHT;
