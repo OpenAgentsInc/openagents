@@ -102,8 +102,10 @@ println!("Answer: {}", result.get("answer", None));
 | 4 | Complete | Retrieval, Signatures, Swarm Dispatch |
 | 5 | Complete | Eval Harness & Promotion Gates |
 | 6 | Complete | SwarmCompiler |
-| 7 | **Complete** | Privacy Module (redaction, chunking, policy) |
-| 8+ | See OANIX | OANIX DSPy Signatures (in oanix crate) |
+| 7 | Complete | Privacy Module (redaction, chunking, policy) |
+| 8 | Complete | OANIX DSPy Signatures (in `crates/oanix/`) |
+| 9 | Complete | Agent Orchestrator Signatures (in `crates/agent-orchestrator/`) |
+| 10+ | Planned | Tool Invocation, Optimization Infrastructure, FRLM |
 
 ## Key Paths
 
