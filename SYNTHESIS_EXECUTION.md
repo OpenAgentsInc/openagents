@@ -213,13 +213,26 @@ cargo autopilot run "Fix the failing tests"
 
 ## DSPy Integration
 
-**What it is:** Typed AI signatures for structured LLM outputs. Replaces freeform prompts with declarative specifications.
+**What it is:** DSPy is the **compiler layer for agent behavior**. It decides *what to do* (best prompt + tool-use structure + few-shot examples), while OpenAgents decides *where/how it runs*, *whether it's valid*, *what it costs*, and *why it worked*.
 
-**Philosophy (from Omar Khattab):**
+**Core implementation:** `crates/dsrs/` — 5,771 LOC Rust DSPy implementation integrated into the workspace.
+
+**Philosophy (from Omar Khattab & Kevin Madura):**
 - DSPy is declarative AI programming, not just prompt optimization
 - Signatures decouple AI specification from ML techniques
 - Field names act as mini-prompts — naming matters
-- Optimizers find "latent requirements" you didn't specify
+- Optimizers (GEPA/MIPROv2) find "latent requirements" you didn't specify
+- Enable model portability without rewriting prompts
+
+**dsrs capabilities:**
+| Feature | Description |
+|---------|-------------|
+| **Optimizers** | COPRO, MIPROv2, GEPA, Pareto |
+| **DAG tracing** | Graph/Node types for execution tracing |
+| **LM providers** | 12+ via rig-core (OpenAI, Anthropic, Gemini, Groq, Ollama, etc.) |
+| **Architecture** | Module, Predictor, MetaSignature, Adapter, Optimizable, Evaluator traits |
+| **Macros** | `#[Signature]`, `#[Optimizable]` for code generation |
+| **Caching** | Hybrid memory + disk via foyer |
 
 **Key modules in autopilot:**
 
@@ -313,7 +326,8 @@ cargo build -p wgpui --target wasm32-unknown-unknown    # WASM
 | `rlm` | Recursive Language Model engine |
 | `frlm` | Federated RLM (distributed execution) |
 | `frostr` | FROST threshold signatures |
-| `dspy-rs` | DSPy signatures and optimization (external) |
+| `dsrs` | Rust DSPy - signatures, optimizers, DAG tracing |
+| `dsrs-macros` | Procedural macros for dsrs |
 
 **RLM/FRLM execution venues:**
 

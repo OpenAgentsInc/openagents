@@ -1,26 +1,44 @@
 # DSPy Integration Roadmap for OpenAgents
 
-## Vision
+## Core Insight: DSPy as Compiler Layer
 
-DSPy as the foundation for all AI decision-making in OpenAgents. Declarative specifications that are model-agnostic and optimization-ready.
+**DSPy is the compiler layer for agent behavior.**
 
-**Philosophy** (from Omar Khattab & Kevin Madura):
+Not the market layer, not the runtime. DSPy provides: **take a goal ("solve this class of tasks") and automatically discover the best prompt + tool-use structure + few-shot examples + scoring loop**, instead of hand-tuning prompts forever.
+
+**The Separation:**
+- **DSPy (dsrs)** decides *what to do* (best program structure/prompting)
+- **OpenAgents** decides *where/how it runs* (local/swarm/datacenter), *whether it's valid* (verification), *what it costs* (budgets/receipts), and *why it worked* (trace/HUD)
+
+**Philosophy (from Omar Khattab & Kevin Madura):**
 - DSPy is declarative AI programming, not just prompt optimization
 - Signatures decouple AI specification from ML techniques
 - Optimizers (GEPA/MIPROv2) find "latent requirements" you didn't specify
-- Field names act as mini-prompts - naming matters
+- Field names act as mini-prompts — naming matters
 - Enable model portability without rewriting prompts
 
 ---
 
-## Completed
+## Current State
 
-### Wave 1: RLM Document Analysis
+### dsrs Integration (Complete)
+
+dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs/`:
+
+- **5,771 LOC** full implementation
+- **Optimizers**: COPRO, MIPROv2, GEPA, Pareto
+- **DAG-based tracing** with Graph/Node types
+- **12+ LM providers** via rig-core (OpenAI, Anthropic, Gemini, Groq, Ollama, etc.)
+- **Trait-based architecture**: Module, Predictor, MetaSignature, Adapter, Optimizable, Evaluator
+- **Macros**: `#[Signature]`, `#[Optimizable]` for code generation
+- **Hybrid caching** via foyer (memory + disk)
+
+### Wave 1: RLM Document Analysis (Complete)
 - [x] `crates/rlm/src/dspy_orchestrator.rs` - 4-phase document pipeline
 - [x] `crates/rlm/src/signatures.rs` - SpanRef-based evidence tracking
 - [x] `crates/rlm/src/dspy_bridge.rs` - LM configuration and cost tracking
 
-### Wave 2: Autopilot Integration
+### Wave 2: Autopilot Signatures (Complete)
 - [x] `crates/autopilot/src/dspy_planning.rs` - PlanningSignature + DeepPlanningSignature
 - [x] `crates/autopilot/src/dspy_execution.rs` - ExecutionStrategySignature + ToolSelectionSignature
 - [x] `crates/autopilot/src/dspy_verify.rs` - Verification + ExecutionReviewSignature
@@ -28,11 +46,138 @@ DSPy as the foundation for all AI decision-making in OpenAgents. Declarative spe
 
 ---
 
-## Wave 3: OANIX (Agent OS Runtime)
+## Wave 3: OpenAgents Integration Layer
+
+Bridge dsrs with OpenAgents infrastructure for distributed optimization.
+
+### 3.1 Pylon LM Provider
+**File:** `crates/dsrs/src/adapter/pylon.rs` (NEW)
+
+Add Pylon as an LM provider in dsrs, enabling swarm-backed inference:
+
+```rust
+pub struct PylonClient {
+    relay_url: String,
+    pubkey: XOnlyPublicKey,
+    budget_sats: u64,
+}
+
+impl CompletionProvider for PylonClient {
+    async fn completion(&self, request: CompletionRequest) -> Result<CompletionResponse> {
+        // Submit NIP-90 job to Nexus relay
+        // Wait for provider response
+        // Pay Lightning invoice
+        // Return result
+    }
+}
+```
+
+### 3.2 DAG → Nostr Bridge
+**File:** `crates/dsrs/src/trace/nostr_bridge.rs` (NEW)
+
+Convert dsrs execution graphs to Nostr events for distributed tracing:
+
+```rust
+pub fn graph_to_nostr_events(graph: &Graph) -> Vec<NostrEvent> {
+    graph.nodes.iter().map(|node| {
+        match &node.node_type {
+            NodeType::Root => kind_1_text_note(node),
+            NodeType::Predict { .. } => kind_5050_job(node),
+            NodeType::Operator { .. } => kind_1_with_tags(node),
+            NodeType::Map { .. } => kind_1_lineage(node),
+        }
+    }).collect()
+}
+```
+
+### 3.3 Callback System for HUD
+**File:** `crates/dsrs/src/callbacks.rs` (NEW)
+
+Port Python DSPy's callback system for real-time HUD integration:
+
+```rust
+pub trait DspyCallback: Send + Sync {
+    fn on_module_start(&self, call_id: Uuid, instance: &dyn Module, inputs: &Example);
+    fn on_module_end(&self, call_id: Uuid, outputs: Result<&Prediction>, exception: Option<&Error>);
+    fn on_lm_start(&self, call_id: Uuid, instance: &LM, inputs: &Chat);
+    fn on_lm_end(&self, call_id: Uuid, outputs: Result<&Message>, exception: Option<&Error>);
+    fn on_optimizer_candidate(&self, candidate_id: String, metrics: HashMap<String, f32>);
+}
+```
+
+### 3.4 Refine Pattern for Verification
+**File:** `crates/dsrs/src/predictors/refine.rs` (NEW)
+
+Port Python DSPy's Refine module (replaced assertions):
+
+```rust
+pub struct Refine<M: Module> {
+    module: M,
+    n_rollouts: usize,
+    reward_fn: Box<dyn Fn(&Example, &Prediction) -> f32>,
+    threshold: f32,
+}
+```
+
+Multiple rollouts → reward evaluation → feedback hints → retry with improved context.
+
+---
+
+## Wave 4: Swarm-Backed Optimization
+
+### 4.1 SwarmCompiler
+**File:** `crates/autopilot/src/dspy_compiler.rs` (NEW)
+
+Use Pylon swarm for cheap optimization iterations:
+
+```rust
+pub struct SwarmCompiler {
+    swarm_lm: LM,       // Pylon provider (cheap)
+    validation_lm: LM,  // Claude/GPT-4 (premium)
+    budget: BudgetPolicy,
+}
+
+impl SwarmCompiler {
+    pub async fn compile<M: Module + Optimizable + Evaluator>(
+        &self,
+        module: &mut M,
+        trainset: Vec<Example>,
+    ) -> Result<OptimizationResult> {
+        // Stage 1: Bootstrap on swarm (10 msats/call)
+        // Stage 2: Optimize with MIPROv2
+        // Stage 3: Validate on premium model
+    }
+}
+```
+
+**Cost reduction example:**
+- Claude alone: ~$15 for 1,800 calls
+- With swarm optimization: ~$0.10 (96.7% reduction)
+
+### 4.2 TraceExtractor
+**File:** `crates/autopilot/src/trace_extraction.rs` (NEW)
+
+Extract training examples from successful sessions:
+
+```rust
+pub struct TraceExtractor;
+
+impl TraceExtractor {
+    pub fn extract_from_session(path: &Path) -> Vec<Example> {
+        // Parse JSONL session log
+        // Filter for successful completions
+        // Extract input/output pairs per phase
+    }
+}
+```
+
+---
+
+## Wave 5: OANIX (Agent OS Runtime)
 
 Transform OANIX's rule-based decision making into DSPy signatures.
 
-### Signatures to Create
+### Signatures
 
 ```rust
 #[Signature]
@@ -91,13 +236,13 @@ struct LifecycleDecisionSignature {
 }
 ```
 
-### Files to Create
+**Files to Create:**
 - `crates/oanix/src/dspy_situation.rs`
 - `crates/oanix/src/dspy_lifecycle.rs`
 
 ---
 
-## Wave 4: Agent Orchestrator
+## Wave 6: Agent Orchestrator
 
 Convert the 7 specialized agent prompts into DSPy Signatures.
 
@@ -110,7 +255,7 @@ Convert the 7 specialized agent prompts into DSPy Signatures.
 6. **DevOps** - Deployment
 7. **Documenter** - Documentation
 
-### Signatures to Create
+### Signatures
 
 ```rust
 #[Signature]
@@ -158,13 +303,13 @@ struct ArchitectureSignature {
 // Similar signatures for Coder, Reviewer, DevOps, Documenter...
 ```
 
-### Files to Create
+**Files to Create:**
 - `crates/agent-orchestrator/src/dspy_delegation.rs`
 - `crates/agent-orchestrator/src/dspy_agents.rs`
 
 ---
 
-## Wave 5: Tool Invocation
+## Wave 7: Tool Invocation
 
 Universal tool selection and interpretation layer.
 
@@ -213,12 +358,12 @@ struct ToolChainPlanningSignature {
 }
 ```
 
-### Files to Create
+**Files to Create:**
 - `crates/openagents-runtime/src/dspy_tools.rs`
 
 ---
 
-## Wave 6: Optimization Infrastructure
+## Wave 8: Optimization Infrastructure
 
 Production-ready optimization pipeline.
 
@@ -244,27 +389,10 @@ Production-ready optimization pipeline.
    - Track success rates by signature
    - Gradual rollout of optimized versions
 
-### Files to Create
+**Files to Create:**
 - `crates/autopilot/src/dspy_hub.rs`
 - `crates/autopilot/src/dspy_training.rs`
 - `scripts/optimize_signatures.rs`
-
----
-
-## Model Mixing Strategy
-
-Different signatures benefit from different models:
-
-| Signature Type | Recommended Model | Reasoning |
-|----------------|-------------------|-----------|
-| Planning (Deep) | Claude Opus | Complex reasoning needed |
-| Planning (Simple) | Claude Sonnet | Balance of speed/quality |
-| Execution | Claude Sonnet | Balance of speed/quality |
-| Review/Verify | Claude Haiku | Fast validation |
-| OANIX Situation | Local (Ollama) | Privacy, always-on |
-| Tool Selection | Any fast model | Simple classification |
-| Oracle Query | Claude Sonnet | Good at synthesis |
-| Architecture | Claude Opus | Needs deep reasoning |
 
 ---
 
@@ -297,6 +425,83 @@ Different signatures benefit from different models:
 
 ---
 
+## Architecture
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                        OPENAGENTS + DSRS                            │
+├────────────────────────────────────────────────────────────────────┤
+│  COMPILER LAYER (dsrs)                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │
+│  │  Signatures  │  │  Optimizers  │  │   Refine     │              │
+│  │  (macros)    │  │  MIPROv2     │  │  (verify)    │              │
+│  └──────────────┘  └──────────────┘  └──────────────┘              │
+│           │                │                │                       │
+│           └────────────────┴────────────────┘                       │
+│                            │                                        │
+│  INTEGRATION LAYER         │                                        │
+│  ┌─────────────────────────┴─────────────────────────────────────┐ │
+│  │  PylonClient (LM provider)  │  NostrBridge (DAG ↔ events)     │ │
+│  │  HudCallback (streaming)    │  TraceExtractor (training data) │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                            │                                        │
+│  EXECUTION LAYER (OpenAgents)                                       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │
+│  │    Pylon     │  │    Nexus     │  │   Runtime    │              │
+│  │  (compute)   │  │  (relay)     │  │  (HUD/trace) │              │
+│  └──────────────┘  └──────────────┘  └──────────────┘              │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## The Flywheel
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  SUCCESSFUL SESSION                                              │
+│  User runs autopilot → Task succeeds → DAG trace recorded        │
+├─────────────────────────────────────────────────────────────────┤
+│  TRAINING EXTRACTION                                             │
+│  TraceExtractor parses JSONL → dsrs Example objects              │
+├─────────────────────────────────────────────────────────────────┤
+│  COMPILATION (cheap on Pylon swarm)                              │
+│  SwarmCompiler → MIPROv2 → Pylon providers (10 msats/call)       │
+│  HudCallback streams progress → DAG → Nostr events               │
+├─────────────────────────────────────────────────────────────────┤
+│  VALIDATION (Refine pattern)                                     │
+│  Multiple rollouts → reward eval → feedback hints → retry        │
+│  Premium model for final validation                              │
+├─────────────────────────────────────────────────────────────────┤
+│  IMPROVED AGENTS                                                 │
+│  Optimized signatures have better prompts/demos                  │
+│  More successful sessions → More training data → Loop continues  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**The flywheel**: successful sessions generate training data → dsrs optimization (cheap on swarm) → better prompts/demos → higher success rates → more training data.
+
+---
+
+## Model Mixing Strategy
+
+Different signatures benefit from different models:
+
+| Signature Type | Recommended Model | Reasoning |
+|----------------|-------------------|-----------|
+| Planning (Deep) | Claude Opus | Complex reasoning needed |
+| Planning (Simple) | Claude Sonnet | Balance of speed/quality |
+| Execution | Claude Sonnet | Balance of speed/quality |
+| Review/Verify | Claude Haiku | Fast validation |
+| Optimization (iterations) | Pylon Swarm | Cheap, high volume |
+| Optimization (validation) | Claude/GPT-4 | Final quality check |
+| OANIX Situation | Local (Ollama) | Privacy, always-on |
+| Tool Selection | Any fast model | Simple classification |
+| Oracle Query | Claude Sonnet | Good at synthesis |
+| Architecture | Claude Opus | Needs deep reasoning |
+
+---
+
 ## Success Metrics
 
 For each signature, track:
@@ -304,26 +509,14 @@ For each signature, track:
 - **Confidence Calibration**: Does confidence match actual success?
 - **Latency**: How long does inference take?
 - **Token Usage**: How many tokens per call?
+- **Cost**: Sats spent per optimization run
 - **User Corrections**: How often do users override?
-
----
-
-## Implementation Priority
-
-| Wave | Priority | Estimated Effort |
-|------|----------|------------------|
-| 3: OANIX | High | Medium |
-| 4: Agent Orchestrator | High | Large |
-| 5: Tool Invocation | Medium | Medium |
-| 6: Optimization | Medium | Large |
-
-Start with OANIX (Wave 3) since it's self-contained and will provide learnings for the larger Agent Orchestrator integration.
 
 ---
 
 ## References
 
 - [DSPy Documentation](https://dspy.ai)
-- [Omar Khattab: State of DSPy](../docs/transcripts/dspy/state-of-dspy.md)
-- [Kevin Madura: DSPy is All You Need](../docs/transcripts/dspy/dspy-is-all-you-need.md)
-- [dspy-rs Crate](../../../DSRs/crates/dspy-rs)
+- [dsrs Crate](crates/dsrs/) - Rust DSPy implementation
+- [Omar Khattab: State of DSPy](docs/transcripts/dspy/state-of-dspy.md)
+- [Kevin Madura: DSPy is All You Need](docs/transcripts/dspy/dspy-is-all-you-need.md)
