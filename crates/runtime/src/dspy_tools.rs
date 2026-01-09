@@ -12,6 +12,7 @@
 use anyhow::Result;
 use dsrs::core::signature::MetaSignature;
 use dsrs::data::example::Example;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 // ============================================================================
@@ -19,7 +20,7 @@ use serde_json::{json, Value};
 // ============================================================================
 
 /// Tool execution success status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ToolSuccess {
     /// Tool completed successfully with expected output.
     Yes,
