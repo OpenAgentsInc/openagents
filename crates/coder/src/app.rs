@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command as ProcessCommand, Stdio};
+use std::process::{Child, Command as ProcessCommand, Stdio};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -1966,6 +1966,132 @@ fn save_settings(settings: &CoderSettings) {
     }
 }
 
+/// Auto-start llama-server if not already running.
+///
+/// Returns the child process handle if started, None if already running or unable to start.
+fn auto_start_llama_server() -> Option<Child> {
+    // Check if already running on port 8000 or 8080
+    if adjutant::dspy::lm_config::check_llamacpp_available() {
+        tracing::info!("llama-server already running, skipping auto-start");
+        return None;
+    }
+
+    // Find llama-server binary
+    let binary = find_llama_server_binary()?;
+    tracing::info!("Found llama-server at: {}", binary.display());
+
+    // Find a usable model
+    let model = find_gguf_model()?;
+    tracing::info!("Found GGUF model at: {}", model.display());
+
+    // Start llama-server on port 8000
+    let port = 8000;
+    tracing::info!("Starting llama-server on port {}...", port);
+
+    match ProcessCommand::new(&binary)
+        .arg("-m")
+        .arg(&model)
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--ctx-size")
+        .arg("8192")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => {
+            tracing::info!("llama-server started with PID {}", child.id());
+            // Give it a moment to bind the port
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            Some(child)
+        }
+        Err(e) => {
+            tracing::warn!("Failed to start llama-server: {}", e);
+            None
+        }
+    }
+}
+
+/// Find llama-server binary in common locations.
+fn find_llama_server_binary() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+
+    // Check common locations
+    let candidates = [
+        home.join("code/llama.cpp/build/bin/llama-server"),
+        home.join("code/llama.cpp/llama-server"),
+        home.join("llama.cpp/build/bin/llama-server"),
+        home.join("llama.cpp/llama-server"),
+        home.join(".local/bin/llama-server"),
+        PathBuf::from("/usr/local/bin/llama-server"),
+        PathBuf::from("/usr/bin/llama-server"),
+    ];
+
+    for path in &candidates {
+        if path.exists() && path.is_file() {
+            return Some(path.clone());
+        }
+    }
+
+    // Try which command
+    if let Ok(output) = ProcessCommand::new("which")
+        .arg("llama-server")
+        .output()
+    {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Some(PathBuf::from(path));
+            }
+        }
+    }
+
+    None
+}
+
+/// Find a usable GGUF model file.
+fn find_gguf_model() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+
+    // Check llama.cpp cache first (where downloaded models go)
+    let cache_dir = home.join(".cache/llama.cpp");
+    if cache_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&cache_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map_or(false, |e| e == "gguf") {
+                    // Skip vocab-only files (usually small)
+                    if let Ok(meta) = fs::metadata(&path) {
+                        // Real models are at least 100MB
+                        if meta.len() > 100_000_000 {
+                            return Some(path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check models directory
+    let models_dir = home.join("code/llama.cpp/models");
+    if models_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&models_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map_or(false, |e| e == "gguf") {
+                    if let Ok(meta) = fs::metadata(&path) {
+                        if meta.len() > 100_000_000 {
+                            return Some(path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
 fn settings_model_option(settings: &CoderSettings) -> ModelOption {
     settings
         .model
@@ -3414,6 +3540,19 @@ struct AppState {
     oanix_manifest_rx: Option<mpsc::UnboundedReceiver<oanix::OanixManifest>>,
     // Available LM providers detected on startup
     available_providers: Vec<adjutant::dspy::lm_config::LmProvider>,
+    // Auto-started llama-server process (killed on drop)
+    llama_server_process: Option<Child>,
+}
+
+impl Drop for AppState {
+    fn drop(&mut self) {
+        // Kill auto-started llama-server process
+        if let Some(mut child) = self.llama_server_process.take() {
+            tracing::info!("Stopping llama-server (PID {})...", child.id());
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
 }
 
 /// Main application
@@ -3537,7 +3676,10 @@ impl ApplicationHandler for CoderApp {
             let hook_config = load_hook_config();
             let hook_catalog = load_hook_scripts(&cwd);
 
-            // Detect available LM providers on startup
+            // Auto-start llama-server if available but not running
+            let llama_server_process = auto_start_llama_server();
+
+            // Detect available LM providers on startup (after potential auto-start)
             let available_providers = adjutant::dspy::lm_config::detect_all_providers();
             tracing::info!("Available LM providers: {:?}", available_providers);
 
@@ -3646,6 +3788,7 @@ impl ApplicationHandler for CoderApp {
                 oanix_manifest: None,
                 oanix_manifest_rx: None,
                 available_providers,
+                llama_server_process,
             }
         });
 
