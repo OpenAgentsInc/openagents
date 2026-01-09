@@ -9565,6 +9565,7 @@ dependencies = [
 name = "openagents-runtime"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "axum 0.7.9",
  "base64 0.22.1",
@@ -9574,6 +9575,7 @@ dependencies = [
  "claude-agent-sdk",
  "compute",
  "daytona",
+ "dsrs",
  "futures",
  "getrandom 0.2.16",
  "hex",

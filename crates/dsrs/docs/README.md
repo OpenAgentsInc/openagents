@@ -105,7 +105,8 @@ println!("Answer: {}", result.get("answer", None));
 | 7 | Complete | Privacy Module (redaction, chunking, policy) |
 | 8 | Complete | OANIX DSPy Signatures (in `crates/oanix/`) |
 | 9 | Complete | Agent Orchestrator Signatures (in `crates/agent-orchestrator/`) |
-| 10+ | Planned | Tool Invocation, Optimization Infrastructure, FRLM |
+| 10 | Complete | Tool Invocation Signatures (in `crates/runtime/`) |
+| 11+ | Planned | Optimization Infrastructure, FRLM |
 
 ## Key Paths
 

@@ -83,6 +83,14 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
 - [x] Helper enums: ArchitectureComplexity, SearchType, DocType, MediaType
 - [x] 152 tests passing in agent-orchestrator
 
+### Wave 10: Tool Invocation DSPy Signatures (Complete)
+- [x] `crates/runtime/src/dspy_tools.rs` - 3 tool signatures:
+  - ToolSelectionSignature - Choose the right tool for any task
+  - ToolResultInterpretationSignature - Understand tool output
+  - ToolChainPlanningSignature - Plan multi-tool sequences
+- [x] Helper enum: ToolSuccess (YES, PARTIAL, NO)
+- [x] 10 tests passing in openagents-runtime
+
 ---
 
 ## Wave 0: Protocol + Schema Registry (NEW)
@@ -963,57 +971,26 @@ Convert the 7 specialized agent prompts into DSPy Signatures for learned, optimi
 
 ---
 
-## Wave 10: Tool Invocation
+## Wave 10: Tool Invocation - COMPLETE
 
-Universal tool selection and interpretation layer.
+*Implemented in `crates/runtime/`*
 
-### Signatures
+Universal tool selection and interpretation layer. All signatures implement `MetaSignature` trait manually for public API compatibility.
 
-```rust
-#[Signature]
-struct ToolSelectionSignature {
-    /// Tool Selection: Choose the right tool for any task.
+### Implemented Signatures
 
-    #[input] task_description: String,
-    #[input] available_tools: String,     // JSON tool definitions
-    #[input] context: String,             // Recent tool results
+| Signature | File | Purpose |
+|-----------|------|---------|
+| `ToolSelectionSignature` | `dspy_tools.rs` | Choose the right tool for any task |
+| `ToolResultInterpretationSignature` | `dspy_tools.rs` | Understand what a tool result means |
+| `ToolChainPlanningSignature` | `dspy_tools.rs` | Plan multi-tool sequences |
 
-    #[output] selected_tool: String,
-    #[output] tool_params: String,        // JSON params
-    #[output] expected_outcome: String,
-    #[output] fallback_tool: String,
-}
+### Helper Enum
 
-#[Signature]
-struct ToolResultInterpretationSignature {
-    /// Result Interpretation: Understand what a tool result means.
+- `ToolSuccess`: YES, PARTIAL, NO
 
-    #[input] tool_name: String,
-    #[input] tool_output: String,
-    #[input] original_intent: String,
-
-    #[output] success: String,            // YES, PARTIAL, NO
-    #[output] extracted_info: String,     // Key information from output
-    #[output] next_steps: String,         // What to do next
-    #[output] error_analysis: String,     // If failed, why
-}
-
-#[Signature]
-struct ToolChainPlanningSignature {
-    /// Tool Chain: Plan multi-tool sequences for complex tasks.
-
-    #[input] goal: String,
-    #[input] available_tools: String,
-    #[input] constraints: String,
-
-    #[output] tool_sequence: String,      // JSON array of tool calls
-    #[output] dependencies: String,       // Which calls depend on others
-    #[output] parallelizable: String,     // Which can run in parallel
-}
-```
-
-**Files to Create:**
-- `crates/openagents-runtime/src/dspy_tools.rs`
+### Files Created
+- `crates/runtime/src/dspy_tools.rs` - 3 tool signatures + enum
 
 ---
 
