@@ -9,10 +9,12 @@
 //! The [`JobRequest`] and [`JobResponse`] traits define the common interface.
 
 pub mod chunk_analysis;
+pub mod embeddings;
 pub mod rerank;
 pub mod sandbox;
 
 pub use chunk_analysis::{ChunkAnalysisRequest, ChunkAnalysisResponse};
+pub use embeddings::{EmbeddingsRequest, EmbeddingsResponse};
 pub use rerank::{RerankRequest, RerankResponse};
 pub use sandbox::{SandboxRunRequest, SandboxRunResponse};
 
@@ -137,6 +139,12 @@ pub fn registered_job_types() -> Vec<JobTypeInfo> {
             description: "Analyze a code chunk for summaries, symbols, and faults",
         },
         JobTypeInfo {
+            job_type: EmbeddingsRequest::JOB_TYPE,
+            schema_version: EmbeddingsRequest::SCHEMA_VERSION,
+            default_verification: Verification::subjective_with_majority(1),
+            description: "Generate text embeddings for semantic search",
+        },
+        JobTypeInfo {
             job_type: RerankRequest::JOB_TYPE,
             schema_version: RerankRequest::SCHEMA_VERSION,
             default_verification: Verification::subjective_with_majority(2),
@@ -168,10 +176,13 @@ mod tests {
     #[test]
     fn test_registered_job_types() {
         let types = registered_job_types();
-        assert_eq!(types.len(), 3);
+        assert_eq!(types.len(), 4);
 
         let chunk_type = types.iter().find(|t| t.job_type.contains("chunk")).unwrap();
         assert_eq!(chunk_type.default_verification.redundancy, 2);
+
+        let embed_type = types.iter().find(|t| t.job_type.contains("embed")).unwrap();
+        assert_eq!(embed_type.default_verification.redundancy, 1);
     }
 
     #[test]
