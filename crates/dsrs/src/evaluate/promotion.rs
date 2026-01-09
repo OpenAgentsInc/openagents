@@ -195,7 +195,7 @@ impl GateRequirement {
 }
 
 /// Result of checking a gate requirement.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequirementResult {
     /// The requirement that was checked.
     pub requirement: String,
@@ -214,7 +214,7 @@ pub struct RequirementResult {
 }
 
 /// Result of a promotion attempt.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromotionResult {
     /// Whether promotion succeeded.
     pub success: bool,

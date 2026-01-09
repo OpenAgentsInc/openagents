@@ -1,5 +1,6 @@
 pub mod adapter;
 pub mod callbacks;
+pub mod compiler;
 pub mod core;
 pub mod data;
 pub mod evaluate;
