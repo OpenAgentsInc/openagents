@@ -19,6 +19,7 @@ use arboard::Clipboard;
 use web_time::Instant;
 use wgpui::input::{Key as UiKey, Modifiers as UiModifiers, NamedKey as UiNamedKey};
 use wgpui::components::{Component, EventContext, EventResult, PaintContext};
+use wgpui::components::hud::{Command as PaletteCommand, CommandPalette};
 use wgpui::markdown::{
     MarkdownBlock, MarkdownConfig, MarkdownDocument, MarkdownRenderer as MdRenderer, StreamingMarkdown,
     StyledLine,
@@ -59,7 +60,7 @@ use wgpui::components::organisms::{
     PermissionType, SearchMatch, SearchToolCall, TagData, TerminalToolCall, ToolCallCard,
 };
 
-use crate::commands::{command_specs, parse_command, Command};
+use crate::commands::{parse_command, Command};
 use crate::keybindings::{default_keybindings, match_action, Action as KeyAction, Keybinding};
 use crate::panels::PanelLayout;
 
@@ -485,6 +486,41 @@ const MAX_FILE_BYTES: usize = 200_000;
 const MAX_COMMAND_BYTES: usize = 120_000;
 const SIDEBAR_WIDTH: f32 = 220.0;
 const SIDEBAR_MIN_MAIN: f32 = 320.0;
+
+mod command_palette_ids {
+    pub const HELP: &str = "help.open";
+    pub const SETTINGS: &str = "settings.open";
+    pub const MODEL_PICKER: &str = "model.open";
+    pub const SESSION_LIST: &str = "session.list";
+    pub const SESSION_FORK: &str = "session.fork";
+    pub const SESSION_EXPORT: &str = "session.export";
+    pub const CLEAR_CONVERSATION: &str = "session.clear";
+    pub const UNDO_LAST: &str = "session.undo";
+    pub const COMPACT_CONTEXT: &str = "context.compact";
+    pub const INTERRUPT_REQUEST: &str = "request.interrupt";
+    pub const PERMISSION_RULES: &str = "permissions.rules";
+    pub const PERMISSION_CYCLE: &str = "permissions.cycle";
+    pub const PERMISSION_DEFAULT: &str = "permissions.default";
+    pub const PERMISSION_PLAN: &str = "permissions.plan";
+    pub const PERMISSION_ACCEPT: &str = "permissions.accept_edits";
+    pub const PERMISSION_BYPASS: &str = "permissions.bypass";
+    pub const PERMISSION_DONT_ASK: &str = "permissions.dont_ask";
+    pub const TOOLS_LIST: &str = "tools.list";
+    pub const MCP_CONFIG: &str = "mcp.open";
+    pub const MCP_RELOAD: &str = "mcp.reload";
+    pub const MCP_STATUS: &str = "mcp.status";
+    pub const AGENTS_LIST: &str = "agents.list";
+    pub const AGENT_CLEAR: &str = "agents.clear";
+    pub const AGENT_RELOAD: &str = "agents.reload";
+    pub const SKILLS_LIST: &str = "skills.list";
+    pub const SKILLS_RELOAD: &str = "skills.reload";
+    pub const HOOKS_OPEN: &str = "hooks.open";
+    pub const HOOKS_RELOAD: &str = "hooks.reload";
+    pub const SIDEBAR_LEFT: &str = "sidebar.left";
+    pub const SIDEBAR_RIGHT: &str = "sidebar.right";
+    pub const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
+    pub const BUG_REPORT: &str = "bug.report";
+}
 
 fn default_font_size() -> f32 {
     14.0
@@ -1179,7 +1215,6 @@ impl Default for CoderSettings {
 enum ModalState {
     None,
     ModelPicker { selected: usize },
-    CommandPalette { selected: usize },
     SessionList { selected: usize },
     AgentList { selected: usize },
     SkillList { selected: usize },
@@ -3227,6 +3262,8 @@ struct AppState {
     event_context: EventContext,
     #[allow(dead_code)]
     clipboard: Rc<RefCell<Option<Clipboard>>>,
+    command_palette: CommandPalette,
+    command_palette_action_rx: Option<mpsc::UnboundedReceiver<String>>,
     input: TextInput,
     mouse_pos: (f32, f32),
     modifiers: ModifiersState,
@@ -3414,6 +3451,12 @@ impl ApplicationHandler for CoderApp {
                     }
                 },
             );
+            let (command_palette_tx, command_palette_rx) = mpsc::unbounded_channel();
+            let command_palette = CommandPalette::new()
+                .max_visible_items(8)
+                .on_select(move |command| {
+                    let _ = command_palette_tx.send(command.id.clone());
+                });
             let settings = load_settings();
             let input = build_input(&settings);
 
@@ -3451,6 +3494,8 @@ impl ApplicationHandler for CoderApp {
                 text_system,
                 event_context,
                 clipboard,
+                command_palette,
+                command_palette_action_rx: Some(command_palette_rx),
                 input,
                 mouse_pos: (0.0, 0.0),
                 modifiers: ModifiersState::default(),
@@ -3561,6 +3606,7 @@ impl ApplicationHandler for CoderApp {
         // Poll for SDK responses first
         self.poll_responses();
         self.poll_permissions();
+        self.poll_command_palette_actions();
         self.poll_session_actions();
         self.poll_agent_actions();
         self.poll_skill_actions();
@@ -3621,6 +3667,9 @@ impl ApplicationHandler for CoderApp {
                         let _ = dialog.event(&input_event, permission_bounds, &mut state.event_context);
                     }
                     state.window.request_redraw();
+                    return;
+                }
+                if state.command_palette.is_open() {
                     return;
                 }
                 if matches!(state.modal_state, ModalState::SessionList { .. }) {
@@ -3867,6 +3916,14 @@ impl ApplicationHandler for CoderApp {
                         let _ =
                             dialog.event(&input_event, permission_bounds, &mut state.event_context);
                     }
+                    state.window.request_redraw();
+                    return;
+                }
+                if state.command_palette.is_open() {
+                    let palette_bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
+                    let _ = state
+                        .command_palette
+                        .event(&input_event, palette_bounds, &mut state.event_context);
                     state.window.request_redraw();
                     return;
                 }
@@ -4190,6 +4247,9 @@ impl ApplicationHandler for CoderApp {
                 if permission_open {
                     return;
                 }
+                if state.command_palette.is_open() {
+                    return;
+                }
                 let dy = match delta {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 20.0,
@@ -4295,6 +4355,22 @@ impl ApplicationHandler for CoderApp {
             } => {
                 if key_event.state == ElementState::Pressed {
                     if permission_open {
+                        return;
+                    }
+
+                    if state.command_palette.is_open() {
+                        if let Some(key) = convert_key_for_input(&key_event.logical_key) {
+                            let modifiers = convert_modifiers(&state.modifiers);
+                            let input_event = InputEvent::KeyDown { key, modifiers };
+                            let palette_bounds =
+                                Bounds::new(0.0, 0.0, logical_width, logical_height);
+                            let _ = state.command_palette.event(
+                                &input_event,
+                                palette_bounds,
+                                &mut state.event_context,
+                            );
+                            state.window.request_redraw();
+                        }
                         return;
                     }
 
@@ -4431,8 +4507,277 @@ impl ApplicationHandler for CoderApp {
 }
 
 impl AppState {
+    fn build_command_palette_commands(&self) -> Vec<PaletteCommand> {
+        let mut commands = Vec::new();
+        let mut push_command = |id: &str,
+                                label: &str,
+                                description: &str,
+                                category: &str,
+                                keybinding: Option<String>| {
+            let mut command = PaletteCommand::new(id, label)
+                .description(description)
+                .category(category);
+            if let Some(keys) = keybinding {
+                command = command.keybinding(keys);
+            }
+            commands.push(command);
+        };
+
+        let interrupt_keys = keybinding_labels(&self.keybindings, KeyAction::Interrupt, "Ctrl+C");
+        push_command(
+            command_palette_ids::INTERRUPT_REQUEST,
+            "Interrupt Request",
+            "Stop the active response stream",
+            "Request",
+            Some(interrupt_keys),
+        );
+
+        push_command(
+            command_palette_ids::HELP,
+            "Open Help",
+            "Show hotkeys and feature overview",
+            "Navigation",
+            Some("F1".to_string()),
+        );
+
+        let settings_keys = keybinding_labels(&self.keybindings, KeyAction::OpenSettings, "Ctrl+,");
+        push_command(
+            command_palette_ids::SETTINGS,
+            "Open Settings",
+            "Configure Coder preferences",
+            "Navigation",
+            Some(settings_keys),
+        );
+
+        push_command(
+            command_palette_ids::MODEL_PICKER,
+            "Select Model",
+            "Choose the model for this session",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::SESSION_LIST,
+            "Open Session List",
+            "Resume or fork previous sessions",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::AGENTS_LIST,
+            "Open Agents",
+            "Browse available agents",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::SKILLS_LIST,
+            "Open Skills",
+            "Browse available skills",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::HOOKS_OPEN,
+            "Open Hooks",
+            "Manage hook configuration",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::TOOLS_LIST,
+            "Open Tool List",
+            "Review available tools",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::MCP_CONFIG,
+            "Open MCP Servers",
+            "Manage MCP configuration",
+            "Navigation",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::CLEAR_CONVERSATION,
+            "Clear Conversation",
+            "Reset the current chat history",
+            "Session",
+            None,
+        );
+        push_command(
+            command_palette_ids::UNDO_LAST,
+            "Undo Last Exchange",
+            "Remove the most recent exchange",
+            "Session",
+            None,
+        );
+        push_command(
+            command_palette_ids::COMPACT_CONTEXT,
+            "Compact Context",
+            "Summarize older context into a shorter prompt",
+            "Session",
+            None,
+        );
+        push_command(
+            command_palette_ids::SESSION_FORK,
+            "Fork Session",
+            "Create a new branch of this session",
+            "Session",
+            None,
+        );
+        push_command(
+            command_palette_ids::SESSION_EXPORT,
+            "Export Session",
+            "Export conversation to markdown",
+            "Session",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::PERMISSION_CYCLE,
+            "Cycle Permission Mode",
+            "Rotate through permission modes",
+            "Permissions",
+            Some("Shift+Tab".to_string()),
+        );
+        push_command(
+            command_palette_ids::PERMISSION_DEFAULT,
+            "Permission Mode: Default",
+            "Use the default permission policy",
+            "Permissions",
+            None,
+        );
+        push_command(
+            command_palette_ids::PERMISSION_PLAN,
+            "Permission Mode: Plan",
+            "Require plan approval",
+            "Permissions",
+            None,
+        );
+        push_command(
+            command_palette_ids::PERMISSION_ACCEPT,
+            "Permission Mode: Accept Edits",
+            "Auto-approve edit requests",
+            "Permissions",
+            None,
+        );
+        push_command(
+            command_palette_ids::PERMISSION_BYPASS,
+            "Permission Mode: Bypass Permissions",
+            "Skip permission prompts",
+            "Permissions",
+            None,
+        );
+        push_command(
+            command_palette_ids::PERMISSION_DONT_ASK,
+            "Permission Mode: Don't Ask",
+            "Reject permission prompts",
+            "Permissions",
+            None,
+        );
+        push_command(
+            command_palette_ids::PERMISSION_RULES,
+            "Open Permission Rules",
+            "Manage tool allow/deny rules",
+            "Permissions",
+            None,
+        );
+
+        let left_keys =
+            keybinding_labels(&self.keybindings, KeyAction::OpenLeftSidebar, "Ctrl+[");
+        let right_keys =
+            keybinding_labels(&self.keybindings, KeyAction::OpenRightSidebar, "Ctrl+]");
+        let toggle_keys =
+            keybinding_labels(&self.keybindings, KeyAction::ToggleSidebars, "Ctrl+\\");
+        push_command(
+            command_palette_ids::SIDEBAR_LEFT,
+            "Open Left Sidebar",
+            "Show the left sidebar",
+            "Layout",
+            Some(left_keys),
+        );
+        push_command(
+            command_palette_ids::SIDEBAR_RIGHT,
+            "Open Right Sidebar",
+            "Show the right sidebar",
+            "Layout",
+            Some(right_keys),
+        );
+        push_command(
+            command_palette_ids::SIDEBAR_TOGGLE,
+            "Toggle Sidebars",
+            "Show or hide both sidebars",
+            "Layout",
+            Some(toggle_keys),
+        );
+
+        push_command(
+            command_palette_ids::MCP_RELOAD,
+            "Reload MCP Config",
+            "Reload MCP servers from project config",
+            "MCP",
+            None,
+        );
+        push_command(
+            command_palette_ids::MCP_STATUS,
+            "Refresh MCP Status",
+            "Fetch MCP server status",
+            "MCP",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::AGENT_CLEAR,
+            "Clear Active Agent",
+            "Stop using the active agent",
+            "Agents",
+            None,
+        );
+        push_command(
+            command_palette_ids::AGENT_RELOAD,
+            "Reload Agents",
+            "Reload agent definitions from disk",
+            "Agents",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::SKILLS_RELOAD,
+            "Reload Skills",
+            "Reload skills from disk",
+            "Skills",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::HOOKS_RELOAD,
+            "Reload Hooks",
+            "Reload hook scripts from disk",
+            "Hooks",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::BUG_REPORT,
+            "Report a Bug",
+            "Open the issue tracker",
+            "Diagnostics",
+            None,
+        );
+
+        commands
+    }
+
     fn open_command_palette(&mut self) {
-        self.modal_state = ModalState::CommandPalette { selected: 0 };
+        self.modal_state = ModalState::None;
+        if self.chat_context_menu.is_open() {
+            self.chat_context_menu.close();
+            self.chat_context_menu_target = None;
+        }
+        self.command_palette.set_commands(self.build_command_palette_commands());
+        self.command_palette.open();
     }
 
     fn open_model_picker(&mut self) {
@@ -6725,6 +7070,35 @@ impl CoderApp {
         }
     }
 
+    fn poll_command_palette_actions(&mut self) {
+        let actions = {
+            let Some(state) = &mut self.state else {
+                return;
+            };
+            let mut actions = Vec::new();
+            if let Some(rx) = &mut state.command_palette_action_rx {
+                while let Ok(action) = rx.try_recv() {
+                    actions.push(action);
+                }
+            }
+            actions
+        };
+
+        if actions.is_empty() {
+            return;
+        }
+
+        for action in actions {
+            if let Some(prompt) = self.execute_command_palette_action(&action) {
+                self.submit_prompt(prompt);
+            }
+        }
+
+        if let Some(state) = &mut self.state {
+            state.window.request_redraw();
+        }
+    }
+
     fn poll_session_actions(&mut self) {
         let Some(state) = &mut self.state else {
             return;
@@ -6822,6 +7196,86 @@ impl CoderApp {
 
         if needs_redraw {
             state.window.request_redraw();
+        }
+    }
+
+    fn execute_command_palette_action(&mut self, command_id: &str) -> Option<String> {
+        let Some(state) = &mut self.state else {
+            return None;
+        };
+
+        let command_action = match command_id {
+            command_palette_ids::HELP => {
+                state.open_help();
+                None
+            }
+            command_palette_ids::SETTINGS => Some(handle_command(state, Command::Config)),
+            command_palette_ids::MODEL_PICKER => Some(handle_command(state, Command::Model)),
+            command_palette_ids::SESSION_LIST => Some(handle_command(state, Command::SessionList)),
+            command_palette_ids::SESSION_FORK => Some(handle_command(state, Command::SessionFork)),
+            command_palette_ids::SESSION_EXPORT => Some(handle_command(state, Command::SessionExport)),
+            command_palette_ids::CLEAR_CONVERSATION => Some(handle_command(state, Command::Clear)),
+            command_palette_ids::UNDO_LAST => Some(handle_command(state, Command::Undo)),
+            command_palette_ids::COMPACT_CONTEXT => Some(handle_command(state, Command::Compact)),
+            command_palette_ids::INTERRUPT_REQUEST => {
+                state.interrupt_query();
+                None
+            }
+            command_palette_ids::PERMISSION_RULES => Some(handle_command(state, Command::PermissionRules)),
+            command_palette_ids::PERMISSION_CYCLE => {
+                state.cycle_permission_mode();
+                None
+            }
+            command_palette_ids::PERMISSION_DEFAULT => {
+                state.set_permission_mode(PermissionMode::Default);
+                None
+            }
+            command_palette_ids::PERMISSION_PLAN => {
+                state.set_permission_mode(PermissionMode::Plan);
+                None
+            }
+            command_palette_ids::PERMISSION_ACCEPT => {
+                state.set_permission_mode(PermissionMode::AcceptEdits);
+                None
+            }
+            command_palette_ids::PERMISSION_BYPASS => {
+                state.set_permission_mode(PermissionMode::BypassPermissions);
+                None
+            }
+            command_palette_ids::PERMISSION_DONT_ASK => {
+                state.set_permission_mode(PermissionMode::DontAsk);
+                None
+            }
+            command_palette_ids::TOOLS_LIST => Some(handle_command(state, Command::ToolsList)),
+            command_palette_ids::MCP_CONFIG => Some(handle_command(state, Command::Mcp)),
+            command_palette_ids::MCP_RELOAD => Some(handle_command(state, Command::McpReload)),
+            command_palette_ids::MCP_STATUS => Some(handle_command(state, Command::McpStatus)),
+            command_palette_ids::AGENTS_LIST => Some(handle_command(state, Command::Agents)),
+            command_palette_ids::AGENT_CLEAR => Some(handle_command(state, Command::AgentClear)),
+            command_palette_ids::AGENT_RELOAD => Some(handle_command(state, Command::AgentReload)),
+            command_palette_ids::SKILLS_LIST => Some(handle_command(state, Command::Skills)),
+            command_palette_ids::SKILLS_RELOAD => Some(handle_command(state, Command::SkillsReload)),
+            command_palette_ids::HOOKS_OPEN => Some(handle_command(state, Command::Hooks)),
+            command_palette_ids::HOOKS_RELOAD => Some(handle_command(state, Command::HooksReload)),
+            command_palette_ids::SIDEBAR_LEFT => {
+                state.open_left_sidebar();
+                None
+            }
+            command_palette_ids::SIDEBAR_RIGHT => {
+                state.open_right_sidebar();
+                None
+            }
+            command_palette_ids::SIDEBAR_TOGGLE => {
+                state.toggle_sidebars();
+                None
+            }
+            command_palette_ids::BUG_REPORT => Some(handle_command(state, Command::Bug)),
+            _ => None,
+        };
+
+        match command_action {
+            Some(CommandAction::SubmitPrompt(prompt)) => Some(prompt),
+            _ => None,
         }
     }
 
@@ -7390,96 +7844,6 @@ impl CoderApp {
                     Point::new(modal_x + 16.0, y),
                     12.0,
                     Hsla::new(0.0, 0.0, 0.4, 1.0), // Dim gray
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(footer_run);
-            }
-            ModalState::CommandPalette { selected } => {
-                let commands = command_specs();
-                // Semi-transparent overlay
-                let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
-                scene.draw_quad(overlay);
-
-                // Modal box
-                let modal_width = 720.0;
-                let modal_height = 320.0;
-                let modal_x = (logical_width - modal_width) / 2.0;
-                let modal_y = (logical_height - modal_height) / 2.0;
-                let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
-
-                // Modal background
-                let modal_bg = Quad::new(modal_bounds)
-                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
-                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
-                scene.draw_quad(modal_bg);
-
-                let mut y = modal_y + 16.0;
-
-                // Title
-                let title_run = state.text_system.layout_styled_mono(
-                    "Command palette",
-                    Point::new(modal_x + 16.0, y),
-                    14.0,
-                    Hsla::new(0.0, 0.0, 0.9, 1.0),
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(title_run);
-                y += 20.0;
-
-                let desc_run = state.text_system.layout_styled_mono(
-                    "Select a command to insert into the prompt.",
-                    Point::new(modal_x + 16.0, y),
-                    12.0,
-                    Hsla::new(0.0, 0.0, 0.5, 1.0),
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(desc_run);
-                y += 26.0;
-
-                for (i, command) in commands.iter().enumerate() {
-                    let is_selected = i == *selected;
-                    let indicator = if is_selected { ">" } else { " " };
-                    let indicator_run = state.text_system.layout_styled_mono(
-                        indicator,
-                        Point::new(modal_x + 16.0, y),
-                        13.0,
-                        Hsla::new(120.0, 0.6, 0.5, 1.0),
-                        wgpui::text::FontStyle::default(),
-                    );
-                    scene.draw_text(indicator_run);
-
-                    let usage_color = if is_selected {
-                        Hsla::new(120.0, 0.6, 0.6, 1.0)
-                    } else {
-                        Hsla::new(0.0, 0.0, 0.75, 1.0)
-                    };
-                    let usage_run = state.text_system.layout_styled_mono(
-                        command.usage,
-                        Point::new(modal_x + 32.0, y),
-                        13.0,
-                        usage_color,
-                        wgpui::text::FontStyle::default(),
-                    );
-                    scene.draw_text(usage_run);
-
-                    let desc_run = state.text_system.layout_styled_mono(
-                        command.description,
-                        Point::new(modal_x + 240.0, y),
-                        13.0,
-                        Hsla::new(0.0, 0.0, 0.5, 1.0),
-                        wgpui::text::FontStyle::default(),
-                    );
-                    scene.draw_text(desc_run);
-
-                    y += 20.0;
-                }
-
-                y = modal_y + modal_height - 24.0;
-                let footer_run = state.text_system.layout_styled_mono(
-                    "Enter to insert · Esc to exit",
-                    Point::new(modal_x + 16.0, y),
-                    12.0,
-                    Hsla::new(0.0, 0.0, 0.4, 1.0),
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(footer_run);
@@ -8934,6 +9298,11 @@ impl CoderApp {
             }
         }
 
+        if state.command_palette.is_open() {
+            let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+            state.command_palette.paint(bounds, &mut paint_cx);
+        }
+
         if state.chat_context_menu.is_open() {
             let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
             state.chat_context_menu.paint(bounds, &mut paint_cx);
@@ -10243,47 +10612,6 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     if matches!(c.as_str(), "1" | "2" | "3") {
                         state.update_selected_model(state.selected_model);
                         state.modal_state = ModalState::None;
-                    }
-                }
-                _ => {}
-            }
-            state.window.request_redraw();
-            true
-        }
-        ModalState::CommandPalette { selected } => {
-            let commands = command_specs();
-            if commands.is_empty() {
-                state.modal_state = ModalState::None;
-                state.window.request_redraw();
-                return true;
-            }
-
-            if *selected >= commands.len() {
-                *selected = commands.len() - 1;
-            }
-
-            match key {
-                WinitKey::Named(WinitNamedKey::Escape) => {
-                    state.modal_state = ModalState::None;
-                }
-                WinitKey::Named(WinitNamedKey::Enter) => {
-                    let command = commands[*selected];
-                    let mut value = command.usage.to_string();
-                    if command.requires_args {
-                        value.push(' ');
-                    }
-                    state.input.set_value(value);
-                    state.input.focus();
-                    state.modal_state = ModalState::None;
-                }
-                WinitKey::Named(WinitNamedKey::ArrowUp) => {
-                    if *selected > 0 {
-                        *selected -= 1;
-                    }
-                }
-                WinitKey::Named(WinitNamedKey::ArrowDown) => {
-                    if *selected + 1 < commands.len() {
-                        *selected += 1;
                     }
                 }
                 _ => {}
