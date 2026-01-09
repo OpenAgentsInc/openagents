@@ -28,7 +28,7 @@ pub use diff_tool_call::{DiffLine, DiffLineKind, DiffToolCall};
 pub use dm_thread::DmThread;
 pub use event_inspector::{EventCategory, EventData, EventInspector, InspectorView, TagData};
 pub use markdown_view::MarkdownView;
-pub use permission_dialog::PermissionDialog;
+pub use permission_dialog::{PermissionDialog, PermissionType};
 pub use receive_flow::{InvoiceState, ReceiveFlow, ReceiveStep, ReceiveType};
 pub use relay_manager::{RelayManager, RelayManagerState};
 pub use schedule_config::{
