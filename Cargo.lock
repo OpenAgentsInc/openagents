@@ -3898,6 +3898,7 @@ dependencies = [
  "nostr 0.1.0",
  "nostr-client",
  "parquet",
+ "protocol",
  "rand 0.8.5",
  "rayon",
  "regex",
@@ -3909,6 +3910,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "uuid",
  "which 7.0.3",
 ]
 

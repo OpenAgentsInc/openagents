@@ -1,6 +1,8 @@
 pub mod predict;
+pub mod refine;
 
 pub use predict::*;
+pub use refine::*;
 
 use crate::{Example, LM, LmUsage, Prediction};
 use anyhow::Result;

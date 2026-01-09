@@ -38,6 +38,10 @@ nostr = { path = "../nostr/core" }
 nostr-client = { path = "../nostr/client" }
 bip39 = "2.2"
 
+# Protocol layer (job schemas, hashing, verification)
+protocol = { path = "../protocol" }
+uuid = { version = "1.1", features = ["v4"] }
+
 # Claude SDK integration (headless mode)
 claude-agent-sdk = { path = "../claude-agent-sdk" }
 which = "7.0"

@@ -1,16 +1,20 @@
 pub mod adapter;
+pub mod callbacks;
 pub mod core;
 pub mod data;
 pub mod evaluate;
+pub mod manifest;
 pub mod optimizer;
 pub mod predictors;
 pub mod trace;
 pub mod utils;
 
 pub use adapter::chat::*;
+pub use callbacks::*;
 pub use core::*;
 pub use data::*;
 pub use evaluate::*;
+pub use manifest::*;
 pub use optimizer::*;
 pub use predictors::*;
 pub use utils::*;
