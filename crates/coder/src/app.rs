@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use web_time::Instant;
 use wgpui::components::{Component, EventContext, PaintContext};
+use wgpui::markdown::{MarkdownDocument, MarkdownRenderer as MdRenderer, StreamingMarkdown};
 use wgpui::renderer::Renderer;
 use wgpui::{Bounds, Hsla, InputEvent, Point, Quad, Scene, Size, TextInput, TextSystem};
 use winit::application::ApplicationHandler;
@@ -81,6 +82,8 @@ enum MessageRole {
 struct ChatMessage {
     role: MessageRole,
     content: String,
+    /// Parsed markdown document for assistant messages
+    document: Option<MarkdownDocument>,
 }
 
 /// Events from the async query task
@@ -209,7 +212,8 @@ struct RenderState {
     last_tick: Instant,
     // Chat state
     messages: Vec<ChatMessage>,
-    pending_response: String,
+    streaming_markdown: StreamingMarkdown,
+    markdown_renderer: MdRenderer,
     is_thinking: bool,
     response_rx: Option<mpsc::UnboundedReceiver<ResponseEvent>>,
     // Session info from SystemInit
@@ -328,7 +332,8 @@ impl ApplicationHandler for CoderApp {
                 mouse_pos: (0.0, 0.0),
                 last_tick: Instant::now(),
                 messages: Vec::new(),
-                pending_response: String::new(),
+                streaming_markdown: StreamingMarkdown::new(),
+                markdown_renderer: MdRenderer::new(),
                 is_thinking: false,
                 response_rx: None,
                 session_info: SessionInfo {
@@ -547,13 +552,14 @@ impl CoderApp {
         state.messages.push(ChatMessage {
             role: MessageRole::User,
             content: prompt.clone(),
+            document: None,
         });
 
         // Create channel for receiving responses
         let (tx, rx) = mpsc::unbounded_channel();
         state.response_rx = Some(rx);
         state.is_thinking = true;
-        state.pending_response.clear();
+        state.streaming_markdown.reset();
 
         // Get window handle for triggering redraws from async task
         let window = state.window.clone();
@@ -653,17 +659,23 @@ impl CoderApp {
         while let Ok(event) = rx.try_recv() {
             match event {
                 ResponseEvent::Chunk(text) => {
-                    state.pending_response.push_str(&text);
+                    state.streaming_markdown.append(&text);
+                    state.streaming_markdown.tick();
                     needs_redraw = true;
                 }
                 ResponseEvent::Complete => {
-                    // Move pending response to messages
-                    if !state.pending_response.is_empty() {
+                    // Complete and move to messages
+                    state.streaming_markdown.complete();
+                    let source = state.streaming_markdown.source().to_string();
+                    if !source.is_empty() {
+                        let doc = state.streaming_markdown.document().clone();
                         state.messages.push(ChatMessage {
                             role: MessageRole::Assistant,
-                            content: std::mem::take(&mut state.pending_response),
+                            content: source,
+                            document: Some(doc),
                         });
                     }
+                    state.streaming_markdown.reset();
                     state.is_thinking = false;
                     state.response_rx = None;
                     needs_redraw = true;
@@ -673,8 +685,9 @@ impl CoderApp {
                     state.messages.push(ChatMessage {
                         role: MessageRole::Assistant,
                         content: format!("Error: {}", e),
+                        document: None,
                     });
-                    state.pending_response.clear();
+                    state.streaming_markdown.reset();
                     state.is_thinking = false;
                     state.response_rx = None;
                     needs_redraw = true;
@@ -735,61 +748,84 @@ impl CoderApp {
         // Dark terminal background
         scene.draw_quad(Quad::new(bounds).with_background(Hsla::new(220.0, 0.15, 0.10, 1.0)));
 
-        // Render message history with wrapping
+        // Render message history
         let mut y = OUTPUT_PADDING;
         let max_y = logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - OUTPUT_PADDING - STATUS_BAR_HEIGHT;
-
-        // Calculate max chars based on available width (approx 8px per mono char at 14pt)
-        let char_width = 8.4;
         let available_width = logical_width - OUTPUT_PADDING * 2.0;
+
+        // Calculate max chars for user message wrapping
+        let char_width = 8.4;
         let max_chars = (available_width / char_width) as usize;
 
         for msg in &state.messages {
             if y > max_y {
-                break; // Stop if we've run out of space
+                break;
             }
 
-            let (prefix, color) = match msg.role {
-                MessageRole::User => ("> ", Hsla::new(0.0, 0.0, 0.6, 1.0)), // Gray for user
-                MessageRole::Assistant => ("", Hsla::new(180.0, 0.5, 0.7, 1.0)), // Cyan for assistant
-            };
-
-            let content_with_prefix = format!("{}{}", prefix, &msg.content);
-            let wrapped_lines = wrap_text(&content_with_prefix, max_chars);
-
-            for line in &wrapped_lines {
-                if y > max_y {
-                    break;
+            match msg.role {
+                MessageRole::User => {
+                    // User messages: plain text with "> " prefix
+                    let content_with_prefix = format!("> {}", &msg.content);
+                    let wrapped_lines = wrap_text(&content_with_prefix, max_chars);
+                    for line in &wrapped_lines {
+                        if y > max_y {
+                            break;
+                        }
+                        let text_run = state.text_system.layout_styled_mono(
+                            line,
+                            Point::new(OUTPUT_PADDING, y),
+                            14.0,
+                            Hsla::new(0.0, 0.0, 0.6, 1.0), // Gray
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(text_run);
+                        y += LINE_HEIGHT;
+                    }
                 }
-                let text_run = state.text_system.layout_styled_mono(
-                    line,
-                    Point::new(OUTPUT_PADDING, y),
-                    14.0,
-                    color,
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(text_run);
-                y += LINE_HEIGHT;
+                MessageRole::Assistant => {
+                    // Assistant messages: render with markdown
+                    if let Some(doc) = &msg.document {
+                        let size = state.markdown_renderer.render(
+                            doc,
+                            Point::new(OUTPUT_PADDING, y),
+                            available_width,
+                            &mut state.text_system,
+                            &mut scene,
+                        );
+                        y += size.height + LINE_HEIGHT;
+                    } else {
+                        // Fallback to plain text if no document
+                        let wrapped_lines = wrap_text(&msg.content, max_chars);
+                        for line in &wrapped_lines {
+                            if y > max_y {
+                                break;
+                            }
+                            let text_run = state.text_system.layout_styled_mono(
+                                line,
+                                Point::new(OUTPUT_PADDING, y),
+                                14.0,
+                                Hsla::new(180.0, 0.5, 0.7, 1.0), // Cyan
+                                wgpui::text::FontStyle::default(),
+                            );
+                            scene.draw_text(text_run);
+                            y += LINE_HEIGHT;
+                        }
+                    }
+                }
             }
         }
 
-        // Render pending response (streaming) with wrapping
-        if !state.pending_response.is_empty() {
-            let wrapped_lines = wrap_text(&state.pending_response, max_chars);
-            for line in &wrapped_lines {
-                if y > max_y {
-                    break;
-                }
-                let text_run = state.text_system.layout_styled_mono(
-                    line,
-                    Point::new(OUTPUT_PADDING, y),
-                    14.0,
-                    Hsla::new(180.0, 0.5, 0.7, 1.0), // Cyan
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(text_run);
-                y += LINE_HEIGHT;
-            }
+        // Render streaming response with markdown
+        if !state.streaming_markdown.source().is_empty() {
+            let doc = state.streaming_markdown.document();
+            let size = state.markdown_renderer.render(
+                doc,
+                Point::new(OUTPUT_PADDING, y),
+                available_width,
+                &mut state.text_system,
+                &mut scene,
+            );
+            y += size.height;
         } else if state.is_thinking {
             // Show thinking indicator
             if y <= max_y {
@@ -803,6 +839,7 @@ impl CoderApp {
                 scene.draw_text(text_run);
             }
         }
+        let _ = y; // Suppress unused warning
 
         // Paint input above status bar
         let input_bounds = Bounds::new(
