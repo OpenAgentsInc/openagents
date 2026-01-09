@@ -3412,6 +3412,8 @@ struct AppState {
     // Cached OANIX manifest for Autopilot (avoid re-booting every prompt)
     oanix_manifest: Option<oanix::OanixManifest>,
     oanix_manifest_rx: Option<mpsc::UnboundedReceiver<oanix::OanixManifest>>,
+    // Available LM providers detected on startup
+    available_providers: Vec<adjutant::dspy::lm_config::LmProvider>,
 }
 
 /// Main application
@@ -3535,6 +3537,10 @@ impl ApplicationHandler for CoderApp {
             let hook_config = load_hook_config();
             let hook_catalog = load_hook_scripts(&cwd);
 
+            // Detect available LM providers on startup
+            let available_providers = adjutant::dspy::lm_config::detect_all_providers();
+            tracing::info!("Available LM providers: {:?}", available_providers);
+
             AppState {
                 window,
                 surface,
@@ -3639,6 +3645,7 @@ impl ApplicationHandler for CoderApp {
                 selected_model,
                 oanix_manifest: None,
                 oanix_manifest_rx: None,
+                available_providers,
             }
         });
 
@@ -7917,12 +7924,14 @@ impl CoderApp {
             scene.draw_text(hint_run);
         }
 
-        // Right side: model, tools, session
+        // Right side: model, available open models, tools, session
         if !state.session_info.model.is_empty() {
-            // Format: "opus-4-5 | 18 tools | abc123"
+            // Format: "haiku | gptoss | 18 tools | abc123"
             let model_short = state.session_info.model
                 .replace("claude-", "")
-                .replace("-20251101", "");
+                .replace("-20251101", "")
+                .replace("-20250929", "")
+                .replace("-20251001", "");
             let session_short = if state.session_info.session_id.len() > 8 {
                 &state.session_info.session_id[..8]
             } else {
@@ -7930,6 +7939,12 @@ impl CoderApp {
             };
             let mut parts = Vec::new();
             parts.push(model_short);
+            // Add available open models (not Claude SDK since that's already shown)
+            for provider in &state.available_providers {
+                if !matches!(provider, adjutant::dspy::lm_config::LmProvider::ClaudeSdk) {
+                    parts.push(provider.short_name().to_string());
+                }
+            }
             if let Some(summary) = state.mcp_status_summary() {
                 parts.push(summary);
             }
