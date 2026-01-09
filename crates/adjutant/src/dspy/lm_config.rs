@@ -13,6 +13,8 @@ use std::sync::Arc;
 /// Provider priority for LM selection.
 #[derive(Clone, Debug, PartialEq)]
 pub enum LmProvider {
+    /// llama.cpp/GPT-OSS: Local OSS models via OpenAI-compatible API (top priority)
+    LlamaCpp,
     /// Claude Code headless via claude-agent-sdk (Pro/Max subscription)
     ClaudeSdk,
     /// Pylon swarm: distributed inference via NIP-90
@@ -26,6 +28,7 @@ pub enum LmProvider {
 impl std::fmt::Display for LmProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            LmProvider::LlamaCpp => write!(f, "llama.cpp/GPT-OSS (local)"),
             LmProvider::ClaudeSdk => write!(f, "Claude SDK (headless)"),
             LmProvider::PylonSwarm => write!(f, "Pylon Swarm (NIP-90)"),
             LmProvider::Cerebras => write!(f, "Cerebras"),
@@ -37,32 +40,85 @@ impl std::fmt::Display for LmProvider {
 /// Detect best available provider based on environment.
 ///
 /// Priority order:
-/// 1. Claude CLI available → ClaudeSdk
-/// 2. PYLON_MNEMONIC set → PylonSwarm
-/// 3. CEREBRAS_API_KEY set → Cerebras
-/// 4. Ollama running on localhost:11434 → PylonLocal
+/// 1. llama.cpp/GPT-OSS running on localhost:8080 → LlamaCpp (top priority for Autopilot)
+/// 2. Claude CLI available → ClaudeSdk
+/// 3. PYLON_MNEMONIC set → PylonSwarm
+/// 4. CEREBRAS_API_KEY set → Cerebras
+/// 5. Ollama running on localhost:11434 → PylonLocal
 pub fn detect_provider() -> Option<LmProvider> {
-    // Priority 1: Claude via SDK (uses subscription)
+    // Priority 1: llama.cpp/GPT-OSS (local inference - top priority for Autopilot)
+    if check_llamacpp_available() {
+        return Some(LmProvider::LlamaCpp);
+    }
+
+    // Priority 2: Claude via SDK (uses subscription)
     if has_claude_cli() {
         return Some(LmProvider::ClaudeSdk);
     }
 
-    // Priority 2: Pylon swarm (requires mnemonic)
+    // Priority 3: Pylon swarm (requires mnemonic)
     if std::env::var("PYLON_MNEMONIC").is_ok() {
         return Some(LmProvider::PylonSwarm);
     }
 
-    // Priority 3: Cerebras
+    // Priority 4: Cerebras
     if std::env::var("CEREBRAS_API_KEY").is_ok() {
         return Some(LmProvider::Cerebras);
     }
 
-    // Priority 4: Check for local Ollama
+    // Priority 5: Check for local Ollama
     if check_ollama_available() {
         return Some(LmProvider::PylonLocal);
     }
 
     None
+}
+
+/// Check if llama.cpp/GPT-OSS server is running locally.
+fn check_llamacpp_available() -> bool {
+    // Check custom endpoint first via environment variable
+    if let Ok(endpoint) = std::env::var("LLAMACPP_URL") {
+        // Try to extract host:port from URL
+        if let Some(host_port) = endpoint
+            .strip_prefix("http://")
+            .or_else(|| endpoint.strip_prefix("https://"))
+            .and_then(|s| s.split('/').next())
+        {
+            if let Ok(addr) = host_port.parse::<std::net::SocketAddr>() {
+                return std::net::TcpStream::connect_timeout(
+                    &addr,
+                    std::time::Duration::from_millis(100),
+                )
+                .is_ok();
+            }
+            // Try with default port if no port specified
+            let addr_with_port = if host_port.contains(':') {
+                host_port.to_string()
+            } else {
+                format!("{}:8080", host_port)
+            };
+            if let Ok(addr) = addr_with_port.parse::<std::net::SocketAddr>() {
+                return std::net::TcpStream::connect_timeout(
+                    &addr,
+                    std::time::Duration::from_millis(100),
+                )
+                .is_ok();
+            }
+        }
+    }
+
+    // Check default ports: 8080 (llama.cpp default) and 8000 (GPT-OSS default)
+    for port in [8080, 8000] {
+        if std::net::TcpStream::connect_timeout(
+            &format!("127.0.0.1:{}", port).parse().unwrap(),
+            std::time::Duration::from_millis(100),
+        )
+        .is_ok()
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// Check if Ollama is running locally.
@@ -77,6 +133,32 @@ fn check_ollama_available() -> bool {
 /// Create LM for detected or specified provider.
 pub async fn create_lm(provider: &LmProvider) -> Result<LM> {
     match provider {
+        LmProvider::LlamaCpp => {
+            let base_url = std::env::var("LLAMACPP_URL").unwrap_or_else(|_| {
+                // Auto-detect which port is available
+                for port in [8080, 8000] {
+                    if std::net::TcpStream::connect_timeout(
+                        &format!("127.0.0.1:{}", port).parse().unwrap(),
+                        std::time::Duration::from_millis(100),
+                    )
+                    .is_ok()
+                    {
+                        return format!("http://127.0.0.1:{}/v1", port);
+                    }
+                }
+                "http://127.0.0.1:8080/v1".to_string()
+            });
+            tracing::info!("LlamaCpp: using endpoint {}", base_url);
+
+            LM::builder()
+                .base_url(base_url)
+                .api_key("not-needed".to_string()) // llama.cpp doesn't require API key
+                .model("local".to_string())
+                .temperature(0.7)
+                .max_tokens(4000)
+                .build()
+                .await
+        }
         LmProvider::ClaudeSdk => {
             let client = LMClient::claude_sdk()?;
             LM::builder()
@@ -123,6 +205,7 @@ pub async fn create_planning_lm() -> Result<LM> {
     let provider = detect_provider().ok_or_else(|| {
         anyhow::anyhow!(
             "No LM provider available. Options:\n\
+             - Run llama.cpp server (./llama-server -m model.gguf --port 8080)\n\
              - Install Claude CLI (https://claude.ai/download)\n\
              - Set PYLON_MNEMONIC for swarm inference\n\
              - Set CEREBRAS_API_KEY for Cerebras\n\
