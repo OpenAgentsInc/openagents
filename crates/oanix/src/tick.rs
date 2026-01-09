@@ -8,6 +8,10 @@ use crate::state::{OanixMode, OanixState};
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
+// DSPy situation assessment (native-only)
+#[cfg(not(target_arch = "wasm32"))]
+use crate::dspy_situation::PriorityAction;
+
 /// Result of a single tick.
 #[derive(Debug)]
 pub enum TickResult {
@@ -140,7 +144,17 @@ pub async fn oanix_tick(state: &mut OanixState, config: &TickConfig) -> TickResu
         return TickResult::Idle(Duration::from_secs(config.idle_duration));
     }
 
-    // 2. Refresh manifest if stale
+    // 2. Try DSPy situation assessment (native-only)
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(action) = state.get_dspy_recommended_action().await {
+        if let Some(result) = dspy_action_to_tick_result(action, state, config) {
+            info!("Tick: DSPy recommended action {:?}", action);
+            return result;
+        }
+        // DSPy returned an action we can't handle, fall through to legacy
+    }
+
+    // 3. Refresh manifest if stale
     if state.needs_refresh(config.manifest_refresh_interval) {
         info!("Tick: manifest refresh needed");
         if let Err(e) = state.refresh_manifest().await {
@@ -150,16 +164,16 @@ pub async fn oanix_tick(state: &mut OanixState, config: &TickConfig) -> TickResu
         return TickResult::Continue(WorkItem::Housekeeping(HousekeepingTask::RefreshManifest));
     }
 
-    // 3. User input handled externally via channels
+    // 4. User input handled externally via channels
 
-    // 4. Check for swarm jobs (if provider mode)
+    // 5. Check for swarm jobs (if provider mode)
     if state.is_provider_mode() && config.accept_swarm_jobs {
         // TODO: Poll for NIP-90 jobs from relay
         // For now, this is a placeholder
         debug!("Tick: provider mode, would poll for jobs");
     }
 
-    // 5. Continue existing task
+    // 6. Continue existing task
     if let Some(task) = &state.active_task {
         debug!("Tick: continuing task {}", task.id);
         return TickResult::Continue(WorkItem::ContinueTask {
@@ -167,20 +181,78 @@ pub async fn oanix_tick(state: &mut OanixState, config: &TickConfig) -> TickResu
         });
     }
 
-    // 6. Find next actionable issue
+    // 7. Find next actionable issue (use DSPy selection on native)
     if config.auto_pick_issues {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(issue) = state.select_best_issue().await {
+            info!("Tick: DSPy selected issue #{}", issue.number);
+            return TickResult::Continue(WorkItem::Issue(IssueWork::from(issue)));
+        }
+
+        #[cfg(target_arch = "wasm32")]
         if let Some(issue) = state.next_actionable_issue() {
             info!("Tick: found actionable issue #{}", issue.number);
             return TickResult::Continue(WorkItem::Issue(IssueWork::from(issue)));
         }
     }
 
-    // 7. Periodic housekeeping
+    // 8. Periodic housekeeping
     // (sync state, check updates, etc.)
 
-    // 8. Nothing to do, idle
+    // 9. Nothing to do, idle
     debug!("Tick: nothing to do, idling for {}s", config.idle_duration);
     TickResult::Idle(Duration::from_secs(config.idle_duration))
+}
+
+/// Convert a DSPy PriorityAction to a TickResult (native-only).
+#[cfg(not(target_arch = "wasm32"))]
+fn dspy_action_to_tick_result(
+    action: PriorityAction,
+    _state: &OanixState,
+    config: &TickConfig,
+) -> Option<TickResult> {
+    match action {
+        PriorityAction::AwaitUser => {
+            // DSPy says wait for user input
+            Some(TickResult::Idle(Duration::from_secs(config.idle_duration)))
+        }
+        PriorityAction::WorkIssue => {
+            // DSPy says work on an issue - let the caller handle selection
+            None
+        }
+        PriorityAction::AcceptJob => {
+            // DSPy says accept a job - we don't have job queue yet
+            debug!("DSPy recommended AcceptJob but no job queue available");
+            None
+        }
+        PriorityAction::StartProvider => {
+            // DSPy says start provider mode - return idle to let user handle
+            debug!("DSPy recommended StartProvider");
+            None
+        }
+        PriorityAction::InitializeIdentity => {
+            // DSPy says initialize identity - handle via housekeeping
+            Some(TickResult::Continue(WorkItem::Housekeeping(
+                HousekeepingTask::RefreshManifest,
+            )))
+        }
+        PriorityAction::ConnectNetwork => {
+            // DSPy says connect network - handle via housekeeping
+            Some(TickResult::Continue(WorkItem::Housekeeping(
+                HousekeepingTask::RefreshManifest,
+            )))
+        }
+        PriorityAction::Housekeeping => {
+            // DSPy says perform housekeeping
+            Some(TickResult::Continue(WorkItem::Housekeeping(
+                HousekeepingTask::RefreshManifest,
+            )))
+        }
+        PriorityAction::Idle => {
+            // DSPy says idle
+            Some(TickResult::Idle(Duration::from_secs(config.idle_duration)))
+        }
+    }
 }
 
 /// Run the OANIX tick loop.

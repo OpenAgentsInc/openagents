@@ -42,6 +42,7 @@ pub mod boot;
 pub mod discovery;
 pub mod display;
 pub mod dspy_lifecycle;
+pub mod dspy_pipelines;
 pub mod dspy_situation;
 pub mod manifest;
 pub mod situation;
@@ -69,3 +70,9 @@ pub use dspy_lifecycle::{
     WorkPrioritizationSignature,
 };
 pub use dspy_situation::{PriorityAction, SituationAssessmentSignature, Urgency};
+
+// DSPy pipeline wrappers (for tick loop and state management)
+pub use dspy_pipelines::{
+    IssueSelectionInput, IssueSelectionPipeline, IssueSelectionResult, SituationInput,
+    SituationPipeline, SituationResult,
+};

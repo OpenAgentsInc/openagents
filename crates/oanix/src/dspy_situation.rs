@@ -5,10 +5,11 @@
 use anyhow::Result;
 use dsrs::core::signature::MetaSignature;
 use dsrs::data::example::Example;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// Urgency level for recommended actions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Urgency {
     /// Must act immediately (e.g., user input, critical error).
     Immediate,
@@ -42,7 +43,7 @@ impl std::str::FromStr for Urgency {
 }
 
 /// Priority action types for OANIX.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PriorityAction {
     /// Wait for user direction.
     AwaitUser,
