@@ -5,9 +5,14 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::process::Command as TokioCommand;
 use tokio::sync::{mpsc, oneshot};
+use tokio::time::timeout;
+use async_trait::async_trait;
 use web_time::Instant;
 use wgpui::input::{Key as UiKey, Modifiers as UiModifiers, NamedKey as UiNamedKey};
 use wgpui::components::{Component, EventContext, EventResult, PaintContext};
@@ -20,11 +25,14 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey};
 use winit::window::{Window, WindowId};
 
+use claude_agent_sdk::error::Result as SdkResult;
 use claude_agent_sdk::permissions::{CallbackPermissionHandler, PermissionRequest};
 use claude_agent_sdk::protocol::{PermissionMode, PermissionResult};
 use claude_agent_sdk::{
-    query_with_permissions, AgentDefinition, AgentModel, McpServerConfig, QueryOptions, SdkMessage,
-    SettingSource,
+    query_with_permissions, AgentDefinition, AgentModel, BaseHookInput, HookCallback,
+    HookCallbackMatcher, HookDecision, HookEvent, HookInput, HookOutput, HookSpecificOutput,
+    McpServerConfig, QueryOptions, SdkMessage, SettingSource, SyncHookOutput,
+    UserPromptSubmitSpecificOutput, SessionStartSpecificOutput, PostToolUseSpecificOutput,
 };
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -38,8 +46,8 @@ use wgpui::components::molecules::{
     SessionInfo as SessionCardInfo, SkillCard, SkillCategory, SkillInfo, SkillInstallStatus,
 };
 use wgpui::components::organisms::{
-    DiffLine, DiffLineKind, DiffToolCall, PermissionDialog, PermissionType, SearchMatch,
-    SearchToolCall, TerminalToolCall, ToolCallCard,
+    DiffLine, DiffLineKind, DiffToolCall, EventData, EventInspector, InspectorView, PermissionDialog,
+    PermissionType, SearchMatch, SearchToolCall, TagData, TerminalToolCall, ToolCallCard,
 };
 
 use crate::commands::{command_specs, parse_command, Command};
@@ -116,6 +124,13 @@ const SESSION_CARD_HEIGHT: f32 = 100.0;
 const SESSION_CARD_GAP: f32 = 12.0;
 const SESSION_MODAL_PADDING: f32 = 16.0;
 const SKILL_CARD_HEIGHT: f32 = 110.0;
+const HOOK_MODAL_WIDTH: f32 = 860.0;
+const HOOK_MODAL_HEIGHT: f32 = 520.0;
+const HOOK_EVENT_ROW_HEIGHT: f32 = 20.0;
+const HOOK_LOG_LIMIT: usize = 200;
+const HOOK_SCRIPT_TIMEOUT_SECS: u64 = 12;
+const HOOK_OUTPUT_TRUNCATE: usize = 2000;
+const HOOK_BLOCK_PATTERNS: [&str; 3] = ["rm -rf /", "sudo", "> /dev/"];
 const TOOL_PANEL_MAX_HEIGHT: f32 = 260.0;
 const TOOL_PANEL_MAX_CARDS: usize = 4;
 const TOOL_PANEL_PADDING: f32 = 12.0;
@@ -176,6 +191,7 @@ enum ResponseEvent {
         servers: Vec<McpServerStatus>,
         error: Option<String>,
     },
+    HookLog(HookLogEntry),
 }
 
 enum ToolDetail {
@@ -462,6 +478,7 @@ enum ModalState {
     SessionList { selected: usize },
     AgentList { selected: usize },
     SkillList { selected: usize },
+    Hooks { view: HookModalView, selected: usize },
     ToolList { selected: usize },
     PermissionRules,
     Config,
@@ -509,6 +526,179 @@ struct SkillEntry {
     path: PathBuf,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HookModalView {
+    Config,
+    Events,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HookSetting {
+    ToolBlocker,
+    ToolLogger,
+    OutputTruncator,
+    ContextInjection,
+    TodoEnforcer,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum HookScriptSource {
+    Project,
+    User,
+}
+
+#[derive(Clone, Debug)]
+struct HookScriptEntry {
+    event: HookEvent,
+    matcher: Option<String>,
+    source: HookScriptSource,
+    path: PathBuf,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct HookConfig {
+    tool_blocker: bool,
+    tool_logger: bool,
+    output_truncator: bool,
+    context_injection: bool,
+    todo_enforcer: bool,
+}
+
+impl Default for HookConfig {
+    fn default() -> Self {
+        Self {
+            tool_blocker: true,
+            tool_logger: false,
+            output_truncator: true,
+            context_injection: true,
+            todo_enforcer: false,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct HookLogEntry {
+    id: String,
+    event: HookEvent,
+    timestamp: u64,
+    summary: String,
+    tool_name: Option<String>,
+    matcher: Option<String>,
+    input: Value,
+    output: Option<Value>,
+    error: Option<String>,
+    sources: Vec<String>,
+}
+
+struct HookScriptCatalog {
+    entries: Vec<HookScriptEntry>,
+    error: Option<String>,
+    project_path: Option<PathBuf>,
+    user_path: Option<PathBuf>,
+}
+
+#[derive(Clone)]
+struct HookRuntimeConfig {
+    cwd: PathBuf,
+    config: HookConfig,
+    log_tx: mpsc::UnboundedSender<ResponseEvent>,
+    counter: Arc<AtomicU64>,
+}
+
+#[derive(Clone, Debug)]
+enum HookCallbackKind {
+    ToolBlocker,
+    ToolLogger,
+    OutputTruncator,
+    ContextEnforcer,
+    Script(HookScriptEntry),
+}
+
+struct CoderHookCallback {
+    kind: HookCallbackKind,
+    runtime: Arc<HookRuntimeConfig>,
+}
+
+impl CoderHookCallback {
+    fn new(kind: HookCallbackKind, runtime: Arc<HookRuntimeConfig>) -> Self {
+        Self { kind, runtime }
+    }
+}
+
+#[async_trait]
+impl HookCallback for CoderHookCallback {
+    async fn call(&self, input: HookInput, tool_use_id: Option<String>) -> SdkResult<HookOutput> {
+        let event = hook_event_from_input(&input);
+        let tool_name = hook_tool_name(&input);
+        let matcher = match &self.kind {
+            HookCallbackKind::Script(entry) => entry.matcher.clone(),
+            _ => None,
+        };
+
+        let summary: String;
+        let mut error = None;
+        let mut sources = Vec::new();
+        let mut output = HookOutput::Sync(SyncHookOutput::continue_execution());
+        let mut log_output = true;
+
+        match &self.kind {
+            HookCallbackKind::ToolBlocker => {
+                sources.push("builtin:tool_blocker".to_string());
+                let (next_output, next_summary) = hook_tool_blocker(&input);
+                output = next_output;
+                summary = next_summary;
+            }
+            HookCallbackKind::ToolLogger => {
+                sources.push("builtin:tool_logger".to_string());
+                summary = hook_tool_logger_summary(&input);
+            }
+            HookCallbackKind::OutputTruncator => {
+                sources.push("builtin:output_truncator".to_string());
+                let (next_output, next_summary) = hook_output_truncator(&input);
+                output = next_output;
+                summary = next_summary;
+            }
+            HookCallbackKind::ContextEnforcer => {
+                sources.extend(hook_context_sources(&self.runtime.config));
+                let (next_output, next_summary) =
+                    hook_context_enforcer(&self.runtime, &input);
+                output = next_output;
+                summary = next_summary;
+            }
+            HookCallbackKind::Script(entry) => {
+                sources.push(hook_script_source_label(entry));
+                match run_hook_script(entry, &input, tool_use_id.as_deref(), &self.runtime).await {
+                    Ok(next_output) => {
+                        output = next_output;
+                        summary = format!("Script {} completed.", entry.path.display());
+                    }
+                    Err(err) => {
+                        summary = format!("Script {} failed.", entry.path.display());
+                        error = Some(err);
+                        log_output = false;
+                    }
+                }
+            }
+        }
+
+        let output_ref = if log_output { Some(&output) } else { None };
+        log_hook_event(
+            &self.runtime,
+            event,
+            summary,
+            tool_name,
+            matcher,
+            &input,
+            output_ref,
+            error,
+            sources,
+        );
+
+        Ok(output)
+    }
+}
+
 struct AgentCatalog {
     entries: Vec<AgentEntry>,
     error: Option<String>,
@@ -538,6 +728,10 @@ fn config_file() -> PathBuf {
 
 fn permission_config_file() -> PathBuf {
     config_dir().join("permissions.json")
+}
+
+fn hook_config_file() -> PathBuf {
+    config_dir().join("hooks.json")
 }
 
 fn sessions_dir() -> PathBuf {
@@ -1289,6 +1483,132 @@ fn parse_skill_file(path: &Path, source: SkillSource) -> Result<Option<SkillEntr
     }))
 }
 
+fn hook_project_dir(cwd: &Path) -> PathBuf {
+    cwd.join(".claude").join("hooks")
+}
+
+fn hook_user_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|home| home.join(".claude").join("hooks"))
+}
+
+fn normalize_hook_name(name: &str) -> String {
+    name.trim()
+        .to_ascii_lowercase()
+        .replace('_', "")
+        .replace('-', "")
+}
+
+fn parse_hook_event_name(name: &str) -> Option<HookEvent> {
+    match normalize_hook_name(name).as_str() {
+        "pretooluse" => Some(HookEvent::PreToolUse),
+        "posttooluse" => Some(HookEvent::PostToolUse),
+        "posttoolusefailure" => Some(HookEvent::PostToolUseFailure),
+        "notification" => Some(HookEvent::Notification),
+        "userpromptsubmit" => Some(HookEvent::UserPromptSubmit),
+        "sessionstart" => Some(HookEvent::SessionStart),
+        "sessionend" => Some(HookEvent::SessionEnd),
+        "stop" => Some(HookEvent::Stop),
+        "subagentstart" => Some(HookEvent::SubagentStart),
+        "subagentstop" => Some(HookEvent::SubagentStop),
+        "precompact" => Some(HookEvent::PreCompact),
+        "permissionrequest" => Some(HookEvent::PermissionRequest),
+        _ => None,
+    }
+}
+
+fn parse_hook_script_name(stem: &str) -> (String, Option<String>) {
+    if let Some((event, matcher)) = stem.split_once("__") {
+        (event.to_string(), Some(matcher.to_string()))
+    } else {
+        (stem.to_string(), None)
+    }
+}
+
+fn load_hook_scripts(cwd: &Path) -> HookScriptCatalog {
+    let project_dir = hook_project_dir(cwd);
+    let user_dir = hook_user_dir();
+    let mut errors = Vec::new();
+    let mut entries = Vec::new();
+
+    if let Some(user_dir) = user_dir.as_ref() {
+        entries.extend(load_hook_script_dir(user_dir, HookScriptSource::User, &mut errors));
+    }
+    entries.extend(load_hook_script_dir(
+        &project_dir,
+        HookScriptSource::Project,
+        &mut errors,
+    ));
+
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
+
+    HookScriptCatalog {
+        entries,
+        error: if errors.is_empty() {
+            None
+        } else {
+            Some(errors.join(" | "))
+        },
+        project_path: Some(project_dir),
+        user_path: user_dir,
+    }
+}
+
+fn load_hook_script_dir(
+    dir: &Path,
+    source: HookScriptSource,
+    errors: &mut Vec<String>,
+) -> Vec<HookScriptEntry> {
+    if !dir.is_dir() {
+        return Vec::new();
+    }
+
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            errors.push(format!("Failed to read {}: {}", dir.display(), err));
+            return Vec::new();
+        }
+    };
+
+    let mut scripts = Vec::new();
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                errors.push(format!("Failed to read hook entry: {}", err));
+                continue;
+            }
+        };
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        match parse_hook_script_entry(&path, source) {
+            Ok(Some(script)) => scripts.push(script),
+            Ok(None) => {}
+            Err(err) => errors.push(err),
+        }
+    }
+    scripts
+}
+
+fn parse_hook_script_entry(path: &Path, source: HookScriptSource) -> Result<Option<HookScriptEntry>, String> {
+    let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+        return Ok(None);
+    };
+    let (event_name, matcher) = parse_hook_script_name(stem);
+    let Some(event) = parse_hook_event_name(&event_name) else {
+        return Ok(None);
+    };
+
+    Ok(Some(HookScriptEntry {
+        event,
+        matcher,
+        source,
+        path: path.to_path_buf(),
+    }))
+}
+
 fn parse_mcp_status(value: &Value) -> Result<Vec<McpServerStatus>, String> {
     if let Some(servers_value) = value
         .get("mcp_servers")
@@ -1316,6 +1636,126 @@ fn load_permission_config() -> PermissionConfig {
         }
     }
     PermissionConfig::default()
+}
+
+fn load_hook_config() -> HookConfig {
+    let path = hook_config_file();
+    if let Ok(content) = fs::read_to_string(path) {
+        if let Ok(config) = serde_json::from_str::<HookConfig>(&content) {
+            return config;
+        }
+    }
+    HookConfig::default()
+}
+
+fn save_hook_config(config: &HookConfig) {
+    let dir = config_dir();
+    if fs::create_dir_all(&dir).is_ok() {
+        if let Ok(content) = serde_json::to_string_pretty(config) {
+            let _ = fs::write(hook_config_file(), content);
+        }
+    }
+}
+
+fn build_hook_map(
+    cwd: PathBuf,
+    config: HookConfig,
+    scripts: Vec<HookScriptEntry>,
+    log_tx: mpsc::UnboundedSender<ResponseEvent>,
+) -> Option<HashMap<HookEvent, Vec<HookCallbackMatcher>>> {
+    let runtime = Arc::new(HookRuntimeConfig {
+        cwd,
+        config,
+        log_tx,
+        counter: Arc::new(AtomicU64::new(1)),
+    });
+    let mut hooks: HashMap<HookEvent, Vec<HookCallbackMatcher>> = HashMap::new();
+
+    if runtime.config.tool_blocker {
+        add_hook_matcher(
+            &mut hooks,
+            HookEvent::PreToolUse,
+            hook_matcher(HookCallbackKind::ToolBlocker, runtime.clone()),
+        );
+    }
+    if runtime.config.tool_logger {
+        add_hook_matcher(
+            &mut hooks,
+            HookEvent::PreToolUse,
+            hook_matcher(HookCallbackKind::ToolLogger, runtime.clone()),
+        );
+        add_hook_matcher(
+            &mut hooks,
+            HookEvent::PostToolUse,
+            hook_matcher(HookCallbackKind::ToolLogger, runtime.clone()),
+        );
+        add_hook_matcher(
+            &mut hooks,
+            HookEvent::PostToolUseFailure,
+            hook_matcher(HookCallbackKind::ToolLogger, runtime.clone()),
+        );
+    }
+    if runtime.config.output_truncator {
+        add_hook_matcher(
+            &mut hooks,
+            HookEvent::PostToolUse,
+            hook_matcher(HookCallbackKind::OutputTruncator, runtime.clone()),
+        );
+    }
+    if runtime.config.context_injection || runtime.config.todo_enforcer {
+        add_hook_matcher(
+            &mut hooks,
+            HookEvent::UserPromptSubmit,
+            hook_matcher(HookCallbackKind::ContextEnforcer, runtime.clone()),
+        );
+        add_hook_matcher(
+            &mut hooks,
+            HookEvent::SessionStart,
+            hook_matcher(HookCallbackKind::ContextEnforcer, runtime.clone()),
+        );
+    }
+
+    for script in scripts {
+        add_hook_matcher(
+            &mut hooks,
+            script.event,
+            hook_script_matcher(script, runtime.clone()),
+        );
+    }
+
+    if hooks.is_empty() {
+        None
+    } else {
+        Some(hooks)
+    }
+}
+
+fn add_hook_matcher(
+    hooks: &mut HashMap<HookEvent, Vec<HookCallbackMatcher>>,
+    event: HookEvent,
+    matcher: HookCallbackMatcher,
+) {
+    hooks.entry(event).or_default().push(matcher);
+}
+
+fn hook_matcher(kind: HookCallbackKind, runtime: Arc<HookRuntimeConfig>) -> HookCallbackMatcher {
+    HookCallbackMatcher::new().hook(Arc::new(CoderHookCallback::new(kind, runtime)))
+}
+
+fn hook_script_matcher(
+    entry: HookScriptEntry,
+    runtime: Arc<HookRuntimeConfig>,
+) -> HookCallbackMatcher {
+    let mut matcher = if let Some(pattern) = entry.matcher.clone() {
+        HookCallbackMatcher::with_matcher(pattern)
+    } else {
+        HookCallbackMatcher::new()
+    };
+    matcher = matcher.timeout(HOOK_SCRIPT_TIMEOUT_SECS as u32);
+    matcher.hook(Arc::new(CoderHookCallback::new(
+        HookCallbackKind::Script(entry),
+        runtime,
+    )))
 }
 
 fn save_permission_config(config: &PermissionConfig) {
@@ -1491,6 +1931,16 @@ struct AppState {
     skill_project_path: Option<PathBuf>,
     skill_user_path: Option<PathBuf>,
     skill_load_error: Option<String>,
+    hook_config: HookConfig,
+    hook_scripts: Vec<HookScriptEntry>,
+    hook_project_path: Option<PathBuf>,
+    hook_user_path: Option<PathBuf>,
+    hook_load_error: Option<String>,
+    hook_event_log: Vec<HookLogEntry>,
+    hook_inspector: Option<EventInspector>,
+    hook_inspector_view: InspectorView,
+    hook_inspector_action_tx: Option<mpsc::UnboundedSender<InspectorView>>,
+    hook_inspector_action_rx: Option<mpsc::UnboundedReceiver<InspectorView>>,
     // Modal state for slash commands
     modal_state: ModalState,
     #[allow(dead_code)]
@@ -1633,6 +2083,8 @@ impl ApplicationHandler for CoderApp {
             let mcp_project_path = Some(mcp_project_file(&cwd));
             let agent_catalog = load_agent_entries(&cwd);
             let skill_catalog = load_skill_entries(&cwd);
+            let hook_config = load_hook_config();
+            let hook_catalog = load_hook_scripts(&cwd);
 
             AppState {
                 window,
@@ -1688,6 +2140,16 @@ impl ApplicationHandler for CoderApp {
                 skill_project_path: skill_catalog.project_path,
                 skill_user_path: skill_catalog.user_path,
                 skill_load_error: skill_catalog.error,
+                hook_config,
+                hook_scripts: hook_catalog.entries,
+                hook_project_path: hook_catalog.project_path,
+                hook_user_path: hook_catalog.user_path,
+                hook_load_error: hook_catalog.error,
+                hook_event_log: Vec::new(),
+                hook_inspector: None,
+                hook_inspector_view: InspectorView::Summary,
+                hook_inspector_action_tx: None,
+                hook_inspector_action_rx: None,
                 modal_state: ModalState::None,
                 panel_layout: PanelLayout::Single,
                 keybindings: default_keybindings(),
@@ -1739,6 +2201,7 @@ impl ApplicationHandler for CoderApp {
         self.poll_session_actions();
         self.poll_agent_actions();
         self.poll_skill_actions();
+        self.poll_hook_inspector_actions();
 
         let Some(state) = &mut self.state else {
             return;
@@ -1898,6 +2361,42 @@ impl ApplicationHandler for CoderApp {
                             ) {
                                 handled = true;
                             }
+                        }
+                    }
+                    if handled {
+                        state.window.request_redraw();
+                    }
+                    return;
+                }
+                if matches!(
+                    state.modal_state,
+                    ModalState::Hooks {
+                        view: HookModalView::Events,
+                        ..
+                    }
+                ) {
+                    let selected = match &state.modal_state {
+                        ModalState::Hooks { selected, .. } => *selected,
+                        _ => 0,
+                    };
+                    let layout = hook_event_layout(
+                        logical_width,
+                        logical_height,
+                        state.hook_event_log.len(),
+                        selected,
+                    );
+                    let input_event = InputEvent::MouseMove { x, y };
+                    let mut handled = false;
+                    if let Some(inspector) = state.hook_inspector.as_mut() {
+                        if matches!(
+                            inspector.event(
+                                &input_event,
+                                layout.inspector_bounds,
+                                &mut state.event_context
+                            ),
+                            EventResult::Handled
+                        ) {
+                            handled = true;
                         }
                     }
                     if handled {
@@ -2085,6 +2584,56 @@ impl ApplicationHandler for CoderApp {
                     }
                     return;
                 }
+                if matches!(
+                    state.modal_state,
+                    ModalState::Hooks {
+                        view: HookModalView::Events,
+                        ..
+                    }
+                ) {
+                    let selected_index = match &state.modal_state {
+                        ModalState::Hooks { selected, .. } => *selected,
+                        _ => 0,
+                    };
+                    let layout = hook_event_layout(
+                        logical_width,
+                        logical_height,
+                        state.hook_event_log.len(),
+                        selected_index,
+                    );
+                    let mut handled = false;
+                    if button_state == ElementState::Released {
+                        if layout.list_bounds.contains(Point::new(x, y)) {
+                            for (index, bounds) in &layout.row_bounds {
+                                if bounds.contains(Point::new(x, y)) {
+                                    state.modal_state = ModalState::Hooks {
+                                        view: HookModalView::Events,
+                                        selected: *index,
+                                    };
+                                    state.sync_hook_inspector(*index);
+                                    handled = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if let Some(inspector) = state.hook_inspector.as_mut() {
+                        if matches!(
+                            inspector.event(
+                                &input_event,
+                                layout.inspector_bounds,
+                                &mut state.event_context
+                            ),
+                            EventResult::Handled
+                        ) {
+                            handled = true;
+                        }
+                    }
+                    if handled {
+                        state.window.request_redraw();
+                    }
+                    return;
+                }
                 if let Some(layout) = tool_panel_layout(
                     logical_width,
                     logical_height,
@@ -2159,6 +2708,62 @@ impl ApplicationHandler for CoderApp {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 20.0,
                 };
+                if matches!(
+                    state.modal_state,
+                    ModalState::Hooks {
+                        view: HookModalView::Events,
+                        ..
+                    }
+                ) {
+                    let selected = match &state.modal_state {
+                        ModalState::Hooks { selected, .. } => *selected,
+                        _ => 0,
+                    };
+                    let layout = hook_event_layout(
+                        logical_width,
+                        logical_height,
+                        state.hook_event_log.len(),
+                        selected,
+                    );
+                    let mouse_point = Point::new(state.mouse_pos.0, state.mouse_pos.1);
+                    if layout.inspector_bounds.contains(mouse_point) {
+                        let input_event = InputEvent::Scroll { dx: 0.0, dy: dy * 40.0 };
+                        if let Some(inspector) = state.hook_inspector.as_mut() {
+                            if matches!(
+                                inspector.event(
+                                    &input_event,
+                                    layout.inspector_bounds,
+                                    &mut state.event_context
+                                ),
+                                EventResult::Handled
+                            ) {
+                                state.window.request_redraw();
+                                return;
+                            }
+                        }
+                    } else if layout.list_bounds.contains(mouse_point) {
+                        let mut next_selected = selected;
+                        if dy > 0.0 {
+                            next_selected = next_selected.saturating_add(1);
+                        } else if dy < 0.0 {
+                            next_selected = next_selected.saturating_sub(1);
+                        }
+                        if !state.hook_event_log.is_empty() {
+                            next_selected = next_selected.min(state.hook_event_log.len() - 1);
+                        } else {
+                            next_selected = 0;
+                        }
+                        if next_selected != selected {
+                            state.modal_state = ModalState::Hooks {
+                                view: HookModalView::Events,
+                                selected: next_selected,
+                            };
+                            state.sync_hook_inspector(next_selected);
+                            state.window.request_redraw();
+                        }
+                        return;
+                    }
+                }
                 if let Some(layout) = tool_panel_layout(
                     logical_width,
                     logical_height,
@@ -2344,6 +2949,56 @@ impl AppState {
 
     fn open_mcp_config(&mut self) {
         self.modal_state = ModalState::McpConfig { selected: 0 };
+    }
+
+    fn open_hooks(&mut self) {
+        let (action_tx, action_rx) = mpsc::unbounded_channel();
+        self.hook_inspector_action_tx = Some(action_tx);
+        self.hook_inspector_action_rx = Some(action_rx);
+        self.modal_state = ModalState::Hooks {
+            view: HookModalView::Config,
+            selected: 0,
+        };
+    }
+
+    fn reload_hooks(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let catalog = load_hook_scripts(&cwd);
+        self.hook_scripts = catalog.entries;
+        self.hook_project_path = catalog.project_path;
+        self.hook_user_path = catalog.user_path;
+        self.hook_load_error = catalog.error;
+    }
+
+    fn toggle_hook_setting(&mut self, setting: HookSetting) {
+        match setting {
+            HookSetting::ToolBlocker => {
+                self.hook_config.tool_blocker = !self.hook_config.tool_blocker;
+            }
+            HookSetting::ToolLogger => {
+                self.hook_config.tool_logger = !self.hook_config.tool_logger;
+            }
+            HookSetting::OutputTruncator => {
+                self.hook_config.output_truncator = !self.hook_config.output_truncator;
+            }
+            HookSetting::ContextInjection => {
+                self.hook_config.context_injection = !self.hook_config.context_injection;
+            }
+            HookSetting::TodoEnforcer => {
+                self.hook_config.todo_enforcer = !self.hook_config.todo_enforcer;
+            }
+        }
+        save_hook_config(&self.hook_config);
+    }
+
+    fn clear_hook_log(&mut self) {
+        self.hook_event_log.clear();
+        self.hook_inspector = None;
+        if let ModalState::Hooks { view, selected } = &mut self.modal_state {
+            if *view == HookModalView::Events {
+                *selected = 0;
+            }
+        }
     }
 
     fn reload_agents(&mut self) {
@@ -2752,6 +3407,38 @@ impl AppState {
             sources.push(SettingSource::User);
         }
         sources
+    }
+
+    fn push_hook_log(&mut self, entry: HookLogEntry) {
+        self.hook_event_log.insert(0, entry);
+        if self.hook_event_log.len() > HOOK_LOG_LIMIT {
+            self.hook_event_log.truncate(HOOK_LOG_LIMIT);
+        }
+        if let ModalState::Hooks {
+            view: HookModalView::Events,
+            selected,
+        } = &mut self.modal_state
+        {
+            *selected = 0;
+            self.sync_hook_inspector(0);
+        }
+    }
+
+    fn sync_hook_inspector(&mut self, selected: usize) {
+        let Some(entry) = self.hook_event_log.get(selected) else {
+            self.hook_inspector = None;
+            return;
+        };
+
+        let event = hook_log_event_data(entry);
+        let view = self.hook_inspector_view;
+        let mut inspector = EventInspector::new(event).view(view);
+        if let Some(tx) = self.hook_inspector_action_tx.clone() {
+            inspector = inspector.on_view_change(move |view| {
+                let _ = tx.send(view);
+            });
+        }
+        self.hook_inspector = Some(inspector);
     }
 
     fn handle_checkpoint_restore(&mut self, index: usize) {
@@ -3463,10 +4150,13 @@ impl CoderApp {
         let mcp_servers = state.merged_mcp_servers();
         let agent_definitions = state.agent_definitions_for_query();
         let setting_sources = state.setting_sources_for_query();
+        let hook_config = state.hook_config.clone();
+        let hook_scripts = state.hook_scripts.clone();
 
         // Spawn async query task
         let handle = self.runtime_handle.clone();
         handle.spawn(async move {
+            let hook_cwd = cwd.clone();
             let mut options = QueryOptions::new()
                 .cwd(cwd)
                 .include_partial_messages(true) // Enable streaming deltas
@@ -3500,6 +4190,9 @@ impl CoderApp {
             }
             if !setting_sources.is_empty() {
                 options.setting_sources = setting_sources;
+            }
+            if let Some(hooks) = build_hook_map(hook_cwd, hook_config, hook_scripts, tx.clone()) {
+                options = options.hooks(hooks);
             }
 
             let permission_window = window.clone();
@@ -3983,6 +4676,10 @@ impl CoderApp {
                     state.update_mcp_status(servers, error);
                     needs_redraw = true;
                 }
+                ResponseEvent::HookLog(entry) => {
+                    state.push_hook_log(entry);
+                    needs_redraw = true;
+                }
             }
         }
 
@@ -4095,6 +4792,28 @@ impl CoderApp {
         }
         for event in skill_events {
             state.handle_skill_card_action(event.action, event.skill_id);
+            needs_redraw = true;
+        }
+
+        if needs_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    fn poll_hook_inspector_actions(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut needs_redraw = false;
+        let mut views = Vec::new();
+        if let Some(rx) = &mut state.hook_inspector_action_rx {
+            while let Ok(view) = rx.try_recv() {
+                views.push(view);
+            }
+        }
+        for view in views {
+            state.hook_inspector_view = view;
             needs_redraw = true;
         }
 
@@ -5095,6 +5814,279 @@ impl CoderApp {
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(footer_run);
+            }
+            ModalState::Hooks { view, selected } => {
+                let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
+                scene.draw_quad(overlay);
+
+                let modal_width = HOOK_MODAL_WIDTH;
+                let modal_height = HOOK_MODAL_HEIGHT;
+                let modal_x = (logical_width - modal_width) / 2.0;
+                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
+
+                let modal_bg = Quad::new(modal_bounds)
+                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
+                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
+                scene.draw_quad(modal_bg);
+
+                let mut y = modal_y + 16.0;
+                let title_run = state.text_system.layout_styled_mono(
+                    "Hooks",
+                    Point::new(modal_x + 16.0, y),
+                    14.0,
+                    Hsla::new(0.0, 0.0, 0.9, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(title_run);
+                y += 20.0;
+
+                let view_label = match view {
+                    HookModalView::Config => "Config",
+                    HookModalView::Events => "Events",
+                };
+                let view_line = format!("View: {} (Tab to switch)", view_label);
+                let view_run = state.text_system.layout_styled_mono(
+                    &view_line,
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(view_run);
+                y += 18.0;
+
+                match view {
+                    HookModalView::Config => {
+                        let desc_run = state.text_system.layout_styled_mono(
+                            "Configure built-in hooks and review loaded scripts.",
+                            Point::new(modal_x + 16.0, y),
+                            12.0,
+                            Hsla::new(0.0, 0.0, 0.5, 1.0),
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(desc_run);
+                        y += 20.0;
+
+                        let config_lines = [
+                            (HookSetting::ToolBlocker, "ToolBlocker", state.hook_config.tool_blocker),
+                            (HookSetting::ToolLogger, "ToolLogger", state.hook_config.tool_logger),
+                            (
+                                HookSetting::OutputTruncator,
+                                "OutputTruncator",
+                                state.hook_config.output_truncator,
+                            ),
+                            (
+                                HookSetting::ContextInjection,
+                                "ContextInjection",
+                                state.hook_config.context_injection,
+                            ),
+                            (HookSetting::TodoEnforcer, "TodoEnforcer", state.hook_config.todo_enforcer),
+                        ];
+
+                        for (idx, (_setting, label, enabled)) in config_lines.iter().enumerate() {
+                            let marker = if *enabled { "[x]" } else { "[ ]" };
+                            let line = format!("{}. {} {}", idx + 1, marker, label);
+                            let line_run = state.text_system.layout_styled_mono(
+                                &line,
+                                Point::new(modal_x + 16.0, y),
+                                12.0,
+                                if *enabled {
+                                    Hsla::new(120.0, 0.6, 0.6, 1.0)
+                                } else {
+                                    Hsla::new(0.0, 0.0, 0.6, 1.0)
+                                },
+                                wgpui::text::FontStyle::default(),
+                            );
+                            scene.draw_text(line_run);
+                            y += 18.0;
+                        }
+
+                        y += 4.0;
+                        let project_path = state
+                            .hook_project_path
+                            .as_ref()
+                            .map(|path| path.display().to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let project_line = format!("Project hooks: {}", project_path);
+                        let project_run = state.text_system.layout_styled_mono(
+                            &truncate_preview(&project_line, 90),
+                            Point::new(modal_x + 16.0, y),
+                            12.0,
+                            Hsla::new(0.0, 0.0, 0.6, 1.0),
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(project_run);
+                        y += 18.0;
+
+                        if let Some(user_path) = &state.hook_user_path {
+                            let user_line = format!("User hooks: {}", user_path.display());
+                            let user_run = state.text_system.layout_styled_mono(
+                                &truncate_preview(&user_line, 90),
+                                Point::new(modal_x + 16.0, y),
+                                12.0,
+                                Hsla::new(0.0, 0.0, 0.6, 1.0),
+                                wgpui::text::FontStyle::default(),
+                            );
+                            scene.draw_text(user_run);
+                            y += 18.0;
+                        }
+
+                        if let Some(error) = &state.hook_load_error {
+                            let error_line = format!("Load warning: {}", error);
+                            let error_run = state.text_system.layout_styled_mono(
+                                &truncate_preview(&error_line, 100),
+                                Point::new(modal_x + 16.0, y),
+                                12.0,
+                                Hsla::new(15.0, 0.7, 0.6, 1.0),
+                                wgpui::text::FontStyle::default(),
+                            );
+                            scene.draw_text(error_run);
+                            y += 18.0;
+                        }
+
+                        let script_count = state.hook_scripts.len();
+                        let scripts_line = format!("Scripts: {}", script_count);
+                        let scripts_run = state.text_system.layout_styled_mono(
+                            &scripts_line,
+                            Point::new(modal_x + 16.0, y),
+                            12.0,
+                            Hsla::new(0.0, 0.0, 0.6, 1.0),
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(scripts_run);
+                        y += 18.0;
+
+                        let list_top = y;
+                        let list_bottom = modal_y + modal_height - 48.0;
+                        let row_height = 18.0;
+                        let max_rows =
+                            ((list_bottom - list_top) / row_height).floor().max(0.0) as usize;
+                        if script_count == 0 {
+                            let empty_run = state.text_system.layout_styled_mono(
+                                "No hook scripts found.",
+                                Point::new(modal_x + 16.0, list_top),
+                                12.0,
+                                Hsla::new(0.0, 0.0, 0.5, 1.0),
+                                wgpui::text::FontStyle::default(),
+                            );
+                            scene.draw_text(empty_run);
+                        } else {
+                            for (idx, script) in state.hook_scripts.iter().take(max_rows).enumerate() {
+                                let source_label = match script.source {
+                                    HookScriptSource::Project => "project",
+                                    HookScriptSource::User => "user",
+                                };
+                                let matcher = script
+                                    .matcher
+                                    .as_ref()
+                                    .map(|matcher| format!(" ({})", matcher))
+                                    .unwrap_or_default();
+                                let line = format!(
+                                    "- {}{} · {} · {}",
+                                    hook_event_label(script.event),
+                                    matcher,
+                                    source_label,
+                                    script.path.display()
+                                );
+                                let line_run = state.text_system.layout_styled_mono(
+                                    &truncate_preview(&line, 120),
+                                    Point::new(modal_x + 16.0, list_top + idx as f32 * row_height),
+                                    12.0,
+                                    Hsla::new(0.0, 0.0, 0.55, 1.0),
+                                    wgpui::text::FontStyle::default(),
+                                );
+                                scene.draw_text(line_run);
+                            }
+                        }
+
+                        y = modal_y + modal_height - 24.0;
+                        let footer_run = state.text_system.layout_styled_mono(
+                            "1-5 toggle · Tab for events · R to reload · Esc to exit",
+                            Point::new(modal_x + 16.0, y),
+                            12.0,
+                            Hsla::new(0.0, 0.0, 0.4, 1.0),
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(footer_run);
+                    }
+                    HookModalView::Events => {
+                        let desc_run = state.text_system.layout_styled_mono(
+                            "Hook callbacks executed during the current session.",
+                            Point::new(modal_x + 16.0, y),
+                            12.0,
+                            Hsla::new(0.0, 0.0, 0.5, 1.0),
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(desc_run);
+
+                        let layout = hook_event_layout(
+                            logical_width,
+                            logical_height,
+                            state.hook_event_log.len(),
+                            *selected,
+                        );
+
+                        if state.hook_event_log.is_empty() {
+                            let empty_run = state.text_system.layout_styled_mono(
+                                "No hook events logged yet.",
+                                Point::new(modal_x + 16.0, layout.list_bounds.origin.y),
+                                12.0,
+                                Hsla::new(0.0, 0.0, 0.5, 1.0),
+                                wgpui::text::FontStyle::default(),
+                            );
+                            scene.draw_text(empty_run);
+                        } else {
+                            let selected = (*selected).min(state.hook_event_log.len().saturating_sub(1));
+                            for (index, bounds) in &layout.row_bounds {
+                                if let Some(entry) = state.hook_event_log.get(*index) {
+                                    if *index == selected {
+                                        let highlight = Quad::new(*bounds)
+                                            .with_background(Hsla::new(220.0, 0.2, 0.18, 1.0));
+                                        scene.draw_quad(highlight);
+                                    }
+                                    let timestamp = format_relative_time(entry.timestamp);
+                                    let mut label = format!(
+                                        "{} · {}",
+                                        timestamp,
+                                        hook_event_label(entry.event)
+                                    );
+                                    if let Some(tool) = &entry.tool_name {
+                                        label.push_str(" · ");
+                                        label.push_str(tool);
+                                    }
+                                    let label_run = state.text_system.layout_styled_mono(
+                                        &truncate_preview(&label, 42),
+                                        Point::new(bounds.origin.x + 6.0, bounds.origin.y + 4.0),
+                                        11.0,
+                                        Hsla::new(0.0, 0.0, 0.7, 1.0),
+                                        wgpui::text::FontStyle::default(),
+                                    );
+                                    scene.draw_text(label_run);
+                                }
+                            }
+
+                            if state.hook_inspector.is_none() {
+                                state.sync_hook_inspector(selected);
+                            }
+                            if let Some(inspector) = state.hook_inspector.as_mut() {
+                                let mut paint_cx =
+                                    PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+                                inspector.paint(layout.inspector_bounds, &mut paint_cx);
+                            }
+                        }
+
+                        y = modal_y + modal_height - 24.0;
+                        let footer_run = state.text_system.layout_styled_mono(
+                            "Up/Down to select · Tab for config · C to clear · Esc to exit",
+                            Point::new(modal_x + 16.0, y),
+                            12.0,
+                            Hsla::new(0.0, 0.0, 0.4, 1.0),
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(footer_run);
+                    }
+                }
             }
             ModalState::ToolList { selected } => {
                 let tools = &state.session_info.tools;
@@ -6286,6 +7278,12 @@ struct SkillListLayout {
     card_bounds: Vec<(usize, Bounds)>,
 }
 
+struct HookEventLayout {
+    list_bounds: Bounds,
+    inspector_bounds: Bounds,
+    row_bounds: Vec<(usize, Bounds)>,
+}
+
 struct ToolPanelBlock {
     index: usize,
     card_bounds: Bounds,
@@ -6486,6 +7484,63 @@ fn skill_list_layout(
     }
 
     SkillListLayout { card_bounds }
+}
+
+fn hook_event_layout(
+    logical_width: f32,
+    logical_height: f32,
+    event_count: usize,
+    selected: usize,
+) -> HookEventLayout {
+    let modal_width = HOOK_MODAL_WIDTH;
+    let modal_height = HOOK_MODAL_HEIGHT;
+    let modal_x = (logical_width - modal_width) / 2.0;
+    let modal_y = (logical_height - modal_height) / 2.0;
+
+    let content_top = modal_y + 64.0;
+    let content_bottom = modal_y + modal_height - 32.0;
+    let content_height = (content_bottom - content_top).max(0.0);
+    let list_width = 260.0;
+    let list_bounds = Bounds::new(
+        modal_x + 16.0,
+        content_top,
+        list_width,
+        content_height,
+    );
+    let inspector_bounds = Bounds::new(
+        list_bounds.origin.x + list_width + 16.0,
+        content_top,
+        modal_width - list_width - 48.0,
+        content_height,
+    );
+
+    let max_rows = (content_height / HOOK_EVENT_ROW_HEIGHT).floor().max(0.0) as usize;
+    let visible_count = event_count.min(max_rows.max(1));
+    let mut row_bounds = Vec::new();
+    if visible_count > 0 {
+        let selected = selected.min(event_count.saturating_sub(1));
+        let mut start = selected.saturating_sub(visible_count / 2);
+        if start + visible_count > event_count {
+            start = event_count.saturating_sub(visible_count);
+        }
+        for i in 0..visible_count {
+            let index = start + i;
+            let y = content_top + i as f32 * HOOK_EVENT_ROW_HEIGHT;
+            let bounds = Bounds::new(
+                list_bounds.origin.x,
+                y,
+                list_bounds.size.width,
+                HOOK_EVENT_ROW_HEIGHT,
+            );
+            row_bounds.push((index, bounds));
+        }
+    }
+
+    HookEventLayout {
+        list_bounds,
+        inspector_bounds,
+        row_bounds,
+    }
 }
 
 fn tool_panel_layout(
@@ -6809,6 +7864,19 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
             }
             CommandAction::None
         }
+        Command::Hooks => {
+            state.open_hooks();
+            CommandAction::None
+        }
+        Command::HooksReload => {
+            state.reload_hooks();
+            if let Some(err) = &state.hook_load_error {
+                state.push_system_message(format!("Hook reload warning: {}", err));
+            } else {
+                state.push_system_message("Reloaded hook scripts from disk.".to_string());
+            }
+            CommandAction::None
+        }
         Command::Custom(name, args) => {
             if state.is_thinking {
                 state.push_system_message(
@@ -7071,6 +8139,62 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     state.reload_skills();
                 }
                 _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Hooks { view, selected } => {
+            let mut sync_index = None;
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::Tab) => {
+                    *view = match *view {
+                        HookModalView::Config => HookModalView::Events,
+                        HookModalView::Events => HookModalView::Config,
+                    };
+                    if *view == HookModalView::Events {
+                        *selected = 0;
+                        sync_index = Some(*selected);
+                    }
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.reload_hooks();
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("c") => {
+                    if *view == HookModalView::Events {
+                        state.clear_hook_log();
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowUp) => {
+                    if *view == HookModalView::Events && !state.hook_event_log.is_empty() {
+                        if *selected > 0 {
+                            *selected -= 1;
+                            sync_index = Some(*selected);
+                        }
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowDown) => {
+                    if *view == HookModalView::Events && !state.hook_event_log.is_empty() {
+                        if *selected + 1 < state.hook_event_log.len() {
+                            *selected += 1;
+                            sync_index = Some(*selected);
+                        }
+                    }
+                }
+                WinitKey::Character(c) if *view == HookModalView::Config => match c.as_str() {
+                    "1" => state.toggle_hook_setting(HookSetting::ToolBlocker),
+                    "2" => state.toggle_hook_setting(HookSetting::ToolLogger),
+                    "3" => state.toggle_hook_setting(HookSetting::OutputTruncator),
+                    "4" => state.toggle_hook_setting(HookSetting::ContextInjection),
+                    "5" => state.toggle_hook_setting(HookSetting::TodoEnforcer),
+                    _ => {}
+                },
+                _ => {}
+            }
+            if let Some(index) = sync_index {
+                state.sync_hook_inspector(index);
             }
             state.window.request_redraw();
             true
@@ -7481,6 +8605,494 @@ fn agent_capabilities(entry: &AgentEntry) -> Vec<String> {
     caps
 }
 
+fn hook_event_from_input(input: &HookInput) -> HookEvent {
+    match input {
+        HookInput::PreToolUse(_) => HookEvent::PreToolUse,
+        HookInput::PostToolUse(_) => HookEvent::PostToolUse,
+        HookInput::PostToolUseFailure(_) => HookEvent::PostToolUseFailure,
+        HookInput::Notification(_) => HookEvent::Notification,
+        HookInput::UserPromptSubmit(_) => HookEvent::UserPromptSubmit,
+        HookInput::SessionStart(_) => HookEvent::SessionStart,
+        HookInput::SessionEnd(_) => HookEvent::SessionEnd,
+        HookInput::Stop(_) => HookEvent::Stop,
+        HookInput::SubagentStart(_) => HookEvent::SubagentStart,
+        HookInput::SubagentStop(_) => HookEvent::SubagentStop,
+        HookInput::PreCompact(_) => HookEvent::PreCompact,
+        HookInput::PermissionRequest(_) => HookEvent::PermissionRequest,
+    }
+}
+
+fn hook_base_input(input: &HookInput) -> &BaseHookInput {
+    match input {
+        HookInput::PreToolUse(hook) => &hook.base,
+        HookInput::PostToolUse(hook) => &hook.base,
+        HookInput::PostToolUseFailure(hook) => &hook.base,
+        HookInput::Notification(hook) => &hook.base,
+        HookInput::UserPromptSubmit(hook) => &hook.base,
+        HookInput::SessionStart(hook) => &hook.base,
+        HookInput::SessionEnd(hook) => &hook.base,
+        HookInput::Stop(hook) => &hook.base,
+        HookInput::SubagentStart(hook) => &hook.base,
+        HookInput::SubagentStop(hook) => &hook.base,
+        HookInput::PreCompact(hook) => &hook.base,
+        HookInput::PermissionRequest(hook) => &hook.base,
+    }
+}
+
+fn hook_tool_name(input: &HookInput) -> Option<String> {
+    match input {
+        HookInput::PreToolUse(hook) => Some(hook.tool_name.clone()),
+        HookInput::PostToolUse(hook) => Some(hook.tool_name.clone()),
+        HookInput::PostToolUseFailure(hook) => Some(hook.tool_name.clone()),
+        HookInput::PermissionRequest(hook) => Some(hook.tool_name.clone()),
+        _ => None,
+    }
+}
+
+fn hook_tool_input(input: &HookInput) -> Option<&Value> {
+    match input {
+        HookInput::PreToolUse(hook) => Some(&hook.tool_input),
+        HookInput::PostToolUse(hook) => Some(&hook.tool_input),
+        HookInput::PostToolUseFailure(hook) => Some(&hook.tool_input),
+        HookInput::PermissionRequest(hook) => Some(&hook.tool_input),
+        _ => None,
+    }
+}
+
+fn hook_tool_response(input: &HookInput) -> Option<&Value> {
+    match input {
+        HookInput::PostToolUse(hook) => Some(&hook.tool_response),
+        _ => None,
+    }
+}
+
+fn hook_tool_error(input: &HookInput) -> Option<&str> {
+    match input {
+        HookInput::PostToolUseFailure(hook) => Some(hook.error.as_str()),
+        _ => None,
+    }
+}
+
+fn hook_tool_blocker(input: &HookInput) -> (HookOutput, String) {
+    let tool_name = hook_tool_name(input).unwrap_or_else(|| "unknown".to_string());
+    let mut summary = format!("ToolBlocker allowed {}.", tool_name);
+    let mut sync = SyncHookOutput::continue_execution();
+
+    let is_bash = tool_name.eq_ignore_ascii_case("bash");
+    if !is_bash {
+        return (HookOutput::Sync(sync), summary);
+    }
+
+    let Some(tool_input) = hook_tool_input(input) else {
+        return (HookOutput::Sync(sync), summary);
+    };
+    let Some(command) = extract_bash_command(tool_input) else {
+        return (HookOutput::Sync(sync), summary);
+    };
+
+    let lowered = command.to_ascii_lowercase();
+    for pattern in HOOK_BLOCK_PATTERNS {
+        if lowered.contains(&pattern.to_ascii_lowercase()) {
+            let reason = format!(
+                "Blocked dangerous command: {}",
+                truncate_preview(&command, 160)
+            );
+            sync = SyncHookOutput {
+                continue_execution: Some(false),
+                decision: Some(HookDecision::Block),
+                reason: Some(reason),
+                ..Default::default()
+            };
+            summary = format!("ToolBlocker blocked {}.", tool_name);
+            break;
+        }
+    }
+
+    (HookOutput::Sync(sync), summary)
+}
+
+fn hook_tool_logger_summary(input: &HookInput) -> String {
+    let tool_name = hook_tool_name(input).unwrap_or_else(|| "unknown".to_string());
+    match hook_event_from_input(input) {
+        HookEvent::PreToolUse => format!("ToolLogger pre {}.", tool_name),
+        HookEvent::PostToolUse => format!("ToolLogger post {}.", tool_name),
+        HookEvent::PostToolUseFailure => {
+            if let Some(error) = hook_tool_error(input) {
+                format!(
+                    "ToolLogger failure {}: {}",
+                    tool_name,
+                    truncate_preview(error, 120)
+                )
+            } else {
+                format!("ToolLogger failure {}.", tool_name)
+            }
+        }
+        event => format!("ToolLogger {}.", hook_event_label(event)),
+    }
+}
+
+fn hook_output_truncator(input: &HookInput) -> (HookOutput, String) {
+    let tool_name = hook_tool_name(input).unwrap_or_else(|| "unknown".to_string());
+    let Some(tool_response) = hook_tool_response(input) else {
+        return (
+            HookOutput::Sync(SyncHookOutput::continue_execution()),
+            format!("OutputTruncator skipped {}.", tool_name),
+        );
+    };
+
+    let response_text =
+        serde_json::to_string(tool_response).unwrap_or_else(|_| tool_response.to_string());
+    let response_len = response_text.len();
+    if response_len <= HOOK_OUTPUT_TRUNCATE {
+        return (
+            HookOutput::Sync(SyncHookOutput::continue_execution()),
+            format!("OutputTruncator ok for {}.", tool_name),
+        );
+    }
+
+    let truncated = truncate_bytes(response_text, HOOK_OUTPUT_TRUNCATE);
+    let mut sync = SyncHookOutput::continue_execution();
+    sync.suppress_output = Some(true);
+    sync.hook_specific_output = Some(HookSpecificOutput::PostToolUse(
+        PostToolUseSpecificOutput {
+            hook_event_name: HookEvent::PostToolUse.as_str().to_string(),
+            additional_context: Some(format!(
+                "Tool output truncated ({} bytes):\n{}",
+                response_len, truncated
+            )),
+            updated_mcp_tool_output: None,
+        },
+    ));
+
+    (
+        HookOutput::Sync(sync),
+        format!("OutputTruncator truncated {} output.", tool_name),
+    )
+}
+
+fn hook_context_sources(config: &HookConfig) -> Vec<String> {
+    let mut sources = Vec::new();
+    if config.context_injection {
+        sources.push("builtin:context_injection".to_string());
+    }
+    if config.todo_enforcer {
+        sources.push("builtin:todo_enforcer".to_string());
+    }
+    sources
+}
+
+fn hook_context_enforcer(
+    runtime: &HookRuntimeConfig,
+    input: &HookInput,
+) -> (HookOutput, String) {
+    let event = hook_event_from_input(input);
+    let mut sections = Vec::new();
+
+    if runtime.config.context_injection {
+        if let Some(context) = build_context_injection(&runtime.cwd) {
+            sections.push(context);
+        }
+    }
+    if runtime.config.todo_enforcer {
+        if let Some(todo) = build_todo_context(&runtime.cwd) {
+            sections.push(todo);
+        }
+    }
+
+    if sections.is_empty() {
+        return (
+            HookOutput::Sync(SyncHookOutput::continue_execution()),
+            "ContextEnforcer no context.".to_string(),
+        );
+    }
+
+    let combined = sections.join("\n\n");
+    let combined_len = combined.len();
+    let hook_specific_output = match event {
+        HookEvent::UserPromptSubmit => HookSpecificOutput::UserPromptSubmit(
+            UserPromptSubmitSpecificOutput {
+                hook_event_name: HookEvent::UserPromptSubmit.as_str().to_string(),
+                additional_context: Some(combined),
+            },
+        ),
+        HookEvent::SessionStart => HookSpecificOutput::SessionStart(SessionStartSpecificOutput {
+            hook_event_name: HookEvent::SessionStart.as_str().to_string(),
+            additional_context: Some(combined),
+        }),
+        _ => {
+            return (
+                HookOutput::Sync(SyncHookOutput::continue_execution()),
+                "ContextEnforcer skipped.".to_string(),
+            )
+        }
+    };
+
+    let mut sync = SyncHookOutput::continue_execution();
+    sync.hook_specific_output = Some(hook_specific_output);
+    (
+        HookOutput::Sync(sync),
+        format!("ContextEnforcer injected {} bytes.", combined_len),
+    )
+}
+
+fn hook_script_source_label(entry: &HookScriptEntry) -> String {
+    let source = match entry.source {
+        HookScriptSource::Project => "project",
+        HookScriptSource::User => "user",
+    };
+    format!("script:{}:{}", source, entry.path.display())
+}
+
+fn hook_script_env(input: &HookInput, tool_use_id: Option<&str>) -> Vec<(String, String)> {
+    let base = hook_base_input(input);
+    let event = hook_event_from_input(input);
+    let mut envs = vec![
+        (
+            "CLAUDE_HOOK_EVENT".to_string(),
+            hook_event_label(event).to_string(),
+        ),
+        ("CLAUDE_SESSION_ID".to_string(), base.session_id.clone()),
+        (
+            "CLAUDE_TRANSCRIPT_PATH".to_string(),
+            base.transcript_path.clone(),
+        ),
+        ("CLAUDE_CWD".to_string(), base.cwd.clone()),
+    ];
+    if let Some(mode) = &base.permission_mode {
+        envs.push(("CLAUDE_PERMISSION_MODE".to_string(), mode.clone()));
+    }
+    if let Some(tool_name) = hook_tool_name(input) {
+        envs.push(("CLAUDE_TOOL_NAME".to_string(), tool_name));
+    }
+    if let Some(tool_use_id) = tool_use_id {
+        envs.push(("CLAUDE_TOOL_USE_ID".to_string(), tool_use_id.to_string()));
+    }
+    envs
+}
+
+async fn run_hook_script(
+    entry: &HookScriptEntry,
+    input: &HookInput,
+    tool_use_id: Option<&str>,
+    runtime: &HookRuntimeConfig,
+) -> Result<HookOutput, String> {
+    let mut command = TokioCommand::new(&entry.path);
+    command
+        .current_dir(&runtime.cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (key, value) in hook_script_env(input, tool_use_id) {
+        command.env(key, value);
+    }
+
+    let mut child = command.spawn().map_err(|err| {
+        format!(
+            "Failed to spawn hook script {}: {}",
+            entry.path.display(),
+            err
+        )
+    })?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let payload = serde_json::to_vec(input)
+            .map_err(|err| format!("Failed to serialize hook input: {}", err))?;
+        stdin
+            .write_all(&payload)
+            .await
+            .map_err(|err| format!("Failed to write hook input: {}", err))?;
+    }
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let stdout_task = tokio::spawn(async move {
+        let mut buffer = Vec::new();
+        if let Some(mut stdout) = stdout {
+            let _ = stdout.read_to_end(&mut buffer).await;
+        }
+        buffer
+    });
+    let stderr_task = tokio::spawn(async move {
+        let mut buffer = Vec::new();
+        if let Some(mut stderr) = stderr {
+            let _ = stderr.read_to_end(&mut buffer).await;
+        }
+        buffer
+    });
+
+    let status = match timeout(Duration::from_secs(HOOK_SCRIPT_TIMEOUT_SECS), child.wait()).await {
+        Ok(status) => status.map_err(|err| format!("Hook script failed: {}", err))?,
+        Err(_) => {
+            let _ = child.kill().await;
+            stdout_task.abort();
+            stderr_task.abort();
+            return Err(format!(
+                "Hook script {} timed out after {}s.",
+                entry.path.display(),
+                HOOK_SCRIPT_TIMEOUT_SECS
+            ));
+        }
+    };
+
+    let stdout_bytes = stdout_task
+        .await
+        .unwrap_or_default();
+    let stderr_bytes = stderr_task
+        .await
+        .unwrap_or_default();
+
+    let stdout_text = String::from_utf8_lossy(&stdout_bytes).trim().to_string();
+    let stderr_text = String::from_utf8_lossy(&stderr_bytes).trim().to_string();
+
+    if !status.success() {
+        let mut message = format!("Hook script exited with status {}", status);
+        if !stderr_text.is_empty() {
+            message.push_str(": ");
+            message.push_str(&stderr_text);
+        }
+        return Err(message);
+    }
+
+    if stdout_text.is_empty() {
+        return Ok(HookOutput::Sync(SyncHookOutput::continue_execution()));
+    }
+
+    serde_json::from_str::<HookOutput>(&stdout_text).map_err(|err| {
+        format!(
+            "Failed to parse hook output: {} (stdout: {})",
+            err,
+            truncate_preview(&stdout_text, 160)
+        )
+    })
+}
+
+fn truncate_hook_value(value: Value, max_bytes: usize) -> Value {
+    match value {
+        Value::String(text) => {
+            if text.len() <= max_bytes {
+                Value::String(text)
+            } else {
+                Value::String(truncate_bytes(text, max_bytes))
+            }
+        }
+        other => {
+            let raw = serde_json::to_string(&other).unwrap_or_else(|_| other.to_string());
+            if raw.len() <= max_bytes {
+                other
+            } else {
+                Value::String(truncate_bytes(raw, max_bytes))
+            }
+        }
+    }
+}
+
+fn serialize_hook_value<T: Serialize>(value: &T, max_bytes: usize) -> Value {
+    let serialized = serde_json::to_value(value).unwrap_or(Value::Null);
+    truncate_hook_value(serialized, max_bytes)
+}
+
+fn log_hook_event(
+    runtime: &HookRuntimeConfig,
+    event: HookEvent,
+    summary: String,
+    tool_name: Option<String>,
+    matcher: Option<String>,
+    input: &HookInput,
+    output: Option<&HookOutput>,
+    error: Option<String>,
+    sources: Vec<String>,
+) {
+    let id = format!(
+        "hook-{}-{}",
+        hook_event_label(event).to_ascii_lowercase(),
+        runtime.counter.fetch_add(1, Ordering::SeqCst)
+    );
+    let entry = HookLogEntry {
+        id,
+        event,
+        timestamp: now_timestamp(),
+        summary,
+        tool_name,
+        matcher,
+        input: serialize_hook_value(input, HOOK_OUTPUT_TRUNCATE),
+        output: output.map(|value| serialize_hook_value(value, HOOK_OUTPUT_TRUNCATE)),
+        error,
+        sources,
+    };
+    let _ = runtime.log_tx.send(ResponseEvent::HookLog(entry));
+}
+
+fn hook_event_label(event: HookEvent) -> &'static str {
+    event.as_str()
+}
+
+fn hook_event_kind(event: HookEvent) -> u32 {
+    match event {
+        HookEvent::PreToolUse => 61001,
+        HookEvent::PostToolUse => 61002,
+        HookEvent::PostToolUseFailure => 61003,
+        HookEvent::Notification => 61004,
+        HookEvent::UserPromptSubmit => 61005,
+        HookEvent::SessionStart => 61006,
+        HookEvent::SessionEnd => 61007,
+        HookEvent::Stop => 61008,
+        HookEvent::SubagentStart => 61009,
+        HookEvent::SubagentStop => 61010,
+        HookEvent::PreCompact => 61011,
+        HookEvent::PermissionRequest => 61012,
+    }
+}
+
+fn value_preview(value: &Value, max_chars: usize) -> String {
+    let text = serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string());
+    truncate_preview(&text, max_chars)
+}
+
+fn hook_log_event_data(entry: &HookLogEntry) -> EventData {
+    let mut tags = Vec::new();
+    tags.push(TagData::new(
+        "event",
+        vec![hook_event_label(entry.event).to_string()],
+    ));
+    if let Some(tool) = &entry.tool_name {
+        tags.push(TagData::new("tool", vec![tool.clone()]));
+    }
+    if let Some(matcher) = &entry.matcher {
+        tags.push(TagData::new("matcher", vec![matcher.clone()]));
+    }
+    if !entry.sources.is_empty() {
+        tags.push(TagData::new("sources", entry.sources.clone()));
+    }
+    if let Some(error) = &entry.error {
+        tags.push(TagData::new("error", vec![error.clone()]));
+    }
+    tags.push(TagData::new(
+        "input",
+        vec![value_preview(&entry.input, 180)],
+    ));
+    if let Some(output) = &entry.output {
+        tags.push(TagData::new(
+            "output",
+            vec![value_preview(output, 180)],
+        ));
+    }
+
+    let mut content = entry.summary.clone();
+    if let Some(error) = &entry.error {
+        if !error.trim().is_empty() {
+            content.push_str("\n");
+            content.push_str(error);
+        }
+    }
+
+    EventData::new(&entry.id, "hooks", hook_event_kind(entry.event))
+        .content(content)
+        .created_at(entry.timestamp)
+        .tags(tags)
+        .sig("")
+        .verified(false)
+}
+
 fn resolve_output_style(name: &str) -> io::Result<Option<PathBuf>> {
     if name.trim().is_empty() {
         return Ok(None);
@@ -7724,7 +9336,7 @@ fn split_trailing_punct(token: &str) -> (String, String) {
     (path, trailing)
 }
 
-fn read_file_limited(path: &PathBuf) -> io::Result<String> {
+fn read_file_limited(path: &Path) -> io::Result<String> {
     let file = fs::File::open(path)?;
     let file_len = file.metadata().map(|meta| meta.len()).unwrap_or(0);
     let mut buffer = Vec::new();
@@ -7735,6 +9347,73 @@ fn read_file_limited(path: &PathBuf) -> io::Result<String> {
         text.push_str("\n... [truncated]");
     }
     Ok(text)
+}
+
+fn build_context_sections(label: &str, path: &Path, contents: &str) -> String {
+    format!(
+        "--- BEGIN {}: {} ---\n{}\n--- END {} ---",
+        label,
+        path.display(),
+        contents,
+        label
+    )
+}
+
+fn candidate_claude_paths(cwd: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    paths.push(cwd.join("CLAUDE.md"));
+    paths.push(cwd.join(".claude").join("CLAUDE.md"));
+    if let Some(home) = dirs::home_dir() {
+        paths.push(home.join(".claude").join("CLAUDE.md"));
+    }
+    paths
+}
+
+fn candidate_todo_paths(cwd: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    paths.push(cwd.join("TODO.md"));
+    paths.push(cwd.join("todo.md"));
+    paths.push(cwd.join(".claude").join("TODO.md"));
+    if let Some(home) = dirs::home_dir() {
+        paths.push(home.join(".claude").join("TODO.md"));
+    }
+    paths
+}
+
+fn build_context_injection(cwd: &Path) -> Option<String> {
+    let mut sections = Vec::new();
+    for path in candidate_claude_paths(cwd) {
+        if path.is_file() {
+            if let Ok(contents) = read_file_limited(&path) {
+                if !contents.trim().is_empty() {
+                    sections.push(build_context_sections("CLAUDE.md", &path, &contents));
+                }
+            }
+        }
+    }
+    if sections.is_empty() {
+        None
+    } else {
+        Some(sections.join("\n\n"))
+    }
+}
+
+fn build_todo_context(cwd: &Path) -> Option<String> {
+    let mut sections = Vec::new();
+    for path in candidate_todo_paths(cwd) {
+        if path.is_file() {
+            if let Ok(contents) = read_file_limited(&path) {
+                if !contents.trim().is_empty() {
+                    sections.push(build_context_sections("TODO", &path, &contents));
+                }
+            }
+        }
+    }
+    if sections.is_empty() {
+        Some("No TODO.md found. Track tasks explicitly before finishing.".to_string())
+    } else {
+        Some(sections.join("\n\n"))
+    }
 }
 
 fn truncate_bytes(input: String, max_bytes: usize) -> String {
