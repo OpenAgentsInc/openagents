@@ -31,6 +31,8 @@ pub enum Command {
     AgentReload,
     Skills,
     SkillsReload,
+    Hooks,
+    HooksReload,
     Custom(String, Vec<String>),
 }
 
@@ -197,6 +199,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         description: "Reload skills from disk",
         requires_args: false,
     },
+    CommandSpec {
+        usage: "/hooks",
+        description: "Open hook configuration",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/hooks reload",
+        description: "Reload hook scripts from disk",
+        requires_args: false,
+    },
 ];
 
 pub fn command_specs() -> &'static [CommandSpec] {
@@ -235,6 +247,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "agents" => Command::Agents,
         "agent" => parse_agent_command(args),
         "skills" => parse_skills_command(args),
+        "hooks" => parse_hooks_command(args),
         _ => Command::Custom(command, args),
     };
 
@@ -332,5 +345,15 @@ fn parse_skills_command(args: Vec<String>) -> Command {
         Some("list") => Command::Skills,
         Some("reload") => Command::SkillsReload,
         Some(other) => Command::Custom(format!("skills {}", other), parts.collect()),
+    }
+}
+
+fn parse_hooks_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::Hooks,
+        Some("list") => Command::Hooks,
+        Some("reload") => Command::HooksReload,
+        Some(other) => Command::Custom(format!("hooks {}", other), parts.collect()),
     }
 }
