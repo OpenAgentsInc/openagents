@@ -4842,6 +4842,7 @@ dependencies = [
 name = "frlm"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "criterion 0.5.1",
  "dsrs",
