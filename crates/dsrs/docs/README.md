@@ -86,6 +86,8 @@ println!("Answer: {}", result.get("answer", None));
 - [Callbacks](./CALLBACKS.md) - Observability and HUD integration
 - [Compiler Contract](./COMPILER-CONTRACT.md) - Wave 3 features (manifest, trace, Nostr bridge)
 - [LM Providers](./LM-PROVIDERS.md) - Multi-provider LM configuration
+- [Retrieval](./RETRIEVAL.md) - Multi-lane retrieval system (Wave 4)
+- [Signatures](./SIGNATURES.md) - Optimizable agent signatures (Wave 4)
 
 ## Wave Status
 
@@ -94,8 +96,9 @@ println!("Answer: {}", result.get("answer", None));
 | 0 | Complete | Protocol + Schema Registry |
 | 1-2 | Complete | RLM + Autopilot signatures |
 | 2.5 | Complete | LaneMux (multi-provider LM) |
-| 3 | **Complete** | Compiler Contract (manifest, callbacks, trace, sandbox) |
-| 4+ | Planned | Swarm job types, Eval harness, SwarmCompiler |
+| 3 | Complete | Compiler Contract (manifest, callbacks, trace, sandbox) |
+| 4 | **Complete** | Retrieval, Signatures, Swarm Dispatch |
+| 5+ | Planned | Eval harness, SwarmCompiler |
 
 ## Key Paths
 
@@ -112,9 +115,27 @@ crates/dsrs/
 │   ├── predictors/
 │   │   ├── predict.rs      # Base Predict with callbacks
 │   │   └── refine.rs       # Retry/fallback meta-operator
+│   ├── retrieval/          # Wave 4: Multi-lane retrieval
+│   │   ├── mod.rs          # RepoIndex trait, RetrievalResult
+│   │   ├── ripgrep.rs      # Text search backend
+│   │   ├── lsp.rs          # LSP/ctags backend
+│   │   ├── semantic.rs     # Vector embeddings backend
+│   │   ├── git.rs          # Git signals backend
+│   │   └── router.rs       # Multi-lane router
+│   ├── signatures/         # Wave 4: Optimizable signatures
+│   │   ├── query_composer.rs
+│   │   ├── retrieval_router.rs
+│   │   ├── candidate_rerank.rs
+│   │   ├── chunk_task.rs
+│   │   ├── chunk_aggregator.rs
+│   │   ├── sandbox_profile.rs
+│   │   ├── failure_triage.rs
+│   │   ├── lane_budgeter.rs
+│   │   └── agent_memory.rs
 │   ├── adapter/
 │   │   ├── chat.rs         # Chat completion adapter
-│   │   └── pylon_sandbox.rs # Sandbox execution provider
+│   │   ├── pylon_sandbox.rs # Sandbox execution provider
+│   │   └── swarm_dispatch.rs # NIP-90 job dispatch (Wave 4)
 │   ├── trace/
 │   │   ├── dag.rs          # Graph/Node execution DAG
 │   │   ├── contract.rs     # OTel-compatible spans
