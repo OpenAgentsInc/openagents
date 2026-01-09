@@ -92,6 +92,21 @@ impl TextInput {
         self
     }
 
+    pub fn text_color(mut self, color: Hsla) -> Self {
+        self.text_color = color;
+        self
+    }
+
+    pub fn placeholder_color(mut self, color: Hsla) -> Self {
+        self.placeholder_color = color;
+        self
+    }
+
+    pub fn cursor_color(mut self, color: Hsla) -> Self {
+        self.cursor_color = color;
+        self
+    }
+
     pub fn mono(mut self, mono: bool) -> Self {
         self.mono = mono;
         self
