@@ -5,10 +5,11 @@
 use anyhow::Result;
 use dsrs::core::signature::MetaSignature;
 use dsrs::data::example::Example;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// Target agent for delegation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TargetAgent {
     /// Oracle - Architecture decisions, complex debugging.
     Oracle,

@@ -3,6 +3,7 @@ pub mod background;
 pub mod config;
 pub mod dspy_agents;
 pub mod dspy_delegation;
+pub mod dspy_pipelines;
 pub mod error;
 pub mod hooks;
 pub mod integrations;
@@ -19,6 +20,7 @@ pub use dspy_agents::{
     SearchType, UIDesignSignature,
 };
 pub use dspy_delegation::{DelegationSignature, TargetAgent};
+pub use dspy_pipelines::{DelegationInput, DelegationPipeline, DelegationResult};
 pub use error::{Error, Result};
 pub use hooks::{Hook, HookManager, HookResult};
 pub use integrations::{
