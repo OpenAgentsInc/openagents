@@ -87,6 +87,7 @@ println!("Answer: {}", result.get("answer", None));
 - [Compiler Contract](./COMPILER-CONTRACT.md) - Wave 3 features (manifest, trace, Nostr bridge)
 - [Evaluation](./EVALUATION.md) - Eval harness & promotion gates (Wave 5)
 - [LM Providers](./LM-PROVIDERS.md) - Multi-provider LM configuration
+- [Privacy](./PRIVACY.md) - Privacy module: redaction, chunking, policy (Wave 7)
 - [Retrieval](./RETRIEVAL.md) - Multi-lane retrieval system (Wave 4)
 - [Signatures](./SIGNATURES.md) - Optimizable agent signatures (Wave 4)
 
@@ -99,8 +100,10 @@ println!("Answer: {}", result.get("answer", None));
 | 2.5 | Complete | LaneMux (multi-provider LM) |
 | 3 | Complete | Compiler Contract (manifest, callbacks, trace, sandbox) |
 | 4 | Complete | Retrieval, Signatures, Swarm Dispatch |
-| 5 | **Complete** | Eval Harness & Promotion Gates |
-| 6+ | Planned | SwarmCompiler, Privacy, OANIX |
+| 5 | Complete | Eval Harness & Promotion Gates |
+| 6 | Complete | SwarmCompiler |
+| 7 | **Complete** | Privacy Module (redaction, chunking, policy) |
+| 8+ | See OANIX | OANIX DSPy Signatures (in oanix crate) |
 
 ## Key Paths
 
@@ -150,6 +153,14 @@ crates/dsrs/
 │   │   ├── scoring.rs      # Scorer, AggregationMethod
 │   │   ├── promotion.rs    # PromotionState, PromotionGate
 │   │   └── priority.rs     # CompilePriority, CompileQueue
+│   ├── privacy/            # Wave 7: Privacy module
+│   │   ├── mod.rs          # Module exports
+│   │   ├── redaction.rs    # PathRedactor, IdentifierRedactor
+│   │   ├── chunking.rs     # ChunkingPolicy, ContentChunk
+│   │   └── policy.rs       # PrivacyPolicy, PolicyViolation
+│   ├── compiler/           # Wave 6: SwarmCompiler
+│   │   ├── swarm_compiler.rs # SwarmCompiler with budget tracking
+│   │   └── provider.rs     # PylonLM provider
 │   └── optimizer/          # MIPROv2, GEPA, COPRO, Pareto
 └── docs/
     └── *.md

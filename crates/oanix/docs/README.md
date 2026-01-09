@@ -172,6 +172,143 @@ pub struct SituationAssessment {
 }
 ```
 
+## DSPy Signatures (Wave 8)
+
+OANIX includes learnable DSPy signatures that can replace rule-based decision making:
+
+### SituationAssessmentSignature
+
+Analyzes system state and determines what the agent should prioritize:
+
+```rust
+use oanix::{SituationAssessmentSignature, PriorityAction, Urgency};
+
+let sig = SituationAssessmentSignature::new();
+
+// Inputs:
+// - system_state: Current hardware/compute state as JSON
+// - pending_events: Events in queue
+// - recent_history: Recent decisions and outcomes
+
+// Outputs:
+// - priority_action: AWAIT_USER, WORK_ISSUE, ACCEPT_JOB, etc.
+// - urgency: IMMEDIATE, NORMAL, DEFERRED
+// - reasoning: Why this action
+// - confidence: 0.0-1.0
+```
+
+**Priority Actions:**
+
+| Action | Description |
+|--------|-------------|
+| `AWAIT_USER` | Wait for user direction (default) |
+| `WORK_ISSUE` | Work on a repository issue |
+| `ACCEPT_JOB` | Accept a NIP-90 swarm job |
+| `START_PROVIDER` | Enter provider mode to earn sats |
+| `INITIALIZE_IDENTITY` | Set up Nostr identity first |
+| `CONNECT_NETWORK` | Establish network connectivity |
+| `HOUSEKEEPING` | Cleanup, sync, refresh |
+| `IDLE` | Low-priority background mode |
+
+### IssueSelectionSignature
+
+Chooses the best issue to work on from available options:
+
+```rust
+use oanix::{IssueSelectionSignature, Complexity};
+
+let sig = IssueSelectionSignature::new();
+
+// Inputs:
+// - available_issues: JSON array of issues with metadata
+// - agent_capabilities: Available backends, tools, compute
+// - current_context: Branch, recent commits, files changed
+
+// Outputs:
+// - selected_issue: Issue number
+// - rationale: Why this issue
+// - estimated_complexity: LOW, MEDIUM, HIGH
+// - confidence: 0.0-1.0
+```
+
+### WorkPrioritizationSignature
+
+Orders tasks by importance and dependencies:
+
+```rust
+use oanix::WorkPrioritizationSignature;
+
+let sig = WorkPrioritizationSignature::new();
+
+// Inputs:
+// - task_list: JSON array of tasks
+// - dependencies: Task dependency graph
+// - deadlines: Time constraints
+
+// Outputs:
+// - ordered_tasks: Tasks in priority order
+// - blocking_tasks: Tasks blocking others
+// - parallel_groups: Tasks that can run together
+```
+
+### LifecycleDecisionSignature (CoT)
+
+Determines agent state transitions with chain-of-thought reasoning:
+
+```rust
+use oanix::{LifecycleDecisionSignature, LifecycleState};
+
+let sig = LifecycleDecisionSignature::new();
+
+// Inputs:
+// - current_state: IDLE, WORKING, BLOCKED, PROVIDER, TERMINATING
+// - recent_events: Task completion, errors, user input
+// - resource_status: Memory, CPU, network, wallet
+
+// Outputs (with reasoning):
+// - reasoning: Chain-of-thought about transition
+// - next_state: Target state
+// - transition_reason: Summary
+// - cleanup_needed: Actions before transition
+```
+
+**Lifecycle States:**
+
+```
+IDLE ──────▶ WORKING (start task)
+  │              │
+  │              ▼
+  │          BLOCKED (waiting for input)
+  │              │
+  ▼              ▼
+PROVIDER ◀──────┘ (input received)
+  │
+  ▼
+TERMINATING (shutdown)
+```
+
+### Using Signatures with dsrs
+
+These signatures implement `MetaSignature` and can be used with dsrs predictors:
+
+```rust
+use dsrs::predictors::Predict;
+use dsrs::data::example::Example;
+use oanix::IssueSelectionSignature;
+
+let sig = IssueSelectionSignature::new();
+let predictor = Predict::new(sig);
+
+let example = Example::from([
+    ("available_issues", serde_json::to_string(&issues)?),
+    ("agent_capabilities", format_capabilities(&manifest)),
+    ("current_context", format_context(&workspace)),
+]);
+
+let result = predictor.forward(&example, &lm).await?;
+let selected = result.get("selected_issue", None);
+```
+
 ### Environment Types
 
 ```rust
@@ -283,20 +420,26 @@ let result = adjutant.execute(&task).await?;
 ```
 crates/oanix/
 ├── src/
-│   ├── lib.rs          # Public exports
-│   ├── boot.rs         # Boot sequence orchestration
-│   ├── manifest.rs     # Manifest types
-│   ├── situation.rs    # Situation assessment
-│   ├── display.rs      # Formatted output
+│   ├── lib.rs              # Public exports
+│   ├── boot.rs             # Boot sequence orchestration
+│   ├── manifest.rs         # Manifest types
+│   ├── situation.rs        # Rule-based situation assessment
+│   ├── display.rs          # Formatted output
+│   ├── state.rs            # OanixState, OanixMode
+│   ├── tick.rs             # Autonomous tick loop
+│   ├── dspy_situation.rs   # SituationAssessmentSignature (Wave 8)
+│   ├── dspy_lifecycle.rs   # IssueSelection, WorkPrioritization, Lifecycle (Wave 8)
+│   ├── bin/
+│   │   └── main.rs         # CLI binary
 │   └── discovery/
 │       ├── mod.rs
-│       ├── hardware.rs # CPU/RAM/GPU detection
-│       ├── compute.rs  # Backend detection
-│       ├── network.rs  # Connectivity checks
-│       ├── identity.rs # Key/wallet status
-│       └── workspace.rs # .openagents/ parsing
+│       ├── hardware.rs     # CPU/RAM/GPU detection
+│       ├── compute.rs      # Backend detection
+│       ├── network.rs      # Connectivity checks
+│       ├── identity.rs     # Key/wallet status
+│       └── workspace.rs    # .openagents/ parsing
 └── docs/
-    └── README.md       # This file
+    └── README.md           # This file
 ```
 
 ## CLI Usage
@@ -314,5 +457,6 @@ oanix
 ## See Also
 
 - [../../docs/OANIX.md](../../docs/OANIX.md) - Full OANIX vision document
+- [../dsrs/docs/README.md](../dsrs/docs/README.md) - DSPy Rust (signatures, predictors)
 - [../adjutant/docs/README.md](../adjutant/docs/README.md) - Adjutant (uses OANIX)
 - [../pylon/docs/QUICKSTART.md](../pylon/docs/QUICKSTART.md) - Pylon setup
