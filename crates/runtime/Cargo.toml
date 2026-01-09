@@ -69,6 +69,10 @@ js-sys = { version = "0.3", optional = true }
 tracing = { version = "0.1", optional = true }
 metrics = { version = "0.24", optional = true }
 
+# DSPy signatures
+dsrs = { path = "../dsrs" }
+anyhow = "1"
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 axum = "0.7"
 tokio = { workspace = true }

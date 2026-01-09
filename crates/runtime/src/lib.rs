@@ -110,6 +110,7 @@ pub mod agent;
 pub mod browser;
 pub mod budget;
 pub mod claude;
+pub mod dspy_tools;
 #[cfg(feature = "cloudflare")]
 pub mod cloudflare;
 pub mod compute;
@@ -188,6 +189,10 @@ pub use containers::{
 pub use containers::{DaytonaContainerProvider, DvmContainerProvider, LocalContainerProvider};
 #[cfg(not(target_arch = "wasm32"))]
 pub use control_plane::{ControlPlane, LocalRuntime};
+pub use dspy_tools::{
+    ToolChainPlanningSignature, ToolResultInterpretationSignature, ToolSelectionSignature,
+    ToolSuccess,
+};
 #[cfg(not(target_arch = "wasm32"))]
 pub use drivers::{
     Driver, DriverHandle, EnvelopeSink, NostrDriver, NostrDriverConfig, NostrPublishRequest,
