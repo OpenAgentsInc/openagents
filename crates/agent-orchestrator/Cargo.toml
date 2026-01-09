@@ -15,7 +15,9 @@ spark = ["dep:openagents-spark"]
 full = ["frostr", "spark"]
 
 [dependencies]
+anyhow = "1"
 async-trait = "0.1"
+dsrs = { path = "../dsrs" }
 tokio = { version = "1", features = ["sync", "rt-multi-thread", "macros", "time"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
