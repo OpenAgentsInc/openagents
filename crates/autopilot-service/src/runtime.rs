@@ -88,6 +88,18 @@ impl AutopilotRuntime {
         }
     }
 
+    /// Create a new runtime in idle state, waiting for user input.
+    pub fn new_idle(model: ClaudeModel) -> Self {
+        Self {
+            started_at: Instant::now(),
+            state: StartupState::new_idle(model),
+            plan_cursor: 0,
+            exec_cursor: 0,
+            review_cursor: 0,
+            fix_cursor: 0,
+        }
+    }
+
     pub fn tick(&mut self) {
         let elapsed = self.started_at.elapsed().as_secs_f32();
         self.state.tick(elapsed);
@@ -255,6 +267,43 @@ impl AutopilotRuntime {
         self.exec_cursor = 0;
         self.review_cursor = 0;
         self.fix_cursor = 0;
+    }
+
+    /// Reset runtime to idle state, waiting for user input.
+    pub fn reset_to_idle(&mut self, model: ClaudeModel) {
+        self.started_at = Instant::now();
+        self.state = StartupState::new_idle(model);
+        self.plan_cursor = 0;
+        self.exec_cursor = 0;
+        self.review_cursor = 0;
+        self.fix_cursor = 0;
+    }
+
+    /// Start a new run with a prompt. If currently idle, begins execution.
+    pub fn start_run(&mut self, prompt: String) {
+        if self.state.is_idle() {
+            self.state.start_with_prompt(prompt);
+        } else {
+            // If not idle, reset and start fresh
+            let model = self.state.model;
+            self.reset(model);
+            self.state.user_prompt = Some(prompt);
+        }
+    }
+
+    /// Check if currently running (not idle and not complete).
+    pub fn is_running(&self) -> bool {
+        self.state.is_running()
+    }
+
+    /// Check if in idle state.
+    pub fn is_idle(&self) -> bool {
+        self.state.is_idle()
+    }
+
+    /// Get the current user prompt, if any.
+    pub fn user_prompt(&self) -> Option<&str> {
+        self.state.user_prompt.as_deref()
     }
 
     fn append_events(

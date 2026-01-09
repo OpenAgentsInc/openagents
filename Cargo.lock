@@ -1212,6 +1212,7 @@ dependencies = [
  "chrono",
  "console_error_panic_hook",
  "dirs 5.0.1",
+ "dspy-rs 0.7.3",
  "futures-util",
  "getrandom 0.2.16",
  "gloo-net",
@@ -3859,15 +3860,13 @@ checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 [[package]]
 name = "dspy-rs"
 version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "969a8d429908d989e1f8229d3965a96c28a132870f2d7b336fcb60a20beb3623"
 dependencies = [
  "anyhow",
  "arrow",
  "async-trait",
  "bon",
  "csv",
- "dsrs_macros",
+ "dsrs_macros 0.7.2",
  "enum_dispatch",
  "foyer",
  "futures",
@@ -3879,13 +3878,59 @@ dependencies = [
  "rayon",
  "regex",
  "reqwest",
- "rig-core",
+ "rig-core 0.26.0",
  "rstest",
  "schemars 1.1.0",
  "serde",
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "dspy-rs"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "969a8d429908d989e1f8229d3965a96c28a132870f2d7b336fcb60a20beb3623"
+dependencies = [
+ "anyhow",
+ "arrow",
+ "async-trait",
+ "bon",
+ "csv",
+ "dsrs_macros 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "enum_dispatch",
+ "foyer",
+ "futures",
+ "hf-hub 0.4.3",
+ "indexmap 2.12.1",
+ "kdam",
+ "parquet",
+ "rand 0.8.5",
+ "rayon",
+ "regex",
+ "reqwest",
+ "rig-core 0.22.0",
+ "rstest",
+ "schemars 1.1.0",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "dsrs_macros"
+version = "0.7.2"
+dependencies = [
+ "anyhow",
+ "indexmap 2.12.1",
+ "proc-macro2",
+ "quote",
+ "schemars 1.1.0",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
 ]
 
 [[package]]
@@ -4808,7 +4853,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "criterion 0.5.1",
- "dspy-rs",
+ "dspy-rs 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "fm-bridge",
  "hex",
  "nostr 0.1.0",
@@ -11655,6 +11700,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-core"
+version = "0.26.0"
+source = "git+https://github.com/0xPlaygrounds/rig?rev=e7849df#e7849df20bce7c4eb3eb5ada87aae18435f9afa1"
+dependencies = [
+ "as-any",
+ "async-stream",
+ "base64 0.22.1",
+ "bytes",
+ "eventsource-stream",
+ "futures",
+ "futures-timer",
+ "glob",
+ "http 1.4.0",
+ "mime_guess",
+ "ordered-float 5.1.0",
+ "pin-project-lite",
+ "reqwest",
+ "schemars 1.1.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "tracing-futures",
+ "url",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11676,7 +11749,7 @@ dependencies = [
  "async-trait",
  "clap",
  "claude-agent-sdk",
- "dspy-rs",
+ "dspy-rs 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "fm-bridge",
  "futures",
  "glob",

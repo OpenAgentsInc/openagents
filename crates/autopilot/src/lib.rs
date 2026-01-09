@@ -38,6 +38,10 @@ pub mod verification;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod workflow;
 
+// DSPy verification module (native + dspy feature)
+#[cfg(all(not(target_arch = "wasm32"), feature = "dspy"))]
+pub mod dspy_verify;
+
 // Native-only re-exports
 #[cfg(not(target_arch = "wasm32"))]
 pub use auth::{
@@ -108,6 +112,13 @@ pub use report::{
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use checkpoint::{CHECKPOINT_VERSION, SessionCheckpoint, SessionSummary};
+
+// DSPy verification exports (native + dspy feature)
+#[cfg(all(not(target_arch = "wasm32"), feature = "dspy"))]
+pub use dspy_verify::{
+    RequirementResult, VerificationInput, VerificationPipeline, VerificationResult,
+    VerificationVerdict,
+};
 
 // Agent exports - available on all platforms
 pub use agent::{AutopilotAgent, AutopilotConfig, AutopilotPhase, AutopilotState};
