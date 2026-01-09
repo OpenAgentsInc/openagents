@@ -112,6 +112,10 @@ impl TextInput {
         self
     }
 
+    pub fn set_mono(&mut self, mono: bool) {
+        self.mono = mono;
+    }
+
     pub fn on_change<F>(mut self, f: F) -> Self
     where
         F: FnMut(&str) + 'static,

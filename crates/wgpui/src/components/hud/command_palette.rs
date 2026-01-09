@@ -1,6 +1,7 @@
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult, TextInput};
 use crate::input::{Key, NamedKey};
+use crate::text::FontStyle;
 use crate::{Bounds, Hsla, InputEvent, Point, Quad, theme};
 
 #[derive(Clone, Debug)]
@@ -49,6 +50,7 @@ pub struct CommandPalette {
     max_visible_items: usize,
     scroll_offset: usize,
     item_height: f32,
+    mono: bool,
     on_select: Option<Box<dyn FnMut(&Command)>>,
     on_close: Option<Box<dyn FnMut()>>,
 }
@@ -67,6 +69,7 @@ impl CommandPalette {
             max_visible_items: 8,
             scroll_offset: 0,
             item_height: 40.0,
+            mono: false,
             on_select: None,
             on_close: None,
         }
@@ -85,6 +88,12 @@ impl CommandPalette {
 
     pub fn max_visible_items(mut self, count: usize) -> Self {
         self.max_visible_items = count;
+        self
+    }
+
+    pub fn mono(mut self, mono: bool) -> Self {
+        self.mono = mono;
+        self.search_input.set_mono(mono);
         self
     }
 
@@ -278,44 +287,84 @@ impl Component for CommandPalette {
                 cx.scene
                     .draw_quad(Quad::new(item_bounds).with_background(bg));
 
-                let label_run = cx.text.layout(
-                    &command.label,
-                    Point::new(
-                        item_bounds.origin.x + theme::spacing::SM,
-                        item_bounds.origin.y + theme::spacing::XS,
-                    ),
-                    theme::font_size::SM,
-                    theme::text::PRIMARY,
+                let label_origin = Point::new(
+                    item_bounds.origin.x + theme::spacing::SM,
+                    item_bounds.origin.y + theme::spacing::XS,
                 );
+                let label_run = if self.mono {
+                    cx.text.layout_styled_mono(
+                        &command.label,
+                        label_origin,
+                        theme::font_size::SM,
+                        theme::text::PRIMARY,
+                        FontStyle::default(),
+                    )
+                } else {
+                    cx.text.layout(
+                        &command.label,
+                        label_origin,
+                        theme::font_size::SM,
+                        theme::text::PRIMARY,
+                    )
+                };
                 cx.scene.draw_text(label_run);
 
                 if let Some(desc) = &command.description {
-                    let desc_run = cx.text.layout(
-                        desc,
-                        Point::new(
-                            item_bounds.origin.x + theme::spacing::SM,
-                            item_bounds.origin.y + theme::spacing::XS + theme::font_size::SM + 2.0,
-                        ),
-                        theme::font_size::XS,
-                        theme::text::MUTED,
+                    let desc_origin = Point::new(
+                        item_bounds.origin.x + theme::spacing::SM,
+                        item_bounds.origin.y + theme::spacing::XS + theme::font_size::SM + 2.0,
                     );
+                    let desc_run = if self.mono {
+                        cx.text.layout_styled_mono(
+                            desc,
+                            desc_origin,
+                            theme::font_size::XS,
+                            theme::text::MUTED,
+                            FontStyle::default(),
+                        )
+                    } else {
+                        cx.text.layout(
+                            desc,
+                            desc_origin,
+                            theme::font_size::XS,
+                            theme::text::MUTED,
+                        )
+                    };
                     cx.scene.draw_text(desc_run);
                 }
 
                 if let Some(keys) = &command.keybinding {
-                    let key_width = keys.len() as f32 * theme::font_size::XS * 0.6;
-                    let key_run = cx.text.layout(
-                        keys,
-                        Point::new(
-                            item_bounds.origin.x + item_bounds.size.width
-                                - key_width
-                                - theme::spacing::SM,
-                            item_bounds.origin.y
-                                + (item_bounds.size.height - theme::font_size::XS) / 2.0,
-                        ),
-                        theme::font_size::XS,
-                        theme::text::DISABLED,
+                    let key_width = if self.mono {
+                        cx.text.measure_styled_mono(
+                            keys,
+                            theme::font_size::XS,
+                            FontStyle::default(),
+                        )
+                    } else {
+                        cx.text
+                            .measure_styled(keys, theme::font_size::XS, FontStyle::default())
+                    };
+                    let key_origin = Point::new(
+                        item_bounds.origin.x + item_bounds.size.width - key_width - theme::spacing::SM,
+                        item_bounds.origin.y
+                            + (item_bounds.size.height - theme::font_size::XS) / 2.0,
                     );
+                    let key_run = if self.mono {
+                        cx.text.layout_styled_mono(
+                            keys,
+                            key_origin,
+                            theme::font_size::XS,
+                            theme::text::DISABLED,
+                            FontStyle::default(),
+                        )
+                    } else {
+                        cx.text.layout(
+                            keys,
+                            key_origin,
+                            theme::font_size::XS,
+                            theme::text::DISABLED,
+                        )
+                    };
                     cx.scene.draw_text(key_run);
                 }
             }
@@ -323,18 +372,33 @@ impl Component for CommandPalette {
 
         if self.filtered_commands.is_empty() {
             let empty_text = "No matching commands";
-            let empty_run = cx.text.layout(
-                empty_text,
-                Point::new(
-                    palette_bounds.origin.x
-                        + (palette_bounds.size.width
-                            - empty_text.len() as f32 * theme::font_size::SM * 0.5)
-                            / 2.0,
-                    palette_bounds.origin.y + input_height + padding + theme::spacing::MD,
-                ),
-                theme::font_size::SM,
-                theme::text::MUTED,
+            let empty_width = if self.mono {
+                cx.text
+                    .measure_styled_mono(empty_text, theme::font_size::SM, FontStyle::default())
+            } else {
+                cx.text
+                    .measure_styled(empty_text, theme::font_size::SM, FontStyle::default())
+            };
+            let empty_origin = Point::new(
+                palette_bounds.origin.x + (palette_bounds.size.width - empty_width) / 2.0,
+                palette_bounds.origin.y + input_height + padding + theme::spacing::MD,
             );
+            let empty_run = if self.mono {
+                cx.text.layout_styled_mono(
+                    empty_text,
+                    empty_origin,
+                    theme::font_size::SM,
+                    theme::text::MUTED,
+                    FontStyle::default(),
+                )
+            } else {
+                cx.text.layout(
+                    empty_text,
+                    empty_origin,
+                    theme::font_size::SM,
+                    theme::text::MUTED,
+                )
+            };
             cx.scene.draw_text(empty_run);
         }
     }
