@@ -1,12 +1,13 @@
 //! Main application state and event handling.
 
+use std::collections::VecDeque;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command as ProcessCommand, Stdio};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use web_time::Instant;
 use wgpui::input::{Key as UiKey, Modifiers as UiModifiers, NamedKey as UiNamedKey};
 use wgpui::components::{Component, EventContext, PaintContext};
@@ -19,12 +20,14 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey};
 use winit::window::{Window, WindowId};
 
-use claude_agent_sdk::permissions::PermissionRules;
-use claude_agent_sdk::protocol::PermissionMode;
+use claude_agent_sdk::permissions::{CallbackPermissionHandler, PermissionRequest};
+use claude_agent_sdk::protocol::{PermissionMode, PermissionResult};
 use claude_agent_sdk::{query_with_permissions, QueryOptions, SdkMessage};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use wgpui::components::atoms::PermissionAction;
+use wgpui::components::organisms::{PermissionDialog, PermissionType};
 
 use crate::commands::{command_specs, parse_command, Command};
 use crate::keybindings::{default_keybindings, match_action, Action as KeyAction, Keybinding};
@@ -130,6 +133,11 @@ enum ResponseEvent {
     },
 }
 
+struct PermissionPending {
+    request: PermissionRequest,
+    respond_to: oneshot::Sender<PermissionResult>,
+}
+
 enum QueryControl {
     Interrupt,
     #[allow(dead_code)]
@@ -163,6 +171,38 @@ struct SessionEntry {
     last_message: String,
     message_count: usize,
     model: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct PermissionConfig {
+    mode: Option<PermissionMode>,
+    default_allow: bool,
+    allow_tools: Vec<String>,
+    deny_tools: Vec<String>,
+    bash_allow_patterns: Vec<String>,
+    bash_deny_patterns: Vec<String>,
+}
+
+impl Default for PermissionConfig {
+    fn default() -> Self {
+        Self {
+            mode: Some(PermissionMode::Default),
+            default_allow: false,
+            allow_tools: Vec::new(),
+            deny_tools: Vec::new(),
+            bash_allow_patterns: Vec::new(),
+            bash_deny_patterns: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PermissionHistoryEntry {
+    tool_name: String,
+    decision: String,
+    timestamp: u64,
+    detail: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -242,6 +282,10 @@ fn config_file() -> PathBuf {
     config_dir().join("config.toml")
 }
 
+fn permission_config_file() -> PathBuf {
+    config_dir().join("permissions.json")
+}
+
 fn sessions_dir() -> PathBuf {
     config_dir().join("sessions")
 }
@@ -256,6 +300,25 @@ fn session_messages_dir(session_id: &str) -> PathBuf {
 
 fn session_messages_file(session_id: &str) -> PathBuf {
     session_messages_dir(session_id).join("messages.jsonl")
+}
+
+fn load_permission_config() -> PermissionConfig {
+    let path = permission_config_file();
+    if let Ok(content) = fs::read_to_string(path) {
+        if let Ok(config) = serde_json::from_str::<PermissionConfig>(&content) {
+            return config;
+        }
+    }
+    PermissionConfig::default()
+}
+
+fn save_permission_config(config: &PermissionConfig) {
+    let dir = config_dir();
+    if fs::create_dir_all(&dir).is_ok() {
+        if let Ok(json) = serde_json::to_string_pretty(config) {
+            let _ = fs::write(permission_config_file(), json);
+        }
+    }
 }
 
 fn now_timestamp() -> u64 {
@@ -397,6 +460,15 @@ struct AppState {
     permission_default_allow: bool,
     permission_allow_tools: Vec<String>,
     permission_deny_tools: Vec<String>,
+    permission_allow_bash_patterns: Vec<String>,
+    permission_deny_bash_patterns: Vec<String>,
+    permission_requests_rx: Option<mpsc::UnboundedReceiver<PermissionPending>>,
+    permission_action_tx: Option<mpsc::UnboundedSender<PermissionAction>>,
+    permission_action_rx: Option<mpsc::UnboundedReceiver<PermissionAction>>,
+    permission_dialog: Option<PermissionDialog>,
+    permission_queue: VecDeque<PermissionPending>,
+    permission_pending: Option<PermissionPending>,
+    permission_history: Vec<PermissionHistoryEntry>,
     tools_allowed: Vec<String>,
     tools_disallowed: Vec<String>,
     output_style: Option<String>,
@@ -499,6 +571,15 @@ impl ApplicationHandler for CoderApp {
             // Load saved model preference
             let saved_model = load_saved_model();
             let session_index = load_session_index();
+            let permission_config = load_permission_config();
+            let permission_default_allow =
+                default_allow_for_mode(permission_config.mode.as_ref(), permission_config.default_allow);
+            let permission_mode_label = permission_config
+                .mode
+                .as_ref()
+                .map(permission_mode_label)
+                .unwrap_or("default")
+                .to_string();
 
             AppState {
                 window,
@@ -524,6 +605,7 @@ impl ApplicationHandler for CoderApp {
                 current_tool_input: String::new(),
                 session_info: SessionInfo {
                     model: saved_model.model_id().to_string(),
+                    permission_mode: permission_mode_label,
                     ..Default::default()
                 },
                 session_index,
@@ -533,10 +615,19 @@ impl ApplicationHandler for CoderApp {
                 panel_layout: PanelLayout::Single,
                 keybindings: default_keybindings(),
                 command_history: Vec::new(),
-                permission_mode: None,
-                permission_default_allow: true,
-                permission_allow_tools: Vec::new(),
-                permission_deny_tools: Vec::new(),
+                permission_mode: permission_config.mode,
+                permission_default_allow,
+                permission_allow_tools: permission_config.allow_tools,
+                permission_deny_tools: permission_config.deny_tools,
+                permission_allow_bash_patterns: permission_config.bash_allow_patterns,
+                permission_deny_bash_patterns: permission_config.bash_deny_patterns,
+                permission_requests_rx: None,
+                permission_action_tx: None,
+                permission_action_rx: None,
+                permission_dialog: None,
+                permission_queue: VecDeque::new(),
+                permission_pending: None,
+                permission_history: Vec::new(),
                 tools_allowed: Vec::new(),
                 tools_disallowed: Vec::new(),
                 output_style: None,
@@ -560,6 +651,7 @@ impl ApplicationHandler for CoderApp {
     ) {
         // Poll for SDK responses first
         self.poll_responses();
+        self.poll_permissions();
 
         let Some(state) = &mut self.state else {
             return;
@@ -576,6 +668,12 @@ impl ApplicationHandler for CoderApp {
             logical_width - INPUT_PADDING * 2.0,
             INPUT_HEIGHT,
         );
+        let permission_open = state
+            .permission_dialog
+            .as_ref()
+            .map(|dialog| dialog.is_open())
+            .unwrap_or(false);
+        let permission_bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
 
         match event {
             WindowEvent::CloseRequested => {
@@ -597,6 +695,14 @@ impl ApplicationHandler for CoderApp {
                 let x = position.x as f32 / scale_factor;
                 let y = position.y as f32 / scale_factor;
                 state.mouse_pos = (x, y);
+                if permission_open {
+                    if let Some(dialog) = state.permission_dialog.as_mut() {
+                        let input_event = InputEvent::MouseMove { x, y };
+                        let _ = dialog.event(&input_event, permission_bounds, &mut state.event_context);
+                    }
+                    state.window.request_redraw();
+                    return;
+                }
                 let input_event = InputEvent::MouseMove { x, y };
                 state
                     .input
@@ -623,12 +729,41 @@ impl ApplicationHandler for CoderApp {
                         y,
                     }
                 };
+                if permission_open {
+                    if let Some(dialog) = state.permission_dialog.as_mut() {
+                        let _ =
+                            dialog.event(&input_event, permission_bounds, &mut state.event_context);
+                    }
+                    state.window.request_redraw();
+                    return;
+                }
+                if button_state == ElementState::Released
+                    && !state.session_info.permission_mode.is_empty()
+                {
+                    let status_y = logical_height - STATUS_BAR_HEIGHT - 2.0;
+                    let mode_text = format!("[{}]", state.session_info.permission_mode);
+                    let mode_width = mode_text.len() as f32 * 6.6;
+                    let mode_bounds = Bounds::new(
+                        OUTPUT_PADDING,
+                        status_y - 4.0,
+                        mode_width,
+                        STATUS_BAR_HEIGHT + 8.0,
+                    );
+                    if mode_bounds.contains(Point::new(x, y)) {
+                        state.cycle_permission_mode();
+                        state.window.request_redraw();
+                        return;
+                    }
+                }
                 state
                     .input
                     .event(&input_event, input_bounds, &mut state.event_context);
                 state.window.request_redraw();
             }
             WindowEvent::MouseWheel { delta, .. } => {
+                if permission_open {
+                    return;
+                }
                 let dy = match delta {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 20.0,
@@ -641,6 +776,9 @@ impl ApplicationHandler for CoderApp {
                 event: key_event, ..
             } => {
                 if key_event.state == ElementState::Pressed {
+                    if permission_open {
+                        return;
+                    }
                     if handle_modal_input(state, &key_event.logical_key) {
                         return;
                     }
@@ -739,6 +877,120 @@ impl AppState {
         self.modal_state = ModalState::Config;
     }
 
+    fn enqueue_permission_prompt(&mut self, pending: PermissionPending) {
+        if self.permission_pending.is_some() || self.permission_dialog.is_some() {
+            self.permission_queue.push_back(pending);
+            return;
+        }
+        self.start_permission_prompt(pending);
+    }
+
+    fn start_permission_prompt(&mut self, pending: PermissionPending) {
+        let Some(action_tx) = self.permission_action_tx.clone() else {
+            let _ = pending
+                .respond_to
+                .send(PermissionResult::deny_and_interrupt(
+                    "Permission prompt unavailable.",
+                ));
+            return;
+        };
+        let permission_type = permission_type_for_request(&pending.request);
+        let dialog = PermissionDialog::new(permission_type).on_action(move |action| {
+            let _ = action_tx.send(action);
+        });
+        self.permission_pending = Some(pending);
+        self.permission_dialog = Some(dialog);
+    }
+
+    fn open_next_permission_prompt(&mut self) {
+        if self.permission_pending.is_some() || self.permission_dialog.is_some() {
+            return;
+        }
+        if let Some(next) = self.permission_queue.pop_front() {
+            self.start_permission_prompt(next);
+        }
+    }
+
+    fn handle_permission_action(&mut self, action: PermissionAction) {
+        let Some(pending) = self.permission_pending.take() else {
+            return;
+        };
+
+        let request = pending.request;
+        let decision_label = match action {
+            PermissionAction::Allow | PermissionAction::AllowAlways => "allow",
+            PermissionAction::AllowOnce => "allow once",
+            PermissionAction::Deny => "deny",
+        };
+
+        let result = match action {
+            PermissionAction::Allow | PermissionAction::AllowAlways => {
+                self.apply_permission_allow(&request);
+                PermissionResult::Allow {
+                    updated_input: request.input.clone(),
+                    updated_permissions: request.suggestions.clone(),
+                    tool_use_id: Some(request.tool_use_id.clone()),
+                }
+            }
+            PermissionAction::AllowOnce => PermissionResult::Allow {
+                updated_input: request.input.clone(),
+                updated_permissions: None,
+                tool_use_id: Some(request.tool_use_id.clone()),
+            },
+            PermissionAction::Deny => PermissionResult::Deny {
+                message: "User denied permission.".to_string(),
+                interrupt: None,
+                tool_use_id: Some(request.tool_use_id.clone()),
+            },
+        };
+
+        let detail = permission_detail_for_request(&request);
+        self.record_permission_history(&request, decision_label, detail);
+
+        let _ = pending.respond_to.send(result);
+        self.permission_dialog = None;
+        self.open_next_permission_prompt();
+    }
+
+    fn apply_permission_allow(&mut self, request: &PermissionRequest) {
+        if request.tool_name == "Bash" {
+            if let Some(command) = extract_bash_command(&request.input) {
+                add_unique(&mut self.permission_allow_bash_patterns, &[command.clone()]);
+                remove_items(&mut self.permission_deny_bash_patterns, &[command]);
+                self.persist_permission_config();
+            }
+            return;
+        }
+        add_unique(
+            &mut self.permission_allow_tools,
+            &[request.tool_name.clone()],
+        );
+        remove_items(
+            &mut self.permission_deny_tools,
+            &[request.tool_name.clone()],
+        );
+        self.persist_permission_config();
+    }
+
+    fn record_permission_history(
+        &mut self,
+        request: &PermissionRequest,
+        decision: &str,
+        detail: Option<String>,
+    ) {
+        const PERMISSION_HISTORY_LIMIT: usize = 50;
+        self.permission_history.push(PermissionHistoryEntry {
+            tool_name: request.tool_name.clone(),
+            decision: decision.to_string(),
+            timestamp: now_timestamp(),
+            detail,
+        });
+        if self.permission_history.len() > PERMISSION_HISTORY_LIMIT {
+            let overflow = self.permission_history.len() - PERMISSION_HISTORY_LIMIT;
+            self.permission_history.drain(0..overflow);
+        }
+    }
+
     fn clear_conversation(&mut self) {
         if self.is_thinking {
             self.push_system_message(
@@ -789,13 +1041,34 @@ impl AppState {
         }
     }
 
+    fn persist_permission_config(&self) {
+        let config = PermissionConfig {
+            mode: self.permission_mode.clone(),
+            default_allow: self.permission_default_allow,
+            allow_tools: self.permission_allow_tools.clone(),
+            deny_tools: self.permission_deny_tools.clone(),
+            bash_allow_patterns: self.permission_allow_bash_patterns.clone(),
+            bash_deny_patterns: self.permission_deny_bash_patterns.clone(),
+        };
+        save_permission_config(&config);
+    }
+
+    fn cycle_permission_mode(&mut self) {
+        let next = match self.permission_mode.clone().unwrap_or(PermissionMode::Default) {
+            PermissionMode::Default => PermissionMode::Plan,
+            PermissionMode::Plan => PermissionMode::AcceptEdits,
+            PermissionMode::AcceptEdits => PermissionMode::BypassPermissions,
+            PermissionMode::BypassPermissions => PermissionMode::DontAsk,
+            PermissionMode::DontAsk => PermissionMode::Default,
+        };
+        self.set_permission_mode(next);
+    }
+
     fn set_permission_mode(&mut self, mode: PermissionMode) {
         self.permission_mode = Some(mode.clone());
-        self.permission_default_allow = matches!(
-            mode,
-            PermissionMode::Default | PermissionMode::AcceptEdits | PermissionMode::BypassPermissions
-        );
+        self.permission_default_allow = default_allow_for_mode(Some(&mode), self.permission_default_allow);
         self.session_info.permission_mode = permission_mode_label(&mode).to_string();
+        self.persist_permission_config();
         self.push_system_message(format!(
             "Permission mode set to {}.",
             permission_mode_label(&mode)
@@ -803,30 +1076,62 @@ impl AppState {
     }
 
     fn add_permission_allow(&mut self, tools: Vec<String>) {
-        let tools = sanitize_tokens(tools);
-        if tools.is_empty() {
+        let tokens = sanitize_tokens(tools);
+        if tokens.is_empty() {
             self.push_system_message("No tools provided to allow.".to_string());
             return;
         }
-        add_unique(&mut self.permission_allow_tools, &tools);
-        remove_items(&mut self.permission_deny_tools, &tools);
+        let (tool_rules, bash_patterns) = split_permission_tokens(tokens);
+        if tool_rules.is_empty() && bash_patterns.is_empty() {
+            self.push_system_message("No valid tools or patterns provided to allow.".to_string());
+            return;
+        }
+        add_unique(&mut self.permission_allow_tools, &tool_rules);
+        remove_items(&mut self.permission_deny_tools, &tool_rules);
+        add_unique(&mut self.permission_allow_bash_patterns, &bash_patterns);
+        remove_items(&mut self.permission_deny_bash_patterns, &bash_patterns);
+        self.persist_permission_config();
+
+        let mut parts = Vec::new();
+        if !tool_rules.is_empty() {
+            parts.push(format!("tools: {}", tool_rules.join(", ")));
+        }
+        if !bash_patterns.is_empty() {
+            parts.push(format!("bash patterns: {}", bash_patterns.join(", ")));
+        }
         self.push_system_message(format!(
-            "Allowed tools: {}.",
-            tools.join(", ")
+            "Allowed {}.",
+            parts.join("; ")
         ));
     }
 
     fn add_permission_deny(&mut self, tools: Vec<String>) {
-        let tools = sanitize_tokens(tools);
-        if tools.is_empty() {
+        let tokens = sanitize_tokens(tools);
+        if tokens.is_empty() {
             self.push_system_message("No tools provided to deny.".to_string());
             return;
         }
-        add_unique(&mut self.permission_deny_tools, &tools);
-        remove_items(&mut self.permission_allow_tools, &tools);
+        let (tool_rules, bash_patterns) = split_permission_tokens(tokens);
+        if tool_rules.is_empty() && bash_patterns.is_empty() {
+            self.push_system_message("No valid tools or patterns provided to deny.".to_string());
+            return;
+        }
+        add_unique(&mut self.permission_deny_tools, &tool_rules);
+        remove_items(&mut self.permission_allow_tools, &tool_rules);
+        add_unique(&mut self.permission_deny_bash_patterns, &bash_patterns);
+        remove_items(&mut self.permission_allow_bash_patterns, &bash_patterns);
+        self.persist_permission_config();
+
+        let mut parts = Vec::new();
+        if !tool_rules.is_empty() {
+            parts.push(format!("tools: {}", tool_rules.join(", ")));
+        }
+        if !bash_patterns.is_empty() {
+            parts.push(format!("bash patterns: {}", bash_patterns.join(", ")));
+        }
         self.push_system_message(format!(
-            "Denied tools: {}.",
-            tools.join(", ")
+            "Denied {}.",
+            parts.join("; ")
         ));
     }
 
@@ -1007,8 +1312,16 @@ impl CoderApp {
         // Create channel for receiving responses
         let (tx, rx) = mpsc::unbounded_channel();
         let (control_tx, mut control_rx) = mpsc::unbounded_channel();
+        let (permission_tx, permission_rx) = mpsc::unbounded_channel();
+        let (permission_action_tx, permission_action_rx) = mpsc::unbounded_channel();
         state.response_rx = Some(rx);
         state.query_control_tx = Some(control_tx);
+        state.permission_requests_rx = Some(permission_rx);
+        state.permission_action_tx = Some(permission_action_tx.clone());
+        state.permission_action_rx = Some(permission_action_rx);
+        state.permission_queue.clear();
+        state.permission_pending = None;
+        state.permission_dialog = None;
         state.is_thinking = true;
         state.streaming_markdown.reset();
 
@@ -1033,6 +1346,8 @@ impl CoderApp {
         let disallowed_tools = state.tools_disallowed.clone();
         let permission_allow_tools = state.permission_allow_tools.clone();
         let permission_deny_tools = state.permission_deny_tools.clone();
+        let permission_allow_bash_patterns = state.permission_allow_bash_patterns.clone();
+        let permission_deny_bash_patterns = state.permission_deny_bash_patterns.clone();
         let permission_default_allow = state.permission_default_allow;
 
         // Spawn async query task
@@ -1043,7 +1358,7 @@ impl CoderApp {
                 .include_partial_messages(true) // Enable streaming deltas
                 .model(&model_id);
 
-            if let Some(mode) = permission_mode {
+            if let Some(mode) = permission_mode.clone() {
                 options = options.permission_mode(mode);
             }
             if let Some(resume_id) = resume_session {
@@ -1064,14 +1379,116 @@ impl CoderApp {
                     .insert("output-style".to_string(), Some(style));
             }
 
-            let mut rules = PermissionRules::new().default_allow(permission_default_allow);
-            for tool in permission_allow_tools {
-                rules = rules.allow(tool);
-            }
-            for tool in permission_deny_tools {
-                rules = rules.deny(tool);
-            }
-            let permissions = Arc::new(rules.build());
+            let permission_window = window.clone();
+            let permissions = Arc::new(CallbackPermissionHandler::new(move |request: PermissionRequest| {
+                let permission_tx = permission_tx.clone();
+                let permission_window = permission_window.clone();
+                let permission_mode = permission_mode.clone();
+                let permission_allow_tools = permission_allow_tools.clone();
+                let permission_deny_tools = permission_deny_tools.clone();
+                let permission_allow_bash_patterns = permission_allow_bash_patterns.clone();
+                let permission_deny_bash_patterns = permission_deny_bash_patterns.clone();
+                async move {
+                    let tool_name = request.tool_name.clone();
+
+                    if tool_name == "Bash" {
+                        if let Some(command) = extract_bash_command(&request.input) {
+                            if permission_deny_bash_patterns
+                                .iter()
+                                .any(|pattern| pattern_matches(pattern, &command))
+                            {
+                                return Ok(PermissionResult::Deny {
+                                    message: format!("Bash command denied by rule: {}", command),
+                                    interrupt: None,
+                                    tool_use_id: Some(request.tool_use_id.clone()),
+                                });
+                            }
+                            if permission_allow_bash_patterns
+                                .iter()
+                                .any(|pattern| pattern_matches(pattern, &command))
+                            {
+                                return Ok(PermissionResult::Allow {
+                                    updated_input: request.input.clone(),
+                                    updated_permissions: request.suggestions.clone(),
+                                    tool_use_id: Some(request.tool_use_id.clone()),
+                                });
+                            }
+                        }
+                    }
+
+                    if permission_deny_tools.iter().any(|tool| tool == &tool_name) {
+                        return Ok(PermissionResult::Deny {
+                            message: format!("Tool {} is denied by rule.", tool_name),
+                            interrupt: None,
+                            tool_use_id: Some(request.tool_use_id.clone()),
+                        });
+                    }
+                    if permission_allow_tools.iter().any(|tool| tool == &tool_name) {
+                        return Ok(PermissionResult::Allow {
+                            updated_input: request.input.clone(),
+                            updated_permissions: request.suggestions.clone(),
+                            tool_use_id: Some(request.tool_use_id.clone()),
+                        });
+                    }
+
+                    if let Some(mode) = permission_mode.as_ref() {
+                        match mode {
+                            PermissionMode::BypassPermissions | PermissionMode::AcceptEdits => {
+                                return Ok(PermissionResult::Allow {
+                                    updated_input: request.input.clone(),
+                                    updated_permissions: request.suggestions.clone(),
+                                    tool_use_id: Some(request.tool_use_id.clone()),
+                                });
+                            }
+                            PermissionMode::DontAsk => {
+                                return Ok(PermissionResult::Deny {
+                                    message: format!("Permission denied for tool {}.", tool_name),
+                                    interrupt: Some(true),
+                                    tool_use_id: Some(request.tool_use_id.clone()),
+                                });
+                            }
+                            PermissionMode::Plan => {
+                                if is_read_only_tool(&tool_name) {
+                                    return Ok(PermissionResult::Allow {
+                                        updated_input: request.input.clone(),
+                                        updated_permissions: None,
+                                        tool_use_id: Some(request.tool_use_id.clone()),
+                                    });
+                                }
+                                return Ok(PermissionResult::Deny {
+                                    message: format!("Plan mode denies tool {}.", tool_name),
+                                    interrupt: Some(true),
+                                    tool_use_id: Some(request.tool_use_id.clone()),
+                                });
+                            }
+                            PermissionMode::Default => {}
+                        }
+                    }
+
+                    if permission_default_allow {
+                        return Ok(PermissionResult::Allow {
+                            updated_input: request.input.clone(),
+                            updated_permissions: request.suggestions.clone(),
+                            tool_use_id: Some(request.tool_use_id.clone()),
+                        });
+                    }
+
+                    let (respond_to, response_rx) = oneshot::channel();
+                    let pending = PermissionPending { request, respond_to };
+                    if permission_tx.send(pending).is_err() {
+                        return Ok(PermissionResult::deny_and_interrupt(
+                            "Permission prompt unavailable.",
+                        ));
+                    }
+                    permission_window.request_redraw();
+                    match response_rx.await {
+                        Ok(result) => Ok(result),
+                        Err(_) => Ok(PermissionResult::deny_and_interrupt(
+                            "Permission prompt interrupted.",
+                        )),
+                    }
+                }
+            }));
 
             tracing::info!("Starting query...");
 
@@ -1297,6 +1714,12 @@ impl CoderApp {
                     state.is_thinking = false;
                     state.response_rx = None;
                     state.query_control_tx = None;
+                    state.permission_requests_rx = None;
+                    state.permission_action_tx = None;
+                    state.permission_action_rx = None;
+                    state.permission_dialog = None;
+                    state.permission_pending = None;
+                    state.permission_queue.clear();
                     state.current_tool_name = None;
                     state.current_tool_input.clear();
                     needs_redraw = true;
@@ -1313,6 +1736,12 @@ impl CoderApp {
                     state.is_thinking = false;
                     state.response_rx = None;
                     state.query_control_tx = None;
+                    state.permission_requests_rx = None;
+                    state.permission_action_tx = None;
+                    state.permission_action_rx = None;
+                    state.permission_dialog = None;
+                    state.permission_pending = None;
+                    state.permission_queue.clear();
                     state.current_tool_name = None;
                     state.current_tool_input.clear();
                     needs_redraw = true;
@@ -1336,9 +1765,49 @@ impl CoderApp {
                         output_style,
                         slash_commands,
                     };
+                    if let Some(parsed_mode) = parse_permission_mode(&state.session_info.permission_mode)
+                    {
+                        state.permission_mode = Some(parsed_mode.clone());
+                        state.permission_default_allow =
+                            default_allow_for_mode(Some(&parsed_mode), state.permission_default_allow);
+                    }
                     needs_redraw = true;
                 }
             }
+        }
+
+        if needs_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    fn poll_permissions(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut needs_redraw = false;
+
+        let mut pending_requests = Vec::new();
+        if let Some(rx) = &mut state.permission_requests_rx {
+            while let Ok(pending) = rx.try_recv() {
+                pending_requests.push(pending);
+            }
+        }
+        for pending in pending_requests {
+            state.enqueue_permission_prompt(pending);
+            needs_redraw = true;
+        }
+
+        let mut pending_actions = Vec::new();
+        if let Some(rx) = &mut state.permission_action_rx {
+            while let Ok(action) = rx.try_recv() {
+                pending_actions.push(action);
+            }
+        }
+        for action in pending_actions {
+            state.handle_permission_action(action);
+            needs_redraw = true;
         }
 
         if needs_redraw {
@@ -2049,7 +2518,7 @@ impl CoderApp {
                 scene.draw_quad(overlay);
 
                 let modal_width = 560.0;
-                let modal_height = 300.0;
+                let modal_height = 420.0;
                 let modal_x = (logical_width - modal_width) / 2.0;
                 let modal_y = (logical_height - modal_height) / 2.0;
                 let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
@@ -2129,6 +2598,97 @@ impl CoderApp {
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(deny_run);
+
+                y += 22.0;
+                let bash_allow_label = state.text_system.layout_styled_mono(
+                    "Bash allow:",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(120.0, 0.6, 0.5, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(bash_allow_label);
+                let bash_allow_text = if state.permission_allow_bash_patterns.is_empty() {
+                    "None".to_string()
+                } else {
+                    state.permission_allow_bash_patterns.join(", ")
+                };
+                let bash_allow_run = state.text_system.layout_styled_mono(
+                    &bash_allow_text,
+                    Point::new(modal_x + 120.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(bash_allow_run);
+                y += 22.0;
+
+                let bash_deny_label = state.text_system.layout_styled_mono(
+                    "Bash deny:",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.6, 0.5, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(bash_deny_label);
+                let bash_deny_text = if state.permission_deny_bash_patterns.is_empty() {
+                    "None".to_string()
+                } else {
+                    state.permission_deny_bash_patterns.join(", ")
+                };
+                let bash_deny_run = state.text_system.layout_styled_mono(
+                    &bash_deny_text,
+                    Point::new(modal_x + 120.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(bash_deny_run);
+                y += 26.0;
+
+                let history_title = state.text_system.layout_styled_mono(
+                    "Recent decisions:",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.85, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(history_title);
+                y += 18.0;
+
+                if state.permission_history.is_empty() {
+                    let empty_run = state.text_system.layout_styled_mono(
+                        "No recent permission decisions.",
+                        Point::new(modal_x + 16.0, y),
+                        12.0,
+                        Hsla::new(0.0, 0.0, 0.5, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(empty_run);
+                } else {
+                    for entry in state.permission_history.iter().rev().take(5) {
+                        let mut line = format!(
+                            "@{} [{}] {}",
+                            entry.timestamp, entry.decision, entry.tool_name
+                        );
+                        if let Some(detail) = &entry.detail {
+                            if !detail.trim().is_empty() {
+                                line.push_str(" - ");
+                                line.push_str(detail);
+                            }
+                        }
+                        let line = truncate_preview(&line, 120);
+                        let entry_run = state.text_system.layout_styled_mono(
+                            &line,
+                            Point::new(modal_x + 16.0, y),
+                            12.0,
+                            Hsla::new(0.0, 0.0, 0.6, 1.0),
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(entry_run);
+                        y += 18.0;
+                    }
+                }
 
                 y = modal_y + modal_height - 24.0;
                 let footer_run = state.text_system.layout_styled_mono(
@@ -2253,6 +2813,13 @@ impl CoderApp {
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(footer_run);
+            }
+        }
+
+        if let Some(dialog) = state.permission_dialog.as_mut() {
+            if dialog.is_open() {
+                let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+                dialog.paint(bounds, &mut paint_cx);
             }
         }
 
@@ -2843,6 +3410,147 @@ fn parse_permission_mode(input: &str) -> Option<PermissionMode> {
         "dontask" => Some(PermissionMode::DontAsk),
         _ => None,
     }
+}
+
+fn default_allow_for_mode(mode: Option<&PermissionMode>, fallback: bool) -> bool {
+    match mode {
+        Some(PermissionMode::AcceptEdits | PermissionMode::BypassPermissions) => true,
+        Some(PermissionMode::Default | PermissionMode::Plan | PermissionMode::DontAsk) => false,
+        None => fallback,
+    }
+}
+
+fn split_permission_tokens(tokens: Vec<String>) -> (Vec<String>, Vec<String>) {
+    let mut tools = Vec::new();
+    let mut bash_patterns = Vec::new();
+    for token in tokens {
+        if let Some(pattern) = parse_bash_pattern(&token) {
+            bash_patterns.push(pattern);
+        } else {
+            tools.push(token);
+        }
+    }
+    (tools, bash_patterns)
+}
+
+fn parse_bash_pattern(token: &str) -> Option<String> {
+    let trimmed = token.trim();
+    let rest = trimmed
+        .strip_prefix("Bash(")
+        .or_else(|| trimmed.strip_prefix("bash("))?;
+    let inner = rest.strip_suffix(')')?.trim();
+    if inner.is_empty() {
+        None
+    } else {
+        Some(inner.to_string())
+    }
+}
+
+fn permission_type_for_request(request: &PermissionRequest) -> PermissionType {
+    let tool = request.tool_name.as_str();
+    if matches!(tool, "Read" | "Grep" | "Glob") {
+        let path = request
+            .blocked_path
+            .clone()
+            .or_else(|| extract_input_string(&request.input, &["path", "file_path", "filePath"]));
+        if let Some(path) = path {
+            return PermissionType::FileRead(truncate_preview(&path, 120));
+        }
+    }
+    if matches!(tool, "Edit" | "Write" | "NotebookEdit") {
+        let path = request
+            .blocked_path
+            .clone()
+            .or_else(|| extract_input_string(&request.input, &["path", "file_path", "filePath"]));
+        if let Some(path) = path {
+            return PermissionType::FileWrite(truncate_preview(&path, 120));
+        }
+    }
+    if matches!(tool, "Bash" | "KillBash") {
+        if let Some(command) = extract_bash_command(&request.input) {
+            return PermissionType::Execute(truncate_preview(&command, 120));
+        }
+    }
+    if matches!(tool, "WebSearch" | "WebFetch" | "Browser") {
+        if let Some(target) = extract_input_string(&request.input, &["url", "uri", "query"]) {
+            return PermissionType::Network(truncate_preview(&target, 120));
+        }
+    }
+
+    let mut desc = format!("Tool: {}", tool);
+    if let Some(reason) = &request.decision_reason {
+        if !reason.trim().is_empty() {
+            desc.push_str(" (");
+            desc.push_str(reason.trim());
+            desc.push(')');
+        }
+    }
+    PermissionType::Custom(truncate_preview(&desc, 160))
+}
+
+fn permission_detail_for_request(request: &PermissionRequest) -> Option<String> {
+    let detail = permission_type_for_request(request).description();
+    if detail.trim().is_empty() {
+        None
+    } else {
+        Some(truncate_preview(&detail, 120))
+    }
+}
+
+fn extract_bash_command(input: &Value) -> Option<String> {
+    extract_input_string(input, &["command"])
+}
+
+fn extract_input_string(input: &Value, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(value) = input.get(*key).and_then(|val| val.as_str()) {
+            if !value.trim().is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn pattern_matches(pattern: &str, text: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return pattern == text;
+    }
+
+    let mut remainder = text;
+    let mut first_match = true;
+    for part in parts.iter().filter(|part| !part.is_empty()) {
+        if first_match && !pattern.starts_with('*') {
+            if let Some(rest) = remainder.strip_prefix(*part) {
+                remainder = rest;
+            } else {
+                return false;
+            }
+        } else if let Some(idx) = remainder.find(*part) {
+            remainder = &remainder[idx + part.len()..];
+        } else {
+            return false;
+        }
+        first_match = false;
+    }
+
+    if !pattern.ends_with('*') {
+        if let Some(last) = parts.iter().rev().find(|part| !part.is_empty()) {
+            return text.ends_with(last);
+        }
+    }
+    true
+}
+
+fn is_read_only_tool(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "Read" | "Grep" | "Glob" | "WebSearch" | "Search" | "WebFetch"
+    )
 }
 
 fn sanitize_tokens(tokens: Vec<String>) -> Vec<String> {
