@@ -480,7 +480,7 @@ const INPUT_HEIGHT: f32 = 40.0;
 const INPUT_PADDING: f32 = 12.0;
 const OUTPUT_PADDING: f32 = 12.0;
 const STATUS_BAR_HEIGHT: f32 = 20.0;
-const STATUS_BAR_FONT_SIZE: f32 = 11.0;
+const STATUS_BAR_FONT_SIZE: f32 = 13.0;
 const BUG_REPORT_URL: &str = "https://github.com/OpenAgentsInc/openagents/issues/new";
 const MAX_FILE_BYTES: usize = 200_000;
 const MAX_COMMAND_BYTES: usize = 120_000;
@@ -499,12 +499,10 @@ mod command_palette_ids {
     pub const COMPACT_CONTEXT: &str = "context.compact";
     pub const INTERRUPT_REQUEST: &str = "request.interrupt";
     pub const PERMISSION_RULES: &str = "permissions.rules";
-    pub const PERMISSION_CYCLE: &str = "permissions.cycle";
-    pub const PERMISSION_DEFAULT: &str = "permissions.default";
-    pub const PERMISSION_PLAN: &str = "permissions.plan";
-    pub const PERMISSION_ACCEPT: &str = "permissions.accept_edits";
-    pub const PERMISSION_BYPASS: &str = "permissions.bypass";
-    pub const PERMISSION_DONT_ASK: &str = "permissions.dont_ask";
+    pub const MODE_CYCLE: &str = "mode.cycle";
+    pub const MODE_BYPASS: &str = "mode.bypass";
+    pub const MODE_PLAN: &str = "mode.plan";
+    pub const MODE_AUTOPILOT: &str = "mode.autopilot";
     pub const TOOLS_LIST: &str = "tools.list";
     pub const MCP_CONFIG: &str = "mcp.open";
     pub const MCP_RELOAD: &str = "mcp.reload";
@@ -1101,7 +1099,7 @@ enum SkillCardAction {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct PermissionConfig {
-    mode: Option<PermissionMode>,
+    coder_mode: CoderMode,
     default_allow: bool,
     allow_tools: Vec<String>,
     deny_tools: Vec<String>,
@@ -1112,7 +1110,7 @@ struct PermissionConfig {
 impl Default for PermissionConfig {
     fn default() -> Self {
         Self {
-            mode: Some(PermissionMode::Default),
+            coder_mode: CoderMode::Plan,
             default_allow: false,
             allow_tools: Vec::new(),
             deny_tools: Vec::new(),
@@ -1293,6 +1291,36 @@ impl SettingsTab {
     }
 }
 
+/// Internal mode representation for Coder UI
+/// Maps to PermissionMode for SDK calls, with Autopilot as a special case
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CoderMode {
+    /// Auto-approve all tool use (maps to PermissionMode::BypassPermissions)
+    BypassPermissions,
+    /// Read-only mode, deny write operations (maps to PermissionMode::Plan)
+    #[default]
+    Plan,
+    /// Autopilot mode - bypasses Claude SDK, uses DSPy/Adjutant (placeholder)
+    Autopilot,
+}
+
+impl CoderMode {
+    /// Convert to SDK PermissionMode (returns BypassPermissions for Autopilot since it auto-approves)
+    fn to_sdk_permission_mode(&self) -> PermissionMode {
+        match self {
+            CoderMode::BypassPermissions => PermissionMode::BypassPermissions,
+            CoderMode::Plan => PermissionMode::Plan,
+            CoderMode::Autopilot => PermissionMode::BypassPermissions, // Auto-approve when SDK is used
+        }
+    }
+
+    /// Whether this mode auto-approves all permissions
+    fn auto_approves_all(&self) -> bool {
+        matches!(self, CoderMode::BypassPermissions | CoderMode::Autopilot)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SettingsInputMode {
     Normal,
@@ -1342,7 +1370,7 @@ struct SettingsRow {
 struct SettingsSnapshot {
     settings: CoderSettings,
     selected_model: ModelOption,
-    permission_mode: Option<PermissionMode>,
+    coder_mode: CoderMode,
     permission_default_allow: bool,
     permission_allow_count: usize,
     permission_deny_count: usize,
@@ -1360,7 +1388,7 @@ impl SettingsSnapshot {
         Self {
             settings: state.settings.clone(),
             selected_model: state.selected_model,
-            permission_mode: state.permission_mode.clone(),
+            coder_mode: state.coder_mode,
             permission_default_allow: state.permission_default_allow,
             permission_allow_count: state.permission_allow_tools.len(),
             permission_deny_count: state.permission_deny_tools.len(),
@@ -1422,17 +1450,12 @@ fn settings_rows(snapshot: &SettingsSnapshot, tab: SettingsTab, search: &str) ->
             });
         }
         SettingsTab::Permissions => {
-            let mode_text = snapshot
-                .permission_mode
-                .as_ref()
-                .map(permission_mode_label)
-                .unwrap_or("default")
-                .to_string();
+            let mode_text = coder_mode_label(snapshot.coder_mode).to_string();
             rows.push(SettingsRow {
                 item: SettingsItem::PermissionMode,
-                label: "Permission mode".to_string(),
+                label: "Mode".to_string(),
                 value: mode_text,
-                hint: Some("Left/Right to cycle".to_string()),
+                hint: Some("Left/Right to cycle (Bypass/Plan/Autopilot)".to_string()),
             });
             rows.push(SettingsRow {
                 item: SettingsItem::PermissionDefaultAllow,
@@ -3358,7 +3381,7 @@ struct AppState {
     settings: CoderSettings,
     keybindings: Vec<Keybinding>,
     command_history: Vec<String>,
-    permission_mode: Option<PermissionMode>,
+    coder_mode: CoderMode,
     permission_default_allow: bool,
     permission_allow_tools: Vec<String>,
     permission_deny_tools: Vec<String>,
@@ -3494,14 +3517,10 @@ impl ApplicationHandler for CoderApp {
                 let _ = save_session_index(&session_index);
             }
             let permission_config = load_permission_config();
+            let coder_mode = permission_config.coder_mode;
             let permission_default_allow =
-                default_allow_for_mode(permission_config.mode.as_ref(), permission_config.default_allow);
-            let permission_mode_label = permission_config
-                .mode
-                .as_ref()
-                .map(permission_mode_label)
-                .unwrap_or("default")
-                .to_string();
+                coder_mode_default_allow(coder_mode, permission_config.default_allow);
+            let coder_mode_label_str = coder_mode_label(coder_mode).to_string();
             let cwd = std::env::current_dir().unwrap_or_default();
             let (mcp_project_servers, mcp_project_error) = load_mcp_project_servers(&cwd);
             let mcp_project_path = Some(mcp_project_file(&cwd));
@@ -3543,7 +3562,7 @@ impl ApplicationHandler for CoderApp {
                 tool_history: Vec::new(),
                 session_info: SessionInfo {
                     model: selected_model.model_id().to_string(),
-                    permission_mode: permission_mode_label,
+                    permission_mode: coder_mode_label_str,
                     ..Default::default()
                 },
                 session_index,
@@ -3588,7 +3607,7 @@ impl ApplicationHandler for CoderApp {
                 settings,
                 keybindings: load_keybindings(),
                 command_history: Vec::new(),
-                permission_mode: permission_config.mode,
+                coder_mode,
                 permission_default_allow,
                 permission_allow_tools: permission_config.allow_tools,
                 permission_deny_tools: permission_config.deny_tools,
@@ -4228,7 +4247,7 @@ impl ApplicationHandler for CoderApp {
                         STATUS_BAR_HEIGHT + 8.0,
                     );
                     if mode_bounds.contains(Point::new(x, y)) {
-                        state.cycle_permission_mode();
+                        state.cycle_coder_mode();
                         state.window.request_redraw();
                         return;
                     }
@@ -4435,7 +4454,7 @@ impl ApplicationHandler for CoderApp {
 
                     if let WinitKey::Named(WinitNamedKey::Tab) = &key_event.logical_key {
                         if state.modifiers.shift_key() {
-                            state.cycle_permission_mode();
+                            state.cycle_coder_mode();
                             state.window.request_redraw();
                             return;
                         }
@@ -4621,45 +4640,31 @@ impl AppState {
         );
 
         push_command(
-            command_palette_ids::PERMISSION_CYCLE,
-            "Cycle Permission Mode",
-            "Rotate through permission modes",
-            "Permissions",
+            command_palette_ids::MODE_CYCLE,
+            "Cycle Mode",
+            "Rotate through modes (Bypass/Plan/Autopilot)",
+            "Mode",
             Some("Shift+Tab".to_string()),
         );
         push_command(
-            command_palette_ids::PERMISSION_DEFAULT,
-            "Permission Mode: Default",
-            "Use the default permission policy",
-            "Permissions",
+            command_palette_ids::MODE_BYPASS,
+            "Mode: Bypass Permissions",
+            "Auto-approve all tool use",
+            "Mode",
             None,
         );
         push_command(
-            command_palette_ids::PERMISSION_PLAN,
-            "Permission Mode: Plan",
-            "Require plan approval",
-            "Permissions",
+            command_palette_ids::MODE_PLAN,
+            "Mode: Plan",
+            "Read-only mode, deny write operations",
+            "Mode",
             None,
         );
         push_command(
-            command_palette_ids::PERMISSION_ACCEPT,
-            "Permission Mode: Accept Edits",
-            "Auto-approve edit requests",
-            "Permissions",
-            None,
-        );
-        push_command(
-            command_palette_ids::PERMISSION_BYPASS,
-            "Permission Mode: Bypass Permissions",
-            "Skip permission prompts",
-            "Permissions",
-            None,
-        );
-        push_command(
-            command_palette_ids::PERMISSION_DONT_ASK,
-            "Permission Mode: Don't Ask",
-            "Reject permission prompts",
-            "Permissions",
+            command_palette_ids::MODE_AUTOPILOT,
+            "Mode: Autopilot",
+            "Use DSPy/Adjutant for autonomous execution",
+            "Mode",
             None,
         );
         push_command(
@@ -5761,7 +5766,7 @@ impl AppState {
 
     fn persist_permission_config(&self) {
         let config = PermissionConfig {
-            mode: self.permission_mode.clone(),
+            coder_mode: self.coder_mode,
             default_allow: self.permission_default_allow,
             allow_tools: self.permission_allow_tools.clone(),
             deny_tools: self.permission_deny_tools.clone(),
@@ -5771,21 +5776,19 @@ impl AppState {
         save_permission_config(&config);
     }
 
-    fn cycle_permission_mode(&mut self) {
-        let next = match self.permission_mode.clone().unwrap_or(PermissionMode::Default) {
-            PermissionMode::Default => PermissionMode::Plan,
-            PermissionMode::Plan => PermissionMode::AcceptEdits,
-            PermissionMode::AcceptEdits => PermissionMode::BypassPermissions,
-            PermissionMode::BypassPermissions => PermissionMode::DontAsk,
-            PermissionMode::DontAsk => PermissionMode::Default,
+    fn cycle_coder_mode(&mut self) {
+        let next = match self.coder_mode {
+            CoderMode::BypassPermissions => CoderMode::Plan,
+            CoderMode::Plan => CoderMode::Autopilot,
+            CoderMode::Autopilot => CoderMode::BypassPermissions,
         };
-        self.set_permission_mode(next);
+        self.set_coder_mode(next);
     }
 
-    fn set_permission_mode(&mut self, mode: PermissionMode) {
-        self.permission_mode = Some(mode.clone());
-        self.permission_default_allow = default_allow_for_mode(Some(&mode), self.permission_default_allow);
-        self.session_info.permission_mode = permission_mode_label(&mode).to_string();
+    fn set_coder_mode(&mut self, mode: CoderMode) {
+        self.coder_mode = mode;
+        self.permission_default_allow = coder_mode_default_allow(mode, self.permission_default_allow);
+        self.session_info.permission_mode = coder_mode_label(mode).to_string();
         self.persist_permission_config();
     }
 
@@ -6544,6 +6547,18 @@ impl CoderApp {
             uuid: None,
         });
 
+        // Handle Autopilot mode - bypass SDK entirely
+        if matches!(state.coder_mode, CoderMode::Autopilot) {
+            state.messages.push(ChatMessage {
+                role: MessageRole::Assistant,
+                content: "Autopilot online".to_string(),
+                document: None,
+                uuid: None,
+            });
+            state.window.request_redraw();
+            return;
+        }
+
         let cwd = std::env::current_dir().unwrap_or_default();
         let active_agent = state.active_agent.clone();
         let expanded_prompt = match expand_prompt_text(&prompt, &cwd) {
@@ -6592,7 +6607,7 @@ impl CoderApp {
             });
         let fork_session = state.pending_fork_session;
         state.pending_fork_session = false;
-        let permission_mode = state.permission_mode.clone();
+        let permission_mode = Some(state.coder_mode.to_sdk_permission_mode());
         let output_style = state.output_style.clone();
         let allowed_tools = state.tools_allowed.clone();
         let disallowed_tools = state.tools_disallowed.clone();
@@ -7122,11 +7137,11 @@ impl CoderApp {
                         slash_commands,
                     };
                     state.update_mcp_status(mcp_servers, None);
-                    if let Some(parsed_mode) = parse_permission_mode(&state.session_info.permission_mode)
+                    if let Some(parsed_mode) = parse_coder_mode(&state.session_info.permission_mode)
                     {
-                        state.permission_mode = Some(parsed_mode.clone());
+                        state.coder_mode = parsed_mode;
                         state.permission_default_allow =
-                            default_allow_for_mode(Some(&parsed_mode), state.permission_default_allow);
+                            coder_mode_default_allow(parsed_mode, state.permission_default_allow);
                     }
                     state.refresh_session_cards();
                     needs_redraw = true;
@@ -7333,28 +7348,20 @@ impl CoderApp {
                 None
             }
             command_palette_ids::PERMISSION_RULES => Some(handle_command(state, Command::PermissionRules)),
-            command_palette_ids::PERMISSION_CYCLE => {
-                state.cycle_permission_mode();
+            command_palette_ids::MODE_CYCLE => {
+                state.cycle_coder_mode();
                 None
             }
-            command_palette_ids::PERMISSION_DEFAULT => {
-                state.set_permission_mode(PermissionMode::Default);
+            command_palette_ids::MODE_BYPASS => {
+                state.set_coder_mode(CoderMode::BypassPermissions);
                 None
             }
-            command_palette_ids::PERMISSION_PLAN => {
-                state.set_permission_mode(PermissionMode::Plan);
+            command_palette_ids::MODE_PLAN => {
+                state.set_coder_mode(CoderMode::Plan);
                 None
             }
-            command_palette_ids::PERMISSION_ACCEPT => {
-                state.set_permission_mode(PermissionMode::AcceptEdits);
-                None
-            }
-            command_palette_ids::PERMISSION_BYPASS => {
-                state.set_permission_mode(PermissionMode::BypassPermissions);
-                None
-            }
-            command_palette_ids::PERMISSION_DONT_ASK => {
-                state.set_permission_mode(PermissionMode::DontAsk);
+            command_palette_ids::MODE_AUTOPILOT => {
+                state.set_coder_mode(CoderMode::Autopilot);
                 None
             }
             command_palette_ids::TOOLS_LIST => Some(handle_command(state, Command::ToolsList)),
@@ -7726,49 +7733,50 @@ impl CoderApp {
         );
         scene.draw_text(prompt_run);
 
-        let permission_label = state
-            .permission_mode
-            .as_ref()
-            .map(permission_mode_display)
-            .unwrap_or("default");
-        let permission_color = state
-            .permission_mode
-            .as_ref()
-            .map(|mode| permission_mode_color(mode, &palette))
-            .unwrap_or(palette.text_faint);
+        let mode_label = coder_mode_display(state.coder_mode);
+        let mode_color = coder_mode_color(state.coder_mode, &palette);
         if state.session_info.permission_mode.is_empty() {
-            let permission_text = format!("Permissions: {}", permission_label);
-            let permission_run = state.text_system.layout_styled_mono(
-                &permission_text,
+            let mode_text = format!("Mode: {}", mode_label);
+            let mode_run = state.text_system.layout_styled_mono(
+                &mode_text,
                 Point::new(
                     input_bounds.origin.x,
                     input_bounds.origin.y + input_bounds.size.height + 2.0,
                 ),
                 10.0,
-                permission_color,
-                wgpui::text::FontStyle::default(),
-            );
-            scene.draw_text(permission_run);
-        }
-
-        // Draw status bar at very bottom (centered vertically)
-        let status_y = logical_height - STATUS_BAR_HEIGHT - 2.0;
-
-        // Left side: permission mode
-        if !state.session_info.permission_mode.is_empty() {
-            let mode_text = format!("[{}]", state.session_info.permission_mode);
-            let mode_run = state.text_system.layout_styled_mono(
-                &mode_text,
-                Point::new(content_x, status_y),
-                STATUS_BAR_FONT_SIZE,
-                state
-                    .permission_mode
-                    .as_ref()
-                    .map(|mode| permission_mode_color(mode, &palette))
-                    .unwrap_or(palette.status_left),
+                mode_color,
                 wgpui::text::FontStyle::default(),
             );
             scene.draw_text(mode_run);
+        }
+
+        // Draw status bar at very bottom (centered vertically)
+        let status_y = logical_height - STATUS_BAR_HEIGHT - 3.0;
+
+        // Left side: mode (colored) + hint (gray), aligned with user input text
+        if !state.session_info.permission_mode.is_empty() {
+            let mode_x = content_x + 24.0; // Align with user text (after ">" prompt)
+            let mode_text = coder_mode_display(state.coder_mode);
+            let mode_run = state.text_system.layout_styled_mono(
+                mode_text,
+                Point::new(mode_x, status_y),
+                STATUS_BAR_FONT_SIZE,
+                mode_color,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(mode_run);
+
+            // Draw hint in gray after the mode text
+            let hint_text = " (shift+tab to cycle)";
+            let mode_width = mode_text.len() as f32 * 7.8; // Approx char width at 13pt
+            let hint_run = state.text_system.layout_styled_mono(
+                hint_text,
+                Point::new(mode_x + mode_width, status_y),
+                STATUS_BAR_FONT_SIZE,
+                palette.status_right,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(hint_run);
         }
 
         // Right side: model, tools, session
@@ -7797,7 +7805,7 @@ impl CoderApp {
             parts.push(format!("session {}", session_short));
             let right_text = parts.join(" | ");
             // Measure and right-align
-            let text_width = right_text.len() as f32 * 6.6; // Approx char width at 11pt
+            let text_width = right_text.len() as f32 * 7.8; // Approx char width at 13pt
             let right_x = sidebar_layout.main.origin.x
                 + sidebar_layout.main.size.width
                 - text_width
@@ -10381,10 +10389,10 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
             CommandAction::None
         }
         Command::PermissionMode(mode) => {
-            match parse_permission_mode(&mode) {
-                Some(parsed) => state.set_permission_mode(parsed),
+            match parse_coder_mode(&mode) {
+                Some(parsed) => state.set_coder_mode(parsed),
                 None => state.push_system_message(format!(
-                    "Unknown permission mode: {}.",
+                    "Unknown mode: {}. Valid modes: bypass, plan, autopilot",
                     mode
                 )),
             }
@@ -11077,12 +11085,12 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                     state.persist_settings();
                                 }
                                 SettingsItem::PermissionMode => {
-                                    let next = cycle_permission_mode(state.permission_mode.clone(), forward);
-                                    state.permission_mode = Some(next.clone());
+                                    let next = cycle_coder_mode_standalone(state.coder_mode, forward);
+                                    state.coder_mode = next;
                                     state.permission_default_allow =
-                                        default_allow_for_mode(Some(&next), state.permission_default_allow);
+                                        coder_mode_default_allow(next, state.permission_default_allow);
                                     state.session_info.permission_mode =
-                                        permission_mode_label(&next).to_string();
+                                        coder_mode_label(next).to_string();
                                     state.persist_permission_config();
                                 }
                                 SettingsItem::PermissionDefaultAllow => {
@@ -11256,61 +11264,50 @@ fn cycle_model(current: ModelOption, forward: bool) -> ModelOption {
     models[next]
 }
 
-fn cycle_permission_mode(current: Option<PermissionMode>, forward: bool) -> PermissionMode {
+fn cycle_coder_mode_standalone(current: CoderMode, forward: bool) -> CoderMode {
     let modes = [
-        PermissionMode::Default,
-        PermissionMode::Plan,
-        PermissionMode::AcceptEdits,
-        PermissionMode::BypassPermissions,
-        PermissionMode::DontAsk,
+        CoderMode::BypassPermissions,
+        CoderMode::Plan,
+        CoderMode::Autopilot,
     ];
     let idx = match current {
-        Some(PermissionMode::Default) => 0,
-        Some(PermissionMode::Plan) => 1,
-        Some(PermissionMode::AcceptEdits) => 2,
-        Some(PermissionMode::BypassPermissions) => 3,
-        Some(PermissionMode::DontAsk) => 4,
-        None => 0,
+        CoderMode::BypassPermissions => 0,
+        CoderMode::Plan => 1,
+        CoderMode::Autopilot => 2,
     };
     let next = if forward {
         (idx + 1) % modes.len()
     } else {
         (idx + modes.len() - 1) % modes.len()
     };
-    modes[next].clone()
+    modes[next]
 }
 
-fn permission_mode_label(mode: &PermissionMode) -> &'static str {
+fn coder_mode_label(mode: CoderMode) -> &'static str {
     match mode {
-        PermissionMode::Default => "default",
-        PermissionMode::Plan => "plan",
-        PermissionMode::AcceptEdits => "acceptEdits",
-        PermissionMode::BypassPermissions => "bypassPermissions",
-        PermissionMode::DontAsk => "dontAsk",
+        CoderMode::BypassPermissions => "bypass",
+        CoderMode::Plan => "plan",
+        CoderMode::Autopilot => "autopilot",
     }
 }
 
-fn permission_mode_display(mode: &PermissionMode) -> &'static str {
+fn coder_mode_display(mode: CoderMode) -> &'static str {
     match mode {
-        PermissionMode::Default => "default",
-        PermissionMode::Plan => "plan mode",
-        PermissionMode::AcceptEdits => "accept edits",
-        PermissionMode::BypassPermissions => "bypass permissions",
-        PermissionMode::DontAsk => "dont ask",
+        CoderMode::BypassPermissions => "bypass permissions",
+        CoderMode::Plan => "plan mode",
+        CoderMode::Autopilot => "autopilot mode",
     }
 }
 
-fn permission_mode_color(mode: &PermissionMode, palette: &UiPalette) -> Hsla {
+fn coder_mode_color(mode: CoderMode, _palette: &UiPalette) -> Hsla {
     match mode {
-        PermissionMode::Default => palette.status_left,
-        PermissionMode::Plan => Hsla::from_hex(0x00D5FF), // vivid teal/cyan
-        PermissionMode::AcceptEdits => Hsla::from_hex(0xC77DFF), // vivid purple
-        PermissionMode::BypassPermissions => Hsla::new(0.0, 0.75, 0.55, 1.0), // red
-        PermissionMode::DontAsk => Hsla::from_hex(0xF59E0B),
+        CoderMode::BypassPermissions => Hsla::new(0.0, 0.65, 0.65, 1.0), // lighter red/salmon
+        CoderMode::Plan => Hsla::from_hex(0x00D5FF), // vivid teal/cyan
+        CoderMode::Autopilot => Hsla::from_hex(0x39FF14), // neon green
     }
 }
 
-fn parse_permission_mode(input: &str) -> Option<PermissionMode> {
+fn parse_coder_mode(input: &str) -> Option<CoderMode> {
     let normalized = input
         .trim()
         .to_ascii_lowercase()
@@ -11318,11 +11315,9 @@ fn parse_permission_mode(input: &str) -> Option<PermissionMode> {
         .replace('_', "")
         .replace('\'', "");
     match normalized.as_str() {
-        "default" => Some(PermissionMode::Default),
-        "plan" => Some(PermissionMode::Plan),
-        "acceptedits" => Some(PermissionMode::AcceptEdits),
-        "bypasspermissions" | "bypass" => Some(PermissionMode::BypassPermissions),
-        "dontask" => Some(PermissionMode::DontAsk),
+        "bypasspermissions" | "bypass" => Some(CoderMode::BypassPermissions),
+        "plan" => Some(CoderMode::Plan),
+        "autopilot" | "auto" => Some(CoderMode::Autopilot),
         _ => None,
     }
 }
@@ -11360,11 +11355,11 @@ fn build_checkpoint_entries(messages: &[ChatMessage]) -> Vec<CheckpointEntry> {
     entries
 }
 
-fn default_allow_for_mode(mode: Option<&PermissionMode>, fallback: bool) -> bool {
-    match mode {
-        Some(PermissionMode::AcceptEdits | PermissionMode::BypassPermissions) => true,
-        Some(PermissionMode::Default | PermissionMode::Plan | PermissionMode::DontAsk) => false,
-        None => fallback,
+fn coder_mode_default_allow(mode: CoderMode, fallback: bool) -> bool {
+    if mode.auto_approves_all() {
+        true
+    } else {
+        fallback
     }
 }
 
