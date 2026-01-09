@@ -213,7 +213,7 @@ cargo autopilot run "Fix the failing tests"
 
 ## DSPy Integration
 
-**What it is:** DSPy is the **compiler layer for agent behavior**. It decides *what to do* (best prompt + tool-use structure + few-shot examples), while OpenAgents decides *where/how it runs*, *whether it's valid*, *what it costs*, and *why it worked*.
+**What it is:** DSPy is the **compiler layer for agent behavior**. It decides *what to do* (best prompt + tool-use structure + few-shot examples), while the execution infrastructure (Pylon, Nexus, Runtime) decides *where/how it runs*, *whether it's valid*, *what it costs*, and *why it worked*.
 
 **Core implementation:** `crates/dsrs/` — 5,771 LOC Rust DSPy implementation integrated into the workspace.
 

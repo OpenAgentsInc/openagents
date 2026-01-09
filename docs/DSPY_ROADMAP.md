@@ -8,7 +8,7 @@ Not the market layer, not the runtime. DSPy provides: **take a goal ("solve this
 
 **The Separation:**
 - **DSPy (dsrs)** decides *what to do* (best program structure/prompting)
-- **OpenAgents** decides *where/how it runs* (local/swarm/datacenter), *whether it's valid* (verification), *what it costs* (budgets/receipts), and *why it worked* (trace/HUD)
+- **The execution infrastructure** (Pylon, Nexus, Runtime) decides *where/how it runs* (local/swarm/datacenter), *whether it's valid* (verification), *what it costs* (budgets/receipts), and *why it worked* (trace/HUD)
 
 **Philosophy (from Omar Khattab & Kevin Madura):**
 - DSPy is declarative AI programming, not just prompt optimization
