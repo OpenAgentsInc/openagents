@@ -634,12 +634,12 @@ pub struct HookConfig {
 | TodoEnforcer | Enforce task completion | Disabled |
 
 ### Tasks
-- [ ] Create hook configuration panel
-- [ ] Implement built-in hook toggles
-- [ ] Show hook execution in event log
-- [ ] Integrate `EventInspector` component
-- [ ] Support custom hook scripts
-- [ ] Wire up SDK HookCallback system
+- [x] Create hook configuration panel
+- [x] Implement built-in hook toggles
+- [x] Show hook execution in event log
+- [x] Integrate `EventInspector` component
+- [x] Support custom hook scripts
+- [x] Wire up SDK HookCallback system
 
 ---
 
@@ -773,7 +773,7 @@ pub enum SettingsTab {
 - [ ] `tools()` - Tool configuration
 - [ ] `disallowed_tools()` - Tool filtering
 - [ ] `beta()` - Beta features
-- [ ] `hooks()` - Hook callbacks
+- [x] `hooks()` - Hook callbacks
 
 ### Query Control Methods
 
@@ -901,3 +901,4 @@ pub enum SettingsTab {
 - 2026-01-09 10:12 UTC - Implemented tool history panel with ToolCallCard rendering, progress bar/cancel handling, tool input events, and viewport adjustments; ran `cargo check -p coder`.
 - 2026-01-09 10:28 UTC - Implemented MCP config loading with env expansion, runtime add/remove commands, status polling, status bar summary, and MCP configuration modal; ran `cargo check -p coder`.
 - 2026-01-09 11:08 UTC - Added agent/skill loading with frontmatter parsing, agent/skill modals + commands, active agent status/prompt wiring, and skills setting_sources; ran `cargo check -p coder`.
+- 2026-01-09 12:02 UTC - Implemented hooks runtime (built-ins + scripts), wired hook logging/inspector, connected hooks to query options, and ran `cargo check -p coder`.
