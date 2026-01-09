@@ -85,6 +85,7 @@ println!("Answer: {}", result.get("answer", None));
 - [Architecture](./ARCHITECTURE.md) - Core traits and design
 - [Callbacks](./CALLBACKS.md) - Observability and HUD integration
 - [Compiler Contract](./COMPILER-CONTRACT.md) - Wave 3 features (manifest, trace, Nostr bridge)
+- [Evaluation](./EVALUATION.md) - Eval harness & promotion gates (Wave 5)
 - [LM Providers](./LM-PROVIDERS.md) - Multi-provider LM configuration
 - [Retrieval](./RETRIEVAL.md) - Multi-lane retrieval system (Wave 4)
 - [Signatures](./SIGNATURES.md) - Optimizable agent signatures (Wave 4)
@@ -97,8 +98,9 @@ println!("Answer: {}", result.get("answer", None));
 | 1-2 | Complete | RLM + Autopilot signatures |
 | 2.5 | Complete | LaneMux (multi-provider LM) |
 | 3 | Complete | Compiler Contract (manifest, callbacks, trace, sandbox) |
-| 4 | **Complete** | Retrieval, Signatures, Swarm Dispatch |
-| 5+ | Planned | Eval harness, SwarmCompiler |
+| 4 | Complete | Retrieval, Signatures, Swarm Dispatch |
+| 5 | **Complete** | Eval Harness & Promotion Gates |
+| 6+ | Planned | SwarmCompiler, Privacy, OANIX |
 
 ## Key Paths
 
@@ -142,6 +144,12 @@ crates/dsrs/
 │   │   └── nostr_bridge.rs # DAG → Nostr events
 │   ├── callbacks.rs        # DspyCallback trait + implementations
 │   ├── manifest.rs         # CompiledModuleManifest, Scorecard
+│   ├── evaluate/           # Wave 5: Eval harness
+│   │   ├── task.rs         # EvalTask, RepoContext, Constraint
+│   │   ├── metrics/        # Metric trait, proxy + truth metrics
+│   │   ├── scoring.rs      # Scorer, AggregationMethod
+│   │   ├── promotion.rs    # PromotionState, PromotionGate
+│   │   └── priority.rs     # CompilePriority, CompileQueue
 │   └── optimizer/          # MIPROv2, GEPA, COPRO, Pareto
 └── docs/
     └── *.md

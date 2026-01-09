@@ -327,8 +327,8 @@ Shadow mode runs both old and new policy, ships old result, promotes only if new
 | 1-2 | Complete | RLM + Autopilot signatures |
 | 2.5 | Complete | LaneMux (multi-provider LM auto-detection) |
 | 3 | **Complete** | Compiler Contract (manifest, callbacks, trace, sandbox) |
-| 4 | Planned | Swarm job types, Retrieval Policy, Repo Indexing |
-| 5 | Planned | Eval Harness & Promotion Gates |
+| 4 | **Complete** | Retrieval, Signatures, Swarm Dispatch |
+| 5 | **Complete** | Eval Harness & Promotion Gates |
 | 6 | Planned | SwarmCompiler (cheap optimization on Pylon) |
 | 7+ | Planned | Privacy, OANIX, Agent Orchestrator, Tool Invocation |
 
@@ -700,7 +700,7 @@ Issues are NOT done unless:
 | Runtime | In progress | Tick engine, filesystem, /compute, /containers, /claude |
 | Autopilot | Alpha | Claude SDK integration, tunnel mode |
 | Autopilot DSPy | Wave 3 | Planning, Execution, Verification + Compiler Contract |
-| dsrs | **Wave 4** | Retrieval, Signatures, Swarm Dispatch (see Wave 3 + Wave 4) |
+| dsrs | **Wave 5** | Eval Harness, Promotion Gates, Scoring (see Wave 3-5) |
 | WGPUI | Phase 16 | 377 tests, full component library |
 | RLM | Working | Claude + Ollama backends, MCP tools |
 | RLM DSPy | Wave 1 | DspyOrchestrator, provenance signatures |

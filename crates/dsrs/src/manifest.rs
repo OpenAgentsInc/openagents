@@ -7,6 +7,7 @@
 //! - Performance metrics (scorecard)
 //! - Runtime compatibility requirements
 
+use crate::evaluate::promotion::{EvalRecord, PromotionState};
 use protocol::canonical_hash;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -246,6 +247,14 @@ pub struct CompiledModuleManifest {
     /// Number of demonstrations.
     #[serde(default)]
     pub demo_count: usize,
+
+    /// Current promotion state.
+    #[serde(default)]
+    pub promotion_state: PromotionState,
+
+    /// Evaluation history.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub eval_history: Vec<EvalRecord>,
 }
 
 impl CompiledModuleManifest {
@@ -264,7 +273,21 @@ impl CompiledModuleManifest {
                 .as_secs(),
             instruction: None,
             demo_count: 0,
+            promotion_state: PromotionState::Candidate,
+            eval_history: Vec::new(),
         }
+    }
+
+    /// Set promotion state.
+    pub fn with_promotion_state(mut self, state: PromotionState) -> Self {
+        self.promotion_state = state;
+        self
+    }
+
+    /// Add an evaluation record.
+    pub fn with_eval_record(mut self, record: EvalRecord) -> Self {
+        self.eval_history.push(record);
+        self
     }
 
     /// Set the training set ID.
