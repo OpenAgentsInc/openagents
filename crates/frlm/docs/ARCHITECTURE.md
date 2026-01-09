@@ -353,6 +353,52 @@ FrlmPolicy::default()
     .with_local_fallback(true)
 ```
 
+## DSPy Signatures
+
+FRLM includes DSPy signatures for declarative map-reduce orchestration. These implement the `MetaSignature` trait from `dsrs` for optimizability.
+
+### FRLMDecomposeSignature (`dspy_signatures.rs`)
+
+The "map" phase signature that decides what subcalls to spawn:
+
+```rust
+pub struct FRLMDecomposeSignature {
+    instruction: String,
+    demos: Vec<Example>,
+}
+
+// Inputs: query, env_summary, progress
+// Outputs: subqueries (JSON array), stopping_rule
+```
+
+### FRLMAggregateSignature (`dspy_signatures.rs`)
+
+The "reduce" phase signature that merges worker results:
+
+```rust
+pub struct FRLMAggregateSignature {
+    instruction: String,
+    demos: Vec<Example>,
+}
+
+// Inputs: query, worker_results
+// Outputs: answer, citations, confidence
+```
+
+### Helper Enums
+
+**StoppingRule** - Controls recursion depth:
+- `Exhaustive` - Process all spans
+- `SufficientEvidence` - Stop when enough evidence found
+- `BudgetExhausted` - Stop when budget runs out
+- `ConfidenceThreshold` - Stop when confidence high enough
+
+**SpanSelector** - Controls which spans to process:
+- `All` - All spans
+- `ByType(String)` - Filter by type
+- `ByRelevance` - Most relevant first
+- `ByPosition { start, end }` - Range selection
+
 ## Future Enhancements
 
 1. **Compute Mobility**: Route queries to optimal venue (local/swarm/datacenter)
@@ -360,3 +406,4 @@ FrlmPolicy::default()
 3. **Reputation System**: Weight providers by historical reliability
 4. **Caching**: Cache results for repeated queries
 5. **Streaming**: Stream partial results as they arrive
+6. **DSPy Optimization**: Compile signatures with MIPROv2/GEPA for better prompts

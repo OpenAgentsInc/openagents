@@ -219,6 +219,48 @@ FRLM supports multiple execution venues tracked in trace events:
 | `Claude` | Claude via claude-agent-sdk |
 | `Unknown` | Fallback for unknown venues |
 
+## DSPy Signatures
+
+FRLM provides DSPy signatures for declarative map-reduce orchestration:
+
+### FRLMDecomposeSignature (Map Phase)
+
+Decides what subcalls to spawn over which spans:
+
+```rust
+use frlm::{FRLMDecomposeSignature, SpanSelector, StoppingRule};
+
+// Inputs: query, env_summary, progress
+// Outputs: subqueries (JSON array), stopping_rule
+
+let sig = FRLMDecomposeSignature::new();
+```
+
+**SpanSelector** controls which spans to process:
+- `All` - Process all spans
+- `ByType(String)` - Filter by span type
+- `ByRelevance` - Most relevant spans first
+- `ByPosition { start, end }` - Range of spans
+
+**StoppingRule** controls recursion depth:
+- `Exhaustive` - Process all spans
+- `SufficientEvidence` - Stop when enough evidence found
+- `BudgetExhausted` - Stop when budget runs out
+- `ConfidenceThreshold` - Stop when confidence high enough
+
+### FRLMAggregateSignature (Reduce Phase)
+
+Merges worker results into final answer:
+
+```rust
+use frlm::FRLMAggregateSignature;
+
+// Inputs: query, worker_results
+// Outputs: answer, citations, confidence
+
+let sig = FRLMAggregateSignature::new();
+```
+
 ## Module Structure
 
 ```
@@ -232,6 +274,7 @@ crates/frlm/
 │   ├── trace.rs           # Trace event taxonomy
 │   ├── trace_db.rs        # SQLite persistence for traces
 │   ├── types.rs           # Core types (Fragment, SubQuery, Venue)
+│   ├── dspy_signatures.rs # DSPy signatures for map-reduce
 │   ├── claude_executor.rs # Claude backend (feature: claude)
 │   └── error.rs           # Error types
 └── docs/
@@ -244,7 +287,8 @@ crates/frlm/
 |---------|-------------|
 | `trace-db` | SQLite persistence for trace events |
 | `claude` | Claude as execution backend via claude-agent-sdk |
-| `dspy` | DSPy integration for declarative LLM programming |
+
+**Note:** DSPy integration via `dsrs` is always enabled (not feature-gated).
 
 ## Example Flow
 
