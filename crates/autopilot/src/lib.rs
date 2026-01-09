@@ -42,9 +42,15 @@ pub mod workflow;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod dspy_execution;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod dspy_hub;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod dspy_optimization;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod dspy_planning;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod dspy_router;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod dspy_training;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod dspy_verify;
 
@@ -140,6 +146,15 @@ pub use dspy_verify::{
     ExecutionReviewInput, ExecutionReviewResult, PlanAdherence, RequirementResult, ReviewVerdict,
     VerificationInput, VerificationPipeline, VerificationResult, VerificationVerdict,
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use dspy_hub::{DspyHub, RoutingStrategy, StoredModule};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use dspy_router::{RoutingDecision, RoutingSummary, ShadowStats, SignatureRouter};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use dspy_training::{ExtractedExamples, SavedTrainingPaths, SuccessCriteria, TrainingExtractor};
 
 // Agent exports - available on all platforms
 pub use agent::{AutopilotAgent, AutopilotConfig, AutopilotPhase, AutopilotState};
