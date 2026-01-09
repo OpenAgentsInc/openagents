@@ -1,6 +1,7 @@
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::input::{Key, NamedKey};
+use crate::text::FontStyle;
 use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
 
 pub struct TextInput {
@@ -20,6 +21,7 @@ pub struct TextInput {
     placeholder_color: Hsla,
     cursor_color: Hsla,
     cursor_visible: bool,
+    mono: bool,
     on_change: Option<Box<dyn FnMut(&str)>>,
     on_submit: Option<Box<dyn FnMut(&str)>>,
 }
@@ -43,6 +45,7 @@ impl TextInput {
             placeholder_color: theme::text::MUTED,
             cursor_color: theme::text::PRIMARY,
             cursor_visible: true,
+            mono: false,
             on_change: None,
             on_submit: None,
         }
@@ -81,6 +84,16 @@ impl TextInput {
 
     pub fn border_color(mut self, color: Hsla) -> Self {
         self.border_color = color;
+        self
+    }
+
+    pub fn border_color_focused(mut self, color: Hsla) -> Self {
+        self.border_color_focused = color;
+        self
+    }
+
+    pub fn mono(mut self, mono: bool) -> Self {
+        self.mono = mono;
         self
     }
 
@@ -287,12 +300,22 @@ impl Component for TextInput {
         };
 
         if !display_text.is_empty() {
-            let text_run = cx.text.layout(
-                display_text,
-                Point::new(text_x, text_y),
-                self.font_size,
-                text_color,
-            );
+            let text_run = if self.mono {
+                cx.text.layout_styled_mono(
+                    display_text,
+                    Point::new(text_x, text_y),
+                    self.font_size,
+                    text_color,
+                    FontStyle::default(),
+                )
+            } else {
+                cx.text.layout(
+                    display_text,
+                    Point::new(text_x, text_y),
+                    self.font_size,
+                    text_color,
+                )
+            };
             cx.scene.draw_text(text_run);
         }
 
