@@ -1,10 +1,12 @@
 //! Main application state and event handling.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, Stdio};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -13,12 +15,19 @@ use tokio::process::Command as TokioCommand;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 use async_trait::async_trait;
+use arboard::Clipboard;
 use web_time::Instant;
 use wgpui::input::{Key as UiKey, Modifiers as UiModifiers, NamedKey as UiNamedKey};
 use wgpui::components::{Component, EventContext, EventResult, PaintContext};
-use wgpui::markdown::{MarkdownConfig, MarkdownDocument, MarkdownRenderer as MdRenderer, StreamingMarkdown};
+use wgpui::markdown::{
+    MarkdownBlock, MarkdownConfig, MarkdownDocument, MarkdownRenderer as MdRenderer, StreamingMarkdown,
+    StyledLine,
+};
 use wgpui::renderer::Renderer;
-use wgpui::{Bounds, Hsla, InputEvent, Point, Quad, Scene, Size, TextInput, TextSystem};
+use wgpui::{
+    copy_to_clipboard, Bounds, ContextMenu, Hsla, InputEvent, MenuItem, Point, Quad, Scene, Size,
+    TextInput, TextSystem,
+};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -99,6 +108,363 @@ fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
     lines
 }
 
+fn selection_point_cmp(a: &ChatSelectionPoint, b: &ChatSelectionPoint) -> std::cmp::Ordering {
+    match a.message_index.cmp(&b.message_index) {
+        std::cmp::Ordering::Equal => a.offset.cmp(&b.offset),
+        ordering => ordering,
+    }
+}
+
+fn byte_offset_for_char_index(text: &str, char_index: usize) -> usize {
+    if char_index == 0 {
+        return 0;
+    }
+    text.char_indices()
+        .nth(char_index)
+        .map(|(idx, _)| idx)
+        .unwrap_or_else(|| text.len())
+}
+
+fn char_index_for_byte_offset(text: &str, byte_offset: usize) -> usize {
+    let clamped = byte_offset.min(text.len());
+    text[..clamped].chars().count()
+}
+
+fn split_into_words_for_layout(text: &str) -> Vec<&str> {
+    let mut words = Vec::new();
+    let mut start = 0;
+    let mut in_word = false;
+
+    for (i, c) in text.char_indices() {
+        if c.is_whitespace() {
+            if in_word {
+                in_word = false;
+            }
+        } else if !in_word && start < i {
+            words.push(&text[start..i]);
+            start = i;
+            in_word = true;
+        } else {
+            in_word = true;
+        }
+    }
+
+    if start < text.len() {
+        words.push(&text[start..]);
+    }
+
+    words
+}
+
+fn prefix_text_for_line(prefix: &LinePrefix, text_system: &mut TextSystem) -> (String, f32) {
+    let font_style = wgpui::text::FontStyle::default();
+    let prefix_width = text_system.measure_styled_mono(&prefix.text, prefix.font_size, font_style);
+    let space_width = text_system.measure_styled_mono(" ", prefix.font_size, font_style).max(1.0);
+    let gap_px = (prefix.content_x - prefix.x - prefix_width).max(space_width);
+    let space_count = (gap_px / space_width).round().max(1.0) as usize;
+    let mut text = prefix.text.clone();
+    text.push_str(&" ".repeat(space_count));
+    let total_width = prefix_width + space_width * space_count as f32;
+    (text, total_width)
+}
+
+fn line_text_from_styled(lines: &[StyledLine]) -> String {
+    let mut out = String::new();
+    for (line_idx, line) in lines.iter().enumerate() {
+        if line_idx > 0 {
+            out.push(' ');
+        }
+        for span in &line.spans {
+            out.push_str(&span.text);
+        }
+    }
+    out
+}
+
+fn layout_styled_lines(
+    lines: &[StyledLine],
+    origin: Point,
+    max_width: f32,
+    base_indent: u32,
+    text_system: &mut TextSystem,
+    builder: &mut MessageLayoutBuilder,
+    prefix: &mut Option<LinePrefix>,
+) -> f32 {
+    let mut y = origin.y;
+    let mut first_visual_line = true;
+
+    for line in lines {
+        y += line.margin_top;
+        let indent = (base_indent + line.indent) as f32 * wgpui::theme::spacing::LG;
+        let line_start_x = origin.x + indent;
+        let right_edge = origin.x + max_width;
+
+        let base_font_size = line
+            .spans
+            .first()
+            .map(|s| s.style.font_size)
+            .unwrap_or(wgpui::theme::font_size::BASE);
+        let line_height = base_font_size * line.line_height;
+
+        let mut current_x = line_start_x;
+        let mut line_x = line_start_x;
+        let mut current_line_text = String::new();
+
+        if first_visual_line {
+            if let Some(prefix_line) = prefix.take() {
+                let (prefix_text, prefix_width) = prefix_text_for_line(&prefix_line, text_system);
+                line_x = prefix_line.x;
+                current_x = prefix_line.x + prefix_width;
+                current_line_text.push_str(&prefix_text);
+            }
+        }
+
+        for span in &line.spans {
+            let font_style = wgpui::text::FontStyle {
+                bold: span.style.bold,
+                italic: span.style.italic,
+            };
+            let words = split_into_words_for_layout(&span.text);
+
+            for word in words {
+                if word.is_empty() {
+                    continue;
+                }
+
+                let word_width = text_system.measure_styled_mono(word, span.style.font_size, font_style);
+                if current_x + word_width > right_edge && current_x > line_start_x {
+                    builder.push_line(current_line_text, line_x, y, line_height, base_font_size);
+                    y += line_height;
+                    current_line_text = String::new();
+                    current_x = line_start_x;
+                    line_x = line_start_x;
+                }
+
+                current_line_text.push_str(word);
+                current_x += word_width;
+            }
+        }
+
+        builder.push_line(
+            current_line_text,
+            line_x,
+            y,
+            line_height,
+            base_font_size,
+        );
+        y += line_height;
+        first_visual_line = false;
+    }
+
+    y - origin.y
+}
+
+fn layout_markdown_block(
+    block: &MarkdownBlock,
+    origin: Point,
+    max_width: f32,
+    text_system: &mut TextSystem,
+    config: &MarkdownConfig,
+    builder: &mut MessageLayoutBuilder,
+    prefix: &mut Option<LinePrefix>,
+) -> f32 {
+    match block {
+        MarkdownBlock::Paragraph(lines) => {
+            layout_styled_lines(lines, origin, max_width, 0, text_system, builder, prefix)
+        }
+        MarkdownBlock::Header { level, lines } => {
+            let margin_top = match level {
+                1 => wgpui::theme::spacing::XL,
+                2 => wgpui::theme::spacing::LG,
+                _ => wgpui::theme::spacing::MD,
+            };
+            margin_top
+                + layout_styled_lines(
+                    lines,
+                    Point::new(origin.x, origin.y + margin_top),
+                    max_width,
+                    0,
+                    text_system,
+                    builder,
+                    prefix,
+                )
+        }
+        MarkdownBlock::CodeBlock { lines, .. } => {
+            let margin = wgpui::theme::spacing::SM;
+            let padding = wgpui::theme::spacing::SM;
+            let header_height = wgpui::theme::font_size::XS + wgpui::theme::spacing::XS;
+
+            let content_origin = Point::new(
+                origin.x + padding,
+                origin.y + margin + header_height + padding,
+            );
+
+            let content_height = layout_styled_lines(
+                lines,
+                content_origin,
+                max_width - padding * 2.0,
+                0,
+                text_system,
+                builder,
+                prefix,
+            );
+
+            content_height + padding * 2.0 + header_height + margin * 2.0
+        }
+        MarkdownBlock::Blockquote(blocks) => {
+            let bar_width = 4.0;
+            let gap = wgpui::theme::spacing::MD;
+            let indent = bar_width + gap;
+            let margin = wgpui::theme::spacing::SM;
+            let start_y = origin.y + margin;
+            let mut y = start_y;
+
+            for block in blocks {
+                y += layout_markdown_block(
+                    block,
+                    Point::new(origin.x + indent, y),
+                    max_width - indent,
+                    text_system,
+                    config,
+                    builder,
+                    prefix,
+                );
+            }
+
+            y - start_y + margin * 2.0
+        }
+        MarkdownBlock::UnorderedList(items) => {
+            let indent = wgpui::theme::spacing::XL;
+            let bullet_x = origin.x + wgpui::theme::spacing::SM;
+            let margin = wgpui::theme::spacing::XS;
+            let mut y = origin.y + margin;
+
+            for item in items {
+                let mut item_prefix = Some(LinePrefix {
+                    text: "\u{2022}".to_string(),
+                    x: bullet_x,
+                    content_x: origin.x + indent,
+                    font_size: config.base_font_size,
+                });
+                for block in item {
+                    y += layout_markdown_block(
+                        block,
+                        Point::new(origin.x + indent, y),
+                        max_width - indent,
+                        text_system,
+                        config,
+                        builder,
+                        &mut item_prefix,
+                    );
+                }
+            }
+
+            y - origin.y + margin
+        }
+        MarkdownBlock::OrderedList { start, items } => {
+            let indent = wgpui::theme::spacing::XL * 2.0;
+            let margin = wgpui::theme::spacing::XS;
+            let mut y = origin.y + margin;
+
+            for (idx, item) in items.iter().enumerate() {
+                let number = start + idx as u64;
+                let mut item_prefix = Some(LinePrefix {
+                    text: format!("{}.", number),
+                    x: origin.x,
+                    content_x: origin.x + indent,
+                    font_size: config.base_font_size,
+                });
+                for block in item {
+                    y += layout_markdown_block(
+                        block,
+                        Point::new(origin.x + indent, y),
+                        max_width - indent,
+                        text_system,
+                        config,
+                        builder,
+                        &mut item_prefix,
+                    );
+                }
+            }
+
+            y - origin.y + margin
+        }
+        MarkdownBlock::HorizontalRule => {
+            let margin = wgpui::theme::spacing::LG;
+            margin * 2.0 + 1.0
+        }
+        MarkdownBlock::Table { headers, rows } => {
+            if headers.is_empty() {
+                return 0.0;
+            }
+
+            let cell_padding = wgpui::theme::spacing::SM;
+            let mut y = origin.y + cell_padding;
+            let header_text = headers
+                .iter()
+                .map(|cell| line_text_from_styled(cell))
+                .collect::<Vec<_>>()
+                .join(" | ");
+            builder.push_line(
+                header_text,
+                origin.x + cell_padding,
+                y,
+                32.0,
+                config.base_font_size,
+            );
+            y += 32.0 + 1.0;
+
+            for row in rows {
+                let row_text = row
+                    .iter()
+                    .map(|cell| line_text_from_styled(cell))
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                builder.push_line(
+                    row_text,
+                    origin.x + cell_padding,
+                    y + cell_padding,
+                    28.0,
+                    config.base_font_size,
+                );
+                y += 28.0;
+            }
+
+            y - origin.y
+        }
+    }
+}
+
+fn layout_markdown_document(
+    document: &MarkdownDocument,
+    origin: Point,
+    max_width: f32,
+    text_system: &mut TextSystem,
+    config: &MarkdownConfig,
+    builder: &mut MessageLayoutBuilder,
+) -> f32 {
+    let mut y = origin.y;
+
+    for (i, block) in document.blocks.iter().enumerate() {
+        if i > 0 {
+            y += wgpui::theme::spacing::MD;
+            builder.push_gap();
+        }
+        let mut prefix = None;
+        y += layout_markdown_block(
+            block,
+            Point::new(origin.x, y),
+            max_width,
+            text_system,
+            config,
+            builder,
+            &mut prefix,
+        );
+    }
+
+    y - origin.y
+}
+
 fn truncate_preview(text: &str, max_chars: usize) -> String {
     let trimmed = text.trim().replace('\n', " ");
     if trimmed.len() <= max_chars {
@@ -172,6 +538,7 @@ struct UiPalette {
     user_text: Hsla,
     assistant_text: Hsla,
     thinking_text: Hsla,
+    selection_bg: Hsla,
     tool_panel_bg: Hsla,
     tool_panel_border: Hsla,
     tool_progress_bg: Hsla,
@@ -204,6 +571,7 @@ fn palette_for(theme: ThemeSetting) -> UiPalette {
             user_text: Hsla::new(0.0, 0.0, 0.6, 1.0),
             assistant_text: Hsla::new(180.0, 0.5, 0.7, 1.0),
             thinking_text: Hsla::new(0.0, 0.0, 0.5, 1.0),
+            selection_bg: Hsla::new(200.0, 0.6, 0.55, 0.35),
             tool_panel_bg: Hsla::new(220.0, 0.15, 0.12, 1.0),
             tool_panel_border: Hsla::new(220.0, 0.15, 0.25, 1.0),
             tool_progress_bg: Hsla::new(220.0, 0.15, 0.20, 1.0),
@@ -233,6 +601,7 @@ fn palette_for(theme: ThemeSetting) -> UiPalette {
             user_text: Hsla::new(0.0, 0.0, 0.35, 1.0),
             assistant_text: Hsla::new(200.0, 0.6, 0.35, 1.0),
             thinking_text: Hsla::new(0.0, 0.0, 0.4, 1.0),
+            selection_bg: Hsla::new(210.0, 0.7, 0.5, 0.25),
             tool_panel_bg: Hsla::new(0.0, 0.0, 0.98, 1.0),
             tool_panel_border: Hsla::new(210.0, 0.1, 0.82, 1.0),
             tool_progress_bg: Hsla::new(210.0, 0.2, 0.88, 1.0),
@@ -333,6 +702,117 @@ struct ChatMessage {
     /// Parsed markdown document for assistant messages
     document: Option<MarkdownDocument>,
     uuid: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ChatSelectionPoint {
+    message_index: usize,
+    offset: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ChatSelection {
+    anchor: ChatSelectionPoint,
+    focus: ChatSelectionPoint,
+}
+
+impl ChatSelection {
+    fn is_empty(&self) -> bool {
+        self.anchor.message_index == self.focus.message_index && self.anchor.offset == self.focus.offset
+    }
+
+    fn normalized(&self) -> (ChatSelectionPoint, ChatSelectionPoint) {
+        if selection_point_cmp(&self.anchor, &self.focus).is_gt() {
+            (self.focus, self.anchor)
+        } else {
+            (self.anchor, self.focus)
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ChatLineLayout {
+    message_index: usize,
+    text: String,
+    x: f32,
+    y: f32,
+    line_height: f32,
+    font_size: f32,
+    display_range: std::ops::Range<usize>,
+}
+
+#[derive(Clone, Debug)]
+struct MessageLayout {
+    height: f32,
+    display_text: String,
+    lines: Vec<ChatLineLayout>,
+}
+
+struct ChatLayout {
+    viewport_top: f32,
+    viewport_bottom: f32,
+    content_x: f32,
+    available_width: f32,
+    chat_font_size: f32,
+    chat_line_height: f32,
+    message_layouts: Vec<MessageLayout>,
+    streaming_height: f32,
+}
+
+struct MessageLayoutBuilder {
+    message_index: usize,
+    display_text: String,
+    lines: Vec<ChatLineLayout>,
+}
+
+impl MessageLayoutBuilder {
+    fn new(message_index: usize) -> Self {
+        Self {
+            message_index,
+            display_text: String::new(),
+            lines: Vec::new(),
+        }
+    }
+
+    fn push_line(&mut self, text: String, x: f32, y: f32, line_height: f32, font_size: f32) {
+        if !self.display_text.is_empty() {
+            self.display_text.push('\n');
+        }
+        let start = self.display_text.len();
+        self.display_text.push_str(&text);
+        let end = self.display_text.len();
+        self.lines.push(ChatLineLayout {
+            message_index: self.message_index,
+            text,
+            x,
+            y,
+            line_height,
+            font_size,
+            display_range: start..end,
+        });
+    }
+
+    fn push_gap(&mut self) {
+        if !self.display_text.is_empty() {
+            self.display_text.push('\n');
+        }
+    }
+
+    fn build(self, height: f32) -> MessageLayout {
+        MessageLayout {
+            height,
+            display_text: self.display_text,
+            lines: self.lines,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct LinePrefix {
+    text: String,
+    x: f32,
+    content_x: f32,
+    font_size: f32,
 }
 
 /// Events from the async query task
@@ -2745,6 +3225,8 @@ struct AppState {
     renderer: Renderer,
     text_system: TextSystem,
     event_context: EventContext,
+    #[allow(dead_code)]
+    clipboard: Rc<RefCell<Option<Clipboard>>>,
     input: TextInput,
     mouse_pos: (f32, f32),
     modifiers: ModifiersState,
@@ -2755,6 +3237,10 @@ struct AppState {
     streaming_markdown: StreamingMarkdown,
     markdown_renderer: MdRenderer,
     is_thinking: bool,
+    chat_selection: Option<ChatSelection>,
+    chat_selection_dragging: bool,
+    chat_context_menu: ContextMenu,
+    chat_context_menu_target: Option<usize>,
     response_rx: Option<mpsc::UnboundedReceiver<ResponseEvent>>,
     query_control_tx: Option<mpsc::UnboundedSender<QueryControl>>,
     // Scroll state
@@ -2916,7 +3402,18 @@ impl ApplicationHandler for CoderApp {
             let renderer = Renderer::new(&device, surface_format);
             let scale_factor = window.scale_factor() as f32;
             let text_system = TextSystem::new(scale_factor);
-            let event_context = EventContext::new();
+            let clipboard = Rc::new(RefCell::new(Clipboard::new().ok()));
+            let mut event_context = EventContext::new();
+            let read_clip = clipboard.clone();
+            let write_clip = clipboard.clone();
+            event_context.set_clipboard(
+                move || read_clip.borrow_mut().as_mut()?.get_text().ok(),
+                move |text| {
+                    if let Some(clip) = write_clip.borrow_mut().as_mut() {
+                        let _ = clip.set_text(text);
+                    }
+                },
+            );
             let settings = load_settings();
             let input = build_input(&settings);
 
@@ -2953,6 +3450,7 @@ impl ApplicationHandler for CoderApp {
                 renderer,
                 text_system,
                 event_context,
+                clipboard,
                 input,
                 mouse_pos: (0.0, 0.0),
                 modifiers: ModifiersState::default(),
@@ -2961,6 +3459,10 @@ impl ApplicationHandler for CoderApp {
                 streaming_markdown: StreamingMarkdown::new(),
                 markdown_renderer: build_markdown_renderer(&settings),
                 is_thinking: false,
+                chat_selection: None,
+                chat_selection_dragging: false,
+                chat_context_menu: ContextMenu::new(),
+                chat_context_menu_target: None,
                 response_rx: None,
                 query_control_tx: None,
                 scroll_offset: 0.0,
@@ -3273,12 +3775,40 @@ impl ApplicationHandler for CoderApp {
                     return;
                 }
                 let input_event = InputEvent::MouseMove { x, y };
-                if let Some(layout) = tool_panel_layout(
+                let tool_layout = tool_panel_layout(
                     sidebar_layout.main,
                     logical_height,
                     &state.tool_history,
                     state.tool_history_has_running(),
-                ) {
+                );
+                if state.chat_context_menu.is_open() {
+                    if matches!(
+                        state.chat_context_menu.event(
+                            &input_event,
+                            Bounds::new(0.0, 0.0, logical_width, logical_height),
+                            &mut state.event_context,
+                        ),
+                        EventResult::Handled
+                    ) {
+                        state.window.request_redraw();
+                        return;
+                    }
+                }
+                if state.chat_selection_dragging {
+                    let chat_layout =
+                        state.build_chat_layout(&sidebar_layout, logical_height, tool_layout.as_ref());
+                    if let Some(point) = state.chat_selection_point_at(&chat_layout, x, y) {
+                        if let Some(selection) = &mut state.chat_selection {
+                            if selection.focus.message_index != point.message_index
+                                || selection.focus.offset != point.offset
+                            {
+                                selection.focus = point;
+                                state.window.request_redraw();
+                            }
+                        }
+                    }
+                }
+                if let Some(layout) = tool_layout {
                     let mut handled = false;
                     for block in layout.blocks {
                         if let Some(tool) = state.tool_history.get_mut(block.index) {
@@ -3502,12 +4032,100 @@ impl ApplicationHandler for CoderApp {
                     }
                     return;
                 }
-                if let Some(layout) = tool_panel_layout(
+                let tool_layout = tool_panel_layout(
                     sidebar_layout.main,
                     logical_height,
                     &state.tool_history,
                     state.tool_history_has_running(),
-                ) {
+                );
+                if state.chat_context_menu.is_open() {
+                    if matches!(
+                        state.chat_context_menu.event(
+                            &input_event,
+                            Bounds::new(0.0, 0.0, logical_width, logical_height),
+                            &mut state.event_context,
+                        ),
+                        EventResult::Handled
+                    ) {
+                        if let Some(action) = state.chat_context_menu.take_selected() {
+                            let chat_layout = state.build_chat_layout(
+                                &sidebar_layout,
+                                logical_height,
+                                tool_layout.as_ref(),
+                            );
+                            state.handle_chat_menu_action(&action, &chat_layout);
+                            state.chat_context_menu_target = None;
+                        }
+                        state.window.request_redraw();
+                        return;
+                    }
+                }
+                if button_state == ElementState::Pressed
+                    && matches!(button, winit::event::MouseButton::Left)
+                {
+                    let chat_layout = state.build_chat_layout(
+                        &sidebar_layout,
+                        logical_height,
+                        tool_layout.as_ref(),
+                    );
+                    if let Some(point) = state.chat_selection_point_at(&chat_layout, x, y) {
+                        if state.modifiers.shift_key() {
+                            if let Some(selection) = &mut state.chat_selection {
+                                selection.focus = point;
+                            } else {
+                                state.chat_selection = Some(ChatSelection {
+                                    anchor: point,
+                                    focus: point,
+                                });
+                            }
+                        } else {
+                            state.chat_selection = Some(ChatSelection {
+                                anchor: point,
+                                focus: point,
+                            });
+                        }
+                        state.chat_selection_dragging = true;
+                        state.window.request_redraw();
+                    } else {
+                        state.chat_selection = None;
+                    }
+                }
+                if button_state == ElementState::Released
+                    && matches!(button, winit::event::MouseButton::Left)
+                {
+                    state.chat_selection_dragging = false;
+                }
+                if button_state == ElementState::Pressed
+                    && matches!(button, winit::event::MouseButton::Right)
+                {
+                    let chat_layout = state.build_chat_layout(
+                        &sidebar_layout,
+                        logical_height,
+                        tool_layout.as_ref(),
+                    );
+                    if let Some(point) = state.chat_selection_point_at(&chat_layout, x, y) {
+                        if !state.chat_selection_contains(point) {
+                            state.chat_selection = Some(ChatSelection {
+                                anchor: point,
+                                focus: point,
+                            });
+                        }
+                        state.chat_selection_dragging = false;
+                        let copy_enabled = state
+                            .chat_selection
+                            .as_ref()
+                            .is_some_and(|sel| !sel.is_empty())
+                            || chat_layout.message_layouts.get(point.message_index).is_some();
+                        state.open_chat_context_menu(
+                            Point::new(x, y),
+                            Some(point.message_index),
+                            copy_enabled,
+                        );
+                        state.window.request_redraw();
+                        return;
+                    }
+                }
+                if let Some(layout) = tool_layout {
                     if button_state == ElementState::Released {
                         if let Some(cancel_bounds) = layout.cancel_bounds {
                             if cancel_bounds.contains(Point::new(x, y)) {
@@ -3694,6 +4312,48 @@ impl ApplicationHandler for CoderApp {
                     }
 
                     let modifiers = convert_modifiers(&state.modifiers);
+
+                    if state.chat_context_menu.is_open() {
+                        if let Some(key) = convert_key_for_input(&key_event.logical_key) {
+                            let input_event = InputEvent::KeyDown { key, modifiers };
+                            if matches!(
+                                state.chat_context_menu.event(
+                                    &input_event,
+                                    Bounds::new(0.0, 0.0, logical_width, logical_height),
+                                    &mut state.event_context,
+                                ),
+                                EventResult::Handled
+                            ) {
+                                if let Some(action) = state.chat_context_menu.take_selected() {
+                                    let tool_layout = tool_panel_layout(
+                                        sidebar_layout.main,
+                                        logical_height,
+                                        &state.tool_history,
+                                        state.tool_history_has_running(),
+                                    );
+                                    let chat_layout = state.build_chat_layout(
+                                        &sidebar_layout,
+                                        logical_height,
+                                        tool_layout.as_ref(),
+                                    );
+                                    state.handle_chat_menu_action(&action, &chat_layout);
+                                    state.chat_context_menu_target = None;
+                                }
+                                state.window.request_redraw();
+                                return;
+                            }
+                        }
+                    }
+
+                    if state.handle_chat_shortcut(
+                        &key_event.logical_key,
+                        modifiers,
+                        &sidebar_layout,
+                        logical_height,
+                    ) {
+                        state.window.request_redraw();
+                        return;
+                    }
 
                     if let Some(key) = convert_key_for_binding(&key_event.logical_key) {
                         if let Some(action) = match_action(&key, modifiers, &state.keybindings) {
@@ -4962,6 +5622,390 @@ impl AppState {
 }
 
 impl AppState {
+    fn build_chat_layout(
+        &mut self,
+        sidebar_layout: &SidebarLayout,
+        logical_height: f32,
+        tool_layout: Option<&ToolPanelLayout>,
+    ) -> ChatLayout {
+        let viewport_top = OUTPUT_PADDING;
+        let content_x = sidebar_layout.main.origin.x + OUTPUT_PADDING;
+        let viewport_bottom = tool_layout
+            .map(|layout| layout.bounds.origin.y - TOOL_PANEL_GAP)
+            .unwrap_or(
+                logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 8.0,
+            );
+        let viewport_height = (viewport_bottom - viewport_top).max(0.0);
+        let available_width = sidebar_layout.main.size.width - OUTPUT_PADDING * 2.0;
+
+        let chat_font_size = self.settings.font_size;
+        let chat_line_height = (chat_font_size * 1.4).round();
+        let char_width = chat_font_size * 0.6;
+        let max_chars = (available_width / char_width).max(1.0) as usize;
+
+        let mut message_layouts = Vec::with_capacity(self.messages.len());
+        let mut total_content_height = 0.0_f32;
+
+        for index in 0..self.messages.len() {
+            let (role, content, document) = {
+                let msg = &self.messages[index];
+                (msg.role, msg.content.clone(), msg.document.clone())
+            };
+            let layout = match role {
+                MessageRole::User => self.layout_user_message(
+                    index,
+                    &content,
+                    content_x,
+                    chat_font_size,
+                    chat_line_height,
+                    max_chars,
+                ),
+                MessageRole::Assistant => self.layout_assistant_message(
+                    index,
+                    &content,
+                    document.as_ref(),
+                    content_x,
+                    available_width,
+                    chat_line_height,
+                    max_chars,
+                ),
+            };
+            total_content_height += layout.height;
+            message_layouts.push(layout);
+        }
+
+        let streaming_height = if !self.streaming_markdown.source().is_empty() {
+            let doc = self.streaming_markdown.document();
+            let size = self
+                .markdown_renderer
+                .measure(doc, available_width, &mut self.text_system);
+            size.height + chat_line_height
+        } else if self.is_thinking {
+            chat_line_height
+        } else {
+            0.0
+        };
+        total_content_height += streaming_height;
+
+        let max_scroll = (total_content_height - viewport_height).max(0.0);
+        self.scroll_offset = self.scroll_offset.clamp(0.0, max_scroll);
+        let was_near_bottom = self.scroll_offset >= max_scroll - chat_line_height * 2.0;
+        if self.settings.auto_scroll && self.is_thinking && was_near_bottom {
+            self.scroll_offset = max_scroll;
+        }
+
+        if let Some(selection) = self.chat_selection {
+            if selection.anchor.message_index >= message_layouts.len()
+                || selection.focus.message_index >= message_layouts.len()
+            {
+                self.chat_selection = None;
+            }
+        }
+
+        let mut y = viewport_top - self.scroll_offset;
+        for layout in &mut message_layouts {
+            for line in &mut layout.lines {
+                line.y += y;
+            }
+            y += layout.height;
+        }
+
+        ChatLayout {
+            viewport_top,
+            viewport_bottom,
+            content_x,
+            available_width,
+            chat_font_size,
+            chat_line_height,
+            message_layouts,
+            streaming_height,
+        }
+    }
+
+    fn layout_user_message(
+        &mut self,
+        message_index: usize,
+        content: &str,
+        content_x: f32,
+        chat_font_size: f32,
+        chat_line_height: f32,
+        max_chars: usize,
+    ) -> MessageLayout {
+        let content_with_prefix = format!("> {}", content);
+        let wrapped_lines = wrap_text(&content_with_prefix, max_chars);
+        let line_count = wrapped_lines.len();
+        let mut builder = MessageLayoutBuilder::new(message_index);
+        let mut y = chat_line_height * 0.5;
+        for line in wrapped_lines {
+            builder.push_line(line, content_x, y, chat_line_height, chat_font_size);
+            y += chat_line_height;
+        }
+        let height = chat_line_height * 0.5 + line_count as f32 * chat_line_height
+            + chat_line_height * 0.5;
+        builder.build(height)
+    }
+
+    fn layout_assistant_message(
+        &mut self,
+        message_index: usize,
+        content: &str,
+        document: Option<&MarkdownDocument>,
+        content_x: f32,
+        available_width: f32,
+        chat_line_height: f32,
+        max_chars: usize,
+    ) -> MessageLayout {
+        if let Some(doc) = document {
+            let config = build_markdown_config(&self.settings);
+            let mut builder = MessageLayoutBuilder::new(message_index);
+            let height = layout_markdown_document(
+                doc,
+                Point::new(content_x, 0.0),
+                available_width,
+                &mut self.text_system,
+                &config,
+                &mut builder,
+            );
+            builder.build(height + chat_line_height)
+        } else {
+            let wrapped_lines = wrap_text(content, max_chars);
+            let line_count = wrapped_lines.len();
+            let mut builder = MessageLayoutBuilder::new(message_index);
+            let mut y = 0.0;
+            for line in wrapped_lines {
+                builder.push_line(line, content_x, y, chat_line_height, self.settings.font_size);
+                y += chat_line_height;
+            }
+            let height = line_count as f32 * chat_line_height;
+            builder.build(height)
+        }
+    }
+
+    fn chat_selection_point_at(
+        &mut self,
+        layout: &ChatLayout,
+        x: f32,
+        y: f32,
+    ) -> Option<ChatSelectionPoint> {
+        if y < layout.viewport_top || y > layout.viewport_bottom {
+            return None;
+        }
+        let mut lines = layout
+            .message_layouts
+            .iter()
+            .flat_map(|layout| layout.lines.iter());
+
+        let first_line = lines.next()?;
+        let mut closest = first_line;
+        if y < first_line.y {
+            return Some(ChatSelectionPoint {
+                message_index: first_line.message_index,
+                offset: first_line.display_range.start,
+            });
+        }
+
+        if y >= first_line.y && y <= first_line.y + first_line.line_height {
+            return Some(self.chat_point_for_line(first_line, x));
+        }
+
+        for line in lines {
+            if y >= line.y && y <= line.y + line.line_height {
+                return Some(self.chat_point_for_line(line, x));
+            }
+            closest = line;
+        }
+
+        if y > closest.y + closest.line_height {
+            return Some(ChatSelectionPoint {
+                message_index: closest.message_index,
+                offset: closest.display_range.end,
+            });
+        }
+
+        Some(self.chat_point_for_line(closest, x))
+    }
+
+    fn chat_point_for_line(&mut self, line: &ChatLineLayout, x: f32) -> ChatSelectionPoint {
+        let char_width = self
+            .text_system
+            .measure_styled_mono("M", line.font_size, wgpui::text::FontStyle::default())
+            .max(1.0);
+        let char_count = line.text.chars().count();
+        let rel_x = (x - line.x).max(0.0);
+        let mut char_index = (rel_x / char_width).floor() as usize;
+        if char_index > char_count {
+            char_index = char_count;
+        }
+        let byte_offset = byte_offset_for_char_index(&line.text, char_index);
+        ChatSelectionPoint {
+            message_index: line.message_index,
+            offset: line.display_range.start + byte_offset,
+        }
+    }
+
+    fn chat_selection_contains(&self, point: ChatSelectionPoint) -> bool {
+        let Some(selection) = self.chat_selection else {
+            return false;
+        };
+        let (start, end) = selection.normalized();
+        selection_point_cmp(&point, &start).is_ge() && selection_point_cmp(&point, &end).is_le()
+    }
+
+    fn chat_selection_text(&self, layout: &ChatLayout) -> Option<String> {
+        let selection = self.chat_selection?;
+        if selection.is_empty() {
+            return None;
+        }
+        let (start, end) = selection.normalized();
+        let mut out = String::new();
+        for idx in start.message_index..=end.message_index {
+            let Some(message) = layout.message_layouts.get(idx) else {
+                continue;
+            };
+            let text = &message.display_text;
+            let start_offset = if idx == start.message_index {
+                start.offset.min(text.len())
+            } else {
+                0
+            };
+            let end_offset = if idx == end.message_index {
+                end.offset.min(text.len())
+            } else {
+                text.len()
+            };
+            if start_offset <= end_offset {
+                if let Some(slice) = text.get(start_offset..end_offset) {
+                    out.push_str(slice);
+                }
+            }
+            if idx != end.message_index {
+                out.push('\n');
+            }
+        }
+        if out.is_empty() {
+            None
+        } else {
+            Some(out)
+        }
+    }
+
+    fn select_all_chat(&mut self, layout: &ChatLayout) {
+        if layout.message_layouts.is_empty() {
+            return;
+        }
+        let last_idx = layout.message_layouts.len() - 1;
+        let end_offset = layout.message_layouts[last_idx].display_text.len();
+        self.chat_selection = Some(ChatSelection {
+            anchor: ChatSelectionPoint {
+                message_index: 0,
+                offset: 0,
+            },
+            focus: ChatSelectionPoint {
+                message_index: last_idx,
+                offset: end_offset,
+            },
+        });
+    }
+
+    fn open_chat_context_menu(
+        &mut self,
+        position: Point,
+        target_message: Option<usize>,
+        copy_enabled: bool,
+    ) {
+        let copy_item = MenuItem::new("copy", "Copy")
+            .shortcut("Cmd+C")
+            .disabled(!copy_enabled);
+        let items = vec![
+            copy_item,
+            MenuItem::separator(),
+            MenuItem::new("select_all", "Select All").shortcut("Cmd+A"),
+        ];
+        self.chat_context_menu = ContextMenu::new().items(items);
+        self.chat_context_menu_target = target_message;
+        self.chat_context_menu.open(position);
+    }
+
+    fn handle_chat_menu_action(&mut self, action: &str, layout: &ChatLayout) {
+        match action {
+            "copy" => {
+                if let Some(text) = self.chat_selection_text(layout) {
+                    self.write_chat_clipboard(&text);
+                } else if let Some(target) = self.chat_context_menu_target {
+                    if let Some(message) = layout.message_layouts.get(target) {
+                        self.write_chat_clipboard(&message.display_text);
+                    }
+                }
+            }
+            "select_all" => {
+                self.select_all_chat(layout);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_chat_shortcut(
+        &mut self,
+        key: &WinitKey,
+        modifiers: UiModifiers,
+        sidebar_layout: &SidebarLayout,
+        logical_height: f32,
+    ) -> bool {
+        if self.input.is_focused() {
+            return false;
+        }
+        let ctrl_or_meta = modifiers.ctrl || modifiers.meta;
+        if !ctrl_or_meta {
+            return false;
+        }
+        match key {
+            WinitKey::Character(c) if c.eq_ignore_ascii_case("c") => {
+                if self
+                    .chat_selection
+                    .as_ref()
+                    .is_some_and(|sel| !sel.is_empty())
+                {
+                    let tool_layout = tool_panel_layout(
+                        sidebar_layout.main,
+                        logical_height,
+                        &self.tool_history,
+                        self.tool_history_has_running(),
+                    );
+                    let chat_layout =
+                        self.build_chat_layout(sidebar_layout, logical_height, tool_layout.as_ref());
+                    if let Some(text) = self.chat_selection_text(&chat_layout) {
+                        self.write_chat_clipboard(&text);
+                        return true;
+                    }
+                }
+            }
+            WinitKey::Character(c) if c.eq_ignore_ascii_case("a") => {
+                let tool_layout = tool_panel_layout(
+                    sidebar_layout.main,
+                    logical_height,
+                    &self.tool_history,
+                    self.tool_history_has_running(),
+                );
+                let chat_layout =
+                    self.build_chat_layout(sidebar_layout, logical_height, tool_layout.as_ref());
+                self.select_all_chat(&chat_layout);
+                return true;
+            }
+            _ => {}
+        }
+        false
+    }
+
+    fn write_chat_clipboard(&mut self, text: &str) {
+        if self.event_context.has_clipboard() {
+            self.event_context.write_clipboard(text);
+        } else {
+            let _ = copy_to_clipboard(text);
+        }
+    }
+}
+
+impl AppState {
     fn record_session(&mut self) {
         if !self.settings.session_auto_save {
             return;
@@ -5875,80 +6919,73 @@ impl CoderApp {
             &state.tool_history,
             state.tool_history_has_running(),
         );
-        // Calculate viewport bounds for message area
-        // Small buffer to ensure text never touches input area
-        let viewport_top = OUTPUT_PADDING;
-        let content_x = sidebar_layout.main.origin.x + OUTPUT_PADDING;
-        let viewport_bottom = tool_layout
-            .as_ref()
-            .map(|layout| layout.bounds.origin.y - TOOL_PANEL_GAP)
-            .unwrap_or(
-                logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 8.0,
-            );
-        let viewport_height = (viewport_bottom - viewport_top).max(0.0);
-        let available_width = sidebar_layout.main.size.width - OUTPUT_PADDING * 2.0;
+        let chat_layout =
+            state.build_chat_layout(&sidebar_layout, logical_height, tool_layout.as_ref());
+        let viewport_top = chat_layout.viewport_top;
+        let viewport_bottom = chat_layout.viewport_bottom;
+        let content_x = chat_layout.content_x;
+        let available_width = chat_layout.available_width;
+        let chat_font_size = chat_layout.chat_font_size;
+        let chat_line_height = chat_layout.chat_line_height;
+        let streaming_height = chat_layout.streaming_height;
 
-        // Calculate max chars for user message wrapping
-        let chat_font_size = state.settings.font_size;
-        let chat_line_height = (chat_font_size * 1.4).round();
-        let char_width = chat_font_size * 0.6;
-        let max_chars = (available_width / char_width) as usize;
-
-        // First pass: calculate heights for each message (compute once, use for both total and rendering)
-        let mut message_heights: Vec<f32> = Vec::with_capacity(state.messages.len());
-        let mut total_content_height = 0.0_f32;
-        for msg in &state.messages {
-            let height = match msg.role {
-                MessageRole::User => {
-                    let content_with_prefix = format!("> {}", &msg.content);
-                    let wrapped_lines = wrap_text(&content_with_prefix, max_chars);
-                    chat_line_height * 0.5
-                        + wrapped_lines.len() as f32 * chat_line_height
-                        + chat_line_height * 0.5
-                }
-                MessageRole::Assistant => {
-                    if let Some(doc) = &msg.document {
-                        let size = state.markdown_renderer.measure(doc, available_width, &mut state.text_system);
-                        // Small buffer for measurement variance
-                        size.height + chat_line_height
-                    } else {
-                        let wrapped_lines = wrap_text(&msg.content, max_chars);
-                        wrapped_lines.len() as f32 * chat_line_height
+        if let Some(selection) = state.chat_selection {
+            if !selection.is_empty() {
+                let (start, end) = selection.normalized();
+                for layout in &chat_layout.message_layouts {
+                    for line in &layout.lines {
+                        if line.y + line.line_height < viewport_top || line.y > viewport_bottom {
+                            continue;
+                        }
+                        if line.message_index < start.message_index
+                            || line.message_index > end.message_index
+                        {
+                            continue;
+                        }
+                        let mut sel_start = if line.message_index == start.message_index {
+                            start.offset
+                        } else {
+                            line.display_range.start
+                        };
+                        let mut sel_end = if line.message_index == end.message_index {
+                            end.offset
+                        } else {
+                            line.display_range.end
+                        };
+                        sel_start = sel_start.clamp(line.display_range.start, line.display_range.end);
+                        sel_end = sel_end.clamp(line.display_range.start, line.display_range.end);
+                        if sel_end <= sel_start {
+                            continue;
+                        }
+                        let start_char =
+                            char_index_for_byte_offset(&line.text, sel_start - line.display_range.start);
+                        let end_char =
+                            char_index_for_byte_offset(&line.text, sel_end - line.display_range.start);
+                        if end_char <= start_char {
+                            continue;
+                        }
+                        let char_width = state
+                            .text_system
+                            .measure_styled_mono(
+                                "M",
+                                line.font_size,
+                                wgpui::text::FontStyle::default(),
+                            )
+                            .max(1.0);
+                        let highlight_x = line.x + start_char as f32 * char_width;
+                        let highlight_w = (end_char - start_char) as f32 * char_width;
+                        let bounds = Bounds::new(highlight_x, line.y, highlight_w, line.line_height);
+                        scene.draw_quad(Quad::new(bounds).with_background(palette.selection_bg));
                     }
                 }
-            };
-            message_heights.push(height);
-            total_content_height += height;
-        }
-        // Add streaming content height
-        let streaming_height = if !state.streaming_markdown.source().is_empty() {
-            let doc = state.streaming_markdown.document();
-            let size = state.markdown_renderer.measure(doc, available_width, &mut state.text_system);
-            size.height + chat_line_height
-        } else if state.is_thinking {
-            chat_line_height
-        } else {
-            0.0
-        };
-        total_content_height += streaming_height;
-
-        // Clamp scroll offset to valid range
-        let max_scroll = (total_content_height - viewport_height).max(0.0);
-        state.scroll_offset = state.scroll_offset.clamp(0.0, max_scroll);
-
-        // Auto-scroll to bottom when new content arrives and we were near the bottom
-        let was_near_bottom = state.scroll_offset >= max_scroll - chat_line_height * 2.0;
-        if state.settings.auto_scroll && state.is_thinking && was_near_bottom {
-            state.scroll_offset = max_scroll;
+            }
         }
 
-        // Render message history with scroll offset applied
         let mut y = viewport_top - state.scroll_offset;
-
         for (i, msg) in state.messages.iter().enumerate() {
-            let msg_height = message_heights[i];
+            let layout = &chat_layout.message_layouts[i];
+            let msg_height = layout.height;
 
-            // Skip entirely if this message is completely outside viewport
             if y + msg_height < viewport_top || y > viewport_bottom {
                 y += msg_height;
                 continue;
@@ -5956,30 +6993,23 @@ impl CoderApp {
 
             match msg.role {
                 MessageRole::User => {
-                    // User messages: plain text with "> " prefix
-                    y += chat_line_height * 0.5; // Padding above user messages
-                    let content_with_prefix = format!("> {}", &msg.content);
-                    let wrapped_lines = wrap_text(&content_with_prefix, max_chars);
-                    for line in &wrapped_lines {
-                        // Only render if line ENDS before viewport_bottom
-                        if y + chat_line_height <= viewport_bottom && y + chat_line_height > viewport_top {
+                    for line in &layout.lines {
+                        if line.y + line.line_height <= viewport_bottom
+                            && line.y + line.line_height > viewport_top
+                        {
                             let text_run = state.text_system.layout_styled_mono(
-                                line,
-                                Point::new(content_x, y),
-                                chat_font_size,
+                                &line.text,
+                                Point::new(line.x, line.y),
+                                line.font_size,
                                 palette.user_text,
                                 wgpui::text::FontStyle::default(),
                             );
                             scene.draw_text(text_run);
                         }
-                        y += chat_line_height;
                     }
-                    y += chat_line_height * 0.5; // Padding below user messages
                 }
                 MessageRole::Assistant => {
-                    // Assistant messages: render with markdown
                     if let Some(doc) = &msg.document {
-                        // Only render if content ENDS before viewport_bottom (strict clipping)
                         let content_fits = y + msg_height <= viewport_bottom;
                         let content_visible = y + msg_height > viewport_top;
                         if content_fits && content_visible {
@@ -5991,35 +7021,29 @@ impl CoderApp {
                                 &mut scene,
                             );
                         }
-                        y += msg_height;
                     } else {
-                        // Fallback to plain text if no document
-                        let wrapped_lines = wrap_text(&msg.content, max_chars);
-                        for line in &wrapped_lines {
-                            // Only render if line ENDS before viewport_bottom
-                            if y + chat_line_height <= viewport_bottom
-                                && y + chat_line_height > viewport_top
+                        for line in &layout.lines {
+                            if line.y + line.line_height <= viewport_bottom
+                                && line.y + line.line_height > viewport_top
                             {
                                 let text_run = state.text_system.layout_styled_mono(
-                                    line,
-                                    Point::new(content_x, y),
-                                    chat_font_size,
+                                    &line.text,
+                                    Point::new(line.x, line.y),
+                                    line.font_size,
                                     palette.assistant_text,
                                     wgpui::text::FontStyle::default(),
                                 );
                                 scene.draw_text(text_run);
                             }
-                            y += chat_line_height;
                         }
                     }
                 }
             }
+            y += msg_height;
         }
 
-        // Render streaming response with markdown
         if !state.streaming_markdown.source().is_empty() {
             let doc = state.streaming_markdown.document();
-            // Only render if content ENDS before viewport_bottom
             let content_fits = y + streaming_height <= viewport_bottom;
             let content_visible = y + streaming_height > viewport_top;
             if content_fits && content_visible {
@@ -6031,9 +7055,7 @@ impl CoderApp {
                     &mut scene,
                 );
             }
-            y += streaming_height;
         } else if state.is_thinking {
-            // Show thinking indicator
             if y + chat_line_height <= viewport_bottom && y + chat_line_height > viewport_top {
                 let text_run = state.text_system.layout_styled_mono(
                     "...",
@@ -6045,7 +7067,6 @@ impl CoderApp {
                 scene.draw_text(text_run);
             }
         }
-        let _ = y; // Suppress unused warning
 
         if let Some(layout) = tool_layout {
             scene.draw_quad(
@@ -7911,6 +8932,11 @@ impl CoderApp {
                 );
                 scene.draw_text(footer_run);
             }
+        }
+
+        if state.chat_context_menu.is_open() {
+            let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+            state.chat_context_menu.paint(bounds, &mut paint_cx);
         }
 
         if let Some(dialog) = state.permission_dialog.as_mut() {
