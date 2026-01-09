@@ -211,6 +211,63 @@ cargo autopilot run "Fix the failing tests"
 
 ---
 
+## DSPy Integration
+
+**What it is:** Typed AI signatures for structured LLM outputs. Replaces freeform prompts with declarative specifications.
+
+**Philosophy (from Omar Khattab):**
+- DSPy is declarative AI programming, not just prompt optimization
+- Signatures decouple AI specification from ML techniques
+- Field names act as mini-prompts — naming matters
+- Optimizers find "latent requirements" you didn't specify
+
+**Key modules in autopilot:**
+
+| Module | Purpose |
+|--------|---------|
+| `dspy_planning.rs` | PlanningSignature, DeepPlanningSignature |
+| `dspy_execution.rs` | ExecutionStrategySignature, ToolSelectionSignature |
+| `dspy_verify.rs` | RequirementChecker, TestAnalyzer, ExecutionReview |
+| `dspy_optimization.rs` | Metrics + training data infrastructure |
+
+**Planning pipeline:**
+```
+Issue → PlanningSignature → Structured Plan
+         ├── analysis (understanding)
+         ├── files_to_modify (JSON array)
+         ├── implementation_steps (JSON array)
+         ├── test_strategy
+         ├── risk_factors
+         └── confidence (0.0-1.0)
+```
+
+**Execution pipeline:**
+```
+Plan Step → ExecutionStrategySignature → Action Decision
+             ├── next_action (EDIT_FILE/RUN_COMMAND/READ_FILE/COMPLETE)
+             ├── action_params (JSON)
+             ├── reasoning
+             └── progress_estimate
+```
+
+**Verification pipeline:**
+```
+Solution → VerificationPipeline → Verdict
+            ├── RequirementChecker (per requirement)
+            ├── TestAnalyzer (if tests fail)
+            ├── BuildAnalyzer (if build fails)
+            └── SolutionVerifier (final verdict: PASS/FAIL/RETRY)
+```
+
+**Training data:**
+- Examples in `crates/autopilot/examples/dspy_training_data.json`
+- Metrics for optimization in `dspy_optimization.rs`
+- Future: auto-collect from successful sessions
+
+**Roadmap:** See [docs/DSPY_ROADMAP.md](./docs/DSPY_ROADMAP.md) for Wave 3-6 plans (OANIX, Agent Orchestrator, Tool Invocation, Optimization Infrastructure).
+
+---
+
 ## WGPUI
 
 **What it is:** GPU-accelerated UI rendering library. WebGPU/Vulkan/Metal/DX12 via wgpu.
@@ -256,6 +313,7 @@ cargo build -p wgpui --target wasm32-unknown-unknown    # WASM
 | `rlm` | Recursive Language Model engine |
 | `frlm` | Federated RLM (distributed execution) |
 | `frostr` | FROST threshold signatures |
+| `dspy-rs` | DSPy signatures and optimization (external) |
 
 **RLM/FRLM execution venues:**
 
@@ -388,8 +446,10 @@ Issues are NOT done unless:
 | Nexus | v0.1 | NIP-90, NIP-42, NIP-89 |
 | Runtime | In progress | Tick engine, filesystem, /compute, /containers, /claude |
 | Autopilot | Alpha | Claude SDK integration, tunnel mode |
+| Autopilot DSPy | Wave 2 | Planning, Execution, Verification signatures |
 | WGPUI | Phase 16 | 377 tests, full component library |
 | RLM | Working | Claude + Ollama backends, MCP tools |
+| RLM DSPy | Wave 1 | DspyOrchestrator, provenance signatures |
 | FRLM | Working | Claude venue, trace persistence, dashboard sync |
 | OANIX | Design | Agent OS runtime (future) |
 
