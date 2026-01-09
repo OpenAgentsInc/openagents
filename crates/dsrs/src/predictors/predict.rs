@@ -1,8 +1,9 @@
 use indexmap::IndexMap;
 use rig::tool::ToolDyn;
 use std::sync::Arc;
+use uuid::Uuid;
 
-use crate::core::{MetaSignature, Optimizable};
+use crate::core::{MetaSignature, Optimizable, get_callback};
 use crate::{ChatAdapter, Example, GLOBAL_SETTINGS, LM, Prediction, adapter::Adapter};
 
 pub struct Predict {
@@ -41,6 +42,13 @@ impl Predict {
 
 impl super::Predictor for Predict {
     async fn forward(&self, inputs: Example) -> anyhow::Result<Prediction> {
+        // Generate unique call ID for callbacks
+        let call_id = Uuid::new_v4();
+        let callback = get_callback();
+
+        // Emit module start callback
+        callback.on_module_start(call_id, "Predict", &inputs);
+
         let trace_node_id = if crate::trace::is_tracing() {
             let input_id = if let Some(id) = inputs.node_id {
                 id
@@ -70,16 +78,30 @@ impl super::Predictor for Predict {
             let settings = guard.as_ref().unwrap();
             (settings.adapter.clone(), Arc::clone(&settings.lm))
         }; // guard is dropped here
-        let mut prediction = adapter
+
+        let result = adapter
             .call(lm, self.signature.as_ref(), inputs, self.tools.clone())
-            .await?;
+            .await;
 
-        if let Some(id) = trace_node_id {
-            prediction.node_id = Some(id);
-            crate::trace::record_output(id, prediction.clone());
+        // Handle result and emit callbacks
+        match result {
+            Ok(mut prediction) => {
+                if let Some(id) = trace_node_id {
+                    prediction.node_id = Some(id);
+                    crate::trace::record_output(id, prediction.clone());
+                }
+
+                // Emit module end callback (success)
+                callback.on_module_end(call_id, Ok(&prediction));
+
+                Ok(prediction)
+            }
+            Err(e) => {
+                // Emit module end callback (error)
+                callback.on_module_end(call_id, Err(&e));
+                Err(e)
+            }
         }
-
-        Ok(prediction)
     }
 
     async fn forward_with_config(
@@ -87,6 +109,13 @@ impl super::Predictor for Predict {
         inputs: Example,
         lm: Arc<LM>,
     ) -> anyhow::Result<Prediction> {
+        // Generate unique call ID for callbacks
+        let call_id = Uuid::new_v4();
+        let callback = get_callback();
+
+        // Emit module start callback
+        callback.on_module_start(call_id, "Predict", &inputs);
+
         let trace_node_id = if crate::trace::is_tracing() {
             let input_id = if let Some(id) = inputs.node_id {
                 id
@@ -111,16 +140,29 @@ impl super::Predictor for Predict {
             None
         };
 
-        let mut prediction = ChatAdapter
+        let result = ChatAdapter
             .call(lm, self.signature.as_ref(), inputs, self.tools.clone())
-            .await?;
+            .await;
 
-        if let Some(id) = trace_node_id {
-            prediction.node_id = Some(id);
-            crate::trace::record_output(id, prediction.clone());
+        // Handle result and emit callbacks
+        match result {
+            Ok(mut prediction) => {
+                if let Some(id) = trace_node_id {
+                    prediction.node_id = Some(id);
+                    crate::trace::record_output(id, prediction.clone());
+                }
+
+                // Emit module end callback (success)
+                callback.on_module_end(call_id, Ok(&prediction));
+
+                Ok(prediction)
+            }
+            Err(e) => {
+                // Emit module end callback (error)
+                callback.on_module_end(call_id, Err(&e));
+                Err(e)
+            }
         }
-
-        Ok(prediction)
     }
 }
 
