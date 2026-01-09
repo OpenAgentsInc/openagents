@@ -11307,8 +11307,8 @@ fn permission_mode_display(mode: &PermissionMode) -> &'static str {
 fn permission_mode_color(mode: &PermissionMode, palette: &UiPalette) -> Hsla {
     match mode {
         PermissionMode::Default => palette.status_left,
-        PermissionMode::Plan => Hsla::new(190.0, 0.7, 0.6, 1.0), // teal/cyan
-        PermissionMode::AcceptEdits => Hsla::new(275.0, 0.55, 0.7, 1.0), // light purple
+        PermissionMode::Plan => Hsla::new(182.0, 0.95, 0.55, 1.0), // vivid teal/cyan
+        PermissionMode::AcceptEdits => Hsla::new(275.0, 0.95, 0.68, 1.0), // vivid purple
         PermissionMode::BypassPermissions => Hsla::new(0.0, 0.75, 0.55, 1.0), // red
         PermissionMode::DontAsk => Hsla::new(25.0, 0.7, 0.55, 1.0),
     }
