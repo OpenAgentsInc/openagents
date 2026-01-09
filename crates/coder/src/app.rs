@@ -2,12 +2,17 @@
 
 use std::sync::Arc;
 use web_time::Instant;
+use wgpui::components::{Component, EventContext, PaintContext};
 use wgpui::renderer::Renderer;
-use wgpui::{Bounds, Hsla, Quad, Scene, Size, TextSystem};
+use wgpui::{Bounds, Hsla, InputEvent, Quad, Scene, Size, TextInput, TextSystem};
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
+use winit::keyboard::Key;
 use winit::window::{Window, WindowId};
+
+const INPUT_HEIGHT: f32 = 40.0;
+const INPUT_PADDING: f32 = 12.0;
 
 /// Render state holding all GPU and UI resources
 struct RenderState {
@@ -18,6 +23,9 @@ struct RenderState {
     config: wgpu::SurfaceConfiguration,
     renderer: Renderer,
     text_system: TextSystem,
+    event_context: EventContext,
+    input: TextInput,
+    mouse_pos: (f32, f32),
     #[allow(dead_code)]
     last_tick: Instant,
 }
@@ -92,6 +100,18 @@ impl ApplicationHandler for CoderApp {
             let renderer = Renderer::new(&device, surface_format);
             let scale_factor = window.scale_factor() as f32;
             let text_system = TextSystem::new(scale_factor);
+            let event_context = EventContext::new();
+
+            // Create input with terminal styling - extra left padding for ">" prompt
+            let mut input = TextInput::new()
+                .with_id(1)
+                .font_size(14.0)
+                .padding(28.0, 10.0) // Extra left padding for prompt character
+                .background(Hsla::new(220.0, 0.15, 0.08, 1.0))
+                .border_color(Hsla::new(220.0, 0.15, 0.25, 1.0)) // Unfocused: dark gray
+                .border_color_focused(Hsla::new(0.0, 0.0, 1.0, 1.0)) // Focused: white
+                .mono(true);
+            input.focus();
 
             RenderState {
                 window,
@@ -101,6 +121,9 @@ impl ApplicationHandler for CoderApp {
                 config,
                 renderer,
                 text_system,
+                event_context,
+                input,
+                mouse_pos: (0.0, 0.0),
                 last_tick: Instant::now(),
             }
         });
@@ -123,6 +146,18 @@ impl ApplicationHandler for CoderApp {
             return;
         };
 
+        let scale_factor = state.window.scale_factor() as f32;
+        let logical_width = state.config.width as f32 / scale_factor;
+        let logical_height = state.config.height as f32 / scale_factor;
+
+        // Input bounds at bottom of window
+        let input_bounds = Bounds::new(
+            INPUT_PADDING,
+            logical_height - INPUT_HEIGHT - INPUT_PADDING,
+            logical_width - INPUT_PADDING * 2.0,
+            INPUT_HEIGHT,
+        );
+
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -136,6 +171,60 @@ impl ApplicationHandler for CoderApp {
             WindowEvent::RedrawRequested => {
                 self.render();
             }
+            WindowEvent::CursorMoved { position, .. } => {
+                let x = position.x as f32 / scale_factor;
+                let y = position.y as f32 / scale_factor;
+                state.mouse_pos = (x, y);
+                let input_event = InputEvent::MouseMove { x, y };
+                state
+                    .input
+                    .event(&input_event, input_bounds, &mut state.event_context);
+            }
+            WindowEvent::MouseInput {
+                state: button_state,
+                button,
+                ..
+            } => {
+                let (x, y) = state.mouse_pos;
+                let modifiers = wgpui::Modifiers::default();
+                let input_event = if button_state == ElementState::Pressed {
+                    InputEvent::MouseDown {
+                        button: convert_mouse_button(button),
+                        x,
+                        y,
+                        modifiers,
+                    }
+                } else {
+                    InputEvent::MouseUp {
+                        button: convert_mouse_button(button),
+                        x,
+                        y,
+                    }
+                };
+                state
+                    .input
+                    .event(&input_event, input_bounds, &mut state.event_context);
+                state.window.request_redraw();
+            }
+            WindowEvent::KeyboardInput { event: key_event, .. } => {
+                if key_event.state == ElementState::Pressed {
+                    let modifiers = wgpui::Modifiers::default();
+
+                    let key = match &key_event.logical_key {
+                        Key::Character(c) => wgpui::input::Key::Character(c.to_string()),
+                        Key::Named(named) => {
+                            wgpui::input::Key::Named(convert_named_key(*named))
+                        }
+                        _ => return,
+                    };
+
+                    let input_event = InputEvent::KeyDown { key, modifiers };
+                    state
+                        .input
+                        .event(&input_event, input_bounds, &mut state.event_context);
+                    state.window.request_redraw();
+                }
+            }
             _ => {}
         }
     }
@@ -146,6 +235,10 @@ impl CoderApp {
         let Some(state) = &mut self.state else {
             return;
         };
+
+        let scale_factor = state.window.scale_factor() as f32;
+        let logical_width = state.config.width as f32 / scale_factor;
+        let logical_height = state.config.height as f32 / scale_factor;
 
         // Get surface texture
         let output = match state.surface.get_current_texture() {
@@ -166,45 +259,34 @@ impl CoderApp {
 
         // Build scene
         let mut scene = Scene::new();
-        let bounds = Bounds::new(
-            0.0,
-            0.0,
-            state.config.width as f32,
-            state.config.height as f32,
+        let bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
+
+        // Dark terminal background
+        scene.draw_quad(Quad::new(bounds).with_background(Hsla::new(220.0, 0.15, 0.10, 1.0)));
+
+        // Paint input at bottom
+        let input_bounds = Bounds::new(
+            INPUT_PADDING,
+            logical_height - INPUT_HEIGHT - INPUT_PADDING,
+            logical_width - INPUT_PADDING * 2.0,
+            INPUT_HEIGHT,
         );
 
-        // Dark terminal background (slightly visible gray for debugging)
-        scene.draw_quad(Quad::new(bounds).with_background(Hsla::new(220.0, 0.15, 0.12, 1.0)));
+        let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+        state.input.paint(input_bounds, &mut paint_cx);
 
-        // Draw title - bright cyan
-        let title_run = state.text_system.layout_styled_mono(
-            "Coder",
-            wgpui::Point::new(16.0, 16.0),
-            20.0,
-            Hsla::new(187.0, 0.9, 0.65, 1.0), // Bright cyan
-            wgpui::text::FontStyle::default(),
-        );
-        scene.draw_text(title_run);
-
-        // Draw subtitle - lighter gray
-        let subtitle_run = state.text_system.layout_styled_mono(
-            "Terminal-style Claude Code interface",
-            wgpui::Point::new(16.0, 48.0),
+        // Draw ">" prompt inside input
+        let prompt_run = state.text_system.layout_styled_mono(
+            ">",
+            wgpui::Point::new(
+                input_bounds.origin.x + 12.0,
+                input_bounds.origin.y + input_bounds.size.height * 0.5 - 7.0,
+            ),
             14.0,
-            Hsla::new(0.0, 0.0, 0.6, 1.0), // Lighter gray
+            Hsla::new(0.0, 0.0, 0.6, 1.0), // Gray prompt
             wgpui::text::FontStyle::default(),
         );
-        scene.draw_text(subtitle_run);
-
-        // Draw hello world - bright green
-        let hello_run = state.text_system.layout_styled_mono(
-            "Hello, World! WGPUI is working.",
-            wgpui::Point::new(16.0, 100.0),
-            14.0,
-            Hsla::new(120.0, 0.8, 0.6, 1.0), // Bright green
-            wgpui::text::FontStyle::default(),
-        );
-        scene.draw_text(hello_run);
+        scene.draw_text(prompt_run);
 
         // Render
         let mut encoder = state
@@ -215,7 +297,6 @@ impl CoderApp {
 
         let physical_width = state.config.width as f32;
         let physical_height = state.config.height as f32;
-        let scale_factor = state.window.scale_factor() as f32;
 
         // Resize renderer to match window
         state.renderer.resize(
@@ -241,5 +322,37 @@ impl CoderApp {
 
         state.queue.submit(std::iter::once(encoder.finish()));
         output.present();
+    }
+}
+
+fn convert_mouse_button(button: winit::event::MouseButton) -> wgpui::MouseButton {
+    match button {
+        winit::event::MouseButton::Left => wgpui::MouseButton::Left,
+        winit::event::MouseButton::Right => wgpui::MouseButton::Right,
+        winit::event::MouseButton::Middle => wgpui::MouseButton::Middle,
+        _ => wgpui::MouseButton::Left,
+    }
+}
+
+fn convert_named_key(key: winit::keyboard::NamedKey) -> wgpui::input::NamedKey {
+    use winit::keyboard::NamedKey as WinitKey;
+    use wgpui::input::NamedKey;
+
+    match key {
+        WinitKey::Enter => NamedKey::Enter,
+        WinitKey::Tab => NamedKey::Tab,
+        WinitKey::Space => NamedKey::Space,
+        WinitKey::Backspace => NamedKey::Backspace,
+        WinitKey::Delete => NamedKey::Delete,
+        WinitKey::Escape => NamedKey::Escape,
+        WinitKey::ArrowUp => NamedKey::ArrowUp,
+        WinitKey::ArrowDown => NamedKey::ArrowDown,
+        WinitKey::ArrowLeft => NamedKey::ArrowLeft,
+        WinitKey::ArrowRight => NamedKey::ArrowRight,
+        WinitKey::Home => NamedKey::Home,
+        WinitKey::End => NamedKey::End,
+        WinitKey::PageUp => NamedKey::PageUp,
+        WinitKey::PageDown => NamedKey::PageDown,
+        _ => NamedKey::Tab, // fallback
     }
 }
