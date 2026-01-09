@@ -155,14 +155,20 @@ impl ToolCallCard {
         self.child_tools.len()
     }
 
-    /// Truncate text to fit within available width
+    /// Truncate text to fit within available width (char-boundary safe)
     fn truncate_text(text: &str, available_width: f32, font_size: f32) -> String {
         let char_width = font_size * 0.6;
         let max_chars = (available_width / char_width) as usize;
         if text.len() <= max_chars {
             text.to_string()
         } else if max_chars > 3 {
-            format!("{}...", &text[..max_chars - 3])
+            // Find valid UTF-8 char boundary
+            let target = max_chars - 3;
+            let mut end = target;
+            while end > 0 && !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            format!("{}...", &text[..end])
         } else {
             "...".to_string()
         }
@@ -294,7 +300,12 @@ impl Component for ToolCallCard {
 
             if let Some(output) = &self.output {
                 let output_preview = if output.len() > 100 {
-                    format!("{}...", &output[..100])
+                    // Find valid UTF-8 char boundary
+                    let mut end = 100;
+                    while end > 0 && !output.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    format!("{}...", &output[..end])
                 } else {
                     output.clone()
                 };

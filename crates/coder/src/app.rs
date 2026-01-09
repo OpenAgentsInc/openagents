@@ -173,7 +173,7 @@ fn line_text_from_styled(lines: &[StyledLine]) -> String {
     let mut out = String::new();
     for (line_idx, line) in lines.iter().enumerate() {
         if line_idx > 0 {
-            out.push(' ');
+            out.push('\n');
         }
         for span in &line.spans {
             out.push_str(&span.text);
@@ -793,6 +793,8 @@ struct ChatLayout {
     chat_line_height: f32,
     message_layouts: Vec<MessageLayout>,
     streaming_height: f32,
+    /// Tool panel layout positioned after messages (if any tools)
+    tool_panel: Option<ToolPanelLayout>,
 }
 
 struct MessageLayoutBuilder {
@@ -970,11 +972,25 @@ impl ToolVisualization {
     }
 
     fn refresh_card(&mut self) {
-        let mut card = ToolCallCard::new(self.tool_type, self.name.clone())
+        // For Task tools, combine name and description into the display name
+        let display_name = if self.tool_type == ToolType::Task {
+            if let Some(input) = &self.input {
+                format!("{} {}", self.name, input)
+            } else {
+                self.name.clone()
+            }
+        } else {
+            self.name.clone()
+        };
+
+        let mut card = ToolCallCard::new(self.tool_type, display_name)
             .status(self.status)
             .expanded(self.card_expanded);
-        if let Some(input) = &self.input {
-            card = card.input(input.clone());
+        // For Task tools, don't repeat input since it's already in the name
+        if self.tool_type != ToolType::Task {
+            if let Some(input) = &self.input {
+                card = card.input(input.clone());
+            }
         }
         if let Some(output) = &self.output {
             card = card.output(output.clone());
@@ -3825,12 +3841,7 @@ impl ApplicationHandler for CoderApp {
                     return;
                 }
                 let input_event = InputEvent::MouseMove { x, y };
-                let tool_layout = tool_panel_layout(
-                    sidebar_layout.main,
-                    logical_height,
-                    &state.tool_history,
-                    state.tool_history_has_running(),
-                );
+                let chat_layout = state.build_chat_layout(&sidebar_layout, logical_height);
                 if state.chat_context_menu.is_open() {
                     if matches!(
                         state.chat_context_menu.event(
@@ -3845,8 +3856,6 @@ impl ApplicationHandler for CoderApp {
                     }
                 }
                 if state.chat_selection_dragging {
-                    let chat_layout =
-                        state.build_chat_layout(&sidebar_layout, logical_height, tool_layout.as_ref());
                     if let Some(point) = state.chat_selection_point_at(&chat_layout, x, y) {
                         if let Some(selection) = &mut state.chat_selection {
                             if selection.focus.message_index != point.message_index
@@ -3858,9 +3867,9 @@ impl ApplicationHandler for CoderApp {
                         }
                     }
                 }
-                if let Some(layout) = tool_layout {
+                if let Some(ref layout) = chat_layout.tool_panel {
                     let mut handled = false;
-                    for block in layout.blocks {
+                    for block in &layout.blocks {
                         if let Some(tool) = state.tool_history.get_mut(block.index) {
                             if matches!(
                                 tool.card
@@ -4090,11 +4099,9 @@ impl ApplicationHandler for CoderApp {
                     }
                     return;
                 }
-                let tool_layout = tool_panel_layout(
-                    sidebar_layout.main,
+                let chat_layout = state.build_chat_layout(
+                    &sidebar_layout,
                     logical_height,
-                    &state.tool_history,
-                    state.tool_history_has_running(),
                 );
                 if state.chat_context_menu.is_open() {
                     if matches!(
@@ -4106,11 +4113,6 @@ impl ApplicationHandler for CoderApp {
                         EventResult::Handled
                     ) {
                         if let Some(action) = state.chat_context_menu.take_selected() {
-                            let chat_layout = state.build_chat_layout(
-                                &sidebar_layout,
-                                logical_height,
-                                tool_layout.as_ref(),
-                            );
                             state.handle_chat_menu_action(&action, &chat_layout);
                             state.chat_context_menu_target = None;
                         }
@@ -4121,11 +4123,6 @@ impl ApplicationHandler for CoderApp {
                 if button_state == ElementState::Pressed
                     && matches!(button, winit::event::MouseButton::Left)
                 {
-                    let chat_layout = state.build_chat_layout(
-                        &sidebar_layout,
-                        logical_height,
-                        tool_layout.as_ref(),
-                    );
                     if let Some(point) = state.chat_selection_point_at(&chat_layout, x, y) {
                         if state.modifiers.shift_key() {
                             if let Some(selection) = &mut state.chat_selection {
@@ -4156,11 +4153,6 @@ impl ApplicationHandler for CoderApp {
                 if button_state == ElementState::Pressed
                     && matches!(button, winit::event::MouseButton::Right)
                 {
-                    let chat_layout = state.build_chat_layout(
-                        &sidebar_layout,
-                        logical_height,
-                        tool_layout.as_ref(),
-                    );
                     if let Some(point) = state.chat_selection_point_at(&chat_layout, x, y) {
                         if !state.chat_selection_contains(point) {
                             state.chat_selection = Some(ChatSelection {
@@ -4183,7 +4175,7 @@ impl ApplicationHandler for CoderApp {
                         return;
                     }
                 }
-                if let Some(layout) = tool_layout {
+                if let Some(ref layout) = chat_layout.tool_panel {
                     if button_state == ElementState::Released {
                         if let Some(cancel_bounds) = layout.cancel_bounds {
                             if cancel_bounds.contains(Point::new(x, y)) {
@@ -4194,7 +4186,7 @@ impl ApplicationHandler for CoderApp {
                         }
                     }
                     let mut handled = false;
-                    for block in layout.blocks {
+                    for block in &layout.blocks {
                         if let Some(tool) = state.tool_history.get_mut(block.index) {
                             if matches!(
                                 tool.card
@@ -4311,17 +4303,13 @@ impl ApplicationHandler for CoderApp {
                         return;
                     }
                 }
-                if let Some(layout) = tool_panel_layout(
-                    sidebar_layout.main,
-                    logical_height,
-                    &state.tool_history,
-                    state.tool_history_has_running(),
-                ) {
+                let chat_layout = state.build_chat_layout(&sidebar_layout, logical_height);
+                if let Some(ref layout) = chat_layout.tool_panel {
                     let mouse_point = Point::new(state.mouse_pos.0, state.mouse_pos.1);
                     if layout.bounds.contains(mouse_point) {
                         let input_event = InputEvent::Scroll { dx: 0.0, dy: dy * 40.0 };
                         let mut handled = false;
-                        for block in layout.blocks {
+                        for block in &layout.blocks {
                             if let Some(tool) = state.tool_history.get_mut(block.index) {
                                 if matches!(
                                     tool.card
@@ -4402,16 +4390,9 @@ impl ApplicationHandler for CoderApp {
                                 EventResult::Handled
                             ) {
                                 if let Some(action) = state.chat_context_menu.take_selected() {
-                                    let tool_layout = tool_panel_layout(
-                                        sidebar_layout.main,
-                                        logical_height,
-                                        &state.tool_history,
-                                        state.tool_history_has_running(),
-                                    );
                                     let chat_layout = state.build_chat_layout(
                                         &sidebar_layout,
                                         logical_height,
-                                        tool_layout.as_ref(),
                                     );
                                     state.handle_chat_menu_action(&action, &chat_layout);
                                     state.chat_context_menu_target = None;
@@ -5968,15 +5949,11 @@ impl AppState {
         &mut self,
         sidebar_layout: &SidebarLayout,
         logical_height: f32,
-        tool_layout: Option<&ToolPanelLayout>,
     ) -> ChatLayout {
         let viewport_top = OUTPUT_PADDING;
         let content_x = sidebar_layout.main.origin.x + OUTPUT_PADDING;
-        let viewport_bottom = tool_layout
-            .map(|layout| layout.bounds.origin.y - TOOL_PANEL_GAP)
-            .unwrap_or(
-                logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 8.0,
-            );
+        let viewport_bottom =
+            logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 8.0;
         let viewport_height = (viewport_bottom - viewport_top).max(0.0);
         let available_width = sidebar_layout.main.size.width - OUTPUT_PADDING * 2.0;
 
@@ -6029,10 +6006,112 @@ impl AppState {
         };
         total_content_height += streaming_height;
 
+        // Calculate tool panel layout positioned after messages
+        let tool_panel = if !self.tool_history.is_empty() {
+            let panel_width = available_width;
+            let panel_x = content_x;
+            let show_cancel = self.tool_history_has_running();
+
+            let mut selected_indices = Vec::new();
+            let mut panel_content_height = TOOL_PANEL_PADDING * 2.0 + TOOL_PANEL_HEADER_HEIGHT;
+
+            for index in (0..self.tool_history.len()).rev() {
+                if selected_indices.len() >= TOOL_PANEL_MAX_CARDS {
+                    break;
+                }
+                let tool = &self.tool_history[index];
+                let card_height = tool.card.size_hint().1.unwrap_or(22.0);
+                let detail_height = tool.detail.height();
+                let mut block_height = card_height;
+                if detail_height > 0.0 {
+                    block_height += TOOL_PANEL_GAP + detail_height;
+                }
+                let gap = if selected_indices.is_empty() { 0.0 } else { TOOL_PANEL_GAP };
+                if panel_content_height + gap + block_height <= TOOL_PANEL_MAX_HEIGHT || selected_indices.is_empty() {
+                    panel_content_height += gap + block_height;
+                    selected_indices.push(index);
+                }
+            }
+            selected_indices.reverse();
+
+            let panel_height = panel_content_height.min(TOOL_PANEL_MAX_HEIGHT);
+            // Position after messages + streaming + gap
+            let panel_y_in_content = total_content_height + TOOL_PANEL_GAP;
+            total_content_height += TOOL_PANEL_GAP + panel_height;
+
+            let bounds = Bounds::new(panel_x, panel_y_in_content, panel_width, panel_height);
+            let header_bounds = Bounds::new(
+                panel_x + TOOL_PANEL_PADDING,
+                panel_y_in_content + TOOL_PANEL_PADDING,
+                panel_width - TOOL_PANEL_PADDING * 2.0,
+                TOOL_PANEL_HEADER_HEIGHT,
+            );
+            let cancel_bounds = if show_cancel {
+                let button_width = 68.0;
+                let button_height = 18.0;
+                Some(Bounds::new(
+                    header_bounds.origin.x + header_bounds.size.width - button_width,
+                    header_bounds.origin.y + (TOOL_PANEL_HEADER_HEIGHT - button_height) * 0.5,
+                    button_width,
+                    button_height,
+                ))
+            } else {
+                None
+            };
+
+            let mut blocks = Vec::new();
+            let mut block_y = header_bounds.origin.y + TOOL_PANEL_HEADER_HEIGHT + TOOL_PANEL_GAP;
+            for (i, index) in selected_indices.iter().enumerate() {
+                let tool = &self.tool_history[*index];
+                let card_height = tool.card.size_hint().1.unwrap_or(22.0);
+                let card_bounds = Bounds::new(
+                    panel_x + TOOL_PANEL_PADDING,
+                    block_y,
+                    panel_width - TOOL_PANEL_PADDING * 2.0,
+                    card_height,
+                );
+                block_y += card_height;
+
+                let detail_height = tool.detail.height();
+                let detail_bounds = if detail_height > 0.0 {
+                    block_y += TOOL_PANEL_GAP;
+                    let db = Bounds::new(
+                        panel_x + TOOL_PANEL_PADDING,
+                        block_y,
+                        panel_width - TOOL_PANEL_PADDING * 2.0,
+                        detail_height,
+                    );
+                    block_y += detail_height;
+                    Some(db)
+                } else {
+                    None
+                };
+
+                blocks.push(ToolPanelBlock {
+                    index: *index,
+                    card_bounds,
+                    detail_bounds,
+                });
+
+                if i + 1 < selected_indices.len() {
+                    block_y += TOOL_PANEL_GAP;
+                }
+            }
+
+            Some(ToolPanelLayout {
+                bounds,
+                header_bounds,
+                cancel_bounds,
+                blocks,
+            })
+        } else {
+            None
+        };
+
         let max_scroll = (total_content_height - viewport_height).max(0.0);
         self.scroll_offset = self.scroll_offset.clamp(0.0, max_scroll);
         let was_near_bottom = self.scroll_offset >= max_scroll - chat_line_height * 2.0;
-        if self.settings.auto_scroll && self.is_thinking && was_near_bottom {
+        if self.settings.auto_scroll && self.tool_history_has_running() && was_near_bottom {
             self.scroll_offset = max_scroll;
         }
 
@@ -6044,6 +6123,7 @@ impl AppState {
             }
         }
 
+        // Apply scroll offset to message Y positions
         let mut y = viewport_top - self.scroll_offset;
         for layout in &mut message_layouts {
             for line in &mut layout.lines {
@@ -6051,6 +6131,23 @@ impl AppState {
             }
             y += layout.height;
         }
+
+        // Apply scroll offset to tool panel
+        let tool_panel = tool_panel.map(|mut tp| {
+            let offset = viewport_top - self.scroll_offset;
+            tp.bounds.origin.y += offset;
+            tp.header_bounds.origin.y += offset;
+            if let Some(ref mut cb) = tp.cancel_bounds {
+                cb.origin.y += offset;
+            }
+            for block in &mut tp.blocks {
+                block.card_bounds.origin.y += offset;
+                if let Some(ref mut db) = block.detail_bounds {
+                    db.origin.y += offset;
+                }
+            }
+            tp
+        });
 
         ChatLayout {
             viewport_top,
@@ -6061,6 +6158,7 @@ impl AppState {
             chat_line_height,
             message_layouts,
             streaming_height,
+            tool_panel,
         }
     }
 
@@ -6307,14 +6405,8 @@ impl AppState {
                     .as_ref()
                     .is_some_and(|sel| !sel.is_empty())
                 {
-                    let tool_layout = tool_panel_layout(
-                        sidebar_layout.main,
-                        logical_height,
-                        &self.tool_history,
-                        self.tool_history_has_running(),
-                    );
                     let chat_layout =
-                        self.build_chat_layout(sidebar_layout, logical_height, tool_layout.as_ref());
+                        self.build_chat_layout(sidebar_layout, logical_height);
                     if let Some(text) = self.chat_selection_text(&chat_layout) {
                         self.write_chat_clipboard(&text);
                         return true;
@@ -6322,14 +6414,8 @@ impl AppState {
                 }
             }
             WinitKey::Character(c) if c.eq_ignore_ascii_case("a") => {
-                let tool_layout = tool_panel_layout(
-                    sidebar_layout.main,
-                    logical_height,
-                    &self.tool_history,
-                    self.tool_history_has_running(),
-                );
                 let chat_layout =
-                    self.build_chat_layout(sidebar_layout, logical_height, tool_layout.as_ref());
+                    self.build_chat_layout(sidebar_layout, logical_height);
                 self.select_all_chat(&chat_layout);
                 return true;
             }
@@ -6734,14 +6820,14 @@ impl CoderApp {
                                     Some(Ok(SdkMessage::Assistant(m))) => {
                                         // Don't extract text here - we get it from STREAM_EVENT deltas
                                         // The ASSISTANT message contains the full text which would duplicate
-                                        tracing::info!("ASSISTANT: (skipping text extraction, using stream events)");
-                                        tracing::debug!("  full message: {:?}", m.message);
+                                        tracing::trace!("ASSISTANT: (skipping text extraction, using stream events)");
+                                        tracing::trace!("  full message: {:?}", m.message);
                                     }
                                     Some(Ok(SdkMessage::StreamEvent(e))) => {
-                                        tracing::info!("STREAM_EVENT: {:?}", e.event);
+                                        tracing::trace!("STREAM_EVENT: {:?}", e.event);
                                         // Check for tool call start
                                         if let Some((tool_name, tool_id)) = extract_tool_call_start(&e.event) {
-                                            tracing::info!("  -> tool call start: {}", tool_name);
+                                            tracing::debug!("  -> tool call start: {}", tool_name);
                                             let _ = tx.send(ResponseEvent::ToolCallStart {
                                                 name: tool_name,
                                                 tool_use_id: tool_id,
@@ -6760,7 +6846,7 @@ impl CoderApp {
                                         }
                                         // Extract streaming text delta
                                         else if let Some(text) = extract_stream_text(&e.event) {
-                                            tracing::info!("  -> stream text: {}", text);
+                                            tracing::trace!("  -> stream text: {}", text);
                                             if tx.send(ResponseEvent::Chunk(text)).is_err() {
                                                 break;
                                             }
@@ -6768,7 +6854,7 @@ impl CoderApp {
                                         }
                                     }
                                     Some(Ok(SdkMessage::System(s))) => {
-                                        tracing::info!("SYSTEM: {:?}", s);
+                                        tracing::debug!("SYSTEM: {:?}", s);
                                         // Extract init info
                                         if let claude_agent_sdk::SdkSystemMessage::Init(init) = s {
                                     let _ = tx.send(ResponseEvent::SystemInit {
@@ -6785,7 +6871,7 @@ impl CoderApp {
                                 }
                                     }
                                     Some(Ok(SdkMessage::User(u))) => {
-                                        tracing::info!("USER: {:?}", u.message);
+                                        tracing::debug!("USER message received");
                                         if let Some(uuid) = u.uuid.clone() {
                                             let _ = tx.send(ResponseEvent::UserMessageId { uuid });
                                             window.request_redraw();
@@ -6822,7 +6908,7 @@ impl CoderApp {
                                         }
                                     }
                                     Some(Ok(SdkMessage::ToolProgress(tp))) => {
-                                        tracing::info!(
+                                        tracing::trace!(
                                             "TOOL_PROGRESS: {} - {:.1}s",
                                             tp.tool_name,
                                             tp.elapsed_time_seconds
@@ -6835,10 +6921,10 @@ impl CoderApp {
                                         window.request_redraw();
                                     }
                                     Some(Ok(SdkMessage::AuthStatus(a))) => {
-                                        tracing::info!("AUTH_STATUS: {:?}", a);
+                                        tracing::debug!("AUTH_STATUS: {:?}", a);
                                     }
-                                    Some(Ok(SdkMessage::Result(r))) => {
-                                        tracing::info!("RESULT: {:?}", r);
+                                    Some(Ok(SdkMessage::Result(_r))) => {
+                                        tracing::debug!("RESULT received");
                                         let _ = tx.send(ResponseEvent::Complete);
                                         window.request_redraw();
                                         break;
@@ -7364,14 +7450,8 @@ impl CoderApp {
             scene.draw_text(placeholder_run);
         }
 
-        let tool_layout = tool_panel_layout(
-            sidebar_layout.main,
-            logical_height,
-            &state.tool_history,
-            state.tool_history_has_running(),
-        );
         let chat_layout =
-            state.build_chat_layout(&sidebar_layout, logical_height, tool_layout.as_ref());
+            state.build_chat_layout(&sidebar_layout, logical_height);
         let viewport_top = chat_layout.viewport_top;
         let viewport_bottom = chat_layout.viewport_bottom;
         let content_x = chat_layout.content_x;
@@ -7529,11 +7609,8 @@ impl CoderApp {
             }
         }
 
-        if chat_clip_active {
-            scene.pop_clip();
-        }
-
-        if let Some(layout) = tool_layout {
+        // Render tool panel INSIDE chat clip region (scrolls with messages)
+        if let Some(ref layout) = chat_layout.tool_panel {
             scene.draw_quad(
                 Quad::new(layout.bounds)
                     .with_background(palette.tool_panel_bg)
@@ -7573,7 +7650,7 @@ impl CoderApp {
 
             scene.push_clip(layout.bounds);
             let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
-            for block in layout.blocks {
+            for block in &layout.blocks {
                 if let Some(tool) = state.tool_history.get_mut(block.index) {
                     tool.card.paint(block.card_bounds, &mut paint_cx);
                     if tool.status == ToolStatus::Running {
@@ -7607,6 +7684,10 @@ impl CoderApp {
                     }
                 }
             }
+            scene.pop_clip();
+        }
+
+        if chat_clip_active {
             scene.pop_clip();
         }
 
@@ -9397,6 +9478,30 @@ fn extract_stream_text(event: &Value) -> Option<String> {
     None
 }
 
+/// Safely truncate a string at a valid UTF-8 char boundary
+fn safe_truncate(s: &str, max_len: usize) -> &str {
+    if s.len() <= max_len {
+        return s;
+    }
+    let mut end = max_len;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+/// Safely get a suffix of a string at a valid UTF-8 char boundary
+fn safe_suffix(s: &str, skip_bytes: usize) -> &str {
+    if skip_bytes >= s.len() {
+        return "";
+    }
+    let mut start = skip_bytes;
+    while start < s.len() && !s.is_char_boundary(start) {
+        start += 1;
+    }
+    &s[start..]
+}
+
 /// Format tool input for display
 fn format_tool_input(tool_name: &str, json_input: &str) -> String {
     // Try to parse the JSON and extract key fields
@@ -9416,7 +9521,7 @@ fn format_tool_input(tool_name: &str, json_input: &str) -> String {
                 if let Some(path) = value.get("file_path").and_then(|v| v.as_str()) {
                     // Shorten path if too long
                     if path.len() > 60 {
-                        return format!("...{}", &path[path.len()-57..]);
+                        return format!("...{}", safe_suffix(path, path.len().saturating_sub(57)));
                     }
                     return path.to_string();
                 }
@@ -9425,7 +9530,7 @@ fn format_tool_input(tool_name: &str, json_input: &str) -> String {
                 if let Some(cmd) = value.get("command").and_then(|v| v.as_str()) {
                     // Truncate long commands
                     if cmd.len() > 80 {
-                        return format!("{}...", &cmd[..77]);
+                        return format!("{}...", safe_truncate(cmd, 77));
                     }
                     return cmd.to_string();
                 }
@@ -9442,7 +9547,7 @@ fn format_tool_input(tool_name: &str, json_input: &str) -> String {
             "Edit" | "Write" => {
                 if let Some(path) = value.get("file_path").and_then(|v| v.as_str()) {
                     if path.len() > 60 {
-                        return format!("...{}", &path[path.len()-57..]);
+                        return format!("...{}", safe_suffix(path, path.len().saturating_sub(57)));
                     }
                     return path.to_string();
                 }
@@ -9462,13 +9567,13 @@ fn format_tool_input(tool_name: &str, json_input: &str) -> String {
         // Fallback: show truncated JSON
         let s = json_input.replace('\n', " ");
         if s.len() > 80 {
-            return format!("{}...", &s[..77]);
+            return format!("{}...", safe_truncate(&s, 77));
         }
         return s;
     }
     // If parsing fails, show raw (truncated)
     if json_input.len() > 80 {
-        format!("{}...", &json_input[..77])
+        format!("{}...", safe_truncate(json_input, 77))
     } else {
         json_input.to_string()
     }
@@ -9587,7 +9692,12 @@ fn truncate_lines(text: &str, max_lines: usize, max_chars: usize) -> String {
     }
     let mut result = lines.join("\n");
     if result.len() > max_chars {
-        result.truncate(max_chars);
+        // Find valid UTF-8 char boundary at or before max_chars
+        let mut truncate_at = max_chars;
+        while truncate_at > 0 && !result.is_char_boundary(truncate_at) {
+            truncate_at -= 1;
+        }
+        result.truncate(truncate_at);
         result.push_str("...");
     }
     result
@@ -10218,114 +10328,6 @@ fn hook_event_layout(
         inspector_bounds,
         row_bounds,
     }
-}
-
-fn tool_panel_layout(
-    main_bounds: Bounds,
-    logical_height: f32,
-    tools: &[ToolVisualization],
-    show_cancel: bool,
-) -> Option<ToolPanelLayout> {
-    if tools.is_empty() {
-        return None;
-    }
-
-    let panel_width = main_bounds.size.width - OUTPUT_PADDING * 2.0;
-    let panel_x = main_bounds.origin.x + OUTPUT_PADDING;
-
-    let mut selected_indices = Vec::new();
-    let mut total_height = TOOL_PANEL_PADDING * 2.0 + TOOL_PANEL_HEADER_HEIGHT;
-
-    for index in (0..tools.len()).rev() {
-        if selected_indices.len() >= TOOL_PANEL_MAX_CARDS {
-            break;
-        }
-        let tool = &tools[index];
-        let card_height = tool.card.size_hint().1.unwrap_or(22.0);
-        let detail_height = tool.detail.height();
-        let mut block_height = card_height;
-        if detail_height > 0.0 {
-            block_height += TOOL_PANEL_GAP + detail_height;
-        }
-        let gap = if selected_indices.is_empty() { 0.0 } else { TOOL_PANEL_GAP };
-        if total_height + gap + block_height <= TOOL_PANEL_MAX_HEIGHT || selected_indices.is_empty() {
-            total_height += gap + block_height;
-            selected_indices.push(index);
-        }
-    }
-
-    selected_indices.reverse();
-
-    let panel_height = total_height.min(TOOL_PANEL_MAX_HEIGHT);
-    let input_top = logical_height - INPUT_HEIGHT - INPUT_PADDING - STATUS_BAR_HEIGHT;
-    let panel_y = input_top - TOOL_PANEL_GAP - panel_height;
-    let bounds = Bounds::new(panel_x, panel_y, panel_width, panel_height);
-
-    let header_bounds = Bounds::new(
-        panel_x + TOOL_PANEL_PADDING,
-        panel_y + TOOL_PANEL_PADDING,
-        panel_width - TOOL_PANEL_PADDING * 2.0,
-        TOOL_PANEL_HEADER_HEIGHT,
-    );
-
-    let cancel_bounds = if show_cancel {
-        let button_width = 68.0;
-        let button_height = 18.0;
-        Some(Bounds::new(
-            header_bounds.origin.x + header_bounds.size.width - button_width,
-            header_bounds.origin.y + (TOOL_PANEL_HEADER_HEIGHT - button_height) * 0.5,
-            button_width,
-            button_height,
-        ))
-    } else {
-        None
-    };
-
-    let mut blocks = Vec::new();
-    let mut y = header_bounds.origin.y + TOOL_PANEL_HEADER_HEIGHT + TOOL_PANEL_GAP;
-    for (i, index) in selected_indices.iter().enumerate() {
-        let tool = &tools[*index];
-        let card_height = tool.card.size_hint().1.unwrap_or(22.0);
-        let card_bounds = Bounds::new(
-            panel_x + TOOL_PANEL_PADDING,
-            y,
-            panel_width - TOOL_PANEL_PADDING * 2.0,
-            card_height,
-        );
-        y += card_height;
-
-        let detail_height = tool.detail.height();
-        let detail_bounds = if detail_height > 0.0 {
-            y += TOOL_PANEL_GAP;
-            let bounds = Bounds::new(
-                panel_x + TOOL_PANEL_PADDING,
-                y,
-                panel_width - TOOL_PANEL_PADDING * 2.0,
-                detail_height,
-            );
-            y += detail_height;
-            Some(bounds)
-        } else {
-            None
-        };
-
-        blocks.push(ToolPanelBlock {
-            index: *index,
-            card_bounds,
-            detail_bounds,
-        });
-
-        if i + 1 < selected_indices.len() {
-            y += TOOL_PANEL_GAP;
-        }
-    }
-
-    Some(ToolPanelLayout {
-        bounds,
-        header_bounds,
-        cancel_bounds,
-        blocks,
-    })
 }
 
 fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
