@@ -6,11 +6,13 @@
 //! - External API embeddings (OpenAI, Voyage, etc.)
 
 use super::{RepoIndex, RetrievalConfig, RetrievalResult};
+use crate::adapter::swarm_dispatch::{SwarmDispatchConfig, SwarmDispatcher};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Duration;
 
 /// Semantic retrieval backend using vector embeddings.
 pub struct SemanticIndex {
@@ -193,9 +195,63 @@ impl SemanticIndex {
     }
 
     /// Embed using Pylon swarm.
-    async fn embed_swarm(&self, _text: &str, _relay_url: &str) -> Result<Vec<f32>> {
-        // TODO: Implement swarm embedding via NIP-90 job
-        anyhow::bail!("Swarm embeddings not yet implemented")
+    ///
+    /// Submits a NIP-90 embeddings job to the swarm and awaits the result.
+    /// This runs in offline mode (no actual submission) unless a private key
+    /// is configured via environment or the dispatcher is built with credentials.
+    async fn embed_swarm(&self, text: &str, relay_url: &str) -> Result<Vec<f32>> {
+        // Create a dispatcher configured for the specified relay
+        let config = SwarmDispatchConfig {
+            relays: vec![relay_url.to_string()],
+            default_budget_msats: 100, // Embeddings are cheap
+            timeout: Duration::from_secs(30),
+            wait_for_ok: true,
+        };
+
+        let dispatcher = SwarmDispatcher::generate().with_config(config);
+
+        // Dispatch the embeddings job
+        let result = dispatcher
+            .dispatch_embeddings(vec![text.to_string()])
+            .await
+            .context("Failed to dispatch embeddings job to swarm")?;
+
+        // Extract the first embedding
+        result
+            .result
+            .embeddings
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("No embedding returned from swarm"))
+    }
+
+    /// Embed a batch of texts using Pylon swarm.
+    ///
+    /// More efficient than calling embed_swarm repeatedly.
+    pub async fn embed_batch_swarm(
+        &self,
+        texts: &[String],
+        relay_url: &str,
+    ) -> Result<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let config = SwarmDispatchConfig {
+            relays: vec![relay_url.to_string()],
+            default_budget_msats: 100 * texts.len() as u64,
+            timeout: Duration::from_secs(60),
+            wait_for_ok: true,
+        };
+
+        let dispatcher = SwarmDispatcher::generate().with_config(config);
+
+        let result = dispatcher
+            .dispatch_embeddings(texts.to_vec())
+            .await
+            .context("Failed to dispatch batch embeddings job to swarm")?;
+
+        Ok(result.result.embeddings)
     }
 
     /// Compute cosine similarity between two vectors.

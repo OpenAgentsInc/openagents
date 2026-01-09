@@ -18,6 +18,7 @@ use nostr::{JobInput, JobRequest as NostrJobRequest, Keypair};
 use nostr_client::dvm::DvmClient;
 use protocol::jobs::{
     chunk_analysis::{ChunkAnalysisRequest, ChunkAnalysisResponse, CodeChunk, OutputConstraints},
+    embeddings::{EmbeddingsRequest, EmbeddingsResponse},
     rerank::{RerankCandidate, RerankRequest, RerankResponse},
     sandbox::{SandboxConfig, SandboxRunRequest, SandboxRunResponse},
     JobRequest,
@@ -265,6 +266,27 @@ impl SwarmDispatcher {
         self.dispatch_job(request).await
     }
 
+    /// Dispatch an embeddings job to the swarm.
+    ///
+    /// This computes embeddings for a batch of texts using swarm providers.
+    pub async fn dispatch_embeddings(
+        &self,
+        texts: Vec<String>,
+    ) -> Result<DispatchResult<EmbeddingsResponse>> {
+        let request = EmbeddingsRequest::batch(texts);
+        self.dispatch_job(request).await
+    }
+
+    /// Dispatch an embeddings job with model preference.
+    pub async fn dispatch_embeddings_with_model(
+        &self,
+        texts: Vec<String>,
+        model: impl Into<String>,
+    ) -> Result<DispatchResult<EmbeddingsResponse>> {
+        let request = EmbeddingsRequest::batch(texts).with_model(model);
+        self.dispatch_job(request).await
+    }
+
     /// Generic job dispatch.
     ///
     /// If DvmClient is available, submits the job to the swarm and waits for result.
@@ -410,6 +432,7 @@ impl SwarmDispatcher {
             "oa.code_chunk_analysis.v1" => 5100,
             "oa.retrieval_rerank.v1" => 5101,
             "oa.sandbox_run.v1" => 5102,
+            "oa.embeddings.v1" => 5103,
             _ => 5000, // Generic
         }
     }
