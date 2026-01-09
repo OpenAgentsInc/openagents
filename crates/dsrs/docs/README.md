@@ -124,6 +124,9 @@ crates/dsrs/
 │   ├── predictors/
 │   │   ├── predict.rs      # Base Predict with callbacks
 │   │   └── refine.rs       # Retry/fallback meta-operator
+│   ├── pipelines/          # Ready-to-use pipeline wrappers
+│   │   ├── mod.rs          # Pipeline exports
+│   │   └── retrieval.rs    # QueryComposer, RetrievalRouter, CandidateRerank
 │   ├── retrieval/          # Wave 4: Multi-lane retrieval
 │   │   ├── mod.rs          # RepoIndex trait, RetrievalResult
 │   │   ├── ripgrep.rs      # Text search backend

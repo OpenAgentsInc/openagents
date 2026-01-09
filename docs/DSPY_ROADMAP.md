@@ -106,6 +106,25 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
   - Promotion decision support
 - [x] 42 dspy tests passing in autopilot
 
+### Wave 12: FRLM Integration (Complete)
+- [x] FRLM DSPy signatures in `crates/frlm/`
+
+### Wave 13: Pipeline Wiring (Complete)
+- [x] **Agent-Orchestrator Pipeline** (`crates/agent-orchestrator/src/dspy_pipelines.rs`)
+  - DelegationPipeline - Routes tasks to specialized subagents
+  - AgentRegistry.delegate_task() with DSPy + legacy fallback
+  - 155 tests passing
+- [x] **Runtime Tool Pipelines** (`crates/runtime/src/dspy_pipelines.rs`)
+  - ToolSelectionPipeline - Choose best tool for task
+  - ToolInterpretationPipeline - Understand tool output
+  - ToolChainPipeline - Plan multi-tool sequences
+  - 19 dspy tests passing
+- [x] **Retrieval Policy Pipelines** (`crates/dsrs/src/pipelines/retrieval.rs`)
+  - QueryComposerPipeline - Transform goals into search queries
+  - RetrievalRouterPipeline - Route to appropriate lane (ripgrep/lsp/semantic/git)
+  - CandidateRerankPipeline - LLM-based reranking
+  - 9 pipeline tests passing
+
 ---
 
 ## Wave 0: Protocol + Schema Registry (NEW)

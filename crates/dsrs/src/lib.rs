@@ -6,6 +6,7 @@ pub mod data;
 pub mod evaluate;
 pub mod manifest;
 pub mod optimizer;
+pub mod pipelines;
 pub mod predictors;
 pub mod privacy;
 pub mod retrieval;
@@ -20,6 +21,11 @@ pub use data::*;
 pub use evaluate::*;
 pub use manifest::*;
 pub use optimizer::*;
+pub use pipelines::{
+    CandidateRerankInput, CandidateRerankPipeline, CandidateRerankResult, QueryComposerInput,
+    QueryComposerPipeline, QueryComposerResult, RetrievalRouterInput, RetrievalRouterPipeline,
+    RetrievalRouterResult,
+};
 pub use predictors::*;
 pub use privacy::*;
 pub use utils::*;
