@@ -89,6 +89,10 @@ struct ChatMessage {
 /// Events from the async query task
 enum ResponseEvent {
     Chunk(String),
+    ToolCallStart { name: String },
+    ToolCallInput { json: String },
+    ToolCallEnd,
+    ToolResult { content: String, is_error: bool },
     Complete,
     Error(String),
     SystemInit {
@@ -216,6 +220,11 @@ struct RenderState {
     markdown_renderer: MdRenderer,
     is_thinking: bool,
     response_rx: Option<mpsc::UnboundedReceiver<ResponseEvent>>,
+    // Scroll state
+    scroll_offset: f32,
+    // Current tool call being streamed
+    current_tool_name: Option<String>,
+    current_tool_input: String,
     // Session info from SystemInit
     session_info: SessionInfo,
     // Modal state for slash commands
@@ -336,6 +345,9 @@ impl ApplicationHandler for CoderApp {
                 markdown_renderer: MdRenderer::new(),
                 is_thinking: false,
                 response_rx: None,
+                scroll_offset: 0.0,
+                current_tool_name: None,
+                current_tool_input: String::new(),
                 session_info: SessionInfo {
                     model: saved_model.model_id().to_string(),
                     ..Default::default()
@@ -424,6 +436,15 @@ impl ApplicationHandler for CoderApp {
                 state
                     .input
                     .event(&input_event, input_bounds, &mut state.event_context);
+                state.window.request_redraw();
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let dy = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => y,
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 20.0,
+                };
+                // Scroll the message area (positive dy = scroll up, negative = scroll down)
+                state.scroll_offset = (state.scroll_offset - dy * 40.0).max(0.0);
                 state.window.request_redraw();
             }
             WindowEvent::KeyboardInput {
@@ -589,8 +610,24 @@ impl CoderApp {
                             }
                             Ok(SdkMessage::StreamEvent(e)) => {
                                 tracing::info!("STREAM_EVENT: {:?}", e.event);
+                                // Check for tool call start
+                                if let Some((tool_name, _tool_id)) = extract_tool_call_start(&e.event) {
+                                    tracing::info!("  -> tool call start: {}", tool_name);
+                                    let _ = tx.send(ResponseEvent::ToolCallStart { name: tool_name });
+                                    window.request_redraw();
+                                }
+                                // Check for tool input delta
+                                else if let Some(json) = extract_tool_input_delta(&e.event) {
+                                    let _ = tx.send(ResponseEvent::ToolCallInput { json });
+                                    window.request_redraw();
+                                }
+                                // Check for content_block_stop (tool call end)
+                                else if e.event.get("type").and_then(|t| t.as_str()) == Some("content_block_stop") {
+                                    let _ = tx.send(ResponseEvent::ToolCallEnd);
+                                    window.request_redraw();
+                                }
                                 // Extract streaming text delta
-                                if let Some(text) = extract_stream_text(&e.event) {
+                                else if let Some(text) = extract_stream_text(&e.event) {
                                     tracing::info!("  -> stream text: {}", text);
                                     if tx.send(ResponseEvent::Chunk(text)).is_err() {
                                         break;
@@ -613,6 +650,25 @@ impl CoderApp {
                             }
                             Ok(SdkMessage::User(u)) => {
                                 tracing::info!("USER: {:?}", u.message);
+                                // Extract tool results from USER messages
+                                if let Some(content) = u.message.get("content").and_then(|c| c.as_array()) {
+                                    for item in content {
+                                        if item.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
+                                            let result_content = item.get("content")
+                                                .and_then(|c| c.as_str())
+                                                .unwrap_or("")
+                                                .to_string();
+                                            let is_error = item.get("is_error")
+                                                .and_then(|e| e.as_bool())
+                                                .unwrap_or(false);
+                                            let _ = tx.send(ResponseEvent::ToolResult {
+                                                content: result_content,
+                                                is_error
+                                            });
+                                            window.request_redraw();
+                                        }
+                                    }
+                                }
                             }
                             Ok(SdkMessage::ToolProgress(tp)) => {
                                 tracing::info!("TOOL_PROGRESS: {} - {:.1}s", tp.tool_name, tp.elapsed_time_seconds);
@@ -660,6 +716,48 @@ impl CoderApp {
             match event {
                 ResponseEvent::Chunk(text) => {
                     state.streaming_markdown.append(&text);
+                    state.streaming_markdown.tick();
+                    needs_redraw = true;
+                }
+                ResponseEvent::ToolCallStart { name } => {
+                    // Start tracking a new tool call
+                    state.current_tool_name = Some(name.clone());
+                    state.current_tool_input.clear();
+                    // Add tool call header to markdown
+                    let tool_text = format!("\n\n**[{}]** ", name);
+                    state.streaming_markdown.append(&tool_text);
+                    state.streaming_markdown.tick();
+                    needs_redraw = true;
+                }
+                ResponseEvent::ToolCallInput { json } => {
+                    // Accumulate tool input JSON
+                    state.current_tool_input.push_str(&json);
+                    needs_redraw = true;
+                }
+                ResponseEvent::ToolCallEnd => {
+                    // Format and display the complete tool call
+                    if let Some(tool_name) = state.current_tool_name.take() {
+                        let input = std::mem::take(&mut state.current_tool_input);
+                        // Parse the JSON to extract key info
+                        let display = format_tool_input(&tool_name, &input);
+                        let tool_text = format!("`{}`\n", display);
+                        state.streaming_markdown.append(&tool_text);
+                        state.streaming_markdown.tick();
+                    }
+                    needs_redraw = true;
+                }
+                ResponseEvent::ToolResult { content, is_error } => {
+                    // Format tool result as a code block (limited to 5 lines)
+                    let lines: Vec<&str> = content.lines().collect();
+                    let truncated = if lines.len() > 5 {
+                        let first_lines: String = lines[..5].join("\n");
+                        format!("{}\n... ({} more lines)", first_lines, lines.len() - 5)
+                    } else {
+                        content.clone()
+                    };
+                    let prefix = if is_error { "ERROR: " } else { "" };
+                    let result_text = format!("\n```\n{}{}\n```\n\n", prefix, truncated);
+                    state.streaming_markdown.append(&result_text);
                     state.streaming_markdown.tick();
                     needs_redraw = true;
                 }
@@ -748,66 +846,128 @@ impl CoderApp {
         // Dark terminal background
         scene.draw_quad(Quad::new(bounds).with_background(Hsla::new(220.0, 0.15, 0.10, 1.0)));
 
-        // Render message history
-        let mut y = OUTPUT_PADDING;
-        let max_y = logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - OUTPUT_PADDING - STATUS_BAR_HEIGHT;
+        // Calculate viewport bounds for message area
+        // Add extra buffer to ensure text never reaches input area
+        let viewport_top = OUTPUT_PADDING;
+        let viewport_bottom = logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 20.0;
+        let viewport_height = viewport_bottom - viewport_top;
         let available_width = logical_width - OUTPUT_PADDING * 2.0;
 
         // Calculate max chars for user message wrapping
         let char_width = 8.4;
         let max_chars = (available_width / char_width) as usize;
 
+        // First pass: calculate heights for each message (compute once, use for both total and rendering)
+        let mut message_heights: Vec<f32> = Vec::with_capacity(state.messages.len());
+        let mut total_content_height = 0.0_f32;
         for msg in &state.messages {
-            if y > max_y {
-                break;
+            let height = match msg.role {
+                MessageRole::User => {
+                    let content_with_prefix = format!("> {}", &msg.content);
+                    let wrapped_lines = wrap_text(&content_with_prefix, max_chars);
+                    LINE_HEIGHT * 0.5 + wrapped_lines.len() as f32 * LINE_HEIGHT + LINE_HEIGHT * 0.5
+                }
+                MessageRole::Assistant => {
+                    if let Some(doc) = &msg.document {
+                        let size = state.markdown_renderer.measure(doc, available_width, &mut state.text_system);
+                        // Small buffer for measurement variance
+                        size.height + LINE_HEIGHT
+                    } else {
+                        let wrapped_lines = wrap_text(&msg.content, max_chars);
+                        wrapped_lines.len() as f32 * LINE_HEIGHT
+                    }
+                }
+            };
+            message_heights.push(height);
+            total_content_height += height;
+        }
+        // Add streaming content height
+        let streaming_height = if !state.streaming_markdown.source().is_empty() {
+            let doc = state.streaming_markdown.document();
+            let size = state.markdown_renderer.measure(doc, available_width, &mut state.text_system);
+            size.height + LINE_HEIGHT
+        } else if state.is_thinking {
+            LINE_HEIGHT
+        } else {
+            0.0
+        };
+        total_content_height += streaming_height;
+
+        // Clamp scroll offset to valid range
+        let max_scroll = (total_content_height - viewport_height).max(0.0);
+        state.scroll_offset = state.scroll_offset.clamp(0.0, max_scroll);
+
+        // Auto-scroll to bottom when new content arrives and we were near the bottom
+        let was_near_bottom = state.scroll_offset >= max_scroll - LINE_HEIGHT * 2.0;
+        if state.is_thinking && was_near_bottom {
+            state.scroll_offset = max_scroll;
+        }
+
+        // Render message history with scroll offset applied
+        let mut y = viewport_top - state.scroll_offset;
+
+        for (i, msg) in state.messages.iter().enumerate() {
+            let msg_height = message_heights[i];
+
+            // Skip entirely if this message is completely outside viewport
+            if y + msg_height < viewport_top || y > viewport_bottom {
+                y += msg_height;
+                continue;
             }
 
             match msg.role {
                 MessageRole::User => {
                     // User messages: plain text with "> " prefix
+                    y += LINE_HEIGHT * 0.5; // Padding above user messages
                     let content_with_prefix = format!("> {}", &msg.content);
                     let wrapped_lines = wrap_text(&content_with_prefix, max_chars);
                     for line in &wrapped_lines {
-                        if y > max_y {
-                            break;
-                        }
-                        let text_run = state.text_system.layout_styled_mono(
-                            line,
-                            Point::new(OUTPUT_PADDING, y),
-                            14.0,
-                            Hsla::new(0.0, 0.0, 0.6, 1.0), // Gray
-                            wgpui::text::FontStyle::default(),
-                        );
-                        scene.draw_text(text_run);
-                        y += LINE_HEIGHT;
-                    }
-                }
-                MessageRole::Assistant => {
-                    // Assistant messages: render with markdown
-                    if let Some(doc) = &msg.document {
-                        let size = state.markdown_renderer.render(
-                            doc,
-                            Point::new(OUTPUT_PADDING, y),
-                            available_width,
-                            &mut state.text_system,
-                            &mut scene,
-                        );
-                        y += size.height + LINE_HEIGHT;
-                    } else {
-                        // Fallback to plain text if no document
-                        let wrapped_lines = wrap_text(&msg.content, max_chars);
-                        for line in &wrapped_lines {
-                            if y > max_y {
-                                break;
-                            }
+                        // Only render if line ENDS before viewport_bottom
+                        if y + LINE_HEIGHT <= viewport_bottom && y + LINE_HEIGHT > viewport_top {
                             let text_run = state.text_system.layout_styled_mono(
                                 line,
                                 Point::new(OUTPUT_PADDING, y),
                                 14.0,
-                                Hsla::new(180.0, 0.5, 0.7, 1.0), // Cyan
+                                Hsla::new(0.0, 0.0, 0.6, 1.0), // Gray
                                 wgpui::text::FontStyle::default(),
                             );
                             scene.draw_text(text_run);
+                        }
+                        y += LINE_HEIGHT;
+                    }
+                    y += LINE_HEIGHT * 0.5; // Padding below user messages
+                }
+                MessageRole::Assistant => {
+                    // Assistant messages: render with markdown
+                    if let Some(doc) = &msg.document {
+                        // Only render if content ENDS before viewport_bottom (strict clipping)
+                        let content_fits = y + msg_height <= viewport_bottom;
+                        let content_visible = y + msg_height > viewport_top;
+                        if content_fits && content_visible {
+                            state.markdown_renderer.render(
+                                doc,
+                                Point::new(OUTPUT_PADDING, y),
+                                available_width,
+                                &mut state.text_system,
+                                &mut scene,
+                            );
+                        }
+                        y += msg_height;
+                    } else {
+                        // Fallback to plain text if no document
+                        let wrapped_lines = wrap_text(&msg.content, max_chars);
+                        for line in &wrapped_lines {
+                            // Only render if line ENDS before viewport_bottom
+                            if y + LINE_HEIGHT <= viewport_bottom && y + LINE_HEIGHT > viewport_top {
+                                let text_run = state.text_system.layout_styled_mono(
+                                    line,
+                                    Point::new(OUTPUT_PADDING, y),
+                                    14.0,
+                                    Hsla::new(180.0, 0.5, 0.7, 1.0), // Cyan
+                                    wgpui::text::FontStyle::default(),
+                                );
+                                scene.draw_text(text_run);
+                            }
                             y += LINE_HEIGHT;
                         }
                     }
@@ -818,17 +978,22 @@ impl CoderApp {
         // Render streaming response with markdown
         if !state.streaming_markdown.source().is_empty() {
             let doc = state.streaming_markdown.document();
-            let size = state.markdown_renderer.render(
-                doc,
-                Point::new(OUTPUT_PADDING, y),
-                available_width,
-                &mut state.text_system,
-                &mut scene,
-            );
-            y += size.height;
+            // Only render if content ENDS before viewport_bottom
+            let content_fits = y + streaming_height <= viewport_bottom;
+            let content_visible = y + streaming_height > viewport_top;
+            if content_fits && content_visible {
+                state.markdown_renderer.render(
+                    doc,
+                    Point::new(OUTPUT_PADDING, y),
+                    available_width,
+                    &mut state.text_system,
+                    &mut scene,
+                );
+            }
+            y += streaming_height;
         } else if state.is_thinking {
             // Show thinking indicator
-            if y <= max_y {
+            if y + LINE_HEIGHT <= viewport_bottom && y + LINE_HEIGHT > viewport_top {
                 let text_run = state.text_system.layout_styled_mono(
                     "...",
                     Point::new(OUTPUT_PADDING, y),
@@ -841,7 +1006,17 @@ impl CoderApp {
         }
         let _ = y; // Suppress unused warning
 
-        // Paint input above status bar
+        // Input area background - covers from viewport_bottom (which has buffer) to screen bottom
+        let input_area_y = viewport_bottom;
+        let input_area_bounds = Bounds::new(
+            0.0,
+            input_area_y,
+            logical_width,
+            logical_height - input_area_y,
+        );
+        scene.draw_quad(Quad::new(input_area_bounds).with_background(Hsla::new(220.0, 0.15, 0.08, 1.0)));
+
+        // Input box
         let input_bounds = Bounds::new(
             INPUT_PADDING,
             logical_height - INPUT_HEIGHT - INPUT_PADDING - STATUS_BAR_HEIGHT,
@@ -866,7 +1041,7 @@ impl CoderApp {
         scene.draw_text(prompt_run);
 
         // Draw status bar at very bottom (centered vertically)
-        let status_y = logical_height - STATUS_BAR_HEIGHT + 5.0;
+        let status_y = logical_height - STATUS_BAR_HEIGHT - 2.0;
 
         // Left side: permission mode
         if !state.session_info.permission_mode.is_empty() {
@@ -1044,14 +1219,12 @@ impl CoderApp {
         let physical_width = state.config.width as f32;
         let physical_height = state.config.height as f32;
 
-        // Resize renderer to match window
         state.renderer.resize(
             &state.queue,
             Size::new(physical_width, physical_height),
             1.0,
         );
 
-        // Update text atlas if needed
         if state.text_system.is_dirty() {
             state.renderer.update_atlas(
                 &state.queue,
@@ -1061,9 +1234,7 @@ impl CoderApp {
             state.text_system.mark_clean();
         }
 
-        state
-            .renderer
-            .prepare(&state.device, &state.queue, &scene, scale_factor);
+        state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
         state.renderer.render(&mut encoder, &view);
 
         state.queue.submit(std::iter::once(encoder.finish()));
@@ -1096,6 +1267,103 @@ fn extract_stream_text(event: &Value) -> Option<String> {
     }
 
     None
+}
+
+/// Format tool input for display
+fn format_tool_input(tool_name: &str, json_input: &str) -> String {
+    // Try to parse the JSON and extract key fields
+    if let Ok(value) = serde_json::from_str::<Value>(json_input) {
+        match tool_name {
+            "Glob" => {
+                if let Some(pattern) = value.get("pattern").and_then(|v| v.as_str()) {
+                    return pattern.to_string();
+                }
+            }
+            "Grep" => {
+                if let Some(pattern) = value.get("pattern").and_then(|v| v.as_str()) {
+                    return pattern.to_string();
+                }
+            }
+            "Read" => {
+                if let Some(path) = value.get("file_path").and_then(|v| v.as_str()) {
+                    // Shorten path if too long
+                    if path.len() > 60 {
+                        return format!("...{}", &path[path.len()-57..]);
+                    }
+                    return path.to_string();
+                }
+            }
+            "Bash" => {
+                if let Some(cmd) = value.get("command").and_then(|v| v.as_str()) {
+                    // Truncate long commands
+                    if cmd.len() > 80 {
+                        return format!("{}...", &cmd[..77]);
+                    }
+                    return cmd.to_string();
+                }
+            }
+            "Edit" | "Write" => {
+                if let Some(path) = value.get("file_path").and_then(|v| v.as_str()) {
+                    if path.len() > 60 {
+                        return format!("...{}", &path[path.len()-57..]);
+                    }
+                    return path.to_string();
+                }
+            }
+            "Task" => {
+                if let Some(desc) = value.get("description").and_then(|v| v.as_str()) {
+                    return desc.to_string();
+                }
+            }
+            _ => {}
+        }
+        // Fallback: show truncated JSON
+        let s = json_input.replace('\n', " ");
+        if s.len() > 80 {
+            return format!("{}...", &s[..77]);
+        }
+        return s;
+    }
+    // If parsing fails, show raw (truncated)
+    if json_input.len() > 80 {
+        format!("{}...", &json_input[..77])
+    } else {
+        json_input.to_string()
+    }
+}
+
+/// Extract tool call start info from content_block_start event
+fn extract_tool_call_start(event: &Value) -> Option<(String, String)> {
+    let event_type = event.get("type")?.as_str()?;
+    if event_type != "content_block_start" {
+        return None;
+    }
+
+    let content_block = event.get("content_block")?;
+    let block_type = content_block.get("type")?.as_str()?;
+    if block_type != "tool_use" {
+        return None;
+    }
+
+    let tool_name = content_block.get("name")?.as_str()?.to_string();
+    let tool_id = content_block.get("id")?.as_str()?.to_string();
+    Some((tool_name, tool_id))
+}
+
+/// Extract tool input JSON delta
+fn extract_tool_input_delta(event: &Value) -> Option<String> {
+    let event_type = event.get("type")?.as_str()?;
+    if event_type != "content_block_delta" {
+        return None;
+    }
+
+    let delta = event.get("delta")?;
+    let delta_type = delta.get("type")?.as_str()?;
+    if delta_type != "input_json_delta" {
+        return None;
+    }
+
+    delta.get("partial_json")?.as_str().map(|s| s.to_string())
 }
 
 fn convert_mouse_button(button: winit::event::MouseButton) -> wgpui::MouseButton {
