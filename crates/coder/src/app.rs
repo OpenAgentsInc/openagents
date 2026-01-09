@@ -5800,10 +5800,6 @@ impl AppState {
         self.permission_default_allow = default_allow_for_mode(Some(&mode), self.permission_default_allow);
         self.session_info.permission_mode = permission_mode_label(&mode).to_string();
         self.persist_permission_config();
-        self.push_system_message(format!(
-            "Permission mode set to {}.",
-            permission_mode_label(&mode)
-        ));
     }
 
     fn add_permission_allow(&mut self, tools: Vec<String>) {
@@ -7654,6 +7650,11 @@ impl CoderApp {
             .as_ref()
             .map(permission_mode_display)
             .unwrap_or("default");
+        let permission_color = state
+            .permission_mode
+            .as_ref()
+            .map(|mode| permission_mode_color(mode, &palette))
+            .unwrap_or(palette.text_faint);
         if state.session_info.permission_mode.is_empty() {
             let permission_text = format!("Permissions: {}", permission_label);
             let permission_run = state.text_system.layout_styled_mono(
@@ -7663,7 +7664,7 @@ impl CoderApp {
                     input_bounds.origin.y + input_bounds.size.height + 2.0,
                 ),
                 10.0,
-                palette.text_faint,
+                permission_color,
                 wgpui::text::FontStyle::default(),
             );
             scene.draw_text(permission_run);
@@ -7679,7 +7680,11 @@ impl CoderApp {
                 &mode_text,
                 Point::new(content_x, status_y),
                 STATUS_BAR_FONT_SIZE,
-                palette.status_left,
+                state
+                    .permission_mode
+                    .as_ref()
+                    .map(|mode| permission_mode_color(mode, &palette))
+                    .unwrap_or(palette.status_left),
                 wgpui::text::FontStyle::default(),
             );
             scene.draw_text(mode_run);
@@ -11296,6 +11301,16 @@ fn permission_mode_display(mode: &PermissionMode) -> &'static str {
         PermissionMode::AcceptEdits => "accept edits",
         PermissionMode::BypassPermissions => "bypass permissions",
         PermissionMode::DontAsk => "dont ask",
+    }
+}
+
+fn permission_mode_color(mode: &PermissionMode, palette: &UiPalette) -> Hsla {
+    match mode {
+        PermissionMode::Default => palette.status_left,
+        PermissionMode::Plan => Hsla::new(190.0, 0.7, 0.6, 1.0), // teal/cyan
+        PermissionMode::AcceptEdits => Hsla::new(275.0, 0.55, 0.7, 1.0), // light purple
+        PermissionMode::BypassPermissions => Hsla::new(0.0, 0.75, 0.55, 1.0), // red
+        PermissionMode::DontAsk => Hsla::new(25.0, 0.7, 0.55, 1.0),
     }
 }
 
