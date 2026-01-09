@@ -329,7 +329,7 @@ Shadow mode runs both old and new policy, ships old result, promotes only if new
 | 3 | **Complete** | Compiler Contract (manifest, callbacks, trace, sandbox) |
 | 4 | **Complete** | Retrieval, Signatures, Swarm Dispatch |
 | 5 | **Complete** | Eval Harness & Promotion Gates |
-| 6 | Planned | SwarmCompiler (cheap optimization on Pylon) |
+| 6 | **Complete** | SwarmCompiler (cheap bootstrap + premium validation) |
 | 7+ | Planned | Privacy, OANIX, Agent Orchestrator, Tool Invocation |
 
 See [docs/DSPY_ROADMAP.md](./docs/DSPY_ROADMAP.md) for full roadmap.
@@ -519,6 +519,92 @@ let result = dispatcher.dispatch_chunk_analysis(
 
 ---
 
+## SwarmCompiler (Wave 6)
+
+**What it is:** Cost-efficient DSPy optimization using cheap Pylon swarm for bootstrap and premium models for validation. Achieves ~96% cost reduction compared to premium-only approaches.
+
+**Cost model:**
+- Pylon swarm: ~10 msats/call (bootstrap phase)
+- Premium (Claude/GPT-4): ~1000 msats/call (validation phase)
+- Savings: Bootstrap 1800 calls on swarm ($0.18) vs Claude ($15) = 96.7% reduction
+
+**Key paths:**
+- `crates/dsrs/src/compiler/mod.rs` — Module exports
+- `crates/dsrs/src/compiler/provider.rs` — LMProvider trait + implementations
+- `crates/dsrs/src/compiler/budget.rs` — BudgetManager, cost tracking
+- `crates/dsrs/src/compiler/trace_collector.rs` — Execution trace capture
+- `crates/dsrs/src/compiler/swarm_compiler.rs` — SwarmCompiler orchestrator
+- `crates/dsrs/src/compiler/result.rs` — CompileResult bundle
+
+**Compilation phases:**
+
+```
+1. Bootstrap (cheap Pylon swarm)
+   └─ Allocate bootstrap_budget_msats
+   └─ Run MIPROv2 with bootstrap LM
+   └─ Generate candidate prompts/demos
+   └─ Quick proxy metric evaluation
+
+2. Validate (premium model)
+   └─ Allocate validation_budget_msats
+   └─ Run Scorer with validation LM
+   └─ Full truth metric evaluation
+   └─ Generate ScorecardResult
+
+3. Promote (gates)
+   └─ Feed scorecard to PromotionManager
+   └─ Check promotion gates
+   └─ Update manifest with eval_history
+```
+
+**Usage:**
+```rust
+use dsrs::compiler::{SwarmCompiler, SwarmCompileConfig, MockLM};
+use std::sync::Arc;
+
+// Create compiler with cheap + premium LMs
+let compiler = SwarmCompiler::new(
+    Arc::new(MockLM::cheap()),      // Bootstrap: Pylon swarm
+    Arc::new(MockLM::expensive()),  // Validation: Claude/GPT-4
+);
+
+// Configure compilation
+let config = SwarmCompileConfig::default()
+    .bootstrap_budget(1000)   // ~100 calls at 10 msats
+    .validation_budget(5000)  // ~5 calls at 1000 msats
+    .rollouts(3, 5)           // 3 bootstrap, 5 validation
+    .proxy_threshold(0.7);    // Skip validation if bootstrap < 0.7
+
+// Run compilation
+let result = compiler.compile(&module, trainset, &eval_tasks, config).await?;
+
+// Check result
+if result.is_promoted() {
+    println!("Module promoted: {:?}", result.promotion_state());
+} else {
+    println!("Promotion failed: {}", result.promotion_result.reason);
+}
+
+// Inspect budget
+let report = result.budget_report;
+println!("Cost: {} msats (bootstrap: {}, validation: {})",
+    report.spent,
+    report.by_phase.get("bootstrap").unwrap_or(&0),
+    report.by_phase.get("validate").unwrap_or(&0)
+);
+```
+
+**LMProvider implementations:**
+| Provider | Cost | Use Case |
+|----------|------|----------|
+| `MockLM` | Configurable | Testing |
+| `PylonLM` | ~10 msats | Bootstrap (swarm/local) |
+| `FallbackLM` | Variable | Hybrid (try cheap, fallback to premium) |
+
+**Documentation:** See [crates/dsrs/docs/](./crates/dsrs/docs/README.md) for full API reference.
+
+---
+
 ## WGPUI
 
 **What it is:** GPU-accelerated UI rendering library. WebGPU/Vulkan/Metal/DX12 via wgpu.
@@ -700,7 +786,7 @@ Issues are NOT done unless:
 | Runtime | In progress | Tick engine, filesystem, /compute, /containers, /claude |
 | Autopilot | Alpha | Claude SDK integration, tunnel mode |
 | Autopilot DSPy | Wave 3 | Planning, Execution, Verification + Compiler Contract |
-| dsrs | **Wave 5** | Eval Harness, Promotion Gates, Scoring (see Wave 3-5) |
+| dsrs | **Wave 6** | SwarmCompiler, Eval Harness, Promotion Gates (see Wave 3-6) |
 | WGPUI | Phase 16 | 377 tests, full component library |
 | RLM | Working | Claude + Ollama backends, MCP tools |
 | RLM DSPy | Wave 1 | DspyOrchestrator, provenance signatures |
