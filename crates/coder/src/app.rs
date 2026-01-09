@@ -847,9 +847,9 @@ impl CoderApp {
         scene.draw_quad(Quad::new(bounds).with_background(Hsla::new(220.0, 0.15, 0.10, 1.0)));
 
         // Calculate viewport bounds for message area
-        // Add extra buffer to ensure text never reaches input area
+        // Small buffer to ensure text never touches input area
         let viewport_top = OUTPUT_PADDING;
-        let viewport_bottom = logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 80.0;
+        let viewport_bottom = logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 8.0;
         let viewport_height = viewport_bottom - viewport_top;
         let available_width = logical_width - OUTPUT_PADDING * 2.0;
 
@@ -1006,8 +1006,8 @@ impl CoderApp {
         }
         let _ = y; // Suppress unused warning
 
-        // Input area background - covers from viewport_bottom (which has buffer) to screen bottom
-        let input_area_y = viewport_bottom;
+        // Input area background - starts just above the input box
+        let input_area_y = logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT;
         let input_area_bounds = Bounds::new(
             0.0,
             input_area_y,
