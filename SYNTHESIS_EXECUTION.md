@@ -229,10 +229,24 @@ cargo autopilot run "Fix the failing tests"
 |---------|-------------|
 | **Optimizers** | COPRO, MIPROv2, GEPA, Pareto |
 | **DAG tracing** | Graph/Node types for execution tracing |
-| **LM providers** | 12+ via rig-core (OpenAI, Anthropic, Gemini, Groq, Ollama, etc.) |
+| **LM providers** | 14+ via rig-core (OpenAI, Anthropic, Gemini, Groq, Ollama, Pylon, Claude SDK, etc.) |
 | **Architecture** | Module, Predictor, MetaSignature, Adapter, Optimizable, Evaluator traits |
 | **Macros** | `#[Signature]`, `#[Optimizable]` for code generation |
 | **Caching** | Hybrid memory + disk via foyer |
+| **Multi-provider** | Claude SDK → Pylon swarm → Cerebras → Pylon local (auto-detection) |
+
+**Agent module graph (8-stage pipeline):**
+```
+User Task → Task Router → Query Composer → Retrieval Router
+                                              ↓
+                          ┌──────────────────────────────────┐
+                          │ Evidence Ranker + Evidence Workers │
+                          └──────────────────────────────────┘
+                                              ↓
+                          State/Memory → Patch Planner → Patch Writer
+                                              ↓
+                                    Verifier → Fix Loop → FINAL PATCH
+```
 
 **Key modules in autopilot:**
 
@@ -242,6 +256,16 @@ cargo autopilot run "Fix the failing tests"
 | `dspy_execution.rs` | ExecutionStrategySignature, ToolSelectionSignature |
 | `dspy_verify.rs` | RequirementChecker, TestAnalyzer, ExecutionReview |
 | `dspy_optimization.rs` | Metrics + training data infrastructure |
+
+**Swarm job types (map-reduce primitives):**
+
+| Job Type | Mode | Purpose |
+|----------|------|---------|
+| `oa.code_chunk_analysis.v1` | Subjective | Parallel file/chunk analysis, hypotheses |
+| `oa.retrieval_rerank.v1` | Subjective | LLM-based candidate reranking |
+| `oa.sandbox_run.v1` | Objective | Build/test/lint in sandboxed environment |
+
+Each job includes `verification.mode` (objective/subjective), redundancy, and adjudication strategy.
 
 **Planning pipeline:**
 ```
@@ -272,12 +296,43 @@ Solution → VerificationPipeline → Verdict
             └── SolutionVerifier (final verdict: PASS/FAIL/RETRY)
 ```
 
+**Scoring function (robust):**
+```
+score = median(score over N rollouts)
+where single_score =
+  1.0 * pass_tests
+  - 0.25 * (cost / budget)
+  - 0.15 * (time / time_budget)
+  - 0.10 * (diff_lines / diff_budget)
+  - 0.10 * (sandbox_runs / sandbox_budget)
+  - 0.10 * (bytes_opened / bytes_budget)      # evidence efficiency
+```
+
+**Promotion gates:**
+```
+candidate → staged → shadow → promoted → rolled_back
+```
+Shadow mode runs both old and new policy, ships old result, promotes only if new wins.
+
 **Training data:**
 - Examples in `crates/autopilot/examples/dspy_training_data.json`
 - Metrics for optimization in `dspy_optimization.rs`
-- Future: auto-collect from successful sessions
+- Future: auto-collect from successful sessions via TraceExtractor
 
-**Roadmap:** See [docs/DSPY_ROADMAP.md](./docs/DSPY_ROADMAP.md) for Wave 3-6 plans (OANIX, Agent Orchestrator, Tool Invocation, Optimization Infrastructure).
+**Roadmap waves:**
+
+| Wave | Status | Description |
+|------|--------|-------------|
+| 0 | Planned | Protocol + Schema Registry (job schemas, hashing, versioning) |
+| 1-2 | Complete | RLM + Autopilot signatures |
+| 2.5 | Complete | LaneMux (multi-provider LM auto-detection) |
+| 3 | Planned | Compiler Contract (CompiledModuleManifest, TraceContract) |
+| 4 | Planned | Swarm job types, Retrieval Policy, Repo Indexing |
+| 5 | Planned | Eval Harness & Promotion Gates |
+| 6 | Planned | SwarmCompiler (cheap optimization on Pylon) |
+| 7+ | Planned | Privacy, OANIX, Agent Orchestrator, Tool Invocation |
+
+See [docs/DSPY_ROADMAP.md](./docs/DSPY_ROADMAP.md) for full roadmap.
 
 ---
 
@@ -460,12 +515,14 @@ Issues are NOT done unless:
 | Nexus | v0.1 | NIP-90, NIP-42, NIP-89 |
 | Runtime | In progress | Tick engine, filesystem, /compute, /containers, /claude |
 | Autopilot | Alpha | Claude SDK integration, tunnel mode |
-| Autopilot DSPy | Wave 2 | Planning, Execution, Verification signatures |
+| Autopilot DSPy | Wave 2.5 | Planning, Execution, Verification + LaneMux |
+| dsrs | Complete | 14+ LM providers, Claude SDK + Pylon integration |
 | WGPUI | Phase 16 | 377 tests, full component library |
 | RLM | Working | Claude + Ollama backends, MCP tools |
 | RLM DSPy | Wave 1 | DspyOrchestrator, provenance signatures |
 | FRLM | Working | Claude venue, trace persistence, dashboard sync |
-| OANIX | Design | Agent OS runtime (future) |
+| Protocol | Wave 0 | Job schemas, canonical hashing (planned) |
+| OANIX | Wave 8 | Agent OS runtime (design) |
 
 **Bitcoin network:** Default is `regtest` for testing. Mainnet available.
 
