@@ -21,6 +21,10 @@ use crate::dspy_planning::{PlanningInput, PlanningPipeline, PlanningResult};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dspy_execution::{ExecutionPipeline, ExecutionInput, ExecutionDecision, ExecutionAction};
 
+// DSPy verification integration (native-only)
+#[cfg(not(target_arch = "wasm32"))]
+use crate::dspy_verify::{VerificationPipeline, VerificationInput, VerificationVerdict};
+
 /// Helper to create a TickResult that hibernates.
 fn tick_hibernate() -> TickResult {
     TickResult {
@@ -75,6 +79,8 @@ pub struct AutopilotState {
     pub plan_steps: Vec<String>,
     /// Execution history as JSON array of previous actions and results.
     pub execution_history: String,
+    /// Verification result from DSPy (JSON).
+    pub verification_result: Option<String>,
 }
 
 impl AgentState for AutopilotState {
@@ -127,6 +133,9 @@ pub struct AutopilotAgent {
     /// DSPy execution pipeline (native-only).
     #[cfg(not(target_arch = "wasm32"))]
     execution_pipeline: ExecutionPipeline,
+    /// DSPy verification pipeline (native-only).
+    #[cfg(not(target_arch = "wasm32"))]
+    verification_pipeline: VerificationPipeline,
 }
 
 impl AutopilotAgent {
@@ -149,6 +158,8 @@ impl AutopilotAgent {
             planning_pipeline: PlanningPipeline::new(),
             #[cfg(not(target_arch = "wasm32"))]
             execution_pipeline: ExecutionPipeline::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            verification_pipeline: VerificationPipeline::new(),
         }
     }
 
@@ -168,6 +179,8 @@ impl AutopilotAgent {
             planning_pipeline: PlanningPipeline::new(),
             #[cfg(not(target_arch = "wasm32"))]
             execution_pipeline: ExecutionPipeline::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            verification_pipeline: VerificationPipeline::new(),
         }
     }
 
@@ -496,13 +509,34 @@ impl AutopilotAgent {
     }
 
     /// Run the review phase.
+    ///
+    /// On native platforms, this uses DSPy-powered verification for structured
+    /// requirement checking and solution validation. Falls back to legacy
+    /// code review job if DSPy fails or on WASM.
     fn run_review(&self, ctx: &mut AgentContext<AutopilotState>) -> Result<TickResult> {
         // Check if we're waiting for a job result
         if let Some(job_id) = &ctx.state.pending_job_id {
             return self.poll_job_result(ctx, job_id.clone());
         }
 
-        // Submit a CodeReview job
+        // On native, try DSPy verification first
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            match self.try_dspy_review(ctx) {
+                Ok(result) => return Ok(result),
+                Err(e) => {
+                    tracing::warn!("DSPy verification failed, falling back to legacy: {}", e);
+                    self.write_hud_status("Reviewing", "Using legacy review (DSPy unavailable)");
+                }
+            }
+        }
+
+        // Legacy: submit code_review job
+        self.run_review_legacy(ctx)
+    }
+
+    /// Legacy review via /compute mount (code review job).
+    fn run_review_legacy(&self, ctx: &mut AgentContext<AutopilotState>) -> Result<TickResult> {
         let changes = ctx.state.changes.join("\n");
         match self.submit_code_review_job(&changes) {
             Ok(job_id) => {
@@ -517,6 +551,92 @@ impl AutopilotAgent {
                 Ok(tick_hibernate())
             }
         }
+    }
+
+    /// DSPy-powered verification (native-only).
+    ///
+    /// Uses the VerificationPipeline to check requirements and validate the solution.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn try_dspy_review(&self, ctx: &mut AgentContext<AutopilotState>) -> std::result::Result<TickResult, anyhow::Error> {
+        use anyhow::Context;
+
+        // Build verification input
+        let input = VerificationInput {
+            requirements: self.extract_requirements(),
+            solution_summary: self.get_solution_summary(ctx),
+            code_changes: ctx.state.changes.join("\n"),
+            build_output: self.get_build_output(),
+            test_output: self.get_test_output(),
+        };
+
+        self.write_hud_status("Reviewing", "Running DSPy verification pipeline...");
+
+        // Run verification
+        let result = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.verification_pipeline.verify(&input))
+        }).context("DSPy verification failed")?;
+
+        // Store result as JSON
+        let result_json = serde_json::to_string_pretty(&result)
+            .context("Failed to serialize verification result")?;
+        ctx.state.verification_result = Some(result_json);
+
+        // Handle verdict
+        match result.verdict {
+            VerificationVerdict::Pass => {
+                ctx.state.phase = AutopilotPhase::Complete;
+                self.write_hud_status(
+                    "Complete",
+                    &format!("Verification passed (confidence: {:.2})", result.confidence)
+                );
+            }
+            VerificationVerdict::Retry => {
+                // Go back to execution with suggested fix
+                ctx.state.phase = AutopilotPhase::Executing;
+                if let Some(action) = &result.next_action {
+                    ctx.state.plan_steps.push(action.clone());
+                }
+                self.write_hud_status("Executing", "Retrying with suggested fixes");
+            }
+            VerificationVerdict::Fail => {
+                ctx.state.phase = AutopilotPhase::Failed;
+                ctx.state.error = Some(result.explanation.clone());
+                self.write_hud_status("Failed", &result.explanation);
+            }
+        }
+
+        Ok(tick_reschedule_millis(100))
+    }
+
+    /// Extract requirements from issue description.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn extract_requirements(&self) -> Vec<String> {
+        // Simple extraction: split issue into lines, filter non-empty
+        self.issue_description
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| l.trim().to_string())
+            .collect()
+    }
+
+    /// Get solution summary from state.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn get_solution_summary(&self, ctx: &AgentContext<AutopilotState>) -> String {
+        ctx.state.plan.clone().unwrap_or_else(|| "No plan available".to_string())
+    }
+
+    /// Get build output (placeholder - would come from execution phase).
+    #[cfg(not(target_arch = "wasm32"))]
+    fn get_build_output(&self) -> String {
+        // In a real implementation, this would capture build output during execution
+        "Build status not yet captured".to_string()
+    }
+
+    /// Get test output (placeholder - would come from execution phase).
+    #[cfg(not(target_arch = "wasm32"))]
+    fn get_test_output(&self) -> String {
+        // In a real implementation, this would capture test output during execution
+        "Test status not yet captured".to_string()
     }
 
     /// Poll for job result.
