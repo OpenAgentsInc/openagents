@@ -730,6 +730,21 @@ enum MessageRole {
     Assistant,
 }
 
+/// Metadata about a message response
+#[derive(Clone, Default)]
+struct MessageMetadata {
+    /// Model used to generate response
+    model: Option<String>,
+    /// Input tokens
+    input_tokens: Option<u64>,
+    /// Output tokens
+    output_tokens: Option<u64>,
+    /// Generation time in milliseconds
+    duration_ms: Option<u64>,
+    /// Cost in millisatoshis (if applicable)
+    cost_msats: Option<u64>,
+}
+
 /// A chat message
 struct ChatMessage {
     role: MessageRole,
@@ -737,6 +752,8 @@ struct ChatMessage {
     /// Parsed markdown document for assistant messages
     document: Option<MarkdownDocument>,
     uuid: Option<String>,
+    /// Response metadata (model, tokens, timing)
+    metadata: Option<MessageMetadata>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -880,7 +897,7 @@ enum ResponseEvent {
     },
     UserMessageId { uuid: String },
     SystemMessage(String),
-    Complete,
+    Complete { metadata: Option<MessageMetadata> },
     Error(String),
     SystemInit {
         model: String,
@@ -3422,6 +3439,7 @@ fn read_session_messages(session_id: &str) -> io::Result<Vec<ChatMessage>> {
             content: stored.content,
             document,
             uuid: stored.uuid,
+            metadata: None,
         });
     }
     Ok(messages)
@@ -6134,6 +6152,7 @@ impl AppState {
             content: message,
             document: None,
             uuid: None,
+            metadata: None,
         });
     }
 }
@@ -6730,6 +6749,7 @@ impl CoderApp {
             content: prompt.clone(),
             document: None,
             uuid: None,
+            metadata: None,
         });
 
         // Handle Autopilot mode - use Adjutant instead of Claude SDK
@@ -6788,6 +6808,10 @@ impl CoderApp {
                     }
                 };
 
+                // Get model name for metadata
+                let model_name = adjutant::dspy::lm_config::detect_provider()
+                    .map(|p| p.short_name().to_string());
+
                 match Adjutant::new(manifest.clone()) {
                     Ok(mut adjutant) => {
                         tracing::info!("Autopilot: Adjutant initialized");
@@ -6803,10 +6827,12 @@ impl CoderApp {
                         let _ = tx.send(ResponseEvent::Chunk("Adjutant analyzing...\n\n".to_string()));
                         window.request_redraw();
 
-                        // Execute task
+                        // Execute task with timing
+                        let start_time = std::time::Instant::now();
                         tracing::info!("Autopilot: executing task...");
                         match adjutant.execute(&task).await {
                             Ok(result) => {
+                                let duration_ms = start_time.elapsed().as_millis() as u64;
                                 tracing::info!("Autopilot: task completed, success={}", result.success);
 
                                 // Stream the result summary
@@ -6821,7 +6847,12 @@ impl CoderApp {
                                     ));
                                 }
 
-                                let _ = tx.send(ResponseEvent::Complete);
+                                let metadata = Some(MessageMetadata {
+                                    model: model_name.clone(),
+                                    duration_ms: Some(duration_ms),
+                                    ..Default::default()
+                                });
+                                let _ = tx.send(ResponseEvent::Complete { metadata });
                             }
                             Err(e) => {
                                 tracing::error!("Autopilot: task execution failed: {}", e);
@@ -6835,7 +6866,7 @@ impl CoderApp {
                             "Autopilot requires an OpenAgents workspace.\n\n\
                              Run `oanix init` in your project directory to create one.".to_string()
                         ));
-                        let _ = tx.send(ResponseEvent::Complete);
+                        let _ = tx.send(ResponseEvent::Complete { metadata: None });
                     }
                     Err(e) => {
                         tracing::error!("Autopilot: failed to initialize Adjutant: {}", e);
@@ -7258,7 +7289,7 @@ impl CoderApp {
                                     }
                                     Some(Ok(SdkMessage::Result(_r))) => {
                                         tracing::debug!("RESULT received");
-                                        let _ = tx.send(ResponseEvent::Complete);
+                                        let _ = tx.send(ResponseEvent::Complete { metadata: None });
                                         window.request_redraw();
                                         break;
                                     }
@@ -7269,7 +7300,7 @@ impl CoderApp {
                                         break;
                                     }
                                     None => {
-                                        let _ = tx.send(ResponseEvent::Complete);
+                                        let _ = tx.send(ResponseEvent::Complete { metadata: None });
                                         window.request_redraw();
                                         break;
                                     }
@@ -7349,7 +7380,7 @@ impl CoderApp {
                     state.push_system_message(message);
                     needs_redraw = true;
                 }
-                ResponseEvent::Complete => {
+                ResponseEvent::Complete { metadata } => {
                     // Complete and move to messages
                     state.streaming_markdown.complete();
                     let source = state.streaming_markdown.source().to_string();
@@ -7360,6 +7391,7 @@ impl CoderApp {
                             content: source,
                             document: Some(doc),
                             uuid: None,
+                            metadata,
                         });
                     }
                     state.streaming_markdown.reset();
@@ -7387,6 +7419,7 @@ impl CoderApp {
                         content: format!("Error: {}", e),
                         document: None,
                         uuid: None,
+                        metadata: None,
                     });
                     state.streaming_markdown.reset();
                     state.record_session();
@@ -7916,6 +7949,46 @@ impl CoderApp {
                                     wgpui::text::FontStyle::default(),
                                 );
                                 scene.draw_text(text_run);
+                            }
+                        }
+                    }
+
+                    // Render metadata under assistant messages
+                    if let Some(meta) = &msg.metadata {
+                        let meta_y = y + msg_height - chat_line_height * 0.5;
+                        if meta_y > viewport_top && meta_y < viewport_bottom {
+                            let mut parts = Vec::new();
+                            if let Some(model) = &meta.model {
+                                parts.push(model.clone());
+                            }
+                            if let Some(input) = meta.input_tokens {
+                                if let Some(output) = meta.output_tokens {
+                                    parts.push(format!("{}+{} tokens", input, output));
+                                }
+                            }
+                            if let Some(ms) = meta.duration_ms {
+                                if ms >= 1000 {
+                                    parts.push(format!("{:.1}s", ms as f64 / 1000.0));
+                                } else {
+                                    parts.push(format!("{}ms", ms));
+                                }
+                            }
+                            if let Some(cost) = meta.cost_msats {
+                                if cost > 0 {
+                                    parts.push(format!("{} msats", cost));
+                                }
+                            }
+                            if !parts.is_empty() {
+                                let meta_text = parts.join(" · ");
+                                let meta_color = Hsla::new(0.0, 0.0, 0.35, 1.0); // dark gray
+                                let meta_run = state.text_system.layout_styled_mono(
+                                    &meta_text,
+                                    Point::new(content_x, meta_y),
+                                    11.0, // smaller font
+                                    meta_color,
+                                    wgpui::text::FontStyle::default(),
+                                );
+                                scene.draw_text(meta_run);
                             }
                         }
                     }
