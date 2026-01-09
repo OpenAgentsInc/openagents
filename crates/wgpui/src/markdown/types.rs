@@ -230,7 +230,7 @@ impl Default for MarkdownConfig {
     fn default() -> Self {
         Self {
             base_font_size: theme::font_size::BASE,
-            header_sizes: [1.8, 1.5, 1.3, 1.15, 1.1, 1.0],
+            header_sizes: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], // All same size as body text
             text_color: theme::text::PRIMARY,
             code_background: theme::bg::CODE,
             inline_code_background: Hsla::new(0.0, 0.0, 0.12, 1.0),
