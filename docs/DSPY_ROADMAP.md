@@ -17,6 +17,9 @@ Not the market layer, not the runtime. DSPy provides: **take a goal ("solve this
 - Field names act as mini-prompts — naming matters
 - Enable model portability without rewriting prompts
 
+**The Differentiator:**
+> Semantic search is table stakes. The differentiator is an end-to-end *programmable* and *optimizable* retrieval+reasoning system — a **compiled agent** where retrieval is one module in an eval-driven, optimizer-tuned, environment-interacting program.
+
 ---
 
 ## Current State
@@ -28,10 +31,11 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
 - **5,771 LOC** full implementation
 - **Optimizers**: COPRO, MIPROv2, GEPA, Pareto
 - **DAG-based tracing** with Graph/Node types
-- **12+ LM providers** via rig-core (OpenAI, Anthropic, Gemini, Groq, Ollama, etc.)
+- **14+ LM providers** via rig-core (OpenAI, Anthropic, Gemini, Groq, Ollama, Pylon, Claude SDK, etc.)
 - **Trait-based architecture**: Module, Predictor, MetaSignature, Adapter, Optimizable, Evaluator
 - **Macros**: `#[Signature]`, `#[Optimizable]` for code generation
 - **Hybrid caching** via foyer (memory + disk)
+- **Multi-provider LM support**: Claude SDK (headless) → Pylon swarm → Cerebras → Pylon local
 
 ### Wave 1: RLM Document Analysis (Complete)
 - [x] `crates/rlm/src/dspy_orchestrator.rs` - 4-phase document pipeline
@@ -44,56 +48,186 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
 - [x] `crates/autopilot/src/dspy_verify.rs` - Verification + ExecutionReviewSignature
 - [x] `crates/autopilot/src/dspy_optimization.rs` - Metrics + training data infrastructure
 
+### Wave 2.5: Adjutant Multi-Provider LM (Complete)
+- [x] `crates/dsrs/src/core/lm/claude_sdk.rs` - Claude Code headless via claude-agent-sdk
+- [x] `crates/dsrs/src/core/lm/pylon.rs` - Pylon LM provider (local/swarm/hybrid)
+- [x] `crates/adjutant/src/dspy/lm_config.rs` - Multi-provider with auto-detection
+
 ---
 
-## Wave 3: OpenAgents Integration Layer
+## The Cursor-Grade Agent Module Graph
 
-Bridge dsrs with OpenAgents infrastructure for distributed optimization.
+The minimal set of modules for "real agent for real repos" — optimizable (DSPy-style) and swarm-parallelizable (OpenAgents-style):
 
-### 3.1 Pylon LM Provider
-**File:** `crates/dsrs/src/adapter/pylon.rs` (NEW)
+```
+User Task (issue / prompt)
+        │
+        ▼
+┌──────────────────────────┐
+│ 0) Task Router           │  (budget, latency, privacy)
+│    - picks lanes         │  local vs swarm vs datacenter
+└──────────┬───────────────┘
+           │
+           ▼
+┌──────────────────────────┐
+│ 1) Query Composer        │  (DSPy)
+│    - rewrite / expand    │
+│    - generate sub-queries│
+└──────────┬───────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────────────────────┐
+│ 2) Retrieval Router (multi-lane)                          │
+│    - lexical grep/ripgrep                                 │
+│    - symbol/LSP (defs/refs, implementations, call sites)  │
+│    - semantic vector search                               │
+│    - history (git blame/log)                              │
+│    - test failure signal (stack traces)                   │
+└──────────┬───────────────────────┬───────────────────────┘
+           │                       │
+           ▼                       ▼
+┌──────────────────────────┐    ┌──────────────────────────┐
+│ 3) Evidence Ranker        │    │ 4) Evidence Workers       │
+│    - pick top-K files     │    │ (SWARM MAP)               │
+│    - decide chunking      │    │ - summarize file/chunks   │
+│    - decide what to open  │    │ - extract symbols         │
+└──────────┬───────────────┘    │ - propose hypotheses      │
+           │                    └──────────┬───────────────┘
+           └──────────────┬────────────────┘
+                          ▼
+                 ┌─────────────────────┐
+                 │ 5) Patch Planner     │ (DSPy)
+                 │ - minimal plan       │
+                 │ - tests to run       │
+                 │ - risk assessment    │
+                 └──────────┬──────────┘
+                            ▼
+                 ┌─────────────────────┐
+                 │ 6) Patch Writer      │ (tool-driven)
+                 │ - apply edits        │
+                 │ - format/lint        │
+                 └──────────┬──────────┘
+                            ▼
+                 ┌─────────────────────┐
+                 │ 7) Verifier          │
+                 │ - build/test matrix  │ (SWARM SANDBOX)
+                 │ - static checks      │ (SWARM CPU)
+                 │ - runtime repro      │
+                 └──────────┬──────────┘
+                            ▼
+                 ┌─────────────────────┐
+                 │ 8) Fix Loop          │ (DSPy policy)
+                 │ - interpret failures │
+                 │ - decide next probes │
+                 └──────────┬──────────┘
+                            ▼
+                        FINAL PATCH
+```
 
-Add Pylon as an LM provider in dsrs, enabling swarm-backed inference:
+**DSPy modules** drive *routing decisions, query rewriting, evidence ranking policies, planning policies, failure interpretation* — anything you want to **optimize/compile** against an eval suite.
+
+**Tool-driven modules** do *actually editing files, running tests, calling LSP, running grep*, etc.
+
+**DSPy drives the policy, tools do the work.**
+
+---
+
+## Wave 3: Compiler Contract & Integration Layer
+
+### 3.0 Compiler Contract (NEW)
+**Goal:** dsrs modules become first-class citizens in OpenAgents with standardized traces, compiled module IDs, cost accounting, and replayability.
+
+**Deliverables:**
+
+#### CompiledModuleManifest
+Every compiled module emits (and is tagged with):
+```rust
+pub struct CompiledModuleManifest {
+    pub signature_name: String,
+    pub compiled_id: String,          // Hash of optimized artifact
+    pub optimizer: String,            // MIPROv2/GEPA
+    pub trainset_id: String,
+    pub scorecard: Scorecard,         // Proxy + truth metrics
+    pub compatibility: Compatibility, // Model lane, tool availability
+    pub created_at: u64,
+}
+```
+
+#### TraceContract (dsrs DAG → OA spans)
+Map dsrs execution nodes to OpenAgents trace spans:
+```rust
+pub fn graph_to_spans(graph: &Graph) -> Vec<OASpan> {
+    // session → turn → module → retrieval → swarm.job → patch → verify
+}
+```
+
+#### TraceExtractorSpec (OA trace → dsrs Examples)
+Extract training examples from successful runs.
+
+### 3.1 Pylon Inference Provider
+**File:** `crates/dsrs/src/adapter/pylon.rs` ✅
+
+Pylon as an LM provider in dsrs (NIP-90 inference jobs):
 
 ```rust
-pub struct PylonClient {
+pub struct PylonInferenceProvider {
     relay_url: String,
     pubkey: XOnlyPublicKey,
     budget_sats: u64,
 }
 
-impl CompletionProvider for PylonClient {
-    async fn completion(&self, request: CompletionRequest) -> Result<CompletionResponse> {
-        // Submit NIP-90 job to Nexus relay
-        // Wait for provider response
-        // Pay Lightning invoice
-        // Return result
-    }
+impl CompletionProvider for PylonInferenceProvider {
+    // Submit NIP-90 job → Wait → Pay Lightning → Return result
 }
 ```
 
-### 3.2 DAG → Nostr Bridge
-**File:** `crates/dsrs/src/trace/nostr_bridge.rs` (NEW)
+### 3.2 Pylon Sandbox Provider (NEW)
+**File:** `crates/dsrs/src/adapter/pylon_sandbox.rs`
 
-Convert dsrs execution graphs to Nostr events for distributed tracing:
+Separate provider for sandbox execution (Daytona-style, CPU-heavy):
+
+```rust
+pub struct PylonSandboxProvider {
+    relay_url: String,
+    resource_profile: SandboxProfile,  // S/M/L
+}
+
+pub enum SandboxProfile {
+    S { vcpus: 1, memory_mb: 1024, disk_gb: 5 },
+    M { vcpus: 2, memory_mb: 4096, disk_gb: 8 },
+    L { vcpus: 4, memory_mb: 8192, disk_gb: 10 },
+}
+```
+
+**Why split?** DSPy will compile differently when the tool is "LLM call" vs "run tests".
+
+### 3.3 DAG → Nostr Bridge
+**File:** `crates/dsrs/src/trace/nostr_bridge.rs`
+
+Convert **only receiptable nodes** to Nostr events (don't spam relays):
+- LM calls (local/swarm/dc)
+- sandbox runs
+- retrieval calls
+- patch application
+- verification decisions
 
 ```rust
 pub fn graph_to_nostr_events(graph: &Graph) -> Vec<NostrEvent> {
-    graph.nodes.iter().map(|node| {
-        match &node.node_type {
-            NodeType::Root => kind_1_text_note(node),
+    graph.nodes.iter()
+        .filter(|n| n.is_receiptable())
+        .map(|node| match &node.node_type {
             NodeType::Predict { .. } => kind_5050_job(node),
-            NodeType::Operator { .. } => kind_1_with_tags(node),
-            NodeType::Map { .. } => kind_1_lineage(node),
-        }
-    }).collect()
+            NodeType::Sandbox { .. } => kind_5050_sandbox(node),
+            NodeType::Retrieval { .. } => kind_1_with_tags(node),
+            _ => kind_1_text_note(node),
+        }).collect()
 }
 ```
 
-### 3.3 Callback System for HUD
-**File:** `crates/dsrs/src/callbacks.rs` (NEW)
+### 3.4 Callback System for HUD
+**File:** `crates/dsrs/src/callbacks.rs`
 
-Port Python DSPy's callback system for real-time HUD integration:
+Upgrade to emit **OA span events** with compiled module hash and signature name:
 
 ```rust
 pub trait DspyCallback: Send + Sync {
@@ -105,10 +239,19 @@ pub trait DspyCallback: Send + Sync {
 }
 ```
 
-### 3.4 Refine Pattern for Verification
-**File:** `crates/dsrs/src/predictors/refine.rs` (NEW)
+Each callback attaches:
+- compiled module hash
+- signature name
+- inputs/outputs hashes (for privacy + replay)
 
-Port Python DSPy's Refine module (replaced assertions):
+### 3.5 Refine Pattern for Verification
+**File:** `crates/dsrs/src/predictors/refine.rs`
+
+Meta-operator wrapping any module with:
+- retry budget
+- fallback model lane
+- enforced structured output
+- failure attribution into traces
 
 ```rust
 pub struct Refine<M: Module> {
@@ -116,19 +259,238 @@ pub struct Refine<M: Module> {
     n_rollouts: usize,
     reward_fn: Box<dyn Fn(&Example, &Prediction) -> f32>,
     threshold: f32,
+    fallback_lane: ModelLane,
 }
 ```
 
-Multiple rollouts → reward evaluation → feedback hints → retry with improved context.
+---
+
+## Wave 4: Swarm Job Types & Retrieval Policy
+
+### 4.1 Canonical Swarm Job Types
+
+These become the "map-reduce primitives" DSPy compiles against:
+
+#### `oa.code_chunk_analysis.v1`
+Parallel "map" work over candidate files/chunks:
+- summarize
+- extract symbols
+- invariants
+- bug hypotheses
+- recommended next probes
+
+**Request:**
+```json
+{
+  "task": "bug_hypothesis",
+  "user_task": "Fix failing tests for empty prompt handling",
+  "chunk": { "path": "src/service.py", "start_line": 1, "end_line": 160, "content": "..." },
+  "output_constraints": { "max_summary_chars": 1500, "max_findings": 6 }
+}
+```
+
+**Response:**
+```json
+{
+  "summary": "...",
+  "symbols": [{"name": "SuggestionService", "kind": "class", "line": 120}],
+  "suspected_faults": [{"line": 244, "reason": "..."}],
+  "recommended_next_probes": [{"lane": "lsp_refs", "query": "normalize_prompt"}],
+  "confidence": 0.85
+}
+```
+
+#### `oa.retrieval_rerank.v1`
+LLM-based reranking of candidate set:
+
+**Request:**
+```json
+{
+  "user_task": "...",
+  "candidates": [{"candidate_id": "c1", "lane": "semantic", "path": "...", "snippet": "..."}],
+  "k": 10,
+  "ranking_rubric": { "prefer_fix_surface": true }
+}
+```
+
+**Response:**
+```json
+{
+  "topk": [{"rank": 1, "candidate_id": "c1", "score": 0.92, "why": "..."}]
+}
+```
+
+#### `oa.sandbox_run.v1`
+Concurrent sandbox execution (builds/tests/lints):
+
+**Request:**
+```json
+{
+  "sandbox": { "provider": "daytona", "resources": {"vcpus": 2, "memory_mb": 4096} },
+  "repo": { "fetch": {"kind": "git", "git_url": "...", "git_commit": "..."} },
+  "commands": [{"name": "test", "cmd": "pytest -q", "timeout_ms": 300000}]
+}
+```
+
+**Response:**
+```json
+{
+  "runs": [{"name": "test", "exit_code": 0, "duration_ms": 12000}],
+  "overall": { "status": "pass" }
+}
+```
+
+### 4.2 Retrieval Policy Signatures (NEW)
+
+Turn "retrieval as feature" into "retrieval as optimizable policy":
+
+#### QueryComposerSignature
+```rust
+#[Signature]
+struct QueryComposerSignature {
+    /// Turn user goal + failure logs into targeted retrieval probes.
+
+    #[input] user_goal: String,
+    #[input] failure_log: String,
+    #[input] repo_summary: String,
+
+    #[output] grep_queries: String,      // JSON array
+    #[output] semantic_queries: String,  // JSON array
+    #[output] symbol_queries: String,    // JSON array
+    #[output] confidence: f32,
+}
+```
+
+#### RetrievalRouterSignature
+```rust
+#[Signature]
+struct RetrievalRouterSignature {
+    /// Decide which retrieval lane and K to use. This is where you beat "always semantic search".
+
+    #[input] user_goal: String,
+    #[input] repo_summary: String,
+    #[input] available_lanes: String,    // JSON: grep/semantic/lsp/git/tests
+    #[input] budget_hint: String,
+
+    #[output] lane_plan: String,         // JSON: [{lane, k, query, reason}]
+    #[output] stop_condition: String,    // "enough_evidence" | "need_more"
+    #[output] confidence: f32,
+}
+```
+
+#### CandidateRerankSignature
+```rust
+#[Signature]
+struct CandidateRerankSignature {
+    /// Rerank candidates (maps to oa.retrieval_rerank.v1)
+
+    #[input] user_goal: String,
+    #[input] candidates: String,
+
+    #[output] topk: String,              // JSON ordered list + why
+    #[output] expansion_queries: String, // Follow-ups
+}
+```
+
+### 4.3 Chunk Analysis Signatures (NEW)
+
+#### ChunkTaskSelectorSignature
+```rust
+#[Signature]
+struct ChunkTaskSelectorSignature {
+    /// Select what analysis to request per chunk.
+
+    #[input] user_goal: String,
+    #[input] failure_log: String,
+    #[input] candidate_meta: String,
+
+    #[output] task: String,              // summarize|bug_hypothesis|extract_symbols
+    #[output] instructions: String,
+}
+```
+
+#### ChunkAnalysisToActionSignature
+```rust
+#[Signature]
+struct ChunkAnalysisToActionSignature {
+    /// Aggregate chunk analyses into next steps.
+
+    #[input] user_goal: String,
+    #[input] analyses: String,           // JSON array of chunk analysis outputs
+
+    #[output] next_probes: String,       // JSON: [{lane, query, why}]
+    #[output] likely_fix_files: String,
+    #[output] confidence: f32,
+}
+```
+
+### 4.4 Sandbox Signatures (NEW)
+
+#### SandboxProfileSelectionSignature
+```rust
+#[Signature]
+struct SandboxProfileSelectionSignature {
+    /// Choose S/M/L resources. This directly controls cost.
+
+    #[input] repo_summary: String,
+    #[input] planned_commands: String,
+    #[input] org_limits: String,
+
+    #[output] profile: String,           // "S"|"M"|"L"
+    #[output] resources: String,         // JSON {vcpus, memory_mb, disk_gb}
+    #[output] rationale: String,
+}
+```
+
+#### FailureTriageSignature
+```rust
+#[Signature]
+struct FailureTriageSignature {
+    /// Turn failing sandbox run into best next move.
+
+    #[input] user_goal: String,
+    #[input] command: String,
+    #[input] stdout_tail: String,
+    #[input] stderr_tail: String,
+    #[input] last_patch_summary: String,
+
+    #[output] diagnosis: String,
+    #[output] next_action: String,       // "search"|"patch"|"rerun"|"escalate"
+    #[output] recommended_probe: String,
+}
+```
+
+### 4.5 Lane Budgeting Signatures (NEW)
+
+#### LaneBudgeterSignature
+```rust
+#[Signature]
+struct LaneBudgeterSignature {
+    /// Decide when to use swarm vs local vs datacenter.
+
+    #[input] task_type: String,
+    #[input] urgency: String,            // interactive|batch
+    #[input] remaining_budget_msats: u64,
+    #[input] estimated_costs: String,
+
+    #[output] chosen_lane: String,       // local|swarm|datacenter
+    #[output] max_msats: u64,
+    #[output] rationale: String,
+}
+```
+
+**Files to Create:**
+- `crates/dsrs/src/signatures/retrieval_policy.rs`
+- `crates/dsrs/src/signatures/chunk_analysis.rs`
+- `crates/dsrs/src/signatures/sandbox.rs`
+- `crates/dsrs/src/signatures/budgeting.rs`
 
 ---
 
-## Wave 4: Swarm-Backed Optimization
+## Wave 5: Swarm-Backed Optimization
 
-### 4.1 SwarmCompiler
-**File:** `crates/autopilot/src/dspy_compiler.rs` (NEW)
-
-Use Pylon swarm for cheap optimization iterations:
+### 5.1 SwarmCompiler
+**File:** `crates/autopilot/src/dspy_compiler.rs`
 
 ```rust
 pub struct SwarmCompiler {
@@ -154,8 +516,37 @@ impl SwarmCompiler {
 - Claude alone: ~$15 for 1,800 calls
 - With swarm optimization: ~$0.10 (96.7% reduction)
 
-### 4.2 TraceExtractor
-**File:** `crates/autopilot/src/trace_extraction.rs` (NEW)
+### 5.2 Two-Tier Metrics (NEW)
+
+#### Proxy Metrics (cheap, frequent)
+- Retrieval recall@k vs gold file list
+- Evidence relevance score
+- Number of files opened / bytes read
+- Loop count
+- Sats spent
+
+#### Truth Metrics (expensive, definitive)
+- Tests pass in sandbox
+- Minimal diff size / no regressions
+- No policy violations
+
+**Strategy:** Compile using proxy metrics most of the time, **validate candidates** on truth metrics.
+
+### 5.3 Scoring Function
+
+```
+score =
+  1.0 * pass_tests
+  - 0.25 * min(1, total_cost_msats / budget_msats)
+  - 0.15 * min(1, total_time_ms / time_budget_ms)
+  - 0.10 * min(1, diff_lines_changed / diff_budget_lines)
+  - 0.10 * min(1, sandbox_runs / sandbox_budget_runs)
+```
+
+This makes the optimizer learn "don't brute force."
+
+### 5.4 TraceExtractor
+**File:** `crates/autopilot/src/trace_extraction.rs`
 
 Extract training examples from successful sessions:
 
@@ -173,7 +564,89 @@ impl TraceExtractor {
 
 ---
 
-## Wave 5: OANIX (Agent OS Runtime)
+## Wave 6: Eval Harness & Promotion Gates
+
+### 6.1 Eval Task Format
+
+```json
+{
+  "task_id": "py-0007",
+  "repo": {
+    "git_url": "...",
+    "commit_bad": "BAD_SHA",
+    "commit_fix": "FIX_SHA"
+  },
+  "goal": "Fix failing tests for empty prompt handling",
+  "setup_cmds": ["pip install -e ."],
+  "fail_cmd": "pytest -q",
+  "gold": {
+    "files_touched": ["src/service.py", "tests/test_service.py"],
+    "symbols": ["SuggestionService.predict"]
+  },
+  "constraints": {
+    "max_files_touched": 4,
+    "no_new_deps": true
+  }
+}
+```
+
+**Why include `commit_fix`?** Auto-generate gold files/symbols by diffing, validate "your patch is in the right neighborhood."
+
+### 6.2 Promotion Gates (NEW)
+
+A compiled policy should not roll out globally unless it passes:
+
+1. **Regression suite** - All existing tasks still pass
+2. **Budget cap sanity** - No runaway cost
+3. **Failure mode checks** - Timeouts, runaway loops
+
+**Policy Registry:**
+```
+candidate → staged → promoted → rolled_back
+```
+
+A/B routing by compiled_id in production.
+
+### 6.3 Compile Order
+
+Start compiling **only policies**, not everything:
+
+1. **RetrievalRouter policy** - How much semantic vs grep vs LSP, K, chunking, dedupe
+2. **EvidenceRanker rubric** - Choose best 10 chunks to analyze
+3. **FailureInterpreter** - What to do after failed test run (where most agents waste money)
+
+Then:
+4. PatchPlanner style / constraints
+5. PatchWriter strategies (multi-candidate vs single)
+
+---
+
+## Wave 7: Privacy & Redaction Mode
+
+### 7.1 Private Repo Swarm Mode
+
+For swarm compilation on real repos:
+
+**Deliverables:**
+- Redaction transforms (paths, identifiers, string literals, secrets)
+- Chunking policy (only ship smallest necessary spans)
+- Allowlist of job types permitted for private repos
+- Optional "trusted providers" lane
+
+### 7.2 Privacy Constraints
+
+```rust
+pub enum PrivacyMode {
+    PublicOk,           // Can ship full content
+    NoPii,              // Redact PII
+    PrivateRepoRedacted, // Redact paths, identifiers
+    PrivateRepoAllowed,  // Trusted providers only
+}
+```
+
+---
+
+## Wave 8: OANIX (Agent OS Runtime)
 
 Transform OANIX's rule-based decision making into DSPy signatures.
 
@@ -242,7 +715,7 @@ struct LifecycleDecisionSignature {
 
 ---
 
-## Wave 6: Agent Orchestrator
+## Wave 9: Agent Orchestrator
 
 Convert the 7 specialized agent prompts into DSPy Signatures.
 
@@ -309,7 +782,7 @@ struct ArchitectureSignature {
 
 ---
 
-## Wave 7: Tool Invocation
+## Wave 10: Tool Invocation
 
 Universal tool selection and interpretation layer.
 
@@ -363,7 +836,7 @@ struct ToolChainPlanningSignature {
 
 ---
 
-## Wave 8: Optimization Infrastructure
+## Wave 11: Optimization Infrastructure
 
 Production-ready optimization pipeline.
 
@@ -371,8 +844,9 @@ Production-ready optimization pipeline.
 
 1. **DSPy Hub for OpenAgents**
    - Pre-optimized modules stored in `~/.openagents/dspy/optimized/`
-   - Version modules with session hash
+   - Version modules with compiled_id (hash)
    - Share optimized modules across machines
+   - Include optimization scorecard
 
 2. **Automated Training Data Collection**
    - Extract examples from successful autopilot sessions
@@ -385,14 +859,97 @@ Production-ready optimization pipeline.
    - Automated regression testing
 
 4. **A/B Testing Framework**
+   - Route by compiled_id
    - Compare optimized vs base signatures
    - Track success rates by signature
    - Gradual rollout of optimized versions
+   - Support rollback
 
 **Files to Create:**
 - `crates/autopilot/src/dspy_hub.rs`
 - `crates/autopilot/src/dspy_training.rs`
 - `scripts/optimize_signatures.rs`
+
+---
+
+## Wave 12: FRLM Integration
+
+FRLM-specific signatures for the flagship RLM narrative.
+
+### FRLMDecomposeSignature
+```rust
+#[Signature]
+struct FRLMDecomposeSignature {
+    /// Root decides what subcalls to spawn over which spans.
+
+    #[input] query: String,
+    #[input] env_summary: String,
+    #[input] progress: String,
+
+    #[output] subqueries: String,         // JSON: [{span_selector, question, schema}]
+    #[output] stopping_rule: String,
+}
+```
+
+### FRLMAggregateSignature
+```rust
+#[Signature]
+struct FRLMAggregateSignature {
+    /// Reduce step: merge worker results into final answer.
+
+    #[input] query: String,
+    #[input] worker_results: String,
+
+    #[output] answer: String,
+    #[output] citations: String,          // SpanRefs or doc ids
+    #[output] confidence: f32,
+}
+```
+
+---
+
+## Trace Taxonomy for HUD + Optimization
+
+### Core Span Types
+
+| Span Type | Attributes |
+|-----------|------------|
+| `session` | user_id_hash, repo_id, mode (local/swarm/dc/hybrid) |
+| `turn` | prompt_chars, budget_msats, target_slo_ms |
+| `module` | module_name, compiled_id, model_lane |
+| `retrieval` | lane (grep/semantic/lsp/git), k, candidates_returned, latency_ms |
+| `swarm.dispatch` | job_type, fanout, max_msats |
+| `swarm.job` | job_id, provider_pubkey, charged_msats, latency_ms, status |
+| `patch.apply` | files_touched, diff_bytes, diff_lines_added/removed |
+| `verify` | strategy (fast/full/matrix), sandbox_profile, pass_fail |
+
+### Trace Record Format
+
+```json
+{
+  "trace_id": "t-123",
+  "span_id": "s-200",
+  "parent_span_id": "s-100",
+  "name": "swarm.job",
+  "start_ms": 1736410001000,
+  "end_ms": 1736410004200,
+  "status": "ok",
+  "attrs": {
+    "job_type": "oa.code_chunk_analysis.v1",
+    "job_id": "1a2b...",
+    "provider_pubkey": "npub1...",
+    "charged_msats": 2100
+  }
+}
+```
+
+### Result Provenance (for replay/verify)
+
+Every job output includes:
+- `model_id`
+- `sampling`: {temperature, top_p, seed?}
+- `input_sha256`
+- `output_sha256`
 
 ---
 
@@ -413,15 +970,21 @@ Production-ready optimization pipeline.
    - When MIPROv2 plateaus
    - Higher computational cost
 
-4. **Store Optimized Modules**
-   - In `~/.openagents/dspy/optimized/`
-   - Version with session hash
-   - Include optimization metrics
+4. **What to Compile First**
+   - RetrievalRouter policy
+   - EvidenceRanker rubric
+   - FailureInterpreter
+   - Then PatchPlanner, PatchWriter
 
-5. **Version Optimized Modules**
-   - Track which sessions used which version
-   - Enable rollback if needed
-   - Compare versions over time
+5. **Store Optimized Modules**
+   - In `~/.openagents/dspy/optimized/`
+   - Version with compiled_id (hash)
+   - Include scorecard (proxy + truth metrics)
+
+6. **Promotion Gates**
+   - Regression suite pass
+   - Budget cap sanity
+   - A/B test before full rollout
 
 ---
 
@@ -441,8 +1004,9 @@ Production-ready optimization pipeline.
 │                            │                                        │
 │  INTEGRATION LAYER         │                                        │
 │  ┌─────────────────────────┴─────────────────────────────────────┐ │
-│  │  PylonClient (LM provider)  │  NostrBridge (DAG ↔ events)     │ │
-│  │  HudCallback (streaming)    │  TraceExtractor (training data) │ │
+│  │  PylonInference (LM)  │  PylonSandbox (tests)                 │ │
+│  │  NostrBridge (DAG ↔ events)  │  TraceExtractor (examples)     │ │
+│  │  HudCallback (streaming)     │  CompiledManifest (versioning) │ │
 │  └───────────────────────────────────────────────────────────────┘ │
 │                            │                                        │
 │  EXECUTION LAYER (OpenAgents)                                       │
@@ -469,9 +1033,10 @@ Production-ready optimization pipeline.
 │  SwarmCompiler → MIPROv2 → Pylon providers (10 msats/call)       │
 │  HudCallback streams progress → DAG → Nostr events               │
 ├─────────────────────────────────────────────────────────────────┤
-│  VALIDATION (Refine pattern)                                     │
+│  VALIDATION (Refine pattern + Promotion Gates)                   │
 │  Multiple rollouts → reward eval → feedback hints → retry        │
 │  Premium model for final validation                              │
+│  Regression suite + A/B test before promotion                    │
 ├─────────────────────────────────────────────────────────────────┤
 │  IMPROVED AGENTS                                                 │
 │  Optimized signatures have better prompts/demos                  │
@@ -499,6 +1064,9 @@ Different signatures benefit from different models:
 | Tool Selection | Any fast model | Simple classification |
 | Oracle Query | Claude Sonnet | Good at synthesis |
 | Architecture | Claude Opus | Needs deep reasoning |
+| Retrieval Router | Pylon Local | Fast, cheap policy |
+| Evidence Ranker | Pylon Swarm | Parallelizable |
+| Failure Triage | Claude Sonnet | Needs reasoning |
 
 ---
 
@@ -511,6 +1079,28 @@ For each signature, track:
 - **Token Usage**: How many tokens per call?
 - **Cost**: Sats spent per optimization run
 - **User Corrections**: How often do users override?
+- **Retrieval Recall@K**: Did we find the right files?
+- **Diff Size**: How minimal is the patch?
+- **Sandbox Runs**: How many verification attempts?
+
+---
+
+## Implementation Priority
+
+### Week 1: Swarm Evidence Workers
+- Implement `oa.code_chunk_analysis.v1` job type end-to-end
+- Root agent selects top-K chunks → dispatches to swarm → aggregates summaries
+- Show in HUD
+
+### Week 2: Swarm Verifier Matrix
+- Implement `oa.sandbox_run.v1` job type
+- Root dispatches: lint, unit tests, typecheck
+- Show "test matrix" panel in HUD (green/red tiles)
+
+### Week 3: DSPy Compilation Loop (offline)
+- Take 30-100 real issues from OSS repos
+- Define metric: tests pass + minimal diff + time
+- Compile: retrieval router, chunking policy, failure interpreter
 
 ---
 
