@@ -2,6 +2,9 @@
 //!
 //! This agent implements the runtime Agent trait and submits compute jobs
 //! through the /compute filesystem mount instead of spawning local processes.
+//!
+//! On native platforms, the agent uses DSPy-powered planning for optimizable
+//! structured outputs. On WASM, it falls back to legacy prompt-based planning.
 
 use openagents_runtime::{
     Agent, AgentConfig, AgentContext, AgentEnv, AgentState, Trigger, TickResult,
@@ -9,6 +12,10 @@ use openagents_runtime::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+// DSPy planning integration (native-only)
+#[cfg(not(target_arch = "wasm32"))]
+use crate::dspy_planning::{PlanningInput, PlanningPipeline, PlanningResult};
 
 /// Helper to create a TickResult that hibernates.
 fn tick_hibernate() -> TickResult {
@@ -104,6 +111,9 @@ pub struct AutopilotAgent {
     issue_description: String,
     /// Configuration.
     config: AutopilotConfig,
+    /// DSPy planning pipeline (native-only).
+    #[cfg(not(target_arch = "wasm32"))]
+    planning_pipeline: PlanningPipeline,
 }
 
 impl AutopilotAgent {
@@ -122,6 +132,8 @@ impl AutopilotAgent {
                 max_cost_per_tick_usd: 5_000_000,  // $5
                 max_cost_per_day_usd: 100_000_000, // $100
             },
+            #[cfg(not(target_arch = "wasm32"))]
+            planning_pipeline: PlanningPipeline::new(),
         }
     }
 
@@ -137,17 +149,41 @@ impl AutopilotAgent {
             repo_url,
             issue_description,
             config,
+            #[cfg(not(target_arch = "wasm32"))]
+            planning_pipeline: PlanningPipeline::new(),
         }
     }
 
     /// Run the planning phase.
+    ///
+    /// On native platforms, this uses the DSPy-powered PlanningPipeline for
+    /// optimizable structured outputs. Falls back to legacy prompt-based
+    /// planning if DSPy fails or on WASM.
     fn run_planning(&self, ctx: &mut AgentContext<AutopilotState>) -> Result<TickResult> {
-        // Check if we're waiting for a job result
+        // Check if we're waiting for a job result (legacy mode)
         if let Some(job_id) = &ctx.state.pending_job_id {
             return self.poll_job_result(ctx, job_id.clone());
         }
 
-        // Submit a planning job
+        // On native, try DSPy planning first
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            match self.try_dspy_planning(ctx) {
+                Ok(result) => return Ok(result),
+                Err(e) => {
+                    // Log DSPy failure and fall back to legacy
+                    tracing::warn!("DSPy planning failed, falling back to legacy: {}", e);
+                    self.write_hud_status("Planning", "Using legacy planning (DSPy unavailable)");
+                }
+            }
+        }
+
+        // Legacy planning via /compute mount
+        self.run_planning_legacy(ctx)
+    }
+
+    /// Legacy planning via /compute mount (prompt-based).
+    fn run_planning_legacy(&self, ctx: &mut AgentContext<AutopilotState>) -> Result<TickResult> {
         let prompt = self.build_planning_prompt();
         match self.submit_chat_job(&prompt, PLANNING_SYSTEM_PROMPT) {
             Ok(job_id) => {
@@ -161,6 +197,73 @@ impl AutopilotAgent {
                 self.write_hud_status("Failed", &format!("Planning failed: {}", e));
                 Ok(tick_hibernate())
             }
+        }
+    }
+
+    /// DSPy-powered planning (native-only).
+    ///
+    /// Uses the PlanningPipeline to generate structured, optimizable plans.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn try_dspy_planning(&self, ctx: &mut AgentContext<AutopilotState>) -> std::result::Result<TickResult, anyhow::Error> {
+        use anyhow::Context;
+
+        // Build structured input
+        let input = PlanningInput {
+            repository_summary: self.get_repo_summary(),
+            issue_description: self.issue_description.clone(),
+            relevant_files: self.get_relevant_files(),
+            code_patterns: None,
+        };
+
+        self.write_hud_status("Planning", "Running DSPy planning pipeline...");
+
+        // Run DSPy pipeline synchronously (block on async)
+        // Note: In a real async runtime, this would be properly awaited
+        let result = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.planning_pipeline.plan(&input))
+        }).context("DSPy planning pipeline failed")?;
+
+        // Store structured result as JSON
+        let plan_json = serde_json::to_string_pretty(&result)
+            .context("Failed to serialize planning result")?;
+
+        ctx.state.plan = Some(plan_json.clone());
+        ctx.state.phase = AutopilotPhase::Executing;
+
+        self.write_hud_status(
+            "Executing",
+            &format!(
+                "DSPy plan created (complexity: {:?}, confidence: {:.2})",
+                result.complexity,
+                result.confidence
+            ),
+        );
+
+        Ok(tick_reschedule_millis(100))
+    }
+
+    /// Get repository summary for DSPy planning.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn get_repo_summary(&self) -> String {
+        // Try to read from /repo mount or return placeholder
+        if let Ok(readme_bytes) = self.env.read("/repo/README.md") {
+            let readme = String::from_utf8_lossy(&readme_bytes);
+            format!("Repository: {}\n\nREADME excerpt:\n{}", self.repo_url, &readme[..readme.len().min(1000)])
+        } else {
+            format!("Repository: {}", self.repo_url)
+        }
+    }
+
+    /// Get list of relevant files for DSPy planning.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn get_relevant_files(&self) -> String {
+        // Try to list source files from /repo mount
+        if let Ok(files_bytes) = self.env.read("/repo/.git/index") {
+            // Git index exists, repo is available
+            // For now, return placeholder - could list actual files
+            "Source files available in repository".to_string()
+        } else {
+            "Repository files not yet indexed".to_string()
         }
     }
 
