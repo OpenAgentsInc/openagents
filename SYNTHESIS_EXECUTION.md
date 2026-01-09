@@ -257,15 +257,15 @@ User Task → Task Router → Query Composer → Retrieval Router
 | `dspy_verify.rs` | RequirementChecker, TestAnalyzer, ExecutionReview |
 | `dspy_optimization.rs` | Metrics + training data infrastructure |
 
-**Swarm job types (map-reduce primitives):**
+**Swarm job types (defined in `crates/protocol/`):**
 
-| Job Type | Mode | Purpose |
-|----------|------|---------|
-| `oa.code_chunk_analysis.v1` | Subjective | Parallel file/chunk analysis, hypotheses |
-| `oa.retrieval_rerank.v1` | Subjective | LLM-based candidate reranking |
-| `oa.sandbox_run.v1` | Objective | Build/test/lint in sandboxed environment |
+| Job Type | Mode | Redundancy | Adjudication |
+|----------|------|------------|--------------|
+| `oa.code_chunk_analysis.v1` | Subjective | 2 | JudgeModel |
+| `oa.retrieval_rerank.v1` | Subjective | 2 | MajorityVote |
+| `oa.sandbox_run.v1` | Objective | 1 | None |
 
-Each job includes `verification.mode` (objective/subjective), redundancy, and adjudication strategy.
+Each job includes `verification.mode`, `redundancy`, and `adjudication` strategy. See [protocol docs](./crates/protocol/docs/README.md).
 
 **Planning pipeline:**
 ```
@@ -323,7 +323,7 @@ Shadow mode runs both old and new policy, ships old result, promotes only if new
 
 | Wave | Status | Description |
 |------|--------|-------------|
-| 0 | Planned | Protocol + Schema Registry (job schemas, hashing, versioning) |
+| 0 | **Complete** | Protocol + Schema Registry (`crates/protocol/`) |
 | 1-2 | Complete | RLM + Autopilot signatures |
 | 2.5 | Complete | LaneMux (multi-provider LM auto-detection) |
 | 3 | Planned | Compiler Contract (CompiledModuleManifest, TraceContract) |
@@ -333,6 +333,58 @@ Shadow mode runs both old and new policy, ships old result, promotes only if new
 | 7+ | Planned | Privacy, OANIX, Agent Orchestrator, Tool Invocation |
 
 See [docs/DSPY_ROADMAP.md](./docs/DSPY_ROADMAP.md) for full roadmap.
+
+---
+
+## Protocol
+
+**What it is:** Foundation for typed job schemas with deterministic hashing. Every swarm job has a well-defined request/response structure, canonical hash, and verification mode.
+
+**Key paths:**
+- `crates/protocol/src/hash.rs` — Canonical JSON (RFC 8785) + SHA-256
+- `crates/protocol/src/version.rs` — Semver schema versioning
+- `crates/protocol/src/verification.rs` — Objective/subjective modes
+- `crates/protocol/src/provenance.rs` — Audit trails (model, sampling, hashes)
+- `crates/protocol/src/jobs/` — Job type schemas
+
+**Job envelope structure:**
+```rust
+JobEnvelope {
+    job_type: "oa.code_chunk_analysis.v1",
+    schema_version: "1.0.0",
+    job_hash: "abc123...",  // SHA-256 of canonical JSON
+    payload: { ... }
+}
+```
+
+**Verification modes:**
+| Mode | Description | Example Jobs |
+|------|-------------|--------------|
+| Objective | Deterministic, single provider | Tests, builds, lint |
+| Subjective | Requires judgment, multi-provider | Summaries, rankings |
+
+**Adjudication strategies:**
+| Strategy | Use Case |
+|----------|----------|
+| None | Objective jobs |
+| MajorityVote | Categorical outputs |
+| JudgeModel | Complex subjective outputs |
+| Merge | Cumulative outputs (symbol lists) |
+
+**Provenance tracking:**
+```rust
+Provenance {
+    model_id: "claude-3-sonnet",
+    sampling: { temperature: 0.0, seed: 42 },
+    input_sha256: "...",
+    output_sha256: "...",
+    provider_pubkey: "npub1...",
+    executed_at: 1700000000,
+    tokens: { input: 500, output: 200 }
+}
+```
+
+**Documentation:** See [crates/protocol/docs/](./crates/protocol/docs/README.md) for full API reference.
 
 ---
 
@@ -383,6 +435,7 @@ cargo build -p wgpui --target wasm32-unknown-unknown    # WASM
 | `frostr` | FROST threshold signatures |
 | `dsrs` | Rust DSPy - signatures, optimizers, DAG tracing |
 | `dsrs-macros` | Procedural macros for dsrs |
+| `protocol` | Typed job schemas, canonical hashing, verification |
 
 **RLM/FRLM execution venues:**
 
@@ -521,7 +574,7 @@ Issues are NOT done unless:
 | RLM | Working | Claude + Ollama backends, MCP tools |
 | RLM DSPy | Wave 1 | DspyOrchestrator, provenance signatures |
 | FRLM | Working | Claude venue, trace persistence, dashboard sync |
-| Protocol | Wave 0 | Job schemas, canonical hashing (planned) |
+| Protocol | **Complete** | Job schemas, canonical hashing, verification modes |
 | OANIX | Wave 8 | Agent OS runtime (design) |
 
 **Bitcoin network:** Default is `regtest` for testing. Mainnet available.
@@ -557,4 +610,5 @@ pylon wallet fund  # regtest only
 cargo test -p pylon
 cargo test -p runtime
 cargo test -p wgpui
+cargo test -p protocol
 ```
