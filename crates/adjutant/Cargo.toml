@@ -51,6 +51,7 @@ dirs = "5.0"
 
 # Async utilities
 futures = "0.3"
+reqwest = { workspace = true, features = ["stream", "json"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

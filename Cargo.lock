@@ -267,6 +267,7 @@ dependencies = [
  "indexmap 2.12.1",
  "issues",
  "oanix",
+ "reqwest",
  "rlm",
  "serde",
  "serde_json",

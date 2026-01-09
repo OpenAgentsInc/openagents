@@ -48,9 +48,11 @@ pub mod rlm_agent;
 pub mod tiered;
 pub mod tools;
 
+use futures::StreamExt;
 use oanix::{OanixManifest, WorkspaceManifest};
 use std::path::PathBuf;
 use thiserror::Error;
+use tokio::sync::mpsc;
 
 pub use auth::{get_claude_path, has_claude_cli};
 pub use claude_executor::ClaudeExecutor;
@@ -236,6 +238,166 @@ impl Adjutant {
         // 5. Do the work myself using tools
         tracing::info!("Executing with local tools");
         self.execute_with_tools(task, &plan).await
+    }
+
+    /// Execute a task with streaming support for local LM.
+    ///
+    /// This method streams tokens through the provided channel for real-time display.
+    /// Returns the complete result when done.
+    pub async fn execute_streaming(
+        &mut self,
+        task: &Task,
+        token_tx: mpsc::UnboundedSender<String>,
+    ) -> Result<TaskResult, AdjutantError> {
+        tracing::info!("Adjutant streaming task: {}", task.title);
+
+        // 1. Plan the task
+        let plan = self.plan_task(task).await?;
+
+        // 2. Check which LM provider to use
+        let provider = dspy::lm_config::detect_provider();
+
+        match provider {
+            // Use local LlamaCpp/GPT-OSS with streaming
+            Some(dspy::lm_config::LmProvider::LlamaCpp) => {
+                tracing::info!("Streaming with local llama.cpp/GPT-OSS");
+                return self.stream_with_local_lm(task, &plan, token_tx).await;
+            }
+            // For other providers, fall back to non-streaming
+            _ => {
+                let result = self.execute(task).await?;
+                // Send the complete result as a single chunk
+                let _ = token_tx.send(result.summary.clone());
+                return Ok(result);
+            }
+        }
+    }
+
+    /// Stream response from local LM (llama.cpp/GPT-OSS).
+    async fn stream_with_local_lm(
+        &mut self,
+        task: &Task,
+        plan: &TaskPlan,
+        token_tx: mpsc::UnboundedSender<String>,
+    ) -> Result<TaskResult, AdjutantError> {
+        // Build context from relevant files
+        let context = self.build_context(plan).await?;
+
+        // Build prompt
+        let prompt = format!(
+            "You are an AI coding assistant. Complete the following task.\n\n\
+             ## Task\n{}\n\n\
+             ## Context\n{}\n\n\
+             Provide a clear, helpful response.",
+            task.to_prompt(),
+            context
+        );
+
+        // Get llama.cpp endpoint
+        let base_url = std::env::var("LLAMACPP_URL").unwrap_or_else(|_| {
+            for port in [8080, 8000] {
+                if std::net::TcpStream::connect_timeout(
+                    &format!("127.0.0.1:{}", port).parse().unwrap(),
+                    std::time::Duration::from_millis(100),
+                )
+                .is_ok()
+                {
+                    return format!("http://127.0.0.1:{}/v1", port);
+                }
+            }
+            "http://127.0.0.1:8080/v1".to_string()
+        });
+
+        // Build OpenAI-compatible chat completion request with streaming
+        let client = reqwest::Client::new();
+        let system_prompt = "You are an AI coding assistant. Format your responses using proper markdown:\n\
+            - Use blank lines between paragraphs and sections\n\
+            - Use ## for headers, followed by a blank line\n\
+            - Use proper list formatting with blank lines before and after lists\n\
+            - Keep responses clear and well-structured";
+        let request_body = serde_json::json!({
+            "model": "local",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            "stream": true,
+            "max_tokens": 4000,
+            "temperature": 0.7
+        });
+
+        let response = client
+            .post(format!("{}/chat/completions", base_url))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| AdjutantError::ExecutionFailed(format!("HTTP request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(AdjutantError::ExecutionFailed(format!(
+                "LLM request failed with status {}: {}",
+                status, body
+            )));
+        }
+
+        // Stream the response
+        let mut full_response = String::new();
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new(); // Buffer for incomplete SSE lines
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| {
+                AdjutantError::ExecutionFailed(format!("Stream read error: {}", e))
+            })?;
+
+            let text = String::from_utf8_lossy(&chunk);
+            buffer.push_str(&text);
+
+            // Process complete lines from buffer
+            while let Some(newline_pos) = buffer.find('\n') {
+                let line = buffer[..newline_pos].trim();
+
+                // Parse SSE events (data: {...})
+                if let Some(data) = line.strip_prefix("data: ") {
+                    if data != "[DONE]" {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                            if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
+                                full_response.push_str(content);
+                                let _ = token_tx.send(content.to_string());
+                            }
+                        }
+                    }
+                }
+
+                // Remove processed line from buffer
+                buffer = buffer[newline_pos + 1..].to_string();
+            }
+        }
+
+        // Process any remaining data in buffer
+        if !buffer.trim().is_empty() {
+            if let Some(data) = buffer.trim().strip_prefix("data: ") {
+                if data != "[DONE]" {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                        if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
+                            full_response.push_str(content);
+                            let _ = token_tx.send(content.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(TaskResult {
+            success: true,
+            summary: full_response,
+            modified_files: Vec::new(),
+            commit_hash: None,
+            error: None,
+        })
     }
 
     /// Execute task using local LM (llama.cpp/GPT-OSS).
