@@ -3454,6 +3454,7 @@ impl ApplicationHandler for CoderApp {
             let (command_palette_tx, command_palette_rx) = mpsc::unbounded_channel();
             let command_palette = CommandPalette::new()
                 .max_visible_items(8)
+                .mono(true)
                 .on_select(move |command| {
                     let _ = command_palette_tx.send(command.id.clone());
                 });
@@ -7639,18 +7640,20 @@ impl CoderApp {
             .as_ref()
             .map(permission_mode_display)
             .unwrap_or("default");
-        let permission_text = format!("Permissions: {}", permission_label);
-        let permission_run = state.text_system.layout_styled_mono(
-            &permission_text,
-            Point::new(
-                input_bounds.origin.x,
-                input_bounds.origin.y + input_bounds.size.height + 2.0,
-            ),
-            10.0,
-            palette.text_faint,
-            wgpui::text::FontStyle::default(),
-        );
-        scene.draw_text(permission_run);
+        if state.session_info.permission_mode.is_empty() {
+            let permission_text = format!("Permissions: {}", permission_label);
+            let permission_run = state.text_system.layout_styled_mono(
+                &permission_text,
+                Point::new(
+                    input_bounds.origin.x,
+                    input_bounds.origin.y + input_bounds.size.height + 2.0,
+                ),
+                10.0,
+                palette.text_faint,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(permission_run);
+        }
 
         // Draw status bar at very bottom (centered vertically)
         let status_y = logical_height - STATUS_BAR_HEIGHT - 2.0;
