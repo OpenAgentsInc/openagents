@@ -522,12 +522,12 @@ for server in status.servers {
 ```
 
 ### Tasks
-- [ ] Create MCP configuration modal
-- [ ] Load `.mcp.json` from project root
-- [ ] Show MCP server status in status bar
-- [ ] Wire up `mcp_server_status()` SDK method
-- [ ] Support environment variable expansion
-- [ ] Add/remove MCP servers at runtime
+- [x] Create MCP configuration modal
+- [x] Load `.mcp.json` from project root
+- [x] Show MCP server status in status bar
+- [x] Wire up `mcp_server_status()` SDK method
+- [x] Support environment variable expansion
+- [x] Add/remove MCP servers at runtime
 
 ---
 
@@ -899,3 +899,4 @@ pub enum SettingsTab {
 - 2026-01-09 09:31 UTC - Implemented SessionCard modal layout, session metadata/checkpoint persistence, checkpoint restore UI with rewind_files control, session indicator updates, and user message id capture; ran `cargo check -p coder`.
 - 2026-01-09 10:08 UTC - Added tool tracking state, tool result parsing/output helpers, and detail builders for Bash/Search/Edit tool visuals.
 - 2026-01-09 10:12 UTC - Implemented tool history panel with ToolCallCard rendering, progress bar/cancel handling, tool input events, and viewport adjustments; ran `cargo check -p coder`.
+- 2026-01-09 10:28 UTC - Implemented MCP config loading with env expansion, runtime add/remove commands, status polling, status bar summary, and MCP configuration modal; ran `cargo check -p coder`.
