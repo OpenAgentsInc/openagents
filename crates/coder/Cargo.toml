@@ -25,6 +25,10 @@ web-time = "1.1.0"
 # Claude integration (for future)
 claude-agent-sdk = { path = "../claude-agent-sdk" }
 
+# Autopilot/Adjutant
+adjutant = { path = "../adjutant" }
+oanix = { path = "../oanix" }
+
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
 
