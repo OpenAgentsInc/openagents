@@ -1,8 +1,9 @@
 //! Main application state and event handling.
 
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::PathBuf;
+use std::process::{Command as ProcessCommand, Stdio};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
@@ -25,7 +26,7 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::commands::{command_specs, execute_command, parse_command, CommandContext};
+use crate::commands::{command_specs, parse_command, Command};
 use crate::keybindings::{default_keybindings, match_action, Action as KeyAction, Keybinding};
 use crate::panels::PanelLayout;
 
@@ -90,6 +91,7 @@ const LINE_HEIGHT: f32 = 20.0;
 const OUTPUT_PADDING: f32 = 12.0;
 const STATUS_BAR_HEIGHT: f32 = 20.0;
 const STATUS_BAR_FONT_SIZE: f32 = 11.0;
+const BUG_REPORT_URL: &str = "https://github.com/OpenAgentsInc/openagents/issues/new";
 
 /// Message role in the conversation
 #[derive(Clone, Copy, PartialEq)]
@@ -132,6 +134,11 @@ enum QueryControl {
     Abort,
 }
 
+enum CommandAction {
+    None,
+    SubmitPrompt(String),
+}
+
 /// Session info from SystemInit
 #[derive(Default)]
 struct SessionInfo {
@@ -140,7 +147,9 @@ struct SessionInfo {
     session_id: String,
     tool_count: usize,
     tools: Vec<String>,
+    #[allow(dead_code)]
     output_style: String,
+    #[allow(dead_code)]
     slash_commands: Vec<String>,
 }
 
@@ -212,6 +221,10 @@ enum ModalState {
     None,
     ModelPicker { selected: usize },
     CommandPalette { selected: usize },
+    SessionList { selected: usize },
+    ToolList { selected: usize },
+    PermissionRules,
+    Config,
 }
 
 /// Get the config directory path
@@ -647,26 +660,34 @@ impl ApplicationHandler for CoderApp {
 
                     // Check for Enter key to submit
                     if let WinitKey::Named(WinitNamedKey::Enter) = &key_event.logical_key {
-                        let prompt = state.input.get_value().to_string();
-                        if prompt.trim().is_empty() {
-                            return;
+                        let mut action = CommandAction::None;
+                        let mut submit_prompt = None;
+
+                        {
+                            let prompt = state.input.get_value().to_string();
+                            if prompt.trim().is_empty() {
+                                return;
+                            }
+
+                            if let Some(command) = parse_command(&prompt) {
+                                state.command_history.push(prompt);
+                                state.input.set_value("");
+                                action = handle_command(state, command);
+                            } else if !state.is_thinking {
+                                state.command_history.push(prompt.clone());
+                                state.input.set_value("");
+                                submit_prompt = Some(prompt);
+                            } else {
+                                return;
+                            }
                         }
 
-                        if let Some(command) = parse_command(&prompt) {
-                            state.command_history.push(prompt);
-                            state.input.set_value("");
-                            execute_command(command, state);
-                            state.window.request_redraw();
-                            return;
+                        if let CommandAction::SubmitPrompt(prompt) = action {
+                            self.submit_prompt(prompt);
+                        } else if let Some(prompt) = submit_prompt {
+                            self.submit_prompt(prompt);
                         }
 
-                        if state.is_thinking {
-                            return;
-                        }
-
-                        state.command_history.push(prompt.clone());
-                        state.input.set_value("");
-                        self.submit_prompt(prompt);
                         if let Some(s) = &self.state {
                             s.window.request_redraw();
                         }
@@ -687,7 +708,7 @@ impl ApplicationHandler for CoderApp {
     }
 }
 
-impl CommandContext for AppState {
+impl AppState {
     fn open_command_palette(&mut self) {
         self.modal_state = ModalState::CommandPalette { selected: 0 };
     }
@@ -698,6 +719,22 @@ impl CommandContext for AppState {
             .position(|m| *m == self.selected_model)
             .unwrap_or(0);
         self.modal_state = ModalState::ModelPicker { selected: current_idx };
+    }
+
+    fn open_session_list(&mut self) {
+        self.modal_state = ModalState::SessionList { selected: 0 };
+    }
+
+    fn open_tool_list(&mut self) {
+        self.modal_state = ModalState::ToolList { selected: 0 };
+    }
+
+    fn open_permission_rules(&mut self) {
+        self.modal_state = ModalState::PermissionRules;
+    }
+
+    fn open_config(&mut self) {
+        self.modal_state = ModalState::Config;
     }
 
     fn clear_conversation(&mut self) {
@@ -712,6 +749,11 @@ impl CommandContext for AppState {
         self.scroll_offset = 0.0;
         self.current_tool_name = None;
         self.current_tool_input.clear();
+        self.session_info.session_id.clear();
+        self.session_info.tool_count = 0;
+        self.session_info.tools.clear();
+        self.pending_resume_session = None;
+        self.pending_fork_session = false;
     }
 
     fn undo_last_exchange(&mut self) {
@@ -742,6 +784,130 @@ impl CommandContext for AppState {
             let _ = tx.send(QueryControl::Interrupt);
         } else {
             self.push_system_message("No active request to interrupt.".to_string());
+        }
+    }
+
+    fn set_permission_mode(&mut self, mode: PermissionMode) {
+        self.permission_mode = Some(mode.clone());
+        self.permission_default_allow = matches!(
+            mode,
+            PermissionMode::Default | PermissionMode::AcceptEdits | PermissionMode::BypassPermissions
+        );
+        self.session_info.permission_mode = permission_mode_label(&mode).to_string();
+        self.push_system_message(format!(
+            "Permission mode set to {}.",
+            permission_mode_label(&mode)
+        ));
+    }
+
+    fn add_permission_allow(&mut self, tools: Vec<String>) {
+        let tools = sanitize_tokens(tools);
+        if tools.is_empty() {
+            self.push_system_message("No tools provided to allow.".to_string());
+            return;
+        }
+        add_unique(&mut self.permission_allow_tools, &tools);
+        remove_items(&mut self.permission_deny_tools, &tools);
+        self.push_system_message(format!(
+            "Allowed tools: {}.",
+            tools.join(", ")
+        ));
+    }
+
+    fn add_permission_deny(&mut self, tools: Vec<String>) {
+        let tools = sanitize_tokens(tools);
+        if tools.is_empty() {
+            self.push_system_message("No tools provided to deny.".to_string());
+            return;
+        }
+        add_unique(&mut self.permission_deny_tools, &tools);
+        remove_items(&mut self.permission_allow_tools, &tools);
+        self.push_system_message(format!(
+            "Denied tools: {}.",
+            tools.join(", ")
+        ));
+    }
+
+    fn enable_tools(&mut self, tools: Vec<String>) {
+        let tools = sanitize_tokens(tools);
+        if tools.is_empty() {
+            self.push_system_message("No tools provided to enable.".to_string());
+            return;
+        }
+        add_unique(&mut self.tools_allowed, &tools);
+        remove_items(&mut self.tools_disallowed, &tools);
+        self.push_system_message(format!(
+            "Enabled tools: {}.",
+            tools.join(", ")
+        ));
+    }
+
+    fn disable_tools(&mut self, tools: Vec<String>) {
+        let tools = sanitize_tokens(tools);
+        if tools.is_empty() {
+            self.push_system_message("No tools provided to disable.".to_string());
+            return;
+        }
+        add_unique(&mut self.tools_disallowed, &tools);
+        remove_items(&mut self.tools_allowed, &tools);
+        self.push_system_message(format!(
+            "Disabled tools: {}.",
+            tools.join(", ")
+        ));
+    }
+
+    fn set_output_style(&mut self, style: Option<String>) {
+        self.output_style = style.clone();
+        match style {
+            Some(name) => self.push_system_message(format!("Output style set to {}.", name)),
+            None => self.push_system_message("Output style cleared.".to_string()),
+        }
+    }
+
+    fn begin_session_resume(&mut self, session_id: String) {
+        let session_id = session_id.trim().to_string();
+        if session_id.is_empty() {
+            self.push_system_message("Session id is required to resume.".to_string());
+            return;
+        }
+        self.pending_resume_session = Some(session_id.clone());
+        self.pending_fork_session = false;
+        self.session_info.session_id = session_id.clone();
+        match self.restore_session(&session_id) {
+            Ok(()) => self.push_system_message(format!(
+                "Loaded cached history for session {}.",
+                session_id
+            )),
+            Err(_) => {
+                self.messages.clear();
+                self.push_system_message(format!(
+                    "No local history for session {} yet.",
+                    session_id
+                ));
+            }
+        }
+    }
+
+    fn begin_session_fork(&mut self) {
+        if self.session_info.session_id.trim().is_empty() {
+            self.push_system_message("No active session to fork.".to_string());
+            return;
+        }
+        self.pending_resume_session = Some(self.session_info.session_id.clone());
+        self.pending_fork_session = true;
+        self.push_system_message("Next message will fork the current session.".to_string());
+    }
+
+    fn export_session(&mut self) {
+        match export_session_markdown(self) {
+            Ok(path) => self.push_system_message(format!(
+                "Exported session to {}.",
+                path.display()
+            )),
+            Err(err) => self.push_system_message(format!(
+                "Failed to export session: {}.",
+                err
+            )),
         }
     }
 
@@ -833,19 +999,67 @@ impl CoderApp {
         // Get window handle for triggering redraws from async task
         let window = state.window.clone();
         let model_id = state.selected_model.model_id().to_string();
+        let resume_session = state
+            .pending_resume_session
+            .take()
+            .or_else(|| {
+                if state.session_info.session_id.trim().is_empty() {
+                    None
+                } else {
+                    Some(state.session_info.session_id.clone())
+                }
+            });
+        let fork_session = state.pending_fork_session;
+        state.pending_fork_session = false;
+        let permission_mode = state.permission_mode.clone();
+        let output_style = state.output_style.clone();
+        let allowed_tools = state.tools_allowed.clone();
+        let disallowed_tools = state.tools_disallowed.clone();
+        let permission_allow_tools = state.permission_allow_tools.clone();
+        let permission_deny_tools = state.permission_deny_tools.clone();
+        let permission_default_allow = state.permission_default_allow;
 
         // Spawn async query task
         let handle = self.runtime_handle.clone();
         handle.spawn(async move {
-            let options = QueryOptions::new()
+            let mut options = QueryOptions::new()
                 .cwd(std::env::current_dir().unwrap_or_default())
-                .dangerously_skip_permissions(true)
                 .include_partial_messages(true) // Enable streaming deltas
                 .model(&model_id);
 
+            if let Some(mode) = permission_mode {
+                options = options.permission_mode(mode);
+            }
+            if let Some(resume_id) = resume_session {
+                options = options.resume(resume_id);
+            }
+            if fork_session {
+                options = options.fork_session(true);
+            }
+            if !allowed_tools.is_empty() {
+                options.allowed_tools = Some(allowed_tools);
+            }
+            if !disallowed_tools.is_empty() {
+                options.disallowed_tools = Some(disallowed_tools);
+            }
+            if let Some(style) = output_style {
+                options
+                    .extra_args
+                    .insert("output-style".to_string(), Some(style));
+            }
+
+            let mut rules = PermissionRules::new().default_allow(permission_default_allow);
+            for tool in permission_allow_tools {
+                rules = rules.allow(tool);
+            }
+            for tool in permission_deny_tools {
+                rules = rules.deny(tool);
+            }
+            let permissions = Arc::new(rules.build());
+
             tracing::info!("Starting query...");
 
-            match query(&prompt, options).await {
+            match query_with_permissions(&prompt, options, permissions).await {
                 Ok(mut stream) => {
                     tracing::info!("Query stream started");
                     let mut interrupt_requested = false;
@@ -1603,6 +1817,427 @@ impl CoderApp {
                 );
                 scene.draw_text(footer_run);
             }
+            ModalState::SessionList { selected } => {
+                let sessions = &state.session_index;
+                // Semi-transparent overlay
+                let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
+                scene.draw_quad(overlay);
+
+                let modal_width = 720.0;
+                let modal_height = 360.0;
+                let modal_x = (logical_width - modal_width) / 2.0;
+                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
+
+                let modal_bg = Quad::new(modal_bounds)
+                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
+                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
+                scene.draw_quad(modal_bg);
+
+                let mut y = modal_y + 16.0;
+                let title_run = state.text_system.layout_styled_mono(
+                    "Sessions",
+                    Point::new(modal_x + 16.0, y),
+                    14.0,
+                    Hsla::new(0.0, 0.0, 0.9, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(title_run);
+                y += 20.0;
+
+                let desc_run = state.text_system.layout_styled_mono(
+                    "Select a session to resume. Cached history loads into the view.",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.5, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(desc_run);
+                y += 26.0;
+
+                if sessions.is_empty() {
+                    let empty_run = state.text_system.layout_styled_mono(
+                        "No sessions recorded yet.",
+                        Point::new(modal_x + 16.0, y),
+                        12.0,
+                        Hsla::new(0.0, 0.0, 0.5, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(empty_run);
+                } else {
+                    let selected = (*selected).min(sessions.len().saturating_sub(1));
+                    let visible = sessions.iter().take(12);
+                    for (i, entry) in visible.enumerate() {
+                        let is_selected = i == selected;
+                        let indicator = if is_selected { ">" } else { " " };
+                        let indicator_run = state.text_system.layout_styled_mono(
+                            indicator,
+                            Point::new(modal_x + 16.0, y),
+                            13.0,
+                            Hsla::new(120.0, 0.6, 0.5, 1.0),
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(indicator_run);
+
+                        let short_id = if entry.id.len() > 8 {
+                            &entry.id[..8]
+                        } else {
+                            &entry.id
+                        };
+                        let meta_text = format!(
+                            "{} · {} msgs",
+                            entry.model.replace("claude-", ""),
+                            entry.message_count
+                        );
+                        let id_run = state.text_system.layout_styled_mono(
+                            short_id,
+                            Point::new(modal_x + 32.0, y),
+                            13.0,
+                            if is_selected {
+                                Hsla::new(120.0, 0.6, 0.6, 1.0)
+                            } else {
+                                Hsla::new(0.0, 0.0, 0.7, 1.0)
+                            },
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(id_run);
+
+                        let meta_run = state.text_system.layout_styled_mono(
+                            &meta_text,
+                            Point::new(modal_x + 110.0, y),
+                            13.0,
+                            Hsla::new(0.0, 0.0, 0.5, 1.0),
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(meta_run);
+
+                        let preview_run = state.text_system.layout_styled_mono(
+                            &entry.last_message,
+                            Point::new(modal_x + 260.0, y),
+                            13.0,
+                            Hsla::new(0.0, 0.0, 0.55, 1.0),
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(preview_run);
+
+                        y += 20.0;
+                    }
+                }
+
+                y = modal_y + modal_height - 24.0;
+                let footer_run = state.text_system.layout_styled_mono(
+                    "Enter to resume · Esc to exit",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.4, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(footer_run);
+            }
+            ModalState::ToolList { selected } => {
+                let tools = &state.session_info.tools;
+                // Semi-transparent overlay
+                let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
+                scene.draw_quad(overlay);
+
+                let modal_width = 520.0;
+                let modal_height = 320.0;
+                let modal_x = (logical_width - modal_width) / 2.0;
+                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
+
+                let modal_bg = Quad::new(modal_bounds)
+                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
+                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
+                scene.draw_quad(modal_bg);
+
+                let mut y = modal_y + 16.0;
+                let title_run = state.text_system.layout_styled_mono(
+                    "Tools",
+                    Point::new(modal_x + 16.0, y),
+                    14.0,
+                    Hsla::new(0.0, 0.0, 0.9, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(title_run);
+                y += 20.0;
+
+                let desc_run = state.text_system.layout_styled_mono(
+                    "Available tools from the active session.",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.5, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(desc_run);
+                y += 26.0;
+
+                if tools.is_empty() {
+                    let empty_run = state.text_system.layout_styled_mono(
+                        "No tool data yet.",
+                        Point::new(modal_x + 16.0, y),
+                        12.0,
+                        Hsla::new(0.0, 0.0, 0.5, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(empty_run);
+                } else {
+                    let selected = (*selected).min(tools.len().saturating_sub(1));
+                    for (i, tool) in tools.iter().take(12).enumerate() {
+                        let is_selected = i == selected;
+                        let indicator = if is_selected { ">" } else { " " };
+                        let indicator_run = state.text_system.layout_styled_mono(
+                            indicator,
+                            Point::new(modal_x + 16.0, y),
+                            13.0,
+                            Hsla::new(120.0, 0.6, 0.5, 1.0),
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(indicator_run);
+
+                        let mut label = tool.clone();
+                        if state.tools_disallowed.iter().any(|t| t == tool) {
+                            label.push_str(" (disabled)");
+                        } else if state.tools_allowed.iter().any(|t| t == tool) {
+                            label.push_str(" (enabled)");
+                        }
+
+                        let label_run = state.text_system.layout_styled_mono(
+                            &label,
+                            Point::new(modal_x + 32.0, y),
+                            13.0,
+                            if is_selected {
+                                Hsla::new(120.0, 0.6, 0.6, 1.0)
+                            } else {
+                                Hsla::new(0.0, 0.0, 0.7, 1.0)
+                            },
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(label_run);
+                        y += 20.0;
+                    }
+                }
+
+                y = modal_y + modal_height - 24.0;
+                let footer_run = state.text_system.layout_styled_mono(
+                    "Enter to close · Esc to exit",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.4, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(footer_run);
+            }
+            ModalState::PermissionRules => {
+                let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
+                scene.draw_quad(overlay);
+
+                let modal_width = 560.0;
+                let modal_height = 300.0;
+                let modal_x = (logical_width - modal_width) / 2.0;
+                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
+
+                let modal_bg = Quad::new(modal_bounds)
+                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
+                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
+                scene.draw_quad(modal_bg);
+
+                let mut y = modal_y + 16.0;
+                let title_run = state.text_system.layout_styled_mono(
+                    "Permission rules",
+                    Point::new(modal_x + 16.0, y),
+                    14.0,
+                    Hsla::new(0.0, 0.0, 0.9, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(title_run);
+                y += 20.0;
+
+                let default_text = if state.permission_default_allow {
+                    "Default: allow"
+                } else {
+                    "Default: deny"
+                };
+                let default_run = state.text_system.layout_styled_mono(
+                    default_text,
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(default_run);
+                y += 22.0;
+
+                let allow_label = state.text_system.layout_styled_mono(
+                    "Allow:",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(120.0, 0.6, 0.5, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(allow_label);
+                let allow_text = if state.permission_allow_tools.is_empty() {
+                    "None".to_string()
+                } else {
+                    state.permission_allow_tools.join(", ")
+                };
+                let allow_run = state.text_system.layout_styled_mono(
+                    &allow_text,
+                    Point::new(modal_x + 80.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(allow_run);
+                y += 22.0;
+
+                let deny_label = state.text_system.layout_styled_mono(
+                    "Deny:",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.6, 0.5, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(deny_label);
+                let deny_text = if state.permission_deny_tools.is_empty() {
+                    "None".to_string()
+                } else {
+                    state.permission_deny_tools.join(", ")
+                };
+                let deny_run = state.text_system.layout_styled_mono(
+                    &deny_text,
+                    Point::new(modal_x + 80.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(deny_run);
+
+                y = modal_y + modal_height - 24.0;
+                let footer_run = state.text_system.layout_styled_mono(
+                    "Enter to close · Esc to exit",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.4, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(footer_run);
+            }
+            ModalState::Config => {
+                let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
+                scene.draw_quad(overlay);
+
+                let modal_width = 600.0;
+                let modal_height = 320.0;
+                let modal_x = (logical_width - modal_width) / 2.0;
+                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
+
+                let modal_bg = Quad::new(modal_bounds)
+                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
+                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
+                scene.draw_quad(modal_bg);
+
+                let mut y = modal_y + 16.0;
+                let title_run = state.text_system.layout_styled_mono(
+                    "Settings",
+                    Point::new(modal_x + 16.0, y),
+                    14.0,
+                    Hsla::new(0.0, 0.0, 0.9, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(title_run);
+                y += 20.0;
+
+                let model_run = state.text_system.layout_styled_mono(
+                    &format!("Model: {}", state.selected_model.model_id()),
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(model_run);
+                y += 18.0;
+
+                let mode_text = state
+                    .permission_mode
+                    .as_ref()
+                    .map(permission_mode_label)
+                    .unwrap_or("default");
+                let perm_run = state.text_system.layout_styled_mono(
+                    &format!("Permission mode: {}", mode_text),
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(perm_run);
+                y += 18.0;
+
+                let output_style_text = state
+                    .output_style
+                    .clone()
+                    .unwrap_or_else(|| "default".to_string());
+                let output_run = state.text_system.layout_styled_mono(
+                    &format!("Output style: {}", output_style_text),
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(output_run);
+                y += 18.0;
+
+                let session_run = state.text_system.layout_styled_mono(
+                    &format!("Session storage: {}", sessions_dir().display()),
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(session_run);
+                y += 18.0;
+
+                let allowed_text = if state.tools_allowed.is_empty() {
+                    "Allowed tools: default".to_string()
+                } else {
+                    format!("Allowed tools: {}", state.tools_allowed.join(", "))
+                };
+                let allowed_run = state.text_system.layout_styled_mono(
+                    &allowed_text,
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(allowed_run);
+                y += 18.0;
+
+                let disallowed_text = if state.tools_disallowed.is_empty() {
+                    "Disallowed tools: none".to_string()
+                } else {
+                    format!("Disallowed tools: {}", state.tools_disallowed.join(", "))
+                };
+                let disallowed_run = state.text_system.layout_styled_mono(
+                    &disallowed_text,
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(disallowed_run);
+
+                y = modal_y + modal_height - 24.0;
+                let footer_run = state.text_system.layout_styled_mono(
+                    "Enter to close · Esc to exit",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.4, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(footer_run);
+            }
         }
 
         // Render
@@ -1762,6 +2397,132 @@ fn extract_tool_input_delta(event: &Value) -> Option<String> {
     delta.get("partial_json")?.as_str().map(|s| s.to_string())
 }
 
+fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
+    match command {
+        Command::Help => {
+            state.open_command_palette();
+            CommandAction::None
+        }
+        Command::Clear => {
+            state.clear_conversation();
+            CommandAction::None
+        }
+        Command::Compact => {
+            if state.is_thinking {
+                state.push_system_message("Cannot compact during an active request.".to_string());
+                CommandAction::None
+            } else {
+                CommandAction::SubmitPrompt("/compact".to_string())
+            }
+        }
+        Command::Model => {
+            state.open_model_picker();
+            CommandAction::None
+        }
+        Command::Undo => {
+            state.undo_last_exchange();
+            CommandAction::None
+        }
+        Command::Cancel => {
+            state.interrupt_query();
+            CommandAction::None
+        }
+        Command::Bug => {
+            match open_url(BUG_REPORT_URL) {
+                Ok(()) => state.push_system_message("Opened bug report in browser.".to_string()),
+                Err(err) => state.push_system_message(format!(
+                    "Failed to open browser: {} (URL: {}).",
+                    err, BUG_REPORT_URL
+                )),
+            }
+            CommandAction::None
+        }
+        Command::SessionList => {
+            state.open_session_list();
+            CommandAction::None
+        }
+        Command::SessionResume(id) => {
+            state.begin_session_resume(id);
+            CommandAction::None
+        }
+        Command::SessionFork => {
+            state.begin_session_fork();
+            CommandAction::None
+        }
+        Command::SessionExport => {
+            state.export_session();
+            CommandAction::None
+        }
+        Command::PermissionMode(mode) => {
+            match parse_permission_mode(&mode) {
+                Some(parsed) => state.set_permission_mode(parsed),
+                None => state.push_system_message(format!(
+                    "Unknown permission mode: {}.",
+                    mode
+                )),
+            }
+            CommandAction::None
+        }
+        Command::PermissionRules => {
+            state.open_permission_rules();
+            CommandAction::None
+        }
+        Command::PermissionAllow(tools) => {
+            state.add_permission_allow(tools);
+            CommandAction::None
+        }
+        Command::PermissionDeny(tools) => {
+            state.add_permission_deny(tools);
+            CommandAction::None
+        }
+        Command::ToolsList => {
+            state.open_tool_list();
+            CommandAction::None
+        }
+        Command::ToolsEnable(tools) => {
+            state.enable_tools(tools);
+            CommandAction::None
+        }
+        Command::ToolsDisable(tools) => {
+            state.disable_tools(tools);
+            CommandAction::None
+        }
+        Command::Config => {
+            state.open_config();
+            CommandAction::None
+        }
+        Command::OutputStyle(style) => {
+            let trimmed = style.trim();
+            if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("default") {
+                state.set_output_style(None);
+                return CommandAction::None;
+            }
+
+            match resolve_output_style(trimmed) {
+                Ok(Some(_path)) => state.set_output_style(Some(trimmed.to_string())),
+                Ok(None) => state.push_system_message(format!(
+                    "Output style not found: {}.",
+                    trimmed
+                )),
+                Err(err) => state.push_system_message(format!(
+                    "Failed to load output style: {}.",
+                    err
+                )),
+            }
+            CommandAction::None
+        }
+        Command::Custom(name, args) => {
+            let mut message = format!("Unknown command: /{}", name);
+            if !args.is_empty() {
+                message.push(' ');
+                message.push_str(&args.join(" "));
+            }
+            state.push_system_message(message);
+            CommandAction::None
+        }
+    }
+}
+
 fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
     match &mut state.modal_state {
         ModalState::ModelPicker { selected } => {
@@ -1852,6 +2613,112 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             state.window.request_redraw();
             true
         }
+        ModalState::SessionList { selected } => {
+            let session_count = state.session_index.len();
+            if session_count == 0 {
+                match key {
+                    WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                        state.modal_state = ModalState::None;
+                    }
+                    _ => {}
+                }
+                state.window.request_redraw();
+                return true;
+            }
+
+            if *selected >= session_count {
+                *selected = session_count - 1;
+            }
+
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::Enter) => {
+                    if let Some(entry) = state.session_index.get(*selected).cloned() {
+                        state.pending_resume_session = Some(entry.id.clone());
+                        state.pending_fork_session = false;
+                        state.session_info.session_id = entry.id.clone();
+                        state.session_info.model = entry.model.clone();
+                        match state.restore_session(&entry.id) {
+                            Ok(()) => {
+                                state.push_system_message(format!(
+                                    "Loaded cached history for session {}.",
+                                    entry.id
+                                ));
+                            }
+                            Err(_) => {
+                                state.messages.clear();
+                                state.push_system_message(format!(
+                                    "No local history for session {} yet.",
+                                    entry.id
+                                ));
+                            }
+                        }
+                    }
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::ArrowUp) => {
+                    if *selected > 0 {
+                        *selected -= 1;
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowDown) => {
+                    if *selected + 1 < session_count {
+                        *selected += 1;
+                    }
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::ToolList { selected } => {
+            let tool_count = state.session_info.tools.len();
+            if tool_count == 0 {
+                match key {
+                    WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                        state.modal_state = ModalState::None;
+                    }
+                    _ => {}
+                }
+                state.window.request_redraw();
+                return true;
+            }
+
+            if *selected >= tool_count {
+                *selected = tool_count - 1;
+            }
+
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::ArrowUp) => {
+                    if *selected > 0 {
+                        *selected -= 1;
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowDown) => {
+                    if *selected + 1 < tool_count {
+                        *selected += 1;
+                    }
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::PermissionRules | ModalState::Config => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
         ModalState::None => false,
     }
 }
@@ -1911,4 +2778,146 @@ fn convert_key_for_binding(key: &WinitKey) -> Option<UiKey> {
         }
         _ => None,
     }
+}
+
+fn permission_mode_label(mode: &PermissionMode) -> &'static str {
+    match mode {
+        PermissionMode::Default => "default",
+        PermissionMode::Plan => "plan",
+        PermissionMode::AcceptEdits => "acceptEdits",
+        PermissionMode::BypassPermissions => "bypassPermissions",
+        PermissionMode::DontAsk => "dontAsk",
+    }
+}
+
+fn parse_permission_mode(input: &str) -> Option<PermissionMode> {
+    let normalized = input
+        .trim()
+        .to_ascii_lowercase()
+        .replace('-', "")
+        .replace('_', "")
+        .replace('\'', "");
+    match normalized.as_str() {
+        "default" => Some(PermissionMode::Default),
+        "plan" => Some(PermissionMode::Plan),
+        "acceptedits" => Some(PermissionMode::AcceptEdits),
+        "bypasspermissions" | "bypass" => Some(PermissionMode::BypassPermissions),
+        "dontask" => Some(PermissionMode::DontAsk),
+        _ => None,
+    }
+}
+
+fn sanitize_tokens(tokens: Vec<String>) -> Vec<String> {
+    tokens
+        .into_iter()
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
+        .collect()
+}
+
+fn add_unique(target: &mut Vec<String>, items: &[String]) {
+    for item in items {
+        if !target.iter().any(|entry| entry == item) {
+            target.push(item.clone());
+        }
+    }
+}
+
+fn remove_items(target: &mut Vec<String>, items: &[String]) {
+    target.retain(|entry| !items.iter().any(|item| item == entry));
+}
+
+fn resolve_output_style(name: &str) -> io::Result<Option<PathBuf>> {
+    if name.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let file_name = if name.ends_with(".md") {
+        name.to_string()
+    } else {
+        format!("{}.md", name)
+    };
+
+    let mut candidates = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join(".claude").join("output-styles").join(&file_name));
+    }
+    if let Some(home) = dirs::home_dir() {
+        candidates.push(home.join(".claude").join("output-styles").join(&file_name));
+    }
+
+    for path in candidates {
+        if path.is_file() {
+            return Ok(Some(path));
+        }
+    }
+
+    Ok(None)
+}
+
+fn export_session_markdown(state: &AppState) -> io::Result<PathBuf> {
+    let export_dir = config_dir().join("exports");
+    fs::create_dir_all(&export_dir)?;
+    let session_id = if state.session_info.session_id.is_empty() {
+        "session".to_string()
+    } else {
+        state.session_info.session_id.clone()
+    };
+    let filename = format!("{}-{}.md", session_id, now_timestamp());
+    let path = export_dir.join(filename);
+    let mut file = fs::File::create(&path)?;
+
+    writeln!(file, "# Coder Session {}", session_id)?;
+    if !state.session_info.model.is_empty() {
+        writeln!(file, "- Model: {}", state.session_info.model)?;
+    }
+    writeln!(file, "- Exported: {}", now_timestamp())?;
+    writeln!(file)?;
+
+    for message in &state.messages {
+        match message.role {
+            MessageRole::User => {
+                for line in message.content.lines() {
+                    writeln!(file, "> {}", line)?;
+                }
+                writeln!(file)?;
+            }
+            MessageRole::Assistant => {
+                writeln!(file, "{}", message.content)?;
+                writeln!(file)?;
+            }
+        }
+    }
+
+    Ok(path)
+}
+
+fn open_url(url: &str) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut cmd = ProcessCommand::new("open");
+        cmd.arg(url);
+        cmd
+    };
+
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut cmd = ProcessCommand::new("xdg-open");
+        cmd.arg(url);
+        cmd
+    };
+
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut cmd = ProcessCommand::new("cmd");
+        cmd.args(["/C", "start", url]);
+        cmd
+    };
+
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    Ok(())
 }

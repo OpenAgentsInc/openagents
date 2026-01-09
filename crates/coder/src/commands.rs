@@ -6,11 +6,16 @@ pub enum Command {
     Model,
     Undo,
     Cancel,
+    Bug,
     SessionList,
     SessionResume(String),
     SessionFork,
+    SessionExport,
     PermissionMode(String),
     PermissionRules,
+    PermissionAllow(Vec<String>),
+    PermissionDeny(Vec<String>),
+    ToolsList,
     ToolsEnable(Vec<String>),
     ToolsDisable(Vec<String>),
     Config,
@@ -57,6 +62,11 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/bug",
+        description: "Report a bug",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/session list",
         description: "List recent sessions",
         requires_args: false,
@@ -72,6 +82,11 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/session export",
+        description: "Export the current session to markdown",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/permission mode <mode>",
         description: "Set the permission mode",
         requires_args: true,
@@ -79,6 +94,21 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         usage: "/permission rules",
         description: "Show permission rules",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/permission allow <tool>",
+        description: "Allow a tool in permission rules",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/permission deny <tool>",
+        description: "Deny a tool in permission rules",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/tools",
+        description: "List available tools",
         requires_args: false,
     },
     CommandSpec {
@@ -107,15 +137,6 @@ pub fn command_specs() -> &'static [CommandSpec] {
     COMMAND_SPECS
 }
 
-pub trait CommandContext {
-    fn open_command_palette(&mut self);
-    fn open_model_picker(&mut self);
-    fn clear_conversation(&mut self);
-    fn undo_last_exchange(&mut self);
-    fn interrupt_query(&mut self);
-    fn push_system_message(&mut self, message: String);
-}
-
 pub fn parse_command(input: &str) -> Option<Command> {
     let trimmed = input.trim();
     if !trimmed.starts_with('/') {
@@ -138,6 +159,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "model" => Command::Model,
         "undo" => Command::Undo,
         "cancel" => Command::Cancel,
+        "bug" => Command::Bug,
         "session" => parse_session_command(args),
         "permission" => parse_permission_command(args),
         "tools" => parse_tools_command(args),
@@ -158,6 +180,7 @@ fn parse_session_command(args: Vec<String>) -> Command {
             Command::SessionResume(id)
         }
         Some("fork") => Command::SessionFork,
+        Some("export") => Command::SessionExport,
         Some(other) => Command::Custom(format!("session {}", other), parts.collect()),
         None => Command::Custom("session".to_string(), Vec::new()),
     }
@@ -171,6 +194,8 @@ fn parse_permission_command(args: Vec<String>) -> Command {
             Command::PermissionMode(mode)
         }
         Some("rules") => Command::PermissionRules,
+        Some("allow") => Command::PermissionAllow(parts.collect()),
+        Some("deny") => Command::PermissionDeny(parts.collect()),
         Some(other) => Command::Custom(format!("permission {}", other), parts.collect()),
         None => Command::Custom("permission".to_string(), Vec::new()),
     }
@@ -181,8 +206,8 @@ fn parse_tools_command(args: Vec<String>) -> Command {
     match parts.next().as_deref() {
         Some("enable") => Command::ToolsEnable(parts.collect()),
         Some("disable") => Command::ToolsDisable(parts.collect()),
+        None => Command::ToolsList,
         Some(other) => Command::Custom(format!("tools {}", other), parts.collect()),
-        None => Command::Custom("tools".to_string(), Vec::new()),
     }
 }
 
@@ -191,54 +216,5 @@ fn parse_output_style_command(args: Vec<String>) -> Command {
         Command::OutputStyle(String::new())
     } else {
         Command::OutputStyle(args.join(" "))
-    }
-}
-
-pub fn execute_command(cmd: Command, ctx: &mut impl CommandContext) {
-    match cmd {
-        Command::Help => ctx.open_command_palette(),
-        Command::Clear => ctx.clear_conversation(),
-        Command::Compact => ctx.push_system_message("Compact is not available yet.".to_string()),
-        Command::Model => ctx.open_model_picker(),
-        Command::Undo => ctx.undo_last_exchange(),
-        Command::Cancel => ctx.interrupt_query(),
-        Command::SessionList => {
-            ctx.push_system_message("Session list is not available yet.".to_string())
-        }
-        Command::SessionResume(id) => ctx.push_system_message(format!(
-            "Session resume is not available yet (id: {}).",
-            id
-        )),
-        Command::SessionFork => {
-            ctx.push_system_message("Session fork is not available yet.".to_string())
-        }
-        Command::PermissionMode(mode) => ctx.push_system_message(format!(
-            "Permission mode is not available yet (mode: {}).",
-            mode
-        )),
-        Command::PermissionRules => {
-            ctx.push_system_message("Permission rules are not available yet.".to_string())
-        }
-        Command::ToolsEnable(tools) => ctx.push_system_message(format!(
-            "Tool enable is not available yet (tools: {}).",
-            tools.join(", ")
-        )),
-        Command::ToolsDisable(tools) => ctx.push_system_message(format!(
-            "Tool disable is not available yet (tools: {}).",
-            tools.join(", ")
-        )),
-        Command::Config => ctx.push_system_message("Config is not available yet.".to_string()),
-        Command::OutputStyle(style) => ctx.push_system_message(format!(
-            "Output style is not available yet (style: {}).",
-            style
-        )),
-        Command::Custom(name, args) => {
-            let mut message = format!("Unknown command: /{}", name);
-            if !args.is_empty() {
-                message.push(' ');
-                message.push_str(&args.join(" "));
-            }
-            ctx.push_system_message(message);
-        }
     }
 }
