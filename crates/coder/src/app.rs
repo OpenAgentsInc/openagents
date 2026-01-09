@@ -6769,12 +6769,12 @@ impl CoderApp {
             let window = state.window.clone();
             let prompt_clone = prompt.clone();
 
-            // Use cached manifest or boot OANIX
+            // Use cached manifest, wait for pending boot, or start new boot
             let cached_manifest = state.oanix_manifest.clone();
-            let needs_cache = cached_manifest.is_none();
+            let pending_rx = state.oanix_manifest_rx.take(); // Take pending boot rx if any
 
-            // Create channel to send manifest back for caching
-            let manifest_tx = if needs_cache {
+            // Create channel to send manifest back for caching (if we might get a new manifest)
+            let manifest_tx = if cached_manifest.is_none() {
                 let (tx, rx) = mpsc::unbounded_channel();
                 state.oanix_manifest_rx = Some(rx);
                 Some(tx)
@@ -6783,12 +6783,30 @@ impl CoderApp {
             };
 
             self.runtime_handle.spawn(async move {
-                // Get manifest (cached or fresh boot)
+                // Get manifest: cached > pending boot > new boot
                 let manifest = if let Some(m) = cached_manifest {
                     tracing::info!("Autopilot: using cached OANIX manifest");
                     m
+                } else if let Some(mut rx) = pending_rx {
+                    tracing::info!("Autopilot: waiting for startup OANIX boot...");
+                    match rx.recv().await {
+                        Some(m) => {
+                            tracing::info!("Autopilot: received OANIX manifest from startup boot");
+                            // Send manifest back for caching
+                            if let Some(mtx) = &manifest_tx {
+                                let _ = mtx.send(m.clone());
+                            }
+                            m
+                        }
+                        None => {
+                            tracing::error!("Autopilot: startup OANIX boot channel closed");
+                            let _ = tx.send(ResponseEvent::Error("OANIX boot failed".to_string()));
+                            window.request_redraw();
+                            return;
+                        }
+                    }
                 } else {
-                    tracing::info!("Autopilot: booting OANIX (first time)...");
+                    tracing::info!("Autopilot: booting OANIX...");
                     match oanix::boot().await {
                         Ok(m) => {
                             tracing::info!("Autopilot: OANIX booted, workspace: {:?}",
