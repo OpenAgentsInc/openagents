@@ -5,6 +5,9 @@ pub enum Action {
     Interrupt,
     OpenCommandPalette,
     OpenSettings,
+    OpenLeftSidebar,
+    OpenRightSidebar,
+    ToggleSidebars,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,6 +29,9 @@ impl Action {
             Action::Interrupt,
             Action::OpenCommandPalette,
             Action::OpenSettings,
+            Action::OpenLeftSidebar,
+            Action::OpenRightSidebar,
+            Action::ToggleSidebars,
         ]
     }
 
@@ -34,6 +40,9 @@ impl Action {
             Action::Interrupt => "interrupt",
             Action::OpenCommandPalette => "command_palette",
             Action::OpenSettings => "settings",
+            Action::OpenLeftSidebar => "sidebar_left",
+            Action::OpenRightSidebar => "sidebar_right",
+            Action::ToggleSidebars => "sidebar_toggle",
         }
     }
 
@@ -42,6 +51,9 @@ impl Action {
             Action::Interrupt => "Interrupt request",
             Action::OpenCommandPalette => "Command palette",
             Action::OpenSettings => "Open settings",
+            Action::OpenLeftSidebar => "Open left sidebar",
+            Action::OpenRightSidebar => "Open right sidebar",
+            Action::ToggleSidebars => "Toggle sidebars",
         }
     }
 
@@ -50,6 +62,9 @@ impl Action {
             "interrupt" => Some(Action::Interrupt),
             "command_palette" => Some(Action::OpenCommandPalette),
             "settings" => Some(Action::OpenSettings),
+            "sidebar_left" => Some(Action::OpenLeftSidebar),
+            "sidebar_right" => Some(Action::OpenRightSidebar),
+            "sidebar_toggle" => Some(Action::ToggleSidebars),
             _ => None,
         }
     }
@@ -80,6 +95,54 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenSettings,
+        },
+        Keybinding {
+            key: Key::Character("[".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+            action: Action::OpenLeftSidebar,
+        },
+        Keybinding {
+            key: Key::Character("]".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+            action: Action::OpenRightSidebar,
+        },
+        Keybinding {
+            key: Key::Character("\\".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+            action: Action::ToggleSidebars,
+        },
+        Keybinding {
+            key: Key::Character("[".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                ..Default::default()
+            },
+            action: Action::OpenLeftSidebar,
+        },
+        Keybinding {
+            key: Key::Character("]".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                ..Default::default()
+            },
+            action: Action::OpenRightSidebar,
+        },
+        Keybinding {
+            key: Key::Character("\\".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                ..Default::default()
+            },
+            action: Action::ToggleSidebars,
         },
     ]
 }
