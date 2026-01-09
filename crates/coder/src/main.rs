@@ -2,10 +2,10 @@
 //!
 //! A GPU-accelerated terminal UI for Claude Code.
 
-mod app;
-
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
+
+use coder::CoderApp;
 
 fn main() {
     // Initialize logging - verbose by default to see all SDK events
@@ -23,6 +23,6 @@ fn main() {
     let _guard = runtime.enter();
 
     let event_loop = EventLoop::new().expect("Failed to create event loop");
-    let mut app = app::CoderApp::new(runtime.handle().clone());
+    let mut app = CoderApp::new(runtime.handle().clone());
     event_loop.run_app(&mut app).expect("Event loop failed");
 }
