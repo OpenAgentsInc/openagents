@@ -1,9 +1,9 @@
 //! Main application state and event handling.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, Stdio};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,10 +22,11 @@ use winit::window::{Window, WindowId};
 
 use claude_agent_sdk::permissions::{CallbackPermissionHandler, PermissionRequest};
 use claude_agent_sdk::protocol::{PermissionMode, PermissionResult};
-use claude_agent_sdk::{query_with_permissions, QueryOptions, SdkMessage};
+use claude_agent_sdk::{query_with_permissions, McpServerConfig, QueryOptions, SdkMessage};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use claude_agent_sdk::protocol::McpServerStatus;
 use wgpui::components::atoms::{PermissionAction, SessionStatus, ToolStatus, ToolType};
 use wgpui::components::molecules::{
     CheckpointRestore, SessionAction, SessionCard, SessionInfo as SessionCardInfo,
@@ -162,6 +163,11 @@ enum ResponseEvent {
         tools: Vec<String>,
         output_style: String,
         slash_commands: Vec<String>,
+        mcp_servers: Vec<McpServerStatus>,
+    },
+    McpStatus {
+        servers: Vec<McpServerStatus>,
+        error: Option<String>,
     },
 }
 
@@ -286,6 +292,7 @@ enum QueryControl {
     RewindFiles { user_message_id: String },
     #[allow(dead_code)]
     Abort,
+    FetchMcpStatus,
 }
 
 enum CommandAction {
@@ -425,6 +432,21 @@ enum ModalState {
     ToolList { selected: usize },
     PermissionRules,
     Config,
+    McpConfig { selected: usize },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum McpServerSource {
+    Project,
+    Runtime,
+}
+
+struct McpServerEntry {
+    name: String,
+    source: Option<McpServerSource>,
+    config: Option<McpServerConfig>,
+    status: Option<String>,
+    disabled: bool,
 }
 
 /// Get the config directory path
@@ -458,6 +480,254 @@ fn session_messages_dir(session_id: &str) -> PathBuf {
 
 fn session_messages_file(session_id: &str) -> PathBuf {
     session_messages_dir(session_id).join("messages.jsonl")
+}
+
+fn mcp_project_file(cwd: &Path) -> PathBuf {
+    cwd.join(".mcp.json")
+}
+
+fn expand_env_var_string(input: &str) -> String {
+    let mut output = String::new();
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '$' && chars.peek() == Some(&'{') {
+            chars.next();
+            let mut token = String::new();
+            let mut closed = false;
+            while let Some(next) = chars.next() {
+                if next == '}' {
+                    closed = true;
+                    break;
+                }
+                token.push(next);
+            }
+            if !closed {
+                output.push('$');
+                output.push('{');
+                output.push_str(&token);
+                break;
+            }
+            let (var_name, default) = token
+                .split_once(":-")
+                .map(|(name, default)| (name.trim(), Some(default.trim())))
+                .unwrap_or((token.trim(), None));
+            let value = std::env::var(var_name)
+                .ok()
+                .filter(|value| !value.is_empty())
+                .or_else(|| default.map(|value| value.to_string()))
+                .unwrap_or_default();
+            output.push_str(&value);
+        } else {
+            output.push(ch);
+        }
+    }
+
+    output
+}
+
+fn expand_env_vars_in_value(value: &Value) -> Value {
+    match value {
+        Value::String(text) => Value::String(expand_env_var_string(text)),
+        Value::Array(items) => Value::Array(items.iter().map(expand_env_vars_in_value).collect()),
+        Value::Object(map) => {
+            let expanded = map
+                .iter()
+                .map(|(key, value)| (key.clone(), expand_env_vars_in_value(value)))
+                .collect();
+            Value::Object(expanded)
+        }
+        _ => value.clone(),
+    }
+}
+
+fn parse_string_vec(value: &Value) -> Result<Vec<String>, String> {
+    let array = value
+        .as_array()
+        .ok_or_else(|| "Expected array of strings".to_string())?;
+    let mut items = Vec::new();
+    for entry in array {
+        if let Some(text) = entry.as_str() {
+            items.push(text.to_string());
+        } else {
+            return Err("Args entries must be strings".to_string());
+        }
+    }
+    Ok(items)
+}
+
+fn parse_string_map(value: &Value) -> Result<HashMap<String, String>, String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "Expected object of string values".to_string())?;
+    let mut map = HashMap::new();
+    for (key, value) in object {
+        let entry = match value {
+            Value::String(text) => text.clone(),
+            Value::Number(number) => number.to_string(),
+            Value::Bool(flag) => flag.to_string(),
+            Value::Null => String::new(),
+            _ => {
+                return Err(format!(
+                    "Expected string value for key {}",
+                    key
+                ))
+            }
+        };
+        map.insert(key.clone(), entry);
+    }
+    Ok(map)
+}
+
+fn parse_mcp_server_config(name: &str, value: &Value) -> Result<McpServerConfig, String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("MCP server {} must be an object", name))?;
+
+    let config_type = object
+        .get("type")
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_ascii_lowercase());
+
+    let inferred_type = if config_type.is_some() {
+        config_type
+    } else if object.contains_key("command") {
+        Some("stdio".to_string())
+    } else if object.contains_key("url") {
+        Some("http".to_string())
+    } else {
+        None
+    };
+
+    match inferred_type.as_deref() {
+        Some("stdio") => {
+            let command = object
+                .get("command")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| format!("MCP server {} missing command", name))?
+                .to_string();
+            let args = match object.get("args") {
+                Some(value) => Some(parse_string_vec(value)?),
+                None => None,
+            };
+            let env = match object.get("env") {
+                Some(value) => Some(parse_string_map(value)?),
+                None => None,
+            };
+            Ok(McpServerConfig::Stdio { command, args, env })
+        }
+        Some("sse") => {
+            let url = object
+                .get("url")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| format!("MCP server {} missing url", name))?
+                .to_string();
+            let headers = match object.get("headers") {
+                Some(value) => Some(parse_string_map(value)?),
+                None => None,
+            };
+            Ok(McpServerConfig::Sse { url, headers })
+        }
+        Some("http") => {
+            let url = object
+                .get("url")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| format!("MCP server {} missing url", name))?
+                .to_string();
+            let headers = match object.get("headers") {
+                Some(value) => Some(parse_string_map(value)?),
+                None => None,
+            };
+            Ok(McpServerConfig::Http { url, headers })
+        }
+        Some("sdk") => {
+            let sdk_name = object
+                .get("name")
+                .and_then(|value| value.as_str())
+                .unwrap_or(name)
+                .to_string();
+            Ok(McpServerConfig::Sdk { name: sdk_name })
+        }
+        Some(other) => Err(format!("Unsupported MCP server type: {}", other)),
+        None => Err(format!(
+            "MCP server {} missing type (expected stdio/http/sse)",
+            name
+        )),
+    }
+}
+
+fn load_mcp_project_servers(cwd: &Path) -> (HashMap<String, McpServerConfig>, Option<String>) {
+    let path = mcp_project_file(cwd);
+    let content = match fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            return (HashMap::new(), None);
+        }
+        Err(err) => {
+            return (
+                HashMap::new(),
+                Some(format!("Failed to read {}: {}", path.display(), err)),
+            );
+        }
+    };
+
+    let value: Value = match serde_json::from_str(&content) {
+        Ok(value) => value,
+        Err(err) => {
+            return (
+                HashMap::new(),
+                Some(format!("Failed to parse {}: {}", path.display(), err)),
+            );
+        }
+    };
+
+    let expanded = expand_env_vars_in_value(&value);
+    let servers_value = expanded
+        .get("mcpServers")
+        .or_else(|| expanded.get("servers"));
+    let servers_obj = match servers_value.and_then(|value| value.as_object()) {
+        Some(object) => object,
+        None => {
+            return (
+                HashMap::new(),
+                Some("MCP config missing mcpServers section".to_string()),
+            );
+        }
+    };
+
+    let mut servers = HashMap::new();
+    let mut errors = Vec::new();
+    for (name, config_value) in servers_obj {
+        match parse_mcp_server_config(name, config_value) {
+            Ok(config) => {
+                servers.insert(name.clone(), config);
+            }
+            Err(err) => errors.push(err),
+        }
+    }
+
+    let error = if errors.is_empty() {
+        None
+    } else {
+        Some(errors.join("; "))
+    };
+
+    (servers, error)
+}
+
+fn parse_mcp_status(value: &Value) -> Result<Vec<McpServerStatus>, String> {
+    if let Some(servers_value) = value
+        .get("mcp_servers")
+        .or_else(|| value.get("servers"))
+    {
+        serde_json::from_value(servers_value.clone())
+            .map_err(|err| format!("Failed to parse MCP status: {}", err))
+    } else if value.is_array() {
+        serde_json::from_value(value.clone())
+            .map_err(|err| format!("Failed to parse MCP status: {}", err))
+    } else {
+        Err("Unexpected MCP status response".to_string())
+    }
 }
 
 fn session_metadata_file(session_id: &str) -> PathBuf {
@@ -654,6 +924,13 @@ struct AppState {
     tools_allowed: Vec<String>,
     tools_disallowed: Vec<String>,
     output_style: Option<String>,
+    mcp_project_servers: HashMap<String, McpServerConfig>,
+    mcp_runtime_servers: HashMap<String, McpServerConfig>,
+    mcp_disabled_servers: HashSet<String>,
+    mcp_status: Vec<McpServerStatus>,
+    mcp_project_error: Option<String>,
+    mcp_status_error: Option<String>,
+    mcp_project_path: Option<PathBuf>,
     // Selected model for queries
     selected_model: ModelOption,
 }
@@ -762,6 +1039,9 @@ impl ApplicationHandler for CoderApp {
                 .map(permission_mode_label)
                 .unwrap_or("default")
                 .to_string();
+            let cwd = std::env::current_dir().unwrap_or_default();
+            let (mcp_project_servers, mcp_project_error) = load_mcp_project_servers(&cwd);
+            let mcp_project_path = Some(mcp_project_file(&cwd));
 
             AppState {
                 window,
@@ -822,6 +1102,13 @@ impl ApplicationHandler for CoderApp {
                 tools_allowed: Vec::new(),
                 tools_disallowed: Vec::new(),
                 output_style: None,
+                mcp_project_servers,
+                mcp_runtime_servers: HashMap::new(),
+                mcp_disabled_servers: HashSet::new(),
+                mcp_status: Vec::new(),
+                mcp_project_error,
+                mcp_status_error: None,
+                mcp_project_path,
                 selected_model: saved_model,
             }
         });
@@ -1286,6 +1573,112 @@ impl AppState {
 
     fn open_config(&mut self) {
         self.modal_state = ModalState::Config;
+    }
+
+    fn open_mcp_config(&mut self) {
+        self.modal_state = ModalState::McpConfig { selected: 0 };
+    }
+
+    fn reload_mcp_project_servers(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let (servers, error) = load_mcp_project_servers(&cwd);
+        self.mcp_project_servers = servers;
+        self.mcp_project_error = error;
+        self.mcp_project_path = Some(mcp_project_file(&cwd));
+    }
+
+    fn merged_mcp_servers(&self) -> HashMap<String, McpServerConfig> {
+        let mut servers = self.mcp_project_servers.clone();
+        for (name, config) in &self.mcp_runtime_servers {
+            servers.insert(name.clone(), config.clone());
+        }
+        for name in &self.mcp_disabled_servers {
+            servers.remove(name);
+        }
+        servers
+    }
+
+    fn mcp_entries(&self) -> Vec<McpServerEntry> {
+        let mut entries = Vec::new();
+        let mut status_map = HashMap::new();
+        for status in &self.mcp_status {
+            status_map.insert(status.name.clone(), status.status.clone());
+        }
+
+        for (name, config) in &self.mcp_project_servers {
+            entries.push(McpServerEntry {
+                name: name.clone(),
+                source: Some(McpServerSource::Project),
+                config: Some(config.clone()),
+                status: status_map.remove(name),
+                disabled: self.mcp_disabled_servers.contains(name),
+            });
+        }
+
+        for (name, config) in &self.mcp_runtime_servers {
+            entries.push(McpServerEntry {
+                name: name.clone(),
+                source: Some(McpServerSource::Runtime),
+                config: Some(config.clone()),
+                status: status_map.remove(name),
+                disabled: self.mcp_disabled_servers.contains(name),
+            });
+        }
+
+        for (name, status) in status_map {
+            entries.push(McpServerEntry {
+                name,
+                source: None,
+                config: None,
+                status: Some(status),
+                disabled: false,
+            });
+        }
+
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+        entries
+    }
+
+    fn add_runtime_mcp_server(&mut self, name: String, config: McpServerConfig) {
+        self.mcp_runtime_servers.insert(name.clone(), config);
+        self.mcp_disabled_servers.remove(&name);
+    }
+
+    fn remove_mcp_server(&mut self, name: &str) {
+        self.mcp_runtime_servers.remove(name);
+        self.mcp_disabled_servers.insert(name.to_string());
+    }
+
+    fn update_mcp_status(&mut self, servers: Vec<McpServerStatus>, error: Option<String>) {
+        self.mcp_status = servers;
+        self.mcp_status_error = error;
+    }
+
+    fn mcp_status_summary(&self) -> Option<String> {
+        let total = self.merged_mcp_servers().len();
+        if total == 0 {
+            return None;
+        }
+        if self.mcp_status_error.is_some() {
+            return Some("mcp error".to_string());
+        }
+        if self.mcp_status.is_empty() {
+            return Some(format!("mcp {}", total));
+        }
+        let connected = self
+            .mcp_status
+            .iter()
+            .filter(|status| status.status.eq_ignore_ascii_case("connected"))
+            .count();
+        Some(format!("mcp {}/{}", connected, total))
+    }
+
+    fn request_mcp_status(&mut self) {
+        if let Some(tx) = &self.query_control_tx {
+            let _ = tx.send(QueryControl::FetchMcpStatus);
+        } else {
+            self.push_system_message("No active session for MCP status.".to_string());
+        }
     }
 
     fn refresh_session_cards(&mut self) {
@@ -2062,6 +2455,7 @@ impl CoderApp {
         let permission_allow_bash_patterns = state.permission_allow_bash_patterns.clone();
         let permission_deny_bash_patterns = state.permission_deny_bash_patterns.clone();
         let permission_default_allow = state.permission_default_allow;
+        let mcp_servers = state.merged_mcp_servers();
 
         // Spawn async query task
         let handle = self.runtime_handle.clone();
@@ -2090,6 +2484,9 @@ impl CoderApp {
                 options
                     .extra_args
                     .insert("output-style".to_string(), Some(style));
+            }
+            if !mcp_servers.is_empty() {
+                options.mcp_servers = mcp_servers;
             }
 
             let permission_window = window.clone();
@@ -2252,6 +2649,33 @@ impl CoderApp {
                                         window.request_redraw();
                                         break;
                                     }
+                                    QueryControl::FetchMcpStatus => {
+                                        match stream.mcp_server_status().await {
+                                            Ok(value) => {
+                                                match parse_mcp_status(&value) {
+                                                    Ok(servers) => {
+                                                        let _ = tx.send(ResponseEvent::McpStatus {
+                                                            servers,
+                                                            error: None,
+                                                        });
+                                                    }
+                                                    Err(err) => {
+                                                        let _ = tx.send(ResponseEvent::McpStatus {
+                                                            servers: Vec::new(),
+                                                            error: Some(err),
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                            Err(err) => {
+                                                let _ = tx.send(ResponseEvent::McpStatus {
+                                                    servers: Vec::new(),
+                                                    error: Some(err.to_string()),
+                                                });
+                                            }
+                                        }
+                                        window.request_redraw();
+                                    }
                                 }
                             }
                             msg = stream.next() => {
@@ -2304,6 +2728,7 @@ impl CoderApp {
                                         tools: init.tools.clone(),
                                         output_style: init.output_style.clone(),
                                         slash_commands: init.slash_commands.clone(),
+                                        mcp_servers: init.mcp_servers.clone(),
                                     });
                                     window.request_redraw();
                                 }
@@ -2518,6 +2943,7 @@ impl CoderApp {
                     tools,
                     output_style,
                     slash_commands,
+                    mcp_servers,
                 } => {
                     state.session_info = SessionInfo {
                         model,
@@ -2528,6 +2954,7 @@ impl CoderApp {
                         output_style,
                         slash_commands,
                     };
+                    state.update_mcp_status(mcp_servers, None);
                     if let Some(parsed_mode) = parse_permission_mode(&state.session_info.permission_mode)
                     {
                         state.permission_mode = Some(parsed_mode.clone());
@@ -2535,6 +2962,10 @@ impl CoderApp {
                             default_allow_for_mode(Some(&parsed_mode), state.permission_default_allow);
                     }
                     state.refresh_session_cards();
+                    needs_redraw = true;
+                }
+                ResponseEvent::McpStatus { servers, error } => {
+                    state.update_mcp_status(servers, error);
                     needs_redraw = true;
                 }
             }
@@ -2955,12 +3386,14 @@ impl CoderApp {
             } else {
                 &state.session_info.session_id
             };
-            let right_text = format!(
-                "{} | {} tools | session {}",
-                model_short,
-                state.session_info.tool_count,
-                session_short
-            );
+            let mut parts = Vec::new();
+            parts.push(model_short);
+            if let Some(summary) = state.mcp_status_summary() {
+                parts.push(summary);
+            }
+            parts.push(format!("{} tools", state.session_info.tool_count));
+            parts.push(format!("session {}", session_short));
+            let right_text = parts.join(" | ");
             // Measure and right-align
             let text_width = right_text.len() as f32 * 6.6; // Approx char width at 11pt
             let right_x = logical_width - text_width - OUTPUT_PADDING;
@@ -3679,6 +4112,174 @@ impl CoderApp {
                 );
                 scene.draw_text(footer_run);
             }
+            ModalState::McpConfig { selected } => {
+                let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
+                scene.draw_quad(overlay);
+
+                let modal_width = 720.0;
+                let modal_height = 420.0;
+                let modal_x = (logical_width - modal_width) / 2.0;
+                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
+
+                let modal_bg = Quad::new(modal_bounds)
+                    .with_background(Hsla::new(220.0, 0.15, 0.12, 1.0))
+                    .with_border(Hsla::new(220.0, 0.15, 0.25, 1.0), 1.0);
+                scene.draw_quad(modal_bg);
+
+                let mut y = modal_y + 16.0;
+                let title_run = state.text_system.layout_styled_mono(
+                    "MCP Servers",
+                    Point::new(modal_x + 16.0, y),
+                    14.0,
+                    Hsla::new(0.0, 0.0, 0.9, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(title_run);
+                y += 20.0;
+
+                let project_path = state
+                    .mcp_project_path
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                let project_line = format!("Project config: {}", project_path);
+                let project_run = state.text_system.layout_styled_mono(
+                    &truncate_preview(&project_line, 90),
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(project_run);
+                y += 18.0;
+
+                if let Some(error) = &state.mcp_project_error {
+                    let error_line = format!("Config warning: {}", error);
+                    let error_run = state.text_system.layout_styled_mono(
+                        &truncate_preview(&error_line, 100),
+                        Point::new(modal_x + 16.0, y),
+                        12.0,
+                        Hsla::new(15.0, 0.7, 0.6, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(error_run);
+                    y += 18.0;
+                }
+
+                if let Some(error) = &state.mcp_status_error {
+                    let status_line = format!("Status warning: {}", error);
+                    let status_run = state.text_system.layout_styled_mono(
+                        &truncate_preview(&status_line, 100),
+                        Point::new(modal_x + 16.0, y),
+                        12.0,
+                        Hsla::new(15.0, 0.7, 0.6, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(status_run);
+                    y += 18.0;
+                }
+
+                let entries = state.mcp_entries();
+                let counts_line = format!(
+                    "Servers: {} project · {} runtime · {} disabled",
+                    state.mcp_project_servers.len(),
+                    state.mcp_runtime_servers.len(),
+                    state.mcp_disabled_servers.len()
+                );
+                let counts_run = state.text_system.layout_styled_mono(
+                    &counts_line,
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(counts_run);
+                y += 20.0;
+
+                let list_top = y;
+                let list_bottom = modal_y + modal_height - 48.0;
+                let row_height = 22.0;
+                let max_visible = ((list_bottom - list_top) / row_height).floor().max(0.0) as usize;
+                if entries.is_empty() {
+                    let empty_run = state.text_system.layout_styled_mono(
+                        "No MCP servers configured.",
+                        Point::new(modal_x + 16.0, list_top),
+                        12.0,
+                        Hsla::new(0.0, 0.0, 0.5, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(empty_run);
+                } else {
+                    let visible = entries.len().min(max_visible.max(1));
+                    let selected = (*selected).min(entries.len().saturating_sub(1));
+                    let mut start = selected.saturating_sub(visible / 2);
+                    if start + visible > entries.len() {
+                        start = entries.len().saturating_sub(visible);
+                    }
+
+                    for idx in 0..visible {
+                        let index = start + idx;
+                        let entry = &entries[index];
+                        let row_y = list_top + idx as f32 * row_height;
+                        if index == selected {
+                            let highlight = Quad::new(Bounds::new(
+                                modal_x + 12.0,
+                                row_y - 2.0,
+                                modal_width - 24.0,
+                                row_height,
+                            ))
+                            .with_background(Hsla::new(220.0, 0.2, 0.18, 1.0));
+                            scene.draw_quad(highlight);
+                        }
+
+                        let source_label = match entry.source {
+                            Some(McpServerSource::Project) => "project",
+                            Some(McpServerSource::Runtime) => "runtime",
+                            None => "status",
+                        };
+                        let mut line = format!("{} [{}]", entry.name, source_label);
+                        if let Some(status) = &entry.status {
+                            line.push_str(&format!(" · {}", status));
+                        }
+                        if entry.disabled {
+                            line.push_str(" · disabled");
+                        }
+                        let line = truncate_preview(&line, 120);
+                        let line_run = state.text_system.layout_styled_mono(
+                            &line,
+                            Point::new(modal_x + 20.0, row_y),
+                            12.0,
+                            Hsla::new(0.0, 0.0, 0.7, 1.0),
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(line_run);
+
+                        if let Some(config) = &entry.config {
+                            let detail = describe_mcp_config(config);
+                            let detail = truncate_preview(&detail, 120);
+                            let detail_run = state.text_system.layout_styled_mono(
+                                &detail,
+                                Point::new(modal_x + 260.0, row_y),
+                                11.0,
+                                Hsla::new(0.0, 0.0, 0.5, 1.0),
+                                wgpui::text::FontStyle::default(),
+                            );
+                            scene.draw_text(detail_run);
+                        }
+                    }
+                }
+
+                y = modal_y + modal_height - 24.0;
+                let footer_run = state.text_system.layout_styled_mono(
+                    "Enter/Esc to close · R reload · S status · Del disable",
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(0.0, 0.0, 0.4, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(footer_run);
+            }
         }
 
         if let Some(dialog) = state.permission_dialog.as_mut() {
@@ -3839,6 +4440,24 @@ fn tool_type_for_name(name: &str) -> ToolType {
         "task" => ToolType::Task,
         "webfetch" | "web_fetch" | "fetch" => ToolType::WebFetch,
         _ => ToolType::Unknown,
+    }
+}
+
+fn describe_mcp_config(config: &McpServerConfig) -> String {
+    match config {
+        McpServerConfig::Stdio { command, args, .. } => {
+            let mut line = format!("stdio: {}", command);
+            if let Some(args) = args {
+                if !args.is_empty() {
+                    line.push(' ');
+                    line.push_str(&args.join(" "));
+                }
+            }
+            line
+        }
+        McpServerConfig::Sse { url, .. } => format!("sse: {}", url),
+        McpServerConfig::Http { url, .. } => format!("http: {}", url),
+        McpServerConfig::Sdk { name } => format!("sdk: {}", name),
     }
 }
 
@@ -4583,6 +5202,71 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
             }
             CommandAction::None
         }
+        Command::Mcp => {
+            state.open_mcp_config();
+            CommandAction::None
+        }
+        Command::McpReload => {
+            state.reload_mcp_project_servers();
+            if let Some(err) = &state.mcp_project_error {
+                state.push_system_message(format!("MCP config reload warning: {}", err));
+            } else {
+                state.push_system_message("Reloaded MCP project config.".to_string());
+            }
+            CommandAction::None
+        }
+        Command::McpStatus => {
+            state.request_mcp_status();
+            CommandAction::None
+        }
+        Command::McpAdd { name, config } => {
+            let trimmed_name = name.trim();
+            if trimmed_name.is_empty() {
+                state.push_system_message("MCP add requires a server name.".to_string());
+                return CommandAction::None;
+            }
+            let config_text = config.trim();
+            if config_text.is_empty() {
+                state.push_system_message("MCP add requires a JSON config.".to_string());
+                return CommandAction::None;
+            }
+            match serde_json::from_str::<Value>(config_text) {
+                Ok(value) => {
+                    let expanded = expand_env_vars_in_value(&value);
+                    match parse_mcp_server_config(trimmed_name, &expanded) {
+                        Ok(server) => {
+                            state.add_runtime_mcp_server(trimmed_name.to_string(), server);
+                            state.push_system_message(format!(
+                                "Added MCP server {} (applies next request).",
+                                trimmed_name
+                            ));
+                        }
+                        Err(err) => state.push_system_message(format!(
+                            "Failed to add MCP server {}: {}",
+                            trimmed_name, err
+                        )),
+                    }
+                }
+                Err(err) => state.push_system_message(format!(
+                    "Failed to parse MCP server JSON: {}",
+                    err
+                )),
+            }
+            CommandAction::None
+        }
+        Command::McpRemove(name) => {
+            let trimmed = name.trim();
+            if trimmed.is_empty() {
+                state.push_system_message("MCP remove requires a server name.".to_string());
+                return CommandAction::None;
+            }
+            state.remove_mcp_server(trimmed);
+            state.push_system_message(format!(
+                "Disabled MCP server {} (applies next request).",
+                trimmed
+            ));
+            CommandAction::None
+        }
         Command::Custom(name, args) => {
             if state.is_thinking {
                 state.push_system_message(
@@ -4618,6 +5302,12 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
 }
 
 fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
+    let empty_entries: Vec<McpServerEntry> = Vec::new();
+    let mcp_entries = if matches!(state.modal_state, ModalState::McpConfig { .. }) {
+        Some(state.mcp_entries())
+    } else {
+        None
+    };
     match &mut state.modal_state {
         ModalState::ModelPicker { selected } => {
             let selected = *selected;
@@ -4780,6 +5470,59 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                         *selected += 1;
                     }
                 }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::McpConfig { selected } => {
+            let entries = mcp_entries.as_ref().unwrap_or(&empty_entries);
+            if entries.is_empty() {
+                match key {
+                    WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                        state.modal_state = ModalState::None;
+                    }
+                    WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                        state.reload_mcp_project_servers();
+                    }
+                    _ => {}
+                }
+                state.window.request_redraw();
+                return true;
+            }
+
+            if *selected >= entries.len() {
+                *selected = entries.len() - 1;
+            }
+
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::ArrowUp) => {
+                    if *selected > 0 {
+                        *selected -= 1;
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowDown) => {
+                    if *selected + 1 < entries.len() {
+                        *selected += 1;
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::Delete | WinitNamedKey::Backspace) => {
+                    if let Some(entry) = entries.get(*selected) {
+                        state.remove_mcp_server(&entry.name);
+                    }
+                }
+                WinitKey::Character(c) => match c.as_str() {
+                    "r" | "R" => {
+                        state.reload_mcp_project_servers();
+                    }
+                    "s" | "S" => {
+                        state.request_mcp_status();
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
             state.window.request_redraw();

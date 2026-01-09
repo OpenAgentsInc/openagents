@@ -20,6 +20,11 @@ pub enum Command {
     ToolsDisable(Vec<String>),
     Config,
     OutputStyle(String),
+    Mcp,
+    McpAdd { name: String, config: String },
+    McpRemove(String),
+    McpReload,
+    McpStatus,
     Custom(String, Vec<String>),
 }
 
@@ -131,6 +136,31 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         description: "Set output style",
         requires_args: true,
     },
+    CommandSpec {
+        usage: "/mcp",
+        description: "Open MCP configuration",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/mcp add <name> <json>",
+        description: "Add an MCP server (runtime only)",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/mcp remove <name>",
+        description: "Disable an MCP server",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/mcp reload",
+        description: "Reload .mcp.json from project root",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/mcp status",
+        description: "Refresh MCP server status from the SDK",
+        requires_args: false,
+    },
 ];
 
 pub fn command_specs() -> &'static [CommandSpec] {
@@ -165,6 +195,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "tools" => parse_tools_command(args),
         "config" => Command::Config,
         "output-style" => parse_output_style_command(args),
+        "mcp" => parse_mcp_command(args),
         _ => Command::Custom(command, args),
     };
 
@@ -216,5 +247,22 @@ fn parse_output_style_command(args: Vec<String>) -> Command {
         Command::OutputStyle(String::new())
     } else {
         Command::OutputStyle(args.join(" "))
+    }
+}
+
+fn parse_mcp_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::Mcp,
+        Some("list") => Command::Mcp,
+        Some("reload") => Command::McpReload,
+        Some("status") => Command::McpStatus,
+        Some("remove") => Command::McpRemove(parts.next().unwrap_or_default()),
+        Some("add") => {
+            let name = parts.next().unwrap_or_default();
+            let config = parts.collect::<Vec<String>>().join(" ");
+            Command::McpAdd { name, config }
+        }
+        Some(other) => Command::Custom(format!("mcp {}", other), parts.collect()),
     }
 }
