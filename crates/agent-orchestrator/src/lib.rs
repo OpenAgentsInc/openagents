@@ -1,6 +1,8 @@
 pub mod agents;
 pub mod background;
 pub mod config;
+pub mod dspy_agents;
+pub mod dspy_delegation;
 pub mod error;
 pub mod hooks;
 pub mod integrations;
@@ -9,6 +11,14 @@ pub mod registry;
 pub use agents::builtin_agents;
 pub use background::{BackgroundTask, BackgroundTaskManager, SessionId, TaskId, TaskStatus};
 pub use config::{AgentConfig, AgentMode, AgentPermission, BashPermission, PermissionLevel};
+
+// DSPy signatures for learned agent behavior
+pub use dspy_agents::{
+    ArchitectureComplexity, ArchitectureSignature, CodeExplorationSignature, DocType,
+    DocumentationSignature, LibraryLookupSignature, MediaAnalysisSignature, MediaType,
+    SearchType, UIDesignSignature,
+};
+pub use dspy_delegation::{DelegationSignature, TargetAgent};
 pub use error::{Error, Result};
 pub use hooks::{Hook, HookManager, HookResult};
 pub use integrations::{
