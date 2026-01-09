@@ -326,7 +326,7 @@ Shadow mode runs both old and new policy, ships old result, promotes only if new
 | 0 | **Complete** | Protocol + Schema Registry (`crates/protocol/`) |
 | 1-2 | Complete | RLM + Autopilot signatures |
 | 2.5 | Complete | LaneMux (multi-provider LM auto-detection) |
-| 3 | Planned | Compiler Contract (CompiledModuleManifest, TraceContract) |
+| 3 | **Complete** | Compiler Contract (manifest, callbacks, trace, sandbox) |
 | 4 | Planned | Swarm job types, Retrieval Policy, Repo Indexing |
 | 5 | Planned | Eval Harness & Promotion Gates |
 | 6 | Planned | SwarmCompiler (cheap optimization on Pylon) |
@@ -388,6 +388,73 @@ Provenance {
 
 ---
 
+## Compiler Contract (Wave 3)
+
+**What it is:** Bridge between DSPy's compiler layer and OpenAgents execution. Provides versioned module artifacts, observability, and execution primitives.
+
+**Key paths:**
+- `crates/dsrs/src/manifest.rs` — CompiledModuleManifest, Scorecard, Compatibility
+- `crates/dsrs/src/callbacks.rs` — DspyCallback trait + implementations
+- `crates/dsrs/src/trace/contract.rs` — OTel-compatible spans
+- `crates/dsrs/src/trace/nostr_bridge.rs` — DAG → Nostr events
+- `crates/dsrs/src/adapter/pylon_sandbox.rs` — Sandbox execution provider
+- `crates/dsrs/src/predictors/refine.rs` — Retry/fallback meta-operator
+
+**CompiledModuleManifest:**
+```rust
+CompiledModuleManifest {
+    signature_name: "PlanningSignature",
+    compiled_id: "sha256:abc123...",  // Deterministic hash
+    optimizer: "MIPROv2",
+    scorecard: Scorecard { proxy_score: 0.85, truth_score: Some(0.92), ... },
+    compatibility: Compatibility { required_tools: ["ripgrep"], ... },
+    ...
+}
+```
+
+**Callbacks:**
+```rust
+pub trait DspyCallback: Send + Sync {
+    fn on_module_start(&self, call_id: Uuid, module_name: &str, inputs: &Example);
+    fn on_module_end(&self, call_id: Uuid, result: Result<&Prediction, &Error>);
+    fn on_lm_start(&self, call_id: Uuid, model: &str, prompt_tokens: usize);
+    fn on_lm_end(&self, call_id: Uuid, result: Result<(), &Error>, usage: &LmUsage);
+    fn on_trace_complete(&self, graph: &Graph, manifest: Option<&CompiledModuleManifest>);
+}
+```
+
+**TraceContract (OTel-compatible spans):**
+```rust
+let spans = TraceContract::graph_to_spans(&graph, Some(&manifest), "trace-id");
+// Each span includes: dsrs.signature_name, dsrs.compiled_id, lm.total_tokens, lm.cost_msats
+```
+
+**NostrBridge:**
+```rust
+let bridge = NostrBridge::generate();
+let events = bridge.graph_to_events(&graph, Some(&manifest))?;
+// Publishes kind:1 events with dsrs tags to configured relays
+```
+
+**PylonSandboxProvider:**
+```rust
+let provider = PylonSandboxProvider::generate()
+    .with_profile(SandboxProfile::Medium);
+let result = provider.run_commands(vec!["cargo test"]).await?;
+```
+
+**Refine meta-operator:**
+```rust
+let refined = Refine::new(predictor)
+    .with_max_retries(3)
+    .with_threshold(0.8)
+    .with_reward_fn(|inputs, pred| score(pred));
+```
+
+**Documentation:** See [crates/dsrs/docs/](./crates/dsrs/docs/README.md) for full API reference.
+
+---
+
 ## WGPUI
 
 **What it is:** GPU-accelerated UI rendering library. WebGPU/Vulkan/Metal/DX12 via wgpu.
@@ -433,7 +500,7 @@ cargo build -p wgpui --target wasm32-unknown-unknown    # WASM
 | `rlm` | Recursive Language Model engine |
 | `frlm` | Federated RLM (distributed execution) |
 | `frostr` | FROST threshold signatures |
-| `dsrs` | Rust DSPy - signatures, optimizers, DAG tracing |
+| `dsrs` | Rust DSPy - signatures, optimizers, DAG tracing ([docs](./crates/dsrs/docs/README.md)) |
 | `dsrs-macros` | Procedural macros for dsrs |
 | `protocol` | Typed job schemas, canonical hashing, verification |
 
@@ -568,8 +635,8 @@ Issues are NOT done unless:
 | Nexus | v0.1 | NIP-90, NIP-42, NIP-89 |
 | Runtime | In progress | Tick engine, filesystem, /compute, /containers, /claude |
 | Autopilot | Alpha | Claude SDK integration, tunnel mode |
-| Autopilot DSPy | Wave 2.5 | Planning, Execution, Verification + LaneMux |
-| dsrs | Complete | 14+ LM providers, Claude SDK + Pylon integration |
+| Autopilot DSPy | Wave 3 | Planning, Execution, Verification + Compiler Contract |
+| dsrs | **Wave 3** | Callbacks, Manifest, TraceContract, NostrBridge, Sandbox |
 | WGPUI | Phase 16 | 377 tests, full component library |
 | RLM | Working | Claude + Ollama backends, MCP tools |
 | RLM DSPy | Wave 1 | DspyOrchestrator, provenance signatures |
@@ -611,4 +678,5 @@ cargo test -p pylon
 cargo test -p runtime
 cargo test -p wgpui
 cargo test -p protocol
+cargo test -p dsrs
 ```
