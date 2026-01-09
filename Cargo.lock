@@ -8984,6 +8984,7 @@ dependencies = [
  "clap",
  "compute",
  "dirs 5.0.1",
+ "dsrs",
  "nostr 0.1.0",
  "nostr-client",
  "openagents-runtime",

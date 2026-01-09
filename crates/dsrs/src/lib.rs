@@ -7,6 +7,7 @@ pub mod evaluate;
 pub mod manifest;
 pub mod optimizer;
 pub mod predictors;
+pub mod privacy;
 pub mod retrieval;
 pub mod signatures;
 pub mod trace;
@@ -20,6 +21,7 @@ pub use evaluate::*;
 pub use manifest::*;
 pub use optimizer::*;
 pub use predictors::*;
+pub use privacy::*;
 pub use utils::*;
 
 pub use dsrs_macros::*;

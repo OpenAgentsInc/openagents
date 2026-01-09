@@ -41,6 +41,8 @@
 pub mod boot;
 pub mod discovery;
 pub mod display;
+pub mod dspy_lifecycle;
+pub mod dspy_situation;
 pub mod manifest;
 pub mod situation;
 pub mod state;
@@ -60,3 +62,10 @@ pub use tick::{
     run_tick_loop, oanix_tick, HousekeepingTask, IssueWork, JobWork, TickConfig, TickResult,
     UserAction, WorkItem,
 };
+
+// DSPy signatures for learned decision making
+pub use dspy_lifecycle::{
+    Complexity, IssueSelectionSignature, LifecycleDecisionSignature, LifecycleState,
+    WorkPrioritizationSignature,
+};
+pub use dspy_situation::{PriorityAction, SituationAssessmentSignature, Urgency};

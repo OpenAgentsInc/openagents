@@ -21,6 +21,7 @@ compute = { path = "../compute" }
 nostr = { path = "../nostr/core", features = ["full"] }
 nostr-client = { path = "../nostr/client" }
 openagents-spark = { path = "../spark" }
+dsrs = { path = "../dsrs" }
 
 # Workspace dependencies
 tokio = { workspace = true }
