@@ -1,0 +1,36 @@
+[package]
+name = "coder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Terminal-style Claude Code interface"
+
+[[bin]]
+name = "coder"
+path = "src/main.rs"
+
+[dependencies]
+# GPU UI
+wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
+wgpu = { workspace = true }
+
+# Desktop
+winit = { workspace = true }
+pollster = { workspace = true }
+
+# Time
+web-time = "1.1.0"
+
+# Claude integration (for future)
+claude-agent-sdk = { path = "../claude-agent-sdk" }
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[package.metadata.bundle]
+name = "Coder"
+identifier = "com.openagents.coder"

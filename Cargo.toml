@@ -27,6 +27,7 @@ members = [
     "crates/fm-bridge-agent",
     "crates/claude-agent-sdk",
     "crates/codex-agent-sdk",
+    "crates/coder",
     "crates/daytona",
     "crates/opencode-sdk",
     "crates/nostr/core",
