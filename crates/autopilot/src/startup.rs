@@ -5,6 +5,9 @@ use std::sync::mpsc;
 use std::time::Instant;
 use tracing::{debug, info, warn};
 
+// DSPy integration
+use crate::dspy_planning::PlanningResult;
+
 use crate::auth;
 use crate::checkpoint::SessionCheckpoint;
 use crate::claude::{
@@ -234,6 +237,8 @@ pub struct StartupState {
     pub session_usage: ClaudeUsageData,
     /// User-provided prompt for this session (if started from UI)
     pub user_prompt: Option<String>,
+    /// DSPy structured planning result
+    pub dspy_plan: Option<PlanningResult>,
 }
 
 impl StartupState {
@@ -288,6 +293,7 @@ impl StartupState {
             pylon_started: false,
             session_usage: ClaudeUsageData::default(),
             user_prompt: None,
+            dspy_plan: None,
         }
     }
 
@@ -339,6 +345,7 @@ impl StartupState {
             pylon_started: false,
             session_usage: ClaudeUsageData::default(),
             user_prompt: None,
+            dspy_plan: None,
         }
     }
 
@@ -2712,6 +2719,7 @@ impl StartupState {
             pylon_started: false,
             session_usage: ClaudeUsageData::default(), // Not persisted in checkpoint yet
             user_prompt: None, // Not persisted in checkpoint yet
+            dspy_plan: None, // Not persisted in checkpoint yet
         }
     }
 
