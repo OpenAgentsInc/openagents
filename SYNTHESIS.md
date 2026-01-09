@@ -475,6 +475,38 @@ The conventional bear case for AI capex—articulated by hedge fund managers wat
 
 Meanwhile, Bitcoin miners are pivoting toward AI workloads, building HPC facilities. Infrastructure convergence is underway. The swarm positions OpenAgents to capture this transition, turning edge devices from passive consumers into active producers—extracting value from vast reserves of idle compute stranded on devices worldwide. Your M4 MacBook sits dormant while you attend meetings or sleep; so do billions of other capable devices. The swarm turns this stranded capacity into productive assets, paid in Bitcoin.
 
+**DSPy as the Compiler Layer.** The swarm provides compute primitives. But agents need policy to use them effectively: which retrieval lane to query, how many workers to fan out, when to escalate to a premium model. This is where DSPy (`crates/dsrs`) enters—it is the **compiler layer for agent behavior**, deciding *what to do* while OpenAgents decides *where/how it runs*.
+
+The architecture separates concerns cleanly. DSPy signatures define typed, optimizable prompts for planning, retrieval routing, evidence ranking, patch writing, and failure interpretation. These signatures compile against eval suites using MIPROv2 or GEPA optimizers, discovering optimal prompt structure, few-shot examples, and model routing without hand-tuning. The resulting **compiled modules** have manifest IDs, scorecards, and compatibility requirements—first-class artifacts that can be versioned, A/B tested, and promoted through gates.
+
+Swarm job types are the map-reduce primitives that compiled modules invoke:
+
+| Job Type | Verification Mode | Purpose |
+|----------|-------------------|---------|
+| `oa.code_chunk_analysis.v1` | Subjective | Parallel file/chunk analysis, hypothesis generation |
+| `oa.retrieval_rerank.v1` | Subjective | LLM-based candidate reranking |
+| `oa.sandbox_run.v1` | Objective | Build/test/lint in isolated sandbox |
+
+Objective jobs (tests, lints) verify via exit code and artifact hashes—payment releases only on correct output. Subjective jobs (summaries, hypotheses) use redundancy and adjudication: run the same prompt on multiple providers, compare outputs, pay for consensus. This verification taxonomy makes the economics and trust model legible.
+
+The scoring function rewards efficiency, not just success:
+
+```
+score = median(score over N rollouts)
+where single_score =
+  1.0 * pass_tests
+  - 0.25 * (cost / budget)
+  - 0.15 * (time / time_budget)
+  - 0.10 * (diff_lines / diff_budget)
+  - 0.10 * (bytes_opened / bytes_budget)  # evidence efficiency
+```
+
+Multi-rollout aggregation prevents overfitting to lucky samples. Evidence efficiency terms teach the optimizer "don't brute force"—an agent that opens every file wastes money. Promotion gates (`candidate → staged → shadow → promoted`) require regression tests, budget sanity checks, and shadow mode comparison (run both old and new policy, only ship old result, promote if new wins).
+
+The protocol layer (Wave 0 in the roadmap) standardizes job schemas with canonical JSON hashing, version bump rules, and job hashes included in receipts. This prevents client/provider drift and enables replay—every job can be re-run deterministically to verify results.
+
+The result is a flywheel: successful sessions generate training data → dsrs optimization (cheap on Pylon swarm at 10 msats/call) → better prompts and routing policies → higher success rates → more training data. The compiled agent improves continuously without model retraining—DSPy finds latent requirements you didn't specify and optimizes for outcomes you can measure. See [docs/DSPY_ROADMAP.md](./docs/DSPY_ROADMAP.md) for the full implementation roadmap.
+
 The skills layer treats agent capabilities as products with versioning, licensing, and revenue splits. Developers who create useful skills publish to the marketplace, set terms and pricing, and earn revenue when others use them. The marketplace signer enforces license compliance before participating in threshold signatures authorizing purchases, ensuring creators are compensated and terms respected.
 
 The emerging consensus: skills matter more than agent scaffolding. As Anthropic's Barry Zhang articulated: "We stopped building agents and started building skills instead." Agents have intelligence but often lack domain expertise for real work. Skills are the solution—organized collections packaging composable procedural knowledge that agents dynamically load at runtime. The format is deliberately simple: folders containing Markdown instructions, scripts as tools, and assets. Anyone—human or agent—can create skills. Skills can live in Git, sync to cloud drives, or zip for sharing.
