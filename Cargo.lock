@@ -1212,7 +1212,7 @@ dependencies = [
  "chrono",
  "console_error_panic_hook",
  "dirs 5.0.1",
- "dspy-rs 0.7.3",
+ "dsrs",
  "futures-util",
  "getrandom 0.2.16",
  "gloo-net",
@@ -3858,15 +3858,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 
 [[package]]
-name = "dspy-rs"
-version = "0.7.3"
+name = "dsrs"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrow",
  "async-trait",
  "bon",
  "csv",
- "dsrs_macros 0.7.2",
+ "dsrs-macros",
  "enum_dispatch",
  "foyer",
  "futures",
@@ -3878,7 +3878,7 @@ dependencies = [
  "rayon",
  "regex",
  "reqwest",
- "rig-core 0.26.0",
+ "rig-core",
  "rstest",
  "schemars 1.1.0",
  "serde",
@@ -3888,42 +3888,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "dspy-rs"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "969a8d429908d989e1f8229d3965a96c28a132870f2d7b336fcb60a20beb3623"
+name = "dsrs-macros"
+version = "0.1.0"
 dependencies = [
  "anyhow",
- "arrow",
- "async-trait",
- "bon",
- "csv",
- "dsrs_macros 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "enum_dispatch",
- "foyer",
- "futures",
- "hf-hub 0.4.3",
- "indexmap 2.12.1",
- "kdam",
- "parquet",
- "rand 0.8.5",
- "rayon",
- "regex",
- "reqwest",
- "rig-core 0.22.0",
- "rstest",
- "schemars 1.1.0",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "dsrs_macros"
-version = "0.7.2"
-dependencies = [
- "anyhow",
+ "dsrs",
  "indexmap 2.12.1",
  "proc-macro2",
  "quote",
@@ -3931,22 +3900,7 @@ dependencies = [
  "serde",
  "serde_json",
  "syn 2.0.111",
-]
-
-[[package]]
-name = "dsrs_macros"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "210ab5a55bd4b091b7929538746d0e2368df327c1322298e48e6e52bac6b20f6"
-dependencies = [
- "anyhow",
- "indexmap 2.12.1",
- "proc-macro2",
- "quote",
- "schemars 1.1.0",
- "serde",
- "serde_json",
- "syn 2.0.111",
+ "trybuild",
 ]
 
 [[package]]
@@ -4853,7 +4807,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "criterion 0.5.1",
- "dspy-rs 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "dsrs",
  "fm-bridge",
  "hex",
  "nostr 0.1.0",
@@ -11674,33 +11628,6 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "136b8115983df35be2c9b176c50c8a793886411e7b5ee8767b8c9cfd25e0ea90"
-dependencies = [
- "as-any",
- "async-stream",
- "base64 0.22.1",
- "bytes",
- "futures",
- "glob",
- "http 1.4.0",
- "mime_guess",
- "ordered-float 5.1.0",
- "reqwest",
- "reqwest-eventsource",
- "schemars 1.1.0",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
- "tokio",
- "tracing",
- "tracing-futures",
- "url",
-]
-
-[[package]]
-name = "rig-core"
 version = "0.26.0"
 source = "git+https://github.com/0xPlaygrounds/rig?rev=e7849df#e7849df20bce7c4eb3eb5ada87aae18435f9afa1"
 dependencies = [
@@ -11749,7 +11676,7 @@ dependencies = [
  "async-trait",
  "clap",
  "claude-agent-sdk",
- "dspy-rs 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "dsrs",
  "fm-bridge",
  "futures",
  "glob",
@@ -13854,6 +13781,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
+name = "target-triple"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "591ef38edfb78ca4771ee32cf494cb8771944bee237a9b91fc9c1424ac4b777b"
+
+[[package]]
 name = "tempdir"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14715,6 +14648,21 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "trybuild"
+version = "1.0.114"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e17e807bff86d2a06b52bca4276746584a78375055b6e45843925ce2802b335"
+dependencies = [
+ "glob",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "target-triple",
+ "termcolor",
+ "toml 0.9.10+spec-1.1.0",
+]
 
 [[package]]
 name = "ttf-parser"

@@ -21,7 +21,7 @@
 //! println!("Files to modify: {:?}", result.files_to_modify);
 //! ```
 
-use dspy_rs::{example, LM, Predict, Predictor, Signature};
+use dsrs::{example, LM, Predict, Predictor, Signature};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -209,7 +209,7 @@ impl PlanningPipeline {
     }
 
     /// Helper to get string from prediction value.
-    fn get_string(prediction: &dspy_rs::Prediction, key: &str) -> String {
+    fn get_string(prediction: &dsrs::Prediction, key: &str) -> String {
         let val = prediction.get(key, None);
         if let Some(s) = val.as_str() {
             s.to_string()
@@ -219,7 +219,7 @@ impl PlanningPipeline {
     }
 
     /// Helper to get f32 from prediction value.
-    fn get_f32(prediction: &dspy_rs::Prediction, key: &str) -> f32 {
+    fn get_f32(prediction: &dsrs::Prediction, key: &str) -> f32 {
         let val = prediction.get(key, None);
         if let Some(n) = val.as_f64() {
             n as f32
@@ -295,7 +295,7 @@ impl PlanningPipeline {
     }
 
     /// Run basic planning for simpler tasks.
-    async fn run_basic_planning(&self, input: &PlanningInput) -> anyhow::Result<dspy_rs::Prediction> {
+    async fn run_basic_planning(&self, input: &PlanningInput) -> anyhow::Result<dsrs::Prediction> {
         let planner = Predict::new(PlanningSignature::new());
 
         let example = example! {
@@ -314,7 +314,7 @@ impl PlanningPipeline {
     }
 
     /// Run deep planning with chain-of-thought for complex tasks.
-    async fn run_deep_planning(&self, input: &PlanningInput) -> anyhow::Result<dspy_rs::Prediction> {
+    async fn run_deep_planning(&self, input: &PlanningInput) -> anyhow::Result<dsrs::Prediction> {
         let deep_planner = Predict::new(DeepPlanningSignature::new());
 
         let code_patterns = input

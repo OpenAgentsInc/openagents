@@ -18,11 +18,11 @@ fi
 if [[ "$mode" == "staged" ]]; then
     while IFS= read -r file; do
         files+=("$file")
-    done < <(git diff --cached --name-only --diff-filter=ACM | rg '\.rs$' | rg -v '^(docs/|target/|vendor/|\.git/|tests/fixtures/)' || true)
+    done < <(git diff --cached --name-only --diff-filter=ACM | rg '\.rs$' | rg -v '^(docs/|target/|vendor/|\.git/|tests/fixtures/|crates/dsrs/|crates/dsrs-macros/)' || true)
 elif [[ "$mode" == "all" ]]; then
     while IFS= read -r file; do
         files+=("$file")
-    done < <(rg --files -g '*.rs' --glob '!docs/**' --glob '!target/**' --glob '!vendor/**' --glob '!.git/**' --glob '!tests/fixtures/**' . || true)
+    done < <(rg --files -g '*.rs' --glob '!docs/**' --glob '!target/**' --glob '!vendor/**' --glob '!.git/**' --glob '!tests/fixtures/**' --glob '!crates/dsrs/**' --glob '!crates/dsrs-macros/**' . || true)
 fi
 
 if [[ ${#files[@]} -eq 0 ]]; then

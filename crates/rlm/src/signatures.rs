@@ -20,7 +20,7 @@
 //! let span_json = span.to_json();
 //! ```
 
-use dspy_rs::Signature;
+use dsrs::Signature;
 
 // ============================================================================
 // Router Signature

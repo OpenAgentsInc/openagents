@@ -20,7 +20,7 @@
 //! ```
 
 // Re-export DSRs core types
-pub use dspy_rs::{
+pub use dsrs::{
     // Core traits
     Module,
     Optimizable,
@@ -58,10 +58,10 @@ pub use dspy_rs::{
 };
 
 // Re-export the Signature derive macro
-pub use dspy_rs::Signature;
+pub use dsrs::Signature;
 
-// Re-export macros (these use dspy_rs internally so we just re-export)
-pub use dspy_rs::{example, prediction, sign, field, hashmap};
+// Re-export macros (these use dsrs internally so we just re-export)
+pub use dsrs::{example, prediction, sign, field, hashmap};
 
 use std::sync::Arc;
 use anyhow::Result;

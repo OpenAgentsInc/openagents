@@ -6,13 +6,13 @@ description = "Federated Recursive Language Models - distributed RLM execution"
 
 [features]
 default = []
-dspy = ["dspy-rs", "rlm/dspy"]
+dspy = ["dsrs", "rlm/dspy"]
 trace-db = ["rusqlite"]
 claude = ["rlm/claude"]
 
 [dependencies]
 # DSPy (DSRs) for declarative LLM programming (optional)
-dspy-rs = { version = "0.7.3", optional = true }
+dsrs = { path = "../dsrs", optional = true }
 # Core async runtime
 tokio = { version = "1", features = ["sync", "time", "macros"] }
 async-trait = "0.1"

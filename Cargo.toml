@@ -62,6 +62,9 @@ members = [
     "crates/oanix",
     "crates/adjutant",
     "crates/gateway",
+    # DSPy integration (dsrs)
+    "crates/dsrs",
+    "crates/dsrs-macros",
 ]
 
 # Unified OpenAgents binary
