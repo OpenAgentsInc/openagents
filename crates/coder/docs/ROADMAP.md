@@ -460,14 +460,14 @@ query.abort();
 ```
 
 ### Tasks
-- [ ] Integrate `ToolCallCard` for rich display
-- [ ] Integrate `DiffToolCall` for Edit results
-- [ ] Integrate `TerminalToolCall` for Bash results
-- [ ] Integrate `SearchToolCall` for Glob/Grep
-- [ ] Show tool progress bar during execution
-- [ ] Display tool results (not just inputs)
-- [ ] Add cancel button during tool execution
-- [ ] Create tool history panel
+- [x] Integrate `ToolCallCard` for rich display
+- [x] Integrate `DiffToolCall` for Edit results
+- [x] Integrate `TerminalToolCall` for Bash results
+- [x] Integrate `SearchToolCall` for Glob/Grep
+- [x] Show tool progress bar during execution
+- [x] Display tool results (not just inputs)
+- [x] Add cancel button during tool execution
+- [x] Create tool history panel
 
 ---
 
@@ -897,3 +897,5 @@ pub enum SettingsTab {
 - 2026-01-09 09:06 UTC - Added permission config persistence, Bash rule patterns, permission queue/history state, and permission handler plumbing for prompts.
 - 2026-01-09 09:08 UTC - Wired PermissionDialog UI/input flow, status bar permission mode cycling, permission history display, and re-exported PermissionType; ran `cargo check -p coder`.
 - 2026-01-09 09:31 UTC - Implemented SessionCard modal layout, session metadata/checkpoint persistence, checkpoint restore UI with rewind_files control, session indicator updates, and user message id capture; ran `cargo check -p coder`.
+- 2026-01-09 10:08 UTC - Added tool tracking state, tool result parsing/output helpers, and detail builders for Bash/Search/Edit tool visuals.
+- 2026-01-09 10:12 UTC - Implemented tool history panel with ToolCallCard rendering, progress bar/cancel handling, tool input events, and viewport adjustments; ran `cargo check -p coder`.
