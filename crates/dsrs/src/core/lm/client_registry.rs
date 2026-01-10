@@ -7,8 +7,10 @@ use rig::{
     providers::*,
 };
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use super::claude_sdk::{self, ClaudeSdkModel};
+use super::lm_router::LmRouterLM;
 use super::pylon::{PylonCompletionModel, PylonConfig};
 
 #[enum_dispatch]
@@ -37,6 +39,7 @@ pub enum LMClient {
     Deepseek(deepseek::CompletionModel<reqwest::Client>),
     Pylon(PylonCompletionModel),
     ClaudeSdk(ClaudeSdkModel),
+    LmRouter(LmRouterLM),
 }
 
 // Implement the trait for each concrete provider type using the CompletionModel trait from rig
@@ -301,6 +304,32 @@ impl LMClient {
                 let client = groq::Client::builder().api_key(key.as_ref()).build()?;
                 Ok(LMClient::Groq(groq::CompletionModel::new(client, model_id)))
             }
+            "lm-router" | "lmrouter" | "router" => {
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async {
+                    let detected = lm_router::backends::auto_detect_router().await?;
+                    let default_model = detected.default_model.clone().ok_or_else(|| {
+                        anyhow::anyhow!("lm-router auto-detect found no default model")
+                    })?;
+                    let model = if model_id.is_empty() || model_id == "auto" {
+                        default_model
+                    } else {
+                        model_id.to_string()
+                    };
+
+                    let mut lm = LmRouterLM::new(Arc::new(detected.router), model);
+                    let cheap_model = std::env::var("LM_ROUTER_CHEAP_MODEL")
+                        .ok()
+                        .filter(|value| !value.trim().is_empty())
+                        .or_else(|| select_cheap_model(lm.router().available_models().as_slice()));
+
+                    if let Some(cheap_model) = cheap_model {
+                        lm = lm.with_cheap_model(cheap_model);
+                    }
+
+                    Ok(LMClient::LmRouter(lm))
+                })
+            }
             "pylon" => {
                 // model_id: "local", "swarm", "hybrid", or "local:ollama", etc.
                 let rt = tokio::runtime::Handle::current();
@@ -330,7 +359,7 @@ impl LMClient {
             }
             _ => {
                 anyhow::bail!(
-                    "Unsupported provider: {}. Supported providers are: openai, anthropic, gemini, groq, openrouter, ollama, pylon, claude-sdk",
+                    "Unsupported provider: {}. Supported providers are: openai, anthropic, gemini, groq, openrouter, ollama, pylon, claude-sdk, lm-router",
                     provider
                 );
             }
@@ -406,4 +435,18 @@ impl LMClient {
         }
         Ok(LMClient::ClaudeSdk(ClaudeSdkModel::new()))
     }
+}
+
+fn select_cheap_model(models: &[String]) -> Option<String> {
+    let patterns = [
+        "mini", "haiku", "small", "lite", "tiny", "nano", "7b", "8b", "3b", "1b",
+    ];
+
+    for pattern in patterns {
+        if let Some(model) = models.iter().find(|m| m.to_lowercase().contains(pattern)) {
+            return Some(model.clone());
+        }
+    }
+
+    None
 }

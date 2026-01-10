@@ -204,7 +204,7 @@ Each pipeline has:
 |------|-------------|--------|
 | Wave 15 | Tiered Executor DSPy Migration | **Complete** |
 | Wave 16 | RLM DSPy Integration | In Progress |
-| Wave 17 | LM-Router DSPy Backend | Planned |
+| Wave 17 | LM-Router DSPy Backend | Complete |
 | Wave 18 | Gateway DSPy Integration | Planned |
 | Wave 19 | Autopilot Heuristics → DSPy | Planned |
 | Wave 20 | Agent-Orchestrator & Nexus DSPy | Planned |

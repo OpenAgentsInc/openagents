@@ -232,7 +232,7 @@ The following waves complete DSPy integration across the entire codebase, replac
 #[Signature] struct RlmContinuationSignature { ... }    // Continuation handling
 ```
 
-### Wave 17: LM-Router DSPy Backend (Planned)
+### Wave 17: LM-Router DSPy Backend (Complete)
 
 **Goal:** Create DSPy-aware LM provider that wraps all backends.
 
@@ -242,10 +242,10 @@ The following waves complete DSPy integration across the entire codebase, replac
 - `crates/dsrs/src/core/lm/lm_router.rs` — NEW
 
 **Tasks:**
-- [ ] Create `LmRouterLM` implementing dsrs `LM` trait
-- [ ] Support signature-based routing (cheap models for simple signatures)
-- [ ] Add signature-aware caching
-- [ ] Integrate with dsrs client registry
+- [x] Create `LmRouterLM` implementing dsrs `LM` trait
+- [x] Support signature-based routing (cheap models for simple signatures)
+- [x] Add signature-aware caching
+- [x] Integrate with dsrs client registry
 
 ### Wave 18: Gateway DSPy Integration (Planned)
 

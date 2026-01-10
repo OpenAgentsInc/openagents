@@ -1,12 +1,14 @@
 pub mod chat;
 pub mod claude_sdk;
 pub mod client_registry;
+pub mod lm_router;
 pub mod pylon;
 pub mod usage;
 
 pub use chat::*;
 pub use claude_sdk::*;
 pub use client_registry::*;
+pub use lm_router::*;
 pub use pylon::*;
 pub use usage::*;
 
@@ -17,7 +19,7 @@ use bon::Builder;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
-use crate::{Cache, CallResult, Example, Prediction, ResponseCache};
+use crate::{Cache, CallResult, Example, MetaSignature, Prediction, ResponseCache};
 
 #[derive(Clone, Debug)]
 pub struct LMResponse {
@@ -309,6 +311,15 @@ impl LM {
     }
 
     pub async fn call(&self, messages: Chat, tools: Vec<Arc<dyn ToolDyn>>) -> Result<LMResponse> {
+        self.call_with_signature(None, messages, tools).await
+    }
+
+    pub async fn call_with_signature(
+        &self,
+        signature: Option<&dyn MetaSignature>,
+        messages: Chat,
+        tools: Vec<Arc<dyn ToolDyn>>,
+    ) -> Result<LMResponse> {
         use rig::OneOrMany;
         use rig::completion::CompletionRequest;
 
@@ -342,17 +353,21 @@ impl LM {
             additional_params: None,
         };
 
-        // Execute the completion using enum dispatch (zero-cost abstraction)
-        let response = self
-            .client
-            .as_ref()
-            .ok_or_else(|| {
-                anyhow::anyhow!("LM client not initialized. Call build() on LMBuilder.")
-            })?
-            .completion(request)
-            .await?;
+        let client = self.client.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("LM client not initialized. Call build() on LMBuilder.")
+        })?;
 
-        let mut accumulated_usage = LmUsage::from(response.usage);
+        let (response, usage_override) = match client.as_ref() {
+            LMClient::LmRouter(router) => {
+                let completion = router
+                    .completion_with_signature(signature, request)
+                    .await?;
+                (completion.response, Some(completion.usage))
+            }
+            _ => (client.completion(request).await?, None),
+        };
+
+        let mut accumulated_usage = usage_override.unwrap_or_else(|| LmUsage::from(response.usage));
 
         // Handle the response
         let mut tool_loop_result = None;

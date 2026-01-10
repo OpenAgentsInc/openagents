@@ -3,6 +3,9 @@ use anyhow::Result;
 use serde_json::Value;
 
 pub trait MetaSignature: Send + Sync {
+    fn signature_name(&self) -> &'static str {
+        std::any::type_name::<Self>()
+    }
     fn demos(&self) -> Vec<Example>;
     fn set_demos(&mut self, demos: Vec<Example>) -> Result<()>;
     fn instruction(&self) -> String;

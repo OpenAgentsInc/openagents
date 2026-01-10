@@ -21,6 +21,7 @@
 //! ```
 
 mod backend;
+mod dspy_backend;
 mod error;
 mod router;
 mod usage;
@@ -28,6 +29,7 @@ mod usage;
 pub mod backends;
 
 pub use backend::{LmBackend, LmResponse};
+pub use dspy_backend::{DspyBackend, DspyRoutingPolicy, DspySignatureInfo};
 pub use error::{Error, Result};
 pub use router::{LmRouter, LmRouterBuilder};
 pub use usage::{LmUsage, UsageReport, UsageTracker};
