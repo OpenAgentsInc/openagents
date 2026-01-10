@@ -8147,7 +8147,7 @@ impl CoderApp {
             sidebar_layout.main.size.width,
             logical_height - input_area_y,
         );
-        scene.draw_quad(Quad::new(input_area_bounds).with_background(palette.input_bg));
+        scene.draw_quad(Quad::new(input_area_bounds).with_background(palette.background));
 
         // Input box
         let input_bounds = Bounds::new(
