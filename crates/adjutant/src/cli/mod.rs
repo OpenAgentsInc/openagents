@@ -4,6 +4,7 @@
 
 pub mod blocker;
 pub mod directive;
+pub mod dspy;
 pub mod issue;
 pub mod run;
 pub mod status;
@@ -32,6 +33,12 @@ pub enum Commands {
     Issue {
         #[command(subcommand)]
         command: IssueCommand,
+    },
+
+    /// DSPy training and optimization
+    Dspy {
+        #[command(subcommand)]
+        command: dspy::DspyCommand,
     },
 }
 
@@ -65,6 +72,11 @@ pub async fn execute(cli: AutopilotCli) -> anyhow::Result<()> {
             IssueCommand::Claim(args) => issue::claim(args).await,
             IssueCommand::Complete(args) => issue::complete(args).await,
             IssueCommand::Show(args) => issue::show(args).await,
+        },
+        Some(Commands::Dspy { command }) => match command {
+            dspy::DspyCommand::Status(args) => dspy::status(args).await,
+            dspy::DspyCommand::Optimize(args) => dspy::optimize(args).await,
+            dspy::DspyCommand::Export(args) => dspy::export(args).await,
         },
     }
 }
