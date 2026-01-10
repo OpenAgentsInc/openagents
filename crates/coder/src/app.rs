@@ -591,7 +591,7 @@ struct UiPalette {
 fn palette_for(theme: ThemeSetting) -> UiPalette {
     match theme {
         ThemeSetting::Dark => UiPalette {
-            background: Hsla::new(220.0, 0.15, 0.10, 1.0),
+            background: Hsla::new(0.0, 0.0, 0.0, 1.0),
             panel: Hsla::new(220.0, 0.15, 0.12, 1.0),
             panel_border: Hsla::new(220.0, 0.15, 0.25, 1.0),
             panel_highlight: Hsla::new(220.0, 0.2, 0.18, 1.0),
