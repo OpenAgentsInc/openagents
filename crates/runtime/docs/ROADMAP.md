@@ -211,7 +211,7 @@ Demo agent can:
 
 ### Implementation Notes (completed)
 
-- Added container core types, policy, provider trait, and router in `crates/runtime/src/containers.rs`.
+- Added container core types, policy, provider trait, and router in `crates/runtime/src/containers/`.
 - Implemented `/containers` filesystem routes for new sessions, provider info, policy, usage, session status/result/output, exec jobs, and file read/write with URL decoding + chunking.
 - Wired budget reservation/reconcile and idempotency caching for `/containers/new`, with reconcile on status/output.
 - Implemented `LocalContainerProvider` using Docker CLI for session lifecycle, exec streaming, and file read/write via `docker exec`.
@@ -363,9 +363,9 @@ Same container request can run locally or via cloud provider based on policy.
 
 ### Implementation Notes (completed)
 
-- Added OpenAgents API auth + credits manager with `/containers/auth/*` surfaces in `crates/runtime/src/containers.rs`.
-- Implemented OpenAgents API-backed container providers (cloudflare/daytona) and `/containers/providers/*` listing in `crates/runtime/src/containers.rs`.
-- Added Daytona SDK-backed container provider (direct API key) with env-based configuration and async exec/output handling in `crates/runtime/src/containers.rs`.
+- Added OpenAgents API auth + credits manager with `/containers/auth/*` surfaces in `crates/runtime/src/containers/`.
+- Implemented OpenAgents API-backed container providers (cloudflare/daytona) and `/containers/providers/*` listing in `crates/runtime/src/containers/`.
+- Added Daytona SDK-backed container provider (direct API key) with env-based configuration and async exec/output handling in `crates/runtime/src/containers/`.
 - Added `ContainerFs::with_default_providers` plus a policy-selection test (`test_container_policy_selects_allowed_provider`) in `crates/runtime/src/tests/mod.rs`.
 
 ### References
@@ -390,7 +390,7 @@ Agent can buy compute from DVM within reserved max cost.
 
 ### Implementation Notes (completed)
 
-- Added DVM providers for compute and containers with quote/accept/settle lifecycles in `crates/runtime/src/compute.rs` and `crates/runtime/src/containers.rs`.
+- Added DVM providers for compute and containers with quote/accept/settle lifecycles in `crates/runtime/src/compute.rs` and `crates/runtime/src/containers/`.
 - Wired Lightning settlement with USD↔sats conversion via `FxRateCache` + `WalletFxProvider` (supports `FxSource::Wallet`) in the DVM providers.
 - Added runtime tests for DVM payment flows plus wallet-FX bid conversion in `crates/runtime/src/tests/mod.rs`.
 

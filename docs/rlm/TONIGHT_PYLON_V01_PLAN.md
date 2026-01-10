@@ -7,7 +7,7 @@ Goal: ship a single `pylon` CLI binary for tomorrow's GitHub release, with NIP-9
 - Pylon CLI surface: `crates/pylon/src/cli/mod.rs` (init/start/stop/status/doctor/agent/earnings/infer/compute/connect/neobank).
 - Provider + Spark wallet: `crates/pylon/src/provider.rs` (initializes SparkWallet) + `crates/compute/src/services/dvm_service.rs` (invoice creation, payment monitoring, bolt11 tags).
 - NIP-90 protocol + client: `crates/nostr/core/src/nip90.rs` and `crates/nostr/client/src/dvm.rs`.
-- Runtime auto-pay path (for buyers using DVM container): `crates/runtime/src/containers.rs` + Spark adapter in `crates/runtime/src/wallet_spark.rs`.
+- Runtime auto-pay path (for buyers using DVM container): `crates/runtime/src/containers/` + Spark adapter in `crates/runtime/src/wallet_spark.rs`.
 - Spark network mapping: `crates/spark/src/wallet.rs` (Testnet/Signet map to Regtest).
 - Web wallet uses Spark (for UI testing if needed): `crates/web/worker/src/routes/wallet.rs`.
 
@@ -52,4 +52,3 @@ Goal: ship a single `pylon` CLI binary for tomorrow's GitHub release, with NIP-9
 - Spark SDK only supports Mainnet + Regtest; "testnet" and "signet" map to Regtest internally.
 - Pylon docs currently omit payment config fields; update `crates/pylon/docs/CONFIGURATION.md`.
 - Wallet CLI (`crates/wallet`) is still stubbed for Spark; do not rely on it for v0.1 tests.
-
