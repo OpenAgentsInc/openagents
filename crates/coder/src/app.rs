@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command as ProcessCommand, Stdio};
 use std::rc::Rc;
@@ -68,50 +68,20 @@ use crate::commands::{parse_command, Command};
 use crate::keybindings::{default_keybindings, match_action, Action as KeyAction, Keybinding};
 use crate::panels::PanelLayout;
 
-/// Wrap text to fit within a given character width
-fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
-    let mut lines = Vec::new();
-    for line in text.lines() {
-        if line.len() <= max_chars {
-            lines.push(line.to_string());
-        } else {
-            // Word wrap
-            let mut current_line = String::new();
-            for word in line.split_whitespace() {
-                if current_line.is_empty() {
-                    if word.len() > max_chars {
-                        // Break long word
-                        for chunk in word.as_bytes().chunks(max_chars) {
-                            lines.push(String::from_utf8_lossy(chunk).to_string());
-                        }
-                    } else {
-                        current_line = word.to_string();
-                    }
-                } else if current_line.len() + 1 + word.len() <= max_chars {
-                    current_line.push(' ');
-                    current_line.push_str(word);
-                } else {
-                    lines.push(current_line);
-                    if word.len() > max_chars {
-                        for chunk in word.as_bytes().chunks(max_chars) {
-                            lines.push(String::from_utf8_lossy(chunk).to_string());
-                        }
-                        current_line = String::new();
-                    } else {
-                        current_line = word.to_string();
-                    }
-                }
-            }
-            if !current_line.is_empty() {
-                lines.push(current_line);
-            }
-        }
-    }
-    if lines.is_empty() {
-        lines.push(String::new());
-    }
-    lines
-}
+mod config;
+mod parsing;
+mod ui;
+
+use config::{
+    config_dir, config_file, hook_config_file, keybindings_file, mcp_project_file,
+    permission_config_file, session_index_file, session_messages_dir, session_messages_file,
+    sessions_dir,
+};
+use parsing::{
+    build_context_injection, build_todo_context, expand_prompt_text, first_nonempty_line,
+    frontmatter_list, frontmatter_scalar, parse_frontmatter, Frontmatter,
+};
+use ui::{palette_for, theme_label, split_into_words_for_layout, wrap_text, ThemeSetting, UiPalette};
 
 fn selection_point_cmp(a: &ChatSelectionPoint, b: &ChatSelectionPoint) -> std::cmp::Ordering {
     match a.message_index.cmp(&b.message_index) {
@@ -133,32 +103,6 @@ fn byte_offset_for_char_index(text: &str, char_index: usize) -> usize {
 fn char_index_for_byte_offset(text: &str, byte_offset: usize) -> usize {
     let clamped = byte_offset.min(text.len());
     text[..clamped].chars().count()
-}
-
-fn split_into_words_for_layout(text: &str) -> Vec<&str> {
-    let mut words = Vec::new();
-    let mut start = 0;
-    let mut in_word = false;
-
-    for (i, c) in text.char_indices() {
-        if c.is_whitespace() {
-            if in_word {
-                in_word = false;
-            }
-        } else if !in_word && start < i {
-            words.push(&text[start..i]);
-            start = i;
-            in_word = true;
-        } else {
-            in_word = true;
-        }
-    }
-
-    if start < text.len() {
-        words.push(&text[start..]);
-    }
-
-    words
 }
 
 fn prefix_text_for_line(prefix: &LinePrefix, text_system: &mut TextSystem) -> (String, f32) {
@@ -494,8 +438,6 @@ fn modal_y_in_content(logical_height: f32, modal_height: f32) -> f32 {
     (content_height - modal_height) / 2.0
 }
 const BUG_REPORT_URL: &str = "https://github.com/OpenAgentsInc/openagents/issues/new";
-const MAX_FILE_BYTES: usize = 200_000;
-const MAX_COMMAND_BYTES: usize = 120_000;
 const SIDEBAR_WIDTH: f32 = 220.0;
 const SIDEBAR_MIN_MAIN: f32 = 320.0;
 
@@ -555,114 +497,6 @@ fn clamp_font_size(size: f32) -> f32 {
 
 fn normalize_settings(settings: &mut CoderSettings) {
     settings.font_size = clamp_font_size(settings.font_size);
-}
-
-fn theme_label(theme: ThemeSetting) -> &'static str {
-    match theme {
-        ThemeSetting::Dark => "Dark",
-        ThemeSetting::Light => "Light",
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct UiPalette {
-    background: Hsla,
-    panel: Hsla,
-    panel_border: Hsla,
-    panel_highlight: Hsla,
-    overlay: Hsla,
-    #[allow(dead_code)]
-    input_bg: Hsla,
-    input_border: Hsla,
-    input_border_focused: Hsla,
-    text_primary: Hsla,
-    text_secondary: Hsla,
-    text_muted: Hsla,
-    text_dim: Hsla,
-    text_faint: Hsla,
-    prompt: Hsla,
-    #[allow(dead_code)]
-    status_left: Hsla,
-    status_right: Hsla,
-    user_text: Hsla,
-    assistant_text: Hsla,
-    thinking_text: Hsla,
-    selection_bg: Hsla,
-    #[allow(dead_code)]
-    tool_panel_bg: Hsla,
-    #[allow(dead_code)]
-    tool_panel_border: Hsla,
-    tool_progress_bg: Hsla,
-    tool_progress_fg: Hsla,
-    code_bg: Hsla,
-    inline_code_bg: Hsla,
-    link: Hsla,
-    blockquote: Hsla,
-}
-
-fn palette_for(theme: ThemeSetting) -> UiPalette {
-    match theme {
-        ThemeSetting::Dark => UiPalette {
-            background: Hsla::new(0.0, 0.0, 0.0, 1.0),
-            panel: Hsla::new(220.0, 0.15, 0.12, 1.0),
-            panel_border: Hsla::new(220.0, 0.15, 0.25, 1.0),
-            panel_highlight: Hsla::new(220.0, 0.2, 0.18, 1.0),
-            overlay: Hsla::new(0.0, 0.0, 0.0, 0.7),
-            input_bg: Hsla::new(220.0, 0.15, 0.08, 1.0),
-            input_border: Hsla::new(220.0, 0.15, 0.25, 1.0),
-            input_border_focused: Hsla::new(0.0, 0.0, 1.0, 1.0),
-            text_primary: Hsla::new(0.0, 0.0, 0.9, 1.0),
-            text_secondary: Hsla::new(0.0, 0.0, 0.7, 1.0),
-            text_muted: Hsla::new(0.0, 0.0, 0.6, 1.0),
-            text_dim: Hsla::new(0.0, 0.0, 0.5, 1.0),
-            text_faint: Hsla::new(0.0, 0.0, 0.4, 1.0),
-            prompt: Hsla::new(0.0, 0.0, 0.6, 1.0),
-            status_left: Hsla::new(35.0, 0.8, 0.65, 1.0),
-            status_right: Hsla::new(0.0, 0.0, 0.55, 1.0),
-            user_text: Hsla::new(0.0, 0.0, 0.6, 1.0),
-            assistant_text: Hsla::new(180.0, 0.5, 0.7, 1.0),
-            thinking_text: Hsla::new(0.0, 0.0, 0.5, 1.0),
-            selection_bg: Hsla::new(200.0, 0.6, 0.55, 0.35),
-            tool_panel_bg: Hsla::new(220.0, 0.15, 0.12, 1.0),
-            tool_panel_border: Hsla::new(220.0, 0.15, 0.25, 1.0),
-            tool_progress_bg: Hsla::new(220.0, 0.15, 0.20, 1.0),
-            tool_progress_fg: Hsla::new(200.0, 0.8, 0.6, 1.0),
-            code_bg: Hsla::new(220.0, 0.18, 0.14, 1.0),
-            inline_code_bg: Hsla::new(220.0, 0.12, 0.18, 1.0),
-            link: Hsla::new(200.0, 0.7, 0.6, 1.0),
-            blockquote: Hsla::new(200.0, 0.6, 0.6, 1.0),
-        },
-        ThemeSetting::Light => UiPalette {
-            background: Hsla::new(210.0, 0.2, 0.96, 1.0),
-            panel: Hsla::new(0.0, 0.0, 1.0, 1.0),
-            panel_border: Hsla::new(210.0, 0.1, 0.78, 1.0),
-            panel_highlight: Hsla::new(210.0, 0.4, 0.9, 1.0),
-            overlay: Hsla::new(0.0, 0.0, 0.0, 0.3),
-            input_bg: Hsla::new(0.0, 0.0, 1.0, 1.0),
-            input_border: Hsla::new(210.0, 0.1, 0.72, 1.0),
-            input_border_focused: Hsla::new(210.0, 0.8, 0.4, 1.0),
-            text_primary: Hsla::new(0.0, 0.0, 0.12, 1.0),
-            text_secondary: Hsla::new(0.0, 0.0, 0.25, 1.0),
-            text_muted: Hsla::new(0.0, 0.0, 0.35, 1.0),
-            text_dim: Hsla::new(0.0, 0.0, 0.45, 1.0),
-            text_faint: Hsla::new(0.0, 0.0, 0.55, 1.0),
-            prompt: Hsla::new(0.0, 0.0, 0.35, 1.0),
-            status_left: Hsla::new(25.0, 0.85, 0.35, 1.0),
-            status_right: Hsla::new(0.0, 0.0, 0.4, 1.0),
-            user_text: Hsla::new(0.0, 0.0, 0.35, 1.0),
-            assistant_text: Hsla::new(200.0, 0.6, 0.35, 1.0),
-            thinking_text: Hsla::new(0.0, 0.0, 0.4, 1.0),
-            selection_bg: Hsla::new(210.0, 0.7, 0.5, 0.25),
-            tool_panel_bg: Hsla::new(0.0, 0.0, 0.98, 1.0),
-            tool_panel_border: Hsla::new(210.0, 0.1, 0.82, 1.0),
-            tool_progress_bg: Hsla::new(210.0, 0.2, 0.88, 1.0),
-            tool_progress_fg: Hsla::new(200.0, 0.8, 0.45, 1.0),
-            code_bg: Hsla::new(210.0, 0.15, 0.92, 1.0),
-            inline_code_bg: Hsla::new(210.0, 0.15, 0.9, 1.0),
-            link: Hsla::new(210.0, 0.7, 0.35, 1.0),
-            blockquote: Hsla::new(210.0, 0.5, 0.4, 1.0),
-        },
-    }
 }
 
 struct SidebarLayout {
@@ -1619,19 +1453,6 @@ impl ModelOption {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum ThemeSetting {
-    Dark,
-    Light,
-}
-
-impl Default for ThemeSetting {
-    fn default() -> Self {
-        ThemeSetting::Dark
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct CoderSettings {
     #[serde(default)]
@@ -2315,51 +2136,6 @@ struct SkillCatalog {
     user_path: Option<PathBuf>,
 }
 
-/// Get the config directory path
-fn config_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".openagents")
-        .join("coder")
-}
-
-/// Get the config file path
-fn config_file() -> PathBuf {
-    config_dir().join("config.toml")
-}
-
-fn keybindings_file() -> PathBuf {
-    config_dir().join("keybindings.json")
-}
-
-fn permission_config_file() -> PathBuf {
-    config_dir().join("permissions.json")
-}
-
-fn hook_config_file() -> PathBuf {
-    config_dir().join("hooks.json")
-}
-
-fn sessions_dir() -> PathBuf {
-    config_dir().join("sessions")
-}
-
-fn session_index_file() -> PathBuf {
-    sessions_dir().join("index.json")
-}
-
-fn session_messages_dir(session_id: &str) -> PathBuf {
-    sessions_dir().join(session_id)
-}
-
-fn session_messages_file(session_id: &str) -> PathBuf {
-    session_messages_dir(session_id).join("messages.jsonl")
-}
-
-fn mcp_project_file(cwd: &Path) -> PathBuf {
-    cwd.join(".mcp.json")
-}
-
 fn parse_legacy_model_setting(content: &str) -> Option<String> {
     for line in content.lines() {
         if let Some(model_id) = line.strip_prefix("model = \"").and_then(|s| s.strip_suffix("\"")) {
@@ -2934,156 +2710,6 @@ fn load_mcp_project_servers(cwd: &Path) -> (HashMap<String, McpServerConfig>, Op
     };
 
     (servers, error)
-}
-
-#[derive(Default)]
-struct Frontmatter {
-    scalars: HashMap<String, String>,
-    lists: HashMap<String, Vec<String>>,
-}
-
-fn normalize_frontmatter_key(key: &str) -> String {
-    key.trim()
-        .to_ascii_lowercase()
-        .replace('-', "_")
-        .replace(' ', "_")
-}
-
-fn strip_quotes(value: &str) -> String {
-    let trimmed = value.trim();
-    if trimmed.len() >= 2 {
-        let bytes = trimmed.as_bytes();
-        let first = bytes[0] as char;
-        let last = bytes[bytes.len() - 1] as char;
-        if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
-            return trimmed[1..trimmed.len() - 1].to_string();
-        }
-    }
-    trimmed.to_string()
-}
-
-fn is_list_key(key: &str) -> bool {
-    matches!(
-        key,
-        "tools"
-            | "allowed_tools"
-            | "disallowed_tools"
-            | "tags"
-            | "categories"
-            | "capabilities"
-            | "skills"
-    )
-}
-
-fn parse_list_values(value: &str) -> Vec<String> {
-    value
-        .split(',')
-        .map(|item| strip_quotes(item).trim().to_string())
-        .filter(|item| !item.is_empty())
-        .collect()
-}
-
-fn parse_inline_list(value: &str) -> Option<Vec<String>> {
-    let trimmed = value.trim();
-    if trimmed.starts_with('[') && trimmed.ends_with(']') && trimmed.len() >= 2 {
-        let inner = &trimmed[1..trimmed.len() - 1];
-        return Some(parse_list_values(inner));
-    }
-    None
-}
-
-fn parse_frontmatter(contents: &str) -> (Frontmatter, String) {
-    let mut frontmatter = Frontmatter::default();
-    let mut lines = contents.lines();
-    let Some(first) = lines.next() else {
-        return (frontmatter, contents.to_string());
-    };
-    if first.trim() != "---" {
-        return (frontmatter, contents.to_string());
-    }
-
-    let mut frontmatter_lines = Vec::new();
-    let mut body_lines = Vec::new();
-    let mut in_frontmatter = true;
-
-    for line in lines {
-        if in_frontmatter && line.trim() == "---" {
-            in_frontmatter = false;
-            continue;
-        }
-        if in_frontmatter {
-            frontmatter_lines.push(line);
-        } else {
-            body_lines.push(line);
-        }
-    }
-
-    if in_frontmatter {
-        return (Frontmatter::default(), contents.to_string());
-    }
-
-    let mut current_list_key: Option<String> = None;
-    for raw_line in frontmatter_lines {
-        let line = raw_line.trim_end();
-        if line.trim().is_empty() {
-            continue;
-        }
-        let stripped = line.trim_start();
-        if stripped.starts_with('-') {
-            if let Some(key) = current_list_key.as_ref() {
-                let item = stripped.trim_start_matches('-').trim();
-                if !item.is_empty() {
-                    frontmatter
-                        .lists
-                        .entry(key.clone())
-                        .or_default()
-                        .push(strip_quotes(item));
-                }
-                continue;
-            }
-        }
-        current_list_key = None;
-        let Some((raw_key, raw_value)) = line.split_once(':') else {
-            continue;
-        };
-        let key = normalize_frontmatter_key(raw_key);
-        let value = raw_value.trim();
-        if value.is_empty() {
-            current_list_key = Some(key.clone());
-            frontmatter.lists.entry(key).or_default();
-            continue;
-        }
-        if let Some(list) = parse_inline_list(value) {
-            frontmatter.lists.insert(key, list);
-            continue;
-        }
-        if is_list_key(&key) {
-            frontmatter.lists.insert(key, parse_list_values(value));
-        } else {
-            frontmatter
-                .scalars
-                .insert(key, strip_quotes(value));
-        }
-    }
-
-    (frontmatter, body_lines.join("\n"))
-}
-
-fn frontmatter_scalar(frontmatter: &Frontmatter, key: &str) -> Option<String> {
-    let normalized = normalize_frontmatter_key(key);
-    frontmatter.scalars.get(&normalized).cloned()
-}
-
-fn frontmatter_list(frontmatter: &Frontmatter, key: &str) -> Option<Vec<String>> {
-    let normalized = normalize_frontmatter_key(key);
-    frontmatter.lists.get(&normalized).cloned()
-}
-
-fn first_nonempty_line(text: &str) -> Option<String> {
-    text.lines()
-        .map(|line| line.trim())
-        .find(|line| !line.is_empty())
-        .map(|line| line.to_string())
 }
 
 fn parse_agent_model(value: &str) -> Option<AgentModel> {
@@ -14290,215 +13916,6 @@ fn export_session_markdown(state: &AppState) -> io::Result<PathBuf> {
     }
 
     Ok(path)
-}
-
-fn expand_prompt_text(prompt: &str, cwd: &PathBuf) -> Result<String, String> {
-    let with_commands = expand_command_lines(prompt, cwd)?;
-    expand_file_references(&with_commands, cwd)
-}
-
-fn expand_command_lines(prompt: &str, cwd: &PathBuf) -> Result<String, String> {
-    let mut output = String::new();
-    for line in prompt.lines() {
-        let trimmed = line.trim_start();
-        if let Some(command) = trimmed.strip_prefix('!') {
-            let command = command.trim();
-            if command.is_empty() {
-                output.push_str(line);
-                output.push('\n');
-                continue;
-            }
-            let command_output = run_shell_command(command, cwd)?;
-            output.push_str("--- BEGIN COMMAND: ");
-            output.push_str(command);
-            output.push_str(" ---\n");
-            output.push_str(&command_output);
-            if !command_output.ends_with('\n') {
-                output.push('\n');
-            }
-            output.push_str("--- END COMMAND ---\n");
-        } else {
-            output.push_str(line);
-            output.push('\n');
-        }
-    }
-    Ok(output.trim_end_matches('\n').to_string())
-}
-
-fn run_shell_command(command: &str, cwd: &PathBuf) -> Result<String, String> {
-    let output = ProcessCommand::new("bash")
-        .arg("-lc")
-        .arg(command)
-        .current_dir(cwd)
-        .output()
-        .map_err(|err| format!("Failed to run command '{}': {}", command, err))?;
-
-    let mut combined = String::new();
-    if !output.stdout.is_empty() {
-        combined.push_str(&String::from_utf8_lossy(&output.stdout));
-    }
-    if !output.stderr.is_empty() {
-        if !combined.is_empty() {
-            combined.push('\n');
-        }
-        combined.push_str(&String::from_utf8_lossy(&output.stderr));
-    }
-
-    if combined.is_empty() {
-        combined.push_str("(command produced no output)");
-    }
-
-    if !output.status.success() {
-        let code = output.status.code().unwrap_or(-1);
-        combined = format!("(exit code {})\n{}", code, combined);
-    }
-
-    Ok(truncate_bytes(combined, MAX_COMMAND_BYTES))
-}
-
-fn expand_file_references(prompt: &str, cwd: &PathBuf) -> Result<String, String> {
-    let mut output = String::new();
-    let mut chars = prompt.chars().peekable();
-    let mut last_was_space = true;
-
-    while let Some(ch) = chars.next() {
-        if ch == '@' && last_was_space {
-            let mut token = String::new();
-            while let Some(&next) = chars.peek() {
-                if next.is_whitespace() {
-                    break;
-                }
-                token.push(next);
-                chars.next();
-            }
-
-            if token.is_empty() {
-                output.push('@');
-                last_was_space = false;
-                continue;
-            }
-
-            let (path_token, trailing) = split_trailing_punct(&token);
-            let path = cwd.join(&path_token);
-            if !path.is_file() {
-                return Err(format!("File not found: {}", path_token));
-            }
-            let contents = read_file_limited(&path)
-                .map_err(|err| format!("Failed to read {}: {}", path_token, err))?;
-            output.push_str("\n\n--- BEGIN FILE: ");
-            output.push_str(&path_token);
-            output.push_str(" ---\n");
-            output.push_str(&contents);
-            if !contents.ends_with('\n') {
-                output.push('\n');
-            }
-            output.push_str("--- END FILE ---\n\n");
-            output.push_str(&trailing);
-            last_was_space = true;
-            continue;
-        }
-
-        output.push(ch);
-        last_was_space = ch.is_whitespace();
-    }
-
-    Ok(output)
-}
-
-fn split_trailing_punct(token: &str) -> (String, String) {
-    let mut path = token.to_string();
-    let mut trailing = String::new();
-    loop {
-        let last = path.chars().last();
-        match last {
-            Some(ch) if matches!(ch, ',' | '.' | ':' | ';' | ')' | ']' | '}') => {
-                path.pop();
-                trailing.insert(0, ch);
-            }
-            _ => break,
-        }
-    }
-    (path, trailing)
-}
-
-fn read_file_limited(path: &Path) -> io::Result<String> {
-    let file = fs::File::open(path)?;
-    let file_len = file.metadata().map(|meta| meta.len()).unwrap_or(0);
-    let mut buffer = Vec::new();
-    let mut handle = file.take(MAX_FILE_BYTES as u64);
-    handle.read_to_end(&mut buffer)?;
-    let mut text = String::from_utf8_lossy(&buffer).to_string();
-    if file_len as usize > MAX_FILE_BYTES {
-        text.push_str("\n... [truncated]");
-    }
-    Ok(text)
-}
-
-fn build_context_sections(label: &str, path: &Path, contents: &str) -> String {
-    format!(
-        "--- BEGIN {}: {} ---\n{}\n--- END {} ---",
-        label,
-        path.display(),
-        contents,
-        label
-    )
-}
-
-fn candidate_claude_paths(cwd: &Path) -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    paths.push(cwd.join("CLAUDE.md"));
-    paths.push(cwd.join(".claude").join("CLAUDE.md"));
-    if let Some(home) = dirs::home_dir() {
-        paths.push(home.join(".claude").join("CLAUDE.md"));
-    }
-    paths
-}
-
-fn candidate_todo_paths(cwd: &Path) -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    paths.push(cwd.join("TODO.md"));
-    paths.push(cwd.join("todo.md"));
-    paths.push(cwd.join(".claude").join("TODO.md"));
-    if let Some(home) = dirs::home_dir() {
-        paths.push(home.join(".claude").join("TODO.md"));
-    }
-    paths
-}
-
-fn build_context_injection(cwd: &Path) -> Option<String> {
-    let mut sections = Vec::new();
-    for path in candidate_claude_paths(cwd) {
-        if path.is_file() {
-            if let Ok(contents) = read_file_limited(&path) {
-                if !contents.trim().is_empty() {
-                    sections.push(build_context_sections("CLAUDE.md", &path, &contents));
-                }
-            }
-        }
-    }
-    if sections.is_empty() {
-        None
-    } else {
-        Some(sections.join("\n\n"))
-    }
-}
-
-fn build_todo_context(cwd: &Path) -> Option<String> {
-    let mut sections = Vec::new();
-    for path in candidate_todo_paths(cwd) {
-        if path.is_file() {
-            if let Ok(contents) = read_file_limited(&path) {
-                if !contents.trim().is_empty() {
-                    sections.push(build_context_sections("TODO", &path, &contents));
-                }
-            }
-        }
-    }
-    if sections.is_empty() {
-        Some("No TODO.md found. Track tasks explicitly before finishing.".to_string())
-    } else {
-        Some(sections.join("\n\n"))
-    }
 }
 
 fn truncate_bytes(input: String, max_bytes: usize) -> String {
