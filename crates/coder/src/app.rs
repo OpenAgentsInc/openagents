@@ -7882,10 +7882,13 @@ impl CoderApp {
         // Dark terminal background
         scene.draw_quad(Quad::new(bounds).with_background(palette.background));
 
+        // Sidebar background color #0a0a0a
+        let sidebar_bg = Hsla::new(0.0, 0.0, 0.039, 1.0);
+
         if let Some(left_bounds) = sidebar_layout.left {
             scene.draw_quad(
                 Quad::new(left_bounds)
-                    .with_background(palette.panel)
+                    .with_background(sidebar_bg)
                     .with_border(palette.panel_border, 1.0),
             );
             let title_run = state.text_system.layout_styled_mono(
@@ -7909,7 +7912,7 @@ impl CoderApp {
         if let Some(right_bounds) = sidebar_layout.right {
             scene.draw_quad(
                 Quad::new(right_bounds)
-                    .with_background(palette.panel)
+                    .with_background(sidebar_bg)
                     .with_border(palette.panel_border, 1.0),
             );
             let title_run = state.text_system.layout_styled_mono(
