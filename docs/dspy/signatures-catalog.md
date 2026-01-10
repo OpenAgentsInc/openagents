@@ -41,11 +41,11 @@ DSPy signatures are typed input/output contracts for LLM tasks. Each signature:
 | **16** | rlm | RlmGuidedQuerySignature | Guided tier RLM | Complete |
 | **16** | rlm | RlmCodeGenerationSignature | Generate REPL code | Complete |
 | **16** | rlm | RlmContinuationSignature | Handle continuation | Complete |
-| **19** | autopilot | TaskComplexityClassifier | Replace keyword heuristics | Planned |
-| **19** | autopilot | BuildStatusClassifier | Detect build failures | Planned |
-| **19** | autopilot | TestStatusClassifier | Detect test failures | Planned |
-| **19** | autopilot | PathValidationSignature | Validate file paths | Planned |
-| **19** | autopilot | ActionableStepSignature | Detect actionable language | Planned |
+| **19** | autopilot | TaskComplexityClassifier | Replace keyword heuristics | Complete |
+| **19** | autopilot | BuildStatusClassifier | Detect build failures | Complete |
+| **19** | autopilot | TestStatusClassifier | Detect test failures | Complete |
+| **19** | autopilot | PathValidationSignature | Validate file paths | Complete |
+| **19** | autopilot | ActionableStepSignature | Detect actionable language | Complete |
 | **20** | agent-orchestrator | DirectiveStatusParser | Parse directive status | Planned |
 | **20** | agent-orchestrator | DirectivePriorityClassifier | Classify directive priority | Planned |
 | **20** | agent-orchestrator | DirectiveMatchingSignature | Semantic directive matching | Planned |
@@ -346,7 +346,9 @@ struct RlmCodeGenerationSignature {
 ### Wave 19: Autopilot Heuristics
 
 ```rust
-// crates/autopilot/src/dspy_heuristics.rs (NEW)
+// crates/autopilot/src/dspy_planning.rs
+// crates/autopilot/src/dspy_verify.rs
+// crates/autopilot/src/dspy_optimization.rs
 
 #[Signature]
 struct TaskComplexityClassifier {
@@ -574,7 +576,7 @@ This enables:
 | runtime | `crates/runtime/src/dspy_tools.rs` |
 | frlm | `crates/frlm/src/dspy_signatures.rs` |
 | rlm | `crates/rlm/src/dspy.rs` (Wave 16) |
-| autopilot | `crates/autopilot/src/dspy_heuristics.rs` (Wave 19) |
+| autopilot | `crates/autopilot/src/dspy_planning.rs`, `crates/autopilot/src/dspy_verify.rs`, `crates/autopilot/src/dspy_optimization.rs` (Wave 19) |
 | agent-orchestrator | `crates/agent-orchestrator/src/dspy.rs` (Wave 20) |
 | nexus | `crates/nexus/src/dspy.rs` (Wave 20) |
 | marketplace | `crates/marketplace/src/dspy_security.rs` (Wave 21) |

@@ -123,6 +123,58 @@ struct BuildAnalyzerSignature {
     fix_order: String,
 }
 
+/// Build status classifier - classifies build output.
+#[Signature]
+struct BuildStatusClassifier {
+    /// Build Status Classifier: Determine build status from output.
+
+    /// Compiler/build output with errors
+    #[input]
+    build_output: String,
+
+    /// Build command used
+    #[input]
+    command: String,
+
+    /// Status: Success/Warning/Error/Fatal
+    #[output]
+    status: String,
+
+    /// Error type category
+    #[output]
+    error_type: String,
+
+    /// Whether the failure is actionable
+    #[output]
+    actionable: bool,
+}
+
+/// Test status classifier - classifies test output.
+#[Signature]
+struct TestStatusClassifier {
+    /// Test Status Classifier: Determine test status from output.
+
+    /// Test output including failures
+    #[input]
+    test_output: String,
+
+    /// Test framework or command context
+    #[input]
+    test_framework: String,
+
+    /// Status: Pass/Fail/Skip/Error
+    #[output]
+    status: String,
+
+    /// Failure category
+    #[output]
+    failure_category: String,
+
+    /// JSON array of failing tests
+    #[output]
+    failing_tests: String,
+}
+
 /// Solution verifier signature - final validation verdict.
 #[Signature]
 struct SolutionVerifierSignature {
@@ -395,6 +447,116 @@ impl VerificationPipeline {
         }
     }
 
+    /// Helper to get bool from prediction value.
+    fn get_bool(prediction: &dsrs::Prediction, key: &str) -> bool {
+        let val = prediction.get(key, None);
+        if let Some(b) = val.as_bool() {
+            b
+        } else if let Some(s) = val.as_str() {
+            matches!(s.to_lowercase().as_str(), "true" | "yes" | "1")
+        } else {
+            false
+        }
+    }
+
+    /// Classify build status with DSPy, fallback to heuristics on failure.
+    async fn classify_build_status(
+        &self,
+        build_output: &str,
+        command: &str,
+    ) -> (String, String, bool) {
+        let classifier = Predict::new(BuildStatusClassifier::new());
+
+        let example = example! {
+            "build_output": "input" => build_output.to_string(),
+            "command": "input" => command.to_string(),
+        };
+
+        let prediction = if let Some(lm) = &self.lm {
+            classifier.forward_with_config(example, lm.clone()).await
+        } else {
+            classifier.forward(example).await
+        };
+
+        match prediction {
+            Ok(pred) => (
+                Self::get_string(&pred, "status"),
+                Self::get_string(&pred, "error_type"),
+                Self::get_bool(&pred, "actionable"),
+            ),
+            Err(_) => Self::heuristic_build_status(build_output),
+        }
+    }
+
+    /// Heuristic fallback for build status.
+    fn heuristic_build_status(build_output: &str) -> (String, String, bool) {
+        let lower = build_output.to_lowercase();
+        let failed = lower.contains("error") || lower.contains("failed");
+        let error_type = if lower.contains("link") {
+            "LinkError"
+        } else if lower.contains("config") {
+            "ConfigError"
+        } else if failed {
+            "CompileError"
+        } else {
+            "None"
+        };
+
+        (
+            if failed { "Error" } else { "Success" }.to_string(),
+            error_type.to_string(),
+            failed,
+        )
+    }
+
+    /// Classify test status with DSPy, fallback to heuristics on failure.
+    async fn classify_test_status(
+        &self,
+        test_output: &str,
+        test_framework: &str,
+    ) -> (String, String, Vec<String>) {
+        let classifier = Predict::new(TestStatusClassifier::new());
+
+        let example = example! {
+            "test_output": "input" => test_output.to_string(),
+            "test_framework": "input" => test_framework.to_string(),
+        };
+
+        let prediction = if let Some(lm) = &self.lm {
+            classifier.forward_with_config(example, lm.clone()).await
+        } else {
+            classifier.forward(example).await
+        };
+
+        match prediction {
+            Ok(pred) => {
+                let failing_tests =
+                    Self::parse_json_array(&Self::get_string(&pred, "failing_tests"));
+                (
+                    Self::get_string(&pred, "status"),
+                    Self::get_string(&pred, "failure_category"),
+                    failing_tests,
+                )
+            }
+            Err(_) => Self::heuristic_test_status(test_output),
+        }
+    }
+
+    /// Heuristic fallback for test status.
+    fn heuristic_test_status(test_output: &str) -> (String, String, Vec<String>) {
+        let lower = test_output.to_lowercase();
+        if test_output.trim().is_empty() {
+            return ("Skip".to_string(), "NoOutput".to_string(), Vec::new());
+        }
+
+        let failed = lower.contains("failed") || lower.contains("error");
+        (
+            if failed { "Fail" } else { "Pass" }.to_string(),
+            if failed { "Failure" } else { "None" }.to_string(),
+            Vec::new(),
+        )
+    }
+
     /// Run the verification pipeline.
     pub async fn verify(&self, input: &VerificationInput) -> anyhow::Result<VerificationResult> {
         // Create predictors with signature instances
@@ -427,10 +589,14 @@ impl VerificationPipeline {
             });
         }
 
-        // 2. Analyze build if failed
-        let build_status = if input.build_output.to_lowercase().contains("error")
-            || input.build_output.to_lowercase().contains("failed")
-        {
+        // 2. Classify build status
+        let (build_label, build_error_type, build_actionable) =
+            self.classify_build_status(&input.build_output, "auto").await;
+
+        let build_status = if matches!(
+            build_label.to_lowercase().as_str(),
+            "error" | "fatal"
+        ) {
             "FAILED"
         } else {
             "SUCCESS"
@@ -448,23 +614,31 @@ impl VerificationPipeline {
             };
 
             Some(format!(
-                "{}: {}",
+                "{}: {} ({}; actionable: {})",
                 Self::get_string(&prediction, "error_category"),
-                Self::get_string(&prediction, "fixes")
+                Self::get_string(&prediction, "fixes"),
+                build_error_type,
+                build_actionable
             ))
         } else {
             None
         };
 
-        // 3. Analyze tests if failed
-        let test_status = if input.test_output.to_lowercase().contains("failed")
-            || input.test_output.to_lowercase().contains("error")
-        {
-            "FAILED"
-        } else if input.test_output.is_empty() {
-            "SKIPPED"
-        } else {
-            "PASSED"
+        // 3. Classify test status
+        let (test_label, test_failure_category, failing_tests) =
+            self.classify_test_status(&input.test_output, "auto").await;
+
+        let test_status = match test_label.to_lowercase().as_str() {
+            "pass" | "passed" | "success" => "PASSED",
+            "skip" | "skipped" => "SKIPPED",
+            "fail" | "failed" | "error" => "FAILED",
+            _ => {
+                if input.test_output.trim().is_empty() {
+                    "SKIPPED"
+                } else {
+                    "FAILED"
+                }
+            }
         };
 
         let test_analysis = if test_status == "FAILED" {
@@ -479,26 +653,34 @@ impl VerificationPipeline {
                 test_analyzer.forward(example).await?
             };
 
+            let failing_summary = if failing_tests.is_empty() {
+                "no test list".to_string()
+            } else {
+                failing_tests.join(", ")
+            };
+
             Some(format!(
-                "{}: {}",
+                "{}: {} ({}; failing: {})",
                 Self::get_string(&prediction, "root_cause"),
-                Self::get_string(&prediction, "suggested_fixes")
+                Self::get_string(&prediction, "suggested_fixes"),
+                test_failure_category,
+                failing_summary
             ))
         } else {
             None
         };
 
         // 4. Collect blocking issues
-        let mut blocking_issues = Vec::new();
+        let mut blocking_issues: Vec<String> = Vec::new();
         if build_status == "FAILED" {
-            blocking_issues.push("Build failed");
+            blocking_issues.push(format!("Build failed ({})", build_error_type));
         }
         if test_status == "FAILED" {
-            blocking_issues.push("Tests failed");
+            blocking_issues.push(format!("Tests failed ({})", test_failure_category));
         }
         for result in &requirement_results {
             if result.status == "NOT_ADDRESSED" {
-                blocking_issues.push("Requirement not addressed");
+                blocking_issues.push("Requirement not addressed".to_string());
                 break;
             }
         }
