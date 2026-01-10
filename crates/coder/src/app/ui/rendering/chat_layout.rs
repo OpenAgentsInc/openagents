@@ -282,16 +282,82 @@ impl AppState {
 
     fn measure_dspy_stage_height(&self, stage_idx: usize, _available_width: f32) -> f32 {
         let stage_viz = &self.tools.dspy_stages[stage_idx];
-        match &stage_viz.stage {
-            DspyStage::EnvironmentAssessment { .. } => 160.0,
-            DspyStage::Planning { implementation_steps, .. } => {
-                80.0 + (implementation_steps.len() as f32 * 20.0).min(200.0)
+        let stage = &stage_viz.stage;
+
+        // Match dspy.rs rendering constants
+        let padding = 12.0;
+        let font_size = 13.0;
+        let small_font_size = 11.0;
+        let line_height = font_size * 1.4;
+        let small_line_height = small_font_size * 1.4;
+        let wrap_chars = 80;
+
+        let header_height = padding + line_height + 8.0;
+
+        let content_height = match stage {
+            DspyStage::EnvironmentAssessment {
+                system_info,
+                workspace,
+                active_directive,
+                open_issues,
+                compute_backends,
+                priority_action,
+                urgency,
+                reasoning,
+            } => {
+                let backends = if compute_backends.is_empty() {
+                    "None".to_string()
+                } else {
+                    compute_backends.join(", ")
+                };
+                let status_line = format!("{} open · backends: {}", open_issues, backends);
+                let priority_line = format!("{} ({})", priority_action, urgency);
+
+                let items: Vec<(&str, String)> = vec![
+                    ("System", truncate_preview(system_info, 120)),
+                    ("Workspace", truncate_preview(workspace, 120)),
+                    ("Directive", truncate_preview(active_directive.as_deref().unwrap_or("None"), 120)),
+                    ("Status", status_line),
+                    ("Priority", priority_line),
+                    ("Reasoning", truncate_preview(reasoning, 140)),
+                ];
+
+                let mut h = 0.0;
+                for (label, text) in items {
+                    if label == "Reasoning" && text.is_empty() {
+                        continue;
+                    }
+                    let line = format!("{}: {}", label, text);
+                    let wrapped = wrap_text(&line, wrap_chars);
+                    h += wrapped.len() as f32 * small_line_height + 4.0;
+                }
+                h
             }
-            DspyStage::TodoList { tasks } => 60.0 + (tasks.len() as f32 * 24.0).min(240.0),
-            DspyStage::ExecutingTask { .. } => 60.0,
-            DspyStage::TaskComplete { .. } => 40.0,
-            DspyStage::Complete { .. } => 80.0,
-        }
+            DspyStage::Planning {
+                analysis,
+                implementation_steps,
+                test_strategy,
+                ..
+            } => {
+                let analysis_line = format!("Analysis: {}", truncate_preview(analysis, 160));
+                let wrapped_analysis = wrap_text(&analysis_line, wrap_chars);
+                let test_line = format!("Test: {}", truncate_preview(test_strategy, 160));
+                let wrapped_test = wrap_text(&test_line, wrap_chars);
+
+                wrapped_analysis.len() as f32 * small_line_height + 4.0
+                    + small_line_height + 4.0  // complexity line
+                    + wrapped_test.len() as f32 * small_line_height + 6.0
+                    + implementation_steps.len() as f32 * small_line_height
+            }
+            DspyStage::TodoList { tasks } => {
+                tasks.len() as f32 * small_line_height
+            }
+            DspyStage::ExecutingTask { .. } => line_height,
+            DspyStage::TaskComplete { .. } => line_height,
+            DspyStage::Complete { .. } => line_height,
+        };
+
+        header_height + content_height + padding
     }
 
     fn layout_user_message(

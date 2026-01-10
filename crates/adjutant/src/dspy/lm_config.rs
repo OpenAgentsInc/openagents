@@ -53,20 +53,20 @@ impl LmProvider {
 /// Detect best available provider based on environment.
 ///
 /// Priority order:
-/// 1. llama.cpp/GPT-OSS running on localhost:8080 → LlamaCpp (top priority for Autopilot)
-/// 2. Claude CLI available → ClaudeSdk
+/// 1. Claude CLI available → ClaudeSdk (best quality, can do tool use)
+/// 2. llama.cpp/GPT-OSS running on localhost:8080 → LlamaCpp
 /// 3. PYLON_MNEMONIC set → PylonSwarm
 /// 4. CEREBRAS_API_KEY set → Cerebras
 /// 5. Ollama running on localhost:11434 → PylonLocal
 pub fn detect_provider() -> Option<LmProvider> {
-    // Priority 1: llama.cpp/GPT-OSS (local inference - top priority for Autopilot)
-    if check_llamacpp_available() {
-        return Some(LmProvider::LlamaCpp);
-    }
-
-    // Priority 2: Claude via SDK (uses subscription)
+    // Priority 1: Claude via SDK (best quality, proper tool use)
     if has_claude_cli() {
         return Some(LmProvider::ClaudeSdk);
+    }
+
+    // Priority 2: llama.cpp/GPT-OSS (local inference fallback)
+    if check_llamacpp_available() {
+        return Some(LmProvider::LlamaCpp);
     }
 
     // Priority 3: Pylon swarm (requires mnemonic)

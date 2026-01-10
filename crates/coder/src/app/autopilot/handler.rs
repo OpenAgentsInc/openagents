@@ -114,6 +114,18 @@ pub(crate) fn submit_autopilot_prompt(
             Ok(adjutant) => {
                 tracing::info!("Autopilot: Adjutant initialized, starting autonomous loop");
 
+                // Configure dsrs global settings with detected LM provider
+                if let Err(e) = adjutant::dspy::lm_config::configure_dsrs().await {
+                    tracing::error!("Autopilot: failed to configure dsrs: {}", e);
+                    let _ = tx.send(ResponseEvent::Error(format!(
+                        "Failed to configure LM: {}",
+                        e
+                    )));
+                    window.request_redraw();
+                    return;
+                }
+                tracing::info!("Autopilot: dsrs configured");
+
                 // Build rich context from OANIX manifest
                 let mut context_parts = Vec::new();
 
@@ -200,6 +212,10 @@ pub(crate) fn submit_autopilot_prompt(
                 // Create channel for streaming tokens to UI
                 let (token_tx, mut token_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
+                // Register UI callback for dsrs events so user sees LLM call progress
+                let ui_callback = super::UiDspyCallback::new(token_tx.clone());
+                dsrs::set_callback(ui_callback);
+
                 // Spawn task to forward tokens to the response channel
                 let tx_clone = tx.clone();
                 let window_clone = window.clone();
@@ -224,10 +240,19 @@ pub(crate) fn submit_autopilot_prompt(
                                 let json_end = start + end;
                                 let json_str = &buffer[json_start..json_end];
 
-                                if let Ok(stage) = serde_json::from_str::<DspyStage>(json_str) {
-                                    let _ = tx_clone.send(ResponseEvent::DspyStage(stage));
-                                } else {
-                                    tracing::warn!("Failed to parse DSPY_STAGE: {}", json_str);
+                                match serde_json::from_str::<DspyStage>(json_str) {
+                                    Ok(stage) => {
+                                        let _ = tx_clone.send(ResponseEvent::DspyStage(stage));
+                                    }
+                                    Err(e) => {
+                                        // Log with more context: error reason and truncated JSON
+                                        let preview = if json_str.len() > 200 {
+                                            format!("{}...", &json_str[..200])
+                                        } else {
+                                            json_str.to_string()
+                                        };
+                                        tracing::warn!("Failed to parse DSPY_STAGE: {} | JSON: {}", e, preview);
+                                    }
                                 }
 
                                 // Remove processed content from buffer
