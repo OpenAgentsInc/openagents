@@ -950,6 +950,7 @@ impl SparkWallet {
             payment_method: ReceivePaymentMethod::Bolt11Invoice {
                 description,
                 amount_sats,
+                expiry_secs: None,
             },
         };
 
