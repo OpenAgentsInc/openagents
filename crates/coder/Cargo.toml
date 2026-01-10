@@ -39,7 +39,7 @@ issues = { workspace = true }
 anyhow = { workspace = true }
 nostr = { path = "../nostr/core" }
 nostr-client = { path = "../nostr/client" }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
