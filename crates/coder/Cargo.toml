@@ -25,6 +25,7 @@ web-time = "1.1.0"
 # Agent integrations
 claude-agent-sdk = { path = "../claude-agent-sdk" }
 codex-agent-sdk = { path = "../codex-agent-sdk" }
+agent-client-protocol-schema = { version = "0.10" }
 
 # Agent discovery
 which = "7.0"
