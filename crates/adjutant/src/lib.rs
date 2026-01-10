@@ -489,7 +489,20 @@ impl Adjutant {
         token_tx: mpsc::UnboundedSender<String>,
     ) -> Result<TaskResult, AdjutantError> {
         // Build context from relevant files
-        let context = self.build_context(plan).await?;
+        let mut context = self.build_context(plan).await?;
+
+        // Local LLMs have limited context - truncate to ~6K tokens (~24K chars)
+        // to leave room for system prompt, conversation history, and response
+        const MAX_CONTEXT_CHARS: usize = 24_000;
+        if context.len() > MAX_CONTEXT_CHARS {
+            tracing::warn!(
+                "Context too large ({} chars), truncating to {} for local LLM",
+                context.len(),
+                MAX_CONTEXT_CHARS
+            );
+            context.truncate(MAX_CONTEXT_CHARS);
+            context.push_str("\n\n[... context truncated for local LLM context limit ...]");
+        }
 
         // Build the current user prompt
         let user_prompt = format!(
