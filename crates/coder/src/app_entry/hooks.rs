@@ -12,8 +12,8 @@ use tokio::time::timeout;
 
 use claude_agent_sdk::error::Result as SdkResult;
 use claude_agent_sdk::{
-    HookCallback, HookDecision, HookEvent, HookInput, HookOutput, HookSpecificOutput,
-    PostToolUseSpecificOutput, SessionStartSpecificOutput, SyncHookOutput,
+    BaseHookInput, HookCallback, HookDecision, HookEvent, HookInput, HookOutput,
+    HookSpecificOutput, PostToolUseSpecificOutput, SessionStartSpecificOutput, SyncHookOutput,
     UserPromptSubmitSpecificOutput,
 };
 
@@ -29,12 +29,6 @@ use wgpui::components::organisms::{EventData, TagData};
 
 const HOOK_OUTPUT_TRUNCATE: usize = 2000;
 const HOOK_BLOCK_PATTERNS: [&str; 3] = ["rm -rf /", "sudo", "> /dev/"];
-
-const HOOK_LOG_LIMIT: usize = 200;
-const HOOK_SCRIPT_TIMEOUT_SECS: u64 = 12;
-const HOOK_OUTPUT_TRUNCATE: usize = 2000;
-const HOOK_BLOCK_PATTERNS: [&str; 3] = ["rm -rf /", "sudo", "> /dev/"];
-const TOOL_HISTORY_LIMIT: usize = 100;
 
 #[derive(Clone, Debug)]
 pub(crate) enum HookCallbackKind {

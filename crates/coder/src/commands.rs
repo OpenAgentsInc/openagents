@@ -33,6 +33,8 @@ pub enum Command {
     SkillsReload,
     Hooks,
     HooksReload,
+    Wallet,
+    WalletRefresh,
     Custom(String, Vec<String>),
 }
 
@@ -209,6 +211,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         description: "Reload hook scripts from disk",
         requires_args: false,
     },
+    CommandSpec {
+        usage: "/wallet",
+        description: "Open wallet status",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/wallet refresh",
+        description: "Refresh wallet status",
+        requires_args: false,
+    },
 ];
 
 pub fn command_specs() -> &'static [CommandSpec] {
@@ -248,10 +260,20 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "agent" => parse_agent_command(args),
         "skills" => parse_skills_command(args),
         "hooks" => parse_hooks_command(args),
+        "wallet" => parse_wallet_command(args),
         _ => Command::Custom(command, args),
     };
 
     Some(parsed)
+}
+
+fn parse_wallet_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        Some("refresh") => Command::WalletRefresh,
+        Some("status") => Command::Wallet,
+        _ => Command::Wallet,
+    }
 }
 
 fn parse_session_command(args: Vec<String>) -> Command {

@@ -47,7 +47,7 @@ fn render_dspy_stage_card(
     // Card background
     cx.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(palette.panel_bg)
+            .with_background(palette.panel)
             .with_border(accent_color, 2.0)
             .with_corner_radius(8.0),
     );
@@ -78,29 +78,39 @@ fn render_dspy_stage_card(
 
     match stage {
         DspyStage::EnvironmentAssessment {
-            project_summary,
-            repo_context,
-            constraints,
-            ..
+            system_info,
+            workspace,
+            active_directive,
+            open_issues,
+            compute_backends,
+            priority_action,
+            urgency,
+            reasoning,
         } => {
-            let items = [
-                ("Project", project_summary),
-                ("Repo", repo_context),
-                ("Constraints", constraints),
+            let directive = active_directive.as_deref().unwrap_or("None");
+            let backends = if compute_backends.is_empty() {
+                "None".to_string()
+            } else {
+                compute_backends.join(", ")
+            };
+            let status_line = format!("{} open · backends: {}", open_issues, backends);
+            let priority_line = format!("{} ({})", priority_action, urgency);
+            let reasoning_line = truncate_preview(reasoning, 140);
+            let mut items = vec![
+                ("System".to_string(), truncate_preview(system_info, 120)),
+                ("Workspace".to_string(), truncate_preview(workspace, 120)),
+                ("Directive".to_string(), truncate_preview(directive, 120)),
+                ("Status".to_string(), status_line),
+                ("Priority".to_string(), priority_line),
             ];
+            if !reasoning_line.is_empty() {
+                items.push(("Reasoning".to_string(), reasoning_line));
+            }
             for (label, text) in items {
-                let label_run = cx.text.layout_styled_mono(
-                    label,
-                    Point::new(content_x, y),
-                    small_font_size,
-                    palette.text_dim,
-                    wgpui::text::FontStyle::default(),
-                );
-                cx.scene.draw_text(label_run);
-                y += small_line_height;
-                for line in wrap_text(text, 80) {
+                let line = format!("{}: {}", label, text);
+                for wrapped in wrap_text(&line, 80) {
                     let run = cx.text.layout_styled_mono(
-                        &line,
+                        &wrapped,
                         Point::new(content_x, y),
                         small_font_size,
                         palette.text_primary,
@@ -113,26 +123,60 @@ fn render_dspy_stage_card(
             }
         }
         DspyStage::Planning {
-            plan_summary,
+            analysis,
             implementation_steps,
+            test_strategy,
+            complexity,
+            confidence,
             ..
         } => {
+            let analysis_line = format!("Analysis: {}", truncate_preview(analysis, 160));
+            for line in wrap_text(&analysis_line, 80) {
+                let run = cx.text.layout_styled_mono(
+                    &line,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    palette.text_primary,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += small_line_height;
+            }
+            y += 4.0;
+
+            let complexity_line =
+                format!("Complexity: {} ({:.0}%)", complexity, confidence * 100.0);
             let run = cx.text.layout_styled_mono(
-                plan_summary,
+                &complexity_line,
                 Point::new(content_x, y),
                 small_font_size,
-                palette.text_primary,
+                palette.text_dim,
                 wgpui::text::FontStyle::default(),
             );
             cx.scene.draw_text(run);
-            y += small_line_height + 8.0;
+            y += small_line_height + 4.0;
+
+            let test_line = format!("Test: {}", truncate_preview(test_strategy, 160));
+            for line in wrap_text(&test_line, 80) {
+                let run = cx.text.layout_styled_mono(
+                    &line,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    palette.text_dim,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += small_line_height;
+            }
+            y += 6.0;
+
             for (i, step) in implementation_steps.iter().enumerate() {
                 let line = format!("{}. {}", i + 1, step);
                 let run = cx.text.layout_styled_mono(
                     &line,
                     Point::new(content_x, y),
                     small_font_size,
-                    palette.text_dim,
+                    palette.text_primary,
                     wgpui::text::FontStyle::default(),
                 );
                 cx.scene.draw_text(run);
@@ -153,7 +197,7 @@ fn render_dspy_stage_card(
                     crate::autopilot_loop::TodoStatus::Complete => Hsla::new(120.0 / 360.0, 0.6, 0.5, 1.0),
                     crate::autopilot_loop::TodoStatus::Failed => Hsla::new(0.0, 0.6, 0.5, 1.0),
                 };
-                let line = format!("{} {}", status_symbol, task.title);
+                let line = format!("{} {}", status_symbol, task.description);
                 let run = cx.text.layout_styled_mono(
                     &line,
                     Point::new(content_x, y),
@@ -165,8 +209,17 @@ fn render_dspy_stage_card(
                 y += small_line_height;
             }
         }
-        DspyStage::ExecutingTask { task_title, .. } => {
-            let status = format!("Working on: {}", task_title);
+        DspyStage::ExecutingTask {
+            task_index,
+            total_tasks,
+            task_description,
+        } => {
+            let status = format!(
+                "Task {}/{}: {}",
+                task_index + 1,
+                total_tasks,
+                task_description
+            );
             let run = cx.text.layout_styled_mono(
                 &status,
                 Point::new(content_x, y),
@@ -176,11 +229,14 @@ fn render_dspy_stage_card(
             );
             cx.scene.draw_text(run);
         }
-        DspyStage::TaskComplete { task_title, success, .. } => {
+        DspyStage::TaskComplete {
+            task_index,
+            success,
+        } => {
             let status = if *success {
-                format!("Completed: {}", task_title)
+                format!("Task {} completed", task_index + 1)
             } else {
-                format!("Failed: {}", task_title)
+                format!("Task {} failed", task_index + 1)
             };
             let color = if *success {
                 Hsla::new(120.0 / 360.0, 0.6, 0.5, 1.0)
@@ -221,4 +277,3 @@ fn render_dspy_stage_card(
         }
     }
 }
-

@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use dsrs::adapter::Adapter;
 use dsrs::{
     Chat, ChatAdapter, CompletionProvider, Example, LmUsage, Message as DspyMessage,
     MetaSignature, Prediction, get_callback,
@@ -135,7 +136,6 @@ impl GatewayLM {
     }
 }
 
-#[async_trait]
 impl CompletionProvider for GatewayLM {
     async fn completion(
         &self,

@@ -571,3 +571,4 @@ pub(super) fn parse_mcp_status(value: &Value) -> Result<Vec<McpServerStatus>, St
     } else {
         Err("Unexpected MCP status response".to_string())
     }
+}

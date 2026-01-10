@@ -40,6 +40,8 @@
             );
             let settings_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenSettings, "Ctrl+,");
+            let wallet_key =
+                keybinding_labels(&state.settings.keybindings, KeyAction::OpenWallet, "Ctrl+Shift+W");
             let left_sidebar = keybinding_labels(
                 &state.settings.keybindings,
                 KeyAction::ToggleLeftSidebar,
@@ -66,6 +68,7 @@
                         format!("{} - Interrupt request", interrupt),
                         format!("{} - Command palette", palette_key),
                         format!("{} - Settings", settings_key),
+                        format!("{} - Wallet", wallet_key),
                         format!("{} - Toggle left sidebar", left_sidebar),
                         format!("{} - Toggle right sidebar", right_sidebar),
                         format!("{} - Toggle both sidebars", toggle_sidebars),
@@ -111,6 +114,10 @@
                         "/skills - manage skills; /skills reload".to_string(),
                         "@file - insert file; !command - run bash and insert output".to_string(),
                     ],
+                ),
+                (
+                    "Wallet",
+                    vec!["/wallet - open wallet status; /wallet refresh - refresh".to_string()],
                 ),
             ];
 

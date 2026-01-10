@@ -4,10 +4,11 @@ use wgpui::components::PaintContext;
 use wgpui::components::atoms::{ToolStatus, ToolType};
 use wgpui::components::organisms::{
     ChildTool, DiffLine, DiffLineKind, DiffToolCall, EventData, EventInspector, InspectorView,
-    PermissionDialog, SearchMatch, SearchToolCall, TagData, TerminalToolCall, ToolCallCard,
+    PermissionDialog, PermissionType, SearchMatch, SearchToolCall, TagData, TerminalToolCall,
+    ToolCallCard,
 };
 use wgpui::markdown::{MarkdownBlock, MarkdownConfig, MarkdownDocument, StyledLine};
-use wgpui::{copy_to_clipboard, Bounds, Hsla, Point, Quad, Scene, Size, TextSystem};
+use wgpui::{copy_to_clipboard, Bounds, Component, Hsla, Point, Quad, Scene, Size, TextSystem};
 
 use crate::app::AppState;
 use crate::app::catalog::{
@@ -20,6 +21,7 @@ use crate::app::chat::{
 use crate::app::config::{SettingsItem, SettingsTab};
 use crate::app::events::{keybinding_labels, ModalState};
 use crate::app::tools::{DspyStageLayout, ToolPanelBlock};
+use crate::app::wallet::WalletIdentityState;
 use crate::app::ui::{palette_for, split_into_words_for_layout, wrap_text, UiPalette};
 use crate::app::{
     format_relative_time, hook_event_label, settings_rows, truncate_preview, CoderMode,

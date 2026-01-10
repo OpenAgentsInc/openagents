@@ -1,0 +1,1 @@
+mod wallet_tests;

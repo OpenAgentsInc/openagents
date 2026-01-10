@@ -28,7 +28,7 @@ use super::settings::{normalize_settings, save_settings, update_settings_model};
 const HOOK_LOG_LIMIT: usize = 200;
 
 impl AppState {
-    fn build_command_palette_commands(&self) -> Vec<PaletteCommand> {
+    pub(super) fn build_command_palette_commands(&self) -> Vec<PaletteCommand> {
         let mut commands = Vec::new();
         let mut push_command = |id: &str,
                                 label: &str,
@@ -118,6 +118,15 @@ impl AppState {
             "Manage MCP configuration",
             "Navigation",
             None,
+        );
+        let wallet_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenWallet, "Ctrl+Shift+W");
+        push_command(
+            command_palette_ids::WALLET_OPEN,
+            "Open Wallet",
+            "View wallet status and configuration",
+            "Wallet",
+            Some(wallet_keys),
         );
 
         push_command(
@@ -285,7 +294,7 @@ impl AppState {
         commands
     }
 
-    fn open_command_palette(&mut self) {
+    pub(super) fn open_command_palette(&mut self) {
         self.modal_state = ModalState::None;
         if self.chat.chat_context_menu.is_open() {
             self.chat.chat_context_menu.close();
@@ -295,7 +304,7 @@ impl AppState {
         self.command_palette.open();
     }
 
-    fn open_model_picker(&mut self) {
+    pub(super) fn open_model_picker(&mut self) {
         let current_idx = ModelOption::all()
             .iter()
             .position(|m| *m == self.settings.selected_model)
@@ -303,7 +312,7 @@ impl AppState {
         self.modal_state = ModalState::ModelPicker { selected: current_idx };
     }
 
-    fn open_session_list(&mut self) {
+    pub(super) fn open_session_list(&mut self) {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         let (checkpoint_tx, checkpoint_rx) = mpsc::unbounded_channel();
         self.session.session_action_tx = Some(action_tx);
@@ -319,7 +328,7 @@ impl AppState {
         self.modal_state = ModalState::SessionList { selected };
     }
 
-    fn open_agent_list(&mut self) {
+    pub(super) fn open_agent_list(&mut self) {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         self.catalogs.agent_action_tx = Some(action_tx);
         self.catalogs.agent_action_rx = Some(action_rx);
@@ -335,7 +344,7 @@ impl AppState {
         self.modal_state = ModalState::AgentList { selected };
     }
 
-    fn open_skill_list(&mut self) {
+    pub(super) fn open_skill_list(&mut self) {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         self.catalogs.skill_action_tx = Some(action_tx);
         self.catalogs.skill_action_rx = Some(action_rx);
@@ -343,15 +352,15 @@ impl AppState {
         self.modal_state = ModalState::SkillList { selected: 0 };
     }
 
-    fn open_tool_list(&mut self) {
+    pub(super) fn open_tool_list(&mut self) {
         self.modal_state = ModalState::ToolList { selected: 0 };
     }
 
-    fn open_permission_rules(&mut self) {
+    pub(super) fn open_permission_rules(&mut self) {
         self.modal_state = ModalState::PermissionRules;
     }
 
-    fn open_config(&mut self) {
+    pub(super) fn open_config(&mut self) {
         self.modal_state = ModalState::Config {
             tab: SettingsTab::General,
             selected: 0,
@@ -360,11 +369,46 @@ impl AppState {
         };
     }
 
-    fn persist_settings(&self) {
+    pub(super) fn open_wallet(&mut self) {
+        if self.autopilot.oanix_manifest.is_none() && self.autopilot.oanix_manifest_rx.is_none() {
+            self.request_oanix_refresh();
+        }
+        self.refresh_wallet_snapshot();
+        self.modal_state = ModalState::Wallet;
+    }
+
+    pub(super) fn refresh_wallet_snapshot(&mut self) {
+        self.wallet.refresh(self.autopilot.oanix_manifest.as_ref());
+    }
+
+    pub(super) fn request_wallet_refresh(&mut self) {
+        self.refresh_wallet_snapshot();
+        self.request_oanix_refresh();
+    }
+
+    pub(super) fn request_oanix_refresh(&mut self) {
+        if self.autopilot.oanix_manifest_rx.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.autopilot.oanix_manifest_rx = Some(rx);
+        tokio::spawn(async move {
+            match oanix::boot().await {
+                Ok(manifest) => {
+                    let _ = tx.send(manifest);
+                }
+                Err(err) => {
+                    tracing::warn!("OANIX refresh failed: {}", err);
+                }
+            }
+        });
+    }
+
+    pub(super) fn persist_settings(&self) {
         save_settings(&self.settings.coder_settings);
     }
 
-    fn apply_settings(&mut self) {
+    pub(super) fn apply_settings(&mut self) {
         normalize_settings(&mut self.settings.coder_settings);
         let current_value = self.input.get_value().to_string();
         let focused = self.input.is_focused();
@@ -377,43 +421,43 @@ impl AppState {
         self.chat.streaming_markdown.set_markdown_config(build_markdown_config(&self.settings.coder_settings));
     }
 
-    fn update_selected_model(&mut self, model: ModelOption) {
+    pub(super) fn update_selected_model(&mut self, model: ModelOption) {
         self.settings.selected_model = model;
         self.session.session_info.model = self.settings.selected_model.model_id().to_string();
         update_settings_model(&mut self.settings.coder_settings, self.settings.selected_model);
         self.persist_settings();
     }
 
-    fn toggle_left_sidebar(&mut self) {
+    pub(super) fn toggle_left_sidebar(&mut self) {
         self.left_sidebar_open = !self.left_sidebar_open;
     }
 
-    fn toggle_right_sidebar(&mut self) {
+    pub(super) fn toggle_right_sidebar(&mut self) {
         self.right_sidebar_open = !self.right_sidebar_open;
     }
 
-    fn toggle_sidebars(&mut self) {
+    pub(super) fn toggle_sidebars(&mut self) {
         let should_open = !(self.left_sidebar_open && self.right_sidebar_open);
         self.left_sidebar_open = should_open;
         self.right_sidebar_open = should_open;
     }
 
-    fn apply_session_history_limit(&mut self) {
+    pub(super) fn apply_session_history_limit(&mut self) {
         self.session.apply_history_limit(
             self.settings.coder_settings.session_history_limit,
             self.chat.is_thinking,
         );
     }
 
-    fn open_mcp_config(&mut self) {
+    pub(super) fn open_mcp_config(&mut self) {
         self.modal_state = ModalState::McpConfig { selected: 0 };
     }
 
-    fn open_help(&mut self) {
+    pub(super) fn open_help(&mut self) {
         self.modal_state = ModalState::Help;
     }
 
-    fn open_hooks(&mut self) {
+    pub(super) fn open_hooks(&mut self) {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         self.catalogs.hook_inspector_action_tx = Some(action_tx);
         self.catalogs.hook_inspector_action_rx = Some(action_rx);
@@ -423,15 +467,15 @@ impl AppState {
         };
     }
 
-    fn reload_hooks(&mut self) {
+    pub(super) fn reload_hooks(&mut self) {
         self.catalogs.reload_hooks();
     }
 
-    fn toggle_hook_setting(&mut self, setting: HookSetting) {
+    pub(super) fn toggle_hook_setting(&mut self, setting: HookSetting) {
         self.catalogs.toggle_hook_setting(setting);
     }
 
-    fn clear_hook_log(&mut self) {
+    pub(super) fn clear_hook_log(&mut self) {
         self.catalogs.hook_event_log.clear();
         self.catalogs.hook_inspector = None;
         if let ModalState::Hooks { view, selected } = &mut self.modal_state {
@@ -441,23 +485,23 @@ impl AppState {
         }
     }
 
-    fn reload_agents(&mut self) {
+    pub(super) fn reload_agents(&mut self) {
         self.catalogs.reload_agents(&mut self.chat);
     }
 
-    fn reload_skills(&mut self) {
+    pub(super) fn reload_skills(&mut self) {
         self.catalogs.reload_skills();
     }
 
-    fn reload_mcp_project_servers(&mut self) {
+    pub(super) fn reload_mcp_project_servers(&mut self) {
         self.catalogs.reload_mcp_project_servers();
     }
 
-    fn request_mcp_status(&mut self) {
+    pub(super) fn request_mcp_status(&mut self) {
         self.catalogs.request_mcp_status(&mut self.chat);
     }
 
-    fn handle_session_card_action(&mut self, action: SessionAction, session_id: String) {
+    pub(super) fn handle_session_card_action(&mut self, action: SessionAction, session_id: String) {
         self.session.handle_session_card_action(
             action,
             session_id,
@@ -467,7 +511,7 @@ impl AppState {
         );
     }
 
-    fn handle_agent_card_action(&mut self, action: AgentCardAction, agent_id: String) {
+    pub(super) fn handle_agent_card_action(&mut self, action: AgentCardAction, agent_id: String) {
         match action {
             AgentCardAction::Select => {
                 self.set_active_agent_by_name(&agent_id);
@@ -483,7 +527,7 @@ impl AppState {
         }
     }
 
-    fn handle_skill_card_action(&mut self, action: SkillCardAction, skill_id: String) {
+    pub(super) fn handle_skill_card_action(&mut self, action: SkillCardAction, skill_id: String) {
         match action {
             SkillCardAction::View => {
                 if let Some(index) = self.catalogs.skill_entries
@@ -510,7 +554,7 @@ impl AppState {
         }
     }
 
-    fn set_active_agent_by_name(&mut self, name: &str) {
+    pub(super) fn set_active_agent_by_name(&mut self, name: &str) {
         let trimmed = name.trim();
         if trimmed.is_empty() {
             self.push_system_message("Agent name is required.".to_string());
@@ -526,11 +570,11 @@ impl AppState {
         }
     }
 
-    fn clear_active_agent(&mut self) {
+    pub(super) fn clear_active_agent(&mut self) {
         self.set_active_agent(None);
     }
 
-    fn set_active_agent(&mut self, agent: Option<String>) {
+    pub(super) fn set_active_agent(&mut self, agent: Option<String>) {
         let next = agent.and_then(|name| {
             let trimmed = name.trim();
             if trimmed.is_empty() {
@@ -551,7 +595,7 @@ impl AppState {
         self.catalogs.refresh_agent_cards(self.chat.is_thinking);
     }
 
-    fn agent_definitions_for_query(&self) -> HashMap<String, AgentDefinition> {
+    pub(super) fn agent_definitions_for_query(&self) -> HashMap<String, AgentDefinition> {
         let mut agents = HashMap::new();
         for entry in &self.catalogs.agent_entries {
             agents.insert(entry.name.clone(), entry.definition.clone());
@@ -559,7 +603,7 @@ impl AppState {
         agents
     }
 
-    fn setting_sources_for_query(&self) -> Vec<SettingSource> {
+    pub(super) fn setting_sources_for_query(&self) -> Vec<SettingSource> {
         let mut sources = Vec::new();
         if self.catalogs.skill_entries
             .iter()
@@ -576,7 +620,7 @@ impl AppState {
         sources
     }
 
-    fn push_hook_log(&mut self, entry: HookLogEntry) {
+    pub(super) fn push_hook_log(&mut self, entry: HookLogEntry) {
         self.catalogs.hook_event_log.insert(0, entry);
         if self.catalogs.hook_event_log.len() > HOOK_LOG_LIMIT {
             self.catalogs.hook_event_log.truncate(HOOK_LOG_LIMIT);
@@ -591,7 +635,7 @@ impl AppState {
         }
     }
 
-    fn sync_hook_inspector(&mut self, selected: usize) {
+    pub(crate) fn sync_hook_inspector(&mut self, selected: usize) {
         let Some(entry) = self.catalogs.hook_event_log.get(selected) else {
             self.catalogs.hook_inspector = None;
             return;
@@ -608,57 +652,57 @@ impl AppState {
         self.catalogs.hook_inspector = Some(inspector);
     }
 
-    fn handle_checkpoint_restore(&mut self, index: usize) {
+    pub(super) fn handle_checkpoint_restore(&mut self, index: usize) {
         self.session
             .handle_checkpoint_restore(index, &mut self.chat);
     }
 
-    fn begin_session_fork_from(&mut self, session_id: String) {
+    pub(super) fn begin_session_fork_from(&mut self, session_id: String) {
         self.session
             .begin_session_fork_from(session_id, &mut self.chat, &mut self.tools);
     }
 
-    fn attach_user_message_id(&mut self, uuid: String) {
+    pub(super) fn attach_user_message_id(&mut self, uuid: String) {
         self.chat.attach_user_message_id(uuid, &mut self.session);
     }
 
-    fn request_rewind_files(&mut self, user_message_id: String) {
+    pub(super) fn request_rewind_files(&mut self, user_message_id: String) {
         self.chat.request_rewind_files(user_message_id);
     }
 
-    fn clear_conversation(&mut self) {
+    pub(super) fn clear_conversation(&mut self) {
         self.session
             .clear_conversation(&mut self.chat, &mut self.tools);
     }
 
-    fn start_new_session(&mut self) {
+    pub(super) fn start_new_session(&mut self) {
         self.session
             .start_new_session(&mut self.chat, &mut self.tools);
     }
 
-    fn undo_last_exchange(&mut self) {
+    pub(super) fn undo_last_exchange(&mut self) {
         self.session.undo_last_exchange(&mut self.chat);
     }
 
-    fn interrupt_query(&mut self) {
+    pub(super) fn interrupt_query(&mut self) {
         self.chat.interrupt_query();
     }
 
     #[allow(dead_code)]
-    fn abort_query(&mut self) {
+    pub(super) fn abort_query(&mut self) {
         self.chat.abort_query();
     }
 
-    fn begin_session_resume(&mut self, session_id: String) {
+    pub(super) fn begin_session_resume(&mut self, session_id: String) {
         self.session
             .begin_session_resume(session_id, &mut self.chat, &mut self.tools);
     }
 
-    fn begin_session_fork(&mut self) {
+    pub(super) fn begin_session_fork(&mut self) {
         self.session.begin_session_fork(&mut self.chat);
     }
 
-    fn export_session(&mut self) {
+    pub(super) fn export_session(&mut self) {
         if self.chat.messages.is_empty() {
             self.push_system_message("No messages to export yet.".to_string());
             return;
@@ -675,7 +719,7 @@ impl AppState {
         }
     }
 
-    fn push_system_message(&mut self, message: String) {
+    pub(super) fn push_system_message(&mut self, message: String) {
         self.chat.push_system_message(message);
     }
 }

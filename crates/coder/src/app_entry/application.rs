@@ -20,11 +20,11 @@ use crate::app::catalog::{
     load_agent_entries, load_hook_config, load_hook_scripts, load_mcp_project_servers,
     load_skill_entries, CatalogState,
 };
-use crate::app::chat::ChatState;
+use crate::app::chat::{ChatSelection, ChatState};
 use crate::app::config::{mcp_project_file, SettingsState};
 use crate::app::events::{
     convert_key_for_binding, convert_key_for_input, convert_modifiers, convert_mouse_button,
-    CommandAction, ModalState,
+    CommandAction, CoderMode, ModalState,
 };
 use crate::app::permissions::{
     coder_mode_default_allow, coder_mode_label, load_permission_config, PermissionState,
@@ -39,8 +39,9 @@ use crate::app::ui::{
     skill_modal_content_top, INPUT_PADDING, OUTPUT_PADDING, SESSION_MODAL_HEIGHT,
     STATUS_BAR_HEIGHT,
 };
-use crate::app::{build_input, AppState};
-use crate::commands::{parse_command, Command};
+use crate::app::wallet::WalletState;
+use crate::app::{build_input, AppState, HookModalView};
+use crate::commands::parse_command;
 use crate::keybindings::{match_action, Action as KeyAction};
 use crate::panels::PanelLayout;
 
@@ -237,6 +238,7 @@ impl ApplicationHandler for CoderApp {
                     permission_config.bash_deny_patterns,
                 ),
                 autopilot: AutopilotState::new(oanix_manifest_rx, available_providers),
+                wallet: WalletState::new(),
                 llama_server_process,
                 show_kitchen_sink: false,
                 kitchen_sink_scroll: 0.0,
@@ -1131,6 +1133,7 @@ impl ApplicationHandler for CoderApp {
                                     state.open_command_palette();
                                 }
                                 KeyAction::OpenSettings => state.open_config(),
+                                KeyAction::OpenWallet => state.open_wallet(),
                                 KeyAction::ToggleLeftSidebar => state.toggle_left_sidebar(),
                                 KeyAction::ToggleRightSidebar => state.toggle_right_sidebar(),
                                 KeyAction::ToggleSidebars => state.toggle_sidebars(),
