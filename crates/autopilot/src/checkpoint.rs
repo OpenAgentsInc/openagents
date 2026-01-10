@@ -16,7 +16,7 @@ use crate::startup::{ClaudeModel, LogLine, StartupPhase};
 use crate::verification::TerminationChecklist;
 
 /// Current checkpoint format version.
-pub const CHECKPOINT_VERSION: u32 = 1;
+pub const CHECKPOINT_VERSION: u32 = 2;
 
 /// Session checkpoint for resume functionality.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -92,6 +92,10 @@ pub struct SessionCheckpoint {
 
     /// Cursor for fix events.
     pub fix_cursor: usize,
+
+    /// Cursor for ACP events (unified stream).
+    #[serde(default)]
+    pub acp_cursor: usize,
 
     /// All log lines.
     pub lines: Vec<LogLine>,

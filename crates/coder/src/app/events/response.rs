@@ -9,6 +9,7 @@ use super::super::HookLogEntry;
 /// Events from the async query task.
 pub(crate) enum ResponseEvent {
     Chunk(String),
+    ThoughtChunk(String),
     ToolCallStart { name: String, tool_use_id: String },
     ToolCallInput { json: String },
     ToolCallEnd,

@@ -97,10 +97,15 @@ mod tests {
         IssueSummary {
             number: 1,
             title: "Test".to_string(),
+            description: None,
+            issue_type: None,
             status: status.to_string(),
             priority: priority.to_string(),
             is_blocked: blocked,
             blocked_reason: None,
+            created_at: None,
+            updated_at: None,
+            last_checked: None,
         }
     }
 

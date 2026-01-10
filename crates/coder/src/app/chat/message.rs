@@ -5,6 +5,7 @@ use wgpui::markdown::MarkdownDocument;
 pub(crate) enum MessageRole {
     User,
     Assistant,
+    AssistantThought,
 }
 
 /// Metadata about a message response.

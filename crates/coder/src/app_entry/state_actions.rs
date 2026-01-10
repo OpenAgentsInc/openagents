@@ -1088,6 +1088,10 @@ fn export_session_markdown(state: &AppState) -> io::Result<PathBuf> {
                 writeln!(file, "{}", message.content)?;
                 writeln!(file)?;
             }
+            MessageRole::AssistantThought => {
+                writeln!(file, "_Thought:_ {}", message.content)?;
+                writeln!(file)?;
+            }
         }
     }
 

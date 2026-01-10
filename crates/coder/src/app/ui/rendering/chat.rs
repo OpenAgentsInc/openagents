@@ -185,6 +185,20 @@ fn render_chat(
                     }
                 }
             }
+            MessageRole::AssistantThought => {
+                for line in &layout.lines {
+                    if line.y < viewport_bottom && line.y + line.line_height > viewport_top {
+                        let text_run = state.text_system.layout_styled_mono(
+                            &line.text,
+                            Point::new(line.x, line.y),
+                            line.font_size,
+                            palette.thinking_text,
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(text_run);
+                    }
+                }
+            }
         }
         y += msg_height;
 

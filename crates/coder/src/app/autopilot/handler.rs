@@ -2,13 +2,16 @@ use std::process::Command as ProcessCommand;
 use std::sync::atomic::Ordering;
 
 use agent_client_protocol_schema as acp;
-use adjutant::{AcpChannelOutput, Adjutant, AdjutantError, Task as AdjutantTask, DSPY_META_KEY};
+use adjutant::{
+    generate_session_id, AcpChannelOutput, Adjutant, AdjutantError, Task as AdjutantTask,
+    DSPY_META_KEY,
+};
 use tokio::sync::mpsc;
 
 use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult, DspyStage};
 use crate::app::chat::MessageMetadata;
 use crate::app::events::ResponseEvent;
-use crate::app::{now_timestamp, AppState};
+use crate::app::AppState;
 
 pub(crate) fn submit_autopilot_prompt(
     runtime_handle: &tokio::runtime::Handle,
@@ -211,7 +214,7 @@ pub(crate) fn submit_autopilot_prompt(
                 // Create channel for streaming ACP notifications to UI
                 let (acp_tx, mut acp_rx) =
                     tokio::sync::mpsc::unbounded_channel::<acp::SessionNotification>();
-                let session_id = acp::SessionId::new(format!("autopilot-{}", now_timestamp()));
+                let session_id = acp::SessionId::new(generate_session_id());
 
                 // Spawn task to forward ACP notifications to the response channel
                 let tx_clone = tx.clone();
@@ -336,9 +339,13 @@ pub(crate) fn acp_notification_to_response(
     notification: acp::SessionNotification,
 ) -> Vec<ResponseEvent> {
     match notification.update {
-        acp::SessionUpdate::AgentMessageChunk(chunk) => acp_chunk_to_events(&chunk),
-        acp::SessionUpdate::AgentThoughtChunk(chunk) => acp_chunk_to_events(&chunk),
-        acp::SessionUpdate::Plan(plan) => vec![ResponseEvent::Chunk(format_plan_update(&plan))],
+        acp::SessionUpdate::AgentMessageChunk(chunk) => {
+            acp_chunk_to_events(&chunk, ResponseEvent::Chunk)
+        }
+        acp::SessionUpdate::AgentThoughtChunk(chunk) => {
+            acp_chunk_to_events(&chunk, ResponseEvent::ThoughtChunk)
+        }
+        acp::SessionUpdate::Plan(plan) => vec![ResponseEvent::DspyStage(plan_to_todo_stage(&plan))],
         acp::SessionUpdate::ToolCall(tool_call) => {
             let mut events = Vec::new();
             let tool_use_id = tool_call.tool_call_id.to_string();
@@ -390,13 +397,16 @@ pub(crate) fn acp_notification_to_response(
     }
 }
 
-fn acp_chunk_to_events(chunk: &acp::ContentChunk) -> Vec<ResponseEvent> {
+fn acp_chunk_to_events(
+    chunk: &acp::ContentChunk,
+    text_event: fn(String) -> ResponseEvent,
+) -> Vec<ResponseEvent> {
     let mut events = Vec::new();
     if let Some(stage) = acp_content_dspy_stage(&chunk.content) {
         events.push(ResponseEvent::DspyStage(stage));
     }
     if let Some(text) = acp_content_text(&chunk.content) {
-        events.push(ResponseEvent::Chunk(text));
+        events.push(text_event(text));
     }
     events
 }
@@ -417,26 +427,41 @@ fn acp_content_text(content: &acp::ContentBlock) -> Option<String> {
     }
 }
 
-fn format_plan_update(plan: &acp::Plan) -> String {
-    if plan.entries.is_empty() {
-        return "Plan updated (no entries).".to_string();
+fn plan_to_todo_stage(plan: &acp::Plan) -> DspyStage {
+    let tasks = plan
+        .entries
+        .iter()
+        .enumerate()
+        .map(|(idx, entry)| {
+            let (index, description) = parse_plan_entry(&entry.content, idx + 1);
+            let status = match entry.status {
+                acp::PlanEntryStatus::Pending => crate::autopilot_loop::TodoStatus::Pending,
+                acp::PlanEntryStatus::InProgress => crate::autopilot_loop::TodoStatus::InProgress,
+                acp::PlanEntryStatus::Completed => crate::autopilot_loop::TodoStatus::Complete,
+                _ => crate::autopilot_loop::TodoStatus::Pending,
+            };
+            crate::autopilot_loop::TodoTask {
+                index,
+                description,
+                status,
+            }
+        })
+        .collect();
+    DspyStage::TodoList { tasks }
+}
+
+fn parse_plan_entry(content: &str, fallback_index: usize) -> (usize, String) {
+    if let Some((prefix, rest)) = content.split_once(". ") {
+        if let Ok(index) = prefix.parse::<usize>() {
+            let description = if rest.is_empty() {
+                content.to_string()
+            } else {
+                rest.to_string()
+            };
+            return (index, description);
+        }
     }
-    let mut output = String::from("Plan updated:\n");
-    for (idx, entry) in plan.entries.iter().enumerate() {
-        let status = match entry.status {
-            acp::PlanEntryStatus::Pending => "pending",
-            acp::PlanEntryStatus::InProgress => "in_progress",
-            acp::PlanEntryStatus::Completed => "completed",
-            _ => "unknown",
-        };
-        output.push_str(&format!(
-            "{}. [{}] {}\n",
-            idx + 1,
-            status,
-            entry.content
-        ));
-    }
-    output.trim_end().to_string()
+    (fallback_index, content.to_string())
 }
 
 fn format_tool_output(value: &serde_json::Value) -> Option<String> {
@@ -483,7 +508,7 @@ mod tests {
     }
 
     #[test]
-    fn acp_plan_maps_to_chunk() {
+    fn acp_plan_maps_to_todo_stage() {
         let plan = acp::Plan::new(vec![acp::PlanEntry::new(
             "Do the thing",
             acp::PlanEntryPriority::Medium,
@@ -494,11 +519,11 @@ mod tests {
         let events = acp_notification_to_response(notification);
         assert_eq!(events.len(), 1);
         match &events[0] {
-            ResponseEvent::Chunk(text) => {
-                assert!(text.contains("Plan updated"));
-                assert!(text.contains("Do the thing"));
+            ResponseEvent::DspyStage(DspyStage::TodoList { tasks }) => {
+                assert_eq!(tasks.len(), 1);
+                assert_eq!(tasks[0].description, "Do the thing");
             }
-            _ => panic!("expected chunk event"),
+            _ => panic!("expected todo list stage"),
         }
     }
 
@@ -530,8 +555,24 @@ mod tests {
             _ => panic!("expected dspy stage event"),
         }
         match &events[1] {
-            ResponseEvent::Chunk(text) => assert_eq!(text, "done"),
-            _ => panic!("expected chunk event"),
+            ResponseEvent::ThoughtChunk(text) => assert_eq!(text, "done"),
+            _ => panic!("expected thought chunk event"),
+        }
+    }
+
+    #[test]
+    fn acp_thought_chunk_maps_to_thought_event() {
+        let notification = acp::SessionNotification::new(
+            acp::SessionId::new("test"),
+            acp::SessionUpdate::AgentThoughtChunk(acp::ContentChunk::new(
+                acp::ContentBlock::Text(acp::TextContent::new("thinking")),
+            )),
+        );
+        let events = acp_notification_to_response(notification);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            ResponseEvent::ThoughtChunk(text) => assert_eq!(text, "thinking"),
+            _ => panic!("expected thought chunk event"),
         }
     }
 
