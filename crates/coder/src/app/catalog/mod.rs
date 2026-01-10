@@ -3,6 +3,7 @@ pub(crate) mod hooks;
 pub(crate) mod mcp;
 pub(crate) mod skills;
 pub(crate) mod state;
+pub(crate) mod types;
 
 pub(crate) use agents::{load_agent_entries, AgentEntry, AgentSource};
 pub(crate) use hooks::{
@@ -15,3 +16,7 @@ pub(crate) use mcp::{
 };
 pub(crate) use skills::{load_skill_entries, SkillEntry, SkillSource};
 pub(crate) use state::CatalogState;
+pub(crate) use types::{
+    AgentCardAction, AgentCardEvent, HookLogEntry, HookModalView, HookSetting, SkillCardAction,
+    SkillCardEvent,
+};

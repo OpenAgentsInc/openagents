@@ -12,7 +12,7 @@ use super::agents::AgentCatalog;
 use super::hooks::HookScriptCatalog;
 use super::skills::SkillCatalog;
 use super::{AgentEntry, HookConfig, HookScriptEntry, SkillEntry};
-use crate::app::{AgentCardAction, AgentCardEvent, HookLogEntry, SkillCardAction, SkillCardEvent};
+use super::{AgentCardAction, AgentCardEvent, HookLogEntry, SkillCardAction, SkillCardEvent};
 
 pub(crate) struct CatalogState {
     pub(crate) agent_entries: Vec<AgentEntry>,
