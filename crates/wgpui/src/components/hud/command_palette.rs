@@ -240,7 +240,7 @@ impl Component for CommandPalette {
         }
 
         cx.scene
-            .draw_quad(Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.6)));
+            .draw_quad(Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.9)));
 
         let palette_width = 500.0_f32.min(bounds.size.width - 40.0);
         let input_height = 48.0;
