@@ -7284,7 +7284,7 @@ impl CoderApp {
                                 }
                                     }
                                     Some(Ok(SdkMessage::User(u))) => {
-                                        tracing::debug!("USER message received");
+                                        tracing::trace!("USER message received (tool result)");
                                         if let Some(uuid) = u.uuid.clone() {
                                             let _ = tx.send(ResponseEvent::UserMessageId { uuid });
                                             window.request_redraw();
@@ -11960,6 +11960,7 @@ fn is_read_only_tool(tool_name: &str) -> bool {
     matches!(
         tool_name,
         "Read" | "Grep" | "Glob" | "WebSearch" | "Search" | "WebFetch"
+            | "AskUserQuestion" | "Task" | "ExitPlanMode" | "LSP"
     )
 }
 
