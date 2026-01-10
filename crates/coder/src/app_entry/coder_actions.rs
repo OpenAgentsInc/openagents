@@ -472,9 +472,34 @@ impl CoderApp {
                                     Some(Ok(SdkMessage::AuthStatus(a))) => {
                                         tracing::debug!("AUTH_STATUS: {:?}", a);
                                     }
-                                    Some(Ok(SdkMessage::Result(_r))) => {
+                                    Some(Ok(SdkMessage::Result(r))) => {
                                         tracing::debug!("RESULT received");
-                                        let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                                        // Extract metadata from result
+                                        let metadata = match r {
+                                            claude_agent_sdk::SdkResultMessage::Success(s) => {
+                                                Some(crate::app::chat::MessageMetadata {
+                                                    model: Some(model_id.clone()),
+                                                    input_tokens: Some(s.usage.input_tokens),
+                                                    output_tokens: Some(s.usage.output_tokens),
+                                                    duration_ms: Some(s.duration_ms),
+                                                    cost_msats: None,
+                                                })
+                                            }
+                                            // All error variants contain ResultError with same structure
+                                            claude_agent_sdk::SdkResultMessage::ErrorDuringExecution(e)
+                                            | claude_agent_sdk::SdkResultMessage::ErrorMaxTurns(e)
+                                            | claude_agent_sdk::SdkResultMessage::ErrorMaxBudget(e)
+                                            | claude_agent_sdk::SdkResultMessage::ErrorMaxStructuredOutputRetries(e) => {
+                                                Some(crate::app::chat::MessageMetadata {
+                                                    model: Some(model_id.clone()),
+                                                    input_tokens: Some(e.usage.input_tokens),
+                                                    output_tokens: Some(e.usage.output_tokens),
+                                                    duration_ms: Some(e.duration_ms),
+                                                    cost_msats: None,
+                                                })
+                                            }
+                                        };
+                                        let _ = tx.send(ResponseEvent::Complete { metadata });
                                         window.request_redraw();
                                         break;
                                     }
