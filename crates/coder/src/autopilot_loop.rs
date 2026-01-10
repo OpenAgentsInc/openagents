@@ -8,3 +8,6 @@ pub use adjutant::autopilot_loop::{
     AutopilotConfig, AutopilotLoop, AutopilotOutput, AutopilotResult, ChannelOutput, CliOutput,
     Verification,
 };
+
+// Re-export DSPy stage types for UI rendering
+pub use adjutant::{DspyStage, TodoStatus, TodoTask};

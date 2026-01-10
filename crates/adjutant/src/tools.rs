@@ -52,6 +52,7 @@ impl ToolOutput {
 }
 
 /// Registry of available tools.
+#[derive(Clone)]
 pub struct ToolRegistry {
     /// Workspace root for relative paths
     workspace_root: PathBuf,
@@ -59,10 +60,15 @@ pub struct ToolRegistry {
 
 impl ToolRegistry {
     /// Create a new tool registry.
-    pub fn new(workspace_root: &Path) -> Self {
+    pub fn new(workspace_root: impl AsRef<Path>) -> Self {
         Self {
-            workspace_root: workspace_root.to_path_buf(),
+            workspace_root: workspace_root.as_ref().to_path_buf(),
         }
+    }
+
+    /// Get the workspace root path.
+    pub fn workspace_root(&self) -> &Path {
+        &self.workspace_root
     }
 
     /// Read a file's contents.

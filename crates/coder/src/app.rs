@@ -51,7 +51,7 @@ use claude_agent_sdk::protocol::McpServerStatus;
 
 // Autopilot/Adjutant
 use adjutant::{Adjutant, Task as AdjutantTask};
-use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult, ChannelOutput};
+use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult, ChannelOutput, DspyStage};
 use wgpui::components::atoms::{
     AgentStatus, AgentType, PermissionAction, SessionStatus, ToolStatus, ToolType,
 };
@@ -1188,6 +1188,14 @@ struct InlineToolsLayout {
     blocks: Vec<ToolPanelBlock>,
 }
 
+/// Layout for DSPy stage cards displayed inline in chat
+struct DspyStageLayout {
+    message_index: usize,
+    y_offset: f32,
+    height: f32,
+    stage_index: usize,
+}
+
 struct ChatLayout {
     viewport_top: f32,
     viewport_bottom: f32,
@@ -1199,6 +1207,8 @@ struct ChatLayout {
     streaming_height: f32,
     /// Inline tool layouts positioned after their associated messages
     inline_tools: Vec<InlineToolsLayout>,
+    /// DSPy stage layouts positioned inline in chat
+    dspy_stages: Vec<DspyStageLayout>,
 }
 
 struct MessageLayoutBuilder {
@@ -1294,6 +1304,7 @@ enum ResponseEvent {
         error: Option<String>,
     },
     HookLog(HookLogEntry),
+    DspyStage(DspyStage),
 }
 
 enum ToolDetail {
@@ -1420,6 +1431,25 @@ impl ToolVisualization {
             true
         } else {
             false
+        }
+    }
+}
+
+/// Visualization data for a DSPy pipeline stage
+struct DspyStageVisualization {
+    stage: DspyStage,
+    /// Index of the message this stage is associated with
+    message_index: usize,
+    /// Timestamp when this stage was received
+    timestamp: std::time::Instant,
+}
+
+impl DspyStageVisualization {
+    fn new(stage: DspyStage, message_index: usize) -> Self {
+        Self {
+            stage,
+            message_index,
+            timestamp: std::time::Instant::now(),
         }
     }
 }
@@ -3862,6 +3892,7 @@ struct AppState {
     current_tool_input: String,
     current_tool_use_id: Option<String>,
     tool_history: Vec<ToolVisualization>,
+    dspy_stages: Vec<DspyStageVisualization>,
     // Session info from SystemInit
     session_info: SessionInfo,
     session_usage: SessionUsageStats,
@@ -4155,6 +4186,7 @@ impl ApplicationHandler for CoderApp {
                 current_tool_input: String::new(),
                 current_tool_use_id: None,
                 tool_history: Vec::new(),
+                dspy_stages: Vec::new(),
                 session_info: SessionInfo {
                     model: selected_model.model_id().to_string(),
                     permission_mode: coder_mode_label_str,
@@ -6485,6 +6517,13 @@ impl AppState {
         }
     }
 
+    fn push_dspy_stage(&mut self, stage: DspyStage) {
+        // Associate with current message
+        let message_index = self.messages.len().saturating_sub(1);
+        let viz = DspyStageVisualization::new(stage, message_index);
+        self.dspy_stages.push(viz);
+    }
+
     fn cancel_running_tools(&mut self) {
         for tool in &mut self.tool_history {
             if matches!(tool.status, ToolStatus::Running | ToolStatus::Pending) {
@@ -6721,6 +6760,7 @@ impl AppState {
 
         let mut message_layouts = Vec::with_capacity(self.messages.len());
         let mut inline_tools_layouts: Vec<InlineToolsLayout> = Vec::new();
+        let mut dspy_stage_layouts: Vec<DspyStageLayout> = Vec::new();
         let mut total_content_height = 0.0_f32;
 
         // Group tools by message_index
@@ -6731,6 +6771,16 @@ impl AppState {
                 .entry(tool.message_index)
                 .or_default()
                 .push(tool_idx);
+        }
+
+        // Group DSPy stages by message_index
+        let mut dspy_by_message: std::collections::HashMap<usize, Vec<usize>> =
+            std::collections::HashMap::new();
+        for (stage_idx, stage) in self.dspy_stages.iter().enumerate() {
+            dspy_by_message
+                .entry(stage.message_index)
+                .or_default()
+                .push(stage_idx);
         }
 
         for index in 0..self.messages.len() {
@@ -6759,6 +6809,20 @@ impl AppState {
             };
             total_content_height += layout.height;
             message_layouts.push(layout);
+
+            // Add DSPy stage cards for this message (before tools)
+            if let Some(stage_indices) = dspy_by_message.get(&index) {
+                for &stage_idx in stage_indices {
+                    let stage_height = self.measure_dspy_stage_height(stage_idx, available_width);
+                    dspy_stage_layouts.push(DspyStageLayout {
+                        message_index: index,
+                        y_offset: total_content_height,
+                        height: stage_height,
+                        stage_index: stage_idx,
+                    });
+                    total_content_height += stage_height + TOOL_PANEL_GAP;
+                }
+            }
 
             // Add inline tools for this message
             if let Some(tool_indices) = tools_by_message.get(&index) {
@@ -6828,11 +6892,22 @@ impl AppState {
         let scroll_adjust = viewport_top - self.scroll_offset;
         let mut y = scroll_adjust;
         let mut inline_tools_idx = 0;
+        let mut dspy_stages_idx = 0;
         for (msg_idx, layout) in message_layouts.iter_mut().enumerate() {
             for line in &mut layout.lines {
                 line.y += y;
             }
             y += layout.height;
+
+            // Adjust DSPy stage Y positions for this message
+            while dspy_stages_idx < dspy_stage_layouts.len()
+                && dspy_stage_layouts[dspy_stages_idx].message_index == msg_idx
+            {
+                let dsl = &mut dspy_stage_layouts[dspy_stages_idx];
+                dsl.y_offset += scroll_adjust;
+                y += dsl.height + TOOL_PANEL_GAP;
+                dspy_stages_idx += 1;
+            }
 
             // Adjust inline tools Y positions for this message
             if inline_tools_idx < inline_tools_layouts.len()
@@ -6849,6 +6924,13 @@ impl AppState {
                 y += itl.height + TOOL_PANEL_GAP;
                 inline_tools_idx += 1;
             }
+        }
+
+        // Handle any remaining DSPy stages (for streaming message)
+        while dspy_stages_idx < dspy_stage_layouts.len() {
+            let dsl = &mut dspy_stage_layouts[dspy_stages_idx];
+            dsl.y_offset += scroll_adjust;
+            dspy_stages_idx += 1;
         }
 
         // Handle any remaining inline tools (for streaming message)
@@ -6874,6 +6956,7 @@ impl AppState {
             message_layouts,
             streaming_height,
             inline_tools: inline_tools_layouts,
+            dspy_stages: dspy_stage_layouts,
         }
     }
 
@@ -6938,6 +7021,24 @@ impl AppState {
             y_offset,
             height: total_height,
             blocks,
+        }
+    }
+
+    /// Measure the height needed for a DSPy stage card
+    fn measure_dspy_stage_height(&self, stage_idx: usize, _available_width: f32) -> f32 {
+        let stage_viz = &self.dspy_stages[stage_idx];
+        // Calculate height based on stage type
+        match &stage_viz.stage {
+            DspyStage::EnvironmentAssessment { .. } => 160.0,
+            DspyStage::Planning { implementation_steps, .. } => {
+                80.0 + (implementation_steps.len() as f32 * 20.0).min(200.0)
+            }
+            DspyStage::TodoList { tasks } => {
+                60.0 + (tasks.len() as f32 * 24.0).min(240.0)
+            }
+            DspyStage::ExecutingTask { .. } => 60.0,
+            DspyStage::TaskComplete { .. } => 40.0,
+            DspyStage::Complete { .. } => 80.0,
         }
     }
 
@@ -7469,9 +7570,53 @@ impl CoderApp {
                         let tx_clone = tx.clone();
                         let window_clone = window.clone();
                         tokio::spawn(async move {
+                            let mut buffer = String::new();
                             while let Some(token) = token_rx.recv().await {
-                                let _ = tx_clone.send(ResponseEvent::Chunk(token));
+                                buffer.push_str(&token);
+
+                                // Check for complete DSPY_STAGE markers
+                                while let Some(start) = buffer.find("<<DSPY_STAGE:") {
+                                    if let Some(end) = buffer[start..].find(":DSPY_STAGE>>") {
+                                        // Extract text before the marker
+                                        if start > 0 {
+                                            let before = buffer[..start].to_string();
+                                            if !before.trim().is_empty() {
+                                                let _ = tx_clone.send(ResponseEvent::Chunk(before));
+                                            }
+                                        }
+
+                                        // Extract and parse the JSON
+                                        let json_start = start + "<<DSPY_STAGE:".len();
+                                        let json_end = start + end;
+                                        let json_str = &buffer[json_start..json_end];
+
+                                        if let Ok(stage) = serde_json::from_str::<DspyStage>(json_str) {
+                                            let _ = tx_clone.send(ResponseEvent::DspyStage(stage));
+                                        } else {
+                                            tracing::warn!("Failed to parse DSPY_STAGE: {}", json_str);
+                                        }
+
+                                        // Remove processed content from buffer
+                                        let after_marker = start + end + ":DSPY_STAGE>>".len();
+                                        buffer = buffer[after_marker..].to_string();
+                                    } else {
+                                        // Incomplete marker, wait for more data
+                                        break;
+                                    }
+                                }
+
+                                // Send any remaining text that doesn't contain a partial marker
+                                if !buffer.contains("<<DSPY_STAGE:") && !buffer.is_empty() {
+                                    let _ = tx_clone.send(ResponseEvent::Chunk(buffer.clone()));
+                                    buffer.clear();
+                                }
+
                                 window_clone.request_redraw();
+                            }
+
+                            // Send any remaining buffer content
+                            if !buffer.is_empty() {
+                                let _ = tx_clone.send(ResponseEvent::Chunk(buffer));
                             }
                         });
 
@@ -8179,6 +8324,10 @@ impl CoderApp {
                 }
                 ResponseEvent::HookLog(entry) => {
                     state.push_hook_log(entry);
+                    needs_redraw = true;
+                }
+                ResponseEvent::DspyStage(stage) => {
+                    state.push_dspy_stage(stage);
                     needs_redraw = true;
                 }
             }
@@ -8977,6 +9126,27 @@ impl CoderApp {
                                 tool.detail.paint(detail_bounds, &mut paint_cx);
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Render DSPy stage cards
+        {
+            let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+            for dspy_layout in &chat_layout.dspy_stages {
+                let stage_top = dspy_layout.y_offset;
+                let stage_bottom = stage_top + dspy_layout.height;
+
+                // Check if the stage is visible in the viewport
+                if stage_bottom > viewport_top && stage_top < viewport_bottom {
+                    if let Some(stage_viz) = state.dspy_stages.get(dspy_layout.stage_index) {
+                        Self::render_dspy_stage_card(
+                            &stage_viz.stage,
+                            Bounds::new(content_x, stage_top, available_width, dspy_layout.height),
+                            &mut paint_cx,
+                            &palette,
+                        );
                     }
                 }
             }
@@ -10802,6 +10972,273 @@ impl CoderApp {
 
         state.queue.submit(std::iter::once(encoder.finish()));
         output.present();
+    }
+
+    /// Render a DSPy stage card with visual styling
+    fn render_dspy_stage_card(
+        stage: &DspyStage,
+        bounds: Bounds,
+        cx: &mut PaintContext,
+        palette: &UiPalette,
+    ) {
+        let padding = 12.0;
+        let font_size = 13.0;
+        let small_font_size = 11.0;
+        let line_height = font_size * 1.4;
+        let small_line_height = small_font_size * 1.4;
+
+        // Background with accent border based on stage type
+        let (header_text, accent_color, icon) = match stage {
+            DspyStage::EnvironmentAssessment { .. } => (
+                "Environment Assessment",
+                Hsla::new(200.0 / 360.0, 0.7, 0.5, 1.0), // Blue
+                "🔍",
+            ),
+            DspyStage::Planning { .. } => (
+                "Planning",
+                Hsla::new(280.0 / 360.0, 0.6, 0.5, 1.0), // Purple
+                "📋",
+            ),
+            DspyStage::TodoList { .. } => (
+                "Todo List",
+                Hsla::new(120.0 / 360.0, 0.6, 0.45, 1.0), // Green
+                "✅",
+            ),
+            DspyStage::ExecutingTask { .. } => (
+                "Executing",
+                Hsla::new(30.0 / 360.0, 0.8, 0.5, 1.0), // Orange
+                "🔧",
+            ),
+            DspyStage::TaskComplete { .. } => (
+                "Task Complete",
+                Hsla::new(120.0 / 360.0, 0.6, 0.45, 1.0), // Green
+                "✓",
+            ),
+            DspyStage::Complete { .. } => (
+                "Complete",
+                Hsla::new(120.0 / 360.0, 0.7, 0.45, 1.0), // Green
+                "🎉",
+            ),
+        };
+
+        // Draw card background
+        let card_bg = Quad::new(bounds)
+            .with_background(Hsla::new(220.0 / 360.0, 0.15, 0.14, 1.0))
+            .with_border(accent_color, 2.0)
+            .with_corner_radius(6.0);
+        cx.scene.draw_quad(card_bg);
+
+        let content_x = bounds.origin.x + padding;
+        let mut y = bounds.origin.y + padding;
+
+        // Header with icon
+        let header = format!("{} {}", icon, header_text);
+        let header_run = cx.text.layout_styled_mono(
+            &header,
+            Point::new(content_x, y),
+            font_size,
+            accent_color,
+            wgpui::text::FontStyle::default(),
+        );
+        cx.scene.draw_text(header_run);
+        y += line_height + 8.0;
+
+        // Stage-specific content
+        match stage {
+            DspyStage::EnvironmentAssessment {
+                system_info,
+                workspace,
+                active_directive,
+                open_issues,
+                compute_backends,
+                priority_action,
+                urgency,
+                ..
+            } => {
+                let lines = [
+                    format!("System: {}", system_info),
+                    format!("Workspace: {}", workspace),
+                    format!(
+                        "Directive: {}",
+                        active_directive.as_deref().unwrap_or("None")
+                    ),
+                    format!("Open issues: {}", open_issues),
+                    format!("Compute: {}", compute_backends.join(", ")),
+                    format!("Priority: {} | Urgency: {}", priority_action, urgency),
+                ];
+                for line in lines {
+                    let run = cx.text.layout_styled_mono(
+                        &line,
+                        Point::new(content_x, y),
+                        small_font_size,
+                        palette.assistant_text,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    cx.scene.draw_text(run);
+                    y += small_line_height;
+                }
+            }
+            DspyStage::Planning {
+                analysis,
+                files_to_modify,
+                complexity,
+                confidence,
+                ..
+            } => {
+                // Analysis (truncated)
+                let analysis_preview = if analysis.len() > 100 {
+                    format!("{}...", &analysis[..100])
+                } else {
+                    analysis.clone()
+                };
+                let run = cx.text.layout_styled_mono(
+                    &analysis_preview,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    palette.assistant_text,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += small_line_height * 2.0;
+
+                // Files
+                if !files_to_modify.is_empty() {
+                    let files_line = format!("Files: {}", files_to_modify.join(", "));
+                    let run = cx.text.layout_styled_mono(
+                        &files_line,
+                        Point::new(content_x, y),
+                        small_font_size,
+                        Hsla::new(0.0, 0.0, 0.6, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    cx.scene.draw_text(run);
+                    y += small_line_height;
+                }
+
+                // Complexity and confidence
+                let stats = format!(
+                    "Complexity: {} | Confidence: {:.0}%",
+                    complexity,
+                    confidence * 100.0
+                );
+                let run = cx.text.layout_styled_mono(
+                    &stats,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    Hsla::new(0.0, 0.0, 0.5, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+            }
+            DspyStage::TodoList { tasks } => {
+                for task in tasks.iter().take(10) {
+                    let checkbox = match task.status {
+                        crate::autopilot_loop::TodoStatus::Pending => "□",
+                        crate::autopilot_loop::TodoStatus::InProgress => "◐",
+                        crate::autopilot_loop::TodoStatus::Complete => "✓",
+                        crate::autopilot_loop::TodoStatus::Failed => "✗",
+                    };
+                    let status_color = match task.status {
+                        crate::autopilot_loop::TodoStatus::Pending => {
+                            Hsla::new(0.0, 0.0, 0.5, 1.0)
+                        }
+                        crate::autopilot_loop::TodoStatus::InProgress => {
+                            Hsla::new(30.0 / 360.0, 0.8, 0.5, 1.0)
+                        }
+                        crate::autopilot_loop::TodoStatus::Complete => {
+                            Hsla::new(120.0 / 360.0, 0.6, 0.5, 1.0)
+                        }
+                        crate::autopilot_loop::TodoStatus::Failed => {
+                            Hsla::new(0.0, 0.8, 0.5, 1.0)
+                        }
+                    };
+                    let line = format!("{} {}. {}", checkbox, task.index, task.description);
+                    let run = cx.text.layout_styled_mono(
+                        &line,
+                        Point::new(content_x, y),
+                        small_font_size,
+                        status_color,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    cx.scene.draw_text(run);
+                    y += small_line_height;
+                }
+                if tasks.len() > 10 {
+                    let more = format!("... and {} more", tasks.len() - 10);
+                    let run = cx.text.layout_styled_mono(
+                        &more,
+                        Point::new(content_x, y),
+                        small_font_size,
+                        Hsla::new(0.0, 0.0, 0.4, 1.0),
+                        wgpui::text::FontStyle::default(),
+                    );
+                    cx.scene.draw_text(run);
+                }
+            }
+            DspyStage::ExecutingTask {
+                task_index,
+                total_tasks,
+                task_description,
+            } => {
+                let status = format!("Working on task {} of {}...", task_index, total_tasks);
+                let run = cx.text.layout_styled_mono(
+                    &status,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    Hsla::new(30.0 / 360.0, 0.8, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += small_line_height;
+
+                let run = cx.text.layout_styled_mono(
+                    task_description,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    palette.assistant_text,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+            }
+            DspyStage::TaskComplete { task_index, success } => {
+                let (status, color) = if *success {
+                    (format!("✓ Task {} completed", task_index), Hsla::new(120.0 / 360.0, 0.6, 0.5, 1.0))
+                } else {
+                    (format!("✗ Task {} failed", task_index), Hsla::new(0.0, 0.8, 0.5, 1.0))
+                };
+                let run = cx.text.layout_styled_mono(
+                    &status,
+                    Point::new(content_x, y),
+                    font_size,
+                    color,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+            }
+            DspyStage::Complete {
+                total_tasks,
+                successful,
+                failed,
+            } => {
+                let summary = format!(
+                    "Completed {} tasks: {} successful, {} failed",
+                    total_tasks, successful, failed
+                );
+                let color = if *failed == 0 {
+                    Hsla::new(120.0 / 360.0, 0.6, 0.5, 1.0)
+                } else {
+                    Hsla::new(30.0 / 360.0, 0.7, 0.5, 1.0)
+                };
+                let run = cx.text.layout_styled_mono(
+                    &summary,
+                    Point::new(content_x, y),
+                    font_size,
+                    color,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+            }
+        }
     }
 }
 

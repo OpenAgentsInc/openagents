@@ -43,6 +43,7 @@ pub mod cli;
 pub mod claude_executor;
 pub mod delegate;
 pub mod dspy;
+pub mod dspy_orchestrator;
 pub mod executor;
 pub mod planner;
 pub mod rlm_agent;
@@ -63,7 +64,8 @@ pub use planner::{Complexity, TaskPlan};
 pub use rlm_agent::{rlm_agent_definition, rlm_agent_with_write_access};
 pub use tiered::TieredExecutor;
 pub use tools::{Tool, ToolRegistry};
-pub use autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotOutput, AutopilotResult, CliOutput, ChannelOutput, Verification};
+pub use autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotOutput, AutopilotResult, CliOutput, ChannelOutput, Verification, DspyStage, TodoTask, TodoStatus};
+pub use dspy_orchestrator::{AssessmentResult, DspyOrchestrator};
 
 /// Errors that can occur during Adjutant operations.
 #[derive(Error, Debug)]
@@ -193,6 +195,21 @@ impl Adjutant {
     /// Get the workspace manifest.
     pub fn workspace(&self) -> Option<&WorkspaceManifest> {
         self.manifest.workspace.as_ref()
+    }
+
+    /// Get the full OANIX manifest.
+    pub fn manifest(&self) -> &OanixManifest {
+        &self.manifest
+    }
+
+    /// Get the tool registry.
+    pub fn tools(&self) -> &ToolRegistry {
+        &self.tools
+    }
+
+    /// Get the cached decision LM if available.
+    pub fn decision_lm(&self) -> Option<Arc<LM>> {
+        self.decision_lm.clone()
     }
 
     /// Set the session ID for conversation continuity.
