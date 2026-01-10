@@ -140,6 +140,13 @@ impl Task {
     }
 }
 
+/// A turn in the conversation history.
+#[derive(Debug, Clone)]
+pub struct ConversationTurn {
+    pub role: String,
+    pub content: String,
+}
+
 /// Adjutant: The agent that DOES THE WORK.
 pub struct Adjutant {
     /// Tool registry
@@ -148,6 +155,10 @@ pub struct Adjutant {
     manifest: OanixManifest,
     /// Workspace root
     workspace_root: PathBuf,
+    /// Session ID for conversation continuity (used with Claude SDK)
+    session_id: Option<String>,
+    /// Conversation history for local LLMs (they don't have session resumption)
+    conversation_history: Vec<ConversationTurn>,
 }
 
 impl Adjutant {
@@ -165,12 +176,34 @@ impl Adjutant {
             tools,
             manifest,
             workspace_root,
+            session_id: None,
+            conversation_history: Vec::new(),
         })
     }
 
     /// Get the workspace manifest.
     pub fn workspace(&self) -> Option<&WorkspaceManifest> {
         self.manifest.workspace.as_ref()
+    }
+
+    /// Set the session ID for conversation continuity.
+    pub fn set_session_id(&mut self, id: String) {
+        self.session_id = Some(id);
+    }
+
+    /// Get the current session ID.
+    pub fn session_id(&self) -> Option<&str> {
+        self.session_id.as_deref()
+    }
+
+    /// Set conversation history (for resuming with local LLMs).
+    pub fn set_conversation_history(&mut self, history: Vec<ConversationTurn>) {
+        self.conversation_history = history;
+    }
+
+    /// Get the conversation history.
+    pub fn conversation_history(&self) -> &[ConversationTurn] {
+        &self.conversation_history
     }
 
     /// Execute a task - Adjutant does the work itself.
@@ -283,10 +316,9 @@ impl Adjutant {
         // Build context from relevant files
         let context = self.build_context(plan).await?;
 
-        // Build prompt
-        let prompt = format!(
-            "You are an AI coding assistant. Complete the following task.\n\n\
-             ## Task\n{}\n\n\
+        // Build the current user prompt
+        let user_prompt = format!(
+            "## Task\n{}\n\n\
              ## Context\n{}\n\n\
              Provide a clear, helpful response.",
             task.to_prompt(),
@@ -315,12 +347,26 @@ impl Adjutant {
             - Use ## for headers, followed by a blank line\n\
             - Use proper list formatting with blank lines before and after lists\n\
             - Keep responses clear and well-structured";
+
+        // Build messages array with conversation history
+        let mut messages = vec![
+            serde_json::json!({"role": "system", "content": system_prompt}),
+        ];
+
+        // Add conversation history for multi-turn context
+        for turn in &self.conversation_history {
+            messages.push(serde_json::json!({
+                "role": turn.role,
+                "content": turn.content
+            }));
+        }
+
+        // Add current user message
+        messages.push(serde_json::json!({"role": "user", "content": user_prompt}));
+
         let request_body = serde_json::json!({
             "model": "local",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt}
-            ],
+            "messages": messages,
             "stream": true,
             "max_tokens": 4000,
             "temperature": 0.7
@@ -391,12 +437,24 @@ impl Adjutant {
             }
         }
 
+        // Save this turn to conversation history for future context
+        // Use a shorter version of the prompt (just the task) for history to save tokens
+        self.conversation_history.push(ConversationTurn {
+            role: "user".to_string(),
+            content: task.to_prompt(),
+        });
+        self.conversation_history.push(ConversationTurn {
+            role: "assistant".to_string(),
+            content: full_response.clone(),
+        });
+
         Ok(TaskResult {
             success: true,
             summary: full_response,
             modified_files: Vec::new(),
             commit_hash: None,
             error: None,
+            session_id: self.session_id.clone(),
         })
     }
 
@@ -444,6 +502,7 @@ impl Adjutant {
             modified_files: Vec::new(),
             commit_hash: None,
             error: None,
+            session_id: self.session_id.clone(),
         })
     }
 

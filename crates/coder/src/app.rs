@@ -3556,6 +3556,9 @@ struct AppState {
     // Cached OANIX manifest for Autopilot (avoid re-booting every prompt)
     oanix_manifest: Option<oanix::OanixManifest>,
     oanix_manifest_rx: Option<mpsc::UnboundedReceiver<oanix::OanixManifest>>,
+    // Autopilot conversation history for local LLMs (they don't have session resumption)
+    autopilot_history: Vec<adjutant::ConversationTurn>,
+    autopilot_history_rx: Option<mpsc::UnboundedReceiver<Vec<adjutant::ConversationTurn>>>,
     // Available LM providers detected on startup
     available_providers: Vec<adjutant::dspy::lm_config::LmProvider>,
     // Auto-started llama-server process (killed on drop)
@@ -3822,6 +3825,8 @@ impl ApplicationHandler for CoderApp {
                 selected_model,
                 oanix_manifest: None,
                 oanix_manifest_rx,
+                autopilot_history: Vec::new(),
+                autopilot_history_rx: None,
                 available_providers,
                 llama_server_process,
             }
@@ -3850,6 +3855,7 @@ impl ApplicationHandler for CoderApp {
         self.poll_skill_actions();
         self.poll_hook_inspector_actions();
         self.poll_oanix_manifest();
+        self.poll_autopilot_history();
 
         let Some(state) = &mut self.state else {
             return;
@@ -6782,6 +6788,12 @@ impl CoderApp {
                 None
             };
 
+            // Clone existing conversation history for Adjutant (for local LLMs)
+            let autopilot_history = state.autopilot_history.clone();
+            // Create channel for receiving updated history after execution
+            let (history_tx, history_rx) = mpsc::unbounded_channel();
+            state.autopilot_history_rx = Some(history_rx);
+
             self.runtime_handle.spawn(async move {
                 // Get manifest: cached > pending boot > new boot
                 let manifest = if let Some(m) = cached_manifest {
@@ -6834,6 +6846,9 @@ impl CoderApp {
                     Ok(mut adjutant) => {
                         tracing::info!("Autopilot: Adjutant initialized");
 
+                        // Set conversation history for multi-turn context (for local LLMs)
+                        adjutant.set_conversation_history(autopilot_history);
+
                         // Create task from user prompt
                         let task = AdjutantTask::new(
                             "prompt",
@@ -6862,6 +6877,10 @@ impl CoderApp {
                             Ok(result) => {
                                 let duration_ms = start_time.elapsed().as_millis() as u64;
                                 tracing::info!("Autopilot: task completed, success={}", result.success);
+
+                                // Send updated conversation history back for next message
+                                let updated_history = adjutant.conversation_history().to_vec();
+                                let _ = history_tx.send(updated_history);
 
                                 // Add modified files info if any
                                 if !result.modified_files.is_empty() {
@@ -7688,6 +7707,21 @@ impl CoderApp {
         }
     }
 
+    fn poll_autopilot_history(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        // Check if we received updated conversation history from Adjutant
+        if let Some(rx) = &mut state.autopilot_history_rx {
+            if let Ok(updated_history) = rx.try_recv() {
+                tracing::info!("Autopilot: updated conversation history ({} turns)", updated_history.len());
+                state.autopilot_history = updated_history;
+                state.autopilot_history_rx = None; // Done receiving
+            }
+        }
+    }
+
     fn execute_command_palette_action(&mut self, command_id: &str) -> Option<String> {
         let Some(state) = &mut self.state else {
             return None;
@@ -7935,9 +7969,8 @@ impl CoderApp {
             match msg.role {
                 MessageRole::User => {
                     for line in &layout.lines {
-                        if line.y + line.line_height <= viewport_bottom
-                            && line.y + line.line_height > viewport_top
-                        {
+                        // Check if line overlaps with viewport (standard range overlap test)
+                        if line.y < viewport_bottom && line.y + line.line_height > viewport_top {
                             let text_run = state.text_system.layout_styled_mono(
                                 &line.text,
                                 Point::new(line.x, line.y),
@@ -7963,9 +7996,8 @@ impl CoderApp {
                         }
                     } else {
                         for line in &layout.lines {
-                            if line.y + line.line_height <= viewport_bottom
-                                && line.y + line.line_height > viewport_top
-                            {
+                            // Check if line overlaps with viewport (standard range overlap test)
+                            if line.y < viewport_bottom && line.y + line.line_height > viewport_top {
                                 let text_run = state.text_system.layout_styled_mono(
                                     &line.text,
                                     Point::new(line.x, line.y),
@@ -8035,7 +8067,8 @@ impl CoderApp {
                 );
             }
         } else if state.is_thinking {
-            if y + chat_line_height <= viewport_bottom && y + chat_line_height > viewport_top {
+            // Check if thinking indicator overlaps with viewport (standard range overlap test)
+            if y < viewport_bottom && y + chat_line_height > viewport_top {
                 let text_run = state.text_system.layout_styled_mono(
                     "...",
                     Point::new(content_x, y),

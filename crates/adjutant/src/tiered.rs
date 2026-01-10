@@ -125,6 +125,7 @@ impl TieredExecutor {
                 modified_files: Vec::new(),
                 commit_hash: None,
                 error: None,
+                session_id: None,
             });
         }
 
@@ -385,6 +386,7 @@ impl TieredExecutor {
                 modified_files: Vec::new(),
                 commit_hash: None,
                 error: None,
+                session_id: None,
             });
         }
 
@@ -488,6 +490,7 @@ impl TieredExecutor {
             modified_files,
             commit_hash: None,
             error: None,
+            session_id: None,
         })
     }
 
@@ -698,6 +701,7 @@ fn parse_synthesis_result(content: &str, results: &[SubtaskResult]) -> Result<Ta
         modified_files,
         commit_hash: None,
         error: None,
+        session_id: None,
     })
 }
 

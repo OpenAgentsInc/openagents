@@ -49,6 +49,7 @@ pub async fn delegate_to_claude_code(
             modified_files: extract_modified_files(&stdout),
             commit_hash: extract_commit_hash(&stdout),
             error: None,
+            session_id: None,
         })
     } else {
         Ok(TaskResult {
@@ -57,6 +58,7 @@ pub async fn delegate_to_claude_code(
             modified_files: Vec::new(),
             commit_hash: None,
             error: Some(format!("Claude Code failed: {}", stderr)),
+            session_id: None,
         })
     }
 }
@@ -109,6 +111,7 @@ pub async fn execute_with_rlm(
             modified_files: Vec::new(),
             commit_hash: None,
             error: None,
+            session_id: None,
         })
     } else {
         Ok(TaskResult {
@@ -117,6 +120,7 @@ pub async fn execute_with_rlm(
             modified_files: Vec::new(),
             commit_hash: None,
             error: Some(format!("RLM failed: {}", stderr)),
+            session_id: None,
         })
     }
 }
