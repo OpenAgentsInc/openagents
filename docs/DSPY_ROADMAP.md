@@ -179,7 +179,7 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
 
 The following waves complete DSPy integration across the entire codebase, replacing all hardcoded prompts and heuristics with optimizable signatures.
 
-### Wave 15: Tiered Executor DSPy Migration (Planned)
+### Wave 15: Tiered Executor DSPy Migration (Complete)
 
 **Goal:** Replace hardcoded prompts in tiered.rs with the existing DSPy module.
 
@@ -190,22 +190,22 @@ The following waves complete DSPy integration across the entire codebase, replac
 **Key Insight:** The DSPy module already exists. The executor has `ExecutionMode::Dsrs` but defaults to `Gateway`. Wave 15 makes Dsrs the default.
 
 **Tasks:**
-- [ ] Change default `ExecutionMode` from `Gateway` to `Dsrs`
-- [ ] Remove hardcoded `PLANNER_SYSTEM_PROMPT`, `EXECUTOR_SYSTEM_PROMPT`, `SYNTHESIZER_SYSTEM_PROMPT`
-- [ ] Update `plan_task()`, `execute_subtasks()`, `synthesize_results()` to use DSPy module
-- [ ] Ensure training collector records all decisions
-- [ ] Add fallback to Gateway mode if DSPy fails
+- [x] Change default `ExecutionMode` from `Gateway` to `Dsrs`
+- [x] Refactor `execute()` to route based on mode (DSPy-first with gateway fallback)
+- [x] Create `execute_gateway()` for legacy execution path
+- [x] Training collector already wired in `execute_dsrs()`
+- [x] Add fallback to Gateway mode if DSPy fails
 
 **New Signatures:** None (uses existing SubtaskPlanningSignature, SubtaskExecutionSignature, ResultSynthesisSignature)
 
-### Wave 16: RLM DSPy Integration (Planned)
+### Wave 16: RLM DSPy Integration (In Progress)
 
 **Goal:** Replace hardcoded RLM prompts with optimizable signatures.
 
 **Files:**
 - `crates/rlm/src/prompts.rs` — 4 hardcoded prompts to replace
 - `crates/rlm/src/claude_client.rs` — Direct SDK calls
-- `crates/rlm/src/dspy.rs` — NEW
+- `crates/rlm/src/dspy.rs` — DSPy signatures (created)
 
 **Hardcoded Prompts to Replace:**
 1. `BASIC_SYSTEM_PROMPT` — Simple code execution (line 39)
@@ -214,29 +214,22 @@ The following waves complete DSPy integration across the entire codebase, replac
 4. `MINIMAL_SYSTEM_PROMPT` — Small models (line 196)
 
 **Tasks:**
-- [ ] Create `RlmQuerySignature` — Basic RLM query
-- [ ] Create `RlmContextQuerySignature` — Context-aware RLM with llm_query()
-- [ ] Create `RlmGuidedQuerySignature` — Guided tier for Apple FM
-- [ ] Create `RlmCodeGenerationSignature` — Generate REPL code
-- [ ] Update `claude_client.rs` to use signatures
+- [x] Create `RlmQuerySignature` — Basic RLM query
+- [x] Create `RlmContextQuerySignature` — Context-aware RLM with llm_query()
+- [x] Create `RlmGuidedQuerySignature` — Guided tier for Apple FM
+- [x] Create `RlmCodeGenerationSignature` — Generate REPL code
+- [x] Create `RlmContinuationSignature` — Handle continuation after execution
+- [ ] Update `claude_client.rs` to use signatures via dsrs Predict
 - [ ] Keep PromptTier enum but route to appropriate signature
 - [ ] Add training collection for RLM queries
 
-**New Signatures:**
+**Signatures Created** (`crates/rlm/src/dspy.rs`):
 ```rust
-#[Signature]
-struct RlmContextQuerySignature {
-    /// RLM query with context for recursive analysis.
-    /// Generate Python REPL code that uses llm_query() for sub-queries.
-    /// Use FINAL(answer) or FINAL_VAR(variable) when done.
-
-    #[input] query: String,
-    #[input] context_length: u64,
-    #[input] context_source: String,
-    #[output] reasoning: String,
-    #[output] code: String,
-    #[output] needs_continuation: bool,
-}
+#[Signature] struct RlmQuerySignature { ... }           // Basic RLM
+#[Signature] struct RlmContextQuerySignature { ... }    // Full RLM with llm_query()
+#[Signature] struct RlmGuidedQuerySignature { ... }     // Apple FM tier
+#[Signature] struct RlmCodeGenerationSignature { ... }  // Code generation
+#[Signature] struct RlmContinuationSignature { ... }    // Continuation handling
 ```
 
 ### Wave 17: LM-Router DSPy Backend (Planned)

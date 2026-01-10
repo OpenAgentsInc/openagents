@@ -198,12 +198,12 @@ Each pipeline has:
 | Wave 13 | Pipeline Wiring | Complete |
 | Wave 14 | Self-Improving Autopilot | Complete |
 
-### Full Integration (Planned)
+### Full Integration (In Progress)
 
 | Wave | Description | Status |
 |------|-------------|--------|
-| Wave 15 | Tiered Executor DSPy Migration | Planned |
-| Wave 16 | RLM DSPy Integration | Planned |
+| Wave 15 | Tiered Executor DSPy Migration | **Complete** |
+| Wave 16 | RLM DSPy Integration | In Progress |
 | Wave 17 | LM-Router DSPy Backend | Planned |
 | Wave 18 | Gateway DSPy Integration | Planned |
 | Wave 19 | Autopilot Heuristics → DSPy | Planned |
@@ -212,49 +212,43 @@ Each pipeline has:
 
 See [DSPY_ROADMAP.md](../DSPY_ROADMAP.md) for full details and [signatures-catalog.md](./signatures-catalog.md) for the complete signature inventory.
 
-## Wave 15: Tiered Executor Migration
+## Wave 15: Tiered Executor Migration (Complete)
 
-The tiered executor (`crates/adjutant/src/tiered.rs`) currently has two modes:
-- **Gateway** (default): Uses hardcoded prompts with Cerebras GLM 4.7/Qwen-3-32B
-- **Dsrs**: Uses DSPy signatures from `crates/adjutant/src/dspy/module.rs`
+The tiered executor (`crates/adjutant/src/tiered.rs`) now defaults to DSPy mode:
+- **Dsrs** (default): Uses DSPy signatures from `crates/adjutant/src/dspy/module.rs`
+- **Gateway** (fallback): Legacy hardcoded prompts with Cerebras GLM 4.7/Qwen-3-32B
 
-Wave 15 makes Dsrs the default, enabling:
-- Optimizable prompts via MIPROv2
-- Training data collection for all planning/execution/synthesis decisions
-- Self-improvement loop integration
+**What changed:**
+- Default `ExecutionMode` switched from `Gateway` to `Dsrs`
+- `execute()` routes to DSPy path with automatic gateway fallback on failure
+- Training data collection active for all planning/execution/synthesis decisions
 
-**Existing signatures (ready to use):**
+**Signatures in use:**
 - `SubtaskPlanningSignature` — Break tasks into atomic subtasks
 - `SubtaskExecutionSignature` — Execute individual subtasks
 - `ResultSynthesisSignature` — Synthesize results into final outcome
 
-## Wave 16: RLM DSPy Integration
+## Wave 16: RLM DSPy Integration (In Progress)
 
-The RLM engine (`crates/rlm/`) has 4 hardcoded prompt tiers:
+The RLM engine (`crates/rlm/`) has 4 hardcoded prompt tiers to replace:
 - `BASIC_SYSTEM_PROMPT` — Simple code execution
 - `CONTEXT_SYSTEM_PROMPT` — Full RLM with llm_query() (from paper)
 - `GUIDED_SYSTEM_PROMPT` — Apple FM tier
 - `MINIMAL_SYSTEM_PROMPT` — Small models
 
-Wave 16 replaces these with optimizable signatures:
-
+**Signatures created** (`crates/rlm/src/dspy.rs`):
 ```rust
-#[Signature]
-struct RlmContextQuerySignature {
-    /// RLM query with context for recursive analysis.
-    /// Generate Python REPL code that uses llm_query() for sub-queries.
-    /// Use FINAL(answer) or FINAL_VAR(variable) when done.
-
-    #[input] query: String,
-    #[input] context_length: u64,
-    #[input] context_source: String,
-    #[output] reasoning: String,
-    #[output] code: String,
-    #[output] needs_continuation: bool,
-}
+#[Signature] struct RlmQuerySignature { ... }           // Basic RLM
+#[Signature] struct RlmContextQuerySignature { ... }    // Full RLM with llm_query()
+#[Signature] struct RlmGuidedQuerySignature { ... }     // Apple FM tier
+#[Signature] struct RlmCodeGenerationSignature { ... }  // Code generation
+#[Signature] struct RlmContinuationSignature { ... }    // Continuation handling
 ```
 
-This enables learning optimal RLM strategies per model tier.
+**Remaining work:**
+- Wire signatures to `claude_client.rs` via dsrs Predict
+- Route PromptTier enum to appropriate signature
+- Add training data collection
 
 ## Storage Layout
 

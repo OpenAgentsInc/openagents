@@ -36,10 +36,11 @@ DSPy signatures are typed input/output contracts for LLM tasks. Each signature:
 | — | dsrs | FailureTriageSignature | Diagnose sandbox failures | Complete |
 | — | dsrs | LaneBudgeterSignature | Budget allocation | Complete |
 | — | dsrs | AgentMemorySignature | Memory management | Complete |
-| **16** | rlm | RlmQuerySignature | Basic RLM query | Planned |
-| **16** | rlm | RlmContextQuerySignature | Context-aware RLM | Planned |
-| **16** | rlm | RlmGuidedQuerySignature | Guided tier RLM | Planned |
-| **16** | rlm | RlmCodeGenerationSignature | Generate REPL code | Planned |
+| **16** | rlm | RlmQuerySignature | Basic RLM query | Complete |
+| **16** | rlm | RlmContextQuerySignature | Context-aware RLM | Complete |
+| **16** | rlm | RlmGuidedQuerySignature | Guided tier RLM | Complete |
+| **16** | rlm | RlmCodeGenerationSignature | Generate REPL code | Complete |
+| **16** | rlm | RlmContinuationSignature | Handle continuation | Complete |
 | **19** | autopilot | TaskComplexityClassifier | Replace keyword heuristics | Planned |
 | **19** | autopilot | BuildStatusClassifier | Detect build failures | Planned |
 | **19** | autopilot | TestStatusClassifier | Detect test failures | Planned |
