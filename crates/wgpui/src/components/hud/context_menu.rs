@@ -436,7 +436,7 @@ impl Component for ContextMenu {
 
             // Draw checkbox/radio if present
             let mut text_x = item_bounds.origin.x + 12.0;
-            let text_y = y + self.item_height * 0.5 + theme::font_size::SM * 0.35;
+            let text_y = y + (self.item_height - theme::font_size::SM) / 2.0;
 
             if let Some(checked) = item.checked {
                 let check_char = if checked { "✓" } else { " " };

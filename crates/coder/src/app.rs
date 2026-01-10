@@ -6659,13 +6659,15 @@ impl AppState {
         target_message: Option<usize>,
         copy_enabled: bool,
     ) {
+        // Use Ctrl on Linux/Windows, Cmd on macOS
+        let mod_key = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
         let copy_item = MenuItem::new("copy", "Copy")
-            .shortcut("Cmd+C")
+            .shortcut(format!("{}+C", mod_key))
             .disabled(!copy_enabled);
         let items = vec![
             copy_item,
             MenuItem::separator(),
-            MenuItem::new("select_all", "Select All").shortcut("Cmd+A"),
+            MenuItem::new("select_all", "Select All").shortcut(format!("{}+A", mod_key)),
         ];
         self.chat_context_menu = ContextMenu::new().items(items);
         self.chat_context_menu_target = target_message;
