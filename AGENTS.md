@@ -6,10 +6,22 @@ Decentralized AI compute marketplace. Run inference, earn Bitcoin.
 
 | Product | Description | Status |
 |---------|-------------|--------|
-| **Pylon** | Node software for the compute marketplace | v0.1 |
-| **Nexus** | Agent-centric Nostr relay | v0.1 |
+| **Pylon** | Node software for compute marketplace (provider + host) | v0.1 |
+| **Coder** | GPU-accelerated terminal for Claude Code | Active |
 | **Onyx** | Local-first Markdown editor | Alpha |
-| **OANIX** | Agent operating system runtime | Design |
+| **GitAfter** | Nostr-native git collaboration (NIP-34) | v0.1 |
+| **Autopilot** | Autonomous coding agent | Active |
+| **Nexus** | Agent-centric Nostr relay | v0.1 |
+| **OANIX** | Agent OS runtime (environment discovery) | Wave 8 |
+
+## AI Stack
+
+| Component | Description | Status |
+|-----------|-------------|--------|
+| **Adjutant** | Execution engine with DSPy decision pipelines | Wave 14 |
+| **dsrs** | Rust DSPy implementation (5,771 LOC) | Complete |
+| **Gateway** | Unified AI provider interface | Complete |
+| **Protocol** | Typed job schemas with deterministic hashing | Complete |
 
 ## Quick Start: Pylon
 
@@ -110,6 +122,11 @@ See [crates/nexus/docs/MVP.md](crates/nexus/docs/MVP.md) for architecture.
 
 | Doc | Description |
 |-----|-------------|
+| [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md) | System guide — products, infrastructure, AI stack |
+| [docs/dspy/README.md](docs/dspy/README.md) | DSPy strategy — philosophy, architecture, self-improvement |
+| [docs/DSPY_ROADMAP.md](docs/DSPY_ROADMAP.md) | DSPy implementation roadmap (Waves 0-14) |
+| [crates/adjutant/docs/](crates/adjutant/docs/) | Adjutant execution engine + self-improvement |
+| [crates/dsrs/docs/](crates/dsrs/docs/) | dsrs implementation (signatures, retrieval, eval) |
 | [crates/pylon/docs/](crates/pylon/docs/) | Pylon documentation |
 | [crates/nexus/docs/](crates/nexus/docs/) | Nexus documentation |
 | [docs/OANIX.md](docs/OANIX.md) | OANIX vision (agent OS runtime) |
@@ -120,5 +137,6 @@ See [crates/nexus/docs/MVP.md](crates/nexus/docs/MVP.md) for architecture.
 **READ THIS FIRST:** [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md) — The essential guide to understanding how Pylon, Nexus, Runtime, Autopilot, and WGPUI fit together. Contains data flow diagrams, key paths, build commands, and completion standards. **Do not start coding until you've read it.**
 
 Also see:
+- [docs/dspy/README.md](docs/dspy/README.md) — DSPy strategy and self-improvement system
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — Git rules, commit standards, design philosophy
 - [SYNTHESIS.md](./SYNTHESIS.md) — Full vision document (long, read if you need context on *why*)

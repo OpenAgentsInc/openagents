@@ -149,9 +149,9 @@ The autonomous coding agent:
 │                                                                          │
 │  APPLICATIONS                                                            │
 │  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐  │
-│  │ Autopilot │ │  Wallet   │ │ GitAfter  │ │Marketplace│ │  Neobank  │  │
-│  │(Autonomous│ │ (Identity │ │  (Git on  │ │ (Compute/ │ │ (Treasury │  │
-│  │  Coding)  │ │ + Bitcoin)│ │  Nostr)   │ │  Skills)  │ │ + Budget) │  │
+│  │ Autopilot │ │  Coder    │ │  Onyx     │ │ GitAfter  │ │  Neobank  │  │
+│  │(Autonomous│ │ (GPU      │ │ (Markdown │ │  (Git on  │ │ (Treasury │  │
+│  │  Coding)  │ │ Terminal) │ │  Editor)  │ │  Nostr)   │ │ + Budget) │  │
 │  └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘  │
 │        └─────────────┴─────────────┴─────────────┴─────────────┘        │
 │                                    │                                     │
@@ -221,42 +221,60 @@ cargo install --path crates/recorder
 
 ## Architecture
 
-OpenAgents is a Cargo workspace with 31 crates organized by functionality:
+OpenAgents is a Cargo workspace with 40+ crates organized by functionality:
 
 ```
 openagents/
 ├── crates/
-│   ├── acp-adapter/        Agent Communication Protocol adapter
-│   ├── agent/              Core agent runtime
-│   ├── agent-orchestrator/ Multi-agent coordination framework
-│   ├── auth/               Authentication utilities
-│   ├── autopilot/          Autonomous task runner
-│   ├── autopilot-wasm/     WebAssembly bindings for autopilot
-│   ├── claude-agent-sdk/   Claude Code integration
-│   ├── claude-mcp/         Claude MCP server integration
-│   ├── codex-agent-sdk/    OpenAI Codex integration
-│   ├── compute/            NIP-90 compute provider
-│   ├── config/             Configuration management
-│   ├── fm-bridge/          Apple Foundation Models client
-│   ├── fm-bridge-agent/    Agent wrapper for fm-bridge + tools
-│   ├── frostr/             FROST threshold signatures for Nostr
+│   ├── # PRODUCTS
+│   ├── autopilot/          Autonomous coding agent
+│   ├── coder/              GPU-accelerated terminal for Claude Code
+│   ├── onyx/               Local-first Markdown editor
 │   ├── gitafter/           Agent-native Git on Nostr (NIP-34)
+│   ├── pylon/              Node software (provider + host modes)
+│   │
+│   ├── # AI STACK
+│   ├── adjutant/           Execution engine with DSPy decision pipelines
+│   ├── dsrs/               Rust DSPy implementation (5,771 LOC)
+│   ├── dsrs-macros/        Procedural macros for DSPy signatures
+│   ├── gateway/            Unified AI provider interface
+│   ├── protocol/           Typed job schemas with deterministic hashing
+│   ├── rlm/                Recursive Language Model
+│   ├── frlm/               Federated RLM (distributed execution)
+│   │
+│   ├── # INFRASTRUCTURE
+│   ├── nexus/              Agent-centric Nostr relay (Cloudflare Workers)
+│   ├── runtime/            Agent execution environment (Plan 9-inspired)
+│   ├── oanix/              Environment discovery and boot sequence
+│   ├── neobank/            Agent treasury (FROST, multi-rail payments)
+│   ├── compute/            NIP-90 compute provider
+│   │
+│   ├── # AGENT SDKS
+│   ├── claude-agent-sdk/   Rust SDK for Claude Code CLI
+│   ├── codex-agent-sdk/    OpenAI Codex integration
+│   ├── agent-orchestrator/ Multi-agent coordination framework
+│   │
+│   ├── # LOCAL INFERENCE
+│   ├── fm-bridge/          Apple Foundation Models client
 │   ├── gpt-oss/            GPT-OSS local inference client
-│   ├── gpt-oss-agent/      Agent wrapper for GPT-OSS + tools
-│   ├── issue-tool/         Issue management CLI tool
-│   ├── issues/             Issue tracking library
 │   ├── local-inference/    Shared local model backend trait
-│   ├── marketplace/        Skills & agent marketplace
-│   ├── neobank/            Agent treasury: USD budgets, multi-currency spending
-│   ├── nexus/              Agent nexus coordination
+│   │
+│   ├── # UI
+│   ├── wgpui/              GPU-rendered UI (wgpu + winit)
+│   ├── voice/              Voice transcription (whisper.cpp)
+│   ├── voice-daemon/       macOS menu bar voice daemon
+│   │
+│   ├── # PROTOCOLS
 │   ├── nostr/              Nostr protocol implementation (94 NIPs)
-│   ├── opencode-sdk/       OpenCode SDK integration
-│   ├── pylon/              Infrastructure gateway
-│   ├── recorder/           Session format parser
-│   ├── spark/              Breez Spark SDK integration
+│   ├── frostr/             FROST threshold signatures for Nostr
+│   ├── spark/              Breez Spark SDK integration (Lightning)
+│   │
+│   ├── # UTILITIES
+│   ├── recorder/           Session format parser (.rlog files)
+│   ├── issues/             Issue tracking library
+│   ├── config/             Configuration management
 │   ├── testing/            Shared test utilities
-│   ├── wallet/             Unified wallet application
-│   └── wgpui/              Native UI foundation (wgpu + winit)
+│   └── auth/               Authentication utilities
 └── docs/                   Documentation
 ```
 
@@ -693,25 +711,41 @@ cargo add tokio --features full
 - Examples in doc comments
 - Comprehensive READMEs for all crates
 
+## AI Stack (DSPy)
+
+OpenAgents uses DSPy as the compiler layer for agent behavior. See [docs/dspy/README.md](docs/dspy/README.md) for the full strategy.
+
+**Key Concepts:**
+- **Signatures** — Typed I/O contracts for LLM tasks
+- **Modules** — Composable units with `forward()` method
+- **Optimizers** — MIPROv2, GEPA for automatic prompt improvement
+- **Decision Pipelines** — ComplexityPipeline, DelegationPipeline, RlmTriggerPipeline
+
+**Self-Improvement Loop (Wave 14):**
+1. Task execution → Decisions recorded
+2. Session completion → Outcomes labeled
+3. Performance tracking → Rolling accuracy
+4. Auto-optimization → MIPROv2 on lowest-accuracy signature
+
 ## Roadmap
 
-**Phase 1: Foundation (Current)**
-- ✅ WGPUI foundation layer
+**Phase 1: Foundation (Complete)**
+- ✅ WGPUI foundation layer (Phase 16, 377 tests)
 - ✅ Autopilot with trajectory logging
-- ✅ Issue tracking system
-- ✅ Recorder format parser
+- ✅ Adjutant execution engine with DSPy (Wave 14)
+- ✅ dsrs Rust DSPy implementation
+- ✅ Self-improving autopilot (sessions, outcome feedback, auto-optimization)
 - ✅ FROSTR threshold signatures
-- ✅ Neobank treasury layer (eCash/CDK)
-- 🚧 Marketplace infrastructure
-- 🚧 NIP-90 compute provider
-- 🚧 GitAfter agent-native Git
+- ✅ Neobank treasury layer
+- ✅ GitAfter NIP-34 integration
 
-**Phase 2: Integration (Q1 2025)**
-- Multi-agent orchestration framework
-- Nostr network integration
-- Compute swarm with provider bundles
-- Agent discovery system
-- Payment infrastructure (Lightning + eCash)
+**Phase 2: Integration (Current)**
+- ✅ Multi-agent orchestration framework
+- ✅ NIP-90 compute provider (Pylon)
+- ✅ Gateway unified AI provider interface
+- 🚧 Nostr network integration
+- 🚧 Compute swarm with provider bundles
+- 🚧 Payment infrastructure (Lightning + eCash)
 
 **Phase 3: Scale (Q2 2025)**
 - Coalition support (Reed's Law dynamics)
@@ -1001,10 +1035,12 @@ This workflow leverages each agent's strengths: Claude for analysis/review, Code
 ## Documentation
 
 - **[SYNTHESIS.md](SYNTHESIS.md)**: Comprehensive vision document — how all pieces fit together
-- **Workspace README**: This file
+- **[SYNTHESIS_EXECUTION.md](SYNTHESIS_EXECUTION.md)**: System guide — products, infrastructure, AI stack
+- **[docs/dspy/README.md](docs/dspy/README.md)**: DSPy strategy — philosophy, architecture, self-improvement
+- **[docs/DSPY_ROADMAP.md](docs/DSPY_ROADMAP.md)**: DSPy implementation roadmap (Waves 0-14)
 - **Crate READMEs**: See `crates/*/README.md`
+- **Crate Docs**: See `crates/*/docs/` (adjutant, dsrs, pylon, nexus)
 - **API Docs**: `cargo doc --open`
-- **Format Specs**: `docs/` directory
 - **Examples**: `crates/*/examples/`
 
 ## Contributing
