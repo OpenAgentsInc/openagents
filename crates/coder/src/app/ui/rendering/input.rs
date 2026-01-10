@@ -52,101 +52,43 @@ fn render_input(
     );
     scene.draw_text(prompt_run);
 
-    let mode_label = coder_mode_display(state.permissions.coder_mode);
-    let mode_color = coder_mode_color(state.permissions.coder_mode, palette);
-    if state.session.session_info.permission_mode.is_empty() {
-        let mode_text = format!("Mode: {}", mode_label);
-        let mode_run = state.text_system.layout_styled_mono(
-            &mode_text,
-            Point::new(
-                input_bounds.origin.x,
-                input_bounds.origin.y + input_bounds.size.height + 2.0,
-            ),
-            10.0,
-            mode_color,
-            wgpui::text::FontStyle::default(),
-        );
-        scene.draw_text(mode_run);
-    }
-
     // Draw status bar at very bottom (centered vertically)
     let status_y = logical_height - STATUS_BAR_HEIGHT - 3.0;
 
-    // Left side: mode (colored) + hint (gray), flush with left edge of 768px container
-    if !state.session.session_info.permission_mode.is_empty() {
-        let mode_x = input_x;
-        let mode_text = coder_mode_display(state.permissions.coder_mode);
-        let mode_run = state.text_system.layout_styled_mono(
-            mode_text,
-            Point::new(mode_x, status_y),
-            STATUS_BAR_FONT_SIZE,
-            mode_color,
-            wgpui::text::FontStyle::default(),
-        );
-        scene.draw_text(mode_run);
-
-        // Draw hint in gray after the mode text
-        let hint_text = " (shift+tab to cycle)";
-        let mode_width = mode_text.len() as f32 * 7.8; // Approx char width at 13pt
-        let hint_run = state.text_system.layout_styled_mono(
-            hint_text,
-            Point::new(mode_x + mode_width, status_y),
-            STATUS_BAR_FONT_SIZE,
-            palette.status_right,
-            wgpui::text::FontStyle::default(),
-        );
-        scene.draw_text(hint_run);
+    // Right side: backend, MCP tools, active agent, session
+    let session_short = if state.session.session_info.session_id.len() > 8 {
+        &state.session.session_info.session_id[..8]
+    } else {
+        &state.session.session_info.session_id
+    };
+    let mut parts = Vec::new();
+    // Add current backend name
+    use crate::app::config::AgentKindConfig;
+    let backend_name = match state.agent_selection.agent {
+        AgentKindConfig::Claude => "claude",
+        AgentKindConfig::Codex => "codex",
+    };
+    parts.push(backend_name.to_string());
+    if let Some(summary) = state.catalogs.mcp_status_summary() {
+        parts.push(summary);
     }
-
-    // Right side: backend, model, available open models, tools, session
-    if !state.session.session_info.model.is_empty() || true {
-        // Format: "claude | haiku | gptoss | 18 tools | abc123"
-        let model_short = state
-            .session
-            .session_info
-            .model
-            .replace("claude-", "")
-            .replace("-20251101", "")
-            .replace("-20250929", "")
-            .replace("-20251001", "");
-        let session_short = if state.session.session_info.session_id.len() > 8 {
-            &state.session.session_info.session_id[..8]
-        } else {
-            &state.session.session_info.session_id
-        };
-        let mut parts = Vec::new();
-        // Add current backend name
-        use crate::app::config::AgentKindConfig;
-        let backend_name = match state.agent_selection.agent {
-            AgentKindConfig::Claude => "claude",
-            AgentKindConfig::Codex => "codex",
-        };
-        parts.push(backend_name.to_string());
-        // Only show model for Claude backend (Codex uses its own model selection)
-        if matches!(state.agent_selection.agent, AgentKindConfig::Claude) && !model_short.is_empty() {
-            parts.push(model_short);
-        }
-        if let Some(summary) = state.catalogs.mcp_status_summary() {
-            parts.push(summary);
-        }
-        if let Some(active_agent) = &state.catalogs.active_agent {
-            parts.push(format!("agent {}", truncate_preview(active_agent, 12)));
-        }
-        // Only show session if we have an actual session ID
-        if !state.session.session_info.session_id.is_empty() {
-            parts.push(format!("session {}", session_short));
-        }
-        let right_text = parts.join(" | ");
-        // Measure and right-align within the 768px container
-        let text_width = right_text.len() as f32 * 7.8; // Approx char width at 13pt
-        let right_x = input_x + input_width - text_width;
-        let right_run = state.text_system.layout_styled_mono(
-            &right_text,
-            Point::new(right_x, status_y),
-            STATUS_BAR_FONT_SIZE,
-            palette.status_right,
-            wgpui::text::FontStyle::default(),
-        );
-        scene.draw_text(right_run);
+    if let Some(active_agent) = &state.catalogs.active_agent {
+        parts.push(format!("agent {}", truncate_preview(active_agent, 12)));
     }
+    // Only show session if we have an actual session ID
+    if !state.session.session_info.session_id.is_empty() {
+        parts.push(format!("session {}", session_short));
+    }
+    let right_text = parts.join(" | ");
+    // Measure and right-align within the 768px container
+    let text_width = right_text.len() as f32 * 7.8; // Approx char width at 13pt
+    let right_x = input_x + input_width - text_width;
+    let right_run = state.text_system.layout_styled_mono(
+        &right_text,
+        Point::new(right_x, status_y),
+        STATUS_BAR_FONT_SIZE,
+        palette.status_right,
+        wgpui::text::FontStyle::default(),
+    );
+    scene.draw_text(right_run);
 }

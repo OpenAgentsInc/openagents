@@ -1205,16 +1205,6 @@ impl ApplicationHandler for CoderApp {
                         }
                     }
 
-                    if let WinitKey::Named(WinitNamedKey::Tab) = &key_event.logical_key {
-                        if state.modifiers.shift_key() {
-                            state
-                                .permissions
-                                .cycle_coder_mode(&mut state.session.session_info);
-                            state.window.request_redraw();
-                            return;
-                        }
-                    }
-
                     // Check for Enter key to submit (but not Shift+Enter, which inserts newline)
                     if let WinitKey::Named(WinitNamedKey::Enter) = &key_event.logical_key {
                         if !state.modifiers.shift_key() {

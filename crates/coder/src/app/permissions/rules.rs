@@ -22,7 +22,7 @@ pub(crate) struct PermissionConfig {
 impl Default for PermissionConfig {
     fn default() -> Self {
         Self {
-            coder_mode: CoderMode::Plan,
+            coder_mode: CoderMode::Autopilot,
             default_allow: false,
             allow_tools: Vec::new(),
             deny_tools: Vec::new(),

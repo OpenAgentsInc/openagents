@@ -75,13 +75,6 @@ impl AppState {
         );
 
         push_command(
-            command_palette_ids::MODEL_PICKER,
-            "Select Model",
-            "Choose the model for this session",
-            "Navigation",
-            None,
-        );
-        push_command(
             command_palette_ids::SESSION_LIST,
             "Open Session List",
             "Resume or fork previous sessions",
@@ -130,15 +123,6 @@ impl AppState {
             "Navigation",
             None,
         );
-        let wallet_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenWallet, "Ctrl+Shift+W");
-        push_command(
-            command_palette_ids::WALLET_OPEN,
-            "Open Wallet",
-            "View wallet status and configuration",
-            "Wallet",
-            Some(wallet_keys),
-        );
         let dvm_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenDvm, "Ctrl+Shift+P");
         push_command(
@@ -174,15 +158,6 @@ impl AppState {
             "View Nexus relay stats",
             "Nostr",
             Some(nexus_keys),
-        );
-        let spark_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenSparkWallet, "Ctrl+Shift+S");
-        push_command(
-            command_palette_ids::SPARK_WALLET_OPEN,
-            "Open Spark Wallet",
-            "View Spark wallet balances and payments",
-            "Wallet",
-            Some(spark_keys),
         );
         let nip90_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
@@ -235,57 +210,6 @@ impl AppState {
             "Workspace",
             Some(tracker_keys),
         );
-        let rlm_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenRlm, "Ctrl+Shift+R");
-        push_command(
-            command_palette_ids::RLM_OPEN,
-            "Open RLM Runs",
-            "Review recent RLM runs from Pylon",
-            "RLM",
-            Some(rlm_keys),
-        );
-        let rlm_trace_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenRlmTrace, "Ctrl+Shift+Y");
-        push_command(
-            command_palette_ids::RLM_TRACE_OPEN,
-            "Open RLM Trace",
-            "Inspect trace events for recent RLM runs",
-            "RLM",
-            Some(rlm_trace_keys),
-        );
-        let pylon_keys = keybinding_labels(
-            &self.settings.keybindings,
-            KeyAction::OpenPylonEarnings,
-            "Ctrl+Shift+E",
-        );
-        push_command(
-            command_palette_ids::PYLON_EARNINGS_OPEN,
-            "Open Pylon Earnings",
-            "Review provider earnings from pylon.db",
-            "Pylon",
-            Some(pylon_keys),
-        );
-        let pylon_jobs_keys = keybinding_labels(
-            &self.settings.keybindings,
-            KeyAction::OpenPylonJobs,
-            "Ctrl+Shift+U",
-        );
-        push_command(
-            command_palette_ids::PYLON_JOBS_OPEN,
-            "Open Pylon Jobs",
-            "Review recent Pylon jobs from pylon.db",
-            "Pylon",
-            Some(pylon_jobs_keys),
-        );
-        let dspy_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
-        push_command(
-            command_palette_ids::DSPY_OPEN,
-            "Open DSPy",
-            "Review DSPy performance and auto-optimizer settings",
-            "DSPy",
-            Some(dspy_keys),
-        );
         let nip28_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenNip28, "Ctrl+Shift+N");
         push_command(
@@ -332,34 +256,6 @@ impl AppState {
             None,
         );
 
-        push_command(
-            command_palette_ids::MODE_CYCLE,
-            "Cycle Mode",
-            "Rotate through modes (Bypass/Plan/Autopilot)",
-            "Mode",
-            Some("Shift+Tab".to_string()),
-        );
-        push_command(
-            command_palette_ids::MODE_BYPASS,
-            "Mode: Bypass Permissions",
-            "Auto-approve all tool use",
-            "Mode",
-            None,
-        );
-        push_command(
-            command_palette_ids::MODE_PLAN,
-            "Mode: Plan",
-            "Read-only mode, deny write operations",
-            "Mode",
-            None,
-        );
-        push_command(
-            command_palette_ids::MODE_AUTOPILOT,
-            "Mode: Autopilot",
-            "Use DSPy/Adjutant for autonomous execution",
-            "Mode",
-            None,
-        );
         push_command(
             command_palette_ids::PERMISSION_RULES,
             "Open Permission Rules",

@@ -56,8 +56,6 @@ fn render_help_modal(
             );
             let settings_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenSettings, "Ctrl+,");
-            let wallet_key =
-                keybinding_labels(&state.settings.keybindings, KeyAction::OpenWallet, "Ctrl+Shift+W");
             let agent_backends_key = keybinding_labels(
                 &state.settings.keybindings,
                 KeyAction::OpenAgentBackends,
@@ -80,11 +78,6 @@ fn render_help_modal(
                 KeyAction::OpenNexus,
                 "Ctrl+Shift+X",
             );
-            let spark_key = keybinding_labels(
-                &state.settings.keybindings,
-                KeyAction::OpenSparkWallet,
-                "Ctrl+Shift+S",
-            );
             let nip90_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
             let oanix_key =
@@ -101,22 +94,6 @@ fn render_help_modal(
                 KeyAction::OpenIssueTracker,
                 "Ctrl+Shift+A",
             );
-            let rlm_key =
-                keybinding_labels(&state.settings.keybindings, KeyAction::OpenRlm, "Ctrl+Shift+R");
-            let rlm_trace_key =
-                keybinding_labels(&state.settings.keybindings, KeyAction::OpenRlmTrace, "Ctrl+Shift+Y");
-            let pylon_key = keybinding_labels(
-                &state.settings.keybindings,
-                KeyAction::OpenPylonEarnings,
-                "Ctrl+Shift+E",
-            );
-            let pylon_jobs_key = keybinding_labels(
-                &state.settings.keybindings,
-                KeyAction::OpenPylonJobs,
-                "Ctrl+Shift+U",
-            );
-            let dspy_key =
-                keybinding_labels(&state.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
             let nip28_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenNip28, "Ctrl+Shift+N");
             let left_sidebar = keybinding_labels(
@@ -141,27 +118,19 @@ fn render_help_modal(
                     vec![
                         "F1 - Help".to_string(),
                         "Enter - Send message".to_string(),
-                        "Shift+Tab - Cycle permission mode".to_string(),
                         format!("{} - Interrupt request", interrupt),
                         format!("{} - Command palette", palette_key),
                         format!("{} - Settings", settings_key),
-                        format!("{} - Wallet", wallet_key),
                         format!("{} - Agent backends", agent_backends_key),
                         format!("{} - DVM providers", dvm_key),
                         format!("{} - Gateway health", gateway_key),
                         format!("{} - LM router", lm_router_key),
                         format!("{} - Nexus stats", nexus_key),
-                        format!("{} - Spark wallet", spark_key),
                         format!("{} - NIP-90 jobs", nip90_key),
                         format!("{} - OANIX manifest", oanix_key),
                         format!("{} - Directives", directives_key),
                         format!("{} - Issues", issues_key),
                         format!("{} - Issue tracker", tracker_key),
-                        format!("{} - RLM runs", rlm_key),
-                        format!("{} - RLM trace", rlm_trace_key),
-                        format!("{} - Pylon earnings", pylon_key),
-                        format!("{} - Pylon jobs", pylon_jobs_key),
-                        format!("{} - DSPy status", dspy_key),
                         format!("{} - NIP-28 chat", nip28_key),
                         format!("{} - Toggle left sidebar", left_sidebar),
                         format!("{} - Toggle right sidebar", right_sidebar),
@@ -171,7 +140,6 @@ fn render_help_modal(
                 (
                     "Core",
                     vec![
-                        "/model - choose model; /output-style <name> - style output".to_string(),
                         "/clear - reset chat; /compact - compact context; /undo - undo last exchange"
                             .to_string(),
                         "/cancel - cancel active run; /bug - report issue".to_string(),
@@ -187,8 +155,6 @@ fn render_help_modal(
                 (
                     "Permissions",
                     vec![
-                        "/permission mode <default|plan|acceptEdits|bypassPermissions|dontAsk>"
-                            .to_string(),
                         "/permission rules - manage rules".to_string(),
                         "/permission allow|deny <tool|bash:pattern>".to_string(),
                     ],
@@ -202,7 +168,7 @@ fn render_help_modal(
                     ],
                 ),
                 (
-                    "Agents, Skills, Prompts",
+                    "Agents, Skills",
                     vec![
                         "/agents - manage agents; /agent select <name>; /agent clear".to_string(),
                         "/agent-backends - backend status; /agent-backends refresh".to_string(),
@@ -211,105 +177,18 @@ fn render_help_modal(
                     ],
                 ),
                 (
-                    "Wallet",
-                    vec!["/wallet - open wallet status; /wallet refresh - refresh".to_string()],
-                ),
-                (
-                    "DVM Providers",
+                    "Network Services",
                     vec![
-                        "/dvm - open providers".to_string(),
-                        "/dvm connect <relay_url>; /dvm kind <id>".to_string(),
-                        "/dvm refresh - refresh".to_string(),
+                        "/dvm - DVM providers; /gateway - gateway health".to_string(),
+                        "/lm-router - LM router; /nexus - Nexus stats".to_string(),
+                        "/nip90 - NIP-90 jobs; /nip28 - NIP-28 chat".to_string(),
                     ],
                 ),
                 (
-                    "Gateway",
+                    "Workspace",
                     vec![
-                        "/gateway - open health".to_string(),
-                        "/gateway refresh - refresh".to_string(),
-                    ],
-                ),
-                (
-                    "LM Router",
-                    vec![
-                        "/lm-router - open status".to_string(),
-                        "/lm-router refresh - refresh".to_string(),
-                    ],
-                ),
-                (
-                    "Nexus",
-                    vec![
-                        "/nexus - open stats".to_string(),
-                        "/nexus connect <stats_url>; /nexus refresh".to_string(),
-                    ],
-                ),
-                (
-                    "Spark Wallet",
-                    vec![
-                        "/spark - open status".to_string(),
-                        "/spark refresh - refresh".to_string(),
-                    ],
-                ),
-                (
-                    "NIP-90 Jobs",
-                    vec![
-                        "/nip90 - open job monitor".to_string(),
-                        "/nip90 connect <relay_url>; /nip90 refresh".to_string(),
-                    ],
-                ),
-                (
-                    "OANIX",
-                    vec![
-                        "/oanix - open manifest; /oanix refresh - refresh".to_string(),
-                    ],
-                ),
-                (
-                    "Directives",
-                    vec![
-                        "/directives - open directives; /directives refresh - refresh".to_string(),
-                    ],
-                ),
-                (
-                    "Issues",
-                    vec![
-                        "/issues - open workspace issues; /issues refresh - refresh".to_string(),
-                    ],
-                ),
-                (
-                    "Issue Tracker",
-                    vec![
-                        "/issue-tracker - open tracker; /issue-tracker refresh - refresh"
-                            .to_string(),
-                    ],
-                ),
-                (
-                    "RLM",
-                    vec![
-                        "/rlm - open run history; /rlm refresh - refresh".to_string(),
-                        "/rlm trace [run_id] - open trace events".to_string(),
-                    ],
-                ),
-                (
-                    "Pylon",
-                    vec![
-                        "/pylon - open earnings; /pylon refresh - refresh".to_string(),
-                        "/pylon earnings - open earnings; /pylon earnings refresh".to_string(),
-                        "/pylon jobs - open jobs; /pylon jobs refresh".to_string(),
-                    ],
-                ),
-                (
-                    "DSPy",
-                    vec![
-                        "/dspy - open status; /dspy refresh - refresh".to_string(),
-                        "/dspy auto on|off; /dspy background on|off".to_string(),
-                    ],
-                ),
-                (
-                    "NIP-28 Chat",
-                    vec![
-                        "/nip28 - open chat; /nip28 connect <relay_url>".to_string(),
-                        "/nip28 channel <id|name>; /nip28 send <message>".to_string(),
-                        "/nip28 refresh - reconnect".to_string(),
+                        "/oanix - OANIX manifest; /directives - workspace directives".to_string(),
+                        "/issues - workspace issues; /issue-tracker - autopilot issues".to_string(),
                     ],
                 ),
             ];

@@ -56,9 +56,9 @@ pub enum CoderMode {
     /// Auto-approve all tool use (maps to PermissionMode::BypassPermissions).
     BypassPermissions,
     /// Read-only mode, deny write operations (maps to PermissionMode::Plan).
-    #[default]
     Plan,
-    /// Autopilot mode - bypasses Claude SDK, uses DSPy/Adjutant (placeholder).
+    /// Autopilot mode - auto-approves all, default mode.
+    #[default]
     Autopilot,
 }
 
