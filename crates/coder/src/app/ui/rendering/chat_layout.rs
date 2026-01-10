@@ -122,14 +122,11 @@ impl AppState {
         };
         total_content_height += streaming_height;
 
-        // Add inline tools for streaming/current message (last message index or beyond)
-        let streaming_msg_index = self.chat.messages.len().saturating_sub(1);
+        // Add inline tools for streaming/current message
+        // During streaming, tools are associated with messages.len() (the next message index)
+        let streaming_msg_index = self.chat.messages.len();
         if let Some(tool_indices) = tools_by_message.get(&streaming_msg_index) {
-            // Check if we already added tools for this message above
-            let already_added = inline_tools_layouts
-                .iter()
-                .any(|l| l.message_index == streaming_msg_index);
-            if !already_added && !tool_indices.is_empty() {
+            if !tool_indices.is_empty() {
                 let inline_layout = self.build_inline_tools_layout(
                     streaming_msg_index,
                     tool_indices,
