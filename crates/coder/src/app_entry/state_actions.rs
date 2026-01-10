@@ -158,6 +158,15 @@ impl AppState {
             "System",
             Some(lm_router_keys),
         );
+        let nexus_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenNexus, "Ctrl+Shift+X");
+        push_command(
+            command_palette_ids::NEXUS_OPEN,
+            "Open Nexus Stats",
+            "View Nexus relay stats",
+            "Nostr",
+            Some(nexus_keys),
+        );
         let nip90_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
         push_command(
@@ -481,6 +490,20 @@ impl AppState {
 
     pub(super) fn refresh_lm_router(&mut self) {
         self.lm_router.refresh();
+    }
+
+    pub(super) fn open_nexus(&mut self) {
+        self.refresh_nexus();
+        self.modal_state = ModalState::Nexus;
+    }
+
+    pub(super) fn refresh_nexus(&mut self) {
+        self.nexus.refresh();
+    }
+
+    pub(super) fn connect_nexus(&mut self, stats_url: String) {
+        self.nexus.set_stats_url(stats_url);
+        self.refresh_nexus();
     }
 
     pub(super) fn connect_dvm(&mut self, relay_url: Option<String>) {

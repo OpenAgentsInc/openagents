@@ -41,6 +41,9 @@ pub enum Command {
     DvmRefresh,
     LmRouter,
     LmRouterRefresh,
+    Nexus,
+    NexusConnect(String),
+    NexusRefresh,
     Gateway,
     GatewayRefresh,
     Nip90,
@@ -284,6 +287,21 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/nexus",
+        description: "Open Nexus relay stats",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/nexus connect <stats_url>",
+        description: "Set the Nexus stats URL",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/nexus refresh",
+        description: "Refresh Nexus relay stats",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/nip90",
         description: "Open NIP-90 job monitor",
         requires_args: false,
@@ -396,6 +414,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "dvm" => parse_dvm_command(args),
         "gateway" => parse_gateway_command(args),
         "lm-router" | "lmrouter" => parse_lm_router_command(args),
+        "nexus" => parse_nexus_command(args),
         "nip90" => parse_nip90_command(args),
         "oanix" => parse_oanix_command(args),
         "dspy" => parse_dspy_command(args),
@@ -453,6 +472,20 @@ fn parse_lm_router_command(args: Vec<String>) -> Command {
         Some("open") | Some("status") => Command::LmRouter,
         Some("refresh") => Command::LmRouterRefresh,
         Some(other) => Command::Custom(format!("lm-router {}", other), parts.collect()),
+    }
+}
+
+fn parse_nexus_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::Nexus,
+        Some("open") | Some("status") => Command::Nexus,
+        Some("refresh") => Command::NexusRefresh,
+        Some("connect") => {
+            let url = parts.collect::<Vec<String>>().join(" ");
+            Command::NexusConnect(url)
+        }
+        Some(other) => Command::Custom(format!("nexus {}", other), parts.collect()),
     }
 }
 
