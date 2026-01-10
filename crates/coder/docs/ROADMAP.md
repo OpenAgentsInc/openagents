@@ -904,3 +904,4 @@ pub enum SettingsTab {
 - 2026-01-09 12:02 UTC - Implemented hooks runtime (built-ins + scripts), wired hook logging/inspector, connected hooks to query options, and ran `cargo check -p coder`.
 - 2026-01-09 13:10 UTC - Added settings persistence (config.toml + keybindings.json), wired theme/font/auto-scroll/session limits into runtime and query options, and ran `cargo check -p coder`.
 - 2026-01-09 13:24 UTC - Built tabbed settings modal with search, permissions/MCP/hooks/keyboard controls, keybinding capture, and theme-aware UI updates.
+- 2026-01-09 - Implemented true Autopilot loop (`autopilot_loop.rs`): autonomous execution that loops Adjutant until task succeeds with verification (cargo check + cargo test), definitive failure, max iterations (10), or user interrupt (Escape).
