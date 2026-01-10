@@ -40,7 +40,7 @@ pub(crate) fn strip_markdown_markers(text: &str) -> String {
     result = result.replace("__", "");
     // Strip ` (inline code) - be careful not to strip code blocks
     // Only strip single backticks, not triple
-    let mut chars: Vec<char> = result.chars().collect();
+    let chars: Vec<char> = result.chars().collect();
     let mut i = 0;
     let mut new_chars = Vec::new();
     while i < chars.len() {

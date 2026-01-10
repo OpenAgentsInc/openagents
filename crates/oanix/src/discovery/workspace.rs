@@ -173,12 +173,22 @@ async fn parse_issues(openagents_dir: &Path) -> Vec<IssueSummary> {
     struct IssueJson {
         number: u32,
         title: String,
+        #[serde(default)]
+        description: Option<String>,
+        #[serde(default)]
+        issue_type: Option<String>,
         status: String,
         priority: String,
         #[serde(default)]
         is_blocked: bool,
         #[serde(default)]
         blocked_reason: Option<String>,
+        #[serde(default)]
+        created_at: Option<String>,
+        #[serde(default)]
+        updated_at: Option<String>,
+        #[serde(default)]
+        last_checked: Option<String>,
     }
 
     let issues: Vec<IssueJson> = match serde_json::from_str(&content) {
@@ -191,10 +201,15 @@ async fn parse_issues(openagents_dir: &Path) -> Vec<IssueSummary> {
         .map(|i| IssueSummary {
             number: i.number,
             title: i.title,
+            description: i.description,
+            issue_type: i.issue_type,
             status: i.status,
             priority: i.priority,
             is_blocked: i.is_blocked,
             blocked_reason: i.blocked_reason,
+            created_at: i.created_at,
+            updated_at: i.updated_at,
+            last_checked: i.last_checked,
         })
         .collect()
 }
