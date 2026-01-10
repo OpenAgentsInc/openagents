@@ -5,8 +5,8 @@ pub enum Action {
     Interrupt,
     OpenCommandPalette,
     OpenSettings,
-    OpenLeftSidebar,
-    OpenRightSidebar,
+    ToggleLeftSidebar,
+    ToggleRightSidebar,
     ToggleSidebars,
 }
 
@@ -29,8 +29,8 @@ impl Action {
             Action::Interrupt,
             Action::OpenCommandPalette,
             Action::OpenSettings,
-            Action::OpenLeftSidebar,
-            Action::OpenRightSidebar,
+            Action::ToggleLeftSidebar,
+            Action::ToggleRightSidebar,
             Action::ToggleSidebars,
         ]
     }
@@ -40,8 +40,8 @@ impl Action {
             Action::Interrupt => "interrupt",
             Action::OpenCommandPalette => "command_palette",
             Action::OpenSettings => "settings",
-            Action::OpenLeftSidebar => "sidebar_left",
-            Action::OpenRightSidebar => "sidebar_right",
+            Action::ToggleLeftSidebar => "sidebar_left",
+            Action::ToggleRightSidebar => "sidebar_right",
             Action::ToggleSidebars => "sidebar_toggle",
         }
     }
@@ -51,8 +51,8 @@ impl Action {
             Action::Interrupt => "Interrupt request",
             Action::OpenCommandPalette => "Command palette",
             Action::OpenSettings => "Open settings",
-            Action::OpenLeftSidebar => "Open left sidebar",
-            Action::OpenRightSidebar => "Open right sidebar",
+            Action::ToggleLeftSidebar => "Toggle left sidebar",
+            Action::ToggleRightSidebar => "Toggle right sidebar",
             Action::ToggleSidebars => "Toggle sidebars",
         }
     }
@@ -62,8 +62,8 @@ impl Action {
             "interrupt" => Some(Action::Interrupt),
             "command_palette" => Some(Action::OpenCommandPalette),
             "settings" => Some(Action::OpenSettings),
-            "sidebar_left" => Some(Action::OpenLeftSidebar),
-            "sidebar_right" => Some(Action::OpenRightSidebar),
+            "sidebar_left" => Some(Action::ToggleLeftSidebar),
+            "sidebar_right" => Some(Action::ToggleRightSidebar),
             "sidebar_toggle" => Some(Action::ToggleSidebars),
             _ => None,
         }
@@ -102,7 +102,7 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ctrl: true,
                 ..Default::default()
             },
-            action: Action::OpenLeftSidebar,
+            action: Action::ToggleLeftSidebar,
         },
         Keybinding {
             key: Key::Character("]".to_string()),
@@ -110,7 +110,7 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ctrl: true,
                 ..Default::default()
             },
-            action: Action::OpenRightSidebar,
+            action: Action::ToggleRightSidebar,
         },
         Keybinding {
             key: Key::Character("\\".to_string()),
@@ -126,7 +126,7 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 meta: true,
                 ..Default::default()
             },
-            action: Action::OpenLeftSidebar,
+            action: Action::ToggleLeftSidebar,
         },
         Keybinding {
             key: Key::Character("]".to_string()),
@@ -134,7 +134,7 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 meta: true,
                 ..Default::default()
             },
-            action: Action::OpenRightSidebar,
+            action: Action::ToggleRightSidebar,
         },
         Keybinding {
             key: Key::Character("\\".to_string()),
