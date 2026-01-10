@@ -62,6 +62,11 @@ fn render_help_modal(
                 KeyAction::OpenLmRouter,
                 "Ctrl+Shift+L",
             );
+            let nexus_key = keybinding_labels(
+                &state.settings.keybindings,
+                KeyAction::OpenNexus,
+                "Ctrl+Shift+X",
+            );
             let nip90_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
             let oanix_key =
@@ -100,6 +105,7 @@ fn render_help_modal(
                         format!("{} - DVM providers", dvm_key),
                         format!("{} - Gateway health", gateway_key),
                         format!("{} - LM router", lm_router_key),
+                        format!("{} - Nexus stats", nexus_key),
                         format!("{} - NIP-90 jobs", nip90_key),
                         format!("{} - OANIX manifest", oanix_key),
                         format!("{} - DSPy status", dspy_key),
@@ -174,6 +180,13 @@ fn render_help_modal(
                     vec![
                         "/lm-router - open status".to_string(),
                         "/lm-router refresh - refresh".to_string(),
+                    ],
+                ),
+                (
+                    "Nexus",
+                    vec![
+                        "/nexus - open stats".to_string(),
+                        "/nexus connect <stats_url>; /nexus refresh".to_string(),
                     ],
                 ),
                 (

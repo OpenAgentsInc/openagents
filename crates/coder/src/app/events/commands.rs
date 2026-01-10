@@ -24,6 +24,7 @@ pub(crate) enum ModalState {
     DvmProviders,
     Gateway,
     LmRouter,
+    Nexus,
     Nip90Jobs,
     Oanix,
     Dspy,

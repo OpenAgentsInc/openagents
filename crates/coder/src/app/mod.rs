@@ -7,6 +7,7 @@ pub(crate) mod dvm;
 pub(crate) mod events;
 pub(crate) mod gateway;
 pub(crate) mod lm_router;
+pub(crate) mod nexus;
 pub(crate) mod nip28;
 pub(crate) mod nip90;
 pub(crate) mod oanix;

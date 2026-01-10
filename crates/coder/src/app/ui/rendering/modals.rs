@@ -9,6 +9,7 @@ include!("modals/wallet.rs");
 include!("modals/dvm.rs");
 include!("modals/gateway.rs");
 include!("modals/lm_router.rs");
+include!("modals/nexus.rs");
 include!("modals/oanix.rs");
 include!("modals/dspy.rs");
 include!("modals/nip28.rs");
@@ -166,6 +167,17 @@ fn render_modals(
         }
         ModalState::LmRouter => {
             render_lm_router_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
+        ModalState::Nexus => {
+            render_nexus_modal(
                 state,
                 scene,
                 palette,

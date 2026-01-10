@@ -315,6 +315,24 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             state.open_lm_router();
             CommandAction::None
         }
+        Command::Nexus => {
+            state.open_nexus();
+            CommandAction::None
+        }
+        Command::NexusRefresh => {
+            state.refresh_nexus();
+            state.open_nexus();
+            CommandAction::None
+        }
+        Command::NexusConnect(stats_url) => {
+            if stats_url.trim().is_empty() {
+                state.push_system_message("Nexus stats URL is required.".to_string());
+            } else {
+                state.connect_nexus(stats_url);
+                state.open_nexus();
+            }
+            CommandAction::None
+        }
         Command::Nip90 => {
             state.open_nip90();
             CommandAction::None
@@ -818,6 +836,19 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 }
                 WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
                     state.refresh_lm_router();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Nexus => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_nexus();
                 }
                 _ => {}
             }

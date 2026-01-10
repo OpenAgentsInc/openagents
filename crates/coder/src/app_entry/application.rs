@@ -46,6 +46,7 @@ use crate::app::dvm::DvmState;
 use crate::app::nip90::Nip90State;
 use crate::app::gateway::GatewayState;
 use crate::app::lm_router::LmRouterState;
+use crate::app::nexus::NexusState;
 use crate::app::{build_input, AppState, HookModalView};
 use crate::commands::parse_command;
 use crate::keybindings::{match_action, Action as KeyAction};
@@ -249,6 +250,7 @@ impl ApplicationHandler for CoderApp {
                 dvm: DvmState::new(),
                 gateway: GatewayState::new(),
                 lm_router: LmRouterState::new(),
+                nexus: NexusState::new(),
                 nip28: Nip28State::new(),
                 nip90: Nip90State::new(),
                 llama_server_process,
@@ -285,6 +287,7 @@ impl ApplicationHandler for CoderApp {
         self.poll_dvm_events();
         self.poll_gateway_events();
         self.poll_lm_router_events();
+        self.poll_nexus_events();
         self.poll_autopilot_history();
         self.poll_rate_limits();
 
@@ -1154,6 +1157,7 @@ impl ApplicationHandler for CoderApp {
                                 KeyAction::OpenDvm => state.open_dvm(),
                                 KeyAction::OpenGateway => state.open_gateway(),
                                 KeyAction::OpenLmRouter => state.open_lm_router(),
+                                KeyAction::OpenNexus => state.open_nexus(),
                                 KeyAction::OpenNip90 => state.open_nip90(),
                                 KeyAction::OpenOanix => state.open_oanix(),
                                 KeyAction::OpenDspy => state.open_dspy(),
