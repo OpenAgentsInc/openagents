@@ -3,6 +3,7 @@ use std::sync::Arc;
 use futures::StreamExt;
 use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc::error::TryRecvError;
 
 use claude_agent_sdk::permissions::{CallbackPermissionHandler, PermissionRequest};
 use claude_agent_sdk::protocol::{PermissionMode, PermissionResult};
@@ -10,60 +11,29 @@ use claude_agent_sdk::{query_with_permissions, QueryOptions, SdkMessage};
 
 use crate::app::catalog::build_hook_map;
 use crate::app::chat::{ChatMessage, MessageRole};
-use crate::app::events::{CommandAction, QueryControl, ResponseEvent};
+use crate::app::dvm::{DvmEvent, DvmStatus};
+use crate::app::gateway::GatewayEvent;
+use crate::app::lm_router::LmRouterEvent;
+use crate::app::nexus::NexusEvent;
+use crate::app::spark_wallet::SparkWalletEvent;
+use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent};
+use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
+use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
 use crate::app::parsing::expand_prompt_text;
 use crate::app::permissions::{
-    coder_mode_default_allow, extract_bash_command, is_read_only_tool, parse_coder_mode, pattern_matches, PermissionPending,
+    coder_mode_default_allow, extract_bash_command, is_read_only_tool, parse_coder_mode,
+    pattern_matches, PermissionPending,
 };
 use crate::app::session::SessionInfo;
 use crate::app::tools::tool_result_output;
 use crate::app::ui::render_app;
-use crate::app::{truncate_preview, CoderMode};
+use crate::app::CoderMode;
 use crate::commands::Command;
 
 use super::CoderApp;
 use super::command_palette_ids;
 use super::commands::handle_command;
 use super::settings::parse_mcp_status;
-
-/// Extract tool call start info from stream event.
-/// Returns (tool_name, tool_use_id) if this is a content_block_start with tool_use.
-fn extract_tool_call_start(event: &Value) -> Option<(String, String)> {
-    if event.get("type")?.as_str()? != "content_block_start" {
-        return None;
-    }
-    let content_block = event.get("content_block")?;
-    if content_block.get("type")?.as_str()? != "tool_use" {
-        return None;
-    }
-    let name = content_block.get("name")?.as_str()?.to_string();
-    let id = content_block.get("id")?.as_str()?.to_string();
-    Some((name, id))
-}
-
-/// Extract tool input delta (partial JSON) from stream event.
-fn extract_tool_input_delta(event: &Value) -> Option<String> {
-    if event.get("type")?.as_str()? != "content_block_delta" {
-        return None;
-    }
-    let delta = event.get("delta")?;
-    if delta.get("type")?.as_str()? != "input_json_delta" {
-        return None;
-    }
-    Some(delta.get("partial_json")?.as_str()?.to_string())
-}
-
-/// Extract streaming text from stream event.
-fn extract_stream_text(event: &Value) -> Option<String> {
-    if event.get("type")?.as_str()? != "content_block_delta" {
-        return None;
-    }
-    let delta = event.get("delta")?;
-    if delta.get("type")?.as_str()? != "text_delta" {
-        return None;
-    }
-    Some(delta.get("text")?.as_str()?.to_string())
-}
 
 impl CoderApp {
     pub(super) fn submit_prompt(&mut self, prompt: String) {
@@ -905,13 +875,361 @@ impl CoderApp {
             return;
         };
 
+        let mut needs_redraw = false;
+
         // Check if we received a manifest to cache
         if let Some(rx) = &mut state.autopilot.oanix_manifest_rx {
-            if let Ok(manifest) = rx.try_recv() {
-                tracing::info!("Autopilot: cached OANIX manifest");
-                state.autopilot.oanix_manifest = Some(manifest);
-                state.autopilot.oanix_manifest_rx = None; // Done receiving
+            match rx.try_recv() {
+                Ok(manifest) => {
+                    tracing::info!("Autopilot: cached OANIX manifest");
+                    state.autopilot.oanix_manifest = Some(manifest);
+                    state.wallet.refresh(state.autopilot.oanix_manifest.as_ref());
+                    if matches!(state.modal_state, ModalState::AutopilotIssues) {
+                        state.refresh_issue_tracker();
+                    }
+                    state.autopilot.oanix_manifest_rx = None; // Done receiving
+                    needs_redraw = true;
+                }
+                Err(TryRecvError::Disconnected) => {
+                    tracing::warn!("Autopilot: OANIX manifest channel closed");
+                    state.autopilot.oanix_manifest_rx = None;
+                    needs_redraw = true;
+                }
+                Err(TryRecvError::Empty) => {}
             }
+        }
+
+        if needs_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    pub(super) fn poll_nip28_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.nip28.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state.nip28.status = Nip28ConnectionStatus::Error(
+                        "NIP-28 runtime disconnected".to_string(),
+                    );
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                Nip28Event::Connected => {
+                    state.nip28.status = Nip28ConnectionStatus::Connected;
+                    state.nip28.status_message = Some("Connected to relay".to_string());
+                    state.nip28.request_channel_setup();
+                    should_redraw = true;
+                }
+                Nip28Event::ConnectionFailed(error) => {
+                    state.nip28.status = Nip28ConnectionStatus::Error(error.clone());
+                    state.nip28.status_message = Some(error);
+                    should_redraw = true;
+                }
+                Nip28Event::AuthChallenge(challenge) => {
+                    state.nip28.authenticate(&challenge);
+                    state.nip28.status_message = Some("Authenticating...".to_string());
+                    should_redraw = true;
+                }
+                Nip28Event::Authenticated => {
+                    state.nip28.status = Nip28ConnectionStatus::Authenticated;
+                    state.nip28.status_message = Some("Authenticated".to_string());
+                    state.nip28.request_channel_setup();
+                    should_redraw = true;
+                }
+                Nip28Event::ChatMessage {
+                    id,
+                    pubkey,
+                    content,
+                    created_at,
+                } => {
+                    state.nip28.push_message(Nip28Message {
+                        _id: id,
+                        pubkey,
+                        content,
+                        created_at,
+                    });
+                    should_redraw = true;
+                }
+                Nip28Event::Published { _event_id: _ } => {
+                    state.nip28.status_message = Some("Message published".to_string());
+                    should_redraw = true;
+                }
+                Nip28Event::PublishFailed { error } => {
+                    state.nip28.status_message = Some(format!("Publish failed: {}", error));
+                    should_redraw = true;
+                }
+                Nip28Event::ChannelFound { channel_id, _name } => {
+                    state.nip28.mark_channel_ready(channel_id);
+                    state.nip28.status_message = Some("Channel ready".to_string());
+                    state.nip28.request_channel_setup();
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    pub(super) fn poll_nip90_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.nip90.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state.nip90.status = Nip90ConnectionStatus::Error(
+                        "NIP-90 runtime disconnected".to_string(),
+                    );
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                Nip90Event::Connected => {
+                    state.nip90.status = Nip90ConnectionStatus::Connected;
+                    state.nip90.status_message = Some("Connected to relay".to_string());
+                    state.nip90.request_subscription();
+                    should_redraw = true;
+                }
+                Nip90Event::ConnectionFailed(error) => {
+                    state.nip90.status = Nip90ConnectionStatus::Error(error.clone());
+                    state.nip90.status_message = Some(error);
+                    should_redraw = true;
+                }
+                Nip90Event::AuthChallenge(challenge) => {
+                    state.nip90.status = Nip90ConnectionStatus::Authenticating;
+                    state.nip90.runtime.authenticate(&challenge);
+                    state.nip90.status_message = Some("Authenticating...".to_string());
+                    should_redraw = true;
+                }
+                Nip90Event::Authenticated => {
+                    state.nip90.status = Nip90ConnectionStatus::Authenticated;
+                    state.nip90.status_message = Some("Authenticated".to_string());
+                    state.nip90.request_subscription();
+                    should_redraw = true;
+                }
+                Nip90Event::JobMessage(message) => {
+                    state.nip90.push_message(message);
+                    should_redraw = true;
+                }
+                Nip90Event::Notice(message) => {
+                    state.nip90.status_message = Some(message);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    pub(super) fn poll_dvm_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.dvm.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state.dvm.status = DvmStatus::Error("DVM runtime disconnected".to_string());
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                DvmEvent::Providers(providers) => {
+                    state.dvm.set_providers(providers);
+                    state.dvm.status_message = Some("Providers loaded".to_string());
+                    should_redraw = true;
+                }
+                DvmEvent::Error(message) => {
+                    state.dvm.status = DvmStatus::Error(message.clone());
+                    state.dvm.status_message = Some(message);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    pub(super) fn poll_gateway_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.gateway.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state
+                        .gateway
+                        .set_error("Gateway runtime disconnected".to_string());
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                GatewayEvent::Snapshot(snapshot) => {
+                    state.gateway.set_snapshot(snapshot);
+                    should_redraw = true;
+                }
+                GatewayEvent::NotConfigured(message) => {
+                    state.gateway.set_not_configured(message);
+                    should_redraw = true;
+                }
+                GatewayEvent::Error(message) => {
+                    state.gateway.set_error(message);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    pub(super) fn poll_lm_router_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.lm_router.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state
+                        .lm_router
+                        .set_error("LM router runtime disconnected".to_string());
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                LmRouterEvent::Snapshot(snapshot) => {
+                    state.lm_router.set_snapshot(snapshot);
+                    should_redraw = true;
+                }
+                LmRouterEvent::NoBackends(message) => {
+                    state.lm_router.set_no_backends(message);
+                    should_redraw = true;
+                }
+                LmRouterEvent::Error(message) => {
+                    state.lm_router.set_error(message);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    pub(super) fn poll_nexus_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.nexus.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state
+                        .nexus
+                        .set_error("Nexus runtime disconnected".to_string());
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                NexusEvent::Snapshot(snapshot) => {
+                    state.nexus.set_snapshot(snapshot);
+                    should_redraw = true;
+                }
+                NexusEvent::Error(message) => {
+                    state.nexus.set_error(message);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    pub(super) fn poll_spark_wallet_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.spark_wallet.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state
+                        .spark_wallet
+                        .set_error("Spark wallet runtime disconnected".to_string());
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                SparkWalletEvent::Snapshot(snapshot) => {
+                    state.spark_wallet.set_snapshot(snapshot);
+                    should_redraw = true;
+                }
+                SparkWalletEvent::NotConfigured(message) => {
+                    state.spark_wallet.set_not_configured(message);
+                    should_redraw = true;
+                }
+                SparkWalletEvent::Error(message) => {
+                    state.spark_wallet.set_error(message);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
         }
     }
 
@@ -1001,6 +1319,74 @@ impl CoderApp {
             command_palette_ids::AGENTS_LIST => Some(handle_command(state, Command::Agents)),
             command_palette_ids::AGENT_CLEAR => Some(handle_command(state, Command::AgentClear)),
             command_palette_ids::AGENT_RELOAD => Some(handle_command(state, Command::AgentReload)),
+            command_palette_ids::WALLET_OPEN => {
+                state.open_wallet();
+                None
+            }
+            command_palette_ids::DVM_OPEN => {
+                state.open_dvm();
+                None
+            }
+            command_palette_ids::GATEWAY_OPEN => {
+                state.open_gateway();
+                None
+            }
+            command_palette_ids::LM_ROUTER_OPEN => {
+                state.open_lm_router();
+                None
+            }
+            command_palette_ids::NEXUS_OPEN => {
+                state.open_nexus();
+                None
+            }
+            command_palette_ids::SPARK_WALLET_OPEN => {
+                state.open_spark_wallet();
+                None
+            }
+            command_palette_ids::NIP90_OPEN => {
+                state.open_nip90();
+                None
+            }
+            command_palette_ids::OANIX_OPEN => {
+                state.open_oanix();
+                None
+            }
+            command_palette_ids::DIRECTIVES_OPEN => {
+                state.open_directives();
+                None
+            }
+            command_palette_ids::ISSUES_OPEN => {
+                state.open_issues();
+                None
+            }
+            command_palette_ids::ISSUE_TRACKER_OPEN => {
+                state.open_issue_tracker();
+                None
+            }
+            command_palette_ids::RLM_OPEN => {
+                state.open_rlm();
+                None
+            }
+            command_palette_ids::RLM_TRACE_OPEN => {
+                state.open_rlm_trace(None);
+                None
+            }
+            command_palette_ids::PYLON_EARNINGS_OPEN => {
+                state.open_pylon_earnings();
+                None
+            }
+            command_palette_ids::PYLON_JOBS_OPEN => {
+                state.open_pylon_jobs();
+                None
+            }
+            command_palette_ids::DSPY_OPEN => {
+                state.open_dspy();
+                None
+            }
+            command_palette_ids::NIP28_OPEN => {
+                state.open_nip28();
+                None
+            }
             command_palette_ids::SKILLS_LIST => Some(handle_command(state, Command::Skills)),
             command_palette_ids::SKILLS_RELOAD => Some(handle_command(state, Command::SkillsReload)),
             command_palette_ids::HOOKS_OPEN => Some(handle_command(state, Command::Hooks)),
@@ -1037,4 +1423,45 @@ impl CoderApp {
         };
         render_app(state);
     }
+}
+
+fn extract_tool_call_start(event: &Value) -> Option<(String, String)> {
+    if event.get("type").and_then(|t| t.as_str()) != Some("content_block_start") {
+        return None;
+    }
+    let block = event.get("content_block")?;
+    if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
+        return None;
+    }
+    let tool_name = block.get("name").and_then(|v| v.as_str())?.to_string();
+    let tool_id = block.get("id").and_then(|v| v.as_str())?.to_string();
+    Some((tool_name, tool_id))
+}
+
+fn extract_tool_input_delta(event: &Value) -> Option<String> {
+    if event.get("type").and_then(|t| t.as_str()) != Some("content_block_delta") {
+        return None;
+    }
+    let delta = event.get("delta")?;
+    if delta.get("type").and_then(|t| t.as_str()) != Some("input_json_delta") {
+        return None;
+    }
+    delta
+        .get("partial_json")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+fn extract_stream_text(event: &Value) -> Option<String> {
+    if event.get("type").and_then(|t| t.as_str()) != Some("content_block_delta") {
+        return None;
+    }
+    let delta = event.get("delta")?;
+    if delta.get("type").and_then(|t| t.as_str()) != Some("text_delta") {
+        return None;
+    }
+    delta
+        .get("text")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }

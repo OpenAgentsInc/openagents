@@ -257,6 +257,18 @@ impl AppState {
             "Pylon",
             Some(pylon_keys),
         );
+        let pylon_jobs_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenPylonJobs,
+            "Ctrl+Shift+U",
+        );
+        push_command(
+            command_palette_ids::PYLON_JOBS_OPEN,
+            "Open Pylon Jobs",
+            "Review recent Pylon jobs from pylon.db",
+            "Pylon",
+            Some(pylon_jobs_keys),
+        );
         let dspy_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
         push_command(
@@ -698,6 +710,15 @@ impl AppState {
 
     pub(super) fn refresh_pylon_earnings(&mut self) {
         self.pylon_earnings.refresh();
+    }
+
+    pub(super) fn open_pylon_jobs(&mut self) {
+        self.refresh_pylon_jobs();
+        self.modal_state = ModalState::PylonJobs;
+    }
+
+    pub(super) fn refresh_pylon_jobs(&mut self) {
+        self.pylon_jobs.refresh();
     }
 
     pub(super) fn open_dspy(&mut self) {

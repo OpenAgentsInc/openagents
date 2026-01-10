@@ -17,17 +17,9 @@ use winit::window::{CursorIcon, Window, WindowId};
 
 use crate::app::autopilot::AutopilotState;
 use crate::app::autopilot_issues::AutopilotIssuesState;
-use crate::app::dspy::DspyState;
-use crate::app::dvm::DvmState;
-use crate::app::gateway::GatewayState;
-use crate::app::lm_router::LmRouterState;
-use crate::app::nexus::NexusState;
-use crate::app::nip28::Nip28State;
-use crate::app::nip90::Nip90State;
-use crate::app::pylon_earnings::PylonEarningsState;
 use crate::app::rlm::{RlmState, RlmTraceState};
-use crate::app::spark_wallet::SparkWalletState;
-use crate::app::wallet::WalletState;
+use crate::app::pylon_earnings::PylonEarningsState;
+use crate::app::pylon_jobs::PylonJobsState;
 use crate::app::catalog::{
     load_agent_entries, load_hook_config, load_hook_scripts, load_mcp_project_servers,
     load_skill_entries, CatalogState,
@@ -36,7 +28,7 @@ use crate::app::chat::{ChatSelection, ChatState};
 use crate::app::config::{mcp_project_file, SettingsState};
 use crate::app::events::{
     convert_key_for_binding, convert_key_for_input, convert_modifiers, convert_mouse_button,
-    CommandAction, ModalState,
+    CommandAction, CoderMode, ModalState,
 };
 use crate::app::permissions::{
     coder_mode_default_allow, coder_mode_label, load_permission_config, PermissionState,
@@ -51,8 +43,17 @@ use crate::app::ui::{
     skill_modal_content_top, INPUT_PADDING, OUTPUT_PADDING, SESSION_MODAL_HEIGHT,
     STATUS_BAR_HEIGHT,
 };
-use crate::app::{build_input, AppState, CoderMode, HookModalView};
-use crate::commands::{parse_command, Command};
+use crate::app::wallet::WalletState;
+use crate::app::dspy::DspyState;
+use crate::app::nip28::Nip28State;
+use crate::app::dvm::DvmState;
+use crate::app::nip90::Nip90State;
+use crate::app::gateway::GatewayState;
+use crate::app::lm_router::LmRouterState;
+use crate::app::nexus::NexusState;
+use crate::app::spark_wallet::SparkWalletState;
+use crate::app::{build_input, AppState, HookModalView};
+use crate::commands::parse_command;
 use crate::keybindings::{match_action, Action as KeyAction};
 use crate::panels::PanelLayout;
 
@@ -249,19 +250,20 @@ impl ApplicationHandler for CoderApp {
                     permission_config.bash_deny_patterns,
                 ),
                 autopilot: AutopilotState::new(oanix_manifest_rx, available_providers),
-                autopilot_issues: AutopilotIssuesState::default(),
-                rlm: RlmState::default(),
-                rlm_trace: RlmTraceState::default(),
-                pylon_earnings: PylonEarningsState::default(),
+                autopilot_issues: AutopilotIssuesState::new(),
+                rlm: RlmState::new(),
+                rlm_trace: RlmTraceState::new(),
+                pylon_earnings: PylonEarningsState::new(),
+                pylon_jobs: PylonJobsState::new(),
                 wallet: WalletState::new(),
                 dspy: DspyState::new(),
-                dvm: DvmState::default(),
-                gateway: GatewayState::default(),
-                lm_router: LmRouterState::default(),
-                nexus: NexusState::default(),
-                spark_wallet: SparkWalletState::default(),
-                nip28: Nip28State::default(),
-                nip90: Nip90State::default(),
+                dvm: DvmState::new(),
+                gateway: GatewayState::new(),
+                lm_router: LmRouterState::new(),
+                nexus: NexusState::new(),
+                spark_wallet: SparkWalletState::new(),
+                nip28: Nip28State::new(),
+                nip90: Nip90State::new(),
                 llama_server_process,
                 show_kitchen_sink: false,
                 kitchen_sink_scroll: 0.0,
@@ -291,6 +293,13 @@ impl ApplicationHandler for CoderApp {
         self.poll_skill_actions();
         self.poll_hook_inspector_actions();
         self.poll_oanix_manifest();
+        self.poll_nip28_events();
+        self.poll_nip90_events();
+        self.poll_dvm_events();
+        self.poll_gateway_events();
+        self.poll_lm_router_events();
+        self.poll_nexus_events();
+        self.poll_spark_wallet_events();
         self.poll_autopilot_history();
         self.poll_rate_limits();
 
@@ -1156,24 +1165,26 @@ impl ApplicationHandler for CoderApp {
                                     state.open_command_palette();
                                 }
                                 KeyAction::OpenSettings => state.open_config(),
+                                KeyAction::OpenWallet => state.open_wallet(),
+                                KeyAction::OpenDvm => state.open_dvm(),
+                                KeyAction::OpenGateway => state.open_gateway(),
+                                KeyAction::OpenLmRouter => state.open_lm_router(),
+                                KeyAction::OpenNexus => state.open_nexus(),
+                                KeyAction::OpenSparkWallet => state.open_spark_wallet(),
+                                KeyAction::OpenNip90 => state.open_nip90(),
+                                KeyAction::OpenOanix => state.open_oanix(),
+                                KeyAction::OpenDirectives => state.open_directives(),
+                                KeyAction::OpenIssues => state.open_issues(),
+                                KeyAction::OpenIssueTracker => state.open_issue_tracker(),
+                                KeyAction::OpenRlm => state.open_rlm(),
+                                KeyAction::OpenRlmTrace => state.open_rlm_trace(None),
+                                KeyAction::OpenPylonEarnings => state.open_pylon_earnings(),
+                                KeyAction::OpenPylonJobs => state.open_pylon_jobs(),
+                                KeyAction::OpenDspy => state.open_dspy(),
+                                KeyAction::OpenNip28 => state.open_nip28(),
                                 KeyAction::ToggleLeftSidebar => state.toggle_left_sidebar(),
                                 KeyAction::ToggleRightSidebar => state.toggle_right_sidebar(),
                                 KeyAction::ToggleSidebars => state.toggle_sidebars(),
-                                KeyAction::OpenWallet => state.modal_state = ModalState::Wallet,
-                                KeyAction::OpenDvm => state.modal_state = ModalState::DvmProviders,
-                                KeyAction::OpenGateway => state.modal_state = ModalState::Gateway,
-                                KeyAction::OpenLmRouter => state.modal_state = ModalState::LmRouter,
-                                KeyAction::OpenNexus => state.modal_state = ModalState::Nexus,
-                                KeyAction::OpenSparkWallet => state.modal_state = ModalState::SparkWallet,
-                                KeyAction::OpenNip90 => state.modal_state = ModalState::Nip90Jobs,
-                                KeyAction::OpenOanix => state.modal_state = ModalState::Oanix,
-                                KeyAction::OpenDirectives => state.modal_state = ModalState::Directives,
-                                KeyAction::OpenIssues | KeyAction::OpenIssueTracker => state.modal_state = ModalState::Issues,
-                                KeyAction::OpenRlm => state.modal_state = ModalState::Rlm,
-                                KeyAction::OpenRlmTrace => state.modal_state = ModalState::RlmTrace,
-                                KeyAction::OpenPylonEarnings => state.modal_state = ModalState::PylonEarnings,
-                                KeyAction::OpenDspy => state.modal_state = ModalState::Dspy,
-                                KeyAction::OpenNip28 => state.modal_state = ModalState::Nip28Chat,
                             }
                             state.window.request_redraw();
                             return;
