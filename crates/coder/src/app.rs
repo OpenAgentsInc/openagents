@@ -10012,6 +10012,7 @@ impl CoderApp {
         }
 
         if state.chat_context_menu.is_open() {
+            scene.set_layer(1);
             let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
             state.chat_context_menu.paint(bounds, &mut paint_cx);
         }
