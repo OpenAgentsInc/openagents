@@ -184,7 +184,7 @@ impl Default for ToolCallCard {
 
 impl Component for ToolCallCard {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let padding = 4.0; // Minimal padding
+        let padding = 4.0;
         let x = bounds.origin.x + padding;
         let y = bounds.origin.y + (Self::HEADER_HEIGHT - Self::FONT_SIZE) / 2.0;
 
@@ -201,27 +201,43 @@ impl Component for ToolCallCard {
             );
         }
 
-        // Icon (colored square with letter)
-        let icon_size = 14.0;
-        let icon_char = self.tool_type.icon();
-        let icon_color = self.tool_type.color();
+        // Status dot (colored circle based on status)
+        let dot_size = 8.0;
+        let dot_y = bounds.origin.y + (Self::HEADER_HEIGHT - dot_size) / 2.0;
+        let dot_color = match self.status {
+            ToolStatus::Pending => theme::text::MUTED,
+            ToolStatus::Running => theme::status::WARNING,
+            ToolStatus::Success => theme::status::SUCCESS,
+            ToolStatus::Error => theme::status::ERROR,
+            ToolStatus::Cancelled => theme::text::MUTED,
+        };
         cx.scene.draw_quad(
-            Quad::new(Bounds::new(x, bounds.origin.y + 4.0, icon_size, icon_size))
-                .with_background(icon_color.with_alpha(0.2)),
+            Quad::new(Bounds::new(x, dot_y, dot_size, dot_size))
+                .with_background(dot_color)
+                .with_corner_radius(dot_size / 2.0),
         );
-        let icon_run = cx.text.layout_styled_mono(
-            icon_char,
-            Point::new(x + 3.0, y),
-            Self::FONT_SIZE,
-            icon_color,
-            FontStyle::default(),
-        );
-        cx.scene.draw_text(icon_run);
 
-        // Tool name
-        let name_x = x + icon_size + 6.0;
+        // Tool name with input in parentheses: "Read(path/to/file.rs)"
+        let name_x = x + dot_size + 8.0;
+        let display_name = if let Some(input) = &self.input {
+            // Truncate input if too long
+            let max_input_len = 60;
+            let truncated_input = if input.len() > max_input_len {
+                let mut end = max_input_len;
+                while end > 0 && !input.is_char_boundary(end) {
+                    end -= 1;
+                }
+                format!("{}...", &input[..end])
+            } else {
+                input.clone()
+            };
+            format!("{}({})", self.tool_name, truncated_input)
+        } else {
+            self.tool_name.clone()
+        };
+
         let name_run = cx.text.layout_styled_mono(
-            &self.tool_name,
+            &display_name,
             Point::new(name_x, y),
             Self::FONT_SIZE,
             theme::text::PRIMARY,
@@ -229,102 +245,35 @@ impl Component for ToolCallCard {
         );
         cx.scene.draw_text(name_run);
 
-        // Truncated input inline (when collapsed, show first part of input)
-        let name_width = self.tool_name.len() as f32 * Self::FONT_SIZE * 0.6;
-        let input_x = name_x + name_width + 8.0;
-        let available_width = bounds.size.width - input_x - 100.0; // Reserve space for status + arrow
-
-        if let Some(input) = &self.input {
-            if available_width > 50.0 {
-                let truncated = Self::truncate_text(input, available_width, Self::DETAIL_FONT_SIZE);
-                let input_run = cx.text.layout_styled_mono(
-                    &truncated,
-                    Point::new(input_x, y),
+        // Status text on right (only for running with elapsed time)
+        if self.status == ToolStatus::Running {
+            if let Some(elapsed) = self.elapsed_secs {
+                let status_text = format!("{:.1}s", elapsed);
+                let status_x = bounds.origin.x + bounds.size.width - 50.0;
+                let status_run = cx.text.layout_styled_mono(
+                    &status_text,
+                    Point::new(status_x, y),
                     Self::DETAIL_FONT_SIZE,
-                    theme::text::MUTED,
+                    theme::status::WARNING,
                     FontStyle::default(),
                 );
-                cx.scene.draw_text(input_run);
+                cx.scene.draw_text(status_run);
             }
         }
-
-        // Status indicator on right
-        let status_x = bounds.origin.x + bounds.size.width - 80.0;
-        let (status_text, status_color) = match self.status {
-            ToolStatus::Pending => ("pending".to_string(), theme::text::MUTED),
-            ToolStatus::Running => {
-                if let Some(elapsed) = self.elapsed_secs {
-                    (format!("{:.1}s", elapsed), theme::status::WARNING)
-                } else {
-                    ("running".to_string(), theme::status::WARNING)
-                }
-            }
-            ToolStatus::Success => ("done".to_string(), theme::status::SUCCESS),
-            ToolStatus::Error => ("error".to_string(), theme::status::ERROR),
-            ToolStatus::Cancelled => ("cancelled".to_string(), theme::text::MUTED),
-        };
-        let status_run = cx.text.layout_styled_mono(
-            status_text.as_str(),
-            Point::new(status_x, y),
-            Self::DETAIL_FONT_SIZE,
-            status_color,
-            FontStyle::default(),
-        );
-        cx.scene.draw_text(status_run);
-
-        // Expand/collapse arrow
-        let arrow = if self.expanded { "v" } else { ">" };
-        let arrow_x = bounds.origin.x + bounds.size.width - 16.0;
-        let arrow_color = if self.hovered {
-            theme::text::PRIMARY
-        } else {
-            theme::text::MUTED
-        };
-        let arrow_run = cx.text.layout_styled_mono(
-            arrow,
-            Point::new(arrow_x, y),
-            Self::FONT_SIZE,
-            arrow_color,
-            FontStyle::default(),
-        );
-        cx.scene.draw_text(arrow_run);
-
-        // No bottom border - dense layout
 
         // Track height used by expanded content
         let mut expanded_content_height = 0.0;
 
-        // Expanded content: indented input/output lines
+        // Expanded content: show output with tree branch prefix
         if self.expanded {
-            let indent = 24.0;
-            let mut detail_y = bounds.origin.y + Self::HEADER_HEIGHT + 2.0;
-
-            if let Some(input) = &self.input {
-                let input_run = cx.text.layout_styled_mono(
-                    input,
-                    Point::new(x + indent, detail_y),
-                    Self::DETAIL_FONT_SIZE,
-                    theme::text::SECONDARY,
-                    FontStyle::default(),
-                );
-                cx.scene.draw_text(input_run);
-                detail_y += Self::LINE_HEIGHT;
-                expanded_content_height += Self::LINE_HEIGHT;
-            }
+            let indent = 16.0;
+            let detail_y = bounds.origin.y + Self::HEADER_HEIGHT + 2.0;
 
             if let Some(output) = &self.output {
-                let output_preview = if output.len() > 100 {
-                    // Find valid UTF-8 char boundary
-                    let mut end = 100;
-                    while end > 0 && !output.is_char_boundary(end) {
-                        end -= 1;
-                    }
-                    format!("{}...", &output[..end])
-                } else {
-                    output.clone()
-                };
+                // Format as "└ Read 25 lines" or similar
+                let output_display = format!("└ {}", output);
                 let output_run = cx.text.layout_styled_mono(
-                    &output_preview,
+                    &output_display,
                     Point::new(x + indent, detail_y),
                     Self::DETAIL_FONT_SIZE,
                     theme::text::MUTED,
@@ -365,29 +314,40 @@ impl Component for ToolCallCard {
                 if child_y + Self::HEADER_HEIGHT >= children_start_y
                     && child_y < children_start_y + visible_height
                 {
-                    // Child icon
                     let child_x = container_bounds.origin.x + 4.0;
-                    let icon_char = child.tool_type.icon();
-                    let icon_color = child.tool_type.color();
                     let child_text_y =
                         child_y + (Self::HEADER_HEIGHT - Self::DETAIL_FONT_SIZE) / 2.0;
 
+                    // Status dot (colored circle based on status)
+                    let dot_size = 6.0;
+                    let dot_y = child_y + (Self::HEADER_HEIGHT - dot_size) / 2.0;
+                    let dot_color = match child.status {
+                        ToolStatus::Pending => theme::text::MUTED,
+                        ToolStatus::Running => theme::status::WARNING,
+                        ToolStatus::Success => theme::status::SUCCESS,
+                        ToolStatus::Error => theme::status::ERROR,
+                        ToolStatus::Cancelled => theme::text::MUTED,
+                    };
                     cx.scene.draw_quad(
-                        Quad::new(Bounds::new(child_x, child_y + 4.0, 12.0, 12.0))
-                            .with_background(icon_color.with_alpha(0.2)),
+                        Quad::new(Bounds::new(child_x, dot_y, dot_size, dot_size))
+                            .with_background(dot_color)
+                            .with_corner_radius(dot_size / 2.0),
                     );
-                    let icon_run = cx.text.layout_styled_mono(
-                        icon_char,
-                        Point::new(child_x + 2.0, child_text_y),
-                        Self::DETAIL_FONT_SIZE,
-                        icon_color,
-                        FontStyle::default(),
-                    );
-                    cx.scene.draw_text(icon_run);
 
-                    // Child name
-                    let name_x = child_x + 16.0;
-                    let child_display = format!("{}", child.name);
+                    // Child name with params: "Read(path/to/file.rs)"
+                    let name_x = child_x + dot_size + 6.0;
+                    let params_available =
+                        container_bounds.size.width - (name_x - container_bounds.origin.x) - 60.0;
+                    let child_display = if !child.params.is_empty() && params_available > 50.0 {
+                        let params_truncated = Self::truncate_text(
+                            &child.params,
+                            params_available - child.name.len() as f32 * Self::DETAIL_FONT_SIZE * 0.6 - 10.0,
+                            Self::DETAIL_FONT_SIZE,
+                        );
+                        format!("{}({})", child.name, params_truncated)
+                    } else {
+                        child.name.clone()
+                    };
                     let name_run = cx.text.layout_styled_mono(
                         &child_display,
                         Point::new(name_x, child_text_y),
@@ -397,50 +357,21 @@ impl Component for ToolCallCard {
                     );
                     cx.scene.draw_text(name_run);
 
-                    // Child params (truncated)
-                    let params_x =
-                        name_x + child.name.len() as f32 * Self::DETAIL_FONT_SIZE * 0.6 + 6.0;
-                    let params_available =
-                        container_bounds.size.width - (params_x - container_bounds.origin.x) - 60.0;
-                    if params_available > 30.0 {
-                        let params_truncated = Self::truncate_text(
-                            &child.params,
-                            params_available,
-                            Self::DETAIL_FONT_SIZE,
-                        );
-                        let params_run = cx.text.layout_styled_mono(
-                            &params_truncated,
-                            Point::new(params_x, child_text_y),
-                            Self::DETAIL_FONT_SIZE,
-                            theme::text::MUTED,
-                            FontStyle::default(),
-                        );
-                        cx.scene.draw_text(params_run);
-                    }
-
-                    // Child status
-                    let status_x = container_bounds.origin.x + container_bounds.size.width - 50.0;
-                    let (status_text, status_color) = match child.status {
-                        ToolStatus::Pending => ("...".to_string(), theme::text::MUTED),
-                        ToolStatus::Running => {
-                            if let Some(elapsed) = child.elapsed_secs {
-                                (format!("{:.1}s", elapsed), theme::status::WARNING)
-                            } else {
-                                ("...".to_string(), theme::status::WARNING)
-                            }
+                    // Elapsed time for running tools
+                    if child.status == ToolStatus::Running {
+                        if let Some(elapsed) = child.elapsed_secs {
+                            let status_x = container_bounds.origin.x + container_bounds.size.width - 50.0;
+                            let status_text = format!("{:.1}s", elapsed);
+                            let status_run = cx.text.layout_styled_mono(
+                                &status_text,
+                                Point::new(status_x, child_text_y),
+                                Self::DETAIL_FONT_SIZE,
+                                theme::status::WARNING,
+                                FontStyle::default(),
+                            );
+                            cx.scene.draw_text(status_run);
                         }
-                        ToolStatus::Success => ("✓".to_string(), theme::status::SUCCESS),
-                        ToolStatus::Error => ("✗".to_string(), theme::status::ERROR),
-                        ToolStatus::Cancelled => ("—".to_string(), theme::text::MUTED),
-                    };
-                    let status_run = cx.text.layout_styled_mono(
-                        status_text.as_str(),
-                        Point::new(status_x, child_text_y),
-                        Self::DETAIL_FONT_SIZE,
-                        status_color,
-                        FontStyle::default(),
-                    );
-                    cx.scene.draw_text(status_run);
+                    }
                 }
                 child_y += Self::HEADER_HEIGHT;
             }

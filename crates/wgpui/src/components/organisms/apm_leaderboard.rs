@@ -134,7 +134,7 @@ impl Component for ApmLeaderboard {
         let header_height = 36.0;
 
         // Title
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             &self.title,
             Point::new(
                 bounds.origin.x + padding,
@@ -181,7 +181,7 @@ impl Component for ApmLeaderboard {
 
             // Rank
             let rank_text = format!("#{}", idx + 1);
-            let rank_run = cx.text.layout(
+            let rank_run = cx.text.layout_mono(
                 &rank_text,
                 Point::new(col_rank_x, text_y),
                 theme::font_size::SM,
@@ -191,7 +191,7 @@ impl Component for ApmLeaderboard {
 
             // APM with tier color
             let apm_text = format!("{:.0}", entry.apm);
-            let apm_run = cx.text.layout(
+            let apm_run = cx.text.layout_mono(
                 &apm_text,
                 Point::new(col_apm_x, text_y),
                 theme::font_size::SM,
@@ -201,7 +201,7 @@ impl Component for ApmLeaderboard {
 
             // Tier badge
             let tier_text = entry.level.label();
-            let tier_run = cx.text.layout(
+            let tier_run = cx.text.layout_mono(
                 tier_text,
                 Point::new(col_apm_x + 40.0, text_y),
                 theme::font_size::XS,
@@ -215,7 +215,7 @@ impl Component for ApmLeaderboard {
             } else {
                 entry.title.clone()
             };
-            let title_run = cx.text.layout(
+            let title_run = cx.text.layout_mono(
                 &title,
                 Point::new(col_title_x, text_y),
                 theme::font_size::SM,
@@ -225,7 +225,7 @@ impl Component for ApmLeaderboard {
 
             // Stats
             let stats = format!("{} msg / {} tools", entry.messages, entry.tool_calls);
-            let stats_run = cx.text.layout(
+            let stats_run = cx.text.layout_mono(
                 &stats,
                 Point::new(col_stats_x, text_y),
                 theme::font_size::XS,
@@ -237,7 +237,7 @@ impl Component for ApmLeaderboard {
         // Empty state
         if self.entries.is_empty() {
             let empty_y = bounds.origin.y + header_height + 24.0;
-            let empty_run = cx.text.layout(
+            let empty_run = cx.text.layout_mono(
                 "No sessions yet",
                 Point::new(bounds.origin.x + bounds.size.width / 2.0 - 50.0, empty_y),
                 theme::font_size::SM,

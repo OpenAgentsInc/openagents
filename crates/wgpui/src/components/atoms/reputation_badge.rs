@@ -144,7 +144,7 @@ impl Component for ReputationBadge {
                 } else {
                     theme::status::ERROR
                 };
-                let rate_run = cx.text.layout(
+                let rate_run = cx.text.layout_mono(
                     &rate_text,
                     Point::new(x, text_y),
                     theme::font_size::XS,

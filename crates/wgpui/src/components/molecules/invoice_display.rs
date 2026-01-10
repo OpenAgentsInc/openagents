@@ -133,7 +133,7 @@ impl Component for InvoiceDisplay {
         let mut y = bounds.origin.y + padding;
 
         // Header: Invoice type + status
-        let header_run = cx.text.layout(
+        let header_run = cx.text.layout_mono(
             self.invoice.invoice_type.label(),
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::SM,
@@ -162,7 +162,7 @@ impl Component for InvoiceDisplay {
             );
 
             // QR placeholder text
-            let qr_text = cx.text.layout(
+            let qr_text = cx.text.layout_mono(
                 "QR",
                 Point::new(qr_x + qr_size / 2.0 - 10.0, y + qr_size / 2.0 - 8.0),
                 theme::font_size::LG,
@@ -175,7 +175,7 @@ impl Component for InvoiceDisplay {
 
         // Amount (if present)
         if let Some(amount) = self.invoice.amount_sats {
-            let amount_label = cx.text.layout(
+            let amount_label = cx.text.layout_mono(
                 "Amount:",
                 Point::new(bounds.origin.x + padding, y),
                 theme::font_size::XS,
@@ -193,7 +193,7 @@ impl Component for InvoiceDisplay {
 
         // Description
         if let Some(ref desc) = self.invoice.description {
-            let desc_label = cx.text.layout(
+            let desc_label = cx.text.layout_mono(
                 desc,
                 Point::new(bounds.origin.x + padding, y),
                 theme::font_size::XS,
@@ -206,7 +206,7 @@ impl Component for InvoiceDisplay {
         // Expiry
         if let Some(ref exp) = self.invoice.expiry {
             let exp_text = format!("Expires: {}", exp);
-            let exp_run = cx.text.layout(
+            let exp_run = cx.text.layout_mono(
                 &exp_text,
                 Point::new(bounds.origin.x + padding, y),
                 theme::font_size::XS,
@@ -227,7 +227,7 @@ impl Component for InvoiceDisplay {
             .draw_quad(Quad::new(invoice_bg_bounds).with_background(theme::bg::MUTED));
 
         let invoice_text = self.invoice.truncated();
-        let inv_run = cx.text.layout(
+        let inv_run = cx.text.layout_mono(
             &invoice_text,
             Point::new(bounds.origin.x + padding + 8.0, y + 6.0),
             theme::font_size::XS,
@@ -236,7 +236,7 @@ impl Component for InvoiceDisplay {
         cx.scene.draw_text(inv_run);
 
         // Copy hint
-        let copy_hint = cx.text.layout(
+        let copy_hint = cx.text.layout_mono(
             "Click to copy",
             Point::new(
                 bounds.origin.x + bounds.size.width - padding - 70.0,

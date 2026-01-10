@@ -101,7 +101,7 @@ impl Component for EntryMarker {
             let text_x = marker_bounds.origin.x + (self.size - font_size * 0.6) / 2.0;
             let text_y = marker_bounds.origin.y + self.size * 0.5 - font_size * 0.55;
 
-            let text_run = cx.text.layout(
+            let text_run = cx.text.layout_mono(
                 self.entry_type.icon(),
                 Point::new(text_x, text_y),
                 font_size,

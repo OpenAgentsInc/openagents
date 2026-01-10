@@ -175,7 +175,7 @@ impl StatusBar {
         match &item.content {
             StatusItemContent::Text(text) => {
                 let width = text.len() as f32 * font_size * 0.6;
-                let text_run = cx.text.layout(
+                let text_run = cx.text.layout_mono(
                     text,
                     Point::new(x, y + (self.height - font_size) / 2.0),
                     font_size,
@@ -222,7 +222,7 @@ impl StatusBar {
             }
             StatusItemContent::Custom(symbol) => {
                 let width = font_size;
-                let text_run = cx.text.layout(
+                let text_run = cx.text.layout_mono(
                     symbol,
                     Point::new(x, y + (self.height - font_size) / 2.0),
                     font_size,

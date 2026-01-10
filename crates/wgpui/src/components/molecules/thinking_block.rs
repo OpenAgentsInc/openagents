@@ -116,7 +116,7 @@ impl Component for ThinkingBlock {
             if y + line_height > bounds.origin.y + bounds.size.height {
                 break;
             }
-            let text_run = cx.text.layout(
+            let text_run = cx.text.layout_mono(
                 line,
                 Point::new(bounds.origin.x + padding, y),
                 font_size,
@@ -127,7 +127,7 @@ impl Component for ThinkingBlock {
 
         if !self.expanded && self.content.lines().count() > self.max_collapsed_lines {
             let ellipsis_y = content_y + self.max_collapsed_lines as f32 * line_height;
-            let text_run = cx.text.layout(
+            let text_run = cx.text.layout_mono(
                 "...",
                 Point::new(bounds.origin.x + padding, ellipsis_y),
                 font_size,

@@ -212,7 +212,7 @@ impl Component for PermissionRuleRow {
         x += 26.0;
 
         // Tool name
-        let name_run = cx.text.layout(
+        let name_run = cx.text.layout_mono(
             &self.rule.tool_name,
             Point::new(x, text_y),
             theme::font_size::SM,
@@ -224,7 +224,7 @@ impl Component for PermissionRuleRow {
         // Pattern (if any)
         if let Some(pattern) = &self.rule.pattern {
             let pattern_text = format!("[{}]", pattern);
-            let pattern_run = cx.text.layout(
+            let pattern_run = cx.text.layout_mono(
                 &pattern_text,
                 Point::new(x, text_y),
                 theme::font_size::XS,
@@ -247,7 +247,7 @@ impl Component for PermissionRuleRow {
                 .with_border(decision_color, 1.0),
         );
 
-        let decision_run = cx.text.layout(
+        let decision_run = cx.text.layout_mono(
             self.rule.decision.short_label(),
             Point::new(
                 decision_bounds.origin.x + 6.0,
@@ -260,7 +260,7 @@ impl Component for PermissionRuleRow {
         x += 72.0;
 
         // Scope
-        let scope_run = cx.text.layout(
+        let scope_run = cx.text.layout_mono(
             self.rule.scope.label(),
             Point::new(x, text_y),
             theme::font_size::XS,
@@ -295,7 +295,7 @@ impl Component for PermissionRuleRow {
                     theme::text::MUTED
                 };
 
-                let label_run = cx.text.layout(
+                let label_run = cx.text.layout_mono(
                     label,
                     Point::new(action_bounds.origin.x + 6.0, action_bounds.origin.y + 4.0),
                     theme::font_size::XS,

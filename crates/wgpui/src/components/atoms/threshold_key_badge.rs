@@ -91,7 +91,7 @@ impl Component for ThresholdKeyBadge {
             // Show just "2/3"
             let text = format!("{}/{}", self.threshold, self.total);
             let text_x = bounds.origin.x + (bounds.size.width - text.len() as f32 * 6.0) / 2.0;
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 &text,
                 Point::new(text_x, text_y),
                 theme::font_size::XS,
@@ -102,7 +102,7 @@ impl Component for ThresholdKeyBadge {
             let mut x = bounds.origin.x + padding;
 
             // Key icon
-            let icon_run = cx.text.layout(
+            let icon_run = cx.text.layout_mono(
                 "🔐",
                 Point::new(x, text_y - 1.0),
                 theme::font_size::SM,
@@ -113,7 +113,7 @@ impl Component for ThresholdKeyBadge {
 
             // Threshold text
             let thresh_text = format!("{}-of-{}", self.threshold, self.total);
-            let thresh_run = cx.text.layout(
+            let thresh_run = cx.text.layout_mono(
                 &thresh_text,
                 Point::new(x, text_y),
                 theme::font_size::XS,
@@ -125,7 +125,7 @@ impl Component for ThresholdKeyBadge {
             // Available shares
             if self.shares_available > 0 {
                 let avail_text = format!("({} ready)", self.shares_available);
-                let avail_run = cx.text.layout(
+                let avail_run = cx.text.layout_mono(
                     &avail_text,
                     Point::new(x, text_y),
                     theme::font_size::XS,

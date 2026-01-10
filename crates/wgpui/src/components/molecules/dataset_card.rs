@@ -239,7 +239,7 @@ impl Component for DatasetCard {
         let mut y = bounds.origin.y + padding;
 
         // Dataset name
-        let name_run = cx.text.layout(
+        let name_run = cx.text.layout_mono(
             &self.dataset.name,
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::SM,
@@ -256,7 +256,7 @@ impl Component for DatasetCard {
                 .with_background(format.color().with_alpha(0.2))
                 .with_border(format.color(), 1.0),
         );
-        let fmt_run = cx.text.layout(
+        let fmt_run = cx.text.layout_mono(
             format.label(),
             Point::new(fmt_x + 6.0, y),
             theme::font_size::XS,
@@ -272,7 +272,7 @@ impl Component for DatasetCard {
         } else {
             self.dataset.description.clone()
         };
-        let desc_run = cx.text.layout(
+        let desc_run = cx.text.layout_mono(
             &desc,
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::XS,
@@ -284,7 +284,7 @@ impl Component for DatasetCard {
 
         // Size and row count
         let size_text = self.format_size();
-        let size_run = cx.text.layout(
+        let size_run = cx.text.layout_mono(
             &size_text,
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::XS,
@@ -293,7 +293,7 @@ impl Component for DatasetCard {
         cx.scene.draw_text(size_run);
 
         if let Some(rows_text) = self.format_rows() {
-            let rows_run = cx.text.layout(
+            let rows_run = cx.text.layout_mono(
                 &rows_text,
                 Point::new(bounds.origin.x + padding + 70.0, y),
                 theme::font_size::XS,
@@ -304,7 +304,7 @@ impl Component for DatasetCard {
 
         // License
         let license_text = self.dataset.license.label();
-        let license_run = cx.text.layout(
+        let license_run = cx.text.layout_mono(
             license_text,
             Point::new(bounds.origin.x + padding + 160.0, y),
             theme::font_size::XS,
@@ -316,7 +316,7 @@ impl Component for DatasetCard {
 
         // Author and updated
         let author_text = format!("by {} | {}", self.dataset.author, self.dataset.updated_at);
-        let author_run = cx.text.layout(
+        let author_run = cx.text.layout_mono(
             &author_text,
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::XS,
@@ -326,7 +326,7 @@ impl Component for DatasetCard {
 
         // Downloads
         let downloads_text = format!("\u{2B07} {}", self.dataset.downloads);
-        let downloads_run = cx.text.layout(
+        let downloads_run = cx.text.layout_mono(
             &downloads_text,
             Point::new(bounds.origin.x + padding + 200.0, y),
             theme::font_size::XS,
@@ -337,7 +337,7 @@ impl Component for DatasetCard {
         // Price
         if let Some(price) = self.dataset.price_sats {
             let price_text = format!("{} sats", price);
-            let price_run = cx.text.layout(
+            let price_run = cx.text.layout_mono(
                 &price_text,
                 Point::new(bounds.origin.x + padding + 260.0, y),
                 theme::font_size::XS,
@@ -345,7 +345,7 @@ impl Component for DatasetCard {
             );
             cx.scene.draw_text(price_run);
         } else {
-            let free_run = cx.text.layout(
+            let free_run = cx.text.layout_mono(
                 "Free",
                 Point::new(bounds.origin.x + padding + 260.0, y),
                 theme::font_size::XS,
@@ -366,7 +366,7 @@ impl Component for DatasetCard {
                 .with_background(btn_bg)
                 .with_border(theme::accent::PRIMARY, 1.0),
         );
-        let btn_run = cx.text.layout(
+        let btn_run = cx.text.layout_mono(
             "Download",
             Point::new(
                 download_bounds.origin.x + 8.0,

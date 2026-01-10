@@ -129,7 +129,7 @@ impl Component for JobStatusBadge {
             // Cost
             if let Some(sats) = self.cost_sats {
                 let cost_text = format!("{}sats", sats);
-                let cost_run = cx.text.layout(
+                let cost_run = cx.text.layout_mono(
                     &cost_text,
                     Point::new(x, text_y),
                     theme::font_size::XS,

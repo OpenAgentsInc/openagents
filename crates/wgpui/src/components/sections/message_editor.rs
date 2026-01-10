@@ -191,7 +191,7 @@ impl Component for MessageEditor {
 
             let arrow = "\u{2191}";
             let arrow_size = theme::font_size::LG;
-            let arrow_run = cx.text.layout(
+            let arrow_run = cx.text.layout_mono(
                 arrow,
                 Point::new(
                     send_bounds.origin.x + (send_bounds.size.width - arrow_size * 0.5) / 2.0,
@@ -208,7 +208,7 @@ impl Component for MessageEditor {
             let hint_font_size = theme::font_size::XS;
             let hint_y = bounds.origin.y + bounds.size.height - padding - hint_font_size;
 
-            let hint_run = cx.text.layout(
+            let hint_run = cx.text.layout_mono(
                 hint_text,
                 Point::new(left_x, hint_y),
                 hint_font_size,

@@ -185,7 +185,7 @@ impl Component for SessionCard {
         let mut y = bounds.origin.y + padding;
 
         // Title row
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             &self.session.title,
             Point::new(content_x, y),
             theme::font_size::SM,
@@ -195,7 +195,7 @@ impl Component for SessionCard {
 
         // Session ID (right aligned)
         let id_text = format!("#{}", &self.session.id[..self.session.id.len().min(8)]);
-        let id_run = cx.text.layout(
+        let id_run = cx.text.layout_mono(
             &id_text,
             Point::new(bounds.origin.x + bounds.size.width - padding - 60.0, y),
             theme::font_size::XS,
@@ -231,7 +231,7 @@ impl Component for SessionCard {
 
         if !meta_parts.is_empty() {
             let meta_text = meta_parts.join(" • ");
-            let meta_run = cx.text.layout(
+            let meta_run = cx.text.layout_mono(
                 &meta_text,
                 Point::new(content_x, y),
                 theme::font_size::XS,
@@ -264,7 +264,7 @@ impl Component for SessionCard {
                 SessionAction::Delete => "Delete",
             };
 
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 label,
                 Point::new(
                     action_bounds.origin.x + 4.0,

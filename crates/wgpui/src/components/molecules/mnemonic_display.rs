@@ -125,7 +125,7 @@ impl Component for MnemonicDisplay {
         );
 
         // Title
-        let title = cx.text.layout(
+        let title = cx.text.layout_mono(
             "Recovery Phrase",
             Point::new(bounds.origin.x + padding, bounds.origin.y + 10.0),
             theme::font_size::SM,
@@ -134,7 +134,7 @@ impl Component for MnemonicDisplay {
         cx.scene.draw_text(title);
 
         // Warning
-        let warning = cx.text.layout(
+        let warning = cx.text.layout_mono(
             "Keep this phrase secure and never share it",
             Point::new(bounds.origin.x + padding, bounds.origin.y + 26.0),
             theme::font_size::XS,
@@ -157,7 +157,7 @@ impl Component for MnemonicDisplay {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
         let reveal_text = if self.revealed { "Hide" } else { "Reveal" };
-        let reveal_label = cx.text.layout(
+        let reveal_label = cx.text.layout_mono(
             reveal_text,
             Point::new(reveal_bounds.origin.x + 20.0, reveal_bounds.origin.y + 6.0),
             theme::font_size::SM,
@@ -179,7 +179,7 @@ impl Component for MnemonicDisplay {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
         let copy_text = if self.copied { "Copied!" } else { "Copy" };
-        let copy_label = cx.text.layout(
+        let copy_label = cx.text.layout_mono(
             copy_text,
             Point::new(copy_bounds.origin.x + 18.0, copy_bounds.origin.y + 6.0),
             theme::font_size::SM,
@@ -209,7 +209,7 @@ impl Component for MnemonicDisplay {
 
             // Word number
             let num = format!("{}.", i + 1);
-            let num_run = cx.text.layout(
+            let num_run = cx.text.layout_mono(
                 &num,
                 Point::new(word_bounds.origin.x + 6.0, word_bounds.origin.y + 8.0),
                 theme::font_size::XS,
@@ -223,7 +223,7 @@ impl Component for MnemonicDisplay {
             } else {
                 "\u{2022}\u{2022}\u{2022}\u{2022}".to_string() // Dots for hidden
             };
-            let word_run = cx.text.layout(
+            let word_run = cx.text.layout_mono(
                 &display_word,
                 Point::new(word_bounds.origin.x + 26.0, word_bounds.origin.y + 8.0),
                 theme::font_size::SM,
@@ -244,7 +244,7 @@ impl Component for MnemonicDisplay {
         let footer_y = bounds.origin.y + header_height + rows as f32 * (word_h + gap) + 8.0;
 
         let count_text = format!("{} words", self.words.len());
-        let count_run = cx.text.layout(
+        let count_run = cx.text.layout_mono(
             &count_text,
             Point::new(bounds.origin.x + padding, footer_y),
             theme::font_size::XS,

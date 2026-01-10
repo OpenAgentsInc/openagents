@@ -136,7 +136,7 @@ impl Component for ApmGauge {
             }
             if self.show_value {
                 let apm_text = format!("{:.0}", self.apm);
-                let apm_run = cx.text.layout(
+                let apm_run = cx.text.layout_mono(
                     &apm_text,
                     Point::new(x, text_y),
                     theme::font_size::XS,
@@ -147,7 +147,7 @@ impl Component for ApmGauge {
         } else {
             // APM label
             let label = "APM";
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 label,
                 Point::new(x, text_y),
                 theme::font_size::XS,
@@ -169,7 +169,7 @@ impl Component for ApmGauge {
             // Value
             if self.show_value {
                 let apm_text = format!("{:.1}", self.apm);
-                let apm_run = cx.text.layout(
+                let apm_run = cx.text.layout_mono(
                     &apm_text,
                     Point::new(x, text_y),
                     theme::font_size::XS,
@@ -181,7 +181,7 @@ impl Component for ApmGauge {
 
             // Level label
             let level_label = level.label();
-            let level_run = cx.text.layout(
+            let level_run = cx.text.layout_mono(
                 level_label,
                 Point::new(x, text_y),
                 theme::font_size::XS,

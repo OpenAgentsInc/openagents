@@ -119,7 +119,7 @@ impl Component for ApmSessionRow {
         // Rank (if present)
         if let Some(rank) = self.session.rank {
             let rank_text = format!("#{}", rank);
-            let rank_run = cx.text.layout(
+            let rank_run = cx.text.layout_mono(
                 &rank_text,
                 Point::new(x, text_y),
                 theme::font_size::SM,
@@ -149,7 +149,7 @@ impl Component for ApmSessionRow {
         } else {
             self.session.title.clone()
         };
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             &title,
             Point::new(x, text_y),
             theme::font_size::SM,
@@ -174,7 +174,7 @@ impl Component for ApmSessionRow {
         // Duration
         if let Some(secs) = self.session.duration_secs {
             let dur_text = Self::format_duration(secs);
-            let dur_run = cx.text.layout(
+            let dur_run = cx.text.layout_mono(
                 &dur_text,
                 Point::new(x, text_y),
                 theme::font_size::XS,
@@ -185,7 +185,7 @@ impl Component for ApmSessionRow {
 
         // APM value (right aligned)
         let apm_text = format!("{:.0} APM", self.session.apm);
-        let apm_run = cx.text.layout(
+        let apm_run = cx.text.layout_mono(
             &apm_text,
             Point::new(bounds.origin.x + bounds.size.width - padding - 80.0, text_y),
             theme::font_size::SM,

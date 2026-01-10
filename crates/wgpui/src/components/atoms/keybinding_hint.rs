@@ -71,7 +71,7 @@ impl Component for KeybindingHint {
             if i > 0 {
                 let plus_width = self.font_size * 0.6;
                 let plus_y = y + key_height * 0.5 - self.font_size * 0.55;
-                let text_run = cx.text.layout(
+                let text_run = cx.text.layout_mono(
                     "+",
                     Point::new(x + self.gap / 2.0, plus_y),
                     self.font_size,
@@ -95,7 +95,7 @@ impl Component for KeybindingHint {
             let text_x = key_bounds.origin.x + padding_h;
             let text_y = key_bounds.origin.y + key_height * 0.5 - self.font_size * 0.55;
 
-            let text_run = cx.text.layout(
+            let text_run = cx.text.layout_mono(
                 key,
                 Point::new(text_x, text_y),
                 self.font_size,

@@ -122,7 +122,7 @@ impl Component for RelayManager {
             .draw_quad(Quad::new(header).with_background(theme::bg::MUTED));
 
         // Title
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             "Relay Manager",
             Point::new(bounds.origin.x + padding, bounds.origin.y + 16.0),
             theme::font_size::BASE,
@@ -132,7 +132,7 @@ impl Component for RelayManager {
 
         // Connection stats
         let stats = self.stats_text();
-        let stats_run = cx.text.layout(
+        let stats_run = cx.text.layout_mono(
             &stats,
             Point::new(bounds.origin.x + padding + 140.0, bounds.origin.y + 18.0),
             theme::font_size::XS,
@@ -152,7 +152,7 @@ impl Component for RelayManager {
                 .with_background(add_bg)
                 .with_border(theme::accent::PRIMARY, 1.0),
         );
-        let add_run = cx.text.layout(
+        let add_run = cx.text.layout_mono(
             "+ Add",
             Point::new(add_bounds.origin.x + 14.0, add_bounds.origin.y + 7.0),
             theme::font_size::XS,
@@ -177,7 +177,7 @@ impl Component for RelayManager {
         // Empty state
         if self.relays.is_empty() {
             let empty_y = bounds.origin.y + bounds.size.height / 2.0 - 20.0;
-            let empty_run = cx.text.layout(
+            let empty_run = cx.text.layout_mono(
                 "No relays configured",
                 Point::new(bounds.origin.x + bounds.size.width / 2.0 - 80.0, empty_y),
                 theme::font_size::SM,
@@ -185,7 +185,7 @@ impl Component for RelayManager {
             );
             cx.scene.draw_text(empty_run);
 
-            let hint_run = cx.text.layout(
+            let hint_run = cx.text.layout_mono(
                 "Click + Add to connect to a relay",
                 Point::new(
                     bounds.origin.x + bounds.size.width / 2.0 - 100.0,

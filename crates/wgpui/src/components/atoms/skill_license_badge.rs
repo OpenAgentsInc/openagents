@@ -133,7 +133,7 @@ impl Component for SkillLicenseBadge {
         if self.compact {
             // Just type icon and status
             let icon = self.skill_type.icon();
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 icon,
                 Point::new(x, text_y),
                 theme::font_size::SM,
@@ -142,7 +142,7 @@ impl Component for SkillLicenseBadge {
             cx.scene.draw_text(run);
             x += 16.0;
             let status_icon = self.status.icon();
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 status_icon,
                 Point::new(x, text_y),
                 theme::font_size::SM,
@@ -152,7 +152,7 @@ impl Component for SkillLicenseBadge {
         } else {
             // Type icon
             let type_icon = self.skill_type.icon();
-            let type_run = cx.text.layout(
+            let type_run = cx.text.layout_mono(
                 type_icon,
                 Point::new(x, text_y),
                 theme::font_size::SM,
@@ -168,7 +168,7 @@ impl Component for SkillLicenseBadge {
                 } else {
                     name.clone()
                 };
-                let name_run = cx.text.layout(
+                let name_run = cx.text.layout_mono(
                     &name_display,
                     Point::new(x, text_y),
                     theme::font_size::XS,
@@ -180,7 +180,7 @@ impl Component for SkillLicenseBadge {
 
             // Status icon
             let status_icon = self.status.icon();
-            let status_run = cx.text.layout(
+            let status_run = cx.text.layout_mono(
                 status_icon,
                 Point::new(x, text_y),
                 theme::font_size::SM,
@@ -191,7 +191,7 @@ impl Component for SkillLicenseBadge {
 
             // Status label
             let label = self.status.label();
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 label,
                 Point::new(x, text_y),
                 theme::font_size::XS,

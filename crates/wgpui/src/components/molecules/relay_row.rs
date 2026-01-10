@@ -133,7 +133,7 @@ impl Component for RelayRow {
         let name_y = bounds.origin.y + (bounds.size.height - theme::font_size::SM) / 2.0;
 
         let name = self.relay.display_name();
-        let name_run = cx.text.layout(
+        let name_run = cx.text.layout_mono(
             &name,
             Point::new(name_x, name_y),
             theme::font_size::SM,
@@ -154,7 +154,7 @@ impl Component for RelayRow {
             } else {
                 theme::text::MUTED
             };
-            let rw_run = cx.text.layout(
+            let rw_run = cx.text.layout_mono(
                 &rw_text,
                 Point::new(rw_x, name_y),
                 theme::font_size::XS,
@@ -168,7 +168,7 @@ impl Component for RelayRow {
                 "↓{} ↑{}",
                 self.relay.events_received, self.relay.events_sent
             );
-            let events_run = cx.text.layout(
+            let events_run = cx.text.layout_mono(
                 &events_text,
                 Point::new(events_x, name_y),
                 theme::font_size::XS,
@@ -187,7 +187,7 @@ impl Component for RelayRow {
                 } else {
                     theme::status::ERROR
                 };
-                let latency_run = cx.text.layout(
+                let latency_run = cx.text.layout_mono(
                     &latency_text,
                     Point::new(latency_x, name_y),
                     theme::font_size::XS,

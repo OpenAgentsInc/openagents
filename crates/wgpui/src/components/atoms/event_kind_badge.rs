@@ -267,7 +267,7 @@ impl Component for EventKindBadge {
         if self.compact {
             // Just show icon
             let icon = self.kind.icon();
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 icon,
                 Point::new(bounds.origin.x + padding, bounds.origin.y + 4.0),
                 theme::font_size::SM,
@@ -279,7 +279,7 @@ impl Component for EventKindBadge {
             let label = self.kind.label();
             let text_y = bounds.origin.y + (bounds.size.height - theme::font_size::XS) / 2.0;
 
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 label,
                 Point::new(bounds.origin.x + padding, text_y),
                 theme::font_size::XS,
@@ -291,7 +291,7 @@ impl Component for EventKindBadge {
                 let kind_text = format!(":{}", self.kind.kind());
                 let kind_x =
                     bounds.origin.x + bounds.size.width - padding - kind_text.len() as f32 * 5.5;
-                let kind_run = cx.text.layout(
+                let kind_run = cx.text.layout_mono(
                     &kind_text,
                     Point::new(kind_x, text_y),
                     theme::font_size::XS,

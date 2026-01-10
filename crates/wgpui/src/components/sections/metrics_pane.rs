@@ -76,7 +76,7 @@ impl Component for MetricsPane {
         );
 
         let header_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, 24.0);
-        let header_text = cx.text.layout(
+        let header_text = cx.text.layout_mono(
             "Metrics",
             Point::new(header_bounds.origin.x + 10.0, header_bounds.origin.y + 6.0),
             theme::font_size::SM,
@@ -93,7 +93,7 @@ impl Component for MetricsPane {
         } else {
             "APM --".to_string()
         };
-        let apm_label_run = cx.text.layout(
+        let apm_label_run = cx.text.layout_mono(
             &apm_label,
             Point::new(x, y),
             theme::font_size::XS,
@@ -111,7 +111,7 @@ impl Component for MetricsPane {
             Some(depth) => format!("Queue depth {}", depth),
             None => "Queue depth --".to_string(),
         };
-        let queue_run = cx.text.layout(
+        let queue_run = cx.text.layout_mono(
             &queue_text,
             Point::new(x, y),
             theme::font_size::XS,
@@ -121,7 +121,7 @@ impl Component for MetricsPane {
         y += 14.0;
 
         if let Some(ref oldest) = self.oldest_issue {
-            let oldest_run = cx.text.layout(
+            let oldest_run = cx.text.layout_mono(
                 &format!("Oldest {}", oldest),
                 Point::new(x, y),
                 theme::font_size::XS,
@@ -135,7 +135,7 @@ impl Component for MetricsPane {
             Some(title) if !title.is_empty() => format!("Last PR {}", title),
             _ => "Last PR --".to_string(),
         };
-        let last_pr_run = cx.text.layout(
+        let last_pr_run = cx.text.layout_mono(
             &last_pr_text,
             Point::new(x, y),
             theme::font_size::XS,
@@ -146,7 +146,7 @@ impl Component for MetricsPane {
 
         if let Some(ref url) = self.last_pr.url {
             if !url.is_empty() {
-                let url_run = cx.text.layout(
+                let url_run = cx.text.layout_mono(
                     url,
                     Point::new(x, y),
                     theme::font_size::XS,
@@ -162,7 +162,7 @@ impl Component for MetricsPane {
                 "Usage {} in / {} out ${:.4}",
                 usage.input_tokens, usage.output_tokens, usage.cost_usd
             );
-            let usage_run = cx.text.layout(
+            let usage_run = cx.text.layout_mono(
                 &usage_text,
                 Point::new(x, y),
                 theme::font_size::XS,

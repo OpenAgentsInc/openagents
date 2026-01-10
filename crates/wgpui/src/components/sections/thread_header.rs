@@ -127,7 +127,7 @@ impl Component for ThreadHeader {
 
             let arrow = "\u{2190}";
             let arrow_size = theme::font_size::LG;
-            let arrow_run = cx.text.layout(
+            let arrow_run = cx.text.layout_mono(
                 arrow,
                 Point::new(
                     back_bounds.origin.x + (btn_size - arrow_size * 0.6) / 2.0,
@@ -154,7 +154,7 @@ impl Component for ThreadHeader {
             bounds.origin.y + bounds.size.height * 0.5 - title_font_size * 0.35
         };
 
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             &self.title,
             Point::new(content_x, title_y),
             title_font_size,
@@ -167,7 +167,7 @@ impl Component for ThreadHeader {
             let subtitle_y =
                 bounds.origin.y + bounds.size.height * 0.65 - subtitle_font_size * 0.35;
 
-            let subtitle_run = cx.text.layout(
+            let subtitle_run = cx.text.layout_mono(
                 subtitle,
                 Point::new(content_x, subtitle_y),
                 subtitle_font_size,
@@ -189,7 +189,7 @@ impl Component for ThreadHeader {
 
             let dots = "\u{22EE}";
             let dots_size = theme::font_size::LG;
-            let dots_run = cx.text.layout(
+            let dots_run = cx.text.layout_mono(
                 dots,
                 Point::new(
                     menu_bounds.origin.x + (btn_size - dots_size * 0.4) / 2.0,

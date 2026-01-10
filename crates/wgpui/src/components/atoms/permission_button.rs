@@ -112,7 +112,7 @@ impl Component for PermissionButton {
         let text_x = btn_bounds.origin.x + padding_h;
         let text_y = btn_bounds.origin.y + btn_height * 0.5 - self.font_size * 0.55;
 
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             label,
             Point::new(text_x, text_y),
             self.font_size,

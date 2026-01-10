@@ -196,7 +196,7 @@ impl Component for PrTimelineItem {
         let content_y = bounds.origin.y + 8.0;
 
         // Event icon
-        let icon_run = cx.text.layout(
+        let icon_run = cx.text.layout_mono(
             self.event.event_type.icon(),
             Point::new(content_x, content_y),
             theme::font_size::SM,
@@ -206,7 +206,7 @@ impl Component for PrTimelineItem {
 
         // Actor + action
         let action_text = format!("{} {}", self.event.actor, self.event.event_type.label());
-        let action_run = cx.text.layout(
+        let action_run = cx.text.layout_mono(
             &action_text,
             Point::new(content_x + 20.0, content_y),
             theme::font_size::SM,
@@ -215,7 +215,7 @@ impl Component for PrTimelineItem {
         cx.scene.draw_text(action_run);
 
         // Timestamp
-        let time_run = cx.text.layout(
+        let time_run = cx.text.layout_mono(
             &self.event.timestamp,
             Point::new(
                 bounds.origin.x + bounds.size.width - padding - 80.0,
@@ -231,7 +231,7 @@ impl Component for PrTimelineItem {
 
         if let Some(sha) = &self.event.commit_sha {
             let sha_short = &sha[..7.min(sha.len())];
-            let sha_run = cx.text.layout(
+            let sha_run = cx.text.layout_mono(
                 sha_short,
                 Point::new(content_x + 20.0, details_y),
                 theme::font_size::XS,
@@ -245,7 +245,7 @@ impl Component for PrTimelineItem {
                 } else {
                     self.event.message.clone()
                 };
-                let msg_run = cx.text.layout(
+                let msg_run = cx.text.layout_mono(
                     &msg,
                     Point::new(content_x + 80.0, details_y),
                     theme::font_size::XS,
@@ -260,7 +260,7 @@ impl Component for PrTimelineItem {
                     .with_background(review_state.color().with_alpha(0.2))
                     .with_border(review_state.color(), 1.0),
             );
-            let state_run = cx.text.layout(
+            let state_run = cx.text.layout_mono(
                 review_state.label(),
                 Point::new(content_x + 26.0, details_y),
                 theme::font_size::XS,
@@ -273,7 +273,7 @@ impl Component for PrTimelineItem {
             } else {
                 self.event.message.clone()
             };
-            let msg_run = cx.text.layout(
+            let msg_run = cx.text.layout_mono(
                 &msg,
                 Point::new(content_x + 20.0, details_y),
                 theme::font_size::XS,

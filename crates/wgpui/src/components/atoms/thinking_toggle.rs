@@ -98,7 +98,7 @@ impl Component for ThinkingToggle {
 
         let text_y = bounds.origin.y + bounds.size.height * 0.5 - self.font_size * 0.55;
 
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             &full_label,
             Point::new(bounds.origin.x, text_y),
             self.font_size,

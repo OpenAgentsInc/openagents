@@ -334,7 +334,7 @@ impl Component for TextInput {
                     FontStyle::default(),
                 )
             } else {
-                cx.text.layout(
+                cx.text.layout_mono(
                     display_text,
                     Point::new(text_x, text_y),
                     self.font_size,

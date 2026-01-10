@@ -160,7 +160,7 @@ impl Component for TransactionRow {
         let text_y = bounds.origin.y + 10.0;
 
         // Direction label
-        let dir_label = cx.text.layout(
+        let dir_label = cx.text.layout_mono(
             self.transaction.direction.label(),
             Point::new(content_x, text_y),
             theme::font_size::SM,
@@ -175,7 +175,7 @@ impl Component for TransactionRow {
             } else {
                 desc.clone()
             };
-            let desc_run = cx.text.layout(
+            let desc_run = cx.text.layout_mono(
                 &desc_truncated,
                 Point::new(content_x + 80.0, text_y),
                 theme::font_size::SM,
@@ -185,7 +185,7 @@ impl Component for TransactionRow {
         }
 
         // Timestamp
-        let time_run = cx.text.layout(
+        let time_run = cx.text.layout_mono(
             &self.transaction.timestamp,
             Point::new(content_x, text_y + 20.0),
             theme::font_size::XS,
@@ -202,7 +202,7 @@ impl Component for TransactionRow {
                 .with_background(status_color.with_alpha(0.15))
                 .with_border(status_color, 1.0),
         );
-        let status_label = cx.text.layout(
+        let status_label = cx.text.layout_mono(
             self.transaction.status.label(),
             Point::new(status_bounds.origin.x + 4.0, status_bounds.origin.y + 2.0),
             theme::font_size::XS,
@@ -217,7 +217,7 @@ impl Component for TransactionRow {
             self.format_amount()
         );
         let amount_x = bounds.origin.x + bounds.size.width - padding - 120.0;
-        let amount_run = cx.text.layout(
+        let amount_run = cx.text.layout_mono(
             &amount_text,
             Point::new(amount_x, text_y),
             theme::font_size::SM,
@@ -230,7 +230,7 @@ impl Component for TransactionRow {
             && let Some(fee) = self.transaction.fee_sats
         {
             let fee_text = format!("Fee: {} sats", fee);
-            let fee_run = cx.text.layout(
+            let fee_run = cx.text.layout_mono(
                 &fee_text,
                 Point::new(amount_x, text_y + 20.0),
                 theme::font_size::XS,

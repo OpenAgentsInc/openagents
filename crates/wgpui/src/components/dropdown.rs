@@ -207,7 +207,7 @@ impl Component for Dropdown {
         let text_x = bounds.origin.x + self.padding.0;
         let text_y = bounds.origin.y + bounds.size.height * 0.5 - self.font_size * 0.55;
 
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             display_text,
             Point::new(text_x, text_y),
             self.font_size,
@@ -219,7 +219,7 @@ impl Component for Dropdown {
         let arrow_y = bounds.origin.y + bounds.size.height * 0.5 - self.font_size * 0.55;
         let arrow = if self.open { "^" } else { "v" };
 
-        let arrow_run = cx.text.layout(
+        let arrow_run = cx.text.layout_mono(
             arrow,
             Point::new(arrow_x, arrow_y),
             self.font_size,
@@ -260,7 +260,7 @@ impl Component for Dropdown {
                 }
 
                 let option_text_y = item_y + item_height * 0.5 - self.font_size * 0.55;
-                let option_run = cx.text.layout(
+                let option_run = cx.text.layout_mono(
                     &option.label,
                     Point::new(text_x, option_text_y),
                     self.font_size,

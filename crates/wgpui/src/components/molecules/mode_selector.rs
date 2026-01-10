@@ -74,7 +74,7 @@ impl Component for ModeSelector {
         let (badge_w, _) = badge.size_hint();
         let arrow_x = bounds.origin.x + badge_w.unwrap_or(60.0);
         let text_y = bounds.origin.y + bounds.size.height * 0.5 - theme::font_size::XS * 0.55;
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             arrow,
             Point::new(arrow_x, text_y),
             theme::font_size::XS,

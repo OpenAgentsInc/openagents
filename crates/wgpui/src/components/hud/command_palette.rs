@@ -304,7 +304,7 @@ impl Component for CommandPalette {
                         FontStyle::default(),
                     )
                 } else {
-                    cx.text.layout(
+                    cx.text.layout_mono(
                         &command.label,
                         label_origin,
                         theme::font_size::SM,
@@ -327,7 +327,7 @@ impl Component for CommandPalette {
                             FontStyle::default(),
                         )
                     } else {
-                        cx.text.layout(
+                        cx.text.layout_mono(
                             desc,
                             desc_origin,
                             theme::font_size::XS,
@@ -362,7 +362,7 @@ impl Component for CommandPalette {
                             FontStyle::default(),
                         )
                     } else {
-                        cx.text.layout(
+                        cx.text.layout_mono(
                             keys,
                             key_origin,
                             theme::font_size::XS,
@@ -396,7 +396,7 @@ impl Component for CommandPalette {
                     FontStyle::default(),
                 )
             } else {
-                cx.text.layout(
+                cx.text.layout_mono(
                     empty_text,
                     empty_origin,
                     theme::font_size::SM,

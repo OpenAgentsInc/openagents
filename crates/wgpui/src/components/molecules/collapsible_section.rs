@@ -164,7 +164,7 @@ impl Component for CollapsibleSection {
         } else {
             theme::text::MUTED
         };
-        let arrow_run = cx.text.layout(
+        let arrow_run = cx.text.layout_mono(
             arrow,
             Point::new(
                 bounds.origin.x + padding,
@@ -182,7 +182,7 @@ impl Component for CollapsibleSection {
         } else {
             theme::text::SECONDARY
         };
-        let summary_run = cx.text.layout(
+        let summary_run = cx.text.layout_mono(
             &self.summary,
             Point::new(summary_x, bounds.origin.y + header_height * 0.3),
             self.font_size,
@@ -194,7 +194,7 @@ impl Component for CollapsibleSection {
         let status_icon = self.status.icon();
         if !status_icon.is_empty() {
             let status_width = status_icon.len() as f32 * self.font_size * 0.6;
-            let status_run = cx.text.layout(
+            let status_run = cx.text.layout_mono(
                 status_icon,
                 Point::new(
                     bounds.origin.x + bounds.size.width - status_width - padding,
@@ -215,7 +215,7 @@ impl Component for CollapsibleSection {
                     break;
                 }
 
-                let detail_run = cx.text.layout(
+                let detail_run = cx.text.layout_mono(
                     detail,
                     Point::new(bounds.origin.x + padding + indent, y),
                     self.font_size,

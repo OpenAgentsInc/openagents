@@ -129,7 +129,7 @@ impl Component for PermissionHistoryItem {
             x += 22.0;
 
             // Tool name
-            let name_run = cx.text.layout(
+            let name_run = cx.text.layout_mono(
                 &self.history.tool_name,
                 Point::new(x, text_y),
                 theme::font_size::SM,
@@ -139,7 +139,7 @@ impl Component for PermissionHistoryItem {
             x += self.history.tool_name.len() as f32 * 7.0 + 12.0;
 
             // Decision
-            let decision_run = cx.text.layout(
+            let decision_run = cx.text.layout_mono(
                 self.history.decision.short_label(),
                 Point::new(x, text_y),
                 theme::font_size::XS,
@@ -149,7 +149,7 @@ impl Component for PermissionHistoryItem {
 
             // Timestamp (right aligned)
             if !self.history.timestamp.is_empty() {
-                let ts_run = cx.text.layout(
+                let ts_run = cx.text.layout_mono(
                     &self.history.timestamp,
                     Point::new(bounds.origin.x + bounds.size.width - padding - 80.0, text_y),
                     theme::font_size::XS,
@@ -166,7 +166,7 @@ impl Component for PermissionHistoryItem {
             icon.paint(Bounds::new(x, y, 18.0, 18.0), cx);
             x += 26.0;
 
-            let name_run = cx.text.layout(
+            let name_run = cx.text.layout_mono(
                 &self.history.tool_name,
                 Point::new(x, y + 2.0),
                 theme::font_size::SM,
@@ -183,7 +183,7 @@ impl Component for PermissionHistoryItem {
                     .with_border(decision_color, 1.0),
             );
 
-            let decision_run = cx.text.layout(
+            let decision_run = cx.text.layout_mono(
                 self.history.decision.short_label(),
                 Point::new(
                     decision_bounds.origin.x + 6.0,
@@ -196,7 +196,7 @@ impl Component for PermissionHistoryItem {
 
             // Timestamp (right aligned)
             if !self.history.timestamp.is_empty() {
-                let ts_run = cx.text.layout(
+                let ts_run = cx.text.layout_mono(
                     &self.history.timestamp,
                     Point::new(
                         bounds.origin.x + bounds.size.width - padding - 80.0,
@@ -211,7 +211,7 @@ impl Component for PermissionHistoryItem {
             y += 24.0;
 
             // Second row: description
-            let desc_run = cx.text.layout(
+            let desc_run = cx.text.layout_mono(
                 &self.history.description,
                 Point::new(bounds.origin.x + padding + 30.0, y),
                 theme::font_size::XS,
@@ -222,7 +222,7 @@ impl Component for PermissionHistoryItem {
             // Session ID (if present)
             if let Some(session_id) = &self.history.session_id {
                 let session_text = format!("Session: {}", &session_id[..session_id.len().min(8)]);
-                let session_run = cx.text.layout(
+                let session_run = cx.text.layout_mono(
                     &session_text,
                     Point::new(bounds.origin.x + bounds.size.width - padding - 100.0, y),
                     theme::font_size::XS,

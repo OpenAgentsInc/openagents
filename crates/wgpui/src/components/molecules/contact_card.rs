@@ -219,7 +219,7 @@ impl Component for ContactCard {
             .unwrap_or('?')
             .to_uppercase()
             .to_string();
-        let initial_run = cx.text.layout(
+        let initial_run = cx.text.layout_mono(
             &initial,
             Point::new(bounds.origin.x + padding + 14.0, y + 10.0),
             theme::font_size::SM,
@@ -230,7 +230,7 @@ impl Component for ContactCard {
         // Name and verification
         let name_x = bounds.origin.x + padding + avatar_size + 12.0;
         let name = self.contact.display_name.as_deref().unwrap_or("Unknown");
-        let name_run = cx.text.layout(
+        let name_run = cx.text.layout_mono(
             name,
             Point::new(name_x, y),
             theme::font_size::SM,
@@ -248,7 +248,7 @@ impl Component for ContactCard {
                     .with_background(self.contact.verification.color().with_alpha(0.2))
                     .with_border(self.contact.verification.color(), 1.0),
             );
-            let ver_run = cx.text.layout(
+            let ver_run = cx.text.layout_mono(
                 self.contact.verification.label(),
                 Point::new(ver_x + 3.0, y),
                 theme::font_size::XS,
@@ -260,7 +260,7 @@ impl Component for ContactCard {
         // Mutual badge
         if self.contact.mutual {
             let mutual_x = bounds.origin.x + bounds.size.width - padding - 60.0;
-            let mutual_run = cx.text.layout(
+            let mutual_run = cx.text.layout_mono(
                 "Mutual",
                 Point::new(mutual_x, y),
                 theme::font_size::XS,
@@ -277,7 +277,7 @@ impl Component for ContactCard {
             .nip05
             .clone()
             .unwrap_or_else(|| self.contact.short_npub());
-        let id_run = cx.text.layout(
+        let id_run = cx.text.layout_mono(
             &identifier,
             Point::new(name_x, y),
             theme::font_size::XS,
@@ -294,7 +294,7 @@ impl Component for ContactCard {
             } else {
                 about.clone()
             };
-            let about_run = cx.text.layout(
+            let about_run = cx.text.layout_mono(
                 &about_truncated,
                 Point::new(name_x, y),
                 theme::font_size::XS,
@@ -325,7 +325,7 @@ impl Component for ContactCard {
                 .with_background(follow_bg)
                 .with_border(follow_color, 1.0),
         );
-        let follow_run = cx.text.layout(
+        let follow_run = cx.text.layout_mono(
             follow_text,
             Point::new(follow_bounds.origin.x + 8.0, follow_bounds.origin.y + 5.0),
             theme::font_size::XS,
@@ -345,7 +345,7 @@ impl Component for ContactCard {
                 .with_background(dm_bg)
                 .with_border(theme::accent::PRIMARY, 1.0),
         );
-        let dm_run = cx.text.layout(
+        let dm_run = cx.text.layout_mono(
             "DM",
             Point::new(dm_bounds.origin.x + 18.0, dm_bounds.origin.y + 5.0),
             theme::font_size::XS,

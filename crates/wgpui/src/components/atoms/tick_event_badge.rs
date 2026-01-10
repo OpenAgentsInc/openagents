@@ -143,7 +143,7 @@ impl Component for TickEventBadge {
                 TickEventType::Request => "→",
                 TickEventType::Result => "←",
             };
-            let type_run = cx.text.layout(
+            let type_run = cx.text.layout_mono(
                 type_icon,
                 Point::new(x, text_y),
                 theme::font_size::SM,
@@ -170,7 +170,7 @@ impl Component for TickEventBadge {
 
             // Duration
             if let Some(duration) = self.format_duration() {
-                let dur_run = cx.text.layout(
+                let dur_run = cx.text.layout_mono(
                     &duration,
                     Point::new(x, text_y),
                     theme::font_size::XS,

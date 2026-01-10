@@ -192,7 +192,7 @@ impl Component for Bech32Entity {
                     .with_border(color, 1.0),
             );
 
-            let prefix_run = cx.text.layout(
+            let prefix_run = cx.text.layout_mono(
                 prefix,
                 Point::new(x + 5.0, badge_y + 3.0),
                 theme::font_size::XS,
@@ -211,7 +211,7 @@ impl Component for Bech32Entity {
             theme::text::PRIMARY
         };
 
-        let value_run = cx.text.layout(
+        let value_run = cx.text.layout_mono(
             &display,
             Point::new(x, text_y),
             theme::font_size::SM,
@@ -223,7 +223,7 @@ impl Component for Bech32Entity {
         if self.hovered && !self.entity_type.is_secret() {
             let hint = "Click to copy";
             let hint_x = bounds.origin.x + bounds.size.width - padding - hint.len() as f32 * 5.5;
-            let hint_run = cx.text.layout(
+            let hint_run = cx.text.layout_mono(
                 hint,
                 Point::new(hint_x, text_y),
                 theme::font_size::XS,

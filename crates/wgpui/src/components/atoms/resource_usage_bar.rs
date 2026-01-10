@@ -140,7 +140,7 @@ impl Component for ResourceUsageBar {
         // Label
         if self.show_label {
             let label = self.resource_type.label();
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 label,
                 Point::new(x, text_y),
                 theme::font_size::XS,
@@ -178,7 +178,7 @@ impl Component for ResourceUsageBar {
         // Value
         if self.show_value {
             let value_text = format!("{:.0}%", self.percent);
-            let value_run = cx.text.layout(
+            let value_run = cx.text.layout_mono(
                 &value_text,
                 Point::new(x, text_y),
                 theme::font_size::XS,

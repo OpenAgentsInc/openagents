@@ -61,7 +61,7 @@ impl Component for PermissionBar {
         let font_size = theme::font_size::SM;
         let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
 
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             &self.message,
             Point::new(bounds.origin.x + padding, text_y),
             font_size,

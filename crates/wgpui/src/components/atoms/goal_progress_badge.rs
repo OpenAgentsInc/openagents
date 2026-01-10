@@ -127,7 +127,7 @@ impl Component for GoalProgressBadge {
 
         // Status icon
         let icon = self.status.icon();
-        let icon_run = cx.text.layout(
+        let icon_run = cx.text.layout_mono(
             icon,
             Point::new(x, text_y),
             theme::font_size::SM,
@@ -160,7 +160,7 @@ impl Component for GoalProgressBadge {
         // Percentage
         if self.show_percentage {
             let percent = format!("{}%", (self.progress * 100.0) as u8);
-            let percent_run = cx.text.layout(
+            let percent_run = cx.text.layout_mono(
                 &percent,
                 Point::new(x, text_y),
                 theme::font_size::XS,

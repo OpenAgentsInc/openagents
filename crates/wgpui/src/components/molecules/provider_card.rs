@@ -173,7 +173,7 @@ impl Component for ProviderCard {
         let mut y = bounds.origin.y + padding;
 
         // Provider name and status
-        let name_run = cx.text.layout(
+        let name_run = cx.text.layout_mono(
             &self.provider.name,
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::SM,
@@ -189,7 +189,7 @@ impl Component for ProviderCard {
                 .with_background(self.provider.status.color().with_alpha(0.2))
                 .with_border(self.provider.status.color(), 1.0),
         );
-        let status_run = cx.text.layout(
+        let status_run = cx.text.layout_mono(
             self.provider.status.label(),
             Point::new(status_x + 6.0, y),
             theme::font_size::XS,
@@ -205,7 +205,7 @@ impl Component for ProviderCard {
             "{} CPU | {} GB RAM | {} GB Storage",
             specs.cpu_cores, specs.ram_gb, specs.storage_gb
         );
-        let specs_run = cx.text.layout(
+        let specs_run = cx.text.layout_mono(
             &specs_text,
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::XS,
@@ -218,7 +218,7 @@ impl Component for ProviderCard {
         // GPU if present
         if let Some(gpu) = &specs.gpu {
             let gpu_text = format!("GPU: {}", gpu);
-            let gpu_run = cx.text.layout(
+            let gpu_run = cx.text.layout_mono(
                 &gpu_text,
                 Point::new(bounds.origin.x + padding, y),
                 theme::font_size::XS,
@@ -232,7 +232,7 @@ impl Component for ProviderCard {
 
         // Price
         let price_color = Hsla::new(35.0, 0.9, 0.5, 1.0); // Bitcoin orange
-        let price_run = cx.text.layout(
+        let price_run = cx.text.layout_mono(
             &self.format_price(),
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::SM,
@@ -242,7 +242,7 @@ impl Component for ProviderCard {
 
         // Rating
         let rating_text = format!("\u{2605} {:.1}", self.provider.rating);
-        let rating_run = cx.text.layout(
+        let rating_run = cx.text.layout_mono(
             &rating_text,
             Point::new(bounds.origin.x + padding + 100.0, y),
             theme::font_size::XS,
@@ -252,7 +252,7 @@ impl Component for ProviderCard {
 
         // Jobs completed
         let jobs_text = format!("{} jobs", self.provider.jobs_completed);
-        let jobs_run = cx.text.layout(
+        let jobs_run = cx.text.layout_mono(
             &jobs_text,
             Point::new(bounds.origin.x + padding + 170.0, y),
             theme::font_size::XS,
@@ -262,7 +262,7 @@ impl Component for ProviderCard {
 
         // Location
         if let Some(location) = &self.provider.location {
-            let loc_run = cx.text.layout(
+            let loc_run = cx.text.layout_mono(
                 location,
                 Point::new(bounds.origin.x + bounds.size.width - padding - 80.0, y),
                 theme::font_size::XS,

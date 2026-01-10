@@ -143,7 +143,7 @@ impl Component for DmThread {
             .unwrap_or('?')
             .to_uppercase()
             .to_string();
-        let initial_run = cx.text.layout(
+        let initial_run = cx.text.layout_mono(
             &initial,
             Point::new(avatar_bounds.origin.x + 12.0, avatar_bounds.origin.y + 10.0),
             theme::font_size::SM,
@@ -152,7 +152,7 @@ impl Component for DmThread {
         cx.scene.draw_text(initial_run);
 
         // Contact name
-        let name_run = cx.text.layout(
+        let name_run = cx.text.layout_mono(
             &self.contact_name,
             Point::new(header.origin.x + padding + 48.0, header.origin.y + 12.0),
             theme::font_size::SM,
@@ -161,7 +161,7 @@ impl Component for DmThread {
         cx.scene.draw_text(name_run);
 
         // Contact npub
-        let npub_run = cx.text.layout(
+        let npub_run = cx.text.layout_mono(
             &self.short_npub(),
             Point::new(header.origin.x + padding + 48.0, header.origin.y + 32.0),
             theme::font_size::XS,
@@ -170,7 +170,7 @@ impl Component for DmThread {
         cx.scene.draw_text(npub_run);
 
         // Encryption indicator
-        let enc_run = cx.text.layout(
+        let enc_run = cx.text.layout_mono(
             "\u{1F512} Encrypted",
             Point::new(
                 header.origin.x + header.size.width - padding - 80.0,
@@ -188,7 +188,7 @@ impl Component for DmThread {
         if self.messages.is_empty() {
             // Empty state
             let empty_y = messages_area.origin.y + messages_area.size.height / 2.0 - 20.0;
-            let empty_run = cx.text.layout(
+            let empty_run = cx.text.layout_mono(
                 "No messages yet",
                 Point::new(
                     messages_area.origin.x + messages_area.size.width / 2.0 - 60.0,
@@ -199,7 +199,7 @@ impl Component for DmThread {
             );
             cx.scene.draw_text(empty_run);
 
-            let hint_run = cx.text.layout(
+            let hint_run = cx.text.layout_mono(
                 "Send a message to start the conversation",
                 Point::new(
                     messages_area.origin.x + messages_area.size.width / 2.0 - 130.0,
@@ -273,7 +273,7 @@ impl Component for DmThread {
         } else {
             theme::text::PRIMARY
         };
-        let input_run = cx.text.layout(
+        let input_run = cx.text.layout_mono(
             input_display,
             Point::new(input_field.origin.x + 8.0, input_field.origin.y + 10.0),
             theme::font_size::SM,
@@ -293,7 +293,7 @@ impl Component for DmThread {
                 .with_background(send_bg)
                 .with_border(theme::accent::PRIMARY, 1.0),
         );
-        let send_run = cx.text.layout(
+        let send_run = cx.text.layout_mono(
             "Send",
             Point::new(send_bounds.origin.x + 10.0, send_bounds.origin.y + 10.0),
             theme::font_size::XS,

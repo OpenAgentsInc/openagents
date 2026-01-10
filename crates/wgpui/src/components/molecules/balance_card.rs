@@ -85,7 +85,7 @@ impl Component for BalanceCard {
         let mut y = bounds.origin.y + padding;
 
         // Header row: "Balance" + Network badge
-        let header_text = cx.text.layout(
+        let header_text = cx.text.layout_mono(
             "Balance",
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::SM,
@@ -138,7 +138,7 @@ impl Component for BalanceCard {
             let value_x = bounds.origin.x + bounds.size.width - padding - 100.0;
 
             // Spark balance
-            let spark_label = cx.text.layout(
+            let spark_label = cx.text.layout_mono(
                 "✦ Spark",
                 Point::new(label_x, y),
                 theme::font_size::SM,
@@ -151,7 +151,7 @@ impl Component for BalanceCard {
             y += row_height;
 
             // Lightning balance
-            let ln_label = cx.text.layout(
+            let ln_label = cx.text.layout_mono(
                 "⚡ Lightning",
                 Point::new(label_x, y),
                 theme::font_size::SM,
@@ -164,7 +164,7 @@ impl Component for BalanceCard {
             y += row_height;
 
             // On-chain balance
-            let chain_label = cx.text.layout(
+            let chain_label = cx.text.layout_mono(
                 "₿ On-chain",
                 Point::new(label_x, y),
                 theme::font_size::SM,

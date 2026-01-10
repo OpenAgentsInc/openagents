@@ -85,7 +85,7 @@ impl Component for CheckpointRestore {
         let font_size = theme::font_size::XS;
         let text_y = bounds.origin.y + padding;
 
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             "Restore to checkpoint:",
             Point::new(bounds.origin.x + padding, text_y),
             font_size,
