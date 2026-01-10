@@ -252,6 +252,7 @@ dependencies = [
 name = "adjutant"
 version = "0.1.0"
 dependencies = [
+ "agent-client-protocol-schema",
  "anyhow",
  "async-trait",
  "autopilot",
@@ -2632,6 +2633,7 @@ name = "coder"
 version = "0.1.0"
 dependencies = [
  "adjutant",
+ "agent-client-protocol-schema",
  "anyhow",
  "arboard",
  "async-trait",

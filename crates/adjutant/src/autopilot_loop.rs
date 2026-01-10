@@ -20,11 +20,12 @@
 use crate::dspy::{SessionOutcome, SessionStore, SelfImprover, VerificationRecord};
 use crate::dspy_orchestrator::DspyOrchestrator;
 use crate::{Adjutant, Task, TaskResult};
+use agent_client_protocol_schema as acp;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
@@ -76,6 +77,9 @@ pub enum DspyStage {
         failed: usize,
     },
 }
+
+/// ACP meta key for embedding serialized DSPy stage data in content blocks.
+pub const DSPY_META_KEY: &str = "openagents_dspy_stage";
 
 /// A task item in the todo list.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -371,6 +375,264 @@ impl AutopilotOutput for ChannelOutput {
         if let Ok(json) = serde_json::to_string(&stage) {
             let marker = format!("\n<<DSPY_STAGE:{}:DSPY_STAGE>>\n", json);
             let _ = self.tx.send(marker);
+        }
+    }
+}
+
+/// ACP output implementation - streams ACP notifications to a channel.
+///
+/// This allows UIs to consume a unified ACP event stream for Autopilot.
+pub struct AcpChannelOutput {
+    session_id: acp::SessionId,
+    tx: mpsc::UnboundedSender<acp::SessionNotification>,
+    token_tx: mpsc::UnboundedSender<String>,
+    todos: Mutex<Vec<TodoTask>>,
+}
+
+impl AcpChannelOutput {
+    pub fn new(
+        session_id: impl Into<acp::SessionId>,
+        tx: mpsc::UnboundedSender<acp::SessionNotification>,
+    ) -> Self {
+        let session_id = session_id.into();
+        let (token_tx, mut token_rx) = mpsc::unbounded_channel::<String>();
+        let tx_clone = tx.clone();
+        let session_clone = session_id.clone();
+
+        tokio::spawn(async move {
+            while let Some(token) = token_rx.recv().await {
+                let chunk = acp::ContentChunk::new(acp::ContentBlock::Text(
+                    acp::TextContent::new(token),
+                ));
+                let notification = acp::SessionNotification::new(
+                    session_clone.clone(),
+                    acp::SessionUpdate::AgentMessageChunk(chunk),
+                );
+                let _ = tx_clone.send(notification);
+            }
+        });
+
+        Self {
+            session_id,
+            tx,
+            token_tx,
+            todos: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn send_update(&self, update: acp::SessionUpdate) {
+        let _ = self
+            .tx
+            .send(acp::SessionNotification::new(self.session_id.clone(), update));
+    }
+
+    fn dspy_meta(stage: &DspyStage) -> Option<acp::Meta> {
+        let stage_value = serde_json::to_value(stage).ok()?;
+        let mut meta = acp::Meta::new();
+        meta.insert(DSPY_META_KEY.to_string(), stage_value);
+        Some(meta)
+    }
+
+    fn text_block(text: impl Into<String>, meta: Option<acp::Meta>) -> acp::ContentBlock {
+        let mut content = acp::TextContent::new(text);
+        if let Some(meta) = meta {
+            content = content.meta(meta);
+        }
+        acp::ContentBlock::Text(content)
+    }
+
+    fn send_message_with_meta(&self, text: impl Into<String>, meta: Option<acp::Meta>) {
+        let chunk = acp::ContentChunk::new(Self::text_block(text, meta));
+        self.send_update(acp::SessionUpdate::AgentMessageChunk(chunk));
+    }
+
+    fn send_thought_with_meta(&self, text: impl Into<String>, meta: Option<acp::Meta>) {
+        let chunk = acp::ContentChunk::new(Self::text_block(text, meta));
+        self.send_update(acp::SessionUpdate::AgentThoughtChunk(chunk));
+    }
+
+    fn send_message(&self, text: impl Into<String>) {
+        self.send_message_with_meta(text, None);
+    }
+
+    fn send_thought(&self, text: impl Into<String>) {
+        self.send_thought_with_meta(text, None);
+    }
+
+    fn plan_entries_from_tasks(tasks: &[TodoTask]) -> Vec<acp::PlanEntry> {
+        tasks
+            .iter()
+            .map(|task| {
+                let mut content = format!("{}. {}", task.index, task.description);
+                if matches!(task.status, TodoStatus::Failed) {
+                    content.push_str(" [failed]");
+                }
+                let status = match task.status {
+                    TodoStatus::Pending => acp::PlanEntryStatus::Pending,
+                    TodoStatus::InProgress => acp::PlanEntryStatus::InProgress,
+                    TodoStatus::Complete | TodoStatus::Failed => acp::PlanEntryStatus::Completed,
+                };
+                acp::PlanEntry::new(content, acp::PlanEntryPriority::Medium, status)
+            })
+            .collect()
+    }
+
+    fn update_plan(&self) {
+        let tasks = match self.todos.lock() {
+            Ok(tasks) => tasks.clone(),
+            Err(_) => return,
+        };
+        if tasks.is_empty() {
+            return;
+        }
+        let entries = Self::plan_entries_from_tasks(&tasks);
+        let plan = acp::Plan::new(entries);
+        self.send_update(acp::SessionUpdate::Plan(plan));
+    }
+
+    fn set_tasks(&self, tasks: Vec<TodoTask>) {
+        if let Ok(mut guard) = self.todos.lock() {
+            *guard = tasks;
+        }
+        self.update_plan();
+    }
+
+    fn set_task_status(&self, task_index: usize, status: TodoStatus) {
+        if let Ok(mut guard) = self.todos.lock() {
+            if let Some(task) = guard.iter_mut().find(|task| task.index == task_index) {
+                task.status = status;
+            }
+        }
+        self.update_plan();
+    }
+}
+
+impl AutopilotOutput for AcpChannelOutput {
+    fn iteration_start(&self, iteration: usize, max: usize) {
+        self.send_thought(format!("--- Iteration {}/{} ---", iteration, max));
+    }
+
+    fn token(&self, token: &str) {
+        self.send_message(token);
+    }
+
+    fn verification_start(&self) {
+        self.send_thought("Verifying completion...");
+    }
+
+    fn verification_result(&self, passed: bool, reason: &str) {
+        if passed {
+            self.send_thought("Verification passed.");
+        } else {
+            self.send_thought(format!("Verification failed: {}", reason));
+        }
+    }
+
+    fn error(&self, msg: &str) {
+        self.send_message(format!("Error: {}", msg));
+    }
+
+    fn interrupted(&self) {
+        self.send_thought("Interrupted by user.");
+    }
+
+    fn max_iterations(&self, iterations: usize) {
+        self.send_thought(format!("Max iterations ({}) reached.", iterations));
+    }
+
+    fn token_sender(&self) -> Option<mpsc::UnboundedSender<String>> {
+        Some(self.token_tx.clone())
+    }
+
+    fn emit_stage(&self, stage: DspyStage) {
+        let meta = Self::dspy_meta(&stage);
+        match stage {
+            DspyStage::EnvironmentAssessment {
+                system_info,
+                workspace,
+                active_directive,
+                open_issues,
+                compute_backends,
+                priority_action,
+                urgency,
+                reasoning,
+            } => {
+                let mut lines = vec![
+                    "Environment assessment".to_string(),
+                    format!("System: {}", system_info),
+                    format!("Workspace: {}", workspace),
+                    format!("Open issues: {}", open_issues),
+                    format!("Compute: {}", compute_backends.join(", ")),
+                    format!("Priority: {} | Urgency: {}", priority_action, urgency),
+                    format!("Reasoning: {}", reasoning),
+                ];
+                if let Some(directive) = active_directive {
+                    lines.insert(3, format!("Active directive: {}", directive));
+                }
+                self.send_thought_with_meta(lines.join("\n"), meta);
+            }
+            DspyStage::Planning {
+                analysis,
+                files_to_modify,
+                implementation_steps,
+                test_strategy,
+                complexity,
+                confidence,
+            } => {
+                let lines = vec![
+                    "Planning".to_string(),
+                    format!("Analysis: {}", analysis),
+                    format!("Files: {}", files_to_modify.join(", ")),
+                    format!("Steps: {}", implementation_steps.join(" | ")),
+                    format!("Test strategy: {}", test_strategy),
+                    format!("Complexity: {} (confidence {:.0}%)", complexity, confidence * 100.0),
+                ];
+                self.send_thought_with_meta(lines.join("\n"), meta);
+            }
+            DspyStage::TodoList { tasks } => {
+                self.set_tasks(tasks);
+                self.send_thought_with_meta("Todo list updated.", meta);
+            }
+            DspyStage::ExecutingTask {
+                task_index,
+                total_tasks,
+                task_description,
+            } => {
+                self.set_task_status(task_index, TodoStatus::InProgress);
+                self.send_thought_with_meta(
+                    format!(
+                        "Executing task {}/{}: {}",
+                        task_index, total_tasks, task_description
+                    ),
+                    meta,
+                );
+            }
+            DspyStage::TaskComplete { task_index, success } => {
+                let status = if success {
+                    TodoStatus::Complete
+                } else {
+                    TodoStatus::Failed
+                };
+                self.set_task_status(task_index, status);
+                if success {
+                    self.send_thought_with_meta(format!("Task {} complete.", task_index), meta);
+                } else {
+                    self.send_thought_with_meta(format!("Task {} failed.", task_index), meta);
+                }
+            }
+            DspyStage::Complete {
+                total_tasks,
+                successful,
+                failed,
+            } => {
+                self.send_message_with_meta(
+                    format!(
+                        "Execution complete: {} total, {} successful, {} failed.",
+                        total_tasks, successful, failed
+                    ),
+                    meta,
+                );
+            }
         }
     }
 }

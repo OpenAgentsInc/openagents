@@ -64,7 +64,10 @@ pub use planner::{Complexity, TaskPlan};
 pub use rlm_agent::{rlm_agent_definition, rlm_agent_with_write_access};
 pub use tiered::TieredExecutor;
 pub use tools::{Tool, ToolRegistry};
-pub use autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotOutput, AutopilotResult, CliOutput, ChannelOutput, Verification, DspyStage, TodoTask, TodoStatus};
+pub use autopilot_loop::{
+    AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotOutput, AutopilotResult, ChannelOutput,
+    CliOutput, DspyStage, TodoStatus, TodoTask, Verification, DSPY_META_KEY,
+};
 pub use dspy_orchestrator::{AssessmentResult, DspyOrchestrator};
 
 /// Errors that can occur during Adjutant operations.

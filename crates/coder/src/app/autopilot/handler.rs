@@ -1,15 +1,14 @@
 use std::process::Command as ProcessCommand;
 use std::sync::atomic::Ordering;
 
-use adjutant::{Adjutant, AdjutantError, Task as AdjutantTask};
+use agent_client_protocol_schema as acp;
+use adjutant::{AcpChannelOutput, Adjutant, AdjutantError, Task as AdjutantTask, DSPY_META_KEY};
 use tokio::sync::mpsc;
 
-use crate::autopilot_loop::{
-    AutopilotConfig, AutopilotLoop, AutopilotResult, ChannelOutput, DspyStage,
-};
+use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult, DspyStage};
 use crate::app::chat::MessageMetadata;
 use crate::app::events::ResponseEvent;
-use crate::app::AppState;
+use crate::app::{now_timestamp, AppState};
 
 pub(crate) fn submit_autopilot_prompt(
     runtime_handle: &tokio::runtime::Handle,
@@ -209,73 +208,21 @@ pub(crate) fn submit_autopilot_prompt(
                 // Create task with enriched prompt
                 let task = AdjutantTask::new("autopilot", "User Request", &full_prompt);
 
-                // Create channel for streaming tokens to UI
-                let (token_tx, mut token_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                // Create channel for streaming ACP notifications to UI
+                let (acp_tx, mut acp_rx) =
+                    tokio::sync::mpsc::unbounded_channel::<acp::SessionNotification>();
+                let session_id = acp::SessionId::new(format!("autopilot-{}", now_timestamp()));
 
-                // Register UI callback for dsrs events so user sees LLM call progress
-                let ui_callback = super::UiDspyCallback::new(token_tx.clone());
-                dsrs::set_callback(ui_callback);
-
-                // Spawn task to forward tokens to the response channel
+                // Spawn task to forward ACP notifications to the response channel
                 let tx_clone = tx.clone();
                 let window_clone = window.clone();
                 tokio::spawn(async move {
-                    let mut buffer = String::new();
-                    while let Some(token) = token_rx.recv().await {
-                        buffer.push_str(&token);
-
-                        // Check for complete DSPY_STAGE markers
-                        while let Some(start) = buffer.find("<<DSPY_STAGE:") {
-                            if let Some(end) = buffer[start..].find(":DSPY_STAGE>>") {
-                                // Extract text before the marker
-                                if start > 0 {
-                                    let before = buffer[..start].to_string();
-                                    if !before.trim().is_empty() {
-                                        let _ = tx_clone.send(ResponseEvent::Chunk(before));
-                                    }
-                                }
-
-                                // Extract and parse the JSON
-                                let json_start = start + "<<DSPY_STAGE:".len();
-                                let json_end = start + end;
-                                let json_str = &buffer[json_start..json_end];
-
-                                match serde_json::from_str::<DspyStage>(json_str) {
-                                    Ok(stage) => {
-                                        let _ = tx_clone.send(ResponseEvent::DspyStage(stage));
-                                    }
-                                    Err(e) => {
-                                        // Log with more context: error reason and truncated JSON
-                                        let preview = if json_str.len() > 200 {
-                                            format!("{}...", &json_str[..200])
-                                        } else {
-                                            json_str.to_string()
-                                        };
-                                        tracing::warn!("Failed to parse DSPY_STAGE: {} | JSON: {}", e, preview);
-                                    }
-                                }
-
-                                // Remove processed content from buffer
-                                let after_marker = start + end + ":DSPY_STAGE>>".len();
-                                buffer = buffer[after_marker..].to_string();
-                            } else {
-                                // Incomplete marker, wait for more data
-                                break;
-                            }
+                    while let Some(notification) = acp_rx.recv().await {
+                        let events = acp_notification_to_response(notification);
+                        for event in events {
+                            let _ = tx_clone.send(event);
                         }
-
-                        // Send any remaining text that doesn't contain a partial marker
-                        if !buffer.contains("<<DSPY_STAGE:") && !buffer.is_empty() {
-                            let _ = tx_clone.send(ResponseEvent::Chunk(buffer.clone()));
-                            buffer.clear();
-                        }
-
                         window_clone.request_redraw();
-                    }
-
-                    // Send any remaining buffer content
-                    if !buffer.is_empty() {
-                        let _ = tx_clone.send(ResponseEvent::Chunk(buffer));
                     }
                 });
 
@@ -287,7 +234,7 @@ pub(crate) fn submit_autopilot_prompt(
                 };
 
                 // Create and run the autopilot loop
-                let channel_output = ChannelOutput::new(token_tx);
+                let channel_output = AcpChannelOutput::new(session_id, acp_tx);
                 let autopilot_loop =
                     AutopilotLoop::new(adjutant, task, config, channel_output, interrupt_flag);
 
@@ -383,4 +330,245 @@ pub(crate) fn submit_autopilot_prompt(
     });
 
     state.window.request_redraw();
+}
+
+pub(crate) fn acp_notification_to_response(
+    notification: acp::SessionNotification,
+) -> Vec<ResponseEvent> {
+    match notification.update {
+        acp::SessionUpdate::AgentMessageChunk(chunk) => acp_chunk_to_events(&chunk),
+        acp::SessionUpdate::AgentThoughtChunk(chunk) => acp_chunk_to_events(&chunk),
+        acp::SessionUpdate::Plan(plan) => vec![ResponseEvent::Chunk(format_plan_update(&plan))],
+        acp::SessionUpdate::ToolCall(tool_call) => {
+            let mut events = Vec::new();
+            let tool_use_id = tool_call.tool_call_id.to_string();
+            events.push(ResponseEvent::ToolCallStart {
+                name: tool_call.title,
+                tool_use_id: tool_use_id.clone(),
+            });
+            if let Some(raw_input) = tool_call.raw_input {
+                events.push(ResponseEvent::ToolCallInput {
+                    json: raw_input.to_string(),
+                });
+            }
+            events
+        }
+        acp::SessionUpdate::ToolCallUpdate(update) => {
+            let mut events = Vec::new();
+            if let Some(status) = update.fields.status {
+                if matches!(
+                    status,
+                    acp::ToolCallStatus::Completed | acp::ToolCallStatus::Failed
+                ) {
+                    let raw_output = update.fields.raw_output.clone();
+                    let is_error = matches!(status, acp::ToolCallStatus::Failed);
+                    let content = raw_output
+                        .as_ref()
+                        .and_then(format_tool_output)
+                        .unwrap_or_else(|| {
+                            if is_error {
+                                "Tool failed.".to_string()
+                            } else {
+                                "Tool completed.".to_string()
+                            }
+                        });
+                    events.push(ResponseEvent::ToolResult {
+                        content,
+                        is_error,
+                        tool_use_id: Some(update.tool_call_id.to_string()),
+                        exit_code: None,
+                        output_value: raw_output,
+                    });
+                }
+            }
+            events
+        }
+        acp::SessionUpdate::UserMessageChunk(_)
+        | acp::SessionUpdate::AvailableCommandsUpdate(_)
+        | acp::SessionUpdate::CurrentModeUpdate(_) => Vec::new(),
+        _ => Vec::new(),
+    }
+}
+
+fn acp_chunk_to_events(chunk: &acp::ContentChunk) -> Vec<ResponseEvent> {
+    let mut events = Vec::new();
+    if let Some(stage) = acp_content_dspy_stage(&chunk.content) {
+        events.push(ResponseEvent::DspyStage(stage));
+    }
+    if let Some(text) = acp_content_text(&chunk.content) {
+        events.push(ResponseEvent::Chunk(text));
+    }
+    events
+}
+
+fn acp_content_dspy_stage(content: &acp::ContentBlock) -> Option<DspyStage> {
+    let meta = match content {
+        acp::ContentBlock::Text(text) => text.meta.as_ref(),
+        _ => None,
+    }?;
+    let stage_value = meta.get(DSPY_META_KEY)?;
+    serde_json::from_value(stage_value.clone()).ok()
+}
+
+fn acp_content_text(content: &acp::ContentBlock) -> Option<String> {
+    match content {
+        acp::ContentBlock::Text(text) => Some(text.text.clone()),
+        _ => None,
+    }
+}
+
+fn format_plan_update(plan: &acp::Plan) -> String {
+    if plan.entries.is_empty() {
+        return "Plan updated (no entries).".to_string();
+    }
+    let mut output = String::from("Plan updated:\n");
+    for (idx, entry) in plan.entries.iter().enumerate() {
+        let status = match entry.status {
+            acp::PlanEntryStatus::Pending => "pending",
+            acp::PlanEntryStatus::InProgress => "in_progress",
+            acp::PlanEntryStatus::Completed => "completed",
+            _ => "unknown",
+        };
+        output.push_str(&format!(
+            "{}. [{}] {}\n",
+            idx + 1,
+            status,
+            entry.content
+        ));
+    }
+    output.trim_end().to_string()
+}
+
+fn format_tool_output(value: &serde_json::Value) -> Option<String> {
+    if let Some(content) = value.get("content").and_then(|v| v.as_str()) {
+        return Some(content.to_string());
+    }
+    if let Some(error) = value.get("error").and_then(|v| v.as_str()) {
+        return Some(format!("Error: {}", error));
+    }
+    let stdout = value.get("stdout").and_then(|v| v.as_str()).unwrap_or("");
+    let stderr = value.get("stderr").and_then(|v| v.as_str()).unwrap_or("");
+    if !stdout.is_empty() || !stderr.is_empty() {
+        if !stdout.is_empty() && !stderr.is_empty() {
+            return Some(format!("{}\n\nstderr:\n{}", stdout, stderr));
+        }
+        if !stdout.is_empty() {
+            return Some(stdout.to_string());
+        }
+        if !stderr.is_empty() {
+            return Some(stderr.to_string());
+        }
+    }
+    Some(value.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn acp_message_chunk_maps_to_response() {
+        let notification = acp::SessionNotification::new(
+            acp::SessionId::new("test"),
+            acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(
+                acp::ContentBlock::Text(acp::TextContent::new("hello")),
+            )),
+        );
+        let events = acp_notification_to_response(notification);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            ResponseEvent::Chunk(text) => assert_eq!(text, "hello"),
+            _ => panic!("expected chunk event"),
+        }
+    }
+
+    #[test]
+    fn acp_plan_maps_to_chunk() {
+        let plan = acp::Plan::new(vec![acp::PlanEntry::new(
+            "Do the thing",
+            acp::PlanEntryPriority::Medium,
+            acp::PlanEntryStatus::Pending,
+        )]);
+        let notification =
+            acp::SessionNotification::new(acp::SessionId::new("test"), acp::SessionUpdate::Plan(plan));
+        let events = acp_notification_to_response(notification);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            ResponseEvent::Chunk(text) => {
+                assert!(text.contains("Plan updated"));
+                assert!(text.contains("Do the thing"));
+            }
+            _ => panic!("expected chunk event"),
+        }
+    }
+
+    #[test]
+    fn acp_dspy_meta_maps_to_stage() {
+        let stage = DspyStage::Complete {
+            total_tasks: 2,
+            successful: 2,
+            failed: 0,
+        };
+        let mut meta = acp::Meta::new();
+        meta.insert(
+            DSPY_META_KEY.to_string(),
+            serde_json::to_value(&stage).expect("stage"),
+        );
+        let chunk = acp::ContentChunk::new(acp::ContentBlock::Text(
+            acp::TextContent::new("done").meta(meta),
+        ));
+        let notification = acp::SessionNotification::new(
+            acp::SessionId::new("test"),
+            acp::SessionUpdate::AgentThoughtChunk(chunk),
+        );
+        let events = acp_notification_to_response(notification);
+        assert_eq!(events.len(), 2);
+        match &events[0] {
+            ResponseEvent::DspyStage(DspyStage::Complete { total_tasks, .. }) => {
+                assert_eq!(*total_tasks, 2);
+            }
+            _ => panic!("expected dspy stage event"),
+        }
+        match &events[1] {
+            ResponseEvent::Chunk(text) => assert_eq!(text, "done"),
+            _ => panic!("expected chunk event"),
+        }
+    }
+
+    #[test]
+    fn acp_tool_call_update_maps_to_tool_result() {
+        let tool_call_id = acp::ToolCallId::new("tool-1");
+        let tool_call = acp::ToolCall::new(tool_call_id.clone(), "Read").raw_input(
+            serde_json::json!({
+                "path": "README.md"
+            }),
+        );
+        let start = acp::SessionNotification::new(
+            acp::SessionId::new("test"),
+            acp::SessionUpdate::ToolCall(tool_call),
+        );
+        let fields = acp::ToolCallUpdateFields::new()
+            .status(acp::ToolCallStatus::Completed)
+            .raw_output(serde_json::json!({
+                "content": "ok"
+            }));
+        let update = acp::ToolCallUpdate::new(tool_call_id.clone(), fields);
+        let done = acp::SessionNotification::new(
+            acp::SessionId::new("test"),
+            acp::SessionUpdate::ToolCallUpdate(update),
+        );
+
+        let start_events = acp_notification_to_response(start);
+        assert!(start_events
+            .iter()
+            .any(|event| matches!(event, ResponseEvent::ToolCallStart { .. })));
+        assert!(start_events
+            .iter()
+            .any(|event| matches!(event, ResponseEvent::ToolCallInput { .. })));
+
+        let done_events = acp_notification_to_response(done);
+        assert!(done_events
+            .iter()
+            .any(|event| matches!(event, ResponseEvent::ToolResult { .. })));
+    }
 }
