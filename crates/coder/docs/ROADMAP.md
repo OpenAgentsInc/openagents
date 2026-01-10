@@ -46,6 +46,7 @@ This document outlines the path to 100% implementation of the Claude Agent SDK i
 | Config persistence | Done | Model saved to ~/.openagents/coder/ |
 | Wallet status pane | Done | OANIX identity + Pylon wallet config |
 | DVM providers pane | Done | NIP-89 discovery for compute providers |
+| Gateway health pane | Done | Cerebras gateway status + model list |
 | OANIX manifest pane | Done | Hardware, compute, network, workspace overview |
 | DSPy status pane | Done | Sessions + performance + auto-optimizer |
 | NIP-28 chat pane | Done | Public Nostr chat with relay + channel |
@@ -920,5 +921,6 @@ pub enum SettingsTab {
 - 2026-01-10 17:13 UTC - Added NIP-28 chat pane with relay/channel controls, keybinding, and chat input.
 - 2026-01-10 17:34 UTC - Hardened NIP-28 pane with channel id detection, post-auth setup retry, and unit tests.
 - 2026-01-10 18:05 UTC - Added OANIX manifest pane with keybinding, commands, and refresh handling.
+- 2026-01-10 18:16 UTC - Added gateway health pane with keybinding, commands, and model list view.
 - 2026-01-10 19:02 UTC - Added NIP-90 jobs pane with relay subscription, keybinding, and command palette entry.
 - 2026-01-10 19:46 UTC - Added DVM providers pane with NIP-89 discovery, keybinding, and commands.

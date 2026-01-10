@@ -39,6 +39,8 @@ pub enum Command {
     DvmConnect(String),
     DvmKind(u16),
     DvmRefresh,
+    Gateway,
+    GatewayRefresh,
     Nip90,
     Nip90Connect(String),
     Nip90Refresh,
@@ -260,6 +262,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/gateway",
+        description: "Open gateway health",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/gateway refresh",
+        description: "Refresh gateway health",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/nip90",
         description: "Open NIP-90 job monitor",
         requires_args: false,
@@ -370,6 +382,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "hooks" => parse_hooks_command(args),
         "wallet" => parse_wallet_command(args),
         "dvm" => parse_dvm_command(args),
+        "gateway" => parse_gateway_command(args),
         "nip90" => parse_nip90_command(args),
         "oanix" => parse_oanix_command(args),
         "dspy" => parse_dspy_command(args),
@@ -407,6 +420,16 @@ fn parse_dvm_command(args: Vec<String>) -> Command {
                 .unwrap_or_else(|_| Command::Dvm)
         }
         Some(other) => Command::Custom(format!("dvm {}", other), parts.collect()),
+    }
+}
+
+fn parse_gateway_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::Gateway,
+        Some("open") | Some("status") => Command::Gateway,
+        Some("refresh") => Command::GatewayRefresh,
+        Some(other) => Command::Custom(format!("gateway {}", other), parts.collect()),
     }
 }
 

@@ -140,6 +140,15 @@ impl AppState {
             "Marketplace",
             Some(dvm_keys),
         );
+        let gateway_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenGateway, "Ctrl+Shift+G");
+        push_command(
+            command_palette_ids::GATEWAY_OPEN,
+            "Open Gateway",
+            "View gateway health and models",
+            "System",
+            Some(gateway_keys),
+        );
         let nip90_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
         push_command(
@@ -445,6 +454,15 @@ impl AppState {
 
     pub(super) fn refresh_dvm(&mut self) {
         self.dvm.refresh();
+    }
+
+    pub(super) fn open_gateway(&mut self) {
+        self.refresh_gateway();
+        self.modal_state = ModalState::Gateway;
+    }
+
+    pub(super) fn refresh_gateway(&mut self) {
+        self.gateway.refresh();
     }
 
     pub(super) fn connect_dvm(&mut self, relay_url: Option<String>) {
