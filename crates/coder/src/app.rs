@@ -33,7 +33,7 @@ use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey};
-use winit::window::{Window, WindowId};
+use winit::window::{CursorIcon, Window, WindowId};
 
 use claude_agent_sdk::error::Result as SdkResult;
 use claude_agent_sdk::permissions::{CallbackPermissionHandler, PermissionRequest};
@@ -4115,9 +4115,20 @@ impl ApplicationHandler for CoderApp {
                         let was_hovered = state.new_session_button_hovered;
                         state.new_session_button_hovered = btn_bounds.contains(Point::new(x, y));
                         if was_hovered != state.new_session_button_hovered {
+                            // Change cursor to pointer when hovering button
+                            let cursor = if state.new_session_button_hovered {
+                                CursorIcon::Pointer
+                            } else {
+                                CursorIcon::Default
+                            };
+                            state.window.set_cursor(cursor);
                             state.window.request_redraw();
                         }
                     }
+                } else if state.new_session_button_hovered {
+                    // Reset cursor when sidebar closes
+                    state.new_session_button_hovered = false;
+                    state.window.set_cursor(CursorIcon::Default);
                 }
 
                 let input_event = InputEvent::MouseMove { x, y };
@@ -4390,6 +4401,7 @@ impl ApplicationHandler for CoderApp {
                         let btn_bounds = new_session_button_bounds(left_bounds);
                         if btn_bounds.contains(Point::new(x, y)) {
                             state.start_new_session();
+                            state.input.focus();
                             state.window.request_redraw();
                             return;
                         }
