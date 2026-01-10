@@ -1385,7 +1385,19 @@ For each signature, track:
 
 ## References
 
-- [DSPy Documentation](https://dspy.ai)
-- [dsrs Crate](crates/dsrs/) - Rust DSPy implementation
-- [Omar Khattab: State of DSPy](docs/transcripts/dspy/state-of-dspy.md)
-- [Kevin Madura: DSPy is All You Need](docs/transcripts/dspy/dspy-is-all-you-need.md)
+### Strategy & Philosophy
+- **[DSPy Strategy Overview](./dspy/README.md)** — Synthesized strategy document (start here)
+- [Omar Khattab: State of DSPy](./transcripts/dspy/state-of-dspy.md) — Philosophy talk transcript
+- [Kevin Madura: DSPy is All You Need](./transcripts/dspy/dspy-is-all-you-need.md) — Practical tutorial transcript
+
+### Implementation
+- [dsrs Crate](../crates/dsrs/) — Rust DSPy implementation (5,771 LOC)
+- [dsrs Documentation](../crates/dsrs/docs/) — Architecture, signatures, retrieval, evaluation
+- [Adjutant DSPy Integration](../crates/adjutant/docs/DSPY-INTEGRATION.md) — Self-improvement system
+
+### Concepts
+- [DSPy + RLM Integration](./dspy/rlm.md) — RLM concepts
+- [dsrs Usage Guide](./dspy/rust.md) — Rust implementation guide
+
+### External
+- [DSPy Documentation](https://dspy.ai) — Official DSPy docs
