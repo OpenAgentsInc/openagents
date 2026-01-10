@@ -12,3 +12,4 @@ mod issues_tests;
 mod directives_tests;
 mod autopilot_issues_tests;
 mod rlm_tests;
+mod pylon_earnings_tests;

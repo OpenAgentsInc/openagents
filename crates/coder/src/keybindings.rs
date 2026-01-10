@@ -18,6 +18,7 @@ pub enum Action {
     OpenIssueTracker,
     OpenRlm,
     OpenRlmTrace,
+    OpenPylonEarnings,
     OpenDspy,
     OpenNip28,
     ToggleLeftSidebar,
@@ -57,6 +58,7 @@ impl Action {
             Action::OpenIssueTracker,
             Action::OpenRlm,
             Action::OpenRlmTrace,
+            Action::OpenPylonEarnings,
             Action::OpenDspy,
             Action::OpenNip28,
             Action::ToggleLeftSidebar,
@@ -83,6 +85,7 @@ impl Action {
             Action::OpenIssueTracker => "issue_tracker",
             Action::OpenRlm => "rlm",
             Action::OpenRlmTrace => "rlm_trace",
+            Action::OpenPylonEarnings => "pylon_earnings",
             Action::OpenDspy => "dspy",
             Action::OpenNip28 => "nip28",
             Action::ToggleLeftSidebar => "sidebar_left",
@@ -109,6 +112,7 @@ impl Action {
             Action::OpenIssueTracker => "Open issue tracker",
             Action::OpenRlm => "Open RLM runs",
             Action::OpenRlmTrace => "Open RLM trace",
+            Action::OpenPylonEarnings => "Open Pylon earnings",
             Action::OpenDspy => "Open DSPy",
             Action::OpenNip28 => "Open NIP-28 chat",
             Action::ToggleLeftSidebar => "Toggle left sidebar",
@@ -135,6 +139,7 @@ impl Action {
             "issue_tracker" => Some(Action::OpenIssueTracker),
             "rlm" => Some(Action::OpenRlm),
             "rlm_trace" => Some(Action::OpenRlmTrace),
+            "pylon_earnings" => Some(Action::OpenPylonEarnings),
             "dspy" => Some(Action::OpenDspy),
             "nip28" => Some(Action::OpenNip28),
             "sidebar_left" => Some(Action::ToggleLeftSidebar),
@@ -278,6 +283,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenRlmTrace,
+        },
+        Keybinding {
+            key: Key::Character("e".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenPylonEarnings,
         },
         Keybinding {
             key: Key::Character("i".to_string()),
@@ -437,6 +451,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenRlmTrace,
+        },
+        Keybinding {
+            key: Key::Character("e".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenPylonEarnings,
         },
         Keybinding {
             key: Key::Character("i".to_string()),

@@ -62,6 +62,8 @@ pub enum Command {
     Rlm,
     RlmRefresh,
     RlmTrace(Option<String>),
+    PylonEarnings,
+    PylonEarningsRefresh,
     Dspy,
     DspyRefresh,
     DspyAuto(bool),
@@ -383,6 +385,26 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/pylon",
+        description: "Open Pylon earnings",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/pylon earnings",
+        description: "Open Pylon earnings",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/pylon earnings refresh",
+        description: "Refresh Pylon earnings",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/pylon refresh",
+        description: "Refresh Pylon earnings",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/issues",
         description: "Open workspace issues",
         requires_args: false,
@@ -487,6 +509,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "directives" | "directive" => parse_directives_command(args),
         "issue-tracker" | "autopilot-issues" | "issue-db" => parse_issue_tracker_command(args),
         "rlm" => parse_rlm_command(args),
+        "pylon" => parse_pylon_command(args),
         "issues" => parse_issues_command(args),
         "dspy" => parse_dspy_command(args),
         "nip28" => parse_nip28_command(args),
@@ -625,6 +648,20 @@ fn parse_rlm_command(args: Vec<String>) -> Command {
         }
         Some("status") => Command::Rlm,
         _ => Command::Rlm,
+    }
+}
+
+fn parse_pylon_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::PylonEarnings,
+        Some("refresh") => Command::PylonEarningsRefresh,
+        Some("status") => Command::PylonEarnings,
+        Some("earnings") | Some("revenue") => match parts.next().as_deref() {
+            Some("refresh") => Command::PylonEarningsRefresh,
+            _ => Command::PylonEarnings,
+        },
+        Some(other) => Command::Custom(format!("pylon {}", other), parts.collect()),
     }
 }
 
