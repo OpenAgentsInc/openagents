@@ -128,6 +128,37 @@ struct DeepPlanningSignature {
     confidence: f32,
 }
 
+/// Task complexity classifier - decides planning depth.
+#[Signature]
+struct TaskComplexityClassifier {
+    /// Classify task complexity for planning depth.
+    /// Replaces keyword-based heuristics with learned classification.
+
+    /// Description of the task to classify
+    #[input]
+    task_description: String,
+
+    /// Count of relevant files identified
+    #[input]
+    file_count: u32,
+
+    /// Repository context and patterns
+    #[input]
+    codebase_context: String,
+
+    /// Complexity label: Simple/Moderate/Complex/VeryComplex
+    #[output]
+    complexity: String,
+
+    /// Rationale for the classification
+    #[output]
+    reasoning: String,
+
+    /// Confidence in the classification (0.0-1.0)
+    #[output]
+    confidence: f32,
+}
+
 // ============================================================================
 // Pipeline Types
 // ============================================================================
@@ -241,13 +272,54 @@ impl PlanningPipeline {
         })
     }
 
-    /// Determine if task is complex enough for deep planning.
-    fn is_complex_task(input: &PlanningInput) -> bool {
-        // Heuristics for complexity
+    /// Build codebase context for complexity classification.
+    fn build_codebase_context(input: &PlanningInput) -> String {
+        let mut context = String::new();
+        context.push_str("Repository summary:\n");
+        context.push_str(&input.repository_summary);
+        context.push_str("\nRelevant files:\n");
+        context.push_str(&input.relevant_files);
+        context.push_str("\nCode patterns:\n");
+        if let Some(patterns) = &input.code_patterns {
+            if patterns.trim().is_empty() {
+                context.push_str("None");
+            } else {
+                context.push_str(patterns);
+            }
+        } else {
+            context.push_str("None");
+        }
+        context
+    }
+
+    /// Determine if deep planning should be used based on classifier output.
+    fn should_use_deep_planning(complexity: &str, confidence: f32) -> Option<bool> {
+        if complexity.trim().is_empty() {
+            return None;
+        }
+
+        if confidence < 0.4 {
+            return None;
+        }
+
+        let normalized = complexity
+            .to_lowercase()
+            .replace([' ', '-', '_'], "")
+            .trim()
+            .to_string();
+
+        match normalized.as_str() {
+            "complex" | "verycomplex" | "veryhigh" | "high" => Some(true),
+            "simple" | "moderate" | "low" | "medium" => Some(false),
+            _ => None,
+        }
+    }
+
+    /// Heuristic fallback for complexity when classifier is unavailable.
+    fn heuristic_complexity(input: &PlanningInput) -> bool {
         let issue_len = input.issue_description.len();
         let file_count = input.relevant_files.lines().count();
 
-        // Complex if: long description, many files, or explicit keywords
         issue_len > 500
             || file_count > 10
             || input
@@ -264,9 +336,43 @@ impl PlanningPipeline {
                 .contains("redesign")
     }
 
+    /// Classify task complexity using DSPy.
+    async fn classify_complexity(
+        &self,
+        input: &PlanningInput,
+    ) -> anyhow::Result<(String, f32)> {
+        let classifier = Predict::new(TaskComplexityClassifier::new());
+        let file_count = input
+            .relevant_files
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .count() as u32;
+
+        let example = example! {
+            "task_description": "input" => input.issue_description.clone(),
+            "file_count": "input" => file_count,
+            "codebase_context": "input" => Self::build_codebase_context(input),
+        };
+
+        let prediction = if let Some(lm) = &self.lm {
+            classifier.forward_with_config(example, lm.clone()).await?
+        } else {
+            classifier.forward(example).await?
+        };
+
+        Ok((
+            Self::get_string(&prediction, "complexity"),
+            Self::get_f32(&prediction, "confidence"),
+        ))
+    }
+
     /// Run the planning pipeline.
     pub async fn plan(&self, input: &PlanningInput) -> anyhow::Result<PlanningResult> {
-        let use_deep_planning = Self::is_complex_task(input);
+        let (complexity_label, confidence) =
+            self.classify_complexity(input).await.unwrap_or_else(|_| ("".to_string(), 0.0));
+
+        let use_deep_planning = Self::should_use_deep_planning(&complexity_label, confidence)
+            .unwrap_or_else(|| Self::heuristic_complexity(input));
 
         let prediction = if use_deep_planning {
             self.run_deep_planning(input).await?
@@ -394,7 +500,7 @@ mod tests {
             relevant_files: "README.md".to_string(),
             code_patterns: None,
         };
-        assert!(!PlanningPipeline::is_complex_task(&simple));
+        assert!(!PlanningPipeline::heuristic_complexity(&simple));
 
         let complex = PlanningInput {
             repository_summary: "App".to_string(),
@@ -402,6 +508,30 @@ mod tests {
             relevant_files: "src/auth.rs".to_string(),
             code_patterns: None,
         };
-        assert!(PlanningPipeline::is_complex_task(&complex));
+        assert!(PlanningPipeline::heuristic_complexity(&complex));
+    }
+
+    #[test]
+    fn test_should_use_deep_planning() {
+        assert_eq!(
+            PlanningPipeline::should_use_deep_planning("Complex", 0.8),
+            Some(true)
+        );
+        assert_eq!(
+            PlanningPipeline::should_use_deep_planning("Very Complex", 0.7),
+            Some(true)
+        );
+        assert_eq!(
+            PlanningPipeline::should_use_deep_planning("Moderate", 0.9),
+            Some(false)
+        );
+        assert_eq!(
+            PlanningPipeline::should_use_deep_planning("Simple", 0.9),
+            Some(false)
+        );
+        assert_eq!(
+            PlanningPipeline::should_use_deep_planning("Complex", 0.2),
+            None
+        );
     }
 }

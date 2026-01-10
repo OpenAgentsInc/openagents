@@ -262,7 +262,7 @@ The following waves complete DSPy integration across the entire codebase, replac
 - [x] Add `gateway.query_with_signature()` method
 - [x] Integrate with dsrs tracing
 
-### Wave 19: Autopilot Heuristics → DSPy (Planned)
+### Wave 19: Autopilot Heuristics → DSPy (Complete)
 
 **Goal:** Replace keyword matching with learned signatures.
 
@@ -272,12 +272,12 @@ The following waves complete DSPy integration across the entire codebase, replac
 - `crates/autopilot/src/dspy_optimization.rs` — Validation logic
 
 **Tasks:**
-- [ ] Create `TaskComplexityClassifier` — Replace keyword heuristics
-- [ ] Create `BuildStatusClassifier` — Learn build failure patterns
-- [ ] Create `TestStatusClassifier` — Learn test failure patterns
-- [ ] Create `PathValidationSignature` — Learn valid path patterns
-- [ ] Create `ActionableStepSignature` — Learn actionable language
-- [ ] Wire all to training collection
+- [x] Create `TaskComplexityClassifier` — Replace keyword heuristics
+- [x] Create `BuildStatusClassifier` — Learn build failure patterns
+- [x] Create `TestStatusClassifier` — Learn test failure patterns
+- [x] Create `PathValidationSignature` — Learn valid path patterns
+- [x] Create `ActionableStepSignature` — Learn actionable language
+- [x] Wire all to training collection
 
 **New Signatures:**
 ```rust

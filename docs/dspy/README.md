@@ -206,7 +206,7 @@ Each pipeline has:
 | Wave 16 | RLM DSPy Integration | In Progress |
 | Wave 17 | LM-Router DSPy Backend | Complete |
 | Wave 18 | Gateway DSPy Integration | Complete |
-| Wave 19 | Autopilot Heuristics → DSPy | Planned |
+| Wave 19 | Autopilot Heuristics → DSPy | Complete |
 | Wave 20 | Agent-Orchestrator & Nexus DSPy | Planned |
 | Wave 21 | Marketplace Security DSPy | Planned |
 
@@ -249,6 +249,15 @@ The RLM engine (`crates/rlm/`) has 4 hardcoded prompt tiers to replace:
 - Wire signatures to `claude_client.rs` via dsrs Predict
 - Route PromptTier enum to appropriate signature
 - Add training data collection
+
+## Wave 19: Autopilot Heuristics → DSPy (Complete)
+
+Autopilot now uses DSPy classifiers instead of keyword heuristics for:
+- Planning depth selection (task complexity classifier)
+- Build/test status detection
+- Plan quality validation (path validity + actionable steps)
+
+These decisions are now recorded through DSPy tracing for training collection.
 
 ## Storage Layout
 

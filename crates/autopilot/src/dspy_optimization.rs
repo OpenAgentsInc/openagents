@@ -10,8 +10,54 @@
 //! 3. Graduate to GEPA for complex signatures
 //! 4. Store optimized modules in ~/.openagents/dspy/optimized/
 
-use dsrs::{Example, Prediction};
+use dsrs::{example, Example, Predict, Prediction, Predictor, Signature, GLOBAL_SETTINGS};
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
+// ============================================================================
+// Signature Definitions
+// ============================================================================
+
+/// Validate file paths for correctness.
+#[Signature]
+struct PathValidationSignature {
+    /// Validate a file path and confirm it looks correct for the codebase.
+
+    /// Path to validate
+    #[input]
+    path: String,
+
+    /// Repository root or context
+    #[input]
+    codebase_root: String,
+
+    /// Whether the path looks valid
+    #[output]
+    valid: bool,
+
+    /// Reason for the decision
+    #[output]
+    reason: String,
+}
+
+/// Detect if a step description is actionable.
+#[Signature]
+struct ActionableStepSignature {
+    /// Determine whether a step is concrete and actionable.
+
+    /// Step description
+    #[input]
+    step: String,
+
+    /// Whether the step is actionable
+    #[output]
+    actionable: bool,
+
+    /// Suggested improvement if not actionable
+    #[output]
+    suggested_improvement: String,
+}
 
 // ============================================================================
 // Planning Metrics
@@ -141,6 +187,52 @@ fn valid_json_array(val: &serde_json::Value) -> bool {
     }
 }
 
+/// Check if DSPy is configured.
+fn dspy_ready() -> bool {
+    GLOBAL_SETTINGS.read().unwrap().is_some()
+}
+
+/// Run an async prediction from a sync context.
+fn run_prediction<F>(future: F) -> Option<Prediction>
+where
+    F: Future<Output = anyhow::Result<Prediction>>,
+{
+    if !dspy_ready() {
+        return None;
+    }
+
+    let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        catch_unwind(AssertUnwindSafe(|| {
+            tokio::task::block_in_place(|| handle.block_on(future))
+        }))
+    } else if let Ok(runtime) = tokio::runtime::Runtime::new() {
+        catch_unwind(AssertUnwindSafe(|| runtime.block_on(future)))
+    } else {
+        return None;
+    };
+
+    match result {
+        Ok(Ok(prediction)) => Some(prediction),
+        _ => None,
+    }
+}
+
+/// Extract a boolean from prediction output.
+fn prediction_bool(prediction: &Prediction, key: &str) -> Option<bool> {
+    let val = prediction.get(key, None);
+    if let Some(b) = val.as_bool() {
+        Some(b)
+    } else if let Some(s) = val.as_str() {
+        match s.to_lowercase().as_str() {
+            "true" | "yes" | "1" => Some(true),
+            "false" | "no" | "0" => Some(false),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
 /// Check if paths look like valid file paths.
 fn paths_look_valid(val: &serde_json::Value) -> bool {
     let paths: Vec<String> = if let Some(s) = val.as_str() {
@@ -153,14 +245,42 @@ fn paths_look_valid(val: &serde_json::Value) -> bool {
         return false;
     };
 
-    // At least one path, and all look like file paths
-    !paths.is_empty()
-        && paths.iter().all(|p| {
-            // Must contain a slash or be a simple filename
-            (p.contains('/') || p.contains('.'))
-                && !p.contains(' ') // No spaces in paths
-                && !p.starts_with("http") // Not a URL
-        })
+    if paths.is_empty() {
+        return false;
+    }
+
+    if let Some(valid) = dspy_paths_valid(&paths) {
+        return valid;
+    }
+
+    paths_look_valid_heuristic(&paths)
+}
+
+fn dspy_paths_valid(paths: &[String]) -> Option<bool> {
+    let validator = Predict::new(PathValidationSignature::new());
+
+    for path in paths {
+        let example = example! {
+            "path": "input" => path.clone(),
+            "codebase_root": "input" => ".".to_string(),
+        };
+
+        let prediction = run_prediction(validator.forward(example))?;
+        let valid = prediction_bool(&prediction, "valid")?;
+        if !valid {
+            return Some(false);
+        }
+    }
+
+    Some(true)
+}
+
+fn paths_look_valid_heuristic(paths: &[String]) -> bool {
+    paths.iter().all(|p| {
+        (p.contains('/') || p.contains('.'))
+            && !p.contains(' ')
+            && !p.starts_with("http")
+    })
 }
 
 /// Check if implementation steps are actionable.
@@ -175,12 +295,36 @@ fn steps_are_actionable(val: &serde_json::Value) -> bool {
         return false;
     };
 
-    // At least one step
     if steps.is_empty() {
         return false;
     }
 
-    // Check each step starts with an action verb
+    if let Some(actionable) = dspy_steps_actionable(&steps) {
+        return actionable;
+    }
+
+    steps_are_actionable_heuristic(&steps)
+}
+
+fn dspy_steps_actionable(steps: &[String]) -> Option<bool> {
+    let classifier = Predict::new(ActionableStepSignature::new());
+
+    for step in steps {
+        let example = example! {
+            "step": "input" => step.clone(),
+        };
+
+        let prediction = run_prediction(classifier.forward(example))?;
+        let actionable = prediction_bool(&prediction, "actionable")?;
+        if !actionable {
+            return Some(false);
+        }
+    }
+
+    Some(true)
+}
+
+fn steps_are_actionable_heuristic(steps: &[String]) -> bool {
     let action_verbs = [
         "add", "create", "update", "modify", "remove", "delete", "implement", "write", "read",
         "run", "test", "fix", "change", "refactor", "move", "rename", "install", "configure",
