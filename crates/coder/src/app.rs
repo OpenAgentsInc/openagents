@@ -5150,40 +5150,43 @@ impl ApplicationHandler for CoderApp {
                         }
                     }
 
-                    // Check for Enter key to submit
+                    // Check for Enter key to submit (but not Shift+Enter, which inserts newline)
                     if let WinitKey::Named(WinitNamedKey::Enter) = &key_event.logical_key {
-                        let mut action = CommandAction::None;
-                        let mut submit_prompt = None;
+                        if !state.modifiers.shift_key() {
+                            let mut action = CommandAction::None;
+                            let mut submit_prompt = None;
 
-                        {
-                            let prompt = state.input.get_value().to_string();
-                            if prompt.trim().is_empty() {
-                                return;
+                            {
+                                let prompt = state.input.get_value().to_string();
+                                if prompt.trim().is_empty() {
+                                    return;
+                                }
+
+                                if let Some(command) = parse_command(&prompt) {
+                                    state.command_history.push(prompt);
+                                    state.input.set_value("");
+                                    action = handle_command(state, command);
+                                } else if !state.is_thinking {
+                                    state.command_history.push(prompt.clone());
+                                    state.input.set_value("");
+                                    submit_prompt = Some(prompt);
+                                } else {
+                                    return;
+                                }
                             }
 
-                            if let Some(command) = parse_command(&prompt) {
-                                state.command_history.push(prompt);
-                                state.input.set_value("");
-                                action = handle_command(state, command);
-                            } else if !state.is_thinking {
-                                state.command_history.push(prompt.clone());
-                                state.input.set_value("");
-                                submit_prompt = Some(prompt);
-                            } else {
-                                return;
+                            if let CommandAction::SubmitPrompt(prompt) = action {
+                                self.submit_prompt(prompt);
+                            } else if let Some(prompt) = submit_prompt {
+                                self.submit_prompt(prompt);
                             }
-                        }
 
-                        if let CommandAction::SubmitPrompt(prompt) = action {
-                            self.submit_prompt(prompt);
-                        } else if let Some(prompt) = submit_prompt {
-                            self.submit_prompt(prompt);
+                            if let Some(s) = &self.state {
+                                s.window.request_redraw();
+                            }
+                            return;
                         }
-
-                        if let Some(s) = &self.state {
-                            s.window.request_redraw();
-                        }
-                        return;
+                        // Shift+Enter falls through to input handler below
                     }
 
                     if let Some(key) = convert_key_for_input(&key_event.logical_key) {
