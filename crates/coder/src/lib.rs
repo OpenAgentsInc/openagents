@@ -3,6 +3,7 @@
 //! This crate provides a GPU-accelerated terminal UI for Claude Code.
 
 pub mod app;
+pub mod autopilot_loop;
 pub mod commands;
 pub mod keybindings;
 pub mod panels;

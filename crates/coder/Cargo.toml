@@ -28,6 +28,7 @@ claude-agent-sdk = { path = "../claude-agent-sdk" }
 # Autopilot/Adjutant
 adjutant = { path = "../adjutant" }
 oanix = { path = "../oanix" }
+anyhow = { workspace = true }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
