@@ -41,9 +41,10 @@ This document outlines the path to 100% implementation of the Claude Agent SDK i
 | Model selection | Done | `/model` command with modal |
 | Markdown rendering | Done | StreamingMarkdown + MarkdownRenderer |
 | Tool call display | Done | Inline `[ToolName]` with formatted input |
-| Status bar | Done | Permission mode, model, tools, session |
+| Status bar | Done | Permission mode, model, tools, session, backend |
 | Auto-scroll | Done | Scroll to bottom on new content |
 | Config persistence | Done | Model saved to ~/.openagents/coder/ |
+| Multi-backend support | Done | Claude + Codex via `/backend` command |
 | Wallet status pane | Done | OANIX identity + Pylon wallet config |
 | DVM providers pane | Done | NIP-89 discovery for compute providers |
 | Gateway health pane | Done | Cerebras gateway status + model list |
@@ -944,3 +945,4 @@ pub enum SettingsTab {
 - 2026-01-10 21:48 UTC - Added RLM trace pane with run metadata, trace event list, keybinding, and commands.
 - 2026-01-10 22:12 UTC - Added Pylon earnings pane with totals, source breakdown, keybinding, and commands.
 - 2026-01-10 22:34 UTC - Added Pylon jobs pane with status counts, pricing totals, keybinding, and commands.
+- 2026-01-10 - Implemented multi-backend support (Claude/Codex): agent abstraction layer with AgentBackend/AgentSession traits, `/backend` toggle command, and full Codex integration via codex-agent-sdk with event mapping to ResponseEvent.
