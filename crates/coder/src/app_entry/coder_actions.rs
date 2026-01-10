@@ -11,6 +11,7 @@ use claude_agent_sdk::{query_with_permissions, QueryOptions, SdkMessage};
 
 use crate::app::catalog::build_hook_map;
 use crate::app::chat::{ChatMessage, MessageRole};
+use crate::app::dvm::{DvmEvent, DvmStatus};
 use crate::app::events::{CommandAction, QueryControl, ResponseEvent};
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
@@ -1033,6 +1034,42 @@ impl CoderApp {
         }
     }
 
+    pub(super) fn poll_dvm_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.dvm.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state.dvm.status = DvmStatus::Error("DVM runtime disconnected".to_string());
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                DvmEvent::Providers(providers) => {
+                    state.dvm.set_providers(providers);
+                    state.dvm.status_message = Some("Providers loaded".to_string());
+                    should_redraw = true;
+                }
+                DvmEvent::Error(message) => {
+                    state.dvm.status = DvmStatus::Error(message.clone());
+                    state.dvm.status_message = Some(message);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
     pub(super) fn poll_autopilot_history(&mut self) {
         let Some(state) = &mut self.state else {
             return;
@@ -1121,6 +1158,10 @@ impl CoderApp {
             command_palette_ids::AGENT_RELOAD => Some(handle_command(state, Command::AgentReload)),
             command_palette_ids::WALLET_OPEN => {
                 state.open_wallet();
+                None
+            }
+            command_palette_ids::DVM_OPEN => {
+                state.open_dvm();
                 None
             }
             command_palette_ids::NIP90_OPEN => {

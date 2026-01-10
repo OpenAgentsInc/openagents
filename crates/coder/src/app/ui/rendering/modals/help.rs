@@ -50,6 +50,8 @@ fn render_help_modal(
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenSettings, "Ctrl+,");
             let wallet_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenWallet, "Ctrl+Shift+W");
+            let dvm_key =
+                keybinding_labels(&state.settings.keybindings, KeyAction::OpenDvm, "Ctrl+Shift+P");
             let nip90_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
             let oanix_key =
@@ -85,6 +87,7 @@ fn render_help_modal(
                         format!("{} - Command palette", palette_key),
                         format!("{} - Settings", settings_key),
                         format!("{} - Wallet", wallet_key),
+                        format!("{} - DVM providers", dvm_key),
                         format!("{} - NIP-90 jobs", nip90_key),
                         format!("{} - OANIX manifest", oanix_key),
                         format!("{} - DSPy status", dspy_key),
@@ -138,6 +141,14 @@ fn render_help_modal(
                 (
                     "Wallet",
                     vec!["/wallet - open wallet status; /wallet refresh - refresh".to_string()],
+                ),
+                (
+                    "DVM Providers",
+                    vec![
+                        "/dvm - open providers".to_string(),
+                        "/dvm connect <relay_url>; /dvm kind <id>".to_string(),
+                        "/dvm refresh - refresh".to_string(),
+                    ],
                 ),
                 (
                     "NIP-90 Jobs",

@@ -274,6 +274,29 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             state.open_wallet();
             CommandAction::None
         }
+        Command::Dvm => {
+            state.open_dvm();
+            CommandAction::None
+        }
+        Command::DvmRefresh => {
+            state.refresh_dvm();
+            state.open_dvm();
+            CommandAction::None
+        }
+        Command::DvmConnect(relay_url) => {
+            if relay_url.trim().is_empty() {
+                state.push_system_message("DVM relay URL is required.".to_string());
+            } else {
+                state.connect_dvm(Some(relay_url));
+                state.open_dvm();
+            }
+            CommandAction::None
+        }
+        Command::DvmKind(kind) => {
+            state.set_dvm_job_kind(kind);
+            state.open_dvm();
+            CommandAction::None
+        }
         Command::Nip90 => {
             state.open_nip90();
             CommandAction::None
@@ -738,6 +761,19 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 }
                 WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
                     state.request_wallet_refresh();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::DvmProviders => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_dvm();
                 }
                 _ => {}
             }
