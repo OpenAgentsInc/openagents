@@ -50,6 +50,8 @@ fn render_help_modal(
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenSettings, "Ctrl+,");
             let wallet_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenWallet, "Ctrl+Shift+W");
+            let dspy_key =
+                keybinding_labels(&state.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
             let left_sidebar = keybinding_labels(
                 &state.settings.keybindings,
                 KeyAction::ToggleLeftSidebar,
@@ -77,6 +79,7 @@ fn render_help_modal(
                         format!("{} - Command palette", palette_key),
                         format!("{} - Settings", settings_key),
                         format!("{} - Wallet", wallet_key),
+                        format!("{} - DSPy status", dspy_key),
                         format!("{} - Toggle left sidebar", left_sidebar),
                         format!("{} - Toggle right sidebar", right_sidebar),
                         format!("{} - Toggle both sidebars", toggle_sidebars),
@@ -126,6 +129,13 @@ fn render_help_modal(
                 (
                     "Wallet",
                     vec!["/wallet - open wallet status; /wallet refresh - refresh".to_string()],
+                ),
+                (
+                    "DSPy",
+                    vec![
+                        "/dspy - open status; /dspy refresh - refresh".to_string(),
+                        "/dspy auto on|off; /dspy background on|off".to_string(),
+                    ],
                 ),
             ];
 

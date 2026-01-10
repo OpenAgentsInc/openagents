@@ -6,6 +6,7 @@ pub enum Action {
     OpenCommandPalette,
     OpenSettings,
     OpenWallet,
+    OpenDspy,
     ToggleLeftSidebar,
     ToggleRightSidebar,
     ToggleSidebars,
@@ -31,6 +32,7 @@ impl Action {
             Action::OpenCommandPalette,
             Action::OpenSettings,
             Action::OpenWallet,
+            Action::OpenDspy,
             Action::ToggleLeftSidebar,
             Action::ToggleRightSidebar,
             Action::ToggleSidebars,
@@ -43,6 +45,7 @@ impl Action {
             Action::OpenCommandPalette => "command_palette",
             Action::OpenSettings => "settings",
             Action::OpenWallet => "wallet",
+            Action::OpenDspy => "dspy",
             Action::ToggleLeftSidebar => "sidebar_left",
             Action::ToggleRightSidebar => "sidebar_right",
             Action::ToggleSidebars => "sidebar_toggle",
@@ -55,6 +58,7 @@ impl Action {
             Action::OpenCommandPalette => "Command palette",
             Action::OpenSettings => "Open settings",
             Action::OpenWallet => "Open wallet",
+            Action::OpenDspy => "Open DSPy",
             Action::ToggleLeftSidebar => "Toggle left sidebar",
             Action::ToggleRightSidebar => "Toggle right sidebar",
             Action::ToggleSidebars => "Toggle sidebars",
@@ -67,6 +71,7 @@ impl Action {
             "command_palette" => Some(Action::OpenCommandPalette),
             "settings" => Some(Action::OpenSettings),
             "wallet" => Some(Action::OpenWallet),
+            "dspy" => Some(Action::OpenDspy),
             "sidebar_left" => Some(Action::ToggleLeftSidebar),
             "sidebar_right" => Some(Action::ToggleRightSidebar),
             "sidebar_toggle" => Some(Action::ToggleSidebars),
@@ -111,6 +116,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
             action: Action::OpenWallet,
         },
         Keybinding {
+            key: Key::Character("d".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenDspy,
+        },
+        Keybinding {
             key: Key::Character("[".to_string()),
             modifiers: Modifiers {
                 ctrl: true,
@@ -142,6 +156,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenWallet,
+        },
+        Keybinding {
+            key: Key::Character("d".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenDspy,
         },
         Keybinding {
             key: Key::Character("[".to_string()),

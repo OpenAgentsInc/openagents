@@ -2,6 +2,7 @@ pub(crate) mod autopilot;
 pub(crate) mod catalog;
 pub(crate) mod chat;
 pub(crate) mod config;
+pub(crate) mod dspy;
 pub(crate) mod events;
 pub(crate) mod parsing;
 pub(crate) mod permissions;

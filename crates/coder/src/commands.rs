@@ -35,6 +35,10 @@ pub enum Command {
     HooksReload,
     Wallet,
     WalletRefresh,
+    Dspy,
+    DspyRefresh,
+    DspyAuto(bool),
+    DspyBackground(bool),
     Custom(String, Vec<String>),
 }
 
@@ -221,6 +225,26 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         description: "Refresh wallet status",
         requires_args: false,
     },
+    CommandSpec {
+        usage: "/dspy",
+        description: "Open DSPy status",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/dspy refresh",
+        description: "Refresh DSPy status",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/dspy auto <on|off>",
+        description: "Enable or disable DSPy auto-optimizer",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/dspy background <on|off>",
+        description: "Enable or disable background optimization",
+        requires_args: true,
+    },
 ];
 
 pub fn command_specs() -> &'static [CommandSpec] {
@@ -261,6 +285,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "skills" => parse_skills_command(args),
         "hooks" => parse_hooks_command(args),
         "wallet" => parse_wallet_command(args),
+        "dspy" => parse_dspy_command(args),
         _ => Command::Custom(command, args),
     };
 
@@ -273,6 +298,31 @@ fn parse_wallet_command(args: Vec<String>) -> Command {
         Some("refresh") => Command::WalletRefresh,
         Some("status") => Command::Wallet,
         _ => Command::Wallet,
+    }
+}
+
+fn parse_dspy_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::Dspy,
+        Some("status") => Command::Dspy,
+        Some("refresh") => Command::DspyRefresh,
+        Some("auto") => parse_on_off(parts.next().as_deref())
+            .map(Command::DspyAuto)
+            .unwrap_or(Command::Dspy),
+        Some("background") | Some("bg") => parse_on_off(parts.next().as_deref())
+            .map(Command::DspyBackground)
+            .unwrap_or(Command::Dspy),
+        Some(other) => Command::Custom(format!("dspy {}", other), parts.collect()),
+    }
+}
+
+fn parse_on_off(value: Option<&str>) -> Option<bool> {
+    let value = value?.to_ascii_lowercase();
+    match value.as_str() {
+        "on" | "true" | "enable" | "enabled" => Some(true),
+        "off" | "false" | "disable" | "disabled" => Some(false),
+        _ => None,
     }
 }
 

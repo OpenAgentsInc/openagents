@@ -128,6 +128,15 @@ impl AppState {
             "Wallet",
             Some(wallet_keys),
         );
+        let dspy_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
+        push_command(
+            command_palette_ids::DSPY_OPEN,
+            "Open DSPy",
+            "Review DSPy performance and auto-optimizer settings",
+            "DSPy",
+            Some(dspy_keys),
+        );
 
         push_command(
             command_palette_ids::CLEAR_CONVERSATION,
@@ -384,6 +393,47 @@ impl AppState {
     pub(super) fn request_wallet_refresh(&mut self) {
         self.refresh_wallet_snapshot();
         self.request_oanix_refresh();
+    }
+
+    pub(super) fn open_dspy(&mut self) {
+        self.refresh_dspy_snapshot();
+        self.modal_state = ModalState::Dspy;
+    }
+
+    pub(super) fn refresh_dspy_snapshot(&mut self) {
+        self.dspy.refresh();
+    }
+
+    pub(super) fn set_dspy_auto_optimizer_enabled(&mut self, enabled: bool) {
+        let result = self
+            .dspy
+            .update_auto_optimizer(|config| config.enabled = enabled);
+        match result {
+            Ok(()) => self.push_system_message(format!(
+                "DSPy auto-optimizer {}.",
+                if enabled { "enabled" } else { "disabled" }
+            )),
+            Err(err) => self.push_system_message(format!(
+                "Failed to update DSPy auto-optimizer: {}.",
+                err
+            )),
+        }
+    }
+
+    pub(super) fn set_dspy_background_optimization(&mut self, enabled: bool) {
+        let result = self
+            .dspy
+            .update_auto_optimizer(|config| config.background_optimization = enabled);
+        match result {
+            Ok(()) => self.push_system_message(format!(
+                "DSPy background optimization {}.",
+                if enabled { "enabled" } else { "disabled" }
+            )),
+            Err(err) => self.push_system_message(format!(
+                "Failed to update DSPy background optimization: {}.",
+                err
+            )),
+        }
     }
 
     pub(super) fn request_oanix_refresh(&mut self) {
