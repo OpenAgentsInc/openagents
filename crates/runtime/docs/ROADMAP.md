@@ -179,7 +179,7 @@ Demo agent can:
 
 ### Implementation Notes (completed)
 
-- Added compute core types, provider routing, and `/compute` filesystem in `crates/runtime/src/compute.rs`.
+- Added compute core types, provider routing, and `/compute` filesystem in `crates/runtime/src/compute/`.
 - Implemented `LocalProvider` backed by `crates/compute` registry with async execution and streaming.
 - Wired budget reservation/reconcile and idempotency response caching in `/compute/new` handling.
 - Added compute conformance tests for submit/usage/idempotency and streaming watch in `crates/runtime/src/tests/mod.rs`.
@@ -337,7 +337,7 @@ An agent runs on DO, takes HTTP triggers, can do `/compute/new`.
 ### Implementation Notes (completed)
 
 - Added `CloudflareStorage` DO SQL adapter plus `DoJournal` for idempotency persistence in `crates/runtime/src/storage.rs` and `crates/runtime/src/idempotency.rs`.
-- Implemented `CloudflareProvider` (Workers AI) with async job execution and cost reconciliation that treats reserved `max_cost_usd` as spent when usage is unavailable in `crates/runtime/src/compute.rs`.
+- Implemented `CloudflareProvider` (Workers AI) with async job execution and cost reconciliation that treats reserved `max_cost_usd` as spent when usage is unavailable in `crates/runtime/src/compute/`.
 - Added `CloudflareAgent` Durable Object backend with agent factory registration, alarm scheduling, and control-plane fetch → filesystem mapping (read/write/list, tick/send) in `crates/runtime/src/cloudflare.rs`, including `/compute` mount when an AI binding is available.
 
 ### References
@@ -390,7 +390,7 @@ Agent can buy compute from DVM within reserved max cost.
 
 ### Implementation Notes (completed)
 
-- Added DVM providers for compute and containers with quote/accept/settle lifecycles in `crates/runtime/src/compute.rs` and `crates/runtime/src/containers/`.
+- Added DVM providers for compute and containers with quote/accept/settle lifecycles in `crates/runtime/src/compute/` and `crates/runtime/src/containers/`.
 - Wired Lightning settlement with USD↔sats conversion via `FxRateCache` + `WalletFxProvider` (supports `FxSource::Wallet`) in the DVM providers.
 - Added runtime tests for DVM payment flows plus wallet-FX bid conversion in `crates/runtime/src/tests/mod.rs`.
 
@@ -457,7 +457,7 @@ Reloading the tab preserves agent state and storage entries via IndexedDB.
 
 **Goal:** Agents can spawn and control Claude Agent SDK instances via filesystem.
 
-**Implementation:** `crates/runtime/src/claude.rs`
+**Implementation:** `crates/runtime/src/claude/`
 
 ### Overview
 
@@ -467,7 +467,7 @@ The `/claude` mount enables agents to command one or more Claude instances. Key 
 
 #### Phase 1: Core Types + FileService
 
-- Implement core types in `crates/runtime/src/claude.rs`:
+- Implement core types in `crates/runtime/src/claude/`:
   - `ClaudeRequest`, `ClaudeResponse`, `ClaudeChunk`
   - `ClaudeSessionAutonomy` (Full/Supervised/Restricted/ReadOnly)
   - `ClaudePolicy`, `ClaudeUsageState`
@@ -566,7 +566,7 @@ The `/claude` mount enables agents to command one or more Claude instances. Key 
 
 ### Implementation Notes (completed)
 
-- Added `crates/runtime/src/claude.rs` with core types, policy/state machine, budget tracking, and idempotency-aware `/claude` FileService endpoints (sessions, tools, usage, auth, providers, workers/pool/proxy).
+- Added `crates/runtime/src/claude/` with core types, policy/state machine, budget tracking, and idempotency-aware `/claude` FileService endpoints (sessions, tools, usage, auth, providers, workers/pool/proxy).
 - Implemented provider routing + `ClaudeProvider` trait plus concrete providers: Local/Cloud (claude-agent-sdk process runner) and Tunnel (WebSocket tunnel with Nostr auth, streaming, and tool approval).
 - Wired tool-approval workflow and append-only tool logs for both SDK-backed and tunnel sessions; output watch reconciles budget on completion/failure.
 - Added tunnel auth surfaces (`/claude/auth/{tunnels,challenge,status}`), provider health/endpoints surfaces, and admin-only policy/pool/proxy writes via `AgentEnv`.
