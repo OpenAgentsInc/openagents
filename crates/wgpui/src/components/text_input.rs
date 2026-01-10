@@ -25,6 +25,8 @@ pub struct TextInput {
     mono: bool,
     on_change: Option<Box<dyn FnMut(&str)>>,
     on_submit: Option<Box<dyn FnMut(&str)>>,
+    /// Max width for text wrapping (set via set_max_width or during paint)
+    max_width: Option<f32>,
 }
 
 impl TextInput {
@@ -49,7 +51,45 @@ impl TextInput {
             mono: false,
             on_change: None,
             on_submit: None,
+            max_width: None,
         }
+    }
+
+    /// Set the max width for text wrapping
+    pub fn set_max_width(&mut self, width: f32) {
+        self.max_width = Some(width);
+    }
+
+    /// Get chars per line based on max width
+    fn chars_per_line(&self) -> usize {
+        let char_width = self.font_size * 0.6;
+        let text_width = self.max_width.unwrap_or(800.0) - self.padding.0 * 2.0;
+        (text_width / char_width).floor() as usize
+    }
+
+    /// Wrap text to fit within max width, returning visual lines
+    fn wrap_text<'a>(&self, text: &'a str) -> Vec<&'a str> {
+        let chars_per_line = self.chars_per_line().max(1);
+        let mut visual_lines = Vec::new();
+
+        for line in text.split('\n') {
+            if line.is_empty() {
+                visual_lines.push("");
+            } else {
+                let mut remaining = line;
+                while !remaining.is_empty() {
+                    let take = remaining.chars().take(chars_per_line).collect::<String>().len();
+                    let (chunk, rest) = remaining.split_at(take.min(remaining.len()));
+                    visual_lines.push(chunk);
+                    remaining = rest;
+                }
+            }
+        }
+
+        if visual_lines.is_empty() {
+            visual_lines.push("");
+        }
+        visual_lines
     }
 
     pub fn with_id(mut self, id: ComponentId) -> Self {
@@ -173,23 +213,26 @@ impl TextInput {
         }
     }
 
-    /// Calculate the current height based on line count
+    /// Calculate the current height based on visual line count (with wrapping)
     pub fn current_height(&self) -> f32 {
         let line_height = self.font_size * 1.4;
-        let line_count = self.value.lines().count().max(1);
-        // Handle trailing newline (lines() doesn't count it as an extra line)
-        let line_count = if self.value.ends_with('\n') {
-            line_count + 1
-        } else {
-            line_count
-        };
+        let visual_lines = self.wrap_text(&self.value);
+        let line_count = visual_lines.len().max(1);
         line_height * line_count as f32 + self.padding.1 * 2.0
     }
 
-    /// Get the line number the cursor is on (0-indexed)
+    /// Get the visual line number the cursor is on (0-indexed, accounting for wrapping)
     pub fn cursor_line(&self) -> usize {
         let text_before = &self.value[..self.cursor_pos.min(self.value.len())];
-        text_before.matches('\n').count()
+        let visual_lines = self.wrap_text(text_before);
+        visual_lines.len().saturating_sub(1)
+    }
+
+    /// Get cursor position within the current visual line
+    fn cursor_visual_col(&self) -> usize {
+        let text_before = &self.value[..self.cursor_pos.min(self.value.len())];
+        let visual_lines = self.wrap_text(text_before);
+        visual_lines.last().map_or(0, |line| line.chars().count())
     }
 
     fn insert_str(&mut self, s: &str) {
@@ -294,23 +337,6 @@ impl TextInput {
         }
     }
 
-    /// Get the line number and column for the current cursor position
-    fn cursor_line_col(&self) -> (usize, usize) {
-        let text_before = &self.value[..self.cursor_pos.min(self.value.len())];
-        let line = text_before.matches('\n').count();
-        let col = text_before
-            .rfind('\n')
-            .map(|pos| self.cursor_pos - pos - 1)
-            .unwrap_or(self.cursor_pos);
-        (line, col)
-    }
-
-    /// Get the text on the current line before the cursor
-    fn text_before_cursor_on_line(&self) -> &str {
-        let text_before = &self.value[..self.cursor_pos.min(self.value.len())];
-        text_before.rfind('\n').map_or(text_before, |pos| &text_before[pos + 1..])
-    }
-
     /// Get character index at a specific (x, y) position for multiline text
     fn char_index_at_xy(&self, x: f32, y: f32, text_start_x: f32, text_start_y: f32) -> usize {
         let line_height = self.font_size * 1.4;
@@ -360,6 +386,9 @@ impl Component for TextInput {
                 .with_border(border, 1.0),
         );
 
+        // Update max_width for wrapping calculations
+        self.max_width = Some(bounds.size.width);
+
         let text_x = bounds.origin.x + self.padding.0;
         let line_height = self.font_size * 1.4;
 
@@ -375,10 +404,10 @@ impl Component for TextInput {
             self.text_color
         };
 
-        // Render each line separately for multiline support
+        // Render each visual line (with wrapping)
         if !display_text.is_empty() {
-            let lines: Vec<&str> = display_text.split('\n').collect();
-            for (i, line) in lines.iter().enumerate() {
+            let visual_lines = self.wrap_text(display_text);
+            for (i, line) in visual_lines.iter().enumerate() {
                 let line_y = bounds.origin.y + self.padding.1 + line_height * i as f32 + self.font_size * 0.15;
                 if !line.is_empty() {
                     let text_run = if self.mono {
@@ -408,9 +437,9 @@ impl Component for TextInput {
             let cursor_visible = (elapsed / 500) % 2 == 0;
 
             if cursor_visible {
-                let (cursor_line, _cursor_col) = self.cursor_line_col();
-                let text_before = self.text_before_cursor_on_line();
-                let cursor_x = text_x + text_before.chars().count() as f32 * self.font_size * 0.6;
+                let cursor_line = self.cursor_line();
+                let cursor_col = self.cursor_visual_col();
+                let cursor_x = text_x + cursor_col as f32 * self.font_size * 0.6;
                 let cursor_y = bounds.origin.y + self.padding.1 + line_height * cursor_line as f32;
                 let cursor_height = line_height;
 
