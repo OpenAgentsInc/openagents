@@ -87,6 +87,7 @@ println!("Answer: {}", result.get("answer", None));
 - [Compiler Contract](./COMPILER-CONTRACT.md) - Wave 3 features (manifest, trace, Nostr bridge)
 - [Evaluation](./EVALUATION.md) - Eval harness & promotion gates (Wave 5)
 - [LM Providers](./LM-PROVIDERS.md) - Multi-provider LM configuration
+- [Marketplace](./MARKETPLACE.md) - Trading learned patterns via Lightning + Nostr
 - [Privacy](./PRIVACY.md) - Privacy module: redaction, chunking, policy (Wave 7)
 - [Retrieval](./RETRIEVAL.md) - Multi-lane retrieval system (Wave 4)
 - [Signatures](./SIGNATURES.md) - Optimizable agent signatures (Wave 4)
