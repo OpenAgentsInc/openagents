@@ -83,6 +83,11 @@ fn render_help_modal(
             );
             let issues_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenIssues, "Ctrl+Shift+I");
+            let tracker_key = keybinding_labels(
+                &state.settings.keybindings,
+                KeyAction::OpenIssueTracker,
+                "Ctrl+Shift+A",
+            );
             let dspy_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
             let nip28_key =
@@ -123,6 +128,7 @@ fn render_help_modal(
                         format!("{} - OANIX manifest", oanix_key),
                         format!("{} - Directives", directives_key),
                         format!("{} - Issues", issues_key),
+                        format!("{} - Issue tracker", tracker_key),
                         format!("{} - DSPy status", dspy_key),
                         format!("{} - NIP-28 chat", nip28_key),
                         format!("{} - Toggle left sidebar", left_sidebar),
@@ -234,6 +240,13 @@ fn render_help_modal(
                     "Issues",
                     vec![
                         "/issues - open workspace issues; /issues refresh - refresh".to_string(),
+                    ],
+                ),
+                (
+                    "Issue Tracker",
+                    vec![
+                        "/issue-tracker - open tracker; /issue-tracker refresh - refresh"
+                            .to_string(),
                     ],
                 ),
                 (

@@ -215,6 +215,18 @@ impl AppState {
             "Workspace",
             Some(issues_keys),
         );
+        let tracker_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenIssueTracker,
+            "Ctrl+Shift+A",
+        );
+        push_command(
+            command_palette_ids::ISSUE_TRACKER_OPEN,
+            "Open Issue Tracker",
+            "Review issues from .openagents/autopilot.db",
+            "Workspace",
+            Some(tracker_keys),
+        );
         let dspy_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
         push_command(
@@ -611,6 +623,24 @@ impl AppState {
 
     pub(super) fn refresh_issues(&mut self) {
         self.request_oanix_refresh();
+    }
+
+    pub(super) fn open_issue_tracker(&mut self) {
+        if self.autopilot.oanix_manifest.is_none() && self.autopilot.oanix_manifest_rx.is_none() {
+            self.request_oanix_refresh();
+        }
+        self.refresh_issue_tracker();
+        self.modal_state = ModalState::AutopilotIssues;
+    }
+
+    pub(super) fn refresh_issue_tracker(&mut self) {
+        let workspace_root = self
+            .autopilot
+            .oanix_manifest
+            .as_ref()
+            .and_then(|manifest| manifest.workspace.as_ref())
+            .map(|workspace| workspace.root.as_path());
+        self.autopilot_issues.refresh(workspace_root);
     }
 
     pub(super) fn open_dspy(&mut self) {

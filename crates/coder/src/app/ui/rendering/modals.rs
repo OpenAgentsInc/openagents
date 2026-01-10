@@ -13,6 +13,7 @@ include!("modals/nexus.rs");
 include!("modals/oanix.rs");
 include!("modals/directives.rs");
 include!("modals/issues.rs");
+include!("modals/autopilot_issues.rs");
 include!("modals/spark_wallet.rs");
 include!("modals/dspy.rs");
 include!("modals/nip28.rs");
@@ -225,6 +226,17 @@ fn render_modals(
         }
         ModalState::Issues => {
             render_issues_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
+        ModalState::AutopilotIssues => {
+            render_autopilot_issues_modal(
                 state,
                 scene,
                 palette,

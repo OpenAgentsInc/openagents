@@ -16,7 +16,7 @@ use crate::app::gateway::GatewayEvent;
 use crate::app::lm_router::LmRouterEvent;
 use crate::app::nexus::NexusEvent;
 use crate::app::spark_wallet::SparkWalletEvent;
-use crate::app::events::{CommandAction, QueryControl, ResponseEvent};
+use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent};
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
 use crate::app::parsing::expand_prompt_text;
@@ -884,6 +884,9 @@ impl CoderApp {
                     tracing::info!("Autopilot: cached OANIX manifest");
                     state.autopilot.oanix_manifest = Some(manifest);
                     state.wallet.refresh(state.autopilot.oanix_manifest.as_ref());
+                    if matches!(state.modal_state, ModalState::AutopilotIssues) {
+                        state.refresh_issue_tracker();
+                    }
                     state.autopilot.oanix_manifest_rx = None; // Done receiving
                     needs_redraw = true;
                 }
@@ -1354,6 +1357,10 @@ impl CoderApp {
             }
             command_palette_ids::ISSUES_OPEN => {
                 state.open_issues();
+                None
+            }
+            command_palette_ids::ISSUE_TRACKER_OPEN => {
+                state.open_issue_tracker();
                 None
             }
             command_palette_ids::DSPY_OPEN => {
