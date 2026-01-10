@@ -4290,7 +4290,8 @@ impl ApplicationHandler for CoderApp {
         let available_input_width = sidebar_layout.main.size.width - INPUT_PADDING * 2.0;
         let input_width = available_input_width.min(max_input_width);
         let input_x = sidebar_layout.main.origin.x + (sidebar_layout.main.size.width - input_width) / 2.0;
-        // Dynamic input height based on line count (min 40px)
+        // Set max width for text wrapping, then calculate dynamic height
+        state.input.set_max_width(input_width);
         let input_height = state.input.current_height().max(40.0);
         let input_bounds = Bounds::new(
             input_x,
@@ -6696,7 +6697,12 @@ impl AppState {
         logical_height: f32,
     ) -> ChatLayout {
         let viewport_top = OUTPUT_PADDING;
-        // Dynamic input height based on line count (min 40px)
+        // Calculate input width for wrapping
+        let max_input_width = 768.0_f32;
+        let available_input_width = sidebar_layout.main.size.width - INPUT_PADDING * 2.0;
+        let input_width = available_input_width.min(max_input_width);
+        // Set max width for wrapping, then calculate dynamic height
+        self.input.set_max_width(input_width);
         let input_height = self.input.current_height().max(40.0);
         let viewport_bottom =
             logical_height - input_height - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 16.0;
@@ -8913,9 +8919,16 @@ impl CoderApp {
             scene.pop_clip();
         }
 
-        // Input area background - flush with top of input box
-        // Dynamic input height based on line count (min 40px)
+        // Input box (max width 768px, centered)
+        let max_input_width = 768.0_f32;
+        let available_input_width = sidebar_layout.main.size.width - INPUT_PADDING * 2.0;
+        let input_width = available_input_width.min(max_input_width);
+        let input_x = sidebar_layout.main.origin.x + (sidebar_layout.main.size.width - input_width) / 2.0;
+        // Set max width for wrapping, then calculate dynamic height
+        state.input.set_max_width(input_width);
         let input_height = state.input.current_height().max(40.0);
+
+        // Input area background - flush with top of input box
         let input_area_y = logical_height - input_height - INPUT_PADDING - STATUS_BAR_HEIGHT;
         let input_area_bounds = Bounds::new(
             sidebar_layout.main.origin.x,
@@ -8925,11 +8938,6 @@ impl CoderApp {
         );
         scene.draw_quad(Quad::new(input_area_bounds).with_background(palette.background));
 
-        // Input box (max width 768px, centered)
-        let max_input_width = 768.0_f32;
-        let available_input_width = sidebar_layout.main.size.width - INPUT_PADDING * 2.0;
-        let input_width = available_input_width.min(max_input_width);
-        let input_x = sidebar_layout.main.origin.x + (sidebar_layout.main.size.width - input_width) / 2.0;
         let input_bounds = Bounds::new(
             input_x,
             logical_height - input_height - INPUT_PADDING - STATUS_BAR_HEIGHT,
