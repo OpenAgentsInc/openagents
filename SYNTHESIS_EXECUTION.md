@@ -48,7 +48,11 @@ For the full vision, see [SYNTHESIS.md](./SYNTHESIS.md). For the agent OS concep
 
 ### Pylon — Local Runtime
 
-The single binary for running sovereign AI agents. Supports two modes simultaneously:
+The single binary for running sovereign AI agents. Supports two modes simultaneously.
+
+Pylon is the node software that connects your machine to the OpenAgents network. Think of it as the bridge between your local compute resources and the decentralized marketplace. When you run Pylon, you're either offering your GPU/CPU to others who need inference (provider mode), or you're managing your own AI agents that can tap into the network when they need more compute (host mode). Both modes can run simultaneously—you can earn sats while your agents work.
+
+The architecture is designed around sovereignty: your keys, your compute, your earnings. Pylon manages a local identity (Nostr keypair), a Lightning wallet (via Spark/Breez SDK), and auto-detects available inference backends. When a job arrives via NIP-90, Pylon routes it to whatever backend is available—Ollama, llama.cpp, Apple Foundation Models, or Claude—runs the inference, and collects payment. All without touching centralized infrastructure.
 
 | Mode | Purpose | How it works |
 |------|---------|--------------|
@@ -75,6 +79,10 @@ cargo build --release -p pylon
 
 GPU-accelerated terminal interface for Claude Code. Built on wgpui for high-performance rendering.
 
+Coder reimagines the AI coding experience as a native desktop application rather than a web interface or CLI tool. The entire UI is GPU-rendered via wgpui, giving you buttery-smooth scrolling through long conversations, instant Markdown rendering, and the responsiveness you'd expect from a proper terminal emulator. It's designed for developers who live in their terminal and want Claude to feel like a natural extension of that workflow.
+
+Under the hood, Coder integrates the Adjutant execution engine, which means it can run in autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Claude SDK, local inference, or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
+
 ```bash
 cargo run -p coder
 ```
@@ -94,6 +102,10 @@ The Coder integrates Adjutant for task execution with DSPy-powered decision maki
 
 Local-first GPU-rendered Markdown note editor with live inline formatting.
 
+Onyx takes the best ideas from Obsidian and iA Writer but rebuilds them with a focus on speed and local-first principles. Your notes live as plain Markdown files in a local vault—no cloud sync, no account required, no vendor lock-in. The editor renders Markdown inline as you type (headers grow larger, bold text becomes bold, links become clickable) without the jarring split-pane preview that most editors force on you.
+
+The GPU-rendered approach via wgpui means the editor stays responsive even with thousands of notes and complex formatting. Onyx also includes voice transcription via whisper.cpp, letting you dictate notes that are automatically transcribed and saved as Markdown. Future versions will integrate with agents for AI-assisted note-taking and knowledge graph traversal.
+
 ```bash
 cargo run -p onyx
 ```
@@ -111,6 +123,10 @@ cargo run -p onyx
 
 Desktop app for Nostr-native git collaboration (NIP-34). Treats agents as first-class contributors.
 
+GitAfter replaces GitHub with Nostr for git collaboration. Instead of centralized pull requests, issues, and reviews living on Microsoft's servers, GitAfter uses NIP-34 to store repository metadata on Nostr relays. This means your code collaboration is censorship-resistant, pseudonymous, and portable across any relay that supports the protocol.
+
+The key innovation is treating AI agents as first-class contributors. When an agent works on a task, it generates a "trajectory"—a complete record of its decision process, tool invocations, and reasoning. GitAfter renders these trajectories alongside traditional diffs, so reviewers can understand not just what changed but why. The app also supports Lightning bounties via NIP-57, enabling you to attach sats to issues that agents (or humans) can claim by solving them.
+
 ```bash
 cargo run -p gitafter
 ```
@@ -126,7 +142,11 @@ cargo run -p gitafter
 
 ### Autopilot — Autonomous Coding Agent
 
-The product layer for autonomous code tasks. Two deployment modes:
+The product layer for autonomous code tasks. Two deployment modes.
+
+Autopilot is the user-facing product that wraps the Adjutant execution engine into a complete autonomous coding experience. You give it a task ("Fix the failing tests", "Add dark mode", "Refactor this module"), and it works autonomously until the task is done or it needs human input. The system runs verification after each iteration—typically `cargo check` and `cargo test`—so it knows when it's actually finished versus when it just thinks it's finished.
+
+The architecture supports two deployment modes. Tunnel mode runs entirely on your machine: your compute, your API keys, free of charge. Container mode runs in sandboxed containers at the edge (Cloudflare Workers), useful for when you want to hand off work and not tie up your local machine. Both modes share the same Adjutant core, so behavior is consistent regardless of where execution happens.
 
 | Mode | Command | Cost | Where |
 |------|---------|------|-------|
@@ -165,6 +185,10 @@ Terminates when: success + verification passes, definitive failure, max iteratio
 
 Nostr relay optimized for agent job coordination. Runs on Cloudflare Workers.
 
+Nexus is not a general-purpose Nostr relay—it's purpose-built for the AI job marketplace. While you could technically use it for social posts, it's optimized for the high-frequency, low-latency job coordination that agents need. The relay runs on Cloudflare Workers with Durable Objects for state, giving it global distribution and the ability to handle thousands of concurrent agent connections.
+
+The key protocol is NIP-90 (Data Vending Machines), which defines how job requests and results flow between buyers and providers. Nexus adds NIP-42 authentication as a requirement, so every connected agent has a verified Nostr identity. This enables reputation tracking, spam prevention, and accountability for job completion. When a buyer submits a job, Nexus broadcasts it to subscribed providers, handles the invoice/payment dance, and delivers results back to the buyer.
+
 **Supported NIPs:**
 - NIP-90: Data Vending Machines (job requests/results)
 - NIP-89: Handler discovery
@@ -191,6 +215,10 @@ cd crates/nexus/worker && bun install && bun run deploy
 ### Runtime — Agent Execution
 
 Pluggable execution environment for agents. Plan 9-inspired filesystem abstraction.
+
+The Runtime provides a uniform execution environment for agents regardless of where they're running—browser, Cloudflare Workers, local SQLite, or a Docker container. The core abstraction is a virtual filesystem inspired by Plan 9: everything an agent needs (compute, memory, wallet, identity) is exposed as files and directories that can be read and written. This means the same agent code works everywhere; only the filesystem implementation changes.
+
+Agents run on a tick model: WAKE → LOAD → PERCEIVE → THINK → ACT → REMEMBER → SCHEDULE → SLEEP. Each tick is a complete cycle of gathering inputs, making decisions, taking actions, and storing results. This discrete-time model makes agents predictable and debuggable—you can inspect exactly what happened on any tick, replay sequences, and test edge cases. The runtime manages scheduling, so agents can request to wake at specific times or in response to external events.
 
 **Tick model:**
 ```
@@ -220,6 +248,10 @@ Works across: Browser (WASM), Cloudflare (DO), Local (SQLite), Server (Docker/K8
 
 Unified abstraction for AI service providers.
 
+The Gateway crate provides a single interface for talking to any AI backend. Instead of writing different code for Ollama, llama.cpp, Claude, and Cerebras, you implement one trait and the Gateway handles routing, health checks, and failover. This abstraction is critical for Pylon's provider mode, where the same job might be served by different backends depending on what's available.
+
+Gateway auto-detects backends at startup by probing known ports (11434 for Ollama, 8080 for llama.cpp, 11435 for Apple FM Bridge). It tracks model availability per backend and can route requests to the most appropriate provider based on model requirements, latency, and cost. For cloud providers like Cerebras and Claude, it manages API keys and rate limits. The result is that higher-level code can just call `gateway.chat()` and trust that the request will reach a working backend.
+
 **Supported backends:**
 
 | Backend | Endpoint | Detection |
@@ -244,6 +276,10 @@ pub trait InferenceGateway {
 
 Foundation for typed job schemas with deterministic hashing.
 
+The Protocol crate defines the data structures for jobs in the OpenAgents marketplace. Every job has a typed schema (like `oa.code_chunk_analysis.v1` or `oa.sandbox_run.v1`) that specifies exactly what inputs are required, what outputs are expected, and how results should be verified. This typing prevents the "garbage in, garbage out" problem where providers claim to complete jobs but produce useless results.
+
+Deterministic hashing is the key innovation: every job request and result is hashed in a way that's reproducible across implementations. This enables verification—if two providers produce the same hash for the same input, you know they produced identical outputs. Jobs are classified as either objective (deterministic, like running tests) or subjective (requires judgment, like summarizing code). Objective jobs can be verified automatically; subjective jobs require either a judge model or majority consensus from multiple providers. All jobs include provenance metadata: which model was used, what sampling parameters, token counts, and input/output hashes.
+
 **Job types:**
 
 | Job Type | Verification | Use Case |
@@ -262,8 +298,13 @@ All jobs include provenance: model, sampling params, input/output hashes, token 
 
 ### OANIX — Environment Discovery
 
-Agent operating system runtime. Discovers environment at boot:
+Agent operating system runtime. Discovers environment at boot.
 
+OANIX (OpenAgents Nix) is the boot sequence for sovereign AI agents. When Pylon starts, OANIX runs a discovery process that inventories everything the agent has access to: hardware capabilities (CPU cores, GPU type, available memory), inference backends (Ollama, llama.cpp, FM Bridge), network connectivity (which relays are reachable), and identity (Nostr keypair, wallet balance).
+
+The output is an `OanixManifest`—a JSON document that describes what this agent can do. Providers advertise their manifest on Nostr so buyers know what capabilities are available before submitting jobs. The manifest also drives runtime decisions: if OANIX detects a GPU, the agent might prefer local inference over network calls; if it detects FM Bridge, it can use Apple's on-device models for private queries. The goal is that agents understand their environment and adapt automatically.
+
+Discovery includes:
 - Hardware detection (CPU, GPU, memory)
 - Inference backend discovery (Ollama, FM Bridge, GPT-OSS)
 - Network probing (relay connectivity)
@@ -275,8 +316,13 @@ Produces an `OanixManifest` summarizing agent capabilities.
 
 ### Neobank — Treasury Management
 
-Programmable treasury for agents:
+Programmable treasury for agents.
 
+Neobank is the financial infrastructure that lets agents hold, spend, and earn Bitcoin autonomously. The core challenge is custody: how do you give an AI agent control over real money without creating a single point of failure? Neobank solves this with FROST threshold signatures—a 2-of-3 scheme where the agent holds one key, a backup is held in cold storage, and a third is optionally held by an oversight service. No single key can move funds, but the agent can operate autonomously for normal transactions.
+
+The crate enforces type-safe money handling—amounts are wrapped types that prevent float errors and unit confusion. Budget enforcement is built in: you can set per-agent caps ("this agent can spend at most 10,000 sats per day") and per-task limits ("this job can spend at most 100 sats on inference"). Neobank supports multiple rails: Lightning for instant micropayments, Taproot Assets for stablecoins, and eCash for privacy. This gives agents the full range of payment options that humans have.
+
+Key features:
 - **Self-Custody**: FROST 2-of-3 threshold signatures
 - **Multi-Rail**: Lightning, Taproot Assets, eCash
 - **Budget Enforcement**: Per-agent caps, per-task limits
@@ -346,6 +392,10 @@ See [crates/adjutant/docs/](./crates/adjutant/docs/) for full documentation.
 
 **RLM:** Iterative prompt-execute loop for complex analysis.
 
+RLM (Recursive Language Model) extends traditional LLM inference with a command loop. Instead of getting a single response, the model can emit commands like `RUN cargo test` that are executed locally, with results fed back into the conversation. The loop continues until the model emits `FINAL <result>`, indicating it's done reasoning. This enables complex multi-step analysis where the model can explore, test hypotheses, and refine its understanding iteratively.
+
+FRLM (Federated RLM) takes this further by distributing sub-queries across multiple backends. When a query is too expensive or specialized for local inference, FRLM can fan out to the swarm (NIP-90 jobs via Nostr), to cloud APIs (Claude, Cerebras), or keep it local depending on cost and privacy constraints. The federation is transparent to the caller—you get back a unified result regardless of how many backends contributed. This enables agents to punch above their local compute weight by tapping into the network when needed.
+
 ```
 Query → LlmClient → Parse Commands → Executor → [Loop until FINAL]
 ```
@@ -366,7 +416,11 @@ pylon rlm "Deep analysis" --backend claude
 
 ### LM Routing
 
-Multi-backend routing via `lm-router`:
+Multi-backend routing via `lm-router`.
+
+The LM Router sits above individual backends and provides intelligent request routing. When you call `router.complete("llama3", prompt)`, the router figures out which backend can serve that model, checks health, and dispatches the request. If the primary backend is down, it fails over to alternatives. If you request a model that only exists on one backend (like Claude), it routes directly there.
+
+Beyond simple routing, the LM Router tracks usage per model for billing and context optimization. It knows how many tokens you've consumed on each backend this billing period, can enforce rate limits, and can optimize prompts for specific model context windows. This is the layer that enables cost-aware inference: Adjutant's DSPy pipelines can query the router to understand the true cost of each option before deciding where to route a task.
 
 ```rust
 let router = LmRouter::new()
