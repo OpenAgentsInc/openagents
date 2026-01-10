@@ -1,0 +1,2000 @@
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.start({\n  ...\n})"
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "mcp.auth.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true
+          }
+        ],
+        "summary": "Remove MCP OAuth",
+        "description": "Remove OAuth credentials for an MCP server",
+        "responses": {
+          "200": {
+            "description": "OAuth credentials removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": ["success"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/auth/callback": {
+      "post": {
+        "operationId": "mcp.auth.callback",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true
+          }
+        ],
+        "summary": "Complete MCP OAuth",
+        "description": "Complete OAuth authentication for a Model Context Protocol (MCP) server using the authorization code.",
+        "responses": {
+          "200": {
+            "description": "OAuth authentication completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "description": "Authorization code from OAuth callback",
+                    "type": "string"
+                  }
+                },
+                "required": ["code"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.callback({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/auth/authenticate": {
+      "post": {
+        "operationId": "mcp.auth.authenticate",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true
+          }
+        ],
+        "summary": "Authenticate MCP OAuth",
+        "description": "Start OAuth flow and wait for callback (opens browser)",
+        "responses": {
+          "200": {
+            "description": "OAuth authentication completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.authenticate({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/connect": {
+      "post": {
+        "operationId": "mcp.connect",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "description": "Connect an MCP server",
+        "responses": {
+          "200": {
+            "description": "MCP server connected successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.connect({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/disconnect": {
+      "post": {
+        "operationId": "mcp.disconnect",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "description": "Disconnect an MCP server",
+        "responses": {
+          "200": {
+            "description": "MCP server disconnected successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.disconnect({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/lsp": {
+      "get": {
+        "operationId": "lsp.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get LSP status",
+        "description": "Get LSP server status",
+        "responses": {
+          "200": {
+            "description": "LSP server status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LSPStatus"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.lsp.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/formatter": {
+      "get": {
+        "operationId": "formatter.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get formatter status",
+        "description": "Get formatter status",
+        "responses": {
+          "200": {
+            "description": "Formatter status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FormatterStatus"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.formatter.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/tui/append-prompt": {
+      "post": {
+        "operationId": "tui.appendPrompt",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Append TUI prompt",
+        "description": "Append prompt to the TUI",
+        "responses": {
+          "200": {
+            "description": "Prompt processed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": ["text"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.appendPrompt({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/tui/open-help": {
+      "post": {
+        "operationId": "tui.openHelp",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Open help dialog",
+        "description": "Open the help dialog in the TUI to display user assistance information.",
+        "responses": {
+          "200": {
+            "description": "Help dialog opened successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openHelp({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/tui/open-sessions": {
+      "post": {
+        "operationId": "tui.openSessions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Open sessions dialog",
+        "description": "Open the session dialog",
+        "responses": {
+          "200": {
+            "description": "Session dialog opened successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openSessions({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/tui/open-themes": {
+      "post": {
+        "operationId": "tui.openThemes",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Open themes dialog",
+        "description": "Open the theme dialog",
+        "responses": {
+          "200": {
+            "description": "Theme dialog opened successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openThemes({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/tui/open-models": {
+      "post": {
+        "operationId": "tui.openModels",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Open models dialog",
+        "description": "Open the model dialog",
+        "responses": {
+          "200": {
+            "description": "Model dialog opened successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openModels({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/tui/submit-prompt": {
+      "post": {
+        "operationId": "tui.submitPrompt",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Submit TUI prompt",
+        "description": "Submit the prompt",
+        "responses": {
+          "200": {
+            "description": "Prompt submitted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.submitPrompt({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/tui/clear-prompt": {
+      "post": {
+        "operationId": "tui.clearPrompt",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Clear TUI prompt",
+        "description": "Clear the prompt",
+        "responses": {
+          "200": {
+            "description": "Prompt cleared successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.clearPrompt({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/tui/execute-command": {
+      "post": {
+        "operationId": "tui.executeCommand",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Execute TUI command",
+        "description": "Execute a TUI command (e.g. agent_cycle)",
+        "responses": {
+          "200": {
+            "description": "Command executed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string"
+                  }
+                },
+                "required": ["command"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.executeCommand({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/tui/show-toast": {
+      "post": {
+        "operationId": "tui.showToast",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Show TUI toast",
+        "description": "Show a toast notification in the TUI",
+        "responses": {
+          "200": {
+            "description": "Toast notification shown successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "variant": {
+                    "type": "string",
+                    "enum": ["info", "success", "warning", "error"]
+                  },
+                  "duration": {
+                    "description": "Duration in milliseconds",
+                    "default": 5000,
+                    "type": "number"
+                  }
+                },
+                "required": ["message", "variant"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.showToast({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/tui/publish": {
+      "post": {
+        "operationId": "tui.publish",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Publish TUI event",
+        "description": "Publish a TUI event",
+        "responses": {
+          "200": {
+            "description": "Event published successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Event.tui.prompt.append"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Event.tui.command.execute"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Event.tui.toast.show"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.publish({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/tui/control/next": {
+      "get": {
+        "operationId": "tui.control.next",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get next TUI request",
+        "description": "Retrieve the next TUI (Terminal User Interface) request from the queue for processing.",
+        "responses": {
+          "200": {
+            "description": "Next TUI request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "body": {}
+                  },
+                  "required": ["path", "body"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.control.next({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/tui/control/response": {
+      "post": {
+        "operationId": "tui.control.response",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Submit TUI response",
+        "description": "Submit a response to the TUI request queue to complete a pending request.",
+        "responses": {
+          "200": {
+            "description": "Response submitted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.control.response({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/auth/{providerID}": {
+      "put": {
+        "operationId": "auth.set",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Set auth credentials",
+        "description": "Set authentication credentials",
+        "responses": {
+          "200": {
+            "description": "Successfully set authentication credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Auth"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.auth.set({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/event": {
+      "get": {
+        "operationId": "event.subscribe",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Subscribe to events",
+        "description": "Get events",
+        "responses": {
+          "200": {
+            "description": "Event stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.event.subscribe({\n  ...\n})"
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Event.installation.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "installation.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["version"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.installation.update-available": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "installation.update-available"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["version"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "worktree": {
+            "type": "string"
+          },
+          "vcs": {
+            "type": "string",
+            "const": "git"
+          },
+          "name": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string"
+              }
+            }
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              },
+              "initialized": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          }
+        },
+        "required": ["id", "worktree", "time"]
+      },
+      "Event.project.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "project.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/Project"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.server.instance.disposed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "server.instance.disposed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "directory": {
+                "type": "string"
+              }
+            },
+            "required": ["directory"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lsp.client.diagnostics": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lsp.client.diagnostics"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "serverID": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": ["serverID", "path"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lsp.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lsp.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "FileDiff": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          },
+          "additions": {
+            "type": "number"
+          },
+          "deletions": {
+            "type": "number"
+          }
+        },
+        "required": ["file", "before", "after", "additions", "deletions"]
+      },
+      "UserMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "const": "user"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              },
+              "diffs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FileDiff"
+                }
+              }
+            },
+            "required": ["diffs"]
+          },
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "system": {
+            "type": "string"
+          },
+          "tools": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          }
+        },
+        "required": ["id", "sessionID", "role", "time", "agent", "model"]
+      },
+      "ProviderAuthError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ProviderAuthError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "UnknownError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "UnknownError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "MessageOutputLengthError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "MessageOutputLengthError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "MessageAbortedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "MessageAbortedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "APIError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "APIError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "statusCode": {
+                "type": "number"
+              },
+              "isRetryable": {
+                "type": "boolean"
+              },
+              "responseHeaders": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "responseBody": {
+                "type": "string"
+              },
+              "metadata": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["message", "isRetryable"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "const": "assistant"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderAuthError"
+              },
+              {
+                "$ref": "#/components/schemas/UnknownError"
+              },
+              {
+                "$ref": "#/components/schemas/MessageOutputLengthError"
+              },
+              {
+                "$ref": "#/components/schemas/MessageAbortedError"
+              },
+              {
+                "$ref": "#/components/schemas/APIError"
+              }
+            ]
+          },
+          "parentID": {
+            "type": "string"
+          },
+          "modelID": {
+            "type": "string"
+          },
+          "providerID": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "path": {
+            "type": "object",
+            "properties": {
+              "cwd": {
+                "type": "string"
+              },
+              "root": {
+                "type": "string"
+              }
+            },
+            "required": ["cwd", "root"]
+          },
+          "summary": {
+            "type": "boolean"
+          },
+          "cost": {
+            "type": "number"
+          },
+          "tokens": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number"
+              },
+              "output": {
+                "type": "number"
+              },
+              "reasoning": {
+                "type": "number"
+              },
+              "cache": {
+                "type": "object",
+                "properties": {
+                  "read": {
+                    "type": "number"
+                  },
+                  "write": {
+                    "type": "number"
+                  }
+                },
+                "required": ["read", "write"]
+              }
+            },
+            "required": ["input", "output", "reasoning", "cache"]
+          },
+          "finish": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sessionID",
+          "role",
+          "time",
+          "parentID",
+          "modelID",
+          "providerID",
+          "mode",
+          "agent",
+          "path",
+          "cost",
+          "tokens"
+        ]
+      },
+      "Message": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/UserMessage"
+          },
+          {
+            "$ref": "#/components/schemas/AssistantMessage"
+          }
+        ]
+      },
+      "Event.message.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "message.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "info": {
+                "$ref": "#/components/schemas/Message"
+              }
+            },
+            "required": ["info"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.message.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "message.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "messageID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "TextPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "text"
+          },
+          "text": {
+            "type": "string"
+          },
+          "synthetic": {
+            "type": "boolean"
+          },
+          "ignored": {
+            "type": "boolean"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              }
+            },
+            "required": ["start"]
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "text"]
+      },
+      "ReasoningPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "reasoning"
+          },
+          "text": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              }
+            },
+            "required": ["start"]
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "text", "time"]
+      },
+      "FilePartSourceText": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "end": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["value", "start", "end"]
+      },
+      "FileSource": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "$ref": "#/components/schemas/FilePartSourceText"
+          },
+          "type": {
+            "type": "string",
+            "const": "file"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["text", "type", "path"]
+      },
+      "Range": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "object",
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "character": {
+                "type": "number"
+              }
+            },
+            "required": ["line", "character"]
+          },
+          "end": {
+            "type": "object",
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "character": {
+                "type": "number"
+              }
+            },
+            "required": ["line", "character"]
+          }
+        },
+        "required": ["start", "end"]
+      },
+      "SymbolSource": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "$ref": "#/components/schemas/FilePartSourceText"
+          },
+          "type": {
+            "type": "string",
+            "const": "symbol"
+          },
+          "path": {
+            "type": "string"
+          },
+          "range": {
+            "$ref": "#/components/schemas/Range"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["text", "type", "path", "range", "name", "kind"]
+      },
+      "FilePartSource": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/FileSource"
+          },
+          {
+            "$ref": "#/components/schemas/SymbolSource"
+          }
+        ]
+      },
+      "FilePart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "file"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/FilePartSource"
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "mime", "url"]
+      },
+      "ToolStatePending": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "pending"
+          },
+          "input": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "raw": {
+            "type": "string"
+          }
+        },
+        "required": ["status", "input", "raw"]
+      },
+      "ToolStateRunning": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "running"
+          },
+          "input": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "title": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              }
+            },
+            "required": ["start"]
+          }
+        },
+        "required": ["status", "input", "time"]
+      },
+      "ToolStateCompleted": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "completed"
+          },
+          "input": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "output": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              },
+              "compacted": {
+                "type": "number"
+              }
+            },
+            "required": ["start", "end"]
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilePart"
+            }
+          }
+        },
+        "required": ["status", "input", "output", "title", "metadata", "time"]
+      },
+      "ToolStateError": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "error"
+          },
+          "input": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "error": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              }
+            },
+            "required": ["start", "end"]
+          }
+        },
+        "required": ["status", "input", "error", "time"]
+      },
+      "ToolState": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ToolStatePending"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateRunning"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateCompleted"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateError"
+          }
+        ]
+      },
+      "ToolPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "tool"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ToolState"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "callID", "tool", "state"]
+      },
+      "StepStartPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "step-start"
+          },
+          "snapshot": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type"]
+      },
+      "StepFinishPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "step-finish"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "snapshot": {
+            "type": "string"
+          },
+          "cost": {
+            "type": "number"
+          },
+          "tokens": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number"
+              },
+              "output": {

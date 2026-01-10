@@ -1,0 +1,2000 @@
+                "type": "number"
+              },
+              "reasoning": {
+                "type": "number"
+              },
+              "cache": {
+                "type": "object",
+                "properties": {
+                  "read": {
+                    "type": "number"
+                  },
+                  "write": {
+                    "type": "number"
+                  }
+                },
+                "required": ["read", "write"]
+              }
+            },
+            "required": ["input", "output", "reasoning", "cache"]
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "reason", "cost", "tokens"]
+      },
+      "SnapshotPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "snapshot"
+          },
+          "snapshot": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "snapshot"]
+      },
+      "PatchPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "patch"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "hash", "files"]
+      },
+      "AgentPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "agent"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "start": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "end": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["value", "start", "end"]
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "name"]
+      },
+      "RetryPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "retry"
+          },
+          "attempt": {
+            "type": "number"
+          },
+          "error": {
+            "$ref": "#/components/schemas/APIError"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "attempt", "error", "time"]
+      },
+      "CompactionPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "compaction"
+          },
+          "auto": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "auto"]
+      },
+      "Part": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/TextPart"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "const": "subtask"
+              },
+              "prompt": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "agent": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "sessionID", "messageID", "type", "prompt", "description", "agent"]
+          },
+          {
+            "$ref": "#/components/schemas/ReasoningPart"
+          },
+          {
+            "$ref": "#/components/schemas/FilePart"
+          },
+          {
+            "$ref": "#/components/schemas/ToolPart"
+          },
+          {
+            "$ref": "#/components/schemas/StepStartPart"
+          },
+          {
+            "$ref": "#/components/schemas/StepFinishPart"
+          },
+          {
+            "$ref": "#/components/schemas/SnapshotPart"
+          },
+          {
+            "$ref": "#/components/schemas/PatchPart"
+          },
+          {
+            "$ref": "#/components/schemas/AgentPart"
+          },
+          {
+            "$ref": "#/components/schemas/RetryPart"
+          },
+          {
+            "$ref": "#/components/schemas/CompactionPart"
+          }
+        ]
+      },
+      "Event.message.part.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "message.part.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "part": {
+                "$ref": "#/components/schemas/Part"
+              },
+              "delta": {
+                "type": "string"
+              }
+            },
+            "required": ["part"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.message.part.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "message.part.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "partID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "messageID", "partID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Permission": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          }
+        },
+        "required": ["id", "type", "sessionID", "messageID", "title", "metadata", "time"]
+      },
+      "Event.permission.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "permission.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/Permission"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.permission.replied": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "permission.replied"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "permissionID": {
+                "type": "string"
+              },
+              "response": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "permissionID", "response"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.file.edited": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.edited"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            },
+            "required": ["file"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Todo": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "description": "Brief description of the task",
+            "type": "string"
+          },
+          "status": {
+            "description": "Current status of the task: pending, in_progress, completed, cancelled",
+            "type": "string"
+          },
+          "priority": {
+            "description": "Priority level of the task: high, medium, low",
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique identifier for the todo item",
+            "type": "string"
+          }
+        },
+        "required": ["content", "status", "priority", "id"]
+      },
+      "Event.todo.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "todo.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "todos": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Todo"
+                }
+              }
+            },
+            "required": ["sessionID", "todos"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "SessionStatus": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "idle"
+              }
+            },
+            "required": ["type"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "retry"
+              },
+              "attempt": {
+                "type": "number"
+              },
+              "message": {
+                "type": "string"
+              },
+              "next": {
+                "type": "number"
+              }
+            },
+            "required": ["type", "attempt", "message", "next"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "busy"
+              }
+            },
+            "required": ["type"]
+          }
+        ]
+      },
+      "Event.session.status": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.status"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "status": {
+                "$ref": "#/components/schemas/SessionStatus"
+              }
+            },
+            "required": ["sessionID", "status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.idle": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.idle"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.compacted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.compacted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.tui.prompt.append": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "tui.prompt.append"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["text"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.tui.command.execute": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "tui.command.execute"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "session.list",
+                      "session.new",
+                      "session.share",
+                      "session.interrupt",
+                      "session.compact",
+                      "session.page.up",
+                      "session.page.down",
+                      "session.half.page.up",
+                      "session.half.page.down",
+                      "session.first",
+                      "session.last",
+                      "prompt.clear",
+                      "prompt.submit",
+                      "agent.cycle"
+                    ]
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": ["command"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.tui.toast.show": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "tui.toast.show"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "variant": {
+                "type": "string",
+                "enum": ["info", "success", "warning", "error"]
+              },
+              "duration": {
+                "description": "Duration in milliseconds",
+                "default": 5000,
+                "type": "number"
+              }
+            },
+            "required": ["message", "variant"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.tools.changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.tools.changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              }
+            },
+            "required": ["server"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.command.executed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "command.executed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "arguments": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              }
+            },
+            "required": ["name", "sessionID", "arguments", "messageID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "projectID": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          },
+          "parentID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "additions": {
+                "type": "number"
+              },
+              "deletions": {
+                "type": "number"
+              },
+              "files": {
+                "type": "number"
+              },
+              "diffs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FileDiff"
+                }
+              }
+            },
+            "required": ["additions", "deletions", "files"]
+          },
+          "share": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": ["url"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              },
+              "compacting": {
+                "type": "number"
+              },
+              "archived": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          },
+          "revert": {
+            "type": "object",
+            "properties": {
+              "messageID": {
+                "type": "string"
+              },
+              "partID": {
+                "type": "string"
+              },
+              "snapshot": {
+                "type": "string"
+              },
+              "diff": {
+                "type": "string"
+              }
+            },
+            "required": ["messageID"]
+          }
+        },
+        "required": ["id", "projectID", "directory", "title", "version", "time"]
+      },
+      "Event.session.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "info": {
+                "$ref": "#/components/schemas/Session"
+              }
+            },
+            "required": ["info"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "info": {
+                "$ref": "#/components/schemas/Session"
+              }
+            },
+            "required": ["info"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "info": {
+                "$ref": "#/components/schemas/Session"
+              }
+            },
+            "required": ["info"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.diff": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.diff"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "diff": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FileDiff"
+                }
+              }
+            },
+            "required": ["sessionID", "diff"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.error": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.error"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ProviderAuthError"
+                  },
+                  {
+                    "$ref": "#/components/schemas/UnknownError"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MessageOutputLengthError"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MessageAbortedError"
+                  },
+                  {
+                    "$ref": "#/components/schemas/APIError"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.file.watcher.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.watcher.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "event": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "add"
+                  },
+                  {
+                    "type": "string",
+                    "const": "change"
+                  },
+                  {
+                    "type": "string",
+                    "const": "unlink"
+                  }
+                ]
+              }
+            },
+            "required": ["file", "event"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.vcs.branch.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "vcs.branch.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "branch": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Pty": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^pty.*"
+          },
+          "title": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "exited"]
+          },
+          "pid": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "title", "command", "args", "cwd", "status", "pid"]
+      },
+      "Event.pty.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pty.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "info": {
+                "$ref": "#/components/schemas/Pty"
+              }
+            },
+            "required": ["info"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.pty.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pty.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "info": {
+                "$ref": "#/components/schemas/Pty"
+              }
+            },
+            "required": ["info"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.pty.exited": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pty.exited"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^pty.*"
+              },
+              "exitCode": {
+                "type": "number"
+              }
+            },
+            "required": ["id", "exitCode"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.pty.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pty.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^pty.*"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.server.connected": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "server.connected"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.global.disposed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "global.disposed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Event.installation.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.installation.update-available"
+          },
+          {
+            "$ref": "#/components/schemas/Event.project.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.server.instance.disposed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lsp.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.message.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.message.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.message.part.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.message.part.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.permission.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.permission.replied"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.edited"
+          },
+          {
+            "$ref": "#/components/schemas/Event.todo.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.status"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.idle"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.compacted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.tui.prompt.append"
+          },
+          {
+            "$ref": "#/components/schemas/Event.tui.command.execute"
+          },
+          {
+            "$ref": "#/components/schemas/Event.tui.toast.show"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.tools.changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.command.executed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.deleted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.diff"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.error"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.watcher.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.vcs.branch.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.pty.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.pty.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.pty.exited"
+          },
+          {
+            "$ref": "#/components/schemas/Event.pty.deleted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.server.connected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.global.disposed"
+          }
+        ]
+      },
+      "GlobalEvent": {
+        "type": "object",
+        "properties": {
+          "directory": {
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/Event"
+          }
+        },
+        "required": ["directory", "payload"]
+      },
+      "BadRequestError": {
+        "type": "object",
+        "properties": {
+          "data": {},
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "success": {
+            "type": "boolean",
+            "const": false
+          }
+        },
+        "required": ["data", "errors", "success"]
+      },
+      "NotFoundError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "NotFoundError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "KeybindsConfig": {
+        "description": "Custom keybind configurations",
+        "type": "object",
+        "properties": {
+          "leader": {
+            "description": "Leader key for keybind combinations",
+            "default": "ctrl+x",
+            "type": "string"
+          },
+          "app_exit": {
+            "description": "Exit the application",
+            "default": "ctrl+c,ctrl+d,<leader>q",
+            "type": "string"
+          },
+          "editor_open": {
+            "description": "Open external editor",
+            "default": "<leader>e",
+            "type": "string"
+          },
+          "theme_list": {
+            "description": "List available themes",
+            "default": "<leader>t",
+            "type": "string"
+          },
+          "sidebar_toggle": {
+            "description": "Toggle sidebar",
+            "default": "<leader>b",
+            "type": "string"
+          },
+          "scrollbar_toggle": {
+            "description": "Toggle session scrollbar",
+            "default": "none",
+            "type": "string"
+          },
+          "username_toggle": {
+            "description": "Toggle username visibility",
+            "default": "none",
+            "type": "string"
+          },
+          "status_view": {
+            "description": "View status",
+            "default": "<leader>s",
+            "type": "string"
+          },
+          "session_export": {
+            "description": "Export session to editor",
+            "default": "<leader>x",
+            "type": "string"
+          },
+          "session_new": {
+            "description": "Create a new session",
+            "default": "<leader>n",
+            "type": "string"
+          },
+          "session_list": {
+            "description": "List all sessions",
+            "default": "<leader>l",
+            "type": "string"
+          },
+          "session_timeline": {
+            "description": "Show session timeline",
+            "default": "<leader>g",
+            "type": "string"
+          },
+          "session_fork": {
+            "description": "Fork session from message",
+            "default": "none",
+            "type": "string"
+          },
+          "session_rename": {
+            "description": "Rename session",
+            "default": "none",
+            "type": "string"
+          },
+          "session_share": {
+            "description": "Share current session",
+            "default": "none",
+            "type": "string"
+          },
+          "session_unshare": {
+            "description": "Unshare current session",
+            "default": "none",
+            "type": "string"
+          },
+          "session_interrupt": {
+            "description": "Interrupt current session",
+            "default": "escape",
+            "type": "string"
+          },
+          "session_compact": {
+            "description": "Compact the session",
+            "default": "<leader>c",
+            "type": "string"
+          },
+          "messages_page_up": {
+            "description": "Scroll messages up by one page",
+            "default": "pageup",
+            "type": "string"
+          },
+          "messages_page_down": {
+            "description": "Scroll messages down by one page",
+            "default": "pagedown",
+            "type": "string"
+          },
+          "messages_half_page_up": {
+            "description": "Scroll messages up by half page",
+            "default": "ctrl+alt+u",
+            "type": "string"
+          },
+          "messages_half_page_down": {
+            "description": "Scroll messages down by half page",
+            "default": "ctrl+alt+d",
+            "type": "string"
+          },
+          "messages_first": {
+            "description": "Navigate to first message",
+            "default": "ctrl+g,home",
+            "type": "string"
+          },
+          "messages_last": {
+            "description": "Navigate to last message",
+            "default": "ctrl+alt+g,end",
+            "type": "string"
+          },
+          "messages_next": {
+            "description": "Navigate to next message",
+            "default": "none",
+            "type": "string"
+          },
+          "messages_previous": {
+            "description": "Navigate to previous message",
+            "default": "none",
+            "type": "string"
+          },
+          "messages_last_user": {
+            "description": "Navigate to last user message",
+            "default": "none",
+            "type": "string"
+          },
+          "messages_copy": {
+            "description": "Copy message",
+            "default": "<leader>y",
+            "type": "string"
+          },
+          "messages_undo": {
+            "description": "Undo message",
+            "default": "<leader>u",
+            "type": "string"
+          },
+          "messages_redo": {
+            "description": "Redo message",
+            "default": "<leader>r",
+            "type": "string"
+          },
+          "messages_toggle_conceal": {
+            "description": "Toggle code block concealment in messages",
+            "default": "<leader>h",
+            "type": "string"
+          },
+          "tool_details": {
+            "description": "Toggle tool details visibility",
+            "default": "none",
+            "type": "string"
+          },
+          "model_list": {
+            "description": "List available models",
+            "default": "<leader>m",
+            "type": "string"
+          },
+          "model_cycle_recent": {
+            "description": "Next recently used model",
+            "default": "f2",
+            "type": "string"
+          },
+          "model_cycle_recent_reverse": {
+            "description": "Previous recently used model",
+            "default": "shift+f2",
+            "type": "string"
+          },
+          "model_cycle_favorite": {
+            "description": "Next favorite model",
+            "default": "none",
+            "type": "string"
+          },
+          "model_cycle_favorite_reverse": {
+            "description": "Previous favorite model",
+            "default": "none",
+            "type": "string"
+          },
+          "command_list": {
+            "description": "List available commands",
+            "default": "ctrl+p",
+            "type": "string"
+          },
+          "agent_list": {
+            "description": "List agents",
+            "default": "<leader>a",
+            "type": "string"
+          },
+          "agent_cycle": {
+            "description": "Next agent",
+            "default": "tab",
+            "type": "string"
+          },
+          "agent_cycle_reverse": {
+            "description": "Previous agent",
+            "default": "shift+tab",
+            "type": "string"
+          },
+          "input_clear": {
+            "description": "Clear input field",
+            "default": "ctrl+c",
+            "type": "string"
+          },
+          "input_paste": {
+            "description": "Paste from clipboard",
+            "default": "ctrl+v",
+            "type": "string"
+          },
+          "input_submit": {
+            "description": "Submit input",
+            "default": "return",
+            "type": "string"
+          },
+          "input_newline": {
+            "description": "Insert newline in input",
+            "default": "shift+return,ctrl+return,alt+return,ctrl+j",
+            "type": "string"
+          },
+          "input_move_left": {
+            "description": "Move cursor left in input",
+            "default": "left,ctrl+b",
+            "type": "string"
+          },
+          "input_move_right": {
+            "description": "Move cursor right in input",
+            "default": "right,ctrl+f",
+            "type": "string"
+          },
+          "input_move_up": {
+            "description": "Move cursor up in input",
+            "default": "up",
+            "type": "string"
+          },
+          "input_move_down": {
+            "description": "Move cursor down in input",
+            "default": "down",
+            "type": "string"
+          },
+          "input_select_left": {
+            "description": "Select left in input",
+            "default": "shift+left",
+            "type": "string"
+          },
+          "input_select_right": {
+            "description": "Select right in input",
+            "default": "shift+right",
+            "type": "string"
+          },
+          "input_select_up": {
+            "description": "Select up in input",
+            "default": "shift+up",
+            "type": "string"
+          },
+          "input_select_down": {
+            "description": "Select down in input",
+            "default": "shift+down",
+            "type": "string"
+          },
+          "input_line_home": {
+            "description": "Move to start of line in input",
+            "default": "ctrl+a",
+            "type": "string"
+          },
+          "input_line_end": {
+            "description": "Move to end of line in input",
+            "default": "ctrl+e",
+            "type": "string"
+          },
+          "input_select_line_home": {
+            "description": "Select to start of line in input",
+            "default": "ctrl+shift+a",
+            "type": "string"
+          },
+          "input_select_line_end": {
+            "description": "Select to end of line in input",
+            "default": "ctrl+shift+e",
+            "type": "string"
+          },
+          "input_visual_line_home": {
+            "description": "Move to start of visual line in input",
+            "default": "alt+a",
+            "type": "string"
+          },
+          "input_visual_line_end": {
+            "description": "Move to end of visual line in input",
+            "default": "alt+e",
+            "type": "string"
+          },
+          "input_select_visual_line_home": {
+            "description": "Select to start of visual line in input",
+            "default": "alt+shift+a",
+            "type": "string"
+          },
+          "input_select_visual_line_end": {
+            "description": "Select to end of visual line in input",
+            "default": "alt+shift+e",
+            "type": "string"
+          },
+          "input_buffer_home": {
+            "description": "Move to start of buffer in input",
+            "default": "home",
+            "type": "string"
+          },
+          "input_buffer_end": {
+            "description": "Move to end of buffer in input",
+            "default": "end",
+            "type": "string"
+          },
+          "input_select_buffer_home": {
+            "description": "Select to start of buffer in input",
+            "default": "shift+home",
+            "type": "string"
+          },
+          "input_select_buffer_end": {
+            "description": "Select to end of buffer in input",
+            "default": "shift+end",
+            "type": "string"
+          },
+          "input_delete_line": {
+            "description": "Delete line in input",
+            "default": "ctrl+shift+d",
+            "type": "string"
+          },
+          "input_delete_to_line_end": {
+            "description": "Delete to end of line in input",
+            "default": "ctrl+k",
+            "type": "string"
+          },
+          "input_delete_to_line_start": {
+            "description": "Delete to start of line in input",
+            "default": "ctrl+u",
+            "type": "string"
+          },
+          "input_backspace": {
+            "description": "Backspace in input",
+            "default": "backspace,shift+backspace",
+            "type": "string"
+          },
+          "input_delete": {
+            "description": "Delete character in input",
+            "default": "ctrl+d,delete,shift+delete",
+            "type": "string"
+          },
+          "input_undo": {
+            "description": "Undo in input",
+            "default": "ctrl+-,super+z",
+            "type": "string"
+          },
+          "input_redo": {
+            "description": "Redo in input",
+            "default": "ctrl+.,super+shift+z",
+            "type": "string"
+          },
+          "input_word_forward": {
+            "description": "Move word forward in input",
+            "default": "alt+f,alt+right,ctrl+right",
+            "type": "string"
+          },
+          "input_word_backward": {
+            "description": "Move word backward in input",
+            "default": "alt+b,alt+left,ctrl+left",
+            "type": "string"
+          },
+          "input_select_word_forward": {
+            "description": "Select word forward in input",
+            "default": "alt+shift+f,alt+shift+right",
+            "type": "string"
+          },
+          "input_select_word_backward": {
+            "description": "Select word backward in input",
+            "default": "alt+shift+b,alt+shift+left",
+            "type": "string"
+          },
+          "input_delete_word_forward": {
+            "description": "Delete word forward in input",
+            "default": "alt+d,alt+delete,ctrl+delete",
+            "type": "string"
+          },
+          "input_delete_word_backward": {
+            "description": "Delete word backward in input",
+            "default": "ctrl+w,ctrl+backspace,alt+backspace",
+            "type": "string"
+          },
+          "history_previous": {
+            "description": "Previous history item",
+            "default": "up",
+            "type": "string"
+          },
+          "history_next": {
+            "description": "Next history item",
+            "default": "down",
+            "type": "string"
+          },
+          "session_child_cycle": {
+            "description": "Next child session",
+            "default": "<leader>right",
+            "type": "string"
+          },
+          "session_child_cycle_reverse": {
+            "description": "Previous child session",
+            "default": "<leader>left",
+            "type": "string"
+          },
+          "session_parent": {
+            "description": "Go to parent session",
+            "default": "<leader>up",
+            "type": "string"
+          },
+          "terminal_suspend": {
+            "description": "Suspend terminal",
+            "default": "ctrl+z",
+            "type": "string"
+          },
+          "terminal_title_toggle": {
+            "description": "Toggle terminal title",
+            "default": "none",
+            "type": "string"
+          },
+          "tips_toggle": {
+            "description": "Toggle tips on home screen",
+            "default": "<leader>h",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentConfig": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "temperature": {
+            "type": "number"
+          },
+          "top_p": {
+            "type": "number"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "tools": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "disable": {
+            "type": "boolean"
+          },
+          "description": {
+            "description": "Description of when to use the agent",
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["subagent", "primary", "all"]
+          },
+          "color": {
+            "description": "Hex color code for the agent (e.g., #FF5733)",
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "maxSteps": {
+            "description": "Maximum number of agentic iterations before forcing text-only response",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "permission": {
+            "type": "object",
+            "properties": {
+              "edit": {
+                "type": "string",
+                "enum": ["ask", "allow", "deny"]
+              },
+              "bash": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "skill": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "webfetch": {
+                "type": "string",
+                "enum": ["ask", "allow", "deny"]
+              },
+              "doom_loop": {
+                "type": "string",
+                "enum": ["ask", "allow", "deny"]
+              },
+              "external_directory": {
+                "type": "string",
+                "enum": ["ask", "allow", "deny"]
+              }
+            }
+          }
+        },
+        "additionalProperties": {}
+      },
+      "ProviderConfig": {
+        "type": "object",
+        "properties": {
+          "api": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "env": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "npm": {
+            "type": "string"
+          },
+          "models": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "family": {
+                  "type": "string"
+                },
+                "release_date": {
+                  "type": "string"
+                },
+                "attachment": {
+                  "type": "boolean"
+                },
+                "reasoning": {
+                  "type": "boolean"
+                },
+                "temperature": {
+                  "type": "boolean"
+                },
+                "tool_call": {
+                  "type": "boolean"
+                },
+                "interleaved": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "enum": ["reasoning_content", "reasoning_details"]
+                        }
+                      },
+                      "required": ["field"],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "cost": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    },
+                    "cache_read": {
+                      "type": "number"
+                    },
+                    "cache_write": {
+                      "type": "number"
+                    },
+                    "context_over_200k": {
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "cache_read": {
+                          "type": "number"
+                        },
+                        "cache_write": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["input", "output"]
+                    }
+                  },
+                  "required": ["input", "output"]
+                },
+                "limit": {
+                  "type": "object",
+                  "properties": {
+                    "context": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["context", "output"]
+                },
+                "modalities": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["text", "audio", "image", "video", "pdf"]
+                      }
+                    },
+                    "output": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["text", "audio", "image", "video", "pdf"]
+                      }
+                    }
+                  },
+                  "required": ["input", "output"]
+                },
+                "experimental": {
+                  "type": "boolean"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["alpha", "beta", "deprecated"]
+                },
+                "options": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "headers": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "provider": {
+                  "type": "object",
+                  "properties": {
+                    "npm": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["npm"]
+                }
+              }
+            }
+          },
+          "whitelist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blacklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "apiKey": {
+                "type": "string"
+              },
+              "baseURL": {
+                "type": "string"
+              },
+              "enterpriseUrl": {
+                "description": "GitHub Enterprise URL for copilot authentication",
+                "type": "string"
+              },
+              "setCacheKey": {
+                "description": "Enable promptCacheKey for this provider (default false)",
+                "type": "boolean"
+              },
+              "timeout": {

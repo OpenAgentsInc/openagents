@@ -47,6 +47,8 @@ private
 models/
 crates/ml/models/
 *.tsbuildinfo
+crates/ml/tests/fixtures/tokenizer.json
+crates/opencode-sdk/openapi.json
 
 # Beads local artifacts
 .beads/bd.sock

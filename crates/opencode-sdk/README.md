@@ -11,6 +11,11 @@ This SDK provides a native Rust interface to OpenCode servers, enabling:
 - **Session management**: Built-in conversation persistence
 - **Type-safe**: Generated types from OpenAPI specification
 
+## OpenAPI Spec
+
+The full OpenAPI spec is split into parts under `crates/opencode-sdk/openapi/parts/`.
+Reassemble it with `crates/opencode-sdk/scripts/assemble-openapi.sh` when needed.
+
 ## Installation
 
 Add to your `Cargo.toml`:
