@@ -38,6 +38,7 @@
 //! 3. **Analysis-only** - If neither is available
 
 pub mod auth;
+pub mod autopilot_loop;
 pub mod cli;
 pub mod claude_executor;
 pub mod delegate;
@@ -63,6 +64,7 @@ pub use planner::{Complexity, TaskPlan};
 pub use rlm_agent::{rlm_agent_definition, rlm_agent_with_write_access};
 pub use tiered::TieredExecutor;
 pub use tools::{Tool, ToolRegistry};
+pub use autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotOutput, AutopilotResult, CliOutput, ChannelOutput, Verification};
 
 /// Errors that can occur during Adjutant operations.
 #[derive(Error, Debug)]

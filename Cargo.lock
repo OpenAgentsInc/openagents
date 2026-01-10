@@ -258,6 +258,7 @@ dependencies = [
  "chrono",
  "clap",
  "claude-agent-sdk",
+ "ctrlc",
  "dirs 5.0.1",
  "dsrs",
  "dsrs-macros",

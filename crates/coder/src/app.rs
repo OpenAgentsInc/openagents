@@ -51,7 +51,7 @@ use claude_agent_sdk::protocol::McpServerStatus;
 
 // Autopilot/Adjutant
 use adjutant::{Adjutant, Task as AdjutantTask};
-use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult};
+use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult, ChannelOutput};
 use wgpui::components::atoms::{
     AgentStatus, AgentType, PermissionAction, SessionStatus, ToolStatus, ToolType,
 };
@@ -7410,11 +7410,12 @@ impl CoderApp {
                         };
 
                         // Create and run the autopilot loop
+                        let channel_output = ChannelOutput::new(token_tx);
                         let autopilot_loop = AutopilotLoop::new(
                             adjutant,
                             task,
                             config,
-                            token_tx,
+                            channel_output,
                             interrupt_flag,
                         );
 
