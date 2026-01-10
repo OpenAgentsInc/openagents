@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::dspy::classify_event_intent;
+use crate::protocol::nip90::{is_dvm_kind, is_job_feedback_kind, is_job_request_kind, is_job_result_kind};
+
 /// NIP-01 filter for querying events
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Filter {
@@ -44,6 +47,10 @@ pub struct Filter {
     /// Maximum number of events to return
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
+
+    /// Optional semantic intent filter (non-standard extension)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent: Option<String>,
 }
 
 impl Filter {
@@ -133,6 +140,23 @@ impl Filter {
         true
     }
 
+    /// Check if an event matches this filter, including semantic intent.
+    pub async fn matches_with_intent(&self, event: &nostr::Event) -> bool {
+        if !self.matches(event) {
+            return false;
+        }
+
+        if let Some(ref intent) = self.intent {
+            if let Some(classification) = classify_event_intent(event).await {
+                return normalize_intent(&classification.intent) == normalize_intent(intent);
+            }
+
+            return fallback_intent_match(intent, event);
+        }
+
+        true
+    }
+
     /// Convert to SQL WHERE clause components
     pub fn to_sql_conditions(&self) -> (String, Vec<String>) {
         let mut conditions = Vec::new();
@@ -196,5 +220,23 @@ impl Filter {
         };
 
         (where_clause, params)
+    }
+}
+
+fn normalize_intent(intent: &str) -> String {
+    intent
+        .to_lowercase()
+        .replace([' ', '-', '_'], "")
+        .trim()
+        .to_string()
+}
+
+fn fallback_intent_match(intent: &str, event: &nostr::Event) -> bool {
+    match normalize_intent(intent).as_str() {
+        "jobrequest" => is_job_request_kind(event.kind),
+        "jobresult" => is_job_result_kind(event.kind),
+        "jobfeedback" => is_job_feedback_kind(event.kind),
+        "dvm" | "job" => is_dvm_kind(event.kind),
+        _ => false,
     }
 }

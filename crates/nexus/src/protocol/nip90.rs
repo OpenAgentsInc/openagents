@@ -3,6 +3,8 @@
 //! Job request and result kinds for decentralized compute.
 //! Pylon desktops subscribe to job requests and publish results.
 
+use crate::dspy::{JobKindResult, classify_job_kind, classify_job_kind_for_event};
+
 /// Job request kind range (5000-5999)
 pub const JOB_REQUEST_KIND_MIN: u16 = 5000;
 pub const JOB_REQUEST_KIND_MAX: u16 = 5999;
@@ -89,4 +91,17 @@ pub fn get_requester_pubkey(event: &nostr::Event) -> Option<String> {
         }
     }
     None
+}
+
+/// Classify job kind and complexity using DSPy.
+pub async fn classify_job_kind_event(event: &nostr::Event) -> Option<JobKindResult> {
+    classify_job_kind_for_event(event).await
+}
+
+/// Classify job kind and complexity from raw payloads.
+pub async fn classify_job_kind_payload(
+    job_content: &str,
+    job_params: &str,
+) -> Option<JobKindResult> {
+    classify_job_kind(job_content, job_params).await
 }

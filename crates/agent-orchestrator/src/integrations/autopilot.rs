@@ -1,8 +1,44 @@
 use crate::hooks::{Hook, HookResult, SessionEvent, ToolCall, ToolOutput};
 use async_trait::async_trait;
+use dsrs::{example, Predict, Prediction, Predictor, Signature, GLOBAL_SETTINGS};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, RwLock};
+
+// ============================================================================
+// DSPy Signatures
+// ============================================================================
+
+#[Signature]
+struct IssueSelectionSignature {
+    /// Select next issue to work on.
+
+    /// JSON array of open issues
+    #[input]
+    open_issues: String,
+
+    /// Agent capabilities or identifier
+    #[input]
+    agent_capabilities: String,
+
+    /// Recent work summary
+    #[input]
+    recent_work: String,
+
+    /// Selected issue ID
+    #[output]
+    selected_issue_id: String,
+
+    /// Rationale for the selection
+    #[output]
+    reasoning: String,
+
+    /// Estimated complexity
+    #[output]
+    estimated_complexity: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IssueInfo {
@@ -83,12 +119,26 @@ impl IssueStore for InMemoryIssueStore {
         guard.get(issue_id).cloned()
     }
 
-    fn get_next_ready(&self, _agent: Option<&str>) -> Option<IssueInfo> {
+    fn get_next_ready(&self, agent: Option<&str>) -> Option<IssueInfo> {
         let guard = self.issues.read().ok()?;
-        guard
+        let mut open_issues: Vec<IssueInfo> = guard
             .values()
-            .find(|i| i.status == IssueStatus::Open)
+            .filter(|i| i.status == IssueStatus::Open)
             .cloned()
+            .collect();
+
+        if open_issues.is_empty() {
+            return None;
+        }
+
+        if let Some(selected_id) = select_issue_dspy(&open_issues, agent, &guard) {
+            if let Some(selected) = open_issues.iter().find(|i| i.id == selected_id) {
+                return Some(selected.clone());
+            }
+        }
+
+        open_issues.sort_by(|a, b| a.id.cmp(&b.id));
+        open_issues.into_iter().next()
     }
 }
 
@@ -252,6 +302,90 @@ impl AutopilotIntegration {
             IssueClaimHook::new(self.store.clone(), self.run_id.clone()),
             IssueCompleteHook::new(self.store.clone()),
         )
+    }
+}
+
+fn dspy_ready() -> bool {
+    GLOBAL_SETTINGS.read().unwrap().is_some()
+}
+
+fn run_prediction<F>(future: F) -> Option<Prediction>
+where
+    F: Future<Output = std::result::Result<Prediction, anyhow::Error>>,
+{
+    if !dspy_ready() {
+        return None;
+    }
+
+    let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        catch_unwind(AssertUnwindSafe(|| {
+            tokio::task::block_in_place(|| handle.block_on(future))
+        }))
+    } else if let Ok(runtime) = tokio::runtime::Runtime::new() {
+        catch_unwind(AssertUnwindSafe(|| runtime.block_on(future)))
+    } else {
+        return None;
+    };
+
+    match result {
+        Ok(Ok(prediction)) => Some(prediction),
+        _ => None,
+    }
+}
+
+fn get_string(prediction: &Prediction, key: &str) -> String {
+    let val = prediction.get(key, None);
+    if let Some(s) = val.as_str() {
+        s.to_string()
+    } else {
+        val.to_string().trim_matches('"').to_string()
+    }
+}
+
+fn summarize_recent_work(issues: &HashMap<String, IssueInfo>) -> String {
+    let mut summaries = Vec::new();
+    for issue in issues.values() {
+        if issue.status != IssueStatus::Open {
+            summaries.push(format!("{} ({:?})", issue.id, issue.status));
+        }
+    }
+
+    if summaries.is_empty() {
+        "None".to_string()
+    } else {
+        summaries.join(", ")
+    }
+}
+
+fn select_issue_dspy(
+    open_issues: &[IssueInfo],
+    agent: Option<&str>,
+    all_issues: &HashMap<String, IssueInfo>,
+) -> Option<String> {
+    if !dspy_ready() {
+        return None;
+    }
+
+    let open_issues_json = serde_json::to_string(open_issues).ok()?;
+    let recent_work = summarize_recent_work(all_issues);
+    let capabilities = agent
+        .map(|id| format!("agent_id: {}", id))
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let selector = Predict::new(IssueSelectionSignature::new());
+    let example = example! {
+        "open_issues": "input" => open_issues_json,
+        "agent_capabilities": "input" => capabilities,
+        "recent_work": "input" => recent_work,
+    };
+
+    let prediction = run_prediction(selector.forward(example))?;
+    let selected_id = get_string(&prediction, "selected_issue_id");
+
+    if selected_id.is_empty() {
+        None
+    } else {
+        Some(selected_id)
     }
 }
 

@@ -46,12 +46,12 @@ DSPy signatures are typed input/output contracts for LLM tasks. Each signature:
 | **19** | autopilot | TestStatusClassifier | Detect test failures | Complete |
 | **19** | autopilot | PathValidationSignature | Validate file paths | Complete |
 | **19** | autopilot | ActionableStepSignature | Detect actionable language | Complete |
-| **20** | agent-orchestrator | DirectiveStatusParser | Parse directive status | Planned |
-| **20** | agent-orchestrator | DirectivePriorityClassifier | Classify directive priority | Planned |
-| **20** | agent-orchestrator | DirectiveMatchingSignature | Semantic directive matching | Planned |
-| **20** | agent-orchestrator | IssueSelectionSignature | Prioritize issues | Planned |
-| **20** | nexus | EventIntentClassifier | Classify event intent | Planned |
-| **20** | nexus | JobKindClassifier | Classify NIP-90 job types | Planned |
+| **20** | agent-orchestrator | DirectiveStatusParser | Parse directive status | Complete |
+| **20** | agent-orchestrator | DirectivePriorityClassifier | Classify directive priority | Complete |
+| **20** | agent-orchestrator | DirectiveMatchingSignature | Semantic directive matching | Complete |
+| **20** | agent-orchestrator | IssueSelectionSignature | Prioritize issues | Complete |
+| **20** | nexus | EventIntentClassifier | Classify event intent | Complete |
+| **20** | nexus | JobKindClassifier | Classify NIP-90 job types | Complete |
 | **21** | marketplace | SkillSecurityClassifier | Classify skill risk | Planned |
 | **21** | marketplace | FilesystemPermissionSignature | Learn safe permissions | Planned |
 | **21** | marketplace | ResourceLimitSignature | Learn resource limits | Planned |
@@ -412,7 +412,8 @@ struct ActionableStepSignature {
 ### Wave 20: Agent-Orchestrator & Nexus
 
 ```rust
-// crates/agent-orchestrator/src/dspy.rs (NEW)
+// crates/agent-orchestrator/src/integrations/directives.rs
+// crates/agent-orchestrator/src/integrations/autopilot.rs
 
 #[Signature]
 struct DirectiveStatusParser {
@@ -430,6 +431,17 @@ struct DirectivePriorityClassifier {
     #[input] pub directive_text: String,
     #[input] pub context: String,
     #[output] pub priority: String,        // Critical/High/Medium/Low
+    #[output] pub reasoning: String,
+}
+
+#[Signature]
+struct DirectiveMatchingSignature {
+    /// Semantic matching between a directive and a query.
+
+    #[input] pub directive_text: String,
+    #[input] pub query: String,
+    #[output] pub matches: bool,
+    #[output] pub confidence: f32,
     #[output] pub reasoning: String,
 }
 
@@ -577,6 +589,6 @@ This enables:
 | frlm | `crates/frlm/src/dspy_signatures.rs` |
 | rlm | `crates/rlm/src/dspy.rs` (Wave 16) |
 | autopilot | `crates/autopilot/src/dspy_planning.rs`, `crates/autopilot/src/dspy_verify.rs`, `crates/autopilot/src/dspy_optimization.rs` (Wave 19) |
-| agent-orchestrator | `crates/agent-orchestrator/src/dspy.rs` (Wave 20) |
+| agent-orchestrator | `crates/agent-orchestrator/src/integrations/directives.rs`, `crates/agent-orchestrator/src/integrations/autopilot.rs` (Wave 20) |
 | nexus | `crates/nexus/src/dspy.rs` (Wave 20) |
 | marketplace | `crates/marketplace/src/dspy_security.rs` (Wave 21) |
