@@ -1,6 +1,7 @@
 //! Compute backend discovery - Ollama, Apple FM, llama.cpp.
 
 use crate::manifest::{ComputeManifest, InferenceBackend};
+use std::process::Command;
 
 /// Discover available compute backends.
 pub async fn discover_compute() -> anyhow::Result<ComputeManifest> {
