@@ -82,9 +82,9 @@ Entry point that:
 5. Starts Actix server
 6. Opens wry/tao window
 
-### `src/server.rs`
+### `src/server.rs` + `src/server/`
 
-Actix-web server with all HTTP routes:
+Actix-web server entrypoint and handler modules:
 
 - `GET /` - Home page (repository list)
 - `GET /repo/{id}` - Repository detail
@@ -215,7 +215,7 @@ impl WsBroadcaster {
 
 ## Adding a New Page
 
-1. **Add route in `server.rs`**:
+1. **Add route in `src/server.rs`** (entrypoint; handlers live under `src/server/`):
 
 ```rust
 .route("/repo/{identifier}/branches", web::get().to(repository_branches))
@@ -255,7 +255,7 @@ pub fn branches_page(repository: &Event, identifier: &str) -> Markup {
 }
 ```
 
-4. **Update imports** in `server.rs`:
+4. **Update imports** in `src/server.rs`:
 
 ```rust
 use crate::views::{..., branches_page};

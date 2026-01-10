@@ -138,7 +138,8 @@ crates/gitafter/
 ├── src/
 │   ├── main.rs           # Entry point (delegates to WGPUI or legacy)
 │   ├── gui/              # WGPUI renderer (default)
-│   ├── server.rs         # Actix routes (legacy web UI)
+│   ├── server.rs         # Actix routes entrypoint (legacy web UI)
+│   ├── server/           # Actix handler modules (legacy web UI)
 │   ├── views.rs          # Maud templates (legacy web UI)
 │   ├── ws.rs             # WebSocket broadcaster (legacy web UI)
 │   ├── git/              # Git operations
