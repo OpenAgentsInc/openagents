@@ -291,6 +291,9 @@ impl Component for ToolCallCard {
 
         // No bottom border - dense layout
 
+        // Track height used by expanded content
+        let mut expanded_content_height = 0.0;
+
         // Expanded content: indented input/output lines
         if self.expanded {
             let indent = 24.0;
@@ -306,6 +309,7 @@ impl Component for ToolCallCard {
                 );
                 cx.scene.draw_text(input_run);
                 detail_y += Self::LINE_HEIGHT;
+                expanded_content_height += Self::LINE_HEIGHT;
             }
 
             if let Some(output) = &self.output {
@@ -327,12 +331,13 @@ impl Component for ToolCallCard {
                     FontStyle::default(),
                 );
                 cx.scene.draw_text(output_run);
+                expanded_content_height += Self::LINE_HEIGHT;
             }
         }
 
-        // Render child tools for Task cards (always visible, below header)
+        // Render child tools for Task cards (below header AND expanded content)
         if !self.child_tools.is_empty() {
-            let children_start_y = bounds.origin.y + Self::HEADER_HEIGHT;
+            let children_start_y = bounds.origin.y + Self::HEADER_HEIGHT + expanded_content_height;
             let max_children_height = Self::MAX_VISIBLE_CHILDREN as f32 * Self::HEADER_HEIGHT;
             let total_children_height = self.child_tools.len() as f32 * Self::HEADER_HEIGHT;
             let visible_height = total_children_height.min(max_children_height);

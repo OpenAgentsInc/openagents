@@ -10114,7 +10114,8 @@ fn paint_kitchen_sink(
     y += 24.0;
 
     {
-        let card_bounds = Bounds::new(content_x, y, content_width, 150.0);
+        // Task with children: header(22) + expanded input(18) + 3 children(66) = 106, use 120
+        let card_bounds = Bounds::new(content_x, y, content_width, 120.0);
         let mut task_card = ToolCallCard::new(ToolType::Task, "Task")
             .status(ToolStatus::Running)
             .input("Explore the authentication module")
@@ -10144,7 +10145,7 @@ fn paint_kitchen_sink(
 
         task_card.paint(card_bounds, &mut paint_cx);
     }
-    y += 160.0;
+    y += 130.0;
 
     // Section: Diff Tool
     let section_run = paint_cx.text.layout_styled_mono(
@@ -10158,7 +10159,8 @@ fn paint_kitchen_sink(
     y += 24.0;
 
     {
-        let diff_bounds = Bounds::new(content_x, y, content_width, 120.0);
+        // Diff with 4 lines: base(44) + 4*18 + 12 = 128, use 140
+        let diff_bounds = Bounds::new(content_x, y, content_width, 140.0);
         let mut diff_tool = DiffToolCall::new("src/main.rs")
             .status(ToolStatus::Success)
             .lines(vec![
@@ -10189,7 +10191,7 @@ fn paint_kitchen_sink(
             ]);
         diff_tool.paint(diff_bounds, &mut paint_cx);
     }
-    y += 130.0;
+    y += 150.0;
 
     // Section: Search Tool
     let section_run = paint_cx.text.layout_styled_mono(
@@ -10203,7 +10205,8 @@ fn paint_kitchen_sink(
     y += 24.0;
 
     {
-        let search_bounds = Bounds::new(content_x, y, content_width, 100.0);
+        // Search with 2 matches: base(64) + 2*36 = 136, use 150
+        let search_bounds = Bounds::new(content_x, y, content_width, 150.0);
         let mut search_tool = SearchToolCall::new("error")
             .status(ToolStatus::Success)
             .matches(vec![
@@ -10220,7 +10223,7 @@ fn paint_kitchen_sink(
             ]);
         search_tool.paint(search_bounds, &mut paint_cx);
     }
-    y += 110.0;
+    y += 160.0;
 
     // Section: Terminal Tool
     let section_run = paint_cx.text.layout_styled_mono(
@@ -10234,14 +10237,15 @@ fn paint_kitchen_sink(
     y += 24.0;
 
     {
-        let terminal_bounds = Bounds::new(content_x, y, content_width, 80.0);
+        // Terminal: base(44) + output(84) = 128, use 140
+        let terminal_bounds = Bounds::new(content_x, y, content_width, 140.0);
         let mut terminal_tool = TerminalToolCall::new("cargo build --release")
             .status(ToolStatus::Success)
             .output("   Compiling myapp v0.1.0\n    Finished release [optimized] target(s) in 2.34s")
             .exit_code(0);
         terminal_tool.paint(terminal_bounds, &mut paint_cx);
     }
-    y += 90.0;
+    y += 150.0;
 
     // Section: Messages (placeholder)
     let section_run = paint_cx.text.layout_styled_mono(
