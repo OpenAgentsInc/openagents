@@ -106,7 +106,7 @@ pub async fn execute_with_tools(
 
     // PRIORITY 2: Use TieredExecutor (Cerebras GLM 4.7 + Qwen-3-32B)
     match TieredExecutor::new() {
-        Ok(executor) => {
+        Ok(mut executor) => {
             tracing::info!("Using TieredExecutor (Cerebras)");
             executor.execute(task, &context, tools).await
         }

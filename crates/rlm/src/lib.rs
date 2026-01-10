@@ -30,6 +30,8 @@
 //! ```
 
 pub mod chunking;
+#[cfg(feature = "dspy")]
+pub mod dspy;
 pub mod experiment;
 mod client;
 #[cfg(feature = "fm-bridge")]
