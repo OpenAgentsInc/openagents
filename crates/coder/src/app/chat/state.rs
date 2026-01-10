@@ -2,9 +2,11 @@ use tokio::sync::mpsc;
 use wgpui::ContextMenu;
 use wgpui::markdown::{MarkdownRenderer as MdRenderer, StreamingMarkdown};
 
-use super::{ChatMessage, ChatSelection};
+use super::{ChatMessage, ChatSelection, MessageRole};
 use crate::app::config::CoderSettings;
 use crate::app::events::{QueryControl, ResponseEvent};
+use crate::app::session::SessionState;
+use crate::app::truncate_preview;
 
 pub(crate) struct ChatState {
     pub(crate) messages: Vec<ChatMessage>,
@@ -37,6 +39,59 @@ impl ChatState {
             response_rx: None,
             query_control_tx: None,
             scroll_offset: 0.0,
+        }
+    }
+
+    pub(crate) fn push_system_message(&mut self, message: String) {
+        self.messages.push(ChatMessage {
+            role: MessageRole::Assistant,
+            content: message,
+            document: None,
+            uuid: None,
+            metadata: None,
+        });
+    }
+
+    pub(crate) fn attach_user_message_id(&mut self, uuid: String, session: &mut SessionState) {
+        if let Some(message) = self
+            .messages
+            .iter_mut()
+            .rev()
+            .find(|msg| matches!(msg.role, MessageRole::User) && msg.uuid.is_none())
+        {
+            message.uuid = Some(uuid);
+            session.refresh_checkpoint_restore(&self.messages);
+        }
+    }
+
+    pub(crate) fn request_rewind_files(&mut self, user_message_id: String) {
+        if let Some(tx) = &self.query_control_tx {
+            let _ = tx.send(QueryControl::RewindFiles {
+                user_message_id: user_message_id.clone(),
+            });
+            self.push_system_message(format!(
+                "Requested checkpoint restore for message {}.",
+                truncate_preview(&user_message_id, 12)
+            ));
+        } else {
+            self.push_system_message("No active request to rewind.".to_string());
+        }
+    }
+
+    pub(crate) fn interrupt_query(&mut self) {
+        if let Some(tx) = &self.query_control_tx {
+            let _ = tx.send(QueryControl::Interrupt);
+        } else {
+            self.push_system_message("No active request to interrupt.".to_string());
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn abort_query(&mut self) {
+        if let Some(tx) = &self.query_control_tx {
+            let _ = tx.send(QueryControl::Abort);
+        } else {
+            self.push_system_message("No active request to cancel.".to_string());
         }
     }
 }

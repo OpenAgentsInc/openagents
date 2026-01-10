@@ -3,21 +3,18 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+use claude_agent_sdk::{AgentDefinition, SettingSource};
 use tokio::sync::mpsc;
 use wgpui::components::hud::Command as PaletteCommand;
-use wgpui::components::molecules::{CheckpointRestore, SessionAction};
+use wgpui::components::molecules::SessionAction;
 use wgpui::components::organisms::EventInspector;
 
-use crate::app::catalog::{
-    load_agent_entries, load_hook_scripts, load_mcp_project_servers, load_skill_entries,
-    save_hook_config, SkillSource,
-};
-use crate::app::chat::{ChatMessage, MessageRole};
-use crate::app::config::{config_dir, mcp_project_file, session_messages_dir, SettingsTab};
-use crate::app::events::{keybinding_labels, ModalState, QueryControl};
-use crate::app::session::{apply_session_history_limit, save_session_index, SessionUsageStats};
+use crate::app::catalog::SkillSource;
+use crate::app::chat::MessageRole;
+use crate::app::config::{config_dir, SettingsTab};
+use crate::app::events::{keybinding_labels, ModalState};
 use crate::app::{
-    build_input, build_markdown_config, build_markdown_renderer, now_timestamp, truncate_preview,
+    build_input, build_markdown_config, build_markdown_renderer, now_timestamp,
     AgentCardAction, HookLogEntry, HookModalView, HookSetting, ModelOption, SettingsInputMode,
     SkillCardAction,
 };
@@ -402,15 +399,10 @@ impl AppState {
     }
 
     fn apply_session_history_limit(&mut self) {
-        let removed =
-            apply_session_history_limit(&mut self.session.session_index, self.settings.coder_settings.session_history_limit);
-        if !removed.is_empty() {
-            let _ = save_session_index(&self.session.session_index);
-            for removed_id in removed {
-                let _ = fs::remove_dir_all(session_messages_dir(&removed_id));
-            }
-            self.session.refresh_session_cards(self.chat.is_thinking);
-        }
+        self.session.apply_history_limit(
+            self.settings.coder_settings.session_history_limit,
+            self.chat.is_thinking,
+        );
     }
 
     fn open_mcp_config(&mut self) {
@@ -432,33 +424,11 @@ impl AppState {
     }
 
     fn reload_hooks(&mut self) {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let catalog = load_hook_scripts(&cwd);
-        self.catalogs.hook_scripts = catalog.entries;
-        self.catalogs.hook_project_path = catalog.project_path;
-        self.catalogs.hook_user_path = catalog.user_path;
-        self.catalogs.hook_load_error = catalog.error;
+        self.catalogs.reload_hooks();
     }
 
     fn toggle_hook_setting(&mut self, setting: HookSetting) {
-        match setting {
-            HookSetting::ToolBlocker => {
-                self.catalogs.hook_config.tool_blocker = !self.catalogs.hook_config.tool_blocker;
-            }
-            HookSetting::ToolLogger => {
-                self.catalogs.hook_config.tool_logger = !self.catalogs.hook_config.tool_logger;
-            }
-            HookSetting::OutputTruncator => {
-                self.catalogs.hook_config.output_truncator = !self.catalogs.hook_config.output_truncator;
-            }
-            HookSetting::ContextInjection => {
-                self.catalogs.hook_config.context_injection = !self.catalogs.hook_config.context_injection;
-            }
-            HookSetting::TodoEnforcer => {
-                self.catalogs.hook_config.todo_enforcer = !self.catalogs.hook_config.todo_enforcer;
-            }
-        }
-        save_hook_config(&self.catalogs.hook_config);
+        self.catalogs.toggle_hook_setting(setting);
     }
 
     fn clear_hook_log(&mut self) {
@@ -472,64 +442,29 @@ impl AppState {
     }
 
     fn reload_agents(&mut self) {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let catalog = load_agent_entries(&cwd);
-        self.catalogs.agent_entries = catalog.entries;
-        self.catalogs.agent_project_path = catalog.project_path;
-        self.catalogs.agent_user_path = catalog.user_path;
-        self.catalogs.agent_load_error = catalog.error;
-        if let Some(active) = self.catalogs.active_agent.clone() {
-            if !self.catalogs.agent_entries.iter().any(|entry| entry.name == active) {
-                self.catalogs.active_agent = None;
-                self.push_system_message(format!(
-                    "Active agent {} no longer available.",
-                    active
-                ));
-            }
-        }
-        self.catalogs.refresh_agent_cards(self.chat.is_thinking);
+        self.catalogs.reload_agents(&mut self.chat);
     }
 
     fn reload_skills(&mut self) {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let catalog = load_skill_entries(&cwd);
-        self.catalogs.skill_entries = catalog.entries;
-        self.catalogs.skill_project_path = catalog.project_path;
-        self.catalogs.skill_user_path = catalog.user_path;
-        self.catalogs.skill_load_error = catalog.error;
-        self.catalogs.refresh_skill_cards();
+        self.catalogs.reload_skills();
     }
 
     fn reload_mcp_project_servers(&mut self) {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let (servers, error) = load_mcp_project_servers(&cwd);
-        self.catalogs.mcp_project_servers = servers;
-        self.catalogs.mcp_project_error = error;
-        self.catalogs.mcp_project_path = Some(mcp_project_file(&cwd));
+        self.catalogs.reload_mcp_project_servers();
     }
 
     fn request_mcp_status(&mut self) {
-        if let Some(tx) = &self.chat.query_control_tx {
-            let _ = tx.send(QueryControl::FetchMcpStatus);
-        } else {
-            self.push_system_message("No active session for MCP status.".to_string());
-        }
+        self.catalogs.request_mcp_status(&mut self.chat);
     }
 
     fn handle_session_card_action(&mut self, action: SessionAction, session_id: String) {
-        match action {
-            SessionAction::Select | SessionAction::Resume => {
-                self.begin_session_resume(session_id);
-                self.modal_state = ModalState::None;
-            }
-            SessionAction::Fork => {
-                self.begin_session_fork_from(session_id);
-                self.modal_state = ModalState::None;
-            }
-            SessionAction::Delete => {
-                self.push_system_message("Session delete not implemented yet.".to_string());
-            }
-        }
+        self.session.handle_session_card_action(
+            action,
+            session_id,
+            &mut self.chat,
+            &mut self.tools,
+            &mut self.modal_state,
+        );
     }
 
     fn handle_agent_card_action(&mut self, action: AgentCardAction, agent_id: String) {
@@ -674,198 +609,53 @@ impl AppState {
     }
 
     fn handle_checkpoint_restore(&mut self, index: usize) {
-        if let Some(entry) = self.session.checkpoint_entries.get(index) {
-            self.request_rewind_files(entry.user_message_id.clone());
-        }
+        self.session
+            .handle_checkpoint_restore(index, &mut self.chat);
     }
 
     fn begin_session_fork_from(&mut self, session_id: String) {
-        let session_id = session_id.trim().to_string();
-        if session_id.is_empty() {
-            self.push_system_message("Session id is required to fork.".to_string());
-            return;
-        }
-        self.session.pending_resume_session = Some(session_id.clone());
-        self.session.pending_fork_session = true;
-        self.session.session_info.session_id = session_id.clone();
-        if let Some(entry) = self.session.session_index.iter().find(|entry| entry.id == session_id) {
-            self.session.session_info.model = entry.model.clone();
-        }
-        match self
-            .session
-            .restore_session(&session_id, &mut self.chat, &mut self.tools)
-        {
-            Ok(()) => self.push_system_message(format!(
-                "Loaded cached history for session {}.",
-                session_id
-            )),
-            Err(_) => {
-                self.chat.messages.clear();
-                self.push_system_message(format!(
-                    "No local history for session {} yet.",
-                    session_id
-                ));
-            }
-        }
-        self.push_system_message(format!(
-            "Next message will fork session {}.",
-            session_id
-        ));
-        self.session.refresh_session_cards(self.chat.is_thinking);
+        self.session
+            .begin_session_fork_from(session_id, &mut self.chat, &mut self.tools);
     }
 
     fn attach_user_message_id(&mut self, uuid: String) {
-        if let Some(message) = self.chat.messages
-            .iter_mut()
-            .rev()
-            .find(|msg| matches!(msg.role, MessageRole::User) && msg.uuid.is_none())
-        {
-            message.uuid = Some(uuid);
-            self.session.refresh_checkpoint_restore(&self.chat.messages);
-        }
+        self.chat.attach_user_message_id(uuid, &mut self.session);
     }
 
     fn request_rewind_files(&mut self, user_message_id: String) {
-        if let Some(tx) = &self.chat.query_control_tx {
-            let _ = tx.send(QueryControl::RewindFiles { user_message_id: user_message_id.clone() });
-            self.push_system_message(format!(
-                "Requested checkpoint restore for message {}.",
-                truncate_preview(&user_message_id, 12)
-            ));
-        } else {
-            self.push_system_message("No active request to rewind.".to_string());
-        }
+        self.chat.request_rewind_files(user_message_id);
     }
 
     fn clear_conversation(&mut self) {
-        if self.chat.is_thinking {
-            self.push_system_message(
-                "Cannot clear while a response is in progress.".to_string(),
-            );
-            return;
-        }
-        self.chat.messages.clear();
-        self.chat.streaming_markdown.reset();
-        self.chat.scroll_offset = 0.0;
-        self.tools.current_tool_name = None;
-        self.tools.current_tool_input.clear();
-        self.tools.current_tool_use_id = None;
-        self.tools.tool_history.clear();
-        self.session.session_info.session_id.clear();
-        self.session.session_info.tool_count = 0;
-        self.session.session_info.tools.clear();
-        self.session.pending_resume_session = None;
-        self.session.pending_fork_session = false;
-        self.session.checkpoint_entries.clear();
-        self.session.checkpoint_restore = CheckpointRestore::new();
-        self.session.refresh_session_cards(self.chat.is_thinking);
+        self.session
+            .clear_conversation(&mut self.chat, &mut self.tools);
     }
 
     fn start_new_session(&mut self) {
-        if self.chat.is_thinking {
-            self.push_system_message("Cannot start new session while processing.".to_string());
-            return;
-        }
-        self.chat.messages.clear();
-        self.chat.streaming_markdown.reset();
-        self.chat.scroll_offset = 0.0;
-        self.tools.current_tool_name = None;
-        self.tools.current_tool_input.clear();
-        self.tools.current_tool_use_id = None;
-        self.tools.tool_history.clear();
-        self.session.session_usage = SessionUsageStats::default();
-        self.session.session_info.session_id.clear();
-        self.session.session_info.tool_count = 0;
-        self.session.session_info.tools.clear();
-        self.session.pending_resume_session = None;
-        self.session.pending_fork_session = false;
-        self.session.checkpoint_entries.clear();
-        self.session.checkpoint_restore = CheckpointRestore::new();
-        self.session.refresh_session_cards(self.chat.is_thinking);
-        self.push_system_message("Started new session.".to_string());
+        self.session
+            .start_new_session(&mut self.chat, &mut self.tools);
     }
 
     fn undo_last_exchange(&mut self) {
-        if self.chat.is_thinking {
-            self.push_system_message(
-                "Cannot undo while a response is in progress.".to_string(),
-            );
-            return;
-        }
-
-        let mut removed = 0;
-        while matches!(self.chat.messages.last(), Some(ChatMessage { role: MessageRole::Assistant, .. })) {
-            self.chat.messages.pop();
-            removed += 1;
-        }
-        if matches!(self.chat.messages.last(), Some(ChatMessage { role: MessageRole::User, .. })) {
-            self.chat.messages.pop();
-            removed += 1;
-        }
-
-        if removed == 0 {
-            self.push_system_message("Nothing to undo.".to_string());
-        } else {
-            self.session.refresh_checkpoint_restore(&self.chat.messages);
-        }
+        self.session.undo_last_exchange(&mut self.chat);
     }
 
     fn interrupt_query(&mut self) {
-        if let Some(tx) = &self.chat.query_control_tx {
-            let _ = tx.send(QueryControl::Interrupt);
-        } else {
-            self.push_system_message("No active request to interrupt.".to_string());
-        }
+        self.chat.interrupt_query();
     }
 
     #[allow(dead_code)]
     fn abort_query(&mut self) {
-        if let Some(tx) = &self.chat.query_control_tx {
-            let _ = tx.send(QueryControl::Abort);
-        } else {
-            self.push_system_message("No active request to cancel.".to_string());
-        }
+        self.chat.abort_query();
     }
 
     fn begin_session_resume(&mut self, session_id: String) {
-        let session_id = session_id.trim().to_string();
-        if session_id.is_empty() {
-            self.push_system_message("Session id is required to resume.".to_string());
-            return;
-        }
-        self.session.pending_resume_session = Some(session_id.clone());
-        self.session.pending_fork_session = false;
-        self.session.session_info.session_id = session_id.clone();
-        if let Some(entry) = self.session.session_index.iter().find(|entry| entry.id == session_id) {
-            self.session.session_info.model = entry.model.clone();
-        }
-        match self
-            .session
-            .restore_session(&session_id, &mut self.chat, &mut self.tools)
-        {
-            Ok(()) => self.push_system_message(format!(
-                "Loaded cached history for session {}.",
-                session_id
-            )),
-            Err(_) => {
-                self.chat.messages.clear();
-                self.push_system_message(format!(
-                    "No local history for session {} yet.",
-                    session_id
-                ));
-            }
-        }
-        self.session.refresh_session_cards(self.chat.is_thinking);
+        self.session
+            .begin_session_resume(session_id, &mut self.chat, &mut self.tools);
     }
 
     fn begin_session_fork(&mut self) {
-        if self.session.session_info.session_id.trim().is_empty() {
-            self.push_system_message("No active session to fork.".to_string());
-            return;
-        }
-        self.session.pending_resume_session = Some(self.session.session_info.session_id.clone());
-        self.session.pending_fork_session = true;
-        self.push_system_message("Next message will fork the current session.".to_string());
+        self.session.begin_session_fork(&mut self.chat);
     }
 
     fn export_session(&mut self) {
@@ -886,13 +676,7 @@ impl AppState {
     }
 
     fn push_system_message(&mut self, message: String) {
-        self.chat.messages.push(ChatMessage {
-            role: MessageRole::Assistant,
-            content: message,
-            document: None,
-            uuid: None,
-            metadata: None,
-        });
+        self.chat.push_system_message(message);
     }
 }
 

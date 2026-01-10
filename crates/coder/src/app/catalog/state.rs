@@ -11,8 +11,10 @@ use wgpui::components::organisms::{EventInspector, InspectorView};
 use super::agents::AgentCatalog;
 use super::hooks::HookScriptCatalog;
 use super::skills::SkillCatalog;
-use super::{AgentEntry, HookConfig, HookScriptEntry, SkillEntry};
+use super::{AgentEntry, HookConfig, HookScriptEntry, HookSetting, SkillEntry};
 use super::{AgentCardAction, AgentCardEvent, HookLogEntry, SkillCardAction, SkillCardEvent};
+use crate::app::chat::ChatState;
+use crate::app::events::QueryControl;
 
 pub(crate) struct CatalogState {
     pub(crate) agent_entries: Vec<AgentEntry>,
@@ -266,5 +268,80 @@ impl CatalogState {
             .filter(|status| status.status.eq_ignore_ascii_case("connected"))
             .count();
         Some(format!("mcp {}/{}", connected, total))
+    }
+
+    pub(crate) fn reload_hooks(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let catalog = super::load_hook_scripts(&cwd);
+        self.hook_scripts = catalog.entries;
+        self.hook_project_path = catalog.project_path;
+        self.hook_user_path = catalog.user_path;
+        self.hook_load_error = catalog.error;
+    }
+
+    pub(crate) fn toggle_hook_setting(&mut self, setting: HookSetting) {
+        match setting {
+            HookSetting::ToolBlocker => {
+                self.hook_config.tool_blocker = !self.hook_config.tool_blocker;
+            }
+            HookSetting::ToolLogger => {
+                self.hook_config.tool_logger = !self.hook_config.tool_logger;
+            }
+            HookSetting::OutputTruncator => {
+                self.hook_config.output_truncator = !self.hook_config.output_truncator;
+            }
+            HookSetting::ContextInjection => {
+                self.hook_config.context_injection = !self.hook_config.context_injection;
+            }
+            HookSetting::TodoEnforcer => {
+                self.hook_config.todo_enforcer = !self.hook_config.todo_enforcer;
+            }
+        }
+        super::save_hook_config(&self.hook_config);
+    }
+
+    pub(crate) fn reload_agents(&mut self, chat: &mut ChatState) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let catalog = super::load_agent_entries(&cwd);
+        self.agent_entries = catalog.entries;
+        self.agent_project_path = catalog.project_path;
+        self.agent_user_path = catalog.user_path;
+        self.agent_load_error = catalog.error;
+        if let Some(active) = self.active_agent.clone() {
+            if !self.agent_entries.iter().any(|entry| entry.name == active) {
+                self.active_agent = None;
+                chat.push_system_message(format!(
+                    "Active agent {} no longer available.",
+                    active
+                ));
+            }
+        }
+        self.refresh_agent_cards(chat.is_thinking);
+    }
+
+    pub(crate) fn reload_skills(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let catalog = super::load_skill_entries(&cwd);
+        self.skill_entries = catalog.entries;
+        self.skill_project_path = catalog.project_path;
+        self.skill_user_path = catalog.user_path;
+        self.skill_load_error = catalog.error;
+        self.refresh_skill_cards();
+    }
+
+    pub(crate) fn reload_mcp_project_servers(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let (servers, error) = super::load_mcp_project_servers(&cwd);
+        self.mcp_project_servers = servers;
+        self.mcp_project_error = error;
+        self.mcp_project_path = Some(crate::app::config::mcp_project_file(&cwd));
+    }
+
+    pub(crate) fn request_mcp_status(&self, chat: &mut ChatState) {
+        if let Some(tx) = &chat.query_control_tx {
+            let _ = tx.send(QueryControl::FetchMcpStatus);
+        } else {
+            chat.push_system_message("No active session for MCP status.".to_string());
+        }
     }
 }
