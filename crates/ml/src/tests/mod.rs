@@ -1,6 +1,8 @@
 use crate::sampling::{sample_from_logits, GenerationConfig};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+#[cfg(feature = "native")]
+use std::path::{Path, PathBuf};
 
 #[cfg(all(feature = "native", feature = "wgpu"))]
 mod gguf_gate_d;
@@ -38,17 +40,67 @@ fn test_repetition_penalty_changes_choice() {
 }
 
 #[cfg(feature = "native")]
+fn resolve_tokenizer_fixture(manifest_dir: &Path) -> Option<PathBuf> {
+    let tokenizer_path = manifest_dir.join("tests/fixtures/tokenizer.json");
+    if tokenizer_path.exists() {
+        return Some(tokenizer_path);
+    }
+
+    let parts_dir = manifest_dir.join("tests/fixtures/tokenizer");
+    let entries = std::fs::read_dir(&parts_dir).ok()?;
+    let mut parts = Vec::new();
+    for entry in entries {
+        let entry = entry.ok()?;
+        let path = entry.path();
+        let is_part = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.starts_with("part-"))
+            .unwrap_or(false);
+        if is_part {
+            parts.push(path);
+        }
+    }
+    if parts.is_empty() {
+        return None;
+    }
+
+    parts.sort();
+    let mut combined = Vec::new();
+    for part in parts {
+        combined.extend_from_slice(&std::fs::read(part).ok()?);
+    }
+
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_nanos();
+    let temp_path = std::env::temp_dir().join(format!("openagents-tokenizer-{suffix}.json"));
+    std::fs::write(&temp_path, combined).ok()?;
+    Some(temp_path)
+}
+
+#[cfg(feature = "native")]
 #[test]
 fn test_llama2c_tiny_model() {
     use crate::device::MlDevice;
     use crate::model::{LoadedModel, ModelSource};
     use futures::executor::block_on;
-    use std::path::Path;
 
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let tokenizer_path = manifest_dir.join("tests/fixtures/tokenizer.json");
+    let tokenizer_path = match resolve_tokenizer_fixture(manifest_dir) {
+        Some(path) => path,
+        None => {
+            eprintln!(
+                "tokenizer missing, run scripts/download-test-models.sh or assemble tests/fixtures/tokenizer parts"
+            );
+            return;
+        }
+    };
     if !tokenizer_path.exists() {
-        eprintln!("tokenizer missing, run scripts/download-test-models.sh");
+        eprintln!(
+            "tokenizer missing, run scripts/download-test-models.sh or assemble tests/fixtures/tokenizer parts"
+        );
         return;
     }
 
