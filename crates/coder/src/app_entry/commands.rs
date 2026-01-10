@@ -296,6 +296,86 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
                 }
             }
         }
+        // New feature commands - open corresponding modals
+        Command::Wallet => {
+            state.modal_state = ModalState::Wallet;
+            CommandAction::None
+        }
+        Command::WalletRefresh => CommandAction::None,
+        Command::Dvm => {
+            state.modal_state = ModalState::DvmProviders;
+            CommandAction::None
+        }
+        Command::DvmConnect(_) | Command::DvmKind(_) | Command::DvmRefresh => CommandAction::None,
+        Command::LmRouter => {
+            state.modal_state = ModalState::LmRouter;
+            CommandAction::None
+        }
+        Command::LmRouterRefresh => CommandAction::None,
+        Command::Nexus => {
+            state.modal_state = ModalState::Nexus;
+            CommandAction::None
+        }
+        Command::NexusConnect(_) | Command::NexusRefresh => CommandAction::None,
+        Command::SparkWallet => {
+            state.modal_state = ModalState::SparkWallet;
+            CommandAction::None
+        }
+        Command::SparkWalletRefresh => CommandAction::None,
+        Command::Gateway => {
+            state.modal_state = ModalState::Gateway;
+            CommandAction::None
+        }
+        Command::GatewayRefresh => CommandAction::None,
+        Command::Nip90 => {
+            state.modal_state = ModalState::Nip90Jobs;
+            CommandAction::None
+        }
+        Command::Nip90Connect(_) | Command::Nip90Refresh => CommandAction::None,
+        Command::Oanix => {
+            state.modal_state = ModalState::Oanix;
+            CommandAction::None
+        }
+        Command::OanixRefresh => CommandAction::None,
+        Command::Directives => {
+            state.modal_state = ModalState::Directives;
+            CommandAction::None
+        }
+        Command::DirectivesRefresh => CommandAction::None,
+        Command::Issues => {
+            state.modal_state = ModalState::Issues;
+            CommandAction::None
+        }
+        Command::IssuesRefresh => CommandAction::None,
+        Command::AutopilotIssues => {
+            state.modal_state = ModalState::AutopilotIssues;
+            CommandAction::None
+        }
+        Command::AutopilotIssuesRefresh => CommandAction::None,
+        Command::Rlm => {
+            state.modal_state = ModalState::Rlm;
+            CommandAction::None
+        }
+        Command::RlmRefresh => CommandAction::None,
+        Command::RlmTrace(_) => {
+            state.modal_state = ModalState::RlmTrace;
+            CommandAction::None
+        }
+        Command::PylonEarnings => {
+            state.modal_state = ModalState::PylonEarnings;
+            CommandAction::None
+        }
+        Command::PylonEarningsRefresh => CommandAction::None,
+        Command::Dspy => {
+            state.modal_state = ModalState::Dspy;
+            CommandAction::None
+        }
+        Command::DspyRefresh | Command::DspyAuto(_) | Command::DspyBackground(_) => CommandAction::None,
+        Command::Nip28 => {
+            state.modal_state = ModalState::Nip28Chat;
+            CommandAction::None
+        }
+        Command::Nip28Connect(_) | Command::Nip28Channel(_) | Command::Nip28Send(_) | Command::Nip28Refresh => CommandAction::None,
     }
 }
 
@@ -894,6 +974,32 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             }
             state.window.request_redraw();
             true
+        }
+        // New feature modals - just handle Escape to close them for now
+        ModalState::Wallet
+        | ModalState::DvmProviders
+        | ModalState::Gateway
+        | ModalState::LmRouter
+        | ModalState::Nexus
+        | ModalState::SparkWallet
+        | ModalState::Nip90Jobs
+        | ModalState::Oanix
+        | ModalState::Directives
+        | ModalState::Issues
+        | ModalState::AutopilotIssues
+        | ModalState::Rlm
+        | ModalState::RlmTrace
+        | ModalState::PylonEarnings
+        | ModalState::Dspy
+        | ModalState::Nip28Chat => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    state.modal_state = ModalState::None;
+                    state.window.request_redraw();
+                    true
+                }
+                _ => true
+            }
         }
         ModalState::None => false,
     }

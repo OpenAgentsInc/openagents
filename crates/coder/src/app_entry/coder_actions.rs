@@ -26,8 +26,47 @@ use super::command_palette_ids;
 use super::commands::handle_command;
 use super::settings::parse_mcp_status;
 
+/// Extract tool call start info from stream event.
+/// Returns (tool_name, tool_use_id) if this is a content_block_start with tool_use.
+fn extract_tool_call_start(event: &Value) -> Option<(String, String)> {
+    if event.get("type")?.as_str()? != "content_block_start" {
+        return None;
+    }
+    let content_block = event.get("content_block")?;
+    if content_block.get("type")?.as_str()? != "tool_use" {
+        return None;
+    }
+    let name = content_block.get("name")?.as_str()?.to_string();
+    let id = content_block.get("id")?.as_str()?.to_string();
+    Some((name, id))
+}
+
+/// Extract tool input delta (partial JSON) from stream event.
+fn extract_tool_input_delta(event: &Value) -> Option<String> {
+    if event.get("type")?.as_str()? != "content_block_delta" {
+        return None;
+    }
+    let delta = event.get("delta")?;
+    if delta.get("type")?.as_str()? != "input_json_delta" {
+        return None;
+    }
+    Some(delta.get("partial_json")?.as_str()?.to_string())
+}
+
+/// Extract streaming text from stream event.
+fn extract_stream_text(event: &Value) -> Option<String> {
+    if event.get("type")?.as_str()? != "content_block_delta" {
+        return None;
+    }
+    let delta = event.get("delta")?;
+    if delta.get("type")?.as_str()? != "text_delta" {
+        return None;
+    }
+    Some(delta.get("text")?.as_str()?.to_string())
+}
+
 impl CoderApp {
-    fn submit_prompt(&mut self, prompt: String) {
+    pub(super) fn submit_prompt(&mut self, prompt: String) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -486,7 +525,7 @@ impl CoderApp {
         });
     }
 
-    fn poll_responses(&mut self) {
+    pub(super) fn poll_responses(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -698,7 +737,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_permissions(&mut self) {
+    pub(super) fn poll_permissions(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -732,7 +771,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_command_palette_actions(&mut self) {
+    pub(super) fn poll_command_palette_actions(&mut self) {
         let actions = {
             let Some(state) = &mut self.state else {
                 return;
@@ -761,7 +800,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_session_actions(&mut self) {
+    pub(super) fn poll_session_actions(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -795,7 +834,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_agent_actions(&mut self) {
+    pub(super) fn poll_agent_actions(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -817,7 +856,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_skill_actions(&mut self) {
+    pub(super) fn poll_skill_actions(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -839,7 +878,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_hook_inspector_actions(&mut self) {
+    pub(super) fn poll_hook_inspector_actions(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -861,7 +900,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_oanix_manifest(&mut self) {
+    pub(super) fn poll_oanix_manifest(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -876,7 +915,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_autopilot_history(&mut self) {
+    pub(super) fn poll_autopilot_history(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -891,7 +930,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_rate_limits(&mut self) {
+    pub(super) fn poll_rate_limits(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -992,7 +1031,7 @@ impl CoderApp {
         }
     }
 
-    fn render(&mut self) {
+    pub(super) fn render(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };

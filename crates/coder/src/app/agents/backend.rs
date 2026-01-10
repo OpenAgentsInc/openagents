@@ -8,6 +8,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use crate::app::events::ResponseEvent;
@@ -151,7 +152,7 @@ pub trait AgentBackend: Send + Sync {
 ///
 /// Represents a connected session with an agent that can send prompts
 /// and receive responses.
-#[allow(async_fn_in_trait)]
+#[async_trait]
 pub trait AgentSession: Send {
     /// Send a prompt to the agent
     async fn prompt(&mut self, text: &str) -> anyhow::Result<()>;

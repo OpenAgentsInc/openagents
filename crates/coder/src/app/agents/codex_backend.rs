@@ -6,6 +6,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use codex_agent_sdk::{
@@ -204,6 +205,7 @@ impl CodexSession {
     }
 }
 
+#[async_trait]
 impl AgentSession for CodexSession {
     async fn prompt(&mut self, text: &str) -> anyhow::Result<()> {
         let thread_options = self.build_thread_options();
