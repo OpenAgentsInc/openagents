@@ -6,6 +6,7 @@ include!("modals/hooks.rs");
 include!("modals/tool_list.rs");
 include!("modals/permission_rules.rs");
 include!("modals/wallet.rs");
+include!("modals/oanix.rs");
 include!("modals/dspy.rs");
 include!("modals/nip28.rs");
 include!("modals/config.rs");
@@ -128,6 +129,17 @@ fn render_modals(
         }
         ModalState::Wallet => {
             render_wallet_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
+        ModalState::Oanix => {
+            render_oanix_modal(
                 state,
                 scene,
                 palette,

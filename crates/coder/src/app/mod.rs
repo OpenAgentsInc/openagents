@@ -5,6 +5,7 @@ pub(crate) mod config;
 pub(crate) mod dspy;
 pub(crate) mod events;
 pub(crate) mod nip28;
+pub(crate) mod oanix;
 pub(crate) mod parsing;
 pub(crate) mod permissions;
 pub(crate) mod session;

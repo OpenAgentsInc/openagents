@@ -869,6 +869,8 @@ impl CoderApp {
             return;
         };
 
+        let mut needs_redraw = false;
+
         // Check if we received a manifest to cache
         if let Some(rx) = &mut state.autopilot.oanix_manifest_rx {
             match rx.try_recv() {
@@ -877,13 +879,19 @@ impl CoderApp {
                     state.autopilot.oanix_manifest = Some(manifest);
                     state.wallet.refresh(state.autopilot.oanix_manifest.as_ref());
                     state.autopilot.oanix_manifest_rx = None; // Done receiving
+                    needs_redraw = true;
                 }
                 Err(TryRecvError::Disconnected) => {
                     tracing::warn!("Autopilot: OANIX manifest channel closed");
                     state.autopilot.oanix_manifest_rx = None;
+                    needs_redraw = true;
                 }
                 Err(TryRecvError::Empty) => {}
             }
+        }
+
+        if needs_redraw {
+            state.window.request_redraw();
         }
     }
 
@@ -1053,6 +1061,10 @@ impl CoderApp {
             command_palette_ids::AGENT_RELOAD => Some(handle_command(state, Command::AgentReload)),
             command_palette_ids::WALLET_OPEN => {
                 state.open_wallet();
+                None
+            }
+            command_palette_ids::OANIX_OPEN => {
+                state.open_oanix();
                 None
             }
             command_palette_ids::DSPY_OPEN => {

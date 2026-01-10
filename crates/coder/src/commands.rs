@@ -35,6 +35,8 @@ pub enum Command {
     HooksReload,
     Wallet,
     WalletRefresh,
+    Oanix,
+    OanixRefresh,
     Dspy,
     DspyRefresh,
     DspyAuto(bool),
@@ -231,6 +233,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/oanix",
+        description: "Open OANIX manifest",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/oanix refresh",
+        description: "Refresh OANIX manifest",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/dspy",
         description: "Open DSPy status",
         requires_args: false,
@@ -315,6 +327,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "skills" => parse_skills_command(args),
         "hooks" => parse_hooks_command(args),
         "wallet" => parse_wallet_command(args),
+        "oanix" => parse_oanix_command(args),
         "dspy" => parse_dspy_command(args),
         "nip28" => parse_nip28_command(args),
         _ => Command::Custom(command, args),
@@ -329,6 +342,15 @@ fn parse_wallet_command(args: Vec<String>) -> Command {
         Some("refresh") => Command::WalletRefresh,
         Some("status") => Command::Wallet,
         _ => Command::Wallet,
+    }
+}
+
+fn parse_oanix_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        Some("refresh") => Command::OanixRefresh,
+        Some("status") => Command::Oanix,
+        _ => Command::Oanix,
     }
 }
 

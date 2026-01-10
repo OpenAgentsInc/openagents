@@ -1139,6 +1139,7 @@ impl ApplicationHandler for CoderApp {
                                 }
                                 KeyAction::OpenSettings => state.open_config(),
                                 KeyAction::OpenWallet => state.open_wallet(),
+                                KeyAction::OpenOanix => state.open_oanix(),
                                 KeyAction::OpenDspy => state.open_dspy(),
                                 KeyAction::OpenNip28 => state.open_nip28(),
                                 KeyAction::ToggleLeftSidebar => state.toggle_left_sidebar(),
