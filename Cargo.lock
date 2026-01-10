@@ -265,6 +265,7 @@ dependencies = [
  "futures",
  "gateway",
  "glob",
+ "gpt-oss",
  "indexmap 2.12.1",
  "issues",
  "oanix",

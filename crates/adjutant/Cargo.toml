@@ -54,6 +54,7 @@ ctrlc = "3.4"
 # Async utilities
 futures = "0.3"
 reqwest = { workspace = true, features = ["stream", "json"] }
+gpt-oss = { version = "0.1.0", path = "../gpt-oss" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

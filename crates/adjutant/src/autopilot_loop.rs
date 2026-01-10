@@ -83,6 +83,10 @@ pub trait AutopilotOutput: Send {
     fn interrupted(&self);
     /// Called when max iterations reached
     fn max_iterations(&self, iterations: usize);
+    /// Returns a sender for direct token streaming if available (for UI contexts)
+    fn token_sender(&self) -> Option<mpsc::UnboundedSender<String>> {
+        None
+    }
 }
 
 /// CLI output implementation - prints to stdout
@@ -133,6 +137,11 @@ impl ChannelOutput {
     pub fn new(tx: mpsc::UnboundedSender<String>) -> Self {
         Self { tx }
     }
+
+    /// Get a clone of the sender for passing to streaming functions
+    pub fn sender(&self) -> mpsc::UnboundedSender<String> {
+        self.tx.clone()
+    }
 }
 
 impl AutopilotOutput for ChannelOutput {
@@ -176,6 +185,10 @@ impl AutopilotOutput for ChannelOutput {
             "\n\n--- Max iterations ({}) reached ---\n",
             iterations
         ));
+    }
+
+    fn token_sender(&self) -> Option<mpsc::UnboundedSender<String>> {
+        Some(self.tx.clone())
     }
 }
 
@@ -268,34 +281,46 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                 prompt,
             );
 
-            // Create channel for streaming tokens from this iteration
-            let (iter_token_tx, mut iter_token_rx) = mpsc::unbounded_channel::<String>();
-
-            // Collect tokens in background while executing
-            let forward_handle = tokio::spawn(async move {
-                let mut tokens = Vec::new();
-                while let Some(token) = iter_token_rx.recv().await {
-                    tokens.push(token);
+            // Execute the task with streaming
+            // For channel-based outputs (UI), pass sender directly for real-time streaming
+            // For CLI outputs, spawn a task that prints immediately as tokens arrive
+            let result = if let Some(token_sender) = self.output.token_sender() {
+                // UI context: pass sender directly for real-time streaming
+                match self.adjutant.execute_streaming(&task, token_sender).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        self.output.error(&e.to_string());
+                        return AutopilotResult::Error(e.to_string());
+                    }
                 }
-                tokens
-            });
+            } else {
+                // CLI context: create channel and print tokens immediately as they arrive
+                let (iter_token_tx, mut iter_token_rx) = mpsc::unbounded_channel::<String>();
 
-            // Execute the task
-            let result = match self.adjutant.execute_streaming(&task, iter_token_tx).await {
-                Ok(r) => r,
-                Err(e) => {
-                    self.output.error(&e.to_string());
-                    self.complete_session(SessionOutcome::Error(e.to_string()), iteration);
-                    return AutopilotResult::Error(e.to_string());
-                }
+                // Spawn task to print tokens immediately (not collect them)
+                let print_handle = tokio::spawn(async move {
+                    while let Some(token) = iter_token_rx.recv().await {
+                        print!("{}", token);
+                        let _ = std::io::stdout().flush();
+                    }
+                });
+
+                // Execute the task
+                let result = match self.adjutant.execute_streaming(&task, iter_token_tx).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        // Wait for print task to finish
+                        let _ = print_handle.await;
+                        self.output.error(&e.to_string());
+                        self.complete_session(SessionOutcome::Error(e.to_string()), iteration);
+                        return AutopilotResult::Error(e.to_string());
+                    }
+                };
+
+                // Wait for all tokens to be printed
+                let _ = print_handle.await;
+                result
             };
-
-            // Wait for tokens and output them
-            if let Ok(tokens) = forward_handle.await {
-                for token in tokens {
-                    self.output.token(&token);
-                }
-            }
 
             // Check if LLM reports success
             if result.success {
