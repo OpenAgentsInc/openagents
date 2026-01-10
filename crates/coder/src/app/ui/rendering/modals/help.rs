@@ -67,6 +67,11 @@ fn render_help_modal(
                 KeyAction::OpenNexus,
                 "Ctrl+Shift+X",
             );
+            let spark_key = keybinding_labels(
+                &state.settings.keybindings,
+                KeyAction::OpenSparkWallet,
+                "Ctrl+Shift+S",
+            );
             let nip90_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
             let oanix_key =
@@ -106,6 +111,7 @@ fn render_help_modal(
                         format!("{} - Gateway health", gateway_key),
                         format!("{} - LM router", lm_router_key),
                         format!("{} - Nexus stats", nexus_key),
+                        format!("{} - Spark wallet", spark_key),
                         format!("{} - NIP-90 jobs", nip90_key),
                         format!("{} - OANIX manifest", oanix_key),
                         format!("{} - DSPy status", dspy_key),
@@ -187,6 +193,13 @@ fn render_help_modal(
                     vec![
                         "/nexus - open stats".to_string(),
                         "/nexus connect <stats_url>; /nexus refresh".to_string(),
+                    ],
+                ),
+                (
+                    "Spark Wallet",
+                    vec![
+                        "/spark - open status".to_string(),
+                        "/spark refresh - refresh".to_string(),
                     ],
                 ),
                 (

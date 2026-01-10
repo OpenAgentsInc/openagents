@@ -2628,6 +2628,7 @@ dependencies = [
  "nostr 0.1.0",
  "nostr-client",
  "oanix",
+ "openagents-spark",
  "pollster",
  "reqwest",
  "serde",

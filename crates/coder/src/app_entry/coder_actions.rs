@@ -15,6 +15,7 @@ use crate::app::dvm::{DvmEvent, DvmStatus};
 use crate::app::gateway::GatewayEvent;
 use crate::app::lm_router::LmRouterEvent;
 use crate::app::nexus::NexusEvent;
+use crate::app::spark_wallet::SparkWalletEvent;
 use crate::app::events::{CommandAction, QueryControl, ResponseEvent};
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
@@ -1189,6 +1190,46 @@ impl CoderApp {
         }
     }
 
+    pub(super) fn poll_spark_wallet_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.spark_wallet.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state
+                        .spark_wallet
+                        .set_error("Spark wallet runtime disconnected".to_string());
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                SparkWalletEvent::Snapshot(snapshot) => {
+                    state.spark_wallet.set_snapshot(snapshot);
+                    should_redraw = true;
+                }
+                SparkWalletEvent::NotConfigured(message) => {
+                    state.spark_wallet.set_not_configured(message);
+                    should_redraw = true;
+                }
+                SparkWalletEvent::Error(message) => {
+                    state.spark_wallet.set_error(message);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
     pub(super) fn poll_autopilot_history(&mut self) {
         let Some(state) = &mut self.state else {
             return;
@@ -1293,6 +1334,10 @@ impl CoderApp {
             }
             command_palette_ids::NEXUS_OPEN => {
                 state.open_nexus();
+                None
+            }
+            command_palette_ids::SPARK_WALLET_OPEN => {
+                state.open_spark_wallet();
                 None
             }
             command_palette_ids::NIP90_OPEN => {

@@ -10,6 +10,7 @@ pub enum Action {
     OpenGateway,
     OpenLmRouter,
     OpenNexus,
+    OpenSparkWallet,
     OpenNip90,
     OpenOanix,
     OpenDspy,
@@ -43,6 +44,7 @@ impl Action {
             Action::OpenGateway,
             Action::OpenLmRouter,
             Action::OpenNexus,
+            Action::OpenSparkWallet,
             Action::OpenNip90,
             Action::OpenOanix,
             Action::OpenDspy,
@@ -63,6 +65,7 @@ impl Action {
             Action::OpenGateway => "gateway",
             Action::OpenLmRouter => "lm_router",
             Action::OpenNexus => "nexus",
+            Action::OpenSparkWallet => "spark_wallet",
             Action::OpenNip90 => "nip90",
             Action::OpenOanix => "oanix",
             Action::OpenDspy => "dspy",
@@ -83,6 +86,7 @@ impl Action {
             Action::OpenGateway => "Open gateway",
             Action::OpenLmRouter => "Open LM router",
             Action::OpenNexus => "Open Nexus stats",
+            Action::OpenSparkWallet => "Open Spark wallet",
             Action::OpenNip90 => "Open NIP-90 jobs",
             Action::OpenOanix => "Open OANIX",
             Action::OpenDspy => "Open DSPy",
@@ -103,6 +107,7 @@ impl Action {
             "gateway" => Some(Action::OpenGateway),
             "lm_router" => Some(Action::OpenLmRouter),
             "nexus" => Some(Action::OpenNexus),
+            "spark_wallet" => Some(Action::OpenSparkWallet),
             "nip90" => Some(Action::OpenNip90),
             "oanix" => Some(Action::OpenOanix),
             "dspy" => Some(Action::OpenDspy),
@@ -185,6 +190,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenNexus,
+        },
+        Keybinding {
+            key: Key::Character("s".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenSparkWallet,
         },
         Keybinding {
             key: Key::Character("j".to_string()),
@@ -290,6 +304,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenNexus,
+        },
+        Keybinding {
+            key: Key::Character("s".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenSparkWallet,
         },
         Keybinding {
             key: Key::Character("j".to_string()),

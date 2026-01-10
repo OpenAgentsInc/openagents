@@ -11,6 +11,7 @@ include!("modals/gateway.rs");
 include!("modals/lm_router.rs");
 include!("modals/nexus.rs");
 include!("modals/oanix.rs");
+include!("modals/spark_wallet.rs");
 include!("modals/dspy.rs");
 include!("modals/nip28.rs");
 include!("modals/nip90.rs");
@@ -178,6 +179,17 @@ fn render_modals(
         }
         ModalState::Nexus => {
             render_nexus_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
+        ModalState::SparkWallet => {
+            render_spark_wallet_modal(
                 state,
                 scene,
                 palette,

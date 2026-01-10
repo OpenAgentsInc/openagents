@@ -45,6 +45,7 @@ mod command_palette_ids {
     pub const GATEWAY_OPEN: &str = "gateway.open";
     pub const LM_ROUTER_OPEN: &str = "lm_router.open";
     pub const NEXUS_OPEN: &str = "nexus.open";
+    pub const SPARK_WALLET_OPEN: &str = "spark_wallet.open";
     pub const NIP90_OPEN: &str = "nip90.open";
     pub const OANIX_OPEN: &str = "oanix.open";
     pub const DSPY_OPEN: &str = "dspy.open";

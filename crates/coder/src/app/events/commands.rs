@@ -25,6 +25,7 @@ pub(crate) enum ModalState {
     Gateway,
     LmRouter,
     Nexus,
+    SparkWallet,
     Nip90Jobs,
     Oanix,
     Dspy,
