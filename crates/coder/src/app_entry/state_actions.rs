@@ -1,0 +1,934 @@
+use std::collections::HashMap;
+use std::fs;
+use std::io::{self, Write};
+use std::path::PathBuf;
+
+use tokio::sync::mpsc;
+use wgpui::components::hud::Command as PaletteCommand;
+use wgpui::components::molecules::{CheckpointRestore, SessionAction};
+use wgpui::components::organisms::EventInspector;
+
+use crate::app::catalog::{
+    load_agent_entries, load_hook_scripts, load_mcp_project_servers, load_skill_entries,
+    save_hook_config, SkillSource,
+};
+use crate::app::chat::{ChatMessage, MessageRole};
+use crate::app::config::{config_dir, mcp_project_file, session_messages_dir, SettingsTab};
+use crate::app::events::{keybinding_labels, ModalState, QueryControl};
+use crate::app::session::{apply_session_history_limit, save_session_index, SessionUsageStats};
+use crate::app::{
+    build_input, build_markdown_config, build_markdown_renderer, now_timestamp, truncate_preview,
+    AgentCardAction, HookLogEntry, HookModalView, HookSetting, ModelOption, SettingsInputMode,
+    SkillCardAction,
+};
+use crate::app::AppState;
+use crate::keybindings::Action as KeyAction;
+
+use super::command_palette_ids;
+use super::hooks::hook_log_event_data;
+use super::settings::{normalize_settings, save_settings, update_settings_model};
+
+const HOOK_LOG_LIMIT: usize = 200;
+
+impl AppState {
+    fn build_command_palette_commands(&self) -> Vec<PaletteCommand> {
+        let mut commands = Vec::new();
+        let mut push_command = |id: &str,
+                                label: &str,
+                                description: &str,
+                                category: &str,
+                                keybinding: Option<String>| {
+            let mut command = PaletteCommand::new(id, label)
+                .description(description)
+                .category(category);
+            if let Some(keys) = keybinding {
+                command = command.keybinding(keys);
+            }
+            commands.push(command);
+        };
+
+        let interrupt_keys = keybinding_labels(&self.settings.keybindings, KeyAction::Interrupt, "Ctrl+C");
+        push_command(
+            command_palette_ids::INTERRUPT_REQUEST,
+            "Interrupt Request",
+            "Stop the active response stream",
+            "Request",
+            Some(interrupt_keys),
+        );
+
+        push_command(
+            command_palette_ids::HELP,
+            "Open Help",
+            "Show hotkeys and feature overview",
+            "Navigation",
+            Some("F1".to_string()),
+        );
+
+        let settings_keys = keybinding_labels(&self.settings.keybindings, KeyAction::OpenSettings, "Ctrl+,");
+        push_command(
+            command_palette_ids::SETTINGS,
+            "Open Settings",
+            "Configure Coder preferences",
+            "Navigation",
+            Some(settings_keys),
+        );
+
+        push_command(
+            command_palette_ids::MODEL_PICKER,
+            "Select Model",
+            "Choose the model for this session",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::SESSION_LIST,
+            "Open Session List",
+            "Resume or fork previous sessions",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::AGENTS_LIST,
+            "Open Agents",
+            "Browse available agents",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::SKILLS_LIST,
+            "Open Skills",
+            "Browse available skills",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::HOOKS_OPEN,
+            "Open Hooks",
+            "Manage hook configuration",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::TOOLS_LIST,
+            "Open Tool List",
+            "Review available tools",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::MCP_CONFIG,
+            "Open MCP Servers",
+            "Manage MCP configuration",
+            "Navigation",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::CLEAR_CONVERSATION,
+            "Clear Conversation",
+            "Reset the current chat history",
+            "Session",
+            None,
+        );
+        push_command(
+            command_palette_ids::UNDO_LAST,
+            "Undo Last Exchange",
+            "Remove the most recent exchange",
+            "Session",
+            None,
+        );
+        push_command(
+            command_palette_ids::COMPACT_CONTEXT,
+            "Compact Context",
+            "Summarize older context into a shorter prompt",
+            "Session",
+            None,
+        );
+        push_command(
+            command_palette_ids::SESSION_FORK,
+            "Fork Session",
+            "Create a new branch of this session",
+            "Session",
+            None,
+        );
+        push_command(
+            command_palette_ids::SESSION_EXPORT,
+            "Export Session",
+            "Export conversation to markdown",
+            "Session",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::MODE_CYCLE,
+            "Cycle Mode",
+            "Rotate through modes (Bypass/Plan/Autopilot)",
+            "Mode",
+            Some("Shift+Tab".to_string()),
+        );
+        push_command(
+            command_palette_ids::MODE_BYPASS,
+            "Mode: Bypass Permissions",
+            "Auto-approve all tool use",
+            "Mode",
+            None,
+        );
+        push_command(
+            command_palette_ids::MODE_PLAN,
+            "Mode: Plan",
+            "Read-only mode, deny write operations",
+            "Mode",
+            None,
+        );
+        push_command(
+            command_palette_ids::MODE_AUTOPILOT,
+            "Mode: Autopilot",
+            "Use DSPy/Adjutant for autonomous execution",
+            "Mode",
+            None,
+        );
+        push_command(
+            command_palette_ids::PERMISSION_RULES,
+            "Open Permission Rules",
+            "Manage tool allow/deny rules",
+            "Permissions",
+            None,
+        );
+
+        let left_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::ToggleLeftSidebar, "Ctrl+[");
+        let right_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::ToggleRightSidebar, "Ctrl+]");
+        let toggle_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::ToggleSidebars, "Ctrl+\\");
+        push_command(
+            command_palette_ids::SIDEBAR_LEFT,
+            "Open Left Sidebar",
+            "Show the left sidebar",
+            "Layout",
+            Some(left_keys),
+        );
+        push_command(
+            command_palette_ids::SIDEBAR_RIGHT,
+            "Open Right Sidebar",
+            "Show the right sidebar",
+            "Layout",
+            Some(right_keys),
+        );
+        push_command(
+            command_palette_ids::SIDEBAR_TOGGLE,
+            "Toggle Sidebars",
+            "Show or hide both sidebars",
+            "Layout",
+            Some(toggle_keys),
+        );
+
+        push_command(
+            command_palette_ids::MCP_RELOAD,
+            "Reload MCP Config",
+            "Reload MCP servers from project config",
+            "MCP",
+            None,
+        );
+        push_command(
+            command_palette_ids::MCP_STATUS,
+            "Refresh MCP Status",
+            "Fetch MCP server status",
+            "MCP",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::AGENT_CLEAR,
+            "Clear Active Agent",
+            "Stop using the active agent",
+            "Agents",
+            None,
+        );
+        push_command(
+            command_palette_ids::AGENT_RELOAD,
+            "Reload Agents",
+            "Reload agent definitions from disk",
+            "Agents",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::SKILLS_RELOAD,
+            "Reload Skills",
+            "Reload skills from disk",
+            "Skills",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::HOOKS_RELOAD,
+            "Reload Hooks",
+            "Reload hook scripts from disk",
+            "Hooks",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::BUG_REPORT,
+            "Report a Bug",
+            "Open the issue tracker",
+            "Diagnostics",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::KITCHEN_SINK,
+            "Kitchen Sink",
+            "Show all UI component variations",
+            "Developer",
+            None,
+        );
+
+        commands
+    }
+
+    fn open_command_palette(&mut self) {
+        self.modal_state = ModalState::None;
+        if self.chat.chat_context_menu.is_open() {
+            self.chat.chat_context_menu.close();
+            self.chat.chat_context_menu_target = None;
+        }
+        self.command_palette.set_commands(self.build_command_palette_commands());
+        self.command_palette.open();
+    }
+
+    fn open_model_picker(&mut self) {
+        let current_idx = ModelOption::all()
+            .iter()
+            .position(|m| *m == self.settings.selected_model)
+            .unwrap_or(0);
+        self.modal_state = ModalState::ModelPicker { selected: current_idx };
+    }
+
+    fn open_session_list(&mut self) {
+        let (action_tx, action_rx) = mpsc::unbounded_channel();
+        let (checkpoint_tx, checkpoint_rx) = mpsc::unbounded_channel();
+        self.session.session_action_tx = Some(action_tx);
+        self.session.session_action_rx = Some(action_rx);
+        self.session.checkpoint_action_tx = Some(checkpoint_tx);
+        self.session.checkpoint_action_rx = Some(checkpoint_rx);
+        self.session.refresh_session_cards(self.chat.is_thinking);
+        self.session.refresh_checkpoint_restore(&self.chat.messages);
+        let selected = self.session.session_index
+            .iter()
+            .position(|entry| entry.id == self.session.session_info.session_id)
+            .unwrap_or(0);
+        self.modal_state = ModalState::SessionList { selected };
+    }
+
+    fn open_agent_list(&mut self) {
+        let (action_tx, action_rx) = mpsc::unbounded_channel();
+        self.catalogs.agent_action_tx = Some(action_tx);
+        self.catalogs.agent_action_rx = Some(action_rx);
+        self.catalogs.refresh_agent_cards(self.chat.is_thinking);
+        let selected = self.catalogs.active_agent
+            .as_ref()
+            .and_then(|name| {
+                self.catalogs.agent_entries
+                    .iter()
+                    .position(|entry| entry.name == *name)
+            })
+            .unwrap_or(0);
+        self.modal_state = ModalState::AgentList { selected };
+    }
+
+    fn open_skill_list(&mut self) {
+        let (action_tx, action_rx) = mpsc::unbounded_channel();
+        self.catalogs.skill_action_tx = Some(action_tx);
+        self.catalogs.skill_action_rx = Some(action_rx);
+        self.catalogs.refresh_skill_cards();
+        self.modal_state = ModalState::SkillList { selected: 0 };
+    }
+
+    fn open_tool_list(&mut self) {
+        self.modal_state = ModalState::ToolList { selected: 0 };
+    }
+
+    fn open_permission_rules(&mut self) {
+        self.modal_state = ModalState::PermissionRules;
+    }
+
+    fn open_config(&mut self) {
+        self.modal_state = ModalState::Config {
+            tab: SettingsTab::General,
+            selected: 0,
+            search: String::new(),
+            input_mode: SettingsInputMode::Normal,
+        };
+    }
+
+    fn persist_settings(&self) {
+        save_settings(&self.settings.coder_settings);
+    }
+
+    fn apply_settings(&mut self) {
+        normalize_settings(&mut self.settings.coder_settings);
+        let current_value = self.input.get_value().to_string();
+        let focused = self.input.is_focused();
+        self.input = build_input(&self.settings.coder_settings);
+        self.input.set_value(current_value);
+        if focused {
+            self.input.focus();
+        }
+        self.chat.markdown_renderer = build_markdown_renderer(&self.settings.coder_settings);
+        self.chat.streaming_markdown.set_markdown_config(build_markdown_config(&self.settings.coder_settings));
+    }
+
+    fn update_selected_model(&mut self, model: ModelOption) {
+        self.settings.selected_model = model;
+        self.session.session_info.model = self.settings.selected_model.model_id().to_string();
+        update_settings_model(&mut self.settings.coder_settings, self.settings.selected_model);
+        self.persist_settings();
+    }
+
+    fn toggle_left_sidebar(&mut self) {
+        self.left_sidebar_open = !self.left_sidebar_open;
+    }
+
+    fn toggle_right_sidebar(&mut self) {
+        self.right_sidebar_open = !self.right_sidebar_open;
+    }
+
+    fn toggle_sidebars(&mut self) {
+        let should_open = !(self.left_sidebar_open && self.right_sidebar_open);
+        self.left_sidebar_open = should_open;
+        self.right_sidebar_open = should_open;
+    }
+
+    fn apply_session_history_limit(&mut self) {
+        let removed =
+            apply_session_history_limit(&mut self.session.session_index, self.settings.coder_settings.session_history_limit);
+        if !removed.is_empty() {
+            let _ = save_session_index(&self.session.session_index);
+            for removed_id in removed {
+                let _ = fs::remove_dir_all(session_messages_dir(&removed_id));
+            }
+            self.session.refresh_session_cards(self.chat.is_thinking);
+        }
+    }
+
+    fn open_mcp_config(&mut self) {
+        self.modal_state = ModalState::McpConfig { selected: 0 };
+    }
+
+    fn open_help(&mut self) {
+        self.modal_state = ModalState::Help;
+    }
+
+    fn open_hooks(&mut self) {
+        let (action_tx, action_rx) = mpsc::unbounded_channel();
+        self.catalogs.hook_inspector_action_tx = Some(action_tx);
+        self.catalogs.hook_inspector_action_rx = Some(action_rx);
+        self.modal_state = ModalState::Hooks {
+            view: HookModalView::Config,
+            selected: 0,
+        };
+    }
+
+    fn reload_hooks(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let catalog = load_hook_scripts(&cwd);
+        self.catalogs.hook_scripts = catalog.entries;
+        self.catalogs.hook_project_path = catalog.project_path;
+        self.catalogs.hook_user_path = catalog.user_path;
+        self.catalogs.hook_load_error = catalog.error;
+    }
+
+    fn toggle_hook_setting(&mut self, setting: HookSetting) {
+        match setting {
+            HookSetting::ToolBlocker => {
+                self.catalogs.hook_config.tool_blocker = !self.catalogs.hook_config.tool_blocker;
+            }
+            HookSetting::ToolLogger => {
+                self.catalogs.hook_config.tool_logger = !self.catalogs.hook_config.tool_logger;
+            }
+            HookSetting::OutputTruncator => {
+                self.catalogs.hook_config.output_truncator = !self.catalogs.hook_config.output_truncator;
+            }
+            HookSetting::ContextInjection => {
+                self.catalogs.hook_config.context_injection = !self.catalogs.hook_config.context_injection;
+            }
+            HookSetting::TodoEnforcer => {
+                self.catalogs.hook_config.todo_enforcer = !self.catalogs.hook_config.todo_enforcer;
+            }
+        }
+        save_hook_config(&self.catalogs.hook_config);
+    }
+
+    fn clear_hook_log(&mut self) {
+        self.catalogs.hook_event_log.clear();
+        self.catalogs.hook_inspector = None;
+        if let ModalState::Hooks { view, selected } = &mut self.modal_state {
+            if *view == HookModalView::Events {
+                *selected = 0;
+            }
+        }
+    }
+
+    fn reload_agents(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let catalog = load_agent_entries(&cwd);
+        self.catalogs.agent_entries = catalog.entries;
+        self.catalogs.agent_project_path = catalog.project_path;
+        self.catalogs.agent_user_path = catalog.user_path;
+        self.catalogs.agent_load_error = catalog.error;
+        if let Some(active) = self.catalogs.active_agent.clone() {
+            if !self.catalogs.agent_entries.iter().any(|entry| entry.name == active) {
+                self.catalogs.active_agent = None;
+                self.push_system_message(format!(
+                    "Active agent {} no longer available.",
+                    active
+                ));
+            }
+        }
+        self.catalogs.refresh_agent_cards(self.chat.is_thinking);
+    }
+
+    fn reload_skills(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let catalog = load_skill_entries(&cwd);
+        self.catalogs.skill_entries = catalog.entries;
+        self.catalogs.skill_project_path = catalog.project_path;
+        self.catalogs.skill_user_path = catalog.user_path;
+        self.catalogs.skill_load_error = catalog.error;
+        self.catalogs.refresh_skill_cards();
+    }
+
+    fn reload_mcp_project_servers(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let (servers, error) = load_mcp_project_servers(&cwd);
+        self.catalogs.mcp_project_servers = servers;
+        self.catalogs.mcp_project_error = error;
+        self.catalogs.mcp_project_path = Some(mcp_project_file(&cwd));
+    }
+
+    fn request_mcp_status(&mut self) {
+        if let Some(tx) = &self.chat.query_control_tx {
+            let _ = tx.send(QueryControl::FetchMcpStatus);
+        } else {
+            self.push_system_message("No active session for MCP status.".to_string());
+        }
+    }
+
+    fn handle_session_card_action(&mut self, action: SessionAction, session_id: String) {
+        match action {
+            SessionAction::Select | SessionAction::Resume => {
+                self.begin_session_resume(session_id);
+                self.modal_state = ModalState::None;
+            }
+            SessionAction::Fork => {
+                self.begin_session_fork_from(session_id);
+                self.modal_state = ModalState::None;
+            }
+            SessionAction::Delete => {
+                self.push_system_message("Session delete not implemented yet.".to_string());
+            }
+        }
+    }
+
+    fn handle_agent_card_action(&mut self, action: AgentCardAction, agent_id: String) {
+        match action {
+            AgentCardAction::Select => {
+                self.set_active_agent_by_name(&agent_id);
+                self.modal_state = ModalState::None;
+            }
+            AgentCardAction::ToggleActive => {
+                if self.catalogs.active_agent.as_deref() == Some(agent_id.as_str()) {
+                    self.clear_active_agent();
+                } else {
+                    self.set_active_agent_by_name(&agent_id);
+                }
+            }
+        }
+    }
+
+    fn handle_skill_card_action(&mut self, action: SkillCardAction, skill_id: String) {
+        match action {
+            SkillCardAction::View => {
+                if let Some(index) = self.catalogs.skill_entries
+                    .iter()
+                    .position(|entry| entry.info.id == skill_id)
+                {
+                    if matches!(self.modal_state, ModalState::SkillList { .. }) {
+                        self.modal_state = ModalState::SkillList { selected: index };
+                    }
+                }
+            }
+            SkillCardAction::Install => {
+                if let Some(entry) = self.catalogs.skill_entries
+                    .iter()
+                    .find(|entry| entry.info.id == skill_id)
+                {
+                    self.push_system_message(format!(
+                        "Skill {} is already installed at {}.",
+                        entry.info.name,
+                        entry.path.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    fn set_active_agent_by_name(&mut self, name: &str) {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            self.push_system_message("Agent name is required.".to_string());
+            return;
+        }
+        if let Some(entry) = self.catalogs.agent_entries
+            .iter()
+            .find(|entry| entry.name.eq_ignore_ascii_case(trimmed))
+        {
+            self.set_active_agent(Some(entry.name.clone()));
+        } else {
+            self.push_system_message(format!("Unknown agent: {}.", trimmed));
+        }
+    }
+
+    fn clear_active_agent(&mut self) {
+        self.set_active_agent(None);
+    }
+
+    fn set_active_agent(&mut self, agent: Option<String>) {
+        let next = agent.and_then(|name| {
+            let trimmed = name.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        });
+        if next == self.catalogs.active_agent {
+            return;
+        }
+        self.catalogs.active_agent = next.clone();
+        if let Some(name) = next {
+            self.push_system_message(format!("Active agent set to {}.", name));
+        } else {
+            self.push_system_message("Active agent cleared.".to_string());
+        }
+        self.catalogs.refresh_agent_cards(self.chat.is_thinking);
+    }
+
+    fn agent_definitions_for_query(&self) -> HashMap<String, AgentDefinition> {
+        let mut agents = HashMap::new();
+        for entry in &self.catalogs.agent_entries {
+            agents.insert(entry.name.clone(), entry.definition.clone());
+        }
+        agents
+    }
+
+    fn setting_sources_for_query(&self) -> Vec<SettingSource> {
+        let mut sources = Vec::new();
+        if self.catalogs.skill_entries
+            .iter()
+            .any(|entry| entry.source == SkillSource::Project)
+        {
+            sources.push(SettingSource::Project);
+        }
+        if self.catalogs.skill_entries
+            .iter()
+            .any(|entry| entry.source == SkillSource::User)
+        {
+            sources.push(SettingSource::User);
+        }
+        sources
+    }
+
+    fn push_hook_log(&mut self, entry: HookLogEntry) {
+        self.catalogs.hook_event_log.insert(0, entry);
+        if self.catalogs.hook_event_log.len() > HOOK_LOG_LIMIT {
+            self.catalogs.hook_event_log.truncate(HOOK_LOG_LIMIT);
+        }
+        if let ModalState::Hooks {
+            view: HookModalView::Events,
+            selected,
+        } = &mut self.modal_state
+        {
+            *selected = 0;
+            self.sync_hook_inspector(0);
+        }
+    }
+
+    fn sync_hook_inspector(&mut self, selected: usize) {
+        let Some(entry) = self.catalogs.hook_event_log.get(selected) else {
+            self.catalogs.hook_inspector = None;
+            return;
+        };
+
+        let event = hook_log_event_data(entry);
+        let view = self.catalogs.hook_inspector_view;
+        let mut inspector = EventInspector::new(event).view(view);
+        if let Some(tx) = self.catalogs.hook_inspector_action_tx.clone() {
+            inspector = inspector.on_view_change(move |view| {
+                let _ = tx.send(view);
+            });
+        }
+        self.catalogs.hook_inspector = Some(inspector);
+    }
+
+    fn handle_checkpoint_restore(&mut self, index: usize) {
+        if let Some(entry) = self.session.checkpoint_entries.get(index) {
+            self.request_rewind_files(entry.user_message_id.clone());
+        }
+    }
+
+    fn begin_session_fork_from(&mut self, session_id: String) {
+        let session_id = session_id.trim().to_string();
+        if session_id.is_empty() {
+            self.push_system_message("Session id is required to fork.".to_string());
+            return;
+        }
+        self.session.pending_resume_session = Some(session_id.clone());
+        self.session.pending_fork_session = true;
+        self.session.session_info.session_id = session_id.clone();
+        if let Some(entry) = self.session.session_index.iter().find(|entry| entry.id == session_id) {
+            self.session.session_info.model = entry.model.clone();
+        }
+        match self
+            .session
+            .restore_session(&session_id, &mut self.chat, &mut self.tools)
+        {
+            Ok(()) => self.push_system_message(format!(
+                "Loaded cached history for session {}.",
+                session_id
+            )),
+            Err(_) => {
+                self.chat.messages.clear();
+                self.push_system_message(format!(
+                    "No local history for session {} yet.",
+                    session_id
+                ));
+            }
+        }
+        self.push_system_message(format!(
+            "Next message will fork session {}.",
+            session_id
+        ));
+        self.session.refresh_session_cards(self.chat.is_thinking);
+    }
+
+    fn attach_user_message_id(&mut self, uuid: String) {
+        if let Some(message) = self.chat.messages
+            .iter_mut()
+            .rev()
+            .find(|msg| matches!(msg.role, MessageRole::User) && msg.uuid.is_none())
+        {
+            message.uuid = Some(uuid);
+            self.session.refresh_checkpoint_restore(&self.chat.messages);
+        }
+    }
+
+    fn request_rewind_files(&mut self, user_message_id: String) {
+        if let Some(tx) = &self.chat.query_control_tx {
+            let _ = tx.send(QueryControl::RewindFiles { user_message_id: user_message_id.clone() });
+            self.push_system_message(format!(
+                "Requested checkpoint restore for message {}.",
+                truncate_preview(&user_message_id, 12)
+            ));
+        } else {
+            self.push_system_message("No active request to rewind.".to_string());
+        }
+    }
+
+    fn clear_conversation(&mut self) {
+        if self.chat.is_thinking {
+            self.push_system_message(
+                "Cannot clear while a response is in progress.".to_string(),
+            );
+            return;
+        }
+        self.chat.messages.clear();
+        self.chat.streaming_markdown.reset();
+        self.chat.scroll_offset = 0.0;
+        self.tools.current_tool_name = None;
+        self.tools.current_tool_input.clear();
+        self.tools.current_tool_use_id = None;
+        self.tools.tool_history.clear();
+        self.session.session_info.session_id.clear();
+        self.session.session_info.tool_count = 0;
+        self.session.session_info.tools.clear();
+        self.session.pending_resume_session = None;
+        self.session.pending_fork_session = false;
+        self.session.checkpoint_entries.clear();
+        self.session.checkpoint_restore = CheckpointRestore::new();
+        self.session.refresh_session_cards(self.chat.is_thinking);
+    }
+
+    fn start_new_session(&mut self) {
+        if self.chat.is_thinking {
+            self.push_system_message("Cannot start new session while processing.".to_string());
+            return;
+        }
+        self.chat.messages.clear();
+        self.chat.streaming_markdown.reset();
+        self.chat.scroll_offset = 0.0;
+        self.tools.current_tool_name = None;
+        self.tools.current_tool_input.clear();
+        self.tools.current_tool_use_id = None;
+        self.tools.tool_history.clear();
+        self.session.session_usage = SessionUsageStats::default();
+        self.session.session_info.session_id.clear();
+        self.session.session_info.tool_count = 0;
+        self.session.session_info.tools.clear();
+        self.session.pending_resume_session = None;
+        self.session.pending_fork_session = false;
+        self.session.checkpoint_entries.clear();
+        self.session.checkpoint_restore = CheckpointRestore::new();
+        self.session.refresh_session_cards(self.chat.is_thinking);
+        self.push_system_message("Started new session.".to_string());
+    }
+
+    fn undo_last_exchange(&mut self) {
+        if self.chat.is_thinking {
+            self.push_system_message(
+                "Cannot undo while a response is in progress.".to_string(),
+            );
+            return;
+        }
+
+        let mut removed = 0;
+        while matches!(self.chat.messages.last(), Some(ChatMessage { role: MessageRole::Assistant, .. })) {
+            self.chat.messages.pop();
+            removed += 1;
+        }
+        if matches!(self.chat.messages.last(), Some(ChatMessage { role: MessageRole::User, .. })) {
+            self.chat.messages.pop();
+            removed += 1;
+        }
+
+        if removed == 0 {
+            self.push_system_message("Nothing to undo.".to_string());
+        } else {
+            self.session.refresh_checkpoint_restore(&self.chat.messages);
+        }
+    }
+
+    fn interrupt_query(&mut self) {
+        if let Some(tx) = &self.chat.query_control_tx {
+            let _ = tx.send(QueryControl::Interrupt);
+        } else {
+            self.push_system_message("No active request to interrupt.".to_string());
+        }
+    }
+
+    #[allow(dead_code)]
+    fn abort_query(&mut self) {
+        if let Some(tx) = &self.chat.query_control_tx {
+            let _ = tx.send(QueryControl::Abort);
+        } else {
+            self.push_system_message("No active request to cancel.".to_string());
+        }
+    }
+
+    fn begin_session_resume(&mut self, session_id: String) {
+        let session_id = session_id.trim().to_string();
+        if session_id.is_empty() {
+            self.push_system_message("Session id is required to resume.".to_string());
+            return;
+        }
+        self.session.pending_resume_session = Some(session_id.clone());
+        self.session.pending_fork_session = false;
+        self.session.session_info.session_id = session_id.clone();
+        if let Some(entry) = self.session.session_index.iter().find(|entry| entry.id == session_id) {
+            self.session.session_info.model = entry.model.clone();
+        }
+        match self
+            .session
+            .restore_session(&session_id, &mut self.chat, &mut self.tools)
+        {
+            Ok(()) => self.push_system_message(format!(
+                "Loaded cached history for session {}.",
+                session_id
+            )),
+            Err(_) => {
+                self.chat.messages.clear();
+                self.push_system_message(format!(
+                    "No local history for session {} yet.",
+                    session_id
+                ));
+            }
+        }
+        self.session.refresh_session_cards(self.chat.is_thinking);
+    }
+
+    fn begin_session_fork(&mut self) {
+        if self.session.session_info.session_id.trim().is_empty() {
+            self.push_system_message("No active session to fork.".to_string());
+            return;
+        }
+        self.session.pending_resume_session = Some(self.session.session_info.session_id.clone());
+        self.session.pending_fork_session = true;
+        self.push_system_message("Next message will fork the current session.".to_string());
+    }
+
+    fn export_session(&mut self) {
+        if self.chat.messages.is_empty() {
+            self.push_system_message("No messages to export yet.".to_string());
+            return;
+        }
+        match export_session_markdown(self) {
+            Ok(path) => self.push_system_message(format!(
+                "Exported session to {}.",
+                path.display()
+            )),
+            Err(err) => self.push_system_message(format!(
+                "Failed to export session: {}.",
+                err
+            )),
+        }
+    }
+
+    fn push_system_message(&mut self, message: String) {
+        self.chat.messages.push(ChatMessage {
+            role: MessageRole::Assistant,
+            content: message,
+            document: None,
+            uuid: None,
+            metadata: None,
+        });
+    }
+}
+
+fn export_session_markdown(state: &AppState) -> io::Result<PathBuf> {
+    let export_dir = config_dir().join("exports");
+    fs::create_dir_all(&export_dir)?;
+    let session_id = if state.session.session_info.session_id.is_empty() {
+        "session".to_string()
+    } else {
+        state.session.session_info.session_id.clone()
+    };
+    let filename = format!("{}-{}.md", session_id, now_timestamp());
+    let path = export_dir.join(filename);
+    let mut file = fs::File::create(&path)?;
+
+    writeln!(file, "# Coder Session {}", session_id)?;
+    if !state.session.session_info.model.is_empty() {
+        writeln!(file, "- Model: {}", state.session.session_info.model)?;
+    }
+    writeln!(file, "- Exported: {}", now_timestamp())?;
+    writeln!(file)?;
+
+    for message in &state.chat.messages {
+        match message.role {
+            MessageRole::User => {
+                for line in message.content.lines() {
+                    writeln!(file, "> {}", line)?;
+                }
+                writeln!(file)?;
+            }
+            MessageRole::Assistant => {
+                writeln!(file, "{}", message.content)?;
+                writeln!(file)?;
+            }
+        }
+    }
+
+    Ok(path)
+}
