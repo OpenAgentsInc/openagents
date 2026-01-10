@@ -326,15 +326,92 @@ optimizer.compile(&mut module, examples).await?;
 println!("Optimized: {}", module.planner.get_signature().instruction());
 ```
 
+## Decision Pipelines
+
+Located in `src/dspy/decision_pipelines.rs`. These pipelines enable intelligent routing decisions with DSPy-first logic and legacy fallback.
+
+### ComplexityPipeline
+
+Classifies task complexity to inform routing decisions.
+
+| Field | Type | Direction | Description |
+|-------|------|-----------|-------------|
+| `task_description` | String | input | Task to classify |
+| `file_count` | String | input | Number of files involved |
+| `estimated_tokens` | String | input | Estimated context tokens |
+| `keywords` | String | input | Task keywords (refactor, migrate, etc.) |
+| `complexity` | String | output | Low, Medium, High, or VeryHigh |
+| `reasoning` | String | output | Explanation of classification |
+| `confidence` | f32 | output | Confidence score (0.0-1.0) |
+
+### DelegationPipeline
+
+Decides whether to delegate task execution and to which target.
+
+| Field | Type | Direction | Description |
+|-------|------|-----------|-------------|
+| `task_description` | String | input | Task to evaluate |
+| `complexity` | String | input | Classified complexity level |
+| `file_count` | String | input | Number of files |
+| `estimated_tokens` | String | input | Estimated context tokens |
+| `should_delegate` | bool | output | Whether to delegate |
+| `delegation_target` | String | output | claude_code, rlm, or local_tools |
+| `reasoning` | String | output | Explanation of decision |
+| `confidence` | f32 | output | Confidence score (0.0-1.0) |
+
+### RlmTriggerPipeline
+
+Decides whether to use RLM (Recursive Language Model) for deep analysis.
+
+| Field | Type | Direction | Description |
+|-------|------|-----------|-------------|
+| `task_description` | String | input | Task to evaluate |
+| `complexity` | String | input | Classified complexity level |
+| `estimated_tokens` | String | input | Estimated context tokens |
+| `use_rlm` | bool | output | Whether to use RLM |
+| `reasoning` | String | output | Explanation of decision |
+| `confidence` | f32 | output | Confidence score (0.0-1.0) |
+
+### Usage in Adjutant.execute()
+
+The decision pipelines are wired into the main execution flow:
+
+```rust
+pub async fn execute(&mut self, task: &Task) -> Result<TaskResult, AdjutantError> {
+    // Plan the task (rule-based)
+    let plan = self.plan_task(task).await?;
+
+    // DSPy-first RLM decision with legacy fallback
+    let use_rlm = self.determine_use_rlm(task, &plan).await;
+
+    // ... LM provider selection ...
+
+    // DSPy-first delegation decision with legacy fallback
+    let delegation = self.determine_delegation(task, &plan).await;
+
+    if delegation.should_delegate && delegation.confidence > 0.7 {
+        match delegation.delegation_target.as_str() {
+            "claude_code" => return self.delegate_to_claude_code(task).await,
+            "rlm" => return self.execute_with_rlm_delegate(task, &plan).await,
+            _ => {} // local_tools - fall through
+        }
+    }
+
+    // Legacy fallback rules still apply if DSPy confidence is low
+    // ...
+}
+```
+
 ## File Structure
 
 ```
 crates/adjutant/src/dspy/
-├── mod.rs           # Module exports
-├── lm_config.rs     # Cerebras LM configuration
-├── module.rs        # AdjutantModule + signatures
-├── metrics.rs       # Evaluation metrics
-└── training.rs      # Training data collection
+├── mod.rs               # Module exports
+├── decision_pipelines.rs # Decision signatures + pipelines (complexity, delegation, RLM)
+├── lm_config.rs         # Multi-provider LM configuration
+├── module.rs            # AdjutantModule + task execution signatures
+├── metrics.rs           # Evaluation metrics
+└── training.rs          # Training data collection
 ```
 
 ## Environment Variables

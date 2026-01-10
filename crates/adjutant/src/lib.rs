@@ -159,6 +159,12 @@ pub struct Adjutant {
     session_id: Option<String>,
     /// Conversation history for local LLMs (they don't have session resumption)
     conversation_history: Vec<ConversationTurn>,
+    /// DSPy pipeline for complexity classification
+    complexity_pipeline: dspy::ComplexityPipeline,
+    /// DSPy pipeline for delegation decisions
+    delegation_pipeline: dspy::DelegationPipeline,
+    /// DSPy pipeline for RLM trigger decisions
+    rlm_pipeline: dspy::RlmTriggerPipeline,
 }
 
 impl Adjutant {
@@ -178,6 +184,9 @@ impl Adjutant {
             workspace_root,
             session_id: None,
             conversation_history: Vec::new(),
+            complexity_pipeline: dspy::ComplexityPipeline::new(),
+            delegation_pipeline: dspy::DelegationPipeline::new(),
+            rlm_pipeline: dspy::RlmTriggerPipeline::new(),
         })
     }
 
@@ -213,6 +222,8 @@ impl Adjutant {
     /// - Available backends (Claude CLI, Cerebras, etc.)
     /// - Context size (for RLM routing)
     /// - Task description keywords (analyze, recursive, etc.)
+    ///
+    /// Uses DSPy pipelines for intelligent routing decisions with legacy fallback.
     pub async fn execute(&mut self, task: &Task) -> Result<TaskResult, AdjutantError> {
         tracing::info!("Adjutant analyzing task: {}", task.title);
 
@@ -224,8 +235,8 @@ impl Adjutant {
             plan.complexity
         );
 
-        // 2. Determine if RLM mode should be used
-        let use_rlm = self.should_use_rlm(task, &plan);
+        // 2. Determine if RLM mode should be used (DSPy-first with fallback)
+        let use_rlm = self.determine_use_rlm(task, &plan).await;
 
         // 3. Check which LM provider to use (respects priority: LlamaCpp > Claude > others)
         let provider = dspy::lm_config::detect_provider();
@@ -257,20 +268,123 @@ impl Adjutant {
             _ => {}
         }
 
-        // 4. Fallback: Check complexity for delegation or RLM
+        // 4. Check delegation decision (DSPy-first with fallback)
+        let delegation = self.determine_delegation(task, &plan).await;
+
+        if delegation.should_delegate {
+            match delegation.delegation_target.as_str() {
+                "claude_code" => {
+                    tracing::info!("DSPy: delegating to Claude Code (confidence: {:.2})", delegation.confidence);
+                    return self.delegate_to_claude_code(task).await;
+                }
+                "rlm" => {
+                    tracing::info!("DSPy: using RLM delegation (confidence: {:.2})", delegation.confidence);
+                    return self.execute_with_rlm_delegate(task, &plan).await;
+                }
+                _ => {
+                    // local_tools - fall through to execute_with_tools
+                }
+            }
+        }
+
+        // 5. Legacy fallback: Check complexity for delegation or RLM
+        // (in case DSPy pipeline didn't recommend delegation but legacy rules would)
         if plan.complexity >= Complexity::High || plan.files.len() > 20 {
-            tracing::info!("Complexity high - delegating to Claude Code");
+            tracing::info!("Legacy fallback: complexity high - delegating to Claude Code");
             return self.delegate_to_claude_code(task).await;
         }
 
         if plan.estimated_tokens > 100_000 {
-            tracing::info!("Context too large - using RLM");
+            tracing::info!("Legacy fallback: context too large - using RLM");
             return self.execute_with_rlm_delegate(task, &plan).await;
         }
 
-        // 5. Do the work myself using tools
+        // 6. Do the work myself using tools
         tracing::info!("Executing with local tools");
         self.execute_with_tools(task, &plan).await
+    }
+
+    /// Determine if RLM should be used (DSPy-first with legacy fallback).
+    async fn determine_use_rlm(&self, task: &Task, plan: &TaskPlan) -> bool {
+        let complexity_str = match plan.complexity {
+            Complexity::Low => "Low",
+            Complexity::Medium => "Medium",
+            Complexity::High => "High",
+            Complexity::VeryHigh => "VeryHigh",
+        };
+
+        let input = dspy::RlmTriggerInput {
+            task_description: task.description.clone(),
+            complexity: complexity_str.to_string(),
+            estimated_tokens: plan.estimated_tokens,
+        };
+
+        // Try DSPy pipeline first
+        match self.rlm_pipeline.should_trigger(&input).await {
+            Ok(result) if result.confidence > 0.7 => {
+                tracing::debug!(
+                    "DSPy RLM decision: use_rlm={}, confidence={:.2}, reasoning={}",
+                    result.use_rlm,
+                    result.confidence,
+                    result.reasoning
+                );
+                result.use_rlm
+            }
+            Ok(result) => {
+                tracing::debug!(
+                    "DSPy RLM confidence too low ({:.2}), using legacy fallback",
+                    result.confidence
+                );
+                self.should_use_rlm(task, plan)
+            }
+            Err(e) => {
+                tracing::debug!("DSPy RLM pipeline failed: {}, using legacy fallback", e);
+                self.should_use_rlm(task, plan)
+            }
+        }
+    }
+
+    /// Determine delegation decision (DSPy-first with legacy fallback).
+    async fn determine_delegation(&self, task: &Task, plan: &TaskPlan) -> dspy::DelegationResult {
+        let complexity_str = match plan.complexity {
+            Complexity::Low => "Low",
+            Complexity::Medium => "Medium",
+            Complexity::High => "High",
+            Complexity::VeryHigh => "VeryHigh",
+        };
+
+        let input = dspy::DelegationInput {
+            task_description: task.description.clone(),
+            complexity: complexity_str.to_string(),
+            file_count: plan.files.len() as u32,
+            estimated_tokens: plan.estimated_tokens,
+        };
+
+        // Try DSPy pipeline first
+        match self.delegation_pipeline.decide(&input).await {
+            Ok(result) if result.confidence > 0.7 => {
+                tracing::debug!(
+                    "DSPy delegation decision: should_delegate={}, target={}, confidence={:.2}",
+                    result.should_delegate,
+                    result.delegation_target,
+                    result.confidence
+                );
+                result
+            }
+            Ok(result) => {
+                tracing::debug!(
+                    "DSPy delegation confidence too low ({:.2}), using legacy fallback",
+                    result.confidence
+                );
+                // Return default (no delegation) - legacy rules will be checked
+                dspy::DelegationResult::default()
+            }
+            Err(e) => {
+                tracing::debug!("DSPy delegation pipeline failed: {}, using legacy fallback", e);
+                // Return default (no delegation) - legacy rules will be checked
+                dspy::DelegationResult::default()
+            }
+        }
     }
 
     /// Execute a task with streaming support for local LM.
