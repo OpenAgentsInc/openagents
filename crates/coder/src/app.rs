@@ -8940,14 +8940,14 @@ impl CoderApp {
         let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
         state.input.paint(input_bounds, &mut paint_cx);
 
-        // Draw ">" prompt inside input
+        // Draw ">" prompt inside input, aligned with the cursor line (bottom)
         let prompt_font = state.settings.font_size;
+        let line_height = prompt_font * 1.4;
+        let cursor_line = state.input.cursor_line();
+        let prompt_y = input_bounds.origin.y + 8.0 + line_height * cursor_line as f32 + prompt_font * 0.15;
         let prompt_run = state.text_system.layout_styled_mono(
             ">",
-            Point::new(
-                input_bounds.origin.x + 12.0,
-                input_bounds.origin.y + input_bounds.size.height * 0.5 - prompt_font * 0.5,
-            ),
+            Point::new(input_bounds.origin.x + 12.0, prompt_y),
             prompt_font,
             palette.prompt,
             wgpui::text::FontStyle::default(),
