@@ -194,6 +194,15 @@ impl AppState {
             "System",
             Some(oanix_keys),
         );
+        let issues_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenIssues, "Ctrl+Shift+I");
+        push_command(
+            command_palette_ids::ISSUES_OPEN,
+            "Open Issues",
+            "Review workspace issues from .openagents",
+            "Workspace",
+            Some(issues_keys),
+        );
         let dspy_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
         push_command(
@@ -567,6 +576,17 @@ impl AppState {
     }
 
     pub(super) fn refresh_oanix(&mut self) {
+        self.request_oanix_refresh();
+    }
+
+    pub(super) fn open_issues(&mut self) {
+        if self.autopilot.oanix_manifest.is_none() && self.autopilot.oanix_manifest_rx.is_none() {
+            self.request_oanix_refresh();
+        }
+        self.modal_state = ModalState::Issues;
+    }
+
+    pub(super) fn refresh_issues(&mut self) {
         self.request_oanix_refresh();
     }
 

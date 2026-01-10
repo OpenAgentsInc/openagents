@@ -8,3 +8,4 @@ mod spark_wallet_tests;
 mod nip28_tests;
 mod oanix_tests;
 mod nip90_tests;
+mod issues_tests;

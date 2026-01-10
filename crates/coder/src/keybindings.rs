@@ -13,6 +13,7 @@ pub enum Action {
     OpenSparkWallet,
     OpenNip90,
     OpenOanix,
+    OpenIssues,
     OpenDspy,
     OpenNip28,
     ToggleLeftSidebar,
@@ -47,6 +48,7 @@ impl Action {
             Action::OpenSparkWallet,
             Action::OpenNip90,
             Action::OpenOanix,
+            Action::OpenIssues,
             Action::OpenDspy,
             Action::OpenNip28,
             Action::ToggleLeftSidebar,
@@ -68,6 +70,7 @@ impl Action {
             Action::OpenSparkWallet => "spark_wallet",
             Action::OpenNip90 => "nip90",
             Action::OpenOanix => "oanix",
+            Action::OpenIssues => "issues",
             Action::OpenDspy => "dspy",
             Action::OpenNip28 => "nip28",
             Action::ToggleLeftSidebar => "sidebar_left",
@@ -89,6 +92,7 @@ impl Action {
             Action::OpenSparkWallet => "Open Spark wallet",
             Action::OpenNip90 => "Open NIP-90 jobs",
             Action::OpenOanix => "Open OANIX",
+            Action::OpenIssues => "Open workspace issues",
             Action::OpenDspy => "Open DSPy",
             Action::OpenNip28 => "Open NIP-28 chat",
             Action::ToggleLeftSidebar => "Toggle left sidebar",
@@ -110,6 +114,7 @@ impl Action {
             "spark_wallet" => Some(Action::OpenSparkWallet),
             "nip90" => Some(Action::OpenNip90),
             "oanix" => Some(Action::OpenOanix),
+            "issues" => Some(Action::OpenIssues),
             "dspy" => Some(Action::OpenDspy),
             "nip28" => Some(Action::OpenNip28),
             "sidebar_left" => Some(Action::ToggleLeftSidebar),
@@ -217,6 +222,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenOanix,
+        },
+        Keybinding {
+            key: Key::Character("i".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenIssues,
         },
         Keybinding {
             key: Key::Character("d".to_string()),
@@ -331,6 +345,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenOanix,
+        },
+        Keybinding {
+            key: Key::Character("i".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenIssues,
         },
         Keybinding {
             key: Key::Character("d".to_string()),

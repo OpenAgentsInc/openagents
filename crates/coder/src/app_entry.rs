@@ -48,6 +48,7 @@ mod command_palette_ids {
     pub const SPARK_WALLET_OPEN: &str = "spark_wallet.open";
     pub const NIP90_OPEN: &str = "nip90.open";
     pub const OANIX_OPEN: &str = "oanix.open";
+    pub const ISSUES_OPEN: &str = "issues.open";
     pub const DSPY_OPEN: &str = "dspy.open";
     pub const NIP28_OPEN: &str = "nip28.open";
     pub const SKILLS_LIST: &str = "skills.list";

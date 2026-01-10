@@ -1348,6 +1348,10 @@ impl CoderApp {
                 state.open_oanix();
                 None
             }
+            command_palette_ids::ISSUES_OPEN => {
+                state.open_issues();
+                None
+            }
             command_palette_ids::DSPY_OPEN => {
                 state.open_dspy();
                 None

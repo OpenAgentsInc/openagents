@@ -51,6 +51,7 @@ This document outlines the path to 100% implementation of the Claude Agent SDK i
 | Nexus stats pane | Done | Relay stats + event/job counters |
 | Spark wallet pane | Done | Spark balance, addresses, and payments |
 | OANIX manifest pane | Done | Hardware, compute, network, workspace overview |
+| Workspace issues pane | Done | Issues.json list with status and priority |
 | DSPy status pane | Done | Sessions + performance + auto-optimizer |
 | NIP-28 chat pane | Done | Public Nostr chat with relay + channel |
 | NIP-90 jobs pane | Done | Requests, results, and feedback monitor |
@@ -930,3 +931,4 @@ pub enum SettingsTab {
 - 2026-01-10 19:00 UTC - Added Spark wallet pane with balances, addresses, and payment history.
 - 2026-01-10 19:02 UTC - Added NIP-90 jobs pane with relay subscription, keybinding, and command palette entry.
 - 2026-01-10 19:46 UTC - Added DVM providers pane with NIP-89 discovery, keybinding, and commands.
+- 2026-01-10 20:18 UTC - Added workspace issues pane with issue list, status summaries, keybinding, and commands.

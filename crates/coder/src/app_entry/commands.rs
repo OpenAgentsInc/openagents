@@ -369,6 +369,15 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             state.open_oanix();
             CommandAction::None
         }
+        Command::Issues => {
+            state.open_issues();
+            CommandAction::None
+        }
+        Command::IssuesRefresh => {
+            state.refresh_issues();
+            state.open_issues();
+            CommandAction::None
+        }
         Command::Dspy => {
             state.open_dspy();
             CommandAction::None
@@ -897,6 +906,19 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 }
                 WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
                     state.refresh_oanix();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Issues => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_issues();
                 }
                 _ => {}
             }
