@@ -484,6 +484,14 @@ const INPUT_PADDING: f32 = 12.0;
 const OUTPUT_PADDING: f32 = 12.0;
 const STATUS_BAR_HEIGHT: f32 = 20.0;
 const STATUS_BAR_FONT_SIZE: f32 = 13.0;
+/// Height of input area (input + padding + status bar) for modal positioning
+const INPUT_AREA_HEIGHT: f32 = INPUT_HEIGHT + INPUT_PADDING + STATUS_BAR_HEIGHT;
+
+/// Calculate modal Y position centered in main content area (above input area)
+fn modal_y_in_content(logical_height: f32, modal_height: f32) -> f32 {
+    let content_height = logical_height - INPUT_AREA_HEIGHT;
+    (content_height - modal_height) / 2.0
+}
 const BUG_REPORT_URL: &str = "https://github.com/OpenAgentsInc/openagents/issues/new";
 const MAX_FILE_BYTES: usize = 200_000;
 const MAX_COMMAND_BYTES: usize = 120_000;
@@ -3982,7 +3990,7 @@ impl ApplicationHandler for CoderApp {
                     if state.agent_cards.len() != state.agent_entries.len() {
                         state.refresh_agent_cards();
                     }
-                    let modal_y = (logical_height - SESSION_MODAL_HEIGHT) / 2.0;
+                    let modal_y = modal_y_in_content(logical_height, SESSION_MODAL_HEIGHT);
                     let content_top = agent_modal_content_top(modal_y, state);
                     let layout = agent_list_layout(
                         logical_width,
@@ -4016,7 +4024,7 @@ impl ApplicationHandler for CoderApp {
                     if state.skill_cards.len() != state.skill_entries.len() {
                         state.refresh_skill_cards();
                     }
-                    let modal_y = (logical_height - SESSION_MODAL_HEIGHT) / 2.0;
+                    let modal_y = modal_y_in_content(logical_height, SESSION_MODAL_HEIGHT);
                     let content_top = skill_modal_content_top(modal_y, state);
                     let layout = skill_list_layout(
                         logical_width,
@@ -4230,7 +4238,7 @@ impl ApplicationHandler for CoderApp {
                     if state.agent_cards.len() != state.agent_entries.len() {
                         state.refresh_agent_cards();
                     }
-                    let modal_y = (logical_height - SESSION_MODAL_HEIGHT) / 2.0;
+                    let modal_y = modal_y_in_content(logical_height, SESSION_MODAL_HEIGHT);
                     let content_top = agent_modal_content_top(modal_y, state);
                     let layout = agent_list_layout(
                         logical_width,
@@ -4263,7 +4271,7 @@ impl ApplicationHandler for CoderApp {
                     if state.skill_cards.len() != state.skill_entries.len() {
                         state.refresh_skill_cards();
                     }
-                    let modal_y = (logical_height - SESSION_MODAL_HEIGHT) / 2.0;
+                    let modal_y = modal_y_in_content(logical_height, SESSION_MODAL_HEIGHT);
                     let content_top = skill_modal_content_top(modal_y, state);
                     let layout = skill_list_layout(
                         logical_width,
@@ -8333,7 +8341,7 @@ impl CoderApp {
                 let modal_width = 700.0;
                 let modal_height = 200.0;
                 let modal_x = (logical_width - modal_width) / 2.0;
-                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_y = modal_y_in_content(logical_height, modal_height);
                 let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
 
                 // Modal background
@@ -8544,7 +8552,7 @@ impl CoderApp {
                 let modal_width = SESSION_MODAL_WIDTH;
                 let modal_height = SESSION_MODAL_HEIGHT;
                 let modal_x = (logical_width - modal_width) / 2.0;
-                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_y = modal_y_in_content(logical_height, modal_height);
                 let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
 
                 let modal_bg = Quad::new(modal_bounds)
@@ -8702,7 +8710,7 @@ impl CoderApp {
                 let modal_width = SESSION_MODAL_WIDTH;
                 let modal_height = SESSION_MODAL_HEIGHT;
                 let modal_x = (logical_width - modal_width) / 2.0;
-                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_y = modal_y_in_content(logical_height, modal_height);
                 let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
 
                 let modal_bg = Quad::new(modal_bounds)
@@ -8847,7 +8855,7 @@ impl CoderApp {
                 let modal_width = HOOK_MODAL_WIDTH;
                 let modal_height = HOOK_MODAL_HEIGHT;
                 let modal_x = (logical_width - modal_width) / 2.0;
-                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_y = modal_y_in_content(logical_height, modal_height);
                 let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
 
                 let modal_bg = Quad::new(modal_bounds)
@@ -9122,7 +9130,7 @@ impl CoderApp {
                 let modal_width = 520.0;
                 let modal_height = 320.0;
                 let modal_x = (logical_width - modal_width) / 2.0;
-                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_y = modal_y_in_content(logical_height, modal_height);
                 let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
 
                 let modal_bg = Quad::new(modal_bounds)
@@ -9214,7 +9222,7 @@ impl CoderApp {
                 let modal_width = 560.0;
                 let modal_height = 420.0;
                 let modal_x = (logical_width - modal_width) / 2.0;
-                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_y = modal_y_in_content(logical_height, modal_height);
                 let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
 
                 let modal_bg = Quad::new(modal_bounds)
@@ -9406,7 +9414,7 @@ impl CoderApp {
                 let modal_width = SETTINGS_MODAL_WIDTH;
                 let modal_height = SETTINGS_MODAL_HEIGHT;
                 let modal_x = (logical_width - modal_width) / 2.0;
-                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_y = modal_y_in_content(logical_height, modal_height);
                 let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
 
                 let modal_bg = Quad::new(modal_bounds)
@@ -9594,7 +9602,7 @@ impl CoderApp {
                 let modal_width = 720.0;
                 let modal_height = 420.0;
                 let modal_x = (logical_width - modal_width) / 2.0;
-                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_y = modal_y_in_content(logical_height, modal_height);
                 let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
 
                 let modal_bg = Quad::new(modal_bounds)
@@ -9762,7 +9770,7 @@ impl CoderApp {
                 let modal_width = HELP_MODAL_WIDTH;
                 let modal_height = HELP_MODAL_HEIGHT;
                 let modal_x = (logical_width - modal_width) / 2.0;
-                let modal_y = (logical_height - modal_height) / 2.0;
+                let modal_y = modal_y_in_content(logical_height, modal_height);
                 let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
 
                 let modal_bg = Quad::new(modal_bounds)
@@ -10968,7 +10976,7 @@ fn session_list_layout(
     let modal_width = SESSION_MODAL_WIDTH;
     let modal_height = SESSION_MODAL_HEIGHT;
     let modal_x = (logical_width - modal_width) / 2.0;
-    let modal_y = (logical_height - modal_height) / 2.0;
+    let modal_y = modal_y_in_content(logical_height, modal_height);
     let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
 
     let content_top = modal_y + SESSION_MODAL_PADDING + 46.0;
@@ -11067,7 +11075,7 @@ fn agent_list_layout(
     let modal_width = SESSION_MODAL_WIDTH;
     let modal_height = SESSION_MODAL_HEIGHT;
     let modal_x = (logical_width - modal_width) / 2.0;
-    let modal_y = (logical_height - modal_height) / 2.0;
+    let modal_y = modal_y_in_content(logical_height, modal_height);
     let footer_y = modal_y + modal_height - 24.0;
     let card_area_bottom = footer_y - 16.0;
     let available_height = (card_area_bottom - content_top).max(0.0);
@@ -11112,7 +11120,7 @@ fn skill_list_layout(
     let modal_width = SESSION_MODAL_WIDTH;
     let modal_height = SESSION_MODAL_HEIGHT;
     let modal_x = (logical_width - modal_width) / 2.0;
-    let modal_y = (logical_height - modal_height) / 2.0;
+    let modal_y = modal_y_in_content(logical_height, modal_height);
     let footer_y = modal_y + modal_height - 24.0;
     let card_area_bottom = footer_y - 16.0;
     let available_height = (card_area_bottom - content_top).max(0.0);
@@ -11156,7 +11164,7 @@ fn hook_event_layout(
     let modal_width = HOOK_MODAL_WIDTH;
     let modal_height = HOOK_MODAL_HEIGHT;
     let modal_x = (logical_width - modal_width) / 2.0;
-    let modal_y = (logical_height - modal_height) / 2.0;
+    let modal_y = modal_y_in_content(logical_height, modal_height);
 
     let content_top = modal_y + 64.0;
     let content_bottom = modal_y + modal_height - 32.0;
