@@ -721,6 +721,30 @@ fn new_session_button_bounds(sidebar_bounds: Bounds) -> Bounds {
     )
 }
 
+/// Format token count with K/M suffixes
+fn format_tokens(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.0}K", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
+    }
+}
+
+/// Format duration in ms/s/m notation
+fn format_duration_ms(ms: u64) -> String {
+    if ms < 1_000 {
+        format!("{}ms", ms)
+    } else if ms < 60_000 {
+        format!("{:.1}s", ms as f64 / 1_000.0)
+    } else {
+        let mins = ms / 60_000;
+        let secs = (ms % 60_000) / 1_000;
+        format!("{}m{}s", mins, secs)
+    }
+}
+
 const SESSION_MODAL_WIDTH: f32 = 760.0;
 const SESSION_MODAL_HEIGHT: f32 = 520.0;
 const SESSION_CARD_HEIGHT: f32 = 100.0;
@@ -764,6 +788,16 @@ struct MessageMetadata {
     duration_ms: Option<u64>,
     /// Cost in millisatoshis (if applicable)
     cost_msats: Option<u64>,
+}
+
+/// Session-level usage stats for Claude API
+#[derive(Default, Clone)]
+struct SessionUsageStats {
+    input_tokens: u64,
+    output_tokens: u64,
+    total_cost_usd: f64,
+    duration_ms: u64,
+    num_turns: u32,
 }
 
 /// A chat message
@@ -3505,6 +3539,7 @@ struct AppState {
     tool_history: Vec<ToolVisualization>,
     // Session info from SystemInit
     session_info: SessionInfo,
+    session_usage: SessionUsageStats,
     session_index: Vec<SessionEntry>,
     pending_resume_session: Option<String>,
     pending_fork_session: bool,
@@ -3790,6 +3825,7 @@ impl ApplicationHandler for CoderApp {
                     permission_mode: coder_mode_label_str,
                     ..Default::default()
                 },
+                session_usage: SessionUsageStats::default(),
                 session_index,
                 pending_resume_session: None,
                 pending_fork_session: false,
@@ -5924,6 +5960,7 @@ impl AppState {
         self.current_tool_input.clear();
         self.current_tool_use_id = None;
         self.tool_history.clear();
+        self.session_usage = SessionUsageStats::default();
         self.session_info.session_id.clear();
         self.session_info.tool_count = 0;
         self.session_info.tools.clear();
@@ -7610,6 +7647,24 @@ impl CoderApp {
                     state.streaming_markdown.complete();
                     let source = state.streaming_markdown.source().to_string();
                     if !source.is_empty() {
+                        // Aggregate into session usage
+                        if let Some(ref meta) = metadata {
+                            if let Some(input) = meta.input_tokens {
+                                state.session_usage.input_tokens += input;
+                            }
+                            if let Some(output) = meta.output_tokens {
+                                state.session_usage.output_tokens += output;
+                            }
+                            if let Some(ms) = meta.duration_ms {
+                                state.session_usage.duration_ms += ms;
+                            }
+                            // Cost estimation: ~$3/M input, ~$15/M output for Claude Opus
+                            let cost = (meta.input_tokens.unwrap_or(0) as f64 * 3.0 / 1_000_000.0)
+                                     + (meta.output_tokens.unwrap_or(0) as f64 * 15.0 / 1_000_000.0);
+                            state.session_usage.total_cost_usd += cost;
+                        }
+                        state.session_usage.num_turns += 1;
+
                         let doc = state.streaming_markdown.document().clone();
                         state.messages.push(ChatMessage {
                             role: MessageRole::Assistant,
@@ -8058,22 +8113,98 @@ impl CoderApp {
                     .with_background(sidebar_bg)
                     .with_border(palette.panel_border, 1.0),
             );
-            let title_run = state.text_system.layout_styled_mono(
-                "Right sidebar",
-                Point::new(right_bounds.origin.x + 16.0, right_bounds.origin.y + 16.0),
-                12.0,
-                palette.text_primary,
+
+            // Usage display
+            let padding = 12.0;
+            let mut y = right_bounds.origin.y + padding;
+            let x = right_bounds.origin.x + padding;
+            let w = right_bounds.size.width - padding * 2.0;
+
+            let label_color = Hsla::new(0.0, 0.0, 0.5, 1.0);
+            let value_color = Hsla::new(0.0, 0.0, 0.7, 1.0);
+            let muted_color = Hsla::new(0.0, 0.0, 0.4, 1.0);
+            let font_size = 10.0;
+            let line_height = 14.0;
+
+            // Header
+            let header = state.text_system.layout_styled_mono(
+                "SESSION USAGE",
+                Point::new(x, y),
+                font_size,
+                label_color,
                 wgpui::text::FontStyle::default(),
             );
-            scene.draw_text(title_run);
-            let placeholder_run = state.text_system.layout_styled_mono(
-                "Placeholder content",
-                Point::new(right_bounds.origin.x + 16.0, right_bounds.origin.y + 34.0),
+            scene.draw_text(header);
+            y += line_height + 8.0;
+
+            // Model
+            let model_text = &state.session_info.model;
+            if !model_text.is_empty() {
+                let model_run = state.text_system.layout_styled_mono(
+                    model_text,
+                    Point::new(x, y),
+                    11.0,
+                    value_color,
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(model_run);
+                y += line_height + 8.0;
+            }
+
+            // Cost and turns
+            let cost_text = format!("${:.4}", state.session_usage.total_cost_usd);
+            let cost_run = state.text_system.layout_styled_mono(
+                &cost_text,
+                Point::new(x, y),
                 11.0,
-                palette.text_dim,
+                value_color,
                 wgpui::text::FontStyle::default(),
             );
-            scene.draw_text(placeholder_run);
+            scene.draw_text(cost_run);
+
+            let turns_text = format!("{} turns", state.session_usage.num_turns);
+            let turns_run = state.text_system.layout_styled_mono(
+                &turns_text,
+                Point::new(x + 70.0, y),
+                font_size,
+                muted_color,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(turns_run);
+            y += line_height + 8.0;
+
+            // Tokens
+            let in_text = format!("{} in", format_tokens(state.session_usage.input_tokens));
+            let in_run = state.text_system.layout_styled_mono(
+                &in_text,
+                Point::new(x, y),
+                font_size,
+                muted_color,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(in_run);
+
+            let out_text = format!("{} out", format_tokens(state.session_usage.output_tokens));
+            let out_run = state.text_system.layout_styled_mono(
+                &out_text,
+                Point::new(x + w / 2.0, y),
+                font_size,
+                muted_color,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(out_run);
+            y += line_height + 4.0;
+
+            // Duration
+            let dur_text = format_duration_ms(state.session_usage.duration_ms);
+            let dur_run = state.text_system.layout_styled_mono(
+                &dur_text,
+                Point::new(x, y),
+                font_size,
+                muted_color,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(dur_run);
         }
 
         let chat_layout =
