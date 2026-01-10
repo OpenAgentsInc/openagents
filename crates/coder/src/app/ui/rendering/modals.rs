@@ -6,6 +6,7 @@ include!("modals/hooks.rs");
 include!("modals/tool_list.rs");
 include!("modals/permission_rules.rs");
 include!("modals/wallet.rs");
+include!("modals/dvm.rs");
 include!("modals/oanix.rs");
 include!("modals/dspy.rs");
 include!("modals/nip28.rs");
@@ -130,6 +131,17 @@ fn render_modals(
         }
         ModalState::Wallet => {
             render_wallet_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
+        ModalState::DvmProviders => {
+            render_dvm_modal(
                 state,
                 scene,
                 palette,

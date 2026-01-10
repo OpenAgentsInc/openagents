@@ -15,6 +15,7 @@ use crate::app::catalog::CatalogState;
 use crate::app::chat::ChatState;
 use crate::app::config::SettingsState;
 use crate::app::dspy::DspyState;
+use crate::app::dvm::DvmState;
 use crate::app::events::ModalState;
 use crate::app::nip28::Nip28State;
 use crate::app::nip90::Nip90State;
@@ -59,6 +60,7 @@ pub(crate) struct AppState {
     pub(crate) autopilot: AutopilotState,
     pub(crate) wallet: WalletState,
     pub(crate) dspy: DspyState,
+    pub(crate) dvm: DvmState,
     pub(crate) nip28: Nip28State,
     pub(crate) nip90: Nip90State,
     pub(crate) llama_server_process: Option<Child>,

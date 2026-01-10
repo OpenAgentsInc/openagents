@@ -35,6 +35,10 @@ pub enum Command {
     HooksReload,
     Wallet,
     WalletRefresh,
+    Dvm,
+    DvmConnect(String),
+    DvmKind(u16),
+    DvmRefresh,
     Nip90,
     Nip90Connect(String),
     Nip90Refresh,
@@ -236,6 +240,26 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/dvm",
+        description: "Open DVM providers",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/dvm connect <relay_url>",
+        description: "Connect DVM discovery to a relay",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/dvm kind <id>",
+        description: "Set the job kind to discover",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/dvm refresh",
+        description: "Refresh DVM provider list",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/nip90",
         description: "Open NIP-90 job monitor",
         requires_args: false,
@@ -345,6 +369,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "skills" => parse_skills_command(args),
         "hooks" => parse_hooks_command(args),
         "wallet" => parse_wallet_command(args),
+        "dvm" => parse_dvm_command(args),
         "nip90" => parse_nip90_command(args),
         "oanix" => parse_oanix_command(args),
         "dspy" => parse_dspy_command(args),
@@ -361,6 +386,27 @@ fn parse_wallet_command(args: Vec<String>) -> Command {
         Some("refresh") => Command::WalletRefresh,
         Some("status") => Command::Wallet,
         _ => Command::Wallet,
+    }
+}
+
+fn parse_dvm_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::Dvm,
+        Some("open") => Command::Dvm,
+        Some("refresh") => Command::DvmRefresh,
+        Some("connect") => {
+            let relay = parts.collect::<Vec<String>>().join(" ");
+            Command::DvmConnect(relay)
+        }
+        Some("kind") => {
+            let value = parts.next().unwrap_or_default();
+            value
+                .parse::<u16>()
+                .map(Command::DvmKind)
+                .unwrap_or_else(|_| Command::Dvm)
+        }
+        Some(other) => Command::Custom(format!("dvm {}", other), parts.collect()),
     }
 }
 

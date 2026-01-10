@@ -15,6 +15,7 @@ use crate::app::config::{config_dir, SettingsTab};
 use crate::app::events::{keybinding_labels, ModalState};
 use crate::app::nip28::Nip28ConnectionStatus;
 use crate::app::nip90::Nip90ConnectionStatus;
+use crate::app::dvm::DvmStatus;
 use crate::app::{
     build_input, build_markdown_config, build_markdown_renderer, now_timestamp,
     AgentCardAction, HookLogEntry, HookModalView, HookSetting, ModelOption, SettingsInputMode,
@@ -129,6 +130,15 @@ impl AppState {
             "View wallet status and configuration",
             "Wallet",
             Some(wallet_keys),
+        );
+        let dvm_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenDvm, "Ctrl+Shift+P");
+        push_command(
+            command_palette_ids::DVM_OPEN,
+            "Open DVM Providers",
+            "Discover NIP-89 DVM providers",
+            "Marketplace",
+            Some(dvm_keys),
         );
         let nip90_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
@@ -422,6 +432,32 @@ impl AppState {
     pub(super) fn request_wallet_refresh(&mut self) {
         self.refresh_wallet_snapshot();
         self.request_oanix_refresh();
+    }
+
+    pub(super) fn open_dvm(&mut self) {
+        if self.dvm.providers.is_empty()
+            || matches!(self.dvm.status, DvmStatus::Error(_))
+        {
+            self.dvm.refresh();
+        }
+        self.modal_state = ModalState::DvmProviders;
+    }
+
+    pub(super) fn refresh_dvm(&mut self) {
+        self.dvm.refresh();
+    }
+
+    pub(super) fn connect_dvm(&mut self, relay_url: Option<String>) {
+        if let Some(url) = relay_url {
+            self.dvm.connect_to(url);
+        } else {
+            self.dvm.refresh();
+        }
+    }
+
+    pub(super) fn set_dvm_job_kind(&mut self, kind: u16) {
+        self.dvm.set_job_kind(kind);
+        self.push_system_message(format!("DVM job kind set to {}.", kind));
     }
 
     pub(super) fn open_nip90(&mut self) {
