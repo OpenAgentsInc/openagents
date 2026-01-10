@@ -1,0 +1,41 @@
+fn render_modals(
+    state: &mut AppState,
+    scene: &mut Scene,
+    palette: &UiPalette,
+    _sidebar_layout: &SidebarLayout,
+    logical_width: f32,
+    logical_height: f32,
+    scale_factor: f32,
+) {
+    let bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
+
+    // Draw modal if active
+    let should_refresh_sessions = matches!(state.modal_state, ModalState::SessionList { .. })
+        && state.session.session_cards.len() != state.session.session_index.len();
+    if should_refresh_sessions {
+        state.session.refresh_session_cards(state.chat.is_thinking);
+    }
+    let should_refresh_agents = matches!(state.modal_state, ModalState::AgentList { .. })
+        && state.catalogs.agent_cards.len() != state.catalogs.agent_entries.len();
+    if should_refresh_agents {
+        state.catalogs.refresh_agent_cards(state.chat.is_thinking);
+    }
+    let should_refresh_skills = matches!(state.modal_state, ModalState::SkillList { .. })
+        && state.catalogs.skill_cards.len() != state.catalogs.skill_entries.len();
+    if should_refresh_skills {
+        state.catalogs.refresh_skill_cards();
+    }
+    match &state.modal_state {
+        ModalState::None => {}
+        include!("modals/model_picker.rs")
+        include!("modals/session_list.rs")
+        include!("modals/agent_list.rs")
+        include!("modals/skill_list.rs")
+        include!("modals/hooks.rs")
+        include!("modals/tool_list.rs")
+        include!("modals/permission_rules.rs")
+        include!("modals/config.rs")
+        include!("modals/mcp_config.rs")
+        include!("modals/help.rs")
+    }
+}
