@@ -741,6 +741,7 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                             .map(|model| model.id.clone())
                     };
                     state.agent_backends.set_selection(selected_kind, model_id.clone());
+                    state.agent_selection = state.agent_backends.settings.selected.clone();
                     if selected_kind == AgentKind::Claude {
                         let model = model_id
                             .as_deref()
