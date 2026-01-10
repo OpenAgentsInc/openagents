@@ -138,6 +138,41 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
     - Records high-confidence (>0.7) decisions for MIPROv2 optimization
     - Saved to `~/.openagents/adjutant/training/dataset.json`
 
+### Wave 14: Self-Improving Autopilot (Complete)
+- [x] **Session Tracking** (`crates/adjutant/src/dspy/sessions.rs`)
+  - AutopilotSession with DecisionRecord, VerificationRecord
+  - SessionStore with persistence to `~/.openagents/adjutant/sessions/`
+  - SessionIndex for fast lookup and filtering
+  - Integration with autopilot_loop.rs
+- [x] **Outcome Feedback** (`crates/adjutant/src/dspy/outcome_feedback.rs`)
+  - Links task outcomes to decision correctness
+  - LabeledExample with ground-truth labels
+  - LabeledExamplesStore with per-signature storage
+  - Correctness logic: complexity (iterations), delegation (success), RLM (context size)
+- [x] **Performance Tracking** (`crates/adjutant/src/dspy/performance.rs`)
+  - RollingAccuracy with configurable window size (default: 50)
+  - PerformanceTracker with per-signature metrics
+  - AccuracySnapshot for historical tracking
+  - OptimizationRun records for audit trail
+- [x] **Auto Optimization** (`crates/adjutant/src/dspy/auto_optimizer.rs`)
+  - AutoOptimizerConfig with configurable triggers
+  - AutoOptimizer checks example threshold, accuracy drop, time-based
+  - SelfImprover coordinates the full self-improvement loop
+  - Automatic signature selection (prioritizes lowest accuracy)
+- [x] **CLI Commands** (`crates/adjutant/src/cli/dspy.rs`)
+  - `autopilot dspy sessions` - View session history
+  - `autopilot dspy performance` - View accuracy metrics
+  - `autopilot dspy auto-optimize` - Configure auto-optimization
+- [x] **Storage Layout**
+  ```
+  ~/.openagents/adjutant/
+  ├── sessions/           # Session tracking
+  ├── training/labeled/   # Labeled examples with ground truth
+  ├── metrics/            # Performance metrics
+  └── config/             # Auto-optimizer settings
+  ```
+- [x] 46 tests passing
+
 ---
 
 ## Wave 0: Protocol + Schema Registry (NEW)

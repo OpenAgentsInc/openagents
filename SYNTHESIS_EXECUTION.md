@@ -662,7 +662,8 @@ Shadow mode runs both old and new policy, ships old result, promotes only if new
 | 10 | Complete | Tool Invocation Signatures |
 | 11 | Complete | Optimization Infrastructure (DspyHub, TrainingExtractor) |
 | 12 | Complete | FRLM Integration |
-| 13 | **Complete** | Pipeline Wiring (decision pipelines + LM caching + training collection) |
+| 13 | Complete | Pipeline Wiring (decision pipelines + LM caching + training collection) |
+| 14 | **Complete** | Self-Improving Autopilot (sessions, outcome feedback, auto-optimize) |
 
 See [docs/DSPY_ROADMAP.md](./docs/DSPY_ROADMAP.md) for full roadmap.
 
@@ -1121,9 +1122,9 @@ Issues are NOT done unless:
 | Runtime | In progress | Tick engine, filesystem, /compute, /containers, /claude |
 | Autopilot | Alpha | Claude SDK integration, tunnel mode |
 | Autopilot DSPy | Wave 11 | Planning, Execution, Verification + Hub + Router |
-| Adjutant | **Wave 13** | Decision pipelines, LM caching, training collection |
+| Adjutant | **Wave 14** | Self-improving autopilot (sessions, outcome feedback, auto-optimize) |
 | Coder Autopilot | **Complete** | Autonomous loop with verification (cargo check/test) |
-| dsrs | **Wave 13** | SwarmCompiler, Pipelines, Privacy, full integration |
+| dsrs | **Wave 14** | SwarmCompiler, Pipelines, Privacy, Self-Improvement |
 | WGPUI | Phase 16 | 377 tests, full component library |
 | RLM | Working | Claude + Ollama backends, MCP tools |
 | RLM DSPy | Wave 1 | DspyOrchestrator, provenance signatures |

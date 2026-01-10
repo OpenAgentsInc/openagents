@@ -11,15 +11,24 @@
 //! - **training**: Training data collection and storage
 //! - **lm_config**: Cerebras LM configuration for dsrs
 //! - **decision_pipelines**: Decision signatures and pipeline wrappers for routing (complexity, delegation, RLM trigger)
+//! - **sessions**: Session tracking for autopilot runs (self-improvement feedback loop)
 
+pub mod auto_optimizer;
 pub mod decision_pipelines;
 pub mod lm_config;
 pub mod metrics;
 pub mod module;
+pub mod outcome_feedback;
+pub mod performance;
+pub mod sessions;
 pub mod training;
 
+pub use auto_optimizer::*;
 pub use decision_pipelines::*;
 pub use lm_config::*;
 pub use metrics::*;
 pub use module::*;
+pub use outcome_feedback::*;
+pub use performance::*;
+pub use sessions::*;
 pub use training::*;

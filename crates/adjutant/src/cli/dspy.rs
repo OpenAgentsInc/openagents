@@ -18,6 +18,12 @@ pub enum DspyCommand {
     Optimize(OptimizeArgs),
     /// Export training data for sharing
     Export(ExportArgs),
+    /// Show session history and statistics
+    Sessions(SessionsArgs),
+    /// Show performance metrics
+    Performance(PerformanceArgs),
+    /// Configure auto-optimization
+    AutoOptimize(AutoOptimizeArgs),
 }
 
 /// Arguments for the status command
@@ -59,6 +65,54 @@ pub struct ExportArgs {
     /// Output file path
     #[arg(short, long, default_value = "training_data.json")]
     pub output: String,
+}
+
+/// Arguments for the sessions command
+#[derive(Args)]
+pub struct SessionsArgs {
+    /// Number of recent sessions to show
+    #[arg(short, long, default_value = "10")]
+    pub limit: usize,
+
+    /// Show only failed sessions
+    #[arg(long)]
+    pub failed_only: bool,
+
+    /// Show detailed decision history
+    #[arg(short, long)]
+    pub verbose: bool,
+}
+
+/// Arguments for the performance command
+#[derive(Args)]
+pub struct PerformanceArgs {
+    /// Show full history
+    #[arg(long)]
+    pub history: bool,
+}
+
+/// Arguments for the auto-optimize command
+#[derive(Args)]
+pub struct AutoOptimizeArgs {
+    /// Enable auto-optimization
+    #[arg(long)]
+    pub enable: bool,
+
+    /// Disable auto-optimization
+    #[arg(long)]
+    pub disable: bool,
+
+    /// Set minimum examples threshold
+    #[arg(long)]
+    pub min_examples: Option<usize>,
+
+    /// Set accuracy threshold (0.0 - 1.0)
+    #[arg(long)]
+    pub accuracy_threshold: Option<f32>,
+
+    /// Set minimum hours between optimizations
+    #[arg(long)]
+    pub min_hours: Option<u64>,
 }
 
 /// Show training data statistics.
@@ -296,6 +350,198 @@ pub async fn export(args: ExportArgs) -> Result<()> {
     println!("  Complexity: {}", dataset.complexity_examples.len());
     println!("  Delegation: {}", dataset.delegation_examples.len());
     println!("  RLM:        {}", dataset.rlm_trigger_examples.len());
+
+    Ok(())
+}
+
+/// Show session history and statistics.
+pub async fn sessions(args: SessionsArgs) -> Result<()> {
+    use crate::dspy::{SessionOutcome, SessionStore};
+
+    let store = SessionStore::open()?;
+    let sessions = store.get_recent_sessions(args.limit)?;
+
+    println!("Recent Autopilot Sessions");
+    println!("=========================\n");
+
+    if sessions.is_empty() {
+        println!("No sessions recorded yet.");
+        println!("\nRun: autopilot run \"your task here\"");
+        return Ok(());
+    }
+
+    // Filter if needed
+    let sessions: Vec<_> = if args.failed_only {
+        sessions.into_iter().filter(|s| {
+            s.outcome.as_ref().map(|o| o.is_failure()).unwrap_or(false)
+        }).collect()
+    } else {
+        sessions
+    };
+
+    println!("{:<12} {:<30} {:<12} {:<10} {:<10}",
+        "ID", "Task", "Outcome", "Decisions", "Iterations");
+    println!("{}", "-".repeat(80));
+
+    for session in &sessions {
+        let id_short = session.id.chars().take(8).collect::<String>();
+        let title_short: String = session.task_title.chars().take(28).collect();
+        let outcome = match &session.outcome {
+            Some(SessionOutcome::Success { .. }) => "SUCCESS",
+            Some(SessionOutcome::Failed { .. }) => "FAILED",
+            Some(SessionOutcome::MaxIterationsReached { .. }) => "MAX_ITER",
+            Some(SessionOutcome::UserInterrupted) => "INTERRUPT",
+            Some(SessionOutcome::Error(_)) => "ERROR",
+            None => "PENDING",
+        };
+
+        println!("{:<12} {:<30} {:<12} {:<10} {:<10}",
+            id_short,
+            title_short,
+            outcome,
+            session.decisions.len(),
+            session.iterations_used
+        );
+
+        if args.verbose {
+            for decision in &session.decisions {
+                let correct = match decision.was_correct {
+                    Some(true) => "✓",
+                    Some(false) => "✗",
+                    None => "?",
+                };
+                println!("    {} {} (conf: {:.0}%)",
+                    correct,
+                    decision.decision_type,
+                    decision.predicted_confidence * 100.0
+                );
+            }
+            println!();
+        }
+    }
+
+    let index = store.index();
+    println!("\nSummary:");
+    println!("  Total sessions: {}", index.total_sessions);
+    println!("  Success rate:   {:.1}%", index.success_rate() * 100.0);
+
+    Ok(())
+}
+
+/// Show performance metrics.
+pub async fn performance(args: PerformanceArgs) -> Result<()> {
+    use crate::dspy::{LabeledExamplesStore, PerformanceTracker};
+
+    let tracker = PerformanceTracker::open()?;
+    let summary = tracker.summary();
+
+    println!("Performance Metrics");
+    println!("===================\n");
+
+    println!("Decision Accuracy (Rolling Window):");
+    println!("  Complexity:   {:>5.1}%", summary.complexity_accuracy * 100.0);
+    println!("  Delegation:   {:>5.1}%", summary.delegation_accuracy * 100.0);
+    println!("  RLM Trigger:  {:>5.1}%", summary.rlm_accuracy * 100.0);
+    println!();
+    println!("  Overall:      {:>5.1}%", summary.overall_accuracy * 100.0);
+    println!("  Total decisions: {}", summary.total_decisions);
+
+    // Show labeled examples count
+    if let Ok(labeled) = LabeledExamplesStore::load() {
+        println!("\nLabeled Training Examples:");
+        println!("  Complexity:   {:>4}", labeled.count_by_type("complexity"));
+        println!("  Delegation:   {:>4}", labeled.count_by_type("delegation"));
+        println!("  RLM Trigger:  {:>4}", labeled.count_by_type("rlm_trigger"));
+        println!("  Total:        {:>4}", labeled.total_count());
+    }
+
+    println!("\nOptimization History:");
+    println!("  Runs:         {}", summary.optimization_count);
+    if let Some(last) = summary.last_optimization {
+        println!("  Last run:     {}", last.format("%Y-%m-%d %H:%M"));
+    } else {
+        println!("  Last run:     never");
+    }
+
+    // Show auto-optimizer config
+    let config = crate::dspy::AutoOptimizerConfig::load();
+    println!("\nAuto-Optimization: {}", if config.enabled { "ENABLED" } else { "DISABLED" });
+    println!("  Triggers:");
+    println!("    - {} new labeled examples", config.min_labeled_examples);
+    println!("    - Accuracy below {:.0}%", config.accuracy_threshold * 100.0);
+    println!("    - Min {} hours between runs", config.min_hours_between_optimizations);
+
+    if args.history {
+        let metrics = tracker.metrics();
+        if !metrics.history.is_empty() {
+            println!("\nAccuracy History:");
+            for snapshot in metrics.history.iter().rev().take(10) {
+                println!("  {} - C:{:.0}% D:{:.0}% R:{:.0}% Task:{:.0}%",
+                    snapshot.timestamp.format("%Y-%m-%d"),
+                    snapshot.complexity_accuracy * 100.0,
+                    snapshot.delegation_accuracy * 100.0,
+                    snapshot.rlm_accuracy * 100.0,
+                    snapshot.overall_task_success_rate * 100.0,
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Configure auto-optimization.
+pub async fn auto_optimize(args: AutoOptimizeArgs) -> Result<()> {
+    use crate::dspy::AutoOptimizerConfig;
+
+    let mut config = AutoOptimizerConfig::load();
+    let mut changed = false;
+
+    if args.enable {
+        config.enabled = true;
+        changed = true;
+        println!("Auto-optimization ENABLED");
+    } else if args.disable {
+        config.enabled = false;
+        changed = true;
+        println!("Auto-optimization DISABLED");
+    }
+
+    if let Some(examples) = args.min_examples {
+        config.min_labeled_examples = examples;
+        changed = true;
+        println!("Min examples set to: {}", examples);
+    }
+
+    if let Some(threshold) = args.accuracy_threshold {
+        if !(0.0..=1.0).contains(&threshold) {
+            anyhow::bail!("Accuracy threshold must be between 0.0 and 1.0");
+        }
+        config.accuracy_threshold = threshold;
+        changed = true;
+        println!("Accuracy threshold set to: {:.0}%", threshold * 100.0);
+    }
+
+    if let Some(hours) = args.min_hours {
+        config.min_hours_between_optimizations = hours;
+        changed = true;
+        println!("Min hours between runs set to: {}", hours);
+    }
+
+    if changed {
+        config.save()?;
+        println!("\nConfiguration saved.");
+    } else {
+        // Just show current config
+        println!("Auto-Optimization Configuration");
+        println!("===============================\n");
+        println!("Enabled:         {}", if config.enabled { "yes" } else { "no" });
+        println!("Min examples:    {}", config.min_labeled_examples);
+        println!("Accuracy threshold: {:.0}%", config.accuracy_threshold * 100.0);
+        println!("Min hours:       {}", config.min_hours_between_optimizations);
+        println!("Background:      {}", if config.background_optimization { "yes" } else { "no" });
+        println!("\nUse --enable, --disable, or set thresholds to modify.");
+    }
 
     Ok(())
 }
