@@ -2,6 +2,10 @@
 //!
 //! Provides sandboxed execution for skills that include scripts/ directories.
 
+use crate::dspy_security::{
+    classify_filesystem_permission, classify_resource_limits, classify_safe_path,
+    classify_skill_security,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -31,6 +35,9 @@ pub enum ExecutionError {
 
     #[error("Unsupported script type: {0}")]
     UnsupportedScriptType(String),
+
+    #[error("Approval required: {0}")]
+    ApprovalRequired(String),
 }
 
 /// Filesystem access control for sandboxed execution
@@ -104,6 +111,33 @@ pub struct SandboxConfig {
     pub env_vars: HashMap<String, String>,
 }
 
+/// Human approval context for high-risk executions
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ApprovalContext {
+    /// Whether approval was granted
+    #[serde(default)]
+    pub approved: bool,
+
+    /// Approver identity (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approver: Option<String>,
+
+    /// Notes about the approval
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+impl ApprovalContext {
+    /// Create an approval context marked as approved
+    pub fn approved(approver: Option<String>) -> Self {
+        Self {
+            approved: true,
+            approver,
+            notes: None,
+        }
+    }
+}
+
 fn default_max_memory() -> u32 {
     512 // 512 MB default
 }
@@ -160,6 +194,15 @@ impl SandboxConfig {
         self
     }
 
+    /// Describe filesystem access as paths + operation
+    pub fn filesystem_request(&self) -> Option<(Vec<PathBuf>, &'static str)> {
+        match &self.allow_filesystem {
+            FilesystemAccess::None => None,
+            FilesystemAccess::ReadOnly { paths } => Some((paths.clone(), "Read")),
+            FilesystemAccess::ReadWrite { paths } => Some((paths.clone(), "Write")),
+        }
+    }
+
     /// Validate the sandbox configuration
     pub fn validate(&self) -> Result<(), ExecutionError> {
         if self.max_memory_mb == 0 {
@@ -196,6 +239,14 @@ pub struct ScriptExecution {
     /// Input data passed to the script (as JSON)
     #[serde(default)]
     pub input: serde_json::Value,
+
+    /// Optional skill manifest payload for security review
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_manifest: Option<serde_json::Value>,
+
+    /// Optional approval context for high-risk executions
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval: Option<ApprovalContext>,
 }
 
 impl ScriptExecution {
@@ -212,6 +263,8 @@ impl ScriptExecution {
             sandbox,
             timeout_ms,
             input: serde_json::Value::Null,
+            skill_manifest: None,
+            approval: None,
         }
     }
 
@@ -221,9 +274,25 @@ impl ScriptExecution {
         self
     }
 
+    /// Attach a skill manifest for security review
+    pub fn with_manifest(mut self, manifest: serde_json::Value) -> Self {
+        self.skill_manifest = Some(manifest);
+        self
+    }
+
+    /// Attach an approval context for high-risk executions
+    pub fn with_approval(mut self, approval: ApprovalContext) -> Self {
+        self.approval = Some(approval);
+        self
+    }
+
     /// Get the timeout as a Duration
     pub fn timeout(&self) -> Duration {
         Duration::from_millis(self.timeout_ms)
+    }
+
+    fn approval_granted(&self) -> bool {
+        self.approval.as_ref().map(|a| a.approved).unwrap_or(false)
     }
 
     /// Validate the execution request
@@ -238,18 +307,136 @@ impl ScriptExecution {
             ));
         }
 
-        // Check for path traversal attempts
-        if self.script_path.contains("..") {
-            return Err(ExecutionError::InvalidScriptPath(
-                "script_path cannot contain '..'".to_string(),
-            ));
+        if let Some(decision) = classify_safe_path(&self.script_path) {
+            tracing::info!(
+                skill_id = %self.skill_id,
+                script_path = %self.script_path,
+                safe = decision.safe,
+                reason = %decision.reason,
+                "Skill path safety check"
+            );
+
+            if !decision.safe {
+                return Err(ExecutionError::InvalidScriptPath(decision.reason));
+            }
+        } else {
+            // Fallback heuristics if DSPy unavailable
+            if self.script_path.contains("..") {
+                return Err(ExecutionError::InvalidScriptPath(
+                    "script_path cannot contain '..'".to_string(),
+                ));
+            }
+
+            if !self.script_path.starts_with("scripts/") {
+                return Err(ExecutionError::InvalidScriptPath(
+                    "script_path must start with 'scripts/'".to_string(),
+                ));
+            }
         }
 
-        // Must be in scripts/ directory
-        if !self.script_path.starts_with("scripts/") {
-            return Err(ExecutionError::InvalidScriptPath(
-                "script_path must start with 'scripts/'".to_string(),
-            ));
+        // Validate filesystem permissions
+        if let Some((paths, operation)) = self.sandbox.filesystem_request() {
+            let requested_paths = serde_json::to_string(&paths).unwrap_or_default();
+            if let Some(decision) = classify_filesystem_permission(
+                &self.skill_id,
+                &requested_paths,
+                operation,
+            ) {
+                tracing::info!(
+                    skill_id = %self.skill_id,
+                    operation = %operation,
+                    allowed = decision.allowed,
+                    reasoning = %decision.reasoning,
+                    "Filesystem permission review"
+                );
+
+                if !decision.allowed {
+                    return Err(ExecutionError::SandboxViolation(decision.reasoning));
+                }
+            }
+        }
+
+        // Validate resource limits
+        let requested_limits = serde_json::json!({
+            "max_memory_mb": self.sandbox.max_memory_mb,
+            "max_cpu_seconds": self.sandbox.max_cpu_seconds,
+            "allow_network": self.sandbox.allow_network,
+        })
+        .to_string();
+
+        if let Some(decision) = classify_resource_limits(&self.skill_id, &requested_limits) {
+            tracing::info!(
+                skill_id = %self.skill_id,
+                approved_limits = %decision.approved_limits,
+                adjustments = %decision.adjustments,
+                "Resource limit review"
+            );
+
+            if let Some(enforced) = ApprovedLimits::from_json(&decision.approved_limits) {
+                if enforced.exceeds_request(&self.sandbox) {
+                    return Err(ExecutionError::ResourceLimitExceeded(format!(
+                        "requested limits exceed approved: {}",
+                        decision.approved_limits
+                    )));
+                }
+            }
+        }
+
+        // Skill security classification
+        let manifest_payload = self
+            .skill_manifest
+            .as_ref()
+            .and_then(|m| serde_json::to_string(m).ok())
+            .unwrap_or_else(|| {
+                serde_json::json!({
+                    "skill_id": self.skill_id,
+                    "script_path": self.script_path,
+                })
+                .to_string()
+            });
+
+        let requested_permissions = serde_json::json!({
+            "allow_network": self.sandbox.allow_network,
+            "filesystem": self.sandbox.allow_filesystem,
+            "max_memory_mb": self.sandbox.max_memory_mb,
+            "max_cpu_seconds": self.sandbox.max_cpu_seconds,
+        })
+        .to_string();
+
+        let input_keys: Vec<String> = self
+            .input
+            .as_object()
+            .map(|obj| obj.keys().cloned().collect())
+            .unwrap_or_default();
+
+        let execution_context = serde_json::json!({
+            "script_path": self.script_path,
+            "timeout_ms": self.timeout_ms,
+            "input_keys": input_keys,
+        })
+        .to_string();
+
+        if let Some(decision) =
+            classify_skill_security(&manifest_payload, &requested_permissions, &execution_context)
+        {
+            let requires_approval =
+                decision.requires_approval || decision.risk_level.requires_approval();
+
+            tracing::info!(
+                skill_id = %self.skill_id,
+                risk_level = ?decision.risk_level,
+                requires_approval = requires_approval,
+                concerns = ?decision.concerns,
+                recommended_sandbox = %decision.recommended_sandbox,
+                "Skill security review"
+            );
+
+            if requires_approval && !self.approval_granted() {
+                return Err(ExecutionError::ApprovalRequired(format!(
+                    "risk level {:?} requires approval",
+                    decision.risk_level
+                )));
+            }
         }
 
         // Validate timeout
@@ -258,6 +445,32 @@ impl ScriptExecution {
         }
 
         Ok(())
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ApprovedLimits {
+    max_memory_mb: Option<u32>,
+    max_cpu_seconds: Option<u32>,
+}
+
+impl ApprovedLimits {
+    fn from_json(raw: &str) -> Option<Self> {
+        serde_json::from_str(raw).ok()
+    }
+
+    fn exceeds_request(&self, sandbox: &SandboxConfig) -> bool {
+        if let Some(max_memory_mb) = self.max_memory_mb {
+            if sandbox.max_memory_mb > max_memory_mb {
+                return true;
+            }
+        }
+        if let Some(max_cpu_seconds) = self.max_cpu_seconds {
+            if sandbox.max_cpu_seconds > max_cpu_seconds {
+                return true;
+            }
+        }
+        false
     }
 }
 

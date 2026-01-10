@@ -208,7 +208,7 @@ Each pipeline has:
 | Wave 18 | Gateway DSPy Integration | Complete |
 | Wave 19 | Autopilot Heuristics → DSPy | Complete |
 | Wave 20 | Agent-Orchestrator & Nexus DSPy | Complete |
-| Wave 21 | Marketplace Security DSPy | Planned |
+| Wave 21 | Marketplace Security DSPy | Complete |
 
 See [DSPY_ROADMAP.md](../DSPY_ROADMAP.md) for full details and [signatures-catalog.md](./signatures-catalog.md) for the complete signature inventory.
 
@@ -265,6 +265,13 @@ Agent orchestration and Nexus now use DSPy for:
 - Directive status/priority parsing and semantic matching
 - Issue selection from open queues
 - Event intent classification and NIP-90 job kind detection
+
+## Wave 21: Marketplace Security DSPy (Complete)
+
+Marketplace skill execution now uses DSPy for:
+- Security risk classification (risk level + sandbox recommendation)
+- Filesystem permission validation, path safety checks, and resource limit review
+- Human approval gating for High/Critical risk decisions with audit logging
 
 ## Storage Layout
 

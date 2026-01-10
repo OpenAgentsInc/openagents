@@ -40,6 +40,7 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 # Error handling
 thiserror = "2.0"
 anyhow = "1"
+dsrs = { path = "../dsrs" }
 
 # Utilities
 tracing = "0.1"

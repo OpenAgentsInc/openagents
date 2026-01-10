@@ -8088,6 +8088,7 @@ dependencies = [
  "chrono",
  "clap",
  "colored 3.0.0",
+ "dsrs",
  "frostr",
  "hex",
  "nostr 0.1.0",
