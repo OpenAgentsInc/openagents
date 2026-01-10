@@ -1,3 +1,15 @@
+include!("modals/model_picker.rs");
+include!("modals/session_list.rs");
+include!("modals/agent_list.rs");
+include!("modals/skill_list.rs");
+include!("modals/hooks.rs");
+include!("modals/tool_list.rs");
+include!("modals/permission_rules.rs");
+include!("modals/wallet.rs");
+include!("modals/config.rs");
+include!("modals/mcp_config.rs");
+include!("modals/help.rs");
+
 fn render_modals(
     state: &mut AppState,
     scene: &mut Scene,
@@ -25,18 +37,146 @@ fn render_modals(
     if should_refresh_skills {
         state.catalogs.refresh_skill_cards();
     }
-    match &state.modal_state {
+    let modal_state = state.modal_state.clone();
+    match modal_state {
         ModalState::None => {}
-        include!("modals/model_picker.rs")
-        include!("modals/session_list.rs")
-        include!("modals/agent_list.rs")
-        include!("modals/skill_list.rs")
-        include!("modals/hooks.rs")
-        include!("modals/tool_list.rs")
-        include!("modals/permission_rules.rs")
-        include!("modals/wallet.rs")
-        include!("modals/config.rs")
-        include!("modals/mcp_config.rs")
-        include!("modals/help.rs")
+        ModalState::ModelPicker { selected } => {
+            render_model_picker_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+                &selected,
+            );
+        }
+        ModalState::SessionList { selected } => {
+            render_session_list_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+                &selected,
+            );
+        }
+        ModalState::AgentList { selected } => {
+            render_agent_list_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+                &selected,
+            );
+        }
+        ModalState::SkillList { selected } => {
+            render_skill_list_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+                &selected,
+            );
+        }
+        ModalState::Hooks { view, selected } => {
+            render_hooks_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+                &view,
+                &selected,
+            );
+        }
+        ModalState::ToolList { selected } => {
+            render_tool_list_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+                &selected,
+            );
+        }
+        ModalState::PermissionRules => {
+            render_permission_rules_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
+        ModalState::Wallet => {
+            render_wallet_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
+        ModalState::Config {
+            tab,
+            selected,
+            search,
+            input_mode,
+        } => {
+            render_config_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+                &tab,
+                &selected,
+                search.as_str(),
+                &input_mode,
+            );
+        }
+        ModalState::McpConfig { selected } => {
+            render_mcp_config_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+                &selected,
+            );
+        }
+        ModalState::Help => {
+            render_help_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
     }
 }

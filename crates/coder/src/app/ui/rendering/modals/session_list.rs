@@ -1,4 +1,13 @@
-        ModalState::SessionList { selected } => {
+fn render_session_list_modal(
+    state: &mut AppState,
+    scene: &mut Scene,
+    _palette: &UiPalette,
+    bounds: Bounds,
+    logical_width: f32,
+    logical_height: f32,
+    scale_factor: f32,
+    selected: &usize,
+) {
             let sessions = &state.session.session_index;
             // Semi-transparent overlay
             let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
@@ -86,4 +95,4 @@
                 wgpui::text::FontStyle::default(),
             );
             scene.draw_text(footer_run);
-        }
+}
