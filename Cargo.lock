@@ -5199,14 +5199,17 @@ checksum = "312d2295c7302019c395cfb90dacd00a82a2eabd700429bba9c7a3f38dbbe11b"
 name = "gateway"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "chrono",
+ "dsrs",
  "futures",
  "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

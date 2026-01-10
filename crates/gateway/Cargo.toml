@@ -9,6 +9,8 @@ description = "Gateway abstraction for external AI services"
 
 [dependencies]
 async-trait = { workspace = true }
+anyhow = { workspace = true }
+dsrs = { path = "../dsrs" }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -16,6 +18,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

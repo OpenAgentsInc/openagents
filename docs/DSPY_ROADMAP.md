@@ -247,7 +247,7 @@ The following waves complete DSPy integration across the entire codebase, replac
 - [x] Add signature-aware caching
 - [x] Integrate with dsrs client registry
 
-### Wave 18: Gateway DSPy Integration (Planned)
+### Wave 18: Gateway DSPy Integration (Complete)
 
 **Goal:** Wrap gateway calls in DSPy for structured tasks.
 
@@ -257,10 +257,10 @@ The following waves complete DSPy integration across the entire codebase, replac
 - `crates/gateway/src/dspy.rs` — NEW
 
 **Tasks:**
-- [ ] Create `GatewayLM` implementing dsrs `LM` trait
-- [ ] Keep raw gateway for unstructured calls
-- [ ] Add `gateway.query_with_signature()` method
-- [ ] Integrate with dsrs tracing
+- [x] Create `GatewayLM` implementing dsrs `LM` trait
+- [x] Keep raw gateway for unstructured calls
+- [x] Add `gateway.query_with_signature()` method
+- [x] Integrate with dsrs tracing
 
 ### Wave 19: Autopilot Heuristics → DSPy (Planned)
 
