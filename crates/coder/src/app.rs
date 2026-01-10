@@ -8139,8 +8139,8 @@ impl CoderApp {
             scene.pop_clip();
         }
 
-        // Input area background - starts just above the input box
-        let input_area_y = logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT;
+        // Input area background - flush with top of input box
+        let input_area_y = logical_height - INPUT_HEIGHT - INPUT_PADDING - STATUS_BAR_HEIGHT;
         let input_area_bounds = Bounds::new(
             sidebar_layout.main.origin.x,
             input_area_y,
