@@ -22,6 +22,8 @@ pub struct TaskResult {
     pub commit_hash: Option<String>,
     /// Error message if failed
     pub error: Option<String>,
+    /// Session ID from the LLM provider (for conversation continuity)
+    pub session_id: Option<String>,
 }
 
 impl TaskResult {
@@ -33,6 +35,7 @@ impl TaskResult {
             modified_files: Vec::new(),
             commit_hash: None,
             error: None,
+            session_id: None,
         }
     }
 
@@ -44,7 +47,14 @@ impl TaskResult {
             modified_files: Vec::new(),
             commit_hash: None,
             error: Some(error.into()),
+            session_id: None,
         }
+    }
+
+    /// Set the session ID.
+    pub fn with_session_id(mut self, session_id: String) -> Self {
+        self.session_id = Some(session_id);
+        self
     }
 }
 
@@ -115,6 +125,7 @@ pub async fn execute_with_tools(
                 modified_files: Vec::new(),
                 commit_hash: None,
                 error: None,
+                session_id: None,
             })
         }
     }

@@ -100,6 +100,7 @@ impl ClaudeExecutor {
                             modified_files: Vec::new(),
                             commit_hash: None,
                             error: Some(format!("Claude error: {}", error_msg)),
+                            session_id: None,
                         });
                     }
                     SdkResultMessage::ErrorMaxTurns(e) => {
@@ -115,6 +116,7 @@ impl ClaudeExecutor {
                             modified_files: Vec::new(),
                             commit_hash: None,
                             error: Some(error_msg),
+                            session_id: None,
                         });
                     }
                     SdkResultMessage::ErrorMaxBudget(e) => {
@@ -130,6 +132,7 @@ impl ClaudeExecutor {
                             modified_files: Vec::new(),
                             commit_hash: None,
                             error: Some(error_msg),
+                            session_id: None,
                         });
                     }
                     SdkResultMessage::ErrorMaxStructuredOutputRetries(e) => {
@@ -142,6 +145,7 @@ impl ClaudeExecutor {
                             modified_files: Vec::new(),
                             commit_hash: None,
                             error: Some(error_msg),
+                            session_id: None,
                         });
                     }
                 },
@@ -165,6 +169,7 @@ impl ClaudeExecutor {
             modified_files,
             commit_hash: None,
             error: None,
+            session_id: None,
         })
     }
 
@@ -262,6 +267,7 @@ impl ClaudeExecutor {
                             modified_files: Vec::new(),
                             commit_hash: None,
                             error: Some(format!("Claude RLM error: {}", error_msg)),
+                            session_id: None,
                         });
                     }
                     SdkResultMessage::ErrorMaxTurns(e) => {
@@ -277,6 +283,7 @@ impl ClaudeExecutor {
                             modified_files: Vec::new(),
                             commit_hash: None,
                             error: Some(error_msg),
+                            session_id: None,
                         });
                     }
                     SdkResultMessage::ErrorMaxBudget(e) => {
@@ -292,6 +299,7 @@ impl ClaudeExecutor {
                             modified_files: Vec::new(),
                             commit_hash: None,
                             error: Some(error_msg),
+                            session_id: None,
                         });
                     }
                     SdkResultMessage::ErrorMaxStructuredOutputRetries(e) => {
@@ -304,6 +312,7 @@ impl ClaudeExecutor {
                             modified_files: Vec::new(),
                             commit_hash: None,
                             error: Some(error_msg),
+                            session_id: None,
                         });
                     }
                 },
@@ -326,6 +335,7 @@ impl ClaudeExecutor {
             modified_files,
             commit_hash: None,
             error: None,
+            session_id: None,
         })
     }
 }
