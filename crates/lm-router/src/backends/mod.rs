@@ -14,6 +14,7 @@ pub use openai::OpenAiBackend;
 pub use openrouter::OpenRouterBackend;
 pub use swarm_sim::SwarmSimulator;
 
+use crate::backend::LmBackend;
 use crate::error::{Error, Result};
 use crate::router::LmRouter;
 use tracing::{info, warn};

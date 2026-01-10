@@ -13,6 +13,7 @@ use crate::usage::{UsageReport, UsageTracker};
 ///
 /// The router manages multiple backends and routes requests based on model name.
 /// It also tracks usage across all backends for cost/token reporting.
+#[derive(Clone)]
 pub struct LmRouter {
     /// Registered backends by name.
     backends: HashMap<String, Arc<dyn LmBackend>>,
@@ -22,6 +23,17 @@ pub struct LmRouter {
     default_backend: Option<String>,
     /// Usage tracker.
     usage_tracker: UsageTracker,
+}
+
+impl std::fmt::Debug for LmRouter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LmRouter")
+            .field("backend_count", &self.backends.len())
+            .field("model_routing_count", &self.model_routing.len())
+            .field("default_backend", &self.default_backend)
+            .field("usage_tracker", &self.usage_tracker)
+            .finish()
+    }
 }
 
 impl LmRouter {
