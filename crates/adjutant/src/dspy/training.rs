@@ -168,15 +168,192 @@ impl SynthesisTrainingExample {
 }
 
 // ============================================================================
+// Decision Pipeline Training Examples
+// ============================================================================
+
+/// Training example for complexity classification decisions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComplexityTrainingExample {
+    // Inputs
+    pub task_description: String,
+    pub file_count: u32,
+    pub estimated_tokens: usize,
+    pub keywords: Vec<String>,
+    // Expected outputs (from successful DSPy decisions)
+    pub expected_complexity: String,
+    pub confidence: f32,
+}
+
+impl ComplexityTrainingExample {
+    /// Convert to DSPy Example for optimization.
+    pub fn to_example(&self) -> Example {
+        let mut data = HashMap::new();
+        data.insert(
+            "task_description".to_string(),
+            serde_json::json!(self.task_description),
+        );
+        data.insert(
+            "file_count".to_string(),
+            serde_json::json!(self.file_count.to_string()),
+        );
+        data.insert(
+            "estimated_tokens".to_string(),
+            serde_json::json!(self.estimated_tokens.to_string()),
+        );
+        data.insert(
+            "keywords".to_string(),
+            serde_json::json!(self.keywords.join(", ")),
+        );
+        data.insert(
+            "complexity".to_string(),
+            serde_json::json!(self.expected_complexity),
+        );
+        data.insert(
+            "confidence".to_string(),
+            serde_json::json!(self.confidence),
+        );
+
+        Example::new(
+            data,
+            vec![
+                "task_description".to_string(),
+                "file_count".to_string(),
+                "estimated_tokens".to_string(),
+                "keywords".to_string(),
+            ],
+            vec!["complexity".to_string(), "confidence".to_string()],
+        )
+    }
+}
+
+/// Training example for delegation decisions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DelegationTrainingExample {
+    // Inputs
+    pub task_description: String,
+    pub complexity: String,
+    pub file_count: u32,
+    pub estimated_tokens: usize,
+    // Expected outputs
+    pub should_delegate: bool,
+    pub delegation_target: String,
+    pub confidence: f32,
+}
+
+impl DelegationTrainingExample {
+    /// Convert to DSPy Example for optimization.
+    pub fn to_example(&self) -> Example {
+        let mut data = HashMap::new();
+        data.insert(
+            "task_description".to_string(),
+            serde_json::json!(self.task_description),
+        );
+        data.insert(
+            "complexity".to_string(),
+            serde_json::json!(self.complexity),
+        );
+        data.insert(
+            "file_count".to_string(),
+            serde_json::json!(self.file_count.to_string()),
+        );
+        data.insert(
+            "estimated_tokens".to_string(),
+            serde_json::json!(self.estimated_tokens.to_string()),
+        );
+        data.insert(
+            "should_delegate".to_string(),
+            serde_json::json!(self.should_delegate),
+        );
+        data.insert(
+            "delegation_target".to_string(),
+            serde_json::json!(self.delegation_target),
+        );
+        data.insert(
+            "confidence".to_string(),
+            serde_json::json!(self.confidence),
+        );
+
+        Example::new(
+            data,
+            vec![
+                "task_description".to_string(),
+                "complexity".to_string(),
+                "file_count".to_string(),
+                "estimated_tokens".to_string(),
+            ],
+            vec![
+                "should_delegate".to_string(),
+                "delegation_target".to_string(),
+                "confidence".to_string(),
+            ],
+        )
+    }
+}
+
+/// Training example for RLM trigger decisions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RlmTriggerTrainingExample {
+    // Inputs
+    pub task_description: String,
+    pub complexity: String,
+    pub estimated_tokens: usize,
+    // Expected outputs
+    pub use_rlm: bool,
+    pub confidence: f32,
+}
+
+impl RlmTriggerTrainingExample {
+    /// Convert to DSPy Example for optimization.
+    pub fn to_example(&self) -> Example {
+        let mut data = HashMap::new();
+        data.insert(
+            "task_description".to_string(),
+            serde_json::json!(self.task_description),
+        );
+        data.insert(
+            "complexity".to_string(),
+            serde_json::json!(self.complexity),
+        );
+        data.insert(
+            "estimated_tokens".to_string(),
+            serde_json::json!(self.estimated_tokens.to_string()),
+        );
+        data.insert("use_rlm".to_string(), serde_json::json!(self.use_rlm));
+        data.insert(
+            "confidence".to_string(),
+            serde_json::json!(self.confidence),
+        );
+
+        Example::new(
+            data,
+            vec![
+                "task_description".to_string(),
+                "complexity".to_string(),
+                "estimated_tokens".to_string(),
+            ],
+            vec!["use_rlm".to_string(), "confidence".to_string()],
+        )
+    }
+}
+
+// ============================================================================
 // Training Dataset
 // ============================================================================
 
 /// Complete training dataset for Adjutant optimization.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AdjutantTrainingDataset {
+    // Task execution examples
     pub planning_examples: Vec<PlanningTrainingExample>,
     pub execution_examples: Vec<ExecutionTrainingExample>,
     pub synthesis_examples: Vec<SynthesisTrainingExample>,
+    // Decision pipeline examples
+    #[serde(default)]
+    pub complexity_examples: Vec<ComplexityTrainingExample>,
+    #[serde(default)]
+    pub delegation_examples: Vec<DelegationTrainingExample>,
+    #[serde(default)]
+    pub rlm_trigger_examples: Vec<RlmTriggerTrainingExample>,
 }
 
 impl AdjutantTrainingDataset {
@@ -221,6 +398,21 @@ impl AdjutantTrainingDataset {
         self.synthesis_examples.push(example);
     }
 
+    /// Add a complexity classification example.
+    pub fn add_complexity_example(&mut self, example: ComplexityTrainingExample) {
+        self.complexity_examples.push(example);
+    }
+
+    /// Add a delegation decision example.
+    pub fn add_delegation_example(&mut self, example: DelegationTrainingExample) {
+        self.delegation_examples.push(example);
+    }
+
+    /// Add an RLM trigger decision example.
+    pub fn add_rlm_trigger_example(&mut self, example: RlmTriggerTrainingExample) {
+        self.rlm_trigger_examples.push(example);
+    }
+
     /// Convert planning examples to DSPy Examples.
     pub fn planning_as_examples(&self) -> Vec<Example> {
         self.planning_examples.iter().map(|e| e.to_example()).collect()
@@ -236,11 +428,29 @@ impl AdjutantTrainingDataset {
         self.synthesis_examples.iter().map(|e| e.to_example()).collect()
     }
 
+    /// Convert complexity examples to DSPy Examples.
+    pub fn complexity_as_examples(&self) -> Vec<Example> {
+        self.complexity_examples.iter().map(|e| e.to_example()).collect()
+    }
+
+    /// Convert delegation examples to DSPy Examples.
+    pub fn delegation_as_examples(&self) -> Vec<Example> {
+        self.delegation_examples.iter().map(|e| e.to_example()).collect()
+    }
+
+    /// Convert RLM trigger examples to DSPy Examples.
+    pub fn rlm_trigger_as_examples(&self) -> Vec<Example> {
+        self.rlm_trigger_examples.iter().map(|e| e.to_example()).collect()
+    }
+
     /// Get total number of examples.
     pub fn len(&self) -> usize {
         self.planning_examples.len()
             + self.execution_examples.len()
             + self.synthesis_examples.len()
+            + self.complexity_examples.len()
+            + self.delegation_examples.len()
+            + self.rlm_trigger_examples.len()
     }
 
     /// Check if dataset is empty.
@@ -294,6 +504,39 @@ impl TrainingCollector {
     pub fn record_synthesis(&mut self, example: SynthesisTrainingExample) -> Result<()> {
         if example.expected_success {
             self.dataset.add_synthesis_example(example);
+            if self.auto_save {
+                self.dataset.save()?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Record a complexity classification example (only if high confidence).
+    pub fn record_complexity(&mut self, example: ComplexityTrainingExample) -> Result<()> {
+        if example.confidence > 0.7 {
+            self.dataset.add_complexity_example(example);
+            if self.auto_save {
+                self.dataset.save()?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Record a delegation decision example (only if high confidence).
+    pub fn record_delegation(&mut self, example: DelegationTrainingExample) -> Result<()> {
+        if example.confidence > 0.7 {
+            self.dataset.add_delegation_example(example);
+            if self.auto_save {
+                self.dataset.save()?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Record an RLM trigger decision example (only if high confidence).
+    pub fn record_rlm_trigger(&mut self, example: RlmTriggerTrainingExample) -> Result<()> {
+        if example.confidence > 0.7 {
+            self.dataset.add_rlm_trigger_example(example);
             if self.auto_save {
                 self.dataset.save()?;
             }
