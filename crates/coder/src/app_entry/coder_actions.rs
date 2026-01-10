@@ -57,6 +57,24 @@ impl CoderApp {
             return;
         }
 
+        // Check selected backend
+        use crate::app::config::AgentKindConfig;
+        match state.agent_selection.agent {
+            AgentKindConfig::Claude => {
+                tracing::info!("Using Claude backend");
+                // Continue with Claude flow below
+            }
+            AgentKindConfig::Codex => {
+                tracing::info!("Using Codex backend");
+                // TODO: Implement Codex flow using codex-agent-sdk
+                // For now, show a placeholder message
+                state.push_system_message(
+                    "Codex backend is not yet fully implemented. Falling back to Claude.".to_string()
+                );
+                // Fall through to Claude for now
+            }
+        }
+
         let cwd = std::env::current_dir().unwrap_or_default();
         let active_agent = state.catalogs.active_agent.clone();
         let expanded_prompt = match expand_prompt_text(&prompt, &cwd) {

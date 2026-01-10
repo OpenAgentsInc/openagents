@@ -9,7 +9,7 @@ use winit::keyboard::{Key as WinitKey, NamedKey as WinitNamedKey};
 use crate::app::catalog::{
     expand_env_vars_in_value, parse_mcp_server_config, save_hook_config, McpServerEntry,
 };
-use crate::app::config::{SettingsItem, SettingsTab};
+use crate::app::config::{AgentKindConfig, SettingsItem, SettingsTab};
 use crate::app::events::{
     convert_key_for_binding, convert_modifiers, CommandAction, CoderMode, ModalState,
 };
@@ -47,6 +47,38 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
         }
         Command::Model => {
             state.open_model_picker();
+            CommandAction::None
+        }
+        Command::Backend => {
+            // Toggle between Claude and Codex
+            state.agent_selection.agent = match state.agent_selection.agent {
+                AgentKindConfig::Claude => AgentKindConfig::Codex,
+                AgentKindConfig::Codex => AgentKindConfig::Claude,
+            };
+            state.push_system_message(format!(
+                "Switched to {} backend",
+                state.agent_selection.display_name()
+            ));
+            CommandAction::None
+        }
+        Command::BackendSet(name) => {
+            let lower = name.to_lowercase();
+            match lower.as_str() {
+                "claude" => {
+                    state.agent_selection.agent = AgentKindConfig::Claude;
+                    state.push_system_message("Switched to Claude backend".to_string());
+                }
+                "codex" | "openai" => {
+                    state.agent_selection.agent = AgentKindConfig::Codex;
+                    state.push_system_message("Switched to Codex backend".to_string());
+                }
+                _ => {
+                    state.push_system_message(format!(
+                        "Unknown backend: {}. Available: claude, codex",
+                        name
+                    ));
+                }
+            }
             CommandAction::None
         }
         Command::Undo => {
