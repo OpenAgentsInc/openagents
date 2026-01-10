@@ -59,7 +59,7 @@ use wgpui::components::molecules::{
     SessionInfo as SessionCardInfo, SkillCard, SkillCategory, SkillInfo, SkillInstallStatus,
 };
 use wgpui::components::organisms::{
-    DiffLine, DiffLineKind, DiffToolCall, EventData, EventInspector, InspectorView, PermissionDialog,
+    ChildTool, DiffLine, DiffLineKind, DiffToolCall, EventData, EventInspector, InspectorView, PermissionDialog,
     PermissionType, SearchMatch, SearchToolCall, TagData, TerminalToolCall, ToolCallCard,
 };
 
@@ -521,6 +521,7 @@ mod command_palette_ids {
     pub const SIDEBAR_RIGHT: &str = "sidebar.right";
     pub const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
     pub const BUG_REPORT: &str = "bug.report";
+    pub const KITCHEN_SINK: &str = "dev.kitchen_sink";
 }
 
 fn default_font_size() -> f32 {
@@ -3563,6 +3564,9 @@ struct AppState {
     available_providers: Vec<adjutant::dspy::lm_config::LmProvider>,
     // Auto-started llama-server process (killed on drop)
     llama_server_process: Option<Child>,
+    // Kitchen sink storybook state
+    show_kitchen_sink: bool,
+    kitchen_sink_scroll: f32,
 }
 
 impl Drop for AppState {
@@ -3833,6 +3837,8 @@ impl ApplicationHandler for CoderApp {
                 autopilot_history_rx: None,
                 available_providers,
                 llama_server_process,
+                show_kitchen_sink: false,
+                kitchen_sink_scroll: 0.0,
             }
         });
 
@@ -4472,6 +4478,12 @@ impl ApplicationHandler for CoderApp {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 20.0,
                 };
+                // Kitchen sink scroll handling
+                if state.show_kitchen_sink {
+                    state.kitchen_sink_scroll = (state.kitchen_sink_scroll - dy * 40.0).max(0.0);
+                    state.window.request_redraw();
+                    return;
+                }
                 if matches!(
                     state.modal_state,
                     ModalState::Hooks {
@@ -4586,6 +4598,17 @@ impl ApplicationHandler for CoderApp {
                             );
                             state.window.request_redraw();
                         }
+                        return;
+                    }
+
+                    // Kitchen sink overlay - handle Escape to close
+                    if state.show_kitchen_sink {
+                        if let WinitKey::Named(WinitNamedKey::Escape) = &key_event.logical_key {
+                            state.show_kitchen_sink = false;
+                            state.window.request_redraw();
+                            return;
+                        }
+                        // Consume all other keys while kitchen sink is open
                         return;
                     }
 
@@ -4967,6 +4990,14 @@ impl AppState {
             "Report a Bug",
             "Open the issue tracker",
             "Diagnostics",
+            None,
+        );
+
+        push_command(
+            command_palette_ids::KITCHEN_SINK,
+            "Kitchen Sink",
+            "Show all UI component variations",
+            "Developer",
             None,
         );
 
@@ -7790,6 +7821,10 @@ impl CoderApp {
                 None
             }
             command_palette_ids::BUG_REPORT => Some(handle_command(state, Command::Bug)),
+            command_palette_ids::KITCHEN_SINK => {
+                state.show_kitchen_sink = true;
+                None
+            }
             _ => None,
         };
 
@@ -9860,6 +9895,18 @@ impl CoderApp {
             }
         }
 
+        // Kitchen sink storybook overlay
+        if state.show_kitchen_sink {
+            paint_kitchen_sink(
+                bounds,
+                &mut scene,
+                &mut state.text_system,
+                scale_factor,
+                state.kitchen_sink_scroll,
+                &palette,
+            );
+        }
+
         if state.command_palette.is_open() {
             let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
             state.command_palette.paint(bounds, &mut paint_cx);
@@ -9908,6 +9955,351 @@ impl CoderApp {
         state.queue.submit(std::iter::once(encoder.finish()));
         output.present();
     }
+}
+
+/// Paint the Kitchen Sink storybook overlay showing all UI component variations
+fn paint_kitchen_sink(
+    bounds: Bounds,
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    scale_factor: f32,
+    scroll_offset: f32,
+    palette: &UiPalette,
+) {
+    // Semi-transparent overlay
+    let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.85));
+    scene.draw_quad(overlay);
+
+    // Content area with padding
+    let padding = 24.0;
+    let content_x = bounds.origin.x + padding;
+    let content_width = bounds.size.width - padding * 2.0;
+    let card_width = (content_width - 16.0) / 2.0; // Two columns
+
+    let mut y = bounds.origin.y + padding - scroll_offset;
+    let font_style = wgpui::text::FontStyle::default();
+
+    // Title
+    let title_run = text_system.layout_styled_mono(
+        "Kitchen Sink - Component Storybook",
+        Point::new(content_x, y),
+        18.0,
+        Hsla::new(0.0, 0.0, 0.95, 1.0),
+        font_style,
+    );
+    scene.draw_text(title_run);
+    y += 28.0;
+
+    let subtitle_run = text_system.layout_styled_mono(
+        "Press Escape to close | Scroll to see more",
+        Point::new(content_x, y),
+        12.0,
+        Hsla::new(0.0, 0.0, 0.5, 1.0),
+        font_style,
+    );
+    scene.draw_text(subtitle_run);
+    y += 32.0;
+
+    // Section: Tool Types
+    let section_run = text_system.layout_styled_mono(
+        "TOOL TYPES (with Success status)",
+        Point::new(content_x, y),
+        14.0,
+        Hsla::new(42.0 / 360.0, 0.8, 0.6, 1.0), // Yellow/gold
+        font_style,
+    );
+    scene.draw_text(section_run);
+    y += 24.0;
+
+    let tool_types = [
+        (ToolType::Read, "Read", "src/main.rs"),
+        (ToolType::Write, "Write", "output.txt"),
+        (ToolType::Edit, "Edit", "config.toml"),
+        (ToolType::Bash, "Bash", "cargo build"),
+        (ToolType::Glob, "Glob", "**/*.rs"),
+        (ToolType::Grep, "Grep", "fn main"),
+        (ToolType::Search, "Search", "error handling"),
+        (ToolType::List, "List", "/home/user"),
+        (ToolType::Task, "Task", "Analyze codebase"),
+        (ToolType::WebFetch, "WebFetch", "https://example.com"),
+    ];
+
+    let mut paint_cx = PaintContext::new(scene, text_system, scale_factor);
+    let mut col = 0;
+    let mut row_y = y;
+
+    for (tool_type, name, input) in &tool_types {
+        let x = content_x + (col as f32 * (card_width + 16.0));
+        let card_bounds = Bounds::new(x, row_y, card_width, 28.0);
+
+        let mut card = ToolCallCard::new(*tool_type, *name)
+            .status(ToolStatus::Success)
+            .input(*input)
+            .elapsed_secs(0.42);
+        card.paint(card_bounds, &mut paint_cx);
+
+        col += 1;
+        if col >= 2 {
+            col = 0;
+            row_y += 36.0;
+        }
+    }
+
+    if col != 0 {
+        row_y += 36.0;
+    }
+    y = row_y + 16.0;
+
+    // Section: Tool Statuses
+    let section_run = paint_cx.text.layout_styled_mono(
+        "TOOL STATUSES (Read tool)",
+        Point::new(content_x, y),
+        14.0,
+        Hsla::new(200.0 / 360.0, 0.8, 0.6, 1.0), // Blue
+        font_style,
+    );
+    paint_cx.scene.draw_text(section_run);
+    y += 24.0;
+
+    let statuses = [
+        (ToolStatus::Pending, "Pending"),
+        (ToolStatus::Running, "Running"),
+        (ToolStatus::Success, "Success"),
+        (ToolStatus::Error, "Error"),
+        (ToolStatus::Cancelled, "Cancelled"),
+    ];
+
+    col = 0;
+    row_y = y;
+
+    for (status, label) in &statuses {
+        let x = content_x + (col as f32 * (card_width + 16.0));
+        let card_bounds = Bounds::new(x, row_y, card_width, 28.0);
+
+        let elapsed = if matches!(status, ToolStatus::Success | ToolStatus::Error) {
+            Some(1.23)
+        } else {
+            None
+        };
+
+        let mut card = ToolCallCard::new(ToolType::Read, format!("Read ({})", label))
+            .status(*status)
+            .input("example.rs");
+        if let Some(e) = elapsed {
+            card = card.elapsed_secs(e);
+        }
+        card.paint(card_bounds, &mut paint_cx);
+
+        col += 1;
+        if col >= 2 {
+            col = 0;
+            row_y += 36.0;
+        }
+    }
+
+    if col != 0 {
+        row_y += 36.0;
+    }
+    y = row_y + 16.0;
+
+    // Section: Task with Children
+    let section_run = paint_cx.text.layout_styled_mono(
+        "TASK WITH CHILD TOOLS",
+        Point::new(content_x, y),
+        14.0,
+        Hsla::new(280.0 / 360.0, 0.8, 0.6, 1.0), // Purple
+        font_style,
+    );
+    paint_cx.scene.draw_text(section_run);
+    y += 24.0;
+
+    {
+        let card_bounds = Bounds::new(content_x, y, content_width, 150.0);
+        let mut task_card = ToolCallCard::new(ToolType::Task, "Task")
+            .status(ToolStatus::Running)
+            .input("Explore the authentication module")
+            .expanded(true);
+
+        task_card.add_child(ChildTool {
+            tool_type: ToolType::Glob,
+            name: "Glob".to_string(),
+            params: "**/auth*.rs".to_string(),
+            status: ToolStatus::Success,
+            elapsed_secs: Some(0.12),
+        });
+        task_card.add_child(ChildTool {
+            tool_type: ToolType::Read,
+            name: "Read".to_string(),
+            params: "src/auth/mod.rs".to_string(),
+            status: ToolStatus::Success,
+            elapsed_secs: Some(0.08),
+        });
+        task_card.add_child(ChildTool {
+            tool_type: ToolType::Grep,
+            name: "Grep".to_string(),
+            params: "verify_token".to_string(),
+            status: ToolStatus::Running,
+            elapsed_secs: None,
+        });
+
+        task_card.paint(card_bounds, &mut paint_cx);
+    }
+    y += 160.0;
+
+    // Section: Diff Tool
+    let section_run = paint_cx.text.layout_styled_mono(
+        "DIFF TOOL CALL",
+        Point::new(content_x, y),
+        14.0,
+        Hsla::new(120.0 / 360.0, 0.8, 0.5, 1.0), // Green
+        font_style,
+    );
+    paint_cx.scene.draw_text(section_run);
+    y += 24.0;
+
+    {
+        let diff_bounds = Bounds::new(content_x, y, content_width, 120.0);
+        let mut diff_tool = DiffToolCall::new("src/main.rs")
+            .status(ToolStatus::Success)
+            .lines(vec![
+                DiffLine {
+                    kind: DiffLineKind::Context,
+                    old_line: Some(10),
+                    new_line: Some(10),
+                    content: "fn main() {".to_string(),
+                },
+                DiffLine {
+                    kind: DiffLineKind::Deletion,
+                    old_line: Some(11),
+                    new_line: None,
+                    content: "    println!(\"Hello\");".to_string(),
+                },
+                DiffLine {
+                    kind: DiffLineKind::Addition,
+                    old_line: None,
+                    new_line: Some(11),
+                    content: "    println!(\"Hello, World!\");".to_string(),
+                },
+                DiffLine {
+                    kind: DiffLineKind::Context,
+                    old_line: Some(12),
+                    new_line: Some(12),
+                    content: "}".to_string(),
+                },
+            ]);
+        diff_tool.paint(diff_bounds, &mut paint_cx);
+    }
+    y += 130.0;
+
+    // Section: Search Tool
+    let section_run = paint_cx.text.layout_styled_mono(
+        "SEARCH TOOL CALL",
+        Point::new(content_x, y),
+        14.0,
+        Hsla::new(30.0 / 360.0, 0.8, 0.6, 1.0), // Orange
+        font_style,
+    );
+    paint_cx.scene.draw_text(section_run);
+    y += 24.0;
+
+    {
+        let search_bounds = Bounds::new(content_x, y, content_width, 100.0);
+        let mut search_tool = SearchToolCall::new("error")
+            .status(ToolStatus::Success)
+            .matches(vec![
+                SearchMatch {
+                    file: "src/lib.rs".to_string(),
+                    line: 42,
+                    content: "    Err(Error::NotFound)".to_string(),
+                },
+                SearchMatch {
+                    file: "src/main.rs".to_string(),
+                    line: 15,
+                    content: "    .expect(\"error loading config\")".to_string(),
+                },
+            ]);
+        search_tool.paint(search_bounds, &mut paint_cx);
+    }
+    y += 110.0;
+
+    // Section: Terminal Tool
+    let section_run = paint_cx.text.layout_styled_mono(
+        "TERMINAL TOOL CALL",
+        Point::new(content_x, y),
+        14.0,
+        Hsla::new(0.0, 0.0, 0.7, 1.0), // Gray
+        font_style,
+    );
+    paint_cx.scene.draw_text(section_run);
+    y += 24.0;
+
+    {
+        let terminal_bounds = Bounds::new(content_x, y, content_width, 80.0);
+        let mut terminal_tool = TerminalToolCall::new("cargo build --release")
+            .status(ToolStatus::Success)
+            .output("   Compiling myapp v0.1.0\n    Finished release [optimized] target(s) in 2.34s")
+            .exit_code(0);
+        terminal_tool.paint(terminal_bounds, &mut paint_cx);
+    }
+    y += 90.0;
+
+    // Section: Messages (placeholder)
+    let section_run = paint_cx.text.layout_styled_mono(
+        "MESSAGE COMPONENTS",
+        Point::new(content_x, y),
+        14.0,
+        Hsla::new(180.0 / 360.0, 0.6, 0.5, 1.0), // Cyan
+        font_style,
+    );
+    paint_cx.scene.draw_text(section_run);
+    y += 24.0;
+
+    // User message
+    let user_bg = Quad::new(Bounds::new(content_x, y, content_width, 32.0))
+        .with_background(Hsla::new(0.0, 0.0, 0.1, 1.0));
+    paint_cx.scene.draw_quad(user_bg);
+    let user_run = paint_cx.text.layout_styled_mono(
+        "User: What does the main function do?",
+        Point::new(content_x + 8.0, y + 8.0),
+        12.0,
+        palette.user_text,
+        font_style,
+    );
+    paint_cx.scene.draw_text(user_run);
+    y += 40.0;
+
+    // Assistant message
+    let assist_bg = Quad::new(Bounds::new(content_x, y, content_width, 48.0))
+        .with_background(Hsla::new(0.0, 0.0, 0.08, 1.0));
+    paint_cx.scene.draw_quad(assist_bg);
+    let assist_run = paint_cx.text.layout_styled_mono(
+        "Assistant: The main function is the entry point of the program.",
+        Point::new(content_x + 8.0, y + 8.0),
+        12.0,
+        palette.assistant_text,
+        font_style,
+    );
+    paint_cx.scene.draw_text(assist_run);
+    let meta_run = paint_cx.text.layout_styled_mono(
+        "claude-3-opus · 45+120 tokens · 1.2s",
+        Point::new(content_x + 8.0, y + 28.0),
+        11.0,
+        Hsla::new(0.0, 0.0, 0.35, 1.0),
+        font_style,
+    );
+    paint_cx.scene.draw_text(meta_run);
+    y += 56.0;
+
+    // Footer
+    y += 16.0;
+    let footer_run = paint_cx.text.layout_styled_mono(
+        "End of Kitchen Sink",
+        Point::new(content_x, y),
+        12.0,
+        Hsla::new(0.0, 0.0, 0.4, 1.0),
+        font_style,
+    );
+    paint_cx.scene.draw_text(footer_run);
 }
 
 /// Extract text from streaming event
