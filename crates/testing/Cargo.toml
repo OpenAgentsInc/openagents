@@ -9,7 +9,7 @@ edition.workspace = true
 tokio = { version = "1", features = ["process", "time", "sync", "rt"] }
 
 # Database
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

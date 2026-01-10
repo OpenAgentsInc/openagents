@@ -1866,6 +1866,7 @@ dependencies = [
 [[package]]
 name = "breez-sdk-common"
 version = "0.1.0"
+source = "git+https://github.com/breez/spark-sdk?tag=0.6.6#551f453103e069697bc3850a2fb5d1c3d1871749"
 dependencies = [
  "aes",
  "anyhow",
@@ -1904,6 +1905,7 @@ dependencies = [
 [[package]]
 name = "breez-sdk-spark"
 version = "0.1.0"
+source = "git+https://github.com/breez/spark-sdk?tag=0.6.6#551f453103e069697bc3850a2fb5d1c3d1871749"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2620,20 +2622,13 @@ dependencies = [
  "anyhow",
  "arboard",
  "async-trait",
- "chrono",
  "claude-agent-sdk",
+ "codex-agent-sdk",
  "dirs 6.0.0",
  "futures",
- "gateway",
- "issues",
- "lm-router",
- "nostr 0.1.0",
- "nostr-client",
  "oanix",
- "openagents-spark",
  "pollster",
  "reqwest",
- "rusqlite",
  "serde",
  "serde_json",
  "tokio",
@@ -2643,6 +2638,7 @@ dependencies = [
  "web-time",
  "wgpu",
  "wgpui",
+ "which 7.0.3",
  "winit",
 ]
 
@@ -3931,7 +3927,7 @@ dependencies = [
  "rayon",
  "regex",
  "reqwest",
- "rig-core",
+ "rig-core 0.26.0",
  "rstest",
  "schemars 1.1.0",
  "serde",
@@ -5213,7 +5209,7 @@ dependencies = [
  "dsrs",
  "futures",
  "reqwest",
- "rig-core",
+ "rig-core 0.10.0",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -6283,15 +6279,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ba4ff7128dee98c7dc9794b6a411377e1404dba1c97deb8d1a55297bd25d8af"
 dependencies = [
  "hashbrown 0.14.5",
-]
-
-[[package]]
-name = "hashlink"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
-dependencies = [
- "hashbrown 0.15.5",
 ]
 
 [[package]]
@@ -7703,9 +7690,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.30.1"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
+checksum = "0c10584274047cb335c23d3e61bcef8e323adae7c5c8c760540f73610177fc3f"
 dependencies = [
  "cc",
  "pkg-config",
@@ -7878,6 +7865,7 @@ dependencies = [
 [[package]]
 name = "lnurl-models"
 version = "0.1.0"
+source = "git+https://github.com/breez/spark-sdk?tag=0.6.6#551f453103e069697bc3850a2fb5d1c3d1871749"
 dependencies = [
  "nostr 0.43.1",
  "serde",
@@ -8018,6 +8006,7 @@ checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
 [[package]]
 name = "macros"
 version = "0.1.0"
+source = "git+https://github.com/breez/spark-sdk?tag=0.6.6#551f453103e069697bc3850a2fb5d1c3d1871749"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -11114,9 +11103,9 @@ dependencies = [
 
 [[package]]
 name = "r2d2_sqlite"
-version = "0.25.0"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb14dba8247a6a15b7fdbc7d389e2e6f03ee9f184f87117706d509c092dfe846"
+checksum = "6a982edf65c129796dba72f8775b292ef482b40d035e827a9825b3bc07ccc5f2"
 dependencies = [
  "r2d2",
  "rusqlite",
@@ -11705,6 +11694,27 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92b71cce9455ff993d7bd41d90cae125127a41cb4f8b6da57877eb1598cb9206"
+dependencies = [
+ "async-stream",
+ "base64 0.22.1",
+ "bytes",
+ "futures",
+ "glob",
+ "mime_guess",
+ "ordered-float 4.6.0",
+ "reqwest",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
+name = "rig-core"
 version = "0.26.0"
 source = "git+https://github.com/0xPlaygrounds/rig?rev=e7849df#e7849df20bce7c4eb3eb5ada87aae18435f9afa1"
 dependencies = [
@@ -11925,23 +11935,23 @@ dependencies = [
 
 [[package]]
 name = "rusqlite"
-version = "0.32.1"
+version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7753b721174eb8ff87a9a0e799e2d7bc3749323e773db92e0984debb00019d6e"
+checksum = "b838eba278d213a8beaf485bd313fd580ca4505a00d5871caeb1457c55322cae"
 dependencies = [
  "bitflags 2.10.0",
  "fallible-iterator",
  "fallible-streaming-iterator",
- "hashlink 0.9.1",
+ "hashlink",
  "libsqlite3-sys",
  "smallvec",
 ]
 
 [[package]]
 name = "rusqlite_migration"
-version = "1.3.1"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "923b42e802f7dc20a0a6b5e097ba7c83fe4289da07e49156fecf6af08aa9cd1c"
+checksum = "55709bc01054c69e2f1cefdc886642b5e6376a8db3c86f761be0c423eebf178b"
 dependencies = [
  "log",
  "rusqlite",
@@ -13078,6 +13088,7 @@ dependencies = [
 [[package]]
 name = "spark"
 version = "0.1.0"
+source = "git+https://github.com/breez/spark-sdk?tag=0.6.6#551f453103e069697bc3850a2fb5d1c3d1871749"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -13122,6 +13133,7 @@ dependencies = [
 [[package]]
 name = "spark-wallet"
 version = "0.1.0"
+source = "git+https://github.com/breez/spark-sdk?tag=0.6.6#551f453103e069697bc3850a2fb5d1c3d1871749"
 dependencies = [
  "bitcoin",
  "frost-secp256k1-tr-unofficial",
@@ -13132,6 +13144,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "tokio_with_wasm",
+ "tonic",
  "tracing",
  "uuid",
  "web-time",
@@ -13187,10 +13200,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "sqlx"
-version = "0.8.6"
+name = "sqlformat"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fefb893899429669dcdd979aff487bd78f4064e5e7907e4269081e0ef7d97dc"
+checksum = "7bba3a93db0cc4f7bdece8bb09e77e2e785c20bfebf79eb8340ed80708048790"
+dependencies = [
+ "nom 7.1.3",
+ "unicode_categories",
+]
+
+[[package]]
+name = "sqlx"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27144619c6e5802f1380337a209d2ac1c431002dd74c6e60aebff3c506dc4f0c"
 dependencies = [
  "sqlx-core",
  "sqlx-macros",
@@ -13201,33 +13224,38 @@ dependencies = [
 
 [[package]]
 name = "sqlx-core"
-version = "0.8.6"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee6798b1838b6a0f69c007c133b8df5866302197e404e8b6ee8ed3e3a5e68dc6"
+checksum = "a999083c1af5b5d6c071d34a708a19ba3e02106ad82ef7bbd69f5e48266b613b"
 dependencies = [
- "base64 0.22.1",
+ "atoi",
+ "byteorder",
  "bytes",
  "chrono",
  "crc",
  "crossbeam-queue",
  "either",
  "event-listener",
+ "futures-channel",
  "futures-core",
  "futures-intrusive",
  "futures-io",
  "futures-util",
- "hashbrown 0.15.5",
- "hashlink 0.10.0",
+ "hashbrown 0.14.5",
+ "hashlink",
+ "hex",
  "indexmap 2.12.1",
  "log",
  "memchr",
  "once_cell",
+ "paste",
  "percent-encoding",
  "serde",
  "serde_json",
  "sha2",
  "smallvec",
- "thiserror 2.0.17",
+ "sqlformat",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -13237,9 +13265,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-macros"
-version = "0.8.6"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2d452988ccaacfbf5e0bdbc348fb91d7c8af5bee192173ac3636b5fb6e6715d"
+checksum = "a23217eb7d86c584b8cbe0337b9eacf12ab76fe7673c513141ec42565698bb88"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -13250,9 +13278,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-macros-core"
-version = "0.8.6"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19a9c1841124ac5a61741f96e1d9e2ec77424bf323962dd894bdb93f37d5219b"
+checksum = "1a099220ae541c5db479c6424bdf1b200987934033c2584f79a0e1693601e776"
 dependencies = [
  "dotenvy",
  "either",
@@ -13269,15 +13297,16 @@ dependencies = [
  "sqlx-postgres",
  "sqlx-sqlite",
  "syn 2.0.111",
+ "tempfile",
  "tokio",
  "url",
 ]
 
 [[package]]
 name = "sqlx-mysql"
-version = "0.8.6"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa003f0038df784eb8fecbbac13affe3da23b45194bd57dba231c8f48199c526"
+checksum = "5afe4c38a9b417b6a9a5eeffe7235d0a106716495536e7727d1c7f4b1ff3eba6"
 dependencies = [
  "atoi",
  "base64 0.22.1",
@@ -13311,7 +13340,7 @@ dependencies = [
  "smallvec",
  "sqlx-core",
  "stringprep",
- "thiserror 2.0.17",
+ "thiserror 1.0.69",
  "tracing",
  "uuid",
  "whoami",
@@ -13319,9 +13348,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-postgres"
-version = "0.8.6"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db58fcd5a53cf07c184b154801ff91347e4c30d17a3562a635ff028ad5deda46"
+checksum = "b1dbb157e65f10dbe01f729339c06d239120221c9ad9fa0ba8408c4cc18ecf21"
 dependencies = [
  "atoi",
  "base64 0.22.1",
@@ -13333,6 +13362,7 @@ dependencies = [
  "etcetera",
  "futures-channel",
  "futures-core",
+ "futures-io",
  "futures-util",
  "hex",
  "hkdf",
@@ -13350,7 +13380,7 @@ dependencies = [
  "smallvec",
  "sqlx-core",
  "stringprep",
- "thiserror 2.0.17",
+ "thiserror 1.0.69",
  "tracing",
  "uuid",
  "whoami",
@@ -13358,9 +13388,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-sqlite"
-version = "0.8.6"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2d12fe70b2c1b4401038055f90f151b78208de1f9f89a7dbfd41587a10c3eea"
+checksum = "9b2cdd83c008a622d94499c0006d8ee5f821f36c89b7d625c900e5dc30b5c5ee"
 dependencies = [
  "atoi",
  "chrono",
@@ -13376,7 +13406,6 @@ dependencies = [
  "serde",
  "serde_urlencoded",
  "sqlx-core",
- "thiserror 2.0.17",
  "tracing",
  "url",
  "uuid",

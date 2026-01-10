@@ -1,3 +1,4 @@
+pub(crate) mod agents;
 pub(crate) mod autopilot;
 pub(crate) mod autopilot_issues;
 pub(crate) mod catalog;

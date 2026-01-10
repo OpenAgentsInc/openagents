@@ -9,7 +9,7 @@ description = "Local issue tracking with SQLite"
 
 [dependencies]
 # Database
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Serialization
 serde.workspace = true
