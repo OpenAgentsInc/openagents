@@ -44,6 +44,8 @@ pub enum Command {
     Nexus,
     NexusConnect(String),
     NexusRefresh,
+    SparkWallet,
+    SparkWalletRefresh,
     Gateway,
     GatewayRefresh,
     Nip90,
@@ -302,6 +304,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/spark",
+        description: "Open Spark wallet status",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/spark refresh",
+        description: "Refresh Spark wallet status",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/nip90",
         description: "Open NIP-90 job monitor",
         requires_args: false,
@@ -415,6 +427,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "gateway" => parse_gateway_command(args),
         "lm-router" | "lmrouter" => parse_lm_router_command(args),
         "nexus" => parse_nexus_command(args),
+        "spark" => parse_spark_command(args),
         "nip90" => parse_nip90_command(args),
         "oanix" => parse_oanix_command(args),
         "dspy" => parse_dspy_command(args),
@@ -486,6 +499,16 @@ fn parse_nexus_command(args: Vec<String>) -> Command {
             Command::NexusConnect(url)
         }
         Some(other) => Command::Custom(format!("nexus {}", other), parts.collect()),
+    }
+}
+
+fn parse_spark_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::SparkWallet,
+        Some("open") | Some("status") => Command::SparkWallet,
+        Some("refresh") => Command::SparkWalletRefresh,
+        Some(other) => Command::Custom(format!("spark {}", other), parts.collect()),
     }
 }
 

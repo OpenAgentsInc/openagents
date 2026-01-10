@@ -47,6 +47,7 @@ use crate::app::nip90::Nip90State;
 use crate::app::gateway::GatewayState;
 use crate::app::lm_router::LmRouterState;
 use crate::app::nexus::NexusState;
+use crate::app::spark_wallet::SparkWalletState;
 use crate::app::{build_input, AppState, HookModalView};
 use crate::commands::parse_command;
 use crate::keybindings::{match_action, Action as KeyAction};
@@ -251,6 +252,7 @@ impl ApplicationHandler for CoderApp {
                 gateway: GatewayState::new(),
                 lm_router: LmRouterState::new(),
                 nexus: NexusState::new(),
+                spark_wallet: SparkWalletState::new(),
                 nip28: Nip28State::new(),
                 nip90: Nip90State::new(),
                 llama_server_process,
@@ -288,6 +290,7 @@ impl ApplicationHandler for CoderApp {
         self.poll_gateway_events();
         self.poll_lm_router_events();
         self.poll_nexus_events();
+        self.poll_spark_wallet_events();
         self.poll_autopilot_history();
         self.poll_rate_limits();
 
@@ -1158,6 +1161,7 @@ impl ApplicationHandler for CoderApp {
                                 KeyAction::OpenGateway => state.open_gateway(),
                                 KeyAction::OpenLmRouter => state.open_lm_router(),
                                 KeyAction::OpenNexus => state.open_nexus(),
+                                KeyAction::OpenSparkWallet => state.open_spark_wallet(),
                                 KeyAction::OpenNip90 => state.open_nip90(),
                                 KeyAction::OpenOanix => state.open_oanix(),
                                 KeyAction::OpenDspy => state.open_dspy(),

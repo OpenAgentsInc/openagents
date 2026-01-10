@@ -14,6 +14,7 @@ pub(crate) mod oanix;
 pub(crate) mod parsing;
 pub(crate) mod permissions;
 pub(crate) mod session;
+pub(crate) mod spark_wallet;
 pub(crate) mod state;
 pub(crate) mod tools;
 pub(crate) mod ui;

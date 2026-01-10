@@ -167,6 +167,15 @@ impl AppState {
             "Nostr",
             Some(nexus_keys),
         );
+        let spark_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenSparkWallet, "Ctrl+Shift+S");
+        push_command(
+            command_palette_ids::SPARK_WALLET_OPEN,
+            "Open Spark Wallet",
+            "View Spark wallet balances and payments",
+            "Wallet",
+            Some(spark_keys),
+        );
         let nip90_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
         push_command(
@@ -504,6 +513,15 @@ impl AppState {
     pub(super) fn connect_nexus(&mut self, stats_url: String) {
         self.nexus.set_stats_url(stats_url);
         self.refresh_nexus();
+    }
+
+    pub(super) fn open_spark_wallet(&mut self) {
+        self.refresh_spark_wallet();
+        self.modal_state = ModalState::SparkWallet;
+    }
+
+    pub(super) fn refresh_spark_wallet(&mut self) {
+        self.spark_wallet.refresh();
     }
 
     pub(super) fn connect_dvm(&mut self, relay_url: Option<String>) {
