@@ -23,6 +23,7 @@ pub struct LspIndex {
     server_command: Option<String>,
 
     /// Cached symbol index.
+    #[allow(dead_code)]
     symbol_cache: HashMap<String, Vec<SymbolInfo>>,
 }
 

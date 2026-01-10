@@ -571,6 +571,7 @@ struct UiPalette {
     panel_border: Hsla,
     panel_highlight: Hsla,
     overlay: Hsla,
+    #[allow(dead_code)]
     input_bg: Hsla,
     input_border: Hsla,
     input_border_focused: Hsla,
@@ -580,6 +581,7 @@ struct UiPalette {
     text_dim: Hsla,
     text_faint: Hsla,
     prompt: Hsla,
+    #[allow(dead_code)]
     status_left: Hsla,
     status_right: Hsla,
     user_text: Hsla,
@@ -8971,9 +8973,9 @@ impl CoderApp {
         // Draw status bar at very bottom (centered vertically)
         let status_y = logical_height - STATUS_BAR_HEIGHT - 3.0;
 
-        // Left side: mode (colored) + hint (gray), aligned with user input text
+        // Left side: mode (colored) + hint (gray), flush with left edge of 768px container
         if !state.session_info.permission_mode.is_empty() {
-            let mode_x = content_x + 24.0; // Align with user text (after ">" prompt)
+            let mode_x = input_x;
             let mode_text = coder_mode_display(state.coder_mode);
             let mode_run = state.text_system.layout_styled_mono(
                 mode_text,
