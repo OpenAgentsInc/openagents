@@ -105,10 +105,10 @@ impl<'a> DocumentBuilder<'a> {
             Event::SoftBreak => self.push_soft_break(),
             Event::HardBreak => self.push_hard_break(),
             Event::Rule => self.push_horizontal_rule(),
-            Event::Html(html) => self.push_text(&html),
+            Event::Html(html) => self.push_html(&html),
             Event::FootnoteReference(_) => {}
             Event::TaskListMarker(checked) => self.push_task_marker(checked),
-            Event::InlineHtml(html) => self.push_text(&html),
+            Event::InlineHtml(html) => self.push_html(&html),
             Event::InlineMath(math) => self.push_inline_code(&math),
             Event::DisplayMath(math) => self.push_text(&math),
         }
@@ -248,6 +248,24 @@ impl<'a> DocumentBuilder<'a> {
 
     fn push_hard_break(&mut self) {
         self.push_soft_break();
+    }
+
+    fn push_html(&mut self, html: &str) {
+        let trimmed = html.trim().to_lowercase();
+        // Handle <br>, <br/>, <br /> as line breaks
+        if trimmed == "<br>" || trimmed == "<br/>" || trimmed == "<br />" {
+            // In a code block, add actual newline
+            if self.in_code_block {
+                self.code_content.push('\n');
+            } else {
+                // For inline content, add a newline character which will be rendered
+                self.current_spans.push(StyledSpan::new(
+                    "\n".to_string(),
+                    self.current_style().clone(),
+                ));
+            }
+        }
+        // Ignore other HTML tags
     }
 
     fn push_horizontal_rule(&mut self) {

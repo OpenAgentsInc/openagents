@@ -575,7 +575,7 @@ impl MarkdownRenderer {
         let content_height = y - start_y;
 
         // Draw bar aligned with text visual top (accounting for text ascent)
-        let bar_color = theme::accent::PRIMARY.with_alpha(opacity);
+        let bar_color = theme::text::PRIMARY.with_alpha(opacity);
         let bar_top = start_y - text_ascent + 2.0; // Slight adjustment for visual centering
         scene.draw_quad(Quad {
             bounds: Bounds::new(origin.x, bar_top, bar_width, content_height + text_ascent),
