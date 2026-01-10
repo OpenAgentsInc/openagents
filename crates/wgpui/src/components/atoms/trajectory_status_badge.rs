@@ -104,7 +104,7 @@ impl Component for TrajectoryStatusBadge {
         if self.compact {
             // Just icon
             let icon = self.status.icon();
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 icon,
                 Point::new(bounds.origin.x + padding, text_y),
                 theme::font_size::SM,

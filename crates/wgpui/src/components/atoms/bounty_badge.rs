@@ -98,7 +98,7 @@ impl Component for BountyBadge {
 
         // Lightning icon
         if self.show_icon {
-            let icon_run = cx.text.layout(
+            let icon_run = cx.text.layout_mono(
                 "⚡",
                 Point::new(x, text_y - 1.0),
                 theme::font_size::SM,
@@ -110,7 +110,7 @@ impl Component for BountyBadge {
 
         // Amount
         let amount_text = self.format_amount();
-        let amount_run = cx.text.layout(
+        let amount_run = cx.text.layout_mono(
             &amount_text,
             Point::new(x, text_y),
             theme::font_size::XS,
@@ -120,7 +120,7 @@ impl Component for BountyBadge {
         x += amount_text.len() as f32 * 6.5 + 4.0;
 
         // Sats label
-        let sats_run = cx.text.layout(
+        let sats_run = cx.text.layout_mono(
             "sats",
             Point::new(x, text_y),
             theme::font_size::XS,

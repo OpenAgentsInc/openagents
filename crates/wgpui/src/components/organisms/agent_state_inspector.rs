@@ -205,7 +205,7 @@ impl AgentStateInspector {
         let mut y = content.origin.y + padding - self.scroll_offset;
 
         if self.goals.is_empty() {
-            let empty_run = cx.text.layout(
+            let empty_run = cx.text.layout_mono(
                 "No active goals",
                 Point::new(content.origin.x + padding, y),
                 theme::font_size::SM,
@@ -219,7 +219,7 @@ impl AgentStateInspector {
             let row_height = 60.0;
 
             // Goal description
-            let desc_run = cx.text.layout(
+            let desc_run = cx.text.layout_mono(
                 &goal.description,
                 Point::new(content.origin.x + padding, y + 8.0),
                 theme::font_size::SM,
@@ -240,7 +240,7 @@ impl AgentStateInspector {
                 AgentGoalStatus::Blocked => "Blocked",
                 AgentGoalStatus::Paused => "Paused",
             };
-            let status_run = cx.text.layout(
+            let status_run = cx.text.layout_mono(
                 status_text,
                 Point::new(
                     content.origin.x + content.size.width - padding - 60.0,
@@ -265,7 +265,7 @@ impl AgentStateInspector {
 
             // Progress percentage
             let pct = format!("{:.0}%", goal.progress * 100.0);
-            let pct_run = cx.text.layout(
+            let pct_run = cx.text.layout_mono(
                 &pct,
                 Point::new(content.origin.x + padding + bar_width + 8.0, bar_y - 2.0),
                 theme::font_size::XS,
@@ -282,7 +282,7 @@ impl AgentStateInspector {
         let mut y = content.origin.y + padding - self.scroll_offset;
 
         if self.actions.is_empty() {
-            let empty_run = cx.text.layout(
+            let empty_run = cx.text.layout_mono(
                 "No actions recorded",
                 Point::new(content.origin.x + padding, y),
                 theme::font_size::SM,
@@ -301,7 +301,7 @@ impl AgentStateInspector {
             } else {
                 Hsla::new(0.0, 0.7, 0.5, 1.0)
             };
-            let tool_run = cx.text.layout(
+            let tool_run = cx.text.layout_mono(
                 &action.tool,
                 Point::new(content.origin.x + padding, y + 4.0),
                 theme::font_size::XS,
@@ -310,7 +310,7 @@ impl AgentStateInspector {
             cx.scene.draw_text(tool_run);
 
             // Description
-            let desc_run = cx.text.layout(
+            let desc_run = cx.text.layout_mono(
                 &action.description,
                 Point::new(content.origin.x + padding, y + 20.0),
                 theme::font_size::XS,
@@ -320,7 +320,7 @@ impl AgentStateInspector {
 
             // Timestamp
             if !action.timestamp.is_empty() {
-                let ts_run = cx.text.layout(
+                let ts_run = cx.text.layout_mono(
                     &action.timestamp,
                     Point::new(
                         content.origin.x + content.size.width - padding - 60.0,
@@ -341,7 +341,7 @@ impl AgentStateInspector {
         let mut y = content.origin.y + padding - self.scroll_offset;
 
         if self.memory_items.is_empty() {
-            let empty_run = cx.text.layout(
+            let empty_run = cx.text.layout_mono(
                 "No memory items",
                 Point::new(content.origin.x + padding, y),
                 theme::font_size::SM,
@@ -355,7 +355,7 @@ impl AgentStateInspector {
             let row_height = 36.0;
 
             // Key
-            let key_run = cx.text.layout(
+            let key_run = cx.text.layout_mono(
                 key,
                 Point::new(content.origin.x + padding, y + 10.0),
                 theme::font_size::XS,
@@ -369,7 +369,7 @@ impl AgentStateInspector {
             } else {
                 value.clone()
             };
-            let value_run = cx.text.layout(
+            let value_run = cx.text.layout_mono(
                 &display_value,
                 Point::new(content.origin.x + padding + 120.0, y + 10.0),
                 theme::font_size::XS,
@@ -386,7 +386,7 @@ impl AgentStateInspector {
         let y = content.origin.y + padding;
 
         // Token usage
-        let tokens_label = cx.text.layout(
+        let tokens_label = cx.text.layout_mono(
             "Tokens Used",
             Point::new(content.origin.x + padding, y),
             theme::font_size::XS,
@@ -398,7 +398,7 @@ impl AgentStateInspector {
             "{} / {}",
             self.resource_usage.tokens_used, self.resource_usage.tokens_limit
         );
-        let tokens_run = cx.text.layout(
+        let tokens_run = cx.text.layout_mono(
             &tokens_value,
             Point::new(content.origin.x + padding, y + 18.0),
             theme::font_size::SM,
@@ -436,7 +436,7 @@ impl AgentStateInspector {
 
         // Actions count
         let actions_y = y + 70.0;
-        let actions_label = cx.text.layout(
+        let actions_label = cx.text.layout_mono(
             "Actions Taken",
             Point::new(content.origin.x + padding, actions_y),
             theme::font_size::XS,
@@ -445,7 +445,7 @@ impl AgentStateInspector {
         cx.scene.draw_text(actions_label);
 
         let actions_value = format!("{}", self.resource_usage.actions_count);
-        let actions_run = cx.text.layout(
+        let actions_run = cx.text.layout_mono(
             &actions_value,
             Point::new(content.origin.x + padding, actions_y + 18.0),
             theme::font_size::SM,
@@ -455,7 +455,7 @@ impl AgentStateInspector {
 
         // Runtime
         let runtime_y = y + 120.0;
-        let runtime_label = cx.text.layout(
+        let runtime_label = cx.text.layout_mono(
             "Runtime",
             Point::new(content.origin.x + padding, runtime_y),
             theme::font_size::XS,
@@ -466,7 +466,7 @@ impl AgentStateInspector {
         let mins = self.resource_usage.runtime_seconds / 60;
         let secs = self.resource_usage.runtime_seconds % 60;
         let runtime_value = format!("{}m {}s", mins, secs);
-        let runtime_run = cx.text.layout(
+        let runtime_run = cx.text.layout_mono(
             &runtime_value,
             Point::new(content.origin.x + padding, runtime_y + 18.0),
             theme::font_size::SM,
@@ -493,7 +493,7 @@ impl Component for AgentStateInspector {
             .draw_quad(Quad::new(header).with_background(theme::bg::MUTED));
 
         // Title
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             "State Inspector",
             Point::new(bounds.origin.x + padding, bounds.origin.y + 10.0),
             theme::font_size::BASE,
@@ -502,7 +502,7 @@ impl Component for AgentStateInspector {
         cx.scene.draw_text(title_run);
 
         // Agent name
-        let agent_run = cx.text.layout(
+        let agent_run = cx.text.layout_mono(
             &self.agent_name,
             Point::new(bounds.origin.x + padding, bounds.origin.y + 30.0),
             theme::font_size::XS,
@@ -536,7 +536,7 @@ impl Component for AgentStateInspector {
             } else {
                 theme::text::MUTED
             };
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 label,
                 Point::new(
                     tab_bounds.origin.x + tab_bounds.size.width / 2.0 - 24.0,

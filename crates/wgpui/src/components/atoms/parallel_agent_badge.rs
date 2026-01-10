@@ -106,7 +106,7 @@ impl Component for ParallelAgentBadge {
 
         // Agent index badge
         let index_text = format!("A{}", self.agent_index);
-        let index_run = cx.text.layout(
+        let index_run = cx.text.layout_mono(
             &index_text,
             Point::new(x, text_y),
             theme::font_size::XS,
@@ -140,7 +140,7 @@ impl Component for ParallelAgentBadge {
                 } else {
                     task.clone()
                 };
-                let task_run = cx.text.layout(
+                let task_run = cx.text.layout_mono(
                     &display_task,
                     Point::new(x, text_y),
                     theme::font_size::XS,

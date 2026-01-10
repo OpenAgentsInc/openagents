@@ -136,7 +136,7 @@ impl Component for EarningsBadge {
 
             // Type label
             let label = self.earnings_type.label();
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 label,
                 Point::new(x, text_y),
                 theme::font_size::XS,
@@ -147,7 +147,7 @@ impl Component for EarningsBadge {
 
             // Amount
             let amount = format_sats(self.amount_sats);
-            let amount_run = cx.text.layout(
+            let amount_run = cx.text.layout_mono(
                 &amount,
                 Point::new(x, text_y),
                 theme::font_size::XS,
@@ -157,7 +157,7 @@ impl Component for EarningsBadge {
             x += amount.len() as f32 * 6.5 + 4.0;
 
             // Sats label
-            let sats_run = cx.text.layout(
+            let sats_run = cx.text.layout_mono(
                 "sats",
                 Point::new(x, text_y),
                 theme::font_size::XS,

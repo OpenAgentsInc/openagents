@@ -142,7 +142,7 @@ impl Component for AddressCard {
                 .with_background(self.address_type.color().with_alpha(0.2))
                 .with_border(self.address_type.color(), 1.0),
         );
-        let type_label = cx.text.layout(
+        let type_label = cx.text.layout_mono(
             self.address_type.label(),
             Point::new(badge_bounds.origin.x + 8.0, badge_bounds.origin.y + 3.0),
             theme::font_size::XS,
@@ -153,7 +153,7 @@ impl Component for AddressCard {
         // Network indicator (for non-mainnet)
         if self.network != BitcoinNetwork::Mainnet {
             let net_x = content_x + badge_w + 8.0;
-            let net_label = cx.text.layout(
+            let net_label = cx.text.layout_mono(
                 self.network.label(),
                 Point::new(net_x, bounds.origin.y + 11.0),
                 theme::font_size::XS,
@@ -164,7 +164,7 @@ impl Component for AddressCard {
 
         // Label (if any)
         if let Some(label) = &self.label {
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 label,
                 Point::new(content_x, bounds.origin.y + 34.0),
                 theme::font_size::XS,
@@ -180,7 +180,7 @@ impl Component for AddressCard {
             bounds.origin.y + 34.0
         };
 
-        let addr_run = cx.text.layout(
+        let addr_run = cx.text.layout_mono(
             &self.truncated_address(),
             Point::new(content_x, addr_y),
             theme::font_size::SM,
@@ -209,7 +209,7 @@ impl Component for AddressCard {
         } else {
             theme::text::PRIMARY
         };
-        let copy_label = cx.text.layout(
+        let copy_label = cx.text.layout_mono(
             copy_text,
             Point::new(copy_bounds.origin.x + 8.0, copy_bounds.origin.y + 4.0),
             theme::font_size::XS,

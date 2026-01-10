@@ -194,7 +194,7 @@ impl Component for Tabs {
             let text_x = tab_x + self.tab_padding.0;
             let text_y = bounds.origin.y + self.tab_height * 0.5 - self.font_size * 0.55;
 
-            let text_run = cx.text.layout(
+            let text_run = cx.text.layout_mono(
                 &tab.label,
                 Point::new(text_x, text_y),
                 self.font_size,

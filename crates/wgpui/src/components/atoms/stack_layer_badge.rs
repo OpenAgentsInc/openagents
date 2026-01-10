@@ -80,7 +80,7 @@ impl Component for StackLayerBadge {
             // Show just "2/4"
             let text = format!("{}/{}", self.layer, self.total);
             let text_x = bounds.origin.x + (bounds.size.width - text.len() as f32 * 6.0) / 2.0;
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 &text,
                 Point::new(text_x, text_y),
                 theme::font_size::XS,
@@ -93,7 +93,7 @@ impl Component for StackLayerBadge {
             let mut x = bounds.origin.x + padding;
 
             // Stack icon
-            let icon_run = cx.text.layout(
+            let icon_run = cx.text.layout_mono(
                 "≡",
                 Point::new(x, text_y - 1.0),
                 theme::font_size::SM,
@@ -104,7 +104,7 @@ impl Component for StackLayerBadge {
 
             // Layer number
             let layer_text = format!("{}", self.layer);
-            let layer_run = cx.text.layout(
+            let layer_run = cx.text.layout_mono(
                 &layer_text,
                 Point::new(x, text_y),
                 theme::font_size::XS,
@@ -114,7 +114,7 @@ impl Component for StackLayerBadge {
             x += layer_text.len() as f32 * 7.0 + 2.0;
 
             // "of"
-            let of_run = cx.text.layout(
+            let of_run = cx.text.layout_mono(
                 "of",
                 Point::new(x, text_y),
                 theme::font_size::XS,
@@ -125,7 +125,7 @@ impl Component for StackLayerBadge {
 
             // Total
             let total_text = format!("{}", self.total);
-            let total_run = cx.text.layout(
+            let total_run = cx.text.layout_mono(
                 &total_text,
                 Point::new(x, text_y),
                 theme::font_size::XS,

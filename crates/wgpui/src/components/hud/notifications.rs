@@ -309,7 +309,7 @@ impl Component for Notifications {
             let padding = theme::spacing::SM;
             let icon_size = theme::font_size::LG;
 
-            let icon_run = cx.text.layout(
+            let icon_run = cx.text.layout_mono(
                 notification.level.icon(),
                 Point::new(
                     notif_bounds.origin.x + padding,
@@ -321,7 +321,7 @@ impl Component for Notifications {
             cx.scene.draw_text(icon_run);
 
             let title_x = notif_bounds.origin.x + padding + icon_size + padding;
-            let title_run = cx.text.layout(
+            let title_run = cx.text.layout_mono(
                 &notification.title,
                 Point::new(title_x, notif_bounds.origin.y + padding),
                 theme::font_size::SM,
@@ -330,7 +330,7 @@ impl Component for Notifications {
             cx.scene.draw_text(title_run);
 
             if let Some(msg) = &notification.message {
-                let msg_run = cx.text.layout(
+                let msg_run = cx.text.layout_mono(
                     msg,
                     Point::new(
                         title_x,
@@ -356,7 +356,7 @@ impl Component for Notifications {
                     .draw_quad(Quad::new(dismiss_bounds).with_background(dismiss_bg));
 
                 let x_symbol = "\u{2715}";
-                let x_run = cx.text.layout(
+                let x_run = cx.text.layout_mono(
                     x_symbol,
                     Point::new(
                         dismiss_bounds.origin.x

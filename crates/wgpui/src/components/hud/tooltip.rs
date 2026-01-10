@@ -272,7 +272,7 @@ impl Component for Tooltip {
         // Draw text
         let text_x = tooltip_bounds.origin.x + self.padding;
         let text_y = tooltip_bounds.origin.y + self.padding + font_size * 0.8;
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             &self.content,
             Point::new(text_x, text_y),
             font_size,

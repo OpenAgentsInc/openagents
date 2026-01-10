@@ -110,7 +110,7 @@ impl Component for ApmComparisonCard {
         let mut y = bounds.origin.y + padding;
 
         // Title
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             "Session Comparison",
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::SM,
@@ -141,7 +141,7 @@ impl Component for ApmComparisonCard {
         } else {
             self.session_a.title.clone()
         };
-        let title_a_run = cx.text.layout(
+        let title_a_run = cx.text.layout_mono(
             &title_a,
             Point::new(session_a_x, y),
             theme::font_size::XS,
@@ -155,7 +155,7 @@ impl Component for ApmComparisonCard {
         } else {
             self.session_b.title.clone()
         };
-        let title_b_run = cx.text.layout(
+        let title_b_run = cx.text.layout_mono(
             &title_b,
             Point::new(session_b_x, y),
             theme::font_size::XS,
@@ -181,7 +181,7 @@ impl Component for ApmComparisonCard {
             apm_delta
         );
         let center_x = bounds.origin.x + bounds.size.width / 2.0 - 40.0;
-        let delta_run = cx.text.layout(
+        let delta_run = cx.text.layout_mono(
             &delta_text,
             Point::new(center_x, y),
             theme::font_size::SM,
@@ -202,7 +202,7 @@ impl Component for ApmComparisonCard {
 
         for (label, val_a, val_b) in metrics {
             // Label
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 label,
                 Point::new(session_a_x, y),
                 theme::font_size::XS,
@@ -211,7 +211,7 @@ impl Component for ApmComparisonCard {
             cx.scene.draw_text(label_run);
 
             // Value A
-            let val_a_run = cx.text.layout(
+            let val_a_run = cx.text.layout_mono(
                 &val_a.to_string(),
                 Point::new(session_a_x + 80.0, y),
                 theme::font_size::SM,
@@ -220,7 +220,7 @@ impl Component for ApmComparisonCard {
             cx.scene.draw_text(val_a_run);
 
             // Value B
-            let val_b_run = cx.text.layout(
+            let val_b_run = cx.text.layout_mono(
                 &val_b.to_string(),
                 Point::new(session_b_x + 80.0, y),
                 theme::font_size::SM,
@@ -232,7 +232,7 @@ impl Component for ApmComparisonCard {
         }
 
         // Duration comparison
-        let dur_label = cx.text.layout(
+        let dur_label = cx.text.layout_mono(
             "Duration",
             Point::new(session_a_x, y),
             theme::font_size::XS,
@@ -241,7 +241,7 @@ impl Component for ApmComparisonCard {
         cx.scene.draw_text(dur_label);
 
         let dur_a = Self::format_duration(self.session_a.duration_secs);
-        let dur_a_run = cx.text.layout(
+        let dur_a_run = cx.text.layout_mono(
             &dur_a,
             Point::new(session_a_x + 80.0, y),
             theme::font_size::SM,
@@ -250,7 +250,7 @@ impl Component for ApmComparisonCard {
         cx.scene.draw_text(dur_a_run);
 
         let dur_b = Self::format_duration(self.session_b.duration_secs);
-        let dur_b_run = cx.text.layout(
+        let dur_b_run = cx.text.layout_mono(
             &dur_b,
             Point::new(session_b_x + 80.0, y),
             theme::font_size::SM,

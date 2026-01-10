@@ -167,7 +167,7 @@ impl Component for SessionStatusBadge {
             // Duration
             if let Some(secs) = self.duration_secs {
                 let dur = format_duration(secs);
-                let dur_run = cx.text.layout(
+                let dur_run = cx.text.layout_mono(
                     &dur,
                     Point::new(x, text_y),
                     theme::font_size::XS,
@@ -180,7 +180,7 @@ impl Component for SessionStatusBadge {
             // Task count
             if let Some(count) = self.task_count {
                 let count_text = format!("{} tasks", count);
-                let count_run = cx.text.layout(
+                let count_run = cx.text.layout_mono(
                     &count_text,
                     Point::new(x, text_y),
                     theme::font_size::XS,

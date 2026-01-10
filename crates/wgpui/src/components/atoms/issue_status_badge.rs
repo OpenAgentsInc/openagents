@@ -90,7 +90,7 @@ impl Component for IssueStatusBadge {
         if self.compact {
             // Just icon
             let icon = self.status.icon();
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 icon,
                 Point::new(bounds.origin.x + 6.0, bounds.origin.y + 4.0),
                 theme::font_size::SM,
@@ -102,7 +102,7 @@ impl Component for IssueStatusBadge {
             let text_w = label.len() as f32 * 6.5;
             let text_x = bounds.origin.x + (bounds.size.width - text_w) / 2.0;
             let text_y = bounds.origin.y + (bounds.size.height - theme::font_size::XS) / 2.0;
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 label,
                 Point::new(text_x, text_y),
                 theme::font_size::XS,

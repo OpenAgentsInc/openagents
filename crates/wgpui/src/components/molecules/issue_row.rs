@@ -177,7 +177,7 @@ impl Component for IssueRow {
 
         // Issue number
         let num_text = format!("#{}", self.issue.number);
-        let num_run = cx.text.layout(
+        let num_run = cx.text.layout_mono(
             &num_text,
             Point::new(content_x, text_y),
             theme::font_size::SM,
@@ -191,7 +191,7 @@ impl Component for IssueRow {
         } else {
             self.issue.title.clone()
         };
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             &title,
             Point::new(content_x + 50.0, text_y),
             theme::font_size::SM,
@@ -211,7 +211,7 @@ impl Component for IssueRow {
                     .with_background(label.color.with_alpha(0.2))
                     .with_border(label.color, 1.0),
             );
-            let label_text = cx.text.layout(
+            let label_text = cx.text.layout_mono(
                 &label.name,
                 Point::new(label_x + 4.0, labels_y + 2.0),
                 theme::font_size::XS,
@@ -231,7 +231,7 @@ impl Component for IssueRow {
                     .with_background(bounty_color.with_alpha(0.2))
                     .with_border(bounty_color, 1.0),
             );
-            let bounty_run = cx.text.layout(
+            let bounty_run = cx.text.layout_mono(
                 &format!("\u{20BF} {}", bounty_text),
                 Point::new(bounty_x + 6.0, text_y),
                 theme::font_size::XS,
@@ -243,7 +243,7 @@ impl Component for IssueRow {
         // Meta info (author, comments, time)
         let meta_y = labels_y + 22.0;
         let author_text = format!("by {}", self.issue.author);
-        let author_run = cx.text.layout(
+        let author_run = cx.text.layout_mono(
             &author_text,
             Point::new(content_x, meta_y),
             theme::font_size::XS,
@@ -252,7 +252,7 @@ impl Component for IssueRow {
         cx.scene.draw_text(author_run);
 
         let comments_text = format!("\u{1F4AC} {}", self.issue.comments);
-        let comments_run = cx.text.layout(
+        let comments_run = cx.text.layout_mono(
             &comments_text,
             Point::new(content_x + 120.0, meta_y),
             theme::font_size::XS,
@@ -260,7 +260,7 @@ impl Component for IssueRow {
         );
         cx.scene.draw_text(comments_run);
 
-        let time_run = cx.text.layout(
+        let time_run = cx.text.layout_mono(
             &self.issue.created_at,
             Point::new(content_x + 180.0, meta_y),
             theme::font_size::XS,

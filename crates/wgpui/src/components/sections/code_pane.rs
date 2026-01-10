@@ -150,7 +150,7 @@ impl Component for CodePane {
         );
 
         let header_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, 24.0);
-        let header_text = cx.text.layout(
+        let header_text = cx.text.layout_mono(
             "Code",
             Point::new(header_bounds.origin.x + 10.0, header_bounds.origin.y + 6.0),
             theme::font_size::SM,
@@ -176,7 +176,7 @@ impl Component for CodePane {
 
         for diff in &self.diffs {
             let header = format!("{} (+{}, -{})", diff.path, diff.additions, diff.deletions);
-            let header_run = cx.text.layout(
+            let header_run = cx.text.layout_mono(
                 &header,
                 Point::new(line_x, y + 4.0),
                 theme::font_size::SM,
@@ -195,7 +195,7 @@ impl Component for CodePane {
                     CodeLineKind::Context => " ",
                 };
                 let text = format!("{}{}", prefix, line.text);
-                let run = cx.text.layout(
+                let run = cx.text.layout_mono(
                     &text,
                     Point::new(line_x, y),
                     theme::font_size::XS,

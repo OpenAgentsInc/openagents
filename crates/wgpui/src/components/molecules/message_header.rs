@@ -76,7 +76,7 @@ impl Component for MessageHeader {
         if let Some(author) = &self.author {
             let font_size = theme::font_size::SM;
             let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
-            let text_run = cx.text.layout(
+            let text_run = cx.text.layout_mono(
                 author,
                 Point::new(x, text_y),
                 font_size,

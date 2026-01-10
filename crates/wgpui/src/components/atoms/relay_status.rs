@@ -114,7 +114,7 @@ impl Component for RelayStatusDot {
             let label = self.status.short_label();
             let text_x = bounds.origin.x + self.size + 6.0;
             let text_y = bounds.origin.y + (bounds.size.height - theme::font_size::XS) / 2.0;
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 label,
                 Point::new(text_x, text_y),
                 theme::font_size::XS,
@@ -181,7 +181,7 @@ impl Component for RelayStatusBadge {
         let text_w = label.len() as f32 * 7.0;
         let text_x = bounds.origin.x + (bounds.size.width - text_w) / 2.0;
         let text_y = bounds.origin.y + (bounds.size.height - theme::font_size::XS) / 2.0;
-        let run = cx.text.layout(
+        let run = cx.text.layout_mono(
             label,
             Point::new(text_x, text_y),
             theme::font_size::XS,

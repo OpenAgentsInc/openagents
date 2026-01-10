@@ -71,7 +71,7 @@ impl Component for TerminalHeader {
         let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
 
         let prompt = "$ ";
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             prompt,
             Point::new(x, text_y),
             font_size,
@@ -80,7 +80,7 @@ impl Component for TerminalHeader {
         cx.scene.draw_text(text_run);
         x += prompt.len() as f32 * font_size * 0.6;
 
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             &self.command,
             Point::new(x, text_y),
             font_size,
@@ -109,7 +109,7 @@ impl Component for TerminalHeader {
             } else {
                 theme::status::ERROR
             };
-            let text_run = cx.text.layout(
+            let text_run = cx.text.layout_mono(
                 &code_str,
                 Point::new(x, text_y),
                 theme::font_size::XS,

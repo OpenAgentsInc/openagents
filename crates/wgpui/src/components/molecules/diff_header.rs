@@ -80,7 +80,7 @@ impl Component for DiffHeader {
         let font_size = theme::font_size::SM;
         let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
 
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             &self.file_path,
             Point::new(x, text_y),
             font_size,
@@ -91,7 +91,7 @@ impl Component for DiffHeader {
 
         if self.additions > 0 {
             let add_str = format!("+{}", self.additions);
-            let text_run = cx.text.layout(
+            let text_run = cx.text.layout_mono(
                 &add_str,
                 Point::new(x, text_y),
                 theme::font_size::XS,
@@ -103,7 +103,7 @@ impl Component for DiffHeader {
 
         if self.deletions > 0 {
             let del_str = format!("-{}", self.deletions);
-            let text_run = cx.text.layout(
+            let text_run = cx.text.layout_mono(
                 &del_str,
                 Point::new(x, text_y),
                 theme::font_size::XS,

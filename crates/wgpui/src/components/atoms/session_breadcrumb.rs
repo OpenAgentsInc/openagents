@@ -103,7 +103,7 @@ impl Component for SessionBreadcrumb {
             // Draw separator before non-first items
             if idx > 0 {
                 let sep_x = item_bounds.origin.x - 16.0;
-                let sep_run = cx.text.layout(
+                let sep_run = cx.text.layout_mono(
                     "›",
                     Point::new(sep_x, text_y),
                     font_size,
@@ -128,7 +128,7 @@ impl Component for SessionBreadcrumb {
                 theme::text::MUTED
             };
 
-            let text_run = cx.text.layout(
+            let text_run = cx.text.layout_mono(
                 &item.label,
                 Point::new(item_bounds.origin.x + 8.0, text_y),
                 font_size,

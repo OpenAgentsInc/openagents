@@ -101,7 +101,7 @@ impl Component for PaymentMethodIcon {
         let icon = self.method.icon();
         let color = self.method.color();
 
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             icon,
             Point::new(bounds.origin.x, bounds.origin.y),
             self.size,
@@ -112,7 +112,7 @@ impl Component for PaymentMethodIcon {
         if self.show_label {
             let label = self.method.label();
             let label_x = bounds.origin.x + self.size + 4.0;
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 label,
                 Point::new(label_x, bounds.origin.y + 2.0),
                 theme::font_size::XS,

@@ -101,7 +101,7 @@ impl Component for TerminalPane {
         );
 
         let header_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, 24.0);
-        let header_text = cx.text.layout(
+        let header_text = cx.text.layout_mono(
             "Terminal",
             Point::new(header_bounds.origin.x + 10.0, header_bounds.origin.y + 6.0),
             theme::font_size::SM,
@@ -129,7 +129,7 @@ impl Component for TerminalPane {
             if y > content_bounds.origin.y + content_bounds.size.height {
                 break;
             }
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 &line.text,
                 Point::new(line_x, y),
                 theme::font_size::XS,

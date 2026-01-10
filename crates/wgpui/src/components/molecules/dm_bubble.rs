@@ -157,7 +157,7 @@ impl Component for DmBubble {
 
         // Sender name (for incoming only)
         if !is_outgoing && let Some(sender) = &self.message.sender_name {
-            let sender_run = cx.text.layout(
+            let sender_run = cx.text.layout_mono(
                 sender,
                 Point::new(bubble_bounds.origin.x + padding, y),
                 theme::font_size::XS,
@@ -173,7 +173,7 @@ impl Component for DmBubble {
         } else {
             self.message.content.clone()
         };
-        let content_run = cx.text.layout(
+        let content_run = cx.text.layout_mono(
             &content,
             Point::new(bubble_bounds.origin.x + padding, y),
             theme::font_size::SM,
@@ -185,7 +185,7 @@ impl Component for DmBubble {
         let footer_y = bubble_bounds.origin.y + bubble_bounds.size.height - 18.0;
 
         // Encryption status
-        let enc_run = cx.text.layout(
+        let enc_run = cx.text.layout_mono(
             self.message.encryption.icon(),
             Point::new(bubble_bounds.origin.x + padding, footer_y),
             theme::font_size::XS,
@@ -194,7 +194,7 @@ impl Component for DmBubble {
         cx.scene.draw_text(enc_run);
 
         // Timestamp
-        let time_run = cx.text.layout(
+        let time_run = cx.text.layout_mono(
             &self.message.timestamp,
             Point::new(bubble_bounds.origin.x + padding + 18.0, footer_y),
             theme::font_size::XS,
@@ -204,7 +204,7 @@ impl Component for DmBubble {
 
         // Read status (for outgoing)
         if is_outgoing && self.message.read {
-            let read_run = cx.text.layout(
+            let read_run = cx.text.layout_mono(
                 "\u{2713}\u{2713}", // Double check
                 Point::new(
                     bubble_bounds.origin.x + bubble_width - padding - 16.0,

@@ -197,7 +197,7 @@ impl Component for TrajectoryView {
                 let text_width = (bounds.origin.x + bounds.size.width - text_x - padding).max(0.0);
 
                 let title = Self::fit_text(cx, &entry.title, theme::font_size::SM, text_width);
-                let title_run = cx.text.layout(
+                let title_run = cx.text.layout_mono(
                     &title,
                     Point::new(text_x, y),
                     theme::font_size::SM,
@@ -207,7 +207,7 @@ impl Component for TrajectoryView {
 
                 if let Some(detail_line) = Self::detail_line(entry) {
                     let detail = Self::fit_text(cx, &detail_line, theme::font_size::XS, text_width);
-                    let detail_run = cx.text.layout(
+                    let detail_run = cx.text.layout_mono(
                         &detail,
                         Point::new(text_x, y + theme::font_size::SM * 1.2),
                         theme::font_size::XS,

@@ -165,7 +165,7 @@ impl Component for AgentProfileCard {
 
         // Icon symbol based on type
         let icon = self.profile.agent_type.icon();
-        let icon_run = cx.text.layout(
+        let icon_run = cx.text.layout_mono(
             icon,
             Point::new(bounds.origin.x + padding + 14.0, y + 10.0),
             theme::font_size::SM,
@@ -175,7 +175,7 @@ impl Component for AgentProfileCard {
 
         // Name and type
         let name_x = bounds.origin.x + padding + icon_size + 16.0;
-        let name_run = cx.text.layout(
+        let name_run = cx.text.layout_mono(
             &self.profile.name,
             Point::new(name_x, y),
             theme::font_size::SM,
@@ -191,7 +191,7 @@ impl Component for AgentProfileCard {
                 .with_background(self.profile.agent_type.color().with_alpha(0.2))
                 .with_border(self.profile.agent_type.color(), 1.0),
         );
-        let type_run = cx.text.layout(
+        let type_run = cx.text.layout_mono(
             self.profile.agent_type.label(),
             Point::new(type_x + 4.0, y),
             theme::font_size::XS,
@@ -207,7 +207,7 @@ impl Component for AgentProfileCard {
                 .with_background(self.profile.status.color().with_alpha(0.2))
                 .with_border(self.profile.status.color(), 1.0),
         );
-        let status_run = cx.text.layout(
+        let status_run = cx.text.layout_mono(
             self.profile.status.label(),
             Point::new(status_x + 4.0, y),
             theme::font_size::XS,
@@ -219,7 +219,7 @@ impl Component for AgentProfileCard {
 
         // npub or ID
         if let Some(npub) = self.profile.short_npub() {
-            let npub_run = cx.text.layout(
+            let npub_run = cx.text.layout_mono(
                 &npub,
                 Point::new(name_x, y),
                 theme::font_size::XS,
@@ -237,7 +237,7 @@ impl Component for AgentProfileCard {
             } else {
                 desc.clone()
             };
-            let desc_run = cx.text.layout(
+            let desc_run = cx.text.layout_mono(
                 &desc_truncated,
                 Point::new(name_x, y),
                 theme::font_size::XS,
@@ -258,7 +258,7 @@ impl Component for AgentProfileCard {
                         .with_background(theme::accent::PRIMARY.with_alpha(0.15))
                         .with_border(theme::accent::PRIMARY.with_alpha(0.4), 1.0),
                 );
-                let cap_run = cx.text.layout(
+                let cap_run = cx.text.layout_mono(
                     cap,
                     Point::new(cap_x + 3.0, y + 2.0),
                     10.0,
@@ -269,7 +269,7 @@ impl Component for AgentProfileCard {
             }
             if self.profile.capabilities.len() > 3 {
                 let more = format!("+{}", self.profile.capabilities.len() - 3);
-                let more_run = cx.text.layout(
+                let more_run = cx.text.layout_mono(
                     &more,
                     Point::new(cap_x + 2.0, y + 2.0),
                     10.0,
@@ -296,7 +296,7 @@ impl Component for AgentProfileCard {
                 .with_background(action_bg)
                 .with_border(theme::accent::PRIMARY, 1.0),
         );
-        let action_run = cx.text.layout(
+        let action_run = cx.text.layout_mono(
             action_label,
             Point::new(action_bounds.origin.x + 12.0, action_bounds.origin.y + 6.0),
             theme::font_size::XS,

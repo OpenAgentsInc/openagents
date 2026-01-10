@@ -147,7 +147,7 @@ impl Component for PaymentRow {
         // Direction and description
         let text_x = bounds.origin.x + padding + icon_size + 12.0;
         let direction_text = self.payment.direction.label();
-        let dir_run = cx.text.layout(
+        let dir_run = cx.text.layout_mono(
             direction_text,
             Point::new(text_x, bounds.origin.y + 10.0),
             theme::font_size::SM,
@@ -161,7 +161,7 @@ impl Component for PaymentRow {
             .description
             .as_deref()
             .unwrap_or(self.payment.method.label());
-        let desc_run = cx.text.layout(
+        let desc_run = cx.text.layout_mono(
             desc,
             Point::new(text_x, bounds.origin.y + 28.0),
             theme::font_size::XS,
@@ -183,7 +183,7 @@ impl Component for PaymentRow {
         // Fee if showing
         if self.show_fee && self.payment.fee_sats > 0 {
             let fee_text = format!("fee: {} sats", self.payment.fee_sats);
-            let fee_run = cx.text.layout(
+            let fee_run = cx.text.layout_mono(
                 &fee_text,
                 Point::new(amount_x, bounds.origin.y + 32.0),
                 theme::font_size::XS,
@@ -209,7 +209,7 @@ impl Component for PaymentRow {
 
         // Timestamp
         if !self.payment.timestamp.is_empty() {
-            let ts_run = cx.text.layout(
+            let ts_run = cx.text.layout_mono(
                 &self.payment.timestamp,
                 Point::new(badge_x, bounds.origin.y + bounds.size.height - 18.0),
                 theme::font_size::XS,

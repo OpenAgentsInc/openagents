@@ -269,7 +269,7 @@ impl ThresholdKeyManager {
 
         if let Some(share) = &self.key_share {
             // Key share info
-            let key_label = cx.text.layout(
+            let key_label = cx.text.layout_mono(
                 "Key Share",
                 Point::new(content.origin.x + padding, y),
                 theme::font_size::XS,
@@ -278,7 +278,7 @@ impl ThresholdKeyManager {
             cx.scene.draw_text(key_label);
 
             let key_id = format!("Share #{} of {}", share.index, share.total_shares);
-            let key_run = cx.text.layout(
+            let key_run = cx.text.layout_mono(
                 &key_id,
                 Point::new(content.origin.x + padding, y + 18.0),
                 theme::font_size::SM,
@@ -288,7 +288,7 @@ impl ThresholdKeyManager {
 
             // Threshold indicator
             let thresh_y = y + 50.0;
-            let thresh_label = cx.text.layout(
+            let thresh_label = cx.text.layout_mono(
                 "Threshold",
                 Point::new(content.origin.x + padding, thresh_y),
                 theme::font_size::XS,
@@ -297,7 +297,7 @@ impl ThresholdKeyManager {
             cx.scene.draw_text(thresh_label);
 
             let thresh_value = format!("{} of {} required", share.threshold, share.total_shares);
-            let thresh_run = cx.text.layout(
+            let thresh_run = cx.text.layout_mono(
                 &thresh_value,
                 Point::new(content.origin.x + padding, thresh_y + 18.0),
                 theme::font_size::SM,
@@ -307,7 +307,7 @@ impl ThresholdKeyManager {
 
             // Backup status
             let backup_y = y + 100.0;
-            let backup_label = cx.text.layout(
+            let backup_label = cx.text.layout_mono(
                 "Backup Status",
                 Point::new(content.origin.x + padding, backup_y),
                 theme::font_size::XS,
@@ -320,7 +320,7 @@ impl ThresholdKeyManager {
             } else {
                 ("Not backed up", Hsla::new(0.0, 0.7, 0.5, 1.0))
             };
-            let backup_run = cx.text.layout(
+            let backup_run = cx.text.layout_mono(
                 backup_text,
                 Point::new(content.origin.x + padding, backup_y + 18.0),
                 theme::font_size::SM,
@@ -330,7 +330,7 @@ impl ThresholdKeyManager {
 
             // Online peers
             let peers_y = y + 150.0;
-            let peers_label = cx.text.layout(
+            let peers_label = cx.text.layout_mono(
                 "Online Peers",
                 Point::new(content.origin.x + padding, peers_y),
                 theme::font_size::XS,
@@ -345,7 +345,7 @@ impl ThresholdKeyManager {
             } else {
                 Hsla::new(45.0, 0.7, 0.5, 1.0)
             };
-            let peers_run = cx.text.layout(
+            let peers_run = cx.text.layout_mono(
                 &peers_value,
                 Point::new(content.origin.x + padding, peers_y + 18.0),
                 theme::font_size::SM,
@@ -355,7 +355,7 @@ impl ThresholdKeyManager {
 
             // Pending requests
             let req_y = y + 200.0;
-            let req_label = cx.text.layout(
+            let req_label = cx.text.layout_mono(
                 "Pending Requests",
                 Point::new(content.origin.x + padding, req_y),
                 theme::font_size::XS,
@@ -364,7 +364,7 @@ impl ThresholdKeyManager {
             cx.scene.draw_text(req_label);
 
             let req_value = format!("{}", self.requests.len());
-            let req_run = cx.text.layout(
+            let req_run = cx.text.layout_mono(
                 &req_value,
                 Point::new(content.origin.x + padding, req_y + 18.0),
                 theme::font_size::SM,
@@ -376,7 +376,7 @@ impl ThresholdKeyManager {
             );
             cx.scene.draw_text(req_run);
         } else {
-            let empty_run = cx.text.layout(
+            let empty_run = cx.text.layout_mono(
                 "No key share configured",
                 Point::new(content.origin.x + padding, y),
                 theme::font_size::SM,
@@ -384,7 +384,7 @@ impl ThresholdKeyManager {
             );
             cx.scene.draw_text(empty_run);
 
-            let hint_run = cx.text.layout(
+            let hint_run = cx.text.layout_mono(
                 "Create or import a key share to get started",
                 Point::new(content.origin.x + padding, y + 24.0),
                 theme::font_size::XS,
@@ -399,7 +399,7 @@ impl ThresholdKeyManager {
         let mut y = content.origin.y + padding - self.scroll_offset;
 
         if self.peers.is_empty() {
-            let empty_run = cx.text.layout(
+            let empty_run = cx.text.layout_mono(
                 "No peers in threshold group",
                 Point::new(content.origin.x + padding, y),
                 theme::font_size::SM,
@@ -423,7 +423,7 @@ impl ThresholdKeyManager {
                 .draw_quad(Quad::new(dot_bounds).with_background(status_color));
 
             // Name
-            let name_run = cx.text.layout(
+            let name_run = cx.text.layout_mono(
                 &peer.name,
                 Point::new(content.origin.x + padding + 16.0, y + 8.0),
                 theme::font_size::SM,
@@ -433,7 +433,7 @@ impl ThresholdKeyManager {
 
             // Share index
             let index_text = format!("Share #{}", peer.share_index);
-            let index_run = cx.text.layout(
+            let index_run = cx.text.layout_mono(
                 &index_text,
                 Point::new(content.origin.x + padding + 16.0, y + 26.0),
                 theme::font_size::XS,
@@ -447,7 +447,7 @@ impl ThresholdKeyManager {
                 PeerStatus::Offline => "Offline",
                 PeerStatus::Signing => "Signing...",
             };
-            let status_run = cx.text.layout(
+            let status_run = cx.text.layout_mono(
                 status_text,
                 Point::new(
                     content.origin.x + content.size.width - padding - 60.0,
@@ -467,7 +467,7 @@ impl ThresholdKeyManager {
         let mut y = content.origin.y + padding - self.scroll_offset;
 
         if self.requests.is_empty() {
-            let empty_run = cx.text.layout(
+            let empty_run = cx.text.layout_mono(
                 "No pending signing requests",
                 Point::new(content.origin.x + padding, y),
                 theme::font_size::SM,
@@ -486,7 +486,7 @@ impl ThresholdKeyManager {
             } else {
                 request.message_preview.clone()
             };
-            let preview_run = cx.text.layout(
+            let preview_run = cx.text.layout_mono(
                 &preview,
                 Point::new(content.origin.x + padding, y + 8.0),
                 theme::font_size::SM,
@@ -496,7 +496,7 @@ impl ThresholdKeyManager {
 
             // Requester and timestamp
             let meta = format!("From: {} • {}", request.requester, request.timestamp);
-            let meta_run = cx.text.layout(
+            let meta_run = cx.text.layout_mono(
                 &meta,
                 Point::new(content.origin.x + padding, y + 28.0),
                 theme::font_size::XS,
@@ -509,7 +509,7 @@ impl ThresholdKeyManager {
                 "{}/{} signatures",
                 request.signatures_collected, request.signatures_required
             );
-            let progress_run = cx.text.layout(
+            let progress_run = cx.text.layout_mono(
                 &progress,
                 Point::new(content.origin.x + padding, y + 46.0),
                 theme::font_size::XS,
@@ -526,7 +526,7 @@ impl ThresholdKeyManager {
         let y = content.origin.y + padding;
 
         // Backup instructions
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             "Backup Your Key Share",
             Point::new(content.origin.x + padding, y),
             theme::font_size::SM,
@@ -534,7 +534,7 @@ impl ThresholdKeyManager {
         );
         cx.scene.draw_text(title_run);
 
-        let desc_run = cx.text.layout(
+        let desc_run = cx.text.layout_mono(
             "Your key share is essential for threshold signing.",
             Point::new(content.origin.x + padding, y + 24.0),
             theme::font_size::XS,
@@ -542,7 +542,7 @@ impl ThresholdKeyManager {
         );
         cx.scene.draw_text(desc_run);
 
-        let desc2_run = cx.text.layout(
+        let desc2_run = cx.text.layout_mono(
             "Back it up securely and never share it.",
             Point::new(content.origin.x + padding, y + 40.0),
             theme::font_size::XS,
@@ -564,7 +564,7 @@ impl ThresholdKeyManager {
                 .with_border(Hsla::new(45.0, 0.7, 0.5, 1.0), 1.0),
         );
 
-        let warn_run = cx.text.layout(
+        let warn_run = cx.text.layout_mono(
             "\u{26A0} If you lose your key share and don't have",
             Point::new(content.origin.x + padding + 8.0, warn_y + 12.0),
             theme::font_size::XS,
@@ -572,7 +572,7 @@ impl ThresholdKeyManager {
         );
         cx.scene.draw_text(warn_run);
 
-        let warn2_run = cx.text.layout(
+        let warn2_run = cx.text.layout_mono(
             "threshold peers online, funds may be lost.",
             Point::new(content.origin.x + padding + 8.0, warn_y + 28.0),
             theme::font_size::XS,
@@ -593,7 +593,7 @@ impl ThresholdKeyManager {
                 .with_background(btn_bg)
                 .with_border(theme::accent::PRIMARY, 1.0),
         );
-        let btn_run = cx.text.layout(
+        let btn_run = cx.text.layout_mono(
             "Export Backup",
             Point::new(btn_bounds.origin.x + 20.0, btn_bounds.origin.y + 10.0),
             theme::font_size::SM,
@@ -636,7 +636,7 @@ impl Component for ThresholdKeyManager {
             .draw_quad(Quad::new(header).with_background(theme::bg::MUTED));
 
         // Title
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             "FROSTR Keys",
             Point::new(bounds.origin.x + padding, bounds.origin.y + 10.0),
             theme::font_size::BASE,
@@ -645,7 +645,7 @@ impl Component for ThresholdKeyManager {
         cx.scene.draw_text(title_run);
 
         // Subtitle
-        let sub_run = cx.text.layout(
+        let sub_run = cx.text.layout_mono(
             "Threshold Signature Management",
             Point::new(bounds.origin.x + padding, bounds.origin.y + 30.0),
             theme::font_size::XS,
@@ -686,7 +686,7 @@ impl Component for ThresholdKeyManager {
                     Quad::new(badge_bounds).with_background(Hsla::new(0.0, 0.7, 0.5, 1.0)),
                 );
                 let badge_text = format!("{}", self.requests.len().min(9));
-                let badge_run = cx.text.layout(
+                let badge_run = cx.text.layout_mono(
                     &badge_text,
                     Point::new(badge_bounds.origin.x + 5.0, badge_bounds.origin.y + 2.0),
                     theme::font_size::XS,
@@ -700,7 +700,7 @@ impl Component for ThresholdKeyManager {
             } else {
                 theme::text::MUTED
             };
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 label,
                 Point::new(tab_bounds.origin.x + 8.0, tab_bounds.origin.y + 10.0),
                 theme::font_size::XS,

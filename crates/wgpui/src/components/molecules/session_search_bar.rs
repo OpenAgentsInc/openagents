@@ -149,7 +149,7 @@ impl Component for SessionSearchBar {
         let padding = 12.0;
 
         // Search icon
-        let icon_run = cx.text.layout(
+        let icon_run = cx.text.layout_mono(
             "⌕",
             Point::new(
                 bounds.origin.x + padding,
@@ -210,7 +210,7 @@ impl Component for SessionSearchBar {
             };
 
             let label = filter.status.label();
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 label,
                 Point::new(
                     chip_bounds.origin.x + 8.0,

@@ -122,7 +122,7 @@ impl Component for ContentTypeIcon {
         let text_x = icon_bounds.origin.x + (self.size - text_width) / 2.0;
         let text_y = icon_bounds.origin.y + self.size * 0.5 - font_size * 0.55;
 
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             icon,
             Point::new(text_x, text_y),
             font_size,

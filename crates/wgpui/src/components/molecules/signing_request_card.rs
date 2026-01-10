@@ -224,7 +224,7 @@ impl Component for SigningRequestCard {
 
         // Type icon and label
         let icon = self.request.signing_type.icon();
-        let icon_run = cx.text.layout(
+        let icon_run = cx.text.layout_mono(
             icon,
             Point::new(bounds.origin.x + padding + 6.0, y),
             theme::font_size::SM,
@@ -233,7 +233,7 @@ impl Component for SigningRequestCard {
         cx.scene.draw_text(icon_run);
 
         let type_label = self.request.signing_type.label();
-        let label_run = cx.text.layout(
+        let label_run = cx.text.layout_mono(
             type_label,
             Point::new(bounds.origin.x + padding + 26.0, y),
             theme::font_size::SM,
@@ -251,7 +251,7 @@ impl Component for SigningRequestCard {
                     .with_background(self.request.urgency.color().with_alpha(0.2))
                     .with_border(self.request.urgency.color(), 1.0),
             );
-            let urgency_run = cx.text.layout(
+            let urgency_run = cx.text.layout_mono(
                 self.request.urgency.label(),
                 Point::new(urgency_x + 4.0, y),
                 theme::font_size::XS,
@@ -266,7 +266,7 @@ impl Component for SigningRequestCard {
             self.request.threshold.0, self.request.threshold.1
         );
         let threshold_x = bounds.origin.x + bounds.size.width - padding - 90.0;
-        let threshold_run = cx.text.layout(
+        let threshold_run = cx.text.layout_mono(
             &threshold_text,
             Point::new(threshold_x, y),
             theme::font_size::XS,
@@ -282,7 +282,7 @@ impl Component for SigningRequestCard {
         } else {
             self.request.description.clone()
         };
-        let desc_run = cx.text.layout(
+        let desc_run = cx.text.layout_mono(
             &desc_truncated,
             Point::new(bounds.origin.x + padding + 6.0, y),
             theme::font_size::XS,
@@ -294,7 +294,7 @@ impl Component for SigningRequestCard {
 
         // Requester and time
         let requester_text = format!("from {}", self.request.requester);
-        let requester_run = cx.text.layout(
+        let requester_run = cx.text.layout_mono(
             &requester_text,
             Point::new(bounds.origin.x + padding + 6.0, y),
             theme::font_size::XS,
@@ -305,7 +305,7 @@ impl Component for SigningRequestCard {
         // Expires info
         if let Some(expires) = &self.request.expires_in {
             let expires_text = format!("expires {}", expires);
-            let expires_run = cx.text.layout(
+            let expires_run = cx.text.layout_mono(
                 &expires_text,
                 Point::new(bounds.origin.x + padding + 150.0, y),
                 theme::font_size::XS,
@@ -327,7 +327,7 @@ impl Component for SigningRequestCard {
                 .with_background(approve_bg)
                 .with_border(approve_color, 1.0),
         );
-        let approve_run = cx.text.layout(
+        let approve_run = cx.text.layout_mono(
             "Approve",
             Point::new(approve_bounds.origin.x + 8.0, approve_bounds.origin.y + 6.0),
             theme::font_size::XS,
@@ -348,7 +348,7 @@ impl Component for SigningRequestCard {
                 .with_background(reject_bg)
                 .with_border(reject_color, 1.0),
         );
-        let reject_run = cx.text.layout(
+        let reject_run = cx.text.layout_mono(
             "Reject",
             Point::new(reject_bounds.origin.x + 12.0, reject_bounds.origin.y + 6.0),
             theme::font_size::XS,

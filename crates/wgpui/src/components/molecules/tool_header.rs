@@ -74,7 +74,7 @@ impl Component for ToolHeader {
 
         let font_size = theme::font_size::SM;
         let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             &self.tool_name,
             Point::new(x, text_y),
             font_size,
@@ -97,7 +97,7 @@ impl Component for ToolHeader {
         x += badge_w.unwrap_or(80.0) + theme::spacing::SM;
 
         if let Some(dur) = &self.duration {
-            let text_run = cx.text.layout(
+            let text_run = cx.text.layout_mono(
                 dur,
                 Point::new(x, text_y),
                 theme::font_size::XS,

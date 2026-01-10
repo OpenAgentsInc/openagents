@@ -231,7 +231,7 @@ impl Component for SkillCard {
         let mut y = bounds.origin.y + padding;
 
         // Skill name
-        let name_run = cx.text.layout(
+        let name_run = cx.text.layout_mono(
             &self.skill.name,
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::SM,
@@ -248,7 +248,7 @@ impl Component for SkillCard {
                 .with_background(self.skill.category.color().with_alpha(0.2))
                 .with_border(self.skill.category.color(), 1.0),
         );
-        let cat_run = cx.text.layout(
+        let cat_run = cx.text.layout_mono(
             self.skill.category.label(),
             Point::new(cat_x + 4.0, y),
             theme::font_size::XS,
@@ -264,7 +264,7 @@ impl Component for SkillCard {
         } else {
             self.skill.description.clone()
         };
-        let desc_run = cx.text.layout(
+        let desc_run = cx.text.layout_mono(
             &desc,
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::XS,
@@ -276,7 +276,7 @@ impl Component for SkillCard {
 
         // Author and version
         let author_text = format!("by {} | v{}", self.skill.author, self.skill.version);
-        let author_run = cx.text.layout(
+        let author_run = cx.text.layout_mono(
             &author_text,
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::XS,
@@ -288,7 +288,7 @@ impl Component for SkillCard {
 
         // Stats row: downloads, rating, price
         let downloads_text = format!("\u{2B07} {}", self.format_downloads());
-        let downloads_run = cx.text.layout(
+        let downloads_run = cx.text.layout_mono(
             &downloads_text,
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::XS,
@@ -297,7 +297,7 @@ impl Component for SkillCard {
         cx.scene.draw_text(downloads_run);
 
         let rating_text = format!("\u{2605} {:.1}", self.skill.rating);
-        let rating_run = cx.text.layout(
+        let rating_run = cx.text.layout_mono(
             &rating_text,
             Point::new(bounds.origin.x + padding + 70.0, y),
             theme::font_size::XS,
@@ -307,7 +307,7 @@ impl Component for SkillCard {
 
         if let Some(price) = self.skill.price_sats {
             let price_text = format!("{} sats", price);
-            let price_run = cx.text.layout(
+            let price_run = cx.text.layout_mono(
                 &price_text,
                 Point::new(bounds.origin.x + padding + 130.0, y),
                 theme::font_size::XS,
@@ -315,7 +315,7 @@ impl Component for SkillCard {
             );
             cx.scene.draw_text(price_run);
         } else {
-            let free_run = cx.text.layout(
+            let free_run = cx.text.layout_mono(
                 "Free",
                 Point::new(bounds.origin.x + padding + 130.0, y),
                 theme::font_size::XS,
@@ -336,7 +336,7 @@ impl Component for SkillCard {
                 .with_background(install_bg)
                 .with_border(self.skill.install_status.color(), 1.0),
         );
-        let install_run = cx.text.layout(
+        let install_run = cx.text.layout_mono(
             self.skill.install_status.label(),
             Point::new(install_bounds.origin.x + 8.0, install_bounds.origin.y + 5.0),
             theme::font_size::XS,

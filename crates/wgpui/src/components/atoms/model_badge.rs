@@ -122,7 +122,7 @@ impl Component for ModelBadge {
         let text_x = badge_bounds.origin.x + padding_h;
         let text_y = badge_bounds.origin.y + badge_height * 0.5 - self.font_size * 0.55;
 
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             label,
             Point::new(text_x, text_y),
             self.font_size,

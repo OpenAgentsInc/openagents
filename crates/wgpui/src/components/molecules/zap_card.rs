@@ -130,7 +130,7 @@ impl Component for ZapCard {
         // Zap icon and amount
         let zap_icon = "\u{26A1}"; // Lightning bolt
         let amount_text = format!("{} {} sats", zap_icon, self.format_amount());
-        let amount_run = cx.text.layout(
+        let amount_run = cx.text.layout_mono(
             &amount_text,
             Point::new(bounds.origin.x + padding + 6.0, y),
             theme::font_size::SM,
@@ -139,7 +139,7 @@ impl Component for ZapCard {
         cx.scene.draw_text(amount_run);
 
         // Timestamp
-        let time_run = cx.text.layout(
+        let time_run = cx.text.layout_mono(
             &self.zap.timestamp,
             Point::new(bounds.origin.x + bounds.size.width - padding - 80.0, y),
             theme::font_size::XS,
@@ -156,7 +156,7 @@ impl Component for ZapCard {
             .clone()
             .unwrap_or_else(|| self.zap.short_npub());
         let from_text = format!("from {}", sender);
-        let from_run = cx.text.layout(
+        let from_run = cx.text.layout_mono(
             &from_text,
             Point::new(bounds.origin.x + padding + 6.0, y),
             theme::font_size::XS,
@@ -173,7 +173,7 @@ impl Component for ZapCard {
             } else {
                 format!("\"{}\"", msg)
             };
-            let msg_run = cx.text.layout(
+            let msg_run = cx.text.layout_mono(
                 &msg_truncated,
                 Point::new(bounds.origin.x + padding + 6.0, y),
                 theme::font_size::XS,

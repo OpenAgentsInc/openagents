@@ -116,7 +116,7 @@ impl Component for AgentScheduleBadge {
             // Just heartbeat interval
             let interval = self.format_interval();
             let heartbeat_color = TriggerType::Heartbeat.color();
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 "♥",
                 Point::new(x, text_y),
                 theme::font_size::SM,
@@ -124,7 +124,7 @@ impl Component for AgentScheduleBadge {
             );
             cx.scene.draw_text(run);
             x += 14.0;
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 &interval,
                 Point::new(x, text_y),
                 theme::font_size::XS,
@@ -134,7 +134,7 @@ impl Component for AgentScheduleBadge {
         } else {
             // Heartbeat
             let heartbeat_color = TriggerType::Heartbeat.color();
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 "♥",
                 Point::new(x, text_y),
                 theme::font_size::SM,
@@ -144,7 +144,7 @@ impl Component for AgentScheduleBadge {
             x += 14.0;
 
             let interval = self.format_interval();
-            let run = cx.text.layout(
+            let run = cx.text.layout_mono(
                 &interval,
                 Point::new(x, text_y),
                 theme::font_size::XS,

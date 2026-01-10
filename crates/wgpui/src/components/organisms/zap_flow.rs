@@ -181,7 +181,7 @@ impl Component for ZapFlow {
 
         // Lightning icon and title
         let title = format!("\u{26A1} Zap {}", self.recipient_name);
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             &title,
             Point::new(bounds.origin.x + padding, bounds.origin.y + 18.0),
             theme::font_size::BASE,
@@ -190,7 +190,7 @@ impl Component for ZapFlow {
         cx.scene.draw_text(title_run);
 
         // Recipient npub
-        let npub_run = cx.text.layout(
+        let npub_run = cx.text.layout_mono(
             &self.short_npub(),
             Point::new(bounds.origin.x + padding, bounds.origin.y + 40.0),
             theme::font_size::XS,
@@ -228,7 +228,7 @@ impl Component for ZapFlow {
                 .with_border(color, 1.0),
             );
 
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 step.label(),
                 Point::new(step_x + step_width / 2.0 - 20.0, step_y + 20.0),
                 theme::font_size::XS,
@@ -266,7 +266,7 @@ impl Component for ZapFlow {
                     );
 
                     let amount_str = self.format_amount(amount);
-                    let amount_run = cx.text.layout(
+                    let amount_run = cx.text.layout_mono(
                         &amount_str,
                         Point::new(
                             btn.origin.x + btn.size.width / 2.0 - 15.0,
@@ -281,7 +281,7 @@ impl Component for ZapFlow {
                     );
                     cx.scene.draw_text(amount_run);
 
-                    let sats_run = cx.text.layout(
+                    let sats_run = cx.text.layout_mono(
                         "sats",
                         Point::new(
                             btn.origin.x + btn.size.width / 2.0 - 10.0,
@@ -295,7 +295,7 @@ impl Component for ZapFlow {
 
                 // Custom amount field
                 let custom_y = bounds.origin.y + 240.0;
-                let custom_run = cx.text.layout(
+                let custom_run = cx.text.layout_mono(
                     "Or enter custom amount:",
                     Point::new(bounds.origin.x + padding, custom_y),
                     theme::font_size::XS,
@@ -330,7 +330,7 @@ impl Component for ZapFlow {
                 } else {
                     theme::text::PRIMARY
                 };
-                let custom_text_run = cx.text.layout(
+                let custom_text_run = cx.text.layout_mono(
                     placeholder,
                     Point::new(custom_field.origin.x + 8.0, custom_field.origin.y + 10.0),
                     theme::font_size::SM,
@@ -339,7 +339,7 @@ impl Component for ZapFlow {
                 cx.scene.draw_text(custom_text_run);
             }
             ZapStep::AddMessage => {
-                let msg_label = cx.text.layout(
+                let msg_label = cx.text.layout_mono(
                     "Add a message (optional):",
                     Point::new(bounds.origin.x + padding, bounds.origin.y + 110.0),
                     theme::font_size::SM,
@@ -369,7 +369,7 @@ impl Component for ZapFlow {
                 } else {
                     theme::text::PRIMARY
                 };
-                let msg_run = cx.text.layout(
+                let msg_run = cx.text.layout_mono(
                     placeholder,
                     Point::new(msg_field.origin.x + 8.0, msg_field.origin.y + 8.0),
                     theme::font_size::SM,
@@ -380,7 +380,7 @@ impl Component for ZapFlow {
             ZapStep::Confirm => {
                 let summary_y = bounds.origin.y + 110.0;
 
-                let amount_label = cx.text.layout(
+                let amount_label = cx.text.layout_mono(
                     "Amount:",
                     Point::new(bounds.origin.x + padding, summary_y),
                     theme::font_size::SM,
@@ -389,7 +389,7 @@ impl Component for ZapFlow {
                 cx.scene.draw_text(amount_label);
 
                 let amount_str = format!("\u{26A1} {} sats", self.format_amount(self.amount_sats));
-                let amount_run = cx.text.layout(
+                let amount_run = cx.text.layout_mono(
                     &amount_str,
                     Point::new(bounds.origin.x + padding + 80.0, summary_y),
                     theme::font_size::BASE,
@@ -398,7 +398,7 @@ impl Component for ZapFlow {
                 cx.scene.draw_text(amount_run);
 
                 if !self.message.is_empty() {
-                    let msg_label = cx.text.layout(
+                    let msg_label = cx.text.layout_mono(
                         "Message:",
                         Point::new(bounds.origin.x + padding, summary_y + 30.0),
                         theme::font_size::SM,
@@ -411,7 +411,7 @@ impl Component for ZapFlow {
                     } else {
                         format!("\"{}\"", &self.message)
                     };
-                    let msg_run = cx.text.layout(
+                    let msg_run = cx.text.layout_mono(
                         &msg_preview,
                         Point::new(bounds.origin.x + padding + 80.0, summary_y + 30.0),
                         theme::font_size::SM,
@@ -420,7 +420,7 @@ impl Component for ZapFlow {
                     cx.scene.draw_text(msg_run);
                 }
 
-                let to_label = cx.text.layout(
+                let to_label = cx.text.layout_mono(
                     "To:",
                     Point::new(bounds.origin.x + padding, summary_y + 60.0),
                     theme::font_size::SM,
@@ -428,7 +428,7 @@ impl Component for ZapFlow {
                 );
                 cx.scene.draw_text(to_label);
 
-                let to_run = cx.text.layout(
+                let to_run = cx.text.layout_mono(
                     &self.recipient_name,
                     Point::new(bounds.origin.x + padding + 80.0, summary_y + 60.0),
                     theme::font_size::SM,
@@ -438,7 +438,7 @@ impl Component for ZapFlow {
             }
             ZapStep::Sending => {
                 let center_y = bounds.origin.y + bounds.size.height / 2.0 - 30.0;
-                let sending_run = cx.text.layout(
+                let sending_run = cx.text.layout_mono(
                     "\u{26A1} Sending zap...",
                     Point::new(bounds.origin.x + bounds.size.width / 2.0 - 60.0, center_y),
                     theme::font_size::BASE,
@@ -448,7 +448,7 @@ impl Component for ZapFlow {
             }
             ZapStep::Complete => {
                 let center_y = bounds.origin.y + bounds.size.height / 2.0 - 30.0;
-                let complete_run = cx.text.layout(
+                let complete_run = cx.text.layout_mono(
                     "\u{2713} Zap sent!",
                     Point::new(bounds.origin.x + bounds.size.width / 2.0 - 50.0, center_y),
                     theme::font_size::BASE,
@@ -461,7 +461,7 @@ impl Component for ZapFlow {
                     self.format_amount(self.amount_sats),
                     self.recipient_name
                 );
-                let amount_run = cx.text.layout(
+                let amount_run = cx.text.layout_mono(
                     &amount_str,
                     Point::new(
                         bounds.origin.x + bounds.size.width / 2.0 - 80.0,
@@ -489,7 +489,7 @@ impl Component for ZapFlow {
                         .with_background(back_bg)
                         .with_border(theme::border::DEFAULT, 1.0),
                 );
-                let back_run = cx.text.layout(
+                let back_run = cx.text.layout_mono(
                     "\u{2190} Back",
                     Point::new(back_bounds.origin.x + 14.0, back_bounds.origin.y + 10.0),
                     theme::font_size::SM,
@@ -515,7 +515,7 @@ impl Component for ZapFlow {
                     .with_background(next_bg)
                     .with_border(zap_color, 1.0),
             );
-            let next_run = cx.text.layout(
+            let next_run = cx.text.layout_mono(
                 next_label,
                 Point::new(next_bounds.origin.x + 20.0, next_bounds.origin.y + 10.0),
                 theme::font_size::SM,

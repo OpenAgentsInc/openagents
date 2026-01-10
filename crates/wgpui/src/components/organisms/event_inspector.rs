@@ -334,7 +334,7 @@ impl Component for EventInspector {
                 .with_background(category_color.with_alpha(0.2))
                 .with_border(category_color, 1.0),
         );
-        let badge_run = cx.text.layout(
+        let badge_run = cx.text.layout_mono(
             category.label(),
             Point::new(badge_bounds.origin.x + 8.0, badge_bounds.origin.y + 5.0),
             theme::font_size::XS,
@@ -344,7 +344,7 @@ impl Component for EventInspector {
 
         // Event ID
         let id_text = format!("ID: {}", self.event.truncated_id());
-        let id_run = cx.text.layout(
+        let id_run = cx.text.layout_mono(
             &id_text,
             Point::new(
                 badge_bounds.origin.x + badge_bounds.size.width + 12.0,
@@ -357,7 +357,7 @@ impl Component for EventInspector {
 
         // Verification indicator
         if self.event.verified {
-            let check_run = cx.text.layout(
+            let check_run = cx.text.layout_mono(
                 "✓",
                 Point::new(
                     bounds.origin.x + bounds.size.width - 100.0,
@@ -381,7 +381,7 @@ impl Component for EventInspector {
                 .with_background(copy_bg)
                 .with_border(theme::border::DEFAULT, 1.0),
         );
-        let copy_run = cx.text.layout(
+        let copy_run = cx.text.layout_mono(
             "Copy",
             Point::new(copy_bounds.origin.x + 10.0, copy_bounds.origin.y + 5.0),
             theme::font_size::XS,
@@ -415,7 +415,7 @@ impl Component for EventInspector {
                 theme::text::SECONDARY
             };
 
-            let tab_run = cx.text.layout(
+            let tab_run = cx.text.layout_mono(
                 Self::tab_label(*view),
                 Point::new(tab.origin.x + 8.0, tab.origin.y + 6.0),
                 theme::font_size::XS,
@@ -432,7 +432,7 @@ impl Component for EventInspector {
                 let mut y = content.origin.y + padding;
 
                 // Pubkey
-                let pubkey_label = cx.text.layout(
+                let pubkey_label = cx.text.layout_mono(
                     "Pubkey:",
                     Point::new(content.origin.x + padding, y),
                     theme::font_size::XS,
@@ -440,7 +440,7 @@ impl Component for EventInspector {
                 );
                 cx.scene.draw_text(pubkey_label);
 
-                let pubkey_value = cx.text.layout(
+                let pubkey_value = cx.text.layout_mono(
                     &self.event.truncated_pubkey(),
                     Point::new(content.origin.x + padding + 60.0, y),
                     theme::font_size::XS,
@@ -450,7 +450,7 @@ impl Component for EventInspector {
                 y += 24.0;
 
                 // Kind
-                let kind_label = cx.text.layout(
+                let kind_label = cx.text.layout_mono(
                     "Kind:",
                     Point::new(content.origin.x + padding, y),
                     theme::font_size::XS,
@@ -458,7 +458,7 @@ impl Component for EventInspector {
                 );
                 cx.scene.draw_text(kind_label);
 
-                let kind_value = cx.text.layout(
+                let kind_value = cx.text.layout_mono(
                     &format!("{}", self.event.kind),
                     Point::new(content.origin.x + padding + 60.0, y),
                     theme::font_size::XS,
@@ -468,7 +468,7 @@ impl Component for EventInspector {
                 y += 24.0;
 
                 // Created at
-                let time_label = cx.text.layout(
+                let time_label = cx.text.layout_mono(
                     "Time:",
                     Point::new(content.origin.x + padding, y),
                     theme::font_size::XS,
@@ -476,7 +476,7 @@ impl Component for EventInspector {
                 );
                 cx.scene.draw_text(time_label);
 
-                let time_value = cx.text.layout(
+                let time_value = cx.text.layout_mono(
                     &self.event.format_time(),
                     Point::new(content.origin.x + padding + 60.0, y),
                     theme::font_size::XS,
@@ -486,7 +486,7 @@ impl Component for EventInspector {
                 y += 32.0;
 
                 // Content preview
-                let content_label = cx.text.layout(
+                let content_label = cx.text.layout_mono(
                     "Content:",
                     Point::new(content.origin.x + padding, y),
                     theme::font_size::XS,
@@ -501,7 +501,7 @@ impl Component for EventInspector {
                     self.event.content.clone()
                 };
 
-                let content_preview = cx.text.layout(
+                let content_preview = cx.text.layout_mono(
                     &preview,
                     Point::new(content.origin.x + padding, y),
                     theme::font_size::SM,
@@ -519,7 +519,7 @@ impl Component for EventInspector {
                     self.event.created_at
                 );
 
-                let raw_run = cx.text.layout(
+                let raw_run = cx.text.layout_mono(
                     &raw_text,
                     Point::new(content.origin.x + padding, content.origin.y + padding),
                     theme::font_size::XS,
@@ -531,7 +531,7 @@ impl Component for EventInspector {
                 let mut y = content.origin.y + padding;
 
                 if self.event.tags.is_empty() {
-                    let empty_run = cx.text.layout(
+                    let empty_run = cx.text.layout_mono(
                         "No tags",
                         Point::new(content.origin.x + padding, y),
                         theme::font_size::SM,
@@ -541,7 +541,7 @@ impl Component for EventInspector {
                 } else {
                     for tag in &self.event.tags {
                         let tag_str = format!("[{}]: {}", tag.key, tag.values.join(", "));
-                        let tag_run = cx.text.layout(
+                        let tag_run = cx.text.layout_mono(
                             &tag_str,
                             Point::new(content.origin.x + padding, y),
                             theme::font_size::XS,
@@ -556,7 +556,7 @@ impl Component for EventInspector {
                 let mut y = content.origin.y + padding;
 
                 // Signature
-                let sig_label = cx.text.layout(
+                let sig_label = cx.text.layout_mono(
                     "Signature:",
                     Point::new(content.origin.x + padding, y),
                     theme::font_size::XS,
@@ -573,7 +573,7 @@ impl Component for EventInspector {
                     self.event.sig.clone()
                 };
 
-                let sig_run = cx.text.layout(
+                let sig_run = cx.text.layout_mono(
                     &sig_display,
                     Point::new(content.origin.x + padding, y),
                     theme::font_size::XS,
@@ -583,7 +583,7 @@ impl Component for EventInspector {
                 y += 32.0;
 
                 // Verification status
-                let status_label = cx.text.layout(
+                let status_label = cx.text.layout_mono(
                     "Status:",
                     Point::new(content.origin.x + padding, y),
                     theme::font_size::XS,
@@ -597,7 +597,7 @@ impl Component for EventInspector {
                     ("Unverified", theme::text::MUTED)
                 };
 
-                let status_run = cx.text.layout(
+                let status_run = cx.text.layout_mono(
                     status_text,
                     Point::new(content.origin.x + padding + 60.0, y),
                     theme::font_size::XS,

@@ -148,7 +148,7 @@ impl Component for BitcoinAmount {
         let text = format!("{}{}{}", prefix, amount, suffix);
         let text_y = bounds.origin.y + (bounds.size.height - self.font_size) / 2.0;
 
-        let text_run = cx.text.layout(
+        let text_run = cx.text.layout_mono(
             &text,
             Point::new(bounds.origin.x, text_y),
             self.font_size,

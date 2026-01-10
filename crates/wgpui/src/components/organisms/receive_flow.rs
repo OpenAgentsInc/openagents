@@ -234,7 +234,7 @@ impl Component for ReceiveFlow {
 
         // Header
         let title = "Receive Payment";
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             title,
             Point::new(bounds.origin.x + padding, bounds.origin.y + 16.0),
             theme::font_size::LG,
@@ -244,7 +244,7 @@ impl Component for ReceiveFlow {
 
         // Step indicator
         let step_text = format!("Step: {}", self.step.label());
-        let step_run = cx.text.layout(
+        let step_run = cx.text.layout_mono(
             &step_text,
             Point::new(bounds.origin.x + padding, bounds.origin.y + 44.0),
             theme::font_size::SM,
@@ -254,7 +254,7 @@ impl Component for ReceiveFlow {
 
         match self.step {
             ReceiveStep::SelectType => {
-                let prompt = cx.text.layout(
+                let prompt = cx.text.layout_mono(
                     "Choose receive method:",
                     Point::new(bounds.origin.x + padding, bounds.origin.y + 70.0),
                     theme::font_size::SM,
@@ -284,7 +284,7 @@ impl Component for ReceiveFlow {
                         ),
                 );
 
-                let btc_label = cx.text.layout(
+                let btc_label = cx.text.layout_mono(
                     "Bitcoin",
                     Point::new(
                         bitcoin_bounds.origin.x + 12.0,
@@ -295,7 +295,7 @@ impl Component for ReceiveFlow {
                 );
                 cx.scene.draw_text(btc_label);
 
-                let btc_desc = cx.text.layout(
+                let btc_desc = cx.text.layout_mono(
                     "On-chain transaction",
                     Point::new(
                         bitcoin_bounds.origin.x + 12.0,
@@ -306,7 +306,7 @@ impl Component for ReceiveFlow {
                 );
                 cx.scene.draw_text(btc_desc);
 
-                let btc_time = cx.text.layout(
+                let btc_time = cx.text.layout_mono(
                     "~10 min confirmation",
                     Point::new(
                         bitcoin_bounds.origin.x + 12.0,
@@ -337,7 +337,7 @@ impl Component for ReceiveFlow {
                         ),
                 );
 
-                let ln_label = cx.text.layout(
+                let ln_label = cx.text.layout_mono(
                     "Lightning",
                     Point::new(
                         lightning_bounds.origin.x + 12.0,
@@ -348,7 +348,7 @@ impl Component for ReceiveFlow {
                 );
                 cx.scene.draw_text(ln_label);
 
-                let ln_desc = cx.text.layout(
+                let ln_desc = cx.text.layout_mono(
                     "Instant payment",
                     Point::new(
                         lightning_bounds.origin.x + 12.0,
@@ -359,7 +359,7 @@ impl Component for ReceiveFlow {
                 );
                 cx.scene.draw_text(ln_desc);
 
-                let ln_time = cx.text.layout(
+                let ln_time = cx.text.layout_mono(
                     "~1 second confirmation",
                     Point::new(
                         lightning_bounds.origin.x + 12.0,
@@ -371,7 +371,7 @@ impl Component for ReceiveFlow {
                 cx.scene.draw_text(ln_time);
             }
             ReceiveStep::SetAmount => {
-                let label = cx.text.layout(
+                let label = cx.text.layout_mono(
                     "Amount (optional)",
                     Point::new(bounds.origin.x + padding, bounds.origin.y + 70.0),
                     theme::font_size::SM,
@@ -381,7 +381,7 @@ impl Component for ReceiveFlow {
 
                 // Current amount
                 let amount_text = self.format_amount();
-                let amount_run = cx.text.layout(
+                let amount_run = cx.text.layout_mono(
                     &amount_text,
                     Point::new(bounds.origin.x + padding, bounds.origin.y + 96.0),
                     24.0,
@@ -390,7 +390,7 @@ impl Component for ReceiveFlow {
                 cx.scene.draw_text(amount_run);
 
                 // Memo field
-                let memo_label = cx.text.layout(
+                let memo_label = cx.text.layout_mono(
                     "Memo (optional)",
                     Point::new(bounds.origin.x + padding, bounds.origin.y + 140.0),
                     theme::font_size::SM,
@@ -415,7 +415,7 @@ impl Component for ReceiveFlow {
                 } else {
                     &self.state.memo
                 };
-                let memo_run = cx.text.layout(
+                let memo_run = cx.text.layout_mono(
                     memo_text,
                     Point::new(memo_bounds.origin.x + 12.0, memo_bounds.origin.y + 10.0),
                     theme::font_size::SM,
@@ -430,7 +430,7 @@ impl Component for ReceiveFlow {
             ReceiveStep::ShowInvoice => {
                 // Invoice type indicator
                 let type_color = self.state.receive_type.color();
-                let type_label = cx.text.layout(
+                let type_label = cx.text.layout_mono(
                     self.state.receive_type.label(),
                     Point::new(bounds.origin.x + padding, bounds.origin.y + 70.0),
                     theme::font_size::SM,
@@ -440,7 +440,7 @@ impl Component for ReceiveFlow {
 
                 // Amount
                 let amount_text = self.format_amount();
-                let amount_run = cx.text.layout(
+                let amount_run = cx.text.layout_mono(
                     &amount_text,
                     Point::new(bounds.origin.x + padding, bounds.origin.y + 94.0),
                     theme::font_size::LG,
@@ -460,7 +460,7 @@ impl Component for ReceiveFlow {
                 );
 
                 // QR placeholder text
-                let qr_text = cx.text.layout(
+                let qr_text = cx.text.layout_mono(
                     "[QR Code]",
                     Point::new(qr_x + 30.0, qr_y + 50.0),
                     theme::font_size::SM,
@@ -470,7 +470,7 @@ impl Component for ReceiveFlow {
 
                 // Invoice/Address text
                 let invoice_text = self.truncate_invoice();
-                let invoice_run = cx.text.layout(
+                let invoice_run = cx.text.layout_mono(
                     &invoice_text,
                     Point::new(bounds.origin.x + padding, qr_y + qr_size + 16.0),
                     theme::font_size::XS,
@@ -494,7 +494,7 @@ impl Component for ReceiveFlow {
                 );
 
                 let copy_text = if self.copied { "Copied!" } else { "Copy" };
-                let copy_label = cx.text.layout(
+                let copy_label = cx.text.layout_mono(
                     copy_text,
                     Point::new(copy_bounds.origin.x + 20.0, copy_bounds.origin.y + 8.0),
                     theme::font_size::SM,
@@ -510,7 +510,7 @@ impl Component for ReceiveFlow {
                 if let Some(expires) = self.state.expires_in {
                     let mins = expires / 60;
                     let expiry_text = format!("Expires in {} min", mins);
-                    let expiry_run = cx.text.layout(
+                    let expiry_run = cx.text.layout_mono(
                         &expiry_text,
                         Point::new(bounds.origin.x + padding, copy_bounds.origin.y + 44.0),
                         theme::font_size::XS,
@@ -520,7 +520,7 @@ impl Component for ReceiveFlow {
                 }
             }
             ReceiveStep::Received => {
-                let success = cx.text.layout(
+                let success = cx.text.layout_mono(
                     "Payment Received!",
                     Point::new(bounds.origin.x + padding, bounds.origin.y + 80.0),
                     theme::font_size::LG,
@@ -529,7 +529,7 @@ impl Component for ReceiveFlow {
                 cx.scene.draw_text(success);
 
                 let amount_text = self.format_amount();
-                let amount_run = cx.text.layout(
+                let amount_run = cx.text.layout_mono(
                     &format!("Received {}", amount_text),
                     Point::new(bounds.origin.x + padding, bounds.origin.y + 110.0),
                     theme::font_size::SM,
@@ -549,7 +549,7 @@ impl Component for ReceiveFlow {
                         .with_background(Hsla::new(120.0, 0.5, 0.25, 1.0))
                         .with_border(Hsla::new(120.0, 0.7, 0.45, 1.0), 2.0),
                 );
-                let check = cx.text.layout(
+                let check = cx.text.layout_mono(
                     "\u{2713}",
                     Point::new(check_bounds.origin.x + 18.0, check_bounds.origin.y + 14.0),
                     28.0,
@@ -577,7 +577,7 @@ impl Component for ReceiveFlow {
                 .with_background(next_bg)
                 .with_border(theme::accent::PRIMARY, 1.0),
         );
-        let next_label = cx.text.layout(
+        let next_label = cx.text.layout_mono(
             next_text,
             Point::new(
                 next_bounds.origin.x + (next_bounds.size.width - 60.0) / 2.0,

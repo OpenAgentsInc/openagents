@@ -134,7 +134,7 @@ impl Component for ThreadFeedback {
             let font_size = theme::font_size::SM;
             let text_width = thank_you.len() as f32 * font_size * 0.6;
 
-            let thank_run = cx.text.layout(
+            let thank_run = cx.text.layout_mono(
                 thank_you,
                 Point::new(
                     bounds.origin.x + (bounds.size.width - text_width) / 2.0,
@@ -151,7 +151,7 @@ impl Component for ThreadFeedback {
         let title_size = theme::font_size::SM;
         let title_width = title.len() as f32 * title_size * 0.5;
 
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             title,
             Point::new(
                 bounds.origin.x + (bounds.size.width - title_width) / 2.0,
@@ -190,7 +190,7 @@ impl Component for ThreadFeedback {
         let thumb_down = "\u{1F44E}";
         let emoji_size = theme::font_size::LG;
 
-        let up_run = cx.text.layout(
+        let up_run = cx.text.layout_mono(
             thumb_up,
             Point::new(
                 pos_bounds.origin.x + (pos_bounds.size.width - emoji_size * 0.8) / 2.0,
@@ -201,7 +201,7 @@ impl Component for ThreadFeedback {
         );
         cx.scene.draw_text(up_run);
 
-        let down_run = cx.text.layout(
+        let down_run = cx.text.layout_mono(
             thumb_down,
             Point::new(
                 neg_bounds.origin.x + (neg_bounds.size.width - emoji_size * 0.8) / 2.0,
@@ -234,7 +234,7 @@ impl Component for ThreadFeedback {
 
             let submit_text = "Submit";
             let submit_size = theme::font_size::SM;
-            let submit_run = cx.text.layout(
+            let submit_run = cx.text.layout_mono(
                 submit_text,
                 Point::new(
                     submit_bounds.origin.x

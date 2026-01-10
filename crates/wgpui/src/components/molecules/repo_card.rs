@@ -156,7 +156,7 @@ impl Component for RepoCard {
         let mut y = bounds.origin.y + padding;
 
         // Repo name
-        let name_run = cx.text.layout(
+        let name_run = cx.text.layout_mono(
             &self.repo.name,
             Point::new(bounds.origin.x + padding, y),
             theme::font_size::SM,
@@ -172,7 +172,7 @@ impl Component for RepoCard {
                 .with_background(self.repo.visibility.color().with_alpha(0.2))
                 .with_border(self.repo.visibility.color(), 1.0),
         );
-        let vis_label = cx.text.layout(
+        let vis_label = cx.text.layout_mono(
             self.repo.visibility.label(),
             Point::new(vis_x + 6.0, y),
             theme::font_size::XS,
@@ -189,7 +189,7 @@ impl Component for RepoCard {
             } else {
                 desc.clone()
             };
-            let desc_run = cx.text.layout(
+            let desc_run = cx.text.layout_mono(
                 &desc_truncated,
                 Point::new(bounds.origin.x + padding, y),
                 theme::font_size::XS,
@@ -209,7 +209,7 @@ impl Component for RepoCard {
             let dot_bounds = Bounds::new(bounds.origin.x + padding, stats_y + 4.0, 8.0, 8.0);
             cx.scene
                 .draw_quad(Quad::new(dot_bounds).with_background(self.language_color()));
-            let lang_run = cx.text.layout(
+            let lang_run = cx.text.layout_mono(
                 lang,
                 Point::new(bounds.origin.x + padding + 14.0, stats_y),
                 theme::font_size::XS,
@@ -221,7 +221,7 @@ impl Component for RepoCard {
         // Stars
         let stars_x = bounds.origin.x + 120.0;
         let stars_text = format!("\u{2605} {}", self.repo.stars);
-        let stars_run = cx.text.layout(
+        let stars_run = cx.text.layout_mono(
             &stars_text,
             Point::new(stars_x, stats_y),
             theme::font_size::XS,
@@ -232,7 +232,7 @@ impl Component for RepoCard {
         // Forks
         let forks_x = stars_x + 60.0;
         let forks_text = format!("\u{2442} {}", self.repo.forks);
-        let forks_run = cx.text.layout(
+        let forks_run = cx.text.layout_mono(
             &forks_text,
             Point::new(forks_x, stats_y),
             theme::font_size::XS,
@@ -243,7 +243,7 @@ impl Component for RepoCard {
         // Issues
         let issues_x = forks_x + 60.0;
         let issues_text = format!("\u{25CB} {}", self.repo.issues);
-        let issues_run = cx.text.layout(
+        let issues_run = cx.text.layout_mono(
             &issues_text,
             Point::new(issues_x, stats_y),
             theme::font_size::XS,
@@ -252,7 +252,7 @@ impl Component for RepoCard {
         cx.scene.draw_text(issues_run);
 
         // Updated at
-        let updated_run = cx.text.layout(
+        let updated_run = cx.text.layout_mono(
             &self.repo.updated_at,
             Point::new(
                 bounds.origin.x + bounds.size.width - padding - 80.0,

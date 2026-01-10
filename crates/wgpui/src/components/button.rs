@@ -201,7 +201,7 @@ impl Component for Button {
             let text_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
             let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
 
-            let text_run = cx.text.layout(
+            let text_run = cx.text.layout_mono(
                 &self.label,
                 Point::new(text_x, text_y),
                 font_size,

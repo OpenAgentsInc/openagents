@@ -302,7 +302,7 @@ impl Component for ScheduleConfig {
         cx.scene
             .draw_quad(Quad::new(header).with_background(theme::bg::MUTED));
 
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             "Schedule Configuration",
             Point::new(bounds.origin.x + padding, bounds.origin.y + 16.0),
             theme::font_size::BASE,
@@ -317,7 +317,7 @@ impl Component for ScheduleConfig {
             ("Disabled", theme::text::MUTED)
         };
 
-        let status_run = cx.text.layout(
+        let status_run = cx.text.layout_mono(
             status_text,
             Point::new(
                 bounds.origin.x + bounds.size.width - padding - 60.0,
@@ -331,7 +331,7 @@ impl Component for ScheduleConfig {
         // Type section
         let type_section = self.type_section_bounds(&bounds);
 
-        let type_label = cx.text.layout(
+        let type_label = cx.text.layout_mono(
             "Schedule Type",
             Point::new(
                 type_section.origin.x + padding,
@@ -373,7 +373,7 @@ impl Component for ScheduleConfig {
                 theme::text::SECONDARY
             };
 
-            let type_run = cx.text.layout(
+            let type_run = cx.text.layout_mono(
                 stype.label(),
                 Point::new(btn.origin.x + 8.0, btn.origin.y + 8.0),
                 theme::font_size::XS,
@@ -382,7 +382,7 @@ impl Component for ScheduleConfig {
             cx.scene.draw_text(type_run);
 
             // Description under the label
-            let desc_run = cx.text.layout(
+            let desc_run = cx.text.layout_mono(
                 &stype.description()[..stype.description().len().min(20)],
                 Point::new(btn.origin.x + 4.0, btn.origin.y + 26.0),
                 theme::font_size::XS,
@@ -396,7 +396,7 @@ impl Component for ScheduleConfig {
         cx.scene
             .draw_quad(Quad::new(heartbeat).with_background(theme::bg::APP));
 
-        let heartbeat_label = cx.text.layout(
+        let heartbeat_label = cx.text.layout_mono(
             "Heartbeat Interval",
             Point::new(heartbeat.origin.x + padding, heartbeat.origin.y + 12.0),
             theme::font_size::SM,
@@ -409,7 +409,7 @@ impl Component for ScheduleConfig {
             self.config.heartbeat_interval,
             self.config.heartbeat_unit.label()
         );
-        let heartbeat_val_run = cx.text.layout(
+        let heartbeat_val_run = cx.text.layout_mono(
             &heartbeat_value,
             Point::new(heartbeat.origin.x + padding, heartbeat.origin.y + 36.0),
             theme::font_size::BASE,
@@ -418,7 +418,7 @@ impl Component for ScheduleConfig {
         cx.scene.draw_text(heartbeat_val_run);
 
         let heartbeat_total = format!("= {} seconds", self.config.heartbeat_seconds());
-        let heartbeat_total_run = cx.text.layout(
+        let heartbeat_total_run = cx.text.layout_mono(
             &heartbeat_total,
             Point::new(
                 heartbeat.origin.x + padding + 100.0,
@@ -434,7 +434,7 @@ impl Component for ScheduleConfig {
         cx.scene
             .draw_quad(Quad::new(tick).with_background(theme::bg::APP));
 
-        let tick_label = cx.text.layout(
+        let tick_label = cx.text.layout_mono(
             "Tick Interval",
             Point::new(tick.origin.x + padding, tick.origin.y + 12.0),
             theme::font_size::SM,
@@ -447,7 +447,7 @@ impl Component for ScheduleConfig {
             self.config.tick_interval,
             self.config.tick_unit.label()
         );
-        let tick_val_run = cx.text.layout(
+        let tick_val_run = cx.text.layout_mono(
             &tick_value,
             Point::new(tick.origin.x + padding, tick.origin.y + 36.0),
             theme::font_size::BASE,
@@ -456,7 +456,7 @@ impl Component for ScheduleConfig {
         cx.scene.draw_text(tick_val_run);
 
         let tick_total = format!("= {} seconds", self.config.tick_seconds());
-        let tick_total_run = cx.text.layout(
+        let tick_total_run = cx.text.layout_mono(
             &tick_total,
             Point::new(tick.origin.x + padding + 100.0, tick.origin.y + 38.0),
             theme::font_size::XS,
@@ -481,7 +481,7 @@ impl Component for ScheduleConfig {
                 .with_background(reset_bg)
                 .with_border(theme::border::DEFAULT, 1.0),
         );
-        let reset_run = cx.text.layout(
+        let reset_run = cx.text.layout_mono(
             "Reset",
             Point::new(reset_btn.origin.x + 14.0, reset_btn.origin.y + 7.0),
             theme::font_size::XS,
@@ -501,7 +501,7 @@ impl Component for ScheduleConfig {
                 .with_background(save_bg)
                 .with_border(theme::accent::PRIMARY, 1.0),
         );
-        let save_run = cx.text.layout(
+        let save_run = cx.text.layout_mono(
             "Save",
             Point::new(save_btn.origin.x + 18.0, save_btn.origin.y + 7.0),
             theme::font_size::XS,

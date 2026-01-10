@@ -193,7 +193,7 @@ impl Component for SendFlow {
         } else {
             "Send Bitcoin"
         };
-        let title_run = cx.text.layout(
+        let title_run = cx.text.layout_mono(
             title,
             Point::new(bounds.origin.x + padding, bounds.origin.y + 16.0),
             theme::font_size::LG,
@@ -236,7 +236,7 @@ impl Component for SendFlow {
 
             // Step number
             let num = format!("{}", i + 1);
-            let num_run = cx.text.layout(
+            let num_run = cx.text.layout_mono(
                 &num,
                 Point::new(dot_x + 6.0, step_y + 2.0),
                 theme::font_size::XS,
@@ -249,7 +249,7 @@ impl Component for SendFlow {
             cx.scene.draw_text(num_run);
 
             // Step label
-            let label_run = cx.text.layout(
+            let label_run = cx.text.layout_mono(
                 step.label(),
                 Point::new(x + step_w / 2.0 - 20.0, step_y + 24.0),
                 theme::font_size::XS,
@@ -285,7 +285,7 @@ impl Component for SendFlow {
 
         match self.step {
             SendStep::EnterAddress => {
-                let label = cx.text.layout(
+                let label = cx.text.layout_mono(
                     "Recipient Address",
                     Point::new(bounds.origin.x + padding, content_y),
                     theme::font_size::SM,
@@ -311,7 +311,7 @@ impl Component for SendFlow {
                 } else {
                     &self.state.address
                 };
-                let placeholder_run = cx.text.layout(
+                let placeholder_run = cx.text.layout_mono(
                     placeholder,
                     Point::new(input_bounds.origin.x + 12.0, input_bounds.origin.y + 12.0),
                     theme::font_size::SM,
@@ -324,7 +324,7 @@ impl Component for SendFlow {
                 cx.scene.draw_text(placeholder_run);
 
                 // Hint
-                let hint = cx.text.layout(
+                let hint = cx.text.layout_mono(
                     "Supports Bitcoin addresses (bc1...) and Lightning invoices (lnbc...)",
                     Point::new(bounds.origin.x + padding, content_y + 72.0),
                     theme::font_size::XS,
@@ -333,7 +333,7 @@ impl Component for SendFlow {
                 cx.scene.draw_text(hint);
             }
             SendStep::EnterAmount => {
-                let label = cx.text.layout(
+                let label = cx.text.layout_mono(
                     "Amount",
                     Point::new(bounds.origin.x + padding, content_y),
                     theme::font_size::SM,
@@ -343,7 +343,7 @@ impl Component for SendFlow {
 
                 // Amount display
                 let amount_text = self.format_amount();
-                let amount_run = cx.text.layout(
+                let amount_run = cx.text.layout_mono(
                     &amount_text,
                     Point::new(bounds.origin.x + padding, content_y + 24.0),
                     24.0,
@@ -363,7 +363,7 @@ impl Component for SendFlow {
                             .with_background(theme::bg::MUTED)
                             .with_border(theme::border::DEFAULT, 1.0),
                     );
-                    let amt_run = cx.text.layout(
+                    let amt_run = cx.text.layout_mono(
                         amt,
                         Point::new(x + 12.0, quick_y + 6.0),
                         theme::font_size::SM,
@@ -386,7 +386,7 @@ impl Component for SendFlow {
 
                 for (i, (label, value)) in items.iter().enumerate() {
                     let y = content_y + i as f32 * 32.0;
-                    let label_run = cx.text.layout(
+                    let label_run = cx.text.layout_mono(
                         label,
                         Point::new(bounds.origin.x + padding, y),
                         theme::font_size::SM,
@@ -394,7 +394,7 @@ impl Component for SendFlow {
                     );
                     cx.scene.draw_text(label_run);
 
-                    let value_run = cx.text.layout(
+                    let value_run = cx.text.layout_mono(
                         value,
                         Point::new(bounds.origin.x + padding + 80.0, y),
                         theme::font_size::SM,
@@ -404,7 +404,7 @@ impl Component for SendFlow {
                 }
             }
             SendStep::Confirm => {
-                let confirm_text = cx.text.layout(
+                let confirm_text = cx.text.layout_mono(
                     "Confirm Transaction",
                     Point::new(bounds.origin.x + padding, content_y),
                     theme::font_size::LG,
@@ -412,7 +412,7 @@ impl Component for SendFlow {
                 );
                 cx.scene.draw_text(confirm_text);
 
-                let warning = cx.text.layout(
+                let warning = cx.text.layout_mono(
                     "This action cannot be undone. Please verify all details.",
                     Point::new(bounds.origin.x + padding, content_y + 28.0),
                     theme::font_size::SM,
@@ -421,7 +421,7 @@ impl Component for SendFlow {
                 cx.scene.draw_text(warning);
             }
             SendStep::Complete => {
-                let success_text = cx.text.layout(
+                let success_text = cx.text.layout_mono(
                     "Transaction Sent!",
                     Point::new(bounds.origin.x + padding, content_y),
                     theme::font_size::LG,
@@ -429,7 +429,7 @@ impl Component for SendFlow {
                 );
                 cx.scene.draw_text(success_text);
 
-                let details = cx.text.layout(
+                let details = cx.text.layout_mono(
                     &format!(
                         "Sent {} to {}",
                         self.format_amount(),
@@ -446,7 +446,7 @@ impl Component for SendFlow {
         // Error message
         if let Some(error) = &self.error {
             let error_y = bounds.origin.y + bounds.size.height - 100.0;
-            let error_run = cx.text.layout(
+            let error_run = cx.text.layout_mono(
                 error,
                 Point::new(bounds.origin.x + padding, error_y),
                 theme::font_size::SM,
@@ -470,7 +470,7 @@ impl Component for SendFlow {
                     .with_background(back_bg)
                     .with_border(theme::border::DEFAULT, 1.0),
             );
-            let back_label = cx.text.layout(
+            let back_label = cx.text.layout_mono(
                 "Back",
                 Point::new(back_bounds.origin.x + 32.0, back_bounds.origin.y + 10.0),
                 theme::font_size::SM,
@@ -495,7 +495,7 @@ impl Component for SendFlow {
                 .with_background(next_bg)
                 .with_border(theme::accent::PRIMARY, 1.0),
         );
-        let next_label = cx.text.layout(
+        let next_label = cx.text.layout_mono(
             next_text,
             Point::new(next_bounds.origin.x + 32.0, next_bounds.origin.y + 10.0),
             theme::font_size::SM,

@@ -146,7 +146,7 @@ impl Component for AgentStatusBadge {
         // Agent type icon (if present)
         if let Some(agent_type) = self.agent_type {
             let icon = agent_type.icon();
-            let icon_run = cx.text.layout(
+            let icon_run = cx.text.layout_mono(
                 icon,
                 Point::new(x, text_y - 1.0),
                 theme::font_size::SM,

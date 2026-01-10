@@ -159,7 +159,7 @@ impl Component for TrajectorySourceBadge {
             if let Some(status) = self.status {
                 let status_color = status.color();
                 let status_label = status.label();
-                let status_run = cx.text.layout(
+                let status_run = cx.text.layout_mono(
                     status_label,
                     Point::new(x, text_y),
                     theme::font_size::XS,
@@ -172,7 +172,7 @@ impl Component for TrajectorySourceBadge {
             // Session count
             if let Some(count) = self.session_count {
                 let count_text = format!("({})", count);
-                let count_run = cx.text.layout(
+                let count_run = cx.text.layout_mono(
                     &count_text,
                     Point::new(x, text_y),
                     theme::font_size::XS,

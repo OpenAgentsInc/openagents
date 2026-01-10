@@ -150,7 +150,7 @@ impl Component for DaemonStatusBadge {
             // Uptime
             if let Some(secs) = self.uptime_secs {
                 let uptime = format_uptime(secs);
-                let uptime_run = cx.text.layout(
+                let uptime_run = cx.text.layout_mono(
                     &uptime,
                     Point::new(x, text_y),
                     theme::font_size::XS,
@@ -163,7 +163,7 @@ impl Component for DaemonStatusBadge {
             // Worker count
             if let Some(count) = self.worker_count {
                 let workers_text = format!("{} workers", count);
-                let workers_run = cx.text.layout(
+                let workers_run = cx.text.layout_mono(
                     &workers_text,
                     Point::new(x, text_y),
                     theme::font_size::XS,
