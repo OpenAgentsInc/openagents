@@ -50,15 +50,11 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             CommandAction::None
         }
         Command::Backend => {
-            // Toggle between Claude and Codex
+            // Toggle between Claude and Codex (status bar shows current backend)
             state.agent_selection.agent = match state.agent_selection.agent {
                 AgentKindConfig::Claude => AgentKindConfig::Codex,
                 AgentKindConfig::Codex => AgentKindConfig::Claude,
             };
-            state.push_system_message(format!(
-                "Switched to {} backend",
-                state.agent_selection.display_name()
-            ));
             CommandAction::None
         }
         Command::BackendSet(name) => {
@@ -66,11 +62,9 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             match lower.as_str() {
                 "claude" => {
                     state.agent_selection.agent = AgentKindConfig::Claude;
-                    state.push_system_message("Switched to Claude backend".to_string());
                 }
                 "codex" | "openai" => {
                     state.agent_selection.agent = AgentKindConfig::Codex;
-                    state.push_system_message("Switched to Codex backend".to_string());
                 }
                 _ => {
                     state.push_system_message(format!(
