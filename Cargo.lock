@@ -277,6 +277,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "walkdir",
  "which 8.0.0",
 ]

@@ -40,6 +40,7 @@ async-trait = { workspace = true }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { workspace = true }
+uuid = { workspace = true }
 
 # File operations
 walkdir = { workspace = true }

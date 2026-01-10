@@ -5,7 +5,11 @@
 //! - Definitive failure occurs
 //! - Max iterations reached
 //! - User interrupts
+//!
+//! This module also tracks sessions for the self-improvement feedback loop,
+//! recording decisions and outcomes to enable automatic optimization.
 
+use crate::dspy::{SessionOutcome, SessionStore, SelfImprover, VerificationRecord};
 use crate::{Adjutant, Task, TaskResult};
 use std::io::Write;
 use std::path::PathBuf;
@@ -182,6 +186,8 @@ pub struct AutopilotLoop<O: AutopilotOutput> {
     config: AutopilotConfig,
     output: O,
     interrupt_flag: Arc<AtomicBool>,
+    /// Session store for tracking decisions and outcomes (self-improvement)
+    session_store: Option<SessionStore>,
 }
 
 impl<O: AutopilotOutput> AutopilotLoop<O> {
@@ -193,12 +199,18 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         output: O,
         interrupt_flag: Arc<AtomicBool>,
     ) -> Self {
+        // Try to open session store for self-improvement tracking
+        let session_store = SessionStore::open()
+            .map_err(|e| tracing::debug!("Session tracking disabled: {}", e))
+            .ok();
+
         Self {
             adjutant,
             original_task: task,
             config,
             output,
             interrupt_flag,
+            session_store,
         }
     }
 
@@ -207,10 +219,21 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         let mut iteration = 0;
         let mut last_result: Option<TaskResult> = None;
 
+        // Start session tracking for self-improvement
+        if let Some(ref mut store) = self.session_store {
+            store.start_session(
+                &self.original_task.id,
+                &self.original_task.title,
+                &self.original_task.description,
+            );
+            tracing::debug!("Started session tracking for task: {}", self.original_task.id);
+        }
+
         loop {
             // Check for user interrupt
             if self.interrupt_flag.load(Ordering::Relaxed) {
                 self.output.interrupted();
+                self.complete_session(SessionOutcome::UserInterrupted, iteration);
                 return AutopilotResult::UserInterrupted {
                     iterations: iteration,
                 };
@@ -221,6 +244,10 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
             // Check max iterations
             if iteration > self.config.max_iterations {
                 self.output.max_iterations(self.config.max_iterations);
+                let outcome = SessionOutcome::MaxIterationsReached {
+                    last_summary: last_result.as_ref().map(|r| r.summary.clone()),
+                };
+                self.complete_session(outcome, iteration - 1);
                 return AutopilotResult::MaxIterationsReached {
                     iterations: iteration - 1,
                     last_result,
@@ -258,6 +285,7 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                 Ok(r) => r,
                 Err(e) => {
                     self.output.error(&e.to_string());
+                    self.complete_session(SessionOutcome::Error(e.to_string()), iteration);
                     return AutopilotResult::Error(e.to_string());
                 }
             };
@@ -275,12 +303,18 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                     // Verify completion with actual tests/checks
                     self.output.verification_start();
 
-                    let verification = self.verify_completion(&result).await;
+                    let verification = self.verify_completion(&result, iteration).await;
 
                     self.output
                         .verification_result(verification.passed, &verification.reason);
 
                     if verification.passed {
+                        let outcome = SessionOutcome::Success {
+                            summary: result.summary.clone(),
+                            modified_files: result.modified_files.clone(),
+                            verification_passed: true,
+                        };
+                        self.complete_session(outcome, iteration);
                         return AutopilotResult::Success(result);
                     } else {
                         // Verification failed - continue with feedback
@@ -299,6 +333,12 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                     }
                 } else {
                     // No verification, trust LLM
+                    let outcome = SessionOutcome::Success {
+                        summary: result.summary.clone(),
+                        modified_files: result.modified_files.clone(),
+                        verification_passed: false,
+                    };
+                    self.complete_session(outcome, iteration);
                     return AutopilotResult::Success(result);
                 }
             }
@@ -306,11 +346,71 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
             // Check for definitive failure
             if self.is_definitive_failure(&result) {
                 self.output.token("\n\n--- Definitive failure detected ---\n");
+                let outcome = SessionOutcome::Failed {
+                    reason: "Definitive failure detected".to_string(),
+                    error: result.error.clone(),
+                };
+                self.complete_session(outcome, iteration);
                 return AutopilotResult::Failed(result);
             }
 
             // Continue to next iteration
             last_result = Some(result);
+        }
+    }
+
+    /// Complete the session with an outcome.
+    fn complete_session(&mut self, outcome: SessionOutcome, iterations: usize) {
+        if let Some(ref mut store) = self.session_store {
+            match store.complete_session(outcome, iterations) {
+                Ok(session_id) => {
+                    tracing::info!("Session {} completed with {} iterations", session_id, iterations);
+
+                    // Process self-improvement (outcome feedback + optimization check)
+                    if let Ok(session) = store.get_session(&session_id) {
+                        if let Some(session) = session {
+                            self.process_self_improvement(&session);
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to save session: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Process self-improvement after session completion.
+    fn process_self_improvement(&self, session: &crate::dspy::AutopilotSession) {
+        match SelfImprover::new() {
+            Ok(mut improver) => {
+                match improver.process_session_completion(session) {
+                    Ok(result) => {
+                        tracing::info!(
+                            "Self-improvement: labeled {} decisions ({} correct, {} incorrect)",
+                            result.decisions_labeled,
+                            result.correct_count,
+                            result.incorrect_count
+                        );
+
+                        if let Some(signature) = result.optimization_needed {
+                            tracing::info!(
+                                "Optimization triggered for '{}': {:?}",
+                                signature,
+                                result.optimization_trigger
+                            );
+                            // TODO: Spawn background optimization task
+                            // For now, just log that optimization is needed
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Self-improvement processing failed: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::debug!("Self-improvement not available: {}", e);
+            }
         }
     }
 
@@ -371,9 +471,11 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
     }
 
     /// Verify that the task is actually complete (run tests, etc).
-    async fn verify_completion(&self, result: &TaskResult) -> Verification {
+    async fn verify_completion(&mut self, result: &TaskResult, iteration: usize) -> Verification {
         let mut passed = true;
         let mut reasons = vec![];
+        let mut cargo_check_result = None;
+        let mut cargo_test_result = None;
 
         // Check if Rust files were modified
         let has_rust = result
@@ -393,9 +495,11 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                 Ok(output) => {
                     if output.status.success() {
                         self.output.token("OK\n");
+                        cargo_check_result = Some(true);
                     } else {
                         self.output.token("FAILED\n");
                         passed = false;
+                        cargo_check_result = Some(false);
                         let stderr = String::from_utf8_lossy(&output.stderr);
                         reasons.push(format!(
                             "cargo check failed: {}",
@@ -421,9 +525,11 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                     Ok(output) => {
                         if output.status.success() {
                             self.output.token("OK\n");
+                            cargo_test_result = Some(true);
                         } else {
                             self.output.token("FAILED\n");
                             passed = false;
+                            cargo_test_result = Some(false);
                             let stdout = String::from_utf8_lossy(&output.stdout);
                             // Extract failure summary
                             let failure_lines: Vec<&str> = stdout
@@ -486,10 +592,21 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
             self.output.token("  No files modified, accepting LLM verdict\n");
         }
 
-        Verification {
-            passed,
-            reason: reasons.join(", "),
+        let reason = reasons.join(", ");
+
+        // Record verification result for session tracking
+        if let Some(ref mut store) = self.session_store {
+            let mut record = VerificationRecord::new(iteration, passed, &reason);
+            if let Some(check) = cargo_check_result {
+                record = record.with_cargo_check(check);
+            }
+            if let Some(test) = cargo_test_result {
+                record = record.with_cargo_test(test);
+            }
+            store.record_verification(record);
         }
+
+        Verification { passed, reason }
     }
 }
 

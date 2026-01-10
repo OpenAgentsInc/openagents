@@ -315,14 +315,24 @@ crates/adjutant/
 │   ├── delegate.rs      # Claude Code and RLM delegation
 │   ├── tools.rs         # Tool registry (Read, Edit, Bash, etc.)
 │   ├── auth.rs          # Claude CLI detection
-│   ├── cli.rs           # CLI argument parsing
-│   ├── dspy/            # DSPy integration
+│   ├── autopilot_loop.rs # Autonomous loop with session tracking
+│   ├── cli/             # CLI commands
+│   │   ├── mod.rs            # Command routing
+│   │   ├── run.rs            # autopilot run
+│   │   ├── status.rs         # autopilot status
+│   │   ├── issue.rs          # autopilot issue
+│   │   └── dspy.rs           # autopilot dspy (sessions, performance, auto-optimize)
+│   ├── dspy/            # DSPy integration + self-improvement
 │   │   ├── mod.rs            # Module exports
 │   │   ├── lm_config.rs      # Multi-provider LM configuration
 │   │   ├── module.rs         # AdjutantModule + task execution signatures
-│   │   ├── decision_pipelines.rs # Decision routing signatures (complexity, delegation, RLM)
+│   │   ├── decision_pipelines.rs # Decision routing signatures
 │   │   ├── metrics.rs        # Evaluation metrics for MIPROv2
-│   │   └── training.rs       # Training data collection (execution + decisions)
+│   │   ├── training.rs       # Training data collection
+│   │   ├── sessions.rs       # Session tracking (AutopilotSession, DecisionRecord)
+│   │   ├── outcome_feedback.rs # Links outcomes to decision correctness
+│   │   ├── performance.rs    # Rolling accuracy tracking per signature
+│   │   └── auto_optimizer.rs # Auto-triggers MIPROv2 optimization
 │   └── bin/main.rs      # Autopilot binary entry point
 └── docs/
     ├── README.md            # This file
@@ -420,7 +430,75 @@ Adjutant is the execution engine behind Coder's **Autopilot mode**. When you swi
 - **Interrupt**: Press Escape to stop the loop cleanly
 - **Iteration Context**: Each iteration gets context from previous attempts
 
-See `crates/coder/src/autopilot_loop.rs` for the implementation.
+See `crates/adjutant/src/autopilot_loop.rs` for the implementation.
+
+## Self-Improving Autopilot
+
+The autopilot system now includes autonomous self-improvement capabilities. After each session completes, the system:
+
+1. **Records Session Data** - Tracks all decisions made (complexity, delegation, RLM)
+2. **Labels Decisions** - Links task outcomes to decision correctness
+3. **Updates Performance** - Maintains rolling accuracy per signature type
+4. **Triggers Optimization** - Auto-triggers MIPROv2 when accuracy drops or examples accumulate
+
+```
+Task Execution → Session Recorded → Decisions Labeled → Performance Updated
+                                                              ↓
+                           Triggers Met? → Auto-Optimize → Better Decisions
+```
+
+### CLI Commands
+
+```bash
+# View recent sessions
+autopilot dspy sessions
+autopilot dspy sessions --failed  # Only failed sessions
+autopilot dspy sessions --limit 20
+
+# View performance metrics
+autopilot dspy performance
+
+# Configure auto-optimization
+autopilot dspy auto-optimize --enable
+autopilot dspy auto-optimize --min-examples 20
+autopilot dspy auto-optimize --accuracy-threshold 0.7
+```
+
+### Auto-Optimization Triggers
+
+Optimization is automatically triggered when:
+- **Example Threshold**: 20+ new labeled examples accumulate (default)
+- **Accuracy Drop**: Rolling accuracy drops below 70% (default)
+- **Time-Based**: At least 24 hours since last optimization (default)
+
+### Storage Layout
+
+```
+~/.openagents/adjutant/
+├── training/
+│   ├── dataset.json           # Training examples
+│   └── labeled/               # Labeled examples with outcomes
+│       ├── complexity.json
+│       ├── delegation.json
+│       └── rlm_trigger.json
+├── sessions/
+│   ├── index.json             # Session index
+│   └── <year>/<month>/<id>.json
+├── metrics/
+│   └── performance.json       # Rolling accuracy data
+└── config/
+    └── auto_optimizer.json    # Auto-optimization settings
+```
+
+### Decision Correctness Logic
+
+| Decision | Correct When |
+|----------|--------------|
+| Complexity | Task succeeded within expected iterations for that level |
+| Delegation | Task succeeded (delegated failures are less "wrong") |
+| RLM Trigger | Task succeeded; or large context + RLM used |
+
+See [DSPY-INTEGRATION.md](./DSPY-INTEGRATION.md) for detailed documentation.
 
 ## See Also
 

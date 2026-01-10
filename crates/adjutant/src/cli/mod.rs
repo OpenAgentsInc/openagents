@@ -77,6 +77,9 @@ pub async fn execute(cli: AutopilotCli) -> anyhow::Result<()> {
             dspy::DspyCommand::Status(args) => dspy::status(args).await,
             dspy::DspyCommand::Optimize(args) => dspy::optimize(args).await,
             dspy::DspyCommand::Export(args) => dspy::export(args).await,
+            dspy::DspyCommand::Sessions(args) => dspy::sessions(args).await,
+            dspy::DspyCommand::Performance(args) => dspy::performance(args).await,
+            dspy::DspyCommand::AutoOptimize(args) => dspy::auto_optimize(args).await,
         },
     }
 }

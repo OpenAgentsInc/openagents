@@ -497,13 +497,202 @@ At least one provider must be available for DSPy mode to work.
 | Metrics | None | Built-in evaluation |
 | Flexibility | Fixed | Optimizable |
 
+## Self-Improvement System
+
+The DSPy integration now includes a complete self-improvement loop that automatically optimizes decision pipelines based on task outcomes.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Self-Improvement Loop                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. Task Execution (Autopilot Loop)                              │
+│     └── Decisions recorded (complexity, delegation, RLM)         │
+│                                                                  │
+│  2. Session Completion                                           │
+│     └── Outcome recorded (Success/Failed/MaxIterations)          │
+│                                                                  │
+│  3. Outcome Feedback                                             │
+│     └── Decisions labeled as correct/incorrect                   │
+│     └── LabeledExamples stored with ground truth                 │
+│                                                                  │
+│  4. Performance Tracking                                         │
+│     └── Rolling accuracy updated (window size: 50)               │
+│     └── Per-signature metrics tracked                            │
+│                                                                  │
+│  5. Auto-Optimization Check                                      │
+│     ├── Enough new examples? (default: 20)                       │
+│     ├── Accuracy dropped? (default: <70%)                        │
+│     └── Time since last optimization? (default: >24h)            │
+│                                                                  │
+│  6. MIPROv2 Optimization (if triggered)                          │
+│     └── Optimizes lowest-accuracy signature                      │
+│     └── Records optimization run                                 │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### New Components
+
+#### SessionStore (`sessions.rs`)
+
+Tracks autopilot sessions with all decisions made:
+
+```rust
+pub struct AutopilotSession {
+    pub id: SessionId,
+    pub task_title: String,
+    pub task_description: String,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: Option<DateTime<Utc>>,
+    pub decisions: Vec<DecisionRecord>,
+    pub outcome: Option<SessionOutcome>,
+    pub iterations_used: usize,
+    pub verification_history: Vec<VerificationRecord>,
+}
+
+pub struct DecisionRecord {
+    pub decision_type: String,      // "complexity", "delegation", "rlm_trigger"
+    pub input_summary: String,
+    pub output: serde_json::Value,
+    pub predicted_confidence: f32,
+    pub was_correct: Option<bool>,  // Set after outcome
+}
+```
+
+#### OutcomeFeedback (`outcome_feedback.rs`)
+
+Links task outcomes to decision correctness:
+
+```rust
+impl OutcomeFeedback {
+    /// Evaluate whether each decision was correct based on outcome
+    pub fn process_session(&mut self, session: &AutopilotSession) -> FeedbackResult;
+}
+```
+
+**Correctness Logic:**
+
+| Decision | Correct When |
+|----------|--------------|
+| Complexity | Task succeeded within expected iterations for complexity level |
+| Delegation | Task succeeded (failures when delegated are less "wrong") |
+| RLM | Task succeeded; OR large context (>100k) and RLM was used |
+
+#### PerformanceTracker (`performance.rs`)
+
+Maintains rolling accuracy windows:
+
+```rust
+pub struct RollingAccuracy {
+    pub window_size: usize,         // Default: 50
+    pub recent_outcomes: VecDeque<bool>,
+    pub accuracy: f32,              // 0.0-1.0
+    pub total_decisions: usize,
+    pub total_correct: usize,
+}
+
+pub struct PerformanceTracker {
+    pub signature_accuracy: HashMap<String, RollingAccuracy>,
+    pub history: Vec<AccuracySnapshot>,
+    pub optimization_runs: Vec<OptimizationRun>,
+}
+```
+
+#### AutoOptimizer (`auto_optimizer.rs`)
+
+Coordinates automatic optimization:
+
+```rust
+pub struct AutoOptimizerConfig {
+    pub enabled: bool,
+    pub min_labeled_examples: usize,      // Default: 20
+    pub accuracy_threshold: f32,          // Default: 0.70
+    pub min_hours_between_optimizations: u64,  // Default: 24
+    pub background_optimization: bool,
+    pub num_candidates: usize,
+    pub num_trials: usize,
+}
+
+impl AutoOptimizer {
+    /// Check if optimization should be triggered
+    pub fn should_optimize(&self, store: &LabeledExamplesStore, perf: &PerformanceTracker)
+        -> Option<OptimizationTrigger>;
+
+    /// Get signature that most needs optimization
+    pub fn signature_to_optimize(&self, store: &LabeledExamplesStore, perf: &PerformanceTracker)
+        -> Option<String>;
+}
+```
+
+#### SelfImprover (`auto_optimizer.rs`)
+
+High-level coordinator:
+
+```rust
+impl SelfImprover {
+    /// Process session completion for self-improvement
+    pub fn process_session_completion(&mut self, session: &AutopilotSession)
+        -> Result<SelfImprovementResult>;
+}
+
+pub struct SelfImprovementResult {
+    pub decisions_labeled: usize,
+    pub correct_count: usize,
+    pub incorrect_count: usize,
+    pub optimization_needed: Option<String>,
+    pub optimization_trigger: Option<OptimizationTrigger>,
+}
+```
+
+### CLI Commands
+
+```bash
+# View recent sessions
+autopilot dspy sessions
+autopilot dspy sessions --failed
+autopilot dspy sessions --limit 20
+
+# View performance metrics
+autopilot dspy performance
+
+# Configure auto-optimization
+autopilot dspy auto-optimize --enable
+autopilot dspy auto-optimize --disable
+autopilot dspy auto-optimize --min-examples 30
+autopilot dspy auto-optimize --accuracy-threshold 0.75
+autopilot dspy auto-optimize --min-hours 12
+```
+
+### Storage
+
+```
+~/.openagents/adjutant/
+├── training/
+│   ├── dataset.json           # Existing training examples
+│   └── labeled/               # NEW: Labeled examples with ground truth
+│       ├── complexity.json
+│       ├── delegation.json
+│       └── rlm_trigger.json
+├── sessions/                  # NEW: Session tracking
+│   ├── index.json
+│   └── <year>/<month>/<session-id>.json
+├── metrics/                   # NEW: Performance metrics
+│   └── performance.json
+└── config/                    # NEW: Configuration
+    └── auto_optimizer.json
+```
+
 ## Future Improvements
 
-1. **Parallel Optimization** - Optimize all three signatures simultaneously
+1. ~~**Parallel Optimization** - Optimize all three signatures simultaneously~~ (Now prioritizes lowest-accuracy)
 2. **Few-Shot Learning** - Include demos in signature context
-3. **A/B Testing** - Compare gateway vs DSPy performance
+3. ~~**A/B Testing** - Compare gateway vs DSPy performance~~ (Shadow mode in DspyHub)
 4. **Custom Metrics** - Task-specific evaluation functions
-5. **Model Selection** - Dynamic model routing based on complexity
+5. ~~**Model Selection** - Dynamic model routing based on complexity~~ (LaneMux)
+6. **Pattern Learning** - Extract failure patterns to warn about risky tasks
 
 ## See Also
 
