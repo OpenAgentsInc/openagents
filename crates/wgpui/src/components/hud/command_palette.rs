@@ -242,9 +242,9 @@ impl Component for CommandPalette {
         // Render on layer 1 to be on top of all layer 0 content
         cx.scene.set_layer(1);
 
-        // Full opacity backdrop to completely cover content behind
+        // Semi-transparent backdrop
         cx.scene
-            .draw_quad(Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 1.0)));
+            .draw_quad(Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7)));
 
         let palette_width = 500.0_f32.min(bounds.size.width - 40.0);
         let input_height = 48.0;

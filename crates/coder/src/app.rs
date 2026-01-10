@@ -8333,6 +8333,9 @@ impl CoderApp {
         match &state.modal_state {
             ModalState::None => {}
             ModalState::ModelPicker { selected } => {
+                // Render on layer 1 to be on top of all layer 0 content
+                scene.set_layer(1);
+
                 // Semi-transparent overlay
                 let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
                 scene.draw_quad(overlay);
@@ -8545,6 +8548,9 @@ impl CoderApp {
                 scene.draw_text(footer_run);
             }
             ModalState::AgentList { selected } => {
+                // Render on layer 1 to be on top of all layer 0 content
+                scene.set_layer(1);
+
                 // Semi-transparent overlay
                 let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
                 scene.draw_quad(overlay);
@@ -8704,6 +8710,9 @@ impl CoderApp {
                 scene.draw_text(footer_run);
             }
             ModalState::SkillList { selected } => {
+                // Render on layer 1 to be on top of all layer 0 content
+                scene.set_layer(1);
+
                 let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
                 scene.draw_quad(overlay);
 
@@ -8849,6 +8858,9 @@ impl CoderApp {
                 scene.draw_text(footer_run);
             }
             ModalState::Hooks { view, selected } => {
+                // Render on layer 1 to be on top of all layer 0 content
+                scene.set_layer(1);
+
                 let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
                 scene.draw_quad(overlay);
 
@@ -9122,6 +9134,9 @@ impl CoderApp {
                 }
             }
             ModalState::ToolList { selected } => {
+                // Render on layer 1 to be on top of all layer 0 content
+                scene.set_layer(1);
+
                 let tools = &state.session_info.tools;
                 // Semi-transparent overlay
                 let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
@@ -9216,6 +9231,9 @@ impl CoderApp {
                 scene.draw_text(footer_run);
             }
             ModalState::PermissionRules => {
+                // Render on layer 1 to be on top of all layer 0 content
+                scene.set_layer(1);
+
                 let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
                 scene.draw_quad(overlay);
 
@@ -9408,6 +9426,9 @@ impl CoderApp {
                 search,
                 input_mode,
             } => {
+                // Render on layer 1 to be on top of all layer 0 content
+                scene.set_layer(1);
+
                 let overlay = Quad::new(bounds).with_background(palette.overlay);
                 scene.draw_quad(overlay);
 
@@ -9596,6 +9617,9 @@ impl CoderApp {
                 scene.draw_text(footer_run);
             }
             ModalState::McpConfig { selected } => {
+                // Render on layer 1 to be on top of all layer 0 content
+                scene.set_layer(1);
+
                 let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
                 scene.draw_quad(overlay);
 
@@ -9764,6 +9788,9 @@ impl CoderApp {
                 scene.draw_text(footer_run);
             }
             ModalState::Help => {
+                // Render on layer 1 to be on top of all layer 0 content
+                scene.set_layer(1);
+
                 let overlay = Quad::new(bounds).with_background(palette.overlay);
                 scene.draw_quad(overlay);
 
