@@ -9932,6 +9932,9 @@ impl CoderApp {
 
         // Kitchen sink storybook overlay (clipped to exclude input area)
         if state.show_kitchen_sink {
+            // Render on layer 1 to be on top of all layer 0 content
+            scene.set_layer(1);
+
             let input_area_height = INPUT_HEIGHT + INPUT_PADDING + STATUS_BAR_HEIGHT;
             let kitchen_sink_bounds = Bounds::new(
                 bounds.origin.x,
@@ -10010,8 +10013,8 @@ fn paint_kitchen_sink(
     scroll_offset: f32,
     palette: &UiPalette,
 ) {
-    // Semi-transparent overlay
-    let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.85));
+    // Opaque background to cover content behind
+    let overlay = Quad::new(bounds).with_background(Hsla::new(220.0, 0.15, 0.08, 1.0));
     scene.draw_quad(overlay);
 
     // Content area with padding
