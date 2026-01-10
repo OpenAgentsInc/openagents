@@ -6,7 +6,7 @@ This directory contains the Rust crates that power OpenAgents. Each section belo
 The acp-adapter crate implements the Agent Client Protocol (ACP) adapter used to talk to external coding agents over JSON-RPC 2.0. It wraps SDKs like claude-agent-sdk and codex-agent-sdk, manages sessions and permission handling, and converts ACP notifications to and from rlog streams for recorder and UI replay.
 
 ## adjutant
-The adjutant crate is the autonomous task execution agent, named after StarCraft's command & control AI. It prioritizes Claude Pro/Max via claude-agent-sdk, falls back to Cerebras TieredExecutor, and uses tools directly (Read, Edit, Bash, Glob, Grep). For complex analysis it integrates RLM for large context processing, and can delegate to Claude Code for very complex work. It owns task planning, complexity assessment, and execution routing logic.
+The adjutant crate is the autonomous task execution agent, named after StarCraft's command & control AI. It prioritizes Claude Pro/Max via claude-agent-sdk, falls back to Cerebras TieredExecutor, and uses tools directly (Read, Edit, Bash, Glob, Grep). For complex analysis it integrates RLM for large context processing, and can delegate to Claude Code for very complex work. The crate owns task planning, complexity assessment, and execution routing logic through DSPy decision pipelines that classify complexity, determine delegation targets, and trigger RLM usage. It implements a complete self-improvement loop: session tracking records all decisions made during execution, outcome feedback links task success/failure to decision correctness, performance tracking maintains rolling accuracy per signature type, and auto-optimization triggers MIPROv2 when accuracy drops or enough labeled examples accumulate. CLI commands (`autopilot dspy sessions`, `autopilot dspy performance`, `autopilot dspy auto-optimize`) provide visibility into the learning process.
 
 ## agent
 The agent crate defines the core data model for sovereign agents: configs, lifecycle states, spawn requests, and registry persistence. It owns identity and wallet metadata but does not schedule or execute agents itself; runtimes like Pylon and Nexus build on these types.
@@ -47,6 +47,9 @@ The claude-agent-sdk crate is a Rust SDK for the Claude Code CLI. It manages ses
 ## claude-mcp
 The claude-mcp crate is an MCP server that exposes Claude Code as JSON-RPC stdio tools. It wraps claude-agent-sdk to provide query execution, session management, and permission configuration for MCP-aware clients.
 
+## coder
+The coder crate is a GPU-accelerated terminal UI for Claude Code, providing a desktop application for local autonomous agent interaction. Built on the wgpui library, it renders rich Markdown text, manages user sessions and permissions, and integrates with the Claude Agent SDK for headless agent execution. The crate implements an autonomous autopilot loop (re-exported from adjutant) for continuous task execution, supports MCP server management, and provides a command palette for interactive control. Key types include `CoderApp` for application state and event handling, the `Command` enum for user commands like `/help`, `/clear`, `/model`, and session management, and `PanelLayout` for UI organization. It serves as the primary user-facing interface for autonomous agents and interactive coding workflows.
+
 ## codex-agent-sdk
 The codex-agent-sdk crate is a Rust SDK for the Codex CLI agent. It provides thread/session management, streaming events, and configurable sandbox, model, and approval settings.
 
@@ -58,6 +61,12 @@ The config crate loads, validates, and writes `.openagents/project.json`. It cen
 
 ## daytona
 The daytona crate is a Rust SDK for the Daytona sandbox API, covering sandbox lifecycle, file operations, git actions, and command execution models.
+
+## dsrs
+The dsrs crate is the Rust implementation of DSPy (Declarative Self-improving Programming), serving as the compiler layer for agent behavior. Rather than hand-crafting prompts, dsrs enables declarative AI programming where you define typed signatures specifying inputs and outputs, and the system automatically discovers optimal prompts, tool-use structures, and few-shot examples. The crate provides the `MetaSignature` trait for declaring input/output contracts, the `Module` trait for callable units that transform Examples to Predictions, and predictors like `Predict`, `ChainOfThought`, and `Refine` for different reasoning patterns. It includes five optimizers (COPRO, MIPROv2, GEPA, Pareto) for automatic prompt improvement, supports 14+ LM providers through unified configuration, and implements multi-lane retrieval (ripgrep, LSP, semantic, git backends). Additional features include DAG tracing for execution visualization, callbacks for HUD integration, a privacy module for redaction and chunking, and an evaluation harness with promotion gates. The crate embodies DSPy's philosophy that field names act as mini-prompts and that optimizers can find "latent requirements" you didn't explicitly specify.
+
+## dsrs-macros
+The dsrs-macros crate provides procedural macros for declaring AI task signatures and optimizable modules in Rust. The `#[Signature]` attribute macro transforms struct definitions into typed AI task signatures with input/output contracts, automatically generating `MetaSignature` implementations that extract instructions from doc comments and create JSON schemas for fields using schemars. Fields are marked with `#[input]` or `#[output]` attributes, with optional descriptions and support for `cot` (adds reasoning output) and `hint` (adds hint input) modifiers. The `#[derive(Optimizable)]` macro enables signature optimization through MIPROv2 and other optimizers. Convenience macros like `example!`, `prediction!`, `field!`, and `sign!` simplify working with the dsrs data types. This crate enables declarative definition of AI signatures using Rust's type system with compile-time schema generation.
 
 ## editor
 The editor crate provides text editor primitives used by WGPUI surfaces: a Ropey-backed text buffer, caret and selection logic, undo/redo history, and optional tree-sitter syntax highlighting on native targets.
@@ -73,6 +82,9 @@ The frlm crate implements Federated Recursive Language Models, orchestrating dis
 
 ## frostr
 The frostr crate implements FROSTR threshold Schnorr signing for Nostr identities, including key sharing and signing flows for k-of-n setups.
+
+## gateway
+The gateway crate provides a unified abstraction layer between agents and external AI service providers such as Cerebras, OpenAI, and Anthropic. It defines the `Gateway` trait as the base interface for all gateways (covering gateway type, provider identification, configuration status, and capabilities) and the `InferenceGateway` trait specifically for LLM providers with methods for model listing, chat completion, streaming, and health checks. The crate handles authentication through multiple strategies including user-provided API keys, OpenAgents proxy, and Pylon swarm routing, and implements priority-based request routing with fallback mechanisms. Key types include `ChatRequest` and `ChatResponse` for LLM interactions, `Capability` enum for feature detection (TextGeneration, ChatCompletion, Streaming, Vision, Embedding, ImageGeneration), `ModelInfo` for model metadata including context length and pricing, and `GatewayHealth` for availability monitoring. Currently implements Cerebras Cloud (GLM 4.7, Llama variants) with architecture ready for additional providers. The gateway serves as the "system calls" of the OANIX runtime, enabling agents to access external AI capabilities through a swappable, unified interface.
 
 ## gitafter
 The gitafter crate powers the GitAfter desktop app, a Nostr-native GitHub alternative. It ties local git operations to NIP-34 events and provides a UI for repos, issues, and patches.
@@ -148,6 +160,9 @@ The pylon crate is the local runtime for sovereign agents. It supports host mode
 
 ## pylon-desktop
 The pylon-desktop crate is the desktop GUI and CLI wrapper around Pylon. It embeds WGPUI and viz for FM Bridge visualization, runs a NIP-90 provider runtime, and can operate in headless CLI mode.
+
+## protocol
+The protocol crate provides the foundation for typed job schemas with deterministic hashing in the OpenAgents swarm. It defines request/response schemas for swarm jobs using canonical JSON (RFC 8785) and SHA-256 hashing to ensure identical inputs produce identical hashes across implementations—critical for decentralized verification and payment. The crate implements verification modes distinguishing objective jobs (deterministic, single provider—like tests and builds) from subjective jobs (requiring judgment, multiple providers—like summaries and rankings), with adjudication strategies including Judge, Majority vote, and Merge. Key types include `JobEnvelope` wrapping typed payloads with job_type, schema_version, and job_hash; the `Hashable` trait for computing deterministic hashes; and `Provenance` for audit trails capturing model used, sampling parameters, input/output hashes, and token counts. Job types defined include `oa.code_chunk_analysis.v1` for code analysis, `oa.retrieval_rerank.v1` for candidate reranking, and `oa.sandbox_run.v1` for sandboxed command execution. Schema versioning follows semver with compatibility checking for graceful protocol evolution.
 
 ## recorder
 The recorder crate parses, validates, and repairs rlog session logs. It also ships a CLI for stats, parsing, and formatting so trajectories remain auditable.
