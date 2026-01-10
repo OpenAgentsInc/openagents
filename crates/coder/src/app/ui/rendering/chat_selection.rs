@@ -1,3 +1,4 @@
+impl AppState {
     pub(crate) fn chat_selection_point_at(
         &mut self,
         layout: &ChatLayout,

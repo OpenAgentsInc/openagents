@@ -657,17 +657,8 @@ impl AppState {
             .handle_checkpoint_restore(index, &mut self.chat);
     }
 
-    pub(super) fn begin_session_fork_from(&mut self, session_id: String) {
-        self.session
-            .begin_session_fork_from(session_id, &mut self.chat, &mut self.tools);
-    }
-
     pub(super) fn attach_user_message_id(&mut self, uuid: String) {
         self.chat.attach_user_message_id(uuid, &mut self.session);
-    }
-
-    pub(super) fn request_rewind_files(&mut self, user_message_id: String) {
-        self.chat.request_rewind_files(user_message_id);
     }
 
     pub(super) fn clear_conversation(&mut self) {

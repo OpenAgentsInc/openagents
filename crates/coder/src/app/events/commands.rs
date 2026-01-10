@@ -10,6 +10,7 @@ pub(crate) enum CommandAction {
 }
 
 /// Modal state for slash commands.
+#[derive(Clone)]
 pub(crate) enum ModalState {
     None,
     ModelPicker { selected: usize },
