@@ -53,6 +53,8 @@ pub enum Command {
     Nip90Refresh,
     Oanix,
     OanixRefresh,
+    Directives,
+    DirectivesRefresh,
     Issues,
     IssuesRefresh,
     Dspy,
@@ -341,6 +343,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/directives",
+        description: "Open workspace directives",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/directives refresh",
+        description: "Refresh workspace directives",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/issues",
         description: "Open workspace issues",
         requires_args: false,
@@ -442,6 +454,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "spark" => parse_spark_command(args),
         "nip90" => parse_nip90_command(args),
         "oanix" => parse_oanix_command(args),
+        "directives" | "directive" => parse_directives_command(args),
         "issues" => parse_issues_command(args),
         "dspy" => parse_dspy_command(args),
         "nip28" => parse_nip28_command(args),
@@ -545,6 +558,15 @@ fn parse_oanix_command(args: Vec<String>) -> Command {
         Some("refresh") => Command::OanixRefresh,
         Some("status") => Command::Oanix,
         _ => Command::Oanix,
+    }
+}
+
+fn parse_directives_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        Some("refresh") => Command::DirectivesRefresh,
+        Some("status") => Command::Directives,
+        _ => Command::Directives,
     }
 }
 
