@@ -831,7 +831,14 @@ impl CoderApp {
                     needs_redraw = true;
                 }
                 ResponseEvent::ToolCallStart { name, tool_use_id } => {
-                    let message_index = state.chat.messages.len().saturating_sub(1);
+                    // During streaming, associate with the NEXT message (the one being streamed)
+                    // After completion, associate with the last message
+                    let message_index = if state.chat.is_thinking {
+                        state.chat.messages.len() // Index of the message being streamed
+                    } else {
+                        state.chat.messages.len().saturating_sub(1)
+                    };
+                    tracing::debug!("Tool call start: {} (message_index={})", name, message_index);
                     state
                         .tools
                         .start_tool_call(name, tool_use_id, message_index);
@@ -852,6 +859,13 @@ impl CoderApp {
                     exit_code,
                     output_value,
                 } => {
+                    tracing::debug!(
+                        "Tool result: tool_use_id={:?}, is_error={}, exit_code={:?}, content_len={}",
+                        tool_use_id,
+                        is_error,
+                        exit_code,
+                        content.len()
+                    );
                     state.tools.apply_tool_result(
                         tool_use_id,
                         content,
@@ -866,7 +880,18 @@ impl CoderApp {
                     tool_name,
                     elapsed_secs,
                 } => {
-                    let message_index = state.chat.messages.len().saturating_sub(1);
+                    // During streaming, associate with the NEXT message (the one being streamed)
+                    let message_index = if state.chat.is_thinking {
+                        state.chat.messages.len()
+                    } else {
+                        state.chat.messages.len().saturating_sub(1)
+                    };
+                    tracing::debug!(
+                        "Tool progress: {} - {:.1}s (message_index={})",
+                        tool_name,
+                        elapsed_secs,
+                        message_index
+                    );
                     state.tools.update_tool_progress(
                         tool_use_id,
                         tool_name,
