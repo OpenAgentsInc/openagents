@@ -39,6 +39,8 @@ pub enum Command {
     DvmConnect(String),
     DvmKind(u16),
     DvmRefresh,
+    LmRouter,
+    LmRouterRefresh,
     Gateway,
     GatewayRefresh,
     Nip90,
@@ -272,6 +274,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/lm-router",
+        description: "Open LM router status",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/lm-router refresh",
+        description: "Refresh LM router status",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/nip90",
         description: "Open NIP-90 job monitor",
         requires_args: false,
@@ -383,6 +395,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "wallet" => parse_wallet_command(args),
         "dvm" => parse_dvm_command(args),
         "gateway" => parse_gateway_command(args),
+        "lm-router" | "lmrouter" => parse_lm_router_command(args),
         "nip90" => parse_nip90_command(args),
         "oanix" => parse_oanix_command(args),
         "dspy" => parse_dspy_command(args),
@@ -430,6 +443,16 @@ fn parse_gateway_command(args: Vec<String>) -> Command {
         Some("open") | Some("status") => Command::Gateway,
         Some("refresh") => Command::GatewayRefresh,
         Some(other) => Command::Custom(format!("gateway {}", other), parts.collect()),
+    }
+}
+
+fn parse_lm_router_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::LmRouter,
+        Some("open") | Some("status") => Command::LmRouter,
+        Some("refresh") => Command::LmRouterRefresh,
+        Some(other) => Command::Custom(format!("lm-router {}", other), parts.collect()),
     }
 }
 

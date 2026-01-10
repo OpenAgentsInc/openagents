@@ -2624,6 +2624,7 @@ dependencies = [
  "dirs 6.0.0",
  "futures",
  "gateway",
+ "lm-router",
  "nostr 0.1.0",
  "nostr-client",
  "oanix",

@@ -47,6 +47,7 @@ This document outlines the path to 100% implementation of the Claude Agent SDK i
 | Wallet status pane | Done | OANIX identity + Pylon wallet config |
 | DVM providers pane | Done | NIP-89 discovery for compute providers |
 | Gateway health pane | Done | Cerebras gateway status + model list |
+| LM router pane | Done | Backend auto-detect + health summary |
 | OANIX manifest pane | Done | Hardware, compute, network, workspace overview |
 | DSPy status pane | Done | Sessions + performance + auto-optimizer |
 | NIP-28 chat pane | Done | Public Nostr chat with relay + channel |
@@ -922,5 +923,6 @@ pub enum SettingsTab {
 - 2026-01-10 17:34 UTC - Hardened NIP-28 pane with channel id detection, post-auth setup retry, and unit tests.
 - 2026-01-10 18:05 UTC - Added OANIX manifest pane with keybinding, commands, and refresh handling.
 - 2026-01-10 18:16 UTC - Added gateway health pane with keybinding, commands, and model list view.
+- 2026-01-10 18:37 UTC - Added LM router pane with backend auto-detect, health status, and model list.
 - 2026-01-10 19:02 UTC - Added NIP-90 jobs pane with relay subscription, keybinding, and command palette entry.
 - 2026-01-10 19:46 UTC - Added DVM providers pane with NIP-89 discovery, keybinding, and commands.

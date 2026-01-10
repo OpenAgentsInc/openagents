@@ -18,6 +18,7 @@ use crate::app::dspy::DspyState;
 use crate::app::dvm::DvmState;
 use crate::app::events::ModalState;
 use crate::app::gateway::GatewayState;
+use crate::app::lm_router::LmRouterState;
 use crate::app::nip28::Nip28State;
 use crate::app::nip90::Nip90State;
 use crate::app::permissions::PermissionState;
@@ -63,6 +64,7 @@ pub(crate) struct AppState {
     pub(crate) dspy: DspyState,
     pub(crate) dvm: DvmState,
     pub(crate) gateway: GatewayState,
+    pub(crate) lm_router: LmRouterState,
     pub(crate) nip28: Nip28State,
     pub(crate) nip90: Nip90State,
     pub(crate) llama_server_process: Option<Child>,

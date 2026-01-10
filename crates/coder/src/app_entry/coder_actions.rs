@@ -13,6 +13,7 @@ use crate::app::catalog::build_hook_map;
 use crate::app::chat::{ChatMessage, MessageRole};
 use crate::app::dvm::{DvmEvent, DvmStatus};
 use crate::app::gateway::GatewayEvent;
+use crate::app::lm_router::LmRouterEvent;
 use crate::app::events::{CommandAction, QueryControl, ResponseEvent};
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
@@ -1111,6 +1112,46 @@ impl CoderApp {
         }
     }
 
+    pub(super) fn poll_lm_router_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.lm_router.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state
+                        .lm_router
+                        .set_error("LM router runtime disconnected".to_string());
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                LmRouterEvent::Snapshot(snapshot) => {
+                    state.lm_router.set_snapshot(snapshot);
+                    should_redraw = true;
+                }
+                LmRouterEvent::NoBackends(message) => {
+                    state.lm_router.set_no_backends(message);
+                    should_redraw = true;
+                }
+                LmRouterEvent::Error(message) => {
+                    state.lm_router.set_error(message);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
     pub(super) fn poll_autopilot_history(&mut self) {
         let Some(state) = &mut self.state else {
             return;
@@ -1207,6 +1248,10 @@ impl CoderApp {
             }
             command_palette_ids::GATEWAY_OPEN => {
                 state.open_gateway();
+                None
+            }
+            command_palette_ids::LM_ROUTER_OPEN => {
+                state.open_lm_router();
                 None
             }
             command_palette_ids::NIP90_OPEN => {
