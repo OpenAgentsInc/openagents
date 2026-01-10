@@ -4678,8 +4678,8 @@ impl ApplicationHandler for CoderApp {
                                     state.open_command_palette();
                                 }
                                 KeyAction::OpenSettings => state.open_config(),
-                                KeyAction::OpenLeftSidebar => state.open_left_sidebar(),
-                                KeyAction::OpenRightSidebar => state.open_right_sidebar(),
+                                KeyAction::ToggleLeftSidebar => state.toggle_left_sidebar(),
+                                KeyAction::ToggleRightSidebar => state.toggle_right_sidebar(),
                                 KeyAction::ToggleSidebars => state.toggle_sidebars(),
                             }
                             state.window.request_redraw();
@@ -4920,9 +4920,9 @@ impl AppState {
         );
 
         let left_keys =
-            keybinding_labels(&self.keybindings, KeyAction::OpenLeftSidebar, "Ctrl+[");
+            keybinding_labels(&self.keybindings, KeyAction::ToggleLeftSidebar, "Ctrl+[");
         let right_keys =
-            keybinding_labels(&self.keybindings, KeyAction::OpenRightSidebar, "Ctrl+]");
+            keybinding_labels(&self.keybindings, KeyAction::ToggleRightSidebar, "Ctrl+]");
         let toggle_keys =
             keybinding_labels(&self.keybindings, KeyAction::ToggleSidebars, "Ctrl+\\");
         push_command(
@@ -5113,12 +5113,12 @@ impl AppState {
         self.persist_settings();
     }
 
-    fn open_left_sidebar(&mut self) {
-        self.left_sidebar_open = true;
+    fn toggle_left_sidebar(&mut self) {
+        self.left_sidebar_open = !self.left_sidebar_open;
     }
 
-    fn open_right_sidebar(&mut self) {
-        self.right_sidebar_open = true;
+    fn toggle_right_sidebar(&mut self) {
+        self.right_sidebar_open = !self.right_sidebar_open;
     }
 
     fn toggle_sidebars(&mut self) {
@@ -7817,11 +7817,11 @@ impl CoderApp {
             command_palette_ids::HOOKS_OPEN => Some(handle_command(state, Command::Hooks)),
             command_palette_ids::HOOKS_RELOAD => Some(handle_command(state, Command::HooksReload)),
             command_palette_ids::SIDEBAR_LEFT => {
-                state.open_left_sidebar();
+                state.toggle_left_sidebar();
                 None
             }
             command_palette_ids::SIDEBAR_RIGHT => {
-                state.open_right_sidebar();
+                state.toggle_right_sidebar();
                 None
             }
             command_palette_ids::SIDEBAR_TOGGLE => {
@@ -9826,9 +9826,9 @@ impl CoderApp {
                 let settings_key =
                     keybinding_labels(&state.keybindings, KeyAction::OpenSettings, "Ctrl+,");
                 let left_sidebar =
-                    keybinding_labels(&state.keybindings, KeyAction::OpenLeftSidebar, "Ctrl+[");
+                    keybinding_labels(&state.keybindings, KeyAction::ToggleLeftSidebar, "Ctrl+[");
                 let right_sidebar =
-                    keybinding_labels(&state.keybindings, KeyAction::OpenRightSidebar, "Ctrl+]");
+                    keybinding_labels(&state.keybindings, KeyAction::ToggleRightSidebar, "Ctrl+]");
                 let toggle_sidebars =
                     keybinding_labels(&state.keybindings, KeyAction::ToggleSidebars, "Ctrl+\\");
 
@@ -9842,8 +9842,8 @@ impl CoderApp {
                             format!("{} - Interrupt request", interrupt),
                             format!("{} - Command palette", palette_key),
                             format!("{} - Settings", settings_key),
-                            format!("{} - Left sidebar", left_sidebar),
-                            format!("{} - Right sidebar", right_sidebar),
+                            format!("{} - Toggle left sidebar", left_sidebar),
+                            format!("{} - Toggle right sidebar", right_sidebar),
                             format!("{} - Toggle both sidebars", toggle_sidebars),
                         ],
                     ),
