@@ -34,6 +34,7 @@ pub(crate) enum ModalState {
     Rlm,
     RlmTrace,
     PylonEarnings,
+    PylonJobs,
     Dspy,
     Nip28Chat,
     Config {

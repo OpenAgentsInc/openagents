@@ -14,6 +14,7 @@ use crate::app::autopilot::AutopilotState;
 use crate::app::autopilot_issues::AutopilotIssuesState;
 use crate::app::rlm::{RlmState, RlmTraceState};
 use crate::app::pylon_earnings::PylonEarningsState;
+use crate::app::pylon_jobs::PylonJobsState;
 use crate::app::catalog::CatalogState;
 use crate::app::chat::ChatState;
 use crate::app::config::SettingsState;
@@ -69,6 +70,7 @@ pub(crate) struct AppState {
     pub(crate) rlm: RlmState,
     pub(crate) rlm_trace: RlmTraceState,
     pub(crate) pylon_earnings: PylonEarningsState,
+    pub(crate) pylon_jobs: PylonJobsState,
     pub(crate) wallet: WalletState,
     pub(crate) dspy: DspyState,
     pub(crate) dvm: DvmState,

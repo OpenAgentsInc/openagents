@@ -265,6 +265,221 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             }
             CommandAction::None
         }
+        Command::Wallet => {
+            state.open_wallet();
+            CommandAction::None
+        }
+        Command::WalletRefresh => {
+            state.request_wallet_refresh();
+            state.open_wallet();
+            CommandAction::None
+        }
+        Command::Dvm => {
+            state.open_dvm();
+            CommandAction::None
+        }
+        Command::DvmRefresh => {
+            state.refresh_dvm();
+            state.open_dvm();
+            CommandAction::None
+        }
+        Command::DvmConnect(relay_url) => {
+            if relay_url.trim().is_empty() {
+                state.push_system_message("DVM relay URL is required.".to_string());
+            } else {
+                state.connect_dvm(Some(relay_url));
+                state.open_dvm();
+            }
+            CommandAction::None
+        }
+        Command::DvmKind(kind) => {
+            state.set_dvm_job_kind(kind);
+            state.open_dvm();
+            CommandAction::None
+        }
+        Command::Gateway => {
+            state.open_gateway();
+            CommandAction::None
+        }
+        Command::GatewayRefresh => {
+            state.refresh_gateway();
+            state.open_gateway();
+            CommandAction::None
+        }
+        Command::LmRouter => {
+            state.open_lm_router();
+            CommandAction::None
+        }
+        Command::LmRouterRefresh => {
+            state.refresh_lm_router();
+            state.open_lm_router();
+            CommandAction::None
+        }
+        Command::Nexus => {
+            state.open_nexus();
+            CommandAction::None
+        }
+        Command::NexusRefresh => {
+            state.refresh_nexus();
+            state.open_nexus();
+            CommandAction::None
+        }
+        Command::NexusConnect(stats_url) => {
+            if stats_url.trim().is_empty() {
+                state.push_system_message("Nexus stats URL is required.".to_string());
+            } else {
+                state.connect_nexus(stats_url);
+                state.open_nexus();
+            }
+            CommandAction::None
+        }
+        Command::SparkWallet => {
+            state.open_spark_wallet();
+            CommandAction::None
+        }
+        Command::SparkWalletRefresh => {
+            state.refresh_spark_wallet();
+            state.open_spark_wallet();
+            CommandAction::None
+        }
+        Command::Nip90 => {
+            state.open_nip90();
+            CommandAction::None
+        }
+        Command::Nip90Refresh => {
+            state.refresh_nip90();
+            state.open_nip90();
+            CommandAction::None
+        }
+        Command::Nip90Connect(relay_url) => {
+            if relay_url.trim().is_empty() {
+                state.push_system_message("NIP-90 relay URL is required.".to_string());
+            } else {
+                state.connect_nip90(Some(relay_url));
+                state.open_nip90();
+            }
+            CommandAction::None
+        }
+        Command::Oanix => {
+            state.open_oanix();
+            CommandAction::None
+        }
+        Command::OanixRefresh => {
+            state.refresh_oanix();
+            state.open_oanix();
+            CommandAction::None
+        }
+        Command::Directives => {
+            state.open_directives();
+            CommandAction::None
+        }
+        Command::DirectivesRefresh => {
+            state.refresh_directives();
+            state.open_directives();
+            CommandAction::None
+        }
+        Command::Issues => {
+            state.open_issues();
+            CommandAction::None
+        }
+        Command::IssuesRefresh => {
+            state.refresh_issues();
+            state.open_issues();
+            CommandAction::None
+        }
+        Command::AutopilotIssues => {
+            state.open_issue_tracker();
+            CommandAction::None
+        }
+        Command::AutopilotIssuesRefresh => {
+            state.refresh_issue_tracker();
+            state.open_issue_tracker();
+            CommandAction::None
+        }
+        Command::Rlm => {
+            state.open_rlm();
+            CommandAction::None
+        }
+        Command::RlmRefresh => {
+            state.refresh_rlm();
+            state.open_rlm();
+            CommandAction::None
+        }
+        Command::RlmTrace(run_id) => {
+            state.open_rlm_trace(run_id);
+            CommandAction::None
+        }
+        Command::PylonEarnings => {
+            state.open_pylon_earnings();
+            CommandAction::None
+        }
+        Command::PylonEarningsRefresh => {
+            state.refresh_pylon_earnings();
+            state.open_pylon_earnings();
+            CommandAction::None
+        }
+        Command::PylonJobs => {
+            state.open_pylon_jobs();
+            CommandAction::None
+        }
+        Command::PylonJobsRefresh => {
+            state.refresh_pylon_jobs();
+            state.open_pylon_jobs();
+            CommandAction::None
+        }
+        Command::Dspy => {
+            state.open_dspy();
+            CommandAction::None
+        }
+        Command::DspyRefresh => {
+            state.refresh_dspy_snapshot();
+            state.push_system_message("DSPy status refreshed.".to_string());
+            CommandAction::None
+        }
+        Command::DspyAuto(enabled) => {
+            state.set_dspy_auto_optimizer_enabled(enabled);
+            CommandAction::None
+        }
+        Command::DspyBackground(enabled) => {
+            state.set_dspy_background_optimization(enabled);
+            CommandAction::None
+        }
+        Command::Nip28 => {
+            state.open_nip28();
+            CommandAction::None
+        }
+        Command::Nip28Refresh => {
+            state.refresh_nip28();
+            state.open_nip28();
+            CommandAction::None
+        }
+        Command::Nip28Connect(relay_url) => {
+            if relay_url.trim().is_empty() {
+                state.push_system_message("NIP-28 relay URL is required.".to_string());
+            } else {
+                state.connect_nip28(Some(relay_url));
+                state.open_nip28();
+            }
+            CommandAction::None
+        }
+        Command::Nip28Channel(channel) => {
+            if channel.trim().is_empty() {
+                state.push_system_message("NIP-28 channel name or id is required.".to_string());
+            } else {
+                state.set_nip28_channel(channel);
+                state.open_nip28();
+            }
+            CommandAction::None
+        }
+        Command::Nip28Send(message) => {
+            if message.trim().is_empty() {
+                state.push_system_message("NIP-28 message is empty.".to_string());
+            } else {
+                state.send_nip28_message(message);
+                state.open_nip28();
+            }
+            CommandAction::None
+        }
         Command::Custom(name, args) => {
             if state.chat.is_thinking {
                 state.push_system_message(
@@ -722,6 +937,271 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             state.window.request_redraw();
             true
         }
+        ModalState::Wallet => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.request_wallet_refresh();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::DvmProviders => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_dvm();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Gateway => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_gateway();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::LmRouter => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_lm_router();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Nexus => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_nexus();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::SparkWallet => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_spark_wallet();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Nip90Jobs => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_nip90();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Oanix => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_oanix();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Directives => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_directives();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Issues => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_issues();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::AutopilotIssues => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_issue_tracker();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Rlm => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_rlm();
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("t") => {
+                    state.open_rlm_trace(None);
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::RlmTrace => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_rlm_trace();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::PylonEarnings => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_pylon_earnings();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::PylonJobs => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_pylon_jobs();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Nip28Chat => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::Enter) => {
+                    if let Err(err) = state.nip28.send_message() {
+                        state.nip28.status_message = Some(err);
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowLeft) => {
+                    state.nip28.move_cursor_left();
+                }
+                WinitKey::Named(WinitNamedKey::ArrowRight) => {
+                    state.nip28.move_cursor_right();
+                }
+                WinitKey::Named(WinitNamedKey::Home) => {
+                    state.nip28.move_cursor_home();
+                }
+                WinitKey::Named(WinitNamedKey::End) => {
+                    state.nip28.move_cursor_end();
+                }
+                WinitKey::Named(WinitNamedKey::Backspace) => {
+                    state.nip28.backspace();
+                }
+                WinitKey::Named(WinitNamedKey::Delete) => {
+                    state.nip28.delete();
+                }
+                WinitKey::Character(c)
+                    if c.eq_ignore_ascii_case("r") && state.modifiers.control_key() =>
+                {
+                    state.refresh_nip28();
+                }
+                WinitKey::Character(c) => {
+                    if !state.modifiers.control_key()
+                        && !state.modifiers.super_key()
+                        && !state.modifiers.alt_key()
+                    {
+                        state.nip28.insert_text(c);
+                    }
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Dspy => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_dspy_snapshot();
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("e") => {
+                    let enabled = !state.dspy.snapshot.auto_optimizer.config.enabled;
+                    state.set_dspy_auto_optimizer_enabled(enabled);
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("b") => {
+                    let enabled = !state.dspy.snapshot.auto_optimizer.config.background_optimization;
+                    state.set_dspy_background_optimization(enabled);
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
         ModalState::Help => {
             match key {
                 WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter | WinitNamedKey::F1) => {
@@ -1119,15 +1599,37 @@ fn apply_custom_command_args(template: &str, args: &[String]) -> String {
 fn open_url(url: &str) -> io::Result<()> {
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open").arg(url).status()?;
+        let _ = ProcessCommand::new("open")
+            .arg(url)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        return Ok(());
     }
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open").arg(url).status()?;
-    }
+
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd").args(["/C", "start", url]).status()?;
+        let _ = ProcessCommand::new("cmd")
+            .args(["/C", "start", url])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        return Ok(());
     }
-    Ok(())
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = ProcessCommand::new("xdg-open")
+            .arg(url)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        return Ok(());
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        "open_url not supported on this platform",
+    ))
 }

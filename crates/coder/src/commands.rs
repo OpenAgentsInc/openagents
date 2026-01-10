@@ -64,6 +64,8 @@ pub enum Command {
     RlmTrace(Option<String>),
     PylonEarnings,
     PylonEarningsRefresh,
+    PylonJobs,
+    PylonJobsRefresh,
     Dspy,
     DspyRefresh,
     DspyAuto(bool),
@@ -405,6 +407,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/pylon jobs",
+        description: "Open Pylon jobs",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/pylon jobs refresh",
+        description: "Refresh Pylon jobs",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/issues",
         description: "Open workspace issues",
         requires_args: false,
@@ -660,6 +672,11 @@ fn parse_pylon_command(args: Vec<String>) -> Command {
         Some("earnings") | Some("revenue") => match parts.next().as_deref() {
             Some("refresh") => Command::PylonEarningsRefresh,
             _ => Command::PylonEarnings,
+        },
+        Some("jobs") => match parts.next().as_deref() {
+            Some("refresh") => Command::PylonJobsRefresh,
+            Some("status") => Command::PylonJobs,
+            _ => Command::PylonJobs,
         },
         Some(other) => Command::Custom(format!("pylon {}", other), parts.collect()),
     }
