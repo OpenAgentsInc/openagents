@@ -4,6 +4,8 @@ use wgpui::components::atoms::{ToolStatus, ToolType};
 use wgpui::components::organisms::{DiffToolCall, SearchToolCall, TerminalToolCall, ToolCallCard};
 use wgpui::{Bounds, InputEvent};
 
+use super::parsing::{build_simple_diff, parse_diff_lines, parse_search_matches};
+
 pub(crate) enum ToolDetail {
     None,
     Search(SearchToolCall),
@@ -127,7 +129,7 @@ impl ToolVisualization {
     }
 
     pub(crate) fn refresh_detail(&mut self) {
-        self.detail = super::super::build_tool_detail(self);
+        self.detail = build_tool_detail(self);
     }
 
     pub(crate) fn sync_expanded_from_card(&mut self) -> bool {
@@ -146,4 +148,114 @@ pub(crate) struct ToolPanelBlock {
     pub(crate) index: usize,
     pub(crate) card_bounds: Bounds,
     pub(crate) detail_bounds: Option<Bounds>,
+}
+
+fn build_tool_detail(tool: &ToolVisualization) -> ToolDetail {
+    if !tool.card_expanded {
+        return ToolDetail::None;
+    }
+
+    let status = tool.status;
+
+    if tool.tool_type == ToolType::Bash {
+        let command = tool
+            .input_value
+            .as_ref()
+            .and_then(|value| {
+                value
+                    .get("command")
+                    .or_else(|| value.get("cmd"))
+                    .or_else(|| value.get("bash_id"))
+                    .or_else(|| value.get("shell_id"))
+                    .and_then(|v| v.as_str())
+            })
+            .unwrap_or("bash")
+            .to_string();
+        let mut detail = TerminalToolCall::new(command).status(status).expanded(true);
+        if let Some(output) = tool.output.as_ref() {
+            if !output.is_empty() {
+                detail = detail.output(output.clone());
+            }
+        }
+        if let Some(code) = tool.exit_code {
+            detail = detail.exit_code(code);
+        }
+        return ToolDetail::Terminal(detail);
+    }
+
+    if matches!(tool.tool_type, ToolType::Glob | ToolType::Grep | ToolType::Search) {
+        let query = tool
+            .input_value
+            .as_ref()
+            .and_then(|value| {
+                value
+                    .get("pattern")
+                    .or_else(|| value.get("query"))
+                    .or_else(|| value.get("regex"))
+                    .and_then(|v| v.as_str())
+            })
+            .unwrap_or("")
+            .to_string();
+        let output_text = tool.output.as_deref().unwrap_or("");
+        let matches = parse_search_matches(tool.output_value.as_ref(), output_text);
+        let detail = SearchToolCall::new(query)
+            .matches(matches)
+            .status(status)
+            .expanded(true);
+        return ToolDetail::Search(detail);
+    }
+
+    if tool.tool_type == ToolType::Edit {
+        let file_path = tool
+            .input_value
+            .as_ref()
+            .and_then(|value| value.get("file_path").and_then(|v| v.as_str()))
+            .unwrap_or("file")
+            .to_string();
+        let mut output_text = tool.output.as_deref();
+        let mut output_storage = None::<String>;
+        if output_text.map(|text| text.is_empty()).unwrap_or(true) {
+            if let Some(value) = tool.output_value.as_ref() {
+                if let Some(diff) = value
+                    .get("diff")
+                    .or_else(|| value.get("patch"))
+                    .or_else(|| value.get("content"))
+                    .and_then(|v| v.as_str())
+                {
+                    output_storage = Some(diff.to_string());
+                } else if let Some(text) = value.as_str() {
+                    output_storage = Some(text.to_string());
+                }
+            }
+        }
+        if output_text.map(|text| text.is_empty()).unwrap_or(true) {
+            output_text = output_storage.as_deref();
+        }
+        let mut diff_lines = parse_diff_lines(output_text.unwrap_or(""));
+        if diff_lines.is_empty() {
+            if let Some(value) = tool.input_value.as_ref() {
+                let old_text = value
+                    .get("old_string")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let new_text = value
+                    .get("new_string")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if !old_text.is_empty() || !new_text.is_empty() {
+                    diff_lines = build_simple_diff(old_text, new_text);
+                }
+            }
+        }
+        if diff_lines.is_empty() {
+            return ToolDetail::None;
+        }
+        let detail = DiffToolCall::new(file_path)
+            .lines(diff_lines)
+            .status(status)
+            .expanded(true);
+        return ToolDetail::Diff(detail);
+    }
+
+    ToolDetail::None
 }

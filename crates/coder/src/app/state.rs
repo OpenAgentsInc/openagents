@@ -1,0 +1,59 @@
+use std::cell::RefCell;
+use std::process::Child;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use tokio::sync::mpsc;
+use web_time::Instant;
+use wgpui::components::hud::CommandPalette;
+use wgpui::{TextInput, TextSystem};
+use winit::keyboard::ModifiersState;
+use winit::window::Window;
+
+use crate::app::autopilot::AutopilotState;
+use crate::app::catalog::CatalogState;
+use crate::app::chat::ChatState;
+use crate::app::config::SettingsState;
+use crate::app::events::ModalState;
+use crate::app::permissions::PermissionState;
+use crate::app::session::SessionState;
+use crate::app::tools::ToolsState;
+use crate::panels::PanelLayout;
+use wgpui::components::EventContext;
+use wgpui::renderer::Renderer;
+
+pub(crate) struct AppState {
+    pub(crate) window: Arc<Window>,
+    pub(crate) surface: wgpu::Surface<'static>,
+    pub(crate) device: wgpu::Device,
+    pub(crate) queue: wgpu::Queue,
+    pub(crate) config: wgpu::SurfaceConfiguration,
+    pub(crate) renderer: Renderer,
+    pub(crate) text_system: TextSystem,
+    pub(crate) event_context: EventContext,
+    #[allow(dead_code)]
+    pub(crate) clipboard: Rc<RefCell<Option<arboard::Clipboard>>>,
+    pub(crate) command_palette: CommandPalette,
+    pub(crate) command_palette_action_rx: Option<mpsc::UnboundedReceiver<String>>,
+    pub(crate) input: TextInput,
+    pub(crate) mouse_pos: (f32, f32),
+    pub(crate) modifiers: ModifiersState,
+    #[allow(dead_code)]
+    pub(crate) last_tick: Instant,
+    pub(crate) modal_state: ModalState,
+    #[allow(dead_code)]
+    pub(crate) panel_layout: PanelLayout,
+    pub(crate) left_sidebar_open: bool,
+    pub(crate) right_sidebar_open: bool,
+    pub(crate) new_session_button_hovered: bool,
+    pub(crate) chat: ChatState,
+    pub(crate) tools: ToolsState,
+    pub(crate) session: SessionState,
+    pub(crate) catalogs: CatalogState,
+    pub(crate) settings: SettingsState,
+    pub(crate) permissions: PermissionState,
+    pub(crate) autopilot: AutopilotState,
+    pub(crate) llama_server_process: Option<Child>,
+    pub(crate) show_kitchen_sink: bool,
+    pub(crate) kitchen_sink_scroll: f32,
+}
