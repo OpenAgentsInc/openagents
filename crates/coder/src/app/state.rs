@@ -19,6 +19,7 @@ use crate::app::pylon_earnings::PylonEarningsState;
 use crate::app::pylon_jobs::PylonJobsState;
 use crate::app::catalog::CatalogState;
 use crate::app::chat::ChatState;
+use crate::app::agents::AgentBackendsState;
 use crate::app::config::SettingsState;
 use crate::app::dspy::DspyState;
 use crate::app::dvm::DvmState;
@@ -65,6 +66,7 @@ pub(crate) struct AppState {
     pub(crate) tools: ToolsState,
     pub(crate) session: SessionState,
     pub(crate) catalogs: CatalogState,
+    pub(crate) agent_backends: AgentBackendsState,
     pub(crate) settings: SettingsState,
     pub(crate) permissions: PermissionState,
     pub(crate) autopilot: AutopilotState,

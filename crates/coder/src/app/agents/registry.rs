@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::backend::{AgentAvailability, AgentBackend, AgentKind, BoxedAgentBackend, ModelInfo};
+use super::backend::{AgentAvailability, AgentKind, BoxedAgentBackend, ModelInfo};
 use super::claude_backend::ClaudeBackend;
 use super::codex_backend::CodexBackend;
 

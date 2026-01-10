@@ -5,22 +5,17 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
 use async_trait::async_trait;
-use futures::StreamExt;
-use serde_json::Value;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 
-use claude_agent_sdk::permissions::{AllowAllPermissions, CallbackPermissionHandler, PermissionRequest};
-use claude_agent_sdk::protocol::{PermissionMode, PermissionResult};
-use claude_agent_sdk::{query_with_permissions, QueryOptions, SdkMessage, Query};
+use claude_agent_sdk::permissions::AllowAllPermissions;
+use claude_agent_sdk::protocol::PermissionMode;
+use claude_agent_sdk::{query_with_permissions, Query, QueryOptions};
 
 use super::backend::{
     AgentAvailability, AgentBackend, AgentConfig, AgentKind, AgentSession, ModelInfo,
 };
 use crate::app::events::ResponseEvent;
-use crate::app::permissions::PermissionPending;
-use crate::app::tools::tool_result_output;
 
 /// Claude Code backend
 pub struct ClaudeBackend {
@@ -148,6 +143,7 @@ fn check_claude_availability() -> AgentAvailability {
 }
 
 /// Claude session implementation
+#[allow(dead_code)]
 pub struct ClaudeSession {
     config: AgentConfig,
     response_tx: mpsc::UnboundedSender<ResponseEvent>,
@@ -155,6 +151,7 @@ pub struct ClaudeSession {
     stream: Option<Query>,
 }
 
+#[allow(dead_code)]
 impl ClaudeSession {
     fn new(config: AgentConfig, response_tx: mpsc::UnboundedSender<ResponseEvent>) -> Self {
         Self {
@@ -208,7 +205,7 @@ impl AgentSession for ClaudeSession {
         // will be added when we refactor coder_actions.rs
         let permissions = Arc::new(AllowAllPermissions);
 
-        let mut stream = query_with_permissions(text, options, permissions).await?;
+        let stream = query_with_permissions(text, options, permissions).await?;
 
         // Store the stream for interrupt/abort
         // Note: We'll process events in the main event loop

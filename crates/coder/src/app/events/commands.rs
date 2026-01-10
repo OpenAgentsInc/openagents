@@ -16,6 +16,7 @@ pub(crate) enum ModalState {
     ModelPicker { selected: usize },
     SessionList { selected: usize },
     AgentList { selected: usize },
+    AgentBackends { selected: usize, model_selected: usize },
     SkillList { selected: usize },
     Hooks { view: HookModalView, selected: usize },
     ToolList { selected: usize },

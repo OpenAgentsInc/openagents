@@ -62,6 +62,7 @@ This document outlines the path to 100% implementation of the Claude Agent SDK i
 | RLM trace pane | Done | Trace events and run metadata for latest run |
 | Pylon earnings pane | Done | Provider earnings from ~/.openagents/pylon/pylon.db |
 | Pylon jobs pane | Done | Provider jobs from ~/.openagents/pylon/pylon.db |
+| Agent backends pane | Done | CLI availability, model lists, and selection |
 
 ### Not Implemented
 
@@ -946,3 +947,4 @@ pub enum SettingsTab {
 - 2026-01-10 22:12 UTC - Added Pylon earnings pane with totals, source breakdown, keybinding, and commands.
 - 2026-01-10 22:34 UTC - Added Pylon jobs pane with status counts, pricing totals, keybinding, and commands.
 - 2026-01-10 - Implemented multi-backend support (Claude/Codex): agent abstraction layer with AgentBackend/AgentSession traits, `/backend` toggle command, and full Codex integration via codex-agent-sdk with event mapping to ResponseEvent.
+- 2026-01-10 23:02 UTC - Added agent backends pane with CLI availability, model selection, keybinding, and commands.

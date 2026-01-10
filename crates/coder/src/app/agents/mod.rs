@@ -35,12 +35,7 @@ mod backend;
 mod claude_backend;
 mod codex_backend;
 mod registry;
+mod state;
 
-// Re-export main types
-pub use backend::{
-    AgentAvailability, AgentBackend, AgentConfig, AgentKind, AgentSession, BoxedAgentBackend,
-    ModelInfo,
-};
-pub use claude_backend::ClaudeBackend;
-pub use codex_backend::CodexBackend;
-pub use registry::{AgentRegistry, AgentStatus};
+pub(crate) use backend::AgentKind;
+pub(crate) use state::{AgentBackendsEvent, AgentBackendsState, AgentBackendsStatus};

@@ -58,6 +58,11 @@ fn render_help_modal(
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenSettings, "Ctrl+,");
             let wallet_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenWallet, "Ctrl+Shift+W");
+            let agent_backends_key = keybinding_labels(
+                &state.settings.keybindings,
+                KeyAction::OpenAgentBackends,
+                "Ctrl+Shift+B",
+            );
             let dvm_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenDvm, "Ctrl+Shift+P");
             let gateway_key = keybinding_labels(
@@ -141,6 +146,7 @@ fn render_help_modal(
                         format!("{} - Command palette", palette_key),
                         format!("{} - Settings", settings_key),
                         format!("{} - Wallet", wallet_key),
+                        format!("{} - Agent backends", agent_backends_key),
                         format!("{} - DVM providers", dvm_key),
                         format!("{} - Gateway health", gateway_key),
                         format!("{} - LM router", lm_router_key),
@@ -199,6 +205,7 @@ fn render_help_modal(
                     "Agents, Skills, Prompts",
                     vec![
                         "/agents - manage agents; /agent select <name>; /agent clear".to_string(),
+                        "/agent-backends - backend status; /agent-backends refresh".to_string(),
                         "/skills - manage skills; /skills reload".to_string(),
                         "@file - insert file; !command - run bash and insert output".to_string(),
                     ],

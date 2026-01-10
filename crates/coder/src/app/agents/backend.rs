@@ -27,6 +27,7 @@ pub struct ModelInfo {
 }
 
 /// Configuration for connecting to an agent
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct AgentConfig {
     /// Working directory for the agent
@@ -141,6 +142,7 @@ pub trait AgentBackend: Send + Sync {
     fn default_model_id(&self) -> Option<&str>;
 
     /// Connect to the agent and create a session
+    #[allow(dead_code)]
     fn connect(
         &self,
         config: AgentConfig,
@@ -152,6 +154,7 @@ pub trait AgentBackend: Send + Sync {
 ///
 /// Represents a connected session with an agent that can send prompts
 /// and receive responses.
+#[allow(dead_code)]
 #[async_trait]
 pub trait AgentSession: Send {
     /// Send a prompt to the agent

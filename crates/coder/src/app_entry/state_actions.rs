@@ -9,6 +9,7 @@ use wgpui::components::hud::Command as PaletteCommand;
 use wgpui::components::molecules::SessionAction;
 use wgpui::components::organisms::EventInspector;
 
+use crate::app::agents::AgentBackendsStatus;
 use crate::app::catalog::SkillSource;
 use crate::app::chat::MessageRole;
 use crate::app::config::{config_dir, SettingsTab};
@@ -91,6 +92,13 @@ impl AppState {
             command_palette_ids::AGENTS_LIST,
             "Open Agents",
             "Browse available agents",
+            "Navigation",
+            None,
+        );
+        push_command(
+            command_palette_ids::AGENT_BACKENDS_OPEN,
+            "Open Agent Backends",
+            "View CLI backend status and models",
             "Navigation",
             None,
         );
@@ -503,6 +511,19 @@ impl AppState {
         self.modal_state = ModalState::AgentList { selected };
     }
 
+    pub(super) fn open_agent_backends(&mut self) {
+        if self.agent_backends.snapshot.is_none()
+            || matches!(self.agent_backends.status, AgentBackendsStatus::Error(_))
+        {
+            self.agent_backends.refresh();
+        }
+        let (selected, model_selected) = self.agent_backends.selection_indices();
+        self.modal_state = ModalState::AgentBackends {
+            selected,
+            model_selected,
+        };
+    }
+
     pub(super) fn open_skill_list(&mut self) {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         self.catalogs.skill_action_tx = Some(action_tx);
@@ -538,6 +559,10 @@ impl AppState {
 
     pub(super) fn refresh_wallet_snapshot(&mut self) {
         self.wallet.refresh(self.autopilot.oanix_manifest.as_ref());
+    }
+
+    pub(super) fn refresh_agent_backends(&mut self) {
+        self.agent_backends.refresh();
     }
 
     pub(super) fn request_wallet_refresh(&mut self) {

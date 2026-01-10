@@ -38,6 +38,7 @@ mod command_palette_ids {
     pub const MCP_RELOAD: &str = "mcp.reload";
     pub const MCP_STATUS: &str = "mcp.status";
     pub const AGENTS_LIST: &str = "agents.list";
+    pub const AGENT_BACKENDS_OPEN: &str = "agents.backends";
     pub const AGENT_CLEAR: &str = "agents.clear";
     pub const AGENT_RELOAD: &str = "agents.reload";
     pub const WALLET_OPEN: &str = "wallet.open";
