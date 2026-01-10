@@ -179,7 +179,7 @@ impl Component for Text {
 
             if !self.wrap || bounds.size.width <= 0.0 {
                 // No wrapping - render paragraph as single line
-                let text_run = cx.text.layout_styled(
+                let text_run = cx.text.layout_styled_mono(
                     paragraph,
                     Point::new(bounds.origin.x, y),
                     font_size,
@@ -203,7 +203,7 @@ impl Component for Text {
                     }
                     let line_text = &paragraph[line_start..boundary.ix];
                     if !line_text.is_empty() {
-                        let text_run = cx.text.layout_styled(
+                        let text_run = cx.text.layout_styled_mono(
                             line_text.trim_end(),
                             Point::new(bounds.origin.x, y),
                             font_size,
@@ -220,7 +220,7 @@ impl Component for Text {
                 // Draw remaining text after last boundary
                 let remaining = &paragraph[line_start..];
                 if !remaining.is_empty() && y <= bounds.origin.y + bounds.size.height {
-                    let text_run = cx.text.layout_styled(
+                    let text_run = cx.text.layout_styled_mono(
                         remaining.trim_end(),
                         Point::new(bounds.origin.x, y),
                         font_size,
