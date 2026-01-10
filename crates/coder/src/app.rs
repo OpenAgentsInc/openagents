@@ -1,7 +1,7 @@
 //! Main application state and event handling.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -20,10 +20,7 @@ use web_time::Instant;
 use wgpui::input::{Key as UiKey, Modifiers as UiModifiers, NamedKey as UiNamedKey};
 use wgpui::components::{Component, EventContext, EventResult, PaintContext};
 use wgpui::components::hud::{Command as PaletteCommand, CommandPalette};
-use wgpui::markdown::{
-    MarkdownBlock, MarkdownConfig, MarkdownDocument, MarkdownRenderer as MdRenderer, StreamingMarkdown,
-    StyledLine,
-};
+use wgpui::markdown::{MarkdownBlock, MarkdownConfig, MarkdownDocument, StyledLine};
 use wgpui::renderer::Renderer;
 use wgpui::{
     copy_to_clipboard, Bounds, ContextMenu, Hsla, InputEvent, MenuItem, Point, Quad, Scene, Size,
@@ -50,62 +47,63 @@ use serde_json::Value;
 use claude_agent_sdk::protocol::McpServerStatus;
 
 // Autopilot/Adjutant
-use adjutant::{Adjutant, Task as AdjutantTask};
-use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult, ChannelOutput, DspyStage};
-use wgpui::components::atoms::{
-    AgentStatus, AgentType, PermissionAction, SessionStatus, ToolStatus, ToolType,
-};
-use wgpui::components::molecules::{
-    AgentProfileCard, AgentProfileInfo, CheckpointRestore, SessionAction, SessionCard,
-    SessionInfo as SessionCardInfo, SkillCard,
-};
+use crate::autopilot_loop::DspyStage;
+use wgpui::components::atoms::{ToolStatus, ToolType};
+use wgpui::components::molecules::{CheckpointRestore, SessionAction};
 use wgpui::components::organisms::{
     ChildTool, DiffLine, DiffLineKind, DiffToolCall, EventData, EventInspector, InspectorView, PermissionDialog,
-    PermissionType, SearchMatch, SearchToolCall, TagData, TerminalToolCall, ToolCallCard,
+    SearchMatch, SearchToolCall, TagData, TerminalToolCall, ToolCallCard,
 };
 
 use crate::commands::{parse_command, Command};
 use crate::keybindings::{default_keybindings, match_action, Action as KeyAction, Keybinding};
 use crate::panels::PanelLayout;
 
-mod chat;
-mod catalog;
-mod config;
-mod events;
-mod parsing;
-mod session;
-mod tools;
-mod ui;
-
-use chat::{
+use crate::app::autopilot::AutopilotState;
+use crate::app::catalog::CatalogState;
+use crate::app::chat::ChatState;
+use crate::app::config::SettingsState;
+use crate::app::permissions::{
+    coder_mode_default_allow, coder_mode_label, extract_bash_command, is_read_only_tool,
+    load_permission_config, parse_coder_mode, pattern_matches, PermissionPending, PermissionState,
+};
+use crate::app::session::SessionState;
+use crate::app::tools::ToolsState;
+use crate::app::chat::{
     ChatLayout, ChatLineLayout, ChatMessage, ChatSelection, ChatSelectionPoint, InlineToolsLayout,
     MessageLayout, MessageLayoutBuilder, MessageMetadata, MessageRole,
 };
-use catalog::{
-    build_hook_map, expand_env_vars_in_value, load_agent_entries, load_hook_config,
-    load_hook_scripts, load_mcp_project_servers, load_skill_entries, parse_mcp_server_config,
-    save_hook_config, AgentEntry, AgentSource, HookConfig, HookRuntimeConfig, HookScriptEntry,
-    HookScriptSource, McpServerEntry, McpServerSource, SkillEntry, SkillSource,
+use crate::app::catalog::{
+    build_hook_map, describe_mcp_config, expand_env_vars_in_value, load_agent_entries,
+    load_hook_config, load_hook_scripts, load_mcp_project_servers, load_skill_entries,
+    parse_mcp_server_config, save_hook_config, AgentEntry, AgentSource, HookConfig,
+    HookRuntimeConfig, HookScriptEntry, HookScriptSource, McpServerEntry, McpServerSource,
+    SkillEntry, SkillSource,
 };
-use config::{
-    config_dir, config_file, keybindings_file, mcp_project_file, permission_config_file,
-    session_index_file, session_messages_dir, session_messages_file, sessions_dir, CoderSettings,
-    SettingsItem, SettingsRow, SettingsTab, StoredKeybinding, StoredModifiers,
+use crate::app::config::{
+    config_dir, config_file, keybindings_file, mcp_project_file, session_messages_dir,
+    sessions_dir, CoderSettings, SettingsItem, SettingsTab, StoredKeybinding,
+    StoredModifiers,
 };
-pub use events::CoderMode;
-use events::{CommandAction, ModalState, QueryControl, ResponseEvent};
-use parsing::{build_context_injection, build_todo_context, expand_prompt_text};
-use session::{CheckpointEntry, RateLimitInfo, RateLimits, SessionEntry, SessionInfo,
-    SessionUsageStats, StoredMessage};
-use tools::{DspyStageLayout, DspyStageVisualization, ToolDetail, ToolPanelBlock, ToolVisualization};
-use ui::{palette_for, theme_label, split_into_words_for_layout, wrap_text, ThemeSetting, UiPalette};
-
-fn selection_point_cmp(a: &ChatSelectionPoint, b: &ChatSelectionPoint) -> std::cmp::Ordering {
-    match a.message_index.cmp(&b.message_index) {
-        std::cmp::Ordering::Equal => a.offset.cmp(&b.offset),
-        ordering => ordering,
-    }
-}
+use crate::app::events::CoderMode;
+use crate::app::events::{
+    convert_key_for_binding, convert_key_for_input, convert_modifiers, convert_mouse_button,
+    keybinding_labels, key_from_string, key_to_string, CommandAction, ModalState, QueryControl,
+    ResponseEvent,
+};
+use crate::app::parsing::{build_context_injection, build_todo_context, expand_prompt_text};
+use crate::app::session::{
+    apply_session_history_limit, load_session_index, save_session_index, RateLimitInfo, RateLimits,
+    SessionEntry, SessionInfo, SessionUsageStats,
+};
+use crate::app::tools::{tool_result_output, DspyStageLayout, ToolPanelBlock};
+use crate::app::ui::{palette_for, split_into_words_for_layout, wrap_text, ThemeSetting, UiPalette};
+use crate::app::AppState;
+use crate::app::{
+    build_input, build_markdown_config, build_markdown_renderer, format_relative_time,
+    now_timestamp, selection_point_cmp, settings_rows, truncate_bytes, truncate_preview,
+    HookLogEntry, HookModalView, ModelOption, SettingsInputMode, SettingsSnapshot,
+};
 
 fn byte_offset_for_char_index(text: &str, char_index: usize) -> usize {
     if char_index == 0 {
@@ -431,16 +429,6 @@ fn layout_markdown_document(
     y - origin.y
 }
 
-fn truncate_preview(text: &str, max_chars: usize) -> String {
-    let trimmed = text.trim().replace('\n', " ");
-    if trimmed.len() <= max_chars {
-        return trimmed;
-    }
-    let mut result = trimmed.chars().take(max_chars.saturating_sub(3)).collect::<String>();
-    result.push_str("...");
-    result
-}
-
 const INPUT_HEIGHT: f32 = 40.0;
 const INPUT_PADDING: f32 = 12.0;
 const OUTPUT_PADDING: f32 = 12.0;
@@ -490,22 +478,6 @@ mod command_palette_ids {
     pub const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
     pub const BUG_REPORT: &str = "bug.report";
     pub const KITCHEN_SINK: &str = "dev.kitchen_sink";
-}
-
-fn default_font_size() -> f32 {
-    14.0
-}
-
-fn default_auto_scroll() -> bool {
-    true
-}
-
-fn default_session_auto_save() -> bool {
-    true
-}
-
-fn default_session_history_limit() -> usize {
-    50
 }
 
 fn clamp_font_size(size: f32) -> f32 {
@@ -927,7 +899,6 @@ const HOOK_OUTPUT_TRUNCATE: usize = 2000;
 const HOOK_BLOCK_PATTERNS: [&str; 3] = ["rm -rf /", "sudo", "> /dev/"];
 const TOOL_PANEL_GAP: f32 = 8.0;
 const TOOL_HISTORY_LIMIT: usize = 100;
-const TOOL_SEARCH_MATCH_LIMIT: usize = 200;
 
 #[derive(Clone, Debug)]
 struct LinePrefix {
@@ -935,426 +906,6 @@ struct LinePrefix {
     x: f32,
     content_x: f32,
     font_size: f32,
-}
-
-struct PermissionPending {
-    request: PermissionRequest,
-    respond_to: oneshot::Sender<PermissionResult>,
-}
-
-/// Session info from SystemInit
-/// Session info from SystemInit
-#[derive(Clone, Debug)]
-struct SessionCardEvent {
-    action: SessionAction,
-    session_id: String,
-}
-
-#[derive(Clone, Debug)]
-struct AgentCardEvent {
-    action: AgentCardAction,
-    agent_id: String,
-}
-
-#[derive(Clone, Debug)]
-enum AgentCardAction {
-    Select,
-    ToggleActive,
-}
-
-#[derive(Clone, Debug)]
-struct SkillCardEvent {
-    action: SkillCardAction,
-    skill_id: String,
-}
-
-#[derive(Clone, Debug)]
-enum SkillCardAction {
-    View,
-    Install,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(default)]
-struct PermissionConfig {
-    coder_mode: CoderMode,
-    default_allow: bool,
-    allow_tools: Vec<String>,
-    deny_tools: Vec<String>,
-    bash_allow_patterns: Vec<String>,
-    bash_deny_patterns: Vec<String>,
-}
-
-impl Default for PermissionConfig {
-    fn default() -> Self {
-        Self {
-            coder_mode: CoderMode::Plan,
-            default_allow: false,
-            allow_tools: Vec::new(),
-            deny_tools: Vec::new(),
-            bash_allow_patterns: Vec::new(),
-            bash_deny_patterns: Vec::new(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct PermissionHistoryEntry {
-    tool_name: String,
-    decision: String,
-    timestamp: u64,
-    detail: Option<String>,
-}
-
-/// Available models for selection
-#[derive(Clone, Copy, PartialEq, Debug)]
-enum ModelOption {
-    Opus,
-    Sonnet,
-    Haiku,
-}
-
-impl ModelOption {
-    fn all() -> [ModelOption; 3] {
-        [ModelOption::Opus, ModelOption::Sonnet, ModelOption::Haiku]
-    }
-
-    fn name(&self) -> &'static str {
-        match self {
-            ModelOption::Opus => "Default (recommended)",
-            ModelOption::Sonnet => "Sonnet",
-            ModelOption::Haiku => "Haiku",
-        }
-    }
-
-    fn model_id(&self) -> &'static str {
-        match self {
-            ModelOption::Opus => "claude-opus-4-5-20251101",
-            ModelOption::Sonnet => "claude-sonnet-4-5-20250929",
-            ModelOption::Haiku => "claude-haiku-4-5-20251001",
-        }
-    }
-
-    fn from_id(id: &str) -> ModelOption {
-        match id {
-            "claude-opus-4-5-20251101" => ModelOption::Opus,
-            "claude-sonnet-4-5-20250929" => ModelOption::Sonnet,
-            "claude-haiku-4-5-20251001" => ModelOption::Haiku,
-            _ => ModelOption::Opus, // Default fallback
-        }
-    }
-
-    fn description(&self) -> &'static str {
-        match self {
-            ModelOption::Opus => "Opus 4.5 · Most capable for complex work",
-            ModelOption::Sonnet => "Sonnet 4.5 · Best for everyday tasks",
-            ModelOption::Haiku => "Haiku 4.5 · Fastest for quick answers",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SettingsInputMode {
-    Normal,
-    Search,
-    Capture(KeyAction),
-}
-
-#[derive(Clone)]
-struct SettingsSnapshot {
-    settings: CoderSettings,
-    selected_model: ModelOption,
-    coder_mode: CoderMode,
-    permission_default_allow: bool,
-    permission_allow_count: usize,
-    permission_deny_count: usize,
-    permission_bash_allow_count: usize,
-    permission_bash_deny_count: usize,
-    mcp_project_count: usize,
-    mcp_runtime_count: usize,
-    mcp_disabled_count: usize,
-    hook_config: HookConfig,
-    keybindings: Vec<Keybinding>,
-}
-
-impl SettingsSnapshot {
-    fn from_state(state: &AppState) -> Self {
-        Self {
-            settings: state.settings.clone(),
-            selected_model: state.selected_model,
-            coder_mode: state.coder_mode,
-            permission_default_allow: state.permission_default_allow,
-            permission_allow_count: state.permission_allow_tools.len(),
-            permission_deny_count: state.permission_deny_tools.len(),
-            permission_bash_allow_count: state.permission_allow_bash_patterns.len(),
-            permission_bash_deny_count: state.permission_deny_bash_patterns.len(),
-            mcp_project_count: state.mcp_project_servers.len(),
-            mcp_runtime_count: state.mcp_runtime_servers.len(),
-            mcp_disabled_count: state.mcp_disabled_servers.len(),
-            hook_config: state.hook_config.clone(),
-            keybindings: state.keybindings.clone(),
-        }
-    }
-}
-
-fn settings_rows(snapshot: &SettingsSnapshot, tab: SettingsTab, search: &str) -> Vec<SettingsRow> {
-    let mut rows = Vec::new();
-    match tab {
-        SettingsTab::General => {
-            rows.push(SettingsRow {
-                item: SettingsItem::Theme,
-                label: "Theme".to_string(),
-                value: theme_label(snapshot.settings.theme).to_string(),
-                hint: Some("Enter/Left/Right to cycle".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::FontSize,
-                label: "Chat font size".to_string(),
-                value: format!("{:.0}px", snapshot.settings.font_size),
-                hint: Some("Left/Right to adjust".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::AutoScroll,
-                label: "Auto-scroll".to_string(),
-                value: if snapshot.settings.auto_scroll {
-                    "On".to_string()
-                } else {
-                    "Off".to_string()
-                },
-                hint: Some("Scroll on new output".to_string()),
-            });
-        }
-        SettingsTab::Model => {
-            rows.push(SettingsRow {
-                item: SettingsItem::DefaultModel,
-                label: "Default model".to_string(),
-                value: snapshot.selected_model.name().to_string(),
-                hint: Some("Left/Right to cycle".to_string()),
-            });
-            let thinking_value = snapshot
-                .settings
-                .max_thinking_tokens
-                .map(|tokens| tokens.to_string())
-                .unwrap_or_else(|| "Auto".to_string());
-            rows.push(SettingsRow {
-                item: SettingsItem::MaxThinkingTokens,
-                label: "Max thinking tokens".to_string(),
-                value: thinking_value,
-                hint: Some("Left/Right to adjust".to_string()),
-            });
-        }
-        SettingsTab::Permissions => {
-            let mode_text = coder_mode_label(snapshot.coder_mode).to_string();
-            rows.push(SettingsRow {
-                item: SettingsItem::PermissionMode,
-                label: "Mode".to_string(),
-                value: mode_text,
-                hint: Some("Left/Right to cycle (Bypass/Plan/Autopilot)".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::PermissionDefaultAllow,
-                label: "Default allow".to_string(),
-                value: if snapshot.permission_default_allow {
-                    "On".to_string()
-                } else {
-                    "Off".to_string()
-                },
-                hint: Some("Enter to toggle".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::PermissionAllowList,
-                label: "Allowed tools".to_string(),
-                value: format!("{} tools", snapshot.permission_allow_count),
-                hint: Some("Use /permission allow".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::PermissionDenyList,
-                label: "Denied tools".to_string(),
-                value: format!("{} tools", snapshot.permission_deny_count),
-                hint: Some("Use /permission deny".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::PermissionBashAllowList,
-                label: "Bash allow patterns".to_string(),
-                value: format!("{} patterns", snapshot.permission_bash_allow_count),
-                hint: Some("Use /permission allow".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::PermissionBashDenyList,
-                label: "Bash deny patterns".to_string(),
-                value: format!("{} patterns", snapshot.permission_bash_deny_count),
-                hint: Some("Use /permission deny".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::PermissionRules,
-                label: "Permission rules".to_string(),
-                value: "Open rules".to_string(),
-                hint: Some("Enter to open".to_string()),
-            });
-        }
-        SettingsTab::Sessions => {
-            rows.push(SettingsRow {
-                item: SettingsItem::SessionAutoSave,
-                label: "Auto-save sessions".to_string(),
-                value: if snapshot.settings.session_auto_save {
-                    "On".to_string()
-                } else {
-                    "Off".to_string()
-                },
-                hint: Some("Enter to toggle".to_string()),
-            });
-            let history_value = if snapshot.settings.session_history_limit == 0 {
-                "Unlimited".to_string()
-            } else {
-                snapshot.settings.session_history_limit.to_string()
-            };
-            rows.push(SettingsRow {
-                item: SettingsItem::SessionHistoryLimit,
-                label: "History limit".to_string(),
-                value: history_value,
-                hint: Some("0 = unlimited".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::SessionStoragePath,
-                label: "Session storage".to_string(),
-                value: sessions_dir().display().to_string(),
-                hint: None,
-            });
-        }
-        SettingsTab::Mcp => {
-            rows.push(SettingsRow {
-                item: SettingsItem::McpSummary,
-                label: "Configured servers".to_string(),
-                value: format!(
-                    "{} project · {} runtime · {} disabled",
-                    snapshot.mcp_project_count,
-                    snapshot.mcp_runtime_count,
-                    snapshot.mcp_disabled_count
-                ),
-                hint: None,
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::McpOpenConfig,
-                label: "Open MCP config".to_string(),
-                value: "Enter to open".to_string(),
-                hint: Some("Manage servers".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::McpReloadProject,
-                label: "Reload project MCP".to_string(),
-                value: "Enter to reload".to_string(),
-                hint: Some("Reads .mcp.json".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::McpRefreshStatus,
-                label: "Refresh MCP status".to_string(),
-                value: "Enter to refresh".to_string(),
-                hint: Some("Pulls live status".to_string()),
-            });
-        }
-        SettingsTab::Hooks => {
-            rows.push(SettingsRow {
-                item: SettingsItem::HookToolBlocker,
-                label: "ToolBlocker".to_string(),
-                value: if snapshot.hook_config.tool_blocker {
-                    "On".to_string()
-                } else {
-                    "Off".to_string()
-                },
-                hint: Some("Block dangerous tools".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::HookToolLogger,
-                label: "ToolLogger".to_string(),
-                value: if snapshot.hook_config.tool_logger {
-                    "On".to_string()
-                } else {
-                    "Off".to_string()
-                },
-                hint: Some("Log tool events".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::HookOutputTruncator,
-                label: "OutputTruncator".to_string(),
-                value: if snapshot.hook_config.output_truncator {
-                    "On".to_string()
-                } else {
-                    "Off".to_string()
-                },
-                hint: Some("Trim large outputs".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::HookContextInjection,
-                label: "ContextInjection".to_string(),
-                value: if snapshot.hook_config.context_injection {
-                    "On".to_string()
-                } else {
-                    "Off".to_string()
-                },
-                hint: Some("Inject CLAUDE.md".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::HookTodoEnforcer,
-                label: "TodoEnforcer".to_string(),
-                value: if snapshot.hook_config.todo_enforcer {
-                    "On".to_string()
-                } else {
-                    "Off".to_string()
-                },
-                hint: Some("Require TODO completion".to_string()),
-            });
-            rows.push(SettingsRow {
-                item: SettingsItem::HookOpenPanel,
-                label: "Open hook panel".to_string(),
-                value: "Enter to open".to_string(),
-                hint: Some("View hook events".to_string()),
-            });
-        }
-        SettingsTab::Keyboard => {
-            for action in KeyAction::all() {
-                let value = snapshot
-                    .keybindings
-                    .iter()
-                    .find(|binding| binding.action == *action)
-                    .map(format_keybinding)
-                    .unwrap_or_else(|| "Unbound".to_string());
-                rows.push(SettingsRow {
-                    item: SettingsItem::Keybinding(*action),
-                    label: action.label().to_string(),
-                    value,
-                    hint: Some("Enter to rebind".to_string()),
-                });
-            }
-            rows.push(SettingsRow {
-                item: SettingsItem::KeybindingReset,
-                label: "Reset keybindings".to_string(),
-                value: "Restore defaults".to_string(),
-                hint: None,
-            });
-        }
-    }
-
-    if search.trim().is_empty() {
-        return rows;
-    }
-    let needle = search.trim().to_ascii_lowercase();
-    rows.into_iter()
-        .filter(|row| {
-            row.label.to_ascii_lowercase().contains(&needle)
-                || row.value.to_ascii_lowercase().contains(&needle)
-                || row
-                    .hint
-                    .as_ref()
-                    .map(|hint| hint.to_ascii_lowercase().contains(&needle))
-                    .unwrap_or(false)
-        })
-        .collect()
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum HookModalView {
-    Config,
-    Events,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1367,21 +918,7 @@ enum HookSetting {
 }
 
 #[derive(Clone, Debug)]
-struct HookLogEntry {
-    id: String,
-    event: HookEvent,
-    timestamp: u64,
-    summary: String,
-    tool_name: Option<String>,
-    matcher: Option<String>,
-    input: Value,
-    output: Option<Value>,
-    error: Option<String>,
-    sources: Vec<String>,
-}
-
-#[derive(Clone, Debug)]
-enum HookCallbackKind {
+pub(crate) enum HookCallbackKind {
     ToolBlocker,
     ToolLogger,
     OutputTruncator,
@@ -1389,13 +926,13 @@ enum HookCallbackKind {
     Script(HookScriptEntry),
 }
 
-struct CoderHookCallback {
+pub(crate) struct CoderHookCallback {
     kind: HookCallbackKind,
     runtime: Arc<HookRuntimeConfig>,
 }
 
 impl CoderHookCallback {
-    fn new(kind: HookCallbackKind, runtime: Arc<HookRuntimeConfig>) -> Self {
+    pub(crate) fn new(kind: HookCallbackKind, runtime: Arc<HookRuntimeConfig>) -> Self {
         Self { kind, runtime }
     }
 }
@@ -1644,110 +1181,6 @@ fn update_settings_model(settings: &mut CoderSettings, model: ModelOption) {
     settings.model = Some(model.model_id().to_string());
 }
 
-fn key_to_string(key: &UiKey) -> String {
-    match key {
-        UiKey::Named(named) => match named {
-            UiNamedKey::Enter => "Enter".to_string(),
-            UiNamedKey::Escape => "Escape".to_string(),
-            UiNamedKey::Backspace => "Backspace".to_string(),
-            UiNamedKey::Delete => "Delete".to_string(),
-            UiNamedKey::Tab => "Tab".to_string(),
-            UiNamedKey::Space => "Space".to_string(),
-            UiNamedKey::Home => "Home".to_string(),
-            UiNamedKey::End => "End".to_string(),
-            UiNamedKey::PageUp => "PageUp".to_string(),
-            UiNamedKey::PageDown => "PageDown".to_string(),
-            UiNamedKey::ArrowUp => "ArrowUp".to_string(),
-            UiNamedKey::ArrowDown => "ArrowDown".to_string(),
-            UiNamedKey::ArrowLeft => "ArrowLeft".to_string(),
-            UiNamedKey::ArrowRight => "ArrowRight".to_string(),
-            UiNamedKey::Unidentified => "Unidentified".to_string(),
-        },
-        UiKey::Character(text) => text.to_string(),
-    }
-}
-
-fn key_from_string(value: &str) -> Option<UiKey> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let named = match trimmed.to_ascii_lowercase().as_str() {
-        "enter" => Some(UiNamedKey::Enter),
-        "escape" => Some(UiNamedKey::Escape),
-        "backspace" => Some(UiNamedKey::Backspace),
-        "delete" => Some(UiNamedKey::Delete),
-        "tab" => Some(UiNamedKey::Tab),
-        "space" => Some(UiNamedKey::Space),
-        "home" => Some(UiNamedKey::Home),
-        "end" => Some(UiNamedKey::End),
-        "pageup" => Some(UiNamedKey::PageUp),
-        "pagedown" => Some(UiNamedKey::PageDown),
-        "arrowup" => Some(UiNamedKey::ArrowUp),
-        "arrowdown" => Some(UiNamedKey::ArrowDown),
-        "arrowleft" => Some(UiNamedKey::ArrowLeft),
-        "arrowright" => Some(UiNamedKey::ArrowRight),
-        _ => None,
-    };
-    if let Some(named) = named {
-        return Some(UiKey::Named(named));
-    }
-    Some(UiKey::Character(trimmed.to_ascii_lowercase()))
-}
-
-fn format_keybinding(binding: &Keybinding) -> String {
-    let mut parts = Vec::new();
-    if binding.modifiers.ctrl {
-        parts.push("Ctrl");
-    }
-    if binding.modifiers.alt {
-        parts.push("Alt");
-    }
-    if binding.modifiers.shift {
-        parts.push("Shift");
-    }
-    if binding.modifiers.meta {
-        parts.push("Meta");
-    }
-    let key_label = match &binding.key {
-        UiKey::Named(named) => match named {
-            UiNamedKey::Enter => "Enter".to_string(),
-            UiNamedKey::Escape => "Escape".to_string(),
-            UiNamedKey::Backspace => "Backspace".to_string(),
-            UiNamedKey::Delete => "Delete".to_string(),
-            UiNamedKey::Tab => "Tab".to_string(),
-            UiNamedKey::Space => "Space".to_string(),
-            UiNamedKey::Home => "Home".to_string(),
-            UiNamedKey::End => "End".to_string(),
-            UiNamedKey::PageUp => "PageUp".to_string(),
-            UiNamedKey::PageDown => "PageDown".to_string(),
-            UiNamedKey::ArrowUp => "ArrowUp".to_string(),
-            UiNamedKey::ArrowDown => "ArrowDown".to_string(),
-            UiNamedKey::ArrowLeft => "ArrowLeft".to_string(),
-            UiNamedKey::ArrowRight => "ArrowRight".to_string(),
-            UiNamedKey::Unidentified => "Key".to_string(),
-        },
-        UiKey::Character(text) => text.to_uppercase(),
-    };
-    parts.push(&key_label);
-    parts.join("+")
-}
-
-fn keybinding_labels(bindings: &[Keybinding], action: KeyAction, fallback: &str) -> String {
-    let mut labels: Vec<String> = bindings
-        .iter()
-        .filter(|binding| binding.action == action)
-        .map(format_keybinding)
-        .collect();
-    labels.sort();
-    labels.dedup();
-    if labels.is_empty() {
-        fallback.to_string()
-    } else {
-        labels.join(" / ")
-    }
-}
-
 fn load_keybindings() -> Vec<Keybinding> {
     let path = keybindings_file();
     let Ok(content) = fs::read_to_string(&path) else {
@@ -1817,307 +1250,6 @@ fn parse_mcp_status(value: &Value) -> Result<Vec<McpServerStatus>, String> {
             .map_err(|err| format!("Failed to parse MCP status: {}", err))
     } else {
         Err("Unexpected MCP status response".to_string())
-    }
-}
-
-fn session_metadata_file(session_id: &str) -> PathBuf {
-    session_messages_dir(session_id).join("metadata.json")
-}
-
-fn load_permission_config() -> PermissionConfig {
-    let path = permission_config_file();
-    if let Ok(content) = fs::read_to_string(path) {
-        if let Ok(config) = serde_json::from_str::<PermissionConfig>(&content) {
-            return config;
-        }
-    }
-    PermissionConfig::default()
-}
-
-fn save_permission_config(config: &PermissionConfig) {
-    let dir = config_dir();
-    if fs::create_dir_all(&dir).is_ok() {
-        if let Ok(json) = serde_json::to_string_pretty(config) {
-            let _ = fs::write(permission_config_file(), json);
-        }
-    }
-}
-
-fn now_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
-fn load_session_index() -> Vec<SessionEntry> {
-    let path = session_index_file();
-    let Ok(data) = fs::read_to_string(path) else {
-        return Vec::new();
-    };
-    serde_json::from_str::<Vec<SessionEntry>>(&data).unwrap_or_default()
-}
-
-fn save_session_index(entries: &[SessionEntry]) -> io::Result<()> {
-    let dir = sessions_dir();
-    fs::create_dir_all(&dir)?;
-    let data = serde_json::to_string_pretty(entries).unwrap_or_else(|_| "[]".to_string());
-    fs::write(session_index_file(), data)?;
-    Ok(())
-}
-
-fn apply_session_history_limit(entries: &mut Vec<SessionEntry>, limit: usize) -> Vec<String> {
-    entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-    if limit == 0 {
-        return Vec::new();
-    }
-    if entries.len() <= limit {
-        return Vec::new();
-    }
-    entries
-        .drain(limit..)
-        .map(|entry| entry.id)
-        .collect()
-}
-
-fn build_markdown_document(source: &str) -> MarkdownDocument {
-    let mut parser = StreamingMarkdown::new();
-    parser.append(source);
-    parser.complete();
-    parser.document().clone()
-}
-
-fn build_markdown_config(settings: &CoderSettings) -> MarkdownConfig {
-    let palette = palette_for(settings.theme);
-    let mut config = MarkdownConfig::default();
-    config.base_font_size = settings.font_size;
-    config.text_color = palette.text_primary;
-    config.header_color = palette.text_primary;
-    config.code_background = palette.code_bg;
-    config.inline_code_background = palette.inline_code_bg;
-    config.link_color = palette.link;
-    config.blockquote_color = palette.blockquote;
-    config
-}
-
-fn build_markdown_renderer(settings: &CoderSettings) -> MdRenderer {
-    MdRenderer::with_config(build_markdown_config(settings))
-}
-
-fn build_input(settings: &CoderSettings) -> TextInput {
-    let palette = palette_for(settings.theme);
-    let mut input = TextInput::new()
-        .with_id(1)
-        .font_size(settings.font_size)
-        .padding(28.0, 10.0)
-        .background(palette.background)
-        .border_color(palette.input_border)
-        .border_color_focused(palette.input_border_focused)
-        .text_color(palette.text_primary)
-        .placeholder_color(palette.text_dim)
-        .cursor_color(palette.text_primary)
-        .mono(true);
-    input.focus();
-    input
-}
-
-fn write_session_messages(session_id: &str, messages: &[ChatMessage]) -> io::Result<()> {
-    let dir = session_messages_dir(session_id);
-    fs::create_dir_all(&dir)?;
-    let mut file = fs::File::create(session_messages_file(session_id))?;
-    for msg in messages {
-        let role = match msg.role {
-            MessageRole::User => "user",
-            MessageRole::Assistant => "assistant",
-        };
-        let stored = StoredMessage {
-            role: role.to_string(),
-            content: msg.content.clone(),
-            uuid: msg.uuid.clone(),
-        };
-        serde_json::to_writer(&mut file, &stored)?;
-        writeln!(&mut file)?;
-    }
-    Ok(())
-}
-
-fn write_session_metadata(session_id: &str, entry: &SessionEntry) -> io::Result<()> {
-    let dir = session_messages_dir(session_id);
-    fs::create_dir_all(&dir)?;
-    let data = serde_json::to_string_pretty(entry)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-    fs::write(session_metadata_file(session_id), data)?;
-    Ok(())
-}
-
-fn read_session_messages(session_id: &str) -> io::Result<Vec<ChatMessage>> {
-    let path = session_messages_file(session_id);
-    let data = fs::read_to_string(path)?;
-    let mut messages = Vec::new();
-    for line in data.lines() {
-        let stored: StoredMessage = serde_json::from_str(line)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        let role = if stored.role == "user" {
-            MessageRole::User
-        } else {
-            MessageRole::Assistant
-        };
-        let document = if role == MessageRole::Assistant {
-            Some(build_markdown_document(&stored.content))
-        } else {
-            None
-        };
-        messages.push(ChatMessage {
-            role,
-            content: stored.content,
-            document,
-            uuid: stored.uuid,
-            metadata: None,
-        });
-    }
-    Ok(messages)
-}
-
-/// Application state holding GPU and UI resources
-struct AppState {
-    window: Arc<Window>,
-    surface: wgpu::Surface<'static>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
-    renderer: Renderer,
-    text_system: TextSystem,
-    event_context: EventContext,
-    #[allow(dead_code)]
-    clipboard: Rc<RefCell<Option<Clipboard>>>,
-    command_palette: CommandPalette,
-    command_palette_action_rx: Option<mpsc::UnboundedReceiver<String>>,
-    input: TextInput,
-    mouse_pos: (f32, f32),
-    modifiers: ModifiersState,
-    #[allow(dead_code)]
-    last_tick: Instant,
-    // Chat state
-    messages: Vec<ChatMessage>,
-    streaming_markdown: StreamingMarkdown,
-    markdown_renderer: MdRenderer,
-    is_thinking: bool,
-    chat_selection: Option<ChatSelection>,
-    chat_selection_dragging: bool,
-    chat_context_menu: ContextMenu,
-    chat_context_menu_target: Option<usize>,
-    response_rx: Option<mpsc::UnboundedReceiver<ResponseEvent>>,
-    query_control_tx: Option<mpsc::UnboundedSender<QueryControl>>,
-    // Scroll state
-    scroll_offset: f32,
-    // Current tool call being streamed
-    current_tool_name: Option<String>,
-    current_tool_input: String,
-    current_tool_use_id: Option<String>,
-    tool_history: Vec<ToolVisualization>,
-    dspy_stages: Vec<DspyStageVisualization>,
-    // Session info from SystemInit
-    session_info: SessionInfo,
-    session_usage: SessionUsageStats,
-    rate_limits: RateLimits,
-    rate_limit_rx: Option<mpsc::UnboundedReceiver<RateLimits>>,
-    session_index: Vec<SessionEntry>,
-    pending_resume_session: Option<String>,
-    pending_fork_session: bool,
-    session_cards: Vec<SessionCard>,
-    session_action_tx: Option<mpsc::UnboundedSender<SessionCardEvent>>,
-    session_action_rx: Option<mpsc::UnboundedReceiver<SessionCardEvent>>,
-    checkpoint_restore: CheckpointRestore,
-    checkpoint_entries: Vec<CheckpointEntry>,
-    checkpoint_action_tx: Option<mpsc::UnboundedSender<usize>>,
-    checkpoint_action_rx: Option<mpsc::UnboundedReceiver<usize>>,
-    agent_entries: Vec<AgentEntry>,
-    agent_cards: Vec<AgentProfileCard>,
-    agent_action_tx: Option<mpsc::UnboundedSender<AgentCardEvent>>,
-    agent_action_rx: Option<mpsc::UnboundedReceiver<AgentCardEvent>>,
-    active_agent: Option<String>,
-    agent_project_path: Option<PathBuf>,
-    agent_user_path: Option<PathBuf>,
-    agent_load_error: Option<String>,
-    skill_entries: Vec<SkillEntry>,
-    skill_cards: Vec<SkillCard>,
-    skill_action_tx: Option<mpsc::UnboundedSender<SkillCardEvent>>,
-    skill_action_rx: Option<mpsc::UnboundedReceiver<SkillCardEvent>>,
-    skill_project_path: Option<PathBuf>,
-    skill_user_path: Option<PathBuf>,
-    skill_load_error: Option<String>,
-    hook_config: HookConfig,
-    hook_scripts: Vec<HookScriptEntry>,
-    hook_project_path: Option<PathBuf>,
-    hook_user_path: Option<PathBuf>,
-    hook_load_error: Option<String>,
-    hook_event_log: Vec<HookLogEntry>,
-    hook_inspector: Option<EventInspector>,
-    hook_inspector_view: InspectorView,
-    hook_inspector_action_tx: Option<mpsc::UnboundedSender<InspectorView>>,
-    hook_inspector_action_rx: Option<mpsc::UnboundedReceiver<InspectorView>>,
-    // Modal state for slash commands
-    modal_state: ModalState,
-    #[allow(dead_code)]
-    panel_layout: PanelLayout,
-    left_sidebar_open: bool,
-    right_sidebar_open: bool,
-    new_session_button_hovered: bool,
-    settings: CoderSettings,
-    keybindings: Vec<Keybinding>,
-    command_history: Vec<String>,
-    coder_mode: CoderMode,
-    permission_default_allow: bool,
-    permission_allow_tools: Vec<String>,
-    permission_deny_tools: Vec<String>,
-    permission_allow_bash_patterns: Vec<String>,
-    permission_deny_bash_patterns: Vec<String>,
-    permission_requests_rx: Option<mpsc::UnboundedReceiver<PermissionPending>>,
-    permission_action_tx: Option<mpsc::UnboundedSender<PermissionAction>>,
-    permission_action_rx: Option<mpsc::UnboundedReceiver<PermissionAction>>,
-    permission_dialog: Option<PermissionDialog>,
-    permission_queue: VecDeque<PermissionPending>,
-    permission_pending: Option<PermissionPending>,
-    permission_history: Vec<PermissionHistoryEntry>,
-    tools_allowed: Vec<String>,
-    tools_disallowed: Vec<String>,
-    output_style: Option<String>,
-    mcp_project_servers: HashMap<String, McpServerConfig>,
-    mcp_runtime_servers: HashMap<String, McpServerConfig>,
-    mcp_disabled_servers: HashSet<String>,
-    mcp_status: Vec<McpServerStatus>,
-    mcp_project_error: Option<String>,
-    mcp_status_error: Option<String>,
-    mcp_project_path: Option<PathBuf>,
-    // Selected model for queries
-    selected_model: ModelOption,
-    // Cached OANIX manifest for Autopilot (avoid re-booting every prompt)
-    oanix_manifest: Option<oanix::OanixManifest>,
-    oanix_manifest_rx: Option<mpsc::UnboundedReceiver<oanix::OanixManifest>>,
-    // Autopilot conversation history for local LLMs (they don't have session resumption)
-    autopilot_history: Vec<adjutant::ConversationTurn>,
-    autopilot_history_rx: Option<mpsc::UnboundedReceiver<Vec<adjutant::ConversationTurn>>>,
-    // Autopilot loop state for autonomous execution
-    autopilot_interrupt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    autopilot_loop_iteration: usize,
-    autopilot_max_iterations: usize,
-    // Available LM providers detected on startup
-    available_providers: Vec<adjutant::dspy::lm_config::LmProvider>,
-    // Auto-started llama-server process (killed on drop)
-    llama_server_process: Option<Child>,
-    // Kitchen sink storybook state
-    show_kitchen_sink: bool,
-    kitchen_sink_scroll: f32,
-}
-
-impl Drop for AppState {
-    fn drop(&mut self) {
-        // Kill auto-started llama-server process
-        if let Some(mut child) = self.llama_server_process.take() {
-            tracing::info!("Stopping llama-server (PID {})...", child.id());
-            let _ = child.kill();
-            let _ = child.wait();
-        }
     }
 }
 
@@ -2290,109 +1422,38 @@ impl ApplicationHandler for CoderApp {
                 mouse_pos: (0.0, 0.0),
                 modifiers: ModifiersState::default(),
                 last_tick: Instant::now(),
-                messages: Vec::new(),
-                streaming_markdown: {
-                    let mut sm = StreamingMarkdown::new();
-                    sm.set_markdown_config(build_markdown_config(&settings));
-                    sm
-                },
-                markdown_renderer: build_markdown_renderer(&settings),
-                is_thinking: false,
-                chat_selection: None,
-                chat_selection_dragging: false,
-                chat_context_menu: ContextMenu::new(),
-                chat_context_menu_target: None,
-                response_rx: None,
-                query_control_tx: None,
-                scroll_offset: 0.0,
-                current_tool_name: None,
-                current_tool_input: String::new(),
-                current_tool_use_id: None,
-                tool_history: Vec::new(),
-                dspy_stages: Vec::new(),
-                session_info: SessionInfo {
-                    model: selected_model.model_id().to_string(),
-                    permission_mode: coder_mode_label_str,
-                    ..Default::default()
-                },
-                session_usage: SessionUsageStats::default(),
-                rate_limits: RateLimits::default(),
-                rate_limit_rx: Some(rate_limit_rx),
-                session_index,
-                pending_resume_session: None,
-                pending_fork_session: false,
-                session_cards: Vec::new(),
-                session_action_tx: None,
-                session_action_rx: None,
-                checkpoint_restore: CheckpointRestore::new(),
-                checkpoint_entries: Vec::new(),
-                checkpoint_action_tx: None,
-                checkpoint_action_rx: None,
-                agent_entries: agent_catalog.entries,
-                agent_cards: Vec::new(),
-                agent_action_tx: None,
-                agent_action_rx: None,
-                active_agent: None,
-                agent_project_path: agent_catalog.project_path,
-                agent_user_path: agent_catalog.user_path,
-                agent_load_error: agent_catalog.error,
-                skill_entries: skill_catalog.entries,
-                skill_cards: Vec::new(),
-                skill_action_tx: None,
-                skill_action_rx: None,
-                skill_project_path: skill_catalog.project_path,
-                skill_user_path: skill_catalog.user_path,
-                skill_load_error: skill_catalog.error,
-                hook_config,
-                hook_scripts: hook_catalog.entries,
-                hook_project_path: hook_catalog.project_path,
-                hook_user_path: hook_catalog.user_path,
-                hook_load_error: hook_catalog.error,
-                hook_event_log: Vec::new(),
-                hook_inspector: None,
-                hook_inspector_view: InspectorView::Summary,
-                hook_inspector_action_tx: None,
-                hook_inspector_action_rx: None,
                 modal_state: ModalState::None,
                 panel_layout: PanelLayout::Single,
                 left_sidebar_open: false,
                 right_sidebar_open: false,
                 new_session_button_hovered: false,
-                settings,
-                keybindings: load_keybindings(),
-                command_history: Vec::new(),
-                coder_mode,
-                permission_default_allow,
-                permission_allow_tools: permission_config.allow_tools,
-                permission_deny_tools: permission_config.deny_tools,
-                permission_allow_bash_patterns: permission_config.bash_allow_patterns,
-                permission_deny_bash_patterns: permission_config.bash_deny_patterns,
-                permission_requests_rx: None,
-                permission_action_tx: None,
-                permission_action_rx: None,
-                permission_dialog: None,
-                permission_queue: VecDeque::new(),
-                permission_pending: None,
-                permission_history: Vec::new(),
-                tools_allowed: Vec::new(),
-                tools_disallowed: Vec::new(),
-                output_style: None,
-                mcp_project_servers,
-                mcp_runtime_servers: HashMap::new(),
-                mcp_disabled_servers: HashSet::new(),
-                mcp_status: Vec::new(),
-                mcp_project_error,
-                mcp_status_error: None,
-                mcp_project_path,
-                selected_model,
-                oanix_manifest: None,
-                oanix_manifest_rx,
-                autopilot_history: Vec::new(),
-                autopilot_history_rx: None,
-                autopilot_interrupt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-                autopilot_loop_iteration: 0,
-                autopilot_max_iterations: 10,
-                available_providers,
+                chat: ChatState::new(&settings),
+                tools: ToolsState::new(),
+                session: SessionState::new(
+                    selected_model,
+                    coder_mode_label_str,
+                    session_index,
+                    Some(rate_limit_rx),
+                ),
+                catalogs: CatalogState::new(
+                    agent_catalog,
+                    skill_catalog,
+                    hook_config,
+                    hook_catalog,
+                    mcp_project_servers,
+                    mcp_project_error,
+                    mcp_project_path,
+                ),
+                settings: SettingsState::new(settings, load_keybindings(), selected_model),
+                permissions: PermissionState::new(
+                    coder_mode,
+                    permission_default_allow,
+                    permission_config.allow_tools,
+                    permission_config.deny_tools,
+                    permission_config.bash_allow_patterns,
+                    permission_config.bash_deny_patterns,
+                ),
+                autopilot: AutopilotState::new(oanix_manifest_rx, available_providers),
                 llama_server_process,
                 show_kitchen_sink: false,
                 kitchen_sink_scroll: 0.0,
@@ -2454,8 +1515,7 @@ impl ApplicationHandler for CoderApp {
             input_width,
             input_height,
         );
-        let permission_open = state
-            .permission_dialog
+        let permission_open = state.permissions.permission_dialog
             .as_ref()
             .map(|dialog| dialog.is_open())
             .unwrap_or(false);
@@ -2482,7 +1542,7 @@ impl ApplicationHandler for CoderApp {
                 let y = position.y as f32 / scale_factor;
                 state.mouse_pos = (x, y);
                 if permission_open {
-                    if let Some(dialog) = state.permission_dialog.as_mut() {
+                    if let Some(dialog) = state.permissions.permission_dialog.as_mut() {
                         let input_event = InputEvent::MouseMove { x, y };
                         let _ = dialog.event(&input_event, permission_bounds, &mut state.event_context);
                     }
@@ -2497,25 +1557,25 @@ impl ApplicationHandler for CoderApp {
                         ModalState::SessionList { selected } => *selected,
                         _ => 0,
                     };
-                    if state.session_cards.len() != state.session_index.len() {
-                        state.refresh_session_cards();
+                    if state.session.session_cards.len() != state.session.session_index.len() {
+                        state.session.refresh_session_cards(state.chat.is_thinking);
                     }
-                    let checkpoint_height = if state.checkpoint_entries.is_empty() {
+                    let checkpoint_height = if state.session.checkpoint_entries.is_empty() {
                         0.0
                     } else {
-                        state.checkpoint_restore.size_hint().1.unwrap_or(0.0)
+                        state.session.checkpoint_restore.size_hint().1.unwrap_or(0.0)
                     };
                     let layout = session_list_layout(
                         logical_width,
                         logical_height,
-                        state.session_cards.len(),
+                        state.session.session_cards.len(),
                         selected,
                         checkpoint_height,
                     );
                     let input_event = InputEvent::MouseMove { x, y };
                     let mut handled = false;
                     for (index, bounds) in layout.card_bounds {
-                        if let Some(card) = state.session_cards.get_mut(index) {
+                        if let Some(card) = state.session.session_cards.get_mut(index) {
                             if matches!(
                                 card.event(&input_event, bounds, &mut state.event_context),
                                 EventResult::Handled
@@ -2526,8 +1586,7 @@ impl ApplicationHandler for CoderApp {
                     }
                     if let Some(bounds) = layout.checkpoint_bounds {
                         if matches!(
-                            state
-                                .checkpoint_restore
+                            state.session.checkpoint_restore
                                 .event(&input_event, bounds, &mut state.event_context),
                             EventResult::Handled
                         ) {
@@ -2544,22 +1603,22 @@ impl ApplicationHandler for CoderApp {
                         ModalState::AgentList { selected } => *selected,
                         _ => 0,
                     };
-                    if state.agent_cards.len() != state.agent_entries.len() {
-                        state.refresh_agent_cards();
+                    if state.catalogs.agent_cards.len() != state.catalogs.agent_entries.len() {
+                        state.catalogs.refresh_agent_cards(state.chat.is_thinking);
                     }
                     let modal_y = modal_y_in_content(logical_height, SESSION_MODAL_HEIGHT);
                     let content_top = agent_modal_content_top(modal_y, state);
                     let layout = agent_list_layout(
                         logical_width,
                         logical_height,
-                        state.agent_cards.len(),
+                        state.catalogs.agent_cards.len(),
                         selected,
                         content_top,
                     );
                     let input_event = InputEvent::MouseMove { x, y };
                     let mut handled = false;
                     for (index, bounds) in layout.card_bounds {
-                        if let Some(card) = state.agent_cards.get_mut(index) {
+                        if let Some(card) = state.catalogs.agent_cards.get_mut(index) {
                             if matches!(
                                 card.event(&input_event, bounds, &mut state.event_context),
                                 EventResult::Handled
@@ -2578,22 +1637,22 @@ impl ApplicationHandler for CoderApp {
                         ModalState::SkillList { selected } => *selected,
                         _ => 0,
                     };
-                    if state.skill_cards.len() != state.skill_entries.len() {
-                        state.refresh_skill_cards();
+                    if state.catalogs.skill_cards.len() != state.catalogs.skill_entries.len() {
+                        state.catalogs.refresh_skill_cards();
                     }
                     let modal_y = modal_y_in_content(logical_height, SESSION_MODAL_HEIGHT);
                     let content_top = skill_modal_content_top(modal_y, state);
                     let layout = skill_list_layout(
                         logical_width,
                         logical_height,
-                        state.skill_cards.len(),
+                        state.catalogs.skill_cards.len(),
                         selected,
                         content_top,
                     );
                     let input_event = InputEvent::MouseMove { x, y };
                     let mut handled = false;
                     for (index, bounds) in layout.card_bounds {
-                        if let Some(card) = state.skill_cards.get_mut(index) {
+                        if let Some(card) = state.catalogs.skill_cards.get_mut(index) {
                             if matches!(
                                 card.event(&input_event, bounds, &mut state.event_context),
                                 EventResult::Handled
@@ -2621,12 +1680,12 @@ impl ApplicationHandler for CoderApp {
                     let layout = hook_event_layout(
                         logical_width,
                         logical_height,
-                        state.hook_event_log.len(),
+                        state.catalogs.hook_event_log.len(),
                         selected,
                     );
                     let input_event = InputEvent::MouseMove { x, y };
                     let mut handled = false;
-                    if let Some(inspector) = state.hook_inspector.as_mut() {
+                    if let Some(inspector) = state.catalogs.hook_inspector.as_mut() {
                         if matches!(
                             inspector.event(
                                 &input_event,
@@ -2669,9 +1728,9 @@ impl ApplicationHandler for CoderApp {
 
                 let input_event = InputEvent::MouseMove { x, y };
                 let chat_layout = state.build_chat_layout(&sidebar_layout, logical_height);
-                if state.chat_context_menu.is_open() {
+                if state.chat.chat_context_menu.is_open() {
                     if matches!(
-                        state.chat_context_menu.event(
+                        state.chat.chat_context_menu.event(
                             &input_event,
                             Bounds::new(0.0, 0.0, logical_width, logical_height),
                             &mut state.event_context,
@@ -2682,9 +1741,9 @@ impl ApplicationHandler for CoderApp {
                         return;
                     }
                 }
-                if state.chat_selection_dragging {
+                if state.chat.chat_selection_dragging {
                     if let Some(point) = state.chat_selection_point_at(&chat_layout, x, y) {
-                        if let Some(selection) = &mut state.chat_selection {
+                        if let Some(selection) = &mut state.chat.chat_selection {
                             if selection.focus.message_index != point.message_index
                                 || selection.focus.offset != point.offset
                             {
@@ -2698,7 +1757,7 @@ impl ApplicationHandler for CoderApp {
                 let mut tools_handled = false;
                 for inline_layout in &chat_layout.inline_tools {
                     for block in &inline_layout.blocks {
-                        if let Some(tool) = state.tool_history.get_mut(block.index) {
+                        if let Some(tool) = state.tools.tool_history.get_mut(block.index) {
                             if matches!(
                                 tool.card
                                     .event(&input_event, block.card_bounds, &mut state.event_context),
@@ -2750,7 +1809,7 @@ impl ApplicationHandler for CoderApp {
                     }
                 };
                 if permission_open {
-                    if let Some(dialog) = state.permission_dialog.as_mut() {
+                    if let Some(dialog) = state.permissions.permission_dialog.as_mut() {
                         let _ =
                             dialog.event(&input_event, permission_bounds, &mut state.event_context);
                     }
@@ -2770,24 +1829,24 @@ impl ApplicationHandler for CoderApp {
                         ModalState::SessionList { selected } => *selected,
                         _ => 0,
                     };
-                    if state.session_cards.len() != state.session_index.len() {
-                        state.refresh_session_cards();
+                    if state.session.session_cards.len() != state.session.session_index.len() {
+                        state.session.refresh_session_cards(state.chat.is_thinking);
                     }
-                    let checkpoint_height = if state.checkpoint_entries.is_empty() {
+                    let checkpoint_height = if state.session.checkpoint_entries.is_empty() {
                         0.0
                     } else {
-                        state.checkpoint_restore.size_hint().1.unwrap_or(0.0)
+                        state.session.checkpoint_restore.size_hint().1.unwrap_or(0.0)
                     };
                     let layout = session_list_layout(
                         logical_width,
                         logical_height,
-                        state.session_cards.len(),
+                        state.session.session_cards.len(),
                         selected,
                         checkpoint_height,
                     );
                     let mut handled = false;
                     for (index, bounds) in layout.card_bounds {
-                        if let Some(card) = state.session_cards.get_mut(index) {
+                        if let Some(card) = state.session.session_cards.get_mut(index) {
                             if matches!(
                                 card.event(&input_event, bounds, &mut state.event_context),
                                 EventResult::Handled
@@ -2798,8 +1857,7 @@ impl ApplicationHandler for CoderApp {
                     }
                     if let Some(bounds) = layout.checkpoint_bounds {
                         if matches!(
-                            state
-                                .checkpoint_restore
+                            state.session.checkpoint_restore
                                 .event(&input_event, bounds, &mut state.event_context),
                             EventResult::Handled
                         ) {
@@ -2816,21 +1874,21 @@ impl ApplicationHandler for CoderApp {
                         ModalState::AgentList { selected } => *selected,
                         _ => 0,
                     };
-                    if state.agent_cards.len() != state.agent_entries.len() {
-                        state.refresh_agent_cards();
+                    if state.catalogs.agent_cards.len() != state.catalogs.agent_entries.len() {
+                        state.catalogs.refresh_agent_cards(state.chat.is_thinking);
                     }
                     let modal_y = modal_y_in_content(logical_height, SESSION_MODAL_HEIGHT);
                     let content_top = agent_modal_content_top(modal_y, state);
                     let layout = agent_list_layout(
                         logical_width,
                         logical_height,
-                        state.agent_cards.len(),
+                        state.catalogs.agent_cards.len(),
                         selected,
                         content_top,
                     );
                     let mut handled = false;
                     for (index, bounds) in layout.card_bounds {
-                        if let Some(card) = state.agent_cards.get_mut(index) {
+                        if let Some(card) = state.catalogs.agent_cards.get_mut(index) {
                             if matches!(
                                 card.event(&input_event, bounds, &mut state.event_context),
                                 EventResult::Handled
@@ -2849,21 +1907,21 @@ impl ApplicationHandler for CoderApp {
                         ModalState::SkillList { selected } => *selected,
                         _ => 0,
                     };
-                    if state.skill_cards.len() != state.skill_entries.len() {
-                        state.refresh_skill_cards();
+                    if state.catalogs.skill_cards.len() != state.catalogs.skill_entries.len() {
+                        state.catalogs.refresh_skill_cards();
                     }
                     let modal_y = modal_y_in_content(logical_height, SESSION_MODAL_HEIGHT);
                     let content_top = skill_modal_content_top(modal_y, state);
                     let layout = skill_list_layout(
                         logical_width,
                         logical_height,
-                        state.skill_cards.len(),
+                        state.catalogs.skill_cards.len(),
                         selected,
                         content_top,
                     );
                     let mut handled = false;
                     for (index, bounds) in layout.card_bounds {
-                        if let Some(card) = state.skill_cards.get_mut(index) {
+                        if let Some(card) = state.catalogs.skill_cards.get_mut(index) {
                             if matches!(
                                 card.event(&input_event, bounds, &mut state.event_context),
                                 EventResult::Handled
@@ -2891,7 +1949,7 @@ impl ApplicationHandler for CoderApp {
                     let layout = hook_event_layout(
                         logical_width,
                         logical_height,
-                        state.hook_event_log.len(),
+                        state.catalogs.hook_event_log.len(),
                         selected_index,
                     );
                     let mut handled = false;
@@ -2910,7 +1968,7 @@ impl ApplicationHandler for CoderApp {
                             }
                         }
                     }
-                    if let Some(inspector) = state.hook_inspector.as_mut() {
+                    if let Some(inspector) = state.catalogs.hook_inspector.as_mut() {
                         if matches!(
                             inspector.event(
                                 &input_event,
@@ -2948,18 +2006,18 @@ impl ApplicationHandler for CoderApp {
                     &sidebar_layout,
                     logical_height,
                 );
-                if state.chat_context_menu.is_open() {
+                if state.chat.chat_context_menu.is_open() {
                     if matches!(
-                        state.chat_context_menu.event(
+                        state.chat.chat_context_menu.event(
                             &input_event,
                             Bounds::new(0.0, 0.0, logical_width, logical_height),
                             &mut state.event_context,
                         ),
                         EventResult::Handled
                     ) {
-                        if let Some(action) = state.chat_context_menu.take_selected() {
+                        if let Some(action) = state.chat.chat_context_menu.take_selected() {
                             state.handle_chat_menu_action(&action, &chat_layout);
-                            state.chat_context_menu_target = None;
+                            state.chat.chat_context_menu_target = None;
                         }
                         state.window.request_redraw();
                         return;
@@ -2970,44 +2028,43 @@ impl ApplicationHandler for CoderApp {
                 {
                     if let Some(point) = state.chat_selection_point_at(&chat_layout, x, y) {
                         if state.modifiers.shift_key() {
-                            if let Some(selection) = &mut state.chat_selection {
+                            if let Some(selection) = &mut state.chat.chat_selection {
                                 selection.focus = point;
                             } else {
-                                state.chat_selection = Some(ChatSelection {
+                                state.chat.chat_selection = Some(ChatSelection {
                                     anchor: point,
                                     focus: point,
                                 });
                             }
                         } else {
-                            state.chat_selection = Some(ChatSelection {
+                            state.chat.chat_selection = Some(ChatSelection {
                                 anchor: point,
                                 focus: point,
                             });
                         }
-                        state.chat_selection_dragging = true;
+                        state.chat.chat_selection_dragging = true;
                         state.window.request_redraw();
                     } else {
-                        state.chat_selection = None;
+                        state.chat.chat_selection = None;
                     }
                 }
                 if button_state == ElementState::Released
                     && matches!(button, winit::event::MouseButton::Left)
                 {
-                    state.chat_selection_dragging = false;
+                    state.chat.chat_selection_dragging = false;
                 }
                 if button_state == ElementState::Pressed
                     && matches!(button, winit::event::MouseButton::Right)
                 {
                     if let Some(point) = state.chat_selection_point_at(&chat_layout, x, y) {
                         if !state.chat_selection_contains(point) {
-                            state.chat_selection = Some(ChatSelection {
+                            state.chat.chat_selection = Some(ChatSelection {
                                 anchor: point,
                                 focus: point,
                             });
                         }
-                        state.chat_selection_dragging = false;
-                        let copy_enabled = state
-                            .chat_selection
+                        state.chat.chat_selection_dragging = false;
+                        let copy_enabled = state.chat.chat_selection
                             .as_ref()
                             .is_some_and(|sel| !sel.is_empty())
                             || chat_layout.message_layouts.get(point.message_index).is_some();
@@ -3024,7 +2081,7 @@ impl ApplicationHandler for CoderApp {
                 let mut tools_handled = false;
                 for inline_layout in &chat_layout.inline_tools {
                     for block in &inline_layout.blocks {
-                        if let Some(tool) = state.tool_history.get_mut(block.index) {
+                        if let Some(tool) = state.tools.tool_history.get_mut(block.index) {
                             if matches!(
                                 tool.card
                                     .event(&input_event, block.card_bounds, &mut state.event_context),
@@ -3051,10 +2108,10 @@ impl ApplicationHandler for CoderApp {
                     state.window.request_redraw();
                 }
                 if button_state == ElementState::Released
-                    && !state.session_info.permission_mode.is_empty()
+                    && !state.session.session_info.permission_mode.is_empty()
                 {
                     let status_y = logical_height - STATUS_BAR_HEIGHT - 2.0;
-                    let mode_text = format!("[{}]", state.session_info.permission_mode);
+                    let mode_text = format!("[{}]", state.session.session_info.permission_mode);
                     let mode_width = mode_text.len() as f32 * 6.6;
                     let mode_bounds = Bounds::new(
                         content_x,
@@ -3063,7 +2120,9 @@ impl ApplicationHandler for CoderApp {
                         STATUS_BAR_HEIGHT + 8.0,
                     );
                     if mode_bounds.contains(Point::new(x, y)) {
-                        state.cycle_coder_mode();
+                        state
+                            .permissions
+                            .cycle_coder_mode(&mut state.session.session_info);
                         state.window.request_redraw();
                         return;
                     }
@@ -3104,13 +2163,13 @@ impl ApplicationHandler for CoderApp {
                     let layout = hook_event_layout(
                         logical_width,
                         logical_height,
-                        state.hook_event_log.len(),
+                        state.catalogs.hook_event_log.len(),
                         selected,
                     );
                     let mouse_point = Point::new(state.mouse_pos.0, state.mouse_pos.1);
                     if layout.inspector_bounds.contains(mouse_point) {
                         let input_event = InputEvent::Scroll { dx: 0.0, dy: dy * 40.0 };
-                        if let Some(inspector) = state.hook_inspector.as_mut() {
+                        if let Some(inspector) = state.catalogs.hook_inspector.as_mut() {
                             if matches!(
                                 inspector.event(
                                     &input_event,
@@ -3130,8 +2189,8 @@ impl ApplicationHandler for CoderApp {
                         } else if dy < 0.0 {
                             next_selected = next_selected.saturating_sub(1);
                         }
-                        if !state.hook_event_log.is_empty() {
-                            next_selected = next_selected.min(state.hook_event_log.len() - 1);
+                        if !state.catalogs.hook_event_log.is_empty() {
+                            next_selected = next_selected.min(state.catalogs.hook_event_log.len() - 1);
                         } else {
                             next_selected = 0;
                         }
@@ -3154,7 +2213,7 @@ impl ApplicationHandler for CoderApp {
                 for inline_layout in &chat_layout.inline_tools {
                     for block in &inline_layout.blocks {
                         if block.card_bounds.contains(mouse_point) {
-                            if let Some(tool) = state.tool_history.get_mut(block.index) {
+                            if let Some(tool) = state.tools.tool_history.get_mut(block.index) {
                                 if matches!(
                                     tool.card
                                         .event(&scroll_input_event, block.card_bounds, &mut state.event_context),
@@ -3180,7 +2239,7 @@ impl ApplicationHandler for CoderApp {
                     return;
                 }
                 // Scroll the message area (positive dy = scroll up, negative = scroll down)
-                state.scroll_offset = (state.scroll_offset - dy * 40.0).max(0.0);
+                state.chat.scroll_offset = (state.chat.scroll_offset - dy * 40.0).max(0.0);
                 state.window.request_redraw();
             }
             WindowEvent::KeyboardInput {
@@ -3219,11 +2278,11 @@ impl ApplicationHandler for CoderApp {
                     }
 
                     // Autopilot loop interrupt - Escape stops autonomous execution
-                    if matches!(state.coder_mode, CoderMode::Autopilot) {
+                    if matches!(state.permissions.coder_mode, CoderMode::Autopilot) {
                         if let WinitKey::Named(WinitNamedKey::Escape) = &key_event.logical_key {
-                            if state.is_thinking {
+                            if state.chat.is_thinking {
                                 // Signal interrupt to the autopilot loop
-                                state.autopilot_interrupt_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                                state.autopilot.autopilot_interrupt_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                                 tracing::info!("Autopilot: interrupt requested by user");
                                 state.window.request_redraw();
                                 return;
@@ -3246,24 +2305,24 @@ impl ApplicationHandler for CoderApp {
 
                     let modifiers = convert_modifiers(&state.modifiers);
 
-                    if state.chat_context_menu.is_open() {
+                    if state.chat.chat_context_menu.is_open() {
                         if let Some(key) = convert_key_for_input(&key_event.logical_key) {
                             let input_event = InputEvent::KeyDown { key, modifiers };
                             if matches!(
-                                state.chat_context_menu.event(
+                                state.chat.chat_context_menu.event(
                                     &input_event,
                                     Bounds::new(0.0, 0.0, logical_width, logical_height),
                                     &mut state.event_context,
                                 ),
                                 EventResult::Handled
                             ) {
-                                if let Some(action) = state.chat_context_menu.take_selected() {
+                                if let Some(action) = state.chat.chat_context_menu.take_selected() {
                                     let chat_layout = state.build_chat_layout(
                                         &sidebar_layout,
                                         logical_height,
                                     );
                                     state.handle_chat_menu_action(&action, &chat_layout);
-                                    state.chat_context_menu_target = None;
+                                    state.chat.chat_context_menu_target = None;
                                 }
                                 state.window.request_redraw();
                                 return;
@@ -3282,7 +2341,7 @@ impl ApplicationHandler for CoderApp {
                     }
 
                     if let Some(key) = convert_key_for_binding(&key_event.logical_key) {
-                        if let Some(action) = match_action(&key, modifiers, &state.keybindings) {
+                        if let Some(action) = match_action(&key, modifiers, &state.settings.keybindings) {
                             match action {
                                 KeyAction::Interrupt => state.interrupt_query(),
                                 KeyAction::OpenCommandPalette => {
@@ -3300,7 +2359,9 @@ impl ApplicationHandler for CoderApp {
 
                     if let WinitKey::Named(WinitNamedKey::Tab) = &key_event.logical_key {
                         if state.modifiers.shift_key() {
-                            state.cycle_coder_mode();
+                            state
+                                .permissions
+                                .cycle_coder_mode(&mut state.session.session_info);
                             state.window.request_redraw();
                             return;
                         }
@@ -3319,11 +2380,11 @@ impl ApplicationHandler for CoderApp {
                                 }
 
                                 if let Some(command) = parse_command(&prompt) {
-                                    state.command_history.push(prompt);
+                                    state.settings.command_history.push(prompt);
                                     state.input.set_value("");
                                     action = handle_command(state, command);
-                                } else if !state.is_thinking {
-                                    state.command_history.push(prompt.clone());
+                                } else if !state.chat.is_thinking {
+                                    state.settings.command_history.push(prompt.clone());
                                     state.input.set_value("");
                                     submit_prompt = Some(prompt);
                                 } else {
@@ -3385,7 +2446,7 @@ impl AppState {
             commands.push(command);
         };
 
-        let interrupt_keys = keybinding_labels(&self.keybindings, KeyAction::Interrupt, "Ctrl+C");
+        let interrupt_keys = keybinding_labels(&self.settings.keybindings, KeyAction::Interrupt, "Ctrl+C");
         push_command(
             command_palette_ids::INTERRUPT_REQUEST,
             "Interrupt Request",
@@ -3402,7 +2463,7 @@ impl AppState {
             Some("F1".to_string()),
         );
 
-        let settings_keys = keybinding_labels(&self.keybindings, KeyAction::OpenSettings, "Ctrl+,");
+        let settings_keys = keybinding_labels(&self.settings.keybindings, KeyAction::OpenSettings, "Ctrl+,");
         push_command(
             command_palette_ids::SETTINGS,
             "Open Settings",
@@ -3534,11 +2595,11 @@ impl AppState {
         );
 
         let left_keys =
-            keybinding_labels(&self.keybindings, KeyAction::ToggleLeftSidebar, "Ctrl+[");
+            keybinding_labels(&self.settings.keybindings, KeyAction::ToggleLeftSidebar, "Ctrl+[");
         let right_keys =
-            keybinding_labels(&self.keybindings, KeyAction::ToggleRightSidebar, "Ctrl+]");
+            keybinding_labels(&self.settings.keybindings, KeyAction::ToggleRightSidebar, "Ctrl+]");
         let toggle_keys =
-            keybinding_labels(&self.keybindings, KeyAction::ToggleSidebars, "Ctrl+\\");
+            keybinding_labels(&self.settings.keybindings, KeyAction::ToggleSidebars, "Ctrl+\\");
         push_command(
             command_palette_ids::SIDEBAR_LEFT,
             "Open Left Sidebar",
@@ -3628,9 +2689,9 @@ impl AppState {
 
     fn open_command_palette(&mut self) {
         self.modal_state = ModalState::None;
-        if self.chat_context_menu.is_open() {
-            self.chat_context_menu.close();
-            self.chat_context_menu_target = None;
+        if self.chat.chat_context_menu.is_open() {
+            self.chat.chat_context_menu.close();
+            self.chat.chat_context_menu_target = None;
         }
         self.command_palette.set_commands(self.build_command_palette_commands());
         self.command_palette.open();
@@ -3639,7 +2700,7 @@ impl AppState {
     fn open_model_picker(&mut self) {
         let current_idx = ModelOption::all()
             .iter()
-            .position(|m| *m == self.selected_model)
+            .position(|m| *m == self.settings.selected_model)
             .unwrap_or(0);
         self.modal_state = ModalState::ModelPicker { selected: current_idx };
     }
@@ -3647,30 +2708,28 @@ impl AppState {
     fn open_session_list(&mut self) {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         let (checkpoint_tx, checkpoint_rx) = mpsc::unbounded_channel();
-        self.session_action_tx = Some(action_tx);
-        self.session_action_rx = Some(action_rx);
-        self.checkpoint_action_tx = Some(checkpoint_tx);
-        self.checkpoint_action_rx = Some(checkpoint_rx);
-        self.refresh_session_cards();
-        self.refresh_checkpoint_restore();
-        let selected = self
-            .session_index
+        self.session.session_action_tx = Some(action_tx);
+        self.session.session_action_rx = Some(action_rx);
+        self.session.checkpoint_action_tx = Some(checkpoint_tx);
+        self.session.checkpoint_action_rx = Some(checkpoint_rx);
+        self.session.refresh_session_cards(self.chat.is_thinking);
+        self.session.refresh_checkpoint_restore(&self.chat.messages);
+        let selected = self.session.session_index
             .iter()
-            .position(|entry| entry.id == self.session_info.session_id)
+            .position(|entry| entry.id == self.session.session_info.session_id)
             .unwrap_or(0);
         self.modal_state = ModalState::SessionList { selected };
     }
 
     fn open_agent_list(&mut self) {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
-        self.agent_action_tx = Some(action_tx);
-        self.agent_action_rx = Some(action_rx);
-        self.refresh_agent_cards();
-        let selected = self
-            .active_agent
+        self.catalogs.agent_action_tx = Some(action_tx);
+        self.catalogs.agent_action_rx = Some(action_rx);
+        self.catalogs.refresh_agent_cards(self.chat.is_thinking);
+        let selected = self.catalogs.active_agent
             .as_ref()
             .and_then(|name| {
-                self.agent_entries
+                self.catalogs.agent_entries
                     .iter()
                     .position(|entry| entry.name == *name)
             })
@@ -3680,9 +2739,9 @@ impl AppState {
 
     fn open_skill_list(&mut self) {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
-        self.skill_action_tx = Some(action_tx);
-        self.skill_action_rx = Some(action_rx);
-        self.refresh_skill_cards();
+        self.catalogs.skill_action_tx = Some(action_tx);
+        self.catalogs.skill_action_rx = Some(action_rx);
+        self.catalogs.refresh_skill_cards();
         self.modal_state = ModalState::SkillList { selected: 0 };
     }
 
@@ -3704,26 +2763,26 @@ impl AppState {
     }
 
     fn persist_settings(&self) {
-        save_settings(&self.settings);
+        save_settings(&self.settings.coder_settings);
     }
 
     fn apply_settings(&mut self) {
-        normalize_settings(&mut self.settings);
+        normalize_settings(&mut self.settings.coder_settings);
         let current_value = self.input.get_value().to_string();
         let focused = self.input.is_focused();
-        self.input = build_input(&self.settings);
+        self.input = build_input(&self.settings.coder_settings);
         self.input.set_value(current_value);
         if focused {
             self.input.focus();
         }
-        self.markdown_renderer = build_markdown_renderer(&self.settings);
-        self.streaming_markdown.set_markdown_config(build_markdown_config(&self.settings));
+        self.chat.markdown_renderer = build_markdown_renderer(&self.settings.coder_settings);
+        self.chat.streaming_markdown.set_markdown_config(build_markdown_config(&self.settings.coder_settings));
     }
 
     fn update_selected_model(&mut self, model: ModelOption) {
-        self.selected_model = model;
-        self.session_info.model = self.selected_model.model_id().to_string();
-        update_settings_model(&mut self.settings, self.selected_model);
+        self.settings.selected_model = model;
+        self.session.session_info.model = self.settings.selected_model.model_id().to_string();
+        update_settings_model(&mut self.settings.coder_settings, self.settings.selected_model);
         self.persist_settings();
     }
 
@@ -3743,13 +2802,13 @@ impl AppState {
 
     fn apply_session_history_limit(&mut self) {
         let removed =
-            apply_session_history_limit(&mut self.session_index, self.settings.session_history_limit);
+            apply_session_history_limit(&mut self.session.session_index, self.settings.coder_settings.session_history_limit);
         if !removed.is_empty() {
-            let _ = save_session_index(&self.session_index);
+            let _ = save_session_index(&self.session.session_index);
             for removed_id in removed {
                 let _ = fs::remove_dir_all(session_messages_dir(&removed_id));
             }
-            self.refresh_session_cards();
+            self.session.refresh_session_cards(self.chat.is_thinking);
         }
     }
 
@@ -3763,8 +2822,8 @@ impl AppState {
 
     fn open_hooks(&mut self) {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
-        self.hook_inspector_action_tx = Some(action_tx);
-        self.hook_inspector_action_rx = Some(action_rx);
+        self.catalogs.hook_inspector_action_tx = Some(action_tx);
+        self.catalogs.hook_inspector_action_rx = Some(action_rx);
         self.modal_state = ModalState::Hooks {
             view: HookModalView::Config,
             selected: 0,
@@ -3774,36 +2833,36 @@ impl AppState {
     fn reload_hooks(&mut self) {
         let cwd = std::env::current_dir().unwrap_or_default();
         let catalog = load_hook_scripts(&cwd);
-        self.hook_scripts = catalog.entries;
-        self.hook_project_path = catalog.project_path;
-        self.hook_user_path = catalog.user_path;
-        self.hook_load_error = catalog.error;
+        self.catalogs.hook_scripts = catalog.entries;
+        self.catalogs.hook_project_path = catalog.project_path;
+        self.catalogs.hook_user_path = catalog.user_path;
+        self.catalogs.hook_load_error = catalog.error;
     }
 
     fn toggle_hook_setting(&mut self, setting: HookSetting) {
         match setting {
             HookSetting::ToolBlocker => {
-                self.hook_config.tool_blocker = !self.hook_config.tool_blocker;
+                self.catalogs.hook_config.tool_blocker = !self.catalogs.hook_config.tool_blocker;
             }
             HookSetting::ToolLogger => {
-                self.hook_config.tool_logger = !self.hook_config.tool_logger;
+                self.catalogs.hook_config.tool_logger = !self.catalogs.hook_config.tool_logger;
             }
             HookSetting::OutputTruncator => {
-                self.hook_config.output_truncator = !self.hook_config.output_truncator;
+                self.catalogs.hook_config.output_truncator = !self.catalogs.hook_config.output_truncator;
             }
             HookSetting::ContextInjection => {
-                self.hook_config.context_injection = !self.hook_config.context_injection;
+                self.catalogs.hook_config.context_injection = !self.catalogs.hook_config.context_injection;
             }
             HookSetting::TodoEnforcer => {
-                self.hook_config.todo_enforcer = !self.hook_config.todo_enforcer;
+                self.catalogs.hook_config.todo_enforcer = !self.catalogs.hook_config.todo_enforcer;
             }
         }
-        save_hook_config(&self.hook_config);
+        save_hook_config(&self.catalogs.hook_config);
     }
 
     fn clear_hook_log(&mut self) {
-        self.hook_event_log.clear();
-        self.hook_inspector = None;
+        self.catalogs.hook_event_log.clear();
+        self.catalogs.hook_inspector = None;
         if let ModalState::Hooks { view, selected } = &mut self.modal_state {
             if *view == HookModalView::Events {
                 *selected = 0;
@@ -3814,279 +2873,46 @@ impl AppState {
     fn reload_agents(&mut self) {
         let cwd = std::env::current_dir().unwrap_or_default();
         let catalog = load_agent_entries(&cwd);
-        self.agent_entries = catalog.entries;
-        self.agent_project_path = catalog.project_path;
-        self.agent_user_path = catalog.user_path;
-        self.agent_load_error = catalog.error;
-        if let Some(active) = self.active_agent.clone() {
-            if !self.agent_entries.iter().any(|entry| entry.name == active) {
-                self.active_agent = None;
+        self.catalogs.agent_entries = catalog.entries;
+        self.catalogs.agent_project_path = catalog.project_path;
+        self.catalogs.agent_user_path = catalog.user_path;
+        self.catalogs.agent_load_error = catalog.error;
+        if let Some(active) = self.catalogs.active_agent.clone() {
+            if !self.catalogs.agent_entries.iter().any(|entry| entry.name == active) {
+                self.catalogs.active_agent = None;
                 self.push_system_message(format!(
                     "Active agent {} no longer available.",
                     active
                 ));
             }
         }
-        self.refresh_agent_cards();
+        self.catalogs.refresh_agent_cards(self.chat.is_thinking);
     }
 
     fn reload_skills(&mut self) {
         let cwd = std::env::current_dir().unwrap_or_default();
         let catalog = load_skill_entries(&cwd);
-        self.skill_entries = catalog.entries;
-        self.skill_project_path = catalog.project_path;
-        self.skill_user_path = catalog.user_path;
-        self.skill_load_error = catalog.error;
-        self.refresh_skill_cards();
+        self.catalogs.skill_entries = catalog.entries;
+        self.catalogs.skill_project_path = catalog.project_path;
+        self.catalogs.skill_user_path = catalog.user_path;
+        self.catalogs.skill_load_error = catalog.error;
+        self.catalogs.refresh_skill_cards();
     }
 
     fn reload_mcp_project_servers(&mut self) {
         let cwd = std::env::current_dir().unwrap_or_default();
         let (servers, error) = load_mcp_project_servers(&cwd);
-        self.mcp_project_servers = servers;
-        self.mcp_project_error = error;
-        self.mcp_project_path = Some(mcp_project_file(&cwd));
-    }
-
-    fn merged_mcp_servers(&self) -> HashMap<String, McpServerConfig> {
-        let mut servers = self.mcp_project_servers.clone();
-        for (name, config) in &self.mcp_runtime_servers {
-            servers.insert(name.clone(), config.clone());
-        }
-        for name in &self.mcp_disabled_servers {
-            servers.remove(name);
-        }
-        servers
-    }
-
-    fn mcp_entries(&self) -> Vec<McpServerEntry> {
-        let mut entries = Vec::new();
-        let mut status_map = HashMap::new();
-        for status in &self.mcp_status {
-            status_map.insert(status.name.clone(), status.status.clone());
-        }
-
-        for (name, config) in &self.mcp_project_servers {
-            entries.push(McpServerEntry {
-                name: name.clone(),
-                source: Some(McpServerSource::Project),
-                config: Some(config.clone()),
-                status: status_map.remove(name),
-                disabled: self.mcp_disabled_servers.contains(name),
-            });
-        }
-
-        for (name, config) in &self.mcp_runtime_servers {
-            entries.push(McpServerEntry {
-                name: name.clone(),
-                source: Some(McpServerSource::Runtime),
-                config: Some(config.clone()),
-                status: status_map.remove(name),
-                disabled: self.mcp_disabled_servers.contains(name),
-            });
-        }
-
-        for (name, status) in status_map {
-            entries.push(McpServerEntry {
-                name,
-                source: None,
-                config: None,
-                status: Some(status),
-                disabled: false,
-            });
-        }
-
-        entries.sort_by(|a, b| a.name.cmp(&b.name));
-        entries
-    }
-
-    fn add_runtime_mcp_server(&mut self, name: String, config: McpServerConfig) {
-        self.mcp_runtime_servers.insert(name.clone(), config);
-        self.mcp_disabled_servers.remove(&name);
-    }
-
-    fn remove_mcp_server(&mut self, name: &str) {
-        self.mcp_runtime_servers.remove(name);
-        self.mcp_disabled_servers.insert(name.to_string());
-    }
-
-    fn update_mcp_status(&mut self, servers: Vec<McpServerStatus>, error: Option<String>) {
-        self.mcp_status = servers;
-        self.mcp_status_error = error;
-    }
-
-    fn mcp_status_summary(&self) -> Option<String> {
-        let total = self.merged_mcp_servers().len();
-        if total == 0 {
-            return None;
-        }
-        if self.mcp_status_error.is_some() {
-            return Some("mcp error".to_string());
-        }
-        if self.mcp_status.is_empty() {
-            return Some(format!("mcp {}", total));
-        }
-        let connected = self
-            .mcp_status
-            .iter()
-            .filter(|status| status.status.eq_ignore_ascii_case("connected"))
-            .count();
-        Some(format!("mcp {}/{}", connected, total))
+        self.catalogs.mcp_project_servers = servers;
+        self.catalogs.mcp_project_error = error;
+        self.catalogs.mcp_project_path = Some(mcp_project_file(&cwd));
     }
 
     fn request_mcp_status(&mut self) {
-        if let Some(tx) = &self.query_control_tx {
+        if let Some(tx) = &self.chat.query_control_tx {
             let _ = tx.send(QueryControl::FetchMcpStatus);
         } else {
             self.push_system_message("No active session for MCP status.".to_string());
         }
-    }
-
-    fn refresh_session_cards(&mut self) {
-        let action_tx = self.session_action_tx.clone();
-        self.session_cards = self
-            .session_index
-            .iter()
-            .map(|entry| {
-                let is_active = entry.id == self.session_info.session_id;
-                let status = if is_active {
-                    if self.is_thinking {
-                        SessionStatus::Running
-                    } else {
-                        SessionStatus::Paused
-                    }
-                } else {
-                    SessionStatus::Completed
-                };
-                let title = if entry.last_message.trim().is_empty() {
-                    format!("Session {}", truncate_preview(&entry.id, 8))
-                } else {
-                    truncate_preview(&entry.last_message, 64)
-                };
-                let duration = entry.updated_at.saturating_sub(entry.created_at);
-                let timestamp = format_relative_time(entry.updated_at);
-                let model = entry
-                    .model
-                    .replace("claude-", "")
-                    .replace("-2025", "");
-                let info = SessionCardInfo::new(entry.id.clone(), title)
-                    .status(status)
-                    .duration(duration)
-                    .task_count(entry.message_count as u32)
-                    .timestamp(timestamp)
-                    .model(model);
-                let mut card = SessionCard::new(info).show_actions(true);
-                if let Some(tx) = action_tx.clone() {
-                    card = card.on_action(move |action, session_id| {
-                        let _ = tx.send(SessionCardEvent { action, session_id });
-                    });
-                }
-                card
-            })
-            .collect();
-    }
-
-    fn refresh_agent_cards(&mut self) {
-        let action_tx = self.agent_action_tx.clone();
-        let active_agent = self.active_agent.clone();
-        let is_thinking = self.is_thinking;
-        self.agent_cards = self
-            .agent_entries
-            .iter()
-            .map(|entry| {
-                let status = if active_agent
-                    .as_ref()
-                    .map(|name| name == &entry.name)
-                    .unwrap_or(false)
-                {
-                    if is_thinking {
-                        AgentStatus::Busy
-                    } else {
-                        AgentStatus::Online
-                    }
-                } else {
-                    AgentStatus::Idle
-                };
-                let agent_type = match entry.source {
-                    AgentSource::Project => AgentType::Sovereign,
-                    AgentSource::User => AgentType::Custodial,
-                };
-                let created_at = entry
-                    .created_at
-                    .map(format_relative_time)
-                    .unwrap_or_else(|| "unknown".to_string());
-                let info = AgentProfileInfo::new(&entry.name, &entry.name, agent_type)
-                    .status(status)
-                    .description(entry.definition.description.clone())
-                    .capabilities(agent_capabilities(entry))
-                    .created_at(created_at);
-                let mut card = AgentProfileCard::new(info);
-                if let Some(tx) = action_tx.clone() {
-                    let tx_view = tx.clone();
-                    let agent_id_view = entry.name.clone();
-                    let agent_id_action = entry.name.clone();
-                    card = card
-                        .on_view(move |_id| {
-                            let _ = tx_view.send(AgentCardEvent {
-                                action: AgentCardAction::Select,
-                                agent_id: agent_id_view.clone(),
-                            });
-                        })
-                        .on_action(move |_id| {
-                            let _ = tx.send(AgentCardEvent {
-                                action: AgentCardAction::ToggleActive,
-                                agent_id: agent_id_action.clone(),
-                            });
-                        });
-                }
-                card
-            })
-            .collect();
-    }
-
-    fn refresh_skill_cards(&mut self) {
-        let action_tx = self.skill_action_tx.clone();
-        self.skill_cards = self
-            .skill_entries
-            .iter()
-            .map(|entry| {
-                let mut card = SkillCard::new(entry.info.clone());
-                if let Some(tx) = action_tx.clone() {
-                    let view_tx = tx.clone();
-                    let skill_id_view = entry.info.id.clone();
-                    let skill_id_action = entry.info.id.clone();
-                    card = card
-                        .on_view(move |_id| {
-                            let _ = view_tx.send(SkillCardEvent {
-                                action: SkillCardAction::View,
-                                skill_id: skill_id_view.clone(),
-                            });
-                        })
-                        .on_install(move |_id| {
-                            let _ = tx.send(SkillCardEvent {
-                                action: SkillCardAction::Install,
-                                skill_id: skill_id_action.clone(),
-                            });
-                        });
-                }
-                card
-            })
-            .collect();
-    }
-
-    fn refresh_checkpoint_restore(&mut self) {
-        let entries = build_checkpoint_entries(&self.messages);
-        let labels = entries.iter().map(|entry| entry.label.clone()).collect();
-        let action_tx = self.checkpoint_action_tx.clone();
-        let mut restore = CheckpointRestore::new().checkpoints(labels);
-        if let Some(tx) = action_tx {
-            let tx = tx.clone();
-            restore = restore.on_restore(move |index, _label| {
-                let _ = tx.send(index);
-            });
-        }
-        self.checkpoint_entries = entries;
-        self.checkpoint_restore = restore;
     }
 
     fn handle_session_card_action(&mut self, action: SessionAction, session_id: String) {
@@ -4112,7 +2938,7 @@ impl AppState {
                 self.modal_state = ModalState::None;
             }
             AgentCardAction::ToggleActive => {
-                if self.active_agent.as_deref() == Some(agent_id.as_str()) {
+                if self.catalogs.active_agent.as_deref() == Some(agent_id.as_str()) {
                     self.clear_active_agent();
                 } else {
                     self.set_active_agent_by_name(&agent_id);
@@ -4124,8 +2950,7 @@ impl AppState {
     fn handle_skill_card_action(&mut self, action: SkillCardAction, skill_id: String) {
         match action {
             SkillCardAction::View => {
-                if let Some(index) = self
-                    .skill_entries
+                if let Some(index) = self.catalogs.skill_entries
                     .iter()
                     .position(|entry| entry.info.id == skill_id)
                 {
@@ -4135,8 +2960,7 @@ impl AppState {
                 }
             }
             SkillCardAction::Install => {
-                if let Some(entry) = self
-                    .skill_entries
+                if let Some(entry) = self.catalogs.skill_entries
                     .iter()
                     .find(|entry| entry.info.id == skill_id)
                 {
@@ -4156,8 +2980,7 @@ impl AppState {
             self.push_system_message("Agent name is required.".to_string());
             return;
         }
-        if let Some(entry) = self
-            .agent_entries
+        if let Some(entry) = self.catalogs.agent_entries
             .iter()
             .find(|entry| entry.name.eq_ignore_ascii_case(trimmed))
         {
@@ -4180,21 +3003,21 @@ impl AppState {
                 Some(trimmed.to_string())
             }
         });
-        if next == self.active_agent {
+        if next == self.catalogs.active_agent {
             return;
         }
-        self.active_agent = next.clone();
+        self.catalogs.active_agent = next.clone();
         if let Some(name) = next {
             self.push_system_message(format!("Active agent set to {}.", name));
         } else {
             self.push_system_message("Active agent cleared.".to_string());
         }
-        self.refresh_agent_cards();
+        self.catalogs.refresh_agent_cards(self.chat.is_thinking);
     }
 
     fn agent_definitions_for_query(&self) -> HashMap<String, AgentDefinition> {
         let mut agents = HashMap::new();
-        for entry in &self.agent_entries {
+        for entry in &self.catalogs.agent_entries {
             agents.insert(entry.name.clone(), entry.definition.clone());
         }
         agents
@@ -4202,15 +3025,13 @@ impl AppState {
 
     fn setting_sources_for_query(&self) -> Vec<SettingSource> {
         let mut sources = Vec::new();
-        if self
-            .skill_entries
+        if self.catalogs.skill_entries
             .iter()
             .any(|entry| entry.source == SkillSource::Project)
         {
             sources.push(SettingSource::Project);
         }
-        if self
-            .skill_entries
+        if self.catalogs.skill_entries
             .iter()
             .any(|entry| entry.source == SkillSource::User)
         {
@@ -4220,9 +3041,9 @@ impl AppState {
     }
 
     fn push_hook_log(&mut self, entry: HookLogEntry) {
-        self.hook_event_log.insert(0, entry);
-        if self.hook_event_log.len() > HOOK_LOG_LIMIT {
-            self.hook_event_log.truncate(HOOK_LOG_LIMIT);
+        self.catalogs.hook_event_log.insert(0, entry);
+        if self.catalogs.hook_event_log.len() > HOOK_LOG_LIMIT {
+            self.catalogs.hook_event_log.truncate(HOOK_LOG_LIMIT);
         }
         if let ModalState::Hooks {
             view: HookModalView::Events,
@@ -4235,24 +3056,24 @@ impl AppState {
     }
 
     fn sync_hook_inspector(&mut self, selected: usize) {
-        let Some(entry) = self.hook_event_log.get(selected) else {
-            self.hook_inspector = None;
+        let Some(entry) = self.catalogs.hook_event_log.get(selected) else {
+            self.catalogs.hook_inspector = None;
             return;
         };
 
         let event = hook_log_event_data(entry);
-        let view = self.hook_inspector_view;
+        let view = self.catalogs.hook_inspector_view;
         let mut inspector = EventInspector::new(event).view(view);
-        if let Some(tx) = self.hook_inspector_action_tx.clone() {
+        if let Some(tx) = self.catalogs.hook_inspector_action_tx.clone() {
             inspector = inspector.on_view_change(move |view| {
                 let _ = tx.send(view);
             });
         }
-        self.hook_inspector = Some(inspector);
+        self.catalogs.hook_inspector = Some(inspector);
     }
 
     fn handle_checkpoint_restore(&mut self, index: usize) {
-        if let Some(entry) = self.checkpoint_entries.get(index) {
+        if let Some(entry) = self.session.checkpoint_entries.get(index) {
             self.request_rewind_files(entry.user_message_id.clone());
         }
     }
@@ -4263,19 +3084,22 @@ impl AppState {
             self.push_system_message("Session id is required to fork.".to_string());
             return;
         }
-        self.pending_resume_session = Some(session_id.clone());
-        self.pending_fork_session = true;
-        self.session_info.session_id = session_id.clone();
-        if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
-            self.session_info.model = entry.model.clone();
+        self.session.pending_resume_session = Some(session_id.clone());
+        self.session.pending_fork_session = true;
+        self.session.session_info.session_id = session_id.clone();
+        if let Some(entry) = self.session.session_index.iter().find(|entry| entry.id == session_id) {
+            self.session.session_info.model = entry.model.clone();
         }
-        match self.restore_session(&session_id) {
+        match self
+            .session
+            .restore_session(&session_id, &mut self.chat, &mut self.tools)
+        {
             Ok(()) => self.push_system_message(format!(
                 "Loaded cached history for session {}.",
                 session_id
             )),
             Err(_) => {
-                self.messages.clear();
+                self.chat.messages.clear();
                 self.push_system_message(format!(
                     "No local history for session {} yet.",
                     session_id
@@ -4286,23 +3110,22 @@ impl AppState {
             "Next message will fork session {}.",
             session_id
         ));
-        self.refresh_session_cards();
+        self.session.refresh_session_cards(self.chat.is_thinking);
     }
 
     fn attach_user_message_id(&mut self, uuid: String) {
-        if let Some(message) = self
-            .messages
+        if let Some(message) = self.chat.messages
             .iter_mut()
             .rev()
             .find(|msg| matches!(msg.role, MessageRole::User) && msg.uuid.is_none())
         {
             message.uuid = Some(uuid);
-            self.refresh_checkpoint_restore();
+            self.session.refresh_checkpoint_restore(&self.chat.messages);
         }
     }
 
     fn request_rewind_files(&mut self, user_message_id: String) {
-        if let Some(tx) = &self.query_control_tx {
+        if let Some(tx) = &self.chat.query_control_tx {
             let _ = tx.send(QueryControl::RewindFiles { user_message_id: user_message_id.clone() });
             self.push_system_message(format!(
                 "Requested checkpoint restore for message {}.",
@@ -4313,170 +3136,56 @@ impl AppState {
         }
     }
 
-    fn enqueue_permission_prompt(&mut self, pending: PermissionPending) {
-        if self.permission_pending.is_some() || self.permission_dialog.is_some() {
-            self.permission_queue.push_back(pending);
-            return;
-        }
-        self.start_permission_prompt(pending);
-    }
-
-    fn start_permission_prompt(&mut self, pending: PermissionPending) {
-        let Some(action_tx) = self.permission_action_tx.clone() else {
-            let _ = pending
-                .respond_to
-                .send(PermissionResult::deny_and_interrupt(
-                    "Permission prompt unavailable.",
-                ));
-            return;
-        };
-        let permission_type = permission_type_for_request(&pending.request);
-        let dialog = PermissionDialog::new(permission_type).on_action(move |action| {
-            let _ = action_tx.send(action);
-        });
-        self.permission_pending = Some(pending);
-        self.permission_dialog = Some(dialog);
-    }
-
-    fn open_next_permission_prompt(&mut self) {
-        if self.permission_pending.is_some() || self.permission_dialog.is_some() {
-            return;
-        }
-        if let Some(next) = self.permission_queue.pop_front() {
-            self.start_permission_prompt(next);
-        }
-    }
-
-    fn handle_permission_action(&mut self, action: PermissionAction) {
-        let Some(pending) = self.permission_pending.take() else {
-            return;
-        };
-
-        let request = pending.request;
-        let decision_label = match action {
-            PermissionAction::Allow | PermissionAction::AllowAlways => "allow",
-            PermissionAction::AllowOnce => "allow once",
-            PermissionAction::Deny => "deny",
-        };
-
-        let result = match action {
-            PermissionAction::Allow | PermissionAction::AllowAlways => {
-                self.apply_permission_allow(&request);
-                PermissionResult::Allow {
-                    updated_input: request.input.clone(),
-                    updated_permissions: request.suggestions.clone(),
-                    tool_use_id: Some(request.tool_use_id.clone()),
-                }
-            }
-            PermissionAction::AllowOnce => PermissionResult::Allow {
-                updated_input: request.input.clone(),
-                updated_permissions: None,
-                tool_use_id: Some(request.tool_use_id.clone()),
-            },
-            PermissionAction::Deny => PermissionResult::Deny {
-                message: "User denied permission.".to_string(),
-                interrupt: None,
-                tool_use_id: Some(request.tool_use_id.clone()),
-            },
-        };
-
-        let detail = permission_detail_for_request(&request);
-        self.record_permission_history(&request, decision_label, detail);
-
-        let _ = pending.respond_to.send(result);
-        self.permission_dialog = None;
-        self.open_next_permission_prompt();
-    }
-
-    fn apply_permission_allow(&mut self, request: &PermissionRequest) {
-        if request.tool_name == "Bash" {
-            if let Some(command) = extract_bash_command(&request.input) {
-                add_unique(&mut self.permission_allow_bash_patterns, &[command.clone()]);
-                remove_items(&mut self.permission_deny_bash_patterns, &[command]);
-                self.persist_permission_config();
-            }
-            return;
-        }
-        add_unique(
-            &mut self.permission_allow_tools,
-            &[request.tool_name.clone()],
-        );
-        remove_items(
-            &mut self.permission_deny_tools,
-            &[request.tool_name.clone()],
-        );
-        self.persist_permission_config();
-    }
-
-    fn record_permission_history(
-        &mut self,
-        request: &PermissionRequest,
-        decision: &str,
-        detail: Option<String>,
-    ) {
-        const PERMISSION_HISTORY_LIMIT: usize = 50;
-        self.permission_history.push(PermissionHistoryEntry {
-            tool_name: request.tool_name.clone(),
-            decision: decision.to_string(),
-            timestamp: now_timestamp(),
-            detail,
-        });
-        if self.permission_history.len() > PERMISSION_HISTORY_LIMIT {
-            let overflow = self.permission_history.len() - PERMISSION_HISTORY_LIMIT;
-            self.permission_history.drain(0..overflow);
-        }
-    }
-
     fn clear_conversation(&mut self) {
-        if self.is_thinking {
+        if self.chat.is_thinking {
             self.push_system_message(
                 "Cannot clear while a response is in progress.".to_string(),
             );
             return;
         }
-        self.messages.clear();
-        self.streaming_markdown.reset();
-        self.scroll_offset = 0.0;
-        self.current_tool_name = None;
-        self.current_tool_input.clear();
-        self.current_tool_use_id = None;
-        self.tool_history.clear();
-        self.session_info.session_id.clear();
-        self.session_info.tool_count = 0;
-        self.session_info.tools.clear();
-        self.pending_resume_session = None;
-        self.pending_fork_session = false;
-        self.checkpoint_entries.clear();
-        self.checkpoint_restore = CheckpointRestore::new();
-        self.refresh_session_cards();
+        self.chat.messages.clear();
+        self.chat.streaming_markdown.reset();
+        self.chat.scroll_offset = 0.0;
+        self.tools.current_tool_name = None;
+        self.tools.current_tool_input.clear();
+        self.tools.current_tool_use_id = None;
+        self.tools.tool_history.clear();
+        self.session.session_info.session_id.clear();
+        self.session.session_info.tool_count = 0;
+        self.session.session_info.tools.clear();
+        self.session.pending_resume_session = None;
+        self.session.pending_fork_session = false;
+        self.session.checkpoint_entries.clear();
+        self.session.checkpoint_restore = CheckpointRestore::new();
+        self.session.refresh_session_cards(self.chat.is_thinking);
     }
 
     fn start_new_session(&mut self) {
-        if self.is_thinking {
+        if self.chat.is_thinking {
             self.push_system_message("Cannot start new session while processing.".to_string());
             return;
         }
-        self.messages.clear();
-        self.streaming_markdown.reset();
-        self.scroll_offset = 0.0;
-        self.current_tool_name = None;
-        self.current_tool_input.clear();
-        self.current_tool_use_id = None;
-        self.tool_history.clear();
-        self.session_usage = SessionUsageStats::default();
-        self.session_info.session_id.clear();
-        self.session_info.tool_count = 0;
-        self.session_info.tools.clear();
-        self.pending_resume_session = None;
-        self.pending_fork_session = false;
-        self.checkpoint_entries.clear();
-        self.checkpoint_restore = CheckpointRestore::new();
-        self.refresh_session_cards();
+        self.chat.messages.clear();
+        self.chat.streaming_markdown.reset();
+        self.chat.scroll_offset = 0.0;
+        self.tools.current_tool_name = None;
+        self.tools.current_tool_input.clear();
+        self.tools.current_tool_use_id = None;
+        self.tools.tool_history.clear();
+        self.session.session_usage = SessionUsageStats::default();
+        self.session.session_info.session_id.clear();
+        self.session.session_info.tool_count = 0;
+        self.session.session_info.tools.clear();
+        self.session.pending_resume_session = None;
+        self.session.pending_fork_session = false;
+        self.session.checkpoint_entries.clear();
+        self.session.checkpoint_restore = CheckpointRestore::new();
+        self.session.refresh_session_cards(self.chat.is_thinking);
         self.push_system_message("Started new session.".to_string());
     }
 
     fn undo_last_exchange(&mut self) {
-        if self.is_thinking {
+        if self.chat.is_thinking {
             self.push_system_message(
                 "Cannot undo while a response is in progress.".to_string(),
             );
@@ -4484,24 +3193,24 @@ impl AppState {
         }
 
         let mut removed = 0;
-        while matches!(self.messages.last(), Some(ChatMessage { role: MessageRole::Assistant, .. })) {
-            self.messages.pop();
+        while matches!(self.chat.messages.last(), Some(ChatMessage { role: MessageRole::Assistant, .. })) {
+            self.chat.messages.pop();
             removed += 1;
         }
-        if matches!(self.messages.last(), Some(ChatMessage { role: MessageRole::User, .. })) {
-            self.messages.pop();
+        if matches!(self.chat.messages.last(), Some(ChatMessage { role: MessageRole::User, .. })) {
+            self.chat.messages.pop();
             removed += 1;
         }
 
         if removed == 0 {
             self.push_system_message("Nothing to undo.".to_string());
         } else {
-            self.refresh_checkpoint_restore();
+            self.session.refresh_checkpoint_restore(&self.chat.messages);
         }
     }
 
     fn interrupt_query(&mut self) {
-        if let Some(tx) = &self.query_control_tx {
+        if let Some(tx) = &self.chat.query_control_tx {
             let _ = tx.send(QueryControl::Interrupt);
         } else {
             self.push_system_message("No active request to interrupt.".to_string());
@@ -4510,279 +3219,10 @@ impl AppState {
 
     #[allow(dead_code)]
     fn abort_query(&mut self) {
-        if let Some(tx) = &self.query_control_tx {
+        if let Some(tx) = &self.chat.query_control_tx {
             let _ = tx.send(QueryControl::Abort);
         } else {
             self.push_system_message("No active request to cancel.".to_string());
-        }
-    }
-
-    fn start_tool_call(&mut self, name: String, tool_use_id: String) {
-        self.current_tool_name = Some(name.clone());
-        self.current_tool_input.clear();
-        self.current_tool_use_id = Some(tool_use_id.clone());
-
-        let tool_type = tool_type_for_name(&name);
-        if let Some(tool) = self
-            .tool_history
-            .iter_mut()
-            .find(|tool| tool.tool_use_id == tool_use_id)
-        {
-            tool.name = name;
-            tool.tool_type = tool_type;
-            tool.status = ToolStatus::Running;
-            tool.refresh_components();
-            return;
-        }
-
-        // Associate tool with the current (last) message
-        let message_index = self.messages.len().saturating_sub(1);
-        let tool = ToolVisualization::new(tool_use_id, name, tool_type, message_index);
-        self.tool_history.push(tool);
-        if self.tool_history.len() > TOOL_HISTORY_LIMIT {
-            let overflow = self.tool_history.len() - TOOL_HISTORY_LIMIT;
-            self.tool_history.drain(0..overflow);
-        }
-    }
-
-    fn finalize_tool_input(&mut self) {
-        let Some(tool_use_id) = self.current_tool_use_id.clone() else {
-            self.current_tool_input.clear();
-            self.current_tool_name = None;
-            return;
-        };
-        let input_json = std::mem::take(&mut self.current_tool_input);
-        let input_value = serde_json::from_str::<Value>(&input_json).ok();
-
-        if let Some(tool) = self
-            .tool_history
-            .iter_mut()
-            .find(|tool| tool.tool_use_id == tool_use_id)
-        {
-            let display = format_tool_input(&tool.name, &input_json);
-            tool.input = Some(display);
-            tool.input_value = input_value;
-            tool.refresh_components();
-        }
-        self.current_tool_name = None;
-    }
-
-    fn update_tool_progress(&mut self, tool_use_id: String, tool_name: String, elapsed_secs: f64) {
-        if self
-            .tool_history
-            .iter()
-            .all(|tool| tool.tool_use_id != tool_use_id)
-        {
-            self.start_tool_call(tool_name.clone(), tool_use_id.clone());
-        }
-
-        if let Some(tool) = self
-            .tool_history
-            .iter_mut()
-            .find(|tool| tool.tool_use_id == tool_use_id)
-        {
-            tool.name = tool_name;
-            tool.status = ToolStatus::Running;
-            tool.elapsed_secs = Some(elapsed_secs);
-            tool.refresh_card();
-        }
-    }
-
-    fn apply_tool_result(
-        &mut self,
-        tool_use_id: Option<String>,
-        content: String,
-        is_error: bool,
-        exit_code: Option<i32>,
-        output_value: Option<Value>,
-    ) {
-        let mut resolved_id = tool_use_id.clone();
-        if resolved_id.is_none() {
-            resolved_id = self.current_tool_use_id.clone();
-        }
-        if resolved_id.is_none() {
-            resolved_id = self
-                .tool_history
-                .iter()
-                .rev()
-                .find(|tool| matches!(tool.status, ToolStatus::Running | ToolStatus::Pending))
-                .map(|tool| tool.tool_use_id.clone());
-        }
-
-        let Some(tool_id) = resolved_id else {
-            return;
-        };
-
-        let status = if is_error || exit_code.map(|code| code != 0).unwrap_or(false) {
-            ToolStatus::Error
-        } else {
-            ToolStatus::Success
-        };
-
-        if let Some(tool) = self
-            .tool_history
-            .iter_mut()
-            .find(|tool| tool.tool_use_id == tool_id)
-        {
-            tool.status = status;
-            tool.output = if content.trim().is_empty() {
-                None
-            } else {
-                Some(content)
-            };
-            tool.output_value = output_value;
-            tool.exit_code = exit_code;
-            tool.refresh_components();
-        }
-
-        if self.current_tool_use_id.as_deref() == Some(&tool_id) {
-            self.current_tool_use_id = None;
-        }
-    }
-
-    fn push_dspy_stage(&mut self, stage: DspyStage) {
-        // Associate with current message
-        let message_index = self.messages.len().saturating_sub(1);
-        let viz = DspyStageVisualization::new(stage, message_index);
-        self.dspy_stages.push(viz);
-    }
-
-    fn cancel_running_tools(&mut self) {
-        for tool in &mut self.tool_history {
-            if matches!(tool.status, ToolStatus::Running | ToolStatus::Pending) {
-                tool.status = ToolStatus::Cancelled;
-                tool.refresh_components();
-            }
-        }
-    }
-
-    fn tool_history_has_running(&self) -> bool {
-        self.tool_history
-            .iter()
-            .any(|tool| matches!(tool.status, ToolStatus::Running | ToolStatus::Pending))
-    }
-
-    fn persist_permission_config(&self) {
-        let config = PermissionConfig {
-            coder_mode: self.coder_mode,
-            default_allow: self.permission_default_allow,
-            allow_tools: self.permission_allow_tools.clone(),
-            deny_tools: self.permission_deny_tools.clone(),
-            bash_allow_patterns: self.permission_allow_bash_patterns.clone(),
-            bash_deny_patterns: self.permission_deny_bash_patterns.clone(),
-        };
-        save_permission_config(&config);
-    }
-
-    fn cycle_coder_mode(&mut self) {
-        let next = match self.coder_mode {
-            CoderMode::BypassPermissions => CoderMode::Plan,
-            CoderMode::Plan => CoderMode::Autopilot,
-            CoderMode::Autopilot => CoderMode::BypassPermissions,
-        };
-        self.set_coder_mode(next);
-    }
-
-    fn set_coder_mode(&mut self, mode: CoderMode) {
-        self.coder_mode = mode;
-        self.permission_default_allow = coder_mode_default_allow(mode, self.permission_default_allow);
-        self.session_info.permission_mode = coder_mode_label(mode).to_string();
-        self.persist_permission_config();
-    }
-
-    fn add_permission_allow(&mut self, tools: Vec<String>) {
-        let tokens = sanitize_tokens(tools);
-        if tokens.is_empty() {
-            self.push_system_message("No tools provided to allow.".to_string());
-            return;
-        }
-        let (tool_rules, bash_patterns) = split_permission_tokens(tokens);
-        if tool_rules.is_empty() && bash_patterns.is_empty() {
-            self.push_system_message("No valid tools or patterns provided to allow.".to_string());
-            return;
-        }
-        add_unique(&mut self.permission_allow_tools, &tool_rules);
-        remove_items(&mut self.permission_deny_tools, &tool_rules);
-        add_unique(&mut self.permission_allow_bash_patterns, &bash_patterns);
-        remove_items(&mut self.permission_deny_bash_patterns, &bash_patterns);
-        self.persist_permission_config();
-
-        let mut parts = Vec::new();
-        if !tool_rules.is_empty() {
-            parts.push(format!("tools: {}", tool_rules.join(", ")));
-        }
-        if !bash_patterns.is_empty() {
-            parts.push(format!("bash patterns: {}", bash_patterns.join(", ")));
-        }
-        self.push_system_message(format!(
-            "Allowed {}.",
-            parts.join("; ")
-        ));
-    }
-
-    fn add_permission_deny(&mut self, tools: Vec<String>) {
-        let tokens = sanitize_tokens(tools);
-        if tokens.is_empty() {
-            self.push_system_message("No tools provided to deny.".to_string());
-            return;
-        }
-        let (tool_rules, bash_patterns) = split_permission_tokens(tokens);
-        if tool_rules.is_empty() && bash_patterns.is_empty() {
-            self.push_system_message("No valid tools or patterns provided to deny.".to_string());
-            return;
-        }
-        add_unique(&mut self.permission_deny_tools, &tool_rules);
-        remove_items(&mut self.permission_allow_tools, &tool_rules);
-        add_unique(&mut self.permission_deny_bash_patterns, &bash_patterns);
-        remove_items(&mut self.permission_allow_bash_patterns, &bash_patterns);
-        self.persist_permission_config();
-
-        let mut parts = Vec::new();
-        if !tool_rules.is_empty() {
-            parts.push(format!("tools: {}", tool_rules.join(", ")));
-        }
-        if !bash_patterns.is_empty() {
-            parts.push(format!("bash patterns: {}", bash_patterns.join(", ")));
-        }
-        self.push_system_message(format!(
-            "Denied {}.",
-            parts.join("; ")
-        ));
-    }
-
-    fn enable_tools(&mut self, tools: Vec<String>) {
-        let tools = sanitize_tokens(tools);
-        if tools.is_empty() {
-            self.push_system_message("No tools provided to enable.".to_string());
-            return;
-        }
-        add_unique(&mut self.tools_allowed, &tools);
-        remove_items(&mut self.tools_disallowed, &tools);
-        self.push_system_message(format!(
-            "Enabled tools: {}.",
-            tools.join(", ")
-        ));
-    }
-
-    fn disable_tools(&mut self, tools: Vec<String>) {
-        let tools = sanitize_tokens(tools);
-        if tools.is_empty() {
-            self.push_system_message("No tools provided to disable.".to_string());
-            return;
-        }
-        add_unique(&mut self.tools_disallowed, &tools);
-        remove_items(&mut self.tools_allowed, &tools);
-        self.push_system_message(format!(
-            "Disabled tools: {}.",
-            tools.join(", ")
-        ));
-    }
-
-    fn set_output_style(&mut self, style: Option<String>) {
-        self.output_style = style.clone();
-        match style {
-            Some(name) => self.push_system_message(format!("Output style set to {}.", name)),
-            None => self.push_system_message("Output style cleared.".to_string()),
         }
     }
 
@@ -4792,40 +3232,43 @@ impl AppState {
             self.push_system_message("Session id is required to resume.".to_string());
             return;
         }
-        self.pending_resume_session = Some(session_id.clone());
-        self.pending_fork_session = false;
-        self.session_info.session_id = session_id.clone();
-        if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
-            self.session_info.model = entry.model.clone();
+        self.session.pending_resume_session = Some(session_id.clone());
+        self.session.pending_fork_session = false;
+        self.session.session_info.session_id = session_id.clone();
+        if let Some(entry) = self.session.session_index.iter().find(|entry| entry.id == session_id) {
+            self.session.session_info.model = entry.model.clone();
         }
-        match self.restore_session(&session_id) {
+        match self
+            .session
+            .restore_session(&session_id, &mut self.chat, &mut self.tools)
+        {
             Ok(()) => self.push_system_message(format!(
                 "Loaded cached history for session {}.",
                 session_id
             )),
             Err(_) => {
-                self.messages.clear();
+                self.chat.messages.clear();
                 self.push_system_message(format!(
                     "No local history for session {} yet.",
                     session_id
                 ));
             }
         }
-        self.refresh_session_cards();
+        self.session.refresh_session_cards(self.chat.is_thinking);
     }
 
     fn begin_session_fork(&mut self) {
-        if self.session_info.session_id.trim().is_empty() {
+        if self.session.session_info.session_id.trim().is_empty() {
             self.push_system_message("No active session to fork.".to_string());
             return;
         }
-        self.pending_resume_session = Some(self.session_info.session_id.clone());
-        self.pending_fork_session = true;
+        self.session.pending_resume_session = Some(self.session.session_info.session_id.clone());
+        self.session.pending_fork_session = true;
         self.push_system_message("Next message will fork the current session.".to_string());
     }
 
     fn export_session(&mut self) {
-        if self.messages.is_empty() {
+        if self.chat.messages.is_empty() {
             self.push_system_message("No messages to export yet.".to_string());
             return;
         }
@@ -4842,7 +3285,7 @@ impl AppState {
     }
 
     fn push_system_message(&mut self, message: String) {
-        self.messages.push(ChatMessage {
+        self.chat.messages.push(ChatMessage {
             role: MessageRole::Assistant,
             content: message,
             document: None,
@@ -4876,12 +3319,12 @@ impl AppState {
         let available_width = full_available_width.min(max_content_width);
         let content_x = sidebar_layout.main.origin.x + (sidebar_layout.main.size.width - available_width) / 2.0;
 
-        let chat_font_size = self.settings.font_size;
+        let chat_font_size = self.settings.coder_settings.font_size;
         let chat_line_height = (chat_font_size * 1.4).round();
         let char_width = chat_font_size * 0.6;
         let max_chars = (available_width / char_width).max(1.0) as usize;
 
-        let mut message_layouts = Vec::with_capacity(self.messages.len());
+        let mut message_layouts = Vec::with_capacity(self.chat.messages.len());
         let mut inline_tools_layouts: Vec<InlineToolsLayout> = Vec::new();
         let mut dspy_stage_layouts: Vec<DspyStageLayout> = Vec::new();
         let mut total_content_height = 0.0_f32;
@@ -4889,7 +3332,7 @@ impl AppState {
         // Group tools by message_index
         let mut tools_by_message: std::collections::HashMap<usize, Vec<usize>> =
             std::collections::HashMap::new();
-        for (tool_idx, tool) in self.tool_history.iter().enumerate() {
+        for (tool_idx, tool) in self.tools.tool_history.iter().enumerate() {
             tools_by_message
                 .entry(tool.message_index)
                 .or_default()
@@ -4899,16 +3342,16 @@ impl AppState {
         // Group DSPy stages by message_index
         let mut dspy_by_message: std::collections::HashMap<usize, Vec<usize>> =
             std::collections::HashMap::new();
-        for (stage_idx, stage) in self.dspy_stages.iter().enumerate() {
+        for (stage_idx, stage) in self.tools.dspy_stages.iter().enumerate() {
             dspy_by_message
                 .entry(stage.message_index)
                 .or_default()
                 .push(stage_idx);
         }
 
-        for index in 0..self.messages.len() {
+        for index in 0..self.chat.messages.len() {
             let (role, content, document) = {
-                let msg = &self.messages[index];
+                let msg = &self.chat.messages[index];
                 (msg.role, msg.content.clone(), msg.document.clone())
             };
             let layout = match role {
@@ -4963,13 +3406,12 @@ impl AppState {
             }
         }
 
-        let streaming_height = if !self.streaming_markdown.source().is_empty() {
-            let doc = self.streaming_markdown.document();
-            let size = self
-                .markdown_renderer
+        let streaming_height = if !self.chat.streaming_markdown.source().is_empty() {
+            let doc = self.chat.streaming_markdown.document();
+            let size = self.chat.markdown_renderer
                 .measure(doc, available_width, &mut self.text_system);
             size.height + chat_line_height
-        } else if self.is_thinking {
+        } else if self.chat.is_thinking {
             chat_line_height
         } else {
             0.0
@@ -4977,7 +3419,7 @@ impl AppState {
         total_content_height += streaming_height;
 
         // Add inline tools for streaming/current message (last message index or beyond)
-        let streaming_msg_index = self.messages.len().saturating_sub(1);
+        let streaming_msg_index = self.chat.messages.len().saturating_sub(1);
         if let Some(tool_indices) = tools_by_message.get(&streaming_msg_index) {
             // Check if we already added tools for this message above
             let already_added = inline_tools_layouts
@@ -4997,22 +3439,22 @@ impl AppState {
         }
 
         let max_scroll = (total_content_height - viewport_height).max(0.0);
-        self.scroll_offset = self.scroll_offset.clamp(0.0, max_scroll);
-        let was_near_bottom = self.scroll_offset >= max_scroll - chat_line_height * 2.0;
-        if self.settings.auto_scroll && self.tool_history_has_running() && was_near_bottom {
-            self.scroll_offset = max_scroll;
+        self.chat.scroll_offset = self.chat.scroll_offset.clamp(0.0, max_scroll);
+        let was_near_bottom = self.chat.scroll_offset >= max_scroll - chat_line_height * 2.0;
+        if self.settings.coder_settings.auto_scroll && self.tools.has_running() && was_near_bottom {
+            self.chat.scroll_offset = max_scroll;
         }
 
-        if let Some(selection) = self.chat_selection {
+        if let Some(selection) = self.chat.chat_selection {
             if selection.anchor.message_index >= message_layouts.len()
                 || selection.focus.message_index >= message_layouts.len()
             {
-                self.chat_selection = None;
+                self.chat.chat_selection = None;
             }
         }
 
         // Apply scroll offset to message Y positions
-        let scroll_adjust = viewport_top - self.scroll_offset;
+        let scroll_adjust = viewport_top - self.chat.scroll_offset;
         let mut y = scroll_adjust;
         let mut inline_tools_idx = 0;
         let mut dspy_stages_idx = 0;
@@ -5099,7 +3541,7 @@ impl AppState {
         let mut total_height = TOOL_PANEL_GAP;
 
         for (i, &tool_idx) in tool_indices.iter().enumerate() {
-            let tool = &self.tool_history[tool_idx];
+            let tool = &self.tools.tool_history[tool_idx];
             let card_height = tool.card.size_hint().1.unwrap_or(22.0);
             let card_bounds = Bounds::new(
                 panel_x,
@@ -5149,7 +3591,7 @@ impl AppState {
 
     /// Measure the height needed for a DSPy stage card
     fn measure_dspy_stage_height(&self, stage_idx: usize, _available_width: f32) -> f32 {
-        let stage_viz = &self.dspy_stages[stage_idx];
+        let stage_viz = &self.tools.dspy_stages[stage_idx];
         // Calculate height based on stage type
         match &stage_viz.stage {
             DspyStage::EnvironmentAssessment { .. } => 160.0,
@@ -5199,7 +3641,7 @@ impl AppState {
         max_chars: usize,
     ) -> MessageLayout {
         if let Some(doc) = document {
-            let config = build_markdown_config(&self.settings);
+            let config = build_markdown_config(&self.settings.coder_settings);
             let mut builder = MessageLayoutBuilder::new(message_index);
             let height = layout_markdown_document(
                 doc,
@@ -5216,7 +3658,7 @@ impl AppState {
             let mut builder = MessageLayoutBuilder::new(message_index);
             let mut y = 0.0;
             for line in wrapped_lines {
-                builder.push_line(line, content_x, y, chat_line_height, self.settings.font_size);
+                builder.push_line(line, content_x, y, chat_line_height, self.settings.coder_settings.font_size);
                 y += chat_line_height;
             }
             let height = line_count as f32 * chat_line_height;
@@ -5287,7 +3729,7 @@ impl AppState {
     }
 
     fn chat_selection_contains(&self, point: ChatSelectionPoint) -> bool {
-        let Some(selection) = self.chat_selection else {
+        let Some(selection) = self.chat.chat_selection else {
             return false;
         };
         let (start, end) = selection.normalized();
@@ -5295,7 +3737,7 @@ impl AppState {
     }
 
     fn chat_selection_text(&self, layout: &ChatLayout) -> Option<String> {
-        let selection = self.chat_selection?;
+        let selection = self.chat.chat_selection?;
         if selection.is_empty() {
             return None;
         }
@@ -5338,7 +3780,7 @@ impl AppState {
         }
         let last_idx = layout.message_layouts.len() - 1;
         let end_offset = layout.message_layouts[last_idx].display_text.len();
-        self.chat_selection = Some(ChatSelection {
+        self.chat.chat_selection = Some(ChatSelection {
             anchor: ChatSelectionPoint {
                 message_index: 0,
                 offset: 0,
@@ -5366,9 +3808,9 @@ impl AppState {
             MenuItem::separator(),
             MenuItem::new("select_all", "Select All").shortcut(format!("{}+A", mod_key)),
         ];
-        self.chat_context_menu = ContextMenu::new().items(items);
-        self.chat_context_menu_target = target_message;
-        self.chat_context_menu.open(position);
+        self.chat.chat_context_menu = ContextMenu::new().items(items);
+        self.chat.chat_context_menu_target = target_message;
+        self.chat.chat_context_menu.open(position);
     }
 
     fn handle_chat_menu_action(&mut self, action: &str, layout: &ChatLayout) {
@@ -5376,7 +3818,7 @@ impl AppState {
             "copy" => {
                 if let Some(text) = self.chat_selection_text(layout) {
                     self.write_chat_clipboard(&text);
-                } else if let Some(target) = self.chat_context_menu_target {
+                } else if let Some(target) = self.chat.chat_context_menu_target {
                     if let Some(message) = layout.message_layouts.get(target) {
                         self.write_chat_clipboard(&message.display_text);
                     }
@@ -5405,8 +3847,7 @@ impl AppState {
         }
         match key {
             WinitKey::Character(c) if c.eq_ignore_ascii_case("c") => {
-                if self
-                    .chat_selection
+                if self.chat.chat_selection
                     .as_ref()
                     .is_some_and(|sel| !sel.is_empty())
                 {
@@ -5435,73 +3876,6 @@ impl AppState {
     }
 }
 
-impl AppState {
-    fn record_session(&mut self) {
-        if !self.settings.session_auto_save {
-            return;
-        }
-        let session_id = self.session_info.session_id.trim();
-        if session_id.is_empty() {
-            return;
-        }
-
-        let now = now_timestamp();
-        let last_message = self
-            .messages
-            .iter()
-            .rev()
-            .find(|msg| !msg.content.trim().is_empty())
-            .map(|msg| truncate_preview(&msg.content, 140))
-            .unwrap_or_default();
-
-        if let Some(entry) = self.session_index.iter_mut().find(|entry| entry.id == session_id) {
-            entry.updated_at = now;
-            entry.last_message = last_message;
-            entry.message_count = self.messages.len();
-            entry.model = self.session_info.model.clone();
-        } else {
-            self.session_index.push(SessionEntry {
-                id: session_id.to_string(),
-                created_at: now,
-                updated_at: now,
-                last_message,
-                message_count: self.messages.len(),
-                model: self.session_info.model.clone(),
-            });
-        }
-
-        let removed_sessions =
-            apply_session_history_limit(&mut self.session_index, self.settings.session_history_limit);
-
-        if let Err(err) = save_session_index(&self.session_index) {
-            tracing::error!("Failed to save session index: {}", err);
-        }
-        if let Err(err) = write_session_messages(session_id, &self.messages) {
-            tracing::error!("Failed to write session messages: {}", err);
-        }
-        if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
-            if let Err(err) = write_session_metadata(session_id, entry) {
-                tracing::error!("Failed to write session metadata: {}", err);
-            }
-        }
-        for removed_id in removed_sessions {
-            let _ = fs::remove_dir_all(session_messages_dir(&removed_id));
-        }
-        self.refresh_session_cards();
-        self.refresh_checkpoint_restore();
-    }
-
-    fn restore_session(&mut self, session_id: &str) -> io::Result<()> {
-        self.messages = read_session_messages(session_id)?;
-        self.streaming_markdown.reset();
-        self.scroll_offset = 0.0;
-        self.current_tool_name = None;
-        self.current_tool_input.clear();
-        self.refresh_checkpoint_restore();
-        Ok(())
-    }
-}
-
 impl CoderApp {
     fn submit_prompt(&mut self, prompt: String) {
         let Some(state) = &mut self.state else {
@@ -5511,7 +3885,7 @@ impl CoderApp {
         tracing::info!("Submitted prompt: {}", prompt);
 
         // Add user message to history
-        state.messages.push(ChatMessage {
+        state.chat.messages.push(ChatMessage {
             role: MessageRole::User,
             content: prompt.clone(),
             document: None,
@@ -5519,323 +3893,13 @@ impl CoderApp {
             metadata: None,
         });
 
-        // Handle Autopilot mode - use Adjutant in autonomous loop
-        if matches!(state.coder_mode, CoderMode::Autopilot) {
-            tracing::info!("Autopilot mode: starting autonomous loop");
-
-            // Check which LM provider will be used
-            let provider = adjutant::dspy::lm_config::detect_provider();
-            tracing::info!("Autopilot: detected LM provider: {:?}", provider);
-
-            // Create channels for receiving responses (same pattern as Claude)
-            let (tx, rx) = mpsc::unbounded_channel();
-            state.response_rx = Some(rx);
-            state.is_thinking = true;
-            state.streaming_markdown.reset();
-
-            // Reset interrupt flag for new loop
-            state.autopilot_interrupt_flag.store(false, std::sync::atomic::Ordering::Relaxed);
-            state.autopilot_loop_iteration = 0;
-            let interrupt_flag = state.autopilot_interrupt_flag.clone();
-            let max_iterations = state.autopilot_max_iterations;
-
-            let window = state.window.clone();
-            let prompt_clone = prompt.clone();
-
-            // Use cached manifest, wait for pending boot, or start new boot
-            let cached_manifest = state.oanix_manifest.clone();
-            let pending_rx = state.oanix_manifest_rx.take(); // Take pending boot rx if any
-
-            // Create channel to send manifest back for caching (if we might get a new manifest)
-            let manifest_tx = if cached_manifest.is_none() {
-                let (mtx, mrx) = mpsc::unbounded_channel();
-                state.oanix_manifest_rx = Some(mrx);
-                Some(mtx)
-            } else {
-                None
-            };
-
-            self.runtime_handle.spawn(async move {
-                // Get manifest: cached > pending boot > new boot
-                let manifest = if let Some(m) = cached_manifest {
-                    tracing::info!("Autopilot: using cached OANIX manifest");
-                    m
-                } else if let Some(mut rx) = pending_rx {
-                    tracing::info!("Autopilot: waiting for startup OANIX boot...");
-                    match rx.recv().await {
-                        Some(m) => {
-                            tracing::info!("Autopilot: received OANIX manifest from startup boot");
-                            // Send manifest back for caching
-                            if let Some(mtx) = &manifest_tx {
-                                let _ = mtx.send(m.clone());
-                            }
-                            m
-                        }
-                        None => {
-                            tracing::error!("Autopilot: startup OANIX boot channel closed");
-                            let _ = tx.send(ResponseEvent::Error("OANIX boot failed".to_string()));
-                            window.request_redraw();
-                            return;
-                        }
-                    }
-                } else {
-                    tracing::info!("Autopilot: booting OANIX...");
-                    match oanix::boot().await {
-                        Ok(m) => {
-                            tracing::info!("Autopilot: OANIX booted, workspace: {:?}",
-                                m.workspace.as_ref().map(|w| &w.root));
-                            // Send manifest back for caching
-                            if let Some(mtx) = &manifest_tx {
-                                let _ = mtx.send(m.clone());
-                            }
-                            m
-                        }
-                        Err(e) => {
-                            tracing::error!("Autopilot: OANIX boot failed: {}", e);
-                            let _ = tx.send(ResponseEvent::Error(format!("OANIX boot failed: {}", e)));
-                            window.request_redraw();
-                            return;
-                        }
-                    }
-                };
-
-                // Get model name for metadata
-                let model_name = adjutant::dspy::lm_config::detect_provider()
-                    .map(|p| p.short_name().to_string());
-
-                // Get workspace root for verification commands
-                let workspace_root = manifest.workspace.as_ref()
-                    .map(|w| w.root.clone())
-                    .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-
-                match Adjutant::new(manifest.clone()) {
-                    Ok(adjutant) => {
-                        tracing::info!("Autopilot: Adjutant initialized, starting autonomous loop");
-
-                        // Build rich context from OANIX manifest
-                        let mut context_parts = Vec::new();
-
-                        // Add active directive info
-                        if let Some(workspace) = &manifest.workspace {
-                            // Find active directive
-                            if let Some(active_id) = &workspace.active_directive {
-                                if let Some(directive) = workspace.directives.iter()
-                                    .find(|d| &d.id == active_id)
-                                {
-                                    let priority = directive.priority.as_deref().unwrap_or("unknown");
-                                    let progress = directive.progress_pct.unwrap_or(0);
-                                    context_parts.push(format!(
-                                        "## Active Directive\n{}: {} (Priority: {}, Progress: {}%)",
-                                        directive.id, directive.title, priority, progress
-                                    ));
-                                }
-                            }
-
-                            // Add open issues
-                            let open_issues: Vec<_> = workspace.issues.iter()
-                                .filter(|i| i.status == "open" && !i.is_blocked)
-                                .take(5)
-                                .collect();
-
-                            if !open_issues.is_empty() {
-                                let mut issues_text = String::from("## Open Issues\n");
-                                for issue in open_issues {
-                                    issues_text.push_str(&format!(
-                                        "- #{}: {} (Priority: {})\n",
-                                        issue.number, issue.title, issue.priority
-                                    ));
-                                }
-                                context_parts.push(issues_text);
-                            }
-                        }
-
-                        // Get recent commits (quick git log)
-                        if let Ok(output) = std::process::Command::new("git")
-                            .args(["log", "--oneline", "-5", "--no-decorate"])
-                            .current_dir(&workspace_root)
-                            .output()
-                        {
-                            if output.status.success() {
-                                let commits = String::from_utf8_lossy(&output.stdout);
-                                if !commits.trim().is_empty() {
-                                    context_parts.push(format!("## Recent Commits\n{}", commits.trim()));
-                                }
-                            }
-                        }
-
-                        // Build the full prompt with context
-                        let full_prompt = if context_parts.is_empty() {
-                            prompt_clone.clone()
-                        } else {
-                            format!(
-                                "{}\n\n---\n\n## User Request\n{}\n\n\
-                                Use the tools to complete the task. Read relevant files, make changes, run tests.",
-                                context_parts.join("\n\n"),
-                                prompt_clone
-                            )
-                        };
-
-                        tracing::info!("Autopilot: context gathered (directives: {}, issues: {})",
-                            manifest.workspace.as_ref().map(|w| w.directives.len()).unwrap_or(0),
-                            manifest.workspace.as_ref().map(|w| w.issues.len()).unwrap_or(0));
-
-                        // Create task with enriched prompt
-                        let task = AdjutantTask::new(
-                            "autopilot",
-                            "User Request",
-                            &full_prompt,
-                        );
-
-                        // Create channel for streaming tokens to UI
-                        let (token_tx, mut token_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-
-                        // Spawn task to forward tokens to the response channel
-                        let tx_clone = tx.clone();
-                        let window_clone = window.clone();
-                        tokio::spawn(async move {
-                            let mut buffer = String::new();
-                            while let Some(token) = token_rx.recv().await {
-                                buffer.push_str(&token);
-
-                                // Check for complete DSPY_STAGE markers
-                                while let Some(start) = buffer.find("<<DSPY_STAGE:") {
-                                    if let Some(end) = buffer[start..].find(":DSPY_STAGE>>") {
-                                        // Extract text before the marker
-                                        if start > 0 {
-                                            let before = buffer[..start].to_string();
-                                            if !before.trim().is_empty() {
-                                                let _ = tx_clone.send(ResponseEvent::Chunk(before));
-                                            }
-                                        }
-
-                                        // Extract and parse the JSON
-                                        let json_start = start + "<<DSPY_STAGE:".len();
-                                        let json_end = start + end;
-                                        let json_str = &buffer[json_start..json_end];
-
-                                        if let Ok(stage) = serde_json::from_str::<DspyStage>(json_str) {
-                                            let _ = tx_clone.send(ResponseEvent::DspyStage(stage));
-                                        } else {
-                                            tracing::warn!("Failed to parse DSPY_STAGE: {}", json_str);
-                                        }
-
-                                        // Remove processed content from buffer
-                                        let after_marker = start + end + ":DSPY_STAGE>>".len();
-                                        buffer = buffer[after_marker..].to_string();
-                                    } else {
-                                        // Incomplete marker, wait for more data
-                                        break;
-                                    }
-                                }
-
-                                // Send any remaining text that doesn't contain a partial marker
-                                if !buffer.contains("<<DSPY_STAGE:") && !buffer.is_empty() {
-                                    let _ = tx_clone.send(ResponseEvent::Chunk(buffer.clone()));
-                                    buffer.clear();
-                                }
-
-                                window_clone.request_redraw();
-                            }
-
-                            // Send any remaining buffer content
-                            if !buffer.is_empty() {
-                                let _ = tx_clone.send(ResponseEvent::Chunk(buffer));
-                            }
-                        });
-
-                        // Configure the autopilot loop
-                        let config = AutopilotConfig {
-                            max_iterations,
-                            workspace_root,
-                            verify_completion: true,
-                        };
-
-                        // Create and run the autopilot loop
-                        let channel_output = ChannelOutput::new(token_tx);
-                        let autopilot_loop = AutopilotLoop::new(
-                            adjutant,
-                            task,
-                            config,
-                            channel_output,
-                            interrupt_flag,
-                        );
-
-                        let start_time = std::time::Instant::now();
-                        let result = autopilot_loop.run().await;
-                        let duration_ms = start_time.elapsed().as_millis() as u64;
-
-                        // Handle loop result
-                        match result {
-                            AutopilotResult::Success(task_result) => {
-                                tracing::info!("Autopilot: task completed successfully");
-                                if !task_result.modified_files.is_empty() {
-                                    let files = task_result.modified_files.join(", ");
-                                    let _ = tx.send(ResponseEvent::Chunk(
-                                        format!("\n\n**Modified files:** {}", files)
-                                    ));
-                                }
-                                let metadata = Some(MessageMetadata {
-                                    model: model_name.clone(),
-                                    duration_ms: Some(duration_ms),
-                                    ..Default::default()
-                                });
-                                let _ = tx.send(ResponseEvent::Complete { metadata });
-                            }
-                            AutopilotResult::Failed(task_result) => {
-                                tracing::warn!("Autopilot: task failed definitively");
-                                let error_msg = task_result.error.unwrap_or_else(|| "Unknown error".to_string());
-                                let _ = tx.send(ResponseEvent::Chunk(
-                                    format!("\n\n**Task failed:** {}", error_msg)
-                                ));
-                                let _ = tx.send(ResponseEvent::Complete { metadata: None });
-                            }
-                            AutopilotResult::MaxIterationsReached { iterations, last_result } => {
-                                tracing::warn!("Autopilot: max iterations ({}) reached", iterations);
-                                let _ = tx.send(ResponseEvent::Chunk(
-                                    format!("\n\n**Max iterations ({}) reached.** Send another message to continue.", iterations)
-                                ));
-                                if let Some(result) = last_result {
-                                    if !result.modified_files.is_empty() {
-                                        let files = result.modified_files.join(", ");
-                                        let _ = tx.send(ResponseEvent::Chunk(
-                                            format!("\n\n**Modified files so far:** {}", files)
-                                        ));
-                                    }
-                                }
-                                let _ = tx.send(ResponseEvent::Complete { metadata: None });
-                            }
-                            AutopilotResult::UserInterrupted { iterations } => {
-                                tracing::info!("Autopilot: interrupted by user after {} iterations", iterations);
-                                let _ = tx.send(ResponseEvent::Complete { metadata: None });
-                            }
-                            AutopilotResult::Error(error) => {
-                                tracing::error!("Autopilot: error during execution: {}", error);
-                                let _ = tx.send(ResponseEvent::Error(format!("Autopilot error: {}", error)));
-                            }
-                        }
-                    }
-                    Err(adjutant::AdjutantError::NoWorkspace) => {
-                        tracing::warn!("Autopilot: no workspace found");
-                        let _ = tx.send(ResponseEvent::Chunk(
-                            "Autopilot requires an OpenAgents workspace.\n\n\
-                             Run `oanix init` in your project directory to create one.".to_string()
-                        ));
-                        let _ = tx.send(ResponseEvent::Complete { metadata: None });
-                    }
-                    Err(e) => {
-                        tracing::error!("Autopilot: failed to initialize Adjutant: {}", e);
-                        let _ = tx.send(ResponseEvent::Error(format!("Failed to initialize Adjutant: {}", e)));
-                    }
-                }
-                window.request_redraw();
-            });
-
-            state.window.request_redraw();
+        if matches!(state.permissions.coder_mode, CoderMode::Autopilot) {
+            crate::app::autopilot::submit_autopilot_prompt(&self.runtime_handle, state, prompt);
             return;
         }
 
         let cwd = std::env::current_dir().unwrap_or_default();
-        let active_agent = state.active_agent.clone();
+        let active_agent = state.catalogs.active_agent.clone();
         let expanded_prompt = match expand_prompt_text(&prompt, &cwd) {
             Ok(result) => result,
             Err(err) => {
@@ -5855,49 +3919,48 @@ impl CoderApp {
         let (control_tx, mut control_rx) = mpsc::unbounded_channel();
         let (permission_tx, permission_rx) = mpsc::unbounded_channel();
         let (permission_action_tx, permission_action_rx) = mpsc::unbounded_channel();
-        state.response_rx = Some(rx);
-        state.query_control_tx = Some(control_tx);
-        state.permission_requests_rx = Some(permission_rx);
-        state.permission_action_tx = Some(permission_action_tx.clone());
-        state.permission_action_rx = Some(permission_action_rx);
-        state.permission_queue.clear();
-        state.permission_pending = None;
-        state.permission_dialog = None;
-        state.is_thinking = true;
-        state.streaming_markdown.reset();
-        state.refresh_agent_cards();
+        state.chat.response_rx = Some(rx);
+        state.chat.query_control_tx = Some(control_tx);
+        state.permissions.permission_requests_rx = Some(permission_rx);
+        state.permissions.permission_action_tx = Some(permission_action_tx.clone());
+        state.permissions.permission_action_rx = Some(permission_action_rx);
+        state.permissions.permission_queue.clear();
+        state.permissions.permission_pending = None;
+        state.permissions.permission_dialog = None;
+        state.chat.is_thinking = true;
+        state.chat.streaming_markdown.reset();
+        state.catalogs.refresh_agent_cards(state.chat.is_thinking);
 
         // Get window handle for triggering redraws from async task
         let window = state.window.clone();
-        let model_id = state.selected_model.model_id().to_string();
-        let resume_session = state
-            .pending_resume_session
+        let model_id = state.settings.selected_model.model_id().to_string();
+        let resume_session = state.session.pending_resume_session
             .take()
             .or_else(|| {
-                if state.session_info.session_id.trim().is_empty() {
+                if state.session.session_info.session_id.trim().is_empty() {
                     None
                 } else {
-                    Some(state.session_info.session_id.clone())
+                    Some(state.session.session_info.session_id.clone())
                 }
             });
-        let fork_session = state.pending_fork_session;
-        state.pending_fork_session = false;
-        let permission_mode = Some(state.coder_mode.to_sdk_permission_mode());
-        let output_style = state.output_style.clone();
-        let allowed_tools = state.tools_allowed.clone();
-        let disallowed_tools = state.tools_disallowed.clone();
-        let permission_allow_tools = state.permission_allow_tools.clone();
-        let permission_deny_tools = state.permission_deny_tools.clone();
-        let permission_allow_bash_patterns = state.permission_allow_bash_patterns.clone();
-        let permission_deny_bash_patterns = state.permission_deny_bash_patterns.clone();
-        let permission_default_allow = state.permission_default_allow;
-        let mcp_servers = state.merged_mcp_servers();
+        let fork_session = state.session.pending_fork_session;
+        state.session.pending_fork_session = false;
+        let permission_mode = Some(state.permissions.coder_mode.to_sdk_permission_mode());
+        let output_style = state.permissions.output_style.clone();
+        let allowed_tools = state.permissions.tools_allowed.clone();
+        let disallowed_tools = state.permissions.tools_disallowed.clone();
+        let permission_allow_tools = state.permissions.permission_allow_tools.clone();
+        let permission_deny_tools = state.permissions.permission_deny_tools.clone();
+        let permission_allow_bash_patterns = state.permissions.permission_allow_bash_patterns.clone();
+        let permission_deny_bash_patterns = state.permissions.permission_deny_bash_patterns.clone();
+        let permission_default_allow = state.permissions.permission_default_allow;
+        let mcp_servers = state.catalogs.merged_mcp_servers();
         let agent_definitions = state.agent_definitions_for_query();
         let setting_sources = state.setting_sources_for_query();
-        let hook_config = state.hook_config.clone();
-        let hook_scripts = state.hook_scripts.clone();
-        let max_thinking_tokens = state.settings.max_thinking_tokens;
-        let persist_session = state.settings.session_auto_save;
+        let hook_config = state.catalogs.hook_config.clone();
+        let hook_scripts = state.catalogs.hook_scripts.clone();
+        let max_thinking_tokens = state.settings.coder_settings.max_thinking_tokens;
+        let persist_session = state.settings.coder_settings.session_auto_save;
 
         // Spawn async query task
         let handle = self.runtime_handle.clone();
@@ -6279,7 +4342,7 @@ impl CoderApp {
         };
 
         let mut events = Vec::new();
-        if let Some(rx) = &mut state.response_rx {
+        if let Some(rx) = &mut state.chat.response_rx {
             while let Ok(event) = rx.try_recv() {
                 events.push(event);
             }
@@ -6292,20 +4355,23 @@ impl CoderApp {
         for event in events {
             match event {
                 ResponseEvent::Chunk(text) => {
-                    state.streaming_markdown.append(&text);
-                    state.streaming_markdown.tick();
+                    state.chat.streaming_markdown.append(&text);
+                    state.chat.streaming_markdown.tick();
                     needs_redraw = true;
                 }
                 ResponseEvent::ToolCallStart { name, tool_use_id } => {
-                    state.start_tool_call(name, tool_use_id);
+                    let message_index = state.chat.messages.len().saturating_sub(1);
+                    state
+                        .tools
+                        .start_tool_call(name, tool_use_id, message_index);
                     needs_redraw = true;
                 }
                 ResponseEvent::ToolCallInput { json } => {
-                    state.current_tool_input.push_str(&json);
+                    state.tools.current_tool_input.push_str(&json);
                     needs_redraw = true;
                 }
                 ResponseEvent::ToolCallEnd => {
-                    state.finalize_tool_input();
+                    state.tools.finalize_tool_input();
                     needs_redraw = true;
                 }
                 ResponseEvent::ToolResult {
@@ -6315,7 +4381,13 @@ impl CoderApp {
                     exit_code,
                     output_value,
                 } => {
-                    state.apply_tool_result(tool_use_id, content, is_error, exit_code, output_value);
+                    state.tools.apply_tool_result(
+                        tool_use_id,
+                        content,
+                        is_error,
+                        exit_code,
+                        output_value,
+                    );
                     needs_redraw = true;
                 }
                 ResponseEvent::ToolProgress {
@@ -6323,7 +4395,13 @@ impl CoderApp {
                     tool_name,
                     elapsed_secs,
                 } => {
-                    state.update_tool_progress(tool_use_id, tool_name, elapsed_secs);
+                    let message_index = state.chat.messages.len().saturating_sub(1);
+                    state.tools.update_tool_progress(
+                        tool_use_id,
+                        tool_name,
+                        elapsed_secs,
+                        message_index,
+                    );
                     needs_redraw = true;
                 }
                 ResponseEvent::UserMessageId { uuid } => {
@@ -6336,29 +4414,29 @@ impl CoderApp {
                 }
                 ResponseEvent::Complete { metadata } => {
                     // Complete and move to messages
-                    state.streaming_markdown.complete();
-                    let source = state.streaming_markdown.source().to_string();
+                    state.chat.streaming_markdown.complete();
+                    let source = state.chat.streaming_markdown.source().to_string();
                     if !source.is_empty() {
                         // Aggregate into session usage
                         if let Some(ref meta) = metadata {
                             if let Some(input) = meta.input_tokens {
-                                state.session_usage.input_tokens += input;
+                                state.session.session_usage.input_tokens += input;
                             }
                             if let Some(output) = meta.output_tokens {
-                                state.session_usage.output_tokens += output;
+                                state.session.session_usage.output_tokens += output;
                             }
                             if let Some(ms) = meta.duration_ms {
-                                state.session_usage.duration_ms += ms;
+                                state.session.session_usage.duration_ms += ms;
                             }
                             // Cost estimation: ~$3/M input, ~$15/M output for Claude Opus
                             let cost = (meta.input_tokens.unwrap_or(0) as f64 * 3.0 / 1_000_000.0)
                                      + (meta.output_tokens.unwrap_or(0) as f64 * 15.0 / 1_000_000.0);
-                            state.session_usage.total_cost_usd += cost;
+                            state.session.session_usage.total_cost_usd += cost;
                         }
-                        state.session_usage.num_turns += 1;
+                        state.session.session_usage.num_turns += 1;
 
-                        let doc = state.streaming_markdown.document().clone();
-                        state.messages.push(ChatMessage {
+                        let doc = state.chat.streaming_markdown.document().clone();
+                        state.chat.messages.push(ChatMessage {
                             role: MessageRole::Assistant,
                             content: source,
                             document: Some(doc),
@@ -6366,49 +4444,57 @@ impl CoderApp {
                             metadata,
                         });
                     }
-                    state.streaming_markdown.reset();
-                    state.record_session();
-                    state.cancel_running_tools();
-                    state.is_thinking = false;
-                    state.refresh_agent_cards();
-                    state.response_rx = None;
-                    state.query_control_tx = None;
-                    state.permission_requests_rx = None;
-                    state.permission_action_tx = None;
-                    state.permission_action_rx = None;
-                    state.permission_dialog = None;
-                    state.permission_pending = None;
-                    state.permission_queue.clear();
-                    state.current_tool_name = None;
-                    state.current_tool_input.clear();
-                    state.current_tool_use_id = None;
+                    state.chat.streaming_markdown.reset();
+                    state.session.record_session(
+                        &state.settings.coder_settings,
+                        &state.chat.messages,
+                        state.chat.is_thinking,
+                    );
+                    state.tools.cancel_running_tools();
+                    state.chat.is_thinking = false;
+                    state.catalogs.refresh_agent_cards(state.chat.is_thinking);
+                    state.chat.response_rx = None;
+                    state.chat.query_control_tx = None;
+                    state.permissions.permission_requests_rx = None;
+                    state.permissions.permission_action_tx = None;
+                    state.permissions.permission_action_rx = None;
+                    state.permissions.permission_dialog = None;
+                    state.permissions.permission_pending = None;
+                    state.permissions.permission_queue.clear();
+                    state.tools.current_tool_name = None;
+                    state.tools.current_tool_input.clear();
+                    state.tools.current_tool_use_id = None;
                     needs_redraw = true;
                     break;
                 }
                 ResponseEvent::Error(e) => {
-                    state.messages.push(ChatMessage {
+                    state.chat.messages.push(ChatMessage {
                         role: MessageRole::Assistant,
                         content: format!("Error: {}", e),
                         document: None,
                         uuid: None,
                         metadata: None,
                     });
-                    state.streaming_markdown.reset();
-                    state.record_session();
-                    state.cancel_running_tools();
-                    state.is_thinking = false;
-                    state.refresh_agent_cards();
-                    state.response_rx = None;
-                    state.query_control_tx = None;
-                    state.permission_requests_rx = None;
-                    state.permission_action_tx = None;
-                    state.permission_action_rx = None;
-                    state.permission_dialog = None;
-                    state.permission_pending = None;
-                    state.permission_queue.clear();
-                    state.current_tool_name = None;
-                    state.current_tool_input.clear();
-                    state.current_tool_use_id = None;
+                    state.chat.streaming_markdown.reset();
+                    state.session.record_session(
+                        &state.settings.coder_settings,
+                        &state.chat.messages,
+                        state.chat.is_thinking,
+                    );
+                    state.tools.cancel_running_tools();
+                    state.chat.is_thinking = false;
+                    state.catalogs.refresh_agent_cards(state.chat.is_thinking);
+                    state.chat.response_rx = None;
+                    state.chat.query_control_tx = None;
+                    state.permissions.permission_requests_rx = None;
+                    state.permissions.permission_action_tx = None;
+                    state.permissions.permission_action_rx = None;
+                    state.permissions.permission_dialog = None;
+                    state.permissions.permission_pending = None;
+                    state.permissions.permission_queue.clear();
+                    state.tools.current_tool_name = None;
+                    state.tools.current_tool_input.clear();
+                    state.tools.current_tool_use_id = None;
                     needs_redraw = true;
                     break;
                 }
@@ -6422,7 +4508,7 @@ impl CoderApp {
                     slash_commands,
                     mcp_servers,
                 } => {
-                    state.session_info = SessionInfo {
+                    state.session.session_info = SessionInfo {
                         model,
                         permission_mode,
                         session_id,
@@ -6431,18 +4517,18 @@ impl CoderApp {
                         output_style,
                         slash_commands,
                     };
-                    state.update_mcp_status(mcp_servers, None);
-                    if let Some(parsed_mode) = parse_coder_mode(&state.session_info.permission_mode)
+                    state.catalogs.update_mcp_status(mcp_servers, None);
+                    if let Some(parsed_mode) = parse_coder_mode(&state.session.session_info.permission_mode)
                     {
-                        state.coder_mode = parsed_mode;
-                        state.permission_default_allow =
-                            coder_mode_default_allow(parsed_mode, state.permission_default_allow);
+                        state.permissions.coder_mode = parsed_mode;
+                        state.permissions.permission_default_allow =
+                            coder_mode_default_allow(parsed_mode, state.permissions.permission_default_allow);
                     }
-                    state.refresh_session_cards();
+                    state.session.refresh_session_cards(state.chat.is_thinking);
                     needs_redraw = true;
                 }
                 ResponseEvent::McpStatus { servers, error } => {
-                    state.update_mcp_status(servers, error);
+                    state.catalogs.update_mcp_status(servers, error);
                     needs_redraw = true;
                 }
                 ResponseEvent::HookLog(entry) => {
@@ -6450,7 +4536,8 @@ impl CoderApp {
                     needs_redraw = true;
                 }
                 ResponseEvent::DspyStage(stage) => {
-                    state.push_dspy_stage(stage);
+                    let message_index = state.chat.messages.len().saturating_sub(1);
+                    state.tools.push_dspy_stage(stage, message_index);
                     needs_redraw = true;
                 }
             }
@@ -6469,24 +4556,24 @@ impl CoderApp {
         let mut needs_redraw = false;
 
         let mut pending_requests = Vec::new();
-        if let Some(rx) = &mut state.permission_requests_rx {
+        if let Some(rx) = &mut state.permissions.permission_requests_rx {
             while let Ok(pending) = rx.try_recv() {
                 pending_requests.push(pending);
             }
         }
         for pending in pending_requests {
-            state.enqueue_permission_prompt(pending);
+            state.permissions.enqueue_permission_prompt(pending);
             needs_redraw = true;
         }
 
         let mut pending_actions = Vec::new();
-        if let Some(rx) = &mut state.permission_action_rx {
+        if let Some(rx) = &mut state.permissions.permission_action_rx {
             while let Ok(action) = rx.try_recv() {
                 pending_actions.push(action);
             }
         }
         for action in pending_actions {
-            state.handle_permission_action(action);
+            state.permissions.handle_permission_action(action);
             needs_redraw = true;
         }
 
@@ -6532,7 +4619,7 @@ impl CoderApp {
         let mut needs_redraw = false;
 
         let mut session_events = Vec::new();
-        if let Some(rx) = &mut state.session_action_rx {
+        if let Some(rx) = &mut state.session.session_action_rx {
             while let Ok(event) = rx.try_recv() {
                 session_events.push(event);
             }
@@ -6543,7 +4630,7 @@ impl CoderApp {
         }
 
         let mut checkpoint_events = Vec::new();
-        if let Some(rx) = &mut state.checkpoint_action_rx {
+        if let Some(rx) = &mut state.session.checkpoint_action_rx {
             while let Ok(index) = rx.try_recv() {
                 checkpoint_events.push(index);
             }
@@ -6565,7 +4652,7 @@ impl CoderApp {
 
         let mut needs_redraw = false;
         let mut agent_events = Vec::new();
-        if let Some(rx) = &mut state.agent_action_rx {
+        if let Some(rx) = &mut state.catalogs.agent_action_rx {
             while let Ok(event) = rx.try_recv() {
                 agent_events.push(event);
             }
@@ -6587,7 +4674,7 @@ impl CoderApp {
 
         let mut needs_redraw = false;
         let mut skill_events = Vec::new();
-        if let Some(rx) = &mut state.skill_action_rx {
+        if let Some(rx) = &mut state.catalogs.skill_action_rx {
             while let Ok(event) = rx.try_recv() {
                 skill_events.push(event);
             }
@@ -6609,13 +4696,13 @@ impl CoderApp {
 
         let mut needs_redraw = false;
         let mut views = Vec::new();
-        if let Some(rx) = &mut state.hook_inspector_action_rx {
+        if let Some(rx) = &mut state.catalogs.hook_inspector_action_rx {
             while let Ok(view) = rx.try_recv() {
                 views.push(view);
             }
         }
         for view in views {
-            state.hook_inspector_view = view;
+            state.catalogs.hook_inspector_view = view;
             needs_redraw = true;
         }
 
@@ -6630,11 +4717,11 @@ impl CoderApp {
         };
 
         // Check if we received a manifest to cache
-        if let Some(rx) = &mut state.oanix_manifest_rx {
+        if let Some(rx) = &mut state.autopilot.oanix_manifest_rx {
             if let Ok(manifest) = rx.try_recv() {
                 tracing::info!("Autopilot: cached OANIX manifest");
-                state.oanix_manifest = Some(manifest);
-                state.oanix_manifest_rx = None; // Done receiving
+                state.autopilot.oanix_manifest = Some(manifest);
+                state.autopilot.oanix_manifest_rx = None; // Done receiving
             }
         }
     }
@@ -6645,11 +4732,11 @@ impl CoderApp {
         };
 
         // Check if we received updated conversation history from Adjutant
-        if let Some(rx) = &mut state.autopilot_history_rx {
+        if let Some(rx) = &mut state.autopilot.autopilot_history_rx {
             if let Ok(updated_history) = rx.try_recv() {
                 tracing::info!("Autopilot: updated conversation history ({} turns)", updated_history.len());
-                state.autopilot_history = updated_history;
-                state.autopilot_history_rx = None; // Done receiving
+                state.autopilot.autopilot_history = updated_history;
+                state.autopilot.autopilot_history_rx = None; // Done receiving
             }
         }
     }
@@ -6660,10 +4747,10 @@ impl CoderApp {
         };
 
         // Check if we received rate limits
-        if let Some(rx) = &mut state.rate_limit_rx {
+        if let Some(rx) = &mut state.session.rate_limit_rx {
             if let Ok(limits) = rx.try_recv() {
-                state.rate_limits = limits;
-                state.rate_limit_rx = None; // Done receiving (one-shot)
+                state.session.rate_limits = limits;
+                state.session.rate_limit_rx = None; // Done receiving (one-shot)
                 state.window.request_redraw();
             }
         }
@@ -6693,19 +4780,29 @@ impl CoderApp {
             }
             command_palette_ids::PERMISSION_RULES => Some(handle_command(state, Command::PermissionRules)),
             command_palette_ids::MODE_CYCLE => {
-                state.cycle_coder_mode();
+                state
+                    .permissions
+                    .cycle_coder_mode(&mut state.session.session_info);
                 None
             }
             command_palette_ids::MODE_BYPASS => {
-                state.set_coder_mode(CoderMode::BypassPermissions);
+                state.permissions.set_coder_mode(
+                    CoderMode::BypassPermissions,
+                    &mut state.session.session_info,
+                );
                 None
             }
             command_palette_ids::MODE_PLAN => {
-                state.set_coder_mode(CoderMode::Plan);
+                state
+                    .permissions
+                    .set_coder_mode(CoderMode::Plan, &mut state.session.session_info);
                 None
             }
             command_palette_ids::MODE_AUTOPILOT => {
-                state.set_coder_mode(CoderMode::Autopilot);
+                state.permissions.set_coder_mode(
+                    CoderMode::Autopilot,
+                    &mut state.session.session_info,
+                );
                 None
             }
             command_palette_ids::TOOLS_LIST => Some(handle_command(state, Command::ToolsList)),
@@ -6774,7 +4871,7 @@ impl CoderApp {
         // Build scene
         let mut scene = Scene::new();
         let bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
-        let palette = palette_for(state.settings.theme);
+        let palette = palette_for(state.settings.coder_settings.theme);
         let sidebar_layout = sidebar_layout(
             logical_width,
             logical_height,
@@ -6849,7 +4946,7 @@ impl CoderApp {
             y += line_height + 8.0;
 
             // Model
-            let model_text = &state.session_info.model;
+            let model_text = &state.session.session_info.model;
             if !model_text.is_empty() {
                 let model_run = state.text_system.layout_styled_mono(
                     model_text,
@@ -6863,7 +4960,7 @@ impl CoderApp {
             }
 
             // Cost and turns
-            let cost_text = format!("${:.4}", state.session_usage.total_cost_usd);
+            let cost_text = format!("${:.4}", state.session.session_usage.total_cost_usd);
             let cost_run = state.text_system.layout_styled_mono(
                 &cost_text,
                 Point::new(x, y),
@@ -6873,7 +4970,7 @@ impl CoderApp {
             );
             scene.draw_text(cost_run);
 
-            let turns_text = format!("{} turns", state.session_usage.num_turns);
+            let turns_text = format!("{} turns", state.session.session_usage.num_turns);
             let turns_run = state.text_system.layout_styled_mono(
                 &turns_text,
                 Point::new(x + 70.0, y),
@@ -6885,7 +4982,7 @@ impl CoderApp {
             y += line_height + 8.0;
 
             // Tokens
-            let in_text = format!("{} in", format_tokens(state.session_usage.input_tokens));
+            let in_text = format!("{} in", format_tokens(state.session.session_usage.input_tokens));
             let in_run = state.text_system.layout_styled_mono(
                 &in_text,
                 Point::new(x, y),
@@ -6895,7 +4992,7 @@ impl CoderApp {
             );
             scene.draw_text(in_run);
 
-            let out_text = format!("{} out", format_tokens(state.session_usage.output_tokens));
+            let out_text = format!("{} out", format_tokens(state.session.session_usage.output_tokens));
             let out_run = state.text_system.layout_styled_mono(
                 &out_text,
                 Point::new(x + w / 2.0, y),
@@ -6907,7 +5004,7 @@ impl CoderApp {
             y += line_height + 4.0;
 
             // Duration
-            let dur_text = format_duration_ms(state.session_usage.duration_ms);
+            let dur_text = format_duration_ms(state.session.session_usage.duration_ms);
             let dur_run = state.text_system.layout_styled_mono(
                 &dur_text,
                 Point::new(x, y),
@@ -6923,8 +5020,8 @@ impl CoderApp {
 
             // Render each rate limit
             let rate_limits_to_render: Vec<_> = [
-                state.rate_limits.primary.clone(),
-                state.rate_limits.secondary.clone(),
+                state.session.rate_limits.primary.clone(),
+                state.session.rate_limits.secondary.clone(),
             ]
             .into_iter()
             .flatten()
@@ -7012,7 +5109,7 @@ impl CoderApp {
             scene.push_clip(chat_clip_bounds);
         }
 
-        if let Some(selection) = state.chat_selection {
+        if let Some(selection) = state.chat.chat_selection {
             if !selection.is_empty() {
                 let (start, end) = selection.normalized();
                 for layout in &chat_layout.message_layouts {
@@ -7064,9 +5161,9 @@ impl CoderApp {
             }
         }
 
-        let mut y = viewport_top - state.scroll_offset;
+        let mut y = viewport_top - state.chat.scroll_offset;
         let mut inline_tools_render_idx = 0;
-        for (i, msg) in state.messages.iter().enumerate() {
+        for (i, msg) in state.chat.messages.iter().enumerate() {
             let layout = &chat_layout.message_layouts[i];
             let msg_height = layout.height;
 
@@ -7102,7 +5199,7 @@ impl CoderApp {
                     if let Some(doc) = &msg.document {
                         let content_visible = y + msg_height > viewport_top && y < viewport_bottom;
                         if content_visible {
-                            state.markdown_renderer.render(
+                            state.chat.markdown_renderer.render(
                                 doc,
                                 Point::new(content_x, y),
                                 available_width,
@@ -7178,11 +5275,11 @@ impl CoderApp {
             }
         }
 
-        if !state.streaming_markdown.source().is_empty() {
-            let doc = state.streaming_markdown.document();
+        if !state.chat.streaming_markdown.source().is_empty() {
+            let doc = state.chat.streaming_markdown.document();
             let content_visible = y + streaming_height > viewport_top && y < viewport_bottom;
             if content_visible {
-                state.markdown_renderer.render(
+                state.chat.markdown_renderer.render(
                     doc,
                     Point::new(content_x, y),
                     available_width,
@@ -7190,7 +5287,7 @@ impl CoderApp {
                     &mut scene,
                 );
             }
-        } else if state.is_thinking {
+        } else if state.chat.is_thinking {
             // Check if thinking indicator overlaps with viewport (standard range overlap test)
             if y < viewport_bottom && y + chat_line_height > viewport_top {
                 let text_run = state.text_system.layout_styled_mono(
@@ -7217,7 +5314,7 @@ impl CoderApp {
                         .unwrap_or(block.card_bounds.origin.y + block.card_bounds.size.height);
 
                     if block_bottom > viewport_top && block_top < viewport_bottom {
-                        if let Some(tool) = state.tool_history.get_mut(block.index) {
+                        if let Some(tool) = state.tools.tool_history.get_mut(block.index) {
                             tool.card.paint(block.card_bounds, &mut paint_cx);
                             if tool.status == ToolStatus::Running {
                                 let ratio = tool
@@ -7263,7 +5360,7 @@ impl CoderApp {
 
                 // Check if the stage is visible in the viewport
                 if stage_bottom > viewport_top && stage_top < viewport_bottom {
-                    if let Some(stage_viz) = state.dspy_stages.get(dspy_layout.stage_index) {
+                    if let Some(stage_viz) = state.tools.dspy_stages.get(dspy_layout.stage_index) {
                         Self::render_dspy_stage_card(
                             &stage_viz.stage,
                             Bounds::new(content_x, stage_top, available_width, dspy_layout.height),
@@ -7309,7 +5406,7 @@ impl CoderApp {
         state.input.paint(input_bounds, &mut paint_cx);
 
         // Draw ">" prompt inside input, aligned with the cursor line (bottom)
-        let prompt_font = state.settings.font_size;
+        let prompt_font = state.settings.coder_settings.font_size;
         let line_height = prompt_font * 1.4;
         let cursor_line = state.input.cursor_line();
         let prompt_y = input_bounds.origin.y + 8.0 + line_height * cursor_line as f32 + prompt_font * 0.15;
@@ -7322,9 +5419,9 @@ impl CoderApp {
         );
         scene.draw_text(prompt_run);
 
-        let mode_label = coder_mode_display(state.coder_mode);
-        let mode_color = coder_mode_color(state.coder_mode, &palette);
-        if state.session_info.permission_mode.is_empty() {
+        let mode_label = coder_mode_display(state.permissions.coder_mode);
+        let mode_color = coder_mode_color(state.permissions.coder_mode, &palette);
+        if state.session.session_info.permission_mode.is_empty() {
             let mode_text = format!("Mode: {}", mode_label);
             let mode_run = state.text_system.layout_styled_mono(
                 &mode_text,
@@ -7343,9 +5440,9 @@ impl CoderApp {
         let status_y = logical_height - STATUS_BAR_HEIGHT - 3.0;
 
         // Left side: mode (colored) + hint (gray), flush with left edge of 768px container
-        if !state.session_info.permission_mode.is_empty() {
+        if !state.session.session_info.permission_mode.is_empty() {
             let mode_x = input_x;
-            let mode_text = coder_mode_display(state.coder_mode);
+            let mode_text = coder_mode_display(state.permissions.coder_mode);
             let mode_run = state.text_system.layout_styled_mono(
                 mode_text,
                 Point::new(mode_x, status_y),
@@ -7369,37 +5466,37 @@ impl CoderApp {
         }
 
         // Right side: model, available open models, tools, session
-        if !state.session_info.model.is_empty() {
+        if !state.session.session_info.model.is_empty() {
             // Format: "haiku | gptoss | 18 tools | abc123"
-            let model_short = state.session_info.model
+            let model_short = state.session.session_info.model
                 .replace("claude-", "")
                 .replace("-20251101", "")
                 .replace("-20250929", "")
                 .replace("-20251001", "");
-            let session_short = if state.session_info.session_id.len() > 8 {
-                &state.session_info.session_id[..8]
+            let session_short = if state.session.session_info.session_id.len() > 8 {
+                &state.session.session_info.session_id[..8]
             } else {
-                &state.session_info.session_id
+                &state.session.session_info.session_id
             };
             let mut parts = Vec::new();
             parts.push(model_short);
             // Add available open models (not Claude SDK since that's already shown)
-            for provider in &state.available_providers {
+            for provider in &state.autopilot.available_providers {
                 if !matches!(provider, adjutant::dspy::lm_config::LmProvider::ClaudeSdk) {
                     parts.push(provider.short_name().to_string());
                 }
             }
-            if let Some(summary) = state.mcp_status_summary() {
+            if let Some(summary) = state.catalogs.mcp_status_summary() {
                 parts.push(summary);
             }
-            if let Some(active_agent) = &state.active_agent {
+            if let Some(active_agent) = &state.catalogs.active_agent {
                 parts.push(format!(
                     "agent {}",
                     truncate_preview(active_agent, 12)
                 ));
             }
             // Only show session if we have an actual session ID
-            if !state.session_info.session_id.is_empty() {
+            if !state.session.session_info.session_id.is_empty() {
                 parts.push(format!("session {}", session_short));
             }
             let right_text = parts.join(" | ");
@@ -7418,19 +5515,19 @@ impl CoderApp {
 
         // Draw modal if active
         let should_refresh_sessions = matches!(state.modal_state, ModalState::SessionList { .. })
-            && state.session_cards.len() != state.session_index.len();
+            && state.session.session_cards.len() != state.session.session_index.len();
         if should_refresh_sessions {
-            state.refresh_session_cards();
+            state.session.refresh_session_cards(state.chat.is_thinking);
         }
         let should_refresh_agents = matches!(state.modal_state, ModalState::AgentList { .. })
-            && state.agent_cards.len() != state.agent_entries.len();
+            && state.catalogs.agent_cards.len() != state.catalogs.agent_entries.len();
         if should_refresh_agents {
-            state.refresh_agent_cards();
+            state.catalogs.refresh_agent_cards(state.chat.is_thinking);
         }
         let should_refresh_skills = matches!(state.modal_state, ModalState::SkillList { .. })
-            && state.skill_cards.len() != state.skill_entries.len();
+            && state.catalogs.skill_cards.len() != state.catalogs.skill_entries.len();
         if should_refresh_skills {
-            state.refresh_skill_cards();
+            state.catalogs.refresh_skill_cards();
         }
         match &state.modal_state {
             ModalState::None => {}
@@ -7483,7 +5580,7 @@ impl CoderApp {
                 let models = ModelOption::all();
                 for (i, model) in models.iter().enumerate() {
                     let is_selected = i == *selected;
-                    let is_current = *model == state.selected_model;
+                    let is_current = *model == state.settings.selected_model;
 
                     // Selection indicator
                     let indicator = if is_selected { ">" } else { " " };
@@ -7559,16 +5656,16 @@ impl CoderApp {
                 scene.draw_text(footer_run);
             }
             ModalState::SessionList { selected } => {
-                let sessions = &state.session_index;
+                let sessions = &state.session.session_index;
                 // Semi-transparent overlay
                 let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
                 scene.draw_quad(overlay);
 
                 let selected = (*selected).min(sessions.len().saturating_sub(1));
-                let checkpoint_height = if state.checkpoint_entries.is_empty() {
+                let checkpoint_height = if state.session.checkpoint_entries.is_empty() {
                     0.0
                 } else {
-                    state.checkpoint_restore.size_hint().1.unwrap_or(0.0)
+                    state.session.checkpoint_restore.size_hint().1.unwrap_or(0.0)
                 };
                 let layout = session_list_layout(
                     logical_width,
@@ -7622,7 +5719,7 @@ impl CoderApp {
                     let mut paint_cx =
                         PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
                     for (index, bounds) in &layout.card_bounds {
-                        if let Some(card) = state.session_cards.get_mut(*index) {
+                        if let Some(card) = state.session.session_cards.get_mut(*index) {
                             card.paint(*bounds, &mut paint_cx);
                         }
                         if *index == selected {
@@ -7636,7 +5733,7 @@ impl CoderApp {
                 if let Some(bounds) = layout.checkpoint_bounds {
                     let mut paint_cx =
                         PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
-                    state.checkpoint_restore.paint(bounds, &mut paint_cx);
+                    state.session.checkpoint_restore.paint(bounds, &mut paint_cx);
                 }
 
                 y = modal_y + modal_height - 24.0;
@@ -7689,7 +5786,7 @@ impl CoderApp {
                 scene.draw_text(desc_run);
                 y += 18.0;
 
-                if let Some(active) = &state.active_agent {
+                if let Some(active) = &state.catalogs.active_agent {
                     let active_line = format!("Active agent: {}", active);
                     let active_run = state.text_system.layout_styled_mono(
                         &truncate_preview(&active_line, 90),
@@ -7702,8 +5799,7 @@ impl CoderApp {
                     y += 18.0;
                 }
 
-                let project_path = state
-                    .agent_project_path
+                let project_path = state.catalogs.agent_project_path
                     .as_ref()
                     .map(|path| path.display().to_string())
                     .unwrap_or_else(|| "unknown".to_string());
@@ -7718,7 +5814,7 @@ impl CoderApp {
                 scene.draw_text(project_run);
                 y += 18.0;
 
-                if let Some(user_path) = &state.agent_user_path {
+                if let Some(user_path) = &state.catalogs.agent_user_path {
                     let user_line = format!("User agents: {}", user_path.display());
                     let user_run = state.text_system.layout_styled_mono(
                         &truncate_preview(&user_line, 90),
@@ -7731,7 +5827,7 @@ impl CoderApp {
                     y += 18.0;
                 }
 
-                if let Some(error) = &state.agent_load_error {
+                if let Some(error) = &state.catalogs.agent_load_error {
                     let error_line = format!("Load warning: {}", error);
                     let error_run = state.text_system.layout_styled_mono(
                         &truncate_preview(&error_line, 100),
@@ -7744,13 +5840,11 @@ impl CoderApp {
                     y += 18.0;
                 }
 
-                let project_count = state
-                    .agent_entries
+                let project_count = state.catalogs.agent_entries
                     .iter()
                     .filter(|entry| entry.source == AgentSource::Project)
                     .count();
-                let user_count = state
-                    .agent_entries
+                let user_count = state.catalogs.agent_entries
                     .iter()
                     .filter(|entry| entry.source == AgentSource::User)
                     .count();
@@ -7771,12 +5865,12 @@ impl CoderApp {
                 let layout = agent_list_layout(
                     logical_width,
                     logical_height,
-                    state.agent_entries.len(),
+                    state.catalogs.agent_entries.len(),
                     *selected,
                     list_top,
                 );
 
-                if state.agent_entries.is_empty() {
+                if state.catalogs.agent_entries.is_empty() {
                     let empty_run = state.text_system.layout_styled_mono(
                         "No agents found.",
                         Point::new(modal_x + 16.0, list_top),
@@ -7786,11 +5880,11 @@ impl CoderApp {
                     );
                     scene.draw_text(empty_run);
                 } else {
-                    let selected = (*selected).min(state.agent_entries.len().saturating_sub(1));
+                    let selected = (*selected).min(state.catalogs.agent_entries.len().saturating_sub(1));
                     let mut paint_cx =
                         PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
                     for (index, bounds) in &layout.card_bounds {
-                        if let Some(card) = state.agent_cards.get_mut(*index) {
+                        if let Some(card) = state.catalogs.agent_cards.get_mut(*index) {
                             card.paint(*bounds, &mut paint_cx);
                         }
                         if *index == selected {
@@ -7850,8 +5944,7 @@ impl CoderApp {
                 scene.draw_text(desc_run);
                 y += 18.0;
 
-                let project_path = state
-                    .skill_project_path
+                let project_path = state.catalogs.skill_project_path
                     .as_ref()
                     .map(|path| path.display().to_string())
                     .unwrap_or_else(|| "unknown".to_string());
@@ -7866,7 +5959,7 @@ impl CoderApp {
                 scene.draw_text(project_run);
                 y += 18.0;
 
-                if let Some(user_path) = &state.skill_user_path {
+                if let Some(user_path) = &state.catalogs.skill_user_path {
                     let user_line = format!("User skills: {}", user_path.display());
                     let user_run = state.text_system.layout_styled_mono(
                         &truncate_preview(&user_line, 90),
@@ -7879,7 +5972,7 @@ impl CoderApp {
                     y += 18.0;
                 }
 
-                if let Some(error) = &state.skill_load_error {
+                if let Some(error) = &state.catalogs.skill_load_error {
                     let error_line = format!("Load warning: {}", error);
                     let error_run = state.text_system.layout_styled_mono(
                         &truncate_preview(&error_line, 100),
@@ -7892,13 +5985,11 @@ impl CoderApp {
                     y += 18.0;
                 }
 
-                let project_count = state
-                    .skill_entries
+                let project_count = state.catalogs.skill_entries
                     .iter()
                     .filter(|entry| entry.source == SkillSource::Project)
                     .count();
-                let user_count = state
-                    .skill_entries
+                let user_count = state.catalogs.skill_entries
                     .iter()
                     .filter(|entry| entry.source == SkillSource::User)
                     .count();
@@ -7919,12 +6010,12 @@ impl CoderApp {
                 let layout = skill_list_layout(
                     logical_width,
                     logical_height,
-                    state.skill_entries.len(),
+                    state.catalogs.skill_entries.len(),
                     *selected,
                     list_top,
                 );
 
-                if state.skill_entries.is_empty() {
+                if state.catalogs.skill_entries.is_empty() {
                     let empty_run = state.text_system.layout_styled_mono(
                         "No skills found.",
                         Point::new(modal_x + 16.0, list_top),
@@ -7934,11 +6025,11 @@ impl CoderApp {
                     );
                     scene.draw_text(empty_run);
                 } else {
-                    let selected = (*selected).min(state.skill_entries.len().saturating_sub(1));
+                    let selected = (*selected).min(state.catalogs.skill_entries.len().saturating_sub(1));
                     let mut paint_cx =
                         PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
                     for (index, bounds) in &layout.card_bounds {
-                        if let Some(card) = state.skill_cards.get_mut(*index) {
+                        if let Some(card) = state.catalogs.skill_cards.get_mut(*index) {
                             card.paint(*bounds, &mut paint_cx);
                         }
                         if *index == selected {
@@ -8016,19 +6107,19 @@ impl CoderApp {
                         y += 20.0;
 
                         let config_lines = [
-                            (HookSetting::ToolBlocker, "ToolBlocker", state.hook_config.tool_blocker),
-                            (HookSetting::ToolLogger, "ToolLogger", state.hook_config.tool_logger),
+                            (HookSetting::ToolBlocker, "ToolBlocker", state.catalogs.hook_config.tool_blocker),
+                            (HookSetting::ToolLogger, "ToolLogger", state.catalogs.hook_config.tool_logger),
                             (
                                 HookSetting::OutputTruncator,
                                 "OutputTruncator",
-                                state.hook_config.output_truncator,
+                                state.catalogs.hook_config.output_truncator,
                             ),
                             (
                                 HookSetting::ContextInjection,
                                 "ContextInjection",
-                                state.hook_config.context_injection,
+                                state.catalogs.hook_config.context_injection,
                             ),
-                            (HookSetting::TodoEnforcer, "TodoEnforcer", state.hook_config.todo_enforcer),
+                            (HookSetting::TodoEnforcer, "TodoEnforcer", state.catalogs.hook_config.todo_enforcer),
                         ];
 
                         for (idx, (_setting, label, enabled)) in config_lines.iter().enumerate() {
@@ -8050,8 +6141,7 @@ impl CoderApp {
                         }
 
                         y += 4.0;
-                        let project_path = state
-                            .hook_project_path
+                        let project_path = state.catalogs.hook_project_path
                             .as_ref()
                             .map(|path| path.display().to_string())
                             .unwrap_or_else(|| "unknown".to_string());
@@ -8066,7 +6156,7 @@ impl CoderApp {
                         scene.draw_text(project_run);
                         y += 18.0;
 
-                        if let Some(user_path) = &state.hook_user_path {
+                        if let Some(user_path) = &state.catalogs.hook_user_path {
                             let user_line = format!("User hooks: {}", user_path.display());
                             let user_run = state.text_system.layout_styled_mono(
                                 &truncate_preview(&user_line, 90),
@@ -8079,7 +6169,7 @@ impl CoderApp {
                             y += 18.0;
                         }
 
-                        if let Some(error) = &state.hook_load_error {
+                        if let Some(error) = &state.catalogs.hook_load_error {
                             let error_line = format!("Load warning: {}", error);
                             let error_run = state.text_system.layout_styled_mono(
                                 &truncate_preview(&error_line, 100),
@@ -8092,7 +6182,7 @@ impl CoderApp {
                             y += 18.0;
                         }
 
-                        let script_count = state.hook_scripts.len();
+                        let script_count = state.catalogs.hook_scripts.len();
                         let scripts_line = format!("Scripts: {}", script_count);
                         let scripts_run = state.text_system.layout_styled_mono(
                             &scripts_line,
@@ -8119,7 +6209,7 @@ impl CoderApp {
                             );
                             scene.draw_text(empty_run);
                         } else {
-                            for (idx, script) in state.hook_scripts.iter().take(max_rows).enumerate() {
+                            for (idx, script) in state.catalogs.hook_scripts.iter().take(max_rows).enumerate() {
                                 let source_label = match script.source {
                                     HookScriptSource::Project => "project",
                                     HookScriptSource::User => "user",
@@ -8170,11 +6260,11 @@ impl CoderApp {
                         let layout = hook_event_layout(
                             logical_width,
                             logical_height,
-                            state.hook_event_log.len(),
+                            state.catalogs.hook_event_log.len(),
                             *selected,
                         );
 
-                        if state.hook_event_log.is_empty() {
+                        if state.catalogs.hook_event_log.is_empty() {
                             let empty_run = state.text_system.layout_styled_mono(
                                 "No hook events logged yet.",
                                 Point::new(modal_x + 16.0, layout.list_bounds.origin.y),
@@ -8184,9 +6274,9 @@ impl CoderApp {
                             );
                             scene.draw_text(empty_run);
                         } else {
-                            let selected = (*selected).min(state.hook_event_log.len().saturating_sub(1));
+                            let selected = (*selected).min(state.catalogs.hook_event_log.len().saturating_sub(1));
                             for (index, bounds) in &layout.row_bounds {
-                                if let Some(entry) = state.hook_event_log.get(*index) {
+                                if let Some(entry) = state.catalogs.hook_event_log.get(*index) {
                                     if *index == selected {
                                         let highlight = Quad::new(*bounds)
                                             .with_background(Hsla::new(220.0, 0.2, 0.18, 1.0));
@@ -8213,10 +6303,10 @@ impl CoderApp {
                                 }
                             }
 
-                            if state.hook_inspector.is_none() {
+                            if state.catalogs.hook_inspector.is_none() {
                                 state.sync_hook_inspector(selected);
                             }
-                            if let Some(inspector) = state.hook_inspector.as_mut() {
+                            if let Some(inspector) = state.catalogs.hook_inspector.as_mut() {
                                 let mut paint_cx =
                                     PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
                                 inspector.paint(layout.inspector_bounds, &mut paint_cx);
@@ -8239,7 +6329,7 @@ impl CoderApp {
                 // Render on layer 1 to be on top of all layer 0 content
                 scene.set_layer(1);
 
-                let tools = &state.session_info.tools;
+                let tools = &state.session.session_info.tools;
                 // Semi-transparent overlay
                 let overlay = Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7));
                 scene.draw_quad(overlay);
@@ -8300,9 +6390,9 @@ impl CoderApp {
                         scene.draw_text(indicator_run);
 
                         let mut label = tool.clone();
-                        if state.tools_disallowed.iter().any(|t| t == tool) {
+                        if state.permissions.tools_disallowed.iter().any(|t| t == tool) {
                             label.push_str(" (disabled)");
-                        } else if state.tools_allowed.iter().any(|t| t == tool) {
+                        } else if state.permissions.tools_allowed.iter().any(|t| t == tool) {
                             label.push_str(" (enabled)");
                         }
 
@@ -8361,7 +6451,7 @@ impl CoderApp {
                 scene.draw_text(title_run);
                 y += 20.0;
 
-                let default_text = if state.permission_default_allow {
+                let default_text = if state.permissions.permission_default_allow {
                     "Default: allow"
                 } else {
                     "Default: deny"
@@ -8384,10 +6474,10 @@ impl CoderApp {
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(allow_label);
-                let allow_text = if state.permission_allow_tools.is_empty() {
+                let allow_text = if state.permissions.permission_allow_tools.is_empty() {
                     "None".to_string()
                 } else {
-                    state.permission_allow_tools.join(", ")
+                    state.permissions.permission_allow_tools.join(", ")
                 };
                 let allow_run = state.text_system.layout_styled_mono(
                     &allow_text,
@@ -8407,10 +6497,10 @@ impl CoderApp {
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(deny_label);
-                let deny_text = if state.permission_deny_tools.is_empty() {
+                let deny_text = if state.permissions.permission_deny_tools.is_empty() {
                     "None".to_string()
                 } else {
-                    state.permission_deny_tools.join(", ")
+                    state.permissions.permission_deny_tools.join(", ")
                 };
                 let deny_run = state.text_system.layout_styled_mono(
                     &deny_text,
@@ -8430,10 +6520,10 @@ impl CoderApp {
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(bash_allow_label);
-                let bash_allow_text = if state.permission_allow_bash_patterns.is_empty() {
+                let bash_allow_text = if state.permissions.permission_allow_bash_patterns.is_empty() {
                     "None".to_string()
                 } else {
-                    state.permission_allow_bash_patterns.join(", ")
+                    state.permissions.permission_allow_bash_patterns.join(", ")
                 };
                 let bash_allow_run = state.text_system.layout_styled_mono(
                     &bash_allow_text,
@@ -8453,10 +6543,10 @@ impl CoderApp {
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(bash_deny_label);
-                let bash_deny_text = if state.permission_deny_bash_patterns.is_empty() {
+                let bash_deny_text = if state.permissions.permission_deny_bash_patterns.is_empty() {
                     "None".to_string()
                 } else {
-                    state.permission_deny_bash_patterns.join(", ")
+                    state.permissions.permission_deny_bash_patterns.join(", ")
                 };
                 let bash_deny_run = state.text_system.layout_styled_mono(
                     &bash_deny_text,
@@ -8478,7 +6568,7 @@ impl CoderApp {
                 scene.draw_text(history_title);
                 y += 18.0;
 
-                if state.permission_history.is_empty() {
+                if state.permissions.permission_history.is_empty() {
                     let empty_run = state.text_system.layout_styled_mono(
                         "No recent permission decisions.",
                         Point::new(modal_x + 16.0, y),
@@ -8488,7 +6578,7 @@ impl CoderApp {
                     );
                     scene.draw_text(empty_run);
                 } else {
-                    for entry in state.permission_history.iter().rev().take(5) {
+                    for entry in state.permissions.permission_history.iter().rev().take(5) {
                         let mut line = format!(
                             "@{} [{}] {}",
                             entry.timestamp, entry.decision, entry.tool_name
@@ -8747,8 +6837,7 @@ impl CoderApp {
                 scene.draw_text(title_run);
                 y += 20.0;
 
-                let project_path = state
-                    .mcp_project_path
+                let project_path = state.catalogs.mcp_project_path
                     .as_ref()
                     .map(|path| path.display().to_string())
                     .unwrap_or_else(|| "unknown".to_string());
@@ -8763,7 +6852,7 @@ impl CoderApp {
                 scene.draw_text(project_run);
                 y += 18.0;
 
-                if let Some(error) = &state.mcp_project_error {
+                if let Some(error) = &state.catalogs.mcp_project_error {
                     let error_line = format!("Config warning: {}", error);
                     let error_run = state.text_system.layout_styled_mono(
                         &truncate_preview(&error_line, 100),
@@ -8776,7 +6865,7 @@ impl CoderApp {
                     y += 18.0;
                 }
 
-                if let Some(error) = &state.mcp_status_error {
+                if let Some(error) = &state.catalogs.mcp_status_error {
                     let status_line = format!("Status warning: {}", error);
                     let status_run = state.text_system.layout_styled_mono(
                         &truncate_preview(&status_line, 100),
@@ -8789,12 +6878,12 @@ impl CoderApp {
                     y += 18.0;
                 }
 
-                let entries = state.mcp_entries();
+                let entries = state.catalogs.mcp_entries();
                 let counts_line = format!(
                     "Servers: {} project · {} runtime · {} disabled",
-                    state.mcp_project_servers.len(),
-                    state.mcp_runtime_servers.len(),
-                    state.mcp_disabled_servers.len()
+                    state.catalogs.mcp_project_servers.len(),
+                    state.catalogs.mcp_runtime_servers.len(),
+                    state.catalogs.mcp_disabled_servers.len()
                 );
                 let counts_run = state.text_system.layout_styled_mono(
                     &counts_line,
@@ -8922,17 +7011,17 @@ impl CoderApp {
                 let line_height = 14.0;
                 let section_gap = 6.0;
 
-                let interrupt = keybinding_labels(&state.keybindings, KeyAction::Interrupt, "Ctrl+C");
+                let interrupt = keybinding_labels(&state.settings.keybindings, KeyAction::Interrupt, "Ctrl+C");
                 let palette_key =
-                    keybinding_labels(&state.keybindings, KeyAction::OpenCommandPalette, "Ctrl+K");
+                    keybinding_labels(&state.settings.keybindings, KeyAction::OpenCommandPalette, "Ctrl+K");
                 let settings_key =
-                    keybinding_labels(&state.keybindings, KeyAction::OpenSettings, "Ctrl+,");
+                    keybinding_labels(&state.settings.keybindings, KeyAction::OpenSettings, "Ctrl+,");
                 let left_sidebar =
-                    keybinding_labels(&state.keybindings, KeyAction::ToggleLeftSidebar, "Ctrl+[");
+                    keybinding_labels(&state.settings.keybindings, KeyAction::ToggleLeftSidebar, "Ctrl+[");
                 let right_sidebar =
-                    keybinding_labels(&state.keybindings, KeyAction::ToggleRightSidebar, "Ctrl+]");
+                    keybinding_labels(&state.settings.keybindings, KeyAction::ToggleRightSidebar, "Ctrl+]");
                 let toggle_sidebars =
-                    keybinding_labels(&state.keybindings, KeyAction::ToggleSidebars, "Ctrl+\\");
+                    keybinding_labels(&state.settings.keybindings, KeyAction::ToggleSidebars, "Ctrl+\\");
 
                 let sections: Vec<(&str, Vec<String>)> = vec![
                     (
@@ -9052,13 +7141,13 @@ impl CoderApp {
             state.command_palette.paint(bounds, &mut paint_cx);
         }
 
-        if state.chat_context_menu.is_open() {
+        if state.chat.chat_context_menu.is_open() {
             scene.set_layer(1);
             let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
-            state.chat_context_menu.paint(bounds, &mut paint_cx);
+            state.chat.chat_context_menu.paint(bounds, &mut paint_cx);
         }
 
-        if let Some(dialog) = state.permission_dialog.as_mut() {
+        if let Some(dialog) = state.permissions.permission_dialog.as_mut() {
             if dialog.is_open() {
                 let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
                 dialog.paint(bounds, &mut paint_cx);
@@ -9742,560 +7831,6 @@ fn extract_stream_text(event: &Value) -> Option<String> {
 }
 
 /// Safely truncate a string at a valid UTF-8 char boundary
-fn safe_truncate(s: &str, max_len: usize) -> &str {
-    if s.len() <= max_len {
-        return s;
-    }
-    let mut end = max_len;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
-}
-
-/// Safely get a suffix of a string at a valid UTF-8 char boundary
-fn safe_suffix(s: &str, skip_bytes: usize) -> &str {
-    if skip_bytes >= s.len() {
-        return "";
-    }
-    let mut start = skip_bytes;
-    while start < s.len() && !s.is_char_boundary(start) {
-        start += 1;
-    }
-    &s[start..]
-}
-
-/// Format tool input for display
-fn format_tool_input(tool_name: &str, json_input: &str) -> String {
-    // Try to parse the JSON and extract key fields
-    if let Ok(value) = serde_json::from_str::<Value>(json_input) {
-        match tool_name {
-            "Glob" => {
-                if let Some(pattern) = value.get("pattern").and_then(|v| v.as_str()) {
-                    return pattern.to_string();
-                }
-            }
-            "Grep" => {
-                if let Some(pattern) = value.get("pattern").and_then(|v| v.as_str()) {
-                    return pattern.to_string();
-                }
-            }
-            "Read" => {
-                if let Some(path) = value.get("file_path").and_then(|v| v.as_str()) {
-                    // Shorten path if too long
-                    if path.len() > 60 {
-                        return format!("...{}", safe_suffix(path, path.len().saturating_sub(57)));
-                    }
-                    return path.to_string();
-                }
-            }
-            "Bash" => {
-                if let Some(cmd) = value.get("command").and_then(|v| v.as_str()) {
-                    // Truncate long commands
-                    if cmd.len() > 80 {
-                        return format!("{}...", safe_truncate(cmd, 77));
-                    }
-                    return cmd.to_string();
-                }
-            }
-            "BashOutput" | "KillBash" => {
-                if let Some(id) = value
-                    .get("bash_id")
-                    .or_else(|| value.get("shell_id"))
-                    .and_then(|v| v.as_str())
-                {
-                    return format!("shell {}", id);
-                }
-            }
-            "Edit" | "Write" => {
-                if let Some(path) = value.get("file_path").and_then(|v| v.as_str()) {
-                    if path.len() > 60 {
-                        return format!("...{}", safe_suffix(path, path.len().saturating_sub(57)));
-                    }
-                    return path.to_string();
-                }
-            }
-            "WebFetch" => {
-                if let Some(url) = value.get("url").and_then(|v| v.as_str()) {
-                    return url.to_string();
-                }
-            }
-            "Task" => {
-                if let Some(desc) = value.get("description").and_then(|v| v.as_str()) {
-                    return desc.to_string();
-                }
-            }
-            "AskUserQuestion" => {
-                // Extract questions and format nicely
-                if let Some(questions) = value.get("questions").and_then(|v| v.as_array()) {
-                    let question_texts: Vec<&str> = questions
-                        .iter()
-                        .filter_map(|q| q.get("question").and_then(|v| v.as_str()))
-                        .collect();
-                    if !question_texts.is_empty() {
-                        let joined = question_texts.join(" | ");
-                        if joined.len() > 80 {
-                            return format!("{}...", safe_truncate(&joined, 77));
-                        }
-                        return joined;
-                    }
-                }
-            }
-            _ => {}
-        }
-        // Fallback: show truncated JSON
-        let s = json_input.replace('\n', " ");
-        if s.len() > 80 {
-            return format!("{}...", safe_truncate(&s, 77));
-        }
-        return s;
-    }
-    // If parsing fails, show raw (truncated)
-    if json_input.len() > 80 {
-        format!("{}...", safe_truncate(json_input, 77))
-    } else {
-        json_input.to_string()
-    }
-}
-
-fn tool_type_for_name(name: &str) -> ToolType {
-    let normalized = name.trim().to_ascii_lowercase();
-    match normalized.as_str() {
-        "read" => ToolType::Read,
-        "write" | "todowrite" => ToolType::Write,
-        "edit" | "notebookedit" => ToolType::Edit,
-        "bash" | "bashoutput" | "killbash" => ToolType::Bash,
-        "glob" => ToolType::Glob,
-        "grep" => ToolType::Grep,
-        "search" => ToolType::Search,
-        "list" => ToolType::List,
-        "task" => ToolType::Task,
-        "webfetch" | "web_fetch" | "fetch" => ToolType::WebFetch,
-        _ => ToolType::Unknown,
-    }
-}
-
-fn describe_mcp_config(config: &McpServerConfig) -> String {
-    match config {
-        McpServerConfig::Stdio { command, args, .. } => {
-            let mut line = format!("stdio: {}", command);
-            if let Some(args) = args {
-                if !args.is_empty() {
-                    line.push(' ');
-                    line.push_str(&args.join(" "));
-                }
-            }
-            line
-        }
-        McpServerConfig::Sse { url, .. } => format!("sse: {}", url),
-        McpServerConfig::Http { url, .. } => format!("http: {}", url),
-        McpServerConfig::Sdk { name } => format!("sdk: {}", name),
-    }
-}
-
-fn extract_exit_code(value: &Value) -> Option<i32> {
-    let obj = value.as_object()?;
-    let code = obj
-        .get("exit_code")
-        .or_else(|| obj.get("exitCode"))
-        .or_else(|| obj.get("exitcode"))
-        .and_then(|v| v.as_i64())?;
-    Some(code as i32)
-}
-
-fn value_to_string(value: &Value) -> Option<String> {
-    match value {
-        Value::Null => None,
-        Value::String(text) => Some(text.clone()),
-        _ => serde_json::to_string_pretty(value).ok(),
-    }
-}
-
-fn tool_result_output(
-    content: &Value,
-    tool_use_result: Option<&Value>,
-) -> (String, Option<i32>, Option<Value>) {
-    let mut output_value = tool_use_result.cloned();
-    let mut exit_code = tool_use_result.and_then(extract_exit_code);
-    if exit_code.is_none() {
-        exit_code = extract_exit_code(content);
-    }
-
-    let mut output = value_to_string(content).unwrap_or_default();
-    if output.trim().is_empty() {
-        if let Some(result) = tool_use_result {
-            if let Some(text) = result.get("output").and_then(|v| v.as_str()) {
-                output = text.to_string();
-            } else {
-                let stdout = result.get("stdout").and_then(|v| v.as_str()).unwrap_or("");
-                let stderr = result.get("stderr").and_then(|v| v.as_str()).unwrap_or("");
-                if !stdout.is_empty() || !stderr.is_empty() {
-                    if stdout.is_empty() {
-                        output = stderr.to_string();
-                    } else if stderr.is_empty() {
-                        output = stdout.to_string();
-                    } else {
-                        output = format!("{}\n{}", stdout, stderr);
-                    }
-                }
-            }
-        }
-    }
-
-    if output.trim().is_empty() {
-        if output_value.is_none() {
-            if let Some(text) = content.as_str() {
-                if let Ok(parsed) = serde_json::from_str::<Value>(text) {
-                    output_value = Some(parsed);
-                }
-            } else if !content.is_null() {
-                output_value = Some(content.clone());
-            }
-        }
-        if let Some(value) = output_value.as_ref() {
-            output = serde_json::to_string_pretty(value).unwrap_or_default();
-        }
-    }
-
-    let output = truncate_lines(&output, 200, 8_000);
-    (output, exit_code, output_value)
-}
-
-fn truncate_lines(text: &str, max_lines: usize, max_chars: usize) -> String {
-    if text.is_empty() {
-        return String::new();
-    }
-    let mut lines: Vec<&str> = text.lines().collect();
-    if lines.len() > max_lines {
-        lines.truncate(max_lines);
-    }
-    let mut result = lines.join("\n");
-    if result.len() > max_chars {
-        // Find valid UTF-8 char boundary at or before max_chars
-        let mut truncate_at = max_chars;
-        while truncate_at > 0 && !result.is_char_boundary(truncate_at) {
-            truncate_at -= 1;
-        }
-        result.truncate(truncate_at);
-        result.push_str("...");
-    }
-    result
-}
-
-fn parse_search_matches(output_value: Option<&Value>, output: &str) -> Vec<SearchMatch> {
-    if let Some(value) = output_value {
-        if let Some(matches) = parse_search_matches_from_value(value) {
-            return matches;
-        }
-    }
-
-    if let Ok(parsed) = serde_json::from_str::<Value>(output) {
-        if let Some(matches) = parse_search_matches_from_value(&parsed) {
-            return matches;
-        }
-    }
-
-    parse_search_matches_from_text(output)
-}
-
-fn parse_search_matches_from_value(value: &Value) -> Option<Vec<SearchMatch>> {
-    let mut matches = Vec::new();
-    if let Some(array) = value.as_array() {
-        for entry in array {
-            if let Some(path) = entry.as_str() {
-                matches.push(SearchMatch {
-                    file: path.to_string(),
-                    line: 1,
-                    content: String::new(),
-                });
-            }
-            if matches.len() >= TOOL_SEARCH_MATCH_LIMIT {
-                break;
-            }
-        }
-    } else if let Some(obj) = value.as_object() {
-        if let Some(array) = obj.get("matches").and_then(|v| v.as_array()) {
-            for entry in array {
-                if let Some(path) = entry.as_str() {
-                    matches.push(SearchMatch {
-                        file: path.to_string(),
-                        line: 1,
-                        content: String::new(),
-                    });
-                    continue;
-                }
-                if let Some(match_obj) = entry.as_object() {
-                    let file = match_obj
-                        .get("file")
-                        .or_else(|| match_obj.get("file_path"))
-                        .or_else(|| match_obj.get("path"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown");
-                    let line = match_obj
-                        .get("line_number")
-                        .or_else(|| match_obj.get("line"))
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(1) as u32;
-                    let content = match_obj
-                        .get("line")
-                        .or_else(|| match_obj.get("content"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    matches.push(SearchMatch {
-                        file: file.to_string(),
-                        line,
-                        content,
-                    });
-                }
-                if matches.len() >= TOOL_SEARCH_MATCH_LIMIT {
-                    break;
-                }
-            }
-        } else if let Some(array) = obj.get("files").and_then(|v| v.as_array()) {
-            for entry in array {
-                if let Some(path) = entry.as_str() {
-                    matches.push(SearchMatch {
-                        file: path.to_string(),
-                        line: 1,
-                        content: String::new(),
-                    });
-                }
-                if matches.len() >= TOOL_SEARCH_MATCH_LIMIT {
-                    break;
-                }
-            }
-        } else if let Some(array) = obj.get("counts").and_then(|v| v.as_array()) {
-            for entry in array {
-                if let Some(match_obj) = entry.as_object() {
-                    let file = match_obj
-                        .get("file")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown");
-                    let count = match_obj
-                        .get("count")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    matches.push(SearchMatch {
-                        file: file.to_string(),
-                        line: 1,
-                        content: format!("{} matches", count),
-                    });
-                }
-                if matches.len() >= TOOL_SEARCH_MATCH_LIMIT {
-                    break;
-                }
-            }
-        }
-    }
-
-    if matches.is_empty() {
-        None
-    } else {
-        Some(matches)
-    }
-}
-
-fn parse_search_matches_from_text(output: &str) -> Vec<SearchMatch> {
-    let mut matches = Vec::new();
-    for line in output.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if let Some((file, rest)) = line.split_once(':') {
-            if let Some((line_no, content)) = rest.split_once(':') {
-                if let Ok(number) = line_no.trim().parse::<u32>() {
-                    matches.push(SearchMatch {
-                        file: file.trim().to_string(),
-                        line: number,
-                        content: content.trim().to_string(),
-                    });
-                    continue;
-                }
-            }
-        }
-        matches.push(SearchMatch {
-            file: line.to_string(),
-            line: 1,
-            content: String::new(),
-        });
-        if matches.len() >= TOOL_SEARCH_MATCH_LIMIT {
-            break;
-        }
-    }
-    matches
-}
-
-fn parse_diff_lines(diff_text: &str) -> Vec<DiffLine> {
-    let mut lines = Vec::new();
-    for line in diff_text.lines() {
-        if line.starts_with("diff --git") || line.starts_with("index ") {
-            continue;
-        }
-        let (kind, content) = if line.starts_with("+++ ") || line.starts_with("--- ") {
-            (DiffLineKind::Header, line.to_string())
-        } else if line.starts_with("@@") {
-            (DiffLineKind::Header, line.to_string())
-        } else if line.starts_with('+') {
-            (DiffLineKind::Addition, line[1..].to_string())
-        } else if line.starts_with('-') {
-            (DiffLineKind::Deletion, line[1..].to_string())
-        } else if line.starts_with(' ') {
-            (DiffLineKind::Context, line[1..].to_string())
-        } else {
-            (DiffLineKind::Context, line.to_string())
-        };
-        lines.push(DiffLine {
-            kind,
-            content,
-            old_line: None,
-            new_line: None,
-        });
-        if lines.len() >= 200 {
-            break;
-        }
-    }
-    lines
-}
-
-fn build_simple_diff(old_text: &str, new_text: &str) -> Vec<DiffLine> {
-    let mut lines = Vec::new();
-    lines.push(DiffLine {
-        kind: DiffLineKind::Header,
-        content: "@@ -1 +1 @@".to_string(),
-        old_line: None,
-        new_line: None,
-    });
-    for line in old_text.lines() {
-        lines.push(DiffLine {
-            kind: DiffLineKind::Deletion,
-            content: line.to_string(),
-            old_line: None,
-            new_line: None,
-        });
-    }
-    for line in new_text.lines() {
-        lines.push(DiffLine {
-            kind: DiffLineKind::Addition,
-            content: line.to_string(),
-            old_line: None,
-            new_line: None,
-        });
-    }
-    lines
-}
-
-fn build_tool_detail(tool: &ToolVisualization) -> ToolDetail {
-    if !tool.card_expanded {
-        return ToolDetail::None;
-    }
-
-    let status = tool.status;
-
-    if tool.tool_type == ToolType::Bash {
-        let command = tool
-            .input_value
-            .as_ref()
-            .and_then(|value| {
-                value
-                    .get("command")
-                    .or_else(|| value.get("cmd"))
-                    .or_else(|| value.get("bash_id"))
-                    .or_else(|| value.get("shell_id"))
-                    .and_then(|v| v.as_str())
-            })
-            .unwrap_or("bash")
-            .to_string();
-        let mut detail = TerminalToolCall::new(command).status(status).expanded(true);
-        if let Some(output) = tool.output.as_ref() {
-            if !output.is_empty() {
-                detail = detail.output(output.clone());
-            }
-        }
-        if let Some(code) = tool.exit_code {
-            detail = detail.exit_code(code);
-        }
-        return ToolDetail::Terminal(detail);
-    }
-
-    if matches!(tool.tool_type, ToolType::Glob | ToolType::Grep | ToolType::Search) {
-        let query = tool
-            .input_value
-            .as_ref()
-            .and_then(|value| {
-                value
-                    .get("pattern")
-                    .or_else(|| value.get("query"))
-                    .or_else(|| value.get("regex"))
-                    .and_then(|v| v.as_str())
-            })
-            .unwrap_or("")
-            .to_string();
-        let output_text = tool.output.as_deref().unwrap_or("");
-        let matches = parse_search_matches(tool.output_value.as_ref(), output_text);
-        let detail = SearchToolCall::new(query)
-            .matches(matches)
-            .status(status)
-            .expanded(true);
-        return ToolDetail::Search(detail);
-    }
-
-    if tool.tool_type == ToolType::Edit {
-        let file_path = tool
-            .input_value
-            .as_ref()
-            .and_then(|value| value.get("file_path").and_then(|v| v.as_str()))
-            .unwrap_or("file")
-            .to_string();
-        let mut output_text = tool.output.as_deref();
-        let mut output_storage = None::<String>;
-        if output_text.map(|text| text.is_empty()).unwrap_or(true) {
-            if let Some(value) = tool.output_value.as_ref() {
-                if let Some(diff) = value
-                    .get("diff")
-                    .or_else(|| value.get("patch"))
-                    .or_else(|| value.get("content"))
-                    .and_then(|v| v.as_str())
-                {
-                    output_storage = Some(diff.to_string());
-                } else if let Some(text) = value.as_str() {
-                    output_storage = Some(text.to_string());
-                }
-            }
-        }
-        if output_text.map(|text| text.is_empty()).unwrap_or(true) {
-            output_text = output_storage.as_deref();
-        }
-        let mut diff_lines = parse_diff_lines(output_text.unwrap_or(""));
-        if diff_lines.is_empty() {
-            if let Some(value) = tool.input_value.as_ref() {
-                let old_text = value
-                    .get("old_string")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let new_text = value
-                    .get("new_string")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                if !old_text.is_empty() || !new_text.is_empty() {
-                    diff_lines = build_simple_diff(old_text, new_text);
-                }
-            }
-        }
-        if diff_lines.is_empty() {
-            return ToolDetail::None;
-        }
-        let detail = DiffToolCall::new(file_path)
-            .lines(diff_lines)
-            .status(status)
-            .expanded(true);
-        return ToolDetail::Diff(detail);
-    }
-
-    ToolDetail::None
-}
-
 /// Extract tool call start info from content_block_start event
 fn extract_tool_call_start(event: &Value) -> Option<(String, String)> {
     let event_type = event.get("type")?.as_str()?;
@@ -10422,14 +7957,14 @@ fn agent_modal_content_top(modal_y: f32, state: &AppState) -> f32 {
     let mut y = modal_y + 16.0;
     y += 20.0;
     y += 18.0;
-    if state.active_agent.is_some() {
+    if state.catalogs.active_agent.is_some() {
         y += 18.0;
     }
     y += 18.0;
-    if state.agent_user_path.is_some() {
+    if state.catalogs.agent_user_path.is_some() {
         y += 18.0;
     }
-    if state.agent_load_error.is_some() {
+    if state.catalogs.agent_load_error.is_some() {
         y += 18.0;
     }
     y + 20.0
@@ -10440,10 +7975,10 @@ fn skill_modal_content_top(modal_y: f32, state: &AppState) -> f32 {
     y += 20.0;
     y += 18.0;
     y += 18.0;
-    if state.skill_user_path.is_some() {
+    if state.catalogs.skill_user_path.is_some() {
         y += 18.0;
     }
-    if state.skill_load_error.is_some() {
+    if state.catalogs.skill_load_error.is_some() {
         y += 18.0;
     }
     y + 20.0
@@ -10607,7 +8142,7 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
             CommandAction::None
         }
         Command::Compact => {
-            if state.is_thinking {
+            if state.chat.is_thinking {
                 state.push_system_message("Cannot compact during an active request.".to_string());
                 CommandAction::None
             } else {
@@ -10654,7 +8189,9 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
         }
         Command::PermissionMode(mode) => {
             match parse_coder_mode(&mode) {
-                Some(parsed) => state.set_coder_mode(parsed),
+                Some(parsed) => state
+                    .permissions
+                    .set_coder_mode(parsed, &mut state.session.session_info),
                 None => state.push_system_message(format!(
                     "Unknown mode: {}. Valid modes: bypass, plan, autopilot",
                     mode
@@ -10667,11 +8204,13 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
             CommandAction::None
         }
         Command::PermissionAllow(tools) => {
-            state.add_permission_allow(tools);
+            let message = state.permissions.add_permission_allow(tools);
+            state.push_system_message(message);
             CommandAction::None
         }
         Command::PermissionDeny(tools) => {
-            state.add_permission_deny(tools);
+            let message = state.permissions.add_permission_deny(tools);
+            state.push_system_message(message);
             CommandAction::None
         }
         Command::ToolsList => {
@@ -10679,11 +8218,13 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
             CommandAction::None
         }
         Command::ToolsEnable(tools) => {
-            state.enable_tools(tools);
+            let message = state.permissions.enable_tools(tools);
+            state.push_system_message(message);
             CommandAction::None
         }
         Command::ToolsDisable(tools) => {
-            state.disable_tools(tools);
+            let message = state.permissions.disable_tools(tools);
+            state.push_system_message(message);
             CommandAction::None
         }
         Command::Config => {
@@ -10693,12 +8234,18 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
         Command::OutputStyle(style) => {
             let trimmed = style.trim();
             if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("default") {
-                state.set_output_style(None);
+                let message = state.permissions.set_output_style(None);
+                state.push_system_message(message);
                 return CommandAction::None;
             }
 
             match resolve_output_style(trimmed) {
-                Ok(Some(_path)) => state.set_output_style(Some(trimmed.to_string())),
+                Ok(Some(_path)) => {
+                    let message = state
+                        .permissions
+                        .set_output_style(Some(trimmed.to_string()));
+                    state.push_system_message(message);
+                }
                 Ok(None) => state.push_system_message(format!(
                     "Output style not found: {}.",
                     trimmed
@@ -10716,7 +8263,7 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
         }
         Command::McpReload => {
             state.reload_mcp_project_servers();
-            if let Some(err) = &state.mcp_project_error {
+            if let Some(err) = &state.catalogs.mcp_project_error {
                 state.push_system_message(format!("MCP config reload warning: {}", err));
             } else {
                 state.push_system_message("Reloaded MCP project config.".to_string());
@@ -10743,7 +8290,7 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
                     let expanded = expand_env_vars_in_value(&value);
                     match parse_mcp_server_config(trimmed_name, &expanded) {
                         Ok(server) => {
-                            state.add_runtime_mcp_server(trimmed_name.to_string(), server);
+                            state.catalogs.add_runtime_mcp_server(trimmed_name.to_string(), server);
                             state.push_system_message(format!(
                                 "Added MCP server {} (applies next request).",
                                 trimmed_name
@@ -10768,7 +8315,7 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
                 state.push_system_message("MCP remove requires a server name.".to_string());
                 return CommandAction::None;
             }
-            state.remove_mcp_server(trimmed);
+            state.catalogs.remove_mcp_server(trimmed);
             state.push_system_message(format!(
                 "Disabled MCP server {} (applies next request).",
                 trimmed
@@ -10789,7 +8336,7 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
         }
         Command::AgentReload => {
             state.reload_agents();
-            if let Some(err) = &state.agent_load_error {
+            if let Some(err) = &state.catalogs.agent_load_error {
                 state.push_system_message(format!("Agent reload warning: {}", err));
             } else {
                 state.push_system_message("Reloaded agents from disk.".to_string());
@@ -10802,7 +8349,7 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
         }
         Command::SkillsReload => {
             state.reload_skills();
-            if let Some(err) = &state.skill_load_error {
+            if let Some(err) = &state.catalogs.skill_load_error {
                 state.push_system_message(format!("Skill reload warning: {}", err));
             } else {
                 state.push_system_message("Reloaded skills from disk.".to_string());
@@ -10815,7 +8362,7 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
         }
         Command::HooksReload => {
             state.reload_hooks();
-            if let Some(err) = &state.hook_load_error {
+            if let Some(err) = &state.catalogs.hook_load_error {
                 state.push_system_message(format!("Hook reload warning: {}", err));
             } else {
                 state.push_system_message("Reloaded hook scripts from disk.".to_string());
@@ -10823,7 +8370,7 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
             CommandAction::None
         }
         Command::Custom(name, args) => {
-            if state.is_thinking {
+            if state.chat.is_thinking {
                 state.push_system_message(
                     "Cannot run custom commands during an active request.".to_string(),
                 );
@@ -10859,7 +8406,7 @@ fn handle_command(state: &mut AppState, command: Command) -> CommandAction {
 fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
     let empty_entries: Vec<McpServerEntry> = Vec::new();
     let mcp_entries = if matches!(state.modal_state, ModalState::McpConfig { .. }) {
-        Some(state.mcp_entries())
+        Some(state.catalogs.mcp_entries())
     } else {
         None
     };
@@ -10889,18 +8436,18 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 WinitKey::Character(c) => {
                     match c.as_str() {
                         "1" => {
-                            state.selected_model = ModelOption::Opus;
+                            state.settings.selected_model = ModelOption::Opus;
                         }
                         "2" => {
-                            state.selected_model = ModelOption::Sonnet;
+                            state.settings.selected_model = ModelOption::Sonnet;
                         }
                         "3" => {
-                            state.selected_model = ModelOption::Haiku;
+                            state.settings.selected_model = ModelOption::Haiku;
                         }
                         _ => {}
                     }
                     if matches!(c.as_str(), "1" | "2" | "3") {
-                        state.update_selected_model(state.selected_model);
+                        state.update_selected_model(state.settings.selected_model);
                         state.modal_state = ModalState::None;
                     }
                 }
@@ -10910,7 +8457,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             true
         }
         ModalState::SessionList { selected } => {
-            let session_count = state.session_index.len();
+            let session_count = state.session.session_index.len();
             if session_count == 0 {
                 match key {
                     WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
@@ -10931,7 +8478,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     state.modal_state = ModalState::None;
                 }
                 WinitKey::Named(WinitNamedKey::Enter) => {
-                    if let Some(entry) = state.session_index.get(*selected).cloned() {
+                    if let Some(entry) = state.session.session_index.get(*selected).cloned() {
                         state.begin_session_resume(entry.id);
                     }
                     state.modal_state = ModalState::None;
@@ -10952,7 +8499,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             true
         }
         ModalState::AgentList { selected } => {
-            let agent_count = state.agent_entries.len();
+            let agent_count = state.catalogs.agent_entries.len();
             if agent_count == 0 {
                 match key {
                     WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
@@ -10976,8 +8523,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     state.modal_state = ModalState::None;
                 }
                 WinitKey::Named(WinitNamedKey::Enter) => {
-                    let selected_name = state
-                        .agent_entries
+                    let selected_name = state.catalogs.agent_entries
                         .get(*selected)
                         .map(|entry| entry.name.clone());
                     if let Some(name) = selected_name {
@@ -11004,7 +8550,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             true
         }
         ModalState::SkillList { selected } => {
-            let skill_count = state.skill_entries.len();
+            let skill_count = state.catalogs.skill_entries.len();
             if skill_count == 0 {
                 match key {
                     WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
@@ -11070,7 +8616,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     }
                 }
                 WinitKey::Named(WinitNamedKey::ArrowUp) => {
-                    if *view == HookModalView::Events && !state.hook_event_log.is_empty() {
+                    if *view == HookModalView::Events && !state.catalogs.hook_event_log.is_empty() {
                         if *selected > 0 {
                             *selected -= 1;
                             sync_index = Some(*selected);
@@ -11078,8 +8624,8 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     }
                 }
                 WinitKey::Named(WinitNamedKey::ArrowDown) => {
-                    if *view == HookModalView::Events && !state.hook_event_log.is_empty() {
-                        if *selected + 1 < state.hook_event_log.len() {
+                    if *view == HookModalView::Events && !state.catalogs.hook_event_log.is_empty() {
+                        if *selected + 1 < state.catalogs.hook_event_log.len() {
                             *selected += 1;
                             sync_index = Some(*selected);
                         }
@@ -11102,7 +8648,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             true
         }
         ModalState::ToolList { selected } => {
-            let tool_count = state.session_info.tools.len();
+            let tool_count = state.session.session_info.tools.len();
             if tool_count == 0 {
                 match key {
                     WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
@@ -11173,7 +8719,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 }
                 WinitKey::Named(WinitNamedKey::Delete | WinitNamedKey::Backspace) => {
                     if let Some(entry) = entries.get(*selected) {
-                        state.remove_mcp_server(&entry.name);
+                        state.catalogs.remove_mcp_server(&entry.name);
                     }
                 }
                 WinitKey::Character(c) => match c.as_str() {
@@ -11262,23 +8808,23 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                         *input_mode = SettingsInputMode::Normal;
                     }
                     WinitKey::Named(WinitNamedKey::Backspace | WinitNamedKey::Delete) => {
-                        state.keybindings.retain(|binding| binding.action != *action);
-                        save_keybindings(&state.keybindings);
+                        state.settings.keybindings.retain(|binding| binding.action != *action);
+                        save_keybindings(&state.settings.keybindings);
                         *input_mode = SettingsInputMode::Normal;
                     }
                     _ => {
                         if let Some(binding_key) = convert_key_for_binding(key) {
                             let modifiers = convert_modifiers(&state.modifiers);
-                            state.keybindings.retain(|binding| {
+                            state.settings.keybindings.retain(|binding| {
                                 binding.action != *action
                                     && !(binding.key == binding_key && binding.modifiers == modifiers)
                             });
-                            state.keybindings.push(Keybinding {
+                            state.settings.keybindings.push(Keybinding {
                                 key: binding_key,
                                 modifiers,
                                 action: *action,
                             });
-                            save_keybindings(&state.keybindings);
+                            save_keybindings(&state.settings.keybindings);
                         }
                         *input_mode = SettingsInputMode::Normal;
                     }
@@ -11310,7 +8856,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                         if let Some(item) = current_item {
                             match item {
                                 SettingsItem::Theme => {
-                                    state.settings.theme = if state.settings.theme == ThemeSetting::Dark {
+                                    state.settings.coder_settings.theme = if state.settings.coder_settings.theme == ThemeSetting::Dark {
                                         ThemeSetting::Light
                                     } else {
                                         ThemeSetting::Dark
@@ -11320,23 +8866,23 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                 }
                                 SettingsItem::FontSize => {
                                     let delta = if forward { 1.0 } else { -1.0 };
-                                    state.settings.font_size =
-                                        clamp_font_size(state.settings.font_size + delta);
+                                    state.settings.coder_settings.font_size =
+                                        clamp_font_size(state.settings.coder_settings.font_size + delta);
                                     state.apply_settings();
                                     state.persist_settings();
                                 }
                                 SettingsItem::AutoScroll => {
-                                    state.settings.auto_scroll = !state.settings.auto_scroll;
+                                    state.settings.coder_settings.auto_scroll = !state.settings.coder_settings.auto_scroll;
                                     state.persist_settings();
                                 }
                                 SettingsItem::DefaultModel => {
-                                    let next = cycle_model(state.selected_model, forward);
+                                    let next = cycle_model(state.settings.selected_model, forward);
                                     state.update_selected_model(next);
                                 }
                                 SettingsItem::MaxThinkingTokens => {
                                     const THINKING_STEP: u32 = 256;
                                     const THINKING_MAX: u32 = 8192;
-                                    let current = state.settings.max_thinking_tokens.unwrap_or(0);
+                                    let current = state.settings.coder_settings.max_thinking_tokens.unwrap_or(0);
                                     let next = if forward {
                                         let value = current.saturating_add(THINKING_STEP).min(THINKING_MAX);
                                         Some(value)
@@ -11345,21 +8891,21 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                     } else {
                                         Some(current - THINKING_STEP)
                                     };
-                                    state.settings.max_thinking_tokens = next;
+                                    state.settings.coder_settings.max_thinking_tokens = next;
                                     state.persist_settings();
                                 }
                                 SettingsItem::PermissionMode => {
-                                    let next = cycle_coder_mode_standalone(state.coder_mode, forward);
-                                    state.coder_mode = next;
-                                    state.permission_default_allow =
-                                        coder_mode_default_allow(next, state.permission_default_allow);
-                                    state.session_info.permission_mode =
+                                    let next = cycle_coder_mode_standalone(state.permissions.coder_mode, forward);
+                                    state.permissions.coder_mode = next;
+                                    state.permissions.permission_default_allow =
+                                        coder_mode_default_allow(next, state.permissions.permission_default_allow);
+                                    state.session.session_info.permission_mode =
                                         coder_mode_label(next).to_string();
-                                    state.persist_permission_config();
+                                    state.permissions.persist_permission_config();
                                 }
                                 SettingsItem::PermissionDefaultAllow => {
-                                    state.permission_default_allow = !state.permission_default_allow;
-                                    state.persist_permission_config();
+                                    state.permissions.permission_default_allow = !state.permissions.permission_default_allow;
+                                    state.permissions.persist_permission_config();
                                 }
                                 SettingsItem::PermissionRules
                                 | SettingsItem::PermissionAllowList
@@ -11369,16 +8915,16 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                     state.open_permission_rules();
                                 }
                                 SettingsItem::SessionAutoSave => {
-                                    state.settings.session_auto_save = !state.settings.session_auto_save;
+                                    state.settings.coder_settings.session_auto_save = !state.settings.coder_settings.session_auto_save;
                                     state.persist_settings();
-                                    if state.settings.session_auto_save {
+                                    if state.settings.coder_settings.session_auto_save {
                                         state.apply_session_history_limit();
                                     }
                                 }
                                 SettingsItem::SessionHistoryLimit => {
                                     const HISTORY_STEP: usize = 10;
                                     const HISTORY_MAX: usize = 500;
-                                    let current = state.settings.session_history_limit;
+                                    let current = state.settings.coder_settings.session_history_limit;
                                     let next = if forward {
                                         if current == 0 {
                                             HISTORY_STEP
@@ -11390,7 +8936,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                     } else {
                                         current - HISTORY_STEP
                                     };
-                                    state.settings.session_history_limit = next;
+                                    state.settings.coder_settings.session_history_limit = next;
                                     state.persist_settings();
                                     state.apply_session_history_limit();
                                 }
@@ -11400,7 +8946,7 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                 }
                                 SettingsItem::McpReloadProject => {
                                     state.reload_mcp_project_servers();
-                                    if let Some(err) = &state.mcp_project_error {
+                                    if let Some(err) = &state.catalogs.mcp_project_error {
                                         state.push_system_message(format!(
                                             "MCP reload warning: {}",
                                             err
@@ -11416,23 +8962,23 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                 }
                                 SettingsItem::HookToolBlocker => {
                                     state.toggle_hook_setting(HookSetting::ToolBlocker);
-                                    save_hook_config(&state.hook_config);
+                                    save_hook_config(&state.catalogs.hook_config);
                                 }
                                 SettingsItem::HookToolLogger => {
                                     state.toggle_hook_setting(HookSetting::ToolLogger);
-                                    save_hook_config(&state.hook_config);
+                                    save_hook_config(&state.catalogs.hook_config);
                                 }
                                 SettingsItem::HookOutputTruncator => {
                                     state.toggle_hook_setting(HookSetting::OutputTruncator);
-                                    save_hook_config(&state.hook_config);
+                                    save_hook_config(&state.catalogs.hook_config);
                                 }
                                 SettingsItem::HookContextInjection => {
                                     state.toggle_hook_setting(HookSetting::ContextInjection);
-                                    save_hook_config(&state.hook_config);
+                                    save_hook_config(&state.catalogs.hook_config);
                                 }
                                 SettingsItem::HookTodoEnforcer => {
                                     state.toggle_hook_setting(HookSetting::TodoEnforcer);
-                                    save_hook_config(&state.hook_config);
+                                    save_hook_config(&state.catalogs.hook_config);
                                 }
                                 SettingsItem::HookOpenPanel => {
                                     state.open_hooks();
@@ -11441,8 +8987,8 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                     *input_mode = SettingsInputMode::Capture(action);
                                 }
                                 SettingsItem::KeybindingReset => {
-                                    state.keybindings = default_keybindings();
-                                    save_keybindings(&state.keybindings);
+                                    state.settings.keybindings = default_keybindings();
+                                    save_keybindings(&state.settings.keybindings);
                                 }
                             }
                         }
@@ -11454,63 +9000,6 @@ fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             true
         }
         ModalState::None => false,
-    }
-}
-
-fn convert_mouse_button(button: winit::event::MouseButton) -> wgpui::MouseButton {
-    match button {
-        winit::event::MouseButton::Left => wgpui::MouseButton::Left,
-        winit::event::MouseButton::Right => wgpui::MouseButton::Right,
-        winit::event::MouseButton::Middle => wgpui::MouseButton::Middle,
-        _ => wgpui::MouseButton::Left,
-    }
-}
-
-fn convert_named_key(key: WinitNamedKey) -> UiNamedKey {
-    match key {
-        WinitNamedKey::Enter => UiNamedKey::Enter,
-        WinitNamedKey::Tab => UiNamedKey::Tab,
-        WinitNamedKey::Space => UiNamedKey::Space,
-        WinitNamedKey::Backspace => UiNamedKey::Backspace,
-        WinitNamedKey::Delete => UiNamedKey::Delete,
-        WinitNamedKey::Escape => UiNamedKey::Escape,
-        WinitNamedKey::ArrowUp => UiNamedKey::ArrowUp,
-        WinitNamedKey::ArrowDown => UiNamedKey::ArrowDown,
-        WinitNamedKey::ArrowLeft => UiNamedKey::ArrowLeft,
-        WinitNamedKey::ArrowRight => UiNamedKey::ArrowRight,
-        WinitNamedKey::Home => UiNamedKey::Home,
-        WinitNamedKey::End => UiNamedKey::End,
-        WinitNamedKey::PageUp => UiNamedKey::PageUp,
-        WinitNamedKey::PageDown => UiNamedKey::PageDown,
-        _ => UiNamedKey::Tab, // fallback
-    }
-}
-
-fn convert_modifiers(mods: &ModifiersState) -> UiModifiers {
-    UiModifiers {
-        shift: mods.shift_key(),
-        ctrl: mods.control_key(),
-        alt: mods.alt_key(),
-        meta: mods.super_key(),
-    }
-}
-
-fn convert_key_for_input(key: &WinitKey) -> Option<UiKey> {
-    match key {
-        WinitKey::Named(named) => Some(UiKey::Named(convert_named_key(*named))),
-        WinitKey::Character(c) => Some(UiKey::Character(c.to_string())),
-        _ => None,
-    }
-}
-
-fn convert_key_for_binding(key: &WinitKey) -> Option<UiKey> {
-    match key {
-        WinitKey::Named(named) => Some(UiKey::Named(convert_named_key(*named))),
-        WinitKey::Character(c) => {
-            let lowered = c.as_str().to_ascii_lowercase();
-            Some(UiKey::Character(lowered))
-        }
-        _ => None,
     }
 }
 
@@ -11547,14 +9036,6 @@ fn cycle_coder_mode_standalone(current: CoderMode, forward: bool) -> CoderMode {
     modes[next]
 }
 
-fn coder_mode_label(mode: CoderMode) -> &'static str {
-    match mode {
-        CoderMode::BypassPermissions => "bypass",
-        CoderMode::Plan => "plan",
-        CoderMode::Autopilot => "autopilot",
-    }
-}
-
 fn coder_mode_display(mode: CoderMode) -> &'static str {
     match mode {
         CoderMode::BypassPermissions => "bypass permissions",
@@ -11569,241 +9050,6 @@ fn coder_mode_color(mode: CoderMode, _palette: &UiPalette) -> Hsla {
         CoderMode::Plan => Hsla::from_hex(0x00D5FF), // vivid teal/cyan
         CoderMode::Autopilot => Hsla::from_hex(0x39FF14), // neon green
     }
-}
-
-fn parse_coder_mode(input: &str) -> Option<CoderMode> {
-    let normalized = input
-        .trim()
-        .to_ascii_lowercase()
-        .replace('-', "")
-        .replace('_', "")
-        .replace('\'', "");
-    match normalized.as_str() {
-        "bypasspermissions" | "bypass" => Some(CoderMode::BypassPermissions),
-        "plan" => Some(CoderMode::Plan),
-        "autopilot" | "auto" => Some(CoderMode::Autopilot),
-        _ => None,
-    }
-}
-
-fn format_relative_time(timestamp: u64) -> String {
-    let now = now_timestamp();
-    if timestamp >= now {
-        return "just now".to_string();
-    }
-    let delta = now - timestamp;
-    if delta < 60 {
-        format!("{}s ago", delta)
-    } else if delta < 3600 {
-        format!("{}m ago", delta / 60)
-    } else if delta < 86_400 {
-        format!("{}h ago", delta / 3600)
-    } else {
-        format!("{}d ago", delta / 86_400)
-    }
-}
-
-fn build_checkpoint_entries(messages: &[ChatMessage]) -> Vec<CheckpointEntry> {
-    let mut entries = Vec::new();
-    for (idx, message) in messages.iter().enumerate() {
-        if matches!(message.role, MessageRole::User) {
-            if let Some(uuid) = &message.uuid {
-                let label = format!("{}: {}", idx + 1, truncate_preview(&message.content, 32));
-                entries.push(CheckpointEntry {
-                    user_message_id: uuid.clone(),
-                    label,
-                });
-            }
-        }
-    }
-    entries
-}
-
-fn coder_mode_default_allow(mode: CoderMode, fallback: bool) -> bool {
-    if mode.auto_approves_all() {
-        true
-    } else {
-        fallback
-    }
-}
-
-fn split_permission_tokens(tokens: Vec<String>) -> (Vec<String>, Vec<String>) {
-    let mut tools = Vec::new();
-    let mut bash_patterns = Vec::new();
-    for token in tokens {
-        if let Some(pattern) = parse_bash_pattern(&token) {
-            bash_patterns.push(pattern);
-        } else {
-            tools.push(token);
-        }
-    }
-    (tools, bash_patterns)
-}
-
-fn parse_bash_pattern(token: &str) -> Option<String> {
-    let trimmed = token.trim();
-    let rest = trimmed
-        .strip_prefix("Bash(")
-        .or_else(|| trimmed.strip_prefix("bash("))?;
-    let inner = rest.strip_suffix(')')?.trim();
-    if inner.is_empty() {
-        None
-    } else {
-        Some(inner.to_string())
-    }
-}
-
-fn permission_type_for_request(request: &PermissionRequest) -> PermissionType {
-    let tool = request.tool_name.as_str();
-    if matches!(tool, "Read" | "Grep" | "Glob") {
-        let path = request
-            .blocked_path
-            .clone()
-            .or_else(|| extract_input_string(&request.input, &["path", "file_path", "filePath"]));
-        if let Some(path) = path {
-            return PermissionType::FileRead(truncate_preview(&path, 120));
-        }
-    }
-    if matches!(tool, "Edit" | "Write" | "NotebookEdit") {
-        let path = request
-            .blocked_path
-            .clone()
-            .or_else(|| extract_input_string(&request.input, &["path", "file_path", "filePath"]));
-        if let Some(path) = path {
-            return PermissionType::FileWrite(truncate_preview(&path, 120));
-        }
-    }
-    if matches!(tool, "Bash" | "KillBash") {
-        if let Some(command) = extract_bash_command(&request.input) {
-            return PermissionType::Execute(truncate_preview(&command, 120));
-        }
-    }
-    if matches!(tool, "WebSearch" | "WebFetch" | "Browser") {
-        if let Some(target) = extract_input_string(&request.input, &["url", "uri", "query"]) {
-            return PermissionType::Network(truncate_preview(&target, 120));
-        }
-    }
-
-    let mut desc = format!("Tool: {}", tool);
-    if let Some(reason) = &request.decision_reason {
-        if !reason.trim().is_empty() {
-            desc.push_str(" (");
-            desc.push_str(reason.trim());
-            desc.push(')');
-        }
-    }
-    PermissionType::Custom(truncate_preview(&desc, 160))
-}
-
-fn permission_detail_for_request(request: &PermissionRequest) -> Option<String> {
-    let detail = permission_type_for_request(request).description();
-    if detail.trim().is_empty() {
-        None
-    } else {
-        Some(truncate_preview(&detail, 120))
-    }
-}
-
-fn extract_bash_command(input: &Value) -> Option<String> {
-    extract_input_string(input, &["command"])
-}
-
-fn extract_input_string(input: &Value, keys: &[&str]) -> Option<String> {
-    for key in keys {
-        if let Some(value) = input.get(*key).and_then(|val| val.as_str()) {
-            if !value.trim().is_empty() {
-                return Some(value.to_string());
-            }
-        }
-    }
-    None
-}
-
-fn pattern_matches(pattern: &str, text: &str) -> bool {
-    if pattern == "*" {
-        return true;
-    }
-    let parts: Vec<&str> = pattern.split('*').collect();
-    if parts.len() == 1 {
-        return pattern == text;
-    }
-
-    let mut remainder = text;
-    let mut first_match = true;
-    for part in parts.iter().filter(|part| !part.is_empty()) {
-        if first_match && !pattern.starts_with('*') {
-            if let Some(rest) = remainder.strip_prefix(*part) {
-                remainder = rest;
-            } else {
-                return false;
-            }
-        } else if let Some(idx) = remainder.find(*part) {
-            remainder = &remainder[idx + part.len()..];
-        } else {
-            return false;
-        }
-        first_match = false;
-    }
-
-    if !pattern.ends_with('*') {
-        if let Some(last) = parts.iter().rev().find(|part| !part.is_empty()) {
-            return text.ends_with(last);
-        }
-    }
-    true
-}
-
-fn is_read_only_tool(tool_name: &str) -> bool {
-    matches!(
-        tool_name,
-        "Read" | "Grep" | "Glob" | "WebSearch" | "Search" | "WebFetch"
-            | "AskUserQuestion" | "Task" | "ExitPlanMode" | "LSP"
-    )
-}
-
-fn sanitize_tokens(tokens: Vec<String>) -> Vec<String> {
-    tokens
-        .into_iter()
-        .map(|token| token.trim().to_string())
-        .filter(|token| !token.is_empty())
-        .collect()
-}
-
-fn add_unique(target: &mut Vec<String>, items: &[String]) {
-    for item in items {
-        if !target.iter().any(|entry| entry == item) {
-            target.push(item.clone());
-        }
-    }
-}
-
-fn remove_items(target: &mut Vec<String>, items: &[String]) {
-    target.retain(|entry| !items.iter().any(|item| item == entry));
-}
-
-fn agent_model_label(model: AgentModel) -> &'static str {
-    match model {
-        AgentModel::Opus => "opus",
-        AgentModel::Sonnet => "sonnet",
-        AgentModel::Haiku => "haiku",
-        AgentModel::Inherit => "inherit",
-    }
-}
-
-fn agent_capabilities(entry: &AgentEntry) -> Vec<String> {
-    let mut caps = Vec::new();
-    if let Some(model) = entry.definition.model {
-        caps.push(format!("model {}", agent_model_label(model)));
-    }
-    if let Some(tools) = &entry.definition.tools {
-        caps.extend(tools.clone());
-    } else if let Some(disallowed) = &entry.definition.disallowed_tools {
-        caps.extend(disallowed.iter().map(|tool| format!("no {}", tool)));
-    }
-    if caps.is_empty() {
-        caps.push("all tools".to_string());
-    }
-    caps
 }
 
 fn hook_event_from_input(input: &HookInput) -> HookEvent {
@@ -12374,23 +9620,23 @@ fn apply_custom_command_args(template: &str, args: &[String]) -> String {
 fn export_session_markdown(state: &AppState) -> io::Result<PathBuf> {
     let export_dir = config_dir().join("exports");
     fs::create_dir_all(&export_dir)?;
-    let session_id = if state.session_info.session_id.is_empty() {
+    let session_id = if state.session.session_info.session_id.is_empty() {
         "session".to_string()
     } else {
-        state.session_info.session_id.clone()
+        state.session.session_info.session_id.clone()
     };
     let filename = format!("{}-{}.md", session_id, now_timestamp());
     let path = export_dir.join(filename);
     let mut file = fs::File::create(&path)?;
 
     writeln!(file, "# Coder Session {}", session_id)?;
-    if !state.session_info.model.is_empty() {
-        writeln!(file, "- Model: {}", state.session_info.model)?;
+    if !state.session.session_info.model.is_empty() {
+        writeln!(file, "- Model: {}", state.session.session_info.model)?;
     }
     writeln!(file, "- Exported: {}", now_timestamp())?;
     writeln!(file)?;
 
-    for message in &state.messages {
+    for message in &state.chat.messages {
         match message.role {
             MessageRole::User => {
                 for line in message.content.lines() {
@@ -12406,19 +9652,6 @@ fn export_session_markdown(state: &AppState) -> io::Result<PathBuf> {
     }
 
     Ok(path)
-}
-
-fn truncate_bytes(input: String, max_bytes: usize) -> String {
-    if input.len() <= max_bytes {
-        return input;
-    }
-    let mut truncated = input.as_bytes()[..max_bytes].to_vec();
-    while !truncated.is_empty() && std::str::from_utf8(&truncated).is_err() {
-        truncated.pop();
-    }
-    let mut result = String::from_utf8_lossy(&truncated).to_string();
-    result.push_str("\n... [truncated]");
-    result
 }
 
 fn open_url(url: &str) -> io::Result<()> {

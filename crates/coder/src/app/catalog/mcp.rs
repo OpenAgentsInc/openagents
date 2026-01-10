@@ -193,6 +193,24 @@ pub(crate) fn parse_mcp_server_config(name: &str, value: &Value) -> Result<McpSe
     }
 }
 
+pub(crate) fn describe_mcp_config(config: &McpServerConfig) -> String {
+    match config {
+        McpServerConfig::Stdio { command, args, .. } => {
+            let mut line = format!("stdio: {}", command);
+            if let Some(args) = args {
+                if !args.is_empty() {
+                    line.push(' ');
+                    line.push_str(&args.join(" "));
+                }
+            }
+            line
+        }
+        McpServerConfig::Sse { url, .. } => format!("sse: {}", url),
+        McpServerConfig::Http { url, .. } => format!("http: {}", url),
+        McpServerConfig::Sdk { name } => format!("sdk: {}", name),
+    }
+}
+
 pub(crate) fn load_mcp_project_servers(
     cwd: &Path,
 ) -> (HashMap<String, McpServerConfig>, Option<String>) {
