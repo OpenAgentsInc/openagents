@@ -77,22 +77,37 @@ cargo build --release -p pylon
 
 ### Coder — AI Coding Terminal
 
-GPU-accelerated terminal interface for Claude Code. Built on wgpui for high-performance rendering.
+GPU-accelerated terminal interface for Claude Code and Codex. Built on wgpui for high-performance rendering.
 
-Coder reimagines the AI coding experience as a native desktop application rather than a web interface or CLI tool. The entire UI is GPU-rendered via wgpui, giving you buttery-smooth scrolling through long conversations, instant Markdown rendering, and the responsiveness you'd expect from a proper terminal emulator. It's designed for developers who live in their terminal and want Claude to feel like a natural extension of that workflow.
+Coder reimagines the AI coding experience as a native desktop application rather than a web interface or CLI tool. The entire UI is GPU-rendered via wgpui, giving you buttery-smooth scrolling through long conversations, instant Markdown rendering, and the responsiveness you'd expect from a proper terminal emulator. It's designed for developers who live in their terminal and want AI coding assistants to feel like a natural extension of that workflow.
 
-Under the hood, Coder integrates the Adjutant execution engine, which means it can run in autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Claude SDK, local inference, or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
+Under the hood, Coder integrates multiple AI backends:
+- **Claude** (via claude-agent-sdk) — Anthropic's Claude Code CLI
+- **Codex** (via codex-agent-sdk) — OpenAI's Codex CLI
+
+Switch between backends with `/backend claude` or `/backend codex`. The status bar shows the current backend. Both backends share the same UI rendering, streaming, and tool visualization infrastructure.
+
+Coder also integrates the Adjutant execution engine for autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Claude SDK, local inference, or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
 
 ```bash
 cargo run -p coder
 ```
 
 **Features:**
-- Terminal-style interaction with Claude
+- Terminal-style interaction with Claude or Codex
+- Multi-backend support (`/backend` command to switch)
 - Autonomous autopilot loop (adjutant integration)
 - MCP server management
-- Command palette (`/help`, `/model`, `/session`, `/tools`)
+- Command palette (`/help`, `/model`, `/session`, `/tools`, `/backend`)
 - Rich Markdown rendering
+- Tool call visualization (Bash, Edit, Glob, etc.)
+
+**Backend toggle:**
+```bash
+/backend             # Toggle between Claude and Codex
+/backend claude      # Switch to Claude
+/backend codex       # Switch to Codex (requires `codex` CLI installed)
+```
 
 The Coder integrates Adjutant for task execution with DSPy-powered decision making and self-improvement.
 
@@ -490,6 +505,7 @@ Tracks usage per model for billing and context optimization.
 | `frlm` | Federated RLM |
 | `spark` | Lightning wallet (Breez SDK) |
 | `claude-agent-sdk` | Rust SDK for Claude Code |
+| `codex-agent-sdk` | Rust SDK for OpenAI Codex |
 | `voice` | Voice transcription (whisper.cpp) |
 | `voice-daemon` | macOS menu bar daemon |
 
@@ -559,7 +575,7 @@ Issues are NOT done unless:
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Pylon | v0.1 | Provider mode working, host mode partial |
-| Coder | Active | Autonomous loop with adjutant |
+| Coder | Active | Multi-backend (Claude/Codex), autonomous loop with adjutant |
 | Onyx | Alpha | Core editing works |
 | GitAfter | v0.1 | NIP-34 integration |
 | Nexus | v0.1 | NIP-90, NIP-42, NIP-89 |

@@ -271,6 +271,36 @@ match thread.run("prompt", TurnOptions::default()).await {
 }
 ```
 
+## Coder Integration
+
+The Coder desktop application (GPU-accelerated AI coding terminal) uses this SDK for Codex backend support. When you select Codex as your backend in Coder, it uses this SDK to:
+
+1. Start and manage Codex threads
+2. Stream events in real-time
+3. Map Codex events to the UI (tool calls, text responses, errors)
+4. Handle permission modes and sandbox settings
+
+**Switch backends in Coder:**
+```bash
+/backend codex      # Switch to Codex
+/backend claude     # Switch back to Claude
+/backend            # Toggle between backends
+```
+
+The status bar shows the current backend. Both backends share the same streaming UI infrastructure.
+
+**Event mapping (Codex → Coder UI):**
+
+| Codex Event | Coder Response |
+|-------------|----------------|
+| `ThreadEvent::ItemUpdated(AgentMessage)` | Text streaming chunk |
+| `ThreadEvent::ItemStarted(CommandExecution)` | Tool call card (Bash) |
+| `ThreadEvent::ItemCompleted(CommandExecution)` | Tool result with output |
+| `ThreadEvent::ItemStarted(FileChange)` | Tool call card (Edit) |
+| `ThreadEvent::ItemCompleted(FileChange)` | File modification result |
+| `ThreadEvent::TurnCompleted` | Completion with token usage |
+| `ThreadEvent::Error` | Error display |
+
 ## Requirements
 
 - Codex CLI installed and in PATH
