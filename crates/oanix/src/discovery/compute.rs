@@ -1,6 +1,7 @@
 //! Compute backend discovery - Ollama, Apple FM, llama.cpp.
 
 use crate::manifest::{ComputeManifest, InferenceBackend};
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
 /// Discover available compute backends.

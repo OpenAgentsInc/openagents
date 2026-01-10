@@ -7388,11 +7388,78 @@ impl CoderApp {
                     Ok(adjutant) => {
                         tracing::info!("Autopilot: Adjutant initialized, starting autonomous loop");
 
-                        // Create task from user prompt
+                        // Build rich context from OANIX manifest
+                        let mut context_parts = Vec::new();
+
+                        // Add active directive info
+                        if let Some(workspace) = &manifest.workspace {
+                            // Find active directive
+                            if let Some(active_id) = &workspace.active_directive {
+                                if let Some(directive) = workspace.directives.iter()
+                                    .find(|d| &d.id == active_id)
+                                {
+                                    let priority = directive.priority.as_deref().unwrap_or("unknown");
+                                    let progress = directive.progress_pct.unwrap_or(0);
+                                    context_parts.push(format!(
+                                        "## Active Directive\n{}: {} (Priority: {}, Progress: {}%)",
+                                        directive.id, directive.title, priority, progress
+                                    ));
+                                }
+                            }
+
+                            // Add open issues
+                            let open_issues: Vec<_> = workspace.issues.iter()
+                                .filter(|i| i.status == "open" && !i.is_blocked)
+                                .take(5)
+                                .collect();
+
+                            if !open_issues.is_empty() {
+                                let mut issues_text = String::from("## Open Issues\n");
+                                for issue in open_issues {
+                                    issues_text.push_str(&format!(
+                                        "- #{}: {} (Priority: {})\n",
+                                        issue.number, issue.title, issue.priority
+                                    ));
+                                }
+                                context_parts.push(issues_text);
+                            }
+                        }
+
+                        // Get recent commits (quick git log)
+                        if let Ok(output) = std::process::Command::new("git")
+                            .args(["log", "--oneline", "-5", "--no-decorate"])
+                            .current_dir(&workspace_root)
+                            .output()
+                        {
+                            if output.status.success() {
+                                let commits = String::from_utf8_lossy(&output.stdout);
+                                if !commits.trim().is_empty() {
+                                    context_parts.push(format!("## Recent Commits\n{}", commits.trim()));
+                                }
+                            }
+                        }
+
+                        // Build the full prompt with context
+                        let full_prompt = if context_parts.is_empty() {
+                            prompt_clone.clone()
+                        } else {
+                            format!(
+                                "{}\n\n---\n\n## User Request\n{}\n\n\
+                                Use the tools to complete the task. Read relevant files, make changes, run tests.",
+                                context_parts.join("\n\n"),
+                                prompt_clone
+                            )
+                        };
+
+                        tracing::info!("Autopilot: context gathered (directives: {}, issues: {})",
+                            manifest.workspace.as_ref().map(|w| w.directives.len()).unwrap_or(0),
+                            manifest.workspace.as_ref().map(|w| w.issues.len()).unwrap_or(0));
+
+                        // Create task with enriched prompt
                         let task = AdjutantTask::new(
                             "autopilot",
                             "User Request",
-                            &prompt_clone,
+                            &full_prompt,
                         );
 
                         // Create channel for streaming tokens to UI

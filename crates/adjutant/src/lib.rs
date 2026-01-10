@@ -50,7 +50,6 @@ pub mod tiered;
 pub mod tools;
 
 use dsrs::LM;
-use futures::StreamExt;
 use oanix::{OanixManifest, WorkspaceManifest};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -481,67 +480,229 @@ impl Adjutant {
         }
     }
 
-    /// Stream response from local LM (llama.cpp/GPT-OSS).
+    /// Stream response from local LM (llama.cpp/GPT-OSS) with tool calling support.
+    ///
+    /// This uses the gptoss Responses API which supports tool calling, enabling
+    /// the LLM to actually read files, edit files, run commands, etc.
     async fn stream_with_local_lm(
         &mut self,
         task: &Task,
         plan: &TaskPlan,
         token_tx: mpsc::UnboundedSender<String>,
     ) -> Result<TaskResult, AdjutantError> {
-        // Build context from relevant files
+        use gpt_oss::{
+            GptOssClient, GptOssResponsesRequest, GptOssToolDefinition, GptOssToolFunction,
+            GptOssToolChoice,
+        };
+        use std::path::Path;
+
+        // Build initial context from relevant files
         let mut context = self.build_context(plan).await?;
 
-        // Local LLMs have limited context - truncate to ~6K tokens (~24K chars)
-        // to leave room for system prompt, conversation history, and response
-        const MAX_CONTEXT_CHARS: usize = 24_000;
+        // Truncate context to fit in local LLM context window
+        const MAX_CONTEXT_CHARS: usize = 16_000;
         if context.len() > MAX_CONTEXT_CHARS {
             tracing::warn!(
-                "Context too large ({} chars), truncating to {} for local LLM",
+                "Context too large ({} chars), truncating to {}",
                 context.len(),
                 MAX_CONTEXT_CHARS
             );
             context.truncate(MAX_CONTEXT_CHARS);
-            context.push_str("\n\n[... context truncated for local LLM context limit ...]");
+            context.push_str("\n\n[... context truncated ...]");
         }
 
-        // Build the current user prompt
+        // Define available tools for the LLM
+        let tools = vec![
+            GptOssToolDefinition {
+                tool_type: "function".to_string(),
+                function: GptOssToolFunction {
+                    name: "read_file".to_string(),
+                    description: Some("Read the contents of a file".to_string()),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": "Path to the file to read (relative to workspace root)"
+                            }
+                        },
+                        "required": ["path"]
+                    }),
+                },
+            },
+            GptOssToolDefinition {
+                tool_type: "function".to_string(),
+                function: GptOssToolFunction {
+                    name: "edit_file".to_string(),
+                    description: Some("Edit a file by replacing old_string with new_string. The old_string must be unique in the file.".to_string()),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": "Path to the file to edit"
+                            },
+                            "old_string": {
+                                "type": "string",
+                                "description": "The exact string to find and replace (must be unique)"
+                            },
+                            "new_string": {
+                                "type": "string",
+                                "description": "The string to replace it with"
+                            }
+                        },
+                        "required": ["path", "old_string", "new_string"]
+                    }),
+                },
+            },
+            GptOssToolDefinition {
+                tool_type: "function".to_string(),
+                function: GptOssToolFunction {
+                    name: "write_file".to_string(),
+                    description: Some("Write content to a new file (creates parent directories if needed)".to_string()),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": "Path to the file to write"
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "The content to write to the file"
+                            }
+                        },
+                        "required": ["path", "content"]
+                    }),
+                },
+            },
+            GptOssToolDefinition {
+                tool_type: "function".to_string(),
+                function: GptOssToolFunction {
+                    name: "bash".to_string(),
+                    description: Some("Execute a bash command in the workspace directory".to_string()),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "command": {
+                                "type": "string",
+                                "description": "The bash command to execute"
+                            }
+                        },
+                        "required": ["command"]
+                    }),
+                },
+            },
+            GptOssToolDefinition {
+                tool_type: "function".to_string(),
+                function: GptOssToolFunction {
+                    name: "glob".to_string(),
+                    description: Some("Find files matching a glob pattern (e.g., '**/*.rs', 'src/*.ts')".to_string()),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "pattern": {
+                                "type": "string",
+                                "description": "The glob pattern to match files"
+                            }
+                        },
+                        "required": ["pattern"]
+                    }),
+                },
+            },
+            GptOssToolDefinition {
+                tool_type: "function".to_string(),
+                function: GptOssToolFunction {
+                    name: "grep".to_string(),
+                    description: Some("Search for a pattern in files using ripgrep".to_string()),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "pattern": {
+                                "type": "string",
+                                "description": "The regex pattern to search for"
+                            },
+                            "path": {
+                                "type": "string",
+                                "description": "Optional path to search in (defaults to workspace root)"
+                            }
+                        },
+                        "required": ["pattern"]
+                    }),
+                },
+            },
+            GptOssToolDefinition {
+                tool_type: "function".to_string(),
+                function: GptOssToolFunction {
+                    name: "task_complete".to_string(),
+                    description: Some("Signal that the task is complete. Call this when you have finished the requested work.".to_string()),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "summary": {
+                                "type": "string",
+                                "description": "A summary of what was done"
+                            },
+                            "success": {
+                                "type": "boolean",
+                                "description": "Whether the task was completed successfully"
+                            }
+                        },
+                        "required": ["summary", "success"]
+                    }),
+                },
+            },
+        ];
+
+        // Build initial prompt
+        let system_prompt = format!(
+            "You are an AI coding assistant with access to tools. Use the tools to complete the task.\n\n\
+             Workspace root: {}\n\n\
+             Available tools:\n\
+             - read_file: Read file contents\n\
+             - edit_file: Edit a file (old_string must be unique)\n\
+             - write_file: Create a new file\n\
+             - bash: Run bash commands\n\
+             - glob: Find files by pattern\n\
+             - grep: Search file contents\n\
+             - task_complete: Signal when done\n\n\
+             IMPORTANT: When you've completed the task, call task_complete with a summary.\n\
+             If you can't complete the task, still call task_complete with success=false.",
+            self.workspace_root.display()
+        );
+
         let user_prompt = format!(
-            "## Task\n{}\n\n\
-             ## Context\n{}\n\n\
-             Provide a clear, helpful response.",
+            "## Task\n{}\n\n## Initial Context\n{}",
             task.to_prompt(),
             context
         );
 
-        // Get llama.cpp endpoint
-        let base_url = std::env::var("LLAMACPP_URL").unwrap_or_else(|_| {
-            for port in [8080, 8000] {
-                if std::net::TcpStream::connect_timeout(
-                    &format!("127.0.0.1:{}", port).parse().unwrap(),
-                    std::time::Duration::from_millis(100),
-                )
-                .is_ok()
-                {
-                    return format!("http://127.0.0.1:{}/v1", port);
+        // Get gptoss endpoint (same as llama.cpp)
+        let base_url = std::env::var("GPT_OSS_URL")
+            .or_else(|_| std::env::var("LLAMACPP_URL"))
+            .unwrap_or_else(|_| {
+                for port in [8080, 8000] {
+                    if std::net::TcpStream::connect_timeout(
+                        &format!("127.0.0.1:{}", port).parse().unwrap(),
+                        std::time::Duration::from_millis(100),
+                    )
+                    .is_ok()
+                    {
+                        return format!("http://127.0.0.1:{}", port);
+                    }
                 }
-            }
-            "http://127.0.0.1:8080/v1".to_string()
-        });
+                "http://127.0.0.1:8000".to_string()
+            });
 
-        // Build OpenAI-compatible chat completion request with streaming
-        let client = reqwest::Client::new();
-        let system_prompt = "You are an AI coding assistant. Format your responses using proper markdown:\n\
-            - Use blank lines between paragraphs and sections\n\
-            - Use ## for headers, followed by a blank line\n\
-            - Use proper list formatting with blank lines before and after lists\n\
-            - Keep responses clear and well-structured";
+        let client = GptOssClient::with_base_url(&base_url)
+            .map_err(|e| AdjutantError::ExecutionFailed(format!("Failed to create gptoss client: {}", e)))?;
 
-        // Build messages array with conversation history
-        let mut messages = vec![
+        // Build conversation as input
+        let mut messages: Vec<serde_json::Value> = vec![
             serde_json::json!({"role": "system", "content": system_prompt}),
         ];
 
-        // Add conversation history for multi-turn context
+        // Add any prior conversation history
         for turn in &self.conversation_history {
             messages.push(serde_json::json!({
                 "role": turn.role,
@@ -549,84 +710,160 @@ impl Adjutant {
             }));
         }
 
-        // Add current user message
         messages.push(serde_json::json!({"role": "user", "content": user_prompt}));
 
-        let request_body = serde_json::json!({
-            "model": "local",
-            "messages": messages,
-            "stream": true,
-            "max_tokens": 4000,
-            "temperature": 0.7
-        });
-
-        let response = client
-            .post(format!("{}/chat/completions", base_url))
-            .header("Content-Type", "application/json")
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| AdjutantError::ExecutionFailed(format!("HTTP request failed: {}", e)))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(AdjutantError::ExecutionFailed(format!(
-                "LLM request failed with status {}: {}",
-                status, body
-            )));
-        }
-
-        // Stream the response
+        // Track state
+        let mut modified_files: Vec<String> = Vec::new();
         let mut full_response = String::new();
-        let mut stream = response.bytes_stream();
-        let mut buffer = String::new(); // Buffer for incomplete SSE lines
+        let mut task_completed = false;
+        let mut task_success = false;
+        let mut iteration = 0;
+        const MAX_TOOL_ITERATIONS: usize = 20;
 
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| {
-                AdjutantError::ExecutionFailed(format!("Stream read error: {}", e))
+        // Tool calling loop
+        while !task_completed && iteration < MAX_TOOL_ITERATIONS {
+            iteration += 1;
+            tracing::debug!("Tool iteration {}/{}", iteration, MAX_TOOL_ITERATIONS);
+
+            // Create request with tools
+            let request = GptOssResponsesRequest {
+                model: "local".to_string(),
+                input: serde_json::json!(messages),
+                tools: Some(tools.clone()),
+                tool_choice: Some(GptOssToolChoice::Mode("auto".to_string())),
+                reasoning: None,
+                max_output_tokens: Some(4000),
+                temperature: Some(0.7),
+                top_p: None,
+                stop: None,
+                stream: false,
+                extra: std::collections::HashMap::new(),
+            };
+
+            // Call the Responses API
+            let response = client.responses(request).await.map_err(|e| {
+                AdjutantError::ExecutionFailed(format!("gptoss responses API failed: {}", e))
             })?;
 
-            let text = String::from_utf8_lossy(&chunk);
-            buffer.push_str(&text);
+            // Extract text output
+            let text = response.output_text();
+            if !text.is_empty() {
+                let _ = token_tx.send(text.clone());
+                full_response.push_str(&text);
+                full_response.push('\n');
+            }
 
-            // Process complete lines from buffer
-            while let Some(newline_pos) = buffer.find('\n') {
-                let line = buffer[..newline_pos].trim();
+            // Extract tool calls
+            let tool_calls = response.tool_calls();
 
-                // Parse SSE events (data: {...})
-                if let Some(data) = line.strip_prefix("data: ") {
-                    if data != "[DONE]" {
-                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-                            if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
-                                full_response.push_str(content);
-                                let _ = token_tx.send(content.to_string());
-                            }
-                        }
+            if tool_calls.is_empty() {
+                // No tool calls - LLM is done generating
+                tracing::debug!("No tool calls, LLM finished generating");
+                break;
+            }
+
+            // Execute each tool call
+            for tool_call in tool_calls {
+                let tool_name = &tool_call.name;
+                let args = &tool_call.arguments;
+
+                let _ = token_tx.send(format!("\n**[Tool: {}]**\n", tool_name));
+
+                let tool_result = match tool_name.as_str() {
+                    "read_file" => {
+                        let path = args["path"].as_str().unwrap_or("");
+                        let _ = token_tx.send(format!("Reading: {}\n", path));
+                        self.tools.read(Path::new(path)).await?
                     }
+                    "edit_file" => {
+                        let path = args["path"].as_str().unwrap_or("");
+                        let old_string = args["old_string"].as_str().unwrap_or("");
+                        let new_string = args["new_string"].as_str().unwrap_or("");
+                        let _ = token_tx.send(format!("Editing: {}\n", path));
+                        let result = self.tools.edit(Path::new(path), old_string, new_string).await?;
+                        if result.success {
+                            modified_files.push(path.to_string());
+                        }
+                        result
+                    }
+                    "write_file" => {
+                        let path = args["path"].as_str().unwrap_or("");
+                        let content = args["content"].as_str().unwrap_or("");
+                        let _ = token_tx.send(format!("Writing: {}\n", path));
+                        let result = self.tools.write(Path::new(path), content).await?;
+                        if result.success {
+                            modified_files.push(path.to_string());
+                        }
+                        result
+                    }
+                    "bash" => {
+                        let command = args["command"].as_str().unwrap_or("");
+                        let _ = token_tx.send(format!("Running: {}\n", command));
+                        self.tools.bash(command).await?
+                    }
+                    "glob" => {
+                        let pattern = args["pattern"].as_str().unwrap_or("");
+                        let _ = token_tx.send(format!("Globbing: {}\n", pattern));
+                        self.tools.glob(pattern).await?
+                    }
+                    "grep" => {
+                        let pattern = args["pattern"].as_str().unwrap_or("");
+                        let path = args.get("path").and_then(|p| p.as_str());
+                        let _ = token_tx.send(format!("Searching: {}\n", pattern));
+                        self.tools.grep(pattern, path.map(Path::new)).await?
+                    }
+                    "task_complete" => {
+                        let summary = args["summary"].as_str().unwrap_or("Task completed");
+                        task_success = args["success"].as_bool().unwrap_or(false);
+                        task_completed = true;
+                        let _ = token_tx.send(format!("\n**Task Complete**: {}\n", summary));
+                        full_response.push_str(&format!("\n\n## Summary\n{}", summary));
+                        tools::ToolOutput::success(summary)
+                    }
+                    _ => {
+                        tools::ToolOutput::failure(format!("Unknown tool: {}", tool_name))
+                    }
+                };
+
+                // Show tool result (truncated)
+                let result_preview = if tool_result.content.len() > 500 {
+                    format!("{}...[truncated]", &tool_result.content[..500])
+                } else {
+                    tool_result.content.clone()
+                };
+
+                if tool_result.success {
+                    let _ = token_tx.send(format!("Result: {}\n", result_preview));
+                } else {
+                    let _ = token_tx.send(format!(
+                        "Error: {}\n",
+                        tool_result.error.as_deref().unwrap_or("Unknown error")
+                    ));
                 }
 
-                // Remove processed line from buffer
-                buffer = buffer[newline_pos + 1..].to_string();
+                // Add tool result to messages for next iteration
+                let tool_result_msg = if tool_result.success {
+                    serde_json::json!({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": tool_result.content
+                    })
+                } else {
+                    serde_json::json!({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": format!("Error: {}", tool_result.error.unwrap_or_default())
+                    })
+                };
+                messages.push(tool_result_msg);
             }
         }
 
-        // Process any remaining data in buffer
-        if !buffer.trim().is_empty() {
-            if let Some(data) = buffer.trim().strip_prefix("data: ") {
-                if data != "[DONE]" {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-                        if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
-                            full_response.push_str(content);
-                            let _ = token_tx.send(content.to_string());
-                        }
-                    }
-                }
-            }
+        if iteration >= MAX_TOOL_ITERATIONS && !task_completed {
+            let _ = token_tx.send("\n**Max tool iterations reached**\n".to_string());
         }
 
-        // Save this turn to conversation history for future context
-        // Use a shorter version of the prompt (just the task) for history to save tokens
+        // Save conversation history
         self.conversation_history.push(ConversationTurn {
             role: "user".to_string(),
             content: task.to_prompt(),
@@ -636,12 +873,19 @@ impl Adjutant {
             content: full_response.clone(),
         });
 
+        // Determine success: task_complete called with success=true, OR files were modified
+        let success = task_success || !modified_files.is_empty();
+
         Ok(TaskResult {
-            success: true,
+            success,
             summary: full_response,
-            modified_files: Vec::new(),
+            modified_files,
             commit_hash: None,
-            error: None,
+            error: if !success && !task_completed {
+                Some("Task did not complete - no files modified and task_complete not called".to_string())
+            } else {
+                None
+            },
             session_id: self.session_id.clone(),
         })
     }
