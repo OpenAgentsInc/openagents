@@ -710,6 +710,17 @@ fn sidebar_layout(
 
     SidebarLayout { left, right, main }
 }
+
+/// Calculate bounds for the "New Session" button in the left sidebar
+fn new_session_button_bounds(sidebar_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        sidebar_bounds.origin.x + 12.0,
+        sidebar_bounds.origin.y + 12.0,
+        sidebar_bounds.size.width - 24.0,
+        32.0,
+    )
+}
+
 const SESSION_MODAL_WIDTH: f32 = 760.0;
 const SESSION_MODAL_HEIGHT: f32 = 520.0;
 const SESSION_CARD_HEIGHT: f32 = 100.0;
@@ -3535,6 +3546,7 @@ struct AppState {
     panel_layout: PanelLayout,
     left_sidebar_open: bool,
     right_sidebar_open: bool,
+    new_session_button_hovered: bool,
     settings: CoderSettings,
     keybindings: Vec<Keybinding>,
     command_history: Vec<String>,
@@ -3817,6 +3829,7 @@ impl ApplicationHandler for CoderApp {
                 panel_layout: PanelLayout::Single,
                 left_sidebar_open: false,
                 right_sidebar_open: false,
+                new_session_button_hovered: false,
                 settings,
                 keybindings: load_keybindings(),
                 command_history: Vec::new(),
@@ -4094,6 +4107,19 @@ impl ApplicationHandler for CoderApp {
                     }
                     return;
                 }
+
+                // Track hover state for left sidebar button
+                if state.left_sidebar_open {
+                    if let Some(left_bounds) = sidebar_layout.left {
+                        let btn_bounds = new_session_button_bounds(left_bounds);
+                        let was_hovered = state.new_session_button_hovered;
+                        state.new_session_button_hovered = btn_bounds.contains(Point::new(x, y));
+                        if was_hovered != state.new_session_button_hovered {
+                            state.window.request_redraw();
+                        }
+                    }
+                }
+
                 let input_event = InputEvent::MouseMove { x, y };
                 let chat_layout = state.build_chat_layout(&sidebar_layout, logical_height);
                 if state.chat_context_menu.is_open() {
@@ -4354,6 +4380,22 @@ impl ApplicationHandler for CoderApp {
                     }
                     return;
                 }
+
+                // Handle click on left sidebar "New Session" button
+                if button_state == ElementState::Pressed
+                    && matches!(button, winit::event::MouseButton::Left)
+                    && state.left_sidebar_open
+                {
+                    if let Some(left_bounds) = sidebar_layout.left {
+                        let btn_bounds = new_session_button_bounds(left_bounds);
+                        if btn_bounds.contains(Point::new(x, y)) {
+                            state.start_new_session();
+                            state.window.request_redraw();
+                            return;
+                        }
+                    }
+                }
+
                 let chat_layout = state.build_chat_layout(
                     &sidebar_layout,
                     logical_height,
@@ -5856,6 +5898,29 @@ impl AppState {
         self.checkpoint_entries.clear();
         self.checkpoint_restore = CheckpointRestore::new();
         self.refresh_session_cards();
+    }
+
+    fn start_new_session(&mut self) {
+        if self.is_thinking {
+            self.push_system_message("Cannot start new session while processing.".to_string());
+            return;
+        }
+        self.messages.clear();
+        self.streaming_markdown.reset();
+        self.scroll_offset = 0.0;
+        self.current_tool_name = None;
+        self.current_tool_input.clear();
+        self.current_tool_use_id = None;
+        self.tool_history.clear();
+        self.session_info.session_id.clear();
+        self.session_info.tool_count = 0;
+        self.session_info.tools.clear();
+        self.pending_resume_session = None;
+        self.pending_fork_session = false;
+        self.checkpoint_entries.clear();
+        self.checkpoint_restore = CheckpointRestore::new();
+        self.refresh_session_cards();
+        self.push_system_message("Started new session.".to_string());
     }
 
     fn undo_last_exchange(&mut self) {
@@ -7951,22 +8016,28 @@ impl CoderApp {
                     .with_background(sidebar_bg)
                     .with_border(palette.panel_border, 1.0),
             );
-            let title_run = state.text_system.layout_styled_mono(
-                "Left sidebar",
-                Point::new(left_bounds.origin.x + 16.0, left_bounds.origin.y + 16.0),
+
+            // New Session button
+            let btn_bounds = new_session_button_bounds(left_bounds);
+            let btn_bg = if state.new_session_button_hovered {
+                Hsla::new(0.0, 0.0, 0.15, 1.0)
+            } else {
+                Hsla::new(0.0, 0.0, 0.1, 1.0)
+            };
+            scene.draw_quad(
+                Quad::new(btn_bounds)
+                    .with_background(btn_bg)
+                    .with_corner_radius(4.0),
+            );
+            let btn_text_y = btn_bounds.origin.y + (btn_bounds.size.height - 12.0) / 2.0;
+            let btn_run = state.text_system.layout_styled_mono(
+                "+ New Session",
+                Point::new(btn_bounds.origin.x + 12.0, btn_text_y),
                 12.0,
                 palette.text_primary,
                 wgpui::text::FontStyle::default(),
             );
-            scene.draw_text(title_run);
-            let placeholder_run = state.text_system.layout_styled_mono(
-                "Placeholder content",
-                Point::new(left_bounds.origin.x + 16.0, left_bounds.origin.y + 34.0),
-                11.0,
-                palette.text_dim,
-                wgpui::text::FontStyle::default(),
-            );
-            scene.draw_text(placeholder_run);
+            scene.draw_text(btn_run);
         }
 
         if let Some(right_bounds) = sidebar_layout.right {
