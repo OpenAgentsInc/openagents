@@ -227,6 +227,15 @@ impl AppState {
             "Workspace",
             Some(tracker_keys),
         );
+        let rlm_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenRlm, "Ctrl+Shift+R");
+        push_command(
+            command_palette_ids::RLM_OPEN,
+            "Open RLM Runs",
+            "Review recent RLM runs from Pylon",
+            "RLM",
+            Some(rlm_keys),
+        );
         let dspy_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
         push_command(
@@ -641,6 +650,15 @@ impl AppState {
             .and_then(|manifest| manifest.workspace.as_ref())
             .map(|workspace| workspace.root.as_path());
         self.autopilot_issues.refresh(workspace_root);
+    }
+
+    pub(super) fn open_rlm(&mut self) {
+        self.refresh_rlm();
+        self.modal_state = ModalState::Rlm;
+    }
+
+    pub(super) fn refresh_rlm(&mut self) {
+        self.rlm.refresh();
     }
 
     pub(super) fn open_dspy(&mut self) {
