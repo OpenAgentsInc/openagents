@@ -271,10 +271,11 @@ impl SvgQuad {
 
 #[derive(Default)]
 pub struct Scene {
-    pub quads: Vec<Quad>,
-    pub text_runs: Vec<TextRun>,
+    pub quads: Vec<(u32, Quad)>,           // (layer, quad)
+    pub text_runs: Vec<(u32, TextRun)>,    // (layer, text_run)
     pub svg_quads: Vec<SvgQuad>,
     clip_stack: Vec<Bounds>,
+    current_layer: u32,
 }
 
 impl Scene {
@@ -287,25 +288,37 @@ impl Scene {
         self.text_runs.clear();
         self.svg_quads.clear();
         self.clip_stack.clear();
+        self.current_layer = 0;
+    }
+
+    /// Set the current layer for subsequent draw calls.
+    /// Higher layers are rendered on top of lower layers.
+    pub fn set_layer(&mut self, layer: u32) {
+        self.current_layer = layer;
+    }
+
+    /// Get the current layer.
+    pub fn layer(&self) -> u32 {
+        self.current_layer
     }
 
     pub fn draw_quad(&mut self, quad: Quad) {
         if let Some(clip) = self.clip_stack.last() {
             if quad.bounds.intersects(clip) {
-                self.quads.push(quad);
+                self.quads.push((self.current_layer, quad));
             }
         } else {
-            self.quads.push(quad);
+            self.quads.push((self.current_layer, quad));
         }
     }
 
     pub fn draw_text(&mut self, text_run: TextRun) {
         if let Some(clip) = self.clip_stack.last() {
             if text_run.bounds().intersects(clip) {
-                self.text_runs.push(text_run);
+                self.text_runs.push((self.current_layer, text_run));
             }
         } else {
-            self.text_runs.push(text_run);
+            self.text_runs.push((self.current_layer, text_run));
         }
     }
 
@@ -337,20 +350,24 @@ impl Scene {
         self.clip_stack.last()
     }
 
-    /// Get GPU quads for rendering.
+    /// Get GPU quads for a specific layer.
     /// This is the GPU boundary where we scale from logical to physical pixels.
-    pub fn gpu_quads(&self, scale_factor: f32) -> Vec<GpuQuad> {
+    pub fn gpu_quads_for_layer(&self, layer: u32, scale_factor: f32) -> Vec<GpuQuad> {
         self.quads
             .iter()
-            .map(|q| GpuQuad::from_quad(q, scale_factor))
+            .filter(|(l, _)| *l == layer)
+            .map(|(_, q)| GpuQuad::from_quad(q, scale_factor))
             .collect()
     }
 
-    /// Get GPU text quads for rendering.
+    /// Get GPU text quads for a specific layer.
     /// This is the GPU boundary where we scale from logical to physical pixels.
-    pub fn gpu_text_quads(&self, scale_factor: f32) -> Vec<GpuTextQuad> {
+    pub fn gpu_text_quads_for_layer(&self, layer: u32, scale_factor: f32) -> Vec<GpuTextQuad> {
         let mut quads = Vec::new();
-        for run in &self.text_runs {
+        for (l, run) in &self.text_runs {
+            if *l != layer {
+                continue;
+            }
             for glyph in &run.glyphs {
                 quads.push(GpuTextQuad::from_glyph(
                     glyph,
@@ -363,12 +380,22 @@ impl Scene {
         quads
     }
 
-    pub fn quads(&self) -> &[Quad] {
-        &self.quads
+    /// Get all unique layers used in this scene, sorted.
+    pub fn layers(&self) -> Vec<u32> {
+        let mut layers: Vec<u32> = self.quads.iter().map(|(l, _)| *l)
+            .chain(self.text_runs.iter().map(|(l, _)| *l))
+            .collect();
+        layers.sort();
+        layers.dedup();
+        layers
     }
 
-    pub fn text_runs(&self) -> &[TextRun] {
-        &self.text_runs
+    pub fn quads(&self) -> Vec<&Quad> {
+        self.quads.iter().map(|(_, q)| q).collect()
+    }
+
+    pub fn text_runs(&self) -> Vec<&TextRun> {
+        self.text_runs.iter().map(|(_, r)| r).collect()
     }
 
     pub fn svg_quads(&self) -> &[SvgQuad] {

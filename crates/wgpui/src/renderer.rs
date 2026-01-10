@@ -37,6 +37,14 @@ struct PreparedSvg {
     cache_key: SvgTextureKey,
 }
 
+/// Prepared layer data for rendering.
+struct PreparedLayer {
+    quad_buffer: Option<wgpu::Buffer>,
+    quad_count: u32,
+    text_buffer: Option<wgpu::Buffer>,
+    text_count: u32,
+}
+
 pub struct Renderer {
     quad_pipeline: wgpu::RenderPipeline,
     text_pipeline: wgpu::RenderPipeline,
@@ -52,6 +60,8 @@ pub struct Renderer {
     text_instance_buffer: Option<wgpu::Buffer>,
     quad_count: u32,
     text_count: u32,
+    // Layer-based rendering
+    prepared_layers: Vec<PreparedLayer>,
     // SVG rendering
     svg_renderer: SvgRenderer,
     svg_texture_cache: HashMap<SvgTextureKey, SvgGpuResources>,
@@ -424,6 +434,7 @@ impl Renderer {
             text_instance_buffer: None,
             quad_count: 0,
             text_count: 0,
+            prepared_layers: Vec::new(),
             svg_renderer: SvgRenderer::new(),
             svg_texture_cache: HashMap::new(),
             prepared_svgs: Vec::new(),
@@ -477,37 +488,47 @@ impl Renderer {
         scene: &Scene,
         scale_factor: f32,
     ) {
-        // Pass scale_factor to gpu_quads for logical->physical conversion
-        let quads = scene.gpu_quads(scale_factor);
-        if !quads.is_empty() {
-            self.quad_instance_buffer = Some(device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("Quad Instance Buffer"),
+        // Prepare layers in order
+        self.prepared_layers.clear();
+        let layers = scene.layers();
+
+        for layer in layers {
+            let quads = scene.gpu_quads_for_layer(layer, scale_factor);
+            let text_quads = scene.gpu_text_quads_for_layer(layer, scale_factor);
+
+            let quad_buffer = if !quads.is_empty() {
+                Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some(&format!("Quad Instance Buffer Layer {}", layer)),
                     contents: bytemuck::cast_slice(&quads),
                     usage: wgpu::BufferUsages::VERTEX,
-                },
-            ));
-            self.quad_count = quads.len() as u32;
-        } else {
-            self.quad_instance_buffer = None;
-            self.quad_count = 0;
-        }
+                }))
+            } else {
+                None
+            };
 
-        // Pass scale_factor to gpu_text_quads for logical->physical conversion
-        let text_quads = scene.gpu_text_quads(scale_factor);
-        if !text_quads.is_empty() {
-            self.text_instance_buffer = Some(device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("Text Instance Buffer"),
+            let text_buffer = if !text_quads.is_empty() {
+                Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some(&format!("Text Instance Buffer Layer {}", layer)),
                     contents: bytemuck::cast_slice(&text_quads),
                     usage: wgpu::BufferUsages::VERTEX,
-                },
-            ));
-            self.text_count = text_quads.len() as u32;
-        } else {
-            self.text_instance_buffer = None;
-            self.text_count = 0;
+                }))
+            } else {
+                None
+            };
+
+            self.prepared_layers.push(PreparedLayer {
+                quad_buffer,
+                quad_count: quads.len() as u32,
+                text_buffer,
+                text_count: text_quads.len() as u32,
+            });
         }
+
+        // Keep legacy buffers for backward compatibility (unused now)
+        self.quad_instance_buffer = None;
+        self.quad_count = 0;
+        self.text_instance_buffer = None;
+        self.text_count = 0;
 
         // Prepare SVG quads
         self.prepared_svgs.clear();
@@ -661,19 +682,24 @@ impl Renderer {
             occlusion_query_set: None,
         });
 
-        if let Some(buffer) = &self.quad_instance_buffer {
-            render_pass.set_pipeline(&self.quad_pipeline);
-            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, buffer.slice(..));
-            render_pass.draw(0..4, 0..self.quad_count);
-        }
+        // Render layers in order - each layer's quads then text
+        for layer in &self.prepared_layers {
+            // Render quads for this layer
+            if let Some(buffer) = &layer.quad_buffer {
+                render_pass.set_pipeline(&self.quad_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                render_pass.set_vertex_buffer(0, buffer.slice(..));
+                render_pass.draw(0..4, 0..layer.quad_count);
+            }
 
-        if let Some(buffer) = &self.text_instance_buffer {
-            render_pass.set_pipeline(&self.text_pipeline);
-            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.atlas_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, buffer.slice(..));
-            render_pass.draw(0..4, 0..self.text_count);
+            // Render text for this layer
+            if let Some(buffer) = &layer.text_buffer {
+                render_pass.set_pipeline(&self.text_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                render_pass.set_bind_group(1, &self.atlas_bind_group, &[]);
+                render_pass.set_vertex_buffer(0, buffer.slice(..));
+                render_pass.draw(0..4, 0..layer.text_count);
+            }
         }
 
         // Render SVGs (each SVG has its own texture, so we draw them one at a time)
