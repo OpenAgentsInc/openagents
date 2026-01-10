@@ -21,6 +21,7 @@ pub(crate) enum ModalState {
     ToolList { selected: usize },
     PermissionRules,
     Wallet,
+    Oanix,
     Dspy,
     Nip28Chat,
     Config {

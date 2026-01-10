@@ -129,6 +129,15 @@ impl AppState {
             "Wallet",
             Some(wallet_keys),
         );
+        let oanix_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenOanix, "Ctrl+Shift+O");
+        push_command(
+            command_palette_ids::OANIX_OPEN,
+            "Open OANIX",
+            "View the environment discovery manifest",
+            "System",
+            Some(oanix_keys),
+        );
         let dspy_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
         push_command(
@@ -402,6 +411,17 @@ impl AppState {
 
     pub(super) fn request_wallet_refresh(&mut self) {
         self.refresh_wallet_snapshot();
+        self.request_oanix_refresh();
+    }
+
+    pub(super) fn open_oanix(&mut self) {
+        if self.autopilot.oanix_manifest.is_none() && self.autopilot.oanix_manifest_rx.is_none() {
+            self.request_oanix_refresh();
+        }
+        self.modal_state = ModalState::Oanix;
+    }
+
+    pub(super) fn refresh_oanix(&mut self) {
         self.request_oanix_refresh();
     }
 

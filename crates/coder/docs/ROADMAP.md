@@ -45,6 +45,7 @@ This document outlines the path to 100% implementation of the Claude Agent SDK i
 | Auto-scroll | Done | Scroll to bottom on new content |
 | Config persistence | Done | Model saved to ~/.openagents/coder/ |
 | Wallet status pane | Done | OANIX identity + Pylon wallet config |
+| OANIX manifest pane | Done | Hardware, compute, network, workspace overview |
 | DSPy status pane | Done | Sessions + performance + auto-optimizer |
 | NIP-28 chat pane | Done | Public Nostr chat with relay + channel |
 
@@ -916,3 +917,4 @@ pub enum SettingsTab {
 - 2026-01-10 16:56 UTC - Added DSPy status pane with auto-optimizer controls, keybinding, and command palette entry.
 - 2026-01-10 17:13 UTC - Added NIP-28 chat pane with relay/channel controls, keybinding, and chat input.
 - 2026-01-10 17:34 UTC - Hardened NIP-28 pane with channel id detection, post-auth setup retry, and unit tests.
+- 2026-01-10 18:05 UTC - Added OANIX manifest pane with keybinding, commands, and refresh handling.
