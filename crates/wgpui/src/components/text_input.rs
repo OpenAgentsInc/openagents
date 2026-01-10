@@ -186,6 +186,12 @@ impl TextInput {
         line_height * line_count as f32 + self.padding.1 * 2.0
     }
 
+    /// Get the line number the cursor is on (0-indexed)
+    pub fn cursor_line(&self) -> usize {
+        let text_before = &self.value[..self.cursor_pos.min(self.value.len())];
+        text_before.matches('\n').count()
+    }
+
     fn insert_str(&mut self, s: &str) {
         if self.cursor_pos <= self.value.len() {
             self.value.insert_str(self.cursor_pos, s);
@@ -373,7 +379,7 @@ impl Component for TextInput {
         if !display_text.is_empty() {
             let lines: Vec<&str> = display_text.split('\n').collect();
             for (i, line) in lines.iter().enumerate() {
-                let line_y = bounds.origin.y + self.padding.1 + line_height * i as f32 + self.font_size * 0.35;
+                let line_y = bounds.origin.y + self.padding.1 + line_height * i as f32 + self.font_size * 0.15;
                 if !line.is_empty() {
                     let text_run = if self.mono {
                         cx.text.layout_styled_mono(
