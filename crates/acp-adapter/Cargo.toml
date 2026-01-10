@@ -41,7 +41,7 @@ uuid = { workspace = true }
 which = "7"
 
 [dev-dependencies]
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util", "macros"] }
 

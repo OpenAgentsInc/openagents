@@ -21,7 +21,7 @@ openagents-spark = { path = "../spark" }
 clap = { version = "4", features = ["derive"] }
 
 # Database
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Async
 tokio = { version = "1", features = ["full", "time"] }

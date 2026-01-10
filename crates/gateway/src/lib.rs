@@ -29,6 +29,7 @@
 
 pub mod error;
 pub mod inference;
+#[cfg(feature = "dspy")]
 pub mod dspy;
 pub mod traits;
 pub mod types;
@@ -38,6 +39,7 @@ pub use error::{GatewayError, Result};
 pub use inference::{
     cerebras::CerebrasGateway, ChatRequest, ChatResponse, Choice, Message, Role, Usage,
 };
+#[cfg(feature = "dspy")]
 pub use dspy::{GatewayDspyConfig, GatewayDspyExt, GatewayLM, query_with_signature};
 pub use traits::{Gateway, InferenceGateway};
 pub use types::{Capability, GatewayHealth, ModelInfo, ModelPricing};

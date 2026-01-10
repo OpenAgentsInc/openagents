@@ -1,13 +1,4 @@
-fn render_skill_list_modal(
-    state: &mut AppState,
-    scene: &mut Scene,
-    _palette: &UiPalette,
-    bounds: Bounds,
-    logical_width: f32,
-    logical_height: f32,
-    scale_factor: f32,
-    selected: &usize,
-) {
+        ModalState::SkillList { selected } => {
             // Render on layer 1 to be on top of all layer 0 content
             scene.set_layer(1);
 
@@ -153,4 +144,4 @@ fn render_skill_list_modal(
                 wgpui::text::FontStyle::default(),
             );
             scene.draw_text(footer_run);
-}
+        },

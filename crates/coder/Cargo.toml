@@ -22,8 +22,12 @@ arboard = "3.4"
 # Time
 web-time = "1.1.0"
 
-# Claude integration (for future)
+# Agent integrations
 claude-agent-sdk = { path = "../claude-agent-sdk" }
+codex-agent-sdk = { path = "../codex-agent-sdk" }
+
+# Agent discovery
+which = "7.0"
 
 # Autopilot/Adjutant
 adjutant = { path = "../adjutant" }

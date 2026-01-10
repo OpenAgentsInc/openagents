@@ -163,7 +163,7 @@ base64 = { workspace = true }
 uuid = { workspace = true }
 bech32 = "0.11.0"
 colored = "2.0"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 toml = { workspace = true }
 
 # HTTP client for quota API

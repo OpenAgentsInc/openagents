@@ -8,9 +8,10 @@ use dsrs::{
     Chat, ChatAdapter, CompletionProvider, Example, LmUsage, Message as DspyMessage,
     MetaSignature, Prediction, get_callback,
 };
-use rig::completion::{CompletionError, CompletionRequest, CompletionResponse, Usage};
-use rig::message::{AssistantContent, Message as RigMessage, Text, UserContent};
-use rig::OneOrMany;
+use dsrs::adapter::Adapter;
+use rig_core::completion::{CompletionError, CompletionRequest, CompletionResponse, Usage};
+use rig_core::message::{AssistantContent, Message as RigMessage, Text, UserContent};
+use rig_core::OneOrMany;
 use uuid::Uuid;
 
 use crate::error::{GatewayError, Result as GatewayResult};

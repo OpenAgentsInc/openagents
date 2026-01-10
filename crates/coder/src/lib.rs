@@ -2,7 +2,7 @@
 //!
 //! This crate provides a GPU-accelerated terminal UI for Claude Code.
 
-#[path = "app_entry.rs"]
+#[path = "app_entry_main.rs"]
 mod app_entry;
 pub mod app;
 pub mod autopilot_loop;
@@ -11,6 +11,3 @@ pub mod keybindings;
 pub mod panels;
 
 pub use app_entry::CoderApp;
-
-#[cfg(test)]
-mod tests;

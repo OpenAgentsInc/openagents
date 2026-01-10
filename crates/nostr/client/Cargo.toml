@@ -30,7 +30,7 @@ tracing = "0.1"
 url = "2"
 
 # Database
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Random (for tests)
 rand = "0.8"

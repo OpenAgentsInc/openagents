@@ -7,6 +7,10 @@ license.workspace = true
 publish.workspace = true
 description = "Gateway abstraction for external AI services"
 
+[features]
+default = []
+dspy = ["rig-core"]
+
 [dependencies]
 async-trait = { workspace = true }
 anyhow = { workspace = true }
@@ -20,6 +24,7 @@ tokio = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }
+rig-core = { version = "0.10", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

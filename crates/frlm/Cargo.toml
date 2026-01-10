@@ -33,7 +33,7 @@ uuid = { version = "1", features = ["v4"] }
 thiserror = "1"
 tracing = "0.1"
 web-time = "1"
-rusqlite = { version = "0.32", features = ["bundled"], optional = true }
+rusqlite = { version = "0.31", features = ["bundled"], optional = true }
 
 # Verification (hash checking)
 sha2 = "0.10"
