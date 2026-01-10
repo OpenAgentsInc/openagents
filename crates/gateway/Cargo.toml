@@ -18,7 +18,7 @@ dsrs = { path = "../dsrs" }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-rig-core = { version = "0.10", optional = true }
+rig-core = { git = "https://github.com/0xPlaygrounds/rig", rev = "e7849df", optional = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 chrono = { workspace = true }

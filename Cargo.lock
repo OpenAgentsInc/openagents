@@ -3982,7 +3982,7 @@ dependencies = [
  "rayon",
  "regex",
  "reqwest",
- "rig-core 0.26.0",
+ "rig-core",
  "rstest",
  "schemars 1.2.0",
  "serde",
@@ -5264,7 +5264,7 @@ dependencies = [
  "dsrs",
  "futures",
  "reqwest",
- "rig-core 0.10.0",
+ "rig-core",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -11743,27 +11743,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c6a884d2998352bb4daf0183589aec883f16a6da1f4dde84d8e2e9a5409a1ce"
 dependencies = [
  "bytemuck",
-]
-
-[[package]]
-name = "rig-core"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92b71cce9455ff993d7bd41d90cae125127a41cb4f8b6da57877eb1598cb9206"
-dependencies = [
- "async-stream",
- "base64 0.22.1",
- "bytes",
- "futures",
- "glob",
- "mime_guess",
- "ordered-float 4.6.0",
- "reqwest",
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tracing",
 ]
 
 [[package]]
