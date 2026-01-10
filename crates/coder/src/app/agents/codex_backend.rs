@@ -4,14 +4,11 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use codex_agent_sdk::{
-    Codex, ThreadEvent, ThreadOptions, TurnOptions, StreamedTurn, SandboxMode, ApprovalMode,
-};
+use codex_agent_sdk::{ApprovalMode, Codex, SandboxMode, StreamedTurn, ThreadOptions, TurnOptions};
 
 use super::backend::{
     AgentAvailability, AgentBackend, AgentConfig, AgentKind, AgentSession, ModelInfo,
@@ -154,6 +151,7 @@ fn check_codex_availability() -> AgentAvailability {
 }
 
 /// Codex session implementation
+#[allow(dead_code)]
 pub struct CodexSession {
     config: AgentConfig,
     response_tx: mpsc::UnboundedSender<ResponseEvent>,
@@ -162,6 +160,7 @@ pub struct CodexSession {
     streamed_turn: Option<StreamedTurn>,
 }
 
+#[allow(dead_code)]
 impl CodexSession {
     fn new(config: AgentConfig, response_tx: mpsc::UnboundedSender<ResponseEvent>) -> Self {
         let codex = Codex::new();

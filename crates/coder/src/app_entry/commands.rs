@@ -9,6 +9,7 @@ use winit::keyboard::{Key as WinitKey, NamedKey as WinitNamedKey};
 use crate::app::catalog::{
     expand_env_vars_in_value, parse_mcp_server_config, save_hook_config, McpServerEntry,
 };
+use crate::app::agents::AgentKind;
 use crate::app::config::{AgentKindConfig, SettingsItem, SettingsTab};
 use crate::app::events::{
     convert_key_for_binding, convert_modifiers, CommandAction, CoderMode, ModalState,
@@ -263,6 +264,15 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             } else {
                 state.push_system_message("Reloaded agents from disk.".to_string());
             }
+            CommandAction::None
+        }
+        Command::AgentBackends => {
+            state.open_agent_backends();
+            CommandAction::None
+        }
+        Command::AgentBackendsRefresh => {
+            state.refresh_agent_backends();
+            state.open_agent_backends();
             CommandAction::None
         }
         Command::Skills => {
@@ -537,86 +547,6 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
                 }
             }
         }
-        // New feature commands - open corresponding modals
-        Command::Wallet => {
-            state.modal_state = ModalState::Wallet;
-            CommandAction::None
-        }
-        Command::WalletRefresh => CommandAction::None,
-        Command::Dvm => {
-            state.modal_state = ModalState::DvmProviders;
-            CommandAction::None
-        }
-        Command::DvmConnect(_) | Command::DvmKind(_) | Command::DvmRefresh => CommandAction::None,
-        Command::LmRouter => {
-            state.modal_state = ModalState::LmRouter;
-            CommandAction::None
-        }
-        Command::LmRouterRefresh => CommandAction::None,
-        Command::Nexus => {
-            state.modal_state = ModalState::Nexus;
-            CommandAction::None
-        }
-        Command::NexusConnect(_) | Command::NexusRefresh => CommandAction::None,
-        Command::SparkWallet => {
-            state.modal_state = ModalState::SparkWallet;
-            CommandAction::None
-        }
-        Command::SparkWalletRefresh => CommandAction::None,
-        Command::Gateway => {
-            state.modal_state = ModalState::Gateway;
-            CommandAction::None
-        }
-        Command::GatewayRefresh => CommandAction::None,
-        Command::Nip90 => {
-            state.modal_state = ModalState::Nip90Jobs;
-            CommandAction::None
-        }
-        Command::Nip90Connect(_) | Command::Nip90Refresh => CommandAction::None,
-        Command::Oanix => {
-            state.modal_state = ModalState::Oanix;
-            CommandAction::None
-        }
-        Command::OanixRefresh => CommandAction::None,
-        Command::Directives => {
-            state.modal_state = ModalState::Directives;
-            CommandAction::None
-        }
-        Command::DirectivesRefresh => CommandAction::None,
-        Command::Issues => {
-            state.modal_state = ModalState::Issues;
-            CommandAction::None
-        }
-        Command::IssuesRefresh => CommandAction::None,
-        Command::AutopilotIssues => {
-            state.modal_state = ModalState::AutopilotIssues;
-            CommandAction::None
-        }
-        Command::AutopilotIssuesRefresh => CommandAction::None,
-        Command::Rlm => {
-            state.modal_state = ModalState::Rlm;
-            CommandAction::None
-        }
-        Command::RlmRefresh => CommandAction::None,
-        Command::RlmTrace(_) => {
-            state.modal_state = ModalState::RlmTrace;
-            CommandAction::None
-        }
-        Command::PylonEarnings => {
-            state.modal_state = ModalState::PylonEarnings;
-            CommandAction::None
-        }
-        Command::PylonEarningsRefresh => CommandAction::None,
-        Command::Dspy => {
-            state.modal_state = ModalState::Dspy;
-            CommandAction::None
-        }
-        Command::DspyRefresh | Command::DspyAuto(_) | Command::DspyBackground(_) => CommandAction::None,
-        Command::Nip28 => {
-            state.modal_state = ModalState::Nip28Chat;
-            CommandAction::None
-        }
-        Command::Nip28Connect(_) | Command::Nip28Channel(_) | Command::Nip28Send(_) | Command::Nip28Refresh => CommandAction::None,
     }
 }
 
@@ -763,6 +693,105 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 }
                 _ => {}
             }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::AgentBackends {
+            selected,
+            model_selected,
+        } => {
+            let kinds = state.agent_backends.kinds();
+            if kinds.is_empty() {
+                match key {
+                    WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                        state.modal_state = ModalState::None;
+                    }
+                    WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                        state.refresh_agent_backends();
+                    }
+                    _ => {}
+                }
+                state.window.request_redraw();
+                return true;
+            }
+
+            if *selected >= kinds.len() {
+                *selected = kinds.len().saturating_sub(1);
+            }
+            let selected_kind = kinds
+                .get(*selected)
+                .copied()
+                .unwrap_or(AgentKind::Claude);
+            let models = state.agent_backends.models_for_kind(selected_kind);
+            let max_model_index = models.len();
+            if *model_selected > max_model_index {
+                *model_selected = max_model_index;
+            }
+
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::Enter) => {
+                    let model_id = if *model_selected == 0 {
+                        None
+                    } else {
+                        models
+                            .get(model_selected.saturating_sub(1))
+                            .map(|model| model.id.clone())
+                    };
+                    state.agent_backends.set_selection(selected_kind, model_id.clone());
+                    if selected_kind == AgentKind::Claude {
+                        let model = model_id
+                            .as_deref()
+                            .map(ModelOption::from_id)
+                            .unwrap_or(ModelOption::Opus);
+                        state.update_selected_model(model);
+                    }
+                    state.push_system_message(format!(
+                        "Agent backend set to {}.",
+                        state.agent_backends.settings.selected.display_name()
+                    ));
+                }
+                WinitKey::Named(WinitNamedKey::ArrowUp) => {
+                    if *selected > 0 {
+                        *selected -= 1;
+                        let next_kind = kinds
+                            .get(*selected)
+                            .copied()
+                            .unwrap_or(AgentKind::Claude);
+                        *model_selected = state.agent_backends.model_index_for_kind(next_kind);
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowDown) => {
+                    if *selected + 1 < kinds.len() {
+                        *selected += 1;
+                        let next_kind = kinds
+                            .get(*selected)
+                            .copied()
+                            .unwrap_or(AgentKind::Claude);
+                        *model_selected = state.agent_backends.model_index_for_kind(next_kind);
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowLeft) => {
+                    if *model_selected > 0 {
+                        *model_selected -= 1;
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowRight) => {
+                    if *model_selected < max_model_index {
+                        *model_selected += 1;
+                    }
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_agent_backends();
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("d") => {
+                    *model_selected = 0;
+                }
+                _ => {}
+            }
+
             state.window.request_redraw();
             true
         }
@@ -1480,32 +1509,6 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             }
             state.window.request_redraw();
             true
-        }
-        // New feature modals - just handle Escape to close them for now
-        ModalState::Wallet
-        | ModalState::DvmProviders
-        | ModalState::Gateway
-        | ModalState::LmRouter
-        | ModalState::Nexus
-        | ModalState::SparkWallet
-        | ModalState::Nip90Jobs
-        | ModalState::Oanix
-        | ModalState::Directives
-        | ModalState::Issues
-        | ModalState::AutopilotIssues
-        | ModalState::Rlm
-        | ModalState::RlmTrace
-        | ModalState::PylonEarnings
-        | ModalState::Dspy
-        | ModalState::Nip28Chat => {
-            match key {
-                WinitKey::Named(WinitNamedKey::Escape) => {
-                    state.modal_state = ModalState::None;
-                    state.window.request_redraw();
-                    true
-                }
-                _ => true
-            }
         }
         ModalState::None => false,
     }

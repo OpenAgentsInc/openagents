@@ -31,6 +31,8 @@ pub enum Command {
     AgentSelect(String),
     AgentClear,
     AgentReload,
+    AgentBackends,
+    AgentBackendsRefresh,
     Skills,
     SkillsReload,
     Hooks,
@@ -241,6 +243,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         usage: "/agent reload",
         description: "Reload agents from disk",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/agent-backends",
+        description: "Open agent backend status",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/agent-backends refresh",
+        description: "Refresh agent backend status",
         requires_args: false,
     },
     CommandSpec {
@@ -521,6 +533,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "mcp" => parse_mcp_command(args),
         "agents" => Command::Agents,
         "agent" => parse_agent_command(args),
+        "agent-backends" | "agent-backend" | "backends" => parse_agent_backends_command(args),
         "skills" => parse_skills_command(args),
         "hooks" => parse_hooks_command(args),
         "wallet" => parse_wallet_command(args),
@@ -841,6 +854,16 @@ fn parse_agent_command(args: Vec<String>) -> Command {
             Command::AgentSelect(rest.join(" "))
         }
         None => Command::Agents,
+    }
+}
+
+fn parse_agent_backends_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::AgentBackends,
+        Some("open") | Some("status") => Command::AgentBackends,
+        Some("refresh") => Command::AgentBackendsRefresh,
+        Some(other) => Command::Custom(format!("agent-backends {}", other), parts.collect()),
     }
 }
 

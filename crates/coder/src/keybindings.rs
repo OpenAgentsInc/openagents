@@ -6,6 +6,7 @@ pub enum Action {
     OpenCommandPalette,
     OpenSettings,
     OpenWallet,
+    OpenAgentBackends,
     OpenDvm,
     OpenGateway,
     OpenLmRouter,
@@ -47,6 +48,7 @@ impl Action {
             Action::OpenCommandPalette,
             Action::OpenSettings,
             Action::OpenWallet,
+            Action::OpenAgentBackends,
             Action::OpenDvm,
             Action::OpenGateway,
             Action::OpenLmRouter,
@@ -75,6 +77,7 @@ impl Action {
             Action::OpenCommandPalette => "command_palette",
             Action::OpenSettings => "settings",
             Action::OpenWallet => "wallet",
+            Action::OpenAgentBackends => "agent_backends",
             Action::OpenDvm => "dvm",
             Action::OpenGateway => "gateway",
             Action::OpenLmRouter => "lm_router",
@@ -103,6 +106,7 @@ impl Action {
             Action::OpenCommandPalette => "Command palette",
             Action::OpenSettings => "Open settings",
             Action::OpenWallet => "Open wallet",
+            Action::OpenAgentBackends => "Open agent backends",
             Action::OpenDvm => "Open DVM providers",
             Action::OpenGateway => "Open gateway",
             Action::OpenLmRouter => "Open LM router",
@@ -131,6 +135,7 @@ impl Action {
             "command_palette" => Some(Action::OpenCommandPalette),
             "settings" => Some(Action::OpenSettings),
             "wallet" => Some(Action::OpenWallet),
+            "agent_backends" => Some(Action::OpenAgentBackends),
             "dvm" => Some(Action::OpenDvm),
             "gateway" => Some(Action::OpenGateway),
             "lm_router" => Some(Action::OpenLmRouter),
@@ -189,6 +194,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenWallet,
+        },
+        Keybinding {
+            key: Key::Character("b".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenAgentBackends,
         },
         Keybinding {
             key: Key::Character("p".to_string()),
@@ -366,6 +380,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenWallet,
+        },
+        Keybinding {
+            key: Key::Character("b".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenAgentBackends,
         },
         Keybinding {
             key: Key::Character("p".to_string()),

@@ -29,8 +29,6 @@ use wgpui::components::organisms::{EventData, TagData};
 
 const HOOK_OUTPUT_TRUNCATE: usize = 2000;
 const HOOK_BLOCK_PATTERNS: [&str; 3] = ["rm -rf /", "sudo", "> /dev/"];
-const HOOK_LOG_LIMIT: usize = 200;
-const TOOL_HISTORY_LIMIT: usize = 100;
 
 #[derive(Clone, Debug)]
 pub(crate) enum HookCallbackKind {

@@ -24,6 +24,7 @@ use crate::app::catalog::{
     load_agent_entries, load_hook_config, load_hook_scripts, load_mcp_project_servers,
     load_skill_entries, CatalogState,
 };
+use crate::app::agents::AgentBackendsState;
 use crate::app::chat::{ChatSelection, ChatState};
 use crate::app::agents::AgentRegistry;
 use crate::app::config::{mcp_project_file, AgentSelection, SettingsState};
@@ -241,6 +242,7 @@ impl ApplicationHandler for CoderApp {
                     mcp_project_error,
                     mcp_project_path,
                 ),
+                agent_backends: AgentBackendsState::new(selected_model),
                 settings: SettingsState::new(settings, load_keybindings(), selected_model),
                 permissions: PermissionState::new(
                     coder_mode,
@@ -304,6 +306,7 @@ impl ApplicationHandler for CoderApp {
         self.poll_lm_router_events();
         self.poll_nexus_events();
         self.poll_spark_wallet_events();
+        self.poll_agent_backends_events();
         self.poll_autopilot_history();
         self.poll_rate_limits();
 
@@ -1176,6 +1179,7 @@ impl ApplicationHandler for CoderApp {
                                 }
                                 KeyAction::OpenSettings => state.open_config(),
                                 KeyAction::OpenWallet => state.open_wallet(),
+                                KeyAction::OpenAgentBackends => state.open_agent_backends(),
                                 KeyAction::OpenDvm => state.open_dvm(),
                                 KeyAction::OpenGateway => state.open_gateway(),
                                 KeyAction::OpenLmRouter => state.open_lm_router(),

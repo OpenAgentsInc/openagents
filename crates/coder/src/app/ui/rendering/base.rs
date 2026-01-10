@@ -8,6 +8,8 @@ pub(crate) const INPUT_AREA_HEIGHT: f32 = INPUT_HEIGHT + INPUT_PADDING + STATUS_
 
 pub(crate) const SESSION_MODAL_WIDTH: f32 = 760.0;
 pub(crate) const SESSION_MODAL_HEIGHT: f32 = 520.0;
+pub(crate) const AGENT_BACKENDS_MODAL_WIDTH: f32 = 760.0;
+pub(crate) const AGENT_BACKENDS_MODAL_HEIGHT: f32 = 520.0;
 pub(crate) const SESSION_CARD_HEIGHT: f32 = 100.0;
 pub(crate) const SESSION_CARD_GAP: f32 = 12.0;
 pub(crate) const SESSION_MODAL_PADDING: f32 = 16.0;

@@ -9,6 +9,7 @@ use claude_agent_sdk::permissions::{CallbackPermissionHandler, PermissionRequest
 use claude_agent_sdk::protocol::{PermissionMode, PermissionResult};
 use claude_agent_sdk::{query_with_permissions, QueryOptions, SdkMessage};
 
+use crate::app::agents::AgentBackendsEvent;
 use crate::app::catalog::build_hook_map;
 use crate::app::chat::{ChatMessage, MessageRole};
 use crate::app::dvm::{DvmEvent, DvmStatus};
@@ -1582,6 +1583,38 @@ impl CoderApp {
         }
     }
 
+    pub(super) fn poll_agent_backends_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.agent_backends.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state
+                        .agent_backends
+                        .set_error("Agent backend runtime disconnected".to_string());
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                AgentBackendsEvent::Snapshot(snapshot) => {
+                    state.agent_backends.set_snapshot(snapshot);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
     pub(super) fn poll_autopilot_history(&mut self) {
         let Some(state) = &mut self.state else {
             return;
@@ -1666,6 +1699,9 @@ impl CoderApp {
             command_palette_ids::MCP_RELOAD => Some(handle_command(state, Command::McpReload)),
             command_palette_ids::MCP_STATUS => Some(handle_command(state, Command::McpStatus)),
             command_palette_ids::AGENTS_LIST => Some(handle_command(state, Command::Agents)),
+            command_palette_ids::AGENT_BACKENDS_OPEN => {
+                Some(handle_command(state, Command::AgentBackends))
+            }
             command_palette_ids::AGENT_CLEAR => Some(handle_command(state, Command::AgentClear)),
             command_palette_ids::AGENT_RELOAD => Some(handle_command(state, Command::AgentReload)),
             command_palette_ids::WALLET_OPEN => {
