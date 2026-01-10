@@ -30,6 +30,7 @@ struct ApiErrorDetail {
 }
 
 /// Gateway implementation for Cerebras inference API
+#[derive(Clone)]
 pub struct CerebrasGateway {
     client: Client,
     api_key: String,

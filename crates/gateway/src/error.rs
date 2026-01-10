@@ -30,6 +30,10 @@ pub enum GatewayError {
     /// Model not found
     #[error("Model not found: {0}")]
     ModelNotFound(String),
+
+    /// DSPy integration error
+    #[error("DSPy error: {0}")]
+    Dspy(String),
 }
 
 /// Result type for gateway operations
