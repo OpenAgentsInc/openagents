@@ -274,6 +274,23 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             state.open_wallet();
             CommandAction::None
         }
+        Command::Dspy => {
+            state.open_dspy();
+            CommandAction::None
+        }
+        Command::DspyRefresh => {
+            state.refresh_dspy_snapshot();
+            state.push_system_message("DSPy status refreshed.".to_string());
+            CommandAction::None
+        }
+        Command::DspyAuto(enabled) => {
+            state.set_dspy_auto_optimizer_enabled(enabled);
+            CommandAction::None
+        }
+        Command::DspyBackground(enabled) => {
+            state.set_dspy_background_optimization(enabled);
+            CommandAction::None
+        }
         Command::Custom(name, args) => {
             if state.chat.is_thinking {
                 state.push_system_message(
@@ -658,6 +675,27 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 }
                 WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
                     state.request_wallet_refresh();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Dspy => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_dspy_snapshot();
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("e") => {
+                    let enabled = !state.dspy.snapshot.auto_optimizer.config.enabled;
+                    state.set_dspy_auto_optimizer_enabled(enabled);
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("b") => {
+                    let enabled = !state.dspy.snapshot.auto_optimizer.config.background_optimization;
+                    state.set_dspy_background_optimization(enabled);
                 }
                 _ => {}
             }

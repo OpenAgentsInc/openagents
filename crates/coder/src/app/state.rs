@@ -14,6 +14,7 @@ use crate::app::autopilot::AutopilotState;
 use crate::app::catalog::CatalogState;
 use crate::app::chat::ChatState;
 use crate::app::config::SettingsState;
+use crate::app::dspy::DspyState;
 use crate::app::events::ModalState;
 use crate::app::permissions::PermissionState;
 use crate::app::session::SessionState;
@@ -55,6 +56,7 @@ pub(crate) struct AppState {
     pub(crate) permissions: PermissionState,
     pub(crate) autopilot: AutopilotState,
     pub(crate) wallet: WalletState,
+    pub(crate) dspy: DspyState,
     pub(crate) llama_server_process: Option<Child>,
     pub(crate) show_kitchen_sink: bool,
     pub(crate) kitchen_sink_scroll: f32,

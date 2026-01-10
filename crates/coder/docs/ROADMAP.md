@@ -45,6 +45,7 @@ This document outlines the path to 100% implementation of the Claude Agent SDK i
 | Auto-scroll | Done | Scroll to bottom on new content |
 | Config persistence | Done | Model saved to ~/.openagents/coder/ |
 | Wallet status pane | Done | OANIX identity + Pylon wallet config |
+| DSPy status pane | Done | Sessions + performance + auto-optimizer |
 
 ### Not Implemented
 
@@ -911,3 +912,4 @@ pub enum SettingsTab {
 - 2026-01-09 - Implemented true Autopilot loop (`autopilot_loop.rs`): autonomous execution that loops Adjutant until task succeeds with verification (cargo check + cargo test), definitive failure, max iterations (10), or user interrupt (Escape).
 - 2026-01-10 10:47 UTC - Refactored Coder rendering: split the pipeline into `app/ui/rendering/` submodules (base/layout/modals/etc), extracted layout helpers/constants, and delegated `CoderApp::render` to `render_app`.
 - 2026-01-10 11:22 UTC - Split `app.rs` into focused app_entry submodules (application, commands, hooks, settings, state_actions), keeping the entrypoint slim while preserving behavior.
+- 2026-01-10 16:56 UTC - Added DSPy status pane with auto-optimizer controls, keybinding, and command palette entry.

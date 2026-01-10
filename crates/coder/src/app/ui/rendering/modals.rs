@@ -6,6 +6,7 @@ include!("modals/hooks.rs");
 include!("modals/tool_list.rs");
 include!("modals/permission_rules.rs");
 include!("modals/wallet.rs");
+include!("modals/dspy.rs");
 include!("modals/config.rs");
 include!("modals/mcp_config.rs");
 include!("modals/help.rs");
@@ -126,6 +127,17 @@ fn render_modals(
         }
         ModalState::Wallet => {
             render_wallet_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
+        ModalState::Dspy => {
+            render_dspy_modal(
                 state,
                 scene,
                 palette,

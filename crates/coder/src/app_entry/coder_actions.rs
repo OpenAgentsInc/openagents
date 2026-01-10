@@ -976,6 +976,10 @@ impl CoderApp {
                 state.open_wallet();
                 None
             }
+            command_palette_ids::DSPY_OPEN => {
+                state.open_dspy();
+                None
+            }
             command_palette_ids::SKILLS_LIST => Some(handle_command(state, Command::Skills)),
             command_palette_ids::SKILLS_RELOAD => Some(handle_command(state, Command::SkillsReload)),
             command_palette_ids::HOOKS_OPEN => Some(handle_command(state, Command::Hooks)),
