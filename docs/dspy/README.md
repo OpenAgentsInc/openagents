@@ -1,0 +1,277 @@
+# OpenAgents DSPy Strategy
+
+This document synthesizes our complete DSPy strategy—philosophy, architecture, and implementation.
+
+## Core Insight
+
+**DSPy is the compiler layer for agent behavior.**
+
+Not the market layer, not the runtime. DSPy provides: take a goal ("solve this class of tasks") and automatically discover the best prompt + tool-use structure + few-shot examples + scoring loop—instead of hand-tuning prompts forever.
+
+**The Separation:**
+- **DSPy (dsrs)** decides *what to do* (best program structure/prompting)
+- **Execution infrastructure** (Pylon, Nexus, Runtime) decides *where/how it runs*, *whether it's valid*, *what it costs*, and *why it worked*
+
+## Philosophy
+
+From [Omar Khattab](../transcripts/dspy/state-of-dspy.md) and [Kevin Madura](../transcripts/dspy/dspy-is-all-you-need.md):
+
+1. **DSPy is NOT an optimizer.** It's a set of programming abstractions—a way to program where you declare your intent. The optimization is a nice bonus.
+
+2. **Signatures decouple specification from implementation.** You declare what you want (inputs, outputs, types), not how to prompt for it. The prompt is generated.
+
+3. **Field names are mini-prompts.** Naming matters. `task_description: String` becomes part of the prompt.
+
+4. **Optimizers find latent requirements.** MIPROv2/GEPA discover things you didn't think to specify—like "always capitalize names" or "include file paths in responses."
+
+5. **Model portability without rewriting.** The same signature works across Claude, GPT-4, Llama, Ollama. Only the adapter changes.
+
+6. **Tight iteration loops.** Build a signature in 3 lines, test it, refine it, optimize it. No prompt engineering rabbit holes.
+
+## The Differentiator
+
+> Semantic search is table stakes. The differentiator is an end-to-end *programmable* and *optimizable* retrieval+reasoning system — a **compiled agent** where retrieval is one module in an eval-driven, optimizer-tuned, environment-interacting program.
+
+## Architecture
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                        OPENAGENTS + DSRS                            │
+├────────────────────────────────────────────────────────────────────┤
+│  PROTOCOL LAYER                                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │
+│  │ Job Schemas  │  │  Canonical   │  │  Versioning  │              │
+│  │  (JSON)      │  │   Hashing    │  │    Rules     │              │
+│  └──────────────┘  └──────────────┘  └──────────────┘              │
+│                                                                      │
+│  COMPILER LAYER (dsrs)                                               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │
+│  │  Signatures  │  │  Optimizers  │  │   Modules    │              │
+│  │  (macros)    │  │  MIPROv2     │  │  (pipelines) │              │
+│  └──────────────┘  └──────────────┘  └──────────────┘              │
+│                                                                      │
+│  INTEGRATION LAYER                                                   │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  SessionStore  │  OutcomeFeedback  │  PerformanceTracker      │ │
+│  │  AutoOptimizer │  LabeledExamples  │  DecisionPipelines       │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                                                                      │
+│  EXECUTION LAYER (OpenAgents)                                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │
+│  │    Pylon     │  │   Adjutant   │  │   Autopilot  │              │
+│  │  (compute)   │  │  (decisions) │  │   (loop)     │              │
+│  └──────────────┘  └──────────────┘  └──────────────┘              │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+## Key Concepts
+
+### Signatures
+
+Typed input/output contracts for LLM tasks:
+
+```rust
+#[Signature]
+struct TaskPlannerSignature {
+    /// Plan a coding task into subtasks.
+
+    #[input] task_description: String,
+    #[input] file_count: u32,
+
+    #[output] complexity: String,     // Low/Medium/High/VeryHigh
+    #[output] subtasks: String,       // JSON array
+    #[output] confidence: f32,
+}
+```
+
+The docstring, field names, and types all become part of the prompt.
+
+### Modules
+
+Composable units with `forward()` method:
+
+```rust
+pub struct AdjutantModule {
+    planner: Predict<TaskPlannerSignature>,
+    executor: Predict<TaskExecutorSignature>,
+    synthesizer: Predict<ResultSynthesisSignature>,
+}
+
+impl Module for AdjutantModule {
+    async fn forward(&self, inputs: Example) -> Result<Prediction> {
+        let plan = self.planner.forward(inputs).await?;
+        // ... execute subtasks ...
+        self.synthesizer.forward(results).await
+    }
+}
+```
+
+### Optimizers
+
+Automatic prompt improvement:
+
+| Optimizer | Use Case | Cost |
+|-----------|----------|------|
+| **MIPROv2** | Instruction optimization | Low |
+| **COPRO** | Instruction + demo optimization | Medium |
+| **GEPA** | Feedback-driven optimization | Higher |
+| **Pareto** | Multi-objective optimization | Higher |
+
+Start with MIPROv2, graduate to GEPA when plateaued.
+
+### Adapters
+
+Prompt formatters between signatures and LLMs:
+
+- **JSON Adapter** — Default, works everywhere
+- **BAML Adapter** — More token-efficient, 5-10% improvement
+- **XML Adapter** — Some models prefer XML
+
+## The Self-Improvement Loop
+
+The key innovation in OpenAgents is closing the feedback loop:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  1. TASK EXECUTION (Autopilot Loop)                              │
+│     └── Decisions recorded (complexity, delegation, RLM)         │
+│                                                                  │
+│  2. SESSION COMPLETION                                           │
+│     └── Outcome recorded (Success/Failed/MaxIterations)          │
+│                                                                  │
+│  3. OUTCOME FEEDBACK                                             │
+│     └── Decisions labeled as correct/incorrect                   │
+│     └── LabeledExamples stored with ground truth                 │
+│                                                                  │
+│  4. PERFORMANCE TRACKING                                         │
+│     └── Rolling accuracy updated (window: 50 decisions)          │
+│     └── Per-signature metrics tracked                            │
+│                                                                  │
+│  5. AUTO-OPTIMIZATION CHECK                                      │
+│     ├── Enough new examples? (threshold: 20)                     │
+│     ├── Accuracy dropped? (threshold: <70%)                      │
+│     └── Time since last optimization? (threshold: >24h)          │
+│                                                                  │
+│  6. MIPROV2 OPTIMIZATION (if triggered)                          │
+│     └── Optimizes lowest-accuracy signature                      │
+│     └── Records optimization run for audit                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**The flywheel:** Successful sessions generate training data → dsrs optimization (cheap on Pylon swarm) → better prompts/demos → higher success rates → more training data.
+
+## Decision Pipelines
+
+Three DSPy pipelines drive autonomous execution:
+
+### ComplexityPipeline
+Classifies task complexity: Low / Medium / High / VeryHigh
+
+### DelegationPipeline
+Decides execution path: `claude_code` / `rlm` / `local_tools`
+
+### RlmTriggerPipeline
+Decides when recursive analysis is needed
+
+Each pipeline has:
+- **DSPy-first logic** with typed signature
+- **Legacy fallback** when confidence < 0.7
+- **Training collection** for high-confidence decisions
+
+## Implementation Status
+
+| Wave | Description | Status |
+|------|-------------|--------|
+| Wave 0 | Protocol + Schema Registry | Complete |
+| Wave 1 | RLM Document Analysis | Complete |
+| Wave 2 | Autopilot Signatures | Complete |
+| Wave 2.5 | LaneMux (Multi-Provider LM) | Complete |
+| Wave 3-6 | Core Infrastructure | Complete |
+| Wave 7 | Privacy Module | Complete |
+| Wave 8 | OANIX DSPy Signatures | Complete |
+| Wave 9 | Agent Orchestrator | Complete |
+| Wave 10 | Tool Invocation | Complete |
+| Wave 11 | Optimization Infrastructure | Complete |
+| Wave 12 | FRLM Integration | Complete |
+| Wave 13 | Pipeline Wiring | Complete |
+| Wave 14 | Self-Improving Autopilot | Complete |
+
+See [DSPY_ROADMAP.md](../DSPY_ROADMAP.md) for full details.
+
+## Storage Layout
+
+```
+~/.openagents/adjutant/
+├── training/
+│   ├── dataset.json           # Training examples
+│   └── labeled/               # Labeled examples with ground truth
+│       ├── complexity.json
+│       ├── delegation.json
+│       └── rlm_trigger.json
+├── sessions/                  # Session tracking
+│   ├── index.json
+│   └── <year>/<month>/<session-id>.json
+├── metrics/                   # Performance metrics
+│   └── performance.json
+└── config/                    # Configuration
+    └── auto_optimizer.json
+```
+
+## CLI Commands
+
+```bash
+# View session history
+autopilot dspy sessions
+autopilot dspy sessions --failed
+
+# View performance metrics
+autopilot dspy performance
+
+# Configure auto-optimization
+autopilot dspy auto-optimize --enable
+autopilot dspy auto-optimize --min-examples 30
+autopilot dspy auto-optimize --accuracy-threshold 0.75
+```
+
+## Model Mixing Strategy
+
+Different signatures benefit from different models:
+
+| Signature Type | Recommended Model | Reasoning |
+|----------------|-------------------|-----------|
+| Planning (Deep) | Claude Opus | Complex reasoning |
+| Planning (Simple) | Claude Sonnet | Balance speed/quality |
+| Execution | Claude Sonnet | Balance speed/quality |
+| Review/Verify | Claude Haiku | Fast validation |
+| Optimization (iterations) | Pylon Swarm | Cheap, high volume |
+| Optimization (validation) | Claude/GPT-4 | Final quality check |
+| Retrieval Router | Pylon Local | Fast, cheap policy |
+| Evidence Ranker | Pylon Swarm | Parallelizable |
+
+## LM Provider Priority
+
+1. **Claude SDK** — Uses Claude Code headless mode
+2. **Pylon Swarm** — Distributed inference via NIP-90
+3. **Cerebras** — Fast, cheap execution
+4. **Pylon Local** — Ollama fallback
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `crates/dsrs/` | Rust DSPy implementation (5,771 LOC) |
+| `crates/adjutant/src/dspy/` | Decision pipelines, self-improvement |
+| `crates/adjutant/src/dspy/sessions.rs` | Session tracking |
+| `crates/adjutant/src/dspy/outcome_feedback.rs` | Outcome labeling |
+| `crates/adjutant/src/dspy/performance.rs` | Rolling accuracy |
+| `crates/adjutant/src/dspy/auto_optimizer.rs` | Auto-optimization |
+
+## Related Documentation
+
+- [DSPY_ROADMAP.md](../DSPY_ROADMAP.md) — Full implementation roadmap
+- [rust.md](./rust.md) — dsrs usage guide
+- [rlm.md](./rlm.md) — DSPy + RLM integration
+- [crates/adjutant/docs/DSPY-INTEGRATION.md](../../crates/adjutant/docs/DSPY-INTEGRATION.md) — Self-improvement details
+- [crates/dsrs/docs/](../../crates/dsrs/docs/) — dsrs implementation docs
+- [Transcripts: State of DSPy](../transcripts/dspy/state-of-dspy.md) — Omar Khattab
+- [Transcripts: DSPy is All You Need](../transcripts/dspy/dspy-is-all-you-need.md) — Kevin Madura
