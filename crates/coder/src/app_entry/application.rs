@@ -1164,6 +1164,7 @@ impl ApplicationHandler for CoderApp {
                                 KeyAction::OpenSparkWallet => state.open_spark_wallet(),
                                 KeyAction::OpenNip90 => state.open_nip90(),
                                 KeyAction::OpenOanix => state.open_oanix(),
+                                KeyAction::OpenDirectives => state.open_directives(),
                                 KeyAction::OpenIssues => state.open_issues(),
                                 KeyAction::OpenDspy => state.open_dspy(),
                                 KeyAction::OpenNip28 => state.open_nip28(),

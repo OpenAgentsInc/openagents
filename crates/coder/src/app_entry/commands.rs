@@ -369,6 +369,15 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             state.open_oanix();
             CommandAction::None
         }
+        Command::Directives => {
+            state.open_directives();
+            CommandAction::None
+        }
+        Command::DirectivesRefresh => {
+            state.refresh_directives();
+            state.open_directives();
+            CommandAction::None
+        }
         Command::Issues => {
             state.open_issues();
             CommandAction::None
@@ -906,6 +915,19 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 }
                 WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
                     state.refresh_oanix();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Directives => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_directives();
                 }
                 _ => {}
             }

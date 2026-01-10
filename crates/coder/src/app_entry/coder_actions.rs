@@ -1348,6 +1348,10 @@ impl CoderApp {
                 state.open_oanix();
                 None
             }
+            command_palette_ids::DIRECTIVES_OPEN => {
+                state.open_directives();
+                None
+            }
             command_palette_ids::ISSUES_OPEN => {
                 state.open_issues();
                 None

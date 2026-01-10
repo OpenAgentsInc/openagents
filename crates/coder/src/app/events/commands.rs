@@ -28,6 +28,7 @@ pub(crate) enum ModalState {
     SparkWallet,
     Nip90Jobs,
     Oanix,
+    Directives,
     Issues,
     Dspy,
     Nip28Chat,

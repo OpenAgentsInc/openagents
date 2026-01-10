@@ -194,6 +194,18 @@ impl AppState {
             "System",
             Some(oanix_keys),
         );
+        let directives_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenDirectives,
+            "Ctrl+Shift+T",
+        );
+        push_command(
+            command_palette_ids::DIRECTIVES_OPEN,
+            "Open Directives",
+            "Review workspace directives from .openagents",
+            "Workspace",
+            Some(directives_keys),
+        );
         let issues_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenIssues, "Ctrl+Shift+I");
         push_command(
@@ -576,6 +588,17 @@ impl AppState {
     }
 
     pub(super) fn refresh_oanix(&mut self) {
+        self.request_oanix_refresh();
+    }
+
+    pub(super) fn open_directives(&mut self) {
+        if self.autopilot.oanix_manifest.is_none() && self.autopilot.oanix_manifest_rx.is_none() {
+            self.request_oanix_refresh();
+        }
+        self.modal_state = ModalState::Directives;
+    }
+
+    pub(super) fn refresh_directives(&mut self) {
         self.request_oanix_refresh();
     }
 
