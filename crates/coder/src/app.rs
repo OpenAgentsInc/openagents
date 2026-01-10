@@ -3738,7 +3738,11 @@ impl ApplicationHandler for CoderApp {
                 modifiers: ModifiersState::default(),
                 last_tick: Instant::now(),
                 messages: Vec::new(),
-                streaming_markdown: StreamingMarkdown::new(),
+                streaming_markdown: {
+                    let mut sm = StreamingMarkdown::new();
+                    sm.set_markdown_config(build_markdown_config(&settings));
+                    sm
+                },
                 markdown_renderer: build_markdown_renderer(&settings),
                 is_thinking: false,
                 chat_selection: None,
@@ -5060,6 +5064,7 @@ impl AppState {
             self.input.focus();
         }
         self.markdown_renderer = build_markdown_renderer(&self.settings);
+        self.streaming_markdown.set_markdown_config(build_markdown_config(&self.settings));
     }
 
     fn update_selected_model(&mut self, model: ModelOption) {

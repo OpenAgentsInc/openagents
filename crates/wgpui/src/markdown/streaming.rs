@@ -73,6 +73,15 @@ impl StreamingMarkdown {
         }
     }
 
+    /// Set the markdown config (font size, colors, etc.)
+    pub fn set_markdown_config(&mut self, config: MarkdownConfig) {
+        self.parser = MarkdownParser::with_config(config);
+        // Trigger reparse with new config
+        if !self.source.is_empty() {
+            self.needs_reparse = true;
+        }
+    }
+
     pub fn append(&mut self, chunk: &str) {
         if chunk.is_empty() {
             return;
