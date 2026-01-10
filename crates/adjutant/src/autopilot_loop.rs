@@ -8,15 +8,92 @@
 //!
 //! This module also tracks sessions for the self-improvement feedback loop,
 //! recording decisions and outcomes to enable automatic optimization.
+//!
+//! ## DSPy Planning Stages
+//!
+//! When autopilot runs, it progresses through visible stages:
+//! 1. **Environment Assessment** - Analyze workspace and system state
+//! 2. **Planning** - Create structured implementation plan
+//! 3. **Todo List** - Generate actionable task list
+//! 4. **Execution** - Work through tasks with tool calls
 
 use crate::dspy::{SessionOutcome, SessionStore, SelfImprover, VerificationRecord};
+use crate::dspy_orchestrator::DspyOrchestrator;
 use crate::{Adjutant, Task, TaskResult};
+use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::process::Command;
 use tokio::sync::mpsc;
+
+// ============================================================================
+// DSPy Stage Types for UI Display
+// ============================================================================
+
+/// DSPy stage markers for UI display.
+///
+/// These are emitted during autopilot execution to show progress through
+/// the DSPy pipeline stages in the chat UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "stage", rename_all = "snake_case")]
+pub enum DspyStage {
+    /// Stage 1: Environment assessment
+    EnvironmentAssessment {
+        system_info: String,
+        workspace: String,
+        active_directive: Option<String>,
+        open_issues: usize,
+        compute_backends: Vec<String>,
+        priority_action: String,
+        urgency: String,
+        reasoning: String,
+    },
+    /// Stage 2: Planning
+    Planning {
+        analysis: String,
+        files_to_modify: Vec<String>,
+        implementation_steps: Vec<String>,
+        test_strategy: String,
+        complexity: String,
+        confidence: f32,
+    },
+    /// Stage 3: Todo list created from plan
+    TodoList { tasks: Vec<TodoTask> },
+    /// Stage 4: Starting execution of a task
+    ExecutingTask {
+        task_index: usize,
+        total_tasks: usize,
+        task_description: String,
+    },
+    /// Task completed
+    TaskComplete { task_index: usize, success: bool },
+    /// All tasks done, final summary
+    Complete {
+        total_tasks: usize,
+        successful: usize,
+        failed: usize,
+    },
+}
+
+/// A task item in the todo list.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TodoTask {
+    pub index: usize,
+    pub description: String,
+    pub status: TodoStatus,
+}
+
+/// Status of a todo task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TodoStatus {
+    Pending,
+    InProgress,
+    Complete,
+    Failed,
+}
 
 /// Result of the autopilot loop execution.
 #[derive(Debug)]
@@ -87,6 +164,11 @@ pub trait AutopilotOutput: Send {
     fn token_sender(&self) -> Option<mpsc::UnboundedSender<String>> {
         None
     }
+    /// Emit a DSPy stage marker for UI display.
+    ///
+    /// This sends a special marker that the UI can parse to render
+    /// stage cards showing progress through the DSPy pipeline.
+    fn emit_stage(&self, stage: DspyStage);
 }
 
 /// CLI output implementation - prints to stdout
@@ -125,6 +207,99 @@ impl AutopilotOutput for CliOutput {
 
     fn max_iterations(&self, iterations: usize) {
         println!("\n--- Max iterations ({}) reached ---", iterations);
+    }
+
+    fn emit_stage(&self, stage: DspyStage) {
+        match stage {
+            DspyStage::EnvironmentAssessment {
+                system_info,
+                workspace,
+                active_directive,
+                open_issues,
+                compute_backends,
+                priority_action,
+                urgency,
+                reasoning,
+            } => {
+                println!("\n┌─────────────────────────────────────────────────────────────┐");
+                println!("│ 🔍 Environment Assessment                                   │");
+                println!("├─────────────────────────────────────────────────────────────┤");
+                println!("│ System: {}", system_info);
+                println!("│ Workspace: {}", workspace);
+                if let Some(directive) = active_directive {
+                    println!("│ Active directive: {}", directive);
+                }
+                println!("│ Open issues: {}", open_issues);
+                println!("│ Compute: {}", compute_backends.join(", "));
+                println!("│ Priority: {} | Urgency: {}", priority_action, urgency);
+                println!("│ {}", reasoning);
+                println!("└─────────────────────────────────────────────────────────────┘\n");
+            }
+            DspyStage::Planning {
+                analysis,
+                files_to_modify,
+                implementation_steps,
+                test_strategy,
+                complexity,
+                confidence,
+            } => {
+                println!("\n┌─────────────────────────────────────────────────────────────┐");
+                println!("│ 📋 Planning                                                  │");
+                println!("├─────────────────────────────────────────────────────────────┤");
+                println!("│ Analysis: {}", analysis);
+                println!("│ Files to modify:");
+                for f in &files_to_modify {
+                    println!("│   • {}", f);
+                }
+                println!("│ Steps:");
+                for (i, step) in implementation_steps.iter().enumerate() {
+                    println!("│   {}. {}", i + 1, step);
+                }
+                println!("│ Test strategy: {}", test_strategy);
+                println!("│ Complexity: {} | Confidence: {:.0}%", complexity, confidence * 100.0);
+                println!("└─────────────────────────────────────────────────────────────┘\n");
+            }
+            DspyStage::TodoList { tasks } => {
+                println!("\n┌─────────────────────────────────────────────────────────────┐");
+                println!("│ ✅ Todo List ({} tasks)                                      │", tasks.len());
+                println!("├─────────────────────────────────────────────────────────────┤");
+                for task in &tasks {
+                    let checkbox = match task.status {
+                        TodoStatus::Pending => "□",
+                        TodoStatus::InProgress => "◐",
+                        TodoStatus::Complete => "✓",
+                        TodoStatus::Failed => "✗",
+                    };
+                    println!("│ {} {}. {}", checkbox, task.index, task.description);
+                }
+                println!("└─────────────────────────────────────────────────────────────┘\n");
+            }
+            DspyStage::ExecutingTask {
+                task_index,
+                total_tasks,
+                task_description,
+            } => {
+                println!("\n🔧 Working on task {} of {}: {}\n", task_index, total_tasks, task_description);
+            }
+            DspyStage::TaskComplete { task_index, success } => {
+                if success {
+                    println!("✓ Task {} complete\n", task_index);
+                } else {
+                    println!("✗ Task {} failed\n", task_index);
+                }
+            }
+            DspyStage::Complete {
+                total_tasks,
+                successful,
+                failed,
+            } => {
+                println!("\n┌─────────────────────────────────────────────────────────────┐");
+                println!("│ 🎯 Execution Complete                                       │");
+                println!("├─────────────────────────────────────────────────────────────┤");
+                println!("│ Total: {} | Successful: {} | Failed: {}", total_tasks, successful, failed);
+                println!("└─────────────────────────────────────────────────────────────┘\n");
+            }
+        }
     }
 }
 
@@ -190,6 +365,14 @@ impl AutopilotOutput for ChannelOutput {
     fn token_sender(&self) -> Option<mpsc::UnboundedSender<String>> {
         Some(self.tx.clone())
     }
+
+    fn emit_stage(&self, stage: DspyStage) {
+        // Serialize stage as JSON and wrap in special markers for UI parsing
+        if let Ok(json) = serde_json::to_string(&stage) {
+            let marker = format!("\n<<DSPY_STAGE:{}:DSPY_STAGE>>\n", json);
+            let _ = self.tx.send(marker);
+        }
+    }
 }
 
 /// Autonomous autopilot loop runner.
@@ -229,6 +412,276 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
 
     /// Run the autopilot loop until completion.
     pub async fn run(mut self) -> AutopilotResult {
+        let mut iteration = 0;
+        let mut last_result: Option<TaskResult> = None;
+
+        // Start session tracking for self-improvement
+        if let Some(ref mut store) = self.session_store {
+            store.start_session(
+                &self.original_task.id,
+                &self.original_task.title,
+                &self.original_task.description,
+            );
+            tracing::debug!("Started session tracking for task: {}", self.original_task.id);
+        }
+
+        // ============================================================
+        // DSPy Planning Stages (before main execution loop)
+        // ============================================================
+
+        // Create orchestrator for DSPy stages
+        let orchestrator = DspyOrchestrator::new(
+            self.adjutant.decision_lm(),
+            self.adjutant.tools().clone(),
+        );
+
+        // Stage 1: Environment Assessment
+        let assessment = match orchestrator
+            .assess_environment(self.adjutant.manifest(), &self.output)
+            .await
+        {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!("Environment assessment failed: {}", e);
+                // Continue with default assessment
+                crate::dspy_orchestrator::AssessmentResult {
+                    priority_action: "WORK_ISSUE".to_string(),
+                    urgency: "NORMAL".to_string(),
+                    reasoning: "Assessment skipped due to error".to_string(),
+                }
+            }
+        };
+        tracing::debug!("Assessment: {:?}", assessment);
+
+        // Stage 2 & 3: Planning and Todo List
+        // First plan the task to get relevant files
+        let plan = match self.adjutant.plan_task(&self.original_task).await {
+            Ok(p) => p,
+            Err(e) => {
+                self.output.error(&format!("Planning failed: {}", e));
+                self.complete_session(
+                    SessionOutcome::Error(format!("Planning failed: {}", e)),
+                    0,
+                );
+                return AutopilotResult::Error(format!("Planning failed: {}", e));
+            }
+        };
+
+        // Run DSPy planning pipeline to get implementation steps
+        let dspy_plan = match orchestrator
+            .create_plan(&self.original_task, &plan, &self.output)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("DSPy planning failed, using original task: {}", e);
+                // Emit a basic planning stage with just the original task
+                self.output.emit_stage(DspyStage::Planning {
+                    analysis: "Using original task description".to_string(),
+                    files_to_modify: plan.files.iter().map(|p| p.display().to_string()).collect(),
+                    implementation_steps: vec![self.original_task.description.clone()],
+                    test_strategy: "Run cargo check/test after changes".to_string(),
+                    complexity: format!("{:?}", plan.complexity),
+                    confidence: 0.5,
+                });
+                // Create a minimal planning result
+                autopilot::PlanningResult {
+                    analysis: "Using original task description".to_string(),
+                    files_to_modify: plan.files.iter().map(|p| p.display().to_string()).collect(),
+                    implementation_steps: vec![self.original_task.description.clone()],
+                    test_strategy: "Run cargo check/test after changes".to_string(),
+                    risk_factors: vec![],
+                    complexity: autopilot::Complexity::Medium,
+                    confidence: 0.5,
+                }
+            }
+        };
+
+        // Create todo list from the plan
+        let mut todos = orchestrator.create_todo_list(&dspy_plan, &self.output);
+
+        // If no todos were generated, add the original task as a single todo
+        if todos.is_empty() {
+            todos.push(TodoTask {
+                index: 1,
+                description: self.original_task.description.clone(),
+                status: TodoStatus::Pending,
+            });
+            self.output.emit_stage(DspyStage::TodoList {
+                tasks: todos.clone(),
+            });
+        }
+
+        // ============================================================
+        // Stage 4: Execution - Work through todo items
+        // ============================================================
+
+        let total_todos = todos.len();
+        let mut successful_todos = 0;
+        let mut failed_todos = 0;
+
+        for todo in todos.iter_mut() {
+            // Check for user interrupt
+            if self.interrupt_flag.load(Ordering::Relaxed) {
+                self.output.interrupted();
+                self.complete_session(SessionOutcome::UserInterrupted, iteration);
+                return AutopilotResult::UserInterrupted {
+                    iterations: iteration,
+                };
+            }
+
+            iteration += 1;
+
+            // Check max iterations
+            if iteration > self.config.max_iterations {
+                self.output.max_iterations(self.config.max_iterations);
+                let outcome = SessionOutcome::MaxIterationsReached {
+                    last_summary: last_result.as_ref().map(|r| r.summary.clone()),
+                };
+                self.complete_session(outcome, iteration - 1);
+                return AutopilotResult::MaxIterationsReached {
+                    iterations: iteration - 1,
+                    last_result,
+                };
+            }
+
+            // Emit task start
+            self.output.emit_stage(DspyStage::ExecutingTask {
+                task_index: todo.index,
+                total_tasks: total_todos,
+                task_description: todo.description.clone(),
+            });
+            todo.status = TodoStatus::InProgress;
+
+            // Create task for this todo item
+            let task = Task::new(
+                format!("{}-step{}", self.original_task.id, todo.index),
+                format!("Step {} of {}", todo.index, total_todos),
+                &todo.description,
+            );
+
+            // Execute the task with streaming
+            let result = if let Some(token_sender) = self.output.token_sender() {
+                match self.adjutant.execute_streaming(&task, token_sender).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        self.output.error(&e.to_string());
+                        todo.status = TodoStatus::Failed;
+                        failed_todos += 1;
+                        self.output.emit_stage(DspyStage::TaskComplete {
+                            task_index: todo.index,
+                            success: false,
+                        });
+                        continue; // Try next todo
+                    }
+                }
+            } else {
+                // CLI context: create channel and print tokens immediately
+                let (iter_token_tx, mut iter_token_rx) = mpsc::unbounded_channel::<String>();
+
+                let print_handle = tokio::spawn(async move {
+                    while let Some(token) = iter_token_rx.recv().await {
+                        print!("{}", token);
+                        let _ = std::io::stdout().flush();
+                    }
+                });
+
+                let exec_result = self.adjutant.execute_streaming(&task, iter_token_tx).await;
+                let _ = print_handle.await;
+
+                match exec_result {
+                    Ok(r) => r,
+                    Err(e) => {
+                        self.output.error(&e.to_string());
+                        todo.status = TodoStatus::Failed;
+                        failed_todos += 1;
+                        self.output.emit_stage(DspyStage::TaskComplete {
+                            task_index: todo.index,
+                            success: false,
+                        });
+                        continue;
+                    }
+                }
+            };
+
+            // Update todo status based on result
+            if result.success {
+                todo.status = TodoStatus::Complete;
+                successful_todos += 1;
+            } else {
+                todo.status = TodoStatus::Failed;
+                failed_todos += 1;
+            }
+
+            self.output.emit_stage(DspyStage::TaskComplete {
+                task_index: todo.index,
+                success: result.success,
+            });
+
+            last_result = Some(result);
+        }
+
+        // Emit completion summary
+        self.output.emit_stage(DspyStage::Complete {
+            total_tasks: total_todos,
+            successful: successful_todos,
+            failed: failed_todos,
+        });
+
+        // Final verification if all todos completed successfully
+        if failed_todos == 0 && self.config.verify_completion {
+            if let Some(ref result) = last_result {
+                self.output.verification_start();
+                let verification = self.verify_completion(result, iteration).await;
+                self.output
+                    .verification_result(verification.passed, &verification.reason);
+
+                if verification.passed {
+                    let outcome = SessionOutcome::Success {
+                        summary: result.summary.clone(),
+                        modified_files: result.modified_files.clone(),
+                        verification_passed: true,
+                    };
+                    self.complete_session(outcome, iteration);
+                    return AutopilotResult::Success(result.clone());
+                }
+            }
+        }
+
+        // Return based on overall success
+        if failed_todos == 0 {
+            if let Some(result) = last_result {
+                let outcome = SessionOutcome::Success {
+                    summary: result.summary.clone(),
+                    modified_files: result.modified_files.clone(),
+                    verification_passed: false,
+                };
+                self.complete_session(outcome, iteration);
+                return AutopilotResult::Success(result);
+            }
+        }
+
+        // Some todos failed
+        self.complete_session(
+            SessionOutcome::Failed {
+                reason: format!("{} of {} tasks failed", failed_todos, total_todos),
+                error: last_result.as_ref().and_then(|r| r.error.clone()),
+            },
+            iteration,
+        );
+
+        if let Some(result) = last_result {
+            AutopilotResult::Failed(result)
+        } else {
+            AutopilotResult::Error("No results from execution".to_string())
+        }
+    }
+
+    /// Run the autopilot loop in legacy mode (without DSPy planning).
+    ///
+    /// This is the original loop behavior for backwards compatibility.
+    #[allow(dead_code)]
+    async fn run_legacy(mut self) -> AutopilotResult {
         let mut iteration = 0;
         let mut last_result: Option<TaskResult> = None;
 
