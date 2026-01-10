@@ -117,7 +117,7 @@ impl Chunker {
                 file_path: file_path.map(String::from),
             }],
 
-            ChunkingPolicy::MinimalSpans { context_lines } => {
+            ChunkingPolicy::MinimalSpans { context_lines: _ } => {
                 // For minimal spans, we need target lines to focus on
                 // This is a simplified implementation that just returns the full content
                 // In practice, this would be called with specific line ranges to focus on

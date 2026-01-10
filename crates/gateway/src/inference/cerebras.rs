@@ -25,6 +25,7 @@ struct ApiError {
 struct ApiErrorDetail {
     message: String,
     #[serde(default)]
+    #[allow(dead_code)]
     code: Option<String>,
 }
 

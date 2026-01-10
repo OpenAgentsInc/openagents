@@ -17,6 +17,7 @@ use std::time::Duration;
 /// Semantic retrieval backend using vector embeddings.
 pub struct SemanticIndex {
     /// Root path of the repository.
+    #[allow(dead_code)]
     repo_path: PathBuf,
 
     /// Embedding provider configuration.
@@ -272,6 +273,7 @@ impl SemanticIndex {
     }
 
     /// Split content into chunks.
+    #[allow(dead_code)]
     fn chunk_content(&self, path: &str, content: &str) -> Vec<CodeChunk> {
         let lines: Vec<&str> = content.lines().collect();
         let mut chunks = Vec::new();
