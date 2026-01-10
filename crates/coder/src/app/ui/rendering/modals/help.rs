@@ -50,6 +50,8 @@ fn render_help_modal(
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenSettings, "Ctrl+,");
             let wallet_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenWallet, "Ctrl+Shift+W");
+            let nip90_key =
+                keybinding_labels(&state.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
             let oanix_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenOanix, "Ctrl+Shift+O");
             let dspy_key =
@@ -83,6 +85,7 @@ fn render_help_modal(
                         format!("{} - Command palette", palette_key),
                         format!("{} - Settings", settings_key),
                         format!("{} - Wallet", wallet_key),
+                        format!("{} - NIP-90 jobs", nip90_key),
                         format!("{} - OANIX manifest", oanix_key),
                         format!("{} - DSPy status", dspy_key),
                         format!("{} - NIP-28 chat", nip28_key),
@@ -135,6 +138,13 @@ fn render_help_modal(
                 (
                     "Wallet",
                     vec!["/wallet - open wallet status; /wallet refresh - refresh".to_string()],
+                ),
+                (
+                    "NIP-90 Jobs",
+                    vec![
+                        "/nip90 - open job monitor".to_string(),
+                        "/nip90 connect <relay_url>; /nip90 refresh".to_string(),
+                    ],
                 ),
                 (
                     "OANIX",

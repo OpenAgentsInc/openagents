@@ -6,6 +6,7 @@ pub enum Action {
     OpenCommandPalette,
     OpenSettings,
     OpenWallet,
+    OpenNip90,
     OpenOanix,
     OpenDspy,
     OpenNip28,
@@ -34,6 +35,7 @@ impl Action {
             Action::OpenCommandPalette,
             Action::OpenSettings,
             Action::OpenWallet,
+            Action::OpenNip90,
             Action::OpenOanix,
             Action::OpenDspy,
             Action::OpenNip28,
@@ -49,6 +51,7 @@ impl Action {
             Action::OpenCommandPalette => "command_palette",
             Action::OpenSettings => "settings",
             Action::OpenWallet => "wallet",
+            Action::OpenNip90 => "nip90",
             Action::OpenOanix => "oanix",
             Action::OpenDspy => "dspy",
             Action::OpenNip28 => "nip28",
@@ -64,6 +67,7 @@ impl Action {
             Action::OpenCommandPalette => "Command palette",
             Action::OpenSettings => "Open settings",
             Action::OpenWallet => "Open wallet",
+            Action::OpenNip90 => "Open NIP-90 jobs",
             Action::OpenOanix => "Open OANIX",
             Action::OpenDspy => "Open DSPy",
             Action::OpenNip28 => "Open NIP-28 chat",
@@ -79,6 +83,7 @@ impl Action {
             "command_palette" => Some(Action::OpenCommandPalette),
             "settings" => Some(Action::OpenSettings),
             "wallet" => Some(Action::OpenWallet),
+            "nip90" => Some(Action::OpenNip90),
             "oanix" => Some(Action::OpenOanix),
             "dspy" => Some(Action::OpenDspy),
             "nip28" => Some(Action::OpenNip28),
@@ -124,6 +129,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenWallet,
+        },
+        Keybinding {
+            key: Key::Character("j".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenNip90,
         },
         Keybinding {
             key: Key::Character("o".to_string()),
@@ -184,6 +198,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenWallet,
+        },
+        Keybinding {
+            key: Key::Character("j".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenNip90,
         },
         Keybinding {
             key: Key::Character("o".to_string()),

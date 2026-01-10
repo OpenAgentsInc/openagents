@@ -17,6 +17,7 @@ use crate::app::config::SettingsState;
 use crate::app::dspy::DspyState;
 use crate::app::events::ModalState;
 use crate::app::nip28::Nip28State;
+use crate::app::nip90::Nip90State;
 use crate::app::permissions::PermissionState;
 use crate::app::session::SessionState;
 use crate::app::tools::ToolsState;
@@ -59,6 +60,7 @@ pub(crate) struct AppState {
     pub(crate) wallet: WalletState,
     pub(crate) dspy: DspyState,
     pub(crate) nip28: Nip28State,
+    pub(crate) nip90: Nip90State,
     pub(crate) llama_server_process: Option<Child>,
     pub(crate) show_kitchen_sink: bool,
     pub(crate) kitchen_sink_scroll: f32,

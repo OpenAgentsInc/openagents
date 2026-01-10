@@ -35,6 +35,9 @@ pub enum Command {
     HooksReload,
     Wallet,
     WalletRefresh,
+    Nip90,
+    Nip90Connect(String),
+    Nip90Refresh,
     Oanix,
     OanixRefresh,
     Dspy,
@@ -233,6 +236,21 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/nip90",
+        description: "Open NIP-90 job monitor",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/nip90 connect <relay_url>",
+        description: "Connect NIP-90 monitor to a relay",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/nip90 refresh",
+        description: "Reconnect NIP-90 monitor",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/oanix",
         description: "Open OANIX manifest",
         requires_args: false,
@@ -327,6 +345,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "skills" => parse_skills_command(args),
         "hooks" => parse_hooks_command(args),
         "wallet" => parse_wallet_command(args),
+        "nip90" => parse_nip90_command(args),
         "oanix" => parse_oanix_command(args),
         "dspy" => parse_dspy_command(args),
         "nip28" => parse_nip28_command(args),
@@ -342,6 +361,20 @@ fn parse_wallet_command(args: Vec<String>) -> Command {
         Some("refresh") => Command::WalletRefresh,
         Some("status") => Command::Wallet,
         _ => Command::Wallet,
+    }
+}
+
+fn parse_nip90_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::Nip90,
+        Some("open") => Command::Nip90,
+        Some("refresh") => Command::Nip90Refresh,
+        Some("connect") => {
+            let relay = parts.collect::<Vec<String>>().join(" ");
+            Command::Nip90Connect(relay)
+        }
+        Some(other) => Command::Custom(format!("nip90 {}", other), parts.collect()),
     }
 }
 

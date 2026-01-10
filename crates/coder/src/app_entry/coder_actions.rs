@@ -13,6 +13,7 @@ use crate::app::catalog::build_hook_map;
 use crate::app::chat::{ChatMessage, MessageRole};
 use crate::app::events::{CommandAction, QueryControl, ResponseEvent};
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
+use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
 use crate::app::parsing::expand_prompt_text;
 use crate::app::permissions::{
     coder_mode_default_allow, extract_bash_command, is_read_only_tool, parse_coder_mode,
@@ -973,6 +974,65 @@ impl CoderApp {
         }
     }
 
+    pub(super) fn poll_nip90_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.nip90.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state.nip90.status = Nip90ConnectionStatus::Error(
+                        "NIP-90 runtime disconnected".to_string(),
+                    );
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                Nip90Event::Connected => {
+                    state.nip90.status = Nip90ConnectionStatus::Connected;
+                    state.nip90.status_message = Some("Connected to relay".to_string());
+                    state.nip90.request_subscription();
+                    should_redraw = true;
+                }
+                Nip90Event::ConnectionFailed(error) => {
+                    state.nip90.status = Nip90ConnectionStatus::Error(error.clone());
+                    state.nip90.status_message = Some(error);
+                    should_redraw = true;
+                }
+                Nip90Event::AuthChallenge(challenge) => {
+                    state.nip90.status = Nip90ConnectionStatus::Authenticating;
+                    state.nip90.runtime.authenticate(&challenge);
+                    state.nip90.status_message = Some("Authenticating...".to_string());
+                    should_redraw = true;
+                }
+                Nip90Event::Authenticated => {
+                    state.nip90.status = Nip90ConnectionStatus::Authenticated;
+                    state.nip90.status_message = Some("Authenticated".to_string());
+                    state.nip90.request_subscription();
+                    should_redraw = true;
+                }
+                Nip90Event::JobMessage(message) => {
+                    state.nip90.push_message(message);
+                    should_redraw = true;
+                }
+                Nip90Event::Notice(message) => {
+                    state.nip90.status_message = Some(message);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
     pub(super) fn poll_autopilot_history(&mut self) {
         let Some(state) = &mut self.state else {
             return;
@@ -1061,6 +1121,10 @@ impl CoderApp {
             command_palette_ids::AGENT_RELOAD => Some(handle_command(state, Command::AgentReload)),
             command_palette_ids::WALLET_OPEN => {
                 state.open_wallet();
+                None
+            }
+            command_palette_ids::NIP90_OPEN => {
+                state.open_nip90();
                 None
             }
             command_palette_ids::OANIX_OPEN => {
