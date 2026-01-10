@@ -7,9 +7,10 @@ fn coder_mode_display(mode: CoderMode) -> &'static str {
 }
 
 fn coder_mode_color(mode: CoderMode, _palette: &UiPalette) -> Hsla {
+    // Hue is normalized 0.0-1.0 (divide degrees by 360)
     match mode {
-        CoderMode::BypassPermissions => Hsla::new(120.0, 0.6, 0.5, 1.0), // Green
-        CoderMode::Plan => Hsla::new(200.0, 0.8, 0.5, 1.0), // Blue
-        CoderMode::Autopilot => Hsla::new(280.0, 0.6, 0.5, 1.0), // Purple
+        CoderMode::BypassPermissions => Hsla::new(120.0 / 360.0, 0.7, 0.5, 1.0), // Green
+        CoderMode::Plan => Hsla::new(200.0 / 360.0, 0.8, 0.55, 1.0),             // Blue
+        CoderMode::Autopilot => Hsla::new(280.0 / 360.0, 0.7, 0.6, 1.0),         // Purple
     }
 }
