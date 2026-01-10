@@ -7200,11 +7200,8 @@ impl AppState {
     }
 
     fn write_chat_clipboard(&mut self, text: &str) {
-        if self.event_context.has_clipboard() {
-            self.event_context.write_clipboard(text);
-        } else {
-            let _ = copy_to_clipboard(text);
-        }
+        // Always use system clipboard command (wl-copy on Wayland) for reliability
+        let _ = copy_to_clipboard(text);
     }
 }
 
