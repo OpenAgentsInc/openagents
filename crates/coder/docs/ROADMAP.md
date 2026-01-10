@@ -886,7 +886,7 @@ pub enum SettingsTab {
 
 ---
 
-*Last updated: 2026-01-09*
+*Last updated: 2026-01-10*
 
 ## Execution Log
 - 2026-01-09 07:58 UTC - Added command, panel, and keybinding modules; refactored Coder state to AppState with new core fields.
@@ -905,3 +905,4 @@ pub enum SettingsTab {
 - 2026-01-09 13:10 UTC - Added settings persistence (config.toml + keybindings.json), wired theme/font/auto-scroll/session limits into runtime and query options, and ran `cargo check -p coder`.
 - 2026-01-09 13:24 UTC - Built tabbed settings modal with search, permissions/MCP/hooks/keyboard controls, keybinding capture, and theme-aware UI updates.
 - 2026-01-09 - Implemented true Autopilot loop (`autopilot_loop.rs`): autonomous execution that loops Adjutant until task succeeds with verification (cargo check + cargo test), definitive failure, max iterations (10), or user interrupt (Escape).
+- 2026-01-10 10:47 UTC - Refactored Coder rendering: moved the render pipeline into `app/ui/rendering.rs`, extracted layout helpers/constants, and delegated `CoderApp::render` to `render_app`.
