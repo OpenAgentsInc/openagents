@@ -374,19 +374,22 @@ Decides whether to use RLM (Recursive Language Model) for deep analysis.
 
 ### Usage in Adjutant.execute()
 
-The decision pipelines are wired into the main execution flow:
+All three decision pipelines are wired into the main execution flow:
 
 ```rust
 pub async fn execute(&mut self, task: &Task) -> Result<TaskResult, AdjutantError> {
-    // Plan the task (rule-based)
-    let plan = self.plan_task(task).await?;
+    // 1. Plan the task (rule-based file discovery)
+    let mut plan = self.plan_task(task).await?;
 
-    // DSPy-first RLM decision with legacy fallback
+    // 1b. DSPy-first complexity classification with legacy fallback
+    plan.complexity = self.determine_complexity_dspy(task, &plan).await;
+
+    // 2. DSPy-first RLM decision with legacy fallback
     let use_rlm = self.determine_use_rlm(task, &plan).await;
 
-    // ... LM provider selection ...
+    // 3. LM provider selection ...
 
-    // DSPy-first delegation decision with legacy fallback
+    // 4. DSPy-first delegation decision with legacy fallback
     let delegation = self.determine_delegation(task, &plan).await;
 
     if delegation.should_delegate && delegation.confidence > 0.7 {
@@ -401,6 +404,8 @@ pub async fn execute(&mut self, task: &Task) -> Result<TaskResult, AdjutantError
     // ...
 }
 ```
+
+**Fallback Strategy:** Each DSPy pipeline requires >0.7 confidence to override legacy rules. If confidence is low or the pipeline errors, the original rule-based logic is used.
 
 ## File Structure
 

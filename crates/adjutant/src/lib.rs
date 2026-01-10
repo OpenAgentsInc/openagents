@@ -228,7 +228,11 @@ impl Adjutant {
         tracing::info!("Adjutant analyzing task: {}", task.title);
 
         // 1. Plan the task
-        let plan = self.plan_task(task).await?;
+        let mut plan = self.plan_task(task).await?;
+
+        // 1b. Override complexity with DSPy classification (if available and confident)
+        plan.complexity = self.determine_complexity_dspy(task, &plan).await;
+
         tracing::info!(
             "Plan: {} files, complexity {:?}",
             plan.files.len(),
@@ -700,4 +704,62 @@ impl Adjutant {
     ) -> Result<TaskResult, AdjutantError> {
         delegate::execute_with_rlm(&self.workspace_root, task, plan).await
     }
+
+    /// Determine complexity using DSPy pipeline (with legacy fallback).
+    async fn determine_complexity_dspy(&self, task: &Task, plan: &TaskPlan) -> Complexity {
+        let input = dspy::ComplexityInput {
+            task_description: task.description.clone(),
+            file_count: plan.files.len() as u32,
+            estimated_tokens: plan.estimated_tokens,
+            keywords: extract_complexity_keywords(&task.description),
+        };
+
+        // Try DSPy pipeline first
+        match self.complexity_pipeline.classify(&input).await {
+            Ok(result) if result.confidence > 0.7 => {
+                tracing::debug!(
+                    "DSPy complexity decision: complexity={}, confidence={:.2}, reasoning={}",
+                    result.complexity,
+                    result.confidence,
+                    result.reasoning
+                );
+                parse_complexity(&result.complexity)
+            }
+            Ok(result) => {
+                tracing::debug!(
+                    "DSPy complexity confidence too low ({:.2}), using legacy fallback",
+                    result.confidence
+                );
+                planner::determine_complexity(&plan.files, plan.estimated_tokens, &task.description)
+            }
+            Err(e) => {
+                tracing::debug!("DSPy complexity pipeline failed: {}, using legacy fallback", e);
+                planner::determine_complexity(&plan.files, plan.estimated_tokens, &task.description)
+            }
+        }
+    }
+}
+
+/// Parse complexity string from DSPy output to Complexity enum.
+fn parse_complexity(s: &str) -> Complexity {
+    match s.to_lowercase().as_str() {
+        "low" => Complexity::Low,
+        "medium" => Complexity::Medium,
+        "high" => Complexity::High,
+        "veryhigh" | "very_high" | "very high" => Complexity::VeryHigh,
+        _ => Complexity::Medium, // Default fallback
+    }
+}
+
+/// Extract complexity-relevant keywords from task description.
+fn extract_complexity_keywords(description: &str) -> Vec<String> {
+    let keywords = [
+        "refactor", "rewrite", "migrate", "architect", "security", "audit",
+    ];
+    let lower = description.to_lowercase();
+    keywords
+        .iter()
+        .filter(|k| lower.contains(*k))
+        .map(|k| k.to_string())
+        .collect()
 }
