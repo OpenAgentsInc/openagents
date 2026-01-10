@@ -52,6 +52,7 @@ mod command_palette_ids {
     pub const ISSUES_OPEN: &str = "issues.open";
     pub const ISSUE_TRACKER_OPEN: &str = "issue_tracker.open";
     pub const RLM_OPEN: &str = "rlm.open";
+    pub const RLM_TRACE_OPEN: &str = "rlm.trace.open";
     pub const DSPY_OPEN: &str = "dspy.open";
     pub const NIP28_OPEN: &str = "nip28.open";
     pub const SKILLS_LIST: &str = "skills.list";

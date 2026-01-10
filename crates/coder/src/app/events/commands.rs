@@ -32,6 +32,7 @@ pub(crate) enum ModalState {
     Issues,
     AutopilotIssues,
     Rlm,
+    RlmTrace,
     Dspy,
     Nip28Chat,
     Config {
