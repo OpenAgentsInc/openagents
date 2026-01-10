@@ -51,6 +51,7 @@ use claude_agent_sdk::protocol::McpServerStatus;
 
 // Autopilot/Adjutant
 use adjutant::{Adjutant, Task as AdjutantTask};
+use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult};
 use wgpui::components::atoms::{
     AgentStatus, AgentType, PermissionAction, SessionStatus, ToolStatus, ToolType,
 };
@@ -3568,6 +3569,10 @@ struct AppState {
     // Autopilot conversation history for local LLMs (they don't have session resumption)
     autopilot_history: Vec<adjutant::ConversationTurn>,
     autopilot_history_rx: Option<mpsc::UnboundedReceiver<Vec<adjutant::ConversationTurn>>>,
+    // Autopilot loop state for autonomous execution
+    autopilot_interrupt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    autopilot_loop_iteration: usize,
+    autopilot_max_iterations: usize,
     // Available LM providers detected on startup
     available_providers: Vec<adjutant::dspy::lm_config::LmProvider>,
     // Auto-started llama-server process (killed on drop)
@@ -3843,6 +3848,9 @@ impl ApplicationHandler for CoderApp {
                 oanix_manifest_rx,
                 autopilot_history: Vec::new(),
                 autopilot_history_rx: None,
+                autopilot_interrupt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                autopilot_loop_iteration: 0,
+                autopilot_max_iterations: 10,
                 available_providers,
                 llama_server_process,
                 show_kitchen_sink: false,
@@ -4618,6 +4626,19 @@ impl ApplicationHandler for CoderApp {
                         }
                         // Consume all other keys while kitchen sink is open
                         return;
+                    }
+
+                    // Autopilot loop interrupt - Escape stops autonomous execution
+                    if matches!(state.coder_mode, CoderMode::Autopilot) {
+                        if let WinitKey::Named(WinitNamedKey::Escape) = &key_event.logical_key {
+                            if state.is_thinking {
+                                // Signal interrupt to the autopilot loop
+                                state.autopilot_interrupt_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                                tracing::info!("Autopilot: interrupt requested by user");
+                                state.window.request_redraw();
+                                return;
+                            }
+                        }
                     }
 
                     if let WinitKey::Named(WinitNamedKey::F1) = &key_event.logical_key {
@@ -6802,9 +6823,9 @@ impl CoderApp {
             metadata: None,
         });
 
-        // Handle Autopilot mode - use Adjutant instead of Claude SDK
+        // Handle Autopilot mode - use Adjutant in autonomous loop
         if matches!(state.coder_mode, CoderMode::Autopilot) {
-            tracing::info!("Autopilot mode: starting Adjutant execution");
+            tracing::info!("Autopilot mode: starting autonomous loop");
 
             // Check which LM provider will be used
             let provider = adjutant::dspy::lm_config::detect_provider();
@@ -6816,6 +6837,12 @@ impl CoderApp {
             state.is_thinking = true;
             state.streaming_markdown.reset();
 
+            // Reset interrupt flag for new loop
+            state.autopilot_interrupt_flag.store(false, std::sync::atomic::Ordering::Relaxed);
+            state.autopilot_loop_iteration = 0;
+            let interrupt_flag = state.autopilot_interrupt_flag.clone();
+            let max_iterations = state.autopilot_max_iterations;
+
             let window = state.window.clone();
             let prompt_clone = prompt.clone();
 
@@ -6825,18 +6852,12 @@ impl CoderApp {
 
             // Create channel to send manifest back for caching (if we might get a new manifest)
             let manifest_tx = if cached_manifest.is_none() {
-                let (tx, rx) = mpsc::unbounded_channel();
-                state.oanix_manifest_rx = Some(rx);
-                Some(tx)
+                let (mtx, mrx) = mpsc::unbounded_channel();
+                state.oanix_manifest_rx = Some(mrx);
+                Some(mtx)
             } else {
                 None
             };
-
-            // Clone existing conversation history for Adjutant (for local LLMs)
-            let autopilot_history = state.autopilot_history.clone();
-            // Create channel for receiving updated history after execution
-            let (history_tx, history_rx) = mpsc::unbounded_channel();
-            state.autopilot_history_rx = Some(history_rx);
 
             self.runtime_handle.spawn(async move {
                 // Get manifest: cached > pending boot > new boot
@@ -6886,28 +6907,26 @@ impl CoderApp {
                 let model_name = adjutant::dspy::lm_config::detect_provider()
                     .map(|p| p.short_name().to_string());
 
-                match Adjutant::new(manifest.clone()) {
-                    Ok(mut adjutant) => {
-                        tracing::info!("Autopilot: Adjutant initialized");
+                // Get workspace root for verification commands
+                let workspace_root = manifest.workspace.as_ref()
+                    .map(|w| w.root.clone())
+                    .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
-                        // Set conversation history for multi-turn context (for local LLMs)
-                        adjutant.set_conversation_history(autopilot_history);
+                match Adjutant::new(manifest.clone()) {
+                    Ok(adjutant) => {
+                        tracing::info!("Autopilot: Adjutant initialized, starting autonomous loop");
 
                         // Create task from user prompt
                         let task = AdjutantTask::new(
-                            "prompt",
+                            "autopilot",
                             "User Request",
                             &prompt_clone,
                         );
 
-                        // Create a channel for streaming tokens
+                        // Create channel for streaming tokens to UI
                         let (token_tx, mut token_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
-                        // Execute task with streaming
-                        let start_time = std::time::Instant::now();
-                        tracing::info!("Autopilot: executing task with streaming...");
-
-                        // Spawn a task to forward tokens to the response channel
+                        // Spawn task to forward tokens to the response channel
                         let tx_clone = tx.clone();
                         let window_clone = window.clone();
                         tokio::spawn(async move {
@@ -6917,24 +6936,36 @@ impl CoderApp {
                             }
                         });
 
-                        match adjutant.execute_streaming(&task, token_tx).await {
-                            Ok(result) => {
-                                let duration_ms = start_time.elapsed().as_millis() as u64;
-                                tracing::info!("Autopilot: task completed, success={}", result.success);
+                        // Configure the autopilot loop
+                        let config = AutopilotConfig {
+                            max_iterations,
+                            workspace_root,
+                            verify_completion: true,
+                        };
 
-                                // Send updated conversation history back for next message
-                                let updated_history = adjutant.conversation_history().to_vec();
-                                let _ = history_tx.send(updated_history);
+                        // Create and run the autopilot loop
+                        let autopilot_loop = AutopilotLoop::new(
+                            adjutant,
+                            task,
+                            config,
+                            token_tx,
+                            interrupt_flag,
+                        );
 
-                                // Add modified files info if any
-                                if !result.modified_files.is_empty() {
-                                    let files = result.modified_files.join(", ");
-                                    tracing::info!("Autopilot: modified files: {}", files);
+                        let start_time = std::time::Instant::now();
+                        let result = autopilot_loop.run().await;
+                        let duration_ms = start_time.elapsed().as_millis() as u64;
+
+                        // Handle loop result
+                        match result {
+                            AutopilotResult::Success(task_result) => {
+                                tracing::info!("Autopilot: task completed successfully");
+                                if !task_result.modified_files.is_empty() {
+                                    let files = task_result.modified_files.join(", ");
                                     let _ = tx.send(ResponseEvent::Chunk(
                                         format!("\n\n**Modified files:** {}", files)
                                     ));
                                 }
-
                                 let metadata = Some(MessageMetadata {
                                     model: model_name.clone(),
                                     duration_ms: Some(duration_ms),
@@ -6942,9 +6973,36 @@ impl CoderApp {
                                 });
                                 let _ = tx.send(ResponseEvent::Complete { metadata });
                             }
-                            Err(e) => {
-                                tracing::error!("Autopilot: task execution failed: {}", e);
-                                let _ = tx.send(ResponseEvent::Error(format!("Adjutant error: {}", e)));
+                            AutopilotResult::Failed(task_result) => {
+                                tracing::warn!("Autopilot: task failed definitively");
+                                let error_msg = task_result.error.unwrap_or_else(|| "Unknown error".to_string());
+                                let _ = tx.send(ResponseEvent::Chunk(
+                                    format!("\n\n**Task failed:** {}", error_msg)
+                                ));
+                                let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                            }
+                            AutopilotResult::MaxIterationsReached { iterations, last_result } => {
+                                tracing::warn!("Autopilot: max iterations ({}) reached", iterations);
+                                let _ = tx.send(ResponseEvent::Chunk(
+                                    format!("\n\n**Max iterations ({}) reached.** Send another message to continue.", iterations)
+                                ));
+                                if let Some(result) = last_result {
+                                    if !result.modified_files.is_empty() {
+                                        let files = result.modified_files.join(", ");
+                                        let _ = tx.send(ResponseEvent::Chunk(
+                                            format!("\n\n**Modified files so far:** {}", files)
+                                        ));
+                                    }
+                                }
+                                let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                            }
+                            AutopilotResult::UserInterrupted { iterations } => {
+                                tracing::info!("Autopilot: interrupted by user after {} iterations", iterations);
+                                let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                            }
+                            AutopilotResult::Error(error) => {
+                                tracing::error!("Autopilot: error during execution: {}", error);
+                                let _ = tx.send(ResponseEvent::Error(format!("Autopilot error: {}", error)));
                             }
                         }
                     }
