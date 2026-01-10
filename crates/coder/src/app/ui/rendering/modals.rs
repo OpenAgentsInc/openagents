@@ -9,6 +9,7 @@ include!("modals/wallet.rs");
 include!("modals/oanix.rs");
 include!("modals/dspy.rs");
 include!("modals/nip28.rs");
+include!("modals/nip90.rs");
 include!("modals/config.rs");
 include!("modals/mcp_config.rs");
 include!("modals/help.rs");
@@ -162,6 +163,17 @@ fn render_modals(
         }
         ModalState::Nip28Chat => {
             render_nip28_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
+        ModalState::Nip90Jobs => {
+            render_nip90_modal(
                 state,
                 scene,
                 palette,

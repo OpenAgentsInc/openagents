@@ -23,6 +23,7 @@ use crate::app::events::{keybinding_labels, ModalState};
 use crate::app::tools::{DspyStageLayout, ToolPanelBlock};
 use crate::app::wallet::WalletIdentityState;
 use crate::app::nip28::Nip28ConnectionStatus;
+use crate::app::nip90::{Nip90ConnectionStatus, Nip90MessageKind};
 use crate::app::ui::{palette_for, split_into_words_for_layout, wrap_text, UiPalette};
 use crate::app::{
     format_relative_time, hook_event_label, settings_rows, truncate_preview, CoderMode,

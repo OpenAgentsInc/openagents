@@ -41,6 +41,7 @@ mod command_palette_ids {
     pub const AGENT_CLEAR: &str = "agents.clear";
     pub const AGENT_RELOAD: &str = "agents.reload";
     pub const WALLET_OPEN: &str = "wallet.open";
+    pub const NIP90_OPEN: &str = "nip90.open";
     pub const OANIX_OPEN: &str = "oanix.open";
     pub const DSPY_OPEN: &str = "dspy.open";
     pub const NIP28_OPEN: &str = "nip28.open";

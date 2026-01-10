@@ -274,6 +274,24 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             state.open_wallet();
             CommandAction::None
         }
+        Command::Nip90 => {
+            state.open_nip90();
+            CommandAction::None
+        }
+        Command::Nip90Refresh => {
+            state.refresh_nip90();
+            state.open_nip90();
+            CommandAction::None
+        }
+        Command::Nip90Connect(relay_url) => {
+            if relay_url.trim().is_empty() {
+                state.push_system_message("NIP-90 relay URL is required.".to_string());
+            } else {
+                state.connect_nip90(Some(relay_url));
+                state.open_nip90();
+            }
+            CommandAction::None
+        }
         Command::Oanix => {
             state.open_oanix();
             CommandAction::None
@@ -720,6 +738,19 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 }
                 WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
                     state.request_wallet_refresh();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Nip90Jobs => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.refresh_nip90();
                 }
                 _ => {}
             }

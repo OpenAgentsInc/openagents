@@ -42,6 +42,7 @@ use crate::app::ui::{
 use crate::app::wallet::WalletState;
 use crate::app::dspy::DspyState;
 use crate::app::nip28::Nip28State;
+use crate::app::nip90::Nip90State;
 use crate::app::{build_input, AppState, HookModalView};
 use crate::commands::parse_command;
 use crate::keybindings::{match_action, Action as KeyAction};
@@ -243,6 +244,7 @@ impl ApplicationHandler for CoderApp {
                 wallet: WalletState::new(),
                 dspy: DspyState::new(),
                 nip28: Nip28State::new(),
+                nip90: Nip90State::new(),
                 llama_server_process,
                 show_kitchen_sink: false,
                 kitchen_sink_scroll: 0.0,
@@ -273,6 +275,7 @@ impl ApplicationHandler for CoderApp {
         self.poll_hook_inspector_actions();
         self.poll_oanix_manifest();
         self.poll_nip28_events();
+        self.poll_nip90_events();
         self.poll_autopilot_history();
         self.poll_rate_limits();
 
@@ -1139,6 +1142,7 @@ impl ApplicationHandler for CoderApp {
                                 }
                                 KeyAction::OpenSettings => state.open_config(),
                                 KeyAction::OpenWallet => state.open_wallet(),
+                                KeyAction::OpenNip90 => state.open_nip90(),
                                 KeyAction::OpenOanix => state.open_oanix(),
                                 KeyAction::OpenDspy => state.open_dspy(),
                                 KeyAction::OpenNip28 => state.open_nip28(),

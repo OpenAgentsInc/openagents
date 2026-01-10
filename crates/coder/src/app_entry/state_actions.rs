@@ -14,6 +14,7 @@ use crate::app::chat::MessageRole;
 use crate::app::config::{config_dir, SettingsTab};
 use crate::app::events::{keybinding_labels, ModalState};
 use crate::app::nip28::Nip28ConnectionStatus;
+use crate::app::nip90::Nip90ConnectionStatus;
 use crate::app::{
     build_input, build_markdown_config, build_markdown_renderer, now_timestamp,
     AgentCardAction, HookLogEntry, HookModalView, HookSetting, ModelOption, SettingsInputMode,
@@ -128,6 +129,15 @@ impl AppState {
             "View wallet status and configuration",
             "Wallet",
             Some(wallet_keys),
+        );
+        let nip90_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
+        push_command(
+            command_palette_ids::NIP90_OPEN,
+            "Open NIP-90 Jobs",
+            "Monitor NIP-90 job requests, results, and feedback",
+            "Nostr",
+            Some(nip90_keys),
         );
         let oanix_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenOanix, "Ctrl+Shift+O");
@@ -412,6 +422,28 @@ impl AppState {
     pub(super) fn request_wallet_refresh(&mut self) {
         self.refresh_wallet_snapshot();
         self.request_oanix_refresh();
+    }
+
+    pub(super) fn open_nip90(&mut self) {
+        if matches!(
+            self.nip90.status,
+            Nip90ConnectionStatus::Disconnected | Nip90ConnectionStatus::Error(_)
+        ) {
+            self.nip90.connect();
+        }
+        self.modal_state = ModalState::Nip90Jobs;
+    }
+
+    pub(super) fn connect_nip90(&mut self, relay_url: Option<String>) {
+        if let Some(url) = relay_url {
+            self.nip90.connect_to(url);
+        } else {
+            self.nip90.connect();
+        }
+    }
+
+    pub(super) fn refresh_nip90(&mut self) {
+        self.nip90.connect();
     }
 
     pub(super) fn open_oanix(&mut self) {
