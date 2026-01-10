@@ -65,15 +65,16 @@ impl AppState {
                     chat_line_height,
                     max_chars,
                 ),
-                MessageRole::Assistant => self.layout_assistant_message(
-                    index,
-                    &content,
-                    document.as_ref(),
-                    content_x,
-                    available_width,
-                    chat_line_height,
-                    max_chars,
-                ),
+                MessageRole::Assistant | MessageRole::AssistantThought => self
+                    .layout_assistant_message(
+                        index,
+                        &content,
+                        document.as_ref(),
+                        content_x,
+                        available_width,
+                        chat_line_height,
+                        max_chars,
+                    ),
             };
             total_content_height += layout.height;
             message_layouts.push(layout);
@@ -425,4 +426,3 @@ impl AppState {
         }
     }
 }
-

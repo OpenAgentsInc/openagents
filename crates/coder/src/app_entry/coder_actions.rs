@@ -843,6 +843,30 @@ impl CoderApp {
                     state.chat.streaming_markdown.tick();
                     needs_redraw = true;
                 }
+                ResponseEvent::ThoughtChunk(text) => {
+                    if let Some(last) = state.chat.messages.last_mut() {
+                        if last.role == MessageRole::AssistantThought {
+                            last.content.push_str(&text);
+                        } else {
+                            state.chat.messages.push(ChatMessage {
+                                role: MessageRole::AssistantThought,
+                                content: text,
+                                document: None,
+                                uuid: None,
+                                metadata: None,
+                            });
+                        }
+                    } else {
+                        state.chat.messages.push(ChatMessage {
+                            role: MessageRole::AssistantThought,
+                            content: text,
+                            document: None,
+                            uuid: None,
+                            metadata: None,
+                        });
+                    }
+                    needs_redraw = true;
+                }
                 ResponseEvent::ToolCallStart { name, tool_use_id } => {
                     // During streaming, associate with the NEXT message (the one being streamed)
                     // After completion, associate with the last message

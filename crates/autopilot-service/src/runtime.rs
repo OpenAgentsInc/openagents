@@ -74,6 +74,7 @@ pub struct AutopilotRuntime {
     exec_cursor: usize,
     review_cursor: usize,
     fix_cursor: usize,
+    acp_cursor: usize,
 }
 
 impl AutopilotRuntime {
@@ -85,6 +86,7 @@ impl AutopilotRuntime {
             exec_cursor: 0,
             review_cursor: 0,
             fix_cursor: 0,
+            acp_cursor: 0,
         }
     }
 
@@ -97,6 +99,7 @@ impl AutopilotRuntime {
             exec_cursor: 0,
             review_cursor: 0,
             fix_cursor: 0,
+            acp_cursor: 0,
         }
     }
 
@@ -211,6 +214,7 @@ impl AutopilotRuntime {
             self.exec_cursor,
             self.review_cursor,
             self.fix_cursor,
+            self.acp_cursor,
             working_dir,
         );
         checkpoint.save()
@@ -222,6 +226,7 @@ impl AutopilotRuntime {
         let exec_cursor = cp.exec_cursor;
         let review_cursor = cp.review_cursor;
         let fix_cursor = cp.fix_cursor;
+        let acp_cursor = cp.acp_cursor;
 
         Self {
             started_at: Instant::now(),
@@ -230,6 +235,7 @@ impl AutopilotRuntime {
             exec_cursor,
             review_cursor,
             fix_cursor,
+            acp_cursor,
         }
     }
 
@@ -267,6 +273,7 @@ impl AutopilotRuntime {
         self.exec_cursor = 0;
         self.review_cursor = 0;
         self.fix_cursor = 0;
+        self.acp_cursor = 0;
     }
 
     /// Reset runtime to idle state, waiting for user input.
@@ -277,6 +284,7 @@ impl AutopilotRuntime {
         self.exec_cursor = 0;
         self.review_cursor = 0;
         self.fix_cursor = 0;
+        self.acp_cursor = 0;
     }
 
     /// Start a new run with a prompt. If currently idle, begins execution.

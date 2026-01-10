@@ -2628,6 +2628,7 @@ impl StartupState {
         exec_cursor: usize,
         review_cursor: usize,
         fix_cursor: usize,
+        acp_cursor: usize,
         working_dir: PathBuf,
     ) -> SessionCheckpoint {
         let elapsed = self.start_instant.elapsed().as_secs_f32();
@@ -2660,6 +2661,7 @@ impl StartupState {
             exec_cursor,
             review_cursor,
             fix_cursor,
+            acp_cursor,
             // State
             lines: self.lines.clone(),
             plan_path: self.plan_path.clone(),

@@ -374,7 +374,7 @@ impl SessionState {
         while matches!(
             chat.messages.last(),
             Some(ChatMessage {
-                role: MessageRole::Assistant,
+                role: MessageRole::Assistant | MessageRole::AssistantThought,
                 ..
             })
         ) {

@@ -21,11 +21,13 @@ use crate::dspy::{SessionOutcome, SessionStore, SelfImprover, VerificationRecord
 use crate::dspy_orchestrator::DspyOrchestrator;
 use crate::{Adjutant, Task, TaskResult};
 use agent_client_protocol_schema as acp;
+use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
@@ -80,6 +82,18 @@ pub enum DspyStage {
 
 /// ACP meta key for embedding serialized DSPy stage data in content blocks.
 pub const DSPY_META_KEY: &str = "openagents_dspy_stage";
+/// ACP meta key for the autopilot session id.
+pub const SESSION_ID_META_KEY: &str = "openagents_session_id";
+
+/// Generate a session id with the same HHMMSS-hex format as autopilot.
+pub fn generate_session_id() -> String {
+    let now = Local::now();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos();
+    format!("{}-{:08x}", now.format("%H%M%S"), nanos)
+}
 
 /// A task item in the todo list.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -398,11 +412,14 @@ impl AcpChannelOutput {
         let (token_tx, mut token_rx) = mpsc::unbounded_channel::<String>();
         let tx_clone = tx.clone();
         let session_clone = session_id.clone();
+        let session_meta_value = serde_json::Value::String(session_id.to_string());
 
         tokio::spawn(async move {
             while let Some(token) = token_rx.recv().await {
+                let mut meta = acp::Meta::new();
+                meta.insert(SESSION_ID_META_KEY.to_string(), session_meta_value.clone());
                 let chunk = acp::ContentChunk::new(acp::ContentBlock::Text(
-                    acp::TextContent::new(token),
+                    acp::TextContent::new(token).meta(meta),
                 ));
                 let notification = acp::SessionNotification::new(
                     session_clone.clone(),
@@ -426,28 +443,45 @@ impl AcpChannelOutput {
             .send(acp::SessionNotification::new(self.session_id.clone(), update));
     }
 
-    fn dspy_meta(stage: &DspyStage) -> Option<acp::Meta> {
+    fn session_meta(&self) -> acp::Meta {
+        let mut meta = acp::Meta::new();
+        meta.insert(
+            SESSION_ID_META_KEY.to_string(),
+            serde_json::Value::String(self.session_id.to_string()),
+        );
+        meta
+    }
+
+    fn dspy_meta(&self, stage: &DspyStage) -> Option<acp::Meta> {
         let stage_value = serde_json::to_value(stage).ok()?;
         let mut meta = acp::Meta::new();
         meta.insert(DSPY_META_KEY.to_string(), stage_value);
         Some(meta)
     }
 
-    fn text_block(text: impl Into<String>, meta: Option<acp::Meta>) -> acp::ContentBlock {
+    fn merge_meta(&self, meta: Option<acp::Meta>) -> acp::Meta {
+        let mut combined = meta.unwrap_or_default();
+        combined.insert(
+            SESSION_ID_META_KEY.to_string(),
+            serde_json::Value::String(self.session_id.to_string()),
+        );
+        combined
+    }
+
+    fn text_block(&self, text: impl Into<String>, meta: Option<acp::Meta>) -> acp::ContentBlock {
+        let combined = self.merge_meta(meta);
         let mut content = acp::TextContent::new(text);
-        if let Some(meta) = meta {
-            content = content.meta(meta);
-        }
+        content = content.meta(combined);
         acp::ContentBlock::Text(content)
     }
 
     fn send_message_with_meta(&self, text: impl Into<String>, meta: Option<acp::Meta>) {
-        let chunk = acp::ContentChunk::new(Self::text_block(text, meta));
+        let chunk = acp::ContentChunk::new(self.text_block(text, meta));
         self.send_update(acp::SessionUpdate::AgentMessageChunk(chunk));
     }
 
     fn send_thought_with_meta(&self, text: impl Into<String>, meta: Option<acp::Meta>) {
-        let chunk = acp::ContentChunk::new(Self::text_block(text, meta));
+        let chunk = acp::ContentChunk::new(self.text_block(text, meta));
         self.send_update(acp::SessionUpdate::AgentThoughtChunk(chunk));
     }
 
@@ -486,7 +520,7 @@ impl AcpChannelOutput {
             return;
         }
         let entries = Self::plan_entries_from_tasks(&tasks);
-        let plan = acp::Plan::new(entries);
+        let plan = acp::Plan::new(entries).meta(self.session_meta());
         self.send_update(acp::SessionUpdate::Plan(plan));
     }
 
@@ -545,7 +579,7 @@ impl AutopilotOutput for AcpChannelOutput {
     }
 
     fn emit_stage(&self, stage: DspyStage) {
-        let meta = Self::dspy_meta(&stage);
+        let meta = self.dspy_meta(&stage);
         match stage {
             DspyStage::EnvironmentAssessment {
                 system_info,

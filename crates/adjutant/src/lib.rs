@@ -66,7 +66,8 @@ pub use tiered::TieredExecutor;
 pub use tools::{Tool, ToolRegistry};
 pub use autopilot_loop::{
     AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotOutput, AutopilotResult, ChannelOutput,
-    CliOutput, DspyStage, TodoStatus, TodoTask, Verification, DSPY_META_KEY,
+    generate_session_id, CliOutput, DspyStage, TodoStatus, TodoTask, Verification, DSPY_META_KEY,
+    SESSION_ID_META_KEY,
 };
 pub use dspy_orchestrator::{AssessmentResult, DspyOrchestrator};
 

@@ -53,6 +53,7 @@ pub(crate) fn write_session_messages(session_id: &str, messages: &[ChatMessage])
         let role = match msg.role {
             MessageRole::User => "user",
             MessageRole::Assistant => "assistant",
+            MessageRole::AssistantThought => "assistant_thought",
         };
         let stored = StoredMessage {
             role: role.to_string(),
@@ -81,10 +82,10 @@ pub(crate) fn read_session_messages(session_id: &str) -> io::Result<Vec<ChatMess
     for line in data.lines() {
         let stored: StoredMessage = serde_json::from_str(line)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        let role = if stored.role == "user" {
-            MessageRole::User
-        } else {
-            MessageRole::Assistant
+        let role = match stored.role.as_str() {
+            "user" => MessageRole::User,
+            "assistant_thought" => MessageRole::AssistantThought,
+            _ => MessageRole::Assistant,
         };
         let document = if role == MessageRole::Assistant {
             Some(super::super::build_markdown_document(&stored.content))
