@@ -271,6 +271,46 @@ Before executing, Adjutant uses DSPy to make intelligent routing decisions:
 7. Training data collected for optimization
 ```
 
+**Autonomous Autopilot Loop:**
+
+When Coder is in Autopilot mode, it doesn't just execute once — it runs Adjutant in an **autonomous loop** until the task is truly complete:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Coder Autopilot Loop                      │
+├─────────────────────────────────────────────────────────────┤
+│  User: "Fix the auth bug"                                    │
+│        ↓                                                     │
+│  --- Iteration 1/10 ---                                      │
+│  [Adjutant analyzes, identifies issue in login.rs]          │
+│        ↓                                                     │
+│  --- Iteration 2/10 ---                                      │
+│  [Adjutant applies fix]                                      │
+│  🔍 Verifying...                                             │
+│    cargo check... OK                                         │
+│    cargo test... FAILED                                      │
+│  ⚠ Verification failed, continuing...                       │
+│        ↓                                                     │
+│  --- Iteration 3/10 ---                                      │
+│  [Adjutant fixes failing test]                               │
+│  🔍 Verifying...                                             │
+│    cargo check... OK                                         │
+│    cargo test... OK                                          │
+│  ✓ Verification passed                                       │
+│  ✓ Task completed                                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The loop terminates when:
+- **Success**: LLM reports success AND verification passes (cargo check + cargo test)
+- **Definitive failure**: Unrecoverable error detected (permission denied, file not found, etc.)
+- **Max iterations**: 10 iterations reached (can continue with another message)
+- **User interrupt**: Press Escape to stop cleanly
+
+Each iteration builds on the previous one, passing context about what was attempted and what failed. This transforms Autopilot from "single-shot execution" to "true autonomous agent."
+
+Implementation: `crates/coder/src/autopilot_loop.rs`
+
 **DSPy-First with Fallback:** Each decision pipeline uses a 0.7 confidence threshold. If the DSPy model returns a prediction with confidence above 0.7, it's used. Below that, the system falls back to legacy rule-based logic. This ensures reliability while collecting training data to improve the DSPy decisions over time.
 
 ### Automatic Training Collection
@@ -1082,6 +1122,7 @@ Issues are NOT done unless:
 | Autopilot | Alpha | Claude SDK integration, tunnel mode |
 | Autopilot DSPy | Wave 11 | Planning, Execution, Verification + Hub + Router |
 | Adjutant | **Wave 13** | Decision pipelines, LM caching, training collection |
+| Coder Autopilot | **Complete** | Autonomous loop with verification (cargo check/test) |
 | dsrs | **Wave 13** | SwarmCompiler, Pipelines, Privacy, full integration |
 | WGPUI | Phase 16 | 377 tests, full component library |
 | RLM | Working | Claude + Ollama backends, MCP tools |

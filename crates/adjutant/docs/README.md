@@ -383,6 +383,45 @@ export ADJUTANT_ENABLE_RLM=1
 export RLM_BACKEND=claude  # Use Claude as RLM LlmClient
 ```
 
+## Coder Integration
+
+Adjutant is the execution engine behind Coder's **Autopilot mode**. When you switch to Autopilot in Coder, it runs Adjutant in an **autonomous loop** until the task is complete:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Coder Autopilot Loop                      │
+├─────────────────────────────────────────────────────────────┤
+│  User: "Fix the auth bug"                                    │
+│        ↓                                                     │
+│  --- Iteration 1/10 ---                                      │
+│  [Adjutant analyzes, identifies issue]                       │
+│        ↓                                                     │
+│  --- Iteration 2/10 ---                                      │
+│  [Adjutant applies fix]                                      │
+│  🔍 Verifying...                                             │
+│    cargo check... OK                                         │
+│    cargo test... FAILED                                      │
+│  ⚠ Verification failed, continuing...                       │
+│        ↓                                                     │
+│  --- Iteration 3/10 ---                                      │
+│  [Adjutant fixes failing test]                               │
+│  🔍 Verifying...                                             │
+│    cargo check... OK                                         │
+│    cargo test... OK                                          │
+│  ✓ Verification passed                                       │
+│  ✓ Task completed                                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Key Features
+
+- **Autonomous Loop**: Keeps calling Adjutant until task succeeds or max iterations (10) reached
+- **Verification**: After LLM reports success, runs `cargo check` + `cargo test` to verify
+- **Interrupt**: Press Escape to stop the loop cleanly
+- **Iteration Context**: Each iteration gets context from previous attempts
+
+See `crates/coder/src/autopilot_loop.rs` for the implementation.
+
 ## See Also
 
 - [TIERED-EXECUTOR.md](./TIERED-EXECUTOR.md) - Detailed tiered inference documentation
@@ -390,3 +429,4 @@ export RLM_BACKEND=claude  # Use Claude as RLM LlmClient
 - [../../dsrs/README.md](../../dsrs/README.md) - dsrs (Rust DSPy) documentation
 - [../../gateway/docs/README.md](../../gateway/docs/README.md) - Gateway crate (Cerebras integration)
 - [../../oanix/README.md](../../oanix/README.md) - OANIX environment discovery
+- [../../coder/docs/ROADMAP.md](../../coder/docs/ROADMAP.md) - Coder implementation roadmap
