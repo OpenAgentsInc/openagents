@@ -1,10 +1,13 @@
 //! Run command - start the autopilot loop
 
+use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult, CliOutput};
 use crate::cli::blocker::{analyze_blockers, print_blocker_summary};
 use crate::cli::directive::work_on_directive;
 use crate::{Adjutant, Task};
 use clap::Args;
 use oanix::{boot, WorkspaceManifest};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 /// Run command arguments
 #[derive(Args)]
@@ -36,14 +39,44 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
 
     // Determine what to work on
     if let Some(task_desc) = args.task {
-        // Ad-hoc task
-        let task = Task::new("adhoc", "Ad-hoc Task", task_desc);
+        // Ad-hoc task with full autopilot loop
+        let task = Task::new("adhoc", "Ad-hoc Task", &task_desc);
         println!();
         println!("Working on ad-hoc task: {}", task.title);
+        println!("Press Ctrl+C to interrupt");
         println!();
 
-        let result = adjutant.execute(&task).await?;
-        print_result(&result);
+        // Set up interrupt handling
+        let interrupt_flag = Arc::new(AtomicBool::new(false));
+        let int_flag = interrupt_flag.clone();
+        ctrlc::set_handler(move || {
+            int_flag.store(true, Ordering::Relaxed);
+        })?;
+
+        // Configure autopilot loop
+        let workspace_root = manifest
+            .workspace
+            .as_ref()
+            .map(|w| w.root.clone())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+        let config = AutopilotConfig {
+            max_iterations: 10,
+            workspace_root,
+            verify_completion: true,
+        };
+
+        // Run the autopilot loop
+        let loop_runner = AutopilotLoop::new(
+            adjutant,
+            task,
+            config,
+            CliOutput,
+            interrupt_flag,
+        );
+
+        let result = loop_runner.run().await;
+        print_autopilot_result(&result);
         return Ok(());
     }
 
@@ -185,6 +218,53 @@ fn print_result(result: &crate::TaskResult) {
     if let Some(error) = &result.error {
         println!();
         println!("Error: {}", error);
+    }
+}
+
+fn print_autopilot_result(result: &AutopilotResult) {
+    println!();
+    println!("{}", "=".repeat(55));
+
+    match result {
+        AutopilotResult::Success(task_result) => {
+            println!("Task completed successfully");
+            println!();
+            println!("Summary: {}", task_result.summary);
+
+            if !task_result.modified_files.is_empty() {
+                println!();
+                println!("Modified files:");
+                for file in &task_result.modified_files {
+                    println!("  - {}", file);
+                }
+            }
+
+            if let Some(hash) = &task_result.commit_hash {
+                println!();
+                println!("Commit: {}", hash);
+            }
+        }
+        AutopilotResult::Failed(task_result) => {
+            println!("Task failed definitively");
+            println!();
+            println!("Summary: {}", task_result.summary);
+            if let Some(error) = &task_result.error {
+                println!("Error: {}", error);
+            }
+        }
+        AutopilotResult::MaxIterationsReached { iterations, last_result } => {
+            println!("Max iterations ({}) reached without success", iterations);
+            if let Some(result) = last_result {
+                println!();
+                println!("Last result: {}", result.summary);
+            }
+        }
+        AutopilotResult::UserInterrupted { iterations } => {
+            println!("Interrupted by user after {} iterations", iterations);
+        }
+        AutopilotResult::Error(msg) => {
+            println!("Error during execution: {}", msg);
+        }
     }
 }
 

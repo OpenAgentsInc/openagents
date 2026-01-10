@@ -48,6 +48,7 @@ glob = "0.3"
 # Process execution
 which = "8.0"
 dirs = "5.0"
+ctrlc = "3.4"
 
 # Async utilities
 futures = "0.3"
