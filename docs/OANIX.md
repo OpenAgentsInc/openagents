@@ -518,34 +518,43 @@ OANIX Boot:
 
 ## Implementation Phases
 
-### Phase 1: Environment Discovery (Current)
-- [ ] Hardware manifest struct and discovery
-- [ ] Compute backend detection (extend existing)
-- [ ] Network/relay status checking
-- [ ] Identity and wallet integration
-- [ ] Situation assessment logic
+### Phase 1: Environment Discovery (Complete)
+- [x] Hardware manifest struct and discovery
+- [x] Compute backend detection (Ollama, llama.cpp, FM Bridge)
+- [x] Network/relay status checking
+- [x] Identity and wallet integration
+- [x] Situation assessment logic
+- [x] OanixManifest generation
 
-### Phase 2: Unified Boot
-- [ ] Single boot sequence for autopilot
-- [ ] Progressive log output with sections
+### Phase 2: DSPy Signatures (Complete - Wave 8)
+- [x] `SituationAssessmentSignature` - Analyze system state, determine priorities
+- [x] `IssueSelectionSignature` - Choose best issue to work on
+- [x] `WorkPrioritizationSignature` - Order tasks by importance/dependencies
+- [x] `LifecycleDecisionSignature` - CoT for agent state transitions
+- [x] All signatures implement MetaSignature trait
+- [x] 18 tests passing
+
+### Phase 3: Unified Boot (In Progress)
+- [x] Single boot sequence for autopilot
+- [x] Progressive log output with sections
 - [ ] Boot configuration (what to discover)
 - [ ] Skip/retry for missing components
 
-### Phase 3: Autonomous Loop
-- [ ] Tick-based decision loop
+### Phase 4: Autonomous Loop (In Progress)
+- [x] Tick-based decision loop (via Runtime)
 - [ ] Idle/housekeeping behavior
 - [ ] Proactive work discovery
 - [ ] Balance monitoring and earning mode
 
-### Phase 4: Full Filesystem
+### Phase 5: Full Filesystem
 - [ ] `/hw` mount for hardware
 - [ ] `/swarm` mount for Nostr/DVM
 - [ ] Integration with existing mounts
 - [ ] Namespace builder for OANIX
 
-### Phase 5: Provider Mode
-- [ ] Automatic provider registration
-- [ ] Job processing loop
+### Phase 6: Provider Mode
+- [x] Automatic provider registration (via Pylon)
+- [x] Job processing loop (via Pylon)
 - [ ] Earnings tracking
 - [ ] Resource allocation
 
