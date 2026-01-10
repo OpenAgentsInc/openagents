@@ -277,6 +277,15 @@ pub(crate) enum HookModalView {
     Events,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HookSetting {
+    ToolBlocker,
+    ToolLogger,
+    OutputTruncator,
+    ContextInjection,
+    TodoEnforcer,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct HookLogEntry {
     pub(crate) id: String,
@@ -289,6 +298,10 @@ pub(crate) struct HookLogEntry {
     pub(crate) output: Option<Value>,
     pub(crate) error: Option<String>,
     pub(crate) sources: Vec<String>,
+}
+
+pub(crate) fn hook_event_label(event: HookEvent) -> &'static str {
+    event.as_str()
 }
 
 #[derive(Clone)]
